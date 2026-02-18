@@ -25,5 +25,16 @@ export default defineConfig(({ command }) => ({
   // Production: base: '/luisices/' (para npm run build)
   // IMPORTANTE: Substitua 'luisices' pelo nome do seu repositório GitHub!
   base: command === 'serve' ? '/' : '/luisices/',
+
+  // Copiar 404.html para dist/ durante o build
+  publicDir: 'public',
+  build: {
+    rollupOptions: {
+      input: {
+        main: path.resolve(__dirname, 'index.html'),
+        404: path.resolve(__dirname, '404.html'),
+      },
+    },
+  },
 }))
 
