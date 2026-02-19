@@ -80,9 +80,13 @@ export function useUserSettings() {
     if (!user) throw new Error('Usuário não autenticado');
 
     try {
-      // Deletar avatar antigo se existir
+      // Deletar avatar antigo se existir (não bloqueia se falhar)
       if (settings?.avatar) {
-        await firebaseStorageService.deleteImage(settings.avatar);
+        try {
+          await firebaseStorageService.deleteImage(settings.avatar);
+        } catch (deleteError) {
+          console.warn('Não foi possível deletar avatar antigo (continuando):', deleteError);
+        }
       }
 
       // Upload novo avatar
@@ -103,9 +107,13 @@ export function useUserSettings() {
     if (!user) throw new Error('Usuário não autenticado');
 
     try {
-      // Deletar logo antiga se existir
+      // Deletar logo antiga se existir (não bloqueia se falhar)
       if (settings?.logo) {
-        await firebaseStorageService.deleteImage(settings.logo);
+        try {
+          await firebaseStorageService.deleteImage(settings.logo);
+        } catch (deleteError) {
+          console.warn('Não foi possível deletar logo antigo (continuando):', deleteError);
+        }
       }
 
       // Upload nova logo
@@ -126,9 +134,13 @@ export function useUserSettings() {
     if (!user) throw new Error('Usuário não autenticado');
 
     try {
-      // Deletar banner antigo se existir
+      // Deletar banner antigo se existir (não bloqueia se falhar)
       if (settings?.banner) {
-        await firebaseStorageService.deleteImage(settings.banner);
+        try {
+          await firebaseStorageService.deleteImage(settings.banner);
+        } catch (deleteError) {
+          console.warn('Não foi possível deletar banner antigo (continuando):', deleteError);
+        }
       }
 
       // Upload novo banner
@@ -149,9 +161,15 @@ export function useUserSettings() {
     if (!user) throw new Error('Usuário não autenticado');
 
     try {
+      // Tentar deletar do Storage (não bloqueia se falhar)
       if (settings?.avatar) {
-        await firebaseStorageService.deleteImage(settings.avatar);
+        try {
+          await firebaseStorageService.deleteImage(settings.avatar);
+        } catch (storageError) {
+          console.warn('Erro ao deletar imagem do Storage (continuando):', storageError);
+        }
       }
+      // Sempre atualizar Firestore
       await firebaseSettingsService.updateAvatar(user.uid, null);
     } catch (err) {
       setError(err as Error);
@@ -164,9 +182,15 @@ export function useUserSettings() {
     if (!user) throw new Error('Usuário não autenticado');
 
     try {
+      // Tentar deletar do Storage (não bloqueia se falhar)
       if (settings?.logo) {
-        await firebaseStorageService.deleteImage(settings.logo);
+        try {
+          await firebaseStorageService.deleteImage(settings.logo);
+        } catch (storageError) {
+          console.warn('Erro ao deletar imagem do Storage (continuando):', storageError);
+        }
       }
+      // Sempre atualizar Firestore
       await firebaseSettingsService.updateLogo(user.uid, null);
     } catch (err) {
       setError(err as Error);
@@ -179,9 +203,15 @@ export function useUserSettings() {
     if (!user) throw new Error('Usuário não autenticado');
 
     try {
+      // Tentar deletar do Storage (não bloqueia se falhar)
       if (settings?.banner) {
-        await firebaseStorageService.deleteImage(settings.banner);
+        try {
+          await firebaseStorageService.deleteImage(settings.banner);
+        } catch (storageError) {
+          console.warn('Erro ao deletar imagem do Storage (continuando):', storageError);
+        }
       }
+      // Sempre atualizar Firestore
       await firebaseSettingsService.updateBanner(user.uid, null);
     } catch (err) {
       setError(err as Error);
