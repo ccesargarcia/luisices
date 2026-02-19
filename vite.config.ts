@@ -21,10 +21,9 @@ export default defineConfig(({ command }) => ({
   assetsInclude: ['**/*.svg', '**/*.csv'],
 
   // GitHub Pages deployment configuration
-  // Development: base: '/' (para npm run dev)
-  // Production: base: '/luisices/' (para npm run build)
-  // IMPORTANTE: Substitua 'luisices' pelo nome do seu repositório GitHub!
-  base: command === 'serve' ? '/' : '/luisices/',
+  // Com domínio customizado (luisices.com.br), sempre usar base: '/'
+  // Sem domínio customizado, usar: command === 'serve' ? '/' : '/luisices/'
+  base: '/',
 
   // Copiar 404.html para dist/ durante o build
   publicDir: 'public',
