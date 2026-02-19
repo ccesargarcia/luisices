@@ -19,6 +19,13 @@ const firebaseConfig = {
   appId: import.meta.env.VITE_FIREBASE_APP_ID,
 };
 
+// Debug: Verificar configuração do Storage
+console.log('🔧 Firebase Config Check:', {
+  hasStorageBucket: !!firebaseConfig.storageBucket,
+  storageBucket: firebaseConfig.storageBucket || 'NOT CONFIGURED!',
+  projectId: firebaseConfig.projectId
+});
+
 // Inicializar Firebase
 const app = initializeApp(firebaseConfig);
 
@@ -26,5 +33,7 @@ const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 export const db = getFirestore(app);
 export const storage = getStorage(app);
+
+console.log('✅ Firebase Storage inicializado');
 
 export default app;
