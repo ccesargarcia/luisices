@@ -13,6 +13,7 @@ import {
   DropdownMenuTrigger,
 } from '../components/ui/dropdown-menu';
 import { Avatar, AvatarFallback, AvatarImage } from '../components/ui/avatar';
+import { ThemeToggle } from '../../components/ThemeToggle';
 
 export function Layout() {
   const location = useLocation();
@@ -80,7 +81,9 @@ export function Layout() {
               </div>
             </div>
 
-            <DropdownMenu>
+            <div className="flex items-center gap-2">
+              <ThemeToggle />
+              <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" className="relative size-10 rounded-full">
                   <Avatar>

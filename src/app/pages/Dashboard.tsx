@@ -11,8 +11,19 @@ import { Package, Clock, CheckCircle, TrendingUp, Search, X, Loader2 } from 'luc
 import { getTextColor } from '../utils/tagColors';
 import { useFirebaseOrders } from '../../hooks/useFirebaseOrders';
 import { firebaseOrderService } from '../../services/firebaseOrderService';
+import { useAuth } from '../../contexts/AuthContext';
+
+function getGreeting() {
+  const hour = new Date().getHours();
+  
+  if (hour < 6) return 'Boa madrugada';
+  if (hour < 12) return 'Bom dia';
+  if (hour < 18) return 'Boa tarde';
+  return 'Boa noite';
+}
 
 export function Dashboard() {
+  const { user } = useAuth();
   const { orders, loading, error } = useFirebaseOrders();
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
@@ -134,7 +145,9 @@ export function Dashboard() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold">Dashboard</h1>
+          <h1 className="text-3xl font-bold">
+            {getGreeting()}{user?.displayName ? `, ${user.displayName.split(' ')[0]}` : ''}!
+          </h1>
           <p className="text-muted-foreground">Gerencie seus pedidos personalizados</p>
         </div>
         <NewOrderDialog />

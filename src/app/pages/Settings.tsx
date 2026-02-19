@@ -52,17 +52,13 @@ export function Settings() {
   ) => {
     setUploading(type);
     try {
-      console.log('Iniciando upload de', type, file.name);
       let url: string;
       if (type === 'avatar') {
         url = await uploadAvatar(file);
-        console.log('Avatar uploaded:', url);
       } else if (type === 'logo') {
         url = await uploadLogo(file);
-        console.log('Logo uploaded:', url);
       } else {
         url = await uploadBanner(file);
-        console.log('Banner uploaded:', url);
       }
       
       toast.success(`${type === 'avatar' ? 'Avatar' : type === 'logo' ? 'Logo' : 'Banner'} atualizado com sucesso!`);
@@ -150,26 +146,6 @@ export function Settings() {
           Personalize seu dashboard com logo, cores e informações do negócio
         </p>
       </div>
-
-      {/* Debug Card */}
-      <Card className="border-blue-500">
-        <CardHeader>
-          <CardTitle className="text-sm">🔍 Debug Info</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <pre className="text-xs bg-muted p-2 rounded overflow-auto">
-            {JSON.stringify({ 
-              userId: user?.uid,
-              hasSettings: !!settings,
-              avatar: settings?.avatar || 'null',
-              logo: settings?.logo || 'null',
-              businessName: settings?.businessName || 'null',
-              businessPhone: settings?.businessPhone || 'null',
-              all: settings
-            }, null, 2)}
-          </pre>
-        </CardContent>
-      </Card>
 
       {/* Avatar e Logo */}
       <div className="grid gap-6 md:grid-cols-2">

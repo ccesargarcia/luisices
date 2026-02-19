@@ -42,16 +42,6 @@ export class FirebaseStorageService {
     const extension = file.name.split('.').pop();
     const fileName = `${folder}_${timestamp}.${extension}`;
     const storagePath = `users/${userId}/${folder}/${fileName}`;
-    
-    console.log('🔥 Storage Upload Debug:', {
-      userId,
-      folder,
-      fileName,
-      fullPath: storagePath,
-      fileSize: file.size,
-      fileType: file.type
-    });
-    
     const storageRef = ref(storage, storagePath);
 
     // Metadata
@@ -63,13 +53,7 @@ export class FirebaseStorageService {
     };
 
     // Upload
-    try {
-      await uploadBytes(storageRef, file, metadata);
-      console.log('✅ Upload bem-sucedido!');
-    } catch (error) {
-      console.error('❌ Erro no upload:', error);
-      throw error;
-    }
+    await uploadBytes(storageRef, file, metadata);
 
     // Obter URL pública
     const downloadURL = await getDownloadURL(storageRef);
