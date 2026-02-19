@@ -124,6 +124,26 @@ export function Settings() {
         </p>
       </div>
 
+      {/* Debug Card */}
+      <Card className="border-blue-500">
+        <CardHeader>
+          <CardTitle className="text-sm">🔍 Debug Info</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <pre className="text-xs bg-muted p-2 rounded overflow-auto">
+            {JSON.stringify({ 
+              userId: user?.uid,
+              hasSettings: !!settings,
+              avatar: settings?.avatar || 'null',
+              logo: settings?.logo || 'null',
+              businessName: settings?.businessName || 'null',
+              businessPhone: settings?.businessPhone || 'null',
+              all: settings
+            }, null, 2)}
+          </pre>
+        </CardContent>
+      </Card>
+
       {/* Avatar e Logo */}
       <div className="grid gap-6 md:grid-cols-2">
         {/* Avatar */}
