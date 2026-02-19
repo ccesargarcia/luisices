@@ -1,7 +1,8 @@
 import { Link, Outlet, useLocation, useNavigate } from 'react-router';
-import { LayoutDashboard, Calendar, Package2, LogOut, User } from 'lucide-react';
+import { LayoutDashboard, Calendar, Package2, LogOut, User, Settings as SettingsIcon } from 'lucide-react';
 import { cn } from '../components/ui/utils';
 import { useAuth } from '../../contexts/AuthContext';
+import { useUserSettings } from '../../hooks/useUserSettings';
 import { Button } from '../components/ui/button';
 import {
   DropdownMenu,
@@ -11,12 +12,13 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '../components/ui/dropdown-menu';
-import { Avatar, AvatarFallback } from '../components/ui/avatar';
+import { Avatar, AvatarFallback, AvatarImage } from '../components/ui/avatar';
 
 export function Layout() {
   const location = useLocation();
   const navigate = useNavigate();
   const { user, logout } = useAuth();
+  const { settings } = useUserSettings();
 
   const handleLogout = async () => {
     try {
@@ -46,34 +48,50 @@ export function Layout() {
       name: 'Agenda Semanal',
       href: '/agenda',
       icon: Calendar,
-    },
+    
+
+  const businessName = settings?.businessName || 'Papelaria Personalizada';
+  const hasLogo = !!settings?.logo;},
   ];
 
   return (
     <div className="min-h-screen bg-background">
       <header className="border-b bg-white">
-        <div className="container mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="flex items-center justify-center size-10 bg-primary text-primary-foreground rounded-lg">
-                <Package2 className="size-6" />
+        <div c{hasLogo ? (
+                <img 
+                  src={settings.logo} 
+                  alt={businessName}
+                  className="h-10 object-contain"
+                />
+              ) : (
+                <div className="flex items-center justify-center size-10 bg-primary text-primary-foreground rounded-lg">
+                  <Package2 className="size-6" />
+                </div>
+              )}
+              <div>
+                <h1 className="font-bold text-xl">{businessName}
               </div>
               <div>
                 <h1 className="font-bold text-xl">Papelaria Personalizada</h1>
-                <p className="text-sm text-muted-foreground">Sistema de Gestão de Pedidos</p>
-              </div>
-            </div>
-
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" className="relative size-10 rounded-full">
-                  <Avatar>
+                <p classNamImage src={settings?.avatar} alt="Avatar" />
                     <AvatarFallback className="bg-primary text-primary-foreground">
                       {getUserInitials()}
                     </AvatarFallback>
                   </Avatar>
                 </Button>
               </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56">
+                <DropdownMenuLabel>
+                  <div className="flex flex-col space-y-1">
+                    <p className="text-sm font-medium">{user?.displayName || 'Usuário'}</p>
+                    <p className="text-xs text-muted-foreground">{user?.email}</p>
+                  </div>
+                </DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => navigate('/configuracoes')} className="cursor-pointer">
+                  <SettingsIcon className="size-4 mr-2" />
+                  Configurações
+                </DropdownMenuItem
               <DropdownMenuContent align="end" className="w-56">
                 <DropdownMenuLabel>
                   <div className="flex flex-col space-y-1">

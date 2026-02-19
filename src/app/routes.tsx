@@ -2,6 +2,7 @@ import { createBrowserRouter, Navigate } from 'react-router';
 import { Layout } from './pages/Layout';
 import { Dashboard } from './pages/Dashboard';
 import { WeeklyCalendar } from './pages/WeeklyCalendar';
+import { Settings } from './pages/Settings';
 import { Login } from './pages/Login';
 import { Register } from './pages/Register';
 import { ResetPassword } from './pages/ResetPassword';
@@ -45,6 +46,10 @@ export const router = createBrowserRouter([
       {
         path: 'agenda',
         Component: WeeklyCalendar,
+      },
+      {
+        path: 'configuracoes',
+        Component: Settings,
       },
     ],
   },

@@ -64,6 +64,15 @@ service cloud.firestore {
     }
     
     // ============================================
+    // USER SETTINGS - Personalização
+    // ============================================
+    
+    match /users/{userId}/settings/{document=**} {
+      // Permitir leitura e escrita apenas para o próprio usuário
+      allow read, write: if isOwner(userId);
+    }
+    
+    // ============================================
     // BLOQUEAR TUDO QUE NÃO ESTÁ EXPLICITAMENTE PERMITIDO
     // ============================================
     
@@ -127,16 +136,24 @@ auth: uid=user123
 // request.resource.data = { userId: "user123", customerName: "João", ... }
 ```
 
-## 🔑 Storage Rules (Opcional)
+## 🔑 Storage Rules (Obrigatório)
 
-Se usar Firebase Storage para imagens:
+Configurar no **Firebase Console** → **Storage** → **Regras**:
 
 ```javascript
 rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
-    match /users/{userId}/{allPaths=**} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
+    // Permitir apenas imagem
+s até 5MB por usuário
+    match /users/{userId}/{folder}/{fileName} {
+      // Apenas o próprio usuário pode ler/escrever
+      allow read: if request.auth != null && request.auth.uid == userId;
+      allow write: if request.auth != null 
+                   && request.auth.uid == userId
+                   && request.resource.size < 5 * 1024 * 1024  // 5MB
+                   && request.resource.contentType.matches('image/.*');
+      allow delete: if request.auth != null && request.auth.uid == userId;
     }
   }
 }
