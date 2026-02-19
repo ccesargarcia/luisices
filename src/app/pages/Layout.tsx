@@ -54,6 +54,9 @@ export function Layout() {
   const businessName = settings?.businessName || 'Papelaria Personalizada';
   const hasLogo = !!settings?.logo;
 
+  // Debug
+  console.log('Layout settings:', { businessName, hasLogo, logo: settings?.logo, avatar: settings?.avatar });
+
   return (
     <div className="min-h-screen bg-background">
       <header className="border-b bg-white">

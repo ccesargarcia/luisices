@@ -55,6 +55,7 @@ export class FirebaseSettingsService {
     userId: string,
     settings: Partial<Omit<UserSettings, 'userId' | 'updatedAt'>>
   ): Promise<void> {
+    console.log('Updating settings for user:', userId, settings);
     const docRef = doc(db, 'users', userId, 'settings', 'profile');
     
     // Verificar se documento existe
@@ -66,11 +67,17 @@ export class FirebaseSettingsService {
       updatedAt: new Date(),
     };
 
+    console.log('Data to save:', data);
+
     if (docSnap.exists()) {
+      console.log('Document exists, updating...');
       await updateDoc(docRef, data);
     } else {
+      console.log('Document does not exist, creating...');
       await setDoc(docRef, data);
     }
+    
+    console.log('Settings updated successfully');
   }
 
   /**

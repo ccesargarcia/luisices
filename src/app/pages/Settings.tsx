@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useUserSettings } from '../../hooks/useUserSettings';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
@@ -23,6 +23,7 @@ export function Settings() {
   } = useUserSettings();
 
   const [uploading, setUploading] = useState<'avatar' | 'logo' | 'banner' | null>(null);
+  const [saving, setSaving] = useState(false);
   const [businessInfo, setBusinessInfo] = useState({
     businessName: settings?.businessName || '',
     businessPhone: settings?.businessPhone || '',
@@ -31,7 +32,7 @@ export function Settings() {
   });
 
   // Atualizar business info quando settings carregar
-  useState(() => {
+  useEffect(() => {
     if (settings) {
       setBusinessInfo({
         businessName: settings.businessName || '',
@@ -40,7 +41,7 @@ export function Settings() {
         businessAddress: settings.businessAddress || '',
       });
     }
-  });
+  }, [settings]);
 
   const handleImageUpload = async (
     file: File,
@@ -48,17 +49,22 @@ export function Settings() {
   ) => {
     setUploading(type);
     try {
+      console.log('Iniciando upload de', type, file.name);
       let url: string;
       if (type === 'avatar') {
         url = await uploadAvatar(file);
+        console.log('Avatar uploaded:', url);
       } else if (type === 'logo') {
         url = await uploadLogo(file);
+        console.log('Logo uploaded:', url);
       } else {
         url = await uploadBanner(file);
+        console.log('Banner uploaded:', url);
       }
       
       toast.success(`${type === 'avatar' ? 'Avatar' : type === 'logo' ? 'Logo' : 'Banner'} atualizado com sucesso!`);
     } catch (error) {
+      console.error('Erro no upload:', error);
       toast.error(error instanceof Error ? error.message : 'Erro ao fazer upload');
     } finally {
       setUploading(null);
@@ -66,11 +72,15 @@ export function Settings() {
   };
 
   const handleBusinessInfoSave = async () => {
+    setSaving(true);
     try {
       await updateSettings(businessInfo);
       toast.success('Informações atualizadas com sucesso!');
     } catch (error) {
-      toast.error('Erro ao atualizar informações');
+      console.error('Erro ao salvar:', error);
+      toast.error(error instanceof Error ? error.message : 'Erro ao atualizar informações');
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -302,8 +312,15 @@ export function Settings() {
           </div>
 
           <div className="flex gap-2">
-            <Button onClick={handleBusinessInfoSave}>
-              Salvar Informações
+            <Button onClick={handleBusinessInfoSave} disabled={saving}>
+              {saving ? (
+                <>
+                  <Loader2 className="size-4 mr-2 animate-spin" />
+                  Salvando...
+                </>
+              ) : (
+                'Salvar Informações'
+              )}
             </Button>
           </div>
         </CardContent>
