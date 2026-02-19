@@ -4,7 +4,7 @@
  * Serviço para gerenciar configurações e personalização do usuário
  */
 
-import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc, updateDoc, deleteField } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 
 export interface UserSettings {
@@ -55,7 +55,6 @@ export class FirebaseSettingsService {
     userId: string,
     settings: Partial<Omit<UserSettings, 'userId' | 'updatedAt'>>
   ): Promise<void> {
-    console.log('Updating settings for user:', userId, settings);
     const docRef = doc(db, 'users', userId, 'settings', 'profile');
     
     // Verificar se documento existe
@@ -67,38 +66,44 @@ export class FirebaseSettingsService {
       updatedAt: new Date(),
     };
 
-    console.log('Data to save:', data);
-
     if (docSnap.exists()) {
-      console.log('Document exists, updating...');
       await updateDoc(docRef, data);
     } else {
-      console.log('Document does not exist, creating...');
       await setDoc(docRef, data);
     }
-    
-    console.log('Settings updated successfully');
   }
 
   /**
    * Atualizar avatar
    */
   async updateAvatar(userId: string, avatarUrl: string | null): Promise<void> {
-    await this.updateSettings(userId, { avatar: avatarUrl || undefined });
+    const docRef = doc(db, 'users', userId, 'settings', 'profile');
+    await updateDoc(docRef, {
+      avatar: avatarUrl === null ? deleteField() : avatarUrl,
+      updatedAt: new Date(),
+    });
   }
 
   /**
    * Atualizar logo
    */
   async updateLogo(userId: string, logoUrl: string | null): Promise<void> {
-    await this.updateSettings(userId, { logo: logoUrl || undefined });
+    const docRef = doc(db, 'users', userId, 'settings', 'profile');
+    await updateDoc(docRef, {
+      logo: logoUrl === null ? deleteField() : logoUrl,
+      updatedAt: new Date(),
+    });
   }
 
   /**
    * Atualizar banner
    */
   async updateBanner(userId: string, bannerUrl: string | null): Promise<void> {
-    await this.updateSettings(userId, { banner: bannerUrl || undefined });
+    const docRef = doc(db, 'users', userId, 'settings', 'profile');
+    await updateDoc(docRef, {
+      banner: bannerUrl === null ? deleteField() : bannerUrl,
+      updatedAt: new Date(),
+    });
   }
 
   /**
