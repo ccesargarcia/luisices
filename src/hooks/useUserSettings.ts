@@ -77,6 +77,12 @@ export function useUserSettings() {
 
   // Upload de avatar
   const uploadAvatar = async (file: File): Promise<string> => {
+    console.log('🔐 Upload Avatar - Verificando autenticação:', {
+      userExists: !!user,
+      userId: user?.uid,
+      userEmail: user?.email
+    });
+    
     if (!user) throw new Error('Usuário não autenticado');
 
     try {
@@ -86,6 +92,7 @@ export function useUserSettings() {
       }
 
       // Upload novo avatar
+      console.log('📤 Chamando uploadImage com userId:', user.uid);
       const url = await firebaseStorageService.uploadImage(file, user.uid, 'avatar');
       
       // Atualizar Firestore
