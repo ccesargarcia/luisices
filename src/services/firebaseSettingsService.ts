@@ -83,22 +83,22 @@ export class FirebaseSettingsService {
   /**
    * Atualizar avatar
    */
-  async updateAvatar(userId: string, avatarUrl: string): Promise<void> {
-    await this.updateSettings(userId, { avatar: avatarUrl });
+  async updateAvatar(userId: string, avatarUrl: string | null): Promise<void> {
+    await this.updateSettings(userId, { avatar: avatarUrl || undefined });
   }
 
   /**
    * Atualizar logo
    */
-  async updateLogo(userId: string, logoUrl: string): Promise<void> {
-    await this.updateSettings(userId, { logo: logoUrl });
+  async updateLogo(userId: string, logoUrl: string | null): Promise<void> {
+    await this.updateSettings(userId, { logo: logoUrl || undefined });
   }
 
   /**
    * Atualizar banner
    */
-  async updateBanner(userId: string, bannerUrl: string): Promise<void> {
-    await this.updateSettings(userId, { banner: bannerUrl });
+  async updateBanner(userId: string, bannerUrl: string | null): Promise<void> {
+    await this.updateSettings(userId, { banner: bannerUrl || undefined });
   }
 
   /**

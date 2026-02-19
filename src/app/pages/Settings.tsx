@@ -19,6 +19,9 @@ export function Settings() {
     uploadAvatar,
     uploadLogo,
     uploadBanner,
+    removeAvatar,
+    removeLogo,
+    removeBanner,
     resetToDefaults,
   } = useUserSettings();
 
@@ -66,6 +69,30 @@ export function Settings() {
     } catch (error) {
       console.error('Erro no upload:', error);
       toast.error(error instanceof Error ? error.message : 'Erro ao fazer upload');
+    } finally {
+      setUploading(null);
+    }
+  };
+
+  const handleImageRemove = async (type: 'avatar' | 'logo' | 'banner') => {
+    if (!confirm(`Deseja realmente remover ${type === 'avatar' ? 'o avatar' : type === 'logo' ? 'o logo' : 'o banner'}?`)) {
+      return;
+    }
+
+    setUploading(type);
+    try {
+      if (type === 'avatar') {
+        await removeAvatar();
+      } else if (type === 'logo') {
+        await removeLogo();
+      } else {
+        await removeBanner();
+      }
+      
+      toast.success(`${type === 'avatar' ? 'Avatar' : type === 'logo' ? 'Logo' : 'Banner'} removido com sucesso!`);
+    } catch (error) {
+      console.error('Erro ao remover:', error);
+      toast.error(error instanceof Error ? error.message : 'Erro ao remover imagem');
     } finally {
       setUploading(null);
     }
@@ -161,19 +188,20 @@ export function Settings() {
                 <AvatarFallback className="text-2xl">{userInitials}</AvatarFallback>
               </Avatar>
               
-              <div className="flex-1">
-                <Label htmlFor="avatar-upload" className="cursor-pointer">
+              <div className="flex-1 flex gap-2">
+                <Label htmlFor="avatar-upload" className="cursor-pointer flex-1">
                   <Button
                     type="button"
                     variant="outline"
                     disabled={uploading === 'avatar'}
+                    className="w-full"
                     asChild
                   >
                     <span>
                       {uploading === 'avatar' ? (
                         <>
                           <Loader2 className="size-4 mr-2 animate-spin" />
-                          Enviando...
+                          Processando...
                         </>
                       ) : (
                         <>
@@ -194,6 +222,18 @@ export function Settings() {
                     if (file) handleImageUpload(file, 'avatar');
                   }}
                 />
+                {settings?.avatar && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    disabled={uploading === 'avatar'}
+                    onClick={() => handleImageRemove('avatar')}
+                    className="text-destructive hover:text-destructive"
+                  >
+                    <X className="size-4" />
+                  </Button>
+                )}
               </div>
             </div>
           </CardContent>
@@ -222,39 +262,53 @@ export function Settings() {
               </div>
             )}
 
-            <Label htmlFor="logo-upload" className="cursor-pointer">
-              <Button
-                type="button"
-                variant="outline"
-                className="w-full"
-                disabled={uploading === 'logo'}
-                asChild
-              >
-                <span>
-                  {uploading === 'logo' ? (
-                    <>
-                      <Loader2 className="size-4 mr-2 animate-spin" />
-                      Enviando...
-                    </>
-                  ) : (
-                    <>
-                      <Upload className="size-4 mr-2" />
-                      {settings?.logo ? 'Trocar logo' : 'Enviar logo'}
-                    </>
-                  )}
-                </span>
-              </Button>
-            </Label>
-            <Input
-              id="logo-upload"
-              type="file"
-              accept="image/*"
-              className="hidden"
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (file) handleImageUpload(file, 'logo');
-              }}
-            />
+            <div className="flex gap-2">
+              <Label htmlFor="logo-upload" className="cursor-pointer flex-1">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full"
+                  disabled={uploading === 'logo'}
+                  asChild
+                >
+                  <span>
+                    {uploading === 'logo' ? (
+                      <>
+                        <Loader2 className="size-4 mr-2 animate-spin" />
+                        Processando...
+                      </>
+                    ) : (
+                      <>
+                        <Upload className="size-4 mr-2" />
+                        {settings?.logo ? 'Trocar logo' : 'Enviar logo'}
+                      </>
+                    )}
+                  </span>
+                </Button>
+              </Label>
+              <Input
+                id="logo-upload"
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) handleImageUpload(file, 'logo');
+                }}
+              />
+              {settings?.logo && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  disabled={uploading === 'logo'}
+                  onClick={() => handleImageRemove('logo')}
+                  className="text-destructive hover:text-destructive"
+                >
+                  <X className="size-4" />
+                </Button>
+              )}
+            </div>
           </CardContent>
         </Card>
       </div>

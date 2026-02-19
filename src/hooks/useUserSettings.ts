@@ -151,6 +151,51 @@ export function useUserSettings() {
     }
   };
 
+  // Remover avatar
+  const removeAvatar = async () => {
+    if (!user) throw new Error('Usuário não autenticado');
+
+    try {
+      if (settings?.avatar) {
+        await firebaseStorageService.deleteImage(settings.avatar);
+      }
+      await firebaseSettingsService.updateAvatar(user.uid, null);
+    } catch (err) {
+      setError(err as Error);
+      throw err;
+    }
+  };
+
+  // Remover logo
+  const removeLogo = async () => {
+    if (!user) throw new Error('Usuário não autenticado');
+
+    try {
+      if (settings?.logo) {
+        await firebaseStorageService.deleteImage(settings.logo);
+      }
+      await firebaseSettingsService.updateLogo(user.uid, null);
+    } catch (err) {
+      setError(err as Error);
+      throw err;
+    }
+  };
+
+  // Remover banner
+  const removeBanner = async () => {
+    if (!user) throw new Error('Usuário não autenticado');
+
+    try {
+      if (settings?.banner) {
+        await firebaseStorageService.deleteImage(settings.banner);
+      }
+      await firebaseSettingsService.updateBanner(user.uid, null);
+    } catch (err) {
+      setError(err as Error);
+      throw err;
+    }
+  };
+
   // Resetar para padrões
   const resetToDefaults = async () => {
     if (!user) throw new Error('Usuário não autenticado');
@@ -183,6 +228,9 @@ export function useUserSettings() {
     uploadAvatar,
     uploadLogo,
     uploadBanner,
+    removeAvatar,
+    removeLogo,
+    removeBanner,
     resetToDefaults,
   };
 }
