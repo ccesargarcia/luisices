@@ -60,7 +60,7 @@ export function Settings() {
       } else {
         url = await uploadBanner(file);
       }
-      
+
       toast.success(`${type === 'avatar' ? 'Avatar' : type === 'logo' ? 'Logo' : 'Banner'} atualizado com sucesso!`);
     } catch (error) {
       console.error('Erro no upload:', error);
@@ -84,7 +84,7 @@ export function Settings() {
       } else {
         await removeBanner();
       }
-      
+
       toast.success(`${type === 'avatar' ? 'Avatar' : type === 'logo' ? 'Logo' : 'Banner'} removido com sucesso!`);
     } catch (error) {
       console.error('Erro ao remover:', error);
@@ -163,7 +163,7 @@ export function Settings() {
                 <AvatarImage src={settings?.avatar} alt="Avatar" />
                 <AvatarFallback className="text-2xl">{userInitials}</AvatarFallback>
               </Avatar>
-              
+
               <div className="flex-1 flex gap-2">
                 <Label htmlFor="avatar-upload" className="cursor-pointer flex-1">
                   <Button

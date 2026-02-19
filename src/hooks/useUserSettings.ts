@@ -30,7 +30,7 @@ export function useUserSettings() {
     console.log('useUserSettings: Setting up listener for user:', user.uid);
     const docRef = doc(db, 'users', user.uid, 'settings', 'profile');
     console.log('useUserSettings: Document path:', `users/${user.uid}/settings/profile`);
-    
+
     const unsubscribe = onSnapshot(
       docRef,
       (doc) => {
@@ -66,7 +66,7 @@ export function useUserSettings() {
     newSettings: Partial<Omit<UserSettings, 'userId' | 'updatedAt'>>
   ) => {
     if (!user) throw new Error('Usuário não autenticado');
-    
+
     try {
       await firebaseSettingsService.updateSettings(user.uid, newSettings);
     } catch (err) {
@@ -91,10 +91,10 @@ export function useUserSettings() {
 
       // Upload novo avatar
       const url = await firebaseStorageService.uploadImage(file, user.uid, 'avatar');
-      
+
       // Atualizar Firestore
       await firebaseSettingsService.updateAvatar(user.uid, url);
-      
+
       return url;
     } catch (err) {
       setError(err as Error);
@@ -118,10 +118,10 @@ export function useUserSettings() {
 
       // Upload nova logo
       const url = await firebaseStorageService.uploadImage(file, user.uid, 'logo');
-      
+
       // Atualizar Firestore
       await firebaseSettingsService.updateLogo(user.uid, url);
-      
+
       return url;
     } catch (err) {
       setError(err as Error);
@@ -145,10 +145,10 @@ export function useUserSettings() {
 
       // Upload novo banner
       const url = await firebaseStorageService.uploadImage(file, user.uid, 'banner');
-      
+
       // Atualizar Firestore
       await firebaseSettingsService.updateBanner(user.uid, url);
-      
+
       return url;
     } catch (err) {
       setError(err as Error);

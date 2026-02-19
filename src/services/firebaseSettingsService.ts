@@ -9,22 +9,22 @@ import { db } from '../lib/firebase';
 
 export interface UserSettings {
   userId: string;
-  
+
   // Personalização visual
   avatar?: string; // URL da imagem
   logo?: string; // URL da logo
   banner?: string; // URL do banner
-  
+
   // Informações do negócio
   businessName?: string;
   businessPhone?: string;
   businessEmail?: string;
   businessAddress?: string;
-  
+
   // Tema e cores
   primaryColor?: string;
   accentColor?: string;
-  
+
   // Metadata
   updatedAt: Date;
 }
@@ -56,7 +56,7 @@ export class FirebaseSettingsService {
     settings: Partial<Omit<UserSettings, 'userId' | 'updatedAt'>>
   ): Promise<void> {
     const docRef = doc(db, 'users', userId, 'settings', 'profile');
-    
+
     // Verificar se documento existe
     const docSnap = await getDoc(docRef);
 

@@ -1,0 +1,29 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Helper function para verificar se o usuário é o dono do recurso
+    function isOwner(userId) {
+      return request.auth != null && request.auth.uid == userId;
+    }
+
+    // Regras para pedidos (orders)
+    match /orders/{orderId} {
+      allow read: if isOwner(resource.data.userId);
+      allow create: if isOwner(request.resource.data.userId);
+      allow update, delete: if isOwner(resource.data.userId);
+    }
+
+    // Regras para clientes (customers)
+    match /customers/{customerId} {
+      allow read: if isOwner(resource.data.userId);
+      allow create: if isOwner(request.resource.data.userId);
+      allow update, delete: if isOwner(resource.data.userId);
+    }
+
+    // Regras para configurações de usuário (users) 
+    match /users/{userId}/{document=**} {
+      allow read, write: if isOwner(userId);
+    }
+  }
+}

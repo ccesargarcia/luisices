@@ -32,13 +32,13 @@ service firebase.storage {
     match /users/{userId}/{folder}/{fileName} {
       // Usuário logado pode ler seus próprios arquivos
       allow read: if request.auth != null && request.auth.uid == userId;
-      
+
       // Usuário logado pode fazer upload (apenas imagens, max 5MB)
-      allow write: if request.auth != null 
+      allow write: if request.auth != null
                    && request.auth.uid == userId
                    && request.resource.size < 5 * 1024 * 1024  // 5MB
                    && request.resource.contentType.matches('image/.*');
-      
+
       // Usuário logado pode deletar seus próprios arquivos
       allow delete: if request.auth != null && request.auth.uid == userId;
     }
@@ -59,15 +59,15 @@ service firebase.storage {
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    
+
     function isSignedIn() {
       return request.auth != null;
     }
-    
+
     function isOwner(userId) {
       return isSignedIn() && request.auth.uid == userId;
     }
-    
+
     // ORDERS
     match /orders/{orderId} {
       allow read: if isSignedIn() && resource.data.userId == request.auth.uid;
@@ -75,17 +75,17 @@ service cloud.firestore {
       allow update: if isSignedIn() && resource.data.userId == request.auth.uid;
       allow delete: if isSignedIn() && resource.data.userId == request.auth.uid;
     }
-    
+
     // USER METADATA
     match /users/{userId}/metadata/{document=**} {
       allow read, write: if isOwner(userId);
     }
-    
+
     // USER SETTINGS (IMPORTANTE!)
     match /users/{userId}/settings/{document=**} {
       allow read, write: if isOwner(userId);
     }
-    
+
     // Bloquear todo o resto
     match /{document=**} {
       allow read, write: if false;

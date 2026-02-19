@@ -18,7 +18,7 @@ import {
   runTransaction,
 } from 'firebase/firestore';
 import { db, auth } from '../lib/firebase';
-import { Order, OrderStatus } from '../app/types';
+import { Order, OrderStatus, ProductionStep, ProductionWorkflow } from '../app/types';
 
 const ORDERS_COLLECTION = 'orders';
 
@@ -35,7 +35,7 @@ export class FirebaseOrderService {
   }
 
   /**
-   * Gerar número do pedido sequencial (PED-2026-001)
+   * Gerar número do pedido sequencial (#2026-0001)
    */
   private async generateOrderNumber(userId: string): Promise<string> {
     const year = new Date().getFullYear();
@@ -51,7 +51,7 @@ export class FirebaseOrderService {
       const nextCount = currentCount + 1;
       transaction.set(counterRef, { orderCounter: nextCount }, { merge: true });
 
-      return `PED-${year}-${String(nextCount).padStart(3, '0')}`;
+      return `#${year}-${String(nextCount).padStart(4, '0')}`;
     });
 
     return orderNumber;
@@ -77,6 +77,8 @@ export class FirebaseOrderService {
       deliveryDate: orderData.deliveryDate,
       notes: orderData.notes || null,
       tags: orderData.tags || null,
+      customerId: orderData.customerId || null,
+      payment: orderData.payment || null,
       createdAt: Timestamp.now(),
       deletedAt: null,
     });
@@ -97,7 +99,7 @@ export class FirebaseOrderService {
     }
 
     const data = orderSnap.data();
-    
+
     // Verificar se o pedido pertence ao usuário
     if (data.userId !== userId) {
       throw new Error('Você não tem permissão para acessar este pedido');
@@ -124,7 +126,7 @@ export class FirebaseOrderService {
   async getOrders(): Promise<Order[]> {
     const userId = this.getCurrentUserId();
     const ordersRef = collection(db, ORDERS_COLLECTION);
-    
+
     const q = query(
       ordersRef,
       where('userId', '==', userId),
@@ -133,7 +135,7 @@ export class FirebaseOrderService {
     );
 
     const snapshot = await getDocs(q);
-    
+
     return snapshot.docs.map(doc => {
       const data = doc.data();
       return {
@@ -158,7 +160,7 @@ export class FirebaseOrderService {
   async updateOrderStatus(orderId: string, status: OrderStatus): Promise<void> {
     const userId = this.getCurrentUserId();
     const orderRef = doc(db, ORDERS_COLLECTION, orderId);
-    
+
     // Verificar propriedade
     const orderSnap = await getDoc(orderRef);
     if (!orderSnap.exists() || orderSnap.data().userId !== userId) {
@@ -171,12 +173,41 @@ export class FirebaseOrderService {
   }
 
   /**
+   * Atualizar dados do pedido
+   */
+  async updateOrder(orderId: string, updates: Partial<Omit<Order, 'id' | 'userId' | 'createdAt' | 'orderNumber'>>): Promise<void> {
+    const userId = this.getCurrentUserId();
+    const orderRef = doc(db, ORDERS_COLLECTION, orderId);
+
+    // Verificar propriedade
+    const orderSnap = await getDoc(orderRef);
+    if (!orderSnap.exists() || orderSnap.data().userId !== userId) {
+      throw new Error('Pedido não encontrado ou sem permissão');
+    }
+
+    // Remover campos undefined
+    const cleanUpdates: any = {};
+    Object.entries(updates).forEach(([key, value]) => {
+      if (value !== undefined) {
+        cleanUpdates[key] = value;
+      }
+    });
+
+    if (Object.keys(cleanUpdates).length > 0) {
+      await updateDoc(orderRef, {
+        ...cleanUpdates,
+        updatedAt: new Date().toISOString(),
+      });
+    }
+  }
+
+  /**
    * Deletar pedido (soft delete)
    */
   async deleteOrder(orderId: string): Promise<void> {
     const userId = this.getCurrentUserId();
     const orderRef = doc(db, ORDERS_COLLECTION, orderId);
-    
+
     // Verificar propriedade
     const orderSnap = await getDoc(orderRef);
     if (!orderSnap.exists() || orderSnap.data().userId !== userId) {
@@ -185,6 +216,151 @@ export class FirebaseOrderService {
 
     await updateDoc(orderRef, {
       deletedAt: Timestamp.now(),
+    });
+  }
+
+  /**
+   * Inicializar workflow de produção para um pedido
+   */
+  async initializeProductionWorkflow(orderId: string): Promise<void> {
+    const userId = this.getCurrentUserId();
+    const orderRef = doc(db, ORDERS_COLLECTION, orderId);
+
+    // Verificar propriedade
+    const orderSnap = await getDoc(orderRef);
+    if (!orderSnap.exists() || orderSnap.data().userId !== userId) {
+      throw new Error('Pedido não encontrado ou sem permissão');
+    }
+
+    // Criar workflow inicial
+    const workflow: ProductionWorkflow = {
+      currentStep: 'design',
+      steps: {
+        design: { completed: false },
+        approval: { completed: false },
+        printing: { completed: false },
+        cutting: { completed: false },
+        assembly: { completed: false },
+        'quality-check': { completed: false },
+        packaging: { completed: false },
+      },
+      startedAt: new Date().toISOString(),
+    };
+
+    await updateDoc(orderRef, {
+      productionWorkflow: workflow,
+    });
+  }
+
+  /**
+   * Atualizar etapa do workflow
+   */
+  async updateProductionStep(
+    orderId: string,
+    step: ProductionStep,
+    completed: boolean,
+    notes?: string
+  ): Promise<void> {
+    const userId = this.getCurrentUserId();
+    const orderRef = doc(db, ORDERS_COLLECTION, orderId);
+
+    // Verificar propriedade
+    const orderSnap = await getDoc(orderRef);
+    if (!orderSnap.exists() || orderSnap.data().userId !== userId) {
+      throw new Error('Pedido não encontrado ou sem permissão');
+    }
+
+    const data = orderSnap.data();
+    const workflow: ProductionWorkflow = data.productionWorkflow || {
+      currentStep: 'design',
+      steps: {
+        design: { completed: false },
+        approval: { completed: false },
+        printing: { completed: false },
+        cutting: { completed: false },
+        assembly: { completed: false },
+        'quality-check': { completed: false },
+        packaging: { completed: false },
+      },
+      startedAt: new Date().toISOString(),
+    };
+
+    // Atualizar a etapa
+    workflow.steps[step] = {
+      completed,
+      completedAt: completed ? new Date().toISOString() : undefined,
+      completedBy: completed ? auth.currentUser?.displayName || auth.currentUser?.email : undefined,
+      notes,
+    };
+
+    // Atualizar currentStep para a próxima etapa incompleta
+    const stepOrder: ProductionStep[] = [
+      'design',
+      'approval',
+      'printing',
+      'cutting',
+      'assembly',
+      'quality-check',
+      'packaging',
+    ];
+
+    const nextIncompleteStep = stepOrder.find(s => !workflow.steps[s].completed);
+    if (nextIncompleteStep) {
+      workflow.currentStep = nextIncompleteStep;
+    }
+
+    // Se todas as etapas estiverem completas, atualizar status do pedido
+    const allCompleted = stepOrder.every(s => workflow.steps[s].completed);
+    const updates: any = { productionWorkflow: workflow };
+
+    if (allCompleted) {
+      updates.status = 'completed';
+    } else if (completed && data.status === 'pending') {
+      // Se começou alguma etapa e ainda está pendente, mover para em produção
+      updates.status = 'in-progress';
+    }
+
+    await updateDoc(orderRef, updates);
+  }
+
+  /**
+   * Obter pedidos com workflow em andamento
+   */
+  async getOrdersInProduction(): Promise<Order[]> {
+    const userId = this.getCurrentUserId();
+    const ordersRef = collection(db, ORDERS_COLLECTION);
+
+    const q = query(
+      ordersRef,
+      where('userId', '==', userId),
+      where('deletedAt', '==', null),
+      where('status', 'in', ['pending', 'in-progress']),
+      orderBy('createdAt', 'desc')
+    );
+
+    const snapshot = await getDocs(q);
+
+    return snapshot.docs.map(doc => {
+      const data = doc.data();
+      return {
+        id: doc.id,
+        customerName: data.customerName,
+        customerPhone: data.customerPhone,
+        productName: data.productName,
+        quantity: data.quantity,
+        price: data.price,
+        cost: data.cost,
+        status: data.status,
+        deliveryDate: data.deliveryDate,
+        notes: data.notes,
+        createdAt: data.createdAt?.toDate().toISOString(),
+        updatedAt: data.updatedAt?.toDate().toISOString(),
+        tags: data.tags,
+        payment: data.payment,
+        userId: data.userId,
+        customerId: data.customerId,
+        productionWorkflow: data.productionWorkflow,
+      } as Order;
     });
   }
 }

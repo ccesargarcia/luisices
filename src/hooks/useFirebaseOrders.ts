@@ -46,16 +46,25 @@ export function useFirebaseOrders() {
           const data = doc.data();
           return {
             id: doc.id,
+            orderNumber: data.orderNumber,
             customerName: data.customerName,
             customerPhone: data.customerPhone,
+            customerId: data.customerId,
             productName: data.productName,
             quantity: data.quantity,
             price: data.price,
+            cost: data.cost,
             status: data.status,
             deliveryDate: data.deliveryDate,
             notes: data.notes,
-            createdAt: data.createdAt?.toDate().toISOString(),
+            createdAt: data.createdAt?.toDate
+              ? data.createdAt.toDate().toISOString()
+              : data.createdAt,
+            updatedAt: data.updatedAt,
             tags: data.tags,
+            payment: data.payment,
+            productionWorkflow: data.productionWorkflow,
+            attachments: data.attachments,
           } as Order;
         });
 

@@ -1,5 +1,5 @@
 import { Link, Outlet, useLocation, useNavigate } from 'react-router';
-import { LayoutDashboard, Calendar, Package2, LogOut, Settings as SettingsIcon } from 'lucide-react';
+import { LayoutDashboard, Calendar, Users, Package2, LogOut, Settings as SettingsIcon, BarChart3 } from 'lucide-react';
 import { cn } from '../components/ui/utils';
 import { useAuth } from '../../contexts/AuthContext';
 import { useUserSettings } from '../../hooks/useUserSettings';
@@ -50,6 +50,16 @@ export function Layout() {
       href: '/agenda',
       icon: Calendar,
     },
+    {
+      name: 'Clientes',
+      href: '/clientes',
+      icon: Users,
+    },
+    {
+      name: 'Relatórios',
+      href: '/relatorios',
+      icon: BarChart3,
+    },
   ];
 
   const businessName = settings?.businessName || 'Papelaria Personalizada';
@@ -65,8 +75,8 @@ export function Layout() {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               {hasLogo ? (
-                <img 
-                  src={settings.logo} 
+                <img
+                  src={settings.logo}
                   alt={businessName}
                   className="h-10 object-contain"
                 />

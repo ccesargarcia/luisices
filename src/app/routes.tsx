@@ -2,6 +2,8 @@ import { createBrowserRouter, Navigate } from 'react-router';
 import { Layout } from './pages/Layout';
 import { Dashboard } from './pages/Dashboard';
 import { WeeklyCalendar } from './pages/WeeklyCalendar';
+import { Customers } from './pages/Customers';
+import { Reports } from './pages/Reports';
 import { Settings } from './pages/Settings';
 import { Login } from './pages/Login';
 import { Register } from './pages/Register';
@@ -46,6 +48,14 @@ export const router = createBrowserRouter([
       {
         path: 'agenda',
         Component: WeeklyCalendar,
+      },
+      {
+        path: 'clientes',
+        Component: Customers,
+      },
+      {
+        path: 'relatorios',
+        Component: Reports,
       },
       {
         path: 'configuracoes',

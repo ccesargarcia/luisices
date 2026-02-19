@@ -1,8 +1,10 @@
 import { Order } from '../types';
 import { Badge } from './ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
-import { Phone, Calendar, Package, DollarSign, Tag } from 'lucide-react';
+import { Button } from './ui/button';
+import { Phone, Calendar, Package, DollarSign, Tag, MessageCircle, Smartphone, Banknote, CreditCard, ArrowLeftRight } from 'lucide-react';
 import { getTextColor } from '../utils/tagColors';
+import { openWhatsAppForOrder } from '../utils/whatsapp';
 
 interface OrderCardProps {
   order: Order;
@@ -36,8 +38,30 @@ export function OrderCard({ order, onClick }: OrderCardProps) {
     }).format(value);
   };
 
+  const getPaymentIcon = (method?: string) => {
+    switch (method) {
+      case 'pix': return <Smartphone className="size-3.5" />;
+      case 'cash': return <Banknote className="size-3.5" />;
+      case 'credit': return <CreditCard className="size-3.5" />;
+      case 'debit': return <CreditCard className="size-3.5" />;
+      case 'transfer': return <ArrowLeftRight className="size-3.5" />;
+      default: return null;
+    }
+  };
+
+  const getPaymentLabel = (method?: string) => {
+    switch (method) {
+      case 'pix': return 'Pix';
+      case 'cash': return 'Dinheiro';
+      case 'credit': return 'Crédito';
+      case 'debit': return 'Débito';
+      case 'transfer': return 'Transferência';
+      default: return null;
+    }
+  };
+
   return (
-    <Card 
+    <Card
       className="hover:shadow-md transition-shadow cursor-pointer"
       onClick={onClick}
     >
@@ -54,25 +78,47 @@ export function OrderCard({ order, onClick }: OrderCardProps) {
           <Package className="size-4 text-muted-foreground" />
           <span>{order.productName}</span>
         </div>
-        <div className="flex items-center gap-2 text-sm">
-          <Phone className="size-4 text-muted-foreground" />
-          <span>{order.customerPhone}</span>
+        <div className="flex items-center justify-between gap-2 text-sm">
+          <div className="flex items-center gap-2">
+            <Phone className="size-4 text-muted-foreground" />
+            <span>{order.customerPhone}</span>
+          </div>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-7 gap-1 text-green-600 hover:text-green-700 hover:bg-green-50"
+            onClick={(e) => {
+              e.stopPropagation();
+              openWhatsAppForOrder(order);
+            }}
+          >
+            <MessageCircle className="size-4" />
+            WhatsApp
+          </Button>
         </div>
         <div className="flex items-center gap-2 text-sm">
           <Calendar className="size-4 text-muted-foreground" />
           <span>Entrega: {formatDate(order.deliveryDate)}</span>
         </div>
-        <div className="flex items-center gap-2 text-sm font-medium">
-          <DollarSign className="size-4 text-muted-foreground" />
-          <span>{formatCurrency(order.price)} ({order.quantity} un.)</span>
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 text-sm font-medium">
+            <DollarSign className="size-4 text-muted-foreground" />
+            <span>{formatCurrency(order.price)} ({order.quantity} un.)</span>
+          </div>
+          {order.payment && order.payment.paidAmount > 0 && order.payment.remainingAmount > 0 && (
+            <div className="flex items-center gap-1 text-xs text-orange-600 bg-orange-50 px-2 py-1 rounded">
+              <DollarSign className="size-3" />
+              <span>Resta: {formatCurrency(order.payment.remainingAmount)}</span>
+            </div>
+          )}
         </div>
         {order.tags && order.tags.length > 0 && (
           <div className="flex items-start gap-2 pt-2">
             <Tag className="size-4 text-muted-foreground mt-0.5 flex-shrink-0" />
             <div className="flex flex-wrap gap-1">
               {order.tags.map((tag, index) => (
-                <Badge 
-                  key={index} 
+                <Badge
+                  key={index}
                   className="text-xs border-0"
                   style={{
                     backgroundColor: tag.color,
@@ -83,6 +129,12 @@ export function OrderCard({ order, onClick }: OrderCardProps) {
                 </Badge>
               ))}
             </div>
+          </div>
+        )}
+        {order.payment && order.payment.method && (
+          <div className="flex items-center gap-2 pt-2 text-xs text-muted-foreground">
+            {getPaymentIcon(order.payment.method)}
+            <span>{getPaymentLabel(order.payment.method)}</span>
           </div>
         )}
       </CardContent>

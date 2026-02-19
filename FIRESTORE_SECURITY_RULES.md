@@ -8,35 +8,35 @@ Copie e cole estas regras no **Firebase Console** → **Firestore Database** →
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    
+
     // ============================================
     // HELPER FUNCTIONS
     // ============================================
-    
+
     // Verificar se usuário está autenticado
     function isSignedIn() {
       return request.auth != null;
     }
-    
+
     // Verificar se o usuário é dono do recurso
     function isOwner(userId) {
       return isSignedIn() && request.auth.uid == userId;
     }
-    
+
     // ============================================
     // ORDERS - Pedidos
     // ============================================
-    
+
     match /orders/{orderId} {
       // Permitir leitura apenas se for dono
       allow read: if isSignedIn() && resource.data.userId == request.auth.uid;
-      
+
       // Permitir criação apenas se autenticado e userId corresponde
-      allow create: if isSignedIn() 
+      allow create: if isSignedIn()
                     && request.resource.data.userId == request.auth.uid
                     && request.resource.data.keys().hasAll([
-                      'userId', 
-                      'customerName', 
+                      'userId',
+                      'customerName',
                       'customerPhone',
                       'productName',
                       'quantity',
@@ -44,38 +44,38 @@ service cloud.firestore {
                       'status',
                       'createdAt'
                     ]);
-      
+
       // Permitir atualização apenas se for dono e não mudar userId
-      allow update: if isSignedIn() 
+      allow update: if isSignedIn()
                     && resource.data.userId == request.auth.uid
                     && request.resource.data.userId == resource.data.userId;
-      
+
       // Permitir deleção (soft delete) apenas se for dono
       allow delete: if isSignedIn() && resource.data.userId == request.auth.uid;
     }
-    
+
     // ============================================
     // USER METADATA - Contadores e configurações
     // ============================================
-    
+
     match /users/{userId}/metadata/{document=**} {
       // Permitir leitura e escrita apenas para o próprio usuário
       allow read, write: if isOwner(userId);
     }
-    
+
     // ============================================
     // USER SETTINGS - Personalização
     // ============================================
-    
+
     match /users/{userId}/settings/{document=**} {
       // Permitir leitura e escrita apenas para o próprio usuário
       allow read, write: if isOwner(userId);
     }
-    
+
     // ============================================
     // BLOQUEAR TUDO QUE NÃO ESTÁ EXPLICITAMENTE PERMITIDO
     // ============================================
-    
+
     match /{document=**} {
       allow read, write: if false;
     }
@@ -149,7 +149,7 @@ s até 5MB por usuário
     match /users/{userId}/{folder}/{fileName} {
       // Apenas o próprio usuário pode ler/escrever
       allow read: if request.auth != null && request.auth.uid == userId;
-      allow write: if request.auth != null 
+      allow write: if request.auth != null
                    && request.auth.uid == userId
                    && request.resource.size < 5 * 1024 * 1024  // 5MB
                    && request.resource.contentType.matches('image/.*');
