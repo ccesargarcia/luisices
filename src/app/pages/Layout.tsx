@@ -69,25 +69,25 @@ export function Layout() {
   console.log('Layout settings:', { businessName, hasLogo, logo: settings?.logo, avatar: settings?.avatar });
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background overflow-x-hidden">
       <header className="border-b bg-card">
-        <div className="container mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
+        <div className="container mx-auto px-4 py-3">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 min-w-0">
               {hasLogo ? (
                 <img
                   src={settings.logo}
                   alt={businessName}
-                  className="h-10 object-contain"
+                  className="h-9 object-contain flex-shrink-0"
                 />
               ) : (
-                <div className="flex items-center justify-center size-10 bg-primary text-primary-foreground rounded-lg">
-                  <Package2 className="size-6" />
+                <div className="flex items-center justify-center size-9 bg-primary text-primary-foreground rounded-lg flex-shrink-0">
+                  <Package2 className="size-5" />
                 </div>
               )}
-              <div>
-                <h1 className="font-bold text-xl">{businessName}</h1>
-                <p className="text-sm text-muted-foreground">Sistema de Gestão de Pedidos</p>
+              <div className="min-w-0">
+                <h1 className="font-bold text-base sm:text-xl truncate">{businessName}</h1>
+                <p className="text-xs text-muted-foreground hidden sm:block">Sistema de Gestão de Pedidos</p>
               </div>
             </div>
 
@@ -128,8 +128,8 @@ export function Layout() {
       </header>
 
       <nav className="border-b bg-card sticky top-0 z-10">
-        <div className="container mx-auto px-4">
-          <div className="flex gap-1">
+        <div className="container mx-auto px-2 sm:px-4">
+          <div className="flex">
             {navigation.map((item) => {
               const isActive = location.pathname === item.href;
               return (
@@ -137,14 +137,14 @@ export function Layout() {
                   key={item.href}
                   to={item.href}
                   className={cn(
-                    'flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors',
+                    'flex items-center gap-2 px-3 sm:px-4 py-3 text-sm font-medium border-b-2 transition-colors',
                     isActive
                       ? 'border-primary text-primary'
                       : 'border-transparent text-muted-foreground hover:text-foreground hover:border-muted-foreground/30'
                   )}
                 >
-                  <item.icon className="size-4" />
-                  {item.name}
+                  <item.icon className="size-4 flex-shrink-0" />
+                  <span className="hidden sm:inline">{item.name}</span>
                 </Link>
               );
             })}
@@ -152,7 +152,7 @@ export function Layout() {
         </div>
       </nav>
 
-      <main className="container mx-auto px-4 py-8">
+      <main className="container mx-auto px-3 sm:px-4 py-4 sm:py-8">
         <Outlet />
       </main>
     </div>

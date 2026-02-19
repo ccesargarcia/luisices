@@ -1,16 +1,22 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from './ui/dialog';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Textarea } from './ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
-import { Plus, Loader2, UserPlus } from 'lucide-react';
+import { Plus, Loader2, UserPlus, Trash2 } from 'lucide-react';
 import { OrderStatus, PaymentStatus, PaymentMethod, Customer, Tag } from '../types';
 import { TagInput } from './TagInput';
 import { firebaseOrderService } from '../../services/firebaseOrderService';
 import { firebaseCustomerService } from '../../services/firebaseCustomerService';
 import { useAuth } from '../../contexts/AuthContext';
+
+interface ProductItem {
+  name: string;
+  quantity: string;
+  unitPrice: string;
+}
 
 export function NewOrderDialog() {
   const { user } = useAuth();
@@ -24,9 +30,6 @@ export function NewOrderDialog() {
     customerName: '',
     customerPhone: '',
     customerEmail: '',
-    productName: '',
-    quantity: '',
-    price: '',
     deliveryDate: '',
     notes: '',
     status: 'pending' as OrderStatus,
@@ -34,7 +37,19 @@ export function NewOrderDialog() {
     paymentMethod: '' as PaymentMethod | '',
     paidAmount: '',
   });
+  const [products, setProducts] = useState<ProductItem[]>([{ name: '', quantity: '1', unitPrice: '' }]);
   const [tags, setTags] = useState<Tag[]>([]);
+
+  const totalPrice = useMemo(() => {
+    return products.reduce((sum, p) => {
+      const qty = parseFloat(p.quantity) || 0;
+      const unit = parseFloat(p.unitPrice) || 0;
+      return sum + qty * unit;
+    }, 0);
+  }, [products]);
+
+  const formatCurrency = (v: number) =>
+    new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
 
   // Carregar clientes
   useEffect(() => {
@@ -85,15 +100,21 @@ export function NewOrderDialog() {
         });
       }
 
-      const totalAmount = parseFloat(formData.price);
+      const totalAmount = totalPrice;
       const paidAmount = formData.paidAmount ? parseFloat(formData.paidAmount) : 0;
+
+      const productName = products
+        .filter(p => p.name.trim())
+        .map(p => parseInt(p.quantity) > 1 ? `${p.name.trim()} (${p.quantity}x)` : p.name.trim())
+        .join(', ');
+      const totalQuantity = products.reduce((sum, p) => sum + (parseInt(p.quantity) || 0), 0);
 
       // Criar pedido
       await firebaseOrderService.createOrder({
         customerName: formData.customerName,
         customerPhone: formData.customerPhone,
-        productName: formData.productName,
-        quantity: parseInt(formData.quantity),
+        productName,
+        quantity: totalQuantity,
         price: totalAmount,
         status: formData.status,
         deliveryDate: formData.deliveryDate,
@@ -119,9 +140,6 @@ export function NewOrderDialog() {
         customerName: '',
         customerPhone: '',
         customerEmail: '',
-        productName: '',
-        quantity: '',
-        price: '',
         deliveryDate: '',
         notes: '',
         status: 'pending',
@@ -129,6 +147,7 @@ export function NewOrderDialog() {
         paymentMethod: '',
         paidAmount: '',
       });
+      setProducts([{ name: '', quantity: '1', unitPrice: '' }]);
       setTags([]);
       setSelectedCustomer('');
       setIsNewCustomer(false);
@@ -217,40 +236,83 @@ export function NewOrderDialog() {
           )}
 
           <div className="space-y-2">
-            <Label htmlFor="productName">Produto *</Label>
-            <Input
-              id="productName"
-              value={formData.productName}
-              onChange={(e) => setFormData({ ...formData, productName: e.target.value })}
-              placeholder="Ex: Convites personalizados"
-              required
-            />
+            <div className="flex items-center justify-between">
+              <Label>Produtos *</Label>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="gap-1 h-7 text-xs"
+                onClick={() => setProducts(prev => [...prev, { name: '', quantity: '1', unitPrice: '' }])}
+              >
+                <Plus className="size-3" /> Adicionar item
+              </Button>
+            </div>
+            {/* header das colunas */}
+            <div className="grid grid-cols-[1fr_56px_96px_36px] gap-2 px-1">
+              <span className="text-xs text-muted-foreground">Produto</span>
+              <span className="text-xs text-muted-foreground text-center">Qtd</span>
+              <span className="text-xs text-muted-foreground text-right">Valor unit.</span>
+              <span />
+            </div>
+            <div className="space-y-2">
+              {products.map((item, idx) => {
+                const sub = (parseFloat(item.quantity) || 0) * (parseFloat(item.unitPrice) || 0);
+                return (
+                  <div key={idx} className="space-y-0.5">
+                    <div className="grid grid-cols-[1fr_56px_96px_36px] gap-2 items-center">
+                      <Input
+                        placeholder={`Produto ${idx + 1}`}
+                        value={item.name}
+                        onChange={e => setProducts(prev => prev.map((p, i) => i === idx ? { ...p, name: e.target.value } : p))}
+                        required={idx === 0}
+                      />
+                      <Input
+                        type="number"
+                        min="1"
+                        value={item.quantity}
+                        onChange={e => setProducts(prev => prev.map((p, i) => i === idx ? { ...p, quantity: e.target.value } : p))}
+                        className="text-center px-1"
+                        required={idx === 0}
+                      />
+                      <Input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        placeholder="0,00"
+                        value={item.unitPrice}
+                        onChange={e => setProducts(prev => prev.map((p, i) => i === idx ? { ...p, unitPrice: e.target.value } : p))}
+                        className="text-right px-2"
+                        required={idx === 0}
+                      />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="size-9 text-muted-foreground hover:text-destructive"
+                        onClick={() => setProducts(prev => prev.filter((_, i) => i !== idx))}
+                        disabled={products.length === 1}
+                      >
+                        <Trash2 className="size-4" />
+                      </Button>
+                    </div>
+                    {sub > 0 && (
+                      <p className="text-xs text-muted-foreground text-right pr-10">
+                        subtotal: {formatCurrency(sub)}
+                      </p>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+            {totalPrice > 0 && (
+              <div className="flex justify-end border-t pt-2">
+                <span className="text-sm font-semibold">Total: {formatCurrency(totalPrice)}</span>
+              </div>
+            )}
           </div>
 
-          <div className="grid grid-cols-3 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="quantity">Quantidade *</Label>
-              <Input
-                id="quantity"
-                type="number"
-                min="1"
-                value={formData.quantity}
-                onChange={(e) => setFormData({ ...formData, quantity: e.target.value })}
-                required
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="price">Valor Total (R$) *</Label>
-              <Input
-                id="price"
-                type="number"
-                min="0"
-                step="0.01"
-                value={formData.price}
-                onChange={(e) => setFormData({ ...formData, price: e.target.value })}
-                required
-              />
-            </div>
+          <div className="grid grid-cols-1 gap-4">
             <div className="space-y-2">
               <Label htmlFor="status">Status *</Label>
               <Select
@@ -351,14 +413,14 @@ export function NewOrderDialog() {
                   type="number"
                   min="0"
                   step="0.01"
-                  max={formData.price || undefined}
+                  max={totalPrice || undefined}
                   value={formData.paidAmount}
                   onChange={(e) => setFormData({ ...formData, paidAmount: e.target.value })}
-                  placeholder={formData.price ? `Máximo: R$ ${formData.price}` : 'Informe o valor pago'}
+                  placeholder={totalPrice > 0 ? `Máximo: ${formatCurrency(totalPrice)}` : 'Informe o valor pago'}
                 />
-                {formData.paidAmount && formData.price && (
+                {formData.paidAmount && totalPrice > 0 && (
                   <p className="text-sm text-muted-foreground">
-                    Restante: R$ {(parseFloat(formData.price) - parseFloat(formData.paidAmount)).toFixed(2)}
+                    Restante: {formatCurrency(totalPrice - parseFloat(formData.paidAmount))}
                   </p>
                 )}
               </div>

@@ -1,9 +1,11 @@
 import { useState, useMemo } from 'react';
-import { Order } from '../types';
+import { Order, Tag } from '../types';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
+import { cn } from '../components/ui/utils';
+import { getTextColor } from '../utils/tagColors';
 import {
   DollarSign,
   TrendingUp,
@@ -12,7 +14,8 @@ import {
   Download,
   BarChart3,
   PieChart,
-  Loader2
+  Loader2,
+  X
 } from 'lucide-react';
 import { useFirebaseOrders } from '../../hooks/useFirebaseOrders';
 
@@ -21,6 +24,7 @@ type Period = 'week' | 'month' | 'quarter' | 'year';
 export function Reports() {
   const { orders, loading } = useFirebaseOrders();
   const [selectedPeriod, setSelectedPeriod] = useState<Period>('month');
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
 
   const getDateRange = (period: Period) => {
     const now = new Date();
@@ -55,8 +59,22 @@ export function Reports() {
     const { start, end } = getDateRange(selectedPeriod);
     return orders.filter(order => {
       const orderDate = new Date(order.createdAt);
-      return orderDate >= start && orderDate <= end;
+      if (orderDate < start || orderDate > end) return false;
+      if (selectedTags.length > 0) {
+        const orderTags = order.tags?.map(t => t.name) || [];
+        return selectedTags.every(t => orderTags.includes(t));
+      }
+      return true;
     });
+  }, [orders, selectedPeriod, selectedTags]);
+
+  const allTags = useMemo(() => {
+    const { start, end } = getDateRange(selectedPeriod);
+    const tagMap = new Map<string, Tag>();
+    orders
+      .filter(o => { const d = new Date(o.createdAt); return d >= start && d <= end; })
+      .forEach(o => o.tags?.forEach(t => tagMap.set(t.name, t)));
+    return Array.from(tagMap.values());
   }, [orders, selectedPeriod]);
 
   const stats = useMemo(() => {
@@ -215,19 +233,50 @@ export function Reports() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h1 className="text-3xl font-bold">Relatórios e Análises</h1>
-          <p className="text-muted-foreground">Análise detalhada de vendas e desempenho</p>
+          <h1 className="text-2xl sm:text-3xl font-bold">Relatórios e Análises</h1>
+          <p className="text-muted-foreground text-sm">Análise detalhada de vendas e desempenho</p>
         </div>
-        <Button onClick={exportReport} className="gap-2">
+        <Button onClick={exportReport} className="gap-2 self-start sm:self-auto">
           <Download className="size-4" />
           Exportar CSV
         </Button>
       </div>
 
+      {allTags.length > 0 && (
+        <div className="space-y-2">
+          <p className="text-sm font-medium">Filtrar por tags:</p>
+          <div className="flex flex-wrap gap-2">
+            {allTags.map(tag => (
+              <Badge
+                key={tag.name}
+                className={cn(
+                  'cursor-pointer hover:opacity-80 transition-opacity border-0',
+                  selectedTags.includes(tag.name) ? 'ring-2 ring-offset-2 ring-black' : ''
+                )}
+                onClick={() =>
+                  setSelectedTags(prev =>
+                    prev.includes(tag.name) ? prev.filter(t => t !== tag.name) : [...prev, tag.name]
+                  )
+                }
+                style={{ backgroundColor: tag.color, color: getTextColor(tag.color) }}
+              >
+                {tag.name}
+                {selectedTags.includes(tag.name) && <X className="size-3 ml-1" />}
+              </Badge>
+            ))}
+            {selectedTags.length > 0 && (
+              <Badge variant="secondary" className="cursor-pointer" onClick={() => setSelectedTags([])}>
+                Limpar filtros
+              </Badge>
+            )}
+          </div>
+        </div>
+      )}
+
       <Tabs value={selectedPeriod} onValueChange={(v) => setSelectedPeriod(v as Period)}>
-        <TabsList className="grid w-full md:w-auto md:grid-cols-4">
+        <TabsList className="grid grid-cols-4 w-full sm:w-auto">
           <TabsTrigger value="week">Semana</TabsTrigger>
           <TabsTrigger value="month">Mês</TabsTrigger>
           <TabsTrigger value="quarter">Trimestre</TabsTrigger>

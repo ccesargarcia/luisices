@@ -5,12 +5,19 @@ import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Textarea } from './ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
-import { Order, OrderStatus, ProductionStep, PaymentStatus, PaymentMethod } from '../types';
-import { Calendar, DollarSign, Package, Phone, User, FileText, Clock, Tag, Trash2, Edit, Save, X } from 'lucide-react';
+import { Order, OrderStatus, ProductionStep, PaymentStatus, PaymentMethod, Tag } from '../types';
+import { Calendar, DollarSign, Package, Phone, User, FileText, Clock, Tag as TagIcon, Trash2, Edit, Save, X, Plus } from 'lucide-react';
 import { getTextColor } from '../utils/tagColors';
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { ProductionWorkflowComponent } from './ProductionWorkflow';
 import { firebaseOrderService } from '../../services/firebaseOrderService';
+import { TagInput } from './TagInput';
+
+interface ProductItem {
+  name: string;
+  quantity: string;
+  unitPrice: string;
+}
 
 interface OrderDetailsDialogProps {
   order: Order | null;
@@ -38,31 +45,53 @@ export function OrderDetailsDialog({ order, open, onOpenChange, onUpdateStatus, 
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [editProducts, setEditProducts] = useState<ProductItem[]>([{ name: '', quantity: '1', unitPrice: '' }]);
+  const [editTags, setEditTags] = useState<Tag[]>([]);
   const [editData, setEditData] = useState({
     customerName: '',
     customerPhone: '',
-    productName: '',
-    quantity: 0,
-    price: 0,
     deliveryDate: '',
     notes: '',
+    status: 'pending' as OrderStatus,
     paymentStatus: 'pending' as PaymentStatus,
     paymentMethod: undefined as PaymentMethod | undefined,
     paidAmount: '' as number | '',
   });
 
+  const totalPrice = useMemo(() => {
+    return editProducts.reduce((sum, p) => {
+      const qty = parseFloat(p.quantity) || 0;
+      const unit = parseFloat(p.unitPrice) || 0;
+      return sum + qty * unit;
+    }, 0);
+  }, [editProducts]);
+
+  const formatCurrencyEdit = (v: number) =>
+    new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
+
   if (!order) return null;
 
   // Atualizar editData quando o pedido mudar
   const resetEditData = () => {
+    // parse productName back into product items if possible
+    // format: "Produto A (10x), Produto B (5x)" or "Produto A"
+    const parsedProducts: ProductItem[] = order.productName
+      .split(',')
+      .map(s => s.trim())
+      .filter(Boolean)
+      .map(s => {
+        const match = s.match(/^(.+?)\s*\((\d+)x\)$/);
+        if (match) return { name: match[1].trim(), quantity: match[2], unitPrice: '' };
+        return { name: s, quantity: String(order.quantity), unitPrice: '' };
+      });
+    setEditProducts(parsedProducts.length > 0 ? parsedProducts : [{ name: '', quantity: '1', unitPrice: '' }]);
+    setEditTags(order.tags ? [...order.tags] : []);
     setEditData({
       customerName: order.customerName,
       customerPhone: order.customerPhone,
-      productName: order.productName,
-      quantity: order.quantity,
-      price: order.price,
       deliveryDate: order.deliveryDate,
       notes: order.notes || '',
+      status: order.status,
       paymentStatus: order.payment?.status || 'pending',
       paymentMethod: order.payment?.method || undefined,
       paidAmount: order.payment?.paidAmount || '' as number | '',
@@ -83,14 +112,20 @@ export function OrderDetailsDialog({ order, open, onOpenChange, onUpdateStatus, 
     setIsSaving(true);
     try {
       const paidAmt = Number(editData.paidAmount) || 0;
-      const remainingAmount = editData.price - paidAmt;
+      const price = totalPrice > 0 ? totalPrice : order.price;
+      const remainingAmount = price - paidAmt;
 
-      // Montar objeto de pagamento sem campos undefined
+      const productName = editProducts
+        .filter(p => p.name.trim())
+        .map(p => parseInt(p.quantity) > 1 ? `${p.name.trim()} (${p.quantity}x)` : p.name.trim())
+        .join(', ');
+      const totalQuantity = editProducts.reduce((sum, p) => sum + (parseInt(p.quantity) || 0), 0);
+
       const paymentData: any = {
         status: editData.paymentStatus,
-        totalAmount: editData.price,
+        totalAmount: price,
         paidAmount: paidAmt,
-        remainingAmount: remainingAmount,
+        remainingAmount,
       };
       if (editData.paymentMethod) paymentData.method = editData.paymentMethod;
       if (paidAmt > 0) paymentData.paymentDate = new Date().toISOString();
@@ -98,15 +133,16 @@ export function OrderDetailsDialog({ order, open, onOpenChange, onUpdateStatus, 
       await firebaseOrderService.updateOrder(order.id, {
         customerName: editData.customerName,
         customerPhone: editData.customerPhone,
-        productName: editData.productName,
-        quantity: editData.quantity,
-        price: editData.price,
+        productName,
+        quantity: totalQuantity,
+        price,
         deliveryDate: editData.deliveryDate,
         notes: editData.notes || null,
+        status: editData.status,
+        tags: editTags.length > 0 ? editTags : null,
         payment: paymentData,
       });
       setIsEditing(false);
-      // O hook de orders vai atualizar automaticamente
     } catch (error) {
       console.error('Erro ao atualizar pedido:', error);
       alert('Erro ao atualizar pedido');
@@ -204,42 +240,82 @@ export function OrderDetailsDialog({ order, open, onOpenChange, onUpdateStatus, 
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="productName">Produto *</Label>
-                  <Input
-                    id="productName"
-                    value={editData.productName}
-                    onChange={(e) => setEditData({ ...editData, productName: e.target.value })}
-                    required
-                  />
+              {/* Produtos */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label>Produtos *</Label>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="gap-1 h-7 text-xs"
+                    onClick={() => setEditProducts(prev => [...prev, { name: '', quantity: '1', unitPrice: '' }])}
+                  >
+                    <Plus className="size-3" /> Adicionar item
+                  </Button>
+                </div>
+                <div className="grid grid-cols-[1fr_56px_96px_36px] gap-2 px-1">
+                  <span className="text-xs text-muted-foreground">Produto</span>
+                  <span className="text-xs text-muted-foreground text-center">Qtd</span>
+                  <span className="text-xs text-muted-foreground text-right">Valor unit.</span>
+                  <span />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="quantity">Quantidade *</Label>
-                  <Input
-                    id="quantity"
-                    type="number"
-                    min="1"
-                    value={editData.quantity}
-                    onChange={(e) => setEditData({ ...editData, quantity: parseInt(e.target.value) || 0 })}
-                    required
-                  />
+                  {editProducts.map((item, idx) => {
+                    const sub = (parseFloat(item.quantity) || 0) * (parseFloat(item.unitPrice) || 0);
+                    return (
+                      <div key={idx} className="space-y-0.5">
+                        <div className="grid grid-cols-[1fr_56px_96px_36px] gap-2 items-center">
+                          <Input
+                            placeholder={`Produto ${idx + 1}`}
+                            value={item.name}
+                            onChange={e => setEditProducts(prev => prev.map((p, i) => i === idx ? { ...p, name: e.target.value } : p))}
+                            required={idx === 0}
+                          />
+                          <Input
+                            type="number"
+                            min="1"
+                            value={item.quantity}
+                            onChange={e => setEditProducts(prev => prev.map((p, i) => i === idx ? { ...p, quantity: e.target.value } : p))}
+                            className="text-center px-1"
+                          />
+                          <Input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            placeholder="0,00"
+                            value={item.unitPrice}
+                            onChange={e => setEditProducts(prev => prev.map((p, i) => i === idx ? { ...p, unitPrice: e.target.value } : p))}
+                            className="text-right px-2"
+                          />
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="size-9 text-muted-foreground hover:text-destructive"
+                            onClick={() => setEditProducts(prev => prev.filter((_, i) => i !== idx))}
+                            disabled={editProducts.length === 1}
+                          >
+                            <Trash2 className="size-4" />
+                          </Button>
+                        </div>
+                        {sub > 0 && (
+                          <p className="text-xs text-muted-foreground text-right pr-10">
+                            subtotal: {formatCurrencyEdit(sub)}
+                          </p>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
+                {totalPrice > 0 && (
+                  <div className="flex justify-end border-t pt-2">
+                    <span className="text-sm font-semibold">Total: {formatCurrencyEdit(totalPrice)}</span>
+                  </div>
+                )}
               </div>
 
               <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="price">Valor Total (R$) *</Label>
-                  <Input
-                    id="price"
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={editData.price}
-                    onChange={(e) => setEditData({ ...editData, price: parseFloat(e.target.value) || 0 })}
-                    required
-                  />
-                </div>
                 <div className="space-y-2">
                   <Label htmlFor="deliveryDate">Data de Entrega *</Label>
                   <Input
@@ -249,6 +325,23 @@ export function OrderDetailsDialog({ order, open, onOpenChange, onUpdateStatus, 
                     onChange={(e) => setEditData({ ...editData, deliveryDate: e.target.value })}
                     required
                   />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="editStatus">Status *</Label>
+                  <Select
+                    value={editData.status}
+                    onValueChange={(value: OrderStatus) => setEditData({ ...editData, status: value })}
+                  >
+                    <SelectTrigger id="editStatus">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="pending">Pendente</SelectItem>
+                      <SelectItem value="in-progress">Em Produção</SelectItem>
+                      <SelectItem value="completed">Concluído</SelectItem>
+                      <SelectItem value="cancelled">Cancelado</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
 
@@ -260,6 +353,15 @@ export function OrderDetailsDialog({ order, open, onOpenChange, onUpdateStatus, 
                   onChange={(e) => setEditData({ ...editData, notes: e.target.value })}
                   rows={3}
                   placeholder="Observações sobre o pedido..."
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label>Tags</Label>
+                <TagInput
+                  tags={editTags}
+                  onChange={setEditTags}
+                  placeholder="Adicione tags para categorizar o pedido..."
                 />
               </div>
 
@@ -320,19 +422,19 @@ export function OrderDetailsDialog({ order, open, onOpenChange, onUpdateStatus, 
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label>Valor Total (R$)</Label>
+                    <Label>Total</Label>
                     <Input
-                      type="number"
-                      value={editData.price}
+                      type="text"
+                      value={formatCurrencyEdit(totalPrice > 0 ? totalPrice : order.price)}
                       disabled
                       className="bg-muted"
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label>Restante (R$)</Label>
+                    <Label>Restante</Label>
                     <Input
-                      type="number"
-                      value={(editData.price - (Number(editData.paidAmount) || 0)).toFixed(2)}
+                      type="text"
+                      value={formatCurrencyEdit((totalPrice > 0 ? totalPrice : order.price) - (Number(editData.paidAmount) || 0))}
                       disabled
                       className="bg-muted"
                     />
@@ -426,7 +528,7 @@ export function OrderDetailsDialog({ order, open, onOpenChange, onUpdateStatus, 
 
           {order.tags && order.tags.length > 0 && (
             <div className="flex items-start gap-3 p-4 bg-muted rounded-lg">
-              <Tag className="size-5 text-muted-foreground mt-0.5" />
+              <TagIcon className="size-5 text-muted-foreground mt-0.5" />
               <div className="flex-1">
                 <div className="text-sm font-medium mb-2">Tags</div>
                 <div className="flex flex-wrap gap-2">
