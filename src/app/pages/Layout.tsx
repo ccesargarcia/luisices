@@ -60,7 +60,7 @@ export function Layout() {
 
   return (
     <div className="min-h-screen bg-background">
-      <header className="border-b bg-white">
+      <header className="border-b bg-card">
         <div className="container mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
@@ -117,7 +117,7 @@ export function Layout() {
         </div>
       </header>
 
-      <nav className="border-b bg-white sticky top-0 z-10">
+      <nav className="border-b bg-card sticky top-0 z-10">
         <div className="container mx-auto px-4">
           <div className="flex gap-1">
             {navigation.map((item) => {
