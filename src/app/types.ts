@@ -43,6 +43,9 @@ export interface Customer {
   zipCode?: string;
   country?: string;
   notes?: string;
+  birthday?: string; // formato YYYY-MM-DD
+  status?: 'active' | 'vip' | 'recurring' | 'defaulter' | 'partner'; // status do cliente
+  photoUrl?: string; // foto do cliente
   createdAt: string;
   userId: string;
   totalOrders?: number;
@@ -76,7 +79,8 @@ export interface Order {
   productName: string;
   quantity: number;
   price: number;
-  cost?: number; // Custo de produção
+  cost?: number; // Custo estimado de produção
+  realCost?: number; // Custo real após produção
   status: OrderStatus;
   deliveryDate: string;
   notes?: string;
@@ -86,7 +90,25 @@ export interface Order {
   payment?: Payment;
   userId: string;
   productionWorkflow?: ProductionWorkflow;
-  attachments?: string[]; // URLs de imagens/arquivos
+  attachments?: OrderAttachment[];
+  orderNumber?: string;
+  isExchange?: boolean;    // Permuta / parceria
+  exchangeNotes?: string;  // Detalhes da permuta
+  exchangeItems?: ExchangeItem[]; // Itens recebidos na permuta
+  cardColor?: string;      // Cor de destaque do card
+}
+
+export interface ExchangeItem {
+  name: string;
+  quantity: number;
+  value?: number; // valor estimado
+}
+
+export interface OrderAttachment {
+  url: string;        // URL original (full size)
+  thumbnail?: string; // URL da thumbnail gerada (webp, max 300px)
+  name?: string;      // Nome original do arquivo
+  isPdf?: boolean;
 }
 
 export interface WeekDay {

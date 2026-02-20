@@ -1,8 +1,10 @@
+import { useEffect } from 'react';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router';
 import { LayoutDashboard, Calendar, Users, Package2, LogOut, Settings as SettingsIcon, BarChart3 } from 'lucide-react';
 import { cn } from '../components/ui/utils';
 import { useAuth } from '../../contexts/AuthContext';
 import { useUserSettings } from '../../hooks/useUserSettings';
+import { applyColorTheme } from '../utils/colorThemes';
 import { Button } from '../components/ui/button';
 import {
   DropdownMenu,
@@ -14,12 +16,18 @@ import {
 } from '../components/ui/dropdown-menu';
 import { Avatar, AvatarFallback, AvatarImage } from '../components/ui/avatar';
 import { ThemeToggle } from '../../components/ThemeToggle';
+import { NotificationBell } from '../components/NotificationBell';
 
 export function Layout() {
   const location = useLocation();
   const navigate = useNavigate();
   const { user, logout } = useAuth();
   const { settings } = useUserSettings();
+
+  // Apply color theme CSS vars whenever settings change
+  useEffect(() => {
+    applyColorTheme(settings?.colorTheme ?? 'default');
+  }, [settings?.colorTheme]);
 
   const handleLogout = async () => {
     try {
@@ -92,6 +100,7 @@ export function Layout() {
             </div>
 
             <div className="flex items-center gap-2">
+              <NotificationBell />
               <ThemeToggle />
               <DropdownMenu>
               <DropdownMenuTrigger asChild>

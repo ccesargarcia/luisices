@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { Order, Tag } from '../types';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
@@ -18,13 +18,22 @@ import {
   X
 } from 'lucide-react';
 import { useFirebaseOrders } from '../../hooks/useFirebaseOrders';
+import { useUserSettings } from '../../hooks/useUserSettings';
 
 type Period = 'week' | 'month' | 'quarter' | 'year';
 
 export function Reports() {
   const { orders, loading } = useFirebaseOrders();
+  const { settings } = useUserSettings();
   const [selectedPeriod, setSelectedPeriod] = useState<Period>('month');
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
+
+  // Apply default period from user settings on first load
+  useEffect(() => {
+    if (settings?.defaultReportPeriod) {
+      setSelectedPeriod(settings.defaultReportPeriod);
+    }
+  }, [settings?.defaultReportPeriod]);
 
   const getDateRange = (period: Period) => {
     const now = new Date();

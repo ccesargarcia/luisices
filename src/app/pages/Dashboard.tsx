@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
 import { Input } from '../components/ui/input';
 import { Badge } from '../components/ui/badge';
+import { Alert, AlertDescription } from '../components/ui/alert';
 import {
   Package,
   Clock,
@@ -21,12 +22,15 @@ import {
   AlertCircle,
   TrendingDown,
   Calendar,
-  Target
+  Target,
+  Repeat2
 } from 'lucide-react';
 import { getTextColor } from '../utils/tagColors';
 import { useFirebaseOrders } from '../../hooks/useFirebaseOrders';
 import { firebaseOrderService } from '../../services/firebaseOrderService';
 import { useAuth } from '../../contexts/AuthContext';
+import { useUserSettings } from '../../hooks/useUserSettings';
+import { DEFAULT_DASHBOARD_CARDS } from '../utils/dashboardCards';
 
 function getGreeting() {
   const hour = new Date().getHours();
@@ -40,10 +44,16 @@ function getGreeting() {
 export function Dashboard() {
   const { user } = useAuth();
   const { orders, loading, error } = useFirebaseOrders();
+  const { settings } = useUserSettings();
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [showExchangeOnly, setShowExchangeOnly] = useState(false);
+  const [dismissedCostAlert, setDismissedCostAlert] = useState(false);
+
+  const visibleCards = settings?.dashboardCards ?? DEFAULT_DASHBOARD_CARDS;
+  const showCard = (id: string) => visibleCards.includes(id);
 
   const handleOrderClick = (order: Order) => {
     setSelectedOrder(order);
@@ -182,6 +192,14 @@ export function Dashboard() {
     };
   }, [orders]);
 
+  const ordersWithoutCost = useMemo(() => {
+    return orders.filter(o =>
+      o.status !== 'cancelled' &&
+      o.status !== 'completed' &&
+      (o.cost == null || o.cost === 0)
+    );
+  }, [orders]);
+
   const filteredOrders = useMemo(() => {
     let filtered = orders;
 
@@ -203,8 +221,13 @@ export function Dashboard() {
       );
     }
 
+    // Filtro por permuta/parceria
+    if (showExchangeOnly) {
+      filtered = filtered.filter(order => order.isExchange);
+    }
+
     return filtered;
-  }, [orders, searchQuery, selectedTags]);
+  }, [orders, searchQuery, selectedTags, showExchangeOnly]);
 
   // Obter todas as tags únicas
   const allTags = useMemo(() => {
@@ -266,6 +289,7 @@ export function Dashboard() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        {showCard('total') && (
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium">Total de Pedidos</CardTitle>
@@ -278,7 +302,9 @@ export function Dashboard() {
             </p>
           </CardContent>
         </Card>
+        )}
 
+        {showCard('revenue') && (
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium">Receita Total</CardTitle>
@@ -291,7 +317,9 @@ export function Dashboard() {
             </p>
           </CardContent>
         </Card>
+        )}
 
+        {showCard('open') && (
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium">Total em Aberto</CardTitle>
@@ -304,7 +332,9 @@ export function Dashboard() {
             </p>
           </CardContent>
         </Card>
+        )}
 
+        {showCard('avgTicket') && (
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium">Ticket Médio</CardTitle>
@@ -317,10 +347,12 @@ export function Dashboard() {
             </p>
           </CardContent>
         </Card>
+        )}
       </div>
 
       {/* Métricas adicionais */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        {showCard('inProgress') && (
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium">Em Produção</CardTitle>
@@ -333,7 +365,9 @@ export function Dashboard() {
             </p>
           </CardContent>
         </Card>
+        )}
 
+        {showCard('toReceive') && (
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium">A Receber</CardTitle>
@@ -346,7 +380,9 @@ export function Dashboard() {
             </p>
           </CardContent>
         </Card>
+        )}
 
+        {showCard('received') && (
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium">Já Recebido</CardTitle>
@@ -359,11 +395,12 @@ export function Dashboard() {
             </p>
           </CardContent>
         </Card>
+        )}
 
       </div>
 
       {/* Top produtos */}
-      {stats.topProducts.length > 0 && (
+      {showCard('topProducts') && stats.topProducts.length > 0 && (
         <Card>
           <CardHeader>
             <CardTitle>Produtos Mais Vendidos</CardTitle>
@@ -390,10 +427,45 @@ export function Dashboard() {
       )}
 
       {/* Alertas de Entrega */}
-      <DeliveryAlerts orders={orders} onOrderClick={handleOrderClick} />
+      {showCard('delivery') && <DeliveryAlerts orders={orders} onOrderClick={handleOrderClick} />}
 
       {/* Pedidos Atrasados */}
-      <OverdueOrders orders={orders} onOrderClick={handleOrderClick} />
+      {showCard('overdue') && <OverdueOrders orders={orders} onOrderClick={handleOrderClick} />}
+
+      {/* Alerta: pedidos sem custo registrado */}
+      {!dismissedCostAlert && ordersWithoutCost.length > 0 && (
+        <Alert className="border-orange-200 bg-orange-50 dark:bg-orange-950/20 dark:border-orange-800">
+          <AlertCircle className="size-4 text-orange-600 dark:text-orange-400" />
+          <AlertDescription className="flex items-start justify-between gap-4">
+            <div>
+              <span className="font-medium text-orange-800 dark:text-orange-300">
+                {ordersWithoutCost.length} {ordersWithoutCost.length === 1 ? 'pedido sem custo registrado' : 'pedidos sem custo registrado'}
+              </span>
+              <div className="mt-1 flex flex-wrap gap-1.5">
+                {ordersWithoutCost.slice(0, 5).map(o => (
+                  <button
+                    key={o.id}
+                    className="text-xs underline text-orange-700 dark:text-orange-400 hover:opacity-80"
+                    onClick={() => handleOrderClick(o)}
+                  >
+                    {o.orderNumber || o.customerName}
+                  </button>
+                ))}
+                {ordersWithoutCost.length > 5 && (
+                  <span className="text-xs text-orange-600">+{ordersWithoutCost.length - 5} mais</span>
+                )}
+              </div>
+            </div>
+            <button
+              className="shrink-0 text-orange-600 hover:text-orange-800 dark:text-orange-400 dark:hover:text-orange-200 text-lg leading-none"
+              onClick={() => setDismissedCostAlert(true)}
+              aria-label="Fechar alertas"
+            >
+              ×
+            </button>
+          </AlertDescription>
+        </Alert>
+      )}
 
       <div className="relative">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
@@ -405,7 +477,7 @@ export function Dashboard() {
         />
       </div>
 
-      {allTags.length > 0 && (
+      {(allTags.length > 0 || true) && (
         <div className="space-y-2">
           <div className="text-sm font-medium">Filtrar por tags:</div>
           <div className="flex flex-wrap gap-2">
@@ -424,11 +496,23 @@ export function Dashboard() {
                 )}
               </Badge>
             ))}
-            {selectedTags.length > 0 && (
+            <Badge
+              className={`cursor-pointer hover:opacity-80 transition-opacity gap-1 ${
+                showExchangeOnly
+                  ? 'bg-purple-600 text-white ring-2 ring-offset-2 ring-purple-400'
+                  : 'bg-purple-100 text-purple-800 border border-purple-300'
+              }`}
+              onClick={() => setShowExchangeOnly(prev => !prev)}
+            >
+              <Repeat2 className="size-3" />
+              Permuta / Parceria
+              {showExchangeOnly && <X className="size-3 ml-0.5" />}
+            </Badge>
+            {(selectedTags.length > 0 || showExchangeOnly) && (
               <Badge
                 variant="secondary"
                 className="cursor-pointer"
-                onClick={() => setSelectedTags([])}
+                onClick={() => { setSelectedTags([]); setShowExchangeOnly(false); }}
               >
                 Limpar filtros
               </Badge>

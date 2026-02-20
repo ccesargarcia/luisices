@@ -5,10 +5,13 @@ import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Textarea } from './ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
-import { Plus, Loader2, UserPlus, Trash2 } from 'lucide-react';
-import { OrderStatus, PaymentStatus, PaymentMethod, Customer, Tag } from '../types';
+import { Plus, Loader2, UserPlus, Trash2, Repeat2, Paperclip, Upload, ExternalLink, ImageIcon, AlertTriangle } from 'lucide-react';
+import { OrderStatus, PaymentStatus, PaymentMethod, Customer, Tag, OrderAttachment, ExchangeItem } from '../types';
 import { TagInput } from './TagInput';
+import { Switch } from './ui/switch';
+import { Alert, AlertDescription } from './ui/alert';
 import { firebaseOrderService } from '../../services/firebaseOrderService';
+import { firebaseStorageService } from '../../services/firebaseStorageService';
 import { firebaseCustomerService } from '../../services/firebaseCustomerService';
 import { useAuth } from '../../contexts/AuthContext';
 
@@ -25,7 +28,7 @@ export function NewOrderDialog() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [selectedCustomer, setSelectedCustomer] = useState<string>('');
   const [isNewCustomer, setIsNewCustomer] = useState(false);
-  
+
   const [formData, setFormData] = useState({
     customerName: '',
     customerPhone: '',
@@ -36,9 +39,16 @@ export function NewOrderDialog() {
     paymentStatus: 'pending' as PaymentStatus,
     paymentMethod: '' as PaymentMethod | '',
     paidAmount: '',
+    isExchange: false,
+    exchangeNotes: '',
+    cardColor: '',
   });
   const [products, setProducts] = useState<ProductItem[]>([{ name: '', quantity: '1', unitPrice: '' }]);
   const [tags, setTags] = useState<Tag[]>([]);
+  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
+  const [localAttachments, setLocalAttachments] = useState<OrderAttachment[]>([]);
+  const [isUploadingAttachment, setIsUploadingAttachment] = useState(false);
+  const [exchangeItems, setExchangeItems] = useState<ProductItem[]>([{ name: '', quantity: '1', unitPrice: '' }]);
 
   const totalPrice = useMemo(() => {
     return products.reduce((sum, p) => {
@@ -82,10 +92,30 @@ export function NewOrderDialog() {
     }
   }, [selectedCustomer, customers]);
 
+  const handleAttachmentSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const previewUrl = URL.createObjectURL(file);
+    setPendingFiles(prev => [...prev, file]);
+    setLocalAttachments(prev => [...prev, {
+      url: previewUrl,
+      thumbnail: previewUrl,
+      name: file.name,
+      isPdf: file.type === 'application/pdf',
+    }]);
+    e.target.value = '';
+  };
+
+  const handleRemoveLocalAttachment = (index: number) => {
+    URL.revokeObjectURL(localAttachments[index].url);
+    setPendingFiles(prev => prev.filter((_, i) => i !== index));
+    setLocalAttachments(prev => prev.filter((_, i) => i !== index));
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) return;
-    
+
     setLoading(true);
 
     try {
@@ -110,7 +140,7 @@ export function NewOrderDialog() {
       const totalQuantity = products.reduce((sum, p) => sum + (parseInt(p.quantity) || 0), 0);
 
       // Criar pedido
-      await firebaseOrderService.createOrder({
+      const createdOrder = await firebaseOrderService.createOrder({
         customerName: formData.customerName,
         customerPhone: formData.customerPhone,
         productName,
@@ -121,7 +151,24 @@ export function NewOrderDialog() {
         notes: formData.notes || undefined,
         tags: tags.length > 0 ? tags : undefined,
         customerId,
-        payment: {
+        cardColor: formData.cardColor || undefined,
+        isExchange: formData.isExchange || undefined,
+        exchangeNotes: formData.exchangeNotes || undefined,
+        exchangeItems: formData.isExchange
+          ? exchangeItems
+              .filter(i => i.name.trim())
+              .map(i => ({
+                name: i.name.trim(),
+                quantity: parseInt(i.quantity) || 1,
+                value: i.unitPrice ? parseFloat(i.unitPrice) : undefined,
+              } as ExchangeItem))
+          : undefined,
+        payment: formData.isExchange ? {
+          status: 'paid' as PaymentStatus,
+          totalAmount: 0,
+          paidAmount: 0,
+          remainingAmount: 0,
+        } : {
           status: formData.paymentStatus,
           method: formData.paymentMethod || undefined,
           totalAmount,
@@ -135,6 +182,21 @@ export function NewOrderDialog() {
         await firebaseCustomerService.incrementCustomerStats(customerId, paidAmount);
       }
 
+      // Upload dos anexos pendentes
+      if (pendingFiles.length > 0) {
+        setIsUploadingAttachment(true);
+        try {
+          for (const file of pendingFiles) {
+            const attachment = await firebaseStorageService.uploadOrderAttachment(file, user.uid, createdOrder.id);
+            await firebaseOrderService.addAttachment(createdOrder.id, attachment);
+          }
+        } catch (attachErr) {
+          console.error('Erro ao enviar anexos:', attachErr);
+        } finally {
+          setIsUploadingAttachment(false);
+        }
+      }
+
       setOpen(false);
       setFormData({
         customerName: '',
@@ -146,11 +208,18 @@ export function NewOrderDialog() {
         paymentStatus: 'pending',
         paymentMethod: '',
         paidAmount: '',
+        isExchange: false,
+        exchangeNotes: '',
+        cardColor: '',
       });
       setProducts([{ name: '', quantity: '1', unitPrice: '' }]);
       setTags([]);
       setSelectedCustomer('');
       setIsNewCustomer(false);
+      setExchangeItems([{ name: '', quantity: '1', unitPrice: '' }]);
+      localAttachments.forEach(a => URL.revokeObjectURL(a.url));
+      setPendingFiles([]);
+      setLocalAttachments([]);
     } catch (err) {
       console.error('Erro ao criar pedido:', err);
       alert('Erro ao criar pedido. Tente novamente.');
@@ -194,6 +263,17 @@ export function NewOrderDialog() {
                 ))}
               </SelectContent>
             </Select>
+            {(() => {
+              const c = customers.find(c => c.id === selectedCustomer);
+              return c?.status === 'defaulter' ? (
+                <Alert className="border-red-300 bg-red-50 dark:bg-red-950/20 py-2 px-3">
+                  <AlertDescription className="flex items-center gap-2 text-red-700 dark:text-red-400 text-sm">
+                    <AlertTriangle className="size-4 shrink-0" />
+                    Este cliente está marcado como <strong>Inadimplente</strong>. Verifique pendências antes de criar um novo pedido.
+                  </AlertDescription>
+                </Alert>
+              ) : null;
+            })()}
           </div>
 
           {/* Dados do Cliente */}
@@ -354,6 +434,112 @@ export function NewOrderDialog() {
             />
           </div>
 
+          {/* Permuta / Parceria */}
+          <div className="flex items-center justify-between rounded-lg border px-3 py-2.5">
+            <div className="flex items-center gap-2">
+              <Repeat2 className="size-4 text-muted-foreground" />
+              <div>
+                <p className="text-sm font-medium">Permuta / Parceria</p>
+                <p className="text-xs text-muted-foreground">Sem cobrança monetária</p>
+              </div>
+            </div>
+            <Switch
+              checked={formData.isExchange}
+              onCheckedChange={v => setFormData({ ...formData, isExchange: v, paidAmount: v ? '0' : '' })}
+            />
+          </div>
+          {formData.isExchange && (
+            <div className="space-y-3 rounded-lg border border-purple-200 bg-purple-50/50 dark:bg-purple-950/10 dark:border-purple-800 p-3">
+              {/* Itens da permuta */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-medium text-purple-800 dark:text-purple-300">O que você recebe em troca</p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="gap-1 h-7 text-xs"
+                    onClick={() => setExchangeItems(prev => [...prev, { name: '', quantity: '1', unitPrice: '' }])}
+                  >
+                    <Plus className="size-3" /> Adicionar item
+                  </Button>
+                </div>
+                <div className="grid grid-cols-[1fr_56px_96px_36px] gap-2 px-1">
+                  <span className="text-xs text-muted-foreground">Item recebido</span>
+                  <span className="text-xs text-muted-foreground text-center">Qtd</span>
+                  <span className="text-xs text-muted-foreground text-right">Valor est.</span>
+                  <span />
+                </div>
+                <div className="space-y-2">
+                  {exchangeItems.map((item, idx) => {
+                    const sub = (parseFloat(item.quantity) || 0) * (parseFloat(item.unitPrice) || 0);
+                    return (
+                      <div key={idx} className="space-y-0.5">
+                        <div className="grid grid-cols-[1fr_56px_96px_36px] gap-2 items-center">
+                          <Input
+                            placeholder={`Item ${idx + 1}`}
+                            value={item.name}
+                            onChange={e => setExchangeItems(prev => prev.map((p, i) => i === idx ? { ...p, name: e.target.value } : p))}
+                          />
+                          <Input
+                            type="number"
+                            min="1"
+                            value={item.quantity}
+                            onChange={e => setExchangeItems(prev => prev.map((p, i) => i === idx ? { ...p, quantity: e.target.value } : p))}
+                            className="text-center px-1"
+                          />
+                          <Input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            placeholder="0,00"
+                            value={item.unitPrice}
+                            onChange={e => setExchangeItems(prev => prev.map((p, i) => i === idx ? { ...p, unitPrice: e.target.value } : p))}
+                            className="text-right px-2"
+                          />
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="size-9 text-muted-foreground hover:text-destructive"
+                            onClick={() => setExchangeItems(prev => prev.filter((_, i) => i !== idx))}
+                            disabled={exchangeItems.length === 1}
+                          >
+                            <Trash2 className="size-4" />
+                          </Button>
+                        </div>
+                        {sub > 0 && (
+                          <p className="text-xs text-muted-foreground text-right pr-10">
+                            subtotal: {formatCurrency(sub)}
+                          </p>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+                {(() => {
+                  const total = exchangeItems.reduce((s, p) => s + (parseFloat(p.quantity)||0)*(parseFloat(p.unitPrice)||0), 0);
+                  return total > 0 ? (
+                    <div className="flex justify-end border-t border-purple-200 pt-2">
+                      <span className="text-sm font-semibold text-purple-800 dark:text-purple-300">Valor estimado: {formatCurrency(total)}</span>
+                    </div>
+                  ) : null;
+                })()}
+              </div>
+              {/* Observações livres */}
+              <div className="space-y-1.5">
+                <Label htmlFor="exchangeNotes" className="text-sm text-purple-800 dark:text-purple-300">Observações da permuta</Label>
+                <Textarea
+                  id="exchangeNotes"
+                  value={formData.exchangeNotes}
+                  onChange={e => setFormData({ ...formData, exchangeNotes: e.target.value })}
+                  placeholder="Ex: artes para redes sociais em troca de impressões..."
+                  rows={2}
+                />
+              </div>
+            </div>
+          )}
+
           <div className="space-y-2">
             <Label htmlFor="tags">Tags</Label>
             <TagInput
@@ -363,10 +549,87 @@ export function NewOrderDialog() {
             />
           </div>
 
+          {/* Cor do card */}
+          <div className="space-y-2">
+            <Label>Cor do card</Label>
+            <div className="flex flex-wrap gap-2 items-center">
+              <button
+                type="button"
+                onClick={() => setFormData({ ...formData, cardColor: '' })}
+                className={`size-7 rounded-full border-2 flex items-center justify-center text-xs transition-all ${
+                  !formData.cardColor ? 'border-foreground scale-110' : 'border-muted-foreground/40 hover:border-muted-foreground'
+                }`}
+              >
+                ✕
+              </button>
+              {['#ef4444','#f97316','#eab308','#22c55e','#06b6d4','#3b82f6','#8b5cf6','#ec4899','#a855f7','#14b8a6'].map(color => (
+                <button
+                  key={color}
+                  type="button"
+                  onClick={() => setFormData({ ...formData, cardColor: formData.cardColor === color ? '' : color })}
+                  className={`size-7 rounded-full border-2 transition-all ${
+                    formData.cardColor === color ? 'border-foreground scale-110' : 'border-transparent hover:scale-105'
+                  }`}
+                  style={{ backgroundColor: color }}
+                />
+              ))}
+            </div>
+          </div>
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <Label className="flex items-center gap-1.5">
+                <Paperclip className="size-3.5" /> Anexos
+              </Label>
+              <label className="cursor-pointer">
+                <input
+                  type="file"
+                  className="sr-only"
+                  accept="image/*,.pdf"
+                  onChange={handleAttachmentSelect}
+                  disabled={isUploadingAttachment}
+                />
+                <span className="inline-flex items-center gap-1.5 text-xs border rounded-md px-2.5 py-1.5 hover:bg-muted transition-colors">
+                  <Upload className="size-3.5" />
+                  Adicionar arquivo
+                </span>
+              </label>
+            </div>
+            {localAttachments.length > 0 ? (
+              <div className="grid grid-cols-3 gap-2">
+                {localAttachments.map((att, idx) => (
+                  <div key={idx} className="relative group">
+                    {!att.isPdf ? (
+                      <img
+                        src={att.thumbnail ?? att.url}
+                        alt={att.name ?? `Anexo ${idx + 1}`}
+                        className="w-full h-20 object-cover rounded-md border"
+                      />
+                    ) : (
+                      <div className="flex flex-col items-center justify-center h-20 border rounded-md bg-muted gap-1 px-1">
+                        <ImageIcon className="size-6 text-muted-foreground" />
+                        <span className="text-xs text-muted-foreground text-center truncate w-full px-1">{att.name ?? 'PDF'}</span>
+                        <ExternalLink className="size-3 text-muted-foreground" />
+                      </div>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveLocalAttachment(idx)}
+                      className="absolute top-1 right-1 bg-destructive text-destructive-foreground rounded-full size-5 items-center justify-center text-xs opacity-0 group-hover:opacity-100 transition-opacity flex"
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-xs text-muted-foreground">Nenhum anexo. Envie imagens ou PDFs de referência.</p>
+            )}
+          </div>
           {/* Informações de Pagamento */}
+          {!formData.isExchange && (
           <div className="border-t pt-4 space-y-4">
             <h3 className="font-medium text-sm">Informações de Pagamento</h3>
-            
+
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="paymentStatus">Status de Pagamento *</Label>
@@ -426,6 +689,7 @@ export function NewOrderDialog() {
               </div>
             )}
           </div>
+          )}
 
           <div className="flex justify-end gap-2 pt-4">
             <Button type="button" variant="outline" onClick={() => setOpen(false)} disabled={loading}>

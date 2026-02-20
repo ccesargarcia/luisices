@@ -27,6 +27,9 @@ export const firebaseCustomerService = {
     if (customerData.zipCode) cleanData.zipCode = customerData.zipCode;
     if (customerData.country) cleanData.country = customerData.country;
     if (customerData.notes) cleanData.notes = customerData.notes;
+    if (customerData.birthday) cleanData.birthday = customerData.birthday;
+    if (customerData.status) cleanData.status = customerData.status;
+    if (customerData.photoUrl) cleanData.photoUrl = customerData.photoUrl;
 
     const docRef = await addDoc(customersRef, cleanData);
     return docRef.id;

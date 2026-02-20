@@ -54,6 +54,7 @@ export function useFirebaseOrders() {
             quantity: data.quantity,
             price: data.price,
             cost: data.cost,
+            realCost: data.realCost,
             status: data.status,
             deliveryDate: data.deliveryDate,
             notes: data.notes,
@@ -65,6 +66,10 @@ export function useFirebaseOrders() {
             payment: data.payment,
             productionWorkflow: data.productionWorkflow,
             attachments: data.attachments,
+            isExchange: data.isExchange ?? false,
+            exchangeNotes: data.exchangeNotes,
+            exchangeItems: data.exchangeItems,
+            cardColor: data.cardColor,
           } as Order;
         });
 

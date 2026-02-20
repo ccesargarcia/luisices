@@ -2,7 +2,7 @@ import { Order } from '../types';
 import { Badge } from './ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Button } from './ui/button';
-import { Phone, Calendar, Package, DollarSign, Tag, MessageCircle, Smartphone, Banknote, CreditCard, ArrowLeftRight } from 'lucide-react';
+import { Phone, Calendar, Package, DollarSign, Tag, MessageCircle, Smartphone, Banknote, CreditCard, ArrowLeftRight, Repeat2 } from 'lucide-react';
 import { getTextColor } from '../utils/tagColors';
 import { openWhatsAppForOrder } from '../utils/whatsapp';
 
@@ -62,13 +62,23 @@ export function OrderCard({ order, onClick }: OrderCardProps) {
 
   return (
     <Card
-      className="hover:shadow-md transition-shadow cursor-pointer"
+      className="hover:shadow-md transition-shadow cursor-pointer overflow-hidden"
       onClick={onClick}
+      style={order.cardColor ? { borderLeftColor: order.cardColor, borderLeftWidth: '4px' } : undefined}
     >
       <CardHeader className="pb-3">
-        <div className="flex items-start justify-between">
-          <CardTitle className="text-lg">{order.customerName}</CardTitle>
-          <Badge className={statusColors[order.status]}>
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0 flex-1">
+            <CardTitle className="text-lg truncate">{order.customerName}</CardTitle>
+            {order.isExchange && (
+              <div className="flex items-center gap-1 mt-1">
+                <Badge className="bg-purple-100 text-purple-800 border-purple-300 border gap-1 py-0 text-xs">
+                  <Repeat2 className="size-3" /> Permuta
+                </Badge>
+              </div>
+            )}
+          </div>
+          <Badge className={`shrink-0 ${statusColors[order.status]}`}>
             {statusLabels[order.status]}
           </Badge>
         </div>

@@ -24,6 +24,14 @@ export interface UserSettings {
   // Tema e cores
   primaryColor?: string;
   accentColor?: string;
+  colorTheme?: 'default' | 'rose' | 'purple' | 'blue' | 'green' | 'orange';
+
+  // Preferências de exibição
+  compactCards?: boolean;
+
+  // Dashboard preferences
+  dashboardCards?: string[];
+  defaultReportPeriod?: 'week' | 'month' | 'quarter' | 'year';
 
   // Metadata
   updatedAt: Date;

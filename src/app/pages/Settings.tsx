@@ -7,11 +7,18 @@ import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Avatar, AvatarFallback, AvatarImage } from '../components/ui/avatar';
 import { Alert, AlertDescription } from '../components/ui/alert';
-import { Loader2, Upload, X, Building2, Mail, Phone, MapPin, Palette } from 'lucide-react';
+import { Loader2, Upload, X, Building2, Mail, Phone, MapPin, Palette, Sun, Moon, Monitor, Check } from 'lucide-react';
 import { toast } from 'sonner';
+import { useTheme } from 'next-themes';
+import { COLOR_THEMES, applyColorTheme, type ColorThemeKey } from '../utils/colorThemes';
+import { DASHBOARD_CARD_CONFIGS, DEFAULT_DASHBOARD_CARDS } from '../utils/dashboardCards';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
+import { Checkbox } from '../components/ui/checkbox';
+import { LayoutDashboard } from 'lucide-react';
 
 export function Settings() {
   const { user } = useAuth();
+  const { theme, setTheme } = useTheme();
   const {
     settings,
     loading,
@@ -27,6 +34,11 @@ export function Settings() {
 
   const [uploading, setUploading] = useState<'avatar' | 'logo' | 'banner' | null>(null);
   const [saving, setSaving] = useState(false);
+  const [savingPersonalization, setSavingPersonalization] = useState(false);
+  const [savingDashboardPrefs, setSavingDashboardPrefs] = useState(false);
+  const [selectedColorTheme, setSelectedColorTheme] = useState<ColorThemeKey>('default');
+  const [selectedCards, setSelectedCards] = useState<string[]>(DEFAULT_DASHBOARD_CARDS);
+  const [defaultReportPeriod, setDefaultReportPeriod] = useState<'week' | 'month' | 'quarter' | 'year'>('month');
   const [businessInfo, setBusinessInfo] = useState({
     businessName: settings?.businessName || '',
     businessPhone: settings?.businessPhone || '',
@@ -43,6 +55,9 @@ export function Settings() {
         businessEmail: settings.businessEmail || '',
         businessAddress: settings.businessAddress || '',
       });
+      setSelectedColorTheme((settings.colorTheme as ColorThemeKey) || 'default');
+      setSelectedCards(settings.dashboardCards ?? DEFAULT_DASHBOARD_CARDS);
+      setDefaultReportPeriod(settings.defaultReportPeriod ?? 'month');
     }
   }, [settings]);
 
@@ -104,6 +119,31 @@ export function Settings() {
       toast.error(error instanceof Error ? error.message : 'Erro ao atualizar informações');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleDashboardPrefsSave = async () => {
+    setSavingDashboardPrefs(true);
+    try {
+      await updateSettings({ dashboardCards: selectedCards, defaultReportPeriod });
+      toast.success('Preferências do dashboard salvas!');
+    } catch {
+      toast.error('Erro ao salvar preferências');
+    } finally {
+      setSavingDashboardPrefs(false);
+    }
+  };
+
+  const handlePersonalizationSave = async () => {
+    setSavingPersonalization(true);
+    try {
+      await updateSettings({ colorTheme: selectedColorTheme });
+      applyColorTheme(selectedColorTheme);
+      toast.success('Personalização salva com sucesso!');
+    } catch (error) {
+      toast.error('Erro ao salvar personalização');
+    } finally {
+      setSavingPersonalization(false);
     }
   };
 
@@ -373,6 +413,197 @@ export function Settings() {
               )}
             </Button>
           </div>
+        </CardContent>
+      </Card>
+
+      {/* Preferências do Dashboard */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <LayoutDashboard className="size-5" />
+            Preferências do Dashboard
+          </CardTitle>
+          <CardDescription>
+            Escolha quais cards exibir e o período padrão dos relatórios
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          {/* Cards visíveis */}
+          <div className="space-y-3">
+            <Label className="text-sm font-medium">Cards / Métricas visíveis</Label>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {DASHBOARD_CARD_CONFIGS.map((card) => {
+                const checked = selectedCards.includes(card.id);
+                return (
+                  <div key={card.id} className="flex items-start gap-3">
+                    <Checkbox
+                      id={`card-${card.id}`}
+                      checked={checked}
+                      onCheckedChange={(v) =>
+                        setSelectedCards((prev) =>
+                          v ? [...prev, card.id] : prev.filter((id) => id !== card.id)
+                        )
+                      }
+                    />
+                    <div className="leading-none">
+                      <label htmlFor={`card-${card.id}`} className="text-sm font-medium cursor-pointer">
+                        {card.label}
+                      </label>
+                      <p className="text-xs text-muted-foreground mt-0.5">{card.description}</p>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            <div className="flex gap-2 pt-1">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setSelectedCards(DEFAULT_DASHBOARD_CARDS)}
+              >
+                Selecionar todos
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => setSelectedCards([])}
+              >
+                Desmarcar todos
+              </Button>
+            </div>
+          </div>
+
+          {/* Período padrão dos relatórios */}
+          <div className="space-y-2">
+            <Label className="text-sm font-medium" htmlFor="default-period">
+              Período padrão dos relatórios
+            </Label>
+            <Select
+              value={defaultReportPeriod}
+              onValueChange={(v) => setDefaultReportPeriod(v as typeof defaultReportPeriod)}
+            >
+              <SelectTrigger id="default-period" className="w-60">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="week">Última Semana</SelectItem>
+                <SelectItem value="month">Último Mês</SelectItem>
+                <SelectItem value="quarter">Último Trimestre</SelectItem>
+                <SelectItem value="year">Último Ano</SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              O relatório sempre abrirá neste período por padrão
+            </p>
+          </div>
+
+          <Button onClick={handleDashboardPrefsSave} disabled={savingDashboardPrefs}>
+            {savingDashboardPrefs ? (
+              <>
+                <Loader2 className="size-4 mr-2 animate-spin" />
+                Salvando...
+              </>
+            ) : (
+              'Salvar Preferências'
+            )}
+          </Button>
+        </CardContent>
+      </Card>
+
+      {/* Personalização */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Palette className="size-5" />
+            Personalização
+          </CardTitle>
+          <CardDescription>
+            Tema visual e cores do sistema
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          {/* Tema claro/escuro */}
+          <div className="space-y-3">
+            <Label className="text-sm font-medium">Aparência</Label>
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                variant={theme === 'light' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setTheme('light')}
+                className="flex-1 gap-2"
+              >
+                <Sun className="size-4" />
+                Claro
+              </Button>
+              <Button
+                type="button"
+                variant={theme === 'dark' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setTheme('dark')}
+                className="flex-1 gap-2"
+              >
+                <Moon className="size-4" />
+                Escuro
+              </Button>
+              <Button
+                type="button"
+                variant={theme === 'system' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setTheme('system')}
+                className="flex-1 gap-2"
+              >
+                <Monitor className="size-4" />
+                Sistema
+              </Button>
+            </div>
+          </div>
+
+          {/* Cor do tema */}
+          <div className="space-y-3">
+            <Label className="text-sm font-medium">Cor do Tema</Label>
+            <div className="flex flex-wrap gap-3">
+              {COLOR_THEMES.map((colorTheme) => (
+                <button
+                  key={colorTheme.key}
+                  type="button"
+                  title={colorTheme.label}
+                  onClick={() => setSelectedColorTheme(colorTheme.key)}
+                  className="flex flex-col items-center gap-1.5 group"
+                >
+                  <span
+                    className="flex items-center justify-center size-10 rounded-full border-2 transition-all"
+                    style={{
+                      backgroundColor: colorTheme.displayColor,
+                      borderColor: selectedColorTheme === colorTheme.key ? colorTheme.displayColor : 'transparent',
+                      boxShadow: selectedColorTheme === colorTheme.key ? `0 0 0 2px white, 0 0 0 4px ${colorTheme.displayColor}` : undefined,
+                    }}
+                  >
+                    {selectedColorTheme === colorTheme.key && (
+                      <Check className="size-4 text-white drop-shadow" />
+                    )}
+                  </span>
+                  <span className="text-xs text-muted-foreground">{colorTheme.label}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <Button
+            onClick={handlePersonalizationSave}
+            disabled={savingPersonalization}
+          >
+            {savingPersonalization ? (
+              <>
+                <Loader2 className="size-4 mr-2 animate-spin" />
+                Salvando...
+              </>
+            ) : (
+              'Salvar Personalização'
+            )}
+          </Button>
         </CardContent>
       </Card>
 

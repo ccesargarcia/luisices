@@ -73,12 +73,17 @@ export class FirebaseOrderService {
       productName: orderData.productName,
       quantity: orderData.quantity,
       price: orderData.price,
+      cost: orderData.cost || null,
       status: orderData.status || 'pending',
       deliveryDate: orderData.deliveryDate,
       notes: orderData.notes || null,
       tags: orderData.tags || null,
       customerId: orderData.customerId || null,
       payment: orderData.payment || null,
+      isExchange: orderData.isExchange || false,
+      exchangeNotes: orderData.exchangeNotes || null,
+      exchangeItems: orderData.exchangeItems || null,
+      cardColor: orderData.cardColor || null,
       createdAt: Timestamp.now(),
       deletedAt: null,
     });
@@ -107,17 +112,44 @@ export class FirebaseOrderService {
 
     return {
       id: orderSnap.id,
+      orderNumber: data.orderNumber,
       customerName: data.customerName,
       customerPhone: data.customerPhone,
+      customerId: data.customerId,
       productName: data.productName,
       quantity: data.quantity,
       price: data.price,
+      cost: data.cost,
+      realCost: data.realCost,
       status: data.status,
       deliveryDate: data.deliveryDate,
       notes: data.notes,
       createdAt: data.createdAt?.toDate().toISOString(),
       tags: data.tags,
+      payment: data.payment,
+      productionWorkflow: data.productionWorkflow,
+      attachments: data.attachments,
+      isExchange: data.isExchange ?? false,
+      exchangeNotes: data.exchangeNotes,
+      exchangeItems: data.exchangeItems,
+      cardColor: data.cardColor,
     } as Order;
+  }
+
+  /**
+   * Contar pedidos ativos (pendente/em produção) de um cliente
+   */
+  async getActiveOrdersByCustomer(customerId: string): Promise<number> {
+    const userId = this.getCurrentUserId();
+    const ordersRef = collection(db, ORDERS_COLLECTION);
+    const q = query(
+      ordersRef,
+      where('userId', '==', userId),
+      where('customerId', '==', customerId),
+      where('deletedAt', '==', null)
+    );
+    const snapshot = await getDocs(q);
+    return snapshot.docs.filter(d => ['pending', 'in-progress'].includes(d.data().status)).length;
   }
 
   /**
@@ -140,16 +172,27 @@ export class FirebaseOrderService {
       const data = doc.data();
       return {
         id: doc.id,
+        orderNumber: data.orderNumber,
         customerName: data.customerName,
         customerPhone: data.customerPhone,
+        customerId: data.customerId,
         productName: data.productName,
         quantity: data.quantity,
         price: data.price,
+        cost: data.cost,
+        realCost: data.realCost,
         status: data.status,
         deliveryDate: data.deliveryDate,
         notes: data.notes,
         createdAt: data.createdAt?.toDate().toISOString(),
         tags: data.tags,
+        payment: data.payment,
+        productionWorkflow: data.productionWorkflow,
+        attachments: data.attachments,
+        isExchange: data.isExchange ?? false,
+        exchangeNotes: data.exchangeNotes,
+        exchangeItems: data.exchangeItems,
+        cardColor: data.cardColor,
       } as Order;
     });
   }
@@ -199,6 +242,81 @@ export class FirebaseOrderService {
         updatedAt: new Date().toISOString(),
       });
     }
+  }
+
+  /**
+   * Duplicar pedido
+   */
+  async duplicateOrder(orderId: string): Promise<Order> {
+    const userId = this.getCurrentUserId();
+    const orderRef = doc(db, ORDERS_COLLECTION, orderId);
+    const orderSnap = await getDoc(orderRef);
+
+    if (!orderSnap.exists() || orderSnap.data().userId !== userId) {
+      throw new Error('Pedido não encontrado ou sem permissão');
+    }
+
+    const data = orderSnap.data();
+    const orderNumber = await this.generateOrderNumber(userId);
+
+    const ordersRef = collection(db, ORDERS_COLLECTION);
+    const newOrderRef = await addDoc(ordersRef, {
+      userId,
+      orderNumber,
+      customerName: data.customerName,
+      customerPhone: data.customerPhone,
+      customerId: data.customerId || null,
+      productName: data.productName,
+      quantity: data.quantity,
+      price: data.price,
+      cost: data.cost || null,
+      status: 'pending',
+      deliveryDate: data.deliveryDate,
+      notes: data.notes || null,
+      tags: data.tags || null,
+      payment: {
+        status: 'pending',
+        totalAmount: data.price,
+        paidAmount: 0,
+        remainingAmount: data.price,
+      },
+      createdAt: Timestamp.now(),
+      deletedAt: null,
+    });
+
+    return this.getOrderById(newOrderRef.id);
+  }
+
+  /**
+   * Adicionar anexo a um pedido
+   */
+  async addAttachment(orderId: string, attachment: import('../app/types').OrderAttachment): Promise<void> {
+    const userId = this.getCurrentUserId();
+    const orderRef = doc(db, ORDERS_COLLECTION, orderId);
+    const orderSnap = await getDoc(orderRef);
+
+    if (!orderSnap.exists() || orderSnap.data().userId !== userId) {
+      throw new Error('Pedido não encontrado ou sem permissão');
+    }
+
+    const current: import('../app/types').OrderAttachment[] = orderSnap.data().attachments || [];
+    await updateDoc(orderRef, { attachments: [...current, attachment] });
+  }
+
+  /**
+   * Remover anexo de um pedido
+   */
+  async removeAttachment(orderId: string, url: string): Promise<void> {
+    const userId = this.getCurrentUserId();
+    const orderRef = doc(db, ORDERS_COLLECTION, orderId);
+    const orderSnap = await getDoc(orderRef);
+
+    if (!orderSnap.exists() || orderSnap.data().userId !== userId) {
+      throw new Error('Pedido não encontrado ou sem permissão');
+    }
+
+    const current: import('../app/types').OrderAttachment[] = orderSnap.data().attachments || [];
+    await updateDoc(orderRef, { attachments: current.filter(a => a.url !== url) });
   }
 
   /**
