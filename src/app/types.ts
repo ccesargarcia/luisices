@@ -1,6 +1,7 @@
 export type OrderStatus = 'pending' | 'in-progress' | 'completed' | 'cancelled';
 export type PaymentStatus = 'pending' | 'partial' | 'paid';
 export type PaymentMethod = 'pix' | 'cash' | 'credit' | 'debit' | 'transfer';
+export type QuoteStatus = 'draft' | 'sent' | 'approved' | 'rejected' | 'expired';
 
 // Workflow de produção - 7 etapas
 export type ProductionStep =
@@ -110,6 +111,40 @@ export interface OrderAttachment {
   name?: string;      // Nome original do arquivo
   isPdf?: boolean;
 }
+
+// ─── Orçamentos ───────────────────────────────────────────────────────────────
+
+export interface QuoteItem {
+  name: string;
+  quantity: number;
+  unitPrice: number;
+}
+
+export interface Quote {
+  id: string;
+  quoteNumber: string;
+  userId: string;
+  customerName: string;
+  customerPhone: string;
+  customerId?: string;
+  items: QuoteItem[];       // Itens / produtos do orçamento
+  totalPrice: number;       // Soma automática dos itens
+  estimatedCost?: number;   // Custo estimado de produção
+  status: QuoteStatus;
+  deliveryDate: string;     // Prazo estimado de entrega
+  validUntil?: string;      // Validade do orçamento
+  notes?: string;
+  tags?: Tag[];
+  cardColor?: string;
+  isExchange?: boolean;
+  exchangeNotes?: string;
+  orderId?: string;         // Preenchido após aprovação → conversão em pedido
+  orderNumber?: string;     // Número do pedido gerado
+  createdAt: string;
+  updatedAt?: string;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 export interface WeekDay {
   date: string;

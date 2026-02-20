@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router';
-import { LayoutDashboard, Calendar, Users, Package2, LogOut, Settings as SettingsIcon, BarChart3 } from 'lucide-react';
+import { LayoutDashboard, Calendar, Users, Package2, LogOut, Settings as SettingsIcon, BarChart3, FileText } from 'lucide-react';
 import { cn } from '../components/ui/utils';
 import { useAuth } from '../../contexts/AuthContext';
 import { useUserSettings } from '../../hooks/useUserSettings';
@@ -67,6 +67,11 @@ export function Layout() {
       name: 'Relatórios',
       href: '/relatorios',
       icon: BarChart3,
+    },
+    {
+      name: 'Orçamentos',
+      href: '/orcamentos',
+      icon: FileText,
     },
   ];
 

@@ -5,6 +5,7 @@ import { WeeklyCalendar } from './pages/WeeklyCalendar';
 import { Customers } from './pages/Customers';
 import { Reports } from './pages/Reports';
 import { Settings } from './pages/Settings';
+import { Quotes } from './pages/Quotes';
 import { Login } from './pages/Login';
 import { Register } from './pages/Register';
 import { ResetPassword } from './pages/ResetPassword';
@@ -56,6 +57,10 @@ export const router = createBrowserRouter([
       {
         path: 'relatorios',
         Component: Reports,
+      },
+      {
+        path: 'orcamentos',
+        Component: Quotes,
       },
       {
         path: 'configuracoes',
