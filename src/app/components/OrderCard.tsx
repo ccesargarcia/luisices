@@ -5,6 +5,14 @@ import { Button } from './ui/button';
 import { Phone, Calendar, Package, DollarSign, Tag, MessageCircle, Smartphone, Banknote, CreditCard, ArrowLeftRight, Repeat2 } from 'lucide-react';
 import { getTextColor } from '../utils/tagColors';
 import { openWhatsAppForOrder } from '../utils/whatsapp';
+import { useUserSettings } from '../../hooks/useUserSettings';
+
+function hexToRgba(hex: string, alpha: number) {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
 
 interface OrderCardProps {
   order: Order;
@@ -26,6 +34,8 @@ const statusLabels = {
 };
 
 export function OrderCard({ order, onClick }: OrderCardProps) {
+  const { settings } = useUserSettings();
+  const compact = settings?.compactCards ?? false;
   const formatDate = (dateStr: string) => {
     const date = new Date(dateStr);
     return date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
@@ -62,11 +72,15 @@ export function OrderCard({ order, onClick }: OrderCardProps) {
 
   return (
     <Card
-      className="hover:shadow-md transition-shadow cursor-pointer overflow-hidden"
+      className="hover:shadow-md transition-all cursor-pointer overflow-hidden"
       onClick={onClick}
-      style={order.cardColor ? { borderLeftColor: order.cardColor, borderLeftWidth: '4px' } : undefined}
+      style={order.cardColor ? {
+        backgroundColor: hexToRgba(order.cardColor, 0.18),
+        borderColor: order.cardColor,
+        borderWidth: 1.5,
+      } : undefined}
     >
-      <CardHeader className="pb-3">
+      <CardHeader className={compact ? 'pb-1 pt-3 px-3' : 'pb-3'}>
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0 flex-1">
             <CardTitle className="text-lg truncate">{order.customerName}</CardTitle>
@@ -83,7 +97,7 @@ export function OrderCard({ order, onClick }: OrderCardProps) {
           </Badge>
         </div>
       </CardHeader>
-      <CardContent className="space-y-2">
+      <CardContent className={compact ? 'space-y-1.5 px-3 pb-3' : 'space-y-2'}>
         <div className="flex items-center gap-2 text-sm">
           <Package className="size-4 text-muted-foreground" />
           <span>{order.productName}</span>

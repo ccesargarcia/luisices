@@ -56,6 +56,11 @@ export class FirebaseQuoteService {
       items: data.items || [],
       totalPrice: data.totalPrice ?? 0,
       estimatedCost: data.estimatedCost ?? undefined,
+      discount: data.discount ?? undefined,
+      discountType: data.discountType || undefined,
+      paymentCondition: data.paymentCondition || undefined,
+      deliveryType: data.deliveryType || undefined,
+      deliveryAddress: data.deliveryAddress || undefined,
       status: data.status as QuoteStatus,
       deliveryDate: data.deliveryDate,
       validUntil: data.validUntil || undefined,
@@ -67,6 +72,10 @@ export class FirebaseQuoteService {
       orderId: data.orderId || undefined,
       orderNumber: data.orderNumber || undefined,
       createdAt: data.createdAt?.toDate?.()?.toISOString() ?? new Date().toISOString(),
+      sentAt: data.sentAt?.toDate?.()?.toISOString() ?? undefined,
+      approvedAt: data.approvedAt?.toDate?.()?.toISOString() ?? undefined,
+      rejectedAt: data.rejectedAt?.toDate?.()?.toISOString() ?? undefined,
+      expiredAt: data.expiredAt?.toDate?.()?.toISOString() ?? undefined,
       updatedAt: data.updatedAt?.toDate?.()?.toISOString() ?? undefined,
     };
   }
@@ -84,6 +93,11 @@ export class FirebaseQuoteService {
       items: quoteData.items || [],
       totalPrice: quoteData.totalPrice ?? 0,
       estimatedCost: quoteData.estimatedCost || null,
+      discount: quoteData.discount ?? null,
+      discountType: quoteData.discountType || null,
+      paymentCondition: quoteData.paymentCondition || null,
+      deliveryType: quoteData.deliveryType || null,
+      deliveryAddress: quoteData.deliveryAddress || null,
       status: quoteData.status || 'draft',
       deliveryDate: quoteData.deliveryDate,
       validUntil: quoteData.validUntil || null,
@@ -123,15 +137,26 @@ export class FirebaseQuoteService {
   // ─── Update ──────────────────────────────────────────────────────────────────
   async updateQuote(id: string, changes: Partial<Quote>): Promise<void> {
     const { id: _id, userId: _uid, createdAt: _ca, quoteNumber: _qn, ...rest } = changes as any;
+    // Firestore rejeita undefined — converte para null
+    const sanitized = Object.fromEntries(
+      Object.entries(rest).map(([k, v]) => [k, v === undefined ? null : v])
+    );
     await updateDoc(doc(db, QUOTES_COLLECTION, id), {
-      ...rest,
+      ...sanitized,
       updatedAt: Timestamp.now(),
     });
   }
 
   // ─── Status helpers ───────────────────────────────────────────────────────────
   async updateStatus(id: string, status: QuoteStatus): Promise<void> {
-    await updateDoc(doc(db, QUOTES_COLLECTION, id), { status, updatedAt: Timestamp.now() });
+    const timestampField: Record<string, string> = {
+      sent: 'sentAt',
+      approved: 'approvedAt',
+      rejected: 'rejectedAt',
+      expired: 'expiredAt',
+    };
+    const extra = timestampField[status] ? { [timestampField[status]]: Timestamp.now() } : {};
+    await updateDoc(doc(db, QUOTES_COLLECTION, id), { status, updatedAt: Timestamp.now(), ...extra });
   }
 
   /** Mark as approved and link the generated orderId/orderNumber */
@@ -140,6 +165,7 @@ export class FirebaseQuoteService {
       status: 'approved',
       orderId,
       orderNumber,
+      approvedAt: Timestamp.now(),
       updatedAt: Timestamp.now(),
     });
   }

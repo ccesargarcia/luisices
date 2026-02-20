@@ -1,5 +1,17 @@
 import { useState, useMemo, useEffect } from 'react';
-import { Quote, QuoteItem, QuoteStatus, OrderStatus, Customer } from '../types';
+import { Quote, QuoteItem, QuoteStatus, OrderStatus, Customer, Tag, Product } from '../types';
+import { TagInput } from '../components/TagInput';
+import { getTextColor } from '../utils/tagColors';
+import { useUserSettings } from '../../hooks/useUserSettings';
+import { firebaseProductService } from '../../services/firebaseProductService';
+import { Popover, PopoverContent, PopoverTrigger } from '../components/ui/popover';
+
+function hexToRgba(hex: string, alpha: number) {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
 import { useFirebaseQuotes } from '../../hooks/useFirebaseQuotes';
 import { firebaseQuoteService } from '../../services/firebaseQuoteService';
 import { firebaseOrderService } from '../../services/firebaseOrderService';
@@ -33,6 +45,13 @@ import {
   StickyNote,
   UserPlus,
   AlertTriangle,
+  Truck,
+  MapPin,
+  CreditCard,
+  Tag as TagIcon,
+  Filter,
+  X,
+  BookOpen,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -59,6 +78,42 @@ const EMPTY_ITEM: QuoteItem = { name: '', quantity: 1, unitPrice: 0 };
 function formatCurrency(v: number) {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
 }
+function buildWhatsAppMessage(quote: Quote, settings?: { whatsappGreeting?: string; whatsappSignature?: string }): string {
+  const lines: string[] = [];
+  const greeting = settings?.whatsappGreeting
+    ? settings.whatsappGreeting
+        .replace('{nome}', quote.customerName)
+        .replace('{numero}', quote.quoteNumber)
+    : `Olá ${quote.customerName}! Segue o orçamento *${quote.quoteNumber}*:`;
+  lines.push(greeting);
+  lines.push('');
+  lines.push('*Itens:*');
+  for (const item of quote.items) {
+    const sub = formatCurrency(item.quantity * item.unitPrice);
+    lines.push(`• ${item.name} — ${item.quantity}x ${formatCurrency(item.unitPrice)} = ${sub}`);
+  }
+  lines.push('');
+  lines.push(`*Total: ${formatCurrency(quote.totalPrice)}*`);
+  if (quote.discount) {
+    const discountLabel = quote.discountType === 'percent'
+      ? `${quote.discount}%`
+      : formatCurrency(quote.discount);
+    lines.push(`_(desconto de ${discountLabel} já incluído)_`);
+  }
+  lines.push(`Prazo de entrega: ${formatDate(quote.deliveryDate)}`);
+  if (quote.deliveryType === 'pickup') lines.push('Forma de entrega: Retirada na loja');
+  if (quote.deliveryType === 'delivery') {
+    lines.push(`Forma de entrega: Entrega${quote.deliveryAddress ? ` no endereço: ${quote.deliveryAddress}` : ''}`);
+  }
+  if (quote.paymentCondition) lines.push(`Pagamento: ${quote.paymentCondition}`);
+  if (quote.validUntil) lines.push(`Válido até: ${formatDate(quote.validUntil)}`);
+  if (quote.notes) { lines.push(''); lines.push(quote.notes); }
+  if (settings?.whatsappSignature) {
+    lines.push('');
+    lines.push(settings.whatsappSignature);
+  }
+  return lines.join('\n');
+}
 function formatDate(iso: string) {
   if (!iso) return '-';
   const [y, m, d] = iso.split('-');
@@ -81,9 +136,16 @@ interface FormState {
   customerId?: string;
   items: QuoteItem[];
   estimatedCost: string;
+  discount: string;
+  discountType: 'percent' | 'fixed';
+  paymentCondition: string;
+  deliveryType: 'pickup' | 'delivery' | '';
+  deliveryAddress: string;
   deliveryDate: string;
   validUntil: string;
   notes: string;
+  tags: Tag[];
+  cardColor: string;
   status: QuoteStatus;
 }
 
@@ -94,9 +156,16 @@ function emptyForm(): FormState {
     customerId: undefined,
     items: [{ ...EMPTY_ITEM }],
     estimatedCost: '',
+    discount: '',
+    discountType: 'percent',
+    paymentCondition: '',
+    deliveryType: '',
+    deliveryAddress: '',
     deliveryDate: defaultDelivery(),
     validUntil: '',
     notes: '',
+    tags: [],
+    cardColor: '',
     status: 'draft',
   };
 }
@@ -108,9 +177,16 @@ function formFromQuote(q: Quote): FormState {
     customerId: q.customerId,
     items: q.items.length ? q.items : [{ ...EMPTY_ITEM }],
     estimatedCost: q.estimatedCost != null ? String(q.estimatedCost) : '',
+    discount: q.discount != null ? String(q.discount) : '',
+    discountType: q.discountType ?? 'percent',
+    paymentCondition: q.paymentCondition || '',
+    deliveryType: q.deliveryType || '',
+    deliveryAddress: q.deliveryAddress || '',
     deliveryDate: q.deliveryDate,
     validUntil: q.validUntil || '',
     notes: q.notes || '',
+    tags: q.tags || [],
+    cardColor: q.cardColor || '',
     status: q.status,
   };
 }
@@ -132,11 +208,23 @@ function QuoteFormDialog({ open, onOpenChange, editing, onSaved }: QuoteFormDial
   const [saving, setSaving] = useState(false);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [selectedCustomer, setSelectedCustomer] = useState<string>('');
+  const [catalogProducts, setCatalogProducts] = useState<Product[]>([]);
+  const [catalogSearch, setCatalogSearch] = useState('');
+  const [catalogOpenIdx, setCatalogOpenIdx] = useState<number | null>(null);
+
+  // Reset form whenever dialog opens
+  useEffect(() => {
+    if (open) {
+      setForm(editing ? formFromQuote(editing) : emptyForm());
+      setSelectedCustomer(editing?.customerId ?? '');
+    }
+  }, [open]);
 
   // Load registered customers when dialog opens
   useEffect(() => {
     if (open && user) {
       firebaseCustomerService.getCustomers(user.uid).then(setCustomers);
+      firebaseProductService.getProducts().then(setCatalogProducts);
     }
   }, [open, user]);
 
@@ -154,10 +242,6 @@ function QuoteFormDialog({ open, onOpenChange, editing, onSaved }: QuoteFormDial
 
   // Reset when dialog opens
   function handleOpen(v: boolean) {
-    if (v) {
-      setForm(editing ? formFromQuote(editing) : emptyForm());
-      setSelectedCustomer(editing?.customerId ?? '');
-    }
     onOpenChange(v);
   }
 
@@ -177,7 +261,13 @@ function QuoteFormDialog({ open, onOpenChange, editing, onSaved }: QuoteFormDial
     setForm((f) => ({ ...f, items: f.items.filter((_, i) => i !== idx) }));
   }
 
-  const total = calcTotal(form.items);
+  const subtotal = calcTotal(form.items);
+  const discountAmt = form.discount
+    ? (form.discountType === 'percent'
+        ? subtotal * (parseFloat(form.discount) / 100)
+        : parseFloat(form.discount))
+    : 0;
+  const finalTotal = Math.max(0, subtotal - discountAmt);
 
   async function handleSave() {
     if (!form.customerName.trim()) { toast.error('Informe o nome do cliente'); return; }
@@ -192,12 +282,19 @@ function QuoteFormDialog({ open, onOpenChange, editing, onSaved }: QuoteFormDial
         customerPhone: form.customerPhone.trim(),
         customerId: form.customerId,
         items: form.items,
-        totalPrice: total,
+        totalPrice: finalTotal,
         estimatedCost: form.estimatedCost ? Number(form.estimatedCost) : undefined,
+        discount: form.discount ? parseFloat(form.discount) : undefined,
+        discountType: form.discount ? form.discountType : undefined,
+        paymentCondition: form.paymentCondition.trim() || undefined,
+        deliveryType: form.deliveryType || undefined,
+        deliveryAddress: form.deliveryType === 'delivery' ? form.deliveryAddress.trim() || undefined : undefined,
         status: form.status,
         deliveryDate: form.deliveryDate,
         validUntil: form.validUntil || undefined,
         notes: form.notes || undefined,
+        tags: form.tags.length ? form.tags : undefined,
+        cardColor: form.cardColor || undefined,
       };
       if (editing) {
         await firebaseQuoteService.updateQuote(editing.id, payload);
@@ -293,7 +390,8 @@ function QuoteFormDialog({ open, onOpenChange, editing, onSaved }: QuoteFormDial
 
             <div className="rounded-md border overflow-hidden">
               {/* Header */}
-              <div className="grid grid-cols-[1fr_80px_100px_100px_36px] gap-2 px-3 py-2 bg-muted text-xs font-medium text-muted-foreground">
+              <div className="grid grid-cols-[36px_1fr_80px_100px_100px_36px] gap-2 px-3 py-2 bg-muted text-xs font-medium text-muted-foreground">
+                <span />
                 <span>Produto / Serviço</span>
                 <span className="text-center">Qtd</span>
                 <span className="text-right">Preço unit.</span>
@@ -301,7 +399,55 @@ function QuoteFormDialog({ open, onOpenChange, editing, onSaved }: QuoteFormDial
                 <span />
               </div>
               {form.items.map((item, idx) => (
-                <div key={idx} className="grid grid-cols-[1fr_80px_100px_100px_36px] gap-2 items-center px-3 py-2 border-t">
+                <div key={idx} className="grid grid-cols-[36px_1fr_80px_100px_100px_36px] gap-2 items-center px-3 py-2 border-t">
+                  {/* Catalog picker button */}
+                  <Popover
+                    open={catalogOpenIdx === idx}
+                    onOpenChange={(v) => { setCatalogOpenIdx(v ? idx : null); if (v) setCatalogSearch(''); }}
+                  >
+                    <PopoverTrigger asChild>
+                      <Button type="button" variant="outline" size="icon" className="size-8" title="Selecionar produto">
+                        <BookOpen className="size-3.5" />
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-64 p-2" align="start">
+                      <Input
+                        placeholder="Buscar produto..."
+                        value={catalogSearch}
+                        onChange={(e) => setCatalogSearch(e.target.value)}
+                        className="h-8 text-sm mb-2"
+                        autoFocus
+                      />
+                      <div className="max-h-48 overflow-y-auto space-y-0.5">
+                        {catalogProducts
+                          .filter((p) =>
+                            !catalogSearch || p.name.toLowerCase().includes(catalogSearch.toLowerCase())
+                          )
+                          .map((p) => (
+                            <button
+                              key={p.id}
+                              type="button"
+                              className="w-full flex items-center justify-between px-2 py-1.5 rounded hover:bg-muted text-sm text-left"
+                              onClick={() => {
+                                setItem(idx, 'name', p.name);
+                                setItem(idx, 'unitPrice', p.unitPrice);
+                                setCatalogOpenIdx(null);
+                              }}
+                            >
+                              <span className="truncate">{p.name}</span>
+                              <span className="text-xs text-muted-foreground ml-2 flex-shrink-0">
+                                {formatCurrency(p.unitPrice)}
+                              </span>
+                            </button>
+                          ))}
+                        {catalogProducts.filter((p) =>
+                          !catalogSearch || p.name.toLowerCase().includes(catalogSearch.toLowerCase())
+                        ).length === 0 && (
+                          <p className="text-xs text-muted-foreground text-center py-2">Nenhum produto encontrado</p>
+                        )}
+                      </div>
+                    </PopoverContent>
+                  </Popover>
                   <Input
                     placeholder="Ex: Camiseta personalizada"
                     value={item.name}
@@ -339,10 +485,26 @@ function QuoteFormDialog({ open, onOpenChange, editing, onSaved }: QuoteFormDial
                   </Button>
                 </div>
               ))}
-              {/* Total */}
+              {/* Subtotal / Desconto / Total */}
+              {discountAmt > 0 && (
+                <div className="grid grid-cols-[1fr_80px_100px_100px_36px] gap-2 items-center px-3 py-2 bg-muted border-t">
+                  <span className="col-span-3 text-sm text-right text-muted-foreground">Subtotal</span>
+                  <span className="text-sm text-right text-muted-foreground">{formatCurrency(subtotal)}</span>
+                  <span />
+                </div>
+              )}
+              {discountAmt > 0 && (
+                <div className="grid grid-cols-[1fr_80px_100px_100px_36px] gap-2 items-center px-3 py-2 bg-muted border-t">
+                  <span className="col-span-3 text-sm text-right text-green-700 dark:text-green-400">
+                    Desconto ({form.discountType === 'percent' ? `${form.discount}%` : formatCurrency(parseFloat(form.discount))})
+                  </span>
+                  <span className="text-sm text-right text-green-700 dark:text-green-400">-{formatCurrency(discountAmt)}</span>
+                  <span />
+                </div>
+              )}
               <div className="grid grid-cols-[1fr_80px_100px_100px_36px] gap-2 items-center px-3 py-2 bg-muted border-t">
                 <span className="col-span-3 text-sm font-semibold text-right">Total</span>
-                <span className="text-sm font-bold text-right">{formatCurrency(total)}</span>
+                <span className="text-sm font-bold text-right">{formatCurrency(finalTotal)}</span>
                 <span />
               </div>
             </div>
@@ -396,6 +558,70 @@ function QuoteFormDialog({ open, onOpenChange, editing, onSaved }: QuoteFormDial
             </div>
           </div>
 
+          {/* Desconto + Pagamento */}
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label>Desconto (opcional)</Label>
+              <div className="flex gap-2">
+                <Input
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  placeholder="0"
+                  value={form.discount}
+                  onChange={(e) => setForm({ ...form, discount: e.target.value })}
+                />
+                <select
+                  className="flex h-9 rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                  value={form.discountType}
+                  onChange={(e) => setForm({ ...form, discountType: e.target.value as 'percent' | 'fixed' })}
+                >
+                  <option value="percent">%</option>
+                  <option value="fixed">R$</option>
+                </select>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="q-payment">Condição de pagamento</Label>
+              <Input
+                id="q-payment"
+                placeholder="Ex: 50% entrada + 50% na entrega"
+                value={form.paymentCondition}
+                onChange={(e) => setForm({ ...form, paymentCondition: e.target.value })}
+              />
+            </div>
+          </div>
+
+          {/* Forma de entrega */}
+          <div className="space-y-2">
+            <Label>Forma de entrega</Label>
+            <div className="flex gap-3">
+              <Button
+                type="button"
+                variant={form.deliveryType === 'pickup' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setForm({ ...form, deliveryType: 'pickup', deliveryAddress: '' })}
+              >
+                Retirada na loja
+              </Button>
+              <Button
+                type="button"
+                variant={form.deliveryType === 'delivery' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setForm({ ...form, deliveryType: 'delivery' })}
+              >
+                <Truck className="size-4 mr-1.5" /> Entrega
+              </Button>
+            </div>
+            {form.deliveryType === 'delivery' && (
+              <Input
+                placeholder="Endereço de entrega"
+                value={form.deliveryAddress}
+                onChange={(e) => setForm({ ...form, deliveryAddress: e.target.value })}
+              />
+            )}
+          </div>
+
           {/* Observações */}
           <div className="space-y-2">
             <Label htmlFor="q-notes">Observações</Label>
@@ -406,6 +632,39 @@ function QuoteFormDialog({ open, onOpenChange, editing, onSaved }: QuoteFormDial
               onChange={(e) => setForm({ ...form, notes: e.target.value })}
               rows={3}
             />
+          </div>
+
+          {/* Tags */}
+          <div className="space-y-2">
+            <Label>Tags</Label>
+            <TagInput tags={form.tags} onChange={(tags) => setForm({ ...form, tags })} placeholder="Adicionar tag..." />
+          </div>
+
+          {/* Cor do card */}
+          <div className="space-y-2">
+            <Label>Cor do card</Label>
+            <div className="flex flex-wrap gap-2 items-center">
+              <button
+                type="button"
+                onClick={() => setForm({ ...form, cardColor: '' })}
+                className={`size-7 rounded-full border-2 flex items-center justify-center text-xs transition-all ${
+                  !form.cardColor ? 'border-foreground scale-110' : 'border-muted-foreground/40 hover:border-muted-foreground'
+                }`}
+              >
+                ✕
+              </button>
+              {['#ef4444','#f97316','#eab308','#22c55e','#06b6d4','#3b82f6','#8b5cf6','#ec4899','#a855f7','#14b8a6','#f43f5e','#84cc16'].map((color) => (
+                <button
+                  key={color}
+                  type="button"
+                  onClick={() => setForm({ ...form, cardColor: form.cardColor === color ? '' : color })}
+                  className={`size-7 rounded-full border-2 transition-all ${
+                    form.cardColor === color ? 'border-foreground scale-110' : 'border-transparent hover:scale-105'
+                  }`}
+                  style={{ backgroundColor: color }}
+                />
+              ))}
+            </div>
           </div>
         </div>
 
@@ -431,6 +690,7 @@ interface QuoteDetailsProps {
 }
 
 function QuoteDetailsDialog({ quote, open, onOpenChange, onEdit, onRefresh }: QuoteDetailsProps) {
+  const { settings } = useUserSettings();
   const [approving, setApproving] = useState(false);
   const [rejecting, setRejecting] = useState(false);
   const [marking, setMarking] = useState(false);
@@ -474,8 +734,6 @@ function QuoteDetailsDialog({ quote, open, onOpenChange, onEdit, onRefresh }: Qu
 
       await firebaseQuoteService.markApproved(quote.id, order.id, order.orderNumber!);
       toast.success(`Pedido ${order.orderNumber} criado com sucesso!`);
-      onRefresh();
-      onOpenChange(false);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Erro ao aprovar orçamento');
     } finally {
@@ -489,8 +747,6 @@ function QuoteDetailsDialog({ quote, open, onOpenChange, onEdit, onRefresh }: Qu
     try {
       await firebaseQuoteService.updateStatus(quote.id, 'rejected');
       toast.success('Orçamento rejeitado');
-      onRefresh();
-      onOpenChange(false);
     } catch (e) {
       toast.error('Erro ao rejeitar orçamento');
     } finally {
@@ -520,7 +776,6 @@ function QuoteDetailsDialog({ quote, open, onOpenChange, onEdit, onRefresh }: Qu
     try {
       await firebaseQuoteService.updateStatus(quote.id, 'sent');
       toast.success('Orçamento marcado como enviado');
-      onRefresh();
     } catch (e) {
       toast.error('Erro ao atualizar status');
     } finally {
@@ -549,7 +804,14 @@ function QuoteDetailsDialog({ quote, open, onOpenChange, onEdit, onRefresh }: Qu
             </div>
             <div className="flex items-center gap-2 text-sm">
               <Phone className="size-4 text-muted-foreground flex-shrink-0" />
-              <span>{quote.customerPhone}</span>
+              <a
+                href={`https://wa.me/55${quote.customerPhone.replace(/\D/g, '')}?text=${encodeURIComponent(buildWhatsAppMessage(quote, settings ?? undefined))}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-green-600 hover:underline"
+              >
+                {quote.customerPhone}
+              </a>
             </div>
           </div>
 
@@ -575,7 +837,7 @@ function QuoteDetailsDialog({ quote, open, onOpenChange, onEdit, onRefresh }: Qu
             </div>
           </div>
 
-          {/* Datas / custo */}
+          {/* Datas / custo / desconto / pagamento / entrega */}
           <div className="grid grid-cols-2 gap-3 text-sm">
             <div className="flex items-center gap-2">
               <Calendar className="size-4 text-muted-foreground" />
@@ -589,16 +851,68 @@ function QuoteDetailsDialog({ quote, open, onOpenChange, onEdit, onRefresh }: Qu
                 <span className="font-medium">{formatDate(quote.validUntil)}</span>
               </div>
             )}
+            {quote.discount != null && (
+              <div className="flex items-center gap-2">
+                <span className="text-muted-foreground">Desconto:</span>
+                <span className="font-medium text-green-700 dark:text-green-400">
+                  {quote.discountType === 'percent' ? `${quote.discount}%` : formatCurrency(quote.discount)}
+                </span>
+              </div>
+            )}
             {quote.estimatedCost != null && (
               <div className="flex items-center gap-2">
                 <span className="text-muted-foreground">Custo estimado:</span>
                 <span className="font-medium">{formatCurrency(quote.estimatedCost)}</span>
               </div>
             )}
+            {quote.paymentCondition && (
+              <div className="flex items-center gap-2 col-span-2">
+                <CreditCard className="size-4 text-muted-foreground flex-shrink-0" />
+                <span className="text-muted-foreground">Pagamento:</span>
+                <span className="font-medium">{quote.paymentCondition}</span>
+              </div>
+            )}
+            {quote.deliveryType && (
+              <div className="flex items-center gap-2 col-span-2">
+                {quote.deliveryType === 'delivery' ? (
+                  <Truck className="size-4 text-muted-foreground flex-shrink-0" />
+                ) : (
+                  <MapPin className="size-4 text-muted-foreground flex-shrink-0" />
+                )}
+                <span className="text-muted-foreground">Entrega:</span>
+                <span className="font-medium">
+                  {quote.deliveryType === 'pickup' ? 'Retirada na loja' : `Entrega${quote.deliveryAddress ? ` — ${quote.deliveryAddress}` : ''}`}
+                </span>
+              </div>
+            )}
             <div className="flex items-center gap-2">
               <span className="text-muted-foreground">Criado em:</span>
               <span className="font-medium">{formatDate(quote.createdAt.split('T')[0])}</span>
             </div>
+            {quote.sentAt && (
+              <div className="flex items-center gap-2">
+                <span className="text-muted-foreground">Enviado em:</span>
+                <span className="font-medium">{formatDate(quote.sentAt.split('T')[0])}</span>
+              </div>
+            )}
+            {quote.approvedAt && (
+              <div className="flex items-center gap-2">
+                <span className="text-muted-foreground text-green-700 dark:text-green-400">Aprovado em:</span>
+                <span className="font-medium text-green-700 dark:text-green-400">{formatDate(quote.approvedAt.split('T')[0])}</span>
+              </div>
+            )}
+            {quote.rejectedAt && (
+              <div className="flex items-center gap-2">
+                <span className="text-muted-foreground text-red-600">Rejeitado em:</span>
+                <span className="font-medium text-red-600">{formatDate(quote.rejectedAt.split('T')[0])}</span>
+              </div>
+            )}
+            {quote.expiredAt && (
+              <div className="flex items-center gap-2">
+                <span className="text-muted-foreground text-orange-600">Expirado em:</span>
+                <span className="font-medium text-orange-600">{formatDate(quote.expiredAt.split('T')[0])}</span>
+              </div>
+            )}
           </div>
 
           {/* Notas */}
@@ -606,6 +920,21 @@ function QuoteDetailsDialog({ quote, open, onOpenChange, onEdit, onRefresh }: Qu
             <div className="flex gap-2 text-sm bg-muted/50 rounded-md p-3">
               <StickyNote className="size-4 text-muted-foreground flex-shrink-0 mt-0.5" />
               <p className="text-muted-foreground whitespace-pre-wrap">{quote.notes}</p>
+            </div>
+          )}
+
+          {/* Tags */}
+          {quote.tags && quote.tags.length > 0 && (
+            <div className="flex flex-wrap gap-1.5">
+              {quote.tags.map((tag, i) => (
+                <span
+                  key={i}
+                  className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium"
+                  style={{ backgroundColor: tag.color, color: getTextColor(tag.color) }}
+                >
+                  {tag.name}
+                </span>
+              ))}
             </div>
           )}
 
@@ -659,9 +988,9 @@ function QuoteDetailsDialog({ quote, open, onOpenChange, onEdit, onRefresh }: Qu
 
 // ─── Quote Card ───────────────────────────────────────────────────────────────
 
-interface QuoteCardProps { quote: Quote; onClick: () => void; }
+interface QuoteCardProps { quote: Quote; onClick: () => void; compact?: boolean; }
 
-function QuoteCard({ quote, onClick }: QuoteCardProps) {
+function QuoteCard({ quote, onClick, compact = false }: QuoteCardProps) {
   const daysToDelivery = Math.ceil(
     (new Date(quote.deliveryDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24)
   );
@@ -669,27 +998,29 @@ function QuoteCard({ quote, onClick }: QuoteCardProps) {
 
   return (
     <Card
-      className="cursor-pointer hover:shadow-md transition-shadow overflow-hidden"
-      style={quote.cardColor ? { borderLeftWidth: 4, borderLeftColor: quote.cardColor } : undefined}
+      className="cursor-pointer hover:shadow-md transition-all overflow-hidden"
+      style={quote.cardColor ? {
+        backgroundColor: hexToRgba(quote.cardColor, 0.18),
+        borderColor: quote.cardColor,
+        borderWidth: 1.5,
+      } : undefined}
       onClick={onClick}
     >
-      <CardHeader className="pb-2">
-        <div className="flex items-start justify-between gap-2">
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-mono text-muted-foreground">{quote.quoteNumber}</span>
-              <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_VARIANT[quote.status]}`}>
-                {STATUS_LABELS[quote.status]}
-              </span>
-            </div>
-            <p className="font-semibold mt-1 truncate">{quote.customerName}</p>
-          </div>
-          <div className="text-right flex-shrink-0">
-            <div className="font-bold text-base">{formatCurrency(quote.totalPrice)}</div>
-          </div>
+      <CardHeader className={compact ? 'pb-1 pt-3 px-3' : 'pb-2'}>
+        {/* Linha 1: número + valor */}
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-xs font-mono text-muted-foreground shrink-0">{quote.quoteNumber}</span>
+          <span className="font-bold text-base tabular-nums">{formatCurrency(quote.totalPrice)}</span>
+        </div>
+        {/* Linha 2: nome + badge */}
+        <div className="flex items-center gap-2 mt-1 min-w-0">
+          <p className="font-semibold truncate flex-1">{quote.customerName}</p>
+          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium shrink-0 ${STATUS_VARIANT[quote.status]}`}>
+            {STATUS_LABELS[quote.status]}
+          </span>
         </div>
       </CardHeader>
-      <CardContent className="space-y-2">
+      <CardContent className={compact ? 'space-y-1 px-3 pb-3' : 'space-y-2'}>
         <p className="text-sm text-muted-foreground truncate">
           {quote.items.map((i) => i.name).join(', ')}
         </p>
@@ -710,6 +1041,19 @@ function QuoteCard({ quote, onClick }: QuoteCardProps) {
             Pedido {quote.orderNumber}
           </div>
         )}
+        {quote.tags && quote.tags.length > 0 && (
+          <div className="flex flex-wrap gap-1 pt-1">
+            {quote.tags.map((tag, i) => (
+              <span
+                key={i}
+                className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium"
+                style={{ backgroundColor: tag.color, color: getTextColor(tag.color) }}
+              >
+                {tag.name}
+              </span>
+            ))}
+          </div>
+        )}
       </CardContent>
     </Card>
   );
@@ -719,11 +1063,33 @@ function QuoteCard({ quote, onClick }: QuoteCardProps) {
 
 export function Quotes() {
   const { quotes, loading, error } = useFirebaseQuotes();
+  const { settings } = useUserSettings();
   const [search, setSearch] = useState('');
+  const [filterDateFrom, setFilterDateFrom] = useState('');
+  const [filterDateTo, setFilterDateTo] = useState('');
+  const [filterTags, setFilterTags] = useState<string[]>([]);
+  const [filterDelivery, setFilterDelivery] = useState<'' | 'pickup' | 'delivery'>('');
+  const [showFilters, setShowFilters] = useState(false);
   const [formOpen, setFormOpen] = useState(false);
   const [editingQuote, setEditingQuote] = useState<Quote | null>(null);
-  const [detailQuote, setDetailQuote] = useState<Quote | null>(null);
+  const [detailQuoteId, setDetailQuoteId] = useState<string | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
+
+  // Deriva sempre do snapshot em tempo real — atualiza automaticamente após approve/reject/etc
+  const detailQuote = detailQuoteId ? (quotes.find((q) => q.id === detailQuoteId) ?? null) : null;
+
+  // All tags from all quotes (for filter suggestions)
+  const allTags = useMemo(() => {
+    const set = new Map<string, Tag>();
+    for (const q of quotes) {
+      for (const t of q.tags ?? []) {
+        if (!set.has(t.name)) set.set(t.name, t);
+      }
+    }
+    return Array.from(set.values());
+  }, [quotes]);
+
+  const activeFiltersCount = [filterDateFrom, filterDateTo, filterDelivery].filter(Boolean).length + filterTags.length;
 
   // Stats
   const stats = useMemo(() => ({
@@ -738,15 +1104,40 @@ export function Quotes() {
       .reduce((s, q) => s + q.totalPrice, 0),
   }), [quotes]);
 
-  function filter(list: Quote[]) {
-    if (!search.trim()) return list;
-    const q = search.toLowerCase();
-    return list.filter(
-      (o) =>
-        o.customerName.toLowerCase().includes(q) ||
-        o.quoteNumber.toLowerCase().includes(q) ||
-        o.items.some((i) => i.name.toLowerCase().includes(q))
-    );
+  function applyFilters(list: Quote[]) {
+    let result = list;
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      result = result.filter(
+        (o) =>
+          o.customerName.toLowerCase().includes(q) ||
+          o.quoteNumber.toLowerCase().includes(q) ||
+          o.items.some((i) => i.name.toLowerCase().includes(q)) ||
+          (o.tags ?? []).some((t) => t.name.toLowerCase().includes(q))
+      );
+    }
+    if (filterDateFrom) {
+      result = result.filter((o) => o.createdAt.split('T')[0] >= filterDateFrom);
+    }
+    if (filterDateTo) {
+      result = result.filter((o) => o.createdAt.split('T')[0] <= filterDateTo);
+    }
+    if (filterTags.length > 0) {
+      result = result.filter((o) =>
+        filterTags.every((t) => (o.tags ?? []).some((ot) => ot.name === t))
+      );
+    }
+    if (filterDelivery) {
+      result = result.filter((o) => o.deliveryType === filterDelivery);
+    }
+    return result;
+  }
+
+  function clearFilters() {
+    setFilterDateFrom('');
+    setFilterDateTo('');
+    setFilterTags([]);
+    setFilterDelivery('');
   }
 
   function openEdit(q: Quote) {
@@ -755,7 +1146,7 @@ export function Quotes() {
   }
 
   function openDetail(q: Quote) {
-    setDetailQuote(q);
+    setDetailQuoteId(q.id);
     setDetailOpen(true);
   }
 
@@ -781,11 +1172,11 @@ export function Quotes() {
   }
 
   const tabGroups: { value: string; label: string; list: Quote[] }[] = [
-    { value: 'all', label: `Todos (${quotes.length})`, list: filter(quotes) },
-    { value: 'draft', label: `Rascunho (${stats.draft})`, list: filter(quotes.filter((q) => q.status === 'draft')) },
-    { value: 'sent', label: `Enviados (${stats.sent})`, list: filter(quotes.filter((q) => q.status === 'sent')) },
-    { value: 'approved', label: `Aprovados (${stats.approved})`, list: filter(quotes.filter((q) => q.status === 'approved')) },
-    { value: 'rejected', label: `Rejeitados (${stats.rejected})`, list: filter(quotes.filter((q) => q.status === 'rejected')) },
+    { value: 'all', label: `Todos (${quotes.length})`, list: applyFilters(quotes) },
+    { value: 'draft', label: `Rascunho (${stats.draft})`, list: applyFilters(quotes.filter((q) => q.status === 'draft')) },
+    { value: 'sent', label: `Enviados (${stats.sent})`, list: applyFilters(quotes.filter((q) => q.status === 'sent')) },
+    { value: 'approved', label: `Aprovados (${stats.approved})`, list: applyFilters(quotes.filter((q) => q.status === 'approved')) },
+    { value: 'rejected', label: `Rejeitados (${stats.rejected})`, list: applyFilters(quotes.filter((q) => q.status === 'rejected')) },
   ];
 
   return (
@@ -840,15 +1231,101 @@ export function Quotes() {
         </Card>
       </div>
 
-      {/* Search */}
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
-        <Input
-          placeholder="Buscar por cliente, número ou produto..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="pl-10"
-        />
+      {/* Search + Filters */}
+      <div className="space-y-2">
+        <div className="flex gap-2">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+            <Input
+              placeholder="Buscar por cliente, número, produto ou tag..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-10"
+            />
+          </div>
+          <Button
+            variant={showFilters ? 'default' : 'outline'}
+            size="icon"
+            onClick={() => setShowFilters((v) => !v)}
+            className="shrink-0 relative"
+          >
+            <Filter className="size-4" />
+            {activeFiltersCount > 0 && (
+              <span className="absolute -top-1 -right-1 size-4 rounded-full bg-destructive text-destructive-foreground text-[10px] flex items-center justify-center font-bold">
+                {activeFiltersCount}
+              </span>
+            )}
+          </Button>
+        </div>
+
+        {showFilters && (
+          <div className="rounded-lg border bg-muted/30 p-4 space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {/* Date range */}
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">Criado a partir de</Label>
+                <Input type="date" value={filterDateFrom} onChange={(e) => setFilterDateFrom(e.target.value)} />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">Criado até</Label>
+                <Input type="date" value={filterDateTo} onChange={(e) => setFilterDateTo(e.target.value)} />
+              </div>
+            </div>
+
+            {/* Delivery type */}
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Forma de entrega</Label>
+              <div className="flex gap-2 flex-wrap">
+                {(['', 'pickup', 'delivery'] as const).map((v) => (
+                  <Button
+                    key={v}
+                    type="button"
+                    variant={filterDelivery === v ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => setFilterDelivery(v)}
+                  >
+                    {v === '' ? 'Todas' : v === 'pickup' ? 'Retirada' : 'Entrega'}
+                  </Button>
+                ))}
+              </div>
+            </div>
+
+            {/* Tag filter */}
+            {allTags.length > 0 && (
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">Tags</Label>
+                <div className="flex flex-wrap gap-1.5">
+                  {allTags.map((t) => {
+                    const active = filterTags.includes(t.name);
+                    return (
+                      <button
+                        key={t.name}
+                        type="button"
+                        onClick={() =>
+                          setFilterTags((prev) =>
+                            active ? prev.filter((n) => n !== t.name) : [...prev, t.name]
+                          )
+                        }
+                        className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium transition-opacity ${
+                          active ? 'opacity-100 ring-2 ring-offset-1 ring-primary' : 'opacity-60 hover:opacity-90'
+                        }`}
+                        style={{ backgroundColor: t.color, color: getTextColor(t.color) }}
+                      >
+                        {t.name}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {activeFiltersCount > 0 && (
+              <Button variant="ghost" size="sm" onClick={clearFilters} className="text-muted-foreground">
+                <X className="size-3.5 mr-1.5" /> Limpar filtros
+              </Button>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Tabs */}
@@ -876,7 +1353,7 @@ export function Quotes() {
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {g.list.map((q) => (
-                  <QuoteCard key={q.id} quote={q} onClick={() => openDetail(q)} />
+                  <QuoteCard key={q.id} quote={q} onClick={() => openDetail(q)} compact={settings?.compactCards} />
                 ))}
               </div>
             )}
@@ -894,9 +1371,9 @@ export function Quotes() {
       <QuoteDetailsDialog
         quote={detailQuote}
         open={detailOpen}
-        onOpenChange={setDetailOpen}
+        onOpenChange={(v) => { setDetailOpen(v); if (!v) setDetailQuoteId(null); }}
         onEdit={openEdit}
-        onRefresh={() => {}}
+        onRefresh={() => setDetailOpen(false)}
       />
     </div>
   );

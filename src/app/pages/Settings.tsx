@@ -7,7 +7,8 @@ import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Avatar, AvatarFallback, AvatarImage } from '../components/ui/avatar';
 import { Alert, AlertDescription } from '../components/ui/alert';
-import { Loader2, Upload, X, Building2, Mail, Phone, MapPin, Palette, Sun, Moon, Monitor, Check } from 'lucide-react';
+import { Loader2, Upload, X, Building2, Mail, Phone, MapPin, Palette, Sun, Moon, Monitor, Check, LayoutGrid, MessageSquare } from 'lucide-react';
+import { Textarea } from '../components/ui/textarea';
 import { toast } from 'sonner';
 import { useTheme } from 'next-themes';
 import { COLOR_THEMES, applyColorTheme, type ColorThemeKey } from '../utils/colorThemes';
@@ -39,6 +40,11 @@ export function Settings() {
   const [selectedColorTheme, setSelectedColorTheme] = useState<ColorThemeKey>('default');
   const [selectedCards, setSelectedCards] = useState<string[]>(DEFAULT_DASHBOARD_CARDS);
   const [defaultReportPeriod, setDefaultReportPeriod] = useState<'week' | 'month' | 'quarter' | 'year'>('month');
+  const [compactCards, setCompactCards] = useState(false);
+  const [savingDisplayPrefs, setSavingDisplayPrefs] = useState(false);
+  const [whatsappGreeting, setWhatsappGreeting] = useState('');
+  const [whatsappSignature, setWhatsappSignature] = useState('');
+  const [savingWhatsappTemplate, setSavingWhatsappTemplate] = useState(false);
   const [businessInfo, setBusinessInfo] = useState({
     businessName: settings?.businessName || '',
     businessPhone: settings?.businessPhone || '',
@@ -58,6 +64,9 @@ export function Settings() {
       setSelectedColorTheme((settings.colorTheme as ColorThemeKey) || 'default');
       setSelectedCards(settings.dashboardCards ?? DEFAULT_DASHBOARD_CARDS);
       setDefaultReportPeriod(settings.defaultReportPeriod ?? 'month');
+      setCompactCards(settings.compactCards ?? false);
+      setWhatsappGreeting(settings.whatsappGreeting ?? '');
+      setWhatsappSignature(settings.whatsappSignature ?? '');
     }
   }, [settings]);
 
@@ -603,6 +612,119 @@ export function Settings() {
             ) : (
               'Salvar Personalização'
             )}
+          </Button>
+        </CardContent>
+      </Card>
+
+      {/* Densidade dos Cards */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <LayoutGrid className="size-5" />
+            Densidade dos Cards
+          </CardTitle>
+          <CardDescription>
+            Escolha o estilo de exibição dos cards de pedidos e orçamentos
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex gap-3">
+            <button
+              type="button"
+              onClick={() => setCompactCards(false)}
+              className={`flex-1 rounded-lg border-2 p-4 text-center transition-all ${
+                !compactCards ? 'border-primary bg-primary/5' : 'border-border hover:border-muted-foreground'
+              }`}
+            >
+              <div className="mb-2 space-y-1.5">
+                <div className="h-3 w-full rounded bg-muted" />
+                <div className="h-3 w-3/4 rounded bg-muted" />
+                <div className="h-3 w-1/2 rounded bg-muted" />
+              </div>
+              <span className="text-sm font-medium">Confortável</span>
+              <p className="text-xs text-muted-foreground mt-1">Mais espaçamento e informações</p>
+            </button>
+            <button
+              type="button"
+              onClick={() => setCompactCards(true)}
+              className={`flex-1 rounded-lg border-2 p-4 text-center transition-all ${
+                compactCards ? 'border-primary bg-primary/5' : 'border-border hover:border-muted-foreground'
+              }`}
+            >
+              <div className="mb-2 space-y-1">
+                <div className="h-2 w-full rounded bg-muted" />
+                <div className="h-2 w-3/4 rounded bg-muted" />
+              </div>
+              <span className="text-sm font-medium">Compacto</span>
+              <p className="text-xs text-muted-foreground mt-1">Mais cards na tela</p>
+            </button>
+          </div>
+          <Button
+            onClick={async () => {
+              setSavingDisplayPrefs(true);
+              try {
+                await updateSettings({ compactCards });
+                toast.success('Preferência de densidade salva!');
+              } catch {
+                toast.error('Erro ao salvar preferência');
+              } finally {
+                setSavingDisplayPrefs(false);
+              }
+            }}
+            disabled={savingDisplayPrefs}
+          >
+            {savingDisplayPrefs ? <><Loader2 className="size-4 mr-2 animate-spin" />Salvando...</> : 'Salvar Densidade'}
+          </Button>
+        </CardContent>
+      </Card>
+
+      {/* Template WhatsApp */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <MessageSquare className="size-5" />
+            Template do WhatsApp
+          </CardTitle>
+          <CardDescription>
+            Personalize a mensagem enviada ao compartilhar um orçamento. Use {'{nome}'} para o nome do cliente e {'{numero}'} para o número do orçamento.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <Label>Cabeçalho / Saudação</Label>
+            <Textarea
+              placeholder="Ex: Olá {nome}! Segue o orçamento *{numero}*:"
+              value={whatsappGreeting}
+              onChange={(e) => setWhatsappGreeting(e.target.value)}
+              rows={2}
+            />
+            <p className="text-xs text-muted-foreground">Deixe em branco para usar o padrão</p>
+          </div>
+          <div className="space-y-2">
+            <Label>Assinatura / Rodapé</Label>
+            <Textarea
+              placeholder="Ex: Atenciosamente,\nPapelaria XYZ"
+              value={whatsappSignature}
+              onChange={(e) => setWhatsappSignature(e.target.value)}
+              rows={2}
+            />
+            <p className="text-xs text-muted-foreground">Aparece ao final da mensagem</p>
+          </div>
+          <Button
+            onClick={async () => {
+              setSavingWhatsappTemplate(true);
+              try {
+                await updateSettings({ whatsappGreeting, whatsappSignature });
+                toast.success('Template do WhatsApp salvo!');
+              } catch {
+                toast.error('Erro ao salvar template');
+              } finally {
+                setSavingWhatsappTemplate(false);
+              }
+            }}
+            disabled={savingWhatsappTemplate}
+          >
+            {savingWhatsappTemplate ? <><Loader2 className="size-4 mr-2 animate-spin" />Salvando...</> : 'Salvar Template'}
           </Button>
         </CardContent>
       </Card>

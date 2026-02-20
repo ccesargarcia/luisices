@@ -120,6 +120,18 @@ export interface QuoteItem {
   unitPrice: number;
 }
 
+export interface Product {
+  id: string;
+  userId: string;
+  name: string;
+  unitPrice: number;
+  description?: string;
+  category?: string;
+  photoUrl?: string;
+  createdAt: string;
+  updatedAt?: string;
+}
+
 export interface Quote {
   id: string;
   quoteNumber: string;
@@ -138,9 +150,19 @@ export interface Quote {
   cardColor?: string;
   isExchange?: boolean;
   exchangeNotes?: string;
+  discount?: number;              // Valor do desconto
+  discountType?: 'percent' | 'fixed'; // Tipo: percentual ou valor fixo
+  paymentCondition?: string;       // Ex: "50% entrada + 50% na entrega"
+  deliveryType?: 'pickup' | 'delivery'; // Retirada ou entrega
+  deliveryAddress?: string;        // Endereço de entrega (se deliveryType === 'delivery')
+  rejectionReason?: string;        // Motivo da rejeição
   orderId?: string;         // Preenchido após aprovação → conversão em pedido
   orderNumber?: string;     // Número do pedido gerado
   createdAt: string;
+  sentAt?: string;          // Data de envio ao cliente
+  approvedAt?: string;      // Data de aprovação
+  rejectedAt?: string;      // Data de rejeição
+  expiredAt?: string;       // Data de expiração
   updatedAt?: string;
 }
 

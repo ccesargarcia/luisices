@@ -5,14 +5,16 @@ import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Textarea } from './ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
-import { Plus, Loader2, UserPlus, Trash2, Repeat2, Paperclip, Upload, ExternalLink, ImageIcon, AlertTriangle } from 'lucide-react';
-import { OrderStatus, PaymentStatus, PaymentMethod, Customer, Tag, OrderAttachment, ExchangeItem } from '../types';
+import { Plus, Loader2, UserPlus, Trash2, Repeat2, Paperclip, Upload, ExternalLink, ImageIcon, AlertTriangle, BookOpen } from 'lucide-react';
+import { OrderStatus, PaymentStatus, PaymentMethod, Customer, Tag, OrderAttachment, ExchangeItem, Product } from '../types';
 import { TagInput } from './TagInput';
 import { Switch } from './ui/switch';
 import { Alert, AlertDescription } from './ui/alert';
 import { firebaseOrderService } from '../../services/firebaseOrderService';
 import { firebaseStorageService } from '../../services/firebaseStorageService';
 import { firebaseCustomerService } from '../../services/firebaseCustomerService';
+import { firebaseProductService } from '../../services/firebaseProductService';
+import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
 import { useAuth } from '../../contexts/AuthContext';
 
 interface ProductItem {
@@ -49,6 +51,9 @@ export function NewOrderDialog() {
   const [localAttachments, setLocalAttachments] = useState<OrderAttachment[]>([]);
   const [isUploadingAttachment, setIsUploadingAttachment] = useState(false);
   const [exchangeItems, setExchangeItems] = useState<ProductItem[]>([{ name: '', quantity: '1', unitPrice: '' }]);
+  const [catalogProducts, setCatalogProducts] = useState<Product[]>([]);
+  const [catalogSearch, setCatalogSearch] = useState('');
+  const [catalogOpenIdx, setCatalogOpenIdx] = useState<number | null>(null);
 
   const totalPrice = useMemo(() => {
     return products.reduce((sum, p) => {
@@ -65,6 +70,7 @@ export function NewOrderDialog() {
   useEffect(() => {
     if (open && user) {
       firebaseCustomerService.getCustomers(user.uid).then(setCustomers);
+      firebaseProductService.getProducts().then(setCatalogProducts);
     }
   }, [open, user]);
 
@@ -329,7 +335,8 @@ export function NewOrderDialog() {
               </Button>
             </div>
             {/* header das colunas */}
-            <div className="grid grid-cols-[1fr_56px_96px_36px] gap-2 px-1">
+            <div className="grid grid-cols-[36px_1fr_56px_96px_36px] gap-2 px-1">
+              <span />
               <span className="text-xs text-muted-foreground">Produto</span>
               <span className="text-xs text-muted-foreground text-center">Qtd</span>
               <span className="text-xs text-muted-foreground text-right">Valor unit.</span>
@@ -340,7 +347,52 @@ export function NewOrderDialog() {
                 const sub = (parseFloat(item.quantity) || 0) * (parseFloat(item.unitPrice) || 0);
                 return (
                   <div key={idx} className="space-y-0.5">
-                    <div className="grid grid-cols-[1fr_56px_96px_36px] gap-2 items-center">
+                    <div className="grid grid-cols-[36px_1fr_56px_96px_36px] gap-2 items-center">
+                      <Popover
+                        open={catalogOpenIdx === idx}
+                        onOpenChange={(v) => { setCatalogOpenIdx(v ? idx : null); if (v) setCatalogSearch(''); }}
+                      >
+                        <PopoverTrigger asChild>
+                          <Button type="button" variant="outline" size="icon" className="size-9" title="Selecionar produto">
+                            <BookOpen className="size-4" />
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-64 p-2" align="start">
+                          <Input
+                            placeholder="Buscar produto..."
+                            value={catalogSearch}
+                            onChange={(e) => setCatalogSearch(e.target.value)}
+                            className="h-8 text-sm mb-2"
+                            autoFocus
+                          />
+                          <div className="max-h-48 overflow-y-auto space-y-0.5">
+                            {catalogProducts
+                              .filter((p) => !catalogSearch || p.name.toLowerCase().includes(catalogSearch.toLowerCase()))
+                              .map((p) => {
+                                const fmt = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
+                                return (
+                                  <button
+                                    key={p.id}
+                                    type="button"
+                                    className="w-full flex items-center justify-between px-2 py-1.5 rounded hover:bg-muted text-sm text-left"
+                                    onClick={() => {
+                                      setProducts(prev => prev.map((item, i) =>
+                                        i === idx ? { ...item, name: p.name, unitPrice: String(p.unitPrice) } : item
+                                      ));
+                                      setCatalogOpenIdx(null);
+                                    }}
+                                  >
+                                    <span className="truncate">{p.name}</span>
+                                    <span className="text-xs text-muted-foreground ml-2 flex-shrink-0">{fmt(p.unitPrice)}</span>
+                                  </button>
+                                );
+                              })}
+                            {catalogProducts.filter((p) => !catalogSearch || p.name.toLowerCase().includes(catalogSearch.toLowerCase())).length === 0 && (
+                              <p className="text-xs text-muted-foreground text-center py-2">Nenhum produto encontrado</p>
+                            )}
+                          </div>
+                        </PopoverContent>
+                      </Popover>
                       <Input
                         placeholder={`Produto ${idx + 1}`}
                         value={item.name}

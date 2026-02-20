@@ -29,6 +29,10 @@ export interface UserSettings {
   // Preferências de exibição
   compactCards?: boolean;
 
+  // WhatsApp template
+  whatsappGreeting?: string;   // Ex: "Olá {nome}! Segue o orçamento *{numero}*:"
+  whatsappSignature?: string;  // Ex: "Atenciosamente, Papelaria XYZ"
+
   // Dashboard preferences
   dashboardCards?: string[];
   defaultReportPeriod?: 'week' | 'month' | 'quarter' | 'year';

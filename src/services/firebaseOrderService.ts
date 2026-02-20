@@ -64,6 +64,13 @@ export class FirebaseOrderService {
     const userId = this.getCurrentUserId();
     const orderNumber = await this.generateOrderNumber(userId);
 
+    // Sanitize payment object: replace undefined with null so Firestore doesn't reject it
+    const payment = orderData.payment
+      ? Object.fromEntries(
+          Object.entries(orderData.payment).map(([k, v]) => [k, v === undefined ? null : v])
+        )
+      : null;
+
     const ordersRef = collection(db, ORDERS_COLLECTION);
     const newOrderRef = await addDoc(ordersRef, {
       userId,
@@ -79,7 +86,7 @@ export class FirebaseOrderService {
       notes: orderData.notes || null,
       tags: orderData.tags || null,
       customerId: orderData.customerId || null,
-      payment: orderData.payment || null,
+      payment,
       isExchange: orderData.isExchange || false,
       exchangeNotes: orderData.exchangeNotes || null,
       exchangeItems: orderData.exchangeItems || null,

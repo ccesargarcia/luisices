@@ -43,6 +43,11 @@ export function useFirebaseQuotes() {
             items: raw.items ?? [],
             totalPrice: raw.totalPrice ?? 0,
             estimatedCost: raw.estimatedCost ?? undefined,
+            discount: raw.discount ?? undefined,
+            discountType: raw.discountType ?? undefined,
+            paymentCondition: raw.paymentCondition ?? undefined,
+            deliveryType: raw.deliveryType ?? undefined,
+            deliveryAddress: raw.deliveryAddress ?? undefined,
             status: raw.status,
             deliveryDate: raw.deliveryDate,
             validUntil: raw.validUntil ?? undefined,
@@ -54,6 +59,10 @@ export function useFirebaseQuotes() {
             orderId: raw.orderId ?? undefined,
             orderNumber: raw.orderNumber ?? undefined,
             createdAt: raw.createdAt?.toDate?.()?.toISOString() ?? new Date().toISOString(),
+            sentAt: raw.sentAt?.toDate?.()?.toISOString() ?? undefined,
+            approvedAt: raw.approvedAt?.toDate?.()?.toISOString() ?? undefined,
+            rejectedAt: raw.rejectedAt?.toDate?.()?.toISOString() ?? undefined,
+            expiredAt: raw.expiredAt?.toDate?.()?.toISOString() ?? undefined,
             updatedAt: raw.updatedAt?.toDate?.()?.toISOString() ?? undefined,
           } as Quote;
         });
