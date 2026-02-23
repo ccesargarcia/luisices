@@ -467,18 +467,20 @@ export function Dashboard() {
       )}
 
       <Tabs defaultValue="all" className="space-y-4">
-        <TabsList>
-          <TabsTrigger value="all">Todos ({filteredOrders.length})</TabsTrigger>
-          <TabsTrigger value="pending">
-            Pendentes ({filteredOrders.filter(o => o.status === 'pending').length})
-          </TabsTrigger>
-          <TabsTrigger value="in-progress">
-            Em Produção ({filteredOrders.filter(o => o.status === 'in-progress').length})
-          </TabsTrigger>
-          <TabsTrigger value="completed">
-            Concluídos ({filteredOrders.filter(o => o.status === 'completed').length})
-          </TabsTrigger>
-        </TabsList>
+        <div className="overflow-x-auto pb-0.5">
+          <TabsList className="w-full sm:w-fit">
+            <TabsTrigger value="all">Todos ({filteredOrders.length})</TabsTrigger>
+            <TabsTrigger value="pending">
+              Pendentes ({filteredOrders.filter(o => o.status === 'pending').length})
+            </TabsTrigger>
+            <TabsTrigger value="in-progress">
+              Em Produção ({filteredOrders.filter(o => o.status === 'in-progress').length})
+            </TabsTrigger>
+            <TabsTrigger value="completed">
+              Concluídos ({filteredOrders.filter(o => o.status === 'completed').length})
+            </TabsTrigger>
+          </TabsList>
+        </div>
 
         <TabsContent value="all" className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">

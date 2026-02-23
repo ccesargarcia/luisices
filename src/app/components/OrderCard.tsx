@@ -152,14 +152,14 @@ export function OrderCard({ order, onClick }: OrderCardProps) {
               <span>{order.productName}</span>
             </div>
             <div className="flex items-center justify-between gap-2 text-sm">
-              <div className="flex items-center gap-2">
-                <Phone className="size-4 text-muted-foreground" />
-                <span>{order.customerPhone}</span>
+              <div className="flex items-center gap-2 min-w-0 flex-1">
+                <Phone className="size-4 text-muted-foreground shrink-0" />
+                <span className="truncate">{order.customerPhone}</span>
               </div>
               <Button
                 size="sm"
                 variant="ghost"
-                className="h-7 gap-1 text-green-600 hover:text-green-700 hover:bg-green-50"
+                className="h-7 gap-1 text-green-600 hover:text-green-700 hover:bg-green-50 shrink-0"
                 onClick={(e) => {
                   e.stopPropagation();
                   openWhatsAppForOrder(order);
@@ -174,12 +174,12 @@ export function OrderCard({ order, onClick }: OrderCardProps) {
               <span>Entrega: {formatDate(order.deliveryDate)}</span>
             </div>
             <div className="flex items-center justify-between gap-2">
-              <div className="flex items-center gap-2 text-sm font-medium">
-                <DollarSign className="size-4 text-muted-foreground" />
-                <span>{formatCurrency(order.price)} ({order.quantity} un.)</span>
+              <div className="flex items-center gap-2 text-sm font-medium min-w-0">
+                <DollarSign className="size-4 text-muted-foreground shrink-0" />
+                <span className="truncate">{formatCurrency(order.price)} ({order.quantity} un.)</span>
               </div>
               {order.payment && order.payment.paidAmount > 0 && order.payment.remainingAmount > 0 && (
-                <div className="flex items-center gap-1 text-xs text-orange-600 bg-orange-50 px-2 py-1 rounded">
+                <div className="flex items-center gap-1 text-xs text-orange-600 bg-orange-50 px-2 py-1 rounded shrink-0">
                   <DollarSign className="size-3" />
                   <span>Resta: {formatCurrency(order.payment.remainingAmount)}</span>
                 </div>
