@@ -412,7 +412,7 @@ export function OrderDetailsDialog({ order, open, onOpenChange, onUpdateStatus, 
           {isEditing ? (
             /* Modo de Edição */
             <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="customerName">Nome do Cliente *</Label>
                   <Input
@@ -447,7 +447,9 @@ export function OrderDetailsDialog({ order, open, onOpenChange, onUpdateStatus, 
                     <Plus className="size-3" /> Adicionar item
                   </Button>
                 </div>
-                <div className="grid grid-cols-[1fr_56px_96px_36px] gap-2 px-1">
+                <div className="overflow-x-auto">
+                <div className="min-w-[280px]">
+                <div className="grid grid-cols-[1fr_48px_84px_32px] gap-2 px-1">
                   <span className="text-xs text-muted-foreground">Produto</span>
                   <span className="text-xs text-muted-foreground text-center">Qtd</span>
                   <span className="text-xs text-muted-foreground text-right">Valor unit.</span>
@@ -458,7 +460,7 @@ export function OrderDetailsDialog({ order, open, onOpenChange, onUpdateStatus, 
                     const sub = (parseFloat(item.quantity) || 0) * (parseFloat(item.unitPrice) || 0);
                     return (
                       <div key={idx} className="space-y-0.5">
-                        <div className="grid grid-cols-[1fr_56px_96px_36px] gap-2 items-center">
+                        <div className="grid grid-cols-[1fr_48px_84px_32px] gap-2 items-center">
                           <Input
                             placeholder={`Produto ${idx + 1}`}
                             value={item.name}
@@ -506,9 +508,11 @@ export function OrderDetailsDialog({ order, open, onOpenChange, onUpdateStatus, 
                     <span className="text-sm font-semibold">Total: {formatCurrencyEdit(totalPrice)}</span>
                   </div>
                 )}
+                </div>
+                </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="deliveryDate">Data de Entrega *</Label>
                   <Input
@@ -579,7 +583,9 @@ export function OrderDetailsDialog({ order, open, onOpenChange, onUpdateStatus, 
                         <Plus className="size-3" /> Adicionar item
                       </Button>
                     </div>
-                    <div className="grid grid-cols-[1fr_56px_96px_36px] gap-2 px-1">
+                    <div className="overflow-x-auto">
+                    <div className="min-w-[280px]">
+                    <div className="grid grid-cols-[1fr_48px_84px_32px] gap-2 px-1">
                       <span className="text-xs text-muted-foreground">Item recebido</span>
                       <span className="text-xs text-muted-foreground text-center">Qtd</span>
                       <span className="text-xs text-muted-foreground text-right">Valor est.</span>
@@ -590,7 +596,7 @@ export function OrderDetailsDialog({ order, open, onOpenChange, onUpdateStatus, 
                         const sub = (parseFloat(item.quantity) || 0) * (parseFloat(item.unitPrice) || 0);
                         return (
                           <div key={idx} className="space-y-0.5">
-                            <div className="grid grid-cols-[1fr_56px_96px_36px] gap-2 items-center">
+                            <div className="grid grid-cols-[1fr_48px_84px_32px] gap-2 items-center">
                               <Input
                                 placeholder={`Item ${idx + 1}`}
                                 value={item.name}
@@ -640,6 +646,7 @@ export function OrderDetailsDialog({ order, open, onOpenChange, onUpdateStatus, 
                         </div>
                       ) : null;
                     })()}
+                  </div>
                   </div>
                   {/* Observações livres */}
                   <div className="space-y-1.5">
@@ -695,7 +702,7 @@ export function OrderDetailsDialog({ order, open, onOpenChange, onUpdateStatus, 
               <div className="border-t pt-4 space-y-4">
                 <h3 className="font-medium text-sm">Informações de Pagamento</h3>
 
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="paymentStatus">Status do Pagamento *</Label>
                     <Select
@@ -915,7 +922,7 @@ export function OrderDetailsDialog({ order, open, onOpenChange, onUpdateStatus, 
           {order.payment && (
             <div className="border-t pt-4">
               <h3 className="font-medium text-sm mb-4">Informações de Pagamento</h3>
-              <div className="grid grid-cols-2 gap-4 text-sm">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
                 <div>
                   <span className="text-muted-foreground">Status:</span>
                   <Badge className={`ml-2 ${
@@ -963,7 +970,7 @@ export function OrderDetailsDialog({ order, open, onOpenChange, onUpdateStatus, 
               <DollarSign className="size-5 text-muted-foreground mt-0.5" />
               <div className="flex-1">
                 <div className="text-sm font-medium mb-1">Custo Real de Produção</div>
-                <div className="grid grid-cols-2 gap-4 text-sm">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
                   <div>
                     <span className="text-muted-foreground">Custo real:</span>
                     <span className="ml-2 font-medium">{formatCurrency(order.realCost)}</span>

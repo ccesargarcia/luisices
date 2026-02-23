@@ -467,20 +467,18 @@ export function Dashboard() {
       )}
 
       <Tabs defaultValue="all" className="space-y-4">
-        <div className="overflow-x-auto pb-0.5">
-          <TabsList className="w-full sm:w-fit">
-            <TabsTrigger value="all">Todos ({filteredOrders.length})</TabsTrigger>
-            <TabsTrigger value="pending">
-              Pendentes ({filteredOrders.filter(o => o.status === 'pending').length})
-            </TabsTrigger>
-            <TabsTrigger value="in-progress">
-              Em Produção ({filteredOrders.filter(o => o.status === 'in-progress').length})
-            </TabsTrigger>
-            <TabsTrigger value="completed">
-              Concluídos ({filteredOrders.filter(o => o.status === 'completed').length})
-            </TabsTrigger>
-          </TabsList>
-        </div>
+        <TabsList className="flex flex-wrap h-auto gap-1 p-1">
+          <TabsTrigger value="all" className="flex-1 sm:flex-none">Todos ({filteredOrders.length})</TabsTrigger>
+          <TabsTrigger value="pending" className="flex-1 sm:flex-none">
+            Pendentes ({filteredOrders.filter(o => o.status === 'pending').length})
+          </TabsTrigger>
+          <TabsTrigger value="in-progress" className="flex-1 sm:flex-none">
+            Em Produção ({filteredOrders.filter(o => o.status === 'in-progress').length})
+          </TabsTrigger>
+          <TabsTrigger value="completed" className="flex-1 sm:flex-none">
+            Concluídos ({filteredOrders.filter(o => o.status === 'completed').length})
+          </TabsTrigger>
+        </TabsList>
 
         <TabsContent value="all" className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">

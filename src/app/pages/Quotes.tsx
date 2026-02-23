@@ -389,18 +389,18 @@ function QuoteFormDialog({ open, onOpenChange, editing, onSaved }: QuoteFormDial
             </div>
 
             <div className="rounded-md border overflow-x-auto">
-              <div className="min-w-[460px]">
+              <div className="min-w-[300px]">
               {/* Header */}
-              <div className="grid grid-cols-[36px_1fr_80px_100px_100px_36px] gap-2 px-3 py-2 bg-muted text-xs font-medium text-muted-foreground">
+              <div className="grid grid-cols-[30px_1fr_52px_76px_76px_30px] gap-1.5 px-2 py-2 bg-muted text-xs font-medium text-muted-foreground">
                 <span />
                 <span>Produto / Serviço</span>
                 <span className="text-center">Qtd</span>
-                <span className="text-right">Preço unit.</span>
+                <span className="text-right">Unit.</span>
                 <span className="text-right">Subtotal</span>
                 <span />
               </div>
               {form.items.map((item, idx) => (
-                <div key={idx} className="grid grid-cols-[36px_1fr_80px_100px_100px_36px] gap-2 items-center px-3 py-2 border-t">
+                <div key={idx} className="grid grid-cols-[30px_1fr_52px_76px_76px_30px] gap-1.5 items-center px-2 py-2 border-t">
                   {/* Catalog picker button */}
                   <Popover
                     open={catalogOpenIdx === idx}
@@ -488,14 +488,14 @@ function QuoteFormDialog({ open, onOpenChange, editing, onSaved }: QuoteFormDial
               ))}
               {/* Subtotal / Desconto / Total */}
               {discountAmt > 0 && (
-                <div className="grid grid-cols-[1fr_80px_100px_100px_36px] gap-2 items-center px-3 py-2 bg-muted border-t">
+                <div className="grid grid-cols-[1fr_52px_76px_76px_30px] gap-1.5 items-center px-2 py-2 bg-muted border-t">
                   <span className="col-span-3 text-sm text-right text-muted-foreground">Subtotal</span>
                   <span className="text-sm text-right text-muted-foreground">{formatCurrency(subtotal)}</span>
                   <span />
                 </div>
               )}
               {discountAmt > 0 && (
-                <div className="grid grid-cols-[1fr_80px_100px_100px_36px] gap-2 items-center px-3 py-2 bg-muted border-t">
+                <div className="grid grid-cols-[1fr_52px_76px_76px_30px] gap-1.5 items-center px-2 py-2 bg-muted border-t">
                   <span className="col-span-3 text-sm text-right text-green-700 dark:text-green-400">
                     Desconto ({form.discountType === 'percent' ? `${form.discount}%` : formatCurrency(parseFloat(form.discount))})
                   </span>
@@ -503,7 +503,7 @@ function QuoteFormDialog({ open, onOpenChange, editing, onSaved }: QuoteFormDial
                   <span />
                 </div>
               )}
-              <div className="grid grid-cols-[1fr_80px_100px_100px_36px] gap-2 items-center px-3 py-2 bg-muted border-t">
+              <div className="grid grid-cols-[1fr_52px_76px_76px_30px] gap-1.5 items-center px-2 py-2 bg-muted border-t">
                 <span className="col-span-3 text-sm font-semibold text-right">Total</span>
                 <span className="text-sm font-bold text-right">{formatCurrency(finalTotal)}</span>
                 <span />
