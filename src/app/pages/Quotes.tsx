@@ -388,7 +388,8 @@ function QuoteFormDialog({ open, onOpenChange, editing, onSaved }: QuoteFormDial
               </Button>
             </div>
 
-            <div className="rounded-md border overflow-hidden">
+            <div className="rounded-md border overflow-x-auto">
+              <div className="min-w-[460px]">
               {/* Header */}
               <div className="grid grid-cols-[36px_1fr_80px_100px_100px_36px] gap-2 px-3 py-2 bg-muted text-xs font-medium text-muted-foreground">
                 <span />
@@ -506,6 +507,7 @@ function QuoteFormDialog({ open, onOpenChange, editing, onSaved }: QuoteFormDial
                 <span className="col-span-3 text-sm font-semibold text-right">Total</span>
                 <span className="text-sm font-bold text-right">{formatCurrency(finalTotal)}</span>
                 <span />
+              </div>
               </div>
             </div>
           </div>
@@ -884,7 +886,8 @@ function QuoteDetailsDialog({ quote, open, onOpenChange, onEdit, onRefresh }: Qu
           </div>
 
           {/* Itens */}
-          <div className="rounded-md border overflow-hidden">
+          <div className="rounded-md border overflow-x-auto">
+            <div className="min-w-[340px]">
             <div className="grid grid-cols-[1fr_64px_100px_100px] gap-2 px-3 py-2 bg-muted text-xs font-medium text-muted-foreground">
               <span>Produto / Serviço</span>
               <span className="text-center">Qtd</span>
@@ -902,6 +905,7 @@ function QuoteDetailsDialog({ quote, open, onOpenChange, onEdit, onRefresh }: Qu
             <div className="grid grid-cols-[1fr_64px_100px_100px] gap-2 items-center px-3 py-2 bg-muted border-t">
               <span className="col-span-3 text-sm font-semibold text-right">Total</span>
               <span className="text-sm font-bold text-right">{formatCurrency(quote.totalPrice)}</span>
+            </div>
             </div>
           </div>
 
