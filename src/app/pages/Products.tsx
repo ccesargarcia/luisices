@@ -23,6 +23,13 @@ import { toast } from 'sonner';
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
+// Permite apenas URLs seguras (blob:, https:, data:image/) para evitar XSS
+function safeUrl(url: string | null | undefined): string {
+  if (!url) return '';
+  if (url.startsWith('blob:') || url.startsWith('https://') || url.startsWith('data:image/')) return url;
+  return '';
+}
+
 function formatCurrency(v: number) {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
 }
@@ -133,7 +140,7 @@ function ProductFormDialog({ open, onOpenChange, editing, onSaved, userId }: Pro
             <div className="flex items-center gap-3">
               <div className="size-20 rounded-lg border-2 border-dashed border-muted-foreground/30 overflow-hidden flex items-center justify-center bg-muted/30 flex-shrink-0">
                 {photoPreview ? (
-                  <img src={photoPreview} alt="preview" className="size-full object-cover" />
+                  <img src={safeUrl(photoPreview)} alt="preview" className="size-full object-cover" />
                 ) : (
                   <ImageIcon className="size-6 text-muted-foreground/40" />
                 )}
@@ -384,7 +391,7 @@ export function Products() {
                       {product.photoUrl && (
                         <div className="w-full h-36 overflow-hidden bg-muted">
                           <img
-                            src={product.photoUrl}
+                            src={safeUrl(product.photoUrl)}
                             alt={product.name}
                             className="w-full h-full object-cover"
                           />

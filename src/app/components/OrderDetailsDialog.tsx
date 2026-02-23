@@ -16,6 +16,13 @@ import { useAuth } from '../../contexts/AuthContext';
 import { TagInput } from './TagInput';
 import { Switch } from './ui/switch';
 
+// Permite apenas URLs seguras (blob:, https:, data:image/) para evitar XSS
+function safeUrl(url: string | null | undefined): string {
+  if (!url) return '';
+  if (url.startsWith('blob:') || url.startsWith('https://') || url.startsWith('data:image/')) return url;
+  return '';
+}
+
 interface ProductItem {
   name: string;
   quantity: string;
@@ -948,9 +955,9 @@ export function OrderDetailsDialog({ order, open, onOpenChange, onUpdateStatus, 
                 {localAttachments.map((att, idx) => (
                   <div key={idx} className="relative group">
                     {!att.isPdf ? (
-                      <a href={att.url} target="_blank" rel="noopener noreferrer">
+                      <a href={safeUrl(att.url)} target="_blank" rel="noopener noreferrer">
                         <img
-                          src={att.thumbnail ?? att.url}
+                          src={safeUrl(att.thumbnail ?? att.url)}
                           alt={att.name ?? `Anexo ${idx + 1}`}
                           className="w-full h-20 object-cover rounded-md border hover:opacity-90 transition-opacity"
                           loading="lazy"
@@ -958,7 +965,7 @@ export function OrderDetailsDialog({ order, open, onOpenChange, onUpdateStatus, 
                       </a>
                     ) : (
                       <a
-                        href={att.url}
+                        href={safeUrl(att.url)}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="flex flex-col items-center justify-center h-20 border rounded-md bg-muted hover:bg-muted/70 transition-colors gap-1 px-1"
