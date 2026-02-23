@@ -7,6 +7,7 @@ import { Reports } from './pages/Reports';
 import { Settings } from './pages/Settings';
 import { Quotes } from './pages/Quotes';
 import { Products } from './pages/Products';
+import { Gallery } from './pages/Gallery';
 import { Login } from './pages/Login';
 import { Register } from './pages/Register';
 import { ResetPassword } from './pages/ResetPassword';
@@ -66,6 +67,10 @@ export const router = createBrowserRouter([
       {
         path: 'produtos',
         Component: Products,
+      },
+      {
+        path: 'galeria',
+        Component: Gallery,
       },
       {
         path: 'configuracoes',

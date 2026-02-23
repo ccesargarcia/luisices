@@ -1,29 +1,76 @@
-# Papelaria Personalizada — Dashboard de Gestão
+# Papelaria Personalizada — Sistema de Gestão
 
-Sistema completo de gerenciamento de pedidos para papelaria personalizada.
+Sistema completo de gerenciamento para papelaria personalizada, com pedidos, orçamentos, clientes, catálogo de produtos, galeria de trabalhos e relatórios — tudo em tempo real via Firebase.
 
 ---
 
 ## Funcionalidades
 
-- **Pedidos** — cadastro, edição, acompanhamento de status e exclusão
-- **Clientes** — CRUD completo com telefone, endereço e histórico de pedidos
-- **Financeiro** — controle de pagamentos (pix, dinheiro, crédito, débito, transferência), valor pago e saldo em aberto
-- **Dashboard** — métricas em tempo real: receita, pedidos em atraso, próximas entregas, produtos mais vendidos
-- **Calendário semanal** — visualização das entregas da semana
-- **Relatórios** — análises de faturamento e desempenho
-- **Tags** — categorização de pedidos com cores personalizadas
-- **Autenticação** — login, registro e recuperação de senha via Firebase Auth
-- **Tema claro/escuro**
+### Pedidos
+- Cadastro com cliente, produto, valor, data de entrega e status
+- Workflow de produção em 7 etapas (Design → Aprovação → Impressão → Corte → Montagem → Qualidade → Embalagem)
+- Controle de pagamento (pix, dinheiro, crédito, débito, transferência) com saldo em aberto
+- Anexos (fotos e PDFs) com thumbnails automáticos via Firebase Storage
+- Tags coloridas e cor de destaque por card
+- Vinculação de pedido à Galeria
+- Atualização em tempo real via `onSnapshot`
+
+### Orçamentos
+- Criação com itens do catálogo ou livres, desconto (% ou valor fixo), condição de pagamento e forma de entrega
+- Envio via WhatsApp com mensagem personalizável
+- Fluxo: Rascunho → Enviado → Aprovado (gera pedido automaticamente) / Rejeitado / Expirado
+- Exportação para PDF, duplicar orçamento existente
+- Tags, cor de destaque, filtros avançados e taxa de conversão
+
+### Clientes
+- CRUD completo com foto, telefone, e-mail, endereço e aniversário
+- Status: Ativo, VIP, Recorrente, Inadimplente, Parceiro
+- Histórico de pedidos e total gasto por cliente
+- Alerta de inadimplência vinculado a orçamentos
+
+### Catálogo de Produtos
+- Gerenciamento de produtos com foto, preço, categoria e descrição
+- Busca, filtro por categoria e alternância entre grade/lista
+- Atualização em tempo real
+
+### Galeria
+- Pastas de trabalhos com foto de capa personalizável
+- Upload de fotos por pasta
+- Tags em pastas com filtro por tag
+
+### Agenda Semanal
+- Visualização das entregas nos 7 dias da semana (segunda a domingo)
+- Filtro por status, resumo semanal com total e valor
+- Destaque visual para o dia atual
+
+### Dashboard
+- KPIs em tempo real: receita, ticket médio, pedidos em aberto, novos clientes
+- Alertas de entregas próximas e pedidos em atraso
+
+### Relatórios
+- KPIs de período, gráfico de faturamento, análise por status
+- Top produtos e top clientes
+
+### Configurações
+- Logo, banner e avatar do negócio
+- Tema claro/escuro e paleta de cores da interface
+- Template de mensagem WhatsApp e configuração dos cards do Dashboard
+
+### Autenticação
+- Login, registro e recuperação de senha via Firebase Auth
+- Dados isolados por usuário via regras Firestore/Storage
 
 ---
 
 ## Stack
 
-- **Frontend:** React 18 + TypeScript + Vite
-- **UI:** Tailwind CSS + Radix UI + Lucide React
-- **Backend:** Firebase (Firestore + Auth + Storage)
-- **Roteamento:** React Router v6
+| Camada | Tecnologia |
+|---|---|
+| Frontend | React 18 + TypeScript + Vite |
+| UI | Tailwind CSS + shadcn/ui (Radix UI) + Lucide React |
+| Backend | Firebase (Firestore + Auth + Storage) |
+| Roteamento | React Router v7 |
+| PDF | jsPDF + jspdf-autotable |
 
 ---
 
@@ -79,6 +126,6 @@ URL: `https://<seu-usuario>.github.io/<nome-do-repo>/`
 
 ## Segurança
 
-As credenciais do Firebase **nunca** são commitadas — ficam apenas no `.env.local` (ignorado pelo git) e nos Secrets do GitHub Actions.
+As credenciais do Firebase nunca são commitadas — ficam apenas no `.env.local` (ignorado pelo git) e nos Secrets do GitHub Actions.
 
-As regras de segurança do Firestore/Storage garantem que cada usuário acessa apenas seus próprios dados.
+As regras do Firestore e Storage garantem que cada usuário acessa somente os seus próprios dados. Veja [FIRESTORE_SECURITY_RULES.md](FIRESTORE_SECURITY_RULES.md) para detalhes.

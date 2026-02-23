@@ -80,88 +80,139 @@ export function OrderCard({ order, onClick }: OrderCardProps) {
         borderWidth: 1.5,
       } : undefined}
     >
-      <CardHeader className={compact ? 'pb-1 pt-3 px-3' : 'pb-3'}>
-        <div className="flex items-start justify-between gap-2">
-          <div className="min-w-0 flex-1">
-            <CardTitle className="text-lg truncate">{order.customerName}</CardTitle>
-            {order.isExchange && (
-              <div className="flex items-center gap-1 mt-1">
-                <Badge className="bg-purple-100 text-purple-800 border-purple-300 border gap-1 py-0 text-xs">
-                  <Repeat2 className="size-3" /> Permuta
-                </Badge>
-              </div>
+      {compact ? (
+        /* ── COMPACT ─────────────────────────────────────── */
+        <div className="px-3 py-2 space-y-1">
+          {/* Row 1: name + status */}
+          <div className="flex items-center justify-between gap-2">
+            <span className="font-semibold text-sm truncate flex-1">{order.customerName}</span>
+            <div className="flex items-center gap-1.5 shrink-0">
+              {order.isExchange && <Repeat2 className="size-3 text-purple-600" />}
+              <Badge className={`text-[10px] py-0 px-1.5 leading-4 ${statusColors[order.status]}`}>
+                {statusLabels[order.status]}
+              </Badge>
+            </div>
+          </div>
+          {/* Row 2: product + price */}
+          <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
+            <div className="flex items-center gap-1 min-w-0">
+              <Package className="size-3 shrink-0" />
+              <span className="truncate">{order.productName}</span>
+            </div>
+            <span className="font-medium text-foreground shrink-0">{formatCurrency(order.price)}</span>
+          </div>
+          {/* Row 3: date + remaining */}
+          <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
+            <div className="flex items-center gap-1">
+              <Calendar className="size-3 shrink-0" />
+              <span>{formatDate(order.deliveryDate)}</span>
+            </div>
+            {order.payment && order.payment.remainingAmount > 0 && order.payment.paidAmount > 0 && (
+              <span className="text-orange-600">Resta {formatCurrency(order.payment.remainingAmount)}</span>
             )}
           </div>
-          <Badge className={`shrink-0 ${statusColors[order.status]}`}>
-            {statusLabels[order.status]}
-          </Badge>
-        </div>
-      </CardHeader>
-      <CardContent className={compact ? 'space-y-1.5 px-3 pb-3' : 'space-y-2'}>
-        <div className="flex items-center gap-2 text-sm">
-          <Package className="size-4 text-muted-foreground" />
-          <span>{order.productName}</span>
-        </div>
-        <div className="flex items-center justify-between gap-2 text-sm">
-          <div className="flex items-center gap-2">
-            <Phone className="size-4 text-muted-foreground" />
-            <span>{order.customerPhone}</span>
-          </div>
-          <Button
-            size="sm"
-            variant="ghost"
-            className="h-7 gap-1 text-green-600 hover:text-green-700 hover:bg-green-50"
-            onClick={(e) => {
-              e.stopPropagation();
-              openWhatsAppForOrder(order);
-            }}
-          >
-            <MessageCircle className="size-4" />
-            WhatsApp
-          </Button>
-        </div>
-        <div className="flex items-center gap-2 text-sm">
-          <Calendar className="size-4 text-muted-foreground" />
-          <span>Entrega: {formatDate(order.deliveryDate)}</span>
-        </div>
-        <div className="flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2 text-sm font-medium">
-            <DollarSign className="size-4 text-muted-foreground" />
-            <span>{formatCurrency(order.price)} ({order.quantity} un.)</span>
-          </div>
-          {order.payment && order.payment.paidAmount > 0 && order.payment.remainingAmount > 0 && (
-            <div className="flex items-center gap-1 text-xs text-orange-600 bg-orange-50 px-2 py-1 rounded">
-              <DollarSign className="size-3" />
-              <span>Resta: {formatCurrency(order.payment.remainingAmount)}</span>
+          {/* Tags (compact) */}
+          {order.tags && order.tags.length > 0 && (
+            <div className="flex flex-wrap gap-0.5 pt-0.5">
+              {order.tags.map((tag, i) => (
+                <span
+                  key={i}
+                  className="px-1.5 py-0 rounded-full text-[10px] font-medium leading-4"
+                  style={{ backgroundColor: tag.color, color: getTextColor(tag.color) }}
+                >
+                  {tag.name}
+                </span>
+              ))}
             </div>
           )}
         </div>
-        {order.tags && order.tags.length > 0 && (
-          <div className="flex items-start gap-2 pt-2">
-            <Tag className="size-4 text-muted-foreground mt-0.5 flex-shrink-0" />
-            <div className="flex flex-wrap gap-1">
-              {order.tags.map((tag, index) => (
-                <Badge
-                  key={index}
-                  className="text-xs border-0"
-                  style={{
-                    backgroundColor: tag.color,
-                    color: getTextColor(tag.color)
-                  }}
-                >
-                  {tag.name}
-                </Badge>
-              ))}
+      ) : (
+        /* ── COMFORTABLE ─────────────────────────────────── */
+        <>
+          <CardHeader className="pb-3">
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0 flex-1">
+                <CardTitle className="text-lg truncate">{order.customerName}</CardTitle>
+                {order.isExchange && (
+                  <div className="flex items-center gap-1 mt-1">
+                    <Badge className="bg-purple-100 text-purple-800 border-purple-300 border gap-1 py-0 text-xs">
+                      <Repeat2 className="size-3" /> Permuta
+                    </Badge>
+                  </div>
+                )}
+              </div>
+              <Badge className={`shrink-0 ${statusColors[order.status]}`}>
+                {statusLabels[order.status]}
+              </Badge>
             </div>
-          </div>
-        )}
-        {order.payment && order.payment.method && (
-          <div className="flex items-center gap-2 pt-2 text-xs text-muted-foreground">
-            {getPaymentIcon(order.payment.method)}
-            <span>{getPaymentLabel(order.payment.method)}</span>
-          </div>
-        )}
-      </CardContent>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            <div className="flex items-center gap-2 text-sm">
+              <Package className="size-4 text-muted-foreground" />
+              <span>{order.productName}</span>
+            </div>
+            <div className="flex items-center justify-between gap-2 text-sm">
+              <div className="flex items-center gap-2">
+                <Phone className="size-4 text-muted-foreground" />
+                <span>{order.customerPhone}</span>
+              </div>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-7 gap-1 text-green-600 hover:text-green-700 hover:bg-green-50"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  openWhatsAppForOrder(order);
+                }}
+              >
+                <MessageCircle className="size-4" />
+                WhatsApp
+              </Button>
+            </div>
+            <div className="flex items-center gap-2 text-sm">
+              <Calendar className="size-4 text-muted-foreground" />
+              <span>Entrega: {formatDate(order.deliveryDate)}</span>
+            </div>
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2 text-sm font-medium">
+                <DollarSign className="size-4 text-muted-foreground" />
+                <span>{formatCurrency(order.price)} ({order.quantity} un.)</span>
+              </div>
+              {order.payment && order.payment.paidAmount > 0 && order.payment.remainingAmount > 0 && (
+                <div className="flex items-center gap-1 text-xs text-orange-600 bg-orange-50 px-2 py-1 rounded">
+                  <DollarSign className="size-3" />
+                  <span>Resta: {formatCurrency(order.payment.remainingAmount)}</span>
+                </div>
+              )}
+            </div>
+            {order.tags && order.tags.length > 0 && (
+              <div className="flex items-start gap-2 pt-2">
+                <Tag className="size-4 text-muted-foreground mt-0.5 flex-shrink-0" />
+                <div className="flex flex-wrap gap-1">
+                  {order.tags.map((tag, index) => (
+                    <Badge
+                      key={index}
+                      className="text-xs border-0"
+                      style={{
+                        backgroundColor: tag.color,
+                        color: getTextColor(tag.color)
+                      }}
+                    >
+                      {tag.name}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+            )}
+            {order.payment && order.payment.method && (
+              <div className="flex items-center gap-2 pt-2 text-xs text-muted-foreground">
+                {getPaymentIcon(order.payment.method)}
+                <span>{getPaymentLabel(order.payment.method)}</span>
+              </div>
+            )}
+          </CardContent>
+        </>
+      )}
     </Card>
   );
 }

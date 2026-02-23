@@ -21,29 +21,23 @@ export function useUserSettings() {
   // Observar mudanças em tempo real
   useEffect(() => {
     if (!user) {
-      console.log('useUserSettings: No user authenticated');
       setSettings(null);
       setLoading(false);
       return;
     }
 
-    console.log('useUserSettings: Setting up listener for user:', user.uid);
     const docRef = doc(db, 'users', user.uid, 'settings', 'profile');
-    console.log('useUserSettings: Document path:', `users/${user.uid}/settings/profile`);
 
     const unsubscribe = onSnapshot(
       docRef,
       (doc) => {
-        console.log('useUserSettings: Snapshot received, exists:', doc.exists());
         if (doc.exists()) {
           const data = doc.data();
-          console.log('useUserSettings: Document data:', data);
           setSettings({
             ...data,
             updatedAt: data.updatedAt?.toDate() || new Date(),
           } as UserSettings);
         } else {
-          console.log('useUserSettings: Document does not exist');
           setSettings(null);
         }
         setLoading(false);
@@ -56,7 +50,6 @@ export function useUserSettings() {
     );
 
     return () => {
-      console.log('useUserSettings: Cleaning up listener');
       unsubscribe();
     };
   }, [user]);

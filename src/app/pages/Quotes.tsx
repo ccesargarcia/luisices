@@ -26,6 +26,7 @@ import { Label } from '../components/ui/label';
 import { Textarea } from '../components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../components/ui/dialog';
 import { Alert, AlertDescription } from '../components/ui/alert';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '../components/ui/alert-dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import {
   FileText,
@@ -52,7 +53,10 @@ import {
   Filter,
   X,
   BookOpen,
+  Download,
+  Copy,
 } from 'lucide-react';
+import { exportQuotePDF } from '../utils/exportPdf';
 import { toast } from 'sonner';
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
@@ -135,7 +139,6 @@ interface FormState {
   customerPhone: string;
   customerId?: string;
   items: QuoteItem[];
-  estimatedCost: string;
   discount: string;
   discountType: 'percent' | 'fixed';
   paymentCondition: string;
@@ -155,7 +158,6 @@ function emptyForm(): FormState {
     customerPhone: '',
     customerId: undefined,
     items: [{ ...EMPTY_ITEM }],
-    estimatedCost: '',
     discount: '',
     discountType: 'percent',
     paymentCondition: '',
@@ -176,7 +178,6 @@ function formFromQuote(q: Quote): FormState {
     customerPhone: q.customerPhone,
     customerId: q.customerId,
     items: q.items.length ? q.items : [{ ...EMPTY_ITEM }],
-    estimatedCost: q.estimatedCost != null ? String(q.estimatedCost) : '',
     discount: q.discount != null ? String(q.discount) : '',
     discountType: q.discountType ?? 'percent',
     paymentCondition: q.paymentCondition || '',
@@ -283,7 +284,6 @@ function QuoteFormDialog({ open, onOpenChange, editing, onSaved }: QuoteFormDial
         customerId: form.customerId,
         items: form.items,
         totalPrice: finalTotal,
-        estimatedCost: form.estimatedCost ? Number(form.estimatedCost) : undefined,
         discount: form.discount ? parseFloat(form.discount) : undefined,
         discountType: form.discount ? form.discountType : undefined,
         paymentCondition: form.paymentCondition.trim() || undefined,
@@ -531,30 +531,18 @@ function QuoteFormDialog({ open, onOpenChange, editing, onSaved }: QuoteFormDial
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="q-cost">Custo estimado (opcional)</Label>
-              <Input
-                id="q-cost"
-                type="number"
-                min={0}
-                step="0.01"
-                placeholder="0,00"
-                value={form.estimatedCost}
-                onChange={(e) => setForm({ ...form, estimatedCost: e.target.value })}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="q-status">Status</Label>
-              <select
-                id="q-status"
-                className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                value={form.status}
-                onChange={(e) => setForm({ ...form, status: e.target.value as QuoteStatus })}
-              >
-                <option value="draft">Rascunho</option>
-                <option value="sent">Enviado</option>
-                <option value="rejected">Rejeitado</option>
-                <option value="expired">Expirado</option>
-              </select>
+              <Label>Status</Label>
+              <Select value={form.status} onValueChange={(v) => setForm({ ...form, status: v as QuoteStatus })}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="draft">Rascunho</SelectItem>
+                  <SelectItem value="sent">Enviado</SelectItem>
+                  <SelectItem value="rejected">Rejeitado</SelectItem>
+                  <SelectItem value="expired">Expirado</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           </div>
 
@@ -571,24 +559,38 @@ function QuoteFormDialog({ open, onOpenChange, editing, onSaved }: QuoteFormDial
                   value={form.discount}
                   onChange={(e) => setForm({ ...form, discount: e.target.value })}
                 />
-                <select
-                  className="flex h-9 rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                  value={form.discountType}
-                  onChange={(e) => setForm({ ...form, discountType: e.target.value as 'percent' | 'fixed' })}
-                >
-                  <option value="percent">%</option>
-                  <option value="fixed">R$</option>
-                </select>
+                <Select value={form.discountType} onValueChange={(v) => setForm({ ...form, discountType: v as 'percent' | 'fixed' })}>
+                  <SelectTrigger className="w-20">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="percent">%</SelectItem>
+                    <SelectItem value="fixed">R$</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
             </div>
             <div className="space-y-2">
               <Label htmlFor="q-payment">Condição de pagamento</Label>
               <Input
                 id="q-payment"
+                list="payment-options"
                 placeholder="Ex: 50% entrada + 50% na entrega"
                 value={form.paymentCondition}
                 onChange={(e) => setForm({ ...form, paymentCondition: e.target.value })}
               />
+              <datalist id="payment-options">
+                <option value="À vista" />
+                <option value="PIX" />
+                <option value="50% entrada + 50% na entrega" />
+                <option value="30% entrada + 70% na entrega" />
+                <option value="Parcelado 2x" />
+                <option value="Parcelado 3x" />
+                <option value="Parcelado 6x" />
+                <option value="Parcelado 12x" />
+                <option value="Boleto 30 dias" />
+                <option value="Cartão de crédito" />
+              </datalist>
             </div>
           </div>
 
@@ -695,6 +697,19 @@ function QuoteDetailsDialog({ quote, open, onOpenChange, onEdit, onRefresh }: Qu
   const [rejecting, setRejecting] = useState(false);
   const [marking, setMarking] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [exportingPdf, setExportingPdf] = useState(false);
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
+  const [duplicating, setDuplicating] = useState(false);
+
+  function handleExportPdf() {
+    if (!quote) return;
+    setExportingPdf(true);
+    try {
+      exportQuotePDF(quote, settings?.businessName);
+    } finally {
+      setExportingPdf(false);
+    }
+  }
 
   if (!quote) return null;
 
@@ -719,7 +734,6 @@ function QuoteDetailsDialog({ quote, open, onOpenChange, onEdit, onRefresh }: Qu
         productName,
         quantity: totalQty,
         price: quote.totalPrice,
-        cost: quote.estimatedCost,
         status: 'pending' as OrderStatus,
         deliveryDate: quote.deliveryDate,
         notes: [
@@ -756,7 +770,6 @@ function QuoteDetailsDialog({ quote, open, onOpenChange, onEdit, onRefresh }: Qu
 
   async function handleDelete() {
     if (!quote) return;
-    if (!confirm('Deseja realmente excluir este orçamento? Esta ação não pode ser desfeita.')) return;
     setDeleting(true);
     try {
       await firebaseQuoteService.deleteQuote(quote.id);
@@ -767,6 +780,39 @@ function QuoteDetailsDialog({ quote, open, onOpenChange, onEdit, onRefresh }: Qu
       toast.error('Erro ao excluir orçamento');
     } finally {
       setDeleting(false);
+      setConfirmDeleteOpen(false);
+    }
+  }
+
+  async function handleDuplicate() {
+    if (!quote) return;
+    setDuplicating(true);
+    try {
+      const payload: Partial<Quote> = {
+        customerName: quote.customerName,
+        customerPhone: quote.customerPhone,
+        customerId: quote.customerId,
+        items: quote.items,
+        totalPrice: quote.totalPrice,
+        discount: quote.discount,
+        discountType: quote.discountType,
+        paymentCondition: quote.paymentCondition,
+        deliveryType: quote.deliveryType,
+        deliveryAddress: quote.deliveryAddress,
+        deliveryDate: quote.deliveryDate,
+        validUntil: quote.validUntil,
+        notes: quote.notes,
+        tags: quote.tags,
+        cardColor: quote.cardColor,
+        status: 'draft',
+      };
+      await firebaseQuoteService.createQuote(payload);
+      toast.success('Orçamento duplicado como rascunho');
+      onOpenChange(false);
+    } catch (e) {
+      toast.error('Erro ao duplicar orçamento');
+    } finally {
+      setDuplicating(false);
     }
   }
 
@@ -784,6 +830,28 @@ function QuoteDetailsDialog({ quote, open, onOpenChange, onEdit, onRefresh }: Qu
   }
 
   return (
+    <>
+    <AlertDialog open={confirmDeleteOpen} onOpenChange={setConfirmDeleteOpen}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Excluir orçamento?</AlertDialogTitle>
+          <AlertDialogDescription>
+            Esta ação não pode ser desfeita. O orçamento será removido permanentemente.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Cancelar</AlertDialogCancel>
+          <AlertDialogAction
+            className="bg-destructive hover:bg-destructive/90 text-destructive-foreground"
+            onClick={handleDelete}
+            disabled={deleting}
+          >
+            {deleting ? <Loader2 className="size-4 mr-2 animate-spin" /> : null}
+            Excluir
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
@@ -857,12 +925,6 @@ function QuoteDetailsDialog({ quote, open, onOpenChange, onEdit, onRefresh }: Qu
                 <span className="font-medium text-green-700 dark:text-green-400">
                   {quote.discountType === 'percent' ? `${quote.discount}%` : formatCurrency(quote.discount)}
                 </span>
-              </div>
-            )}
-            {quote.estimatedCost != null && (
-              <div className="flex items-center gap-2">
-                <span className="text-muted-foreground">Custo estimado:</span>
-                <span className="font-medium">{formatCurrency(quote.estimatedCost)}</span>
               </div>
             )}
             {quote.paymentCondition && (
@@ -950,9 +1012,17 @@ function QuoteDetailsDialog({ quote, open, onOpenChange, onEdit, onRefresh }: Qu
         </div>
 
         <DialogFooter className="mt-4 flex-wrap gap-2">
-          <Button variant="outline" className="text-destructive border-destructive hover:bg-destructive hover:text-destructive-foreground mr-auto" onClick={handleDelete} disabled={deleting}>
-            {deleting ? <Loader2 className="size-4 mr-2 animate-spin" /> : <Trash2 className="size-4 mr-2" />}
+          <Button variant="outline" className="text-destructive border-destructive hover:bg-destructive hover:text-destructive-foreground mr-auto" onClick={() => setConfirmDeleteOpen(true)} disabled={deleting}>
+            <Trash2 className="size-4 mr-2" />
             Excluir
+          </Button>
+          <Button variant="outline" onClick={handleDuplicate} disabled={duplicating}>
+            {duplicating ? <Loader2 className="size-4 mr-2 animate-spin" /> : <Copy className="size-4 mr-2" />}
+            Duplicar
+          </Button>
+          <Button variant="outline" onClick={handleExportPdf} disabled={exportingPdf}>
+            <Download className="size-4 mr-2" />
+            {exportingPdf ? 'Gerando...' : 'Exportar PDF'}
           </Button>
           {canEdit && (
             <Button variant="outline" onClick={() => { onOpenChange(false); onEdit(quote); }}>
@@ -983,6 +1053,7 @@ function QuoteDetailsDialog({ quote, open, onOpenChange, onEdit, onRefresh }: Qu
         </DialogFooter>
       </DialogContent>
     </Dialog>
+    </>
   );
 }
 
@@ -995,6 +1066,7 @@ function QuoteCard({ quote, onClick, compact = false }: QuoteCardProps) {
     (new Date(quote.deliveryDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24)
   );
   const isUrgent = daysToDelivery >= 0 && daysToDelivery <= 3;
+  const isOverdue = daysToDelivery < 0 && quote.status !== 'approved' && quote.status !== 'rejected' && quote.status !== 'expired';
 
   return (
     <Card
@@ -1006,55 +1078,110 @@ function QuoteCard({ quote, onClick, compact = false }: QuoteCardProps) {
       } : undefined}
       onClick={onClick}
     >
-      <CardHeader className={compact ? 'pb-1 pt-3 px-3' : 'pb-2'}>
-        {/* Linha 1: número + valor */}
-        <div className="flex items-center justify-between gap-2">
-          <span className="text-xs font-mono text-muted-foreground shrink-0">{quote.quoteNumber}</span>
-          <span className="font-bold text-base tabular-nums">{formatCurrency(quote.totalPrice)}</span>
-        </div>
-        {/* Linha 2: nome + badge */}
-        <div className="flex items-center gap-2 mt-1 min-w-0">
-          <p className="font-semibold truncate flex-1">{quote.customerName}</p>
-          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium shrink-0 ${STATUS_VARIANT[quote.status]}`}>
-            {STATUS_LABELS[quote.status]}
-          </span>
-        </div>
-      </CardHeader>
-      <CardContent className={compact ? 'space-y-1 px-3 pb-3' : 'space-y-2'}>
-        <p className="text-sm text-muted-foreground truncate">
-          {quote.items.map((i) => i.name).join(', ')}
-        </p>
-        <div className="flex items-center justify-between text-xs text-muted-foreground">
-          <span className="flex items-center gap-1">
-            <Calendar className="size-3" />
-            Entrega: {formatDate(quote.deliveryDate)}
-          </span>
-          {isUrgent && quote.status !== 'approved' && quote.status !== 'rejected' && (
-            <Badge variant="destructive" className="text-xs">
-              {daysToDelivery === 0 ? 'Hoje!' : `${daysToDelivery}d`}
-            </Badge>
+      {compact ? (
+        /* ── COMPACT ─────────────────────────────────────── */
+        <div className="px-3 py-2 space-y-1">
+          {/* Row 1: name + status */}
+          <div className="flex items-center justify-between gap-2">
+            <span className="font-semibold text-sm truncate flex-1">{quote.customerName}</span>
+            <span className={`inline-flex items-center px-1.5 py-0 rounded-full text-[10px] font-medium leading-4 shrink-0 ${STATUS_VARIANT[quote.status]}`}>
+              {STATUS_LABELS[quote.status]}
+            </span>
+          </div>
+          {/* Row 2: items + price */}
+          <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
+            <span className="truncate flex-1">{quote.items.map((i) => i.name).join(', ')}</span>
+            <span className="font-medium text-foreground shrink-0">{formatCurrency(quote.totalPrice)}</span>
+          </div>
+          {/* Row 3: date + urgent */}
+          <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
+            <span className="flex items-center gap-1">
+              <Calendar className="size-3 shrink-0" />
+              {formatDate(quote.deliveryDate)}
+            </span>
+            {isUrgent && quote.status !== 'approved' && quote.status !== 'rejected' && (
+              <Badge variant="destructive" className="text-[10px] py-0 px-1.5 leading-4">
+                {daysToDelivery === 0 ? 'Hoje!' : `${daysToDelivery}d`}
+              </Badge>
+            )}
+            {isOverdue && (
+              <Badge className="text-[10px] py-0 px-1.5 leading-4 bg-orange-600 text-white">
+                Atrasado
+              </Badge>
+            )}
+          </div>
+          {/* Tags (compact) */}
+          {quote.tags && quote.tags.length > 0 && (
+            <div className="flex flex-wrap gap-0.5 pt-0.5">
+              {quote.tags.map((tag, i) => (
+                <span
+                  key={i}
+                  className="px-1.5 py-0 rounded-full text-[10px] font-medium leading-4"
+                  style={{ backgroundColor: tag.color, color: getTextColor(tag.color) }}
+                >
+                  {tag.name}
+                </span>
+              ))}
+            </div>
           )}
         </div>
-        {quote.status === 'approved' && quote.orderNumber && (
-          <div className="flex items-center gap-1 text-xs text-green-700 dark:text-green-400 font-medium">
-            <Package className="size-3" />
-            Pedido {quote.orderNumber}
-          </div>
-        )}
-        {quote.tags && quote.tags.length > 0 && (
-          <div className="flex flex-wrap gap-1 pt-1">
-            {quote.tags.map((tag, i) => (
-              <span
-                key={i}
-                className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium"
-                style={{ backgroundColor: tag.color, color: getTextColor(tag.color) }}
-              >
-                {tag.name}
+      ) : (
+        /* ── COMFORTABLE ─────────────────────────────────── */
+        <>
+          <CardHeader className="pb-2">
+            {/* Linha 1: número + valor */}
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-xs font-mono text-muted-foreground shrink-0">{quote.quoteNumber}</span>
+              <span className="font-bold text-base tabular-nums">{formatCurrency(quote.totalPrice)}</span>
+            </div>
+            {/* Linha 2: nome + badge */}
+            <div className="flex items-center gap-2 mt-1 min-w-0">
+              <p className="font-semibold truncate flex-1">{quote.customerName}</p>
+              <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium shrink-0 ${STATUS_VARIANT[quote.status]}`}>
+                {STATUS_LABELS[quote.status]}
               </span>
-            ))}
-          </div>
-        )}
-      </CardContent>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            <p className="text-sm text-muted-foreground truncate">
+              {quote.items.map((i) => i.name).join(', ')}
+            </p>
+            <div className="flex items-center justify-between text-xs text-muted-foreground">
+              <span className="flex items-center gap-1">
+                <Calendar className="size-3" />
+                Entrega: {formatDate(quote.deliveryDate)}
+              </span>
+              {isUrgent && quote.status !== 'approved' && quote.status !== 'rejected' && (
+                <Badge variant="destructive" className="text-xs">
+                  {daysToDelivery === 0 ? 'Hoje!' : `${daysToDelivery}d`}
+                </Badge>
+              )}
+              {isOverdue && (
+                <Badge className="text-xs bg-orange-600 text-white">Atrasado</Badge>
+              )}
+            </div>
+            {quote.status === 'approved' && quote.orderNumber && (
+              <div className="flex items-center gap-1 text-xs text-green-700 dark:text-green-400 font-medium">
+                <Package className="size-3" />
+                Pedido {quote.orderNumber}
+              </div>
+            )}
+            {quote.tags && quote.tags.length > 0 && (
+              <div className="flex flex-wrap gap-1 pt-1">
+                {quote.tags.map((tag, i) => (
+                  <span
+                    key={i}
+                    className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium"
+                    style={{ backgroundColor: tag.color, color: getTextColor(tag.color) }}
+                  >
+                    {tag.name}
+                  </span>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </>
+      )}
     </Card>
   );
 }
@@ -1092,20 +1219,23 @@ export function Quotes() {
   const activeFiltersCount = [filterDateFrom, filterDateTo, filterDelivery].filter(Boolean).length + filterTags.length;
 
   // Stats
-  const stats = useMemo(() => ({
-    total: quotes.length,
-    draft: quotes.filter((q) => q.status === 'draft').length,
-    sent: quotes.filter((q) => q.status === 'sent').length,
-    approved: quotes.filter((q) => q.status === 'approved').length,
-    rejected: quotes.filter((q) => q.status === 'rejected').length,
-    expired: quotes.filter((q) => q.status === 'expired').length,
-    pendingTotal: quotes
+  const stats = useMemo(() => {
+    const total = quotes.length;
+    const draft = quotes.filter((q) => q.status === 'draft').length;
+    const sent = quotes.filter((q) => q.status === 'sent').length;
+    const approved = quotes.filter((q) => q.status === 'approved').length;
+    const rejected = quotes.filter((q) => q.status === 'rejected').length;
+    const expired = quotes.filter((q) => q.status === 'expired').length;
+    const pendingTotal = quotes
       .filter((q) => q.status === 'draft' || q.status === 'sent')
-      .reduce((s, q) => s + q.totalPrice, 0),
-  }), [quotes]);
+      .reduce((s, q) => s + q.totalPrice, 0);
+    const decided = approved + rejected + expired;
+    const conversionRate = decided > 0 ? Math.round((approved / decided) * 100) : null;
+    return { total, draft, sent, approved, rejected, expired, pendingTotal, conversionRate };
+  }, [quotes]);
 
-  function applyFilters(list: Quote[]) {
-    let result = list;
+  const filteredQuotes = useMemo(() => {
+    let result = quotes;
     if (search.trim()) {
       const q = search.toLowerCase();
       result = result.filter(
@@ -1131,7 +1261,7 @@ export function Quotes() {
       result = result.filter((o) => o.deliveryType === filterDelivery);
     }
     return result;
-  }
+  }, [quotes, search, filterDateFrom, filterDateTo, filterTags, filterDelivery]);
 
   function clearFilters() {
     setFilterDateFrom('');
@@ -1172,11 +1302,12 @@ export function Quotes() {
   }
 
   const tabGroups: { value: string; label: string; list: Quote[] }[] = [
-    { value: 'all', label: `Todos (${quotes.length})`, list: applyFilters(quotes) },
-    { value: 'draft', label: `Rascunho (${stats.draft})`, list: applyFilters(quotes.filter((q) => q.status === 'draft')) },
-    { value: 'sent', label: `Enviados (${stats.sent})`, list: applyFilters(quotes.filter((q) => q.status === 'sent')) },
-    { value: 'approved', label: `Aprovados (${stats.approved})`, list: applyFilters(quotes.filter((q) => q.status === 'approved')) },
-    { value: 'rejected', label: `Rejeitados (${stats.rejected})`, list: applyFilters(quotes.filter((q) => q.status === 'rejected')) },
+    { value: 'all', label: `Todos (${quotes.length})`, list: filteredQuotes },
+    { value: 'draft', label: `Rascunho (${stats.draft})`, list: filteredQuotes.filter((q) => q.status === 'draft') },
+    { value: 'sent', label: `Enviados (${stats.sent})`, list: filteredQuotes.filter((q) => q.status === 'sent') },
+    { value: 'approved', label: `Aprovados (${stats.approved})`, list: filteredQuotes.filter((q) => q.status === 'approved') },
+    { value: 'rejected', label: `Rejeitados (${stats.rejected})`, list: filteredQuotes.filter((q) => q.status === 'rejected') },
+    { value: 'expired', label: `Vencidos (${stats.expired})`, list: filteredQuotes.filter((q) => q.status === 'expired') },
   ];
 
   return (
@@ -1209,7 +1340,9 @@ export function Quotes() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-green-600">{stats.approved}</div>
-            <p className="text-xs text-muted-foreground mt-1">pedidos gerados</p>
+            <p className="text-xs text-muted-foreground mt-1">
+              {stats.conversionRate !== null ? `${stats.conversionRate}% de conversão` : 'pedidos gerados'}
+            </p>
           </CardContent>
         </Card>
         <Card>
@@ -1240,8 +1373,17 @@ export function Quotes() {
               placeholder="Buscar por cliente, número, produto ou tag..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="pl-10"
+              className={search ? 'pl-10 pr-9' : 'pl-10'}
             />
+            {search && (
+              <button
+                type="button"
+                onClick={() => setSearch('')}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+              >
+                <X className="size-4" />
+              </button>
+            )}
           </div>
           <Button
             variant={showFilters ? 'default' : 'outline'}

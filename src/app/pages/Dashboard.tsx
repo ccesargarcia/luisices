@@ -9,7 +9,6 @@ import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
 import { Input } from '../components/ui/input';
 import { Badge } from '../components/ui/badge';
-import { Alert, AlertDescription } from '../components/ui/alert';
 import {
   Package,
   Clock,
@@ -50,7 +49,6 @@ export function Dashboard() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [showExchangeOnly, setShowExchangeOnly] = useState(false);
-  const [dismissedCostAlert, setDismissedCostAlert] = useState(false);
 
   const visibleCards = settings?.dashboardCards ?? DEFAULT_DASHBOARD_CARDS;
   const showCard = (id: string) => visibleCards.includes(id);
@@ -94,13 +92,6 @@ export function Dashboard() {
     const totalRevenue = orders
       .filter(o => o.status === 'completed')
       .reduce((sum, o) => sum + o.price, 0);
-
-    const totalCost = orders
-      .filter(o => o.status === 'completed')
-      .reduce((sum, o) => sum + (o.cost || 0), 0);
-
-    const profit = totalRevenue - totalCost;
-    const profitMargin = totalRevenue > 0 ? (profit / totalRevenue) * 100 : 0;
 
     // Pagamentos
     const paidOrders = orders.filter(o => o.payment?.status === 'paid').length;
@@ -176,9 +167,6 @@ export function Dashboard() {
       completed,
       cancelled,
       totalRevenue,
-      totalCost,
-      profit,
-      profitMargin,
       paidOrders,
       partialOrders,
       pendingPayments,
@@ -190,14 +178,6 @@ export function Dashboard() {
       deliveriesThisWeek,
       overdue,
     };
-  }, [orders]);
-
-  const ordersWithoutCost = useMemo(() => {
-    return orders.filter(o =>
-      o.status !== 'cancelled' &&
-      o.status !== 'completed' &&
-      (o.cost == null || o.cost === 0)
-    );
   }, [orders]);
 
   const filteredOrders = useMemo(() => {
@@ -431,41 +411,6 @@ export function Dashboard() {
 
       {/* Pedidos Atrasados */}
       {showCard('overdue') && <OverdueOrders orders={orders} onOrderClick={handleOrderClick} />}
-
-      {/* Alerta: pedidos sem custo registrado */}
-      {!dismissedCostAlert && ordersWithoutCost.length > 0 && (
-        <Alert className="border-orange-200 bg-orange-50 dark:bg-orange-950/20 dark:border-orange-800">
-          <AlertCircle className="size-4 text-orange-600 dark:text-orange-400" />
-          <AlertDescription className="flex items-start justify-between gap-4">
-            <div>
-              <span className="font-medium text-orange-800 dark:text-orange-300">
-                {ordersWithoutCost.length} {ordersWithoutCost.length === 1 ? 'pedido sem custo registrado' : 'pedidos sem custo registrado'}
-              </span>
-              <div className="mt-1 flex flex-wrap gap-1.5">
-                {ordersWithoutCost.slice(0, 5).map(o => (
-                  <button
-                    key={o.id}
-                    className="text-xs underline text-orange-700 dark:text-orange-400 hover:opacity-80"
-                    onClick={() => handleOrderClick(o)}
-                  >
-                    {o.orderNumber || o.customerName}
-                  </button>
-                ))}
-                {ordersWithoutCost.length > 5 && (
-                  <span className="text-xs text-orange-600">+{ordersWithoutCost.length - 5} mais</span>
-                )}
-              </div>
-            </div>
-            <button
-              className="shrink-0 text-orange-600 hover:text-orange-800 dark:text-orange-400 dark:hover:text-orange-200 text-lg leading-none"
-              onClick={() => setDismissedCostAlert(true)}
-              aria-label="Fechar alertas"
-            >
-              ×
-            </button>
-          </AlertDescription>
-        </Alert>
-      )}
 
       <div className="relative">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />

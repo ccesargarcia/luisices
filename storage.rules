@@ -11,6 +11,14 @@ service firebase.storage {
             || request.resource.contentType == 'application/pdf');
     }
 
+    // Galeria de artes: apenas imagens, até 15MB
+    match /users/{userId}/gallery/{fileName} {
+      allow read: if true;
+      allow write, delete: if request.auth != null && request.auth.uid == userId
+        && request.resource.size < 15 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+    }
+
     // Imagens de perfil, logo, banner: apenas imagens, até 5MB
     match /users/{userId}/{folder}/{fileName} {
       allow read: if true;

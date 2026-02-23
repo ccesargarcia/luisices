@@ -4,50 +4,95 @@ import { OrderDetailsDialog } from '../components/OrderDetailsDialog';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
-import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, Loader2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, Loader2, TrendingUp } from 'lucide-react';
 import { useFirebaseOrders } from '../../hooks/useFirebaseOrders';
 import { firebaseOrderService } from '../../services/firebaseOrderService';
+import { toast } from 'sonner';
+
+function hexToRgba(hex: string, alpha: number) {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+
+function formatCurrency(v: number) {
+  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
+}
+
+function toDateStr(d: Date) {
+  return d.toISOString().split('T')[0];
+}
+
+const STATUS_LABELS: Record<OrderStatus, string> = {
+  pending: 'Pendente',
+  'in-progress': 'Em Produção',
+  completed: 'Concluído',
+  cancelled: 'Cancelado',
+};
+
+const STATUS_COLORS: Record<OrderStatus, string> = {
+  pending: 'bg-yellow-100 text-yellow-800 border-yellow-200',
+  'in-progress': 'bg-blue-100 text-blue-800 border-blue-200',
+  completed: 'bg-green-100 text-green-800 border-green-200',
+  cancelled: 'bg-red-100 text-red-800 border-red-200',
+};
+
+type StatusFilter = '' | OrderStatus;
 
 export function WeeklyCalendar() {
   const { orders, loading, error } = useFirebaseOrders();
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [currentWeekOffset, setCurrentWeekOffset] = useState(0);
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('');
 
-  const getWeekDays = (offset: number = 0): WeekDay[] => {
-    const days: WeekDay[] = [];
+  const todayStr = useMemo(() => toDateStr(new Date()), []);
+
+  const weekDays = useMemo((): WeekDay[] => {
     const today = new Date();
+    const dayOfWeek = (today.getDay() + 6) % 7;
     const startOfWeek = new Date(today);
-    startOfWeek.setDate(today.getDate() - today.getDay() + offset * 7);
-
-    for (let i = 0; i < 7; i++) {
+    startOfWeek.setDate(today.getDate() - dayOfWeek + currentWeekOffset * 7);
+    return Array.from({ length: 7 }, (_, i) => {
       const date = new Date(startOfWeek);
       date.setDate(startOfWeek.getDate() + i);
-      const dateStr = date.toISOString().split('T')[0];
-
-      const dayOrders = orders.filter(order => order.deliveryDate === dateStr);
-
-      days.push({
+      const dateStr = toDateStr(date);
+      return {
         date: dateStr,
         dayName: date.toLocaleDateString('pt-BR', { weekday: 'long' }),
-        orders: dayOrders,
-      });
-    }
+        orders: orders.filter((o) => o.deliveryDate === dateStr),
+      };
+    });
+  }, [orders, currentWeekOffset]);
 
-    return days;
+  const weekStats = useMemo(() => {
+    const all = weekDays.flatMap((d) => d.orders);
+    const total = all.length;
+    const value = all.filter((o) => o.status !== 'cancelled').reduce((s, o) => s + (o.price ?? 0), 0);
+    return { total, value };
+  }, [weekDays]);
+
+  const getWeekRange = () => {
+    if (!weekDays.length) return '';
+    const fmt = (d: Date, year?: boolean) =>
+      d.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', ...(year ? { year: 'numeric' } : {}) });
+    const first = new Date(weekDays[0].date + 'T12:00:00');
+    const last = new Date(weekDays[6].date + 'T12:00:00');
+    return `${fmt(first)} \u2013 ${fmt(last, true)}`;
   };
 
-  const weekDays = useMemo(() => getWeekDays(currentWeekOffset), [orders, currentWeekOffset]);
+  const formatDate = (dateStr: string) => {
+    const d = new Date(dateStr + 'T12:00:00');
+    return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+  };
 
   const handleUpdateStatus = async (orderId: string, status: OrderStatus) => {
     try {
       await firebaseOrderService.updateOrderStatus(orderId, status);
-      if (selectedOrder) {
-        setSelectedOrder({ ...selectedOrder, status });
-      }
-    } catch (err) {
-      console.error('Erro ao atualizar status:', err);
-      alert('Erro ao atualizar status do pedido');
+      if (selectedOrder) setSelectedOrder({ ...selectedOrder, status });
+    } catch {
+      toast.error('Erro ao atualizar status do pedido');
     }
   };
 
@@ -56,46 +101,14 @@ export function WeeklyCalendar() {
       await firebaseOrderService.deleteOrder(orderId);
       setDetailsOpen(false);
       setSelectedOrder(null);
-    } catch (err) {
-      console.error('Erro ao deletar pedido:', err);
-      alert('Erro ao deletar pedido');
+    } catch {
+      toast.error('Erro ao deletar pedido');
     }
   };
 
   const handleOrderClick = (order: Order) => {
     setSelectedOrder(order);
     setDetailsOpen(true);
-  };
-
-  const formatDate = (dateStr: string) => {
-    const date = new Date(dateStr);
-    return date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
-  };
-
-  const getWeekRange = () => {
-    const firstDay = new Date(weekDays[0].date);
-    const lastDay = new Date(weekDays[6].date);
-
-    return `${firstDay.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })} - ${lastDay.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' })}`;
-  };
-
-  const isToday = (dateStr: string) => {
-    const today = new Date().toISOString().split('T')[0];
-    return dateStr === today;
-  };
-
-  const statusColors = {
-    pending: 'bg-yellow-100 text-yellow-800 border-yellow-200',
-    'in-progress': 'bg-blue-100 text-blue-800 border-blue-200',
-    completed: 'bg-green-100 text-green-800 border-green-200',
-    cancelled: 'bg-red-100 text-red-800 border-red-200',
-  };
-
-  const statusLabels = {
-    pending: 'Pendente',
-    'in-progress': 'Em Produção',
-    completed: 'Concluído',
-    cancelled: 'Cancelado',
   };
 
   if (loading) {
@@ -108,8 +121,8 @@ export function WeeklyCalendar() {
 
   if (error) {
     return (
-      <div className="flex items-center justify-center h-96">
-        <div className="text-center">
+      <div className="flex items-center justify-center h-96 text-center">
+        <div>
           <p className="text-lg font-semibold text-red-600">Erro ao carregar pedidos</p>
           <p className="text-sm text-muted-foreground mt-2">{error}</p>
         </div>
@@ -119,84 +132,128 @@ export function WeeklyCalendar() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold">Agenda Semanal</h1>
           <p className="text-muted-foreground">Visualize entregas por dia da semana</p>
         </div>
         <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="icon"
-            onClick={() => setCurrentWeekOffset(currentWeekOffset - 1)}
-          >
+          <Button variant="outline" size="icon" onClick={() => setCurrentWeekOffset((o) => o - 1)}>
             <ChevronLeft className="size-4" />
           </Button>
           <div className="flex items-center gap-2 px-4 py-2 bg-muted rounded-md">
             <CalendarIcon className="size-4" />
             <span className="font-medium">{getWeekRange()}</span>
           </div>
-          <Button
-            variant="outline"
-            size="icon"
-            onClick={() => setCurrentWeekOffset(currentWeekOffset + 1)}
-          >
+          <Button variant="outline" size="icon" onClick={() => setCurrentWeekOffset((o) => o + 1)}>
             <ChevronRight className="size-4" />
           </Button>
           {currentWeekOffset !== 0 && (
-            <Button
-              variant="outline"
-              onClick={() => setCurrentWeekOffset(0)}
-            >
+            <Button variant="outline" onClick={() => setCurrentWeekOffset(0)}>
               Hoje
             </Button>
           )}
         </div>
       </div>
 
+      {/* Summary + Status filter */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="flex items-center gap-4 text-sm text-muted-foreground">
+          <span className="flex items-center gap-1.5">
+            <TrendingUp className="size-4" />
+            <span>
+              <strong className="text-foreground">{weekStats.total}</strong>
+              {weekStats.total === 1 ? ' entrega' : ' entregas'} na semana
+            </span>
+          </span>
+          {weekStats.value > 0 && (
+            <span>
+              <strong className="text-foreground">{formatCurrency(weekStats.value)}</strong> em pedidos ativos
+            </span>
+          )}
+        </div>
+
+        <div className="flex flex-wrap gap-1.5">
+          <Button size="sm" variant={statusFilter === '' ? 'default' : 'outline'} onClick={() => setStatusFilter('')}>
+            Todos
+          </Button>
+          {(Object.keys(STATUS_LABELS) as OrderStatus[]).map((s) => (
+            <Button
+              key={s}
+              size="sm"
+              variant={statusFilter === s ? 'default' : 'outline'}
+              onClick={() => setStatusFilter(statusFilter === s ? '' : s)}
+            >
+              {STATUS_LABELS[s]}
+            </Button>
+          ))}
+        </div>
+      </div>
+
+      {/* Calendar grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-7 gap-4">
-        {weekDays.map((day) => (
-          <Card
-            key={day.date}
-            className={isToday(day.date) ? 'ring-2 ring-primary' : ''}
-          >
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm flex items-center justify-between">
-                <span className="capitalize">{day.dayName}</span>
-                {isToday(day.date) && (
-                  <Badge variant="outline" className="text-xs">Hoje</Badge>
-                )}
-              </CardTitle>
-              <div className="text-muted-foreground text-sm">{formatDate(day.date)}</div>
-              <div className="text-xs text-muted-foreground">
-                {day.orders.length} {day.orders.length === 1 ? 'entrega' : 'entregas'}
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-2">
-              {day.orders.length === 0 ? (
-                <div className="text-sm text-muted-foreground text-center py-4">
-                  Sem entregas
+        {weekDays.map((day) => {
+          const visibleOrders = statusFilter ? day.orders.filter((o) => o.status === statusFilter) : day.orders;
+          const isToday = day.date === todayStr;
+
+          return (
+            <Card key={day.date} className={isToday ? 'ring-2 ring-primary' : ''}>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm flex items-center justify-between">
+                  <span className="capitalize">{day.dayName}</span>
+                  {isToday && <Badge variant="outline" className="text-xs">Hoje</Badge>}
+                </CardTitle>
+                <div className="text-muted-foreground text-sm">{formatDate(day.date)}</div>
+                <div className="text-xs text-muted-foreground">
+                  {visibleOrders.length} {visibleOrders.length === 1 ? 'entrega' : 'entregas'}
                 </div>
-              ) : (
-                day.orders.map((order) => (
-                  <div
-                    key={order.id}
-                    className="p-3 bg-muted rounded-lg cursor-pointer hover:bg-muted/80 transition-colors"
-                    onClick={() => handleOrderClick(order)}
-                  >
-                    <div className="font-medium text-sm mb-1">{order.customerName}</div>
-                    <div className="text-xs text-muted-foreground mb-2 line-clamp-1">
-                      {order.productName}
-                    </div>
-                    <Badge className={`text-xs ${statusColors[order.status]}`}>
-                      {statusLabels[order.status]}
-                    </Badge>
+              </CardHeader>
+
+              <CardContent className="space-y-2">
+                {visibleOrders.length === 0 ? (
+                  <div className="text-sm text-muted-foreground text-center py-4">
+                    {statusFilter ? 'Nenhum pedido' : 'Sem entregas'}
                   </div>
-                ))
-              )}
-            </CardContent>
-          </Card>
-        ))}
+                ) : (
+                  visibleOrders.map((order) => (
+                    <div
+                      key={order.id}
+                      className={`p-3 rounded-lg border cursor-pointer transition-all hover:brightness-95 ${order.status === 'cancelled' ? 'opacity-50' : ''}`}
+                      style={
+                        order.cardColor
+                          ? {
+                              backgroundColor: hexToRgba(order.cardColor, 0.18),
+                              borderColor: order.cardColor,
+                              borderWidth: 1.5,
+                            }
+                          : { backgroundColor: 'hsl(var(--muted))' }
+                      }
+                      onClick={() => handleOrderClick(order)}
+                    >
+                      <div className={`font-medium text-sm mb-0.5 ${order.status === 'cancelled' ? 'line-through' : ''}`}>
+                        {order.customerName}
+                      </div>
+                      <div className="text-xs text-muted-foreground mb-1.5 line-clamp-1">
+                        {order.productName}
+                      </div>
+                      <div className="flex items-center justify-between gap-1">
+                        <Badge className={`text-xs ${STATUS_COLORS[order.status]}`}>
+                          {STATUS_LABELS[order.status]}
+                        </Badge>
+                        {order.price != null && (
+                          <span className="text-xs font-medium tabular-nums">
+                            {formatCurrency(order.price)}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </CardContent>
+            </Card>
+          );
+        })}
       </div>
 
       <OrderDetailsDialog

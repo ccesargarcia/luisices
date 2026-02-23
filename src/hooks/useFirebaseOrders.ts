@@ -53,8 +53,6 @@ export function useFirebaseOrders() {
             productName: data.productName,
             quantity: data.quantity,
             price: data.price,
-            cost: data.cost,
-            realCost: data.realCost,
             status: data.status,
             deliveryDate: data.deliveryDate,
             notes: data.notes,

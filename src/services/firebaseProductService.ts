@@ -13,6 +13,7 @@ import {
   deleteDoc,
   getDocs,
   updateDoc,
+  onSnapshot,
   query,
   where,
   Timestamp,
@@ -76,6 +77,19 @@ class FirebaseProductService {
     const url = await firebaseStorageService.uploadProductPhoto(file, userId, productId);
     await updateDoc(doc(db, PRODUCTS_COLLECTION, productId), { photoUrl: url, updatedAt: Timestamp.now() });
     return url;
+  }
+
+  subscribeToProducts(userId: string, callback: (products: Product[]) => void): () => void {
+    const q = query(
+      collection(db, PRODUCTS_COLLECTION),
+      where('userId', '==', userId)
+    );
+    return onSnapshot(q, (snap) => {
+      const products = snap.docs
+        .map((d) => this.mapDoc(d.id, d.data()))
+        .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+      callback(products);
+    });
   }
 
   async updateProduct(id: string, changes: Partial<Product>): Promise<void> {

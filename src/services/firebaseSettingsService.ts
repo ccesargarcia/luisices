@@ -36,6 +36,7 @@ export interface UserSettings {
   // Dashboard preferences
   dashboardCards?: string[];
   defaultReportPeriod?: 'week' | 'month' | 'quarter' | 'year';
+  navOrder?: string[]; // hrefs na ordem desejada
 
   // Metadata
   updatedAt: Date;

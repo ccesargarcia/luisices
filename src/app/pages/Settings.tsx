@@ -7,7 +7,7 @@ import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Avatar, AvatarFallback, AvatarImage } from '../components/ui/avatar';
 import { Alert, AlertDescription } from '../components/ui/alert';
-import { Loader2, Upload, X, Building2, Mail, Phone, MapPin, Palette, Sun, Moon, Monitor, Check, LayoutGrid, MessageSquare } from 'lucide-react';
+import { Loader2, Upload, X, Building2, Mail, Phone, MapPin, Palette, Sun, Moon, Monitor, Check, LayoutGrid, MessageSquare, GripVertical } from 'lucide-react';
 import { Textarea } from '../components/ui/textarea';
 import { toast } from 'sonner';
 import { useTheme } from 'next-themes';
@@ -42,6 +42,20 @@ export function Settings() {
   const [defaultReportPeriod, setDefaultReportPeriod] = useState<'week' | 'month' | 'quarter' | 'year'>('month');
   const [compactCards, setCompactCards] = useState(false);
   const [savingDisplayPrefs, setSavingDisplayPrefs] = useState(false);
+
+  const NAV_ITEMS = [
+    { href: '/',           label: 'Dashboard' },
+    { href: '/agenda',     label: 'Agenda Semanal' },
+    { href: '/clientes',   label: 'Clientes' },
+    { href: '/relatorios', label: 'Relatórios' },
+    { href: '/orcamentos', label: 'Orçamentos' },
+    { href: '/produtos',   label: 'Produtos' },
+    { href: '/galeria',    label: 'Galeria' },
+  ];
+  const DEFAULT_NAV_ORDER = NAV_ITEMS.map(i => i.href);
+  const [navOrder, setNavOrder] = useState<string[]>(DEFAULT_NAV_ORDER);
+  const [savingNavOrder, setSavingNavOrder] = useState(false);
+  const [dragNavIdx, setDragNavIdx] = useState<number | null>(null);
   const [whatsappGreeting, setWhatsappGreeting] = useState('');
   const [whatsappSignature, setWhatsappSignature] = useState('');
   const [savingWhatsappTemplate, setSavingWhatsappTemplate] = useState(false);
@@ -65,6 +79,11 @@ export function Settings() {
       setSelectedCards(settings.dashboardCards ?? DEFAULT_DASHBOARD_CARDS);
       setDefaultReportPeriod(settings.defaultReportPeriod ?? 'month');
       setCompactCards(settings.compactCards ?? false);
+      // Merge saved order with any new nav items added since last save
+      const savedOrder = settings.navOrder && settings.navOrder.length > 0 ? settings.navOrder : DEFAULT_NAV_ORDER;
+      const allHrefs = DEFAULT_NAV_ORDER;
+      const merged = [...savedOrder.filter(h => allHrefs.includes(h)), ...allHrefs.filter(h => !savedOrder.includes(h))];
+      setNavOrder(merged);
       setWhatsappGreeting(settings.whatsappGreeting ?? '');
       setWhatsappSignature(settings.whatsappSignature ?? '');
     }
@@ -617,6 +636,76 @@ export function Settings() {
       </Card>
 
       {/* Densidade dos Cards */}
+      {/* Ordem de navegação */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <LayoutDashboard className="size-5" />
+            Ordem da Navegação
+          </CardTitle>
+          <CardDescription>
+            Arraste os itens para reorganizar a ordem dos botões do menu.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-1.5">
+            {navOrder.map((href, idx) => {
+              const item = NAV_ITEMS.find(i => i.href === href);
+              if (!item) return null;
+              return (
+                <div
+                  key={href}
+                  draggable
+                  onDragStart={() => setDragNavIdx(idx)}
+                  onDragOver={(e) => { e.preventDefault(); }}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    if (dragNavIdx === null || dragNavIdx === idx) return;
+                    const next = [...navOrder];
+                    const [moved] = next.splice(dragNavIdx, 1);
+                    next.splice(idx, 0, moved);
+                    setNavOrder(next);
+                    setDragNavIdx(null);
+                  }}
+                  onDragEnd={() => setDragNavIdx(null)}
+                  className={`flex items-center gap-3 px-3 py-2.5 rounded-md border bg-card cursor-grab active:cursor-grabbing select-none transition-opacity ${
+                    dragNavIdx === idx ? 'opacity-40' : 'opacity-100'
+                  }`}
+                >
+                  <GripVertical className="size-4 text-muted-foreground flex-shrink-0" />
+                  <span className="text-sm font-medium flex-1">{item.label}</span>
+                  <span className="text-xs text-muted-foreground">#{idx + 1}</span>
+                </div>
+              );
+            })}
+          </div>
+          <div className="flex gap-2">
+            <Button
+              onClick={async () => {
+                setSavingNavOrder(true);
+                try {
+                  await updateSettings({ navOrder });
+                  toast.success('Ordem de navegação salva!');
+                } catch {
+                  toast.error('Erro ao salvar ordem de navegação');
+                } finally {
+                  setSavingNavOrder(false);
+                }
+              }}
+              disabled={savingNavOrder}
+            >
+              {savingNavOrder ? <><Loader2 className="size-4 mr-2 animate-spin" />Salvando...</> : 'Salvar Ordem'}
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => setNavOrder(DEFAULT_NAV_ORDER)}
+            >
+              Restaurar padrão
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">

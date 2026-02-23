@@ -5,17 +5,21 @@ import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Textarea } from './ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
-import { Order, OrderStatus, ProductionStep, PaymentStatus, PaymentMethod, Tag, ExchangeItem } from '../types';
-import { Calendar, DollarSign, Package, Phone, User, FileText, Clock, Tag as TagIcon, Trash2, Edit, Save, X, Plus, Copy, Paperclip, Upload, ExternalLink, ImageIcon, Repeat2 } from 'lucide-react';
+import { Order, OrderStatus, ProductionStep, PaymentStatus, PaymentMethod, Tag, ExchangeItem, GalleryItem } from '../types';
+import { Calendar, DollarSign, Package, Phone, User, FileText, Clock, Tag as TagIcon, Trash2, Edit, Save, X, Plus, Copy, Paperclip, Upload, ExternalLink, ImageIcon, Repeat2, Images, ZoomIn, Download } from 'lucide-react';
+import { exportOrderPDF } from '../utils/exportPdf';
+import { useUserSettings } from '../../hooks/useUserSettings';
 import { getTextColor } from '../utils/tagColors';
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { ProductionWorkflowComponent } from './ProductionWorkflow';
 import { firebaseOrderService } from '../../services/firebaseOrderService';
 import { firebaseStorageService } from '../../services/firebaseStorageService';
+import { firebaseGalleryService } from '../../services/firebaseGalleryService';
 import { useAuth } from '../../contexts/AuthContext';
 import { TagInput } from './TagInput';
 import { Switch } from './ui/switch';
 import { SafeImg, SafeAnchor } from './SafeMedia';
+import { toast } from 'sonner';
 
 interface ProductItem {
   name: string;
@@ -47,15 +51,24 @@ const statusLabels = {
 
 export function OrderDetailsDialog({ order, open, onOpenChange, onUpdateStatus, onDeleteOrder }: OrderDetailsDialogProps) {
   const { user } = useAuth();
+  const { settings } = useUserSettings();
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isDuplicating, setIsDuplicating] = useState(false);
   const [isUploadingAttachment, setIsUploadingAttachment] = useState(false);
   const [localAttachments, setLocalAttachments] = useState<import('../types').OrderAttachment[]>([]);
+  const [customerGallery, setCustomerGallery] = useState<GalleryItem[]>([]);
+  const [galleryLoading, setGalleryLoading] = useState(false);
+  const [galleryLightbox, setGalleryLightbox] = useState<GalleryItem | null>(null);
+  const [galleryUploadOpen, setGalleryUploadOpen] = useState(false);
+  const [galleryUploadFile, setGalleryUploadFile] = useState<File | null>(null);
+  const [galleryUploadPreview, setGalleryUploadPreview] = useState<string | null>(null);
+  const [galleryUploadTitle, setGalleryUploadTitle] = useState('');
+  const [galleryUploadSaving, setGalleryUploadSaving] = useState(false);
+  const galleryInputRef = useRef<HTMLInputElement>(null);
   const [editProducts, setEditProducts] = useState<ProductItem[]>([{ name: '', quantity: '1', unitPrice: '' }]);
   const [editTags, setEditTags] = useState<Tag[]>([]);
-  const [editRealCost, setEditRealCost] = useState('');
   const [editExchangeItems, setEditExchangeItems] = useState<ProductItem[]>([{ name: '', quantity: '1', unitPrice: '' }]);
   const [editData, setEditData] = useState({
     customerName: '',
@@ -87,6 +100,54 @@ export function OrderDetailsDialog({ order, open, onOpenChange, onUpdateStatus, 
     setLocalAttachments(order?.attachments ?? []);
   }, [order?.id, order?.attachments]);
 
+  // Carregar artes do cliente quando o pedido mudar
+  useEffect(() => {
+    if (!order || !user) { setCustomerGallery([]); return; }
+    const cid = order.customerId;
+    const cname = order.customerName;
+    if (!cid && !cname) { setCustomerGallery([]); return; }
+    setGalleryLoading(true);
+    firebaseGalleryService.getItems(user.uid).then(items => {
+      setCustomerGallery(items.filter(g =>
+        (cid && g.customerId === cid) || (!cid && g.customerName === cname)
+      ));
+    }).catch(() => {}).finally(() => setGalleryLoading(false));
+  }, [order?.id, order?.customerId, order?.customerName, user]);
+
+  const handleGalleryFilePick = (f: File) => {
+    if (!f.type.startsWith('image/')) return;
+    setGalleryUploadFile(f);
+    setGalleryUploadPreview(URL.createObjectURL(f));
+    if (!galleryUploadTitle) setGalleryUploadTitle(f.name.replace(/\.[^.]+$/, ''));
+    setGalleryUploadOpen(true);
+  };
+
+  const handleGalleryUploadSave = async () => {
+    if (!galleryUploadFile || !user || !order) return;
+    if (!galleryUploadTitle.trim()) return;
+    setGalleryUploadSaving(true);
+    try {
+      const tempId = `${Date.now()}`;
+      const imageUrl = await firebaseGalleryService.uploadImage(galleryUploadFile, user.uid, tempId);
+      const item = await firebaseGalleryService.createItem(user.uid, {
+        title: galleryUploadTitle.trim(),
+        imageUrl,
+        customerId: order.customerId,
+        customerName: order.customerName,
+        orderId: order.id,
+      });
+      setCustomerGallery(prev => [item, ...prev]);
+      setGalleryUploadOpen(false);
+      setGalleryUploadFile(null);
+      setGalleryUploadPreview(null);
+      setGalleryUploadTitle('');
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setGalleryUploadSaving(false);
+    }
+  };
+
   if (!order) return null;
 
   // Atualizar editData quando o pedido mudar
@@ -104,7 +165,6 @@ export function OrderDetailsDialog({ order, open, onOpenChange, onUpdateStatus, 
       });
     setEditProducts(parsedProducts.length > 0 ? parsedProducts : [{ name: '', quantity: '1', unitPrice: '' }]);
     setEditTags(order.tags ? [...order.tags] : []);
-    setEditRealCost(order.realCost != null ? String(order.realCost) : '');
     setEditExchangeItems(
       order.exchangeItems && order.exchangeItems.length > 0
         ? order.exchangeItems.map(i => ({ name: i.name, quantity: String(i.quantity), unitPrice: i.value != null ? String(i.value) : '' }))
@@ -168,7 +228,6 @@ export function OrderDetailsDialog({ order, open, onOpenChange, onUpdateStatus, 
         status: editData.status,
         tags: editTags.length > 0 ? editTags : null,
         payment: paymentData,
-        realCost: editRealCost !== '' ? parseFloat(editRealCost) : null,
         isExchange: editData.isExchange || null,
         exchangeNotes: editData.exchangeNotes || null,
         cardColor: editData.cardColor || null,
@@ -234,6 +293,22 @@ export function OrderDetailsDialog({ order, open, onOpenChange, onUpdateStatus, 
       // Substituir prévia pelo anexo real
       setLocalAttachments(prev => prev.map(a => a.url === previewUrl ? attachment : a));
       URL.revokeObjectURL(previewUrl);
+      // Se for imagem e o pedido tiver cliente, vincular automaticamente à galeria
+      if (!attachment.isPdf && (order.customerId || order.customerName)) {
+        try {
+          const galleryItem = await firebaseGalleryService.createItem(user.uid, {
+            title: file.name.replace(/\.[^.]+$/, ''),
+            imageUrl: attachment.url,
+            customerId: order.customerId,
+            customerName: order.customerName,
+            orderId: order.id,
+          });
+          setCustomerGallery(prev => [galleryItem, ...prev]);
+        } catch (galleryErr) {
+          console.error('Erro ao vincular à galeria:', galleryErr);
+          toast.error('Anexo salvo, mas não foi possível vincular à galeria');
+        }
+      }
     } catch (error: any) {
       // Reverter prévia em caso de erro
       setLocalAttachments(prev => prev.filter(a => a.url !== previewUrl));
@@ -295,6 +370,15 @@ export function OrderDetailsDialog({ order, open, onOpenChange, onUpdateStatus, 
             <div className="flex items-center gap-2">
               {!isEditing && (
                 <>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => exportOrderPDF(order, settings?.businessName)}
+                    className="gap-2"
+                  >
+                    <Download className="size-4" />
+                    PDF
+                  </Button>
                   <Button
                     size="sm"
                     variant="outline"
@@ -684,33 +768,6 @@ export function OrderDetailsDialog({ order, open, onOpenChange, onUpdateStatus, 
                 </div>
               </div>
 
-              {/* Custo Real */}
-              <div className="border-t pt-4 space-y-3">
-                <h3 className="font-medium text-sm">Custo de Produção</h3>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="realCost">Custo Real (R$)</Label>
-                    <Input
-                      id="realCost"
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      placeholder="0,00"
-                      value={editRealCost}
-                      onChange={e => setEditRealCost(e.target.value)}
-                    />
-                  </div>
-                  {editRealCost !== '' && (totalPrice > 0 || order.price > 0) && (
-                    <div className="space-y-2">
-                      <Label>Margem estimada</Label>
-                      <div className="h-10 flex items-center px-3 border rounded-md bg-muted text-sm font-medium">
-                        {formatCurrencyEdit((totalPrice > 0 ? totalPrice : order.price) - parseFloat(editRealCost || '0'))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-
               <DialogFooter className="gap-2">
                 <Button variant="outline" onClick={handleCancelEdit} disabled={isSaving}>
                   <X className="size-4 mr-2" />
@@ -920,6 +977,108 @@ export function OrderDetailsDialog({ order, open, onOpenChange, onUpdateStatus, 
                     </span>
                   </div>
                 </div>
+              </div>
+            </div>
+          )}
+
+          {/* Artes do Cliente */}
+          <div className="border-t pt-4">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="font-medium text-sm flex items-center gap-2">
+                <Images className="size-4" /> Artes de {order.customerName}
+                {!galleryLoading && customerGallery.length > 0 && (
+                  <span className="text-xs text-muted-foreground font-normal">({customerGallery.length})</span>
+                )}
+              </h3>
+              <label className="cursor-pointer">
+                <input
+                  ref={galleryInputRef}
+                  type="file"
+                  className="sr-only"
+                  accept="image/*"
+                  onChange={e => { const f = e.target.files?.[0]; if (f) handleGalleryFilePick(f); e.target.value = ''; }}
+                />
+                <span className="inline-flex items-center gap-1.5 text-xs border rounded-md px-2.5 py-1.5 hover:bg-muted transition-colors cursor-pointer">
+                  <Plus className="size-3.5" /> Adicionar arte
+                </span>
+              </label>
+            </div>
+            {galleryLoading ? (
+              <div className="grid grid-cols-4 gap-2">
+                {[1,2,3,4].map(i => <div key={i} className="aspect-square rounded-md bg-muted animate-pulse" />)}
+              </div>
+            ) : customerGallery.length === 0 ? (
+              <p className="text-xs text-muted-foreground py-3 text-center">Nenhuma arte vinculada. Clique em "Adicionar arte" para enviar.</p>
+            ) : (
+              <div className="grid grid-cols-4 gap-2">
+                {customerGallery.map(item => (
+                  <button
+                    key={item.id}
+                    onClick={() => setGalleryLightbox(item)}
+                    className="group relative aspect-square rounded-md overflow-hidden border bg-muted"
+                  >
+                    <img src={item.imageUrl} alt={item.title} className="w-full h-full object-cover transition-transform group-hover:scale-105" />
+                    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center">
+                      <ZoomIn className="size-4 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Upload arte — mini dialog */}
+          {galleryUploadOpen && (
+            <div className="fixed inset-0 z-[100] bg-black/60 flex items-center justify-center p-4" onClick={() => setGalleryUploadOpen(false)}>
+              <div className="bg-background rounded-lg shadow-xl p-5 w-full max-w-sm space-y-3" onClick={e => e.stopPropagation()}>
+                <div className="flex items-center justify-between">
+                  <h4 className="font-semibold text-sm">Adicionar Arte</h4>
+                  <button onClick={() => setGalleryUploadOpen(false)}><X className="size-4" /></button>
+                </div>
+                {galleryUploadPreview && (
+                  <img src={galleryUploadPreview} alt="preview" className="w-full max-h-40 object-contain rounded border" />
+                )}
+                <div className="space-y-1">
+                  <label className="text-xs font-medium">Título <span className="text-destructive">*</span></label>
+                  <input
+                    className="w-full border rounded-md px-3 py-1.5 text-sm bg-background focus:outline-none focus:ring-2 focus:ring-ring"
+                    value={galleryUploadTitle}
+                    onChange={e => setGalleryUploadTitle(e.target.value)}
+                    placeholder="Nome da arte"
+                    autoFocus
+                  />
+                </div>
+                <div className="flex gap-2 pt-1">
+                  <button
+                    className="flex-1 border rounded-md py-1.5 text-sm hover:bg-muted transition-colors"
+                    onClick={() => setGalleryUploadOpen(false)}
+                    disabled={galleryUploadSaving}
+                  >Cancelar</button>
+                  <button
+                    className="flex-1 bg-primary text-primary-foreground rounded-md py-1.5 text-sm hover:bg-primary/90 transition-colors disabled:opacity-50"
+                    onClick={handleGalleryUploadSave}
+                    disabled={galleryUploadSaving || !galleryUploadTitle.trim()}
+                  >{galleryUploadSaving ? 'Salvando...' : 'Salvar'}</button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Lightbox da galeria */}
+          {galleryLightbox && (
+            <div
+              className="fixed inset-0 z-[100] bg-black/80 flex items-center justify-center p-4"
+              onClick={() => setGalleryLightbox(null)}
+            >
+              <div className="relative max-w-3xl w-full" onClick={e => e.stopPropagation()}>
+                <button
+                  className="absolute -top-8 right-0 text-white/80 hover:text-white"
+                  onClick={() => setGalleryLightbox(null)}
+                >
+                  <X className="size-5" />
+                </button>
+                <img src={galleryLightbox.imageUrl} alt={galleryLightbox.title} className="w-full max-h-[80vh] object-contain rounded-lg" />
+                <p className="text-white/90 text-sm mt-2 text-center">{galleryLightbox.title}</p>
               </div>
             </div>
           )}

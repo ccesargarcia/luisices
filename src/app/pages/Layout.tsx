@@ -1,6 +1,6 @@
-import { useEffect } from 'react';
+import { useEffect, useMemo } from 'react';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router';
-import { LayoutDashboard, Calendar, Users, Package2, LogOut, Settings as SettingsIcon, BarChart3, FileText, ShoppingBag } from 'lucide-react';
+import { LayoutDashboard, Calendar, Users, Package2, LogOut, Settings as SettingsIcon, BarChart3, FileText, ShoppingBag, Images } from 'lucide-react';
 import { cn } from '../components/ui/utils';
 import { useAuth } from '../../contexts/AuthContext';
 import { useUserSettings } from '../../hooks/useUserSettings';
@@ -48,43 +48,27 @@ export function Layout() {
   };
 
   const navigation = [
-    {
-      name: 'Dashboard',
-      href: '/',
-      icon: LayoutDashboard,
-    },
-    {
-      name: 'Agenda Semanal',
-      href: '/agenda',
-      icon: Calendar,
-    },
-    {
-      name: 'Clientes',
-      href: '/clientes',
-      icon: Users,
-    },
-    {
-      name: 'Relatórios',
-      href: '/relatorios',
-      icon: BarChart3,
-    },
-    {
-      name: 'Orçamentos',
-      href: '/orcamentos',
-      icon: FileText,
-    },
-    {
-      name: 'Produtos',
-      href: '/produtos',
-      icon: ShoppingBag,
-    },
+    { name: 'Dashboard',       href: '/',           icon: LayoutDashboard },
+    { name: 'Agenda Semanal', href: '/agenda',       icon: Calendar },
+    { name: 'Clientes',       href: '/clientes',     icon: Users },
+    { name: 'Relatórios',     href: '/relatorios',   icon: BarChart3 },
+    { name: 'Orçamentos',     href: '/orcamentos',   icon: FileText },
+    { name: 'Produtos',       href: '/produtos',     icon: ShoppingBag },
+    { name: 'Galeria',        href: '/galeria',      icon: Images },
   ];
+
+  const orderedNav = useMemo(() => {
+    const order = settings?.navOrder;
+    if (!order || order.length === 0) return navigation;
+    return [...navigation].sort((a, b) => {
+      const ai = order.indexOf(a.href);
+      const bi = order.indexOf(b.href);
+      return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
+    });
+  }, [settings?.navOrder]);
 
   const businessName = settings?.businessName || 'Papelaria Personalizada';
   const hasLogo = !!settings?.logo;
-
-  // Debug
-  console.log('Layout settings:', { businessName, hasLogo, logo: settings?.logo, avatar: settings?.avatar });
 
   return (
     <div className="min-h-screen bg-background overflow-x-hidden">
@@ -149,7 +133,7 @@ export function Layout() {
       <nav className="border-b bg-card sticky top-0 z-10">
         <div className="container mx-auto px-2 sm:px-4">
           <div className="flex">
-            {navigation.map((item) => {
+            {orderedNav.map((item) => {
               const isActive = location.pathname === item.href;
               return (
                 <Link

@@ -1,5 +1,5 @@
-import { useState, useMemo, useEffect } from 'react';
-import { Customer, Order } from '../types';
+import { useState, useMemo, useEffect, useRef } from 'react';
+import { Customer, Order, GalleryItem, Tag } from '../types';
 import { SafeImg } from '../components/SafeMedia';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Input } from '../components/ui/input';
@@ -23,6 +23,10 @@ import {
   Star,
   AlertTriangle,
   Camera,
+  Images,
+  Upload,
+  X,
+  ZoomIn,
 } from 'lucide-react';
 import { firebaseStorageService } from '../../services/firebaseStorageService';
 import {
@@ -49,7 +53,12 @@ import { Textarea } from '../components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { firebaseCustomerService } from '../../services/firebaseCustomerService';
 import { firebaseOrderService } from '../../services/firebaseOrderService';
+import { firebaseGalleryService } from '../../services/firebaseGalleryService';
 import { useAuth } from '../../contexts/AuthContext';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
+import { Skeleton } from '../components/ui/skeleton';
+import { TagInput } from '../components/TagInput';
+import { toast } from 'sonner';
 
 export function Customers() {
   const { user } = useAuth();
@@ -68,6 +77,17 @@ export function Customers() {
   const [customerOrders, setCustomerOrders] = useState<Order[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  const [customerGallery, setCustomerGallery] = useState<GalleryItem[]>([]);
+  const [galleryLoading, setGalleryLoading] = useState(false);
+  const [galleryUploadOpen, setGalleryUploadOpen] = useState(false);
+  const [galleryUploadFile, setGalleryUploadFile] = useState<File | null>(null);
+  const [galleryUploadPreview, setGalleryUploadPreview] = useState<string | null>(null);
+  const [galleryUploadTitle, setGalleryUploadTitle] = useState('');
+  const [galleryUploadDesc, setGalleryUploadDesc] = useState('');
+  const [galleryUploadTags, setGalleryUploadTags] = useState<Tag[]>([]);
+  const [galleryUploadSaving, setGalleryUploadSaving] = useState(false);
+  const [galleryLightbox, setGalleryLightbox] = useState<GalleryItem | null>(null);
+  const galleryInputRef = useRef<HTMLInputElement>(null);
 
   const [formData, setFormData] = useState({
     name: '',
@@ -268,15 +288,73 @@ export function Customers() {
     setHistoryCustomer(customer);
     setIsHistoryOpen(true);
     setHistoryLoading(true);
+    setGalleryLoading(true);
+    setCustomerOrders([]);
+    setCustomerGallery([]);
     try {
-      const allOrders = await firebaseOrderService.getOrders();
+      const [allOrders, galleryItems] = await Promise.all([
+        firebaseOrderService.getOrders(),
+        user ? firebaseGalleryService.getItems(user.uid) : Promise.resolve([]),
+      ]);
       setCustomerOrders(
         allOrders.filter(o => o.customerId === customer.id || o.customerName === customer.name)
       );
+      setCustomerGallery(galleryItems.filter(g => g.customerId === customer.id));
     } catch (error) {
       console.error('Erro ao carregar histórico:', error);
     } finally {
       setHistoryLoading(false);
+      setGalleryLoading(false);
+    }
+  };
+
+  const handleGalleryFilePick = (f: File) => {
+    if (!f.type.startsWith('image/')) { toast.error('Selecione uma imagem'); return; }
+    if (f.size > 15 * 1024 * 1024) { toast.error('Imagem muito grande. Máximo: 15MB'); return; }
+    setGalleryUploadFile(f);
+    setGalleryUploadPreview(URL.createObjectURL(f));
+    if (!galleryUploadTitle) setGalleryUploadTitle(f.name.replace(/\.[^.]+$/, ''));
+  };
+
+  const handleGalleryUploadSave = async () => {
+    if (!galleryUploadFile || !historyCustomer || !user) return;
+    if (!galleryUploadTitle.trim()) { toast.error('Título é obrigatório'); return; }
+    setGalleryUploadSaving(true);
+    try {
+      const tempId = `${Date.now()}`;
+      const imageUrl = await firebaseGalleryService.uploadImage(galleryUploadFile, user.uid, tempId);
+      const item = await firebaseGalleryService.createItem(user.uid, {
+        title: galleryUploadTitle.trim(),
+        description: galleryUploadDesc.trim() || undefined,
+        imageUrl,
+        customerId: historyCustomer.id,
+        customerName: historyCustomer.name,
+        tags: galleryUploadTags,
+      });
+      setCustomerGallery(prev => [item, ...prev]);
+      toast.success('Arte adicionada à galeria');
+      setGalleryUploadOpen(false);
+      setGalleryUploadFile(null);
+      setGalleryUploadPreview(null);
+      setGalleryUploadTitle('');
+      setGalleryUploadDesc('');
+      setGalleryUploadTags([]);
+    } catch (err) {
+      toast.error('Erro ao salvar arte');
+      console.error(err);
+    } finally {
+      setGalleryUploadSaving(false);
+    }
+  };
+
+  const handleGalleryDelete = async (item: GalleryItem) => {
+    try {
+      await firebaseGalleryService.deleteItem(item.id);
+      setCustomerGallery(prev => prev.filter(g => g.id !== item.id));
+      setGalleryLightbox(null);
+      toast.success('Arte removida');
+    } catch {
+      toast.error('Erro ao remover arte');
     }
   };
 
@@ -690,56 +768,181 @@ export function Customers() {
 
       {/* History Dialog */}
       <Dialog open={isHistoryOpen} onOpenChange={setIsHistoryOpen}>
-        <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col overflow-hidden">
           <DialogHeader>
-            <DialogTitle>Histórico de Pedidos — {historyCustomer?.name}</DialogTitle>
-            <DialogDescription>
-              {customerOrders.length} pedido{customerOrders.length !== 1 ? 's' : ''} encontrado{customerOrders.length !== 1 ? 's' : ''}
-            </DialogDescription>
+            <DialogTitle>{historyCustomer?.name}</DialogTitle>
           </DialogHeader>
-          {historyLoading ? (
-            <div className="flex justify-center py-8">
-              <Loader2 className="size-6 animate-spin text-primary" />
-            </div>
-          ) : customerOrders.length === 0 ? (
-            <p className="text-sm text-muted-foreground py-4 text-center">Nenhum pedido encontrado para este cliente.</p>
-          ) : (
-            <div className="space-y-2">
-              {customerOrders
-                .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-                .map(order => (
-                  <div key={order.id} className="flex items-start justify-between border rounded-md px-3 py-2 gap-3">
-                    <div className="space-y-0.5 flex-1 min-w-0">
-                      <div className="font-medium text-sm truncate">{order.productName}</div>
-                      <div className="text-xs text-muted-foreground">
-                        Criado: {formatDate(order.createdAt)} · Entrega: {formatDate(order.deliveryDate)}
+          <Tabs defaultValue="pedidos" className="flex-1 flex flex-col overflow-hidden">
+            <TabsList className="w-full">
+              <TabsTrigger value="pedidos" className="flex-1 gap-1.5">
+                <ShoppingBag className="size-3.5" /> Pedidos
+                {!historyLoading && <span className="text-xs opacity-60">({customerOrders.length})</span>}
+              </TabsTrigger>
+              <TabsTrigger value="galeria" className="flex-1 gap-1.5">
+                <Images className="size-3.5" /> Galeria
+                {!galleryLoading && <span className="text-xs opacity-60">({customerGallery.length})</span>}
+              </TabsTrigger>
+            </TabsList>
+
+            {/* ── Pedidos ── */}
+            <TabsContent value="pedidos" className="flex-1 overflow-y-auto mt-3">
+              {historyLoading ? (
+                <div className="flex justify-center py-8"><Loader2 className="size-6 animate-spin text-primary" /></div>
+              ) : customerOrders.length === 0 ? (
+                <p className="text-sm text-muted-foreground py-8 text-center">Nenhum pedido encontrado.</p>
+              ) : (
+                <div className="space-y-2">
+                  {customerOrders
+                    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+                    .map(order => (
+                      <div key={order.id} className="flex items-start justify-between border rounded-md px-3 py-2 gap-3">
+                        <div className="space-y-0.5 flex-1 min-w-0">
+                          <div className="font-medium text-sm truncate">{order.productName}</div>
+                          <div className="text-xs text-muted-foreground">
+                            Criado: {formatDate(order.createdAt)} · Entrega: {formatDate(order.deliveryDate)}
+                          </div>
+                        </div>
+                        <div className="shrink-0 text-right space-y-1">
+                          <div className="font-semibold text-sm">{formatCurrency(order.price)}</div>
+                          <Badge
+                            variant="outline"
+                            className={{
+                              pending: 'border-yellow-300 text-yellow-700 bg-yellow-50',
+                              'in-progress': 'border-blue-300 text-blue-700 bg-blue-50',
+                              completed: 'border-green-300 text-green-700 bg-green-50',
+                              cancelled: 'border-red-300 text-red-700 bg-red-50',
+                            }[order.status]}
+                          >
+                            {{
+                              pending: 'Pendente',
+                              'in-progress': 'Em Produção',
+                              completed: 'Concluído',
+                              cancelled: 'Cancelado',
+                            }[order.status]}
+                          </Badge>
+                        </div>
                       </div>
-                    </div>
-                    <div className="shrink-0 text-right space-y-1">
-                      <div className="font-semibold text-sm">{formatCurrency(order.price)}</div>
-                      <Badge
-                        variant="outline"
-                        className={{
-                          pending: 'border-yellow-300 text-yellow-700 bg-yellow-50',
-                          'in-progress': 'border-blue-300 text-blue-700 bg-blue-50',
-                          completed: 'border-green-300 text-green-700 bg-green-50',
-                          cancelled: 'border-red-300 text-red-700 bg-red-50',
-                        }[order.status]}
-                      >
-                        {{
-                          pending: 'Pendente',
-                          'in-progress': 'Em Produção',
-                          completed: 'Concluído',
-                          cancelled: 'Cancelado',
-                        }[order.status]}
-                      </Badge>
-                    </div>
-                  </div>
-                ))}
-            </div>
-          )}
+                    ))}
+                </div>
+              )}
+            </TabsContent>
+
+            {/* ── Galeria ── */}
+            <TabsContent value="galeria" className="flex-1 overflow-y-auto mt-3">
+              <div className="flex justify-end mb-3">
+                <Button size="sm" className="gap-1.5" onClick={() => setGalleryUploadOpen(true)}>
+                  <Plus className="size-3.5" /> Nova Arte
+                </Button>
+              </div>
+              {galleryLoading ? (
+                <div className="grid grid-cols-3 gap-2">
+                  {Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="aspect-square rounded-md" />)}
+                </div>
+              ) : customerGallery.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-12 text-muted-foreground gap-3">
+                  <Images className="size-10 opacity-30" />
+                  <p className="text-sm">Nenhuma arte ainda</p>
+                  <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setGalleryUploadOpen(true)}>
+                    <Upload className="size-3.5" /> Adicionar arte
+                  </Button>
+                </div>
+              ) : (
+                <div className="grid grid-cols-3 gap-2">
+                  {customerGallery.map(item => (
+                    <button
+                      key={item.id}
+                      onClick={() => setGalleryLightbox(item)}
+                      className="group relative aspect-square rounded-md overflow-hidden border bg-muted"
+                    >
+                      <img src={item.imageUrl} alt={item.title} className="w-full h-full object-cover transition-transform group-hover:scale-105" />
+                      <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center">
+                        <ZoomIn className="size-5 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+                      </div>
+                      <div className="absolute bottom-0 inset-x-0 bg-black/50 text-white text-[10px] px-1.5 py-1 truncate opacity-0 group-hover:opacity-100 transition-opacity">
+                        {item.title}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </TabsContent>
+          </Tabs>
         </DialogContent>
       </Dialog>
+
+      {/* Gallery upload dialog */}
+      <Dialog open={galleryUploadOpen} onOpenChange={v => { if (!v) { setGalleryUploadOpen(false); setGalleryUploadFile(null); setGalleryUploadPreview(null); setGalleryUploadTitle(''); setGalleryUploadDesc(''); setGalleryUploadTags([]); } }}>
+        <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Nova Arte — {historyCustomer?.name}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-1">
+            <input ref={galleryInputRef} type="file" accept="image/*" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) handleGalleryFilePick(f); }} />
+            <div
+              className={`relative border-2 border-dashed rounded-lg cursor-pointer transition-colors ${galleryUploadPreview ? 'p-1' : 'p-8 flex flex-col items-center gap-2 text-muted-foreground hover:border-primary/60'}`}
+              onClick={() => galleryInputRef.current?.click()}
+              onDragOver={e => e.preventDefault()}
+              onDrop={e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) handleGalleryFilePick(f); }}
+            >
+              {galleryUploadPreview ? (
+                <>
+                  <img src={galleryUploadPreview} alt="preview" className="w-full max-h-56 object-contain rounded" />
+                  <button type="button" className="absolute top-2 right-2 bg-black/60 rounded-full p-1 text-white" onClick={e => { e.stopPropagation(); setGalleryUploadFile(null); setGalleryUploadPreview(null); }}>
+                    <X className="size-4" />
+                  </button>
+                </>
+              ) : (
+                <>
+                  <Upload className="size-7 opacity-50" />
+                  <span className="text-sm font-medium">Clique ou arraste uma imagem</span>
+                  <span className="text-xs">PNG, JPG, WEBP — até 15MB</span>
+                </>
+              )}
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="gu-title">Título <span className="text-destructive">*</span></Label>
+              <Input id="gu-title" value={galleryUploadTitle} onChange={e => setGalleryUploadTitle(e.target.value)} placeholder="Nome da arte" />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="gu-desc">Descrição</Label>
+              <Textarea id="gu-desc" value={galleryUploadDesc} onChange={e => setGalleryUploadDesc(e.target.value)} placeholder="Notas sobre a arte..." rows={2} />
+            </div>
+            <div className="space-y-1">
+              <Label>Tags</Label>
+              <TagInput tags={galleryUploadTags} onChange={setGalleryUploadTags} placeholder="Adicionar tag..." />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setGalleryUploadOpen(false)} disabled={galleryUploadSaving}>Cancelar</Button>
+            <Button onClick={handleGalleryUploadSave} disabled={galleryUploadSaving || !galleryUploadFile}>
+              {galleryUploadSaving ? 'Salvando...' : 'Salvar'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Gallery lightbox */}
+      {galleryLightbox && (
+        <Dialog open onOpenChange={() => setGalleryLightbox(null)}>
+          <DialogContent className="max-w-2xl p-0 overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-3 border-b">
+              <DialogTitle className="text-sm font-semibold truncate flex-1">{galleryLightbox.title}</DialogTitle>
+              <div className="flex gap-1 ml-2">
+                <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive" onClick={() => handleGalleryDelete(galleryLightbox)}>
+                  <Trash2 className="size-4" />
+                </Button>
+                <Button variant="ghost" size="icon" onClick={() => setGalleryLightbox(null)}><X className="size-4" /></Button>
+              </div>
+            </div>
+            <div className="bg-black/90 flex items-center justify-center min-h-48 max-h-[70vh]">
+              <img src={galleryLightbox.imageUrl} alt={galleryLightbox.title} className="max-w-full max-h-[70vh] object-contain" />
+            </div>
+            {galleryLightbox.description && (
+              <p className="px-4 py-2 text-sm text-muted-foreground">{galleryLightbox.description}</p>
+            )}
+          </DialogContent>
+        </Dialog>
+      )}
 
       {/* Edit Dialog */}
       <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>

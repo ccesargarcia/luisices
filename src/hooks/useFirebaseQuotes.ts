@@ -42,7 +42,6 @@ export function useFirebaseQuotes() {
             customerId: raw.customerId ?? undefined,
             items: raw.items ?? [],
             totalPrice: raw.totalPrice ?? 0,
-            estimatedCost: raw.estimatedCost ?? undefined,
             discount: raw.discount ?? undefined,
             discountType: raw.discountType ?? undefined,
             paymentCondition: raw.paymentCondition ?? undefined,

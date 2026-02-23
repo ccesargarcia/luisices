@@ -1,11 +1,11 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from './ui/dialog';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Textarea } from './ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
-import { Plus, Loader2, UserPlus, Trash2, Repeat2, Paperclip, Upload, ExternalLink, ImageIcon, AlertTriangle, BookOpen } from 'lucide-react';
+import { Plus, Loader2, UserPlus, Trash2, Repeat2, Paperclip, Upload, ExternalLink, ImageIcon, AlertTriangle, BookOpen, Images, X } from 'lucide-react';
 import { OrderStatus, PaymentStatus, PaymentMethod, Customer, Tag, OrderAttachment, ExchangeItem, Product } from '../types';
 import { TagInput } from './TagInput';
 import { Switch } from './ui/switch';
@@ -14,6 +14,7 @@ import { firebaseOrderService } from '../../services/firebaseOrderService';
 import { firebaseStorageService } from '../../services/firebaseStorageService';
 import { firebaseCustomerService } from '../../services/firebaseCustomerService';
 import { firebaseProductService } from '../../services/firebaseProductService';
+import { firebaseGalleryService } from '../../services/firebaseGalleryService';
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
 import { useAuth } from '../../contexts/AuthContext';
 import { SafeImg } from './SafeMedia';
@@ -52,6 +53,10 @@ export function NewOrderDialog() {
   const [localAttachments, setLocalAttachments] = useState<OrderAttachment[]>([]);
   const [isUploadingAttachment, setIsUploadingAttachment] = useState(false);
   const [exchangeItems, setExchangeItems] = useState<ProductItem[]>([{ name: '', quantity: '1', unitPrice: '' }]);
+  const [galleryItems, setGalleryItems] = useState<import('../types').GalleryItem[]>([]);
+  const [galleryBrowserOpen, setGalleryBrowserOpen] = useState(false);
+  const [selectedGalleryIds, setSelectedGalleryIds] = useState<string[]>([]);
+  const [galleryBrowserSearch, setGalleryBrowserSearch] = useState('');
   const [catalogProducts, setCatalogProducts] = useState<Product[]>([]);
   const [catalogSearch, setCatalogSearch] = useState('');
   const [catalogOpenIdx, setCatalogOpenIdx] = useState<number | null>(null);
@@ -72,6 +77,7 @@ export function NewOrderDialog() {
     if (open && user) {
       firebaseCustomerService.getCustomers(user.uid).then(setCustomers);
       firebaseProductService.getProducts().then(setCatalogProducts);
+      firebaseGalleryService.getItems(user.uid).then(setGalleryItems).catch(() => {});
     }
   }, [open, user]);
 
@@ -196,11 +202,51 @@ export function NewOrderDialog() {
           for (const file of pendingFiles) {
             const attachment = await firebaseStorageService.uploadOrderAttachment(file, user.uid, createdOrder.id);
             await firebaseOrderService.addAttachment(createdOrder.id, attachment);
+            // Vincular imagens à galeria do cliente automaticamente
+            if (!attachment.isPdf && (customerId || formData.customerName)) {
+              try {
+                await firebaseGalleryService.createItem(user.uid, {
+                  title: file.name.replace(/\.[^.]+$/, ''),
+                  imageUrl: attachment.url,
+                  customerId,
+                  customerName: formData.customerName,
+                  orderId: createdOrder.id,
+                });
+              } catch {
+                // silencioso
+              }
+            }
           }
         } catch (attachErr) {
           console.error('Erro ao enviar anexos:', attachErr);
         } finally {
           setIsUploadingAttachment(false);
+        }
+      }
+
+      // Upload das artes da galeria pendentes
+      for (const g of pendingGallery) {
+        try {
+          const tempId = `${Date.now()}_${Math.random().toString(36).slice(2)}`;
+          const imageUrl = await firebaseGalleryService.uploadImage(g.file, user.uid, tempId);
+          await firebaseGalleryService.createItem(user.uid, {
+            title: g.title,
+            imageUrl,
+            customerId,
+            customerName: formData.customerName,
+            orderId: createdOrder.id,
+          });
+        } catch {
+          // silencioso
+        }
+      }
+
+      // Vincular artes selecionadas da galeria ao pedido
+      for (const gid of selectedGalleryIds) {
+        try {
+          await firebaseGalleryService.updateItem(gid, { orderId: createdOrder.id });
+        } catch {
+          // silencioso
         }
       }
 
@@ -227,6 +273,8 @@ export function NewOrderDialog() {
       localAttachments.forEach(a => URL.revokeObjectURL(a.url));
       setPendingFiles([]);
       setLocalAttachments([]);
+      setSelectedGalleryIds([]);
+      setGalleryBrowserSearch('');
     } catch (err) {
       console.error('Erro ao criar pedido:', err);
       alert('Erro ao criar pedido. Tente novamente.');
@@ -628,6 +676,118 @@ export function NewOrderDialog() {
               ))}
             </div>
           </div>
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <Label className="flex items-center gap-1.5">
+                <Images className="size-3.5" /> Artes do Cliente
+                {selectedGalleryIds.length > 0 && (
+                  <span className="ml-1 text-xs text-muted-foreground">({selectedGalleryIds.length} selecionada{selectedGalleryIds.length > 1 ? 's' : ''})</span>
+                )}
+              </Label>
+              <button
+                type="button"
+                className="inline-flex items-center gap-1.5 text-xs border rounded-md px-2.5 py-1.5 hover:bg-muted transition-colors"
+                onClick={() => setGalleryBrowserOpen(true)}
+              >
+                <Plus className="size-3.5" /> Vincular arte
+              </button>
+            </div>
+            {selectedGalleryIds.length > 0 ? (
+              <div className="grid grid-cols-4 gap-2">
+                {selectedGalleryIds.map(id => {
+                  const item = galleryItems.find(g => g.id === id);
+                  if (!item) return null;
+                  return (
+                    <div key={id} className="relative group">
+                      <img src={item.imageUrl} alt={item.title} className="w-full aspect-square object-cover rounded-md border" />
+                      <div className="absolute bottom-0 inset-x-0 bg-black/50 text-white text-[10px] px-1 py-0.5 truncate rounded-b-md">{item.title}</div>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedGalleryIds(prev => prev.filter(i => i !== id))}
+                        className="absolute top-1 right-1 bg-destructive text-destructive-foreground rounded-full size-5 items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity flex"
+                      >
+                        <X className="size-3" />
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="text-xs text-muted-foreground">Nenhuma arte vinculada. Clique em "Vincular arte" para selecionar da galeria.</p>
+            )}
+          </div>
+
+          {/* Gallery browser dialog */}
+          {galleryBrowserOpen && (() => {
+            const customerId = selectedCustomer && selectedCustomer !== 'new' ? selectedCustomer : undefined;
+            const filtered = galleryItems.filter(g => {
+              const matchCustomer = !customerId || g.customerId === customerId || g.customerName === formData.customerName;
+              const matchSearch = !galleryBrowserSearch || g.title.toLowerCase().includes(galleryBrowserSearch.toLowerCase()) || (g.customerName ?? '').toLowerCase().includes(galleryBrowserSearch.toLowerCase());
+              return matchCustomer && matchSearch;
+            });
+            return (
+              <div className="fixed inset-0 z-[200] bg-black/60 flex items-center justify-center p-4" onClick={() => setGalleryBrowserOpen(false)}>
+                <div className="bg-background rounded-lg shadow-xl w-full max-w-2xl flex flex-col max-h-[85vh]" onClick={e => e.stopPropagation()}>
+                  <div className="flex items-center justify-between px-4 py-3 border-b">
+                    <h4 className="font-semibold text-sm">Selecionar Artes da Galeria</h4>
+                    <button type="button" onClick={() => setGalleryBrowserOpen(false)}><X className="size-4" /></button>
+                  </div>
+                  <div className="px-4 py-2 border-b">
+                    <input
+                      className="w-full border rounded-md px-3 py-1.5 text-sm bg-background focus:outline-none focus:ring-2 focus:ring-ring"
+                      placeholder="Buscar por título ou cliente..."
+                      value={galleryBrowserSearch}
+                      onChange={e => setGalleryBrowserSearch(e.target.value)}
+                      autoFocus
+                    />
+                  </div>
+                  <div className="flex-1 overflow-y-auto p-4">
+                    {filtered.length === 0 ? (
+                      <p className="text-sm text-muted-foreground text-center py-10">Nenhuma arte encontrada na galeria.</p>
+                    ) : (
+                      <div className="grid grid-cols-3 sm:grid-cols-4 gap-3">
+                        {filtered.map(item => {
+                          const isSelected = selectedGalleryIds.includes(item.id);
+                          return (
+                            <button
+                              key={item.id}
+                              type="button"
+                              onClick={() => setSelectedGalleryIds(prev =>
+                                isSelected ? prev.filter(i => i !== item.id) : [...prev, item.id]
+                              )}
+                              className={`relative group rounded-lg overflow-hidden border-2 transition-all ${
+                                isSelected ? 'border-primary shadow-md scale-[0.97]' : 'border-transparent hover:border-primary/40'
+                              }`}
+                            >
+                              <img src={item.imageUrl} alt={item.title} className="w-full aspect-square object-cover" />
+                              {isSelected && (
+                                <div className="absolute inset-0 bg-primary/20 flex items-center justify-center">
+                                  <div className="bg-primary text-primary-foreground rounded-full size-6 flex items-center justify-center text-xs font-bold">✓</div>
+                                </div>
+                              )}
+                              <div className="absolute bottom-0 inset-x-0 bg-black/60 text-white text-[10px] px-1.5 py-1 truncate">{item.title}</div>
+                              {item.customerName && (
+                                <div className="absolute top-1 left-1 bg-black/50 text-white text-[9px] px-1 py-0.5 rounded truncate max-w-[90%]">{item.customerName}</div>
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                  <div className="px-4 py-3 border-t flex justify-between items-center">
+                    <span className="text-xs text-muted-foreground">{selectedGalleryIds.length} selecionada{selectedGalleryIds.length !== 1 ? 's' : ''}</span>
+                    <button
+                      type="button"
+                      className="bg-primary text-primary-foreground rounded-md px-4 py-1.5 text-sm hover:bg-primary/90"
+                      onClick={() => setGalleryBrowserOpen(false)}
+                    >Confirmar</button>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
+
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <Label className="flex items-center gap-1.5">

@@ -80,8 +80,6 @@ export interface Order {
   productName: string;
   quantity: number;
   price: number;
-  cost?: number; // Custo estimado de produção
-  realCost?: number; // Custo real após produção
   status: OrderStatus;
   deliveryDate: string;
   notes?: string;
@@ -141,7 +139,6 @@ export interface Quote {
   customerId?: string;
   items: QuoteItem[];       // Itens / produtos do orçamento
   totalPrice: number;       // Soma automática dos itens
-  estimatedCost?: number;   // Custo estimado de produção
   status: QuoteStatus;
   deliveryDate: string;     // Prazo estimado de entrega
   validUntil?: string;      // Validade do orçamento
@@ -192,9 +189,6 @@ export interface SalesReport {
   period: string;
   totalRevenue: number;
   totalOrders: number;
-  totalCost: number;
-  profit: number;
-  profitMargin: number;
   topProducts: { name: string; quantity: number; revenue: number }[];
   paymentMethods: { method: PaymentMethod; total: number; count: number }[];
 }
@@ -226,4 +220,20 @@ export interface UserSettings {
     profitMargin?: number; // Margem de lucro padrão em %
     deliveryDays?: number; // Prazo de entrega padrão em dias
   };
+}
+
+// ─── Gallery ──────────────────────────────────────────────────────────────────
+
+export interface GalleryItem {
+  id: string;
+  userId: string;
+  title: string;
+  description?: string;
+  imageUrl: string;
+  customerId?: string;
+  customerName?: string;
+  orderId?: string;
+  orderNumber?: string;
+  tags?: Tag[];
+  createdAt: string;
 }
