@@ -16,13 +16,7 @@ import { firebaseCustomerService } from '../../services/firebaseCustomerService'
 import { firebaseProductService } from '../../services/firebaseProductService';
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
 import { useAuth } from '../../contexts/AuthContext';
-
-// Permite apenas URLs seguras (blob:, https:, data:image/) para evitar XSS
-function safeUrl(url: string | null | undefined): string {
-  if (!url) return '';
-  if (url.startsWith('blob:') || url.startsWith('https://') || url.startsWith('data:image/')) return url;
-  return '';
-}
+import { SafeImg } from './SafeMedia';
 
 interface ProductItem {
   name: string;
@@ -658,8 +652,8 @@ export function NewOrderDialog() {
                 {localAttachments.map((att, idx) => (
                   <div key={idx} className="relative group">
                     {!att.isPdf ? (
-                      <img
-                        src={safeUrl(att.thumbnail ?? att.url)}
+                      <SafeImg
+                        src={att.thumbnail ?? att.url}
                         alt={att.name ?? `Anexo ${idx + 1}`}
                         className="w-full h-20 object-cover rounded-md border"
                       />

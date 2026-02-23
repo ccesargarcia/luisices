@@ -1,12 +1,6 @@
 import { useState, useMemo, useEffect } from 'react';
 import { Customer, Order } from '../types';
-
-// Permite apenas URLs seguras (blob:, https:, data:image/) para evitar XSS
-function safeUrl(url: string | null | undefined): string {
-  if (!url) return '';
-  if (url.startsWith('blob:') || url.startsWith('https://') || url.startsWith('data:image/')) return url;
-  return '';
-}
+import { SafeImg } from '../components/SafeMedia';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Input } from '../components/ui/input';
 import { Button } from '../components/ui/button';
@@ -372,7 +366,7 @@ export function Customers() {
                   <input type="file" className="sr-only" accept="image/*" onChange={handlePhotoSelect} />
                   <div className="size-24 rounded-full border-2 border-dashed border-muted-foreground/40 group-hover:border-primary overflow-hidden flex items-center justify-center bg-muted transition-colors">
                     {photoPreview ? (
-                      <img src={safeUrl(photoPreview)} alt="Foto" className="w-full h-full object-cover" />
+                      <SafeImg src={photoPreview} alt="Foto" className="w-full h-full object-cover" />
                     ) : (
                       <Camera className="size-8 text-muted-foreground" />
                     )}
@@ -763,7 +757,7 @@ export function Customers() {
                 <input type="file" className="sr-only" accept="image/*" onChange={handlePhotoSelect} />
                 <div className="size-24 rounded-full border-2 border-dashed border-muted-foreground/40 group-hover:border-primary overflow-hidden flex items-center justify-center bg-muted transition-colors">
                   {photoPreview ? (
-                    <img src={safeUrl(photoPreview)} alt="Foto" className="w-full h-full object-cover" />
+                    <SafeImg src={photoPreview} alt="Foto" className="w-full h-full object-cover" />
                   ) : (
                     <Camera className="size-8 text-muted-foreground" />
                   )}

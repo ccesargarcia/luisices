@@ -15,13 +15,7 @@ import { firebaseStorageService } from '../../services/firebaseStorageService';
 import { useAuth } from '../../contexts/AuthContext';
 import { TagInput } from './TagInput';
 import { Switch } from './ui/switch';
-
-// Permite apenas URLs seguras (blob:, https:, data:image/) para evitar XSS
-function safeUrl(url: string | null | undefined): string {
-  if (!url) return '';
-  if (url.startsWith('blob:') || url.startsWith('https://') || url.startsWith('data:image/')) return url;
-  return '';
-}
+import { SafeImg, SafeAnchor } from './SafeMedia';
 
 interface ProductItem {
   name: string;
@@ -955,17 +949,16 @@ export function OrderDetailsDialog({ order, open, onOpenChange, onUpdateStatus, 
                 {localAttachments.map((att, idx) => (
                   <div key={idx} className="relative group">
                     {!att.isPdf ? (
-                      <a href={safeUrl(att.url)} target="_blank" rel="noopener noreferrer">
-                        <img
-                          src={safeUrl(att.thumbnail ?? att.url)}
+                      <SafeAnchor href={att.url} target="_blank" rel="noopener noreferrer">
+                        <SafeImg
+                          src={att.thumbnail ?? att.url}
                           alt={att.name ?? `Anexo ${idx + 1}`}
                           className="w-full h-20 object-cover rounded-md border hover:opacity-90 transition-opacity"
                           loading="lazy"
-                        />
-                      </a>
+                        />                      </SafeAnchor>
                     ) : (
-                      <a
-                        href={safeUrl(att.url)}
+                      <SafeAnchor
+                        href={att.url}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="flex flex-col items-center justify-center h-20 border rounded-md bg-muted hover:bg-muted/70 transition-colors gap-1 px-1"
@@ -973,7 +966,7 @@ export function OrderDetailsDialog({ order, open, onOpenChange, onUpdateStatus, 
                         <ImageIcon className="size-6 text-muted-foreground" />
                         <span className="text-xs text-muted-foreground text-center truncate w-full px-1">{att.name ?? 'PDF'}</span>
                         <ExternalLink className="size-3 text-muted-foreground" />
-                      </a>
+                      </SafeAnchor>
                     )}
                     <button
                       onClick={() => handleRemoveAttachment(att.url)}
