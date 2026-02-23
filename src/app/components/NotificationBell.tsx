@@ -1,5 +1,5 @@
-import { useMemo, useState, useEffect } from 'react';
-import { Bell, Cake, AlertTriangle, Package, CalendarClock } from 'lucide-react';
+import { useMemo, useState, useEffect, useCallback } from 'react';
+import { Bell, Cake, AlertTriangle, Package, CalendarClock, X, Trash2 } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
 import { useFirebaseOrders } from '../../hooks/useFirebaseOrders';
 import { firebaseCustomerService } from '../../services/firebaseCustomerService';
@@ -17,6 +17,25 @@ export function NotificationBell() {
   const { user } = useAuth();
   const { orders } = useFirebaseOrders();
   const [customers, setCustomers] = useState<Customer[]>([]);
+
+  // IDs descartados persistidos no localStorage por usuário
+  const storageKey = user ? `notifications_dismissed_${user.uid}` : null;
+  const [dismissedIds, setDismissedIds] = useState<Set<string>>(() => {
+    if (!storageKey) return new Set();
+    try { return new Set(JSON.parse(localStorage.getItem(storageKey) ?? '[]')); } catch { return new Set(); }
+  });
+
+  const persist = useCallback((ids: Set<string>) => {
+    if (storageKey) localStorage.setItem(storageKey, JSON.stringify([...ids]));
+  }, [storageKey]);
+
+  const dismiss = useCallback((id: string) => {
+    setDismissedIds(prev => { const next = new Set(prev).add(id); persist(next); return next; });
+  }, [persist]);
+
+  const dismissAll = useCallback((ids: string[]) => {
+    setDismissedIds(prev => { const next = new Set([...prev, ...ids]); persist(next); return next; });
+  }, [persist]);
 
   useEffect(() => {
     if (user) {
@@ -99,8 +118,13 @@ export function NotificationBell() {
     return items;
   }, [customers, orders]);
 
+  const visibleNotifications = useMemo(
+    () => notifications.filter(n => !dismissedIds.has(n.id)),
+    [notifications, dismissedIds]
+  );
+
   // Apenas tipos "urgentes" contam para o badge
-  const urgentCount = notifications.filter(n =>
+  const urgentCount = visibleNotifications.filter(n =>
     n.type === 'birthday-today' || n.type === 'overdue' || n.type === 'due-today'
   ).length;
 
@@ -138,25 +162,38 @@ export function NotificationBell() {
       <PopoverContent align="end" className="w-80 p-0">
         <div className="px-3 py-2.5 border-b flex items-center justify-between">
           <h3 className="font-semibold text-sm">Notificações</h3>
-          {notifications.length > 0 && (
-            <span className="text-xs text-muted-foreground">{notifications.length} item{notifications.length !== 1 ? 's' : ''}</span>
+          {visibleNotifications.length > 0 && (
+            <button
+              onClick={() => dismissAll(visibleNotifications.map(n => n.id))}
+              className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+              title="Limpar todas"
+            >
+              <Trash2 className="size-3" /> Limpar todas
+            </button>
           )}
         </div>
         <div className="max-h-80 overflow-y-auto">
-          {notifications.length === 0 ? (
+          {visibleNotifications.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-8 text-muted-foreground gap-2">
               <Bell className="size-8 opacity-20" />
               <p className="text-sm">Tudo em dia!</p>
             </div>
           ) : (
             <div className="divide-y">
-              {notifications.map(n => (
+              {visibleNotifications.map(n => (
                 <div key={n.id} className={`px-3 py-2.5 flex items-start gap-2.5 ${typeBg[n.type]}`}>
                   {typeIcon[n.type]}
                   <div className="flex-1 min-w-0">
                     <div className="text-sm font-medium leading-tight">{n.label}</div>
                     {n.sub && <div className="text-xs text-muted-foreground mt-0.5 truncate">{n.sub}</div>}
                   </div>
+                  <button
+                    onClick={() => dismiss(n.id)}
+                    className="shrink-0 mt-0.5 text-muted-foreground/50 hover:text-muted-foreground transition-colors"
+                    title="Descartar"
+                  >
+                    <X className="size-3.5" />
+                  </button>
                 </div>
               ))}
             </div>

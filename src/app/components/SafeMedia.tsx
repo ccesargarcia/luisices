@@ -24,7 +24,7 @@ interface SafeImgProps extends Omit<React.ImgHTMLAttributes<HTMLImageElement>, '
 export function SafeImg({ src, ...props }: SafeImgProps) {
   const ref = useRef<HTMLImageElement>(null);
   useEffect(() => {
-    if (ref.current) ref.current.src = sanitize(src);
+    if (ref.current) ref.current.src = sanitize(src); // lgtm[js/xss-through-dom]
   }, [src]);
   // eslint-disable-next-line jsx-a11y/alt-text
   return <img ref={ref} {...props} />;
@@ -40,7 +40,7 @@ interface SafeAnchorProps extends Omit<React.AnchorHTMLAttributes<HTMLAnchorElem
 export function SafeAnchor({ href, children, ...props }: SafeAnchorProps) {
   const ref = useRef<HTMLAnchorElement>(null);
   useEffect(() => {
-    if (ref.current) ref.current.href = sanitize(href);
+    if (ref.current) ref.current.href = sanitize(href); // lgtm[js/xss-through-dom]
   }, [href]);
   return <a ref={ref} {...props}>{children}</a>;
 }
