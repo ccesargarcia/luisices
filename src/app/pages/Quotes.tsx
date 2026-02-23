@@ -355,7 +355,7 @@ function QuoteFormDialog({ open, onOpenChange, editing, onSaved }: QuoteFormDial
               ) : null;
             })()}
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="q-cname">Nome do cliente *</Label>
                 <Input
@@ -513,7 +513,7 @@ function QuoteFormDialog({ open, onOpenChange, editing, onSaved }: QuoteFormDial
           </div>
 
           {/* Datas + custo */}
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="q-delivery">Data de entrega *</Label>
               <Input
@@ -549,7 +549,7 @@ function QuoteFormDialog({ open, onOpenChange, editing, onSaved }: QuoteFormDial
           </div>
 
           {/* Desconto + Pagamento */}
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>Desconto (opcional)</Label>
               <div className="flex gap-2">

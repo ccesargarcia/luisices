@@ -363,11 +363,11 @@ export function OrderDetailsDialog({ order, open, onOpenChange, onUpdateStatus, 
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <div className="flex items-start justify-between">
-            <DialogTitle>
+          <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2">
+            <DialogTitle className="text-base sm:text-lg">
               {isEditing ? 'Editar Pedido' : `Detalhes do Pedido ${order.orderNumber || '#' + order.id}`}
             </DialogTitle>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2 shrink-0">
               {!isEditing && (
                 <>
                   <Button
@@ -782,7 +782,7 @@ export function OrderDetailsDialog({ order, open, onOpenChange, onUpdateStatus, 
           ) : (
             /* Modo de Visualização */
             <>
-          <div className="grid grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
             <div className="space-y-4">
               <div className="flex items-start gap-3">
                 <User className="size-5 text-muted-foreground mt-0.5" />
@@ -983,9 +983,9 @@ export function OrderDetailsDialog({ order, open, onOpenChange, onUpdateStatus, 
 
           {/* Artes do Cliente */}
           <div className="border-t pt-4">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="font-medium text-sm flex items-center gap-2">
-                <Images className="size-4" /> Artes de {order.customerName}
+            <div className="flex items-center justify-between gap-3 mb-3">
+              <h3 className="font-medium text-sm flex items-center gap-2 min-w-0">
+                <Images className="size-4 shrink-0" /> <span className="truncate">Artes de {order.customerName}</span>
                 {!galleryLoading && customerGallery.length > 0 && (
                   <span className="text-xs text-muted-foreground font-normal">({customerGallery.length})</span>
                 )}
