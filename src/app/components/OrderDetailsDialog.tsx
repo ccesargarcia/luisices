@@ -648,6 +648,7 @@ export function OrderDetailsDialog({ order, open, onOpenChange, onUpdateStatus, 
                     })()}
                   </div>
                   </div>
+                  </div>
                   {/* Observações livres */}
                   <div className="space-y-1.5">
                     <Label htmlFor="editExchangeNotes" className="text-sm text-purple-800 dark:text-purple-300">Observações da permuta</Label>
