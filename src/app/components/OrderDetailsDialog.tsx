@@ -158,10 +158,15 @@ export function OrderDetailsDialog({ order, open, onOpenChange, onUpdateStatus, 
       .split(',')
       .map(s => s.trim())
       .filter(Boolean)
-      .map(s => {
+      .map((s, _i, arr) => {
         const match = s.match(/^(.+?)\s*\((\d+)x\)$/);
-        if (match) return { name: match[1].trim(), quantity: match[2], unitPrice: '' };
-        return { name: s, quantity: String(order.quantity), unitPrice: '' };
+        const qty = match ? parseInt(match[2]) : order.quantity;
+        const name = match ? match[1].trim() : s;
+        // For single product, recover unitPrice from order.price
+        const unitPrice = arr.length === 1
+          ? String(order.price / (order.quantity || 1))
+          : '';
+        return { name, quantity: String(qty), unitPrice };
       });
     setEditProducts(parsedProducts.length > 0 ? parsedProducts : [{ name: '', quantity: '1', unitPrice: '' }]);
     setEditTags(order.tags ? [...order.tags] : []);
@@ -343,8 +348,14 @@ export function OrderDetailsDialog({ order, open, onOpenChange, onUpdateStatus, 
     }
   };
 
+  const parseLocalDate = (dateStr: string) => {
+    const [y, m, d] = dateStr.split('-').map(Number);
+    return new Date(y, m - 1, d);
+  };
+
   const formatDate = (dateStr: string) => {
-    const date = new Date(dateStr);
+    // ISO timestamp (ex: createdAt) → parse direto; date-only (YYYY-MM-DD) → local
+    const date = /^\d{4}-\d{2}-\d{2}$/.test(dateStr) ? parseLocalDate(dateStr) : new Date(dateStr);
     return date.toLocaleDateString('pt-BR', {
       day: '2-digit',
       month: 'long',

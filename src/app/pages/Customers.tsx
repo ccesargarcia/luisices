@@ -404,7 +404,8 @@ export function Customers() {
   };
 
   const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('pt-BR');
+    const [y, m, d] = dateString.split('-').map(Number);
+    return new Date(y, m - 1, d).toLocaleDateString('pt-BR');
   };
 
   if (loading) {

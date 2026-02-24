@@ -36,9 +36,13 @@ const statusLabels = {
 export function OrderCard({ order, onClick }: OrderCardProps) {
   const { settings } = useUserSettings();
   const compact = settings?.compactCards ?? false;
+  const parseLocalDate = (dateStr: string) => {
+    const [y, m, d] = dateStr.split('-').map(Number);
+    return new Date(y, m - 1, d);
+  };
+
   const formatDate = (dateStr: string) => {
-    const date = new Date(dateStr);
-    return date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    return parseLocalDate(dateStr).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
   };
 
   const formatCurrency = (value: number) => {

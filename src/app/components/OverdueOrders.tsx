@@ -11,6 +11,11 @@ interface OverdueOrdersProps {
 }
 
 export function OverdueOrders({ orders, onOrderClick }: OverdueOrdersProps) {
+  const parseLocalDate = (dateStr: string) => {
+    const [y, m, d] = dateStr.split('-').map(Number);
+    return new Date(y, m - 1, d);
+  };
+
   const overdueOrders = useMemo(() => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -18,17 +23,15 @@ export function OverdueOrders({ orders, onOrderClick }: OverdueOrdersProps) {
     return orders
       .filter(order => {
         if (order.status !== 'pending' && order.status !== 'in-progress') return false;
-        const deliveryDate = new Date(order.deliveryDate);
-        deliveryDate.setHours(0, 0, 0, 0);
+        const deliveryDate = parseLocalDate(order.deliveryDate);
         return deliveryDate < today;
       })
       .map(order => {
-        const deliveryDate = new Date(order.deliveryDate);
-        deliveryDate.setHours(0, 0, 0, 0);
+        const deliveryDate = parseLocalDate(order.deliveryDate);
         const today = new Date();
         today.setHours(0, 0, 0, 0);
         const diffTime = today.getTime() - deliveryDate.getTime();
-        const daysOverdue = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        const daysOverdue = Math.round(diffTime / (1000 * 60 * 60 * 24));
         return { order, daysOverdue };
       })
       .sort((a, b) => b.daysOverdue - a.daysOverdue);
@@ -46,7 +49,7 @@ export function OverdueOrders({ orders, onOrderClick }: OverdueOrdersProps) {
   };
 
   const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('pt-BR', {
+    return parseLocalDate(dateString).toLocaleDateString('pt-BR', {
       day: '2-digit',
       month: 'short',
     });

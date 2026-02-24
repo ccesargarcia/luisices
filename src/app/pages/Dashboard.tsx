@@ -137,8 +137,13 @@ export function Dashboard() {
       .slice(0, 5);
 
     // Taxa de entrega no prazo (pedidos entregues na semana atual vs entrega esperada)
+    const parseLocalDate = (dateStr: string) => {
+      const [y, m, d] = dateStr.split('-').map(Number);
+      return new Date(y, m - 1, d);
+    };
+
     const thisWeekOrders = orders.filter(o => {
-      const deliveryDate = new Date(o.deliveryDate);
+      const deliveryDate = parseLocalDate(o.deliveryDate);
       const now = new Date();
       const weekStart = new Date(now);
       weekStart.setDate(now.getDate() - now.getDay());
@@ -154,8 +159,7 @@ export function Dashboard() {
     today.setHours(0, 0, 0, 0);
     const overdueOrders = orders.filter(o => {
       if (o.status !== 'pending' && o.status !== 'in-progress') return false;
-      const delivery = new Date(o.deliveryDate);
-      delivery.setHours(0, 0, 0, 0);
+      const delivery = parseLocalDate(o.deliveryDate);
       return delivery < today;
     });
     const overdue = overdueOrders.length;

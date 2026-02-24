@@ -12,6 +12,12 @@ interface DeliveryAlertsProps {
 }
 
 export function DeliveryAlerts({ orders, daysThreshold = 3, onOrderClick }: DeliveryAlertsProps) {
+  // Parse date string as LOCAL time (avoids UTC offset shifting day)
+  const parseLocalDate = (dateStr: string) => {
+    const [y, m, d] = dateStr.split('-').map(Number);
+    return new Date(y, m - 1, d);
+  };
+
   const alerts = useMemo(() => {
     const now = new Date();
     now.setHours(0, 0, 0, 0);
@@ -21,20 +27,16 @@ export function DeliveryAlerts({ orders, daysThreshold = 3, onOrderClick }: Deli
         // Apenas pedidos não concluídos e não cancelados
         if (order.status === 'completed' || order.status === 'cancelled') return false;
 
-        const deliveryDate = new Date(order.deliveryDate);
-        deliveryDate.setHours(0, 0, 0, 0);
-
+        const deliveryDate = parseLocalDate(order.deliveryDate);
         const diffTime = deliveryDate.getTime() - now.getTime();
-        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
 
         return diffDays >= 0 && diffDays <= daysThreshold;
       })
       .map(order => {
-        const deliveryDate = new Date(order.deliveryDate);
-        deliveryDate.setHours(0, 0, 0, 0);
-
+        const deliveryDate = parseLocalDate(order.deliveryDate);
         const diffTime = deliveryDate.getTime() - now.getTime();
-        const daysUntilDelivery = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        const daysUntilDelivery = Math.round(diffTime / (1000 * 60 * 60 * 24));
 
         return {
           orderId: order.id,
@@ -64,7 +66,7 @@ export function DeliveryAlerts({ orders, daysThreshold = 3, onOrderClick }: Deli
   };
 
   const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('pt-BR', {
+    return parseLocalDate(dateString).toLocaleDateString('pt-BR', {
       day: '2-digit',
       month: 'short',
     });
