@@ -50,6 +50,7 @@ export function NewOrderDialog() {
   const [products, setProducts] = useState<ProductItem[]>([{ name: '', quantity: '1', unitPrice: '' }]);
   const [tags, setTags] = useState<Tag[]>([]);
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
+  const [pendingGallery, setPendingGallery] = useState<{ file: File; title: string }[]>([]);
   const [localAttachments, setLocalAttachments] = useState<OrderAttachment[]>([]);
   const [isUploadingAttachment, setIsUploadingAttachment] = useState(false);
   const [exchangeItems, setExchangeItems] = useState<ProductItem[]>([{ name: '', quantity: '1', unitPrice: '' }]);
@@ -272,6 +273,7 @@ export function NewOrderDialog() {
       setExchangeItems([{ name: '', quantity: '1', unitPrice: '' }]);
       localAttachments.forEach(a => URL.revokeObjectURL(a.url));
       setPendingFiles([]);
+      setPendingGallery([]);
       setLocalAttachments([]);
       setSelectedGalleryIds([]);
       setGalleryBrowserSearch('');
