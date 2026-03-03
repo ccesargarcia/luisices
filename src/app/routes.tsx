@@ -14,6 +14,7 @@ const Settings       = lazy(() => import('./pages/Settings').then(m => ({ defaul
 const Quotes         = lazy(() => import('./pages/Quotes').then(m => ({ default: m.Quotes })));
 const Products       = lazy(() => import('./pages/Products').then(m => ({ default: m.Products })));
 const Gallery        = lazy(() => import('./pages/Gallery').then(m => ({ default: m.Gallery })));
+const Exchanges      = lazy(() => import('./pages/Exchanges').then(m => ({ default: m.Exchanges })));
 const Login          = lazy(() => import('./pages/Login').then(m => ({ default: m.Login })));
 const Register       = lazy(() => import('./pages/Register').then(m => ({ default: m.Register })));
 const ResetPassword  = lazy(() => import('./pages/ResetPassword').then(m => ({ default: m.ResetPassword })));
@@ -87,6 +88,10 @@ export const router = createBrowserRouter([
       {
         path: 'galeria',
         element: <Lazy><Gallery /></Lazy>,
+      },
+      {
+        path: 'permutas',
+        element: <Lazy><Exchanges /></Lazy>,
       },
       {
         path: 'configuracoes',

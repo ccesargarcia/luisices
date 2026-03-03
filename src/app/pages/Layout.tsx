@@ -1,6 +1,6 @@
 import { useEffect, useMemo } from 'react';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router';
-import { LayoutDashboard, Calendar, Users, Package2, LogOut, Settings as SettingsIcon, BarChart3, FileText, ShoppingBag, Images, AtSign, Globe, Phone, Mail, MapPin, MessageCircle } from 'lucide-react';
+import { LayoutDashboard, Calendar, Users, Package2, LogOut, Settings as SettingsIcon, BarChart3, FileText, ShoppingBag, Images, AtSign, Globe, Phone, Mail, MapPin, MessageCircle, ArrowLeftRight } from 'lucide-react';
 import { cn } from '../components/ui/utils';
 import { useAuth } from '../../contexts/AuthContext';
 import { useUserSettings } from '../../hooks/useUserSettings';
@@ -55,6 +55,7 @@ export function Layout() {
     { name: 'Orçamentos',     href: '/orcamentos',   icon: FileText },
     { name: 'Produtos',       href: '/produtos',     icon: ShoppingBag },
     { name: 'Galeria',        href: '/galeria',      icon: Images },
+    { name: 'Permutas',       href: '/permutas',     icon: ArrowLeftRight },
   ];
 
   const orderedNav = useMemo(() => {

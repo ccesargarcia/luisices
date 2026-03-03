@@ -56,7 +56,7 @@ export function NewOrderDialog() {
   const [pendingGallery, setPendingGallery] = useState<{ file: File; title: string }[]>([]);
   const [localAttachments, setLocalAttachments] = useState<OrderAttachment[]>([]);
   const [isUploadingAttachment, setIsUploadingAttachment] = useState(false);
-  const [exchangeItems, setExchangeItems] = useState<ProductItem[]>([{ name: '', quantity: '1', unitPrice: '' }]);
+
   const [galleryItems, setGalleryItems] = useState<import('../types').GalleryItem[]>([]);
   const [galleryBrowserOpen, setGalleryBrowserOpen] = useState(false);
   const [selectedGalleryIds, setSelectedGalleryIds] = useState<string[]>([]);
@@ -194,15 +194,6 @@ export function NewOrderDialog() {
         cardColor: formData.cardColor || undefined,
         isExchange: formData.isExchange || undefined,
         exchangeNotes: formData.exchangeNotes || undefined,
-        exchangeItems: formData.isExchange
-          ? exchangeItems
-              .filter(i => i.name.trim())
-              .map(i => ({
-                name: i.name.trim(),
-                quantity: parseInt(i.quantity) || 1,
-                value: i.unitPrice ? parseFloat(i.unitPrice) : undefined,
-              } as ExchangeItem))
-          : undefined,
         payment: formData.isExchange ? {
           status: 'paid' as PaymentStatus,
           totalAmount: 0,
@@ -296,7 +287,6 @@ export function NewOrderDialog() {
       setTags([]);
       setSelectedCustomer('');
       setIsNewCustomer(false);
-      setExchangeItems([{ name: '', quantity: '1', unitPrice: '' }]);
       localAttachments.forEach(a => URL.revokeObjectURL(a.url));
       setPendingFiles([]);
       setPendingGallery([]);
@@ -577,97 +567,7 @@ export function NewOrderDialog() {
               onCheckedChange={v => setFormData({ ...formData, isExchange: v, paidAmount: v ? '0' : '' })}
             />
           </div>
-          {formData.isExchange && (
-            <div className="space-y-3 rounded-lg border border-purple-200 bg-purple-50/50 dark:bg-purple-950/10 dark:border-purple-800 p-3">
-              {/* Itens da permuta */}
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <p className="text-sm font-medium text-purple-800 dark:text-purple-300">O que você recebe em troca</p>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className="gap-1 h-7 text-xs"
-                    onClick={() => setExchangeItems(prev => [...prev, { name: '', quantity: '1', unitPrice: '' }])}
-                  >
-                    <Plus className="size-3" /> Adicionar item
-                  </Button>
-                </div>
-                <div className="grid grid-cols-[1fr_56px_96px_36px] gap-2 px-1">
-                  <span className="text-xs text-muted-foreground">Item recebido</span>
-                  <span className="text-xs text-muted-foreground text-center">Qtd</span>
-                  <span className="text-xs text-muted-foreground text-right">Valor est.</span>
-                  <span />
-                </div>
-                <div className="space-y-2">
-                  {exchangeItems.map((item, idx) => {
-                    const sub = (parseFloat(item.quantity) || 0) * (parseFloat(item.unitPrice) || 0);
-                    return (
-                      <div key={idx} className="space-y-0.5">
-                        <div className="grid grid-cols-[1fr_56px_96px_36px] gap-2 items-center">
-                          <Input
-                            placeholder={`Item ${idx + 1}`}
-                            value={item.name}
-                            onChange={e => setExchangeItems(prev => prev.map((p, i) => i === idx ? { ...p, name: e.target.value } : p))}
-                          />
-                          <Input
-                            type="number"
-                            min="1"
-                            value={item.quantity}
-                            onChange={e => setExchangeItems(prev => prev.map((p, i) => i === idx ? { ...p, quantity: e.target.value } : p))}
-                            className="text-center px-1"
-                          />
-                          <Input
-                            type="number"
-                            min="0"
-                            step="0.01"
-                            placeholder="0,00"
-                            value={item.unitPrice}
-                            onChange={e => setExchangeItems(prev => prev.map((p, i) => i === idx ? { ...p, unitPrice: e.target.value } : p))}
-                            className="text-right px-2"
-                          />
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon"
-                            className="size-9 text-muted-foreground hover:text-destructive"
-                            onClick={() => setExchangeItems(prev => prev.filter((_, i) => i !== idx))}
-                            disabled={exchangeItems.length === 1}
-                          >
-                            <Trash2 className="size-4" />
-                          </Button>
-                        </div>
-                        {sub > 0 && (
-                          <p className="text-xs text-muted-foreground text-right pr-10">
-                            subtotal: {formatCurrency(sub)}
-                          </p>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-                {(() => {
-                  const total = exchangeItems.reduce((s, p) => s + (parseFloat(p.quantity)||0)*(parseFloat(p.unitPrice)||0), 0);
-                  return total > 0 ? (
-                    <div className="flex justify-end border-t border-purple-200 pt-2">
-                      <span className="text-sm font-semibold text-purple-800 dark:text-purple-300">Valor estimado: {formatCurrency(total)}</span>
-                    </div>
-                  ) : null;
-                })()}
-              </div>
-              {/* Observações livres */}
-              <div className="space-y-1.5">
-                <Label htmlFor="exchangeNotes" className="text-sm text-purple-800 dark:text-purple-300">Observações da permuta</Label>
-                <Textarea
-                  id="exchangeNotes"
-                  value={formData.exchangeNotes}
-                  onChange={e => setFormData({ ...formData, exchangeNotes: e.target.value })}
-                  placeholder="Ex: artes para redes sociais em troca de impressões..."
-                  rows={2}
-                />
-              </div>
-            </div>
-          )}
+
 
           <div className="space-y-2">
             <Label htmlFor="tags">Tags</Label>
