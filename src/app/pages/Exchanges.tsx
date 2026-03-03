@@ -21,6 +21,7 @@ import {
   ChevronRight,
   Loader2,
   MessageCircle,
+  AlertTriangle,
 } from 'lucide-react';
 import { useFirebaseOrders } from '../../hooks/useFirebaseOrders';
 import { firebaseOrderService } from '../../services/firebaseOrderService';
@@ -72,12 +73,23 @@ export function Exchanges() {
   const [period, setPeriod] = useState<Period>('all');
   const [search, setSearch] = useState('');
   const [customerFilter, setCustomerFilter] = useState<string>('all');
+  const [statusFilter, setStatusFilter] = useState<string>('all');
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const printRef = useRef<HTMLDivElement>(null);
 
   const businessName = settings?.businessName || 'Papelaria Personalizada';
+
+  // Stats computed from ALL exchange orders (ignoring filters) — for the alert card
+  const openStats = useMemo(() => {
+    const all = orders.filter(o => o.isExchange);
+    const open = all.filter(o => o.status === 'pending' || o.status === 'in-progress');
+    return {
+      openCount: open.length,
+      openCost: open.reduce((s, o) => s + (o.price || 0), 0),
+    };
+  }, [orders]);
 
   // Unique customers that appear in any exchange order (derived before filtering)
   const exchangeCustomers = useMemo(() => {
@@ -95,6 +107,7 @@ export function Exchanges() {
     return orders
       .filter(o => o.isExchange)
       .filter(o => customerFilter === 'all' || o.customerId === customerFilter)
+      .filter(o => statusFilter === 'all' || o.status === statusFilter)
       .filter(o => {
         if (!periodStart) return true;
         return parseLocalDate(o.deliveryDate) >= periodStart;
@@ -109,7 +122,7 @@ export function Exchanges() {
         );
       })
       .sort((a, b) => new Date(b.deliveryDate).getTime() - new Date(a.deliveryDate).getTime());
-  }, [orders, period, search, customerFilter]);
+  }, [orders, period, search, customerFilter, statusFilter]);
 
   // Group filtered orders by customer
   const groupedOrders = useMemo(() => {
@@ -377,6 +390,34 @@ export function Exchanges() {
         </div>
       </div>
 
+      {/* Alert card — open exchanges */}
+      {openStats.openCount > 0 && (
+        <div
+          className="flex items-start sm:items-center gap-3 rounded-lg border border-yellow-300 bg-yellow-50 dark:bg-yellow-950/20 dark:border-yellow-800 px-4 py-3 cursor-pointer hover:bg-yellow-100 dark:hover:bg-yellow-950/30 transition-colors"
+          onClick={() => setStatusFilter(statusFilter === 'all' ? 'pending' : 'all')}
+          title="Clique para filtrar permutas abertas"
+        >
+          <AlertTriangle className="size-5 text-yellow-600 dark:text-yellow-400 shrink-0 mt-0.5 sm:mt-0" />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold text-yellow-800 dark:text-yellow-300">
+              {openStats.openCount} permuta{openStats.openCount !== 1 ? 's' : ''} em aberto
+            </p>
+            <p className="text-xs text-yellow-700 dark:text-yellow-400">
+              {formatCurrency(openStats.openCost)} em produtos ainda pendentes ou em produção.
+              {statusFilter !== 'all' ? '' : ' Clique para filtrar.'}
+            </p>
+          </div>
+          {statusFilter !== 'all' && (
+            <button
+              className="text-xs text-yellow-700 dark:text-yellow-400 underline shrink-0"
+              onClick={e => { e.stopPropagation(); setStatusFilter('all'); }}
+            >
+              Limpar filtro
+            </button>
+          )}
+        </div>
+      )}
+
       {/* Summary cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <Card>
@@ -446,6 +487,18 @@ export function Exchanges() {
             {exchangeCustomers.map(c => (
               <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
             ))}
+          </SelectContent>
+        </Select>
+        <Select value={statusFilter} onValueChange={setStatusFilter}>
+          <SelectTrigger className="w-full sm:w-44">
+            <SelectValue placeholder="Todos os status" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Todos os status</SelectItem>
+            <SelectItem value="pending">⏳ Pendente</SelectItem>
+            <SelectItem value="in-progress">🔄 Em Produção</SelectItem>
+            <SelectItem value="completed">✅ Concluído</SelectItem>
+            <SelectItem value="cancelled">❌ Cancelado</SelectItem>
           </SelectContent>
         </Select>
         <Select value={period} onValueChange={v => setPeriod(v as Period)}>
