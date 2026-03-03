@@ -9,6 +9,7 @@ import { Button } from '../components/ui/button';
 import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, Loader2, TrendingUp } from 'lucide-react';
 import { useFirebaseOrders } from '../../hooks/useFirebaseOrders';
 import { firebaseOrderService } from '../../services/firebaseOrderService';
+import { firebaseCustomerService } from '../../services/firebaseCustomerService';
 import { toast } from 'sonner';
 
 function hexToRgba(hex: string, alpha: number) {
@@ -91,7 +92,11 @@ export function WeeklyCalendar() {
 
   const handleDeleteOrder = async (orderId: string) => {
     try {
+      const order = orders.find(o => o.id === orderId);
       await firebaseOrderService.deleteOrder(orderId);
+      if (order?.customerId && order.price) {
+        await firebaseCustomerService.decrementCustomerStats(order.customerId, order.price).catch(() => {});
+      }
       setDetailsOpen(false);
       setSelectedOrder(null);
     } catch {

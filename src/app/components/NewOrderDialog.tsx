@@ -217,9 +217,9 @@ export function NewOrderDialog() {
         },
       });
 
-      // Atualizar estatísticas do cliente se pago parcialmente ou totalmente
-      if (customerId && paidAmount > 0) {
-        await firebaseCustomerService.incrementCustomerStats(customerId, paidAmount);
+      // Atualizar estatísticas do cliente sempre que houver customerId
+      if (customerId) {
+        await firebaseCustomerService.incrementCustomerStats(customerId, totalAmount);
       }
 
       // Upload dos anexos pendentes

@@ -27,6 +27,7 @@ import {
 import { getTextColor } from '../utils/tagColors';
 import { useFirebaseOrders } from '../../hooks/useFirebaseOrders';
 import { firebaseOrderService } from '../../services/firebaseOrderService';
+import { firebaseCustomerService } from '../../services/firebaseCustomerService';
 import { useAuth } from '../../contexts/AuthContext';
 import { useUserSettings } from '../../hooks/useUserSettings';
 import { DEFAULT_DASHBOARD_CARDS } from '../utils/dashboardCards';
@@ -95,7 +96,11 @@ export function Dashboard() {
 
   const handleDeleteOrder = async (orderId: string) => {
     try {
+      const order = orders.find(o => o.id === orderId);
       await firebaseOrderService.deleteOrder(orderId);
+      if (order?.customerId && order.price) {
+        await firebaseCustomerService.decrementCustomerStats(order.customerId, order.price).catch(() => {});
+      }
       setDetailsOpen(false);
       setSelectedOrder(null);
     } catch (err) {
