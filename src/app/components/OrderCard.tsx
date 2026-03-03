@@ -122,7 +122,7 @@ export function OrderCard({ order, onClick }: OrderCardProps) {
           <CardHeader className="pb-3">
             <div className="flex items-start justify-between gap-2">
               <div className="min-w-0 flex-1">
-                <CardTitle className="text-lg truncate">{order.customerName}</CardTitle>
+                <CardTitle className="text-base sm:text-lg leading-snug break-words">{order.customerName}</CardTitle>
                 {order.isExchange && (
                   <div className="flex items-center gap-1 mt-1">
                     <Badge className="bg-purple-100 text-purple-800 border-purple-300 border gap-1 py-0 text-xs">
@@ -131,15 +131,15 @@ export function OrderCard({ order, onClick }: OrderCardProps) {
                   </div>
                 )}
               </div>
-              <Badge className={`shrink-0 ${statusColors[order.status]}`}>
+              <Badge className={`shrink-0 text-xs ${statusColors[order.status]}`}>
                 {statusLabels[order.status]}
               </Badge>
             </div>
           </CardHeader>
           <CardContent className="space-y-2">
-            <div className="flex items-center gap-2 text-sm">
-              <Package className="size-4 text-muted-foreground" />
-              <span>{order.productName}</span>
+            <div className="flex items-center gap-2 text-sm min-w-0">
+              <Package className="size-4 text-muted-foreground shrink-0" />
+              <span className="truncate min-w-0">{order.productName}</span>
             </div>
             <div className="flex items-center justify-between gap-2 text-sm">
               <div className="flex items-center gap-2 min-w-0 flex-1">
@@ -149,14 +149,14 @@ export function OrderCard({ order, onClick }: OrderCardProps) {
               <Button
                 size="sm"
                 variant="ghost"
-                className="h-7 gap-1 text-green-600 hover:text-green-700 hover:bg-green-50 shrink-0"
+                className="h-7 gap-1 text-green-600 hover:text-green-700 hover:bg-green-50 shrink-0 px-2"
                 onClick={(e) => {
                   e.stopPropagation();
                   openWhatsAppForOrder(order);
                 }}
               >
                 <MessageCircle className="size-4" />
-                WhatsApp
+                <span className="hidden sm:inline">WhatsApp</span>
               </Button>
             </div>
             <div className="flex items-center gap-2 text-sm">
