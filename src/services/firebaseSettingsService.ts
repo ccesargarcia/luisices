@@ -21,10 +21,17 @@ export interface UserSettings {
   businessEmail?: string;
   businessAddress?: string;
 
+  // Identidade do negócio
+  businessTagline?: string;      // Slogan exibido no cabeçalho
+  instagramUrl?: string;         // Link para o Instagram
+  websiteUrl?: string;           // Link para o site
+  whatsappPhone?: string;        // Número WhatsApp (ex: 5511999999999)
+
   // Tema e cores
   primaryColor?: string;
   accentColor?: string;
-  colorTheme?: 'default' | 'rose' | 'purple' | 'blue' | 'green' | 'orange';
+  colorTheme?: 'default' | 'rose' | 'purple' | 'blue' | 'green' | 'orange' | 'custom';
+  customColorHex?: string;       // Cor hex personalizada quando colorTheme === 'custom'
 
   // Preferências de exibição
   compactCards?: boolean;
@@ -37,6 +44,13 @@ export interface UserSettings {
   dashboardCards?: string[];
   defaultReportPeriod?: 'week' | 'month' | 'quarter' | 'year';
   navOrder?: string[]; // hrefs na ordem desejada
+
+  // Operação padrão
+  defaultDeliveryDays?: number;  // Dias à frente para pré-preencher data de entrega
+  defaultPaymentMethod?: string; // Método de pagamento padrão ao criar pedido
+
+  // Alertas
+  deliveryAlertDays?: number;    // Dias antes do prazo para mostrar alerta (padrão 3)
 
   // Metadata
   updatedAt: Date;

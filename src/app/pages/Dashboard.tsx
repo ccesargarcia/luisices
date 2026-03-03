@@ -30,6 +30,29 @@ import { firebaseOrderService } from '../../services/firebaseOrderService';
 import { useAuth } from '../../contexts/AuthContext';
 import { useUserSettings } from '../../hooks/useUserSettings';
 import { DEFAULT_DASHBOARD_CARDS } from '../utils/dashboardCards';
+import { parseLocalDate } from '../utils/date';
+import { formatCurrency } from '../utils/currency';
+import { toast } from 'sonner';
+import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts';
+import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from '../components/ui/chart';
+
+const statusChartConfig = {
+  value: { label: 'Pedidos' },
+} satisfies ChartConfig;
+
+const weeklyChartConfig = {
+  pedidos: { label: 'Pedidos', color: 'hsl(var(--primary))' },
+} satisfies ChartConfig;
+
+function EmptyState({ message, hint }: { message: string; hint?: string }) {
+  return (
+    <div className="flex flex-col items-center justify-center py-16 text-center text-muted-foreground">
+      <Package className="size-12 opacity-25 mb-4" />
+      <p className="font-medium">{message}</p>
+      {hint && <p className="text-sm mt-1">{hint}</p>}
+    </div>
+  );
+}
 
 function getGreeting() {
   const hour = new Date().getHours();
@@ -66,7 +89,7 @@ export function Dashboard() {
       }
     } catch (err) {
       console.error('Erro ao atualizar status:', err);
-      alert('Erro ao atualizar status do pedido');
+      toast.error('Erro ao atualizar status do pedido');
     }
   };
 
@@ -77,7 +100,7 @@ export function Dashboard() {
       setSelectedOrder(null);
     } catch (err) {
       console.error('Erro ao deletar pedido:', err);
-      alert('Erro ao deletar pedido');
+      toast.error('Erro ao deletar pedido');
     }
   };
 
@@ -137,11 +160,6 @@ export function Dashboard() {
       .slice(0, 5);
 
     // Taxa de entrega no prazo (pedidos entregues na semana atual vs entrega esperada)
-    const parseLocalDate = (dateStr: string) => {
-      const [y, m, d] = dateStr.split('-').map(Number);
-      return new Date(y, m - 1, d);
-    };
-
     const thisWeekOrders = orders.filter(o => {
       const deliveryDate = parseLocalDate(o.deliveryDate);
       const now = new Date();
@@ -182,6 +200,34 @@ export function Dashboard() {
       deliveriesThisWeek,
       overdue,
     };
+  }, [orders]);
+
+  const statusChartData = useMemo(() => [
+    { status: 'Pendente', value: stats.pending, fill: '#f59e0b' },
+    { status: 'Em Produção', value: stats.inProgress, fill: '#3b82f6' },
+    { status: 'Concluído', value: stats.completed, fill: '#22c55e' },
+    { status: 'Cancelado', value: stats.cancelled, fill: '#ef4444' },
+  ].filter(d => d.value > 0), [stats]);
+
+  const ordersPerWeek = useMemo(() => {
+    const now = new Date();
+    const currentSunday = new Date(now);
+    currentSunday.setDate(now.getDate() - now.getDay());
+    currentSunday.setHours(0, 0, 0, 0);
+    return Array.from({ length: 8 }, (_, i) => {
+      const weekStart = new Date(currentSunday);
+      weekStart.setDate(currentSunday.getDate() - (7 - i) * 7);
+      const weekEnd = new Date(weekStart);
+      weekEnd.setDate(weekStart.getDate() + 7);
+      const count = orders.filter(o => {
+        const created = new Date(o.createdAt);
+        return created >= weekStart && created < weekEnd;
+      }).length;
+      return {
+        semana: weekStart.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }),
+        pedidos: count,
+      };
+    });
   }, [orders]);
 
   const filteredOrders = useMemo(() => {
@@ -234,13 +280,6 @@ export function Dashboard() {
     );
   };
 
-  const formatCurrency = (value: number) => {
-    return new Intl.NumberFormat('pt-BR', {
-      style: 'currency',
-      currency: 'BRL',
-    }).format(value);
-  };
-
   if (loading) {
     return (
       <div className="flex items-center justify-center h-96">
@@ -262,9 +301,9 @@ export function Dashboard() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
         <div>
-          <h1 className="text-3xl font-bold">
+          <h1 className="text-2xl sm:text-3xl font-bold">
             {getGreeting()}{user?.displayName ? `, ${user.displayName.split(' ')[0]}` : ''}!
           </h1>
           <p className="text-muted-foreground">Gerencie seus pedidos personalizados</p>
@@ -272,7 +311,7 @@ export function Dashboard() {
         <NewOrderDialog />
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-4 gap-4">
         {showCard('total') && (
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
@@ -335,7 +374,7 @@ export function Dashboard() {
       </div>
 
       {/* Métricas adicionais */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {showCard('inProgress') && (
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
@@ -383,6 +422,67 @@ export function Dashboard() {
 
       </div>
 
+      {/* Gráficos */}
+      {stats.total > 0 && (showCard('statusChart') || showCard('weeklyChart')) && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {showCard('statusChart') && (
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium">Distribuição de Status</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ChartContainer config={statusChartConfig} className="h-[180px]">
+                <PieChart>
+                  <Pie
+                    data={statusChartData}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={50}
+                    outerRadius={75}
+                    paddingAngle={3}
+                    dataKey="value"
+                  >
+                    {statusChartData.map((entry) => (
+                      <Cell key={entry.status} fill={entry.fill} />
+                    ))}
+                  </Pie>
+                  <ChartTooltip content={<ChartTooltipContent nameKey="status" />} />
+                </PieChart>
+              </ChartContainer>
+              <div className="flex flex-wrap justify-center gap-x-4 gap-y-1.5 mt-1">
+                {statusChartData.map((entry) => (
+                  <div key={entry.status} className="flex items-center gap-1.5 text-xs">
+                    <div className="size-2.5 rounded-full shrink-0" style={{ backgroundColor: entry.fill }} />
+                    <span className="text-muted-foreground">{entry.status}</span>
+                    <span className="font-semibold">{entry.value}</span>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+          )}
+
+          {showCard('weeklyChart') && (
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium">Pedidos por Semana</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ChartContainer config={weeklyChartConfig} className="h-[220px]">
+                <BarChart data={ordersPerWeek} margin={{ top: 4, right: 4, left: -22, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                  <XAxis dataKey="semana" tick={{ fontSize: 10 }} tickLine={false} axisLine={false} />
+                  <YAxis allowDecimals={false} tick={{ fontSize: 10 }} tickLine={false} axisLine={false} />
+                  <ChartTooltip content={<ChartTooltipContent />} />
+                  <Bar dataKey="pedidos" fill="var(--color-pedidos)" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ChartContainer>
+            </CardContent>
+          </Card>
+          )}
+        </div>
+      )}
+
       {/* Top produtos */}
       {showCard('topProducts') && stats.topProducts.length > 0 && (
         <Card>
@@ -411,7 +511,7 @@ export function Dashboard() {
       )}
 
       {/* Alertas de Entrega */}
-      {showCard('delivery') && <DeliveryAlerts orders={orders} onOrderClick={handleOrderClick} />}
+      {showCard('delivery') && <DeliveryAlerts orders={orders} daysThreshold={settings?.deliveryAlertDays ?? 3} onOrderClick={handleOrderClick} />}
 
       {/* Pedidos Atrasados */}
       {showCard('overdue') && <OverdueOrders orders={orders} onOrderClick={handleOrderClick} />}
@@ -485,64 +585,89 @@ export function Dashboard() {
         </TabsList>
 
         <TabsContent value="all" className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {filteredOrders.map(order => (
-              <OrderCard
-                key={order.id}
-                order={order}
-                onClick={() => handleOrderClick(order)}
-              />
-            ))}
-          </div>
+          {filteredOrders.length === 0 ? (
+            <EmptyState
+              message="Nenhum pedido encontrado"
+              hint={searchQuery || selectedTags.length > 0 || showExchangeOnly ? 'Tente ajustar os filtros.' : 'Crie seu primeiro pedido clicando em "Novo Pedido".'}
+            />
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {filteredOrders.map(order => (
+                <OrderCard
+                  key={order.id}
+                  order={order}
+                  onClick={() => handleOrderClick(order)}
+                />
+              ))}
+            </div>
+          )}
         </TabsContent>
 
         <TabsContent value="pending" className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {filteredOrders
-              .filter(o => o.status === 'pending')
-              .map(order => (
-                <OrderCard
-                  key={order.id}
-                  order={order}
-                  onClick={() => handleOrderClick(order)}
-                />
-              ))}
-          </div>
+          {filteredOrders.filter(o => o.status === 'pending').length === 0 ? (
+            <EmptyState message="Nenhum pedido pendente" hint="Pedidos aguardando início aparecem aqui." />
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {filteredOrders
+                .filter(o => o.status === 'pending')
+                .map(order => (
+                  <OrderCard
+                    key={order.id}
+                    order={order}
+                    onClick={() => handleOrderClick(order)}
+                  />
+                ))}
+            </div>
+          )}
         </TabsContent>
 
         <TabsContent value="in-progress" className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {filteredOrders
-              .filter(o => o.status === 'in-progress')
-              .map(order => (
-                <OrderCard
-                  key={order.id}
-                  order={order}
-                  onClick={() => handleOrderClick(order)}
-                />
-              ))}
-          </div>
+          {filteredOrders.filter(o => o.status === 'in-progress').length === 0 ? (
+            <EmptyState message="Nenhum pedido em produção" hint="Pedidos em andamento aparecem aqui." />
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {filteredOrders
+                .filter(o => o.status === 'in-progress')
+                .map(order => (
+                  <OrderCard
+                    key={order.id}
+                    order={order}
+                    onClick={() => handleOrderClick(order)}
+                  />
+                ))}
+            </div>
+          )}
         </TabsContent>
 
         <TabsContent value="completed" className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {filteredOrders
-              .filter(o => o.status === 'completed')
-              .map(order => (
-                <OrderCard
-                  key={order.id}
-                  order={order}
-                  onClick={() => handleOrderClick(order)}
-                />
-              ))}
-          </div>
+          {filteredOrders.filter(o => o.status === 'completed').length === 0 ? (
+            <EmptyState message="Nenhum pedido concluído" hint="Pedidos entregues aparecem aqui." />
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {filteredOrders
+                .filter(o => o.status === 'completed')
+                .map(order => (
+                  <OrderCard
+                    key={order.id}
+                    order={order}
+                    onClick={() => handleOrderClick(order)}
+                  />
+                ))}
+            </div>
+          )}
         </TabsContent>
       </Tabs>
 
       <OrderDetailsDialog
         order={selectedOrder}
         open={detailsOpen}
-        onOpenChange={setDetailsOpen}
+        onOpenChange={(open) => {
+          setDetailsOpen(open);
+          if (!open) {
+            // Limpa o pedido selecionado após a animação de fechamento
+            setTimeout(() => setSelectedOrder(null), 300);
+          }
+        }}
         onUpdateStatus={handleUpdateStatus}
         onDeleteOrder={handleDeleteOrder}
       />

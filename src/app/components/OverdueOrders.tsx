@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { parseLocalDate, formatDateMonthShort } from '../utils/date';
 import { Order } from '../types';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Badge } from './ui/badge';
@@ -11,11 +12,6 @@ interface OverdueOrdersProps {
 }
 
 export function OverdueOrders({ orders, onOrderClick }: OverdueOrdersProps) {
-  const parseLocalDate = (dateStr: string) => {
-    const [y, m, d] = dateStr.split('-').map(Number);
-    return new Date(y, m - 1, d);
-  };
-
   const overdueOrders = useMemo(() => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -48,12 +44,7 @@ export function OverdueOrders({ orders, onOrderClick }: OverdueOrdersProps) {
     return `${days} DIAS`;
   };
 
-  const formatDate = (dateString: string) => {
-    return parseLocalDate(dateString).toLocaleDateString('pt-BR', {
-      day: '2-digit',
-      month: 'short',
-    });
-  };
+  const formatDate = (dateString: string) => formatDateMonthShort(dateString);
 
   if (overdueOrders.length === 0) {
     return (

@@ -1,4 +1,4 @@
-export type ColorThemeKey = 'default' | 'rose' | 'purple' | 'blue' | 'green' | 'orange';
+export type ColorThemeKey = 'default' | 'rose' | 'purple' | 'blue' | 'green' | 'orange' | 'custom';
 
 export interface ColorTheme {
   key: ColorThemeKey;
@@ -72,7 +72,20 @@ export const COLOR_THEMES: ColorTheme[] = [
   },
 ];
 
-export function applyColorTheme(key: ColorThemeKey) {
+/** Apply a hex color directly as the primary theme color. */
+export function applyCustomColorHex(hex: string) {
+  const root = document.documentElement;
+  root.style.setProperty('--primary', hex);
+  root.style.setProperty('--primary-foreground', 'oklch(1 0 0)');
+  root.style.setProperty('--ring', hex);
+  root.style.setProperty('--sidebar-primary', hex);
+}
+
+export function applyColorTheme(key: ColorThemeKey, customHex?: string) {
+  if (key === 'custom') {
+    if (customHex) applyCustomColorHex(customHex);
+    return;
+  }
   const theme = COLOR_THEMES.find((t) => t.key === key);
   if (!theme) return;
   const root = document.documentElement;

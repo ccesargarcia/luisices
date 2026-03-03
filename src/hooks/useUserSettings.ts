@@ -1,11 +1,12 @@
 /**
- * Hook para gerenciar configurações do usuário
+ * Hook para gerenciar configurações do usuário.
+ * Reads settings/loading/error from the shared UserSettingsContext (single Firestore listener).
+ * Mutation methods (updateSettings, upload*, remove*, resetToDefaults) are kept here.
  */
 
-import { useState, useEffect } from 'react';
-import { doc, onSnapshot } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
+import { useUserSettingsContext } from '../contexts/UserSettingsContext';
 import {
   UserSettings,
   firebaseSettingsService,
@@ -14,45 +15,8 @@ import { firebaseStorageService } from '../services/firebaseStorageService';
 
 export function useUserSettings() {
   const { user } = useAuth();
-  const [settings, setSettings] = useState<UserSettings | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<Error | null>(null);
-
-  // Observar mudanças em tempo real
-  useEffect(() => {
-    if (!user) {
-      setSettings(null);
-      setLoading(false);
-      return;
-    }
-
-    const docRef = doc(db, 'users', user.uid, 'settings', 'profile');
-
-    const unsubscribe = onSnapshot(
-      docRef,
-      (doc) => {
-        if (doc.exists()) {
-          const data = doc.data();
-          setSettings({
-            ...data,
-            updatedAt: data.updatedAt?.toDate() || new Date(),
-          } as UserSettings);
-        } else {
-          setSettings(null);
-        }
-        setLoading(false);
-      },
-      (err) => {
-        console.error('useUserSettings: Error in snapshot:', err);
-        setError(err as Error);
-        setLoading(false);
-      }
-    );
-
-    return () => {
-      unsubscribe();
-    };
-  }, [user]);
+  const { settings, loading, error: ctxError } = useUserSettingsContext();
+  const [error, setError] = useState<Error | null>(ctxError);
 
   // Atualizar configurações
   const updateSettings = async (

@@ -6,6 +6,8 @@ import { Phone, Calendar, Package, DollarSign, Tag, MessageCircle, Smartphone, B
 import { getTextColor } from '../utils/tagColors';
 import { openWhatsAppForOrder } from '../utils/whatsapp';
 import { useUserSettings } from '../../hooks/useUserSettings';
+import { formatDateShort } from '../utils/date';
+import { formatCurrency } from '../utils/currency';
 
 function hexToRgba(hex: string, alpha: number) {
   const r = parseInt(hex.slice(1, 3), 16);
@@ -36,22 +38,6 @@ const statusLabels = {
 export function OrderCard({ order, onClick }: OrderCardProps) {
   const { settings } = useUserSettings();
   const compact = settings?.compactCards ?? false;
-  const parseLocalDate = (dateStr: string) => {
-    const [y, m, d] = dateStr.split('-').map(Number);
-    return new Date(y, m - 1, d);
-  };
-
-  const formatDate = (dateStr: string) => {
-    return parseLocalDate(dateStr).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
-  };
-
-  const formatCurrency = (value: number) => {
-    return new Intl.NumberFormat('pt-BR', {
-      style: 'currency',
-      currency: 'BRL',
-    }).format(value);
-  };
-
   const getPaymentIcon = (method?: string) => {
     switch (method) {
       case 'pix': return <Smartphone className="size-3.5" />;
@@ -109,7 +95,7 @@ export function OrderCard({ order, onClick }: OrderCardProps) {
           <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
             <div className="flex items-center gap-1">
               <Calendar className="size-3 shrink-0" />
-              <span>{formatDate(order.deliveryDate)}</span>
+              <span>{formatDateShort(order.deliveryDate)}</span>
             </div>
             {order.payment && order.payment.remainingAmount > 0 && order.payment.paidAmount > 0 && (
               <span className="text-orange-600">Resta {formatCurrency(order.payment.remainingAmount)}</span>
@@ -175,7 +161,7 @@ export function OrderCard({ order, onClick }: OrderCardProps) {
             </div>
             <div className="flex items-center gap-2 text-sm">
               <Calendar className="size-4 text-muted-foreground" />
-              <span>Entrega: {formatDate(order.deliveryDate)}</span>
+              <span>Entrega: {formatDateShort(order.deliveryDate)}</span>
             </div>
             <div className="flex items-center justify-between gap-2">
               <div className="flex items-center gap-2 text-sm font-medium min-w-0">

@@ -15,6 +15,8 @@ export const DASHBOARD_CARD_CONFIGS: DashboardCardConfig[] = [
   { id: 'topProducts',  label: 'Produtos Mais Vendidos', description: 'Ranking de receita por produto' },
   { id: 'delivery',     label: 'Alertas de Entrega',     description: 'Entregas próximas do prazo' },
   { id: 'overdue',      label: 'Pedidos Atrasados',      description: 'Pedidos fora do prazo' },
+  { id: 'statusChart',  label: 'Gráfico de Status',      description: 'Donut com distribuição dos pedidos por status' },
+  { id: 'weeklyChart',  label: 'Gráfico Semanal',        description: 'Barras com pedidos criados por semana' },
 ];
 
 export const DEFAULT_DASHBOARD_CARDS = DASHBOARD_CARD_CONFIGS.map((c) => c.id);

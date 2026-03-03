@@ -17,6 +17,8 @@ import { firebaseProductService } from '../../services/firebaseProductService';
 import { firebaseGalleryService } from '../../services/firebaseGalleryService';
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
 import { useAuth } from '../../contexts/AuthContext';
+import { useUserSettingsContext } from '../../contexts/UserSettingsContext';
+import { toast } from 'sonner';
 import { SafeImg } from './SafeMedia';
 
 interface ProductItem {
@@ -27,6 +29,7 @@ interface ProductItem {
 
 export function NewOrderDialog() {
   const { user } = useAuth();
+  const { settings } = useUserSettingsContext();
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -72,6 +75,22 @@ export function NewOrderDialog() {
 
   const formatCurrency = (v: number) =>
     new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
+
+  // Pré-preencher datas e método de pagamento com os padrões configurados
+  useEffect(() => {
+    if (!open) return;
+    const days = settings?.defaultDeliveryDays;
+    if (days && days > 0) {
+      const d = new Date();
+      d.setDate(d.getDate() + days);
+      const iso = d.toISOString().split('T')[0];
+      setFormData(prev => ({ ...prev, deliveryDate: prev.deliveryDate || iso }));
+    }
+    const method = settings?.defaultPaymentMethod;
+    if (method) {
+      setFormData(prev => ({ ...prev, paymentMethod: prev.paymentMethod || (method as PaymentMethod) }));
+    }
+  }, [open]);
 
   // Carregar clientes
   useEffect(() => {
@@ -129,6 +148,13 @@ export function NewOrderDialog() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) return;
+
+    // Bloquear pedido para cliente inadimplente
+    const selectedCustomerObj = customers.find(c => c.id === selectedCustomer);
+    if (selectedCustomerObj?.status === 'defaulter') {
+      toast.error('Não é possível criar pedido para cliente inadimplente. Regularize a situação antes de adicionar novos pedidos.');
+      return;
+    }
 
     setLoading(true);
 
@@ -279,7 +305,7 @@ export function NewOrderDialog() {
       setGalleryBrowserSearch('');
     } catch (err) {
       console.error('Erro ao criar pedido:', err);
-      alert('Erro ao criar pedido. Tente novamente.');
+      toast.error('Erro ao criar pedido. Tente novamente.');
     } finally {
       setLoading(false);
     }
@@ -293,7 +319,7 @@ export function NewOrderDialog() {
           Novo Pedido
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto overflow-x-hidden">
+      <DialogContent className="max-w-2xl max-h-[90dvh] overflow-y-auto overflow-x-hidden">
         <DialogHeader>
           <DialogTitle>Adicionar Novo Pedido</DialogTitle>
           <div className="sr-only">Formulário para criar um novo pedido</div>
@@ -334,7 +360,7 @@ export function NewOrderDialog() {
           </div>
 
           {/* Dados do Cliente */}
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="customerName">Nome do Cliente *</Label>
               <Input
@@ -845,7 +871,7 @@ export function NewOrderDialog() {
           <div className="border-t pt-4 space-y-4">
             <h3 className="font-medium text-sm">Informações de Pagamento</h3>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="paymentStatus">Status de Pagamento *</Label>
                 <Select
@@ -910,7 +936,10 @@ export function NewOrderDialog() {
             <Button type="button" variant="outline" onClick={() => setOpen(false)} disabled={loading}>
               Cancelar
             </Button>
-            <Button type="submit" disabled={loading}>
+            <Button
+              type="submit"
+              disabled={loading || customers.find(c => c.id === selectedCustomer)?.status === 'defaulter'}
+            >
               {loading && <Loader2 className="size-4 mr-2 animate-spin" />}
               Adicionar Pedido
             </Button>

@@ -7,7 +7,7 @@ import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Avatar, AvatarFallback, AvatarImage } from '../components/ui/avatar';
 import { Alert, AlertDescription } from '../components/ui/alert';
-import { Loader2, Upload, X, Building2, Mail, Phone, MapPin, Palette, Sun, Moon, Monitor, Check, LayoutGrid, MessageSquare, GripVertical } from 'lucide-react';
+import { Loader2, Upload, X, Building2, Mail, Phone, MapPin, Palette, Sun, Moon, Monitor, Check, LayoutGrid, MessageSquare, GripVertical, AtSign, Globe, Truck, CreditCard, Bell } from 'lucide-react';
 import { Textarea } from '../components/ui/textarea';
 import { toast } from 'sonner';
 import { useTheme } from 'next-themes';
@@ -42,6 +42,11 @@ export function Settings() {
   const [defaultReportPeriod, setDefaultReportPeriod] = useState<'week' | 'month' | 'quarter' | 'year'>('month');
   const [compactCards, setCompactCards] = useState(false);
   const [savingDisplayPrefs, setSavingDisplayPrefs] = useState(false);
+  const [savingOperations, setSavingOperations] = useState(false);
+  const [deliveryAlertDays, setDeliveryAlertDays] = useState(3);
+  const [defaultDeliveryDays, setDefaultDeliveryDays] = useState(0);
+  const [defaultPaymentMethod, setDefaultPaymentMethod] = useState('');
+  const [customColorHex, setCustomColorHex] = useState('#7c3aed');
 
   const NAV_ITEMS = [
     { href: '/',           label: 'Dashboard' },
@@ -64,6 +69,10 @@ export function Settings() {
     businessPhone: settings?.businessPhone || '',
     businessEmail: settings?.businessEmail || '',
     businessAddress: settings?.businessAddress || '',
+    businessTagline: settings?.businessTagline || '',
+    instagramUrl: settings?.instagramUrl || '',
+    websiteUrl: settings?.websiteUrl || '',
+    whatsappPhone: settings?.whatsappPhone || '',
   });
 
   // Atualizar business info quando settings carregar
@@ -74,6 +83,10 @@ export function Settings() {
         businessPhone: settings.businessPhone || '',
         businessEmail: settings.businessEmail || '',
         businessAddress: settings.businessAddress || '',
+        businessTagline: settings.businessTagline || '',
+        instagramUrl: settings.instagramUrl || '',
+        websiteUrl: settings.websiteUrl || '',
+        whatsappPhone: settings.whatsappPhone || '',
       });
       setSelectedColorTheme((settings.colorTheme as ColorThemeKey) || 'default');
       setSelectedCards(settings.dashboardCards ?? DEFAULT_DASHBOARD_CARDS);
@@ -86,6 +99,10 @@ export function Settings() {
       setNavOrder(merged);
       setWhatsappGreeting(settings.whatsappGreeting ?? '');
       setWhatsappSignature(settings.whatsappSignature ?? '');
+      setDeliveryAlertDays(settings.deliveryAlertDays ?? 3);
+      setDefaultDeliveryDays(settings.defaultDeliveryDays ?? 0);
+      setDefaultPaymentMethod(settings.defaultPaymentMethod ?? '');
+      setCustomColorHex(settings.customColorHex ?? '#7c3aed');
     }
   }, [settings]);
 
@@ -165,13 +182,32 @@ export function Settings() {
   const handlePersonalizationSave = async () => {
     setSavingPersonalization(true);
     try {
-      await updateSettings({ colorTheme: selectedColorTheme });
-      applyColorTheme(selectedColorTheme);
+      await updateSettings({
+        colorTheme: selectedColorTheme,
+        ...(selectedColorTheme === 'custom' ? { customColorHex } : {}),
+      });
+      applyColorTheme(selectedColorTheme, selectedColorTheme === 'custom' ? customColorHex : undefined);
       toast.success('Personalização salva com sucesso!');
     } catch (error) {
       toast.error('Erro ao salvar personalização');
     } finally {
       setSavingPersonalization(false);
+    }
+  };
+
+  const handleOperationsSave = async () => {
+    setSavingOperations(true);
+    try {
+      await updateSettings({
+        deliveryAlertDays,
+        defaultDeliveryDays,
+        defaultPaymentMethod: defaultPaymentMethod || undefined,
+      });
+      toast.success('Preferências de operação salvas!');
+    } catch {
+      toast.error('Erro ao salvar preferências');
+    } finally {
+      setSavingOperations(false);
     }
   };
 
@@ -209,7 +245,7 @@ export function Settings() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold tracking-tight">Configurações</h1>
+        <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Configurações</h1>
         <p className="text-muted-foreground mt-2">
           Personalize seu dashboard com logo, cores e informações do negócio
         </p>
@@ -427,6 +463,68 @@ export function Settings() {
                 }
               />
             </div>
+
+            <div className="space-y-2 md:col-span-2">
+              <Label htmlFor="businessTagline">
+                <Palette className="size-4 inline mr-2" />
+                Slogan / Descrição curta
+              </Label>
+              <Input
+                id="businessTagline"
+                placeholder="Ex: Sua papelaria criativa favorita!"
+                value={businessInfo.businessTagline}
+                onChange={(e) =>
+                  setBusinessInfo({ ...businessInfo, businessTagline: e.target.value })
+                }
+              />
+              <p className="text-xs text-muted-foreground">Aparece abaixo do nome do negócio no cabeçalho</p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="instagramUrl">
+                <AtSign className="size-4 inline mr-2" />
+                Instagram
+              </Label>
+              <Input
+                id="instagramUrl"
+                placeholder="https://instagram.com/suapapelaria"
+                value={businessInfo.instagramUrl}
+                onChange={(e) =>
+                  setBusinessInfo({ ...businessInfo, instagramUrl: e.target.value })
+                }
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="whatsappPhone">
+                <MessageSquare className="size-4 inline mr-2" />
+                WhatsApp
+              </Label>
+              <Input
+                id="whatsappPhone"
+                placeholder="5511999999999"
+                value={businessInfo.whatsappPhone}
+                onChange={(e) =>
+                  setBusinessInfo({ ...businessInfo, whatsappPhone: e.target.value })
+                }
+              />
+              <p className="text-xs text-muted-foreground">Código do país + DDD + número, sem espaços</p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="websiteUrl">
+                <Globe className="size-4 inline mr-2" />
+                Site / Link
+              </Label>
+              <Input
+                id="websiteUrl"
+                placeholder="https://suapapelaria.com.br"
+                value={businessInfo.websiteUrl}
+                onChange={(e) =>
+                  setBusinessInfo({ ...businessInfo, websiteUrl: e.target.value })
+                }
+              />
+            </div>
           </div>
 
           <div className="flex gap-2">
@@ -540,6 +638,114 @@ export function Settings() {
         </CardContent>
       </Card>
 
+      {/* Operação Padrão */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Truck className="size-5" />
+            Operação Padrão
+          </CardTitle>
+          <CardDescription>
+            Valores pré-preenchidos ao criar novos pedidos e alertas de prazo
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          {/* Alerta de entregas */}
+          <div className="space-y-2">
+            <Label className="text-sm font-medium flex items-center gap-2">
+              <Bell className="size-4" />
+              Alerta de prazo — dias de antecedência
+            </Label>
+            <Select
+              value={String(deliveryAlertDays)}
+              onValueChange={(v) => setDeliveryAlertDays(Number(v))}
+            >
+              <SelectTrigger className="w-60">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="1">1 dia</SelectItem>
+                <SelectItem value="2">2 dias</SelectItem>
+                <SelectItem value="3">3 dias (padrão)</SelectItem>
+                <SelectItem value="5">5 dias</SelectItem>
+                <SelectItem value="7">7 dias</SelectItem>
+                <SelectItem value="14">14 dias</SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              Pedidos com prazo dentro deste período aparecem no painel de alertas
+            </p>
+          </div>
+
+          {/* Data de entrega padrão */}
+          <div className="space-y-2">
+            <Label className="text-sm font-medium flex items-center gap-2">
+              <Truck className="size-4" />
+              Data de entrega padrão ao criar pedido
+            </Label>
+            <Select
+              value={String(defaultDeliveryDays)}
+              onValueChange={(v) => setDefaultDeliveryDays(Number(v))}
+            >
+              <SelectTrigger className="w-60">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="0">Não pré-preencher</SelectItem>
+                <SelectItem value="1">Amanhã (+1 dia)</SelectItem>
+                <SelectItem value="2">+2 dias</SelectItem>
+                <SelectItem value="3">+3 dias</SelectItem>
+                <SelectItem value="5">+5 dias</SelectItem>
+                <SelectItem value="7">+7 dias</SelectItem>
+                <SelectItem value="14">+14 dias</SelectItem>
+                <SelectItem value="30">+30 dias</SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              A data de entrega será pré-preenchida com esta antecedência ao abrir o diálogo de novo pedido
+            </p>
+          </div>
+
+          {/* Método de pagamento padrão */}
+          <div className="space-y-2">
+            <Label className="text-sm font-medium flex items-center gap-2">
+              <CreditCard className="size-4" />
+              Método de pagamento padrão
+            </Label>
+            <Select
+              value={defaultPaymentMethod || 'none'}
+              onValueChange={(v) => setDefaultPaymentMethod(v === 'none' ? '' : v)}
+            >
+              <SelectTrigger className="w-60">
+                <SelectValue placeholder="Não pré-selecionar" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">Não pré-selecionar</SelectItem>
+                <SelectItem value="pix">PIX</SelectItem>
+                <SelectItem value="cash">Dinheiro</SelectItem>
+                <SelectItem value="credit">Cartão de Crédito</SelectItem>
+                <SelectItem value="debit">Cartão de Débito</SelectItem>
+                <SelectItem value="transfer">Transferência</SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              O método será pré-selecionado no formulário de novo pedido
+            </p>
+          </div>
+
+          <Button onClick={handleOperationsSave} disabled={savingOperations}>
+            {savingOperations ? (
+              <>
+                <Loader2 className="size-4 mr-2 animate-spin" />
+                Salvando...
+              </>
+            ) : (
+              'Salvar Operação'
+            )}
+          </Button>
+        </CardContent>
+      </Card>
+
       {/* Personalização */}
       <Card>
         <CardHeader>
@@ -616,8 +822,53 @@ export function Settings() {
                   <span className="text-xs text-muted-foreground">{colorTheme.label}</span>
                 </button>
               ))}
-            </div>
+            {/* Cor personalizada */}
+            <button
+              type="button"
+              title="Cor personalizada"
+              onClick={() => setSelectedColorTheme('custom')}
+              className="flex flex-col items-center gap-1.5 group"
+            >
+              <span
+                className="flex items-center justify-center size-10 rounded-full border-2 transition-all overflow-hidden"
+                style={{
+                  background: selectedColorTheme === 'custom'
+                    ? customColorHex
+                    : 'conic-gradient(red, orange, yellow, green, blue, violet, red)',
+                  borderColor: selectedColorTheme === 'custom' ? customColorHex : 'transparent',
+                  boxShadow: selectedColorTheme === 'custom'
+                    ? `0 0 0 2px white, 0 0 0 4px ${customColorHex}`
+                    : undefined,
+                }}
+              >
+                {selectedColorTheme === 'custom' && (
+                  <Check className="size-4 text-white drop-shadow" />
+                )}
+              </span>
+              <span className="text-xs text-muted-foreground">Personalizar</span>
+            </button>
           </div>
+          {selectedColorTheme === 'custom' && (
+            <div className="flex items-center gap-3 p-3 rounded-lg border bg-muted/40">
+              <input
+                type="color"
+                value={customColorHex}
+                onChange={(e) => setCustomColorHex(e.target.value)}
+                className="size-9 cursor-pointer rounded border flex-shrink-0"
+                title="Escolher cor"
+              />
+              <div className="flex-1">
+                <Input
+                  value={customColorHex}
+                  onChange={(e) => setCustomColorHex(e.target.value)}
+                  placeholder="#7c3aed"
+                  className="w-32 font-mono text-sm"
+                />
+              </div>
+              <span className="text-xs text-muted-foreground">Código hexadecimal da cor</span>
+            </div>
+          )}
+        </div>
 
           <Button
             onClick={handlePersonalizationSave}

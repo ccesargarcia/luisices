@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect } from 'react';
+import { formatCurrency } from '../utils/currency';
 import { Quote, QuoteItem, QuoteStatus, OrderStatus, Customer, Tag, Product } from '../types';
 import { TagInput } from '../components/TagInput';
 import { getTextColor } from '../utils/tagColors';
@@ -79,9 +80,6 @@ const STATUS_VARIANT: Record<QuoteStatus, string> = {
 
 const EMPTY_ITEM: QuoteItem = { name: '', quantity: 1, unitPrice: 0 };
 
-function formatCurrency(v: number) {
-  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
-}
 function buildWhatsAppMessage(quote: Quote, settings?: { whatsappGreeting?: string; whatsappSignature?: string }): string {
   const lines: string[] = [];
   const greeting = settings?.whatsappGreeting
@@ -1319,7 +1317,7 @@ export function Quotes() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Orçamentos</h1>
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Orçamentos</h1>
           <p className="text-muted-foreground mt-1">Crie orçamentos e converta em pedidos com um clique</p>
         </div>
         <Button onClick={openNew}>

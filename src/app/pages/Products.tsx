@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { formatCurrency } from '../utils/currency';
 import { Product } from '../types';
 import { firebaseProductService } from '../../services/firebaseProductService';
 import { useAuth } from '../../contexts/AuthContext';
@@ -39,10 +40,6 @@ import { toast } from 'sonner';
 import { cn } from '../components/ui/utils';
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
-
-function formatCurrency(v: number) {
-  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
-}
 
 /** Formats a numeric input into BRL display format (e.g. "1234" → "12,34") */
 function parsePriceInput(raw: string): string {
@@ -310,7 +307,7 @@ export function Products() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Catálogo de Produtos</h1>
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Catálogo de Produtos</h1>
           <p className="text-muted-foreground mt-1">
             Cadastre produtos e serviços para usar rapidamente nos orçamentos e pedidos
           </p>
