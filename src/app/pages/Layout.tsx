@@ -1,6 +1,6 @@
 import { useEffect, useMemo } from 'react';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router';
-import { LayoutDashboard, Calendar, Users, Package2, LogOut, Settings as SettingsIcon, BarChart3, FileText, ShoppingBag, Images, AtSign, Globe, Phone, Mail, MapPin, MessageCircle, ArrowLeftRight } from 'lucide-react';
+import { LayoutDashboard, Calendar, Users, Package2, LogOut, Settings as SettingsIcon, BarChart3, FileText, ShoppingBag, Images, AtSign, Globe, Phone, Mail, MapPin, MessageCircle, ArrowLeftRight, UserCog } from 'lucide-react';
 import { cn } from '../components/ui/utils';
 import { useAuth } from '../../contexts/AuthContext';
 import { useUserSettings } from '../../hooks/useUserSettings';
@@ -17,11 +17,12 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from '../components/ui/avatar';
 import { ThemeToggle } from '../../components/ThemeToggle';
 import { NotificationBell } from '../components/NotificationBell';
+import { Badge } from '../components/ui/badge';
 
 export function Layout() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { user, logout } = useAuth();
+  const { user, logout, isAdmin, userProfile, hasPermission } = useAuth();
   const { settings } = useUserSettings();
 
   // Apply color theme CSS vars whenever settings change
@@ -47,16 +48,22 @@ export function Layout() {
     return user.displayName[0].toUpperCase();
   };
 
-  const navigation = [
-    { name: 'Dashboard',       href: '/',           icon: LayoutDashboard },
-    { name: 'Agenda Semanal', href: '/agenda',       icon: Calendar },
-    { name: 'Clientes',       href: '/clientes',     icon: Users },
-    { name: 'Relatórios',     href: '/relatorios',   icon: BarChart3 },
-    { name: 'Orçamentos',     href: '/orcamentos',   icon: FileText },
-    { name: 'Produtos',       href: '/produtos',     icon: ShoppingBag },
-    { name: 'Galeria',        href: '/galeria',      icon: Images },
-    { name: 'Permutas',       href: '/permutas',     icon: ArrowLeftRight },
+  const allNavItems = [
+    { name: 'Dashboard',       href: '/',           icon: LayoutDashboard, check: (p: any) => p.dashboard },
+    { name: 'Agenda Semanal', href: '/agenda',      icon: Calendar,        check: (p: any) => p.orders?.view },
+    { name: 'Clientes',       href: '/clientes',    icon: Users,           check: (p: any) => p.customers?.view },
+    { name: 'Relatórios',     href: '/relatorios',  icon: BarChart3,       check: (p: any) => p.reports },
+    { name: 'Orçamentos',     href: '/orcamentos',  icon: FileText,        check: (p: any) => p.quotes?.view },
+    { name: 'Produtos',       href: '/produtos',    icon: ShoppingBag,     check: (p: any) => p.products?.view },
+    { name: 'Galeria',        href: '/galeria',     icon: Images,          check: (p: any) => p.gallery?.view },
+    { name: 'Permutas',       href: '/permutas',    icon: ArrowLeftRight,  check: (p: any) => p.exchanges },
+    { name: 'Usuários',       href: '/usuarios',    icon: UserCog,         check: (p: any) => p.users?.view },
   ];
+
+  const navigation = useMemo(() => {
+    if (!userProfile) return [];
+    return allNavItems.filter(item => hasPermission(item.check));
+  }, [userProfile, hasPermission]);
 
   const orderedNav = useMemo(() => {
     const order = settings?.navOrder;
@@ -70,6 +77,7 @@ export function Layout() {
 
   const businessName = settings?.businessName || 'Papelaria Personalizada';
   const hasLogo = !!settings?.logo;
+  const isDevEnvironment = import.meta.env.VITE_FIREBASE_PROJECT_ID?.endsWith('-dev') ?? false;
 
   return (
     <div className="min-h-screen bg-background overflow-x-hidden flex flex-col">
@@ -89,7 +97,14 @@ export function Layout() {
                 </div>
               )}
               <div className="min-w-0">
-                <h1 className="font-bold text-base sm:text-xl truncate">{businessName}</h1>
+                <div className="flex items-center gap-2">
+                  <h1 className="font-bold text-base sm:text-xl truncate">{businessName}</h1>
+                  {isDevEnvironment && (
+                    <Badge variant="outline" className="bg-yellow-500/10 text-yellow-600 border-yellow-400 font-mono text-[10px] px-1.5 py-0 h-5 hidden sm:inline-flex">
+                      DEV
+                    </Badge>
+                  )}
+                </div>
                 <div className="flex items-center gap-2">
                   <p className="text-xs text-muted-foreground hidden sm:block">
                     {settings?.businessTagline || 'Sistema de Gestão de Pedidos'}

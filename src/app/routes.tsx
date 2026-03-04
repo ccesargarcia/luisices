@@ -2,6 +2,7 @@ import { lazy, Suspense } from 'react';
 import { createBrowserRouter, Navigate } from 'react-router';
 import { Layout } from './pages/Layout';
 import { ProtectedRoute } from './components/ProtectedRoute';
+import { PermissionRoute } from './components/PermissionRoute';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { Loader2 } from 'lucide-react';
 
@@ -15,8 +16,8 @@ const Quotes         = lazy(() => import('./pages/Quotes').then(m => ({ default:
 const Products       = lazy(() => import('./pages/Products').then(m => ({ default: m.Products })));
 const Gallery        = lazy(() => import('./pages/Gallery').then(m => ({ default: m.Gallery })));
 const Exchanges      = lazy(() => import('./pages/Exchanges').then(m => ({ default: m.Exchanges })));
+const Users          = lazy(() => import('./pages/Users').then(m => ({ default: m.Users })));
 const Login          = lazy(() => import('./pages/Login').then(m => ({ default: m.Login })));
-const Register       = lazy(() => import('./pages/Register').then(m => ({ default: m.Register })));
 const ResetPassword  = lazy(() => import('./pages/ResetPassword').then(m => ({ default: m.ResetPassword })));
 
 function PageLoader() {
@@ -44,8 +45,7 @@ export const router = createBrowserRouter([
   },
   {
     path: '/registrar',
-    element: <Lazy><Register /></Lazy>,
-    errorElement: <ErrorBoundary />,
+    element: <Navigate to="/login" replace />,
   },
   {
     path: '/recuperar-senha',
@@ -63,39 +63,43 @@ export const router = createBrowserRouter([
     children: [
       {
         index: true,
-        element: <Lazy><Dashboard /></Lazy>,
+        element: <Lazy><PermissionRoute check={p => p.dashboard}><Dashboard /></PermissionRoute></Lazy>,
       },
       {
         path: 'agenda',
-        element: <Lazy><WeeklyCalendar /></Lazy>,
+        element: <Lazy><PermissionRoute check={p => p.orders?.view ?? false}><WeeklyCalendar /></PermissionRoute></Lazy>,
       },
       {
         path: 'clientes',
-        element: <Lazy><Customers /></Lazy>,
+        element: <Lazy><PermissionRoute check={p => p.customers?.view ?? false}><Customers /></PermissionRoute></Lazy>,
       },
       {
         path: 'relatorios',
-        element: <Lazy><Reports /></Lazy>,
+        element: <Lazy><PermissionRoute check={p => p.reports}><Reports /></PermissionRoute></Lazy>,
       },
       {
         path: 'orcamentos',
-        element: <Lazy><Quotes /></Lazy>,
+        element: <Lazy><PermissionRoute check={p => p.quotes?.view ?? false}><Quotes /></PermissionRoute></Lazy>,
       },
       {
         path: 'produtos',
-        element: <Lazy><Products /></Lazy>,
+        element: <Lazy><PermissionRoute check={p => p.products?.view ?? false}><Products /></PermissionRoute></Lazy>,
       },
       {
         path: 'galeria',
-        element: <Lazy><Gallery /></Lazy>,
+        element: <Lazy><PermissionRoute check={p => p.gallery?.view ?? false}><Gallery /></PermissionRoute></Lazy>,
       },
       {
         path: 'permutas',
-        element: <Lazy><Exchanges /></Lazy>,
+        element: <Lazy><PermissionRoute check={p => p.exchanges}><Exchanges /></PermissionRoute></Lazy>,
       },
       {
         path: 'configuracoes',
-        element: <Lazy><Settings /></Lazy>,
+        element: <Lazy><PermissionRoute check={p => p.settings}><Settings /></PermissionRoute></Lazy>,
+      },
+      {
+        path: 'usuarios',
+        element: <Lazy><PermissionRoute check={p => p.users?.view ?? false}><Users /></PermissionRoute></Lazy>,
       },
     ],
   },

@@ -53,7 +53,7 @@ const statusLabels = {
 };
 
 export function OrderDetailsDialog({ order, open, onOpenChange, onUpdateStatus, onDeleteOrder }: OrderDetailsDialogProps) {
-  const { user } = useAuth();
+  const { user, hasPermission } = useAuth();
   const { settings } = useUserSettings();
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -367,25 +367,29 @@ export function OrderDetailsDialog({ order, open, onOpenChange, onUpdateStatus, 
                     <Download className="size-4" />
                     PDF
                   </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={handleDuplicate}
-                    disabled={isDuplicating}
-                    className="gap-2"
-                  >
-                    <Copy className="size-4" />
-                    {isDuplicating ? 'Duplicando...' : 'Duplicar'}
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={handleEditClick}
-                    className="gap-2"
-                  >
-                    <Edit className="size-4" />
-                    Editar
-                  </Button>
+                  {hasPermission(p => p.orders?.create ?? false) && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={handleDuplicate}
+                      disabled={isDuplicating}
+                      className="gap-2"
+                    >
+                      <Copy className="size-4" />
+                      {isDuplicating ? 'Duplicando...' : 'Duplicar'}
+                    </Button>
+                  )}
+                  {hasPermission(p => p.orders?.edit ?? false) && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={handleEditClick}
+                      className="gap-2"
+                    >
+                      <Edit className="size-4" />
+                      Editar
+                    </Button>
+                  )}
                 </>
               )}
               <Badge className={statusColors[order.status]}>
@@ -986,18 +990,20 @@ export function OrderDetailsDialog({ order, open, onOpenChange, onUpdateStatus, 
                   <span className="text-xs text-muted-foreground font-normal">({customerGallery.length})</span>
                 )}
               </h3>
-              <label className="cursor-pointer">
-                <input
-                  ref={galleryInputRef}
-                  type="file"
-                  className="sr-only"
-                  accept="image/*"
-                  onChange={e => { const f = e.target.files?.[0]; if (f) handleGalleryFilePick(f); e.target.value = ''; }}
-                />
-                <span className="inline-flex items-center gap-1.5 text-xs border rounded-md px-2.5 py-1.5 hover:bg-muted transition-colors cursor-pointer">
-                  <Plus className="size-3.5" /> Adicionar arte
-                </span>
-              </label>
+              {hasPermission(p => p.gallery?.create ?? false) && (
+                <label className="cursor-pointer">
+                  <input
+                    ref={galleryInputRef}
+                    type="file"
+                    className="sr-only"
+                    accept="image/*"
+                    onChange={e => { const f = e.target.files?.[0]; if (f) handleGalleryFilePick(f); e.target.value = ''; }}
+                  />
+                  <span className="inline-flex items-center gap-1.5 text-xs border rounded-md px-2.5 py-1.5 hover:bg-muted transition-colors cursor-pointer">
+                    <Plus className="size-3.5" /> Adicionar arte
+                  </span>
+                </label>
+              )}
             </div>
             {galleryLoading ? (
               <div className="grid grid-cols-4 gap-2">
@@ -1085,19 +1091,21 @@ export function OrderDetailsDialog({ order, open, onOpenChange, onUpdateStatus, 
               <h3 className="font-medium text-sm flex items-center gap-2">
                 <Paperclip className="size-4" /> Anexos
               </h3>
-              <label className="cursor-pointer">
-                <input
-                  type="file"
-                  className="sr-only"
-                  accept="image/*,.pdf"
-                  onChange={handleUploadAttachment}
-                  disabled={isUploadingAttachment}
-                />
-                <span className="inline-flex items-center gap-1.5 text-xs border rounded-md px-2.5 py-1.5 hover:bg-muted transition-colors">
-                  <Upload className="size-3.5" />
-                  {isUploadingAttachment ? 'Enviando...' : 'Enviar arquivo'}
-                </span>
-              </label>
+              {hasPermission(p => p.orders?.edit ?? false) && (
+                <label className="cursor-pointer">
+                  <input
+                    type="file"
+                    className="sr-only"
+                    accept="image/*,.pdf"
+                    onChange={handleUploadAttachment}
+                    disabled={isUploadingAttachment}
+                  />
+                  <span className="inline-flex items-center gap-1.5 text-xs border rounded-md px-2.5 py-1.5 hover:bg-muted transition-colors">
+                    <Upload className="size-3.5" />
+                    {isUploadingAttachment ? 'Enviando...' : 'Enviar arquivo'}
+                  </span>
+                </label>
+              )}
             </div>
             {localAttachments.length > 0 ? (
               <div className="grid grid-cols-3 gap-2">
@@ -1167,7 +1175,7 @@ export function OrderDetailsDialog({ order, open, onOpenChange, onUpdateStatus, 
           </div>
 
           <div className="flex justify-between items-center pt-4">
-            {onDeleteOrder && (
+            {onDeleteOrder && hasPermission(p => p.orders?.delete ?? false) && (
               <AlertDialog>
                 <AlertDialogTrigger asChild>
                   <Button variant="outline" className="gap-2">

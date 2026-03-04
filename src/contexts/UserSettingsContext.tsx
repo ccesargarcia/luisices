@@ -1,3 +1,4 @@
+// @refresh reset
 /**
  * Context that holds a single Firestore onSnapshot listener for user settings.
  * All components read from here instead of creating their own listeners.

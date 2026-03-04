@@ -28,7 +28,7 @@ interface ProductItem {
 }
 
 export function NewOrderDialog() {
-  const { user } = useAuth();
+  const { user, hasPermission } = useAuth();
   const { settings } = useUserSettingsContext();
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -300,6 +300,10 @@ export function NewOrderDialog() {
       setLoading(false);
     }
   };
+
+  const canCreate = hasPermission(p => p.orders?.create ?? false);
+
+  if (!canCreate) return null;
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>

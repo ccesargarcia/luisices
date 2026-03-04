@@ -65,7 +65,7 @@ import { toast } from 'sonner';
 const PAGE_SIZE = 12;
 
 export function Customers() {
-  const { user } = useAuth();
+  const { user, hasPermission } = useAuth();
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -446,7 +446,8 @@ export function Customers() {
           <h1 className="text-2xl sm:text-3xl font-bold">Clientes</h1>
           <p className="text-muted-foreground">Gerencie sua base de clientes</p>
         </div>
-        <Dialog open={isNewCustomerOpen} onOpenChange={(open) => { setIsNewCustomerOpen(open); if (open) { resetForm(); setPendingPhotoFile(null); setPhotoPreview(''); } }}>
+        {hasPermission(p => p.customers?.create ?? false) && (
+          <Dialog open={isNewCustomerOpen} onOpenChange={(open) => { setIsNewCustomerOpen(open); if (open) { resetForm(); setPendingPhotoFile(null); setPhotoPreview(''); } }}>
           <DialogTrigger asChild>
             <Button className="gap-2">
               <UserPlus className="size-4" />
@@ -593,6 +594,7 @@ export function Customers() {
             </form>
           </DialogContent>
         </Dialog>
+        )}
       </div>
 
       {/* Stats */}
@@ -698,20 +700,24 @@ export function Customers() {
                   >
                     <History className="size-4" />
                   </Button>
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    onClick={() => openEditDialog(customer)}
-                  >
-                    <Edit className="size-4" />
-                  </Button>
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    onClick={() => openDeleteDialog(customer)}
-                  >
-                    <Trash2 className="size-4 text-destructive" />
-                  </Button>
+                  {hasPermission(p => p.customers?.edit ?? false) && (
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      onClick={() => openEditDialog(customer)}
+                    >
+                      <Edit className="size-4" />
+                    </Button>
+                  )}
+                  {hasPermission(p => p.customers?.delete ?? false) && (
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      onClick={() => openDeleteDialog(customer)}
+                    >
+                      <Trash2 className="size-4 text-destructive" />
+                    </Button>
+                  )}
                 </div>
               </div>
             </CardHeader>
@@ -807,7 +813,7 @@ export function Customers() {
                 ? 'Tente uma busca diferente'
                 : 'Comece adicionando seu primeiro cliente'}
             </p>
-            {!searchQuery && (
+            {!searchQuery && hasPermission(p => p.customers?.create ?? false) && (
               <Button onClick={() => setIsNewCustomerOpen(true)}>
                 <UserPlus className="size-4 mr-2" />
                 Adicionar Cliente

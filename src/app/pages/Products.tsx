@@ -234,7 +234,7 @@ function ProductFormDialog({ open, onOpenChange, editing, existingCategories, us
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export function Products() {
-  const { user } = useAuth();
+  const { user, hasPermission } = useAuth();
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -312,7 +312,9 @@ export function Products() {
             Cadastre produtos e serviços para usar rapidamente nos orçamentos e pedidos
           </p>
         </div>
-        <Button onClick={openNew}><Plus className="size-4 mr-2" /> Novo Produto</Button>
+        {hasPermission(p => p.products?.create ?? false) && (
+          <Button onClick={openNew}><Plus className="size-4 mr-2" /> Novo Produto</Button>
+        )}
       </div>
 
       {/* Stats – 4 cards */}
@@ -418,7 +420,7 @@ export function Products() {
           <p className="text-muted-foreground">
             {search || filterCategory ? 'Nenhum produto encontrado' : 'Nenhum produto cadastrado ainda'}
           </p>
-          {!search && !filterCategory && (
+          {!search && !filterCategory && hasPermission(p => p.products?.create ?? false) && (
             <Button variant="outline" className="mt-4" onClick={openNew}>
               <Plus className="size-4 mr-2" /> Cadastrar primeiro produto
             </Button>
@@ -463,15 +465,19 @@ export function Products() {
                             </div>
                           </div>
                           <div className="flex gap-2 mt-3">
-                            <Button size="sm" variant="outline" className="flex-1 h-7 text-xs"
-                              onClick={() => openEdit(product)}>
-                              <Pencil className="size-3 mr-1" /> Editar
-                            </Button>
-                            <Button size="sm" variant="outline"
-                              className="h-7 text-xs text-destructive hover:text-destructive"
-                              onClick={() => setDeleteTarget(product)}>
-                              <Trash2 className="size-3" />
-                            </Button>
+                            {hasPermission(p => p.products?.edit ?? false) && (
+                              <Button size="sm" variant="outline" className="flex-1 h-7 text-xs"
+                                onClick={() => openEdit(product)}>
+                                <Pencil className="size-3 mr-1" /> Editar
+                              </Button>
+                            )}
+                            {hasPermission(p => p.products?.delete ?? false) && (
+                              <Button size="sm" variant="outline"
+                                className="h-7 text-xs text-destructive hover:text-destructive"
+                                onClick={() => setDeleteTarget(product)}>
+                                <Trash2 className="size-3" />
+                              </Button>
+                            )}
                           </div>
                         </CardContent>
                       </Card>
@@ -524,14 +530,18 @@ export function Products() {
                   </td>
                   <td className="px-4 py-2.5">
                     <div className="flex gap-1 justify-end">
-                      <Button size="icon" variant="ghost" className="size-7" onClick={() => openEdit(product)}>
-                        <Pencil className="size-3.5" />
-                      </Button>
-                      <Button size="icon" variant="ghost"
-                        className="size-7 text-destructive hover:text-destructive"
-                        onClick={() => setDeleteTarget(product)}>
-                        <Trash2 className="size-3.5" />
-                      </Button>
+                      {hasPermission(p => p.products?.edit ?? false) && (
+                        <Button size="icon" variant="ghost" className="size-7" onClick={() => openEdit(product)}>
+                          <Pencil className="size-3.5" />
+                        </Button>
+                      )}
+                      {hasPermission(p => p.products?.delete ?? false) && (
+                        <Button size="icon" variant="ghost"
+                          className="size-7 text-destructive hover:text-destructive"
+                          onClick={() => setDeleteTarget(product)}>
+                          <Trash2 className="size-3.5" />
+                        </Button>
+                      )}
                     </div>
                   </td>
                 </tr>

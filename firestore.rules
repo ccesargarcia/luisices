@@ -46,5 +46,12 @@ service cloud.firestore {
     match /users/{userId}/{document=**} {
       allow read, write: if isOwner(userId);
     }
+
+    // Perfis de usuário do sistema de permissões
+    match /userProfiles/{uid} {
+      // Qualquer usuário autenticado pode ler e escrever perfis.
+      // O controle de acesso é feito na aplicação (isAdmin).
+      allow read, write: if request.auth != null;
+    }
   }
 }
