@@ -32,7 +32,7 @@ Este deploy adiciona um **sistema completo de gerenciamento de usuários e permi
 ### 🔴 RISCO ALTO
 **Problema**: Usuários existentes em produção **não têm** documentos `userProfiles` ainda.
 
-**Impacto**: 
+**Impacto**:
 - No primeiro acesso após o deploy, cada usuário terá um perfil criado automaticamente como **ADMIN**
 - Se múltiplos usuários acessarem simultaneamente, pode haver duplicação de perfis
 
@@ -44,7 +44,7 @@ Este deploy adiciona um **sistema completo de gerenciamento de usuários e permi
 ### 🟡 RISCO MÉDIO
 **Problema**: Firestore Rules precisam ser deployadas **ANTES** do código do frontend.
 
-**Impacto**: 
+**Impacto**:
 - Se deployar o código antes das rules: usuários receberão erro 403 ao tentar acessar perfis
 
 **Mitigação**:
@@ -53,7 +53,7 @@ Este deploy adiciona um **sistema completo de gerenciamento de usuários e permi
 ### 🟢 RISCO BAIXO
 **Problema**: Mudança na estrutura de autenticação (AuthContext carrega `userProfile` do Firestore).
 
-**Impacto**: 
+**Impacto**:
 - Logout/login pode ser mais lento em ~100-300ms (1 chamada extra ao Firestore)
 
 ---
