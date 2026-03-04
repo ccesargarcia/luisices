@@ -49,9 +49,33 @@ service cloud.firestore {
 
     // Perfis de usuário do sistema de permissões
     match /userProfiles/{uid} {
-      // Qualquer usuário autenticado pode ler e escrever perfis.
-      // O controle de acesso é feito na aplicação (isAdmin).
-      allow read, write: if request.auth != null;
+      // Verifica se o solicitante é admin (busca o próprio perfil)
+      function isAdmin() {
+        return request.auth != null
+          && exists(/databases/$(database)/documents/userProfiles/$(request.auth.uid))
+          && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.role == 'admin';
+      }
+
+      // Leitura: usuário lê apenas o próprio perfil; admin lê todos
+      allow read: if request.auth != null && (request.auth.uid == uid || isAdmin());
+
+      // Criação: usuário cria o próprio perfil (primeiro acesso automático), ou admin cria para outro
+      allow create: if request.auth != null && (request.auth.uid == uid || isAdmin());
+
+      // Atualização: admin pode alterar tudo;
+      // usuário comum NÃO pode alterar role, permissions nem active (evita auto-promoção)
+      allow update: if request.auth != null && (
+        isAdmin()
+        || (
+          request.auth.uid == uid
+          && request.resource.data.role == resource.data.role
+          && request.resource.data.permissions == resource.data.permissions
+          && request.resource.data.active == resource.data.active
+        )
+      );
+
+      // Deleção: somente admins
+      allow delete: if isAdmin();
     }
   }
 }
