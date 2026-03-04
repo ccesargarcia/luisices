@@ -1019,7 +1019,7 @@ export function OrderDetailsDialog({ order, open, onOpenChange, onUpdateStatus, 
                     onClick={() => setGalleryLightbox(item)}
                     className="group relative aspect-square rounded-md overflow-hidden border bg-muted"
                   >
-                    <img src={item.imageUrl} alt={item.title} className="w-full h-full object-cover transition-transform group-hover:scale-105" />
+                    <SafeImg src={item.imageUrl} alt={item.title} className="w-full h-full object-cover transition-transform group-hover:scale-105" />
                     <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center">
                       <ZoomIn className="size-4 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
                     </div>
@@ -1038,7 +1038,7 @@ export function OrderDetailsDialog({ order, open, onOpenChange, onUpdateStatus, 
                   <button onClick={() => setGalleryUploadOpen(false)}><X className="size-4" /></button>
                 </div>
                 {galleryUploadPreview && (
-                  <img src={galleryUploadPreview} alt="preview" className="w-full max-h-40 object-contain rounded border" />
+                  <SafeImg src={galleryUploadPreview} alt="preview" className="w-full max-h-40 object-contain rounded border" />
                 )}
                 <div className="space-y-1">
                   <label className="text-xs font-medium">Título <span className="text-destructive">*</span></label>
@@ -1079,7 +1079,7 @@ export function OrderDetailsDialog({ order, open, onOpenChange, onUpdateStatus, 
                 >
                   <X className="size-5" />
                 </button>
-                <img src={galleryLightbox.imageUrl} alt={galleryLightbox.title} className="w-full max-h-[80vh] object-contain rounded-lg" />
+                <SafeImg src={galleryLightbox.imageUrl} alt={galleryLightbox.title} className="w-full max-h-[80vh] object-contain rounded-lg" />
                 <p className="text-white/90 text-sm mt-2 text-center">{galleryLightbox.title}</p>
               </div>
             </div>
