@@ -1,4 +1,6 @@
 import { useState, useMemo, useEffect } from 'react';
+import { formatCurrency } from '../utils/currency';
+import { parseLocalDate } from '../utils/date';
 import { Tag } from '../types';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
@@ -80,12 +82,8 @@ function getDateRange(period: Period, offset = 0) {
   return { start, end };
 }
 
-function formatCurrency(value: number) {
-  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
-}
-
 function formatShortDate(iso: string) {
-  return new Date(iso).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' });
+  return parseLocalDate(iso).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' });
 }
 
 // ─── Sub-components ───────────────────────────────────────────────────────────

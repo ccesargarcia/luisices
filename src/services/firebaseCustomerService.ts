@@ -9,6 +9,12 @@ export const firebaseCustomerService = {
   async createCustomer(userId: string, customerData: Omit<Customer, 'id' | 'createdAt' | 'userId' | 'totalOrders' | 'totalSpent'>): Promise<string> {
     const customersRef = collection(db, 'customers');
 
+    // Verificar duplicata de telefone (chave primária)
+    const existing = await firebaseCustomerService.findCustomerByPhone(userId, customerData.phone);
+    if (existing) {
+      throw new Error(`DUPLICATE_PHONE:${existing.name}`);
+    }
+
     // Remover campos undefined (Firestore não aceita undefined)
     const cleanData: any = {
       name: customerData.name,

@@ -26,7 +26,17 @@ export function Login() {
       navigate('/');
     } catch (err: any) {
       console.error('Erro ao fazer login:', err);
-      setError(err.message || 'Erro ao fazer login. Verifique suas credenciais.');
+      
+      // Mensagens específicas para diferentes tipos de erro
+      if (err.message?.includes('desativada')) {
+        setError('🚫 Sua conta foi desativada. Entre em contato com o administrador para reativar seu acesso.');
+      } else if (err.code === 'auth/invalid-credential' || err.code === 'auth/wrong-password' || err.code === 'auth/user-not-found') {
+        setError('E-mail ou senha incorretos. Verifique suas credenciais.');
+      } else if (err.code === 'auth/too-many-requests') {
+        setError('Muitas tentativas de login. Por favor, aguarde alguns minutos e tente novamente.');
+      } else {
+        setError(err.message || 'Erro ao fazer login. Verifique suas credenciais.');
+      }
     } finally {
       setLoading(false);
     }
@@ -107,13 +117,6 @@ export function Login() {
                 </>
               )}
             </Button>
-
-            <div className="text-center text-sm text-muted-foreground">
-              Não tem uma conta?{' '}
-              <Link to="/registrar" className="text-primary hover:underline font-medium">
-                Cadastre-se
-              </Link>
-            </div>
           </CardFooter>
         </form>
       </Card>

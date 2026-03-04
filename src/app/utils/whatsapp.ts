@@ -165,6 +165,102 @@ export function generatePaymentReminderMessage(order: Order): string {
 }
 
 /**
+ * Gerar mensagem de permuta para o cliente
+ */
+export function generateExchangeMessage(order: Order, businessName = 'Papelaria Personalizada'): string {
+  const formatCurrency = (value: number) =>
+    new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
+
+  const formatDate = (dateStr: string) =>
+    new Date(dateStr + 'T12:00:00').toLocaleDateString('pt-BR', {
+      day: '2-digit',
+      month: 'long',
+      year: 'numeric',
+    });
+
+  const statusLabels: Record<string, string> = {
+    pending:       '⏳ Pendente',
+    'in-progress': '🔄 Em Produção',
+    completed:     '✅ Concluído',
+    cancelled:     '❌ Cancelado',
+  };
+
+  let msg = `🎨 *${businessName}*\n\n`;
+  msg += `Olá, ${order.customerName}! 👋\n\n`;
+  msg += `🔄 *Detalhes da Permuta*\n`;
+  msg += `━━━━━━━━━━━━━━━━━━━━\n`;
+  msg += `🏷️ Produto: ${order.productName}\n`;
+  msg += `💰 Custo: ${formatCurrency(order.price)}\n`;
+  msg += `📅 Data de entrega: ${formatDate(order.deliveryDate)}\n`;
+  msg += `📊 Status: ${statusLabels[order.status] || order.status}\n`;
+
+  if (order.exchangeNotes) {
+    msg += `\n📝 *Observações*\n`;
+    msg += `━━━━━━━━━━━━━━━━━━━━\n`;
+    msg += `${order.exchangeNotes}\n`;
+  }
+
+  msg += `\n━━━━━━━━━━━━━━━━━━━━\n`;
+  msg += `📞 Dúvidas? Responda esta mensagem!\n`;
+  msg += `\nObrigado pela parceria! 🙏`;
+
+  return msg;
+}
+
+/**
+ * Gerar mensagem de resumo de todas as permutas de um cliente
+ */
+export function generateExchangeSummaryMessage(
+  customerName: string,
+  orders: Order[],
+  businessName = 'Papelaria Personalizada',
+): string {
+  const formatCurrency = (value: number) =>
+    new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
+  const formatDate = (dateStr: string) =>
+    new Date(dateStr + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+
+  const statusLabels: Record<string, string> = {
+    pending:       '⏳ Pendente',
+    'in-progress': '🔄 Em Produção',
+    completed:     '✅ Concluído',
+    cancelled:     '❌ Cancelado',
+  };
+
+  const totalCost = orders.reduce((s, o) => s + (o.price || 0), 0);
+
+  let msg = `🎨 *${businessName}*\n\n`;
+  msg += `Olá, ${customerName}! 👋\n\n`;
+  msg += `🔄 *Resumo das Permutas*\n`;
+  msg += `━━━━━━━━━━━━━━━━━━━━\n\n`;
+
+  orders.forEach((o, idx) => {
+    msg += `*${idx + 1}. ${o.productName}*\n`;
+    msg += `   📅 ${formatDate(o.deliveryDate)}\n`;
+    msg += `   💰 Custo: ${formatCurrency(o.price || 0)}\n`;
+    msg += `   📊 ${statusLabels[o.status] || o.status}\n`;
+    if (o.exchangeNotes) msg += `   📝 ${o.exchangeNotes}\n`;
+    msg += `\n`;
+  });
+
+  msg += `━━━━━━━━━━━━━━━━━━━━\n`;
+  msg += `📦 Total de permutas: *${orders.length}*\n`;
+  msg += `💰 Custo total: *${formatCurrency(totalCost)}*\n\n`;
+  msg += `📞 Dúvidas? Responda esta mensagem!\n`;
+  msg += `\nObrigado pela parceria! 🙏`;
+
+  return msg;
+}
+
+/**
+ * Abrir WhatsApp com mensagem de permuta
+ */
+export function openWhatsAppForExchange(order: Order, businessName?: string): void {
+  const message = generateExchangeMessage(order, businessName);
+  openWhatsApp(order.customerPhone, message);
+}
+
+/**
  * Gerar mensagem de atualização de status
  */
 export function generateStatusUpdateMessage(order: Order): string {

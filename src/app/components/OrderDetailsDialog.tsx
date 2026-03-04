@@ -1,4 +1,5 @@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from './ui/dialog';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from './ui/alert-dialog';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -8,6 +9,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Order, OrderStatus, ProductionStep, PaymentStatus, PaymentMethod, Tag, ExchangeItem, GalleryItem } from '../types';
 import { Calendar, DollarSign, Package, Phone, User, FileText, Clock, Tag as TagIcon, Trash2, Edit, Save, X, Plus, Copy, Paperclip, Upload, ExternalLink, ImageIcon, Repeat2, Images, ZoomIn, Download } from 'lucide-react';
 import { exportOrderPDF } from '../utils/exportPdf';
+import { formatDate } from '../utils/date';
+import { formatCurrency } from '../utils/currency';
 import { useUserSettings } from '../../hooks/useUserSettings';
 import { getTextColor } from '../utils/tagColors';
 import { useState, useMemo, useEffect, useRef } from 'react';
@@ -50,9 +53,8 @@ const statusLabels = {
 };
 
 export function OrderDetailsDialog({ order, open, onOpenChange, onUpdateStatus, onDeleteOrder }: OrderDetailsDialogProps) {
-  const { user } = useAuth();
+  const { user, hasPermission } = useAuth();
   const { settings } = useUserSettings();
-  const [confirmDelete, setConfirmDelete] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isDuplicating, setIsDuplicating] = useState(false);
@@ -94,6 +96,11 @@ export function OrderDetailsDialog({ order, open, onOpenChange, onUpdateStatus, 
 
   const formatCurrencyEdit = (v: number) =>
     new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
+
+  // Resetar estado de edição sempre que o pedido aberto mudar
+  useEffect(() => {
+    setIsEditing(false);
+  }, [order?.id]);
 
   // Sincronizar anexos quando o pedido mudar (ex: listener Firestore)
   useEffect(() => {
@@ -249,7 +256,7 @@ export function OrderDetailsDialog({ order, open, onOpenChange, onUpdateStatus, 
       setIsEditing(false);
     } catch (error) {
       console.error('Erro ao atualizar pedido:', error);
-      alert('Erro ao atualizar pedido');
+      toast.error('Erro ao atualizar pedido');
     } finally {
       setIsSaving(false);
     }
@@ -261,7 +268,7 @@ export function OrderDetailsDialog({ order, open, onOpenChange, onUpdateStatus, 
       // O hook vai atualizar automaticamente
     } catch (error) {
       console.error('Erro ao atualizar workflow:', error);
-      alert('Erro ao atualizar etapa do workflow');
+      toast.error('Erro ao atualizar etapa do workflow');
     }
   };
 
@@ -273,7 +280,7 @@ export function OrderDetailsDialog({ order, open, onOpenChange, onUpdateStatus, 
       onOpenChange(false);
     } catch (error) {
       console.error('Erro ao duplicar pedido:', error);
-      alert('Erro ao duplicar pedido');
+      toast.error('Erro ao duplicar pedido');
     } finally {
       setIsDuplicating(false);
     }
@@ -318,7 +325,7 @@ export function OrderDetailsDialog({ order, open, onOpenChange, onUpdateStatus, 
       // Reverter prévia em caso de erro
       setLocalAttachments(prev => prev.filter(a => a.url !== previewUrl));
       URL.revokeObjectURL(previewUrl);
-      alert(error.message || 'Erro ao enviar arquivo');
+      toast.error(error.message || 'Erro ao enviar arquivo');
     } finally {
       setIsUploadingAttachment(false);
       e.target.value = '';
@@ -338,41 +345,11 @@ export function OrderDetailsDialog({ order, open, onOpenChange, onUpdateStatus, 
     }
   };
 
-  const handleDelete = () => {
-    if (confirmDelete && onDeleteOrder) {
-      onDeleteOrder(order.id);
-      setConfirmDelete(false);
-    } else {
-      setConfirmDelete(true);
-      setTimeout(() => setConfirmDelete(false), 3000);
-    }
-  };
 
-  const parseLocalDate = (dateStr: string) => {
-    const [y, m, d] = dateStr.split('-').map(Number);
-    return new Date(y, m - 1, d);
-  };
-
-  const formatDate = (dateStr: string) => {
-    // ISO timestamp (ex: createdAt) → parse direto; date-only (YYYY-MM-DD) → local
-    const date = /^\d{4}-\d{2}-\d{2}$/.test(dateStr) ? parseLocalDate(dateStr) : new Date(dateStr);
-    return date.toLocaleDateString('pt-BR', {
-      day: '2-digit',
-      month: 'long',
-      year: 'numeric'
-    });
-  };
-
-  const formatCurrency = (value: number) => {
-    return new Intl.NumberFormat('pt-BR', {
-      style: 'currency',
-      currency: 'BRL',
-    }).format(value);
-  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto overflow-x-hidden">
+      <DialogContent className="max-w-2xl max-h-[90dvh] overflow-y-auto overflow-x-hidden">
         <DialogHeader>
           <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2">
             <DialogTitle className="text-base sm:text-lg">
@@ -390,25 +367,29 @@ export function OrderDetailsDialog({ order, open, onOpenChange, onUpdateStatus, 
                     <Download className="size-4" />
                     PDF
                   </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={handleDuplicate}
-                    disabled={isDuplicating}
-                    className="gap-2"
-                  >
-                    <Copy className="size-4" />
-                    {isDuplicating ? 'Duplicando...' : 'Duplicar'}
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={handleEditClick}
-                    className="gap-2"
-                  >
-                    <Edit className="size-4" />
-                    Editar
-                  </Button>
+                  {hasPermission(p => p.orders?.create ?? false) && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={handleDuplicate}
+                      disabled={isDuplicating}
+                      className="gap-2"
+                    >
+                      <Copy className="size-4" />
+                      {isDuplicating ? 'Duplicando...' : 'Duplicar'}
+                    </Button>
+                  )}
+                  {hasPermission(p => p.orders?.edit ?? false) && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={handleEditClick}
+                      className="gap-2"
+                    >
+                      <Edit className="size-4" />
+                      Editar
+                    </Button>
+                  )}
                 </>
               )}
               <Badge className={statusColors[order.status]}>
@@ -1009,18 +990,20 @@ export function OrderDetailsDialog({ order, open, onOpenChange, onUpdateStatus, 
                   <span className="text-xs text-muted-foreground font-normal">({customerGallery.length})</span>
                 )}
               </h3>
-              <label className="cursor-pointer">
-                <input
-                  ref={galleryInputRef}
-                  type="file"
-                  className="sr-only"
-                  accept="image/*"
-                  onChange={e => { const f = e.target.files?.[0]; if (f) handleGalleryFilePick(f); e.target.value = ''; }}
-                />
-                <span className="inline-flex items-center gap-1.5 text-xs border rounded-md px-2.5 py-1.5 hover:bg-muted transition-colors cursor-pointer">
-                  <Plus className="size-3.5" /> Adicionar arte
-                </span>
-              </label>
+              {hasPermission(p => p.gallery?.create ?? false) && (
+                <label className="cursor-pointer">
+                  <input
+                    ref={galleryInputRef}
+                    type="file"
+                    className="sr-only"
+                    accept="image/*"
+                    onChange={e => { const f = e.target.files?.[0]; if (f) handleGalleryFilePick(f); e.target.value = ''; }}
+                  />
+                  <span className="inline-flex items-center gap-1.5 text-xs border rounded-md px-2.5 py-1.5 hover:bg-muted transition-colors cursor-pointer">
+                    <Plus className="size-3.5" /> Adicionar arte
+                  </span>
+                </label>
+              )}
             </div>
             {galleryLoading ? (
               <div className="grid grid-cols-4 gap-2">
@@ -1036,7 +1019,7 @@ export function OrderDetailsDialog({ order, open, onOpenChange, onUpdateStatus, 
                     onClick={() => setGalleryLightbox(item)}
                     className="group relative aspect-square rounded-md overflow-hidden border bg-muted"
                   >
-                    <img src={item.imageUrl} alt={item.title} className="w-full h-full object-cover transition-transform group-hover:scale-105" />
+                    <SafeImg src={item.imageUrl} alt={item.title} className="w-full h-full object-cover transition-transform group-hover:scale-105" />
                     <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center">
                       <ZoomIn className="size-4 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
                     </div>
@@ -1055,7 +1038,7 @@ export function OrderDetailsDialog({ order, open, onOpenChange, onUpdateStatus, 
                   <button onClick={() => setGalleryUploadOpen(false)}><X className="size-4" /></button>
                 </div>
                 {galleryUploadPreview && (
-                  <img src={galleryUploadPreview} alt="preview" className="w-full max-h-40 object-contain rounded border" />
+                  <SafeImg src={galleryUploadPreview} alt="preview" className="w-full max-h-40 object-contain rounded border" />
                 )}
                 <div className="space-y-1">
                   <label className="text-xs font-medium">Título <span className="text-destructive">*</span></label>
@@ -1096,7 +1079,7 @@ export function OrderDetailsDialog({ order, open, onOpenChange, onUpdateStatus, 
                 >
                   <X className="size-5" />
                 </button>
-                <img src={galleryLightbox.imageUrl} alt={galleryLightbox.title} className="w-full max-h-[80vh] object-contain rounded-lg" />
+                <SafeImg src={galleryLightbox.imageUrl} alt={galleryLightbox.title} className="w-full max-h-[80vh] object-contain rounded-lg" />
                 <p className="text-white/90 text-sm mt-2 text-center">{galleryLightbox.title}</p>
               </div>
             </div>
@@ -1108,19 +1091,21 @@ export function OrderDetailsDialog({ order, open, onOpenChange, onUpdateStatus, 
               <h3 className="font-medium text-sm flex items-center gap-2">
                 <Paperclip className="size-4" /> Anexos
               </h3>
-              <label className="cursor-pointer">
-                <input
-                  type="file"
-                  className="sr-only"
-                  accept="image/*,.pdf"
-                  onChange={handleUploadAttachment}
-                  disabled={isUploadingAttachment}
-                />
-                <span className="inline-flex items-center gap-1.5 text-xs border rounded-md px-2.5 py-1.5 hover:bg-muted transition-colors">
-                  <Upload className="size-3.5" />
-                  {isUploadingAttachment ? 'Enviando...' : 'Enviar arquivo'}
-                </span>
-              </label>
+              {hasPermission(p => p.orders?.edit ?? false) && (
+                <label className="cursor-pointer">
+                  <input
+                    type="file"
+                    className="sr-only"
+                    accept="image/*,.pdf"
+                    onChange={handleUploadAttachment}
+                    disabled={isUploadingAttachment}
+                  />
+                  <span className="inline-flex items-center gap-1.5 text-xs border rounded-md px-2.5 py-1.5 hover:bg-muted transition-colors">
+                    <Upload className="size-3.5" />
+                    {isUploadingAttachment ? 'Enviando...' : 'Enviar arquivo'}
+                  </span>
+                </label>
+              )}
             </div>
             {localAttachments.length > 0 ? (
               <div className="grid grid-cols-3 gap-2">
@@ -1190,15 +1175,34 @@ export function OrderDetailsDialog({ order, open, onOpenChange, onUpdateStatus, 
           </div>
 
           <div className="flex justify-between items-center pt-4">
-            {onDeleteOrder && (
-              <Button
-                variant={confirmDelete ? "destructive" : "outline"}
-                onClick={handleDelete}
-                className="gap-2"
-              >
-                <Trash2 className="size-4" />
-                {confirmDelete ? 'Confirmar Exclusão' : 'Excluir Pedido'}
-              </Button>
+            {onDeleteOrder && hasPermission(p => p.orders?.delete ?? false) && (
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button variant="outline" className="gap-2">
+                    <Trash2 className="size-4" />
+                    Excluir Pedido
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Excluir pedido?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      Esta ação não pode ser desfeita. O pedido{' '}
+                      <strong>{order.orderNumber || '#' + order.id}</strong> será
+                      removido permanentemente.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                    <AlertDialogAction
+                      className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                      onClick={() => onDeleteOrder(order.id)}
+                    >
+                      Excluir
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
             )}
             <div className="flex gap-2 ml-auto">
               <Button variant="outline" onClick={() => onOpenChange(false)}>

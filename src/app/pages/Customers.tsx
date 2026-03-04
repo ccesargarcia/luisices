@@ -1,4 +1,6 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
+import { formatDate } from '../utils/date';
+import { formatCurrency } from '../utils/currency';
 import { Customer, Order, GalleryItem, Tag } from '../types';
 import { SafeImg } from '../components/SafeMedia';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
@@ -60,11 +62,14 @@ import { Skeleton } from '../components/ui/skeleton';
 import { TagInput } from '../components/TagInput';
 import { toast } from 'sonner';
 
+const PAGE_SIZE = 12;
+
 export function Customers() {
-  const { user } = useAuth();
+  const { user, hasPermission } = useAuth();
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [isNewCustomerOpen, setIsNewCustomerOpen] = useState(false);
   const [isEditOpen, setIsEditOpen] = useState(false);
@@ -134,6 +139,15 @@ export function Customers() {
     );
   }, [customers, searchQuery]);
 
+  // Resetar página ao filtrar
+  useEffect(() => { setCurrentPage(1); }, [searchQuery]);
+
+  const totalPages = Math.ceil(filteredCustomers.length / PAGE_SIZE);
+  const pagedCustomers = filteredCustomers.slice(
+    (currentPage - 1) * PAGE_SIZE,
+    currentPage * PAGE_SIZE
+  );
+
   // Estatísticas
   const stats = useMemo(() => {
     const total = customers.length;
@@ -183,9 +197,14 @@ export function Customers() {
       await loadCustomers();
       setIsNewCustomerOpen(false);
       resetForm();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Erro ao criar cliente:', error);
-      alert('Erro ao criar cliente');
+      if (error?.message?.startsWith('DUPLICATE_PHONE:')) {
+        const existingName = error.message.slice('DUPLICATE_PHONE:'.length);
+        toast.error(`Telefone já cadastrado para o cliente "${existingName}". O telefone é a chave única de cada cliente.`);
+      } else {
+        toast.error('Erro ao criar cliente');
+      }
     } finally {
       setFormLoading(false);
     }
@@ -197,6 +216,16 @@ export function Customers() {
 
     setFormLoading(true);
     try {
+      // Verificar duplicata de telefone ao editar (se o telefone mudou)
+      if (user && formData.phone !== selectedCustomer.phone) {
+        const existingWithPhone = await firebaseCustomerService.findCustomerByPhone(user.uid, formData.phone);
+        if (existingWithPhone && existingWithPhone.id !== selectedCustomer.id) {
+          toast.error(`Telefone já cadastrado para o cliente "${existingWithPhone.name}". Utilize um número diferente.`);
+          setFormLoading(false);
+          return;
+        }
+      }
+
       let photoUrl = formData.photoUrl || undefined;
 
       if (pendingPhotoFile && user) {
@@ -226,9 +255,14 @@ export function Customers() {
       setIsEditOpen(false);
       setSelectedCustomer(null);
       resetForm();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Erro ao editar cliente:', error);
-      alert('Erro ao editar cliente');
+      if (error?.message?.startsWith('DUPLICATE_PHONE:')) {
+        const existingName = error.message.split(':')[1];
+        toast.error(`Telefone já cadastrado para o cliente "${existingName}". Utilize um número diferente.`);
+      } else {
+        toast.error('Erro ao editar cliente');
+      }
     } finally {
       setFormLoading(false);
     }
@@ -245,7 +279,7 @@ export function Customers() {
       setSelectedCustomer(null);
     } catch (error) {
       console.error('Erro ao deletar cliente:', error);
-      alert('Erro ao deletar cliente');
+      toast.error('Erro ao deletar cliente');
     } finally {
       setFormLoading(false);
     }
@@ -396,18 +430,6 @@ export function Customers() {
     return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`;
   };
 
-  const formatCurrency = (value: number) => {
-    return new Intl.NumberFormat('pt-BR', {
-      style: 'currency',
-      currency: 'BRL',
-    }).format(value);
-  };
-
-  const formatDate = (dateString: string) => {
-    const [y, m, d] = dateString.split('-').map(Number);
-    return new Date(y, m - 1, d).toLocaleDateString('pt-BR');
-  };
-
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
@@ -419,12 +441,13 @@ export function Customers() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
         <div>
-          <h1 className="text-3xl font-bold">Clientes</h1>
+          <h1 className="text-2xl sm:text-3xl font-bold">Clientes</h1>
           <p className="text-muted-foreground">Gerencie sua base de clientes</p>
         </div>
-        <Dialog open={isNewCustomerOpen} onOpenChange={(open) => { setIsNewCustomerOpen(open); if (open) { setPendingPhotoFile(null); setPhotoPreview(''); } }}>
+        {hasPermission(p => p.customers?.create ?? false) && (
+          <Dialog open={isNewCustomerOpen} onOpenChange={(open) => { setIsNewCustomerOpen(open); if (open) { resetForm(); setPendingPhotoFile(null); setPhotoPreview(''); } }}>
           <DialogTrigger asChild>
             <Button className="gap-2">
               <UserPlus className="size-4" />
@@ -571,6 +594,7 @@ export function Customers() {
             </form>
           </DialogContent>
         </Dialog>
+        )}
       </div>
 
       {/* Stats */}
@@ -629,7 +653,7 @@ export function Customers() {
 
       {/* Customer Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {filteredCustomers.map((customer) => (
+        {pagedCustomers.map((customer) => (
           <Card key={customer.id} className="hover:shadow-md transition-shadow">
             <CardHeader>
               <div className="flex items-start justify-between">
@@ -676,20 +700,24 @@ export function Customers() {
                   >
                     <History className="size-4" />
                   </Button>
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    onClick={() => openEditDialog(customer)}
-                  >
-                    <Edit className="size-4" />
-                  </Button>
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    onClick={() => openDeleteDialog(customer)}
-                  >
-                    <Trash2 className="size-4 text-destructive" />
-                  </Button>
+                  {hasPermission(p => p.customers?.edit ?? false) && (
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      onClick={() => openEditDialog(customer)}
+                    >
+                      <Edit className="size-4" />
+                    </Button>
+                  )}
+                  {hasPermission(p => p.customers?.delete ?? false) && (
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      onClick={() => openDeleteDialog(customer)}
+                    >
+                      <Trash2 className="size-4 text-destructive" />
+                    </Button>
+                  )}
                 </div>
               </div>
             </CardHeader>
@@ -747,6 +775,34 @@ export function Customers() {
         ))}
       </div>
 
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between pt-2">
+          <p className="text-sm text-muted-foreground">
+            {filteredCustomers.length} cliente{filteredCustomers.length !== 1 ? 's' : ''} —
+            página {currentPage} de {totalPages}
+          </p>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+              disabled={currentPage === 1}
+            >
+              Anterior
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+              disabled={currentPage === totalPages}
+            >
+              Próxima
+            </Button>
+          </div>
+        </div>
+      )}
+
       {filteredCustomers.length === 0 && (
         <Card>
           <CardContent className="py-12 text-center">
@@ -757,7 +813,7 @@ export function Customers() {
                 ? 'Tente uma busca diferente'
                 : 'Comece adicionando seu primeiro cliente'}
             </p>
-            {!searchQuery && (
+            {!searchQuery && hasPermission(p => p.customers?.create ?? false) && (
               <Button onClick={() => setIsNewCustomerOpen(true)}>
                 <UserPlus className="size-4 mr-2" />
                 Adicionar Cliente

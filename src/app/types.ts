@@ -237,3 +237,64 @@ export interface GalleryItem {
   tags?: Tag[];
   createdAt: string;
 }
+
+// ─── User Management ─────────────────────────────────────────────────────────
+
+export type UserRole = 'admin' | 'user';
+
+export interface ModulePermission {
+  view: boolean;
+  create: boolean;
+  edit: boolean;
+  delete: boolean;
+}
+
+export interface Permission {
+  dashboard: boolean;
+  orders: ModulePermission;
+  customers: ModulePermission;
+  products: ModulePermission;
+  quotes: ModulePermission;
+  gallery: { view: boolean; create: boolean; delete: boolean };
+  reports: boolean;
+  exchanges: boolean;
+  settings: boolean;
+  users: ModulePermission;
+}
+
+export interface UserProfile {
+  uid: string;
+  email: string;
+  displayName: string;
+  role: UserRole;
+  permissions: Permission;
+  active: boolean;
+  createdAt: string;
+  createdBy: string;
+}
+
+export const ADMIN_PERMISSIONS: Permission = {
+  dashboard: true,
+  orders:    { view: true, create: true, edit: true, delete: true },
+  customers: { view: true, create: true, edit: true, delete: true },
+  products:  { view: true, create: true, edit: true, delete: true },
+  quotes:    { view: true, create: true, edit: true, delete: true },
+  gallery:   { view: true, create: true, delete: true },
+  reports:   true,
+  exchanges: true,
+  settings:  true,
+  users:     { view: true, create: true, edit: true, delete: true },
+};
+
+export const DEFAULT_USER_PERMISSIONS: Permission = {
+  dashboard: true,
+  orders:    { view: true, create: true, edit: true, delete: false },
+  customers: { view: true, create: true, edit: true, delete: false },
+  products:  { view: true, create: false, edit: false, delete: false },
+  quotes:    { view: true, create: true, edit: true, delete: false },
+  gallery:   { view: true, create: true, delete: false },
+  reports:   false,
+  exchanges: false,
+  settings:  false,
+  users:     { view: false, create: false, edit: false, delete: false },
+};

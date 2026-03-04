@@ -20,9 +20,7 @@ export default defineConfig(({ command }) => ({
   // File types to support raw imports. Never add .css, .tsx, or .ts files to this.
   assetsInclude: ['**/*.svg', '**/*.csv'],
 
-  // GitHub Pages deployment configuration
-  // Com domínio customizado (luisices.com.br), sempre usar base: '/'
-  // Sem domínio customizado, usar: command === 'serve' ? '/' : '/luisices/'
+  // Base path: sempre '/' (produção no GitHub Pages, dev no Firebase Hosting)
   base: '/',
 
   // Copiar 404.html para dist/ durante o build

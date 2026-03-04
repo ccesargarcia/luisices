@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { parseLocalDate, formatDateMonthShort } from '../utils/date';
 import { Order, DeliveryAlert } from '../types';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Badge } from './ui/badge';
@@ -12,12 +13,6 @@ interface DeliveryAlertsProps {
 }
 
 export function DeliveryAlerts({ orders, daysThreshold = 3, onOrderClick }: DeliveryAlertsProps) {
-  // Parse date string as LOCAL time (avoids UTC offset shifting day)
-  const parseLocalDate = (dateStr: string) => {
-    const [y, m, d] = dateStr.split('-').map(Number);
-    return new Date(y, m - 1, d);
-  };
-
   const alerts = useMemo(() => {
     const now = new Date();
     now.setHours(0, 0, 0, 0);
@@ -65,12 +60,7 @@ export function DeliveryAlerts({ orders, daysThreshold = 3, onOrderClick }: Deli
     return `${days} DIAS`;
   };
 
-  const formatDate = (dateString: string) => {
-    return parseLocalDate(dateString).toLocaleDateString('pt-BR', {
-      day: '2-digit',
-      month: 'short',
-    });
-  };
+  const formatDate = (dateString: string) => formatDateMonthShort(dateString);
 
   if (alerts.length === 0) {
     return (

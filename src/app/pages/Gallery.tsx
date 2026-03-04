@@ -221,7 +221,7 @@ function Lightbox({ items, initialIndex, onClose, onDelete }: LightboxProps) {
   return (
     <>
       <Dialog open onOpenChange={v => { if (!v) onClose(); }}>
-        <DialogContent className="max-w-4xl max-h-[95vh] p-0 overflow-hidden flex flex-col">
+        <DialogContent className="max-w-4xl max-h-[95vh] p-0 overflow-hidden flex flex-col" hideClose>
           <div className="flex items-center justify-between px-4 py-3 border-b">
             <DialogTitle className="text-base font-semibold truncate flex-1">{item.title}</DialogTitle>
             <div className="flex items-center gap-2 ml-2 flex-shrink-0">
@@ -713,7 +713,7 @@ function NewFolderDialog({ open, onClose, customers, existingFolderIds, onSaved 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export function Gallery() {
-  const { user } = useAuth();
+  const { user, hasPermission } = useAuth();
   const [items, setItems] = useState<GalleryItem[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
@@ -953,12 +953,16 @@ export function Gallery() {
               </Button>
             </div>
           )}
-          <Button variant="outline" onClick={() => setNewFolderOpen(true)} className="gap-2">
-            <FolderOpen className="size-4" /> Nova Pasta
-          </Button>
-          <Button onClick={() => setUploadOpen(true)} className="gap-2">
-            <Plus className="size-4" /> Nova Arte
-          </Button>
+          {hasPermission(p => p.gallery?.create ?? false) && (
+            <>
+              <Button variant="outline" onClick={() => setNewFolderOpen(true)} className="gap-2">
+                <FolderOpen className="size-4" /> Nova Pasta
+              </Button>
+              <Button onClick={() => setUploadOpen(true)} className="gap-2">
+                <Plus className="size-4" /> Nova Arte
+              </Button>
+            </>
+          )}
         </div>
       </div>
 
@@ -1073,7 +1077,7 @@ export function Gallery() {
             <p className="text-base font-medium">
               {hasFilters || search ? 'Nenhuma arte encontrada' : 'Pasta vazia'}
             </p>
-            {!hasFilters && !search && (
+            {!hasFilters && !search && hasPermission(p => p.gallery?.create ?? false) && (
               <Button variant="outline" onClick={() => setUploadOpen(true)} className="gap-2 mt-1">
                 <Plus className="size-4" /> Adicionar arte
               </Button>

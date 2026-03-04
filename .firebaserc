@@ -1,0 +1,6 @@
+{
+  "projects": {
+    "default": "papelaria-dashboard",
+    "dev": "luisices-dev"
+  }
+}

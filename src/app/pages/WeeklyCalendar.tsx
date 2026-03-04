@@ -1,4 +1,6 @@
 import { useState, useMemo } from 'react';
+import { formatCurrency } from '../utils/currency';
+import { parseLocalDate, formatDateDayMonth } from '../utils/date';
 import { Order, OrderStatus, WeekDay } from '../types';
 import { OrderDetailsDialog } from '../components/OrderDetailsDialog';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
@@ -7,6 +9,7 @@ import { Button } from '../components/ui/button';
 import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, Loader2, TrendingUp } from 'lucide-react';
 import { useFirebaseOrders } from '../../hooks/useFirebaseOrders';
 import { firebaseOrderService } from '../../services/firebaseOrderService';
+import { firebaseCustomerService } from '../../services/firebaseCustomerService';
 import { toast } from 'sonner';
 
 function hexToRgba(hex: string, alpha: number) {
@@ -14,10 +17,6 @@ function hexToRgba(hex: string, alpha: number) {
   const g = parseInt(hex.slice(3, 5), 16);
   const b = parseInt(hex.slice(5, 7), 16);
   return `rgba(${r},${g},${b},${alpha})`;
-}
-
-function formatCurrency(v: number) {
-  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
 }
 
 function toDateStr(d: Date) {
@@ -82,11 +81,6 @@ export function WeeklyCalendar() {
     return `${fmt(first)} \u2013 ${fmt(last, true)}`;
   };
 
-  const formatDate = (dateStr: string) => {
-    const d = new Date(dateStr + 'T12:00:00');
-    return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
-  };
-
   const handleUpdateStatus = async (orderId: string, status: OrderStatus) => {
     try {
       await firebaseOrderService.updateOrderStatus(orderId, status);
@@ -98,7 +92,11 @@ export function WeeklyCalendar() {
 
   const handleDeleteOrder = async (orderId: string) => {
     try {
+      const order = orders.find(o => o.id === orderId);
       await firebaseOrderService.deleteOrder(orderId);
+      if (order?.customerId && order.price) {
+        await firebaseCustomerService.decrementCustomerStats(order.customerId, order.price).catch(() => {});
+      }
       setDetailsOpen(false);
       setSelectedOrder(null);
     } catch {
@@ -135,7 +133,7 @@ export function WeeklyCalendar() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold">Agenda Semanal</h1>
+          <h1 className="text-2xl sm:text-3xl font-bold">Agenda Semanal</h1>
           <p className="text-muted-foreground">Visualize entregas por dia da semana</p>
         </div>
         <div className="flex items-center gap-2">
@@ -204,7 +202,7 @@ export function WeeklyCalendar() {
                   <span className="capitalize">{day.dayName}</span>
                   {isToday && <Badge variant="outline" className="text-xs">Hoje</Badge>}
                 </CardTitle>
-                <div className="text-muted-foreground text-sm">{formatDate(day.date)}</div>
+                <div className="text-muted-foreground text-sm">{formatDateDayMonth(day.date)}</div>
                 <div className="text-xs text-muted-foreground">
                   {visibleOrders.length} {visibleOrders.length === 1 ? 'entrega' : 'entregas'}
                 </div>
@@ -259,7 +257,12 @@ export function WeeklyCalendar() {
       <OrderDetailsDialog
         order={selectedOrder}
         open={detailsOpen}
-        onOpenChange={setDetailsOpen}
+        onOpenChange={(open) => {
+          setDetailsOpen(open);
+          if (!open) {
+            setTimeout(() => setSelectedOrder(null), 300);
+          }
+        }}
         onUpdateStatus={handleUpdateStatus}
         onDeleteOrder={handleDeleteOrder}
       />

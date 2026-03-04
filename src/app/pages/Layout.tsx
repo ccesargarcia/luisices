@@ -1,6 +1,6 @@
 import { useEffect, useMemo } from 'react';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router';
-import { LayoutDashboard, Calendar, Users, Package2, LogOut, Settings as SettingsIcon, BarChart3, FileText, ShoppingBag, Images } from 'lucide-react';
+import { LayoutDashboard, Calendar, Users, Package2, LogOut, Settings as SettingsIcon, BarChart3, FileText, ShoppingBag, Images, AtSign, Globe, Phone, Mail, MapPin, MessageCircle, ArrowLeftRight, UserCog } from 'lucide-react';
 import { cn } from '../components/ui/utils';
 import { useAuth } from '../../contexts/AuthContext';
 import { useUserSettings } from '../../hooks/useUserSettings';
@@ -17,17 +17,18 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from '../components/ui/avatar';
 import { ThemeToggle } from '../../components/ThemeToggle';
 import { NotificationBell } from '../components/NotificationBell';
+import { Badge } from '../components/ui/badge';
 
 export function Layout() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { user, logout } = useAuth();
+  const { user, logout, isAdmin, userProfile, hasPermission } = useAuth();
   const { settings } = useUserSettings();
 
   // Apply color theme CSS vars whenever settings change
   useEffect(() => {
-    applyColorTheme(settings?.colorTheme ?? 'default');
-  }, [settings?.colorTheme]);
+    applyColorTheme(settings?.colorTheme ?? 'default', settings?.customColorHex);
+  }, [settings?.colorTheme, settings?.customColorHex]);
 
   const handleLogout = async () => {
     try {
@@ -47,15 +48,22 @@ export function Layout() {
     return user.displayName[0].toUpperCase();
   };
 
-  const navigation = [
-    { name: 'Dashboard',       href: '/',           icon: LayoutDashboard },
-    { name: 'Agenda Semanal', href: '/agenda',       icon: Calendar },
-    { name: 'Clientes',       href: '/clientes',     icon: Users },
-    { name: 'Relatórios',     href: '/relatorios',   icon: BarChart3 },
-    { name: 'Orçamentos',     href: '/orcamentos',   icon: FileText },
-    { name: 'Produtos',       href: '/produtos',     icon: ShoppingBag },
-    { name: 'Galeria',        href: '/galeria',      icon: Images },
+  const allNavItems = [
+    { name: 'Dashboard',       href: '/',           icon: LayoutDashboard, check: (p: any) => p.dashboard },
+    { name: 'Agenda Semanal', href: '/agenda',      icon: Calendar,        check: (p: any) => p.orders?.view },
+    { name: 'Clientes',       href: '/clientes',    icon: Users,           check: (p: any) => p.customers?.view },
+    { name: 'Relatórios',     href: '/relatorios',  icon: BarChart3,       check: (p: any) => p.reports },
+    { name: 'Orçamentos',     href: '/orcamentos',  icon: FileText,        check: (p: any) => p.quotes?.view },
+    { name: 'Produtos',       href: '/produtos',    icon: ShoppingBag,     check: (p: any) => p.products?.view },
+    { name: 'Galeria',        href: '/galeria',     icon: Images,          check: (p: any) => p.gallery?.view },
+    { name: 'Permutas',       href: '/permutas',    icon: ArrowLeftRight,  check: (p: any) => p.exchanges },
+    { name: 'Usuários',       href: '/usuarios',    icon: UserCog,         check: (p: any) => p.users?.view },
   ];
+
+  const navigation = useMemo(() => {
+    if (!userProfile) return [];
+    return allNavItems.filter(item => hasPermission(item.check));
+  }, [userProfile, hasPermission]);
 
   const orderedNav = useMemo(() => {
     const order = settings?.navOrder;
@@ -69,9 +77,10 @@ export function Layout() {
 
   const businessName = settings?.businessName || 'Papelaria Personalizada';
   const hasLogo = !!settings?.logo;
+  const isDevEnvironment = import.meta.env.VITE_FIREBASE_PROJECT_ID?.endsWith('-dev') ?? false;
 
   return (
-    <div className="min-h-screen bg-background overflow-x-hidden">
+    <div className="min-h-screen bg-background overflow-x-hidden flex flex-col">
       <header className="border-b bg-card">
         <div className="container mx-auto px-4 py-3">
           <div className="flex items-center justify-between gap-2">
@@ -88,8 +97,41 @@ export function Layout() {
                 </div>
               )}
               <div className="min-w-0">
-                <h1 className="font-bold text-base sm:text-xl truncate">{businessName}</h1>
-                <p className="text-xs text-muted-foreground hidden sm:block">Sistema de Gestão de Pedidos</p>
+                <div className="flex items-center gap-2">
+                  <h1 className="font-bold text-base sm:text-xl truncate">{businessName}</h1>
+                  {isDevEnvironment && (
+                    <Badge variant="outline" className="bg-yellow-500/10 text-yellow-600 border-yellow-400 font-mono text-[10px] px-1.5 py-0 h-5 hidden sm:inline-flex">
+                      DEV
+                    </Badge>
+                  )}
+                </div>
+                <div className="flex items-center gap-2">
+                  <p className="text-xs text-muted-foreground hidden sm:block">
+                    {settings?.businessTagline || 'Sistema de Gestão de Pedidos'}
+                  </p>
+                  {settings?.instagramUrl && (
+                    <a
+                      href={settings.instagramUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      title="Instagram"
+                      className="text-muted-foreground hover:text-foreground hidden sm:inline-flex"
+                    >
+                      <AtSign className="size-3" />
+                    </a>
+                  )}
+                  {settings?.websiteUrl && (
+                    <a
+                      href={settings.websiteUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      title="Site"
+                      className="text-muted-foreground hover:text-foreground hidden sm:inline-flex"
+                    >
+                      <Globe className="size-3" />
+                    </a>
+                  )}
+                </div>
               </div>
             </div>
 
@@ -130,9 +172,9 @@ export function Layout() {
         </div>
       </header>
 
-      <nav className="border-b bg-card sticky top-0 z-10">
+      <nav className="border-b bg-card sticky top-0 z-10 hidden sm:block">
         <div className="container mx-auto px-2 sm:px-4">
-          <div className="flex">
+          <div className="flex overflow-x-auto scrollbar-none">
             {orderedNav.map((item) => {
               const isActive = location.pathname === item.href;
               return (
@@ -155,9 +197,127 @@ export function Layout() {
         </div>
       </nav>
 
-      <main className="container mx-auto px-3 sm:px-4 py-4 sm:py-8">
+      <main className="container mx-auto px-3 sm:px-4 py-4 sm:py-8 flex-1 pb-24 sm:pb-8">
         <Outlet />
       </main>
+
+      <footer className="border-t bg-card mt-auto">
+        <div className="container mx-auto px-4 py-6">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            {/* Identidade */}
+            <div className="flex items-center gap-3 min-w-0">
+              {settings?.logo ? (
+                <img src={settings.logo} alt={businessName} className="h-8 object-contain flex-shrink-0 opacity-80" />
+              ) : (
+                <div className="flex items-center justify-center size-8 bg-primary text-primary-foreground rounded-md flex-shrink-0">
+                  <Package2 className="size-4" />
+                </div>
+              )}
+              <div className="min-w-0">
+                <p className="font-semibold text-sm truncate">{businessName}</p>
+                {settings?.businessTagline && (
+                  <p className="text-xs text-muted-foreground truncate">{settings.businessTagline}</p>
+                )}
+              </div>
+            </div>
+
+            {/* Informações de contato */}
+            {(settings?.businessPhone || settings?.businessEmail || settings?.businessAddress) && (
+              <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                {settings.businessPhone && (
+                  <span className="flex items-center gap-1">
+                    <Phone className="size-3" />
+                    {settings.businessPhone}
+                  </span>
+                )}
+                {settings.businessEmail && (
+                  <span className="flex items-center gap-1">
+                    <Mail className="size-3" />
+                    {settings.businessEmail}
+                  </span>
+                )}
+                {settings.businessAddress && (
+                  <span className="flex items-center gap-1">
+                    <MapPin className="size-3" />
+                    {settings.businessAddress}
+                  </span>
+                )}
+              </div>
+            )}
+
+            {/* Links sociais + copyright */}
+            <div className="flex flex-col items-start sm:items-end gap-2">
+              <div className="flex items-center gap-2">
+                {settings?.instagramUrl && (
+                  <a
+                    href={settings.instagramUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    title="Instagram"
+                    className="flex items-center justify-center size-8 rounded-full border border-border bg-background text-muted-foreground hover:text-foreground hover:border-foreground transition-colors"
+                  >
+                    <AtSign className="size-3.5" />
+                  </a>
+                )}
+                {settings?.whatsappPhone && (
+                  <a
+                    href={`https://wa.me/${settings.whatsappPhone.replace(/\D/g, '')}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    title="WhatsApp"
+                    className="flex items-center justify-center size-8 rounded-full border border-border bg-background text-muted-foreground hover:text-foreground hover:border-foreground transition-colors"
+                  >
+                    <MessageCircle className="size-3.5" />
+                  </a>
+                )}
+                {settings?.businessEmail && (
+                  <a
+                    href={`mailto:${settings.businessEmail}`}
+                    title={settings.businessEmail}
+                    className="flex items-center justify-center size-8 rounded-full border border-border bg-background text-muted-foreground hover:text-foreground hover:border-foreground transition-colors"
+                  >
+                    <Mail className="size-3.5" />
+                  </a>
+                )}
+                {settings?.websiteUrl && (
+                  <a
+                    href={settings.websiteUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    title="Site"
+                    className="flex items-center justify-center size-8 rounded-full border border-border bg-background text-muted-foreground hover:text-foreground hover:border-foreground transition-colors"
+                  >
+                    <Globe className="size-3.5" />
+                  </a>
+                )}
+              </div>
+              <span className="text-xs text-muted-foreground">© {new Date().getFullYear()} {businessName}</span>
+            </div>
+          </div>
+        </div>
+      </footer>
+
+      {/* Navegação inferior — somente mobile */}
+      <nav className="sm:hidden fixed bottom-0 inset-x-0 z-50 bg-card border-t flex">
+        {orderedNav.map((item) => {
+          const isActive = location.pathname === item.href;
+          return (
+            <Link
+              key={item.href}
+              to={item.href}
+              className={cn(
+                'flex flex-1 flex-col items-center justify-center gap-0.5 py-2 text-[10px] font-medium transition-colors min-w-0',
+                isActive ? 'text-primary' : 'text-muted-foreground hover:text-foreground'
+              )}
+            >
+              <item.icon className="size-5 shrink-0" />
+              <span className="truncate w-full text-center px-0.5 leading-tight">
+                {item.name.split(' ')[0]}
+              </span>
+            </Link>
+          );
+        })}
+      </nav>
     </div>
   );
 }

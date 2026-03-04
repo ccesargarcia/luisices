@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect } from 'react';
+import { formatCurrency } from '../utils/currency';
 import { Quote, QuoteItem, QuoteStatus, OrderStatus, Customer, Tag, Product } from '../types';
 import { TagInput } from '../components/TagInput';
 import { getTextColor } from '../utils/tagColors';
@@ -79,9 +80,6 @@ const STATUS_VARIANT: Record<QuoteStatus, string> = {
 
 const EMPTY_ITEM: QuoteItem = { name: '', quantity: 1, unitPrice: 0 };
 
-function formatCurrency(v: number) {
-  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
-}
 function buildWhatsAppMessage(quote: Quote, settings?: { whatsappGreeting?: string; whatsappSignature?: string }): string {
   const lines: string[] = [];
   const greeting = settings?.whatsappGreeting
@@ -695,6 +693,7 @@ interface QuoteDetailsProps {
 
 function QuoteDetailsDialog({ quote, open, onOpenChange, onEdit, onRefresh }: QuoteDetailsProps) {
   const { settings } = useUserSettings();
+  const { hasPermission } = useAuth();
   const [approving, setApproving] = useState(false);
   const [rejecting, setRejecting] = useState(false);
   const [marking, setMarking] = useState(false);
@@ -1016,19 +1015,23 @@ function QuoteDetailsDialog({ quote, open, onOpenChange, onEdit, onRefresh }: Qu
         </div>
 
         <DialogFooter className="mt-4 flex-wrap gap-2">
-          <Button variant="outline" className="text-destructive border-destructive hover:bg-destructive hover:text-destructive-foreground mr-auto" onClick={() => setConfirmDeleteOpen(true)} disabled={deleting}>
-            <Trash2 className="size-4 mr-2" />
-            Excluir
-          </Button>
-          <Button variant="outline" onClick={handleDuplicate} disabled={duplicating}>
-            {duplicating ? <Loader2 className="size-4 mr-2 animate-spin" /> : <Copy className="size-4 mr-2" />}
-            Duplicar
-          </Button>
+          {hasPermission(p => p.quotes?.delete ?? false) && (
+            <Button variant="outline" className="text-destructive border-destructive hover:bg-destructive hover:text-destructive-foreground mr-auto" onClick={() => setConfirmDeleteOpen(true)} disabled={deleting}>
+              <Trash2 className="size-4 mr-2" />
+              Excluir
+            </Button>
+          )}
+          {hasPermission(p => p.quotes?.create ?? false) && (
+            <Button variant="outline" onClick={handleDuplicate} disabled={duplicating}>
+              {duplicating ? <Loader2 className="size-4 mr-2 animate-spin" /> : <Copy className="size-4 mr-2" />}
+              Duplicar
+            </Button>
+          )}
           <Button variant="outline" onClick={handleExportPdf} disabled={exportingPdf}>
             <Download className="size-4 mr-2" />
             {exportingPdf ? 'Gerando...' : 'Exportar PDF'}
           </Button>
-          {canEdit && (
+          {canEdit && hasPermission(p => p.quotes?.edit ?? false) && (
             <Button variant="outline" onClick={() => { onOpenChange(false); onEdit(quote); }}>
               <Pencil className="size-4 mr-2" /> Editar
             </Button>
@@ -1193,6 +1196,7 @@ function QuoteCard({ quote, onClick, compact = false }: QuoteCardProps) {
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export function Quotes() {
+  const { user, hasPermission } = useAuth();
   const { quotes, loading, error } = useFirebaseQuotes();
   const { settings } = useUserSettings();
   const [search, setSearch] = useState('');
@@ -1319,12 +1323,14 @@ export function Quotes() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Orçamentos</h1>
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Orçamentos</h1>
           <p className="text-muted-foreground mt-1">Crie orçamentos e converta em pedidos com um clique</p>
         </div>
-        <Button onClick={openNew}>
-          <Plus className="size-4 mr-2" /> Novo Orçamento
-        </Button>
+        {hasPermission(p => p.quotes?.create ?? false) && (
+          <Button onClick={openNew}>
+            <Plus className="size-4 mr-2" /> Novo Orçamento
+          </Button>
+        )}
       </div>
 
       {/* Summary cards */}
@@ -1490,7 +1496,7 @@ export function Quotes() {
               <div className="flex flex-col items-center justify-center py-16 text-center">
                 <FileText className="size-12 text-muted-foreground/30 mb-3" />
                 <p className="text-muted-foreground">Nenhum orçamento encontrado</p>
-                {g.value === 'all' && (
+                {g.value === 'all' && hasPermission(p => p.quotes?.create ?? false) && (
                   <Button variant="outline" className="mt-4" onClick={openNew}>
                     <Plus className="size-4 mr-2" /> Criar primeiro orçamento
                   </Button>
