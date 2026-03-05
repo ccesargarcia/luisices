@@ -4,6 +4,7 @@ import { User } from 'firebase/auth';
 import { firebaseAuthService } from '../services/firebaseAuthService';
 import { firebaseUserService } from '../services/firebaseUserService';
 import { UserProfile } from '../app/types';
+import { setUserAnalytics } from '../services/analyticsService';
 
 interface AuthContextType {
   user: User | null;
@@ -32,6 +33,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       u.displayName ?? undefined,
     );
     setUserProfile(profile);
+    
+    // Set analytics user properties
+    if (profile) {
+      setUserAnalytics(u.uid, profile.role);
+    }
   }, []);
 
   useEffect(() => {

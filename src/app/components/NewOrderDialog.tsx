@@ -20,6 +20,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useUserSettingsContext } from '../../contexts/UserSettingsContext';
 import { toast } from 'sonner';
 import { SafeImg } from './SafeMedia';
+import { trackOrderCreated } from '../../services/analyticsService';
 
 interface ProductItem {
   name: string;
@@ -207,6 +208,9 @@ export function NewOrderDialog() {
           remainingAmount: totalAmount - paidAmount,
         },
       });
+
+      // Track order creation in analytics
+      trackOrderCreated(createdOrder.id, totalAmount, formData.status);
 
       // Atualizar estatísticas do cliente sempre que houver customerId
       if (customerId) {

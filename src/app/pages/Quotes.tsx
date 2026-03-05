@@ -6,6 +6,7 @@ import { getTextColor } from '../utils/tagColors';
 import { useUserSettings } from '../../hooks/useUserSettings';
 import { firebaseProductService } from '../../services/firebaseProductService';
 import { Popover, PopoverContent, PopoverTrigger } from '../components/ui/popover';
+import { trackQuoteCreated, trackEvent } from '../../services/analyticsService';
 
 function hexToRgba(hex: string, alpha: number) {
   const r = parseInt(hex.slice(1, 3), 16);
@@ -298,7 +299,8 @@ function QuoteFormDialog({ open, onOpenChange, editing, onSaved }: QuoteFormDial
         await firebaseQuoteService.updateQuote(editing.id, payload);
         toast.success('Orçamento atualizado!');
       } else {
-        await firebaseQuoteService.createQuote(payload);
+        const createdQuote = await firebaseQuoteService.createQuote(payload);
+        trackQuoteCreated(createdQuote.id, form.items.reduce((sum, item) => sum + (item.quantity * item.unitPrice), 0));
         toast.success('Orçamento criado!');
       }
       onSaved();
@@ -808,6 +810,10 @@ function QuoteDetailsDialog({ quote, open, onOpenChange, onEdit, onRefresh }: Qu
         status: 'draft',
       };
       await firebaseQuoteService.createQuote(payload);
+      trackEvent('quote_duplicated', {
+        original_quote_id: quote.id,
+        total_value: quote.items.reduce((sum, item) => sum + (item.quantity * item.unitPrice), 0)
+      });
       toast.success('Orçamento duplicado como rascunho');
       onOpenChange(false);
     } catch (e) {

@@ -7,6 +7,7 @@ import { Label } from '../components/ui/label';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '../components/ui/card';
 import { Alert, AlertDescription } from '../components/ui/alert';
 import { Loader2, UserPlus, Mail, Lock, User } from 'lucide-react';
+import { trackSignUp } from '../../services/analyticsService';
 
 export function Register() {
   const [name, setName] = useState('');
@@ -36,6 +37,7 @@ export function Register() {
 
     try {
       await register(email, password, name);
+      trackSignUp('email');
       navigate('/');
     } catch (err: any) {
       console.error('Erro ao criar conta:', err);
