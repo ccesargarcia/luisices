@@ -325,7 +325,7 @@ export function Dashboard() {
             className="gap-2"
           >
             <Download className="size-4" />
-            Exportar Excel
+            <span className="hidden sm:inline">Exportar Excel</span>
           </Button>
           <NewOrderDialog />
         </div>

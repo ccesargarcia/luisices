@@ -313,7 +313,10 @@ export function Products() {
           </p>
         </div>
         {hasPermission(p => p.products?.create ?? false) && (
-          <Button onClick={openNew}><Plus className="size-4 mr-2" /> Novo Produto</Button>
+          <Button onClick={openNew} className="gap-2">
+            <Plus className="size-4" />
+            <span className="hidden sm:inline">Novo Produto</span>
+          </Button>
         )}
       </div>
 

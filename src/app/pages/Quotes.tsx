@@ -1342,11 +1342,12 @@ export function Quotes() {
             className="gap-2"
           >
             <Download className="size-4" />
-            Exportar Excel
+            <span className="hidden sm:inline">Exportar Excel</span>
           </Button>
           {hasPermission(p => p.quotes?.create ?? false) && (
-            <Button onClick={openNew}>
-              <Plus className="size-4 mr-2" /> Novo Orçamento
+            <Button onClick={openNew} className="gap-2">
+              <Plus className="size-4" />
+              <span className="hidden sm:inline">Novo Orçamento</span>
             </Button>
           )}
         </div>

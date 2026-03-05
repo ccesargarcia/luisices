@@ -956,10 +956,12 @@ export function Gallery() {
           {hasPermission(p => p.gallery?.create ?? false) && (
             <>
               <Button variant="outline" onClick={() => setNewFolderOpen(true)} className="gap-2">
-                <FolderOpen className="size-4" /> Nova Pasta
+                <FolderOpen className="size-4" />
+                <span className="hidden sm:inline">Nova Pasta</span>
               </Button>
               <Button onClick={() => setUploadOpen(true)} className="gap-2">
-                <Plus className="size-4" /> Nova Arte
+                <Plus className="size-4" />
+                <span className="hidden sm:inline">Nova Arte</span>
               </Button>
             </>
           )}

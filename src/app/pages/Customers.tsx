@@ -457,14 +457,14 @@ export function Customers() {
             className="gap-2"
           >
             <Download className="size-4" />
-            Exportar Excel
+            <span className="hidden sm:inline">Exportar Excel</span>
           </Button>
           {hasPermission(p => p.customers?.create ?? false) && (
             <Dialog open={isNewCustomerOpen} onOpenChange={(open) => { setIsNewCustomerOpen(open); if (open) { resetForm(); setPendingPhotoFile(null); setPhotoPreview(''); } }}>
               <DialogTrigger asChild>
                 <Button className="gap-2">
                   <UserPlus className="size-4" />
-                  Novo Cliente
+                  <span className="hidden sm:inline">Novo Cliente</span>
                 </Button>
               </DialogTrigger>
               <DialogContent className="max-h-[90vh] overflow-y-auto">
