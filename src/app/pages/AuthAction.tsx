@@ -16,10 +16,10 @@ import { Loader2, Lock, CheckCircle, AlertCircle } from 'lucide-react';
 export function AuthAction() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  
+
   const mode = searchParams.get('mode');
   const oobCode = searchParams.get('oobCode');
-  
+
   const [email, setEmail] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -75,14 +75,14 @@ export function AuthAction() {
     try {
       await confirmPasswordReset(auth, oobCode!, newPassword);
       setSuccess(true);
-      
+
       // Redirecionar para login após 3 segundos
       setTimeout(() => {
         navigate('/login');
       }, 3000);
     } catch (err: any) {
       console.error('Erro ao redefinir senha:', err);
-      
+
       if (err.code === 'auth/weak-password') {
         setError('Senha muito fraca. Use pelo menos 6 caracteres.');
       } else if (err.code === 'auth/invalid-action-code') {
@@ -126,8 +126,8 @@ export function AuthAction() {
             </Alert>
           </CardContent>
           <CardFooter>
-            <Button 
-              variant="outline" 
+            <Button
+              variant="outline"
               className="w-full"
               onClick={() => navigate('/recuperar-senha')}
             >
@@ -159,7 +159,7 @@ export function AuthAction() {
             </Alert>
           </CardContent>
           <CardFooter>
-            <Button 
+            <Button
               className="w-full"
               onClick={() => navigate('/login')}
             >
