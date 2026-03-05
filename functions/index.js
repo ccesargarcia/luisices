@@ -35,9 +35,18 @@ exports.sendPasswordResetEmail = onCall({ secrets: [RESEND_API_KEY] }, async (re
   try {
     console.log(`[sendPasswordResetEmail] Iniciando para: ${email}`);
     
+    // Determinar URL baseada no ambiente (dev ou prod)
+    const projectId = process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT;
+    const isDev = projectId === 'luisices-dev';
+    const actionUrl = isDev 
+      ? 'https://luisices-dev.web.app/action'  // Firebase Hosting Dev
+      : 'https://luisices.com.br/action';      // Produção
+    
+    console.log(`[sendPasswordResetEmail] Projeto: ${projectId}, URL: ${actionUrl}`);
+    
     // Gerar link de reset de senha do Firebase Auth
     const resetLink = await admin.auth().generatePasswordResetLink(email, {
-      url: 'https://luisices.com.br/action', // URL para onde o usuário volta após o reset
+      url: actionUrl,
     });
     
     console.log(`[sendPasswordResetEmail] Link gerado com sucesso`);
