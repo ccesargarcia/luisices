@@ -57,7 +57,14 @@ export class FirebaseAuthService {
    * Enviar email de recuperação de senha
    */
   async resetPassword(email: string): Promise<void> {
-    await sendPasswordResetEmail(auth, email);
+    // Configurações para usar domínio personalizado
+    const actionCodeSettings = {
+      // URL para onde o usuário será redirecionado após clicar no link
+      url: `${window.location.origin}/action`,
+      handleCodeInApp: true,
+    };
+
+    await sendPasswordResetEmail(auth, email, actionCodeSettings);
   }
 
   /**

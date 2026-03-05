@@ -1,8 +1,20 @@
 # 🔧 Troubleshooting - Recuperação de Senha
 
-## ❓ Email Não Chega
+## ✅ **ATUALIZADO: Domínio Personalizado Configurado!**
 
-### 1️⃣ **Verificar se o email está cadastrado**
+O sistema agora usa seu domínio personalizado (`luisices.com.br`) nos links de recuperação de senha.
+
+**Como funciona:**
+1. Usuário solicita recuperação em `/recuperar-senha`
+2. Email enviado com link: `https://luisices.com.br/action?mode=resetPassword&oobCode=...`
+3. Página `/action` processa o link e permite redefinir a senha
+4. Após sucesso, redireciona para `/login`
+
+---
+
+## 🔒 **Configuração no Firebase Console**
+
+### **1. Adicionar Domínio Autorizado**
 
 **No Firebase Console:**
 1. Acesse: https://console.firebase.google.com/project/papelaria-dashboard/authentication/users

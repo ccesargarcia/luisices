@@ -19,6 +19,7 @@ const Exchanges      = lazy(() => import('./pages/Exchanges').then(m => ({ defau
 const Users          = lazy(() => import('./pages/Users').then(m => ({ default: m.Users })));
 const Login          = lazy(() => import('./pages/Login').then(m => ({ default: m.Login })));
 const ResetPassword  = lazy(() => import('./pages/ResetPassword').then(m => ({ default: m.ResetPassword })));
+const AuthAction     = lazy(() => import('./pages/AuthAction').then(m => ({ default: m.AuthAction })));
 
 function PageLoader() {
   return (
@@ -50,6 +51,11 @@ export const router = createBrowserRouter([
   {
     path: '/recuperar-senha',
     element: <Lazy><ResetPassword /></Lazy>,
+    errorElement: <ErrorBoundary />,
+  },
+  {
+    path: '/action',
+    element: <Lazy><AuthAction /></Lazy>,
     errorElement: <ErrorBoundary />,
   },
   {
