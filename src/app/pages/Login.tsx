@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router';
 import { useAuth } from '../../contexts/AuthContext';
+import { trackLogin } from '../../services/analyticsService';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
@@ -23,6 +24,7 @@ export function Login() {
 
     try {
       await login(email, password);
+      trackLogin('email');
       navigate('/');
     } catch (err: any) {
       console.error('Erro ao fazer login:', err);

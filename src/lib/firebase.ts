@@ -9,6 +9,7 @@ import { getAuth } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 import { getFunctions } from 'firebase/functions';
+import { getAnalytics, isSupported, Analytics } from 'firebase/analytics';
 
 // Configuração do Firebase - valores vêm do .env.local
 const firebaseConfig = {
@@ -18,6 +19,7 @@ const firebaseConfig = {
   storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
   messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
   appId: import.meta.env.VITE_FIREBASE_APP_ID,
+  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID,
 };
 
 // Inicializar Firebase
@@ -29,4 +31,16 @@ export const db = getFirestore(app);
 export const storage = getStorage(app);
 export const functions = getFunctions(app);
 
+// Analytics (apenas em produção/browser)
+let analytics: Analytics | null = null;
+if (typeof window !== 'undefined') {
+  isSupported().then(yes => {
+    if (yes) {
+      analytics = getAnalytics(app);
+      console.log('[Firebase] Analytics inicializado');
+    }
+  });
+}
+
+export { analytics };
 export default app;

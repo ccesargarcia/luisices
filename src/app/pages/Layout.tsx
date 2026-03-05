@@ -5,6 +5,7 @@ import { cn } from '../components/ui/utils';
 import { useAuth } from '../../contexts/AuthContext';
 import { useUserSettings } from '../../hooks/useUserSettings';
 import { applyColorTheme } from '../utils/colorThemes';
+import { trackPageView } from '../../services/analyticsService';
 import { Button } from '../components/ui/button';
 import {
   DropdownMenu,
@@ -29,6 +30,11 @@ export function Layout() {
   useEffect(() => {
     applyColorTheme(settings?.colorTheme ?? 'default', settings?.customColorHex);
   }, [settings?.colorTheme, settings?.customColorHex]);
+
+  // Track page views with Firebase Analytics
+  useEffect(() => {
+    trackPageView(location.pathname);
+  }, [location.pathname]);
 
   const handleLogout = async () => {
     try {
