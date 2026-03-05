@@ -31,7 +31,44 @@ export default defineConfig(({ command }) => ({
         main: path.resolve(__dirname, 'index.html'),
         404: path.resolve(__dirname, '404.html'),
       },
+      output: {
+        manualChunks: {
+          // React core e navegação
+          'vendor-react': ['react', 'react-dom', 'react-router'],
+          
+          // Componentes UI (Radix)
+          'vendor-ui': [
+            '@radix-ui/react-dialog',
+            '@radix-ui/react-select',
+            '@radix-ui/react-popover',
+            '@radix-ui/react-dropdown-menu',
+            '@radix-ui/react-tabs',
+            '@radix-ui/react-alert-dialog',
+          ],
+          
+          // Firebase (separado para cache independente)
+          'vendor-firebase': [
+            'firebase/app',
+            'firebase/auth',
+            'firebase/firestore',
+            'firebase/storage',
+            'firebase/functions',
+            'firebase/analytics',
+          ],
+          
+          // Charting/visualização (carregado apenas em Reports)
+          'vendor-charts': ['recharts'],
+          
+          // PDF generation (carregado apenas quando exportar)
+          'vendor-pdf': ['jspdf', 'jspdf-autotable', 'html2canvas'],
+          
+          // DOMPurify (segurança)
+          'vendor-security': ['dompurify'],
+        },
+      },
     },
+    // Aumentar limite para evitar warning em chunks necessariamente grandes
+    chunkSizeWarningLimit: 600,
   },
 }))
 
