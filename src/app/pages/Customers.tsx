@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
 import { formatDate } from '../utils/date';
 import { formatCurrency } from '../utils/currency';
+import { exportCustomersToExcel } from '../utils/exportData';
 import { Customer, Order, GalleryItem, Tag } from '../types';
 import { SafeImg } from '../components/SafeMedia';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
@@ -29,6 +30,7 @@ import {
   Upload,
   X,
   ZoomIn,
+  Download,
 } from 'lucide-react';
 import { firebaseStorageService } from '../../services/firebaseStorageService';
 import {
@@ -446,22 +448,33 @@ export function Customers() {
           <h1 className="text-2xl sm:text-3xl font-bold">Clientes</h1>
           <p className="text-muted-foreground">Gerencie sua base de clientes</p>
         </div>
-        {hasPermission(p => p.customers?.create ?? false) && (
-          <Dialog open={isNewCustomerOpen} onOpenChange={(open) => { setIsNewCustomerOpen(open); if (open) { resetForm(); setPendingPhotoFile(null); setPhotoPreview(''); } }}>
-          <DialogTrigger asChild>
-            <Button className="gap-2">
-              <UserPlus className="size-4" />
-              Novo Cliente
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="max-h-[90vh] overflow-y-auto">
-            <DialogHeader>
-              <DialogTitle>Novo Cliente</DialogTitle>
-              <DialogDescription>
-                Preencha os dados para cadastrar um novo cliente
-              </DialogDescription>
-            </DialogHeader>
-            <form onSubmit={handleCreateCustomer} className="space-y-4">
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            size="default"
+            onClick={() => exportCustomersToExcel(filteredCustomers)}
+            disabled={filteredCustomers.length === 0}
+            className="gap-2"
+          >
+            <Download className="size-4" />
+            Exportar Excel
+          </Button>
+          {hasPermission(p => p.customers?.create ?? false) && (
+            <Dialog open={isNewCustomerOpen} onOpenChange={(open) => { setIsNewCustomerOpen(open); if (open) { resetForm(); setPendingPhotoFile(null); setPhotoPreview(''); } }}>
+              <DialogTrigger asChild>
+                <Button className="gap-2">
+                  <UserPlus className="size-4" />
+                  Novo Cliente
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="max-h-[90vh] overflow-y-auto">
+                <DialogHeader>
+                  <DialogTitle>Novo Cliente</DialogTitle>
+                  <DialogDescription>
+                    Preencha os dados para cadastrar um novo cliente
+                  </DialogDescription>
+                </DialogHeader>
+                <form onSubmit={handleCreateCustomer} className="space-y-4">
               {/* Foto */}
               <div className="flex justify-center">
                 <label className="cursor-pointer group relative">
@@ -594,7 +607,8 @@ export function Customers() {
             </form>
           </DialogContent>
         </Dialog>
-        )}
+          )}
+        </div>
       </div>
 
       {/* Stats */}

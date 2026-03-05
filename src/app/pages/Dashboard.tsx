@@ -22,7 +22,8 @@ import {
   TrendingDown,
   Calendar,
   Target,
-  Repeat2
+  Repeat2,
+  Download
 } from 'lucide-react';
 import { getTextColor } from '../utils/tagColors';
 import { useFirebaseOrders } from '../../hooks/useFirebaseOrders';
@@ -33,6 +34,7 @@ import { useUserSettings } from '../../hooks/useUserSettings';
 import { DEFAULT_DASHBOARD_CARDS } from '../utils/dashboardCards';
 import { parseLocalDate } from '../utils/date';
 import { formatCurrency } from '../utils/currency';
+import { exportOrdersToExcel } from '../utils/exportData';
 import { toast } from 'sonner';
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts';
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from '../components/ui/chart';
@@ -313,7 +315,19 @@ export function Dashboard() {
           </h1>
           <p className="text-muted-foreground">Gerencie seus pedidos personalizados</p>
         </div>
-        <NewOrderDialog />
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            size="default"
+            onClick={() => exportOrdersToExcel(filteredOrders)}
+            disabled={filteredOrders.length === 0}
+            className="gap-2"
+          >
+            <Download className="size-4" />
+            Exportar Excel
+          </Button>
+          <NewOrderDialog />
+        </div>
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-4 gap-4">

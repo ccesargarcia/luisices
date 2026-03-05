@@ -1,5 +1,6 @@
 import { useState, useMemo, useEffect } from 'react';
 import { formatCurrency } from '../utils/currency';
+import { exportQuotesToExcel } from '../utils/exportData';
 import { Quote, QuoteItem, QuoteStatus, OrderStatus, Customer, Tag, Product } from '../types';
 import { TagInput } from '../components/TagInput';
 import { getTextColor } from '../utils/tagColors';
@@ -1332,11 +1333,23 @@ export function Quotes() {
           <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Orçamentos</h1>
           <p className="text-muted-foreground mt-1">Crie orçamentos e converta em pedidos com um clique</p>
         </div>
-        {hasPermission(p => p.quotes?.create ?? false) && (
-          <Button onClick={openNew}>
-            <Plus className="size-4 mr-2" /> Novo Orçamento
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            size="default"
+            onClick={() => exportQuotesToExcel(filteredQuotes)}
+            disabled={filteredQuotes.length === 0}
+            className="gap-2"
+          >
+            <Download className="size-4" />
+            Exportar Excel
           </Button>
-        )}
+          {hasPermission(p => p.quotes?.create ?? false) && (
+            <Button onClick={openNew}>
+              <Plus className="size-4 mr-2" /> Novo Orçamento
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* Summary cards */}
