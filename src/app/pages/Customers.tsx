@@ -845,7 +845,7 @@ export function Customers() {
 
       {/* History Dialog */}
       <Dialog open={isHistoryOpen} onOpenChange={setIsHistoryOpen}>
-        <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col overflow-hidden">
+        <DialogContent className="w-full max-w-full sm:max-w-2xl max-h-[90vh] flex flex-col overflow-hidden">
           <DialogHeader>
             <DialogTitle>{historyCustomer?.name}</DialogTitle>
           </DialogHeader>
@@ -1001,7 +1001,7 @@ export function Customers() {
       {/* Gallery lightbox */}
       {galleryLightbox && (
         <Dialog open onOpenChange={() => setGalleryLightbox(null)}>
-          <DialogContent className="max-w-2xl p-0 overflow-hidden">
+          <DialogContent className="w-full max-w-full sm:max-w-2xl p-0 overflow-hidden">
             <div className="flex items-center justify-between px-4 py-3 border-b">
               <DialogTitle className="text-sm font-semibold truncate flex-1">{galleryLightbox.title}</DialogTitle>
               <div className="flex gap-1 ml-2">

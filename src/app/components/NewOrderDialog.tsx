@@ -317,7 +317,7 @@ export function NewOrderDialog() {
           Novo Pedido
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-w-2xl max-h-[90dvh] overflow-y-auto overflow-x-hidden">
+      <DialogContent className="w-full max-w-full sm:max-w-2xl max-h-[90dvh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Adicionar Novo Pedido</DialogTitle>
           <div className="sr-only">Formulário para criar um novo pedido</div>

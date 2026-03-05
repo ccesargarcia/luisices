@@ -315,7 +315,7 @@ function QuoteFormDialog({ open, onOpenChange, editing, onSaved }: QuoteFormDial
 
   return (
     <Dialog open={open} onOpenChange={handleOpen}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto overflow-x-hidden">
+      <DialogContent className="w-full max-w-full sm:max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{editing ? 'Editar Orçamento' : 'Novo Orçamento'}</DialogTitle>
         </DialogHeader>
@@ -861,7 +861,7 @@ function QuoteDetailsDialog({ quote, open, onOpenChange, onEdit, onRefresh }: Qu
       </AlertDialogContent>
     </AlertDialog>
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto overflow-x-hidden">
+      <DialogContent className="w-full max-w-full sm:max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <div className="flex items-center gap-3">
             <DialogTitle>{quote.quoteNumber}</DialogTitle>

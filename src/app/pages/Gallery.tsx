@@ -104,7 +104,7 @@ function UploadDialog({ open, onClose, onSaved, customers, userId, initialCustom
 
   return (
     <Dialog open={open} onOpenChange={v => { if (!v) handleClose(); }}>
-      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+      <DialogContent className="w-full max-w-full sm:max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Nova Arte</DialogTitle>
         </DialogHeader>
@@ -226,7 +226,7 @@ function Lightbox({ items, initialIndex, onClose, onDelete }: LightboxProps) {
   return (
     <>
       <Dialog open onOpenChange={v => { if (!v) onClose(); }}>
-        <DialogContent className="max-w-4xl max-h-[95vh] p-0 overflow-hidden flex flex-col" hideClose>
+        <DialogContent className="w-full max-w-full sm:max-w-4xl max-h-[95vh] p-0 overflow-hidden flex flex-col" hideClose>
           <div className="flex items-center justify-between px-4 py-3 border-b">
             <DialogTitle className="text-base font-semibold truncate flex-1">{item.title}</DialogTitle>
             <div className="flex items-center gap-2 ml-2 flex-shrink-0">
