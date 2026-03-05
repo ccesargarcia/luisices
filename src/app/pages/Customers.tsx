@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect, useRef } from 'react';
 import { formatDate } from '../utils/date';
 import { formatCurrency } from '../utils/currency';
 import { exportCustomersToExcel } from '../utils/exportData';
+import { TableSkeleton } from '../components/SkeletonLoaders';
 import { Customer, Order, GalleryItem, Tag } from '../types';
 import { SafeImg } from '../components/SafeMedia';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
@@ -505,11 +506,12 @@ export function Customers() {
                 <Label htmlFor="phone">Telefone *</Label>
                 <Input
                   id="phone"
+                  type="tel"
                   value={formData.phone}
                   onChange={(e) => setFormData({ ...formData, phone: formatPhone(e.target.value) })}
                   required
                   placeholder="(00) 00000-0000"
-                  inputMode="numeric"
+                  autoComplete="tel"
                 />
               </div>
               <div className="space-y-2">
@@ -520,6 +522,7 @@ export function Customers() {
                   value={formData.email}
                   onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                   placeholder="email@exemplo.com"
+                  autoComplete="email"
                 />
               </div>
               <div className="border-t pt-3">
@@ -674,7 +677,7 @@ export function Customers() {
                 <div className="flex items-center gap-3">
                   <div className="size-11 rounded-full overflow-hidden bg-muted shrink-0 flex items-center justify-center border">
                     {customer.photoUrl ? (
-                      <img src={customer.photoUrl} alt={customer.name} className="w-full h-full object-cover" />
+                      <img src={customer.photoUrl} alt={customer.name} className="w-full h-full object-cover" loading="lazy" />
                     ) : (
                       <span className="text-base font-semibold text-muted-foreground">
                         {customer.name.charAt(0).toUpperCase()}
@@ -711,6 +714,7 @@ export function Customers() {
                     variant="ghost"
                     onClick={() => openHistoryDialog(customer)}
                     title="Ver histórico de pedidos"
+                    className="h-9 w-9 sm:h-8 sm:w-8"
                   >
                     <History className="size-4" />
                   </Button>
@@ -719,6 +723,7 @@ export function Customers() {
                       size="icon"
                       variant="ghost"
                       onClick={() => openEditDialog(customer)}
+                      className="h-9 w-9 sm:h-8 sm:w-8"
                     >
                       <Edit className="size-4" />
                     </Button>
@@ -728,6 +733,7 @@ export function Customers() {
                       size="icon"
                       variant="ghost"
                       onClick={() => openDeleteDialog(customer)}
+                      className="h-9 w-9 sm:h-8 sm:w-8"
                     >
                       <Trash2 className="size-4 text-destructive" />
                     </Button>

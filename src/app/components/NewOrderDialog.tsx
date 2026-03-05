@@ -635,7 +635,7 @@ export function NewOrderDialog() {
                   if (!item) return null;
                   return (
                     <div key={id} className="relative group">
-                      <img src={item.imageUrl} alt={item.title} className="w-full aspect-square object-cover rounded-md border" />
+                      <img src={item.imageUrl} alt={item.title} className="w-full aspect-square object-cover rounded-md border" loading="lazy" />
                       <div className="absolute bottom-0 inset-x-0 bg-black/50 text-white text-[10px] px-1 py-0.5 truncate rounded-b-md">{item.title}</div>
                       <button
                         type="button"
@@ -695,7 +695,7 @@ export function NewOrderDialog() {
                                 isSelected ? 'border-primary shadow-md scale-[0.97]' : 'border-transparent hover:border-primary/40'
                               }`}
                             >
-                              <img src={item.imageUrl} alt={item.title} className="w-full aspect-square object-cover" />
+                              <img src={item.imageUrl} alt={item.title} className="w-full aspect-square object-cover" loading="lazy" />
                               {isSelected && (
                                 <div className="absolute inset-0 bg-primary/20 flex items-center justify-center">
                                   <div className="bg-primary text-primary-foreground rounded-full size-6 flex items-center justify-center text-xs font-bold">✓</div>
