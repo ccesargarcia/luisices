@@ -1,5 +1,6 @@
 import { useState, useMemo, useEffect } from 'react';
 import { formatCurrency } from '../utils/currency';
+import { exportQuotesToExcel } from '../utils/exportData';
 import { Quote, QuoteItem, QuoteStatus, OrderStatus, Customer, Tag, Product } from '../types';
 import { TagInput } from '../components/TagInput';
 import { getTextColor } from '../utils/tagColors';
@@ -314,7 +315,7 @@ function QuoteFormDialog({ open, onOpenChange, editing, onSaved }: QuoteFormDial
 
   return (
     <Dialog open={open} onOpenChange={handleOpen}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto overflow-x-hidden">
+      <DialogContent className="w-full max-w-full sm:max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{editing ? 'Editar Orçamento' : 'Novo Orçamento'}</DialogTitle>
         </DialogHeader>
@@ -860,7 +861,7 @@ function QuoteDetailsDialog({ quote, open, onOpenChange, onEdit, onRefresh }: Qu
       </AlertDialogContent>
     </AlertDialog>
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto overflow-x-hidden">
+      <DialogContent className="w-full max-w-full sm:max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <div className="flex items-center gap-3">
             <DialogTitle>{quote.quoteNumber}</DialogTitle>
@@ -1332,11 +1333,24 @@ export function Quotes() {
           <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Orçamentos</h1>
           <p className="text-muted-foreground mt-1">Crie orçamentos e converta em pedidos com um clique</p>
         </div>
-        {hasPermission(p => p.quotes?.create ?? false) && (
-          <Button onClick={openNew}>
-            <Plus className="size-4 mr-2" /> Novo Orçamento
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            size="default"
+            onClick={() => exportQuotesToExcel(filteredQuotes)}
+            disabled={filteredQuotes.length === 0}
+            className="gap-2"
+          >
+            <Download className="size-4" />
+            <span className="hidden sm:inline">Exportar Excel</span>
           </Button>
-        )}
+          {hasPermission(p => p.quotes?.create ?? false) && (
+            <Button onClick={openNew} className="gap-2">
+              <Plus className="size-4" />
+              <span className="hidden sm:inline">Novo Orçamento</span>
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* Summary cards */}

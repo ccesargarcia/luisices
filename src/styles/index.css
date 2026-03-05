@@ -1,3 +1,19 @@
 @import './fonts.css';
 @import './tailwind.css';
 @import './theme.css';
+
+/* Safe Area Support for Mobile */
+@supports (padding: env(safe-area-inset-bottom)) {
+  .pb-safe {
+    padding-bottom: calc(1rem + env(safe-area-inset-bottom));
+  }
+  .pt-safe {
+    padding-top: calc(1rem + env(safe-area-inset-top));
+  }
+}
+
+/* Better scrolling on mobile */
+body {
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
+}

@@ -3,8 +3,15 @@ const { onCall } = require('firebase-functions/v2/https');
 const { defineSecret } = require('firebase-functions/params');
 const admin = require('firebase-admin');
 const { Resend } = require('resend');
+const { RateLimiterMemory } = require('rate-limiter-flexible');
 
 admin.initializeApp();
+
+// Rate limiter: 3 tentativas por email a cada hora
+const rateLimiter = new RateLimiterMemory({
+  points: 3,
+  duration: 3600, // 1 hora em segundos
+});
 
 // Configurar Resend API Key usando o novo sistema de params
 // Execute: firebase functions:secrets:set RESEND_API_KEY
@@ -24,6 +31,18 @@ exports.sendPasswordResetEmail = onCall({ secrets: [RESEND_API_KEY] }, async (re
 
   if (!email) {
     throw new functions.https.HttpsError('invalid-argument', 'Email é obrigatório');
+  }
+
+  // Rate limiting: prevenir abuso
+  try {
+    await rateLimiter.consume(email.toLowerCase());
+  } catch (rateLimiterRes) {
+    const retryAfter = Math.ceil(rateLimiterRes.msBeforeNext / 1000 / 60); // minutos
+    console.warn(`[sendPasswordResetEmail] Rate limit excedido para: ${email}`);
+    throw new functions.https.HttpsError(
+      'resource-exhausted',
+      `Muitas tentativas. Tente novamente em ${retryAfter} minuto(s).`
+    );
   }
 
   const resend = getResend(RESEND_API_KEY.value());

@@ -6,7 +6,7 @@
 
 import { initializeApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
-import { getFirestore } from 'firebase/firestore';
+import { getFirestore, enableIndexedDbPersistence } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 import { getFunctions } from 'firebase/functions';
 import { getAnalytics, isSupported, Analytics } from 'firebase/analytics';
@@ -30,6 +30,19 @@ export const auth = getAuth(app);
 export const db = getFirestore(app);
 export const storage = getStorage(app);
 export const functions = getFunctions(app);
+
+// Habilitar offline persistence do Firestore
+if (typeof window !== 'undefined') {
+  enableIndexedDbPersistence(db).catch((err) => {
+    if (err.code === 'failed-precondition') {
+      console.warn('[Firebase] Offline persistence não habilitado: múltiplas abas abertas');
+    } else if (err.code === 'unimplemented') {
+      console.warn('[Firebase] Offline persistence não suportado neste navegador');
+    } else {
+      console.error('[Firebase] Erro ao habilitar offline persistence:', err);
+    }
+  });
+}
 
 // Analytics (apenas em produção/browser)
 let analytics: Analytics | null = null;

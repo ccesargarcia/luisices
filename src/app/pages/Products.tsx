@@ -313,7 +313,10 @@ export function Products() {
           </p>
         </div>
         {hasPermission(p => p.products?.create ?? false) && (
-          <Button onClick={openNew}><Plus className="size-4 mr-2" /> Novo Produto</Button>
+          <Button onClick={openNew} className="gap-2">
+            <Plus className="size-4" />
+            <span className="hidden sm:inline">Novo Produto</span>
+          </Button>
         )}
       </div>
 
@@ -531,14 +534,17 @@ export function Products() {
                   <td className="px-4 py-2.5">
                     <div className="flex gap-1 justify-end">
                       {hasPermission(p => p.products?.edit ?? false) && (
-                        <Button size="icon" variant="ghost" className="size-7" onClick={() => openEdit(product)}>
+                        <Button size="icon" variant="ghost" className="h-9 w-9 sm:h-7 sm:w-7" onClick={() => openEdit(product)}>
                           <Pencil className="size-3.5" />
                         </Button>
                       )}
                       {hasPermission(p => p.products?.delete ?? false) && (
-                        <Button size="icon" variant="ghost"
-                          className="size-7 text-destructive hover:text-destructive"
-                          onClick={() => setDeleteTarget(product)}>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-9 w-9 sm:h-7 sm:w-7 text-destructive hover:text-destructive"
+                          onClick={() => setDeleteTarget(product)}
+                        >
                           <Trash2 className="size-3.5" />
                         </Button>
                       )}

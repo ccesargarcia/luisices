@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { Images, Plus, Search, X, Trash2, Upload, Tag as TagIcon, User, ChevronLeft, ChevronRight, ZoomIn, FolderOpen, LayoutGrid, ArrowLeft, Palette, Pencil } from 'lucide-react';
+import { Images, Plus, Search, X, Trash2, Upload, Tag as TagIcon, User, ChevronLeft, ChevronRight, ZoomIn, FolderOpen, LayoutGrid, ArrowLeft, Palette, Pencil, FolderPlus } from 'lucide-react';
 import { getTextColor } from '../utils/tagColors';
 import { toast } from 'sonner';
 import { Button } from '../components/ui/button';
@@ -104,7 +104,7 @@ function UploadDialog({ open, onClose, onSaved, customers, userId, initialCustom
 
   return (
     <Dialog open={open} onOpenChange={v => { if (!v) handleClose(); }}>
-      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+      <DialogContent className="w-full max-w-full sm:max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Nova Arte</DialogTitle>
         </DialogHeader>
@@ -124,7 +124,12 @@ function UploadDialog({ open, onClose, onSaved, customers, userId, initialCustom
           >
             {preview ? (
               <>
-                <img src={preview} alt="preview" className="w-full max-h-64 object-contain rounded" />
+                <img
+          src={preview}
+          alt="preview"
+          className="w-full max-h-64 object-contain rounded"
+          loading="lazy"
+        />
                 <button
                   type="button"
                   className="absolute top-2 right-2 bg-black/60 rounded-full p-1 text-white hover:bg-black/80"
@@ -221,7 +226,7 @@ function Lightbox({ items, initialIndex, onClose, onDelete }: LightboxProps) {
   return (
     <>
       <Dialog open onOpenChange={v => { if (!v) onClose(); }}>
-        <DialogContent className="max-w-4xl max-h-[95vh] p-0 overflow-hidden flex flex-col" hideClose>
+        <DialogContent className="w-full max-w-full sm:max-w-4xl max-h-[95vh] p-0 overflow-hidden flex flex-col" hideClose>
           <div className="flex items-center justify-between px-4 py-3 border-b">
             <DialogTitle className="text-base font-semibold truncate flex-1">{item.title}</DialogTitle>
             <div className="flex items-center gap-2 ml-2 flex-shrink-0">
@@ -235,7 +240,12 @@ function Lightbox({ items, initialIndex, onClose, onDelete }: LightboxProps) {
           <div className="flex flex-col md:flex-row flex-1 overflow-hidden">
             {/* Image area */}
             <div className="relative flex-1 flex items-center justify-center bg-black/90 min-h-48">
-              <img src={item.imageUrl} alt={item.title} className="max-w-full max-h-[60vh] md:max-h-[80vh] object-contain" />
+              <img
+                src={item.imageUrl}
+                alt={item.title}
+                className="max-w-full max-h-[60vh] md:max-h-[80vh] object-contain"
+                loading="lazy"
+              />
               {items.length > 1 && (
                 <>
                   <button onClick={prev} disabled={idx === 0} className="absolute left-2 top-1/2 -translate-y-1/2 bg-black/50 text-white rounded-full p-1.5 disabled:opacity-20 hover:bg-black/70">
@@ -542,7 +552,7 @@ function EditFolderDialog({ open, onClose, folderName, currentColor, currentCove
 
             {displayCover ? (
               <div className="relative rounded-xl overflow-hidden border aspect-video">
-                <img src={displayCover} alt="capa" className="w-full h-full object-cover" />
+                <img src={displayCover} alt="capa" className="w-full h-full object-cover" loading="lazy" />
                 <button
                   type="button"
                   onClick={() => { setCover(null); setUploadFile(null); setUploadPreview(null); }}
@@ -586,7 +596,7 @@ function EditFolderDialog({ open, onClose, folderName, currentColor, currentCove
                           : 'border-transparent hover:border-muted-foreground/40'
                       )}
                     >
-                      <img src={item.imageUrl} alt={item.title} className="w-full h-full object-cover" />
+                      <img src={item.imageUrl} alt={item.title} className="w-full h-full object-cover" loading="lazy" />
                     </button>
                   ))}
                 </div>
@@ -955,11 +965,22 @@ export function Gallery() {
           )}
           {hasPermission(p => p.gallery?.create ?? false) && (
             <>
-              <Button variant="outline" onClick={() => setNewFolderOpen(true)} className="gap-2">
-                <FolderOpen className="size-4" /> Nova Pasta
+              <Button 
+                variant="outline" 
+                onClick={() => setNewFolderOpen(true)} 
+                className="gap-2"
+                title="Criar nova pasta para organizar artes"
+              >
+                <FolderPlus className="size-4" />
+                <span className="hidden sm:inline">Nova Pasta</span>
               </Button>
-              <Button onClick={() => setUploadOpen(true)} className="gap-2">
-                <Plus className="size-4" /> Nova Arte
+              <Button 
+                onClick={() => setUploadOpen(true)} 
+                className="gap-2"
+                title="Adicionar nova arte à galeria"
+              >
+                <Plus className="size-4" />
+                <span className="hidden sm:inline">Nova Arte</span>
               </Button>
             </>
           )}
