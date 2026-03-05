@@ -29,6 +29,10 @@ export function AuthAction() {
   const [verifying, setVerifying] = useState(true);
 
   useEffect(() => {
+    console.log('[AuthAction] mode:', mode);
+    console.log('[AuthAction] oobCode:', oobCode);
+    console.log('[AuthAction] Full URL:', window.location.href);
+    
     if (!oobCode || mode !== 'resetPassword') {
       setError('Link inválido ou expirado.');
       setVerifying(false);
@@ -36,13 +40,17 @@ export function AuthAction() {
     }
 
     // Verificar se o código é válido e obter o email
+    console.log('[AuthAction] Verificando código...');
     verifyPasswordResetCode(auth, oobCode)
       .then((emailAddress) => {
+        console.log('[AuthAction] Código válido! Email:', emailAddress);
         setEmail(emailAddress);
         setVerifying(false);
       })
       .catch((err) => {
-        console.error('Erro ao verificar código:', err);
+        console.error('[AuthAction] Erro ao verificar código:', err);
+        console.error('[AuthAction] Error code:', err.code);
+        console.error('[AuthAction] Error message:', err.message);
         if (err.code === 'auth/invalid-action-code') {
           setError('Este link já foi usado ou expirou. Solicite um novo email de recuperação.');
         } else if (err.code === 'auth/expired-action-code') {

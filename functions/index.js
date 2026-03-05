@@ -33,12 +33,17 @@ exports.sendPasswordResetEmail = onCall({ secrets: [RESEND_API_KEY] }, async (re
   }
 
   try {
+    console.log(`[sendPasswordResetEmail] Iniciando para: ${email}`);
+    
     // Gerar link de reset de senha do Firebase Auth
     const resetLink = await admin.auth().generatePasswordResetLink(email, {
       url: 'https://luisices.com.br/action', // URL para onde o usuário volta após o reset
     });
+    
+    console.log(`[sendPasswordResetEmail] Link gerado com sucesso`);
 
     // Enviar email via Resend
+    console.log(`[sendPasswordResetEmail] Enviando email via Resend...`);
     const { data: emailData, error } = await resend.emails.send({
       from: 'Luisices <noreply@luisices.com.br>', // Domínio verificado no Resend
       to: [email],
@@ -100,16 +105,11 @@ exports.sendPasswordResetEmail = onCall({ secrets: [RESEND_API_KEY] }, async (re
     });
 
     if (error) {
-      console.error('Erro ao enviar email via Resend:', error);
-      throw new functions.https.HttpsError('internal', 'Erro ao enviar email de recuperação');
+      console.error('[sendPasswordResetEmail] Erro ao enviar email via Resend:', JSON.stringify(error));
+      throw new functions.https.HttpsError('internal', `Erro Resend: ${error.message || JSON.stringify(error)}`);
     }
 
-    if (error) {
-      console.error('Erro ao enviar email via Resend:', error);
-      throw new functions.https.HttpsError('internal', 'Erro ao enviar email de recuperação');
-    }
-
-    console.log(`Email de reset enviado para: ${email}, ID: ${emailData?.id}`);
+    console.log(`[sendPasswordResetEmail] Email enviado com sucesso! ID: ${emailData?.id}`);
 
     return {
       success: true,
@@ -118,7 +118,9 @@ exports.sendPasswordResetEmail = onCall({ secrets: [RESEND_API_KEY] }, async (re
     };
 
   } catch (error) {
-    console.error('Erro ao enviar email:', error);
+    console.error('[sendPasswordResetEmail] Exception capturada:', error);
+    console.error('[sendPasswordResetEmail] Error code:', error.code);
+    console.error('[sendPasswordResetEmail] Error message:', error.message);
 
     if (error.code === 'auth/user-not-found') {
       // Por segurança, retornar sucesso mesmo se usuário não existir
