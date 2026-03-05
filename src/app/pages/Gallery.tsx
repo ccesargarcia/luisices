@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { Images, Plus, Search, X, Trash2, Upload, Tag as TagIcon, User, ChevronLeft, ChevronRight, ZoomIn, FolderOpen, LayoutGrid, ArrowLeft, Palette, Pencil } from 'lucide-react';
+import { Images, Plus, Search, X, Trash2, Upload, Tag as TagIcon, User, ChevronLeft, ChevronRight, ZoomIn, FolderOpen, LayoutGrid, ArrowLeft, Palette, Pencil, FolderPlus } from 'lucide-react';
 import { getTextColor } from '../utils/tagColors';
 import { toast } from 'sonner';
 import { Button } from '../components/ui/button';
@@ -965,11 +965,20 @@ export function Gallery() {
           )}
           {hasPermission(p => p.gallery?.create ?? false) && (
             <>
-              <Button variant="outline" onClick={() => setNewFolderOpen(true)} className="gap-2">
-                <FolderOpen className="size-4" />
+              <Button 
+                variant="outline" 
+                onClick={() => setNewFolderOpen(true)} 
+                className="gap-2"
+                title="Criar nova pasta para organizar artes"
+              >
+                <FolderPlus className="size-4" />
                 <span className="hidden sm:inline">Nova Pasta</span>
               </Button>
-              <Button onClick={() => setUploadOpen(true)} className="gap-2">
+              <Button 
+                onClick={() => setUploadOpen(true)} 
+                className="gap-2"
+                title="Adicionar nova arte à galeria"
+              >
                 <Plus className="size-4" />
                 <span className="hidden sm:inline">Nova Arte</span>
               </Button>
