@@ -16,10 +16,10 @@ import { Loader2, Lock, CheckCircle, AlertCircle } from 'lucide-react';
 export function AuthAction() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  
+
   const mode = searchParams.get('mode');
   const oobCode = searchParams.get('oobCode');
-  
+
   const [email, setEmail] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -29,6 +29,10 @@ export function AuthAction() {
   const [verifying, setVerifying] = useState(true);
 
   useEffect(() => {
+    console.log('[AuthAction] mode:', mode);
+    console.log('[AuthAction] oobCode:', oobCode);
+    console.log('[AuthAction] Full URL:', window.location.href);
+    
     if (!oobCode || mode !== 'resetPassword') {
       setError('Link inválido ou expirado.');
       setVerifying(false);
@@ -36,13 +40,17 @@ export function AuthAction() {
     }
 
     // Verificar se o código é válido e obter o email
+    console.log('[AuthAction] Verificando código...');
     verifyPasswordResetCode(auth, oobCode)
       .then((emailAddress) => {
+        console.log('[AuthAction] Código válido! Email:', emailAddress);
         setEmail(emailAddress);
         setVerifying(false);
       })
       .catch((err) => {
-        console.error('Erro ao verificar código:', err);
+        console.error('[AuthAction] Erro ao verificar código:', err);
+        console.error('[AuthAction] Error code:', err.code);
+        console.error('[AuthAction] Error message:', err.message);
         if (err.code === 'auth/invalid-action-code') {
           setError('Este link já foi usado ou expirou. Solicite um novo email de recuperação.');
         } else if (err.code === 'auth/expired-action-code') {
@@ -75,14 +83,14 @@ export function AuthAction() {
     try {
       await confirmPasswordReset(auth, oobCode!, newPassword);
       setSuccess(true);
-      
+
       // Redirecionar para login após 3 segundos
       setTimeout(() => {
         navigate('/login');
       }, 3000);
     } catch (err: any) {
       console.error('Erro ao redefinir senha:', err);
-      
+
       if (err.code === 'auth/weak-password') {
         setError('Senha muito fraca. Use pelo menos 6 caracteres.');
       } else if (err.code === 'auth/invalid-action-code') {
@@ -126,8 +134,8 @@ export function AuthAction() {
             </Alert>
           </CardContent>
           <CardFooter>
-            <Button 
-              variant="outline" 
+            <Button
+              variant="outline"
               className="w-full"
               onClick={() => navigate('/recuperar-senha')}
             >
@@ -159,7 +167,7 @@ export function AuthAction() {
             </Alert>
           </CardContent>
           <CardFooter>
-            <Button 
+            <Button
               className="w-full"
               onClick={() => navigate('/login')}
             >

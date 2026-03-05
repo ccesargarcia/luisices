@@ -30,7 +30,7 @@ export function ResetPassword() {
       console.error('[ResetPassword] Erro ao enviar email:', err);
       console.error('[ResetPassword] Código do erro:', err.code);
       console.error('[ResetPassword] Mensagem:', err.message);
-      
+
       // Mensagens específicas para diferentes erros
       if (err.code === 'auth/user-not-found') {
         setError('E-mail não encontrado. Verifique se digitou corretamente.');
@@ -72,7 +72,7 @@ export function ResetPassword() {
                     Se o e-mail <strong>{email}</strong> estiver cadastrado, você receberá um link para redefinir sua senha.
                   </p>
                   <p className="text-sm text-muted-foreground">
-                    ⚠️ Verifique também a pasta de <strong>spam/lixo eletrônico</strong>. 
+                    ⚠️ Verifique também a pasta de <strong>spam/lixo eletrônico</strong>.
                     O e-mail pode levar alguns minutos para chegar.
                   </p>
                 </AlertDescription>

@@ -220,7 +220,7 @@ service cloud.firestore {
     function isOwner(userId) {
       return request.auth != null && request.auth.uid == userId;
     }
-    
+
     match /orders/{orderId} {
       allow read, write: if isOwner(resource.data.userId);
     }

@@ -10,10 +10,10 @@ import {
   signOut,
   onAuthStateChanged,
   User,
-  sendPasswordResetEmail,
   updateProfile,
 } from 'firebase/auth';
-import { auth } from '../lib/firebase';
+import { httpsCallable } from 'firebase/functions';
+import { auth, functions } from '../lib/firebase';
 
 export class FirebaseAuthService {
   /**
@@ -54,17 +54,20 @@ export class FirebaseAuthService {
   }
 
   /**
-   * Enviar email de recuperação de senha
+   * Enviar email de recuperação de senha via SendGrid
    */
   async resetPassword(email: string): Promise<void> {
-    // Configurações para usar domínio personalizado
-    const actionCodeSettings = {
-      // URL para onde o usuário será redirecionado após clicar no link
-      url: `${window.location.origin}/action`,
-      handleCodeInApp: true,
-    };
+    try {
+      // Chamar Cloud Function que envia email via SendGrid
+      const sendResetEmail = httpsCallable(functions, 'sendPasswordResetEmail');
 
-    await sendPasswordResetEmail(auth, email, actionCodeSettings);
+      const result = await sendResetEmail({ email });
+
+      console.log('Email de recuperação enviado:', result.data);
+    } catch (error) {
+      console.error('Erro ao enviar email de recuperação:', error);
+      throw error;
+    }
   }
 
   /**
