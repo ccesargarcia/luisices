@@ -1,4 +1,4 @@
-import { collection, addDoc, getDocs, doc, updateDoc, deleteDoc, query, where, orderBy, increment } from 'firebase/firestore';
+import { collection, addDoc, getDocs, getDoc, doc, updateDoc, deleteDoc, query, where, orderBy, increment } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { Customer } from '../app/types';
 
@@ -118,9 +118,22 @@ export const firebaseCustomerService = {
    */
   async decrementCustomerStats(customerId: string, orderValue: number = 0): Promise<void> {
     const customerRef = doc(db, 'customers', customerId);
+    
+    // Buscar dados atuais do cliente para evitar valores negativos
+    const customerSnap = await getDoc(customerRef);
+    if (!customerSnap.exists()) return;
+    
+    const currentData = customerSnap.data() as Customer;
+    const currentOrders = currentData.totalOrders || 0;
+    const currentSpent = currentData.totalSpent || 0;
+    
+    // Calcular novos valores, garantindo que nunca fiquem negativos
+    const newTotalOrders = Math.max(0, currentOrders - 1);
+    const newTotalSpent = Math.max(0, currentSpent - orderValue);
+    
     await updateDoc(customerRef, {
-      totalOrders: increment(-1),
-      totalSpent: increment(-orderValue),
+      totalOrders: newTotalOrders,
+      totalSpent: newTotalSpent,
     });
   },
 

@@ -57,12 +57,19 @@ class FirebaseProductService {
       .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
   }
 
+  /**
+   * Garantir que um valor nunca seja negativo
+   */
+  private ensurePositive(value: number | undefined | null): number {
+    return Math.max(0, value ?? 0);
+  }
+
   async createProduct(data: Partial<Product>): Promise<Product> {
     const userId = this.getCurrentUserId();
     const ref = await addDoc(collection(db, PRODUCTS_COLLECTION), {
       userId,
       name: data.name,
-      unitPrice: data.unitPrice ?? 0,
+      unitPrice: this.ensurePositive(data.unitPrice),
       description: data.description || null,
       category: data.category || null,
       photoUrl: null,
@@ -95,7 +102,10 @@ class FirebaseProductService {
   async updateProduct(id: string, changes: Partial<Product>): Promise<void> {
     const { id: _id, userId: _uid, createdAt: _ca, ...rest } = changes as any;
     const sanitized = Object.fromEntries(
-      Object.entries(rest).map(([k, v]) => [k, v === undefined ? null : v])
+      Object.entries(rest).map(([k, v]) => {
+        if (k === 'unitPrice') return [k, this.ensurePositive(v as number)];
+        return [k, v === undefined ? null : v];
+      })
     );
     await updateDoc(doc(db, PRODUCTS_COLLECTION, id), {
       ...sanitized,
