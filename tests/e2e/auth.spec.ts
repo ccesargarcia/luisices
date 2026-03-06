@@ -16,7 +16,7 @@ test.describe('Autenticação', () => {
     await page.goto('/');
 
     // Verifica se está na página de login
-    await expect(page.locator('h1')).toContainText('Login');
+    await expect(page.getByRole('heading', { name: /Bem-vindo|Login/i })).toBeVisible();
 
     // Verifica se existem campos de login
     await expect(page.locator('input[type="email"]')).toBeVisible();
@@ -37,7 +37,7 @@ test.describe('Autenticação', () => {
     await page.waitForURL('**/dashboard', { timeout: 10000 });
 
     // Verificar se está no dashboard
-    await expect(page.locator('h1')).toContainText(/Dashboard|Bom dia|Boa tarde|Boa noite/);
+    await expect(page.getByRole('heading', { name: /Bom dia|Boa tarde|Boa noite/i })).toBeVisible();
   });
 
   test('deve exibir erro com credenciais inválidas', async ({ page }) => {

@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 /**
  * Script para criar usuário de teste no Firebase
- * 
+ *
  * Uso:
  *   firebase use dev
  *   node scripts/create-test-user.mjs caio.garcia@gmail.com Hexa1020**
- * 
+ *
  * Ou use as variáveis de ambiente do .env.test:
  *   node scripts/create-test-user.mjs
  */
@@ -45,7 +45,7 @@ try {
     './serviceAccountKey.json',
     './firebase-dev-service-account.json',
   ];
-  
+
   for (const path of possiblePaths) {
     try {
       readFileSync(path);
@@ -61,11 +61,11 @@ try {
   }
 
   const serviceAccount = JSON.parse(readFileSync(serviceAccountPath, 'utf8'));
-  
+
   initializeApp({
     credential: cert(serviceAccount)
   });
-  
+
   console.log('✅ Firebase Admin inicializado');
 } catch (error) {
   console.error('❌ Erro ao inicializar Firebase Admin:');
@@ -89,10 +89,10 @@ const db = getFirestore();
 async function createTestUser() {
   try {
     console.log(`\n🔍 Verificando se usuário ${email} já existe...`);
-    
+
     let userRecord;
     let userExists = false;
-    
+
     try {
       userRecord = await auth.getUserByEmail(email);
       userExists = true;
@@ -100,14 +100,14 @@ async function createTestUser() {
     } catch (error) {
       if (error.code === 'auth/user-not-found') {
         console.log('📝 Usuário não existe, criando...');
-        
+
         userRecord = await auth.createUser({
           email,
           password,
           emailVerified: true,
           displayName: 'Teste E2E',
         });
-        
+
         console.log(`✅ Usuário criado no Authentication (UID: ${userRecord.uid})`);
       } else {
         throw error;
@@ -125,7 +125,7 @@ async function createTestUser() {
       console.log(`   Role: ${data.role}`);
       console.log(`   Active: ${data.active}`);
       console.log(`   Permissions: ${JSON.stringify(data.permissions, null, 2)}`);
-      
+
       // Atualizar se inativo
       if (!data.active) {
         await userDocRef.update({
@@ -136,7 +136,7 @@ async function createTestUser() {
       }
     } else {
       console.log(`\n📝 Criando perfil no Firestore...`);
-      
+
       await userDocRef.set({
         email,
         name: 'Teste E2E',
@@ -175,7 +175,7 @@ async function createTestUser() {
         createdAt: FieldValue.serverTimestamp(),
         updatedAt: FieldValue.serverTimestamp(),
       });
-      
+
       console.log(`✅ Perfil criado no Firestore`);
     }
 

@@ -34,8 +34,8 @@ test.describe('Navegação entre Páginas', () => {
       await page.goto(path);
       await page.waitForTimeout(1500);
 
-      // Verificar se a página carregou
-      await expect(page.locator('h1')).toContainText(heading);
+      // Verificar se a página carregou (pegar último H1 que é o título da página)
+      await expect(page.locator('main h1, [role="main"] h1').last()).toContainText(heading);
 
       // Verificar se não há erros visíveis
       const errorText = await page.locator('text=/erro|error/i').count();

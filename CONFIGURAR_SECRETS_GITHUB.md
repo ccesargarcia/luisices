@@ -3,7 +3,7 @@
 ## ❌ Problema Atual
 
 **Secrets NÃO configuradas** → Testes usam credenciais de fallback que não existem:
-- Email: `teste@exemplo.com` 
+- Email: `teste@exemplo.com`
 - Senha: `senha123`
 
 ## ✅ Solução: Adicionar as Secrets

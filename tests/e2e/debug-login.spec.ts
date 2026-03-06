@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 
 /**
  * Teste de DEBUG para identificar por que o login falha
- * 
+ *
  * Execute: npx playwright test tests/e2e/debug-login.spec.ts --headed
  */
 
@@ -23,7 +23,7 @@ test.describe('🐛 DEBUG - Identificar problema no login', () => {
     page.on('console', msg => {
       const type = msg.type();
       const text = msg.text();
-      
+
       if (type === 'error') {
         console.log(`❌ ERRO NO BROWSER: ${text}`);
       } else if (type === 'log' && text.includes('erro')) {
@@ -41,20 +41,20 @@ test.describe('🐛 DEBUG - Identificar problema no login', () => {
 
     await page.goto('/');
     console.log('✅ Página carregada:', page.url());
-    
+
     await page.waitForTimeout(2000);
 
     // Preencher formulário
     console.log('\n📝 Preenchendo formulário...');
     await page.fill('input[type="email"]', TEST_USER.email);
     await page.fill('input[type="password"]', TEST_USER.password);
-    
+
     console.log('✅ Formulário preenchido');
 
     // Clicar em submit
     console.log('\n🔘 Clicando em submit...');
     await page.click('button[type="submit"]');
-    
+
     // Aguardar um pouco para ver o que acontece
     console.log('⏳ Aguardando 5 segundos para ver o que acontece...\n');
     await page.waitForTimeout(5000);

@@ -56,7 +56,7 @@ jobs:
             echo "📊 Número de linhas: $(wc -l < .env.local)"
             echo "🔐 Variáveis (valores ocultados):"
             sed 's/=.*/=***/' .env.local
-            
+
             # Verificar se alguma variável está vazia
             if grep -q '=$' .env.local; then
               echo "❌ ERRO: Variáveis vazias encontradas!"

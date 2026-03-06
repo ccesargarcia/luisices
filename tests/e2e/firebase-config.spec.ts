@@ -19,7 +19,7 @@ test.describe('🔥 Firebase Configuration', () => {
       if (response.url().includes('firebase') || response.url().includes('googleapis')) {
         const status = response.status();
         const url = response.url();
-        
+
         if (status >= 400) {
           let body = '';
           try {
@@ -27,7 +27,7 @@ test.describe('🔥 Firebase Configuration', () => {
           } catch {
             body = 'Could not read response body';
           }
-          
+
           errors.push(`HTTP ${status} on ${url}: ${body.substring(0, 200)}`);
         }
       }
@@ -67,7 +67,7 @@ test.describe('🔥 Firebase Configuration', () => {
 
     // Verificar se houve algum request ao Firebase
     expect(networkRequests.length, 'Deve haver requests ao Firebase durante login').toBeGreaterThan(0);
-    
+
     // Verificar se não houve erro HTTP
     const httpErrors = errors.filter(e => e.startsWith('HTTP'));
     if (httpErrors.length > 0) {

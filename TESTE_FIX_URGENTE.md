@@ -43,7 +43,7 @@ Os testes conseguem fazer login, mas o redirecionamento para `/dashboard` não a
    | `role` | string | `admin` |
    | `createdAt` | timestamp | (data atual) |
    | `updatedAt` | timestamp | (data atual) |
-   
+
    - Adicione subcampo `permissions` (tipo: map):
      - `dashboard`: true (boolean)
      - `orders`: (map)
