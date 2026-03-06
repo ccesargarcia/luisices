@@ -17,6 +17,7 @@ const Products       = lazy(() => import('./pages/Products').then(m => ({ defaul
 const Gallery        = lazy(() => import('./pages/Gallery').then(m => ({ default: m.Gallery })));
 const Exchanges      = lazy(() => import('./pages/Exchanges').then(m => ({ default: m.Exchanges })));
 const Users          = lazy(() => import('./pages/Users').then(m => ({ default: m.Users })));
+const FixNegativeValues = lazy(() => import('./pages/FixNegativeValues').then(m => ({ default: m.default })));
 const Login          = lazy(() => import('./pages/Login').then(m => ({ default: m.Login })));
 const ResetPassword  = lazy(() => import('./pages/ResetPassword').then(m => ({ default: m.ResetPassword })));
 const AuthAction     = lazy(() => import('./pages/AuthAction').then(m => ({ default: m.AuthAction })));
@@ -106,6 +107,10 @@ export const router = createBrowserRouter([
       {
         path: 'usuarios',
         element: <Lazy><PermissionRoute check={p => p.users?.view ?? false}><Users /></PermissionRoute></Lazy>,
+      },
+      {
+        path: 'corrigir-valores',
+        element: <Lazy><PermissionRoute check={p => p.settings}><FixNegativeValues /></PermissionRoute></Lazy>,
       },
     ],
   },
