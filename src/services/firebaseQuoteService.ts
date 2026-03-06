@@ -31,6 +31,24 @@ export class FirebaseQuoteService {
     return user.uid;
   }
 
+  /**
+   * Garantir que um valor monetário nunca seja negativo
+   */
+  private ensurePositive(value: number | undefined | null): number {
+    return Math.max(0, value ?? 0);
+  }
+
+  /**
+   * Validar e limpar items do orçamento
+   */
+  private sanitizeQuoteItems(items: any[]): any[] {
+    return items.map(item => ({
+      ...item,
+      unitPrice: this.ensurePositive(item.unitPrice),
+      quantity: Math.max(0, item.quantity ?? 0)
+    }));
+  }
+
   // ─── Número sequencial (mesmo mecanismo dos pedidos, contador separado) ─────
   private async generateQuoteNumber(userId: string): Promise<string> {
     const counterRef = doc(db, 'users', userId, 'metadata', 'quoteCounters');
@@ -89,9 +107,9 @@ export class FirebaseQuoteService {
       customerName: quoteData.customerName,
       customerPhone: quoteData.customerPhone,
       customerId: quoteData.customerId || null,
-      items: quoteData.items || [],
-      totalPrice: quoteData.totalPrice ?? 0,
-      discount: quoteData.discount ?? null,
+      items: this.sanitizeQuoteItems(quoteData.items || []),
+      totalPrice: this.ensurePositive(quoteData.totalPrice),
+      discount: quoteData.discount ? this.ensurePositive(quoteData.discount) : null,
       discountType: quoteData.discountType || null,
       paymentCondition: quoteData.paymentCondition || null,
       deliveryType: quoteData.deliveryType || null,
@@ -135,9 +153,14 @@ export class FirebaseQuoteService {
   // ─── Update ──────────────────────────────────────────────────────────────────
   async updateQuote(id: string, changes: Partial<Quote>): Promise<void> {
     const { id: _id, userId: _uid, createdAt: _ca, quoteNumber: _qn, ...rest } = changes as any;
-    // Firestore rejeita undefined — converte para null
+    // Firestore rejeita undefined — converte para null e garante valores positivos
     const sanitized = Object.fromEntries(
-      Object.entries(rest).map(([k, v]) => [k, v === undefined ? null : v])
+      Object.entries(rest).map(([k, v]) => {
+        if (k === 'totalPrice') return [k, this.ensurePositive(v as number)];
+        if (k === 'discount' && v !== null && v !== undefined) return [k, this.ensurePositive(v as number)];
+        if (k === 'items' && Array.isArray(v)) return [k, this.sanitizeQuoteItems(v)];
+        return [k, v === undefined ? null : v];
+      })
     );
     await updateDoc(doc(db, QUOTES_COLLECTION, id), {
       ...sanitized,

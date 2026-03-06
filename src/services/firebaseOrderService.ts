@@ -58,17 +58,48 @@ export class FirebaseOrderService {
   }
 
   /**
+   * Garantir que um valor monetário nunca seja negativo
+   */
+  private ensurePositive(value: number | undefined | null): number {
+    return Math.max(0, value ?? 0);
+  }
+
+  /**
+   * Validar e limpar items de troca/permuta
+   */
+  private sanitizeExchangeItems(items: any[] | null | undefined): any[] | null {
+    if (!items || !Array.isArray(items)) return null;
+    return items.map(item => ({
+      ...item,
+      value: item.value !== undefined && item.value !== null 
+        ? this.ensurePositive(item.value) 
+        : undefined,
+      quantity: Math.max(0, item.quantity ?? 0)
+    }));
+  }
+
+  /**
    * Criar pedido
    */
   async createOrder(orderData: Partial<Order>): Promise<Order> {
     const userId = this.getCurrentUserId();
     const orderNumber = await this.generateOrderNumber(userId);
 
+    // Garantir que valores monetários sejam positivos
+    const price = this.ensurePositive(orderData.price);
+
     // Sanitize payment object: replace undefined with null so Firestore doesn't reject it
     const payment = orderData.payment
-      ? Object.fromEntries(
-          Object.entries(orderData.payment).map(([k, v]) => [k, v === undefined ? null : v])
-        )
+      ? {
+          ...orderData.payment,
+          totalAmount: this.ensurePositive(orderData.payment.totalAmount),
+          paidAmount: this.ensurePositive(orderData.payment.paidAmount),
+          remainingAmount: this.ensurePositive(orderData.payment.remainingAmount),
+          history: orderData.payment.history?.map(h => ({
+            ...h,
+            amount: this.ensurePositive(h.amount)
+          }))
+        }
       : null;
 
     const ordersRef = collection(db, ORDERS_COLLECTION);
@@ -79,7 +110,7 @@ export class FirebaseOrderService {
       customerPhone: orderData.customerPhone,
       productName: orderData.productName,
       quantity: orderData.quantity,
-      price: orderData.price,
+      price,
       status: orderData.status || 'pending',
       deliveryDate: orderData.deliveryDate,
       notes: orderData.notes || null,
@@ -88,7 +119,7 @@ export class FirebaseOrderService {
       payment,
       isExchange: orderData.isExchange || false,
       exchangeNotes: orderData.exchangeNotes || null,
-      exchangeItems: orderData.exchangeItems || null,
+      exchangeItems: this.sanitizeExchangeItems(orderData.exchangeItems),
       cardColor: orderData.cardColor || null,
       createdAt: Timestamp.now(),
       deletedAt: null,
@@ -230,11 +261,29 @@ export class FirebaseOrderService {
       throw new Error('Pedido não encontrado ou sem permissão');
     }
 
-    // Remover campos undefined
+    // Remover campos undefined e garantir valores positivos
     const cleanUpdates: any = {};
     Object.entries(updates).forEach(([key, value]) => {
       if (value !== undefined) {
-        cleanUpdates[key] = value;
+        if (key === 'price') {
+          cleanUpdates[key] = this.ensurePositive(value as number);
+        } else if (key === 'payment' && value) {
+          const payment = value as any;
+          cleanUpdates[key] = {
+            ...payment,
+            totalAmount: this.ensurePositive(payment.totalAmount),
+            paidAmount: this.ensurePositive(payment.paidAmount),
+            remainingAmount: this.ensurePositive(payment.remainingAmount),
+            history: payment.history?.map((h: any) => ({
+              ...h,
+              amount: this.ensurePositive(h.amount)
+            }))
+          };
+        } else if (key === 'exchangeItems') {
+          cleanUpdates[key] = this.sanitizeExchangeItems(value as any);
+        } else {
+          cleanUpdates[key] = value;
+        }
       }
     });
 
@@ -262,6 +311,7 @@ export class FirebaseOrderService {
     const orderNumber = await this.generateOrderNumber(userId);
 
     const ordersRef = collection(db, ORDERS_COLLECTION);
+    const price = this.ensurePositive(data.price);
     const newOrderRef = await addDoc(ordersRef, {
       userId,
       orderNumber,
@@ -270,16 +320,16 @@ export class FirebaseOrderService {
       customerId: data.customerId || null,
       productName: data.productName,
       quantity: data.quantity,
-      price: data.price,
+      price,
       status: 'pending',
       deliveryDate: data.deliveryDate,
       notes: data.notes || null,
       tags: data.tags || null,
       payment: {
         status: 'pending',
-        totalAmount: data.price,
+        totalAmount: price,
         paidAmount: 0,
-        remainingAmount: data.price,
+        remainingAmount: price,
       },
       createdAt: Timestamp.now(),
       deletedAt: null,
