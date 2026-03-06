@@ -88,7 +88,7 @@ export function Dashboard() {
   // Verificar se o usuário compartilhou pedidos com alguém
   useEffect(() => {
     if (!user) return;
-    
+
     firebaseSharedAccessService.getMySharedAccess()
       .then(shared => {
         const hasOrdersShared = shared.some(
@@ -290,10 +290,10 @@ export function Dashboard() {
       filtered = filtered.filter(order => {
         // Mostra pedidos recebidos de outros (compartilhados comigo)
         const receivedFromOthers = order.userId && order.userId !== user?.uid;
-        
+
         // Mostra meus pedidos que eu compartilhei com outros
         const mySharedOrders = order.userId === user?.uid && hasSharedOrders;
-        
+
         return receivedFromOthers || mySharedOrders;
       });
     }
@@ -670,7 +670,7 @@ export function Dashboard() {
           {filteredOrders.length === 0 ? (
             <EmptyState
               message="Nenhum pedido encontrado"
-              hint={searchQuery || selectedTags.length > 0 || showExchangeOnly || showSharedOnly ? 'Tente ajustar os filtros.' : 'Crie seu primeiro pedido clicando em "Novo Pedido".',}
+              hint={searchQuery || selectedTags.length > 0 || showExchangeOnly || showSharedOnly ? 'Tente ajustar os filtros.' : 'Crie seu primeiro pedido clicando em "Novo Pedido".'}
             />
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
