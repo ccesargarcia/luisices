@@ -57,14 +57,6 @@ export default defineConfig({
     video: 'retain-on-failure',
   },
 
-  /* Web Server - Inicia servidor automaticamente para testes */
-  webServer: process.env.CI ? {
-    command: 'npx vite preview --port 4173 --strictPort',
-    port: 4173,
-    timeout: 120 * 1000,
-    reuseExistingServer: false,
-  } : undefined,
-
   /* Configurar projetos para diferentes navegadores */
   projects: [
     {

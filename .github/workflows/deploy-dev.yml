@@ -73,6 +73,14 @@ jobs:
       - name: Build (dev)
         run: npm run build
 
+      - name: Deploy to Firebase Hosting (dev.luisices.com.br)
+        uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          repoToken: ${{ secrets.GITHUB_TOKEN }}
+          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_DEV }}
+          projectId: luisices-dev
+          channelId: live
+
       - name: Install Playwright Browsers
         run: npx playwright install --with-deps chromium
 
@@ -80,6 +88,7 @@ jobs:
         env:
           TEST_USER_EMAIL: ${{ secrets.TEST_USER_EMAIL }}
           TEST_USER_PASSWORD: ${{ secrets.TEST_USER_PASSWORD }}
+          PLAYWRIGHT_BASE_URL: https://dev.luisices.com.br
           CI: true
         run: npm run test:firebase-config
         continue-on-error: false
@@ -88,6 +97,7 @@ jobs:
         env:
           TEST_USER_EMAIL: ${{ secrets.TEST_USER_EMAIL }}
           TEST_USER_PASSWORD: ${{ secrets.TEST_USER_PASSWORD }}
+          PLAYWRIGHT_BASE_URL: https://dev.luisices.com.br
           CI: true
         run: npm run test:smoke
         continue-on-error: false
@@ -99,9 +109,6 @@ jobs:
           name: playwright-report-${{ github.run_number }}
           path: playwright-report/
           retention-days: 7
-
-      - name: Deploy to Firebase Hosting (dev.luisices.com.br)
-        if: success()
         uses: FirebaseExtended/action-hosting-deploy@v0
         with:
           repoToken: ${{ secrets.GITHUB_TOKEN }}
