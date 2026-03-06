@@ -84,15 +84,6 @@ jobs:
       - name: Install Playwright Browsers
         run: npx playwright install --with-deps chromium
 
-      - name: 🔍 Verificar Firebase Config (Diagnóstico)
-        env:
-          TEST_USER_EMAIL: ${{ secrets.TEST_USER_EMAIL }}
-          TEST_USER_PASSWORD: ${{ secrets.TEST_USER_PASSWORD }}
-          PLAYWRIGHT_BASE_URL: https://dev.luisices.com.br
-          CI: true
-        run: npm run test:firebase-config
-        continue-on-error: false
-
       - name: Run E2E Tests (Smoke)
         env:
           TEST_USER_EMAIL: ${{ secrets.TEST_USER_EMAIL }}
