@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { collection, getDocs, doc, updateDoc, query, where } from 'firebase/firestore';
-import { db } from '../../lib/firebase';
+import { db, auth } from '../../lib/firebase';
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { Alert, AlertDescription } from '../components/ui/alert';
@@ -24,8 +24,13 @@ export default function FixNegativeValues() {
   const fixCustomers = async () => {
     addLog('🔍 Verificando clientes...');
     
+    if (!auth.currentUser) {
+      throw new Error('Usuário não autenticado');
+    }
+    
     const customersRef = collection(db, 'customers');
-    const snapshot = await getDocs(customersRef);
+    const q = query(customersRef, where('userId', '==', auth.currentUser.uid));
+    const snapshot = await getDocs(q);
     
     let fixed = 0;
     
@@ -56,8 +61,16 @@ export default function FixNegativeValues() {
   const fixOrders = async () => {
     addLog('🔍 Verificando pedidos...');
     
+    if (!auth.currentUser) {
+      throw new Error('Usuário não autenticado');
+    }
+    
     const ordersRef = collection(db, 'orders');
-    const q = query(ordersRef, where('deletedAt', '==', null));
+    const q = query(
+      ordersRef,
+      where('userId', '==', auth.currentUser.uid),
+      where('deletedAt', '==', null)
+    );
     const snapshot = await getDocs(q);
     
     let fixed = 0;
@@ -124,8 +137,13 @@ export default function FixNegativeValues() {
   const fixQuotes = async () => {
     addLog('🔍 Verificando orçamentos...');
     
+    if (!auth.currentUser) {
+      throw new Error('Usuário não autenticado');
+    }
+    
     const quotesRef = collection(db, 'quotes');
-    const snapshot = await getDocs(quotesRef);
+    const q = query(quotesRef, where('userId', '==', auth.currentUser.uid));
+    const snapshot = await getDocs(q);
     
     let fixed = 0;
     
@@ -169,8 +187,13 @@ export default function FixNegativeValues() {
   const fixProducts = async () => {
     addLog('🔍 Verificando produtos...');
     
+    if (!auth.currentUser) {
+      throw new Error('Usuário não autenticado');
+    }
+    
     const productsRef = collection(db, 'products');
-    const snapshot = await getDocs(productsRef);
+    const q = query(productsRef, where('userId', '==', auth.currentUser.uid));
+    const snapshot = await getDocs(q);
     
     let fixed = 0;
     
@@ -235,16 +258,16 @@ export default function FixNegativeValues() {
         <CardHeader>
           <CardTitle>Corrigir Valores Negativos</CardTitle>
           <CardDescription>
-            Esta ferramenta corrige valores monetários negativos que possam existir no banco de dados.
-            Será aplicado a todos os registros de clientes, pedidos, orçamentos e produtos.
+            Esta ferramenta corrige valores monetários negativos nos seus dados.
+            Será aplicado a todos os seus registros de clientes, pedidos, orçamentos e produtos.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <Alert>
             <AlertCircle className="h-4 w-4" />
             <AlertDescription>
-              <strong>Atenção:</strong> Esta ação irá modificar dados no banco. Certifique-se de que você
-              tem permissões administrativas antes de prosseguir.
+              <strong>Atenção:</strong> Esta ação irá modificar seus dados no banco. 
+              A correção será aplicada apenas aos seus registros.
             </AlertDescription>
           </Alert>
 

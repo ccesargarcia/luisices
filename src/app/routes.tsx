@@ -110,7 +110,7 @@ export const router = createBrowserRouter([
       },
       {
         path: 'corrigir-valores',
-        element: <Lazy><PermissionRoute check={p => p.settings}><FixNegativeValues /></PermissionRoute></Lazy>,
+        element: <Lazy><ProtectedRoute><FixNegativeValues /></ProtectedRoute></Lazy>,
       },
     ],
   },
