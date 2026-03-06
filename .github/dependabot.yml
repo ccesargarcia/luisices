@@ -1,0 +1,36 @@
+# Configuração do Dependabot
+version: 2
+updates:
+  # Monitorar npm packages
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    
+    # Ignorar vulnerabilidades sem correção disponível
+    ignore:
+      # xlsx - vulnerabilidades conhecidas sem fix disponível
+      # Usado apenas client-side para exportação de dados
+      - dependency-name: "xlsx"
+        update-types: ["version-update:semver-patch", "version-update:semver-minor"]
+    
+    # Agrupar atualizações por tipo
+    groups:
+      production-dependencies:
+        dependency-type: "production"
+        update-types:
+          - "minor"
+          - "patch"
+      development-dependencies:
+        dependency-type: "development"
+        update-types:
+          - "minor"
+          - "patch"
+    
+    # Configurações de commits
+    commit-message:
+      prefix: "chore"
+      prefix-development: "chore(dev)"
+      include: "scope"
