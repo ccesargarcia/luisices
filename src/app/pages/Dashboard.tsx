@@ -80,6 +80,7 @@ export function Dashboard() {
 
   const visibleCards = settings?.dashboardCards ?? DEFAULT_DASHBOARD_CARDS;
   const showCard = (id: string) => visibleCards.includes(id);
+  const handleOrderClick = (order: Order) => {
     setSelectedOrder(order);
     setDetailsOpen(true);
   };
