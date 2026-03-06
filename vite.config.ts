@@ -76,7 +76,7 @@ export default defineConfig(({ command }) => ({
         manualChunks: {
           // React core e navegação
           'vendor-react': ['react', 'react-dom', 'react-router'],
-          
+
           // Componentes UI (Radix)
           'vendor-ui': [
             '@radix-ui/react-dialog',
@@ -86,7 +86,7 @@ export default defineConfig(({ command }) => ({
             '@radix-ui/react-tabs',
             '@radix-ui/react-alert-dialog',
           ],
-          
+
           // Firebase (separado para cache independente)
           'vendor-firebase': [
             'firebase/app',
@@ -96,13 +96,13 @@ export default defineConfig(({ command }) => ({
             'firebase/functions',
             'firebase/analytics',
           ],
-          
+
           // Charting/visualização (carregado apenas em Reports)
           'vendor-charts': ['recharts'],
-          
+
           // PDF generation (carregado apenas quando exportar)
           'vendor-pdf': ['jspdf', 'jspdf-autotable', 'html2canvas'],
-          
+
           // DOMPurify (segurança)
           'vendor-security': ['dompurify'],
         },

@@ -17,7 +17,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Checkbox } from '../components/ui/checkbox';
 import { LayoutDashboard } from 'lucide-react';
 import { Badge } from '../components/ui/badge';
-import { SharedAccessManager } from '../components/SharedAccessManager';
 
 export function Settings() {
   const { user, userProfile, isAdmin } = useAuth();
@@ -1183,9 +1182,6 @@ export function Settings() {
           )}
         </CardContent>
       </Card>
-
-      {/* Compartilhamento de Acesso */}
-      <SharedAccessManager />
 
       {/* Zona de Perigo */}
       <Card className="border-destructive/50">

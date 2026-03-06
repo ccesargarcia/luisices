@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 
 /**
  * Testes de Navegação
- * 
+ *
  * Verifica se todas as páginas principais carregam corretamente
  */
 
@@ -33,10 +33,10 @@ test.describe('Navegação entre Páginas', () => {
     test(`deve carregar página ${name}`, async ({ page }) => {
       await page.goto(path);
       await page.waitForTimeout(1500);
-      
+
       // Verificar se a página carregou
       await expect(page.locator('h1')).toContainText(heading);
-      
+
       // Verificar se não há erros visíveis
       const errorText = await page.locator('text=/erro|error/i').count();
       expect(errorText).toBe(0);
@@ -45,10 +45,10 @@ test.describe('Navegação entre Páginas', () => {
 
   test('deve navegar usando menu lateral', async ({ page }) => {
     await page.waitForTimeout(1000);
-    
+
     // Procurar link de Clientes no menu
     const customersLink = page.locator('a[href*="customers"]');
-    
+
     if (await customersLink.isVisible()) {
       await customersLink.click();
       await page.waitForURL('**/customers', { timeout: 5000 });
@@ -60,12 +60,12 @@ test.describe('Navegação entre Páginas', () => {
     // Ir para outra página
     await page.goto('/settings');
     await page.waitForTimeout(1000);
-    
+
     // Clicar no logo ou botão home
     const homeButton = page.locator('a[href="/dashboard"]').or(
       page.locator('a[href="/"]')
     ).first();
-    
+
     if (await homeButton.isVisible()) {
       await homeButton.click();
       await page.waitForURL('**/dashboard', { timeout: 5000 });

@@ -1,6 +1,6 @@
 /**
  * Analytics Service
- * 
+ *
  * Serviço para rastreamento de eventos com Firebase Analytics
  */
 
@@ -12,7 +12,7 @@ import { analytics } from '../lib/firebase';
  */
 export const trackPageView = (pagePath: string, pageTitle?: string) => {
   if (!analytics) return;
-  
+
   logEvent(analytics, 'page_view', {
     page_path: pagePath,
     page_title: pageTitle || document.title,
@@ -24,7 +24,7 @@ export const trackPageView = (pagePath: string, pageTitle?: string) => {
  */
 export const trackLogin = (method: string = 'email') => {
   if (!analytics) return;
-  
+
   logEvent(analytics, 'login', {
     method,
   });
@@ -35,7 +35,7 @@ export const trackLogin = (method: string = 'email') => {
  */
 export const trackSignUp = (method: string = 'email') => {
   if (!analytics) return;
-  
+
   logEvent(analytics, 'sign_up', {
     method,
   });
@@ -46,7 +46,7 @@ export const trackSignUp = (method: string = 'email') => {
  */
 export const trackSearch = (searchTerm: string) => {
   if (!analytics) return;
-  
+
   logEvent(analytics, 'search', {
     search_term: searchTerm,
   });
@@ -57,7 +57,7 @@ export const trackSearch = (searchTerm: string) => {
  */
 export const trackOrderCreated = (orderId: string, value: number, currency: string = 'BRL') => {
   if (!analytics) return;
-  
+
   logEvent(analytics, 'purchase', {
     transaction_id: orderId,
     value,
@@ -70,7 +70,7 @@ export const trackOrderCreated = (orderId: string, value: number, currency: stri
  */
 export const trackQuoteCreated = (quoteId: string, value?: number) => {
   if (!analytics) return;
-  
+
   logEvent(analytics, 'generate_lead', {
     value: value || 0,
     currency: 'BRL',
@@ -83,7 +83,7 @@ export const trackQuoteCreated = (quoteId: string, value?: number) => {
  */
 export const trackEvent = (eventName: string, params?: Record<string, any>) => {
   if (!analytics) return;
-  
+
   logEvent(analytics, eventName, params);
 };
 
@@ -92,9 +92,9 @@ export const trackEvent = (eventName: string, params?: Record<string, any>) => {
  */
 export const setUserAnalytics = (userId: string, role?: string) => {
   if (!analytics) return;
-  
+
   setUserId(analytics, userId);
-  
+
   if (role) {
     setUserProperties(analytics, {
       user_role: role,
@@ -107,7 +107,7 @@ export const setUserAnalytics = (userId: string, role?: string) => {
  */
 export const trackError = (errorMessage: string, errorCode?: string) => {
   if (!analytics) return;
-  
+
   logEvent(analytics, 'exception', {
     description: errorMessage,
     fatal: false,

@@ -28,7 +28,7 @@ export function Login() {
       navigate('/');
     } catch (err: any) {
       console.error('Erro ao fazer login:', err);
-      
+
       // Mensagens específicas para diferentes tipos de erro
       if (err.message?.includes('desativada')) {
         setError('🚫 Sua conta foi desativada. Entre em contato com o administrador para reativar seu acesso.');

@@ -142,10 +142,10 @@ Estes itens **DEVEM** funcionar antes de deploy:
 
 ## 📝 Notas de Teste
 
-**Data do Teste**: _____________  
-**Testado por**: _____________  
-**Ambiente**: [ ] Local [ ] DEV [ ] Produção  
-**Navegador**: _____________  
+**Data do Teste**: _____________
+**Testado por**: _____________
+**Ambiente**: [ ] Local [ ] DEV [ ] Produção
+**Navegador**: _____________
 **Versão**: _____________
 
 **Problemas Encontrados**:

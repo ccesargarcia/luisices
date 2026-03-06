@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 
 /**
  * Smoke Tests - Testes Rápidos
- * 
+ *
  * Conjunto mínimo de testes para verificar se o app não está completamente quebrado.
  * Ideal para rodar antes de cada deploy.
  */
@@ -15,22 +15,22 @@ const TEST_USER = {
 test.describe('🔥 Smoke Tests - Verificações Críticas', () => {
   test('✅ App deve carregar sem erros de console críticos', async ({ page }) => {
     const errors: string[] = [];
-    
+
     page.on('console', msg => {
       if (msg.type() === 'error') {
         errors.push(msg.text());
       }
     });
-    
+
     await page.goto('/');
     await page.waitForTimeout(2000);
-    
+
     // Filtrar erros conhecidos/aceitos (ajuste conforme necessário)
-    const criticalErrors = errors.filter(err => 
-      !err.includes('favicon') && 
+    const criticalErrors = errors.filter(err =>
+      !err.includes('favicon') &&
       !err.includes('404')
     );
-    
+
     expect(criticalErrors.length).toBe(0);
   });
 
@@ -39,7 +39,7 @@ test.describe('🔥 Smoke Tests - Verificações Críticas', () => {
     await page.fill('input[type="email"]', TEST_USER.email);
     await page.fill('input[type="password"]', TEST_USER.password);
     await page.click('button[type="submit"]');
-    
+
     await page.waitForURL('**/dashboard', { timeout: 10000 });
     expect(page.url()).toContain('dashboard');
   });
@@ -50,13 +50,13 @@ test.describe('🔥 Smoke Tests - Verificações Críticas', () => {
     await page.fill('input[type="password"]', TEST_USER.password);
     await page.click('button[type="submit"]');
     await page.waitForURL('**/dashboard', { timeout: 10000 });
-    
+
     await page.waitForTimeout(3000);
-    
+
     // Deve ter pedidos OU mensagem de vazio
     const hasContent = await page.locator('[class*="OrderCard"]').count() > 0;
     const hasEmpty = await page.locator('text=/Nenhum pedido|sem pedidos/i').isVisible().catch(() => false);
-    
+
     expect(hasContent || hasEmpty).toBeTruthy();
   });
 
@@ -66,12 +66,12 @@ test.describe('🔥 Smoke Tests - Verificações Críticas', () => {
     await page.fill('input[type="password"]', TEST_USER.password);
     await page.click('button[type="submit"]');
     await page.waitForURL('**/dashboard', { timeout: 10000 });
-    
+
     // Testar navegação para Settings
     await page.goto('/settings');
     await page.waitForTimeout(1500);
     await expect(page.locator('h1')).toContainText(/Configurações/i);
-    
+
     // Voltar para Dashboard
     await page.goto('/dashboard');
     await page.waitForTimeout(1500);
@@ -85,12 +85,12 @@ test.describe('🔥 Smoke Tests - Verificações Críticas', () => {
     await page.click('button[type="submit"]');
     await page.waitForURL('**/dashboard', { timeout: 10000 });
     await page.waitForTimeout(2000);
-    
+
     // Testar busca
     const searchInput = page.locator('input[placeholder*="Buscar"]').or(
       page.locator('input[type="search"]')
     );
-    
+
     if (await searchInput.isVisible()) {
       await searchInput.fill('teste');
       await page.waitForTimeout(500);
@@ -105,9 +105,9 @@ test.describe('🔥 Smoke Tests - Verificações Críticas', () => {
     await page.click('button[type="submit"]');
     await page.waitForURL('**/dashboard', { timeout: 10000 });
     await page.waitForTimeout(2000);
-    
+
     const newOrderButton = page.locator('button:has-text("Novo Pedido")');
-    
+
     if (await newOrderButton.isVisible()) {
       await newOrderButton.click();
       await page.waitForSelector('[role="dialog"]', { timeout: 3000 });
@@ -121,14 +121,14 @@ test.describe('🔥 Smoke Tests - Verificações Críticas', () => {
     await page.fill('input[type="password"]', TEST_USER.password);
     await page.click('button[type="submit"]');
     await page.waitForURL('**/dashboard', { timeout: 10000 });
-    
+
     await page.goto('/settings');
     await page.waitForTimeout(2000);
-    
+
     const sharedSection = page.locator('text=Compartilhamento de Acesso').or(
       page.locator('text=Acessos que Compartilhei')
     );
-    
+
     if (await sharedSection.isVisible()) {
       await sharedSection.scrollIntoViewIfNeeded();
       await expect(sharedSection).toBeVisible();

@@ -24,7 +24,7 @@ Edite `.env.test` e preencha:
 - `TEST_USER_PASSWORD`: Senha do usuário de teste
 - `PLAYWRIGHT_BASE_URL`: URL onde a aplicação está rodando
 
-**⚠️ IMPORTANTE**: 
+**⚠️ IMPORTANTE**:
 - Use um usuário específico para testes, não sua conta real
 - NUNCA commite o arquivo `.env.test`
 - Adicione `.env.test` ao `.gitignore`
@@ -123,10 +123,10 @@ test.describe('Minha Funcionalidade', () => {
   test('deve fazer algo específico', async ({ page }) => {
     // 1. Navegar
     await page.goto('/pagina');
-    
+
     // 2. Interagir
     await page.click('button');
-    
+
     // 3. Verificar
     await expect(page.locator('h1')).toContainText('Sucesso');
   });
@@ -140,7 +140,7 @@ test.describe('Minha Funcionalidade', () => {
    // ✅ BOM: Usa data attributes ou texto
    page.locator('[data-testid="submit-button"]')
    page.locator('button:has-text("Salvar")')
-   
+
    // ❌ RUIM: Classes CSS podem mudar
    page.locator('.btn-primary')
    ```

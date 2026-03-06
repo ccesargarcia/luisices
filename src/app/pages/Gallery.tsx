@@ -965,17 +965,17 @@ export function Gallery() {
           )}
           {hasPermission(p => p.gallery?.create ?? false) && (
             <>
-              <Button 
-                variant="outline" 
-                onClick={() => setNewFolderOpen(true)} 
+              <Button
+                variant="outline"
+                onClick={() => setNewFolderOpen(true)}
                 className="gap-2"
                 title="Criar nova pasta para organizar artes"
               >
                 <FolderPlus className="size-4" />
                 <span className="hidden sm:inline">Nova Pasta</span>
               </Button>
-              <Button 
-                onClick={() => setUploadOpen(true)} 
+              <Button
+                onClick={() => setUploadOpen(true)}
                 className="gap-2"
                 title="Adicionar nova arte à galeria"
               >
