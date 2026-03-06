@@ -47,6 +47,15 @@ lerna-debug.log*
 coverage/
 .nyc_output/
 
+# Playwright
+test-results/
+playwright-report/
+playwright/.cache/
+.env.test
+*.mp4
+*.webm
+*.trace.zip
+
 # Misc
 .cache/
 .temp/

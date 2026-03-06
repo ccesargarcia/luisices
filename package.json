@@ -6,7 +6,12 @@
   "scripts": {
     "build": "vite build",
     "dev": "vite",
-    "fix-negative-values": "node scripts/fix-negative-values.mjs"
+    "fix-negative-values": "node scripts/fix-negative-values.mjs",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
+    "test:smoke": "playwright test tests/e2e/smoke.spec.ts",
+    "test:debug": "playwright test --debug",
+    "test:report": "playwright show-report"
   },
   "dependencies": {
     "@emotion/react": "11.14.0",
@@ -67,7 +72,8 @@
     "sonner": "2.0.3",
     "tailwind-merge": "3.2.0",
     "tw-animate-css": "1.3.8",
-    "vaul": "1.1.2",
+    "vplaywright/test": "^1.49.1",
+    "@aul": "1.1.2",
     "xlsx": "^0.18.5",
     "zod": "^4.3.6"
   },
