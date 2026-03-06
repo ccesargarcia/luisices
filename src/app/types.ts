@@ -298,3 +298,19 @@ export const DEFAULT_USER_PERMISSIONS: Permission = {
   settings:  false,
   users:     { view: false, create: false, edit: false, delete: false },
 };
+
+// Tipos para sistema de compartilhamento de dados
+export type SharedResourceType = 'orders' | 'customers' | 'quotes' | 'products' | 'gallery';
+
+export interface SharedAccess {
+  id: string;
+  ownerId: string; // UID de quem compartilhou
+  ownerEmail: string; // Email de quem compartilhou (para exibir na UI)
+  ownerName: string; // Nome de quem compartilhou
+  grantedToUserId: string; // UID de quem recebeu permissão
+  grantedToEmail: string; // Email de quem recebeu
+  resources: SharedResourceType[]; // Quais recursos foram compartilhados
+  createdAt: string;
+  expiresAt?: string; // Opcional - data de expiração do compartilhamento
+  active: boolean; // Permite desativar sem deletar
+}
