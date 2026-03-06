@@ -19,7 +19,7 @@ Este diretório contém os workflows de CI/CD para deploy automático do projeto
 
 ### 1. **Deploy DEV** (`deploy-dev.yml`)
 
-**Branch:** `develop`  
+**Branch:** `develop`
 **URL:** https://dev.luisices.com.br
 
 **Fluxo:**
@@ -40,7 +40,7 @@ Este diretório contém os workflows de CI/CD para deploy automático do projeto
 
 ### 2. **Deploy PRODUÇÃO** (`deploy.yml`)
 
-**Branch:** `main`  
+**Branch:** `main`
 **URL:** https://luisices.com.br
 
 **Fluxo:**
@@ -136,7 +136,7 @@ git push origin main
 
 ## 📊 Status dos Workflows
 
-**Ver últimas execuções:**  
+**Ver últimas execuções:**
 https://github.com/ccesargarcia/luisices/actions
 
 **Badges:**

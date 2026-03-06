@@ -137,9 +137,75 @@ PLAYWRIGHT_BASE_URL=https://dev.luisices.com.br
 Credenciais vêm de **GitHub Secrets**:
 - `TEST_USER_EMAIL`
 - `TEST_USER_PASSWORD`
-- `PLAYWRIGHT_BASE_URL_DEV`
 
 **Veja:** [`.github/SECRETS_QUICKSTART.md`](../../.github/SECRETS_QUICKSTART.md)
+
+---
+
+### ⚠️ IMPORTANTE: Criar Usuário de Teste no Firebase
+
+**As credenciais de teste devem existir no Firebase do ambiente que você está testando!**
+
+#### Opção 1: Via Console Firebase (mais rápido)
+
+1. **Authentication:**
+   - Acesse: https://console.firebase.google.com/
+   - Selecione projeto `luisices-dev`
+   - Authentication > Users > Add user
+   - Email: `caio.garcia@gmail.com` (ou o que estiver no .env.test)
+   - Password: `Hexa1020**`
+
+2. **Firestore:**
+   - Firestore Database > `users` collection > Add document
+   - Document ID: `{UID do usuário criado acima}`
+   - Campos:
+     ```json
+     {
+       "email": "caio.garcia@gmail.com",
+       "name": "Teste E2E",
+       "active": true,
+       "role": "admin",
+       "permissions": {
+         "dashboard": true,
+         "orders": { "view": true, "create": true, "edit": true },
+         "customers": { "view": true, "create": true }
+       }
+     }
+     ```
+
+#### Opção 2: Via Script Automatizado
+
+```bash
+# 1. Baixar service account do Firebase
+# (Project Settings > Service Accounts > Generate New Private Key)
+# Salvar como: luisices-dev-firebase-adminsdk.json
+
+# 2. Selecionar projeto DEV
+firebase use dev
+
+# 3. Rodar script
+node scripts/create-test-user.mjs
+
+# Ou especificar credenciais:
+node scripts/create-test-user.mjs email@exemplo.com senha123
+```
+
+**⚠️ NÃO COMMITE** o arquivo de service account! (já está no .gitignore)
+
+---
+
+### ❌ Testes falhando com `TimeoutError`?
+
+**Sintoma:** `page.waitForURL: Timeout 10000ms exceeded`
+
+**Causa:** Usuário de teste não existe ou está inativo no Firebase
+
+**Solução:**
+1. Criar usuário conforme instruções acima
+2. Verificar se `active: true` no Firestore
+3. Confirmar que `permissions.dashboard: true`
+
+**Guia completo:** [`.github/TROUBLESHOOT_TESTS.md`](../../.github/TROUBLESHOOT_TESTS.md)
 
 ---
 
@@ -216,10 +282,10 @@ test.describe('Minha Feature', () => {
   test('deve fazer algo', async ({ page }) => {
     // Arrange
     await page.fill('#input', 'valor');
-    
+
     // Act
     await page.click('#submit');
-    
+
     // Assert
     await expect(page.locator('#result')).toHaveText('Sucesso!');
   });

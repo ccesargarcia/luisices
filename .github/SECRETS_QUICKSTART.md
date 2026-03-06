@@ -40,9 +40,32 @@ TEST_USER_EMAIL=caio.garcia@gmail.com
 TEST_USER_PASSWORD=Hexa1020**
 ```
 
-**Importante:** Use um usuário de teste específico, NÃO use usuários reais de produção!
+**⚠️ IMPORTANTE:** Este usuário **DEVE EXISTIR** no Firebase DEV!
 
-**Nota:** No CI/CD, os testes rodam contra o **build local** (não precisa de `PLAYWRIGHT_BASE_URL_DEV`).
+#### Como criar o usuário de teste:
+
+**Opção 1: Console Firebase (manual)**
+1. Firebase Console > Authentication > Add user
+2. Email: `caio.garcia@gmail.com`, Password: `Hexa1020**`
+3. Firestore > `users` collection > Add document
+   - Document ID: `{UID do usuário}`
+   - Campos obrigatórios:
+     ```json
+     {
+       "email": "caio.garcia@gmail.com",
+       "active": true,
+       "role": "admin",
+       "permissions": { "dashboard": true }
+     }
+     ```
+
+**Opção 2: Script automatizado**
+```bash
+firebase use dev
+node scripts/create-test-user.mjs
+```
+
+**Nota:** Os testes rodam contra o **build local** no CI (não precisa de `PLAYWRIGHT_BASE_URL_DEV`).
 
 ---
 
@@ -96,9 +119,20 @@ Os testes E2E (smoke tests) verificam:
 ### ❌ Erro: "Firebase config is missing"
 → Verifique se adicionou TODAS as secrets `DEV_VITE_FIREBASE_*`
 
-### ❌ Erro: "Login failed" nos testes  
+### ❌ Erro: "TimeoutError: page.waitForURL" nos testes
+**Causa:** Usuário de teste não existe ou está inativo no Firebase DEV
+
+**Solução:**
+1. Criar usuário no Firebase Authentication (ver seção "Testes E2E" acima)
+2. Criar perfil no Firestore com `active: true` e `permissions.dashboard: true`
+3. Confirmar que email/senha estão corretos nas secrets
+
+**Guia completo:** [`.github/TROUBLESHOOT_TESTS.md`](./TROUBLESHOOT_TESTS.md)
+
+### ❌ Erro: "Login failed" nos testes
 → Confirme que `TEST_USER_EMAIL` e `TEST_USER_PASSWORD` estão corretos
 → Verifique se o usuário existe no Firebase Authentication (ambiente DEV)
+→ Confirme que o usuário está **ativo** (`active: true`) no Firestore
 
 ### ❌ Erro: "Deploy failed"
 → Verifique se `FIREBASE_SERVICE_ACCOUNT_DEV` é um JSON válido completo

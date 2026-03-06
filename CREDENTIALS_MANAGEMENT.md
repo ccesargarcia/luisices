@@ -193,7 +193,7 @@ TEST_USER_EMAIL=dev-user@exemplo.com
 TEST_USER_PASSWORD=DevPassword123
 
 # GitHub Secrets (CI/CD - dev Firebase)
-TEST_USER_EMAIL=ci-user@exemplo.com  
+TEST_USER_EMAIL=ci-user@exemplo.com
 TEST_USER_PASSWORD=CIPassword456
 ```
 
@@ -209,5 +209,5 @@ firebase auth:create teste-e2e@exemplo.com --password "SenhaSegura123!"
 
 ---
 
-**Última atualização:** 6 de março de 2026  
+**Última atualização:** 6 de março de 2026
 **Status:** ✅ Credenciais seguras, nenhum vazamento detectado
