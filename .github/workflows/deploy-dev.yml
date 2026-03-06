@@ -13,8 +13,9 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  build-and-deploy:
+  test-and-deploy:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
 
     steps:
       - name: Checkout
@@ -50,7 +51,33 @@ jobs:
       - name: Build (dev)
         run: npm run build
 
+      - name: Create .env.test for E2E tests
+        env:
+          TEST_USER_EMAIL: ${{ secrets.TEST_USER_EMAIL }}
+          TEST_USER_PASSWORD: ${{ secrets.TEST_USER_PASSWORD }}
+          PLAYWRIGHT_BASE_URL: ${{ secrets.PLAYWRIGHT_BASE_URL_DEV }}
+        run: |
+          printf 'TEST_USER_EMAIL=%s\n' "$TEST_USER_EMAIL" >> .env.test
+          printf 'TEST_USER_PASSWORD=%s\n' "$TEST_USER_PASSWORD" >> .env.test
+          printf 'PLAYWRIGHT_BASE_URL=%s\n' "$PLAYWRIGHT_BASE_URL" >> .env.test
+
+      - name: Install Playwright Browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Run E2E Tests (Smoke)
+        run: npm run test:smoke
+        continue-on-error: false
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-${{ github.run_number }}
+          path: playwright-report/
+          retention-days: 7
+
       - name: Deploy to Firebase Hosting (dev.luisices.com.br)
+        if: success()
         uses: FirebaseExtended/action-hosting-deploy@v0
         with:
           repoToken: ${{ secrets.GITHUB_TOKEN }}
