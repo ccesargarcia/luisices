@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { Order, OrderStatus } from '../types';
 import { OrderCard } from '../components/OrderCard';
 import { OrderDetailsDialog } from '../components/OrderDetailsDialog';
@@ -32,6 +32,7 @@ import { getTextColor } from '../utils/tagColors';
 import { useFirebaseOrders } from '../../hooks/useFirebaseOrders';
 import { firebaseOrderService } from '../../services/firebaseOrderService';
 import { firebaseCustomerService } from '../../services/firebaseCustomerService';
+import { firebaseSharedAccessService } from '../../services/firebaseSharedAccessService';
 import { useAuth } from '../../contexts/AuthContext';
 import { useUserSettings } from '../../hooks/useUserSettings';
 import { DEFAULT_DASHBOARD_CARDS } from '../utils/dashboardCards';
@@ -79,9 +80,26 @@ export function Dashboard() {
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [showExchangeOnly, setShowExchangeOnly] = useState(false);
   const [showSharedOnly, setShowSharedOnly] = useState(false);
+  const [hasSharedOrders, setHasSharedOrders] = useState(false);
 
   const visibleCards = settings?.dashboardCards ?? DEFAULT_DASHBOARD_CARDS;
   const showCard = (id: string) => visibleCards.includes(id);
+
+  // Verificar se o usuário compartilhou pedidos com alguém
+  useEffect(() => {
+    if (!user) return;
+    
+    firebaseSharedAccessService.getMySharedAccess()
+      .then(shared => {
+        const hasOrdersShared = shared.some(
+          s => s.active && s.resources.includes('orders')
+        );
+        setHasSharedOrders(hasOrdersShared);
+      })
+      .catch(err => {
+        console.error('Erro ao verificar compartilhamentos:', err);
+      });
+  }, [user]);
 
   const handleOrderClick = (order: Order) => {
     setSelectedOrder(order);
@@ -269,11 +287,19 @@ export function Dashboard() {
 
     // Filtro por pedidos compartilhados
     if (showSharedOnly) {
-      filtered = filtered.filter(order => order.userId && order.userId !== user?.uid);
+      filtered = filtered.filter(order => {
+        // Mostra pedidos recebidos de outros (compartilhados comigo)
+        const receivedFromOthers = order.userId && order.userId !== user?.uid;
+        
+        // Mostra meus pedidos que eu compartilhei com outros
+        const mySharedOrders = order.userId === user?.uid && hasSharedOrders;
+        
+        return receivedFromOthers || mySharedOrders;
+      });
     }
 
     return filtered;
-  }, [orders, searchQuery, selectedTags, showExchangeOnly, showSharedOnly, user]);
+  }, [orders, searchQuery, selectedTags, showExchangeOnly, showSharedOnly, user, hasSharedOrders]);
 
   // Obter todas as tags únicas
   const allTags = useMemo(() => {

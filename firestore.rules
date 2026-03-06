@@ -7,19 +7,11 @@ service cloud.firestore {
       return request.auth != null && request.auth.uid == userId;
     }
 
-    // Helper function para verificar se há compartilhamento ativo para um recurso
-    function hasSharedAccess(ownerId, resourceType) {
-      return request.auth != null && exists(
-        /databases/$(database)/documents/sharedAccess/$(getSharedAccessDoc(ownerId, resourceType))
-      );
-    }
-
-    // Helper function simplificada - verifica se existe algum doc de compartilhamento ativo
-    function hasAnySharedAccess(ownerId, resourceType) {
-      let sharedDocs = get(/databases/$(database)/documents/sharedAccess);
-      return request.auth != null;
-      // Nota: Esta é uma verificação simplificada.
-      // O controle granular será feito no app layer através do service
+    // Helper function para verificar se o usuário tem acesso compartilhado a recursos de um owner
+    function hasSharedAccessTo(ownerId, resourceType) {
+      return request.auth != null && 
+        exists(/databases/$(database)/documents/sharedAccess/$(ownerId + '_' + request.auth.uid + '_' + resourceType)) &&
+        get(/databases/$(database)/documents/sharedAccess/$(ownerId + '_' + request.auth.uid + '_' + resourceType)).data.active == true;
     }
 
     // Regras para compartilhamentos
@@ -35,9 +27,9 @@ service cloud.firestore {
     // Regras para pedidos (orders)
     match /orders/{orderId} {
       // Permite leitura se for o dono OU se tiver compartilhamento ativo
-      // A verificação granular de compartilhamento é feita no app layer
       allow read: if request.auth != null && (
-        isOwner(resource.data.userId)
+        isOwner(resource.data.userId) ||
+        hasSharedAccessTo(resource.data.userId, 'orders')
       );
       allow create: if isOwner(request.resource.data.userId);
       allow update, delete: if isOwner(resource.data.userId);
@@ -46,7 +38,8 @@ service cloud.firestore {
     // Regras para clientes (customers)
     match /customers/{customerId} {
       allow read: if request.auth != null && (
-        isOwner(resource.data.userId)
+        isOwner(resource.data.userId) ||
+        hasSharedAccessTo(resource.data.userId, 'customers')
       );
       allow create: if isOwner(request.resource.data.userId);
       allow update, delete: if isOwner(resource.data.userId);
@@ -55,7 +48,8 @@ service cloud.firestore {
     // Regras para orçamentos (quotes)
     match /quotes/{quoteId} {
       allow read: if request.auth != null && (
-        isOwner(resource.data.userId)
+        isOwner(resource.data.userId) ||
+        hasSharedAccessTo(resource.data.userId, 'quotes')
       );
       allow create: if isOwner(request.resource.data.userId);
       allow update, delete: if isOwner(resource.data.userId);
@@ -64,7 +58,8 @@ service cloud.firestore {
     // Regras para produtos (products)
     match /products/{productId} {
       allow read: if request.auth != null && (
-        isOwner(resource.data.userId)
+        isOwner(resource.data.userId) ||
+        hasSharedAccessTo(resource.data.userId, 'products')
       );
       allow create: if isOwner(request.resource.data.userId);
       allow update, delete: if isOwner(resource.data.userId);
@@ -73,7 +68,8 @@ service cloud.firestore {
     // Regras para galeria de artes (gallery)
     match /gallery/{itemId} {
       allow read: if request.auth != null && (
-        isOwner(resource.data.userId)
+        isOwner(resource.data.userId) ||
+        hasSharedAccessTo(resource.data.userId, 'gallery')
       );
       allow create: if isOwner(request.resource.data.userId);
       allow update, delete: if isOwner(resource.data.userId);
