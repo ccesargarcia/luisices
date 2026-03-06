@@ -7,13 +7,6 @@ service cloud.firestore {
       return request.auth != null && request.auth.uid == userId;
     }
 
-    // Helper function para verificar se o usuário tem acesso compartilhado a recursos de um owner
-    function hasSharedAccessTo(ownerId, resourceType) {
-      return request.auth != null && 
-        exists(/databases/$(database)/documents/sharedAccess/$(ownerId + '_' + request.auth.uid + '_' + resourceType)) &&
-        get(/databases/$(database)/documents/sharedAccess/$(ownerId + '_' + request.auth.uid + '_' + resourceType)).data.active == true;
-    }
-
     // Regras para compartilhamentos
     match /sharedAccess/{accessId} {
       allow read: if request.auth != null && (
@@ -25,52 +18,37 @@ service cloud.firestore {
     }
 
     // Regras para pedidos (orders)
+    // Permite leitura se autenticado (controle de compartilhamento feito no app layer)
     match /orders/{orderId} {
-      // Permite leitura se for o dono OU se tiver compartilhamento ativo
-      allow read: if request.auth != null && (
-        isOwner(resource.data.userId) ||
-        hasSharedAccessTo(resource.data.userId, 'orders')
-      );
+      allow read: if request.auth != null;
       allow create: if isOwner(request.resource.data.userId);
       allow update, delete: if isOwner(resource.data.userId);
     }
 
     // Regras para clientes (customers)
     match /customers/{customerId} {
-      allow read: if request.auth != null && (
-        isOwner(resource.data.userId) ||
-        hasSharedAccessTo(resource.data.userId, 'customers')
-      );
+      allow read: if request.auth != null;
       allow create: if isOwner(request.resource.data.userId);
       allow update, delete: if isOwner(resource.data.userId);
     }
 
     // Regras para orçamentos (quotes)
     match /quotes/{quoteId} {
-      allow read: if request.auth != null && (
-        isOwner(resource.data.userId) ||
-        hasSharedAccessTo(resource.data.userId, 'quotes')
-      );
+      allow read: if request.auth != null;
       allow create: if isOwner(request.resource.data.userId);
       allow update, delete: if isOwner(resource.data.userId);
     }
 
     // Regras para produtos (products)
     match /products/{productId} {
-      allow read: if request.auth != null && (
-        isOwner(resource.data.userId) ||
-        hasSharedAccessTo(resource.data.userId, 'products')
-      );
+      allow read: if request.auth != null;
       allow create: if isOwner(request.resource.data.userId);
       allow update, delete: if isOwner(resource.data.userId);
     }
 
     // Regras para galeria de artes (gallery)
     match /gallery/{itemId} {
-      allow read: if request.auth != null && (
-        isOwner(resource.data.userId) ||
-        hasSharedAccessTo(resource.data.userId, 'gallery')
-      );
+      allow read: if request.auth != null;
       allow create: if isOwner(request.resource.data.userId);
       allow update, delete: if isOwner(resource.data.userId);
     }
