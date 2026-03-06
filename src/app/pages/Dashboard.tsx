@@ -25,7 +25,8 @@ import {
   Calendar,
   Target,
   Repeat2,
-  Download
+  Download,
+  Users
 } from 'lucide-react';
 import { getTextColor } from '../utils/tagColors';
 import { useFirebaseOrders } from '../../hooks/useFirebaseOrders';
@@ -77,6 +78,7 @@ export function Dashboard() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [showExchangeOnly, setShowExchangeOnly] = useState(false);
+  const [showSharedOnly, setShowSharedOnly] = useState(false);
 
   const visibleCards = settings?.dashboardCards ?? DEFAULT_DASHBOARD_CARDS;
   const showCard = (id: string) => visibleCards.includes(id);
@@ -265,8 +267,13 @@ export function Dashboard() {
       filtered = filtered.filter(order => order.isExchange);
     }
 
+    // Filtro por pedidos compartilhados
+    if (showSharedOnly) {
+      filtered = filtered.filter(order => order.userId && order.userId !== user?.uid);
+    }
+
     return filtered;
-  }, [orders, searchQuery, selectedTags, showExchangeOnly]);
+  }, [orders, searchQuery, selectedTags, showExchangeOnly, showSharedOnly, user]);
 
   // Obter todas as tags únicas
   const allTags = useMemo(() => {
@@ -594,11 +601,23 @@ export function Dashboard() {
               Permuta / Parceria
               {showExchangeOnly && <X className="size-3 ml-0.5" />}
             </Badge>
-            {(selectedTags.length > 0 || showExchangeOnly) && (
+            <Badge
+              className={`cursor-pointer hover:opacity-80 transition-opacity gap-1 ${
+                showSharedOnly
+                  ? 'bg-blue-600 text-white ring-2 ring-offset-2 ring-blue-400'
+                  : 'bg-blue-100 text-blue-800 border border-blue-300'
+              }`}
+              onClick={() => setShowSharedOnly(prev => !prev)}
+            >
+              <Users className="size-3" />
+              Compartilhados
+              {showSharedOnly && <X className="size-3 ml-0.5" />}
+            </Badge>
+            {(selectedTags.length > 0 || showExchangeOnly || showSharedOnly) && (
               <Badge
                 variant="secondary"
                 className="cursor-pointer"
-                onClick={() => { setSelectedTags([]); setShowExchangeOnly(false); }}
+                onClick={() => { setSelectedTags([]); setShowExchangeOnly(false); setShowSharedOnly(false); }}
               >
                 Limpar filtros
               </Badge>
@@ -625,7 +644,7 @@ export function Dashboard() {
           {filteredOrders.length === 0 ? (
             <EmptyState
               message="Nenhum pedido encontrado"
-              hint={searchQuery || selectedTags.length > 0 || showExchangeOnly ? 'Tente ajustar os filtros.' : 'Crie seu primeiro pedido clicando em "Novo Pedido".'}
+              hint={searchQuery || selectedTags.length > 0 || showExchangeOnly || showSharedOnly ? 'Tente ajustar os filtros.' : 'Crie seu primeiro pedido clicando em "Novo Pedido".',}
             />
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
