@@ -21,18 +21,18 @@ test.beforeEach(async ({ page }) => {
 
 test.describe('Navegação entre Páginas', () => {
   const pages = [
-    { name: 'Dashboard', path: '/dashboard', heading: /Dashboard|Bom dia|Boa tarde/i },
-    { name: 'Clientes', path: '/customers', heading: /Clientes/i },
-    { name: 'Produtos', path: '/products', heading: /Produtos/i },
-    { name: 'Orçamentos', path: '/quotes', heading: /Orçamentos/i },
-    { name: 'Galeria', path: '/gallery', heading: /Galeria/i },
+    { name: 'Dashboard', path: '/dashboard', heading: /Dashboard|Bom dia|Boa tarde|Boa noite/i },
+    { name: 'Clientes', path: '/clientes', heading: /Clientes/i },
+    { name: 'Produtos', path: '/produtos', heading: /Produtos/i },
+    { name: 'Orçamentos', path: '/orcamentos', heading: /Orçamentos/i },
+    { name: 'Galeria', path: '/galeria', heading: /Galeria/i },
     { name: 'Configurações', path: '/settings', heading: /Configurações/i },
   ];
 
   for (const { name, path, heading } of pages) {
     test(`deve carregar página ${name}`, async ({ page }) => {
       await page.goto(path);
-      await page.waitForTimeout(1500);
+      await page.waitForLoadState('networkidle');
 
       // Verificar se a página carregou (pegar último H1 que é o título da página)
       await expect(page.locator('main h1, [role="main"] h1').last()).toContainText(heading);
@@ -44,14 +44,14 @@ test.describe('Navegação entre Páginas', () => {
   }
 
   test('deve navegar usando menu lateral', async ({ page }) => {
-    await page.waitForTimeout(1000);
+    await page.waitForLoadState('networkidle');
 
     // Procurar link de Clientes no menu
-    const customersLink = page.locator('a[href*="customers"]');
+    const customersLink = page.locator('a[href*="clientes"]');
 
     if (await customersLink.isVisible()) {
       await customersLink.click();
-      await page.waitForURL('**/customers', { timeout: 5000 });
+      await page.waitForURL('**/clientes', { timeout: 5000 });
       await expect(page.locator('h1')).toContainText(/Clientes/i);
     }
   });
@@ -59,7 +59,7 @@ test.describe('Navegação entre Páginas', () => {
   test('deve voltar ao dashboard usando logo/home', async ({ page }) => {
     // Ir para outra página
     await page.goto('/settings');
-    await page.waitForTimeout(1000);
+    await page.waitForLoadState('networkidle');
 
     // Clicar no logo ou botão home
     const homeButton = page.locator('a[href="/dashboard"]').or(
