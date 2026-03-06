@@ -200,12 +200,19 @@ export function NewOrderDialog() {
           totalAmount: 0,
           paidAmount: 0,
           remainingAmount: 0,
+          method: null,
+          paymentDate: null,
+          notes: null,
+          history: null,
         } : {
           status: formData.paymentStatus,
-          method: formData.paymentMethod || undefined,
+          method: formData.paymentMethod || null,
           totalAmount,
           paidAmount,
           remainingAmount: totalAmount - paidAmount,
+          paymentDate: null,
+          notes: null,
+          history: null,
         },
       });
 

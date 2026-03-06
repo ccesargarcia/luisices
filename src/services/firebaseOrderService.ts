@@ -91,14 +91,19 @@ export class FirebaseOrderService {
     // Sanitize payment object: replace undefined with null so Firestore doesn't reject it
     const payment = orderData.payment
       ? {
-          ...orderData.payment,
+          status: orderData.payment.status || 'pending',
+          method: orderData.payment.method || null,
           totalAmount: this.ensurePositive(orderData.payment.totalAmount),
           paidAmount: this.ensurePositive(orderData.payment.paidAmount),
           remainingAmount: this.ensurePositive(orderData.payment.remainingAmount),
+          paymentDate: orderData.payment.paymentDate || null,
+          notes: orderData.payment.notes || null,
           history: orderData.payment.history?.map(h => ({
-            ...h,
-            amount: this.ensurePositive(h.amount)
-          }))
+            amount: this.ensurePositive(h.amount),
+            date: h.date,
+            method: h.method,
+            notes: h.notes || null
+          })) || null
         }
       : null;
 
@@ -270,14 +275,19 @@ export class FirebaseOrderService {
         } else if (key === 'payment' && value) {
           const payment = value as any;
           cleanUpdates[key] = {
-            ...payment,
+            status: payment.status || 'pending',
+            method: payment.method || null,
             totalAmount: this.ensurePositive(payment.totalAmount),
             paidAmount: this.ensurePositive(payment.paidAmount),
             remainingAmount: this.ensurePositive(payment.remainingAmount),
+            paymentDate: payment.paymentDate || null,
+            notes: payment.notes || null,
             history: payment.history?.map((h: any) => ({
-              ...h,
-              amount: this.ensurePositive(h.amount)
-            }))
+              amount: this.ensurePositive(h.amount),
+              date: h.date,
+              method: h.method,
+              notes: h.notes || null
+            })) || null
           };
         } else if (key === 'exchangeItems') {
           cleanUpdates[key] = this.sanitizeExchangeItems(value as any);
@@ -327,9 +337,12 @@ export class FirebaseOrderService {
       tags: data.tags || null,
       payment: {
         status: 'pending',
+        method: null,
         totalAmount: price,
         paidAmount: 0,
         remainingAmount: price,
+        paymentDate: null,
+        notes: null,
       },
       createdAt: Timestamp.now(),
       deletedAt: null,

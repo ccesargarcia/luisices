@@ -189,7 +189,7 @@ export function OrderDetailsDialog({ order, open, onOpenChange, onUpdateStatus, 
       notes: order.notes || '',
       status: order.status,
       paymentStatus: order.payment?.status || 'pending',
-      paymentMethod: order.payment?.method || undefined,
+      paymentMethod: order.payment?.method || '',
       paidAmount: order.payment?.paidAmount || '' as number | '',
       isExchange: order.isExchange || false,
       exchangeNotes: order.exchangeNotes || '',
@@ -222,12 +222,13 @@ export function OrderDetailsDialog({ order, open, onOpenChange, onUpdateStatus, 
 
       const paymentData: any = {
         status: editData.paymentStatus,
+        method: editData.paymentMethod || null,
         totalAmount: price,
         paidAmount: paidAmt,
         remainingAmount,
+        paymentDate: paidAmt > 0 ? new Date().toISOString() : null,
+        notes: null,
       };
-      if (editData.paymentMethod) paymentData.method = editData.paymentMethod;
-      if (paidAmt > 0) paymentData.paymentDate = new Date().toISOString();
 
       await firebaseOrderService.updateOrder(order.id, {
         customerName: editData.customerName,

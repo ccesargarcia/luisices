@@ -56,13 +56,13 @@ export interface Customer {
 
 export interface Payment {
   status: PaymentStatus;
-  method?: PaymentMethod;
+  method: PaymentMethod | null;
   totalAmount: number;
   paidAmount: number;
   remainingAmount: number;
-  paymentDate?: string;
-  notes?: string;
-  history?: PaymentHistory[];
+  paymentDate: string | null;
+  notes: string | null;
+  history: PaymentHistory[] | null;
 }
 
 export interface PaymentHistory {

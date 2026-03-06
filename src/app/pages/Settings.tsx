@@ -202,7 +202,7 @@ export function Settings() {
       await updateSettings({
         deliveryAlertDays,
         defaultDeliveryDays,
-        defaultPaymentMethod: defaultPaymentMethod || undefined,
+        defaultPaymentMethod: defaultPaymentMethod || null,
       });
       toast.success('Preferências de operação salvas!');
     } catch {
