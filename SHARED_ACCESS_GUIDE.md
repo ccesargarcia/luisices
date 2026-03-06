@@ -44,6 +44,10 @@ O sistema de compartilhamento de pedidos foi implementado no ambiente **DEV** e 
 3. Amanda vê:
    - ✅ Seus próprios pedidos (sem badge)
    - ✅ Pedidos do Caio com badge **"Compartilhado"** 🔵
+4. **Filtrar apenas compartilhados**:
+   - Clique no badge azul **"Compartilhados"** (👥)
+   - Agora vê apenas os pedidos de outros usuários
+   - Clique novamente ou em "Limpar filtros" para ver todos
 
 ### Cenário 3: Gerenciar compartilhamentos
 
@@ -75,6 +79,21 @@ O sistema de compartilhamento de pedidos foi implementado no ambiente **DEV** e 
 - Editar pedido compartilhado → Deve ser somente leitura nos próximos updates
 
 ## 🎨 Indicadores Visuais
+
+### Badge "Compartilhado" em Pedidos
+- **Cor**: Azul claro (🔵)
+- **Ícone**: Usuários (👥)
+- **Localização**: Ao lado do status do pedido
+- **Visível em**: Modo compacto e modo confortável
+
+### Badge de Filtro "Compartilhados" 
+- **Localização**: Dashboard, abaixo da barra de busca
+- **Comportamento**: 
+  - Clique para ativar/desativar
+  - Quando ativo: fundo azul escuro com borda destacada
+  - Quando inativo: fundo azul claro
+  - Mostra apenas pedidos de outros usuários quando ativo
+- **Combinável**: Pode ser usado junto com outros filtros (tags, busca, permutas)
 
 ### Badge "Compartilhado"
 - **Cor**: Azul claro (🔵)
