@@ -38,10 +38,11 @@ FIREBASE_SERVICE_ACCOUNT_DEV
 ```
 TEST_USER_EMAIL=caio.garcia@gmail.com
 TEST_USER_PASSWORD=Hexa1020**
-PLAYWRIGHT_BASE_URL_DEV=https://dev.luisices.com.br
 ```
 
 **Importante:** Use um usuário de teste específico, NÃO use usuários reais de produção!
+
+**Nota:** No CI/CD, os testes rodam contra o **build local** (não precisa de `PLAYWRIGHT_BASE_URL_DEV`).
 
 ---
 
@@ -116,7 +117,6 @@ Os testes E2E (smoke tests) verificam:
 - [ ] Adicionei `FIREBASE_SERVICE_ACCOUNT_DEV` (JSON completo)
 - [ ] Adicionei `TEST_USER_EMAIL`
 - [ ] Adicionei `TEST_USER_PASSWORD`
-- [ ] Adicionei `PLAYWRIGHT_BASE_URL_DEV`
 - [ ] Fiz push no branch `develop`
 - [ ] Verifiquei que o workflow executou com sucesso
 

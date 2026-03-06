@@ -42,7 +42,7 @@ export default defineConfig({
   /* Configuração compartilhada */
   use: {
     /* URL base para testes */
-    baseURL: process.env.PLAYWRIGHT_BASE_URL || 'http://localhost:5173',
+    baseURL: process.env.PLAYWRIGHT_BASE_URL || 'http://localhost:4173',
 
     /* Trace on primeira falha */
     trace: 'on-first-retry',
@@ -50,9 +50,17 @@ export default defineConfig({
     /* Screenshot em falha */
     screenshot: 'only-on-failure',
 
-    /* Video em falha */
+    /* Vídeo em falha */
     video: 'retain-on-failure',
   },
+
+  /* Web Server - Inicia servidor automaticamente para testes */
+  webServer: process.env.CI ? {
+    command: 'npx vite preview --port 4173 --strictPort',
+    port: 4173,
+    timeout: 120 * 1000,
+    reuseExistingServer: false,
+  } : undefined,
 
   /* Configurar projetos para diferentes navegadores */
   projects: [
@@ -78,11 +86,4 @@ export default defineConfig({
     //   use: { ...devices['Pixel 5'] },
     // },
   ],
-
-  /* Rodar servidor dev antes dos testes (opcional) */
-  // webServer: {
-  //   command: 'npm run dev',
-  //   url: 'http://localhost:5173',
-  //   reuseExistingServer: !process.env.CI,
-  // },
 });
