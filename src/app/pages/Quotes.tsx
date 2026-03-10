@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect } from 'react';
 import { formatCurrency } from '../utils/currency';
 import { exportQuotesToExcel } from '../utils/exportData';
+import { formatDateTime as formatDateTimeUtil } from '../utils/date';
 import { Quote, QuoteItem, QuoteStatus, OrderStatus, Customer, Tag, Product } from '../types';
 import { TagInput } from '../components/TagInput';
 import { getTextColor } from '../utils/tagColors';
@@ -959,30 +960,30 @@ function QuoteDetailsDialog({ quote, open, onOpenChange, onEdit, onRefresh }: Qu
             )}
             <div className="flex items-center gap-2">
               <span className="text-muted-foreground">Criado em:</span>
-              <span className="font-medium">{formatDate(quote.createdAt.split('T')[0])}</span>
+              <span className="font-medium">{formatDateTimeUtil(quote.createdAt)}</span>
             </div>
             {quote.sentAt && (
               <div className="flex items-center gap-2">
                 <span className="text-muted-foreground">Enviado em:</span>
-                <span className="font-medium">{formatDate(quote.sentAt.split('T')[0])}</span>
+                <span className="font-medium">{formatDateTimeUtil(quote.sentAt)}</span>
               </div>
             )}
             {quote.approvedAt && (
               <div className="flex items-center gap-2">
                 <span className="text-muted-foreground text-green-700 dark:text-green-400">Aprovado em:</span>
-                <span className="font-medium text-green-700 dark:text-green-400">{formatDate(quote.approvedAt.split('T')[0])}</span>
+                <span className="font-medium text-green-700 dark:text-green-400">{formatDateTimeUtil(quote.approvedAt)}</span>
               </div>
             )}
             {quote.rejectedAt && (
               <div className="flex items-center gap-2">
                 <span className="text-muted-foreground text-red-600">Rejeitado em:</span>
-                <span className="font-medium text-red-600">{formatDate(quote.rejectedAt.split('T')[0])}</span>
+                <span className="font-medium text-red-600">{formatDateTimeUtil(quote.rejectedAt)}</span>
               </div>
             )}
             {quote.expiredAt && (
               <div className="flex items-center gap-2">
                 <span className="text-muted-foreground text-orange-600">Expirado em:</span>
-                <span className="font-medium text-orange-600">{formatDate(quote.expiredAt.split('T')[0])}</span>
+                <span className="font-medium text-orange-600">{formatDateTimeUtil(quote.expiredAt)}</span>
               </div>
             )}
           </div>
