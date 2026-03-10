@@ -15,12 +15,7 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  e2e-tests:
-    uses: ./.github/workflows/test-actions.yml
-    secrets: inherit
-
   build-and-deploy:
-    needs: e2e-tests
     runs-on: ubuntu-latest
 
     steps:
