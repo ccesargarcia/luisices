@@ -53,8 +53,8 @@ export default defineConfig({
     /* Screenshot em falha */
     screenshot: 'only-on-failure',
 
-    /* Vídeo em falha */
-    video: 'retain-on-failure',
+    /* Vídeo - sempre gravar */
+    video: 'on',
 
     /* Desabilitar service workers para evitar cache */
     serviceWorkers: 'block',

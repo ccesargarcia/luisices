@@ -22,6 +22,7 @@ test.beforeEach(async ({ page }) => {
 
 test.describe('Orçamentos - CRUD', () => {
   test('deve criar um novo orçamento', async ({ page }) => {
+    test.setTimeout(90000);
     const clientName = `Cliente Orç ${Date.now()}`;
     const clientPhone = `11988${String(Math.floor(100000 + Math.random() * 900000))}`;
 
@@ -71,6 +72,44 @@ test.describe('Orçamentos - CRUD', () => {
     // Verificar que o orçamento aparece
     await page.waitForTimeout(1000);
     await expect(page.getByText(clientName).first()).toBeVisible({ timeout: 5000 });
+
+    // CLEANUP: Excluir o orçamento criado
+    // Clicar no orçamento para abrir detalhes
+    const quoteCard = page.locator('.cursor-pointer, [role="button"]').filter({ hasText: clientName }).first();
+    await quoteCard.click();
+
+    const detailsDialog = page.locator('[role="dialog"]').first();
+    await expect(detailsDialog).toBeVisible({ timeout: 5000 });
+
+    // Clicar em "Excluir" no footer do dialog
+    const deleteBtn = detailsDialog.getByRole('button', { name: /^Excluir$/i });
+    await deleteBtn.scrollIntoViewIfNeeded();
+    await deleteBtn.click();
+
+    // Confirmar exclusão
+    const alertDialog = page.locator('[role="alertdialog"]');
+    await expect(alertDialog).toBeVisible({ timeout: 5000 });
+    await alertDialog.getByRole('button', { name: /Excluir/i }).click();
+    await expect(alertDialog).not.toBeVisible({ timeout: 10000 });
+
+    // CLEANUP: Excluir o cliente criado pelo orçamento
+    await page.goto('/clientes');
+    await expect(page.locator('main h1').first()).toContainText(/Clientes/i, { timeout: 10000 });
+
+    const searchInput2 = page.getByPlaceholder(/Buscar por nome, telefone ou email/i);
+    await searchInput2.fill(clientName);
+    await page.waitForTimeout(500);
+
+    const customerCard = page.locator('.grid .hover\\:shadow-md').filter({ hasText: clientName }).first();
+    if (await customerCard.isVisible({ timeout: 3000 })) {
+      const custDeleteBtn = customerCard.locator('button').filter({ has: page.locator('.text-destructive') });
+      await custDeleteBtn.click();
+
+      const custAlertDialog = page.locator('[role="alertdialog"]');
+      await expect(custAlertDialog).toBeVisible({ timeout: 5000 });
+      await custAlertDialog.getByRole('button', { name: /Excluir/i }).click();
+      await expect(custAlertDialog).not.toBeVisible({ timeout: 10000 });
+    }
   });
 
   test('deve buscar orçamentos', async ({ page }) => {

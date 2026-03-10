@@ -65,14 +65,20 @@ jobs:
           TEST_USER_EMAIL: ${{ secrets.TEST_USER_EMAIL }}
           TEST_USER_PASSWORD: ${{ secrets.TEST_USER_PASSWORD }}
           PLAYWRIGHT_BASE_URL: http://localhost:4173
-        run: npx playwright test tests/e2e/auth.spec.ts tests/e2e/customers.spec.ts tests/e2e/products.spec.ts tests/e2e/quotes.spec.ts tests/e2e/orders.spec.ts tests/e2e/navigation.spec.ts tests/e2e/customer-order-lifecycle.spec.ts --reporter=list
+        run: npx playwright test tests/e2e/auth.spec.ts tests/e2e/customers.spec.ts tests/e2e/products.spec.ts tests/e2e/quotes.spec.ts tests/e2e/orders.spec.ts tests/e2e/navigation.spec.ts tests/e2e/customer-order-lifecycle.spec.ts tests/e2e/settings.spec.ts tests/e2e/reports.spec.ts tests/e2e/gallery.spec.ts tests/e2e/order-details.spec.ts --reporter=list
 
-      - name: Upload test artifacts on failure
-        if: failure()
+      - name: Upload test report
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: e2e-test-results
-          path: |
-            test-results/
-            playwright-report/
-          retention-days: 7
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 14
+
+      - name: Upload test videos & traces
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: test-results/
+          retention-days: 14

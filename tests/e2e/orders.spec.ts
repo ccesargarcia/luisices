@@ -19,6 +19,7 @@ test.beforeEach(async ({ page }) => {
 
 test.describe('Pedidos - CRUD', () => {
   test('deve criar novo pedido pelo dashboard', async ({ page }) => {
+    test.setTimeout(60000);
     // Clicar em "Novo Pedido"
     const newOrderBtn = page.getByRole('button', { name: /Novo Pedido/i });
     await expect(newOrderBtn).toBeVisible({ timeout: 10000 });
@@ -68,6 +69,26 @@ test.describe('Pedidos - CRUD', () => {
     // Submeter
     await dialog.locator('button[type="submit"]').click();
     await expect(dialog).not.toBeVisible({ timeout: 15000 });
+
+    // CLEANUP: Excluir o pedido criado
+    await page.waitForTimeout(2000);
+    // Buscar o pedido recém criado
+    const orderCard = page.locator('.cursor-pointer').filter({ hasText: /Produto Teste Pedido/i }).first();
+    if (await orderCard.isVisible({ timeout: 5000 })) {
+      await orderCard.click();
+
+      const detailsDialog = page.locator('[role="dialog"]').first();
+      await expect(detailsDialog).toBeVisible({ timeout: 10000 });
+
+      const deleteBtn = detailsDialog.getByRole('button', { name: /Excluir Pedido/i });
+      await deleteBtn.scrollIntoViewIfNeeded();
+      await deleteBtn.click();
+
+      const alertDialog = page.locator('[role="alertdialog"]');
+      await expect(alertDialog).toBeVisible({ timeout: 5000 });
+      await alertDialog.getByRole('button', { name: /Excluir/i }).click();
+      await expect(alertDialog).not.toBeVisible({ timeout: 10000 });
+    }
   });
 
   test('deve buscar pedidos no dashboard', async ({ page }) => {

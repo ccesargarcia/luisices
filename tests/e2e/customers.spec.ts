@@ -34,6 +34,7 @@ test.describe('Clientes - CRUD', () => {
   };
 
   test('deve criar um novo cliente', async ({ page }) => {
+    test.setTimeout(60000);
     // Clicar no botão "Novo Cliente" usando role e texto
     const newButton = page.getByRole('button', { name: /Novo Cliente/i });
     await expect(newButton).toBeVisible({ timeout: 10000 });
@@ -62,6 +63,16 @@ test.describe('Clientes - CRUD', () => {
     await page.waitForTimeout(1000);
     const customerCard = page.getByText(testCustomer.name);
     await expect(customerCard).toBeVisible({ timeout: 5000 });
+
+    // CLEANUP: Excluir o cliente criado
+    const card = page.locator('.grid .hover\\:shadow-md').filter({ hasText: testCustomer.name }).first();
+    const deleteBtn = card.locator('button').filter({ has: page.locator('.text-destructive') });
+    await deleteBtn.click();
+
+    const alertDialog = page.locator('[role="alertdialog"]');
+    await expect(alertDialog).toBeVisible({ timeout: 5000 });
+    await alertDialog.getByRole('button', { name: /Excluir/i }).click();
+    await expect(alertDialog).not.toBeVisible({ timeout: 10000 });
   });
 
   test('deve buscar clientes', async ({ page }) => {

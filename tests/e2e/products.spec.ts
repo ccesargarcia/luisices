@@ -22,6 +22,7 @@ test.beforeEach(async ({ page }) => {
 
 test.describe('Produtos - CRUD', () => {
   test('deve criar um novo produto', async ({ page }) => {
+    test.setTimeout(60000);
     const productName = `Produto Teste ${Date.now()}`;
 
     // Clicar em "Novo Produto"
@@ -50,6 +51,21 @@ test.describe('Produtos - CRUD', () => {
     // Verificar que o produto aparece
     await page.waitForTimeout(1000);
     await expect(page.getByText(productName)).toBeVisible({ timeout: 5000 });
+
+    // CLEANUP: Excluir o produto criado
+    const searchInput = page.getByPlaceholder(/Buscar por nome, categoria ou descrição/i);
+    await searchInput.fill(productName);
+    await page.waitForTimeout(500);
+
+    const productCard = page.locator('.grid > div').filter({ hasText: productName }).first();
+    await expect(productCard).toBeVisible({ timeout: 5000 });
+    const deleteBtn = productCard.locator('button.text-destructive').first();
+    await deleteBtn.click();
+
+    const alertDialog = page.locator('[role="alertdialog"]');
+    await expect(alertDialog).toBeVisible({ timeout: 5000 });
+    await alertDialog.getByRole('button', { name: /Excluir/i }).click();
+    await expect(alertDialog).not.toBeVisible({ timeout: 10000 });
   });
 
   test('deve buscar produtos', async ({ page }) => {
