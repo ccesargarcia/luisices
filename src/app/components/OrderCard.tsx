@@ -2,12 +2,13 @@ import { Order } from '../types';
 import { Badge } from './ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Button } from './ui/button';
-import { Phone, Calendar, Package, DollarSign, Tag, MessageCircle, Smartphone, Banknote, CreditCard, ArrowLeftRight, Repeat2 } from 'lucide-react';
+import { Phone, Calendar, Package, DollarSign, Tag, MessageCircle, Smartphone, Banknote, CreditCard, ArrowLeftRight, Repeat2, Users } from 'lucide-react';
 import { getTextColor } from '../utils/tagColors';
 import { openWhatsAppForOrder } from '../utils/whatsapp';
 import { useUserSettings } from '../../hooks/useUserSettings';
 import { formatDateShort } from '../utils/date';
 import { formatCurrency } from '../utils/currency';
+import { useAuth } from '../../contexts/AuthContext';
 
 function hexToRgba(hex: string, alpha: number) {
   const r = parseInt(hex.slice(1, 3), 16);
@@ -37,7 +38,9 @@ const statusLabels = {
 
 export function OrderCard({ order, onClick }: OrderCardProps) {
   const { settings } = useUserSettings();
+  const { user } = useAuth();
   const compact = settings?.compactCards ?? false;
+  const isShared = order.userId && order.userId !== user?.uid;
   const getPaymentIcon = (method?: string) => {
     switch (method) {
       case 'pix': return <Smartphone className="size-3.5" />;
@@ -77,6 +80,12 @@ export function OrderCard({ order, onClick }: OrderCardProps) {
           <div className="flex items-center justify-between gap-2">
             <span className="font-semibold text-sm truncate flex-1">{order.customerName}</span>
             <div className="flex items-center gap-1.5 shrink-0">
+              {isShared && (
+                <Badge variant="outline" className="text-[10px] py-0 px-1.5 leading-4 bg-blue-50 text-blue-700 border-blue-200 gap-0.5">
+                  <Users className="size-2.5" />
+                  Compartilhado
+                </Badge>
+              )}
               {order.isExchange && <Repeat2 className="size-3 text-purple-600" />}
               <Badge className={`text-[10px] py-0 px-1.5 leading-4 ${statusColors[order.status]}`}>
                 {statusLabels[order.status]}
@@ -123,13 +132,18 @@ export function OrderCard({ order, onClick }: OrderCardProps) {
             <div className="flex items-start justify-between gap-2">
               <div className="min-w-0 flex-1">
                 <CardTitle className="text-base sm:text-lg leading-snug break-words">{order.customerName}</CardTitle>
-                {order.isExchange && (
-                  <div className="flex items-center gap-1 mt-1">
+                <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                  {isShared && (
+                    <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200 gap-1 py-0 text-xs">
+                      <Users className="size-3" /> Compartilhado
+                    </Badge>
+                  )}
+                  {order.isExchange && (
                     <Badge className="bg-purple-100 text-purple-800 border-purple-300 border gap-1 py-0 text-xs">
                       <Repeat2 className="size-3" /> Permuta
                     </Badge>
-                  </div>
-                )}
+                  )}
+                </div>
               </div>
               <Badge className={`shrink-0 text-xs ${statusColors[order.status]}`}>
                 {statusLabels[order.status]}

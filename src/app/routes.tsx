@@ -70,6 +70,10 @@ export const router = createBrowserRouter([
     children: [
       {
         index: true,
+        element: <Navigate to="/dashboard" replace />,
+      },
+      {
+        path: 'dashboard',
         element: <Lazy><PermissionRoute check={p => p.dashboard}><Dashboard /></PermissionRoute></Lazy>,
       },
       {
@@ -103,6 +107,10 @@ export const router = createBrowserRouter([
       {
         path: 'configuracoes',
         element: <Lazy><PermissionRoute check={p => p.settings}><Settings /></PermissionRoute></Lazy>,
+      },
+      {
+        path: 'settings',  // Alias em inglês
+        element: <Navigate to="/configuracoes" replace />,
       },
       {
         path: 'usuarios',

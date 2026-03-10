@@ -32,7 +32,7 @@ export function AuthAction() {
     console.log('[AuthAction] mode:', mode);
     console.log('[AuthAction] oobCode:', oobCode);
     console.log('[AuthAction] Full URL:', window.location.href);
-    
+
     if (!oobCode || mode !== 'resetPassword') {
       setError('Link inválido ou expirado.');
       setVerifying(false);

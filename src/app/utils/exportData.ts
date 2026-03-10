@@ -1,6 +1,6 @@
 /**
  * Export Utilities
- * 
+ *
  * Funções para exportar dados em diferentes formatos (Excel, CSV, JSON)
  */
 

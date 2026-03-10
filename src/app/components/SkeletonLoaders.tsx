@@ -1,6 +1,6 @@
 /**
  * Skeleton Loaders
- * 
+ *
  * Componentes de carregamento para melhorar a UX durante fetching de dados
  */
 

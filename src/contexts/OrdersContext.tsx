@@ -47,7 +47,7 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
     const unsubscribe = onSnapshot(
       ordersQuery,
       (snapshot) => {
-        const orders = snapshot.docs.map(doc => {
+        const orders: Order[] = snapshot.docs.map(doc => {
           const data = doc.data();
           return {
             id: doc.id,
@@ -73,8 +73,10 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
             exchangeNotes: data.exchangeNotes,
             exchangeItems: data.exchangeItems,
             cardColor: data.cardColor,
+            userId: data.userId,
           } as Order;
         });
+
         setState({ orders, loading: false, error: null });
       },
       (err) => {

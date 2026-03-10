@@ -33,7 +33,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       u.displayName ?? undefined,
     );
     setUserProfile(profile);
-    
+
     // Set analytics user properties
     if (profile) {
       setUserAnalytics(u.uid, profile.role);
@@ -61,14 +61,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = async (email: string, password: string) => {
     const user = await firebaseAuthService.login(email, password);
-    
+
     // Verificar se o usuário está ativo
     const profile = await firebaseUserService.getUserProfile(
       user.uid,
       user.email ?? undefined,
       user.displayName ?? undefined
     );
-    
+
     if (profile && !profile.active) {
       // Usuário inativo - fazer logout imediato
       await firebaseAuthService.logout();

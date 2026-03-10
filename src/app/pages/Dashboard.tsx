@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { Order, OrderStatus } from '../types';
 import { OrderCard } from '../components/OrderCard';
 import { OrderDetailsDialog } from '../components/OrderDetailsDialog';
@@ -80,7 +80,6 @@ export function Dashboard() {
 
   const visibleCards = settings?.dashboardCards ?? DEFAULT_DASHBOARD_CARDS;
   const showCard = (id: string) => visibleCards.includes(id);
-
   const handleOrderClick = (order: Order) => {
     setSelectedOrder(order);
     setDetailsOpen(true);
@@ -266,7 +265,7 @@ export function Dashboard() {
     }
 
     return filtered;
-  }, [orders, searchQuery, selectedTags, showExchangeOnly]);
+  }, [orders, searchQuery, selectedTags, showExchangeOnly, user]);
 
   // Obter todas as tags únicas
   const allTags = useMemo(() => {

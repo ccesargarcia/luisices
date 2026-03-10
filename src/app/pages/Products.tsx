@@ -188,7 +188,7 @@ function ProductFormDialog({ open, onOpenChange, editing, existingCategories, us
 
           <div className="space-y-2">
             <Label htmlFor="p-name">Nome *</Label>
-            <Input id="p-name" placeholder="Ex: Cartão de visita 4x1" value={form.name}
+            <Input data-testid="product-name" id="p-name" placeholder="Ex: Cartão de visita 4x1" value={form.name}
               onChange={(e) => setForm({ ...form, name: e.target.value })} />
           </div>
 
@@ -221,7 +221,7 @@ function ProductFormDialog({ open, onOpenChange, editing, existingCategories, us
 
         <DialogFooter className="mt-4">
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>
-          <Button onClick={handleSave} disabled={saving}>
+          <Button data-testid="save-product-button" onClick={handleSave} disabled={saving}>
             {saving ? <Loader2 className="size-4 mr-2 animate-spin" /> : null}
             {editing ? 'Salvar' : 'Cadastrar'}
           </Button>
@@ -313,7 +313,7 @@ export function Products() {
           </p>
         </div>
         {hasPermission(p => p.products?.create ?? false) && (
-          <Button onClick={openNew} className="gap-2">
+          <Button data-testid="new-product-button" onClick={openNew} className="gap-2">
             <Plus className="size-4" />
             <span className="hidden sm:inline">Novo Produto</span>
           </Button>
@@ -365,6 +365,7 @@ export function Products() {
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
           <Input
+            data-testid="search-products-input"
             placeholder="Buscar por nome, categoria ou descrição..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}

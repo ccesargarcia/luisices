@@ -71,8 +71,8 @@ export class FirebaseOrderService {
     if (!items || !Array.isArray(items)) return null;
     return items.map(item => ({
       ...item,
-      value: item.value !== undefined && item.value !== null 
-        ? this.ensurePositive(item.value) 
+      value: item.value !== undefined && item.value !== null
+        ? this.ensurePositive(item.value)
         : undefined,
       quantity: Math.max(0, item.quantity ?? 0)
     }));

@@ -21,7 +21,7 @@ import { cn } from '../components/ui/utils';
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function formatDate(iso: string) {
-  return new Date(iso).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' });
+  return new Date(iso).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 
 // ─── Upload Dialog ────────────────────────────────────────────────────────────
@@ -965,17 +965,17 @@ export function Gallery() {
           )}
           {hasPermission(p => p.gallery?.create ?? false) && (
             <>
-              <Button 
-                variant="outline" 
-                onClick={() => setNewFolderOpen(true)} 
+              <Button
+                variant="outline"
+                onClick={() => setNewFolderOpen(true)}
                 className="gap-2"
                 title="Criar nova pasta para organizar artes"
               >
                 <FolderPlus className="size-4" />
                 <span className="hidden sm:inline">Nova Pasta</span>
               </Button>
-              <Button 
-                onClick={() => setUploadOpen(true)} 
+              <Button
+                onClick={() => setUploadOpen(true)}
                 className="gap-2"
                 title="Adicionar nova arte à galeria"
               >

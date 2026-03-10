@@ -463,7 +463,7 @@ export function Customers() {
           {hasPermission(p => p.customers?.create ?? false) && (
             <Dialog open={isNewCustomerOpen} onOpenChange={(open) => { setIsNewCustomerOpen(open); if (open) { resetForm(); setPendingPhotoFile(null); setPhotoPreview(''); } }}>
               <DialogTrigger asChild>
-                <Button className="gap-2">
+                <Button data-testid="new-customer-button" className="gap-2">
                   <UserPlus className="size-4" />
                   <span className="hidden sm:inline">Novo Cliente</span>
                 </Button>
@@ -495,6 +495,7 @@ export function Customers() {
               <div className="space-y-2">
                 <Label htmlFor="name">Nome *</Label>
                 <Input
+                  data-testid="customer-name"
                   id="name"
                   value={formData.name}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
@@ -505,6 +506,7 @@ export function Customers() {
               <div className="space-y-2">
                 <Label htmlFor="phone">Telefone *</Label>
                 <Input
+                  data-testid="customer-phone"
                   id="phone"
                   type="tel"
                   value={formData.phone}
@@ -517,6 +519,7 @@ export function Customers() {
               <div className="space-y-2">
                 <Label htmlFor="email">Email</Label>
                 <Input
+                  data-testid="customer-email"
                   id="email"
                   type="email"
                   value={formData.email}
@@ -602,7 +605,7 @@ export function Customers() {
                 <Button type="button" variant="outline" onClick={() => setIsNewCustomerOpen(false)}>
                   Cancelar
                 </Button>
-                <Button type="submit" disabled={formLoading}>
+                <Button data-testid="save-customer-button" type="submit" disabled={formLoading}>
                   {formLoading && <Loader2 className="size-4 mr-2 animate-spin" />}
                   Criar Cliente
                 </Button>
@@ -661,6 +664,7 @@ export function Customers() {
       <div className="relative">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
         <Input
+          data-testid="search-customers-input"
           placeholder="Buscar por nome, telefone ou email..."
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
