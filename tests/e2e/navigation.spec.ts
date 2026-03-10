@@ -31,7 +31,7 @@ test.describe('Navegação entre Páginas', () => {
   for (const { name, path, heading } of pages) {
     test(`deve carregar página ${name}`, async ({ page }) => {
       await page.goto(path);
-      
+
       // Esperar o h1 da página aparecer ao invés de networkidle
       // (Firebase mantém conexões abertas, networkidle pode nunca acontecer)
       const pageHeading = page.locator('main h1').first();
@@ -47,10 +47,10 @@ test.describe('Navegação entre Páginas', () => {
     // Procurar link de Clientes no menu
     const customersLink = page.locator('a[href*="clientes"]').first();
     await expect(customersLink).toBeVisible({ timeout: 5000 });
-    
+
     await customersLink.click();
     await page.waitForURL('**/clientes', { timeout: 5000 });
-    
+
     // Esperar o h1 da página de clientes
     await expect(page.locator('main h1').first()).toContainText(/Clientes/i, { timeout: 10000 });
   });
@@ -63,10 +63,10 @@ test.describe('Navegação entre Páginas', () => {
     // Clicar no link do Dashboard no menu de navegação
     const homeButton = page.locator('a[href="/"]').first();
     await expect(homeButton).toBeVisible({ timeout: 5000 });
-    
+
     await homeButton.click();
     await page.waitForURL('**/dashboard', { timeout: 5000 });
-    
+
     // Verificar que voltou ao dashboard
     await expect(page.locator('main h1').first()).toContainText(/Dashboard|Bom dia|Boa tarde|Boa noite/i, { timeout: 10000 });
   });

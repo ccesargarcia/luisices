@@ -87,7 +87,7 @@ Rode os testes novamente:
 
 ```bash
 npm run test:customers
-npm run test:products  
+npm run test:products
 npm run test:quotes
 npm run test:orders
 ```
@@ -104,7 +104,7 @@ Se não quiser adicionar `data-testid` agora, use os testes simplificados que  c
 ## 📋 Checklist para Cada Módulo
 
 ### Clientes ✓
-- [ ] Adicionar `data-testid="new-customer-button"`  
+- [ ] Adicionar `data-testid="new-customer-button"`
 - [ ] Adicionar `data-testid="search-customers-input"`
 - [ ] Adicionar `data-testid="customer-name"`
 - [ ] Adicionar `data-testid="customer-phone"`
@@ -160,13 +160,13 @@ return (
           <DialogContent data-testid="customer-dialog">
             ...
             <form onSubmit={handleCreateCustomer}>
-              <Input 
+              <Input
                 data-testid="customer-name"
                 label="Nome *"
                 value={formData.name}
                 onChange={...}
               />
-              <Input 
+              <Input
                 data-testid="customer-phone"
                 label="Telefone *"
                 value={formData.phone}

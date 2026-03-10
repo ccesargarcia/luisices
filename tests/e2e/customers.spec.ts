@@ -15,12 +15,12 @@ test.beforeEach(async ({ page }) => {
   await page.fill('input[type="password"]', TEST_USER.password);
   await page.click('button[type="submit"]');
   await page.waitForURL('**/dashboard', { timeout: 10000 });
-  
+
   // Navegar para a página de clientes
   await page.goto('/clientes');
   const heading = page.locator('main h1').first();
   await expect(heading).toContainText(/Clientes/i, { timeout: 10000 });
-  
+
   // Aguardar a página carregar completamente
   await page.waitForLoadState('domcontentloaded');
 });
@@ -72,7 +72,7 @@ test.describe('Clientes - CRUD', () => {
     // Buscar por algo aleatório
     await searchInput.fill('Cliente Inexistente XYZ123');
     await page.waitForTimeout(500);
-    
+
     // Deve mostrar mensagem de nenhum resultado ou lista vazia
     const noResults = page.getByText(/Nenhum cliente/i);
     const count = await noResults.count();
@@ -82,7 +82,7 @@ test.describe('Clientes - CRUD', () => {
   test('deve exportar clientes para Excel', async ({ page }) => {
     // Verificar que o botão de exportar existe
     const exportButton = page.getByRole('button').filter({ hasText: /Excel|Exportar/i }).first();
-    
+
     if (await exportButton.isVisible({ timeout: 2000 })) {
       await expect(exportButton).toBeVisible();
       // Não vamos clicar para não baixar arquivo de fato

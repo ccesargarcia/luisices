@@ -9,7 +9,7 @@ Este documento detalha como funcionam os testes de CRUD criados para a aplicaç�
 ### ✅ 4 Suites de Teste CRUD
 
 1. **Clientes** (`customers.spec.ts`) - 6 testes
-2. **Produtos** (`products.spec.ts`) - 5 testes  
+2. **Produtos** (`products.spec.ts`) - 5 testes
 3. **Orçamentos** (`quotes.spec.ts`) - 6 testes
 4. **Pedidos** (`orders.spec.ts`) - 8 testes
 
@@ -101,13 +101,13 @@ Cada teste segue o padrão:
 test('deve criar um novo [recurso]', async ({ page }) => {
   // 1. Abrir dialog de criação
   await page.getByRole('button', { name: /Novo/i }).click();
-  
+
   // 2. Preencher formulário
   await page.getByLabel(/Nome/i).fill('Teste');
-  
+
   // 3. Salvar
   await page.getByRole('button', { name: /Salvar/i }).click();
-  
+
   // 4. Verificar que foi criado
   await expect(page.getByText('Teste')).toBeVisible();
 });
@@ -179,7 +179,7 @@ Os testes usam seletores genéricos que podem precisar de ajustes:
    ```typescript
    // Antes (genérico)
    page.getByRole('button', { name: /Novo Cliente/i })
-   
+
    // Depois (específico com data-testid)
    page.locator('[data-testid="new-customer-button"]')
    ```
