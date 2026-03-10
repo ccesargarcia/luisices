@@ -47,6 +47,9 @@ lerna-debug.log*
 coverage/
 .nyc_output/
 
+# Backups
+*.backup
+
 # Playwright
 test-results/
 playwright-report/

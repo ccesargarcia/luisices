@@ -1,6 +1,6 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router';
-import { LayoutDashboard, Calendar, Users, Package2, LogOut, Settings as SettingsIcon, BarChart3, FileText, ShoppingBag, Images, AtSign, Globe, Phone, Mail, MapPin, MessageCircle, ArrowLeftRight, UserCog } from 'lucide-react';
+import { LayoutDashboard, Calendar, Users, Package2, LogOut, Settings as SettingsIcon, BarChart3, FileText, ShoppingBag, Images, AtSign, Globe, Phone, Mail, MapPin, MessageCircle, ArrowLeftRight, UserCog, Info } from 'lucide-react';
 import { cn } from '../components/ui/utils';
 import { useAuth } from '../../contexts/AuthContext';
 import { useUserSettings } from '../../hooks/useUserSettings';
@@ -19,6 +19,13 @@ import { Avatar, AvatarFallback, AvatarImage } from '../components/ui/avatar';
 import { ThemeToggle } from '../../components/ThemeToggle';
 import { NotificationBell } from '../components/NotificationBell';
 import { Badge } from '../components/ui/badge';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '../components/ui/dialog';
 
 export function Layout() {
   const location = useLocation();
@@ -84,6 +91,8 @@ export function Layout() {
   const businessName = settings?.businessName || 'Papelaria Personalizada';
   const hasLogo = !!settings?.logo;
   const isDevEnvironment = import.meta.env.VITE_FIREBASE_PROJECT_ID?.endsWith('-dev') ?? false;
+  const appVersion = __APP_VERSION__ || '0.0.0';
+  const [aboutOpen, setAboutOpen] = useState(false);
 
   return (
     <div className="min-h-screen bg-background overflow-x-hidden flex flex-col">
@@ -166,6 +175,10 @@ export function Layout() {
                 <DropdownMenuItem onClick={() => navigate('/configuracoes')} className="cursor-pointer">
                   <SettingsIcon className="size-4 mr-2" />
                   Configurações
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setAboutOpen(true)} className="cursor-pointer">
+                  <Info className="size-4 mr-2" />
+                  Sobre
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={handleLogout} className="text-red-600 cursor-pointer">
                   <LogOut className="size-4 mr-2" />
@@ -297,7 +310,61 @@ export function Layout() {
                   </a>
                 )}
               </div>
-              <span className="text-xs text-muted-foreground">© {new Date().getFullYear()} {businessName}</span>
+              <Dialog open={aboutOpen} onOpenChange={setAboutOpen}>
+                <DialogTrigger asChild>
+                  <button className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors">
+                    <Info className="size-3" />
+                    v{appVersion} · © {new Date().getFullYear()} {businessName}
+                  </button>
+                </DialogTrigger>
+                <DialogContent className="sm:max-w-md">
+                  <DialogHeader>
+                    <DialogTitle className="flex items-center gap-2">
+                      {settings?.logo ? (
+                        <img src={settings.logo} alt={businessName} className="h-8 object-contain" />
+                      ) : (
+                        <div className="flex items-center justify-center size-8 bg-primary text-primary-foreground rounded-md">
+                          <Package2 className="size-4" />
+                        </div>
+                      )}
+                      {businessName}
+                    </DialogTitle>
+                  </DialogHeader>
+                  <div className="space-y-3 text-sm">
+                    <div className="flex items-center justify-between py-2 border-b">
+                      <span className="text-muted-foreground">Versão</span>
+                      <Badge variant="secondary" className="font-mono">{appVersion}</Badge>
+                    </div>
+                    {settings?.businessTagline && (
+                      <div className="flex items-center justify-between py-2 border-b">
+                        <span className="text-muted-foreground">Descrição</span>
+                        <span>{settings.businessTagline}</span>
+                      </div>
+                    )}
+                    {settings?.businessEmail && (
+                      <div className="flex items-center justify-between py-2 border-b">
+                        <span className="text-muted-foreground">Email</span>
+                        <span>{settings.businessEmail}</span>
+                      </div>
+                    )}
+                    {settings?.businessPhone && (
+                      <div className="flex items-center justify-between py-2 border-b">
+                        <span className="text-muted-foreground">Telefone</span>
+                        <span>{settings.businessPhone}</span>
+                      </div>
+                    )}
+                    {isDevEnvironment && (
+                      <div className="flex items-center justify-between py-2 border-b">
+                        <span className="text-muted-foreground">Ambiente</span>
+                        <Badge variant="outline" className="bg-yellow-500/10 text-yellow-600 border-yellow-400 font-mono">DEV</Badge>
+                      </div>
+                    )}
+                    <p className="text-xs text-muted-foreground text-center pt-2">
+                      © {new Date().getFullYear()} {businessName}. Todos os direitos reservados.
+                    </p>
+                  </div>
+                </DialogContent>
+              </Dialog>
             </div>
           </div>
         </div>
