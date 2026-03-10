@@ -319,7 +319,7 @@ export function NewOrderDialog() {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button className="gap-2">
+        <Button data-testid="new-order-button" className="gap-2">
           <Plus className="size-4" />
           Novo Pedido
         </Button>

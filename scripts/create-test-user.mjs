@@ -168,9 +168,21 @@ async function createTestUser() {
             edit: true,
             delete: false
           },
+          gallery: {
+            view: true,
+            create: true,
+            edit: true,
+            delete: false
+          },
           reports: true,
           settings: true,
-          users: false
+          exchanges: true,
+          users: {
+            view: false,
+            create: false,
+            edit: false,
+            delete: false
+          }
         },
         createdAt: FieldValue.serverTimestamp(),
         updatedAt: FieldValue.serverTimestamp(),

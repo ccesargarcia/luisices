@@ -55,6 +55,9 @@ export default defineConfig({
 
     /* Vídeo em falha */
     video: 'retain-on-failure',
+
+    /* Desabilitar service workers para evitar cache */
+    serviceWorkers: 'block',
   },
 
   /* Configurar projetos para diferentes navegadores */
@@ -81,4 +84,11 @@ export default defineConfig({
     //   use: { ...devices['Pixel 5'] },
     // },
   ],
+
+  /* Servidor local para rodar os testes */
+  webServer: {
+    command: 'npx vite preview --port 4173',
+    port: 4173,
+    reuseExistingServer: !process.env.CI,
+  },
 });

@@ -60,3 +60,6 @@ playwright/.cache/
 .cache/
 .temp/
 .tmp/
+
+# Firebase Admin SDK credentials
+*-firebase-adminsdk*.json

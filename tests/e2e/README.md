@@ -10,9 +10,12 @@ Este diretório contém os testes end-to-end (E2E) automatizados usando Playwrig
 tests/e2e/
 ├── smoke.spec.ts          # 🔥 Smoke tests - testes críticos básicos
 ├── auth.spec.ts           # 🔐 Autenticação (login, logout, reset)
-├── orders.spec.ts         # 📦 CRUD de pedidos
+├── navigation.spec.ts     # 🧭 Navegação entre páginas
+├── dashboard.spec.ts      # 📊 Dashboard e estatísticas
 ├── customers.spec.ts      # 👥 CRUD de clientes
-└── products.spec.ts       # 🎨 CRUD de produtos
+├── products.spec.ts       # 🎨 CRUD de produtos
+├── quotes.spec.ts         # 📝 CRUD de orçamentos
+└── orders.spec.ts         # 📦 CRUD de pedidos (agenda semanal)
 ```
 
 ---
@@ -30,7 +33,13 @@ cp .env.test.example .env.test
 # TEST_USER_PASSWORD=sua-senha
 # PLAYWRIGHT_BASE_URL=https://dev.luisices.com.br
 
-# 3. Instalar browsers do Playwright
+# 3. Instalar firebase-admin para criar usuário de teste
+npm install --save-dev firebase-admin
+
+# 4. Criar usuário de teste no Firebase
+node scripts/create-test-user.mjs
+
+# 5. Instalar browsers do Playwright
 npx playwright install
 ```
 
@@ -43,11 +52,134 @@ npm run test:smoke
 # Todos os testes E2E
 npm run test:e2e
 
+# Testes específicos
+npm run test:customers    # Apenas clientes
+npm run test:products     # Apenas produtos
+npm run test:quotes       # Apenas orçamentos
+npm run test:orders       # Apenas pedidos
+npm run test:navigation   # Apenas navegação
+
 # Interface visual (modo debug)
 npm run test:e2e:ui
 
 # Mode debug com breakpoints
 npm run test:debug
+
+# Ver relatório do último teste
+npm run test:report
+```
+
+---
+
+## 📝 Estrutura dos Testes
+
+### **Smoke Tests** (`smoke.spec.ts`)
+Testes críticos que devem passar sempre:
+- ✅ App carrega sem erros
+- ✅ Login funciona
+- ✅ Dashboard acessível
+
+### **Autenticação** (`auth.spec.ts`)
+- ✅ Login com credenciais válidas
+- ✅ Login com credenciais inválidas
+- ✅ Logout
+- ✅ Reset de senha
+
+### **Navegação** (`navigation.spec.ts`)
+- ✅ Carregar todas as páginas principais
+- ✅ Navegação pelo menu lateral
+- ✅ Voltar ao dashboard
+
+### **Clientes** (`customers.spec.ts`)
+- ✅ Criar novo cliente
+- ✅ Editar cliente existente
+- ✅ Excluir cliente
+- ✅ Buscar clientes
+- ✅ Exportar para Excel
+- ✅ Validação de campos obrigatórios
+
+### **Produtos** (`products.spec.ts`)
+- ✅ Criar novo produto
+- ✅ Editar produto existente
+- ✅ Excluir produto
+- ✅ Filtrar por categoria
+- ✅ Validação de campos obrigatórios
+
+### **Orçamentos** (`quotes.spec.ts`)
+- ✅ Criar novo orçamento
+- ✅ Editar orçamento existente
+- ✅ Excluir orçamento
+- ✅ Converter orçamento em pedido
+- ✅ Filtrar por status
+- ✅ Validação de campos obrigatórios
+
+### **Pedidos** (`orders.spec.ts`)
+- ✅ Criar pedido pelo dashboard
+- ✅ Criar pedido pela agenda semanal
+- ✅ Editar pedido existente
+- ✅ Alterar status do pedido
+- ✅ Excluir pedido
+- ✅ Filtrar pedidos
+- ✅ Navegar entre semanas
+- ✅ Validação de campos obrigatórios
+
+---
+
+## 🎯 Boas Práticas
+
+1. **Use dados únicos**: Use `Date.now()` para gerar nomes únicos
+2. **Limpe após os testes**: Exclua dados de teste criados
+3. **Use timeouts generosos**: Firebase pode ser lento
+4. **Evite `waitForTimeout`**: Prefira `waitForSelector` ou `expect`
+5. **Teste casos de erro**: Validações, campos obrigatórios, etc.
+
+---
+
+## 🐛 Debug
+
+```bash
+# Rodar testes com browser visível
+npm run test:e2e -- --headed
+
+# Rodar teste específico
+npm run test:e2e -- customers.spec.ts
+
+# Rodar em modo debug (pausa em cada passo)
+npm run test:debug
+
+# Ver trace do último teste
+npx playwright show-trace test-results/.../trace.zip
+```
+
+---
+
+## 📊 CI/CD
+
+Os testes rodam automaticamente em:
+- ✅ Pull Requests
+- ✅ Push para `main` ou `dev`
+- ✅ Deploy para produção
+
+---
+
+## 🔧 Configuração Avançada
+
+### Alterar URL base:
+```bash
+# .env.test
+PLAYWRIGHT_BASE_URL=http://localhost:5173
+```
+
+### Configurar timeouts:
+```typescript
+// playwright.config.ts
+timeout: 30000,  // 30 segundos por teste
+```
+
+### Executar em paralelo:
+```bash
+npm run test:e2e -- --workers=4
+```
 
 # Ver relatório do última execução
 npm run test:report

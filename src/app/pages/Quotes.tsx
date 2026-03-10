@@ -1345,7 +1345,7 @@ export function Quotes() {
             <span className="hidden sm:inline">Exportar Excel</span>
           </Button>
           {hasPermission(p => p.quotes?.create ?? false) && (
-            <Button onClick={openNew} className="gap-2">
+            <Button data-testid="new-quote-button" onClick={openNew} className="gap-2">
               <Plus className="size-4" />
               <span className="hidden sm:inline">Novo Orçamento</span>
             </Button>
@@ -1400,6 +1400,7 @@ export function Quotes() {
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
             <Input
+              data-testid="search-quotes-input"
               placeholder="Buscar por cliente, número, produto ou tag..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
