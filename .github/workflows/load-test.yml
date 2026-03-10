@@ -1,0 +1,69 @@
+name: Load Test (k6)
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_url:
+        description: 'URL alvo do teste'
+        required: true
+        default: 'https://dev.luisices.com.br'
+        type: choice
+        options:
+          - 'https://dev.luisices.com.br'
+          - 'https://luisices.com.br'
+      virtual_users:
+        description: 'Número de usuários virtuais simultâneos'
+        required: true
+        default: '10'
+        type: choice
+        options:
+          - '5'
+          - '10'
+          - '20'
+          - '50'
+      duration:
+        description: 'Duração da carga sustentada'
+        required: true
+        default: '30s'
+        type: choice
+        options:
+          - '15s'
+          - '30s'
+          - '1m'
+          - '2m'
+          - '5m'
+
+permissions:
+  contents: read
+
+jobs:
+  load-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install k6
+        run: |
+          sudo gpg -k
+          sudo gpg --no-default-keyring --keyring /usr/share/keyrings/k6-archive-keyring.gpg --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys C5AD17C747E3415A3642D57D77C6C491D6AC1D68
+          echo "deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main" | sudo tee /etc/apt/sources.list.d/k6.list
+          sudo apt-get update
+          sudo apt-get install k6
+
+      - name: Run load test
+        run: |
+          k6 run tests/load/load-test.js \
+            --env BASE_URL=${{ inputs.target_url }} \
+            --env VUS=${{ inputs.virtual_users }} \
+            --env DURATION=${{ inputs.duration }}
+
+      - name: Upload summary
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: load-test-summary
+          path: load-test-summary.md
+          retention-days: 30
