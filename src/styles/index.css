@@ -17,3 +17,10 @@ body {
   -webkit-overflow-scrolling: touch;
   overscroll-behavior-y: contain;
 }
+
+/* Login background image */
+.login-bg {
+  background-image: url('/images/login-bg.png');
+  background-size: cover;
+  background-position: center;
+}
