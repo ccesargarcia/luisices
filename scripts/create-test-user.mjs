@@ -201,8 +201,8 @@ async function createTestUser() {
     console.log(`   npm run test:smoke`);
 
     if (!userExists && password) {
-      console.log(`\n⚠️  Senha definida: ${password}`);
-      console.log(`   (Armazene com segurança!)`);
+      console.log(`\n⚠️  Uma senha foi definida para o usuário (valor não exibido por segurança).`);
+      console.log(`   (Armazene com segurança em um gerenciador de senhas!)`);
     }
 
   } catch (error) {
