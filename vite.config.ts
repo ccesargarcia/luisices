@@ -6,8 +6,9 @@ import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 import { createHtmlPlugin } from 'vite-plugin-html'
 
-// New Relic snippets
-const newRelicDev = `<script type="text/javascript">
+export default defineConfig(({ command, mode }) => {
+  // New Relic snippets
+  const newRelicDev = `<script type="text/javascript">
 ;window.NREUM||(NREUM={});NREUM.init={distributed_tracing:{enabled:true},performance:{capture_measures:true},browser_consent_mode:{enabled:false},privacy:{cookies_enabled:true},ajax:{deny_list:[\"bam.nr-data.net\"],capture_payloads:'none'}};
 
 ;NREUM.loader_config={accountID:\"512515\",trustKey:\"512515\",agentID:\"1589200633\",licenseKey:\"d0981b3d54\",applicationID:\"1589200633\"};
@@ -15,17 +16,19 @@ const newRelicDev = `<script type="text/javascript">
 ;/*! For license information please see nr-loader-spa-1.310.1.min.js.LICENSE.txt */
 (...)</script>`;
 
-const newRelicProd = `<script type="text/javascript">
+  const newRelicProd = `<script type="text/javascript">
 ;window.NREUM||(NREUM={});NREUM.init={distributed_tracing:{enabled:true},performance:{capture_measures:true},browser_consent_mode:{enabled:false},privacy:{cookies_enabled:true},ajax:{deny_list:[\"bam.nr-data.net\"],capture_payloads:'none'}};
 
 ;NREUM.loader_config={accountID:\"512515\",trustKey:\"512515\",agentID:\"1589200643\",licenseKey:\"d0981b3d54\",applicationID:\"1589200643\"};
 ;NREUM.info={beacon:\"bam.nr-data.net\",errorBeacon:\"bam.nr-data.net\",licenseKey:\"d0981b3d54\",applicationID:\"1589200643\",sa:1};
 ;/*! For license information please see nr-loader-spa-1.310.1.min.js.LICENSE.txt */
 (...)</script>`;
-  define: {
-    __APP_VERSION__: JSON.stringify(process.env.npm_package_version),
-  },
-  plugins: [
+
+  return {
+    define: {
+      __APP_VERSION__: JSON.stringify(process.env.npm_package_version),
+    },
+    plugins: [
     // The React and Tailwind plugins are both required for Make, even if
     // Tailwind is not being actively used – do not remove them
     react(),
@@ -33,13 +36,13 @@ const newRelicProd = `<script type="text/javascript">
     createHtmlPlugin({
       inject: {
         data: {
-          newrelic: process.env.NODE_ENV === 'production' ? newRelicProd : newRelicDev,
+          newrelic: mode === 'production' ? newRelicProd : newRelicDev,
         },
         tags: [
           {
             injectTo: 'head',
             tag: 'raw',
-            children: process.env.NODE_ENV === 'production' ? newRelicProd : newRelicDev,
+            children: mode === 'production' ? newRelicProd : newRelicDev,
           },
         ],
       },
@@ -85,65 +88,67 @@ const newRelicProd = `<script type="text/javascript">
       },
     }),
   ],
-  resolve: {
+    ],
+    resolve: {
     alias: {
       // Alias @ to the src directory
       '@': path.resolve(__dirname, './src'),
     },
   },
 
-  // File types to support raw imports. Never add .css, .tsx, or .ts files to this.
-  assetsInclude: ['**/*.svg', '**/*.csv'],
+    // File types to support raw imports. Never add .css, .tsx, or .ts files to this.
+    assetsInclude: ['**/*.svg', '**/*.csv'],
 
-  // Base path: sempre '/' (produção no GitHub Pages, dev no Firebase Hosting)
-  base: '/',
+    // Base path: sempre '/' (produção no GitHub Pages, dev no Firebase Hosting)
+    base: '/',
 
-  // Copiar 404.html para dist/ durante o build
-  publicDir: 'public',
-  build: {
-    rollupOptions: {
-      input: {
-        main: path.resolve(__dirname, 'index.html'),
-        404: path.resolve(__dirname, '404.html'),
-      },
-      output: {
-        manualChunks: {
-          // React core e navegação
-          'vendor-react': ['react', 'react-dom', 'react-router'],
+    // Copiar 404.html para dist/ durante o build
+    publicDir: 'public',
+    build: {
+      rollupOptions: {
+        input: {
+          main: path.resolve(__dirname, 'index.html'),
+          404: path.resolve(__dirname, '404.html'),
+        },
+        output: {
+          manualChunks: {
+            // React core e navegação
+            'vendor-react': ['react', 'react-dom', 'react-router'],
 
-          // Componentes UI (Radix)
-          'vendor-ui': [
-            '@radix-ui/react-dialog',
-            '@radix-ui/react-select',
-            '@radix-ui/react-popover',
-            '@radix-ui/react-dropdown-menu',
-            '@radix-ui/react-tabs',
-            '@radix-ui/react-alert-dialog',
-          ],
+            // Componentes UI (Radix)
+            'vendor-ui': [
+              '@radix-ui/react-dialog',
+              '@radix-ui/react-select',
+              '@radix-ui/react-popover',
+              '@radix-ui/react-dropdown-menu',
+              '@radix-ui/react-tabs',
+              '@radix-ui/react-alert-dialog',
+            ],
 
-          // Firebase (separado para cache independente)
-          'vendor-firebase': [
-            'firebase/app',
-            'firebase/auth',
-            'firebase/firestore',
-            'firebase/storage',
-            'firebase/functions',
-            'firebase/analytics',
-          ],
+            // Firebase (separado para cache independente)
+            'vendor-firebase': [
+              'firebase/app',
+              'firebase/auth',
+              'firebase/firestore',
+              'firebase/storage',
+              'firebase/functions',
+              'firebase/analytics',
+            ],
 
-          // Charting/visualização (carregado apenas em Reports)
-          'vendor-charts': ['recharts'],
+            // Charting/visualização (carregado apenas em Reports)
+            'vendor-charts': ['recharts'],
 
-          // PDF generation (carregado apenas quando exportar)
-          'vendor-pdf': ['jspdf', 'jspdf-autotable', 'html2canvas'],
+            // PDF generation (carregado apenas quando exportar)
+            'vendor-pdf': ['jspdf', 'jspdf-autotable', 'html2canvas'],
 
-          // DOMPurify (segurança)
-          'vendor-security': ['dompurify'],
+            // DOMPurify (segurança)
+            'vendor-security': ['dompurify'],
+          },
         },
       },
+      // Aumentar limite para evitar warning em chunks necessariamente grandes
+      chunkSizeWarningLimit: 600,
     },
-    // Aumentar limite para evitar warning em chunks necessariamente grandes
-    chunkSizeWarningLimit: 600,
-  },
-}))
+  };
+});
 
