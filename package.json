@@ -21,8 +21,7 @@
     "test:gallery": "playwright test tests/e2e/gallery.spec.ts",
     "test:order-details": "playwright test tests/e2e/order-details.spec.ts",
     "test:debug": "playwright test --debug",
-    "test:report": "playwright show-report"
-    ,
+    "test:report": "playwright show-report",
     "optimize:images": "node scripts/optimize-login-bg.mjs"
   },
   "dependencies": {
@@ -96,6 +95,7 @@
     "@vitejs/plugin-react": "4.7.0",
     "dotenv": "^17.3.1",
     "firebase-admin": "^13.7.0",
+    "sharp": "^0.34.5",
     "tailwindcss": "4.1.12",
     "vite": "6.4.1",
     "vite-plugin-html": "^3.2.2",
