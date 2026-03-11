@@ -29,11 +29,9 @@ export default defineConfig(({ command, mode }) => {
       __APP_VERSION__: JSON.stringify(process.env.npm_package_version),
     },
     plugins: [
-    // The React and Tailwind plugins are both required for Make, even if
-    // Tailwind is not being actively used – do not remove them
-    react(),
-    tailwindcss(),
-    createHtmlPlugin({
+      react(),
+      tailwindcss(),
+      createHtmlPlugin({
       inject: {
         data: {
           newrelic: mode === 'production' ? newRelicProd : newRelicDev,
@@ -88,7 +86,6 @@ export default defineConfig(({ command, mode }) => {
       },
     }),
   ],
-    ],
     resolve: {
     alias: {
       // Alias @ to the src directory
