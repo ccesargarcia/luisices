@@ -1,10 +1,27 @@
+
 import { defineConfig } from 'vite'
 import path from 'path'
 import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
+import { createHtmlPlugin } from 'vite-plugin-html'
 
-export default defineConfig(({ command }) => ({
+// New Relic snippets
+const newRelicDev = `<script type="text/javascript">
+;window.NREUM||(NREUM={});NREUM.init={distributed_tracing:{enabled:true},performance:{capture_measures:true},browser_consent_mode:{enabled:false},privacy:{cookies_enabled:true},ajax:{deny_list:[\"bam.nr-data.net\"],capture_payloads:'none'}};
+
+;NREUM.loader_config={accountID:\"512515\",trustKey:\"512515\",agentID:\"1589200633\",licenseKey:\"d0981b3d54\",applicationID:\"1589200633\"};
+;NREUM.info={beacon:\"bam.nr-data.net\",errorBeacon:\"bam.nr-data.net\",licenseKey:\"d0981b3d54\",applicationID:\"1589200633\",sa:1};
+;/*! For license information please see nr-loader-spa-1.310.1.min.js.LICENSE.txt */
+(...)</script>`;
+
+const newRelicProd = `<script type="text/javascript">
+;window.NREUM||(NREUM={});NREUM.init={distributed_tracing:{enabled:true},performance:{capture_measures:true},browser_consent_mode:{enabled:false},privacy:{cookies_enabled:true},ajax:{deny_list:[\"bam.nr-data.net\"],capture_payloads:'none'}};
+
+;NREUM.loader_config={accountID:\"512515\",trustKey:\"512515\",agentID:\"1589200643\",licenseKey:\"d0981b3d54\",applicationID:\"1589200643\"};
+;NREUM.info={beacon:\"bam.nr-data.net\",errorBeacon:\"bam.nr-data.net\",licenseKey:\"d0981b3d54\",applicationID:\"1589200643\",sa:1};
+;/*! For license information please see nr-loader-spa-1.310.1.min.js.LICENSE.txt */
+(...)</script>`;
   define: {
     __APP_VERSION__: JSON.stringify(process.env.npm_package_version),
   },
@@ -13,6 +30,20 @@ export default defineConfig(({ command }) => ({
     // Tailwind is not being actively used – do not remove them
     react(),
     tailwindcss(),
+    createHtmlPlugin({
+      inject: {
+        data: {
+          newrelic: process.env.NODE_ENV === 'production' ? newRelicProd : newRelicDev,
+        },
+        tags: [
+          {
+            injectTo: 'head',
+            tag: 'raw',
+            children: process.env.NODE_ENV === 'production' ? newRelicProd : newRelicDev,
+          },
+        ],
+      },
+    }),
     VitePWA({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.ico', 'icon-192.png', 'icon-512.png'],
