@@ -20,7 +20,23 @@ body {
 
 /* Login background image */
 .login-bg {
-  background-image: url('/images/login-bg.png');
+  /* Prefer AVIF, then WebP, then PNG via image-set. Browser will pick the first supported format. */
+  background-image: image-set(
+    url('/images/login-bg.avif') type('image/avif') 1x,
+    url('/images/login-bg.webp') type('image/webp') 1x,
+    url('/images/login-bg.png') type('image/png') 1x
+  );
   background-size: cover;
   background-position: center;
+}
+
+/* Use smaller image on narrow viewports */
+@media (max-width: 800px) {
+  .login-bg {
+    background-image: image-set(
+      url('/images/login-bg-800.avif') type('image/avif') 1x,
+      url('/images/login-bg-800.webp') type('image/webp') 1x,
+      url('/images/login-bg-800.png') type('image/png') 1x
+    );
+  }
 }

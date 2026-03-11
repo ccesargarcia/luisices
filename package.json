@@ -22,6 +22,8 @@
     "test:order-details": "playwright test tests/e2e/order-details.spec.ts",
     "test:debug": "playwright test --debug",
     "test:report": "playwright show-report"
+    ,
+    "optimize:images": "node scripts/optimize-login-bg.mjs"
   },
   "dependencies": {
     "@emotion/react": "11.14.0",
