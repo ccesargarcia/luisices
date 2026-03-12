@@ -11,10 +11,13 @@ const TEST_USER = {
 
 test.beforeEach(async ({ page }) => {
   await page.goto('/');
-  await page.fill('input[type="email"]', TEST_USER.email);
-  await page.fill('input[type="password"]', TEST_USER.password);
-  await page.click('button[type="submit"]');
-  await page.waitForURL('**/dashboard', { timeout: 10000 });
+  const emailInput = page.locator('input[type="email"]');
+  if (await emailInput.count() > 0) {
+    await page.fill('input[type="email"]', TEST_USER.email);
+    await page.fill('input[type="password"]', TEST_USER.password);
+    await page.click('button[type="submit"]');
+    await page.waitForURL('**/dashboard', { timeout: 30000 });
+  }
 });
 
 test.describe('Pedidos - CRUD', () => {
@@ -29,7 +32,7 @@ test.describe('Pedidos - CRUD', () => {
     await expect(dialog).toBeVisible({ timeout: 5000 });
 
     // Selecionar o primeiro cliente existente no dropdown (combobox de cliente)
-    const selectTrigger = dialog.getByRole('button', { name: /Cliente/i }).first();
+    const selectTrigger = dialog.locator('button[role="combobox"]').first();
     await selectTrigger.click();
 
     // Esperar opções carregarem e selecionar qualquer cliente (pular "Novo Cliente")

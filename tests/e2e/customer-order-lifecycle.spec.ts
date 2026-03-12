@@ -85,6 +85,7 @@ test.describe.serial('Ciclo de vida: Cliente + Pedido', () => {
     const selectTrigger = dialog.locator('button[role="combobox"]').first();
     await selectTrigger.click();
 
+
     // Aguardar o dropdown abrir e selecionar o cliente pelo nome
     const option = page.getByRole('option', { name: new RegExp(testCustomer.name, 'i') });
     await expect(option).toBeVisible({ timeout: 5000 });
