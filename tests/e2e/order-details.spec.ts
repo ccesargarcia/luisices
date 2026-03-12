@@ -36,9 +36,8 @@ test.beforeEach(async ({ page }) => {
   await expect(dialog).toBeVisible({ timeout: 5000 });
 
   // Preencher cliente (criar novo)
--  const selectTrigger = dialog.getByRole('button', { name: /Cliente/i });
-+  const selectTrigger = dialog.locator('button[role="combobox"]').first();
-   await selectTrigger.click();
+  const selectTrigger = dialog.locator('button[role="combobox"]').first();
+  await selectTrigger.click();
    const options = page.locator('[role="option"]');
    await options.first().click();
    await dialog.locator('#customerName').fill(`Cliente Teste E2E`);
