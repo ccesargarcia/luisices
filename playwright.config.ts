@@ -47,9 +47,6 @@ export default defineConfig({
     /* URL base para testes */
     baseURL: process.env.PLAYWRIGHT_BASE_URL || 'http://localhost:4173',
 
-    /* carregar auth state gerada em global-setup */
-    storageState: 'tests/e2e/storageState.json',
-
     /* Trace on primeira falha */
     trace: 'on-first-retry',
 
