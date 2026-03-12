@@ -9,6 +9,24 @@ const TEST_USER = {
   password: process.env.TEST_USER_PASSWORD || 'senha123',
 };
 
+// Cleanup: remove any order created by a test to keep the dashboard clean
+// This runs after each test, so even if the test skipped it will attempt cleanup.
+test.afterEach(async ({ page }) => {
+  const orderCard = page.locator('.cursor-pointer').filter({ hasText: /Produto Teste E2E/i }).first();
+  if (await orderCard.isVisible({ timeout: 5000 })) {
+    await orderCard.click();
+    const detailsDialog = page.locator('[role="dialog"]').first();
+    await expect(detailsDialog).toBeVisible({ timeout: 10000 });
+    const deleteBtn = detailsDialog.getByRole('button', { name: /Excluir Pedido/i });
+    await deleteBtn.scrollIntoViewIfNeeded();
+    await deleteBtn.click();
+    const alertDialog = page.locator('[role="alertdialog"]');
+    await expect(alertDialog).toBeVisible({ timeout: 5000 });
+    await alertDialog.getByRole('button', { name: /Excluir/i }).click();
+    await expect(alertDialog).not.toBeVisible({ timeout: 10000 });
+  }
+});
+
 
 test.beforeEach(async ({ page }) => {
   test.setTimeout(60000);
@@ -25,8 +43,8 @@ test.beforeEach(async ({ page }) => {
   const dialog = page.locator('[role="dialog"]').first();
   await expect(dialog).toBeVisible({ timeout: 5000 });
 
-  // Preencher cliente (criar novo)
-  const selectTrigger = dialog.locator('button[role="combobox"]');
+  // Preencher cliente (criar novo). a combobox de cliente tem o nome acessível "Cliente".
+  const selectTrigger = dialog.getByRole('button', { name: /Cliente/i });
   await selectTrigger.click();
   const options = page.locator('[role="option"]');
   await options.first().click();

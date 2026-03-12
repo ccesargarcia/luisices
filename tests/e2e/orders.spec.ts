@@ -28,8 +28,8 @@ test.describe('Pedidos - CRUD', () => {
     const dialog = page.locator('[role="dialog"]').first();
     await expect(dialog).toBeVisible({ timeout: 5000 });
 
-    // Selecionar o primeiro cliente existente no dropdown
-    const selectTrigger = dialog.locator('button[role="combobox"]').first();
+    // Selecionar o primeiro cliente existente no dropdown (combobox de cliente)
+    const selectTrigger = dialog.getByRole('button', { name: /Cliente/i }).first();
     await selectTrigger.click();
 
     // Esperar opções carregarem e selecionar qualquer cliente (pular "Novo Cliente")
@@ -113,6 +113,8 @@ test.describe('Pedidos - CRUD', () => {
     const orderCard = page.locator('.cursor-pointer').first();
     if (await orderCard.isVisible({ timeout: 5000 })) {
       await orderCard.click();
+      // dar tempo para o diálogo renderizar
+      await page.waitForTimeout(500);
 
       // Verificar que o dialog de detalhes abriu
       const detailsDialog = page.locator('[role="dialog"]').first();
