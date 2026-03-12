@@ -9,26 +9,6 @@ const TEST_USER = {
   password: process.env.TEST_USER_PASSWORD || 'senha123',
 };
 
-// Cleanup: Excluir o pedido criado após cada teste
-test.afterEach(async ({ page }) => {
-  // Buscar o pedido criado pelo nome único
-  const orderCard = page.locator('.cursor-pointer').filter({ hasText: /Produto Teste E2E/i }).first();
-  if (await orderCard.isVisible({ timeout: 5000 })) {
-    await orderCard.click();
-
-    const detailsDialog = page.locator('[role="dialog"]').first();
-    await expect(detailsDialog).toBeVisible({ timeout: 10000 });
-
-    const deleteBtn = detailsDialog.getByRole('button', { name: /Excluir Pedido/i });
-    await deleteBtn.scrollIntoViewIfNeeded();
-    await deleteBtn.click();
-
-    const alertDialog = page.locator('[role="alertdialog"]');
-    await expect(alertDialog).toBeVisible({ timeout: 5000 });
-    await alertDialog.getByRole('button', { name: /Excluir/i }).click();
-    await expect(alertDialog).not.toBeVisible({ timeout: 10000 });
-  }
-});
 
 test.beforeEach(async ({ page }) => {
   test.setTimeout(60000);
@@ -46,7 +26,7 @@ test.beforeEach(async ({ page }) => {
   await expect(dialog).toBeVisible({ timeout: 5000 });
 
   // Preencher cliente (criar novo)
-  const selectTrigger = dialog.locator('button#customer[role="combobox"]');
+  const selectTrigger = dialog.locator('button[role="combobox"]');
   await selectTrigger.click();
   const options = page.locator('[role="option"]');
   await options.first().click();
