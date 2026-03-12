@@ -9,6 +9,27 @@ const TEST_USER = {
   password: process.env.TEST_USER_PASSWORD || 'senha123',
 };
 
+// Cleanup: Excluir o pedido criado após cada teste
+test.afterEach(async ({ page }) => {
+  // Buscar o pedido criado pelo nome único
+  const orderCard = page.locator('.cursor-pointer').filter({ hasText: /Produto Teste E2E/i }).first();
+  if (await orderCard.isVisible({ timeout: 5000 })) {
+    await orderCard.click();
+
+    const detailsDialog = page.locator('[role="dialog"]').first();
+    await expect(detailsDialog).toBeVisible({ timeout: 10000 });
+
+    const deleteBtn = detailsDialog.getByRole('button', { name: /Excluir Pedido/i });
+    await deleteBtn.scrollIntoViewIfNeeded();
+    await deleteBtn.click();
+
+    const alertDialog = page.locator('[role="alertdialog"]');
+    await expect(alertDialog).toBeVisible({ timeout: 5000 });
+    await alertDialog.getByRole('button', { name: /Excluir/i }).click();
+    await expect(alertDialog).not.toBeVisible({ timeout: 10000 });
+  }
+});
+
 test.beforeEach(async ({ page }) => {
   test.setTimeout(60000);
   await page.goto('/');
@@ -16,7 +37,40 @@ test.beforeEach(async ({ page }) => {
   await page.fill('input[type="password"]', TEST_USER.password);
   await page.click('button[type="submit"]');
   await page.waitForURL('**/dashboard', { timeout: 15000 });
-  await page.waitForTimeout(2000);
+  await page.waitForTimeout(1000);
+
+  // Cria um pedido via UI para garantir que sempre exista um card
+  const newOrderBtn = page.getByRole('button', { name: /Novo Pedido/i });
+  await newOrderBtn.click();
+  const dialog = page.locator('[role="dialog"]').first();
+  await expect(dialog).toBeVisible({ timeout: 5000 });
+
+  // Preencher cliente (criar novo)
+  const selectTrigger = dialog.locator('button[role="combobox"]');
+  await selectTrigger.click();
+  const options = page.locator('[role="option"]');
+  await options.first().click();
+  await dialog.locator('#customerName').fill(`Cliente Teste E2E`);
+  await dialog.locator('#customerPhone').fill('11999999999');
+
+  // Preencher produto
+  const productInput = dialog.getByPlaceholder(/Produto 1/i);
+  await productInput.fill('Produto Teste E2E');
+
+  // Preencher valor unitário
+  const priceInput = dialog.getByPlaceholder('0,00').first();
+  await priceInput.fill('123');
+
+  // Preencher data de entrega
+  const dateInput = dialog.locator('#deliveryDate');
+  const futureDate = new Date();
+  futureDate.setDate(futureDate.getDate() + 7);
+  await dateInput.fill(futureDate.toISOString().split('T')[0]);
+
+  // Submeter
+  await dialog.locator('button[type="submit"]').click();
+  await expect(dialog).not.toBeVisible({ timeout: 10000 });
+  await page.waitForTimeout(1000);
 });
 
 test.describe('Detalhes do Pedido', () => {
