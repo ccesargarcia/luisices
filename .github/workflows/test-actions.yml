@@ -62,8 +62,8 @@ jobs:
           TEST_USER_EMAIL: ${{ secrets.TEST_USER_EMAIL }}
           TEST_USER_PASSWORD: ${{ secrets.TEST_USER_PASSWORD }}
           PLAYWRIGHT_BASE_URL: http://localhost:4173
-        # Run Playwright with 4 workers in CI to speed up tests (overrides playwright.config.ts default)
-        run: npx playwright test -j 4 tests/e2e/auth.spec.ts tests/e2e/customers.spec.ts tests/e2e/products.spec.ts tests/e2e/quotes.spec.ts tests/e2e/orders.spec.ts tests/e2e/navigation.spec.ts tests/e2e/customer-order-lifecycle.spec.ts tests/e2e/settings.spec.ts tests/e2e/reports.spec.ts tests/e2e/gallery.spec.ts tests/e2e/order-details.spec.ts --reporter=list
+        # Run Playwright with 2 workers in CI to speed up tests (overrides playwright.config.ts default)
+        run: npx playwright test -j 2 tests/e2e/auth.spec.ts tests/e2e/customers.spec.ts tests/e2e/products.spec.ts tests/e2e/quotes.spec.ts tests/e2e/orders.spec.ts tests/e2e/navigation.spec.ts tests/e2e/customer-order-lifecycle.spec.ts tests/e2e/settings.spec.ts tests/e2e/reports.spec.ts tests/e2e/gallery.spec.ts tests/e2e/order-details.spec.ts --reporter=list
 
       - name: Upload test report
         if: always()
