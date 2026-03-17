@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 
 /**
  * Testes de Detalhes do Pedido, Status e Pagamento
@@ -9,8 +9,40 @@ const TEST_USER = {
   password: process.env.TEST_USER_PASSWORD || 'senha123',
 };
 
+async function closeAnyOpenDialog(page: Page) {
+  const dialog = page.locator('[role="dialog"]').first();
+  if (!(await dialog.isVisible().catch(() => false))) return;
+
+  const closeSelectors = [
+    '[data-slot="dialog-close"]',
+    'button[aria-label="Close"]',
+    'button:has-text("Fechar")',
+    'button:has-text("Cancelar")',
+    'button:has-text("X")',
+  ];
+
+  for (const selector of closeSelectors) {
+    const closeBtn = dialog.locator(selector).first();
+    if (await closeBtn.isVisible().catch(() => false)) {
+      await closeBtn.click();
+      break;
+    }
+  }
+
+  // Se ainda estiver aberto, tente fechar clicando no overlay (parte fora do modal)
+  const overlay = page.locator('[data-slot="dialog-overlay"]').first();
+  if (await overlay.isVisible().catch(() => false)) {
+    await overlay.click({ force: true });
+  }
+
+  await page.keyboard.press('Escape');
+  await expect(dialog).not.toBeVisible({ timeout: 10000 }).catch(() => {});
+}
+
 // Cleanup: Excluir o pedido criado após cada teste
 test.afterEach(async ({ page }) => {
+  await closeAnyOpenDialog(page);
+
   // Buscar o pedido criado pelo nome único
   const orderCard = page.locator('.cursor-pointer').filter({ hasText: /Produto Teste E2E/i }).first();
   if (await orderCard.isVisible({ timeout: 5000 })) {
@@ -73,17 +105,7 @@ test.beforeEach(async ({ page }) => {
   // O diálogo deveria fechar ao criar o pedido; algumas vezes ele permanece
   // aberto por conta de validação ou atraso na resposta do backend.
   await page.waitForTimeout(1500);
-
-  if (await dialog.isVisible({ timeout: 2000 }).catch(() => false)) {
-    // Tenta fechar manualmente (botão Fechar / Escape).
-    const closeBtn = dialog.getByRole('button', { name: /(Fechar|Cancelar|X)/i }).first();
-    if (await closeBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
-      await closeBtn.click();
-    } else {
-      await page.keyboard.press('Escape');
-    }
-    await expect(dialog).not.toBeVisible({ timeout: 15000 });
-  }
+  await closeAnyOpenDialog(page);
 
   await page.waitForTimeout(1000);
 });
