@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Input } from '../components/ui/input';
 import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
+import { Checkbox } from '../components/ui/checkbox';
 import {
   Search,
   Plus,
@@ -74,13 +75,16 @@ export function Customers() {
   const [searchQuery, setSearchQuery] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
+  const [selectedCustomerIds, setSelectedCustomerIds] = useState<string[]>([]);
   const [isNewCustomerOpen, setIsNewCustomerOpen] = useState(false);
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
+  const [isBulkDeleteOpen, setIsBulkDeleteOpen] = useState(false);
   const [activeOrdersForDelete, setActiveOrdersForDelete] = useState(0);
   const [pendingPhotoFile, setPendingPhotoFile] = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string>('');
   const [formLoading, setFormLoading] = useState(false);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
   const [historyCustomer, setHistoryCustomer] = useState<Customer | null>(null);
   const [customerOrders, setCustomerOrders] = useState<Order[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
@@ -123,6 +127,8 @@ export function Customers() {
     try {
       const data = await firebaseCustomerService.getCustomers(user.uid);
       setCustomers(data);
+      // Manter seleção apenas para clientes ainda existentes
+      setSelectedCustomerIds(prev => prev.filter(id => data.some(c => c.id === id)));
     } catch (error) {
       console.error('Erro ao carregar clientes:', error);
     } finally {
@@ -318,6 +324,36 @@ export function Customers() {
       setActiveOrdersForDelete(count);
     } catch {
       // se falhar a contagem, deixa deletar mesmo assim
+    }
+  };
+
+  const toggleCustomerSelection = (customerId: string, selected: boolean) => {
+    setSelectedCustomerIds(prev => {
+      if (selected) {
+        if (prev.includes(customerId)) return prev;
+        return [...prev, customerId];
+      }
+      return prev.filter(id => id !== customerId);
+    });
+  };
+
+  const handleBulkDelete = async () => {
+    if (!user || selectedCustomerIds.length === 0) return;
+
+    setBulkDeleting(true);
+    try {
+      await Promise.all(
+        selectedCustomerIds.map(id => firebaseCustomerService.deleteCustomer(id))
+      );
+      toast.success(`${selectedCustomerIds.length} cliente${selectedCustomerIds.length === 1 ? '' : 's'} excluído${selectedCustomerIds.length === 1 ? '' : 's'}`);
+      setSelectedCustomerIds([]);
+      await loadCustomers();
+    } catch (error) {
+      console.error('Erro ao excluir clientes:', error);
+      toast.error('Erro ao excluir clientes');
+    } finally {
+      setBulkDeleting(false);
+      setIsBulkDeleteOpen(false);
     }
   };
 
@@ -672,13 +708,44 @@ export function Customers() {
         />
       </div>
 
+      {selectedCustomerIds.length > 0 && (
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 p-3 rounded-lg border border-primary/20 bg-primary/5">
+          <p className="text-sm text-primary-foreground">
+            {selectedCustomerIds.length} selecionado{selectedCustomerIds.length !== 1 ? 's' : ''}
+          </p>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={() => setSelectedCustomerIds([])}>
+              Limpar
+            </Button>
+            {hasPermission(p => p.customers?.delete ?? false) && (
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={() => setIsBulkDeleteOpen(true)}
+                disabled={bulkDeleting}
+                className="gap-2"
+              >
+                <Trash2 className="size-4" />
+                Excluir selecionados
+              </Button>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Customer Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {pagedCustomers.map((customer) => (
           <Card key={customer.id} className="hover:shadow-md transition-shadow">
             <CardHeader>
               <div className="flex items-start justify-between">
-                <div className="flex items-center gap-3">
+                <div className="flex items-start gap-3">
+                  <Checkbox
+                    checked={selectedCustomerIds.includes(customer.id)}
+                    onCheckedChange={(checked) => toggleCustomerSelection(customer.id, Boolean(checked))}
+                    className="mt-1"
+                    aria-label={`Selecionar ${customer.name}`}
+                  />
                   <div className="size-11 rounded-full overflow-hidden bg-muted shrink-0 flex items-center justify-center border">
                     {customer.photoUrl ? (
                       <img src={customer.photoUrl} alt={customer.name} className="w-full h-full object-cover" loading="lazy" />
@@ -1197,6 +1264,36 @@ export function Customers() {
                 Excluir
               </AlertDialogAction>
             )}
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Bulk Delete Dialog */}
+      <AlertDialog open={isBulkDeleteOpen} onOpenChange={setIsBulkDeleteOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir clientes selecionados</AlertDialogTitle>
+            <AlertDialogDescription>
+              {selectedCustomerIds.length === 0 ? (
+                'Nenhum cliente selecionado.'
+              ) : (
+                <span>
+                  Tem certeza que deseja excluir <strong>{selectedCustomerIds.length}</strong> cliente{selectedCustomerIds.length !== 1 ? 's' : ''}?
+                  Esta ação não pode ser desfeita.
+                </span>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleBulkDelete}
+              className="bg-destructive text-destructive-foreground"
+              disabled={bulkDeleting || selectedCustomerIds.length === 0}
+            >
+              {bulkDeleting && <Loader2 className="size-4 mr-2 animate-spin" />}
+              Excluir selecionados
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

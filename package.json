@@ -22,6 +22,7 @@
     "test:order-details": "playwright test tests/e2e/order-details.spec.ts",
     "test:debug": "playwright test --debug",
     "test:report": "playwright show-report",
+    "create:customers": "node scripts/create-random-customers.mjs",
     "optimize:images": "node scripts/optimize-login-bg.mjs"
   },
   "dependencies": {
