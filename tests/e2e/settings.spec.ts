@@ -15,7 +15,10 @@ test.beforeEach(async ({ page }) => {
   await page.fill('input[type="email"]', TEST_USER.email);
   await page.fill('input[type="password"]', TEST_USER.password);
   await page.click('button[type="submit"]');
-  await page.waitForURL('**/dashboard', { timeout: 15000 });
+
+  // Verificar que o dashboard está carregado (em vez de confiar na URL)
+  await expect(page.getByRole('heading', { name: /Bom dia|Boa tarde|Boa noite/i })).toBeVisible({ timeout: 30000 });
+
   await page.goto('/configuracoes');
   await expect(page.locator('main h1').first()).toContainText(/Configurações/i, { timeout: 10000 });
 });
