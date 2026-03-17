@@ -108,38 +108,54 @@ export default defineConfig(({ command, mode }) => {
           404: path.resolve(__dirname, '404.html'),
         },
         output: {
-          manualChunks: {
-            // React core e navegação
-            'vendor-react': ['react', 'react-dom', 'react-router'],
+          // Vite 8 / rolldown expects manualChunks to be a function.
+          manualChunks(id: string) {
+            if (!id.includes('/node_modules/')) return;
 
-            // Componentes UI (Radix)
-            'vendor-ui': [
-              '@radix-ui/react-dialog',
-              '@radix-ui/react-select',
-              '@radix-ui/react-popover',
-              '@radix-ui/react-dropdown-menu',
-              '@radix-ui/react-tabs',
-              '@radix-ui/react-alert-dialog',
-            ],
+            const pkgPath = id.split('/node_modules/')[1];
+            if (!pkgPath) return;
 
-            // Firebase (separado para cache independente)
-            'vendor-firebase': [
-              'firebase/app',
-              'firebase/auth',
-              'firebase/firestore',
-              'firebase/storage',
-              'firebase/functions',
-              'firebase/analytics',
-            ],
+            const pkgName = pkgPath.startsWith('@')
+              ? pkgPath.split('/').slice(0, 2).join('/')
+              : pkgPath.split('/')[0];
 
-            // Charting/visualização (carregado apenas em Reports)
-            'vendor-charts': ['recharts'],
+            switch (pkgName) {
+              // React core e navegação
+              case 'react':
+              case 'react-dom':
+              case 'react-router':
+                return 'vendor-react';
 
-            // PDF generation (carregado apenas quando exportar)
-            'vendor-pdf': ['jspdf', 'jspdf-autotable', 'html2canvas'],
+              // Componentes UI (Radix)
+              case '@radix-ui/react-dialog':
+              case '@radix-ui/react-select':
+              case '@radix-ui/react-popover':
+              case '@radix-ui/react-dropdown-menu':
+              case '@radix-ui/react-tabs':
+              case '@radix-ui/react-alert-dialog':
+                return 'vendor-ui';
 
-            // DOMPurify (segurança)
-            'vendor-security': ['dompurify'],
+              // Firebase (separado para cache independente)
+              case 'firebase':
+                return 'vendor-firebase';
+
+              // Charting/visualização (carregado apenas em Reports)
+              case 'recharts':
+                return 'vendor-charts';
+
+              // PDF generation (carregado apenas quando exportar)
+              case 'jspdf':
+              case 'jspdf-autotable':
+              case 'html2canvas':
+                return 'vendor-pdf';
+
+              // DOMPurify (segurança)
+              case 'dompurify':
+                return 'vendor-security';
+
+              default:
+                return;
+            }
           },
         },
       },
