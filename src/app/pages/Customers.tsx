@@ -83,6 +83,7 @@ export function Customers() {
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
   const [isBulkDeleteOpen, setIsBulkDeleteOpen] = useState(false);
   const [activeOrdersForDelete, setActiveOrdersForDelete] = useState(0);
+  const [showOnlyWithOpenOrders, setShowOnlyWithOpenOrders] = useState(false);
   const [pendingPhotoFile, setPendingPhotoFile] = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string>('');
   const [formLoading, setFormLoading] = useState(false);
@@ -159,16 +160,43 @@ export function Customers() {
   }, [user]);
 
   // Filtrar clientes
-  const filteredCustomers = useMemo(() => {
-    if (!searchQuery) return customers;
+  const [openOrdersMap, setOpenOrdersMap] = useState<Record<string, number>>({});
 
+  // Atualiza o mapa de pedidos em aberto para todos os clientes
+  useEffect(() => {
+    let cancelled = false;
+    async function fetchOpenOrders() {
+      if (!customers.length) return;
+      const map: Record<string, number> = {};
+      await Promise.all(
+        customers.map(async (c) => {
+          try {
+            const count = await firebaseOrderService.getActiveOrdersByCustomer(c.id);
+            map[c.id] = count;
+          } catch {
+            map[c.id] = 0;
+          }
+        })
+      );
+      if (!cancelled) setOpenOrdersMap(map);
+    }
+    fetchOpenOrders();
+    return () => { cancelled = true; };
+  }, [customers]);
+
+  const filteredCustomers = useMemo(() => {
+    let list = customers;
+    if (showOnlyWithOpenOrders) {
+      list = list.filter(c => openOrdersMap[c.id] > 0);
+    }
+    if (!searchQuery) return list;
     const query = searchQuery.toLowerCase();
-    return customers.filter(customer =>
+    return list.filter(customer =>
       customer.name.toLowerCase().includes(query) ||
       customer.phone.includes(query) ||
       customer.email?.toLowerCase().includes(query)
     );
-  }, [customers, searchQuery]);
+  }, [customers, searchQuery, showOnlyWithOpenOrders, openOrdersMap]);
 
   // Resetar página ao filtrar
   useEffect(() => { setCurrentPage(1); }, [searchQuery]);
@@ -381,9 +409,19 @@ export function Customers() {
     setBulkDeleteBlocked(blocked);
   };
 
+  // Sempre que abrir o modal de bulk delete, atualiza a lista de bloqueados
+  useEffect(() => {
+    if (isBulkDeleteOpen) {
+      computeBulkDeleteBlocked();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isBulkDeleteOpen, selectedCustomerIds]);
+
   const handleBulkDelete = async () => {
     if (!user || selectedCustomerIds.length === 0) return;
 
+    // Garante que a lista está atualizada antes de deletar
+    await computeBulkDeleteBlocked();
     if (bulkDeleteBlocked.length > 0) {
       toast.error(
         `Não é possível excluir ${bulkDeleteBlocked.length} cliente${bulkDeleteBlocked.length === 1 ? '' : 's'} porque possuem pedidos ativos.`
@@ -749,15 +787,25 @@ export function Customers() {
       </div>
 
       {/* Search */}
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
-        <Input
-          data-testid="search-customers-input"
-          placeholder="Buscar por nome, telefone ou email..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          className="pl-10"
-        />
+      <div className="flex flex-col sm:flex-row gap-2 items-center">
+        <div className="relative flex-1 w-full">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+          <Input
+            data-testid="search-customers-input"
+            placeholder="Buscar por nome, telefone ou email..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="pl-10"
+          />
+        </div>
+        <label className="flex items-center gap-2 text-sm cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={showOnlyWithOpenOrders}
+            onChange={e => setShowOnlyWithOpenOrders(e.target.checked)}
+          />
+          Só com pedidos em aberto
+        </label>
       </div>
 
       {selectedCustomerIds.length > 0 && (
