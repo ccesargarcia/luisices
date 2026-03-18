@@ -256,7 +256,6 @@ export function Customers() {
         }
       }
 
-      await loadCustomers();
       setIsNewCustomerOpen(false);
       resetForm();
     } catch (error: any) {
@@ -314,7 +313,6 @@ export function Customers() {
         photoUrl,
       });
 
-      await loadCustomers();
       setIsEditOpen(false);
       setSelectedCustomer(null);
       resetForm();
@@ -337,7 +335,6 @@ export function Customers() {
     setFormLoading(true);
     try {
       await firebaseCustomerService.deleteCustomer(selectedCustomer.id);
-      await loadCustomers();
       setIsDeleteOpen(false);
       setSelectedCustomer(null);
       toast.success('Cliente excluído com sucesso');
