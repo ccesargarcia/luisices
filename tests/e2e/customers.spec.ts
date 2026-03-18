@@ -56,8 +56,8 @@ test.describe('Clientes - CRUD', () => {
     const saveButton = dialog.getByRole('button', { name: /Criar Cliente/i });
     await saveButton.click();
 
-    // Aguardar dialog fechar
-    await expect(dialog).not.toBeVisible({ timeout: 10000 });
+      // Aguardar dialog ficar oculto (robusto contra animação)
+      await expect(dialog).toBeHidden({ timeout: 10000 });
 
     // Verificar que o cliente foi criado
     await page.waitForTimeout(1000);

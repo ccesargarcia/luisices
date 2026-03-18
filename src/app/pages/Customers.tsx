@@ -87,6 +87,7 @@ export function Customers() {
   const [photoPreview, setPhotoPreview] = useState<string>('');
   const [formLoading, setFormLoading] = useState(false);
   const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [bulkDeleteBlocked, setBulkDeleteBlocked] = useState<{ id: string; name: string; count: number }[]>([]);
   const [historyCustomer, setHistoryCustomer] = useState<Customer | null>(null);
   const [customerOrders, setCustomerOrders] = useState<Order[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
@@ -358,8 +359,37 @@ export function Customers() {
     });
   };
 
+  const computeBulkDeleteBlocked = async () => {
+    if (!user) return;
+
+    const blocked: { id: string; name: string; count: number }[] = [];
+
+    await Promise.all(
+      selectedCustomerIds.map(async (id) => {
+        try {
+          const count = await firebaseOrderService.getActiveOrdersByCustomer(id);
+          if (count > 0) {
+            const customer = customers.find(c => c.id === id);
+            blocked.push({ id, name: customer?.name ?? 'Cliente', count });
+          }
+        } catch {
+          // ignore
+        }
+      })
+    );
+
+    setBulkDeleteBlocked(blocked);
+  };
+
   const handleBulkDelete = async () => {
     if (!user || selectedCustomerIds.length === 0) return;
+
+    if (bulkDeleteBlocked.length > 0) {
+      toast.error(
+        `Não é possível excluir ${bulkDeleteBlocked.length} cliente${bulkDeleteBlocked.length === 1 ? '' : 's'} porque possuem pedidos ativos.`
+      );
+      return;
+    }
 
     setBulkDeleting(true);
     try {
@@ -375,6 +405,7 @@ export function Customers() {
     } finally {
       setBulkDeleting(false);
       setIsBulkDeleteOpen(false);
+      setBulkDeleteBlocked([]);
     }
   };
 
@@ -742,7 +773,10 @@ export function Customers() {
               <Button
                 variant="destructive"
                 size="sm"
-                onClick={() => setIsBulkDeleteOpen(true)}
+                onClick={async () => {
+                  setIsBulkDeleteOpen(true);
+                  await computeBulkDeleteBlocked();
+                }}
                 disabled={bulkDeleting}
                 className="gap-2"
               >
@@ -1297,6 +1331,19 @@ export function Customers() {
             <AlertDialogDescription>
               {selectedCustomerIds.length === 0 ? (
                 'Nenhum cliente selecionado.'
+              ) : bulkDeleteBlocked.length > 0 ? (
+                <div className="space-y-2 text-sm">
+                  <p>
+                    Não é possível excluir <strong>{bulkDeleteBlocked.length}</strong> cliente{bulkDeleteBlocked.length !== 1 ? 's' : ''} porque possuiam pedidos ativos.
+                  </p>
+                  <ul className="list-disc list-inside text-sm">
+                    {bulkDeleteBlocked.map(c => (
+                      <li key={c.id}>
+                        {c.name} ({c.count} pedido{c.count !== 1 ? 's' : ''} ativo{c.count !== 1 ? 's' : ''})
+                      </li>
+                    ))}
+                  </ul>
+                </div>
               ) : (
                 <span>
                   Tem certeza que deseja excluir <strong>{selectedCustomerIds.length}</strong> cliente{selectedCustomerIds.length !== 1 ? 's' : ''}?
@@ -1310,7 +1357,11 @@ export function Customers() {
             <AlertDialogAction
               onClick={handleBulkDelete}
               className="bg-destructive text-destructive-foreground"
-              disabled={bulkDeleting || selectedCustomerIds.length === 0}
+              disabled={
+                bulkDeleting ||
+                selectedCustomerIds.length === 0 ||
+                bulkDeleteBlocked.length > 0
+              }
             >
               {bulkDeleting && <Loader2 className="size-4 mr-2 animate-spin" />}
               Excluir selecionados

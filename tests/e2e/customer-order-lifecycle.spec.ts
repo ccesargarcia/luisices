@@ -54,8 +54,9 @@ test.describe.serial('Ciclo de vida: Cliente + Pedido', () => {
     }
 
     // Salvar
-    await dialog.getByRole('button', { name: /Criar Cliente/i }).click();
-    await expect(dialog).not.toBeVisible({ timeout: 10000 });
+      await dialog.getByRole('button', { name: /Criar Cliente/i }).click();
+      // Aguardar dialog ficar oculto (robusto contra animação)
+      await expect(dialog).toBeHidden({ timeout: 10000 });
 
     // Verificar que o cliente aparece
     await page.waitForTimeout(1000);
