@@ -166,13 +166,16 @@ export function Customers() {
   useEffect(() => {
     let cancelled = false;
     async function fetchOpenOrders() {
-      if (!customers.length) return;
+      if (!customers.length) {
+        setOpenOrdersMap({});
+        return;
+      }
       const map: Record<string, number> = {};
       await Promise.all(
         customers.map(async (c) => {
           try {
             const count = await firebaseOrderService.getActiveOrdersByCustomer(c.id);
-            map[c.id] = count;
+            map[c.id] = typeof count === 'number' ? count : 0;
           } catch {
             map[c.id] = 0;
           }
@@ -337,6 +340,7 @@ export function Customers() {
       await loadCustomers();
       setIsDeleteOpen(false);
       setSelectedCustomer(null);
+      toast.success('Cliente excluído com sucesso');
     } catch (error) {
       console.error('Erro ao deletar cliente:', error);
       toast.error('Erro ao deletar cliente');
