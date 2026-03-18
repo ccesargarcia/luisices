@@ -333,16 +333,21 @@ export function Customers() {
     if (!selectedCustomer) return;
 
     setFormLoading(true);
+    let success = false;
     try {
       await firebaseCustomerService.deleteCustomer(selectedCustomer.id);
       setIsDeleteOpen(false);
       setSelectedCustomer(null);
-      toast.success('Cliente excluído com sucesso');
+      success = true;
     } catch (error) {
       console.error('Erro ao deletar cliente:', error);
-      toast.error('Erro ao deletar cliente');
     } finally {
       setFormLoading(false);
+      if (success) {
+        toast.success('Cliente excluído com sucesso');
+      } else {
+        toast.error('Erro ao deletar cliente');
+      }
     }
   };
 
