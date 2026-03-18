@@ -264,6 +264,7 @@ export function Customers() {
       } else {
         toast.error('Erro ao criar cliente');
       }
+      setIsNewCustomerOpen(false); // Fecha o dialog mesmo em caso de erro
     } finally {
       setFormLoading(false);
     }

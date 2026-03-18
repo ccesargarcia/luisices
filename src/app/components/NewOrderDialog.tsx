@@ -322,6 +322,7 @@ export function NewOrderDialog() {
     } catch (err) {
       console.error('Erro ao criar pedido:', err);
       toast.error('Erro ao criar pedido. Tente novamente.');
+      setOpen(false); // Fecha o dialog mesmo em caso de erro
     } finally {
       setLoading(false);
     }
