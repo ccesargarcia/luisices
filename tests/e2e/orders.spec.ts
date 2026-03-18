@@ -130,6 +130,75 @@ test.describe('Pedidos - CRUD', () => {
     }
   });
 
+  test('deve criar pedido com cliente novo e refletir na tela de clientes', async ({ page }) => {
+    test.setTimeout(60000);
+
+    const customerName = `Cliente Teste ${Date.now()}`;
+    const customerPhone = `119${String(Math.floor(100000 + Math.random() * 900000))}`;
+
+    // Criar pedido com cliente novo
+    const newOrderBtn = page.getByRole('button', { name: /Novo Pedido/i });
+    await expect(newOrderBtn).toBeVisible({ timeout: 10000 });
+    await newOrderBtn.click();
+
+    const dialog = page.locator('[role="dialog"]').first();
+    await expect(dialog).toBeVisible({ timeout: 5000 });
+
+    const selectTrigger = dialog.locator('button[role="combobox"]').first();
+    await selectTrigger.click();
+
+    // Selecionar opção "Novo Cliente"
+    const optionNew = page.locator('[role="option"]').filter({ hasText: /Novo Cliente/i }).first();
+    await optionNew.click();
+
+    await dialog.locator('#customerName').fill(customerName);
+    await dialog.locator('#customerPhone').fill(customerPhone);
+
+    // Preencher produto básico
+    const productInput = dialog.getByPlaceholder(/Produto 1/i);
+    await productInput.fill('Produto Teste Cliente Novo');
+
+    const priceInput = dialog.getByPlaceholder('0,00').first();
+    await priceInput.fill('35');
+
+    // Preencher data de entrega caso esteja vazia
+    const dateInput = dialog.locator('#deliveryDate');
+    const dateValue = await dateInput.inputValue();
+    if (!dateValue) {
+      const futureDate = new Date();
+      futureDate.setDate(futureDate.getDate() + 7);
+      await dateInput.fill(futureDate.toISOString().split('T')[0]);
+    }
+
+    await dialog.locator('button[type="submit"]').click();
+
+    // Fechar qualquer diálogo que permaneça aberto
+    await closeAnyOpenDialog(page);
+
+    // Acessar a página de clientes e verificar que o cliente novo está listado
+    await page.goto('/clientes');
+
+    const searchInput = page.getByPlaceholder(/Buscar por nome, telefone ou email/i);
+    await expect(searchInput).toBeVisible({ timeout: 10000 });
+    await searchInput.fill(customerName);
+
+    const customerCard = page.locator('.grid .hover\\:shadow-md').filter({ hasText: customerName }).first();
+    await expect(customerCard).toBeVisible({ timeout: 10000 });
+
+    // Cleanup: remover cliente criado (não falhar no teste se não conseguir)
+    try {
+      const deleteBtn = customerCard.locator('button').filter({ has: page.locator('.text-destructive') }).first();
+      await deleteBtn.click({ timeout: 5000 });
+
+      const alertDialog = page.locator('[role="alertdialog"]');
+      await alertDialog.waitFor({ state: 'visible', timeout: 5000 });
+      await alertDialog.getByRole('button', { name: /Excluir/i }).click({ timeout: 5000 });
+      await alertDialog.waitFor({ state: 'hidden', timeout: 10000 });
+    } catch (cleanupErr) {
+      console.warn('Não foi possível excluir o cliente de teste automaticamente:', cleanupErr);
+    }
+  });
+
   test('deve buscar pedidos no dashboard', async ({ page }) => {
     // Campo de busca do dashboard
     const searchInput = page.getByPlaceholder(/Buscar por cliente, produto ou telefone/i);

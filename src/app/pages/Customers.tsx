@@ -1,4 +1,6 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
+import { collection, query, where, orderBy, onSnapshot } from 'firebase/firestore';
+import { db } from '../../lib/firebase';
 import { formatDate } from '../utils/date';
 import { formatCurrency } from '../utils/currency';
 import { exportCustomersToExcel } from '../utils/exportData';
@@ -116,25 +118,44 @@ export function Customers() {
     photoUrl: '',
   });
 
-  // Carregar clientes
+  // Assinar clientes em tempo real para refletir criações/edicoes/exclusões em outras telas
   useEffect(() => {
-    loadCustomers();
-  }, [user]);
-
-  const loadCustomers = async () => {
-    if (!user) return;
-    setLoading(true);
-    try {
-      const data = await firebaseCustomerService.getCustomers(user.uid);
-      setCustomers(data);
-      // Manter seleção apenas para clientes ainda existentes
-      setSelectedCustomerIds(prev => prev.filter(id => data.some(c => c.id === id)));
-    } catch (error) {
-      console.error('Erro ao carregar clientes:', error);
-    } finally {
+    if (!user) {
       setLoading(false);
+      return;
     }
-  };
+
+    setLoading(true);
+
+    const q = query(
+      collection(db, 'customers'),
+      where('userId', '==', user.uid),
+      orderBy('createdAt', 'desc'),
+    );
+
+    const unsub = onSnapshot(
+      q,
+      (snapshot) => {
+        const data = snapshot.docs.map(doc => {
+          const raw = doc.data() as any;
+          return {
+            id: doc.id,
+            ...raw,
+            createdAt: raw.createdAt?.toDate?.()?.toISOString() ?? new Date().toISOString(),
+          } as Customer;
+        });
+        setCustomers(data);
+        setSelectedCustomerIds(prev => prev.filter(id => data.some(c => c.id === id)));
+        setLoading(false);
+      },
+      (err) => {
+        console.error('Erro ao carregar clientes:', err);
+        setLoading(false);
+      },
+    );
+
+    return unsub;
+  }, [user]);
 
   // Filtrar clientes
   const filteredCustomers = useMemo(() => {

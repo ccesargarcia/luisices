@@ -169,6 +169,21 @@ export function NewOrderDialog() {
           phone: formData.customerPhone,
           email: formData.customerEmail || undefined,
         });
+
+        // Refletir imediatamente na lista local para não precisar reabrir o diálogo
+        setCustomers(prev => [
+          {
+            id: customerId,
+            name: formData.customerName,
+            phone: formData.customerPhone,
+            email: formData.customerEmail || '',
+            createdAt: new Date().toISOString(),
+            userId: user.uid,
+            totalOrders: 0,
+            totalSpent: 0,
+          } as Customer,
+          ...prev,
+        ]);
       }
 
       const totalAmount = totalPrice;
