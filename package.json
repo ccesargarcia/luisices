@@ -98,7 +98,7 @@
     "firebase-admin": "^13.7.0",
     "sharp": "^0.34.5",
     "tailwindcss": "4.1.12",
-    "vite": "6.4.1",
+    "vite": "8.0.0",
     "vite-plugin-html": "^3.2.2",
     "vite-plugin-pwa": "^0.19.8",
     "workbox-window": "^7.4.0"
@@ -117,7 +117,7 @@
   },
   "pnpm": {
     "overrides": {
-      "vite": "6.4.1"
+      "vite": "8.0.0"
     }
   }
 }
