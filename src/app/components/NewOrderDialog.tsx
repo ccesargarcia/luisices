@@ -271,7 +271,7 @@ export function NewOrderDialog() {
       // Upload das artes da galeria pendentes
       for (const g of pendingGallery) {
         try {
-          const tempId = `${Date.now()}_${Math.random().toString(36).slice(2)}`;
+          const tempId = `${Date.now()}_${crypto.randomUUID()}`;
           const imageUrl = await firebaseGalleryService.uploadImage(g.file, user.uid, tempId);
           await firebaseGalleryService.createItem(user.uid, {
             title: g.title,
