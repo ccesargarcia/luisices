@@ -1,32 +1,27 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from './ui/dialog';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Textarea } from './ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
-import { Plus, Loader2, UserPlus, Trash2, Repeat2, Paperclip, Upload, ExternalLink, ImageIcon, AlertTriangle, BookOpen, Images, X } from 'lucide-react';
-import { OrderStatus, PaymentStatus, PaymentMethod, Customer, Tag, OrderAttachment, ExchangeItem, Product } from '../types';
+import { Plus, Loader2, Paperclip, Upload, ImageIcon, ExternalLink, Repeat2 } from 'lucide-react';
+import { OrderStatus, PaymentStatus, PaymentMethod, Customer, Tag, OrderAttachment, Product } from '../types';
 import { TagInput } from './TagInput';
 import { Switch } from './ui/switch';
-import { Alert, AlertDescription } from './ui/alert';
 import { firebaseOrderService } from '../../services/firebaseOrderService';
 import { firebaseStorageService } from '../../services/firebaseStorageService';
 import { firebaseCustomerService } from '../../services/firebaseCustomerService';
 import { firebaseProductService } from '../../services/firebaseProductService';
 import { firebaseGalleryService } from '../../services/firebaseGalleryService';
-import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
 import { useAuth } from '../../contexts/AuthContext';
 import { useUserSettingsContext } from '../../contexts/UserSettingsContext';
 import { toast } from 'sonner';
 import { SafeImg } from './SafeMedia';
 import { trackOrderCreated } from '../../services/analyticsService';
-
-interface ProductItem {
-  name: string;
-  quantity: string;
-  unitPrice: string;
-}
+import { NewOrderCustomerSelect } from './orders/NewOrderCustomerSelect';
+import { NewOrderItemsSection, ProductItem } from './orders/NewOrderItemsSection';
+import { NewOrderGallerySelect } from './orders/NewOrderGallerySelect';
 
 export function NewOrderDialog() {
   const { user, hasPermission } = useAuth();
@@ -59,12 +54,8 @@ export function NewOrderDialog() {
   const [isUploadingAttachment, setIsUploadingAttachment] = useState(false);
 
   const [galleryItems, setGalleryItems] = useState<import('../types').GalleryItem[]>([]);
-  const [galleryBrowserOpen, setGalleryBrowserOpen] = useState(false);
   const [selectedGalleryIds, setSelectedGalleryIds] = useState<string[]>([]);
-  const [galleryBrowserSearch, setGalleryBrowserSearch] = useState('');
   const [catalogProducts, setCatalogProducts] = useState<Product[]>([]);
-  const [catalogSearch, setCatalogSearch] = useState('');
-  const [catalogOpenIdx, setCatalogOpenIdx] = useState<number | null>(null);
 
   const totalPrice = useMemo(() => {
     return products.reduce((sum, p) => {
@@ -170,7 +161,7 @@ export function NewOrderDialog() {
           email: formData.customerEmail || undefined,
         });
 
-        // Refletir imediatamente na lista local para não precisar reabrir o diálogo
+        // Refletir imediatamente na lista local
         setCustomers(prev => [
           {
             id: customerId,
@@ -231,10 +222,8 @@ export function NewOrderDialog() {
         },
       });
 
-      // Track order creation in analytics
       trackOrderCreated(createdOrder.id, totalAmount, formData.status);
 
-      // Atualizar estatísticas do cliente sempre que houver customerId
       if (customerId) {
         await firebaseCustomerService.incrementCustomerStats(customerId, totalAmount);
       }
@@ -246,7 +235,6 @@ export function NewOrderDialog() {
           for (const file of pendingFiles) {
             const attachment = await firebaseStorageService.uploadOrderAttachment(file, user.uid, createdOrder.id);
             await firebaseOrderService.addAttachment(createdOrder.id, attachment);
-            // Vincular imagens à galeria do cliente automaticamente
             if (!attachment.isPdf && (customerId || formData.customerName)) {
               try {
                 await firebaseGalleryService.createItem(user.uid, {
@@ -318,11 +306,10 @@ export function NewOrderDialog() {
       setPendingGallery([]);
       setLocalAttachments([]);
       setSelectedGalleryIds([]);
-      setGalleryBrowserSearch('');
     } catch (err) {
       console.error('Erro ao criar pedido:', err);
       toast.error('Erro ao criar pedido. Tente novamente.');
-      setOpen(false); // Fecha o dialog mesmo em caso de erro
+      setOpen(false);
     } finally {
       setLoading(false);
     }
@@ -346,201 +333,27 @@ export function NewOrderDialog() {
           <div className="sr-only">Formulário para criar um novo pedido</div>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
-          {/* Seleção de Cliente */}
-          <div className="space-y-2">
-            <Label htmlFor="customer">Cliente *</Label>
-            <Select value={selectedCustomer} onValueChange={setSelectedCustomer}>
-              <SelectTrigger id="customer">
-                <SelectValue placeholder="Selecione um cliente ou crie novo" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="new">
-                  <div className="flex items-center gap-2">
-                    <UserPlus className="size-4" />
-                    Novo Cliente
-                  </div>
-                </SelectItem>
-                {customers.map(customer => (
-                  <SelectItem key={customer.id} value={customer.id}>
-                    {customer.name} - {customer.phone}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {(() => {
-              const c = customers.find(c => c.id === selectedCustomer);
-              return c?.status === 'defaulter' ? (
-                <Alert className="border-red-300 bg-red-50 dark:bg-red-950/20 py-2 px-3">
-                  <AlertDescription className="flex items-center gap-2 text-red-700 dark:text-red-400 text-sm">
-                    <AlertTriangle className="size-4 shrink-0" />
-                    Este cliente está marcado como <strong>Inadimplente</strong>. Verifique pendências antes de criar um novo pedido.
-                  </AlertDescription>
-                </Alert>
-              ) : null;
-            })()}
-          </div>
+          {/* Seleção e dados do cliente */}
+          <NewOrderCustomerSelect
+            selectedCustomer={selectedCustomer}
+            onSelectCustomer={setSelectedCustomer}
+            customers={customers}
+            isNewCustomer={isNewCustomer}
+            customerName={formData.customerName}
+            onCustomerNameChange={(customerName) => setFormData({ ...formData, customerName })}
+            customerPhone={formData.customerPhone}
+            onCustomerPhoneChange={(customerPhone) => setFormData({ ...formData, customerPhone })}
+            customerEmail={formData.customerEmail}
+            onCustomerEmailChange={(customerEmail) => setFormData({ ...formData, customerEmail })}
+          />
 
-          {/* Dados do Cliente */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="customerName">Nome do Cliente *</Label>
-              <Input
-                id="customerName"
-                value={formData.customerName}
-                onChange={(e) => setFormData({ ...formData, customerName: e.target.value })}
-                disabled={selectedCustomer !== 'new' && selectedCustomer !== ''}
-                required
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="customerPhone">Telefone *</Label>
-              <Input
-                id="customerPhone"
-                type="tel"
-                value={formData.customerPhone}
-                onChange={(e) => setFormData({ ...formData, customerPhone: e.target.value })}
-                placeholder="(11) 98765-4321"
-                disabled={selectedCustomer !== 'new' && selectedCustomer !== ''}
-                required
-              />
-            </div>
-          </div>
-
-          {(isNewCustomer || selectedCustomer === 'new') && (
-            <div className="space-y-2">
-              <Label htmlFor="customerEmail">Email (opcional)</Label>
-              <Input
-                id="customerEmail"
-                type="email"
-                value={formData.customerEmail}
-                onChange={(e) => setFormData({ ...formData, customerEmail: e.target.value })}
-                placeholder="cliente@email.com"
-              />
-            </div>
-          )}
-
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <Label>Produtos *</Label>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="gap-1 h-7 text-xs"
-                onClick={() => setProducts(prev => [...prev, { name: '', quantity: '1', unitPrice: '' }])}
-              >
-                <Plus className="size-3" /> Adicionar item
-              </Button>
-            </div>
-            {/* header das colunas */}
-            <div className="grid grid-cols-[36px_1fr_56px_96px_36px] gap-2 px-1">
-              <span />
-              <span className="text-xs text-muted-foreground">Produto</span>
-              <span className="text-xs text-muted-foreground text-center">Qtd</span>
-              <span className="text-xs text-muted-foreground text-right">Valor unit.</span>
-              <span />
-            </div>
-            <div className="space-y-2">
-              {products.map((item, idx) => {
-                const sub = (parseFloat(item.quantity) || 0) * (parseFloat(item.unitPrice) || 0);
-                return (
-                  <div key={idx} className="space-y-0.5">
-                    <div className="grid grid-cols-[36px_1fr_56px_96px_36px] gap-2 items-center">
-                      <Popover
-                        open={catalogOpenIdx === idx}
-                        onOpenChange={(v) => { setCatalogOpenIdx(v ? idx : null); if (v) setCatalogSearch(''); }}
-                      >
-                        <PopoverTrigger asChild>
-                          <Button type="button" variant="outline" size="icon" className="size-9" title="Selecionar produto">
-                            <BookOpen className="size-4" />
-                          </Button>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-64 p-2" align="start">
-                          <Input
-                            placeholder="Buscar produto..."
-                            value={catalogSearch}
-                            onChange={(e) => setCatalogSearch(e.target.value)}
-                            className="h-8 text-sm mb-2"
-                            autoFocus
-                          />
-                          <div className="max-h-48 overflow-y-auto space-y-0.5">
-                            {catalogProducts
-                              .filter((p) => !catalogSearch || p.name.toLowerCase().includes(catalogSearch.toLowerCase()))
-                              .map((p) => {
-                                const fmt = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
-                                return (
-                                  <button
-                                    key={p.id}
-                                    type="button"
-                                    className="w-full flex items-center justify-between px-2 py-1.5 rounded hover:bg-muted text-sm text-left"
-                                    onClick={() => {
-                                      setProducts(prev => prev.map((item, i) =>
-                                        i === idx ? { ...item, name: p.name, unitPrice: String(p.unitPrice) } : item
-                                      ));
-                                      setCatalogOpenIdx(null);
-                                    }}
-                                  >
-                                    <span className="truncate">{p.name}</span>
-                                    <span className="text-xs text-muted-foreground ml-2 flex-shrink-0">{fmt(p.unitPrice)}</span>
-                                  </button>
-                                );
-                              })}
-                            {catalogProducts.filter((p) => !catalogSearch || p.name.toLowerCase().includes(catalogSearch.toLowerCase())).length === 0 && (
-                              <p className="text-xs text-muted-foreground text-center py-2">Nenhum produto encontrado</p>
-                            )}
-                          </div>
-                        </PopoverContent>
-                      </Popover>
-                      <Input
-                        placeholder={`Produto ${idx + 1}`}
-                        value={item.name}
-                        onChange={e => setProducts(prev => prev.map((p, i) => i === idx ? { ...p, name: e.target.value } : p))}
-                        required={idx === 0}
-                      />
-                      <Input
-                        type="number"
-                        min="1"
-                        value={item.quantity}
-                        onChange={e => setProducts(prev => prev.map((p, i) => i === idx ? { ...p, quantity: e.target.value } : p))}
-                        className="text-center px-1"
-                        required={idx === 0}
-                      />
-                      <Input
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        placeholder="0,00"
-                        value={item.unitPrice}
-                        onChange={e => setProducts(prev => prev.map((p, i) => i === idx ? { ...p, unitPrice: e.target.value } : p))}
-                        className="text-right px-2"
-                        required={idx === 0}
-                      />
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        className="size-9 text-muted-foreground hover:text-destructive"
-                        onClick={() => setProducts(prev => prev.filter((_, i) => i !== idx))}
-                        disabled={products.length === 1}
-                      >
-                        <Trash2 className="size-4" />
-                      </Button>
-                    </div>
-                    {sub > 0 && (
-                      <p className="text-xs text-muted-foreground text-right pr-10">
-                        subtotal: {formatCurrency(sub)}
-                      </p>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-            {totalPrice > 0 && (
-              <div className="flex justify-end border-t pt-2">
-                <span className="text-sm font-semibold">Total: {formatCurrency(totalPrice)}</span>
-              </div>
-            )}
-          </div>
+          {/* Produtos */}
+          <NewOrderItemsSection
+            products={products}
+            onProductsChange={setProducts}
+            catalogProducts={catalogProducts}
+            totalPrice={totalPrice}
+          />
 
           <div className="grid grid-cols-1 gap-4">
             <div className="space-y-2">
@@ -599,7 +412,6 @@ export function NewOrderDialog() {
             />
           </div>
 
-
           <div className="space-y-2">
             <Label htmlFor="tags">Tags</Label>
             <TagInput
@@ -635,117 +447,15 @@ export function NewOrderDialog() {
               ))}
             </div>
           </div>
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <Label className="flex items-center gap-1.5">
-                <Images className="size-3.5" /> Artes do Cliente
-                {selectedGalleryIds.length > 0 && (
-                  <span className="ml-1 text-xs text-muted-foreground">({selectedGalleryIds.length} selecionada{selectedGalleryIds.length > 1 ? 's' : ''})</span>
-                )}
-              </Label>
-              <button
-                type="button"
-                className="inline-flex items-center gap-1.5 text-xs border rounded-md px-2.5 py-1.5 hover:bg-muted transition-colors"
-                onClick={() => setGalleryBrowserOpen(true)}
-              >
-                <Plus className="size-3.5" /> Vincular arte
-              </button>
-            </div>
-            {selectedGalleryIds.length > 0 ? (
-              <div className="grid grid-cols-4 gap-2">
-                {selectedGalleryIds.map(id => {
-                  const item = galleryItems.find(g => g.id === id);
-                  if (!item) return null;
-                  return (
-                    <div key={id} className="relative group">
-                      <img src={item.imageUrl} alt={item.title} className="w-full aspect-square object-cover rounded-md border" loading="lazy" />
-                      <div className="absolute bottom-0 inset-x-0 bg-black/50 text-white text-[10px] px-1 py-0.5 truncate rounded-b-md">{item.title}</div>
-                      <button
-                        type="button"
-                        onClick={() => setSelectedGalleryIds(prev => prev.filter(i => i !== id))}
-                        className="absolute top-1 right-1 bg-destructive text-destructive-foreground rounded-full size-5 items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity flex"
-                      >
-                        <X className="size-3" />
-                      </button>
-                    </div>
-                  );
-                })}
-              </div>
-            ) : (
-              <p className="text-xs text-muted-foreground">Nenhuma arte vinculada. Clique em "Vincular arte" para selecionar da galeria.</p>
-            )}
-          </div>
 
-          {/* Gallery browser dialog */}
-          {galleryBrowserOpen && (() => {
-            const customerId = selectedCustomer && selectedCustomer !== 'new' ? selectedCustomer : undefined;
-            const filtered = galleryItems.filter(g => {
-              const matchCustomer = !customerId || g.customerId === customerId || g.customerName === formData.customerName;
-              const matchSearch = !galleryBrowserSearch || g.title.toLowerCase().includes(galleryBrowserSearch.toLowerCase()) || (g.customerName ?? '').toLowerCase().includes(galleryBrowserSearch.toLowerCase());
-              return matchCustomer && matchSearch;
-            });
-            return (
-              <div className="fixed inset-0 z-[200] bg-black/60 flex items-center justify-center p-4" onClick={() => setGalleryBrowserOpen(false)}>
-                <div className="bg-background rounded-lg shadow-xl w-full max-w-2xl flex flex-col max-h-[85vh]" onClick={e => e.stopPropagation()}>
-                  <div className="flex items-center justify-between px-4 py-3 border-b">
-                    <h4 className="font-semibold text-sm">Selecionar Artes da Galeria</h4>
-                    <button type="button" onClick={() => setGalleryBrowserOpen(false)}><X className="size-4" /></button>
-                  </div>
-                  <div className="px-4 py-2 border-b">
-                    <input
-                      className="w-full border rounded-md px-3 py-1.5 text-sm bg-background focus:outline-none focus:ring-2 focus:ring-ring"
-                      placeholder="Buscar por título ou cliente..."
-                      value={galleryBrowserSearch}
-                      onChange={e => setGalleryBrowserSearch(e.target.value)}
-                      autoFocus
-                    />
-                  </div>
-                  <div className="flex-1 overflow-y-auto p-4">
-                    {filtered.length === 0 ? (
-                      <p className="text-sm text-muted-foreground text-center py-10">Nenhuma arte encontrada na galeria.</p>
-                    ) : (
-                      <div className="grid grid-cols-3 sm:grid-cols-4 gap-3">
-                        {filtered.map(item => {
-                          const isSelected = selectedGalleryIds.includes(item.id);
-                          return (
-                            <button
-                              key={item.id}
-                              type="button"
-                              onClick={() => setSelectedGalleryIds(prev =>
-                                isSelected ? prev.filter(i => i !== item.id) : [...prev, item.id]
-                              )}
-                              className={`relative group rounded-lg overflow-hidden border-2 transition-all ${
-                                isSelected ? 'border-primary shadow-md scale-[0.97]' : 'border-transparent hover:border-primary/40'
-                              }`}
-                            >
-                              <img src={item.imageUrl} alt={item.title} className="w-full aspect-square object-cover" loading="lazy" />
-                              {isSelected && (
-                                <div className="absolute inset-0 bg-primary/20 flex items-center justify-center">
-                                  <div className="bg-primary text-primary-foreground rounded-full size-6 flex items-center justify-center text-xs font-bold">✓</div>
-                                </div>
-                              )}
-                              <div className="absolute bottom-0 inset-x-0 bg-black/60 text-white text-[10px] px-1.5 py-1 truncate">{item.title}</div>
-                              {item.customerName && (
-                                <div className="absolute top-1 left-1 bg-black/50 text-white text-[9px] px-1 py-0.5 rounded truncate max-w-[90%]">{item.customerName}</div>
-                              )}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-                  <div className="px-4 py-3 border-t flex justify-between items-center">
-                    <span className="text-xs text-muted-foreground">{selectedGalleryIds.length} selecionada{selectedGalleryIds.length !== 1 ? 's' : ''}</span>
-                    <button
-                      type="button"
-                      className="bg-primary text-primary-foreground rounded-md px-4 py-1.5 text-sm hover:bg-primary/90"
-                      onClick={() => setGalleryBrowserOpen(false)}
-                    >Confirmar</button>
-                  </div>
-                </div>
-              </div>
-            );
-          })()}
+          {/* Artes da galeria do cliente */}
+          <NewOrderGallerySelect
+            galleryItems={galleryItems}
+            selectedGalleryIds={selectedGalleryIds}
+            onSelectedGalleryIdsChange={setSelectedGalleryIds}
+            selectedCustomerId={selectedCustomer}
+            customerName={formData.customerName}
+          />
 
           <div className="space-y-2">
             <div className="flex items-center justify-between">
@@ -797,70 +507,71 @@ export function NewOrderDialog() {
               <p className="text-xs text-muted-foreground">Nenhum anexo. Envie imagens ou PDFs de referência.</p>
             )}
           </div>
+
           {/* Informações de Pagamento */}
           {!formData.isExchange && (
-          <div className="border-t pt-4 space-y-4">
-            <h3 className="font-medium text-sm">Informações de Pagamento</h3>
+            <div className="border-t pt-4 space-y-4">
+              <h3 className="font-medium text-sm">Informações de Pagamento</h3>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="paymentStatus">Status de Pagamento *</Label>
-                <Select
-                  value={formData.paymentStatus}
-                  onValueChange={(value: PaymentStatus) => setFormData({ ...formData, paymentStatus: value })}
-                >
-                  <SelectTrigger id="paymentStatus">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="pending">Pendente</SelectItem>
-                    <SelectItem value="partial">Parcial</SelectItem>
-                    <SelectItem value="paid">Pago</SelectItem>
-                  </SelectContent>
-                </Select>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="paymentStatus">Status de Pagamento *</Label>
+                  <Select
+                    value={formData.paymentStatus}
+                    onValueChange={(value: PaymentStatus) => setFormData({ ...formData, paymentStatus: value })}
+                  >
+                    <SelectTrigger id="paymentStatus">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="pending">Pendente</SelectItem>
+                      <SelectItem value="partial">Parcial</SelectItem>
+                      <SelectItem value="paid">Pago</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="paymentMethod">Forma de Pagamento</Label>
+                  <Select
+                    value={formData.paymentMethod}
+                    onValueChange={(value: PaymentMethod) => setFormData({ ...formData, paymentMethod: value })}
+                  >
+                    <SelectTrigger id="paymentMethod">
+                      <SelectValue placeholder="Selecione..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="pix">PIX</SelectItem>
+                      <SelectItem value="cash">Dinheiro</SelectItem>
+                      <SelectItem value="credit">Cartão de Crédito</SelectItem>
+                      <SelectItem value="debit">Cartão de Débito</SelectItem>
+                      <SelectItem value="transfer">Transferência</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="paymentMethod">Forma de Pagamento</Label>
-                <Select
-                  value={formData.paymentMethod}
-                  onValueChange={(value: PaymentMethod) => setFormData({ ...formData, paymentMethod: value })}
-                >
-                  <SelectTrigger id="paymentMethod">
-                    <SelectValue placeholder="Selecione..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="pix">PIX</SelectItem>
-                    <SelectItem value="cash">Dinheiro</SelectItem>
-                    <SelectItem value="credit">Cartão de Crédito</SelectItem>
-                    <SelectItem value="debit">Cartão de Débito</SelectItem>
-                    <SelectItem value="transfer">Transferência</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+              {formData.paymentStatus !== 'pending' && (
+                <div className="space-y-2">
+                  <Label htmlFor="paidAmount">Valor Pago (R$)</Label>
+                  <Input
+                    id="paidAmount"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    max={totalPrice || undefined}
+                    value={formData.paidAmount}
+                    onChange={(e) => setFormData({ ...formData, paidAmount: e.target.value })}
+                    placeholder={totalPrice > 0 ? `Máximo: ${formatCurrency(totalPrice)}` : 'Informe o valor pago'}
+                  />
+                  {formData.paidAmount && totalPrice > 0 && (
+                    <p className="text-sm text-muted-foreground">
+                      Restante: {formatCurrency(totalPrice - parseFloat(formData.paidAmount))}
+                    </p>
+                  )}
+                </div>
+              )}
             </div>
-
-            {formData.paymentStatus !== 'pending' && (
-              <div className="space-y-2">
-                <Label htmlFor="paidAmount">Valor Pago (R$)</Label>
-                <Input
-                  id="paidAmount"
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  max={totalPrice || undefined}
-                  value={formData.paidAmount}
-                  onChange={(e) => setFormData({ ...formData, paidAmount: e.target.value })}
-                  placeholder={totalPrice > 0 ? `Máximo: ${formatCurrency(totalPrice)}` : 'Informe o valor pago'}
-                />
-                {formData.paidAmount && totalPrice > 0 && (
-                  <p className="text-sm text-muted-foreground">
-                    Restante: {formatCurrency(totalPrice - parseFloat(formData.paidAmount))}
-                  </p>
-                )}
-              </div>
-            )}
-          </div>
           )}
 
           <div className="flex justify-end gap-2 pt-4">
