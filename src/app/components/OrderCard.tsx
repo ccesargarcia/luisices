@@ -39,11 +39,16 @@ const statusLabels = {
   cancelled: 'Cancelado',
 };
 
-export function OrderCard({ order, onClick }: OrderCardProps) {
+export function OrderCard({ order, onClick, isSelected = false, onToggleSelect }: OrderCardProps) {
   const { settings } = useUserSettings();
   const { user } = useAuth();
   const compact = settings?.compactCards ?? false;
   const isShared = order.userId && order.userId !== user?.uid;
+
+  const handleSelectToggle = (event: React.MouseEvent | React.KeyboardEvent) => {
+    event.stopPropagation();
+    onToggleSelect?.(order.id, !isSelected);
+  };
   const getPaymentIcon = (method?: string) => {
     switch (method) {
       case 'pix': return <Smartphone className="size-3.5" />;
@@ -68,7 +73,7 @@ export function OrderCard({ order, onClick }: OrderCardProps) {
 
   return (
     <Card
-      className="hover:shadow-md transition-all cursor-pointer overflow-hidden"
+      className="hover:shadow-md transition-all cursor-pointer overflow-hidden relative"
       onClick={onClick}
       style={order.cardColor ? {
         backgroundColor: hexToRgba(order.cardColor, 0.18),
@@ -76,11 +81,22 @@ export function OrderCard({ order, onClick }: OrderCardProps) {
         borderWidth: 1.5,
       } : undefined}
     >
+      {onToggleSelect && (
+        <div className="absolute left-3 top-3 z-10">
+          <Checkbox
+            checked={isSelected}
+            onCheckedChange={(checked) => onToggleSelect(order.id, Boolean(checked))}
+            onClick={(event) => event.stopPropagation()}
+            aria-label={`Selecionar pedido ${order.customerName}`}
+            className="bg-background border-2 shadow-sm"
+          />
+        </div>
+      )}
       {compact ? (
         /* ── COMPACT ─────────────────────────────────────── */
         <div className="px-3 py-2 space-y-1">
           {/* Row 1: name + status */}
-          <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center justify-between gap-2 pl-8">
             <span className="font-semibold text-sm truncate flex-1">{order.customerName}</span>
             <div className="flex items-center gap-1.5 shrink-0">
               {isShared && (
@@ -132,7 +148,7 @@ export function OrderCard({ order, onClick }: OrderCardProps) {
         /* ── COMFORTABLE ─────────────────────────────────── */
         <>
           <CardHeader className="pb-3">
-            <div className="flex items-start justify-between gap-2">
+            <div className="flex items-start justify-between gap-2 pl-8">
               <div className="min-w-0 flex-1">
                 <CardTitle className="text-base sm:text-lg leading-snug break-words">{order.customerName}</CardTitle>
                 <div className="flex items-center gap-1.5 mt-1 flex-wrap">

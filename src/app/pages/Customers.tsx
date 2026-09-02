@@ -146,6 +146,25 @@ export function Customers() {
     currentPage * PAGE_SIZE,
   );
 
+  const allFilteredCustomersSelected =
+    filteredCustomers.length > 0 &&
+    filteredCustomers.every((customer) => selectedCustomerIds.includes(customer.id));
+
+  const toggleSelectAllFilteredCustomers = () => {
+    if (allFilteredCustomersSelected) {
+      setSelectedCustomerIds((prev) =>
+        prev.filter((id) => !filteredCustomers.some((customer) => customer.id === id)),
+      );
+      return;
+    }
+
+    setSelectedCustomerIds((prev) => {
+      const next = new Set(prev);
+      filteredCustomers.forEach((customer) => next.add(customer.id));
+      return [...next];
+    });
+  };
+
   // Estatísticas
   const stats = useMemo(() => {
     const total = customers.length;
@@ -332,16 +351,23 @@ export function Customers() {
       </div>
 
       {/* Bulk Actions Toolbar */}
-      {selectedCustomerIds.length > 0 && (
+      {(selectedCustomerIds.length > 0 || filteredCustomers.length > 0) && (
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 p-3 rounded-lg border border-primary/20 bg-primary/5">
-          <p className="text-sm text-primary">
-            {selectedCustomerIds.length} selecionado{selectedCustomerIds.length !== 1 ? 's' : ''}
-          </p>
-          <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={() => setSelectedCustomerIds([])}>
-              Limpar
+          <div className="flex items-center gap-2 flex-wrap">
+            <p className="text-sm text-primary">
+              {selectedCustomerIds.length} selecionado{selectedCustomerIds.length !== 1 ? 's' : ''}
+            </p>
+            <Button variant="outline" size="sm" onClick={toggleSelectAllFilteredCustomers}>
+              {allFilteredCustomersSelected ? 'Desmarcar todos' : 'Selecionar todos'}
             </Button>
-            {hasPermission((p) => p.customers?.delete ?? false) && (
+          </div>
+          <div className="flex items-center gap-2">
+            {selectedCustomerIds.length > 0 && (
+              <Button variant="outline" size="sm" onClick={() => setSelectedCustomerIds([])}>
+                Limpar
+              </Button>
+            )}
+            {hasPermission((p) => p.customers?.delete ?? false) && selectedCustomerIds.length > 0 && (
               <Button
                 variant="destructive"
                 size="sm"

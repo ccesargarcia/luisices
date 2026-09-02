@@ -25,7 +25,8 @@ import {
   Calendar,
   Target,
   Repeat2,
-  Download
+  Download,
+  Trash2,
 } from 'lucide-react';
 import { getTextColor } from '../utils/tagColors';
 import { useFirebaseOrders } from '../../hooks/useFirebaseOrders';
@@ -40,6 +41,16 @@ import { exportOrdersToExcel } from '../utils/exportData';
 import { toast } from 'sonner';
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts';
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from '../components/ui/chart';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '../components/ui/alert-dialog';
 
 const statusChartConfig = {
   value: { label: 'Pedidos' },
@@ -73,7 +84,10 @@ export function Dashboard() {
   const { orders, loading, error } = useFirebaseOrders();
   const { settings } = useUserSettings();
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
+  const [selectedOrderIds, setSelectedOrderIds] = useState<string[]>([]);
   const [detailsOpen, setDetailsOpen] = useState(false);
+  const [isBulkOrderDeleteOpen, setIsBulkOrderDeleteOpen] = useState(false);
+  const [bulkOrderDeleting, setBulkOrderDeleting] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [showExchangeOnly, setShowExchangeOnly] = useState(false);
@@ -286,6 +300,59 @@ export function Dashboard() {
     setSelectedTags(prev =>
       prev.includes(tagName) ? prev.filter(t => t !== tagName) : [...prev, tagName]
     );
+  };
+
+  const toggleOrderSelection = (orderId: string, selected: boolean) => {
+    setSelectedOrderIds(prev => {
+      if (selected) {
+        return prev.includes(orderId) ? prev : [...prev, orderId];
+      }
+      return prev.filter(id => id !== orderId);
+    });
+  };
+
+  const allFilteredOrdersSelected =
+    filteredOrders.length > 0 &&
+    filteredOrders.every(order => selectedOrderIds.includes(order.id));
+
+  const toggleSelectAllVisibleOrders = () => {
+    if (allFilteredOrdersSelected) {
+      setSelectedOrderIds(prev => prev.filter(id => !filteredOrders.some(order => order.id === id)));
+      return;
+    }
+
+    setSelectedOrderIds(prev => {
+      const next = new Set(prev);
+      filteredOrders.forEach(order => next.add(order.id));
+      return [...next];
+    });
+  };
+
+  const handleBulkDeleteOrders = async () => {
+    if (selectedOrderIds.length === 0) return;
+
+    setBulkOrderDeleting(true);
+    try {
+      const ordersToDelete = orders.filter((order) => selectedOrderIds.includes(order.id));
+
+      await Promise.all(
+        ordersToDelete.map(async (order) => {
+          await firebaseOrderService.deleteOrder(order.id);
+          if (order.customerId && order.price) {
+            await firebaseCustomerService.decrementCustomerStats(order.customerId, order.price).catch(() => {});
+          }
+        }),
+      );
+
+      toast.success(`${ordersToDelete.length} pedido${ordersToDelete.length === 1 ? '' : 's'} excluído${ordersToDelete.length === 1 ? '' : 's'}`);
+      setSelectedOrderIds([]);
+      setIsBulkOrderDeleteOpen(false);
+    } catch (err) {
+      console.error('Erro ao excluir pedidos em massa:', err);
+      toast.error('Erro ao excluir pedidos selecionados');
+    } finally {
+      setBulkOrderDeleting(false);
+    }
   };
 
   if (loading) {
@@ -606,6 +673,38 @@ export function Dashboard() {
         </div>
       )}
 
+      {(selectedOrderIds.length > 0 || filteredOrders.length > 0) && (
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 p-3 rounded-lg border border-primary/20 bg-primary/5">
+          <div className="flex items-center gap-2 flex-wrap">
+            <p className="text-sm text-primary">
+              {selectedOrderIds.length} selecionado{selectedOrderIds.length === 1 ? '' : 's'}
+            </p>
+            <Button variant="outline" size="sm" onClick={toggleSelectAllVisibleOrders}>
+              {allFilteredOrdersSelected ? 'Desmarcar todos' : 'Selecionar todos'}
+            </Button>
+          </div>
+          <div className="flex items-center gap-2">
+            {selectedOrderIds.length > 0 && (
+              <Button variant="outline" size="sm" onClick={() => setSelectedOrderIds([])}>
+                Limpar
+              </Button>
+            )}
+            {selectedOrderIds.length > 0 && (
+              <Button
+                variant="destructive"
+                size="sm"
+                className="gap-2"
+                onClick={() => setIsBulkOrderDeleteOpen(true)}
+                disabled={bulkOrderDeleting}
+              >
+                <Trash2 className="size-4" />
+                Excluir selecionados
+              </Button>
+            )}
+          </div>
+        </div>
+      )}
+
       <Tabs defaultValue="all" className="space-y-4">
         <TabsList className="flex flex-wrap h-auto gap-1 p-1">
           <TabsTrigger value="all" className="flex-1 sm:flex-none">Todos ({filteredOrders.length})</TabsTrigger>
@@ -632,6 +731,8 @@ export function Dashboard() {
                 <OrderCard
                   key={order.id}
                   order={order}
+                  isSelected={selectedOrderIds.includes(order.id)}
+                  onToggleSelect={toggleOrderSelection}
                   onClick={() => handleOrderClick(order)}
                 />
               ))}
@@ -650,6 +751,8 @@ export function Dashboard() {
                   <OrderCard
                     key={order.id}
                     order={order}
+                    isSelected={selectedOrderIds.includes(order.id)}
+                    onToggleSelect={toggleOrderSelection}
                     onClick={() => handleOrderClick(order)}
                   />
                 ))}
@@ -668,6 +771,8 @@ export function Dashboard() {
                   <OrderCard
                     key={order.id}
                     order={order}
+                    isSelected={selectedOrderIds.includes(order.id)}
+                    onToggleSelect={toggleOrderSelection}
                     onClick={() => handleOrderClick(order)}
                   />
                 ))}
@@ -686,6 +791,8 @@ export function Dashboard() {
                   <OrderCard
                     key={order.id}
                     order={order}
+                    isSelected={selectedOrderIds.includes(order.id)}
+                    onToggleSelect={toggleOrderSelection}
                     onClick={() => handleOrderClick(order)}
                   />
                 ))}
@@ -693,6 +800,28 @@ export function Dashboard() {
           )}
         </TabsContent>
       </Tabs>
+
+      <AlertDialog open={isBulkOrderDeleteOpen} onOpenChange={setIsBulkOrderDeleteOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir pedidos selecionados?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Você está prestes a excluir <strong>{selectedOrderIds.length}</strong> pedido{selectedOrderIds.length === 1 ? '' : 's'}.
+              Essa ação pode ser revertida apenas removendo os registros do banco.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleBulkDeleteOrders}
+              className="bg-destructive text-destructive-foreground"
+              disabled={bulkOrderDeleting}
+            >
+              {bulkOrderDeleting ? 'Excluindo...' : 'Excluir selecionados'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <OrderDetailsDialog
         order={selectedOrder}
