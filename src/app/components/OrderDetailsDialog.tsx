@@ -189,7 +189,7 @@ export function OrderDetailsDialog({ order, open, onOpenChange, onUpdateStatus, 
       notes: order.notes || '',
       status: order.status,
       paymentStatus: order.payment?.status || 'pending',
-      paymentMethod: order.payment?.method || '',
+      paymentMethod: order.payment?.method || undefined,
       paidAmount: order.payment?.paidAmount || '' as number | '',
       isExchange: order.isExchange || false,
       exchangeNotes: order.exchangeNotes || '',
@@ -237,13 +237,13 @@ export function OrderDetailsDialog({ order, open, onOpenChange, onUpdateStatus, 
         quantity: totalQuantity,
         price,
         deliveryDate: editData.deliveryDate,
-        notes: editData.notes || null,
+        notes: editData.notes || undefined,
         status: editData.status,
-        tags: editTags.length > 0 ? editTags : null,
+        tags: editTags.length > 0 ? editTags : undefined,
         payment: paymentData,
-        isExchange: editData.isExchange || null,
-        exchangeNotes: editData.exchangeNotes || null,
-        cardColor: editData.cardColor || null,
+        isExchange: editData.isExchange || undefined,
+        exchangeNotes: editData.exchangeNotes || undefined,
+        cardColor: editData.cardColor || undefined,
         exchangeItems: editData.isExchange
           ? editExchangeItems
               .filter(i => i.name.trim())
@@ -252,7 +252,7 @@ export function OrderDetailsDialog({ order, open, onOpenChange, onUpdateStatus, 
                 quantity: parseInt(i.quantity) || 1,
                 value: i.unitPrice ? parseFloat(i.unitPrice) : undefined,
               } as ExchangeItem))
-          : null,
+          : undefined,
       });
       setIsEditing(false);
     } catch (error) {

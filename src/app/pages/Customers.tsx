@@ -443,7 +443,6 @@ export function Customers() {
       );
       toast.success(`${selectedCustomerIds.length} cliente${selectedCustomerIds.length === 1 ? '' : 's'} excluído${selectedCustomerIds.length === 1 ? '' : 's'}`);
       setSelectedCustomerIds([]);
-      await loadCustomers();
     } catch (error) {
       console.error('Erro ao excluir clientes:', error);
       toast.error('Erro ao excluir clientes');

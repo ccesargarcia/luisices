@@ -202,7 +202,7 @@ export function Settings() {
       await updateSettings({
         deliveryAlertDays,
         defaultDeliveryDays,
-        defaultPaymentMethod: defaultPaymentMethod || null,
+        defaultPaymentMethod: defaultPaymentMethod || undefined,
       });
       toast.success('Preferências de operação salvas!');
     } catch {
@@ -222,6 +222,10 @@ export function Settings() {
         businessPhone: '',
         businessEmail: '',
         businessAddress: '',
+        businessTagline: '',
+        instagramUrl: '',
+        websiteUrl: '',
+        whatsappPhone: '',
       });
       toast.success('Configurações resetadas com sucesso!');
     } catch (error) {

@@ -95,6 +95,7 @@ export interface Order {
   exchangeNotes?: string;  // Detalhes da permuta
   exchangeItems?: ExchangeItem[]; // Itens recebidos na permuta
   cardColor?: string;      // Cor de destaque do card
+  realCost?: number;       // Custo real da produção
 }
 
 export interface ExchangeItem {
@@ -136,6 +137,7 @@ export interface Quote {
   userId: string;
   customerName: string;
   customerPhone: string;
+  customerEmail?: string;
   customerId?: string;
   items: QuoteItem[];       // Itens / produtos do orçamento
   totalPrice: number;       // Soma automática dos itens
