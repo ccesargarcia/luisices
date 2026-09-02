@@ -63,6 +63,7 @@ import { firebaseCustomerService } from '../../services/firebaseCustomerService'
 import { firebaseOrderService } from '../../services/firebaseOrderService';
 import { firebaseGalleryService } from '../../services/firebaseGalleryService';
 import { useAuth } from '../../contexts/AuthContext';
+import { useOrders } from '../../contexts/OrdersContext';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
 import { Skeleton } from '../components/ui/skeleton';
 import { TagInput } from '../components/TagInput';
@@ -72,6 +73,7 @@ const PAGE_SIZE = 12;
 
 export function Customers() {
   const { user, hasPermission } = useAuth();
+  const { orders } = useOrders();
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -159,38 +161,21 @@ export function Customers() {
     return unsub;
   }, [user]);
 
-  // Filtrar clientes
-  const [openOrdersMap, setOpenOrdersMap] = useState<Record<string, number>>({});
-
-  // Atualiza o mapa de pedidos em aberto para todos os clientes
-  useEffect(() => {
-    let cancelled = false;
-    async function fetchOpenOrders() {
-      if (!customers.length) {
-        setOpenOrdersMap({});
-        return;
+  // Mapa de pedidos em aberto por cliente calculado a partir de OrdersContext (zero queries adicionais)
+  const openOrdersMap = useMemo(() => {
+    const map: Record<string, number> = {};
+    orders.forEach((o) => {
+      if (o.customerId && o.status !== 'completed' && o.status !== 'cancelled') {
+        map[o.customerId] = (map[o.customerId] || 0) + 1;
       }
-      const map: Record<string, number> = {};
-      await Promise.all(
-        customers.map(async (c) => {
-          try {
-            const count = await firebaseOrderService.getActiveOrdersByCustomer(c.id);
-            map[c.id] = typeof count === 'number' ? count : 0;
-          } catch {
-            map[c.id] = 0;
-          }
-        })
-      );
-      if (!cancelled) setOpenOrdersMap(map);
-    }
-    fetchOpenOrders();
-    return () => { cancelled = true; };
-  }, [customers]);
+    });
+    return map;
+  }, [orders]);
 
   const filteredCustomers = useMemo(() => {
     let list = customers;
     if (showOnlyWithOpenOrders) {
-      list = list.filter(c => openOrdersMap[c.id] > 0);
+      list = list.filter(c => (openOrdersMap[c.id] || 0) > 0);
     }
     if (!searchQuery) return list;
     const query = searchQuery.toLowerCase();
@@ -372,16 +357,11 @@ export function Customers() {
     setIsEditOpen(true);
   };
 
-  const openDeleteDialog = async (customer: Customer) => {
+  const openDeleteDialog = (customer: Customer) => {
     setSelectedCustomer(customer);
-    setActiveOrdersForDelete(0);
+    const count = openOrdersMap[customer.id] || 0;
+    setActiveOrdersForDelete(count);
     setIsDeleteOpen(true);
-    try {
-      const count = await firebaseOrderService.getActiveOrdersByCustomer(customer.id);
-      setActiveOrdersForDelete(count);
-    } catch {
-      // se falhar a contagem, deixa deletar mesmo assim
-    }
   };
 
   const toggleCustomerSelection = (customerId: string, selected: boolean) => {
@@ -394,24 +374,18 @@ export function Customers() {
     });
   };
 
-  const computeBulkDeleteBlocked = async () => {
+  const computeBulkDeleteBlocked = () => {
     if (!user) return;
 
     const blocked: { id: string; name: string; count: number }[] = [];
 
-    await Promise.all(
-      selectedCustomerIds.map(async (id) => {
-        try {
-          const count = await firebaseOrderService.getActiveOrdersByCustomer(id);
-          if (count > 0) {
-            const customer = customers.find(c => c.id === id);
-            blocked.push({ id, name: customer?.name ?? 'Cliente', count });
-          }
-        } catch {
-          // ignore
-        }
-      })
-    );
+    selectedCustomerIds.forEach((id) => {
+      const count = openOrdersMap[id] || 0;
+      if (count > 0) {
+        const customer = customers.find(c => c.id === id);
+        blocked.push({ id, name: customer?.name ?? 'Cliente', count });
+      }
+    });
 
     setBulkDeleteBlocked(blocked);
   };
