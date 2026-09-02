@@ -2,6 +2,7 @@ import { Order } from '../types';
 import { Badge } from './ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Button } from './ui/button';
+import { Checkbox } from './ui/checkbox';
 import { Phone, Calendar, Package, DollarSign, Tag, MessageCircle, Smartphone, Banknote, CreditCard, ArrowLeftRight, Repeat2, Users } from 'lucide-react';
 import { getTextColor } from '../utils/tagColors';
 import { openWhatsAppForOrder } from '../utils/whatsapp';
@@ -20,6 +21,8 @@ function hexToRgba(hex: string, alpha: number) {
 interface OrderCardProps {
   order: Order;
   onClick?: () => void;
+  isSelected?: boolean;
+  onToggleSelect?: (orderId: string, selected: boolean) => void;
 }
 
 const statusColors = {

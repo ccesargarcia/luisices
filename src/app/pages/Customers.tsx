@@ -16,6 +16,7 @@ import {
 import { firebaseCustomerService } from '../../services/firebaseCustomerService';
 import { useAuth } from '../../contexts/AuthContext';
 import { useOrders } from '../../contexts/OrdersContext';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { CustomerCard } from '../components/customers/CustomerCard';
 import { CustomerFormDialog } from '../components/customers/CustomerFormDialog';
 import { CustomerHistoryDialog } from '../components/customers/CustomerHistoryDialog';
@@ -36,7 +37,7 @@ export function Customers() {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
-  const [showOnlyWithOpenOrders, setShowOnlyWithOpenOrders] = useState(false);
+  const [orderFilter, setOrderFilter] = useState<'all' | 'open' | 'no_orders'>('all');
   const [selectedCustomerIds, setSelectedCustomerIds] = useState<string[]>([]);
 
   // Dialogs state
@@ -95,7 +96,7 @@ export function Customers() {
     return unsub;
   }, [user]);
 
-  // Mapa de pedidos em aberto por cliente calculado a partir de OrdersContext (zero queries adicionais)
+  // Mapa de pedidos em aberto e total de pedidos por cliente a partir de OrdersContext
   const openOrdersMap = useMemo(() => {
     const map: Record<string, number> = {};
     orders.forEach((o) => {
@@ -106,11 +107,23 @@ export function Customers() {
     return map;
   }, [orders]);
 
+  const totalOrdersMap = useMemo(() => {
+    const map: Record<string, number> = {};
+    orders.forEach((o) => {
+      if (o.customerId) {
+        map[o.customerId] = (map[o.customerId] || 0) + 1;
+      }
+    });
+    return map;
+  }, [orders]);
+
   // Filtragem de clientes
   const filteredCustomers = useMemo(() => {
     let list = customers;
-    if (showOnlyWithOpenOrders) {
+    if (orderFilter === 'open') {
       list = list.filter((c) => (openOrdersMap[c.id] || 0) > 0);
+    } else if (orderFilter === 'no_orders') {
+      list = list.filter((c) => (totalOrdersMap[c.id] ?? c.totalOrders ?? 0) === 0);
     }
     if (!searchQuery) return list;
     const queryStr = searchQuery.toLowerCase();
@@ -120,12 +133,12 @@ export function Customers() {
         customer.phone.includes(queryStr) ||
         customer.email?.toLowerCase().includes(queryStr),
     );
-  }, [customers, searchQuery, showOnlyWithOpenOrders, openOrdersMap]);
+  }, [customers, searchQuery, orderFilter, openOrdersMap, totalOrdersMap]);
 
   // Resetar página ao filtrar
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery, showOnlyWithOpenOrders]);
+  }, [searchQuery, orderFilter]);
 
   const totalPages = Math.ceil(filteredCustomers.length / PAGE_SIZE);
   const pagedCustomers = filteredCustomers.slice(
@@ -303,14 +316,19 @@ export function Customers() {
             className="pl-10"
           />
         </div>
-        <label className="flex items-center gap-2 text-sm cursor-pointer select-none">
-          <input
-            type="checkbox"
-            checked={showOnlyWithOpenOrders}
-            onChange={(e) => setShowOnlyWithOpenOrders(e.target.checked)}
-          />
-          Só com pedidos em aberto
-        </label>
+        <Select
+          value={orderFilter}
+          onValueChange={(v) => setOrderFilter(v as 'all' | 'open' | 'no_orders')}
+        >
+          <SelectTrigger className="w-full sm:w-60">
+            <SelectValue placeholder="Filtrar por pedidos" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Todos os clientes</SelectItem>
+            <SelectItem value="open">Com pedidos em aberto</SelectItem>
+            <SelectItem value="no_orders">Sem pedidos relacionados</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
 
       {/* Bulk Actions Toolbar */}
