@@ -2,6 +2,8 @@
 
 Sistema completo de gerenciamento para papelaria personalizada com controle de pedidos, orçamentos, clientes, produtos, galeria de trabalhos, **permissões granulares** e relatórios — tudo em tempo real via Firebase.
 
+Para consultar a visão completa do produto, regras e fluxos de negócio, veja [docs/FUNCIONALIDADES.md](docs/FUNCIONALIDADES.md).
+
 ---
 
 ## ✨ Funcionalidades
@@ -22,12 +24,15 @@ Sistema completo de gerenciamento para papelaria personalizada com controle de p
 - **Envio via WhatsApp** com mensagem personalizável
 - Fluxo completo: Rascunho → Enviado → Aprovado/Rejeitado/Expirado
 - **Conversão automática** em pedido ao aprovar
+- Expiração automática de orçamentos vencidos
 - Exportação para PDF e duplicação
 - Taxa de conversão e filtros avançados
 
 ### 👥 Clientes
 - CRUD completo com foto, contatos e endereço
-- Status customizáveis: Ativo, VIP, Recorrente, Inadimplente, Parceiro
+- Classificação: Cliente padrão, VIP, Cliente recorrente, Inadimplente e Parceiro/Permuta
+- Preenchimento automático de endereço por CEP via ViaCEP
+- Suporte a preenchimento manual para endereços internacionais ou CEPs não localizados
 - **Galeria de artes** vinculada ao cliente
 - Histórico de pedidos e total gasto
 - Alertas de inadimplência
@@ -62,7 +67,7 @@ Sistema completo de gerenciamento para papelaria personalizada com controle de p
 
 ### ⚙️ Configurações
 - Personalização visual: logo, banner, avatar
-- **12 temas de cores** + modo claro/escuro
+- **6 paletas de destaque** + cor personalizada e modo claro/escuro
 - Templates de mensagem WhatsApp
 - Configuração de cards do dashboard
 
@@ -89,7 +94,7 @@ Sistema completo de gerenciamento para papelaria personalizada com controle de p
 
 ### 1. Pré-requisitos
 
-- Node.js 18+
+- Node.js 24+
 - Projeto criado no [Firebase Console](https://console.firebase.google.com) com Firestore, Authentication e Storage habilitados
 
 ### 2. Instalar dependências
@@ -122,6 +127,15 @@ npm run dev
 ```
 
 Acesse: http://localhost:5173
+
+### 5. Validar o projeto
+
+```bash
+npm run typecheck
+npm run build
+```
+
+Os testes E2E usam Playwright e exigem um usuário de teste e as variáveis descritas em `.env.test.example`.
 
 ---
 
@@ -244,11 +258,14 @@ npm run dev
 # Build de produção
 npm run build
 
-# Preview do build
-npm run preview
+# Verificação de tipos
+npm run typecheck
 
-# Linting
-npm run lint
+# Testes E2E completos
+npm run test:e2e
+
+# Testes E2E usados no CI
+npm run test:ci
 ```
 
 ### Estrutura do Projeto

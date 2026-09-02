@@ -39,6 +39,8 @@ export interface Customer {
   email?: string;
   address?: string; // campo legado
   street?: string;
+  number?: string;
+  complement?: string;
   city?: string;
   state?: string;
   zipCode?: string;

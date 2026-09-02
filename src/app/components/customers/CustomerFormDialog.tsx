@@ -38,6 +38,8 @@ const INITIAL_FORM = {
   phone: '',
   email: '',
   street: '',
+  number: '',
+  complement: '',
   city: '',
   state: '',
   zipCode: '',
@@ -59,6 +61,9 @@ export function CustomerFormDialog({
   const [pendingPhotoFile, setPendingPhotoFile] = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string>('');
   const [loading, setLoading] = useState(false);
+  const [zipLookupLoading, setZipLookupLoading] = useState(false);
+  const [zipLookupError, setZipLookupError] = useState('');
+  const [isManualAddress, setIsManualAddress] = useState(false);
   const isEditing = Boolean(customer);
 
   useEffect(() => {
@@ -69,6 +74,8 @@ export function CustomerFormDialog({
           phone: customer.phone || '',
           email: customer.email || '',
           street: customer.street || '',
+          number: customer.number || '',
+          complement: customer.complement || '',
           city: customer.city || '',
           state: customer.state || '',
           zipCode: customer.zipCode || '',
@@ -79,13 +86,66 @@ export function CustomerFormDialog({
           photoUrl: customer.photoUrl || '',
         });
         setPhotoPreview(customer.photoUrl || '');
+        setIsManualAddress(Boolean(customer.country && customer.country.toLowerCase() !== 'brasil'));
       } else {
         setFormData(INITIAL_FORM);
         setPhotoPreview('');
+        setIsManualAddress(false);
       }
       setPendingPhotoFile(null);
+      setZipLookupError('');
     }
   }, [open, customer]);
+
+  useEffect(() => {
+    if (isManualAddress) return;
+    const digits = formData.zipCode.replace(/\D/g, '');
+    if (digits.length !== 8) {
+      setZipLookupError('');
+      return;
+    }
+
+    const controller = new AbortController();
+    const lookupZipCode = async () => {
+      setZipLookupLoading(true);
+      setZipLookupError('');
+      try {
+        const response = await fetch(`https://viacep.com.br/ws/${digits}/json/`, {
+          signal: controller.signal,
+        });
+        if (!response.ok) throw new Error('Falha na consulta');
+        const address = await response.json();
+        if (address.erro) {
+          setZipLookupError('CEP não encontrado. Confira o número informado.');
+          return;
+        }
+        setFormData((previous) => ({
+          ...previous,
+          street: previous.street || address.logradouro || '',
+          city: address.localidade || previous.city,
+          state: address.uf || previous.state,
+          country: 'Brasil',
+        }));
+      } catch (error) {
+        if ((error as Error).name !== 'AbortError') {
+          setZipLookupError('Não foi possível consultar o CEP. Preencha o endereço manualmente.');
+        }
+      } finally {
+        if (!controller.signal.aborted) setZipLookupLoading(false);
+      }
+    };
+
+    lookupZipCode();
+    return () => controller.abort();
+  }, [formData.zipCode, isManualAddress]);
+
+  const handleManualAddressChange = (manual: boolean) => {
+    setIsManualAddress(manual);
+    setZipLookupError('');
+    if (!manual) {
+      setFormData((previous) => ({ ...previous, country: 'Brasil' }));
+    }
+  };
 
   const formatPhone = (value: string) => {
     const digits = value.replace(/\D/g, '').slice(0, 11);
@@ -137,6 +197,8 @@ export function CustomerFormDialog({
           phone: formData.phone,
           email: formData.email || undefined,
           street: formData.street || undefined,
+          number: formData.number || undefined,
+          complement: formData.complement || undefined,
           city: formData.city || undefined,
           state: formData.state || undefined,
           zipCode: formData.zipCode || undefined,
@@ -154,6 +216,8 @@ export function CustomerFormDialog({
           phone: formData.phone,
           email: formData.email || undefined,
           street: formData.street || undefined,
+          number: formData.number || undefined,
+          complement: formData.complement || undefined,
           city: formData.city || undefined,
           state: formData.state || undefined,
           zipCode: formData.zipCode || undefined,
@@ -193,13 +257,13 @@ export function CustomerFormDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto">
+      <DialogContent className="w-[calc(100%-1rem)] max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{isEditing ? 'Editar Cliente' : 'Novo Cliente'}</DialogTitle>
           <DialogDescription>
             {isEditing
               ? 'Atualize as informações do cliente'
-              : 'Preencha os dados para cadastrar um novo cliente'}
+              : 'Preencha as informações necessárias para criar um novo cliente'}
           </DialogDescription>
         </DialogHeader>
 
@@ -261,43 +325,104 @@ export function CustomerFormDialog({
           </div>
 
           <div className="border-t pt-3">
-            <p className="text-sm font-medium mb-3">Endereço</p>
+            <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-sm font-medium">Endereço</p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {isManualAddress ? 'Preencha o endereço manualmente. Use esta opção para endereços no exterior ou quando o CEP não for localizado.' : 'Digite o CEP para preencher cidade e estado automaticamente.'}
+                </p>
+              </div>
+              <label className="flex cursor-pointer items-center gap-2 text-sm text-muted-foreground">
+                <input
+                  type="checkbox"
+                  checked={isManualAddress}
+                  onChange={(event) => handleManualAddressChange(event.target.checked)}
+                  className="size-4 rounded border-border accent-primary"
+                />
+                Preenchimento manual do endereço
+              </label>
+            </div>
             <div className="space-y-3">
-              <Input
-                value={formData.street}
-                onChange={(e) => setFormData({ ...formData, street: e.target.value })}
-                placeholder="Rua, número, complemento"
-              />
-              <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-1.5">
+                <Label htmlFor="customer-form-street">Logradouro</Label>
                 <Input
+                  id="customer-form-street"
+                  value={formData.street}
+                  onChange={(e) => setFormData({ ...formData, street: e.target.value })}
+                  placeholder="Rua, avenida, praça..."
+                />
+              </div>
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
+                <div className="space-y-1.5">
+                  <Label htmlFor="customer-form-number">Número</Label>
+                  <Input
+                    id="customer-form-number"
+                    value={formData.number}
+                    onChange={(e) => setFormData({ ...formData, number: e.target.value })}
+                    placeholder="Ex.: 120"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="customer-form-complement">Complemento</Label>
+                  <Input
+                    id="customer-form-complement"
+                    value={formData.complement}
+                    onChange={(e) => setFormData({ ...formData, complement: e.target.value })}
+                    placeholder="Apartamento, sala, bloco..."
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-1.5">
+                  <Label htmlFor="customer-form-city">Cidade</Label>
+                  <Input
+                    id="customer-form-city"
                   value={formData.city}
                   onChange={(e) => setFormData({ ...formData, city: e.target.value })}
                   placeholder="Cidade"
-                />
-                <Input
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="customer-form-state">Estado / região</Label>
+                  <Input
+                    id="customer-form-state"
                   value={formData.state}
                   onChange={(e) => setFormData({ ...formData, state: e.target.value })}
-                  placeholder="Estado (SP, RJ...)"
-                  maxLength={2}
-                />
+                  placeholder={isManualAddress ? 'Estado ou região' : 'Estado (SP, RJ...)'}
+                  maxLength={isManualAddress ? undefined : 2}
+                  />
+                </div>
               </div>
               <div className="grid grid-cols-2 gap-2">
-                <Input
+                <div className="space-y-1.5">
+                  <Label htmlFor="customer-form-zip">{isManualAddress ? 'Código postal' : 'CEP'}</Label>
+                  <div className="relative">
+                    <Input
+                      id="customer-form-zip"
                   value={formData.zipCode}
-                  onChange={(e) =>
-                    setFormData({
-                      ...formData,
-                      zipCode: e.target.value.replace(/\D/g, '').replace(/(\d{5})(\d)/, '$1-$2').slice(0, 9),
-                    })
-                  }
-                  placeholder="CEP (00000-000)"
-                  inputMode="numeric"
-                />
-                <Input
+                      onChange={(e) => setFormData({
+                        ...formData,
+                        zipCode: isManualAddress
+                          ? e.target.value
+                          : e.target.value.replace(/\D/g, '').replace(/(\d{5})(\d)/, '$1-$2').slice(0, 9),
+                      })}
+                      placeholder={isManualAddress ? 'Código postal' : '00000-000'}
+                      inputMode={isManualAddress ? 'text' : 'numeric'}
+                    />
+                    {zipLookupLoading && <Loader2 className="absolute right-3 top-1/2 size-4 -translate-y-1/2 animate-spin text-muted-foreground" />}
+                  </div>
+                  {zipLookupError && <p className="text-xs text-destructive" role="status">{zipLookupError}</p>}
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="customer-form-country">País</Label>
+                  <Input
+                    id="customer-form-country"
                   value={formData.country}
                   onChange={(e) => setFormData({ ...formData, country: e.target.value })}
                   placeholder="País"
-                />
+                  disabled={!isManualAddress}
+                  />
+                </div>
               </div>
             </div>
           </div>
@@ -324,7 +449,7 @@ export function CustomerFormDialog({
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="customer-form-status">Status</Label>
+              <Label htmlFor="customer-form-status">Classificação do cliente</Label>
               <Select
                 value={formData.status || 'active'}
                 onValueChange={(v) => setFormData({ ...formData, status: v as Customer['status'] })}
@@ -333,9 +458,9 @@ export function CustomerFormDialog({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="active">Ativo</SelectItem>
+                  <SelectItem value="active">Cliente padrão</SelectItem>
                   <SelectItem value="vip">VIP</SelectItem>
-                  <SelectItem value="recurring">Recorrente</SelectItem>
+                  <SelectItem value="recurring">Cliente recorrente</SelectItem>
                   <SelectItem value="defaulter">Inadimplente</SelectItem>
                   <SelectItem value="partner">Parceiro / Permuta</SelectItem>
                 </SelectContent>
@@ -343,7 +468,7 @@ export function CustomerFormDialog({
             </div>
           </div>
 
-          <DialogFooter>
+          <DialogFooter className="flex-col-reverse gap-2 sm:flex-row sm:justify-end">
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               Cancelar
             </Button>
@@ -351,6 +476,7 @@ export function CustomerFormDialog({
               data-testid="save-customer-button"
               type="submit"
               disabled={loading}
+              className="w-full sm:w-auto"
             >
               {loading && <Loader2 className="size-4 mr-2 animate-spin" />}
               {isEditing ? 'Salvar' : 'Criar Cliente'}

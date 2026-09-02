@@ -36,6 +36,11 @@ export function todayStr(): string {
   return new Date().toISOString().split('T')[0];
 }
 
+export function isQuoteExpired(quote: Pick<Quote, 'status' | 'validUntil'>): boolean {
+  if (!quote.validUntil || (quote.status !== 'draft' && quote.status !== 'sent')) return false;
+  return quote.validUntil < todayStr();
+}
+
 export function defaultDelivery(): string {
   const d = new Date();
   d.setDate(d.getDate() + 7);

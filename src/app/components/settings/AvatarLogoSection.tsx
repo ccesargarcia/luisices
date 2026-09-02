@@ -32,13 +32,13 @@ export function AvatarLogoSection({
           <CardDescription>Sua foto de perfil (PNG, JPG - máx 5MB)</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="flex items-center gap-4">
+          <div className="flex flex-col items-start gap-4 sm:flex-row sm:items-center">
             <Avatar className="size-20">
               <AvatarImage src={avatarUrl} alt="Avatar" />
               <AvatarFallback className="text-2xl">{userInitials}</AvatarFallback>
             </Avatar>
 
-            <div className="flex-1 flex gap-2">
+            <div className="flex w-full flex-1 gap-2 sm:w-auto">
               <Label htmlFor="avatar-upload" className="cursor-pointer flex-1">
                 <Button
                   type="button"

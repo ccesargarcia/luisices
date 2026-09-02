@@ -59,6 +59,11 @@ export function Settings() {
     businessPhone: settings?.businessPhone || '',
     businessEmail: settings?.businessEmail || '',
     businessAddress: settings?.businessAddress || '',
+    businessNumber: settings?.businessNumber || '',
+    businessComplement: settings?.businessComplement || '',
+    businessZipCode: settings?.businessZipCode || '',
+    businessCity: settings?.businessCity || '',
+    businessState: settings?.businessState || '',
     businessTagline: settings?.businessTagline || '',
     instagramUrl: settings?.instagramUrl || '',
     websiteUrl: settings?.websiteUrl || '',
@@ -73,6 +78,11 @@ export function Settings() {
         businessPhone: settings.businessPhone || '',
         businessEmail: settings.businessEmail || '',
         businessAddress: settings.businessAddress || '',
+        businessNumber: settings.businessNumber || '',
+        businessComplement: settings.businessComplement || '',
+        businessZipCode: settings.businessZipCode || '',
+        businessCity: settings.businessCity || '',
+        businessState: settings.businessState || '',
         businessTagline: settings.businessTagline || '',
         instagramUrl: settings.instagramUrl || '',
         websiteUrl: settings.websiteUrl || '',
@@ -185,7 +195,7 @@ export function Settings() {
         selectedColorTheme,
         selectedColorTheme === 'custom' ? customColorHex : undefined
       );
-      toast.success('Personalização salva com sucesso!');
+      toast.success('Aparência salva com sucesso!');
     } catch (error) {
       toast.error('Erro ao salvar personalização');
     } finally {
@@ -246,7 +256,7 @@ export function Settings() {
   };
 
   const handleReset = async () => {
-    if (!confirm('Deseja realmente resetar todas as personalizações?')) return;
+    if (!confirm('Deseja realmente restaurar todas as personalizações padrão?')) return;
 
     try {
       await resetToDefaults();
@@ -255,6 +265,11 @@ export function Settings() {
         businessPhone: '',
         businessEmail: '',
         businessAddress: '',
+        businessNumber: '',
+        businessComplement: '',
+        businessZipCode: '',
+        businessCity: '',
+        businessState: '',
         businessTagline: '',
         instagramUrl: '',
         websiteUrl: '',
@@ -262,7 +277,7 @@ export function Settings() {
       });
       toast.success('Configurações resetadas com sucesso!');
     } catch (error) {
-      toast.error('Erro ao resetar configurações');
+      toast.error('Não foi possível restaurar as configurações padrão.');
     }
   };
 
@@ -284,10 +299,10 @@ export function Settings() {
   const isDevEnvironment = import.meta.env.VITE_FIREBASE_PROJECT_ID?.endsWith('-dev') ?? false;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       <div>
-        <div className="flex items-center gap-3 flex-wrap">
-          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Configurações</h1>
+        <div className="flex items-center gap-3 flex-wrap border-b border-border/60 pb-6">
+          <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">Configurações</h1>
           {isDevEnvironment && (
             <Badge
               variant="outline"

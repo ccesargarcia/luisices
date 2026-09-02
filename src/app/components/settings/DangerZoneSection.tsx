@@ -12,18 +12,18 @@ export function DangerZoneSection({ onReset }: DangerZoneSectionProps) {
   return (
     <Card className="border-destructive/50">
       <CardHeader>
-        <CardTitle className="text-destructive">Zona de Perigo</CardTitle>
+        <CardTitle className="text-destructive">Ações irreversíveis</CardTitle>
         <CardDescription>Ações irreversíveis</CardDescription>
       </CardHeader>
       <CardContent>
         <Alert>
           <AlertDescription>
-            Resetar as configurações irá remover todas as personalizações, incluindo imagens enviadas.
+            Restaurar as configurações padrão removerá todas as personalizações, incluindo imagens enviadas.
           </AlertDescription>
         </Alert>
         <Button variant="destructive" className="mt-4" onClick={onReset}>
           <X className="size-4 mr-2" />
-          Resetar Todas as Configurações
+          Restaurar configurações padrão
         </Button>
       </CardContent>
     </Card>

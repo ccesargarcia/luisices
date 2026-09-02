@@ -40,8 +40,41 @@ export function CustomerCard({
   canEdit,
   canDelete,
 }: CustomerCardProps) {
+  const addressLine = customer.address || [customer.street, customer.number, customer.complement]
+    .filter(Boolean)
+    .join(', ');
+  const statusAccent = {
+    active: 'border-l-emerald-400/70',
+    vip: 'border-l-amber-400/80',
+    recurring: 'border-l-violet-400/70',
+    defaulter: 'border-l-red-400/80',
+    partner: 'border-l-sky-400/70',
+  }[customer.status || 'active'];
+  const avatarAccent = {
+    active: 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-200',
+    vip: 'bg-amber-500/20 text-amber-800 dark:text-amber-200',
+    recurring: 'bg-violet-500/15 text-violet-800 dark:text-violet-200',
+    defaulter: 'bg-red-500/15 text-red-800 dark:text-red-200',
+    partner: 'bg-sky-500/15 text-sky-800 dark:text-sky-200',
+  }[customer.status || 'active'];
+  const statusColor = {
+    active: '#759986',
+    vip: '#b49a5a',
+    recurring: '#8d789f',
+    defaulter: '#b86b6b',
+    partner: '#6785a8',
+  }[customer.status || 'active'];
+
   return (
-    <Card className="hover:shadow-md transition-shadow">
+    <Card
+      className={`border-l-4 border-[color:var(--glass-border)] shadow-[var(--glass-shadow)] backdrop-blur-[var(--glass-blur)] transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_8px_32px_rgb(123_84_85_/_8%)] dark:border-[color:var(--glass-border)] ${statusAccent}`}
+      style={{
+        backgroundColor: `color-mix(in srgb, ${statusColor} 10%, var(--card))`,
+        borderTopColor: `color-mix(in srgb, ${statusColor} 35%, var(--glass-border))`,
+        borderRightColor: `color-mix(in srgb, ${statusColor} 25%, var(--glass-border))`,
+        borderBottomColor: `color-mix(in srgb, ${statusColor} 25%, var(--glass-border))`,
+      }}
+    >
       <CardHeader>
         <div className="flex items-start justify-between">
           <div className="flex items-start gap-3">
@@ -51,7 +84,7 @@ export function CustomerCard({
               className="mt-1"
               aria-label={`Selecionar ${customer.name}`}
             />
-            <div className="size-11 rounded-full overflow-hidden bg-muted shrink-0 flex items-center justify-center border">
+            <div className={`size-11 rounded-full overflow-hidden shrink-0 flex items-center justify-center border border-white/30 ${avatarAccent}`}>
               {customer.photoUrl ? (
                 <img
                   src={customer.photoUrl}
@@ -75,7 +108,7 @@ export function CustomerCard({
                 )}
                 {customer.status === 'recurring' && (
                   <Badge variant="outline" className="text-blue-700 border-blue-300 py-0">
-                    Recorrente
+                    Cliente recorrente
                   </Badge>
                 )}
                 {customer.status === 'defaulter' && (
@@ -137,13 +170,13 @@ export function CustomerCard({
             <span className="truncate">{customer.email}</span>
           </div>
         )}
-        {customer.address && (
+        {addressLine && (
           <div className="flex items-center gap-2 text-sm">
             <MapPin className="size-3 text-muted-foreground" />
-            <span className="truncate">{customer.address}</span>
+            <span className="truncate">{addressLine}</span>
           </div>
         )}
-        {(customer.city || customer.state) && !customer.address && (
+        {(customer.city || customer.state) && !addressLine && (
           <div className="flex items-center gap-2 text-sm">
             <MapPin className="size-3 text-muted-foreground" />
             <span className="truncate">
@@ -151,7 +184,7 @@ export function CustomerCard({
             </span>
           </div>
         )}
-        <div className="flex items-center justify-between pt-3 border-t">
+        <div className="flex items-center justify-between pt-3 border-t border-white/30">
           <div className="flex items-center gap-1 text-sm">
             <ShoppingBag className="size-3" />
             <span>{customer.totalOrders || 0} pedidos</span>

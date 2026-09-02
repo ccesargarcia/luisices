@@ -38,6 +38,7 @@ export function Customers() {
   const [searchQuery, setSearchQuery] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [orderFilter, setOrderFilter] = useState<'all' | 'open' | 'no_orders'>('all');
+  const [profileFilter, setProfileFilter] = useState<Customer['status'] | 'all'>('all');
   const [selectedCustomerIds, setSelectedCustomerIds] = useState<string[]>([]);
 
   // Dialogs state
@@ -125,6 +126,9 @@ export function Customers() {
     } else if (orderFilter === 'no_orders') {
       list = list.filter((c) => (totalOrdersMap[c.id] ?? c.totalOrders ?? 0) === 0);
     }
+    if (profileFilter !== 'all') {
+      list = list.filter((customer) => (customer.status || 'active') === profileFilter);
+    }
     if (!searchQuery) return list;
     const queryStr = searchQuery.toLowerCase();
     return list.filter(
@@ -133,12 +137,12 @@ export function Customers() {
         customer.phone.includes(queryStr) ||
         customer.email?.toLowerCase().includes(queryStr),
     );
-  }, [customers, searchQuery, orderFilter, openOrdersMap, totalOrdersMap]);
+  }, [customers, searchQuery, orderFilter, profileFilter, openOrdersMap, totalOrdersMap]);
 
   // Resetar página ao filtrar
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery, orderFilter]);
+  }, [searchQuery, orderFilter, profileFilter]);
 
   const totalPages = Math.ceil(filteredCustomers.length / PAGE_SIZE);
   const pagedCustomers = filteredCustomers.slice(
@@ -217,7 +221,7 @@ export function Customers() {
       toast.success('Cliente excluído com sucesso');
     } catch (error) {
       console.error('Erro ao deletar cliente:', error);
-      toast.error('Erro ao deletar cliente');
+      toast.error('Não foi possível remover o cliente. Tente novamente.');
     } finally {
       setDeleteLoading(false);
     }
@@ -283,14 +287,14 @@ export function Customers() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+      <div className="flex flex-col items-start justify-between gap-4 border-b border-border/60 pb-6 sm:flex-row sm:items-center">
         <div>
-          <h1 className="text-2xl sm:text-3xl font-bold">Clientes</h1>
-          <p className="text-muted-foreground">Gerencie sua base de clientes</p>
+          <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">Clientes</h1>
+          <p className="mt-1 text-muted-foreground">Gerencie sua base de clientes</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex w-full flex-wrap gap-2 sm:w-auto">
           <Button
             variant="outline"
             size="default"
@@ -324,7 +328,7 @@ export function Customers() {
       />
 
       {/* Search and Filters */}
-      <div className="flex flex-col sm:flex-row gap-2 items-center">
+      <div className="glass-chip flex flex-col items-center gap-3 rounded-lg p-3 sm:flex-row">
         <div className="relative flex-1 w-full">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
           <Input
@@ -346,6 +350,22 @@ export function Customers() {
             <SelectItem value="all">Todos os clientes</SelectItem>
             <SelectItem value="open">Com pedidos em aberto</SelectItem>
             <SelectItem value="no_orders">Sem pedidos relacionados</SelectItem>
+          </SelectContent>
+        </Select>
+        <Select
+          value={profileFilter}
+          onValueChange={(value) => setProfileFilter(value as Customer['status'] | 'all')}
+        >
+          <SelectTrigger className="w-full sm:w-60">
+            <SelectValue placeholder="Filtrar por classificação" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Todas as classificações</SelectItem>
+            <SelectItem value="active">Cliente padrão</SelectItem>
+            <SelectItem value="vip">VIP</SelectItem>
+            <SelectItem value="recurring">Cliente recorrente</SelectItem>
+            <SelectItem value="defaulter">Inadimplente</SelectItem>
+            <SelectItem value="partner">Parceiro / Permuta</SelectItem>
           </SelectContent>
         </Select>
       </div>
@@ -384,7 +404,7 @@ export function Customers() {
       )}
 
       {/* Customer Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3 lg:gap-6">
         {pagedCustomers.map((customer) => (
           <CustomerCard
             key={customer.id}

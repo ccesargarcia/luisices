@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Plus, Loader2, Repeat2, Paperclip, Upload, ImageIcon, ExternalLink } from 'lucide-react';
 import { OrderStatus, PaymentStatus, PaymentMethod, Customer, Tag, OrderAttachment, Product } from '../types';
 import { TagInput } from './TagInput';
+import { TAG_COLORS } from '../utils/tagColors';
 import { Switch } from './ui/switch';
 import { firebaseOrderService } from '../../services/firebaseOrderService';
 import { firebaseStorageService } from '../../services/firebaseStorageService';
@@ -150,7 +151,7 @@ export function NewOrderDialog() {
     // Bloquear pedido para cliente inadimplente
     const selectedCustomerObj = customers.find(c => c.id === selectedCustomer);
     if (selectedCustomerObj?.status === 'defaulter') {
-      toast.error('Não é possível criar pedido para cliente inadimplente. Regularize a situação antes de adicionar novos pedidos.');
+      toast.error('Não é possível criar um pedido para este cliente. Existem pagamentos pendentes a regularizar.');
       return;
     }
 
@@ -329,7 +330,7 @@ export function NewOrderDialog() {
           Novo Pedido
         </Button>
       </DialogTrigger>
-      <DialogContent className="w-full max-w-full sm:max-w-2xl max-h-[90dvh] min-h-[70dvh] overflow-y-auto">
+      <DialogContent className="w-[calc(100%-1rem)] max-w-2xl max-h-[90dvh] min-h-[70dvh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Adicionar Novo Pedido</DialogTitle>
           <div className="sr-only">Formulário para criar um novo pedido</div>
@@ -439,7 +440,7 @@ export function NewOrderDialog() {
               >
                 ✕
               </button>
-              {['#ef4444','#f97316','#eab308','#22c55e','#06b6d4','#3b82f6','#8b5cf6','#ec4899','#a855f7','#14b8a6'].map(color => (
+              {TAG_COLORS.map(({ value: color, name }) => (
                 <button
                   key={color}
                   type="button"
@@ -448,6 +449,7 @@ export function NewOrderDialog() {
                     formData.cardColor === color ? 'border-foreground scale-110' : 'border-transparent hover:scale-105'
                   }`}
                   style={{ backgroundColor: color }}
+                  title={name}
                 />
               ))}
             </div>
@@ -529,12 +531,13 @@ export function NewOrderDialog() {
             />
           )}
 
-          <div className="flex justify-end gap-2 pt-4">
+          <div className="flex flex-col-reverse gap-2 pt-4 sm:flex-row sm:justify-end">
             <Button type="button" variant="outline" onClick={() => setOpen(false)} disabled={loading}>
               Cancelar
             </Button>
             <Button
               type="submit"
+              className="w-full sm:w-auto"
               disabled={loading || customers.find(c => c.id === selectedCustomer)?.status === 'defaulter'}
             >
               {loading && <Loader2 className="size-4 mr-2 animate-spin" />}

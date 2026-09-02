@@ -73,7 +73,7 @@ function EmptyState({ message, hint }: { message: string; hint?: string }) {
 function getGreeting() {
   const hour = new Date().getHours();
 
-  if (hour < 6) return 'Boa madrugada';
+  if (hour < 6) return 'Boa noite';
   if (hour < 12) return 'Bom dia';
   if (hour < 18) return 'Boa tarde';
   return 'Boa noite';
@@ -122,7 +122,7 @@ export function Dashboard() {
       setSelectedOrder(null);
     } catch (err) {
       console.error('Erro ao deletar pedido:', err);
-      toast.error('Erro ao deletar pedido');
+      toast.error('Não foi possível remover o pedido. Tente novamente.');
     }
   };
 
@@ -392,14 +392,14 @@ export function Dashboard() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-border/60 pb-6">
         <div>
-          <h1 className="text-2xl sm:text-3xl font-bold">
+          <h1 className="text-3xl sm:text-4xl font-bold tracking-tight">
             {getGreeting()}{user?.displayName ? `, ${user.displayName.split(' ')[0]}` : ''}!
           </h1>
-          <p className="text-muted-foreground">Gerencie seus pedidos personalizados</p>
+          <p className="mt-1 text-muted-foreground">Gerencie seus pedidos personalizados</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex w-full flex-wrap gap-2 sm:w-auto">
           <Button
             variant="outline"
             size="default"
@@ -414,7 +414,7 @@ export function Dashboard() {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4 lg:gap-6">
         {showCard('total') && (
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
@@ -477,7 +477,7 @@ export function Dashboard() {
       </div>
 
       {/* Métricas adicionais */}
-      <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-3 lg:gap-6">
         {showCard('inProgress') && (
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
@@ -527,7 +527,7 @@ export function Dashboard() {
 
       {/* Gráficos */}
       {stats.total > 0 && (showCard('statusChart') || showCard('weeklyChart')) && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 lg:gap-6">
           {showCard('statusChart') && (
           <Card>
             <CardHeader className="pb-2">
@@ -636,11 +636,19 @@ export function Dashboard() {
             {allTags.map((tag) => (
               <Badge
                 key={tag.name}
-                className={`cursor-pointer hover:opacity-80 transition-opacity border-0 ${
-                  selectedTags.includes(tag.name) ? 'ring-2 ring-offset-2 ring-black' : ''
+                className={`cursor-pointer border transition-colors hover:brightness-95 ${
+                  selectedTags.includes(tag.name)
+                    ? 'border-primary/50 ring-2 ring-primary/30 ring-offset-1'
+                    : 'border-border/60'
                 }`}
                 onClick={() => toggleTag(tag.name)}
-                style={{ backgroundColor: tag.color, color: getTextColor(tag.color) }}
+                style={{
+                  backgroundColor: `color-mix(in srgb, ${tag.color} 22%, transparent)`,
+                  borderColor: selectedTags.includes(tag.name)
+                    ? `color-mix(in srgb, ${tag.color} 55%, var(--border))`
+                    : undefined,
+                  color: 'var(--foreground)',
+                }}
               >
                 {tag.name}
                 {selectedTags.includes(tag.name) && (
@@ -651,8 +659,8 @@ export function Dashboard() {
             <Badge
               className={`cursor-pointer hover:opacity-80 transition-opacity gap-1 ${
                 showExchangeOnly
-                  ? 'bg-purple-600 text-white ring-2 ring-offset-2 ring-purple-400'
-                  : 'bg-purple-100 text-purple-800 border border-purple-300'
+                  ? 'border border-primary/50 bg-primary/20 text-primary ring-2 ring-primary/30 ring-offset-1'
+                  : 'border border-border/60 bg-muted/40 text-muted-foreground'
               }`}
               onClick={() => setShowExchangeOnly(prev => !prev)}
             >
@@ -674,7 +682,7 @@ export function Dashboard() {
       )}
 
       {(selectedOrderIds.length > 0 || filteredOrders.length > 0) && (
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 p-3 rounded-lg border border-primary/20 bg-primary/5">
+        <div className="glass-chip flex flex-col gap-3 rounded-lg p-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-2 flex-wrap">
             <p className="text-sm text-primary">
               {selectedOrderIds.length} selecionado{selectedOrderIds.length === 1 ? '' : 's'}
@@ -723,7 +731,7 @@ export function Dashboard() {
           {filteredOrders.length === 0 ? (
             <EmptyState
               message="Nenhum pedido encontrado"
-              hint={searchQuery || selectedTags.length > 0 || showExchangeOnly ? 'Tente ajustar os filtros.' : 'Crie seu primeiro pedido clicando em "Novo Pedido".'}
+              hint={searchQuery || selectedTags.length > 0 || showExchangeOnly ? 'Ajuste os filtros para realizar uma nova busca.' : 'Crie seu primeiro pedido selecionando “Novo Pedido”.'}
             />
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">

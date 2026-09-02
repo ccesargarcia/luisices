@@ -38,7 +38,7 @@ export function TagInput({ tags, onChange, placeholder = 'Digite e pressione Ent
 
   return (
     <div className="space-y-2">
-      <div className="flex flex-wrap gap-2 min-h-[32px] p-2 border rounded-md bg-background">
+      <div className="flex min-w-0 flex-wrap gap-2 rounded-md border bg-background p-2">
         {tags.map((tag, index) => (
           <Badge 
             key={index} 
@@ -58,7 +58,7 @@ export function TagInput({ tags, onChange, placeholder = 'Digite e pressione Ent
             </button>
           </Badge>
         ))}
-        <div className="flex items-center gap-1 flex-1 min-w-[120px]">
+        <div className="flex min-w-[min(120px,100%)] flex-1 items-center gap-1">
           <Popover open={showColorPicker} onOpenChange={setShowColorPicker}>
             <PopoverTrigger asChild>
               <button
@@ -103,7 +103,7 @@ export function TagInput({ tags, onChange, placeholder = 'Digite e pressione Ent
           />
         </div>
       </div>
-      <p className="text-xs text-muted-foreground">
+      <p className="break-words text-xs leading-relaxed text-muted-foreground">
         Clique no círculo colorido para escolher a cor, digite a tag e pressione Enter
       </p>
     </div>

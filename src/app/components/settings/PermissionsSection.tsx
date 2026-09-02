@@ -15,7 +15,7 @@ export function PermissionsSection({ userProfile, isAdmin }: PermissionsSectionP
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <ShieldCheck className="size-5" />
-          Minhas Permissões
+          Permissões da conta
         </CardTitle>
         <CardDescription>Acesso e permissões atribuídos ao seu perfil</CardDescription>
       </CardHeader>

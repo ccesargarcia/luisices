@@ -26,10 +26,10 @@ interface OrderCardProps {
 }
 
 const statusColors = {
-  pending: 'bg-yellow-100 text-yellow-800 border-yellow-200',
-  'in-progress': 'bg-blue-100 text-blue-800 border-blue-200',
-  completed: 'bg-green-100 text-green-800 border-green-200',
-  cancelled: 'bg-red-100 text-red-800 border-red-200',
+  pending: 'bg-yellow-100 text-yellow-800 border-yellow-200 dark:bg-yellow-950/40 dark:text-yellow-200 dark:border-yellow-800/60',
+  'in-progress': 'bg-blue-100 text-blue-800 border-blue-200 dark:bg-blue-950/40 dark:text-blue-200 dark:border-blue-800/60',
+  completed: 'bg-green-100 text-green-800 border-green-200 dark:bg-green-950/40 dark:text-green-200 dark:border-green-800/60',
+  cancelled: 'bg-red-100 text-red-800 border-red-200 dark:bg-red-950/40 dark:text-red-200 dark:border-red-800/60',
 };
 
 const statusLabels = {
@@ -73,7 +73,7 @@ export function OrderCard({ order, onClick, isSelected = false, onToggleSelect }
 
   return (
     <Card
-      className="hover:shadow-md transition-all cursor-pointer overflow-hidden relative"
+      className="glass-panel cursor-pointer overflow-hidden relative transition-all hover:-translate-y-0.5 hover:border-primary/40"
       onClick={onClick}
       style={order.cardColor ? {
         backgroundColor: hexToRgba(order.cardColor, 0.18),

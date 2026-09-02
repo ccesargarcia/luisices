@@ -148,16 +148,16 @@ export function Quotes() {
   ];
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col items-start justify-between gap-4 border-b border-border/60 pb-6 sm:flex-row sm:items-center">
         <div>
-          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Orçamentos</h1>
+          <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">Orçamentos</h1>
           <p className="text-muted-foreground mt-1">
-            Crie orçamentos e converta em pedidos com um clique
+            Gere orçamentos e converta oportunidades em pedidos
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex w-full flex-wrap gap-2 sm:w-auto">
           <Button
             variant="outline"
             size="default"
@@ -181,7 +181,7 @@ export function Quotes() {
       <QuoteStatsCards stats={stats} />
 
       {/* Search + Filters */}
-      <div className="space-y-2">
+      <div className="glass-chip space-y-3 rounded-lg p-3">
         <div className="flex gap-2">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
@@ -218,7 +218,7 @@ export function Quotes() {
         </div>
 
         {showFilters && (
-          <div className="rounded-lg border bg-muted/30 p-4 space-y-4">
+          <div className="glass-panel space-y-4 rounded-lg p-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {/* Date range */}
               <div className="space-y-1.5">
@@ -273,12 +273,16 @@ export function Quotes() {
                             active ? prev.filter((n) => n !== t.name) : [...prev, t.name]
                           )
                         }
-                        className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium transition-opacity ${
+                        className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium transition-colors ${
                           active
-                            ? 'opacity-100 ring-2 ring-offset-1 ring-primary'
-                            : 'opacity-60 hover:opacity-90'
+                                      ? 'border-primary/50 ring-2 ring-primary/30 ring-offset-1'
+                                      : 'border-border/60 hover:brightness-95'
                         }`}
-                        style={{ backgroundColor: t.color, color: getTextColor(t.color) }}
+                        style={{
+                          backgroundColor: `color-mix(in srgb, ${t.color} 22%, transparent)`,
+                          borderColor: active ? `color-mix(in srgb, ${t.color} 55%, var(--border))` : undefined,
+                          color: 'var(--foreground)',
+                        }}
                       >
                         {t.name}
                       </button>
@@ -325,7 +329,7 @@ export function Quotes() {
                 )}
               </div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3 lg:gap-6">
                 {g.list.map((q) => (
                   <QuoteCard
                     key={q.id}

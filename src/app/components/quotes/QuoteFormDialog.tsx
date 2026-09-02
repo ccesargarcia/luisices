@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Quote, QuoteItem, QuoteStatus, Customer, Tag, Product } from '../../types';
 import { formatCurrency } from '../../utils/currency';
 import { TagInput } from '../TagInput';
+import { TAG_COLORS } from '../../utils/tagColors';
 import { useAuth } from '../../../contexts/AuthContext';
 import { firebaseCustomerService } from '../../../services/firebaseCustomerService';
 import { firebaseProductService } from '../../../services/firebaseProductService';
@@ -244,18 +245,18 @@ export function QuoteFormDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleOpen}>
-      <DialogContent className="w-full max-w-full sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-h-[90vh] min-w-0 max-w-2xl overflow-x-hidden overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{editing ? 'Editar Orçamento' : 'Novo Orçamento'}</DialogTitle>
         </DialogHeader>
 
-        <div className="space-y-5">
+        <div className="min-w-0 max-w-full space-y-5">
           {/* Cliente */}
           <div className="space-y-3">
             <Label htmlFor="q-customer">Cliente *</Label>
             <Select value={selectedCustomer} onValueChange={setSelectedCustomer}>
-              <SelectTrigger id="q-customer">
-                <SelectValue placeholder="Selecione um cliente cadastrado ou insira manualmente" />
+              <SelectTrigger id="q-customer" className="min-w-0">
+                <SelectValue className="truncate" placeholder="Selecione um cliente cadastrado ou insira manualmente" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="new">
@@ -311,17 +312,17 @@ export function QuoteFormDialog({
 
           {/* Itens */}
           <div className="space-y-2">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <Label>Itens / Produtos *</Label>
-              <Button type="button" variant="outline" size="sm" onClick={addItem}>
+              <Button type="button" variant="outline" size="sm" onClick={addItem} className="shrink-0">
                 <Plus className="size-3 mr-1" /> Adicionar item
               </Button>
             </div>
 
-            <div className="rounded-md border overflow-x-auto">
-              <div className="min-w-[300px]">
+            <div className="min-w-0 overflow-hidden rounded-md border">
+              <div className="min-w-0">
                 {/* Header */}
-                <div className="grid grid-cols-[30px_1fr_52px_76px_76px_30px] gap-1.5 px-2 py-2 bg-muted text-xs font-medium text-muted-foreground">
+                <div className="hidden grid-cols-[30px_1fr_52px_76px_76px_30px] gap-1.5 bg-muted px-2 py-2 text-xs font-medium text-muted-foreground sm:grid">
                   <span />
                   <span>Produto / Serviço</span>
                   <span className="text-center">Qtd</span>
@@ -332,7 +333,7 @@ export function QuoteFormDialog({
                 {form.items.map((item, idx) => (
                   <div
                     key={idx}
-                    className="grid grid-cols-[30px_1fr_52px_76px_76px_30px] gap-1.5 items-center px-2 py-2 border-t"
+                    className="grid min-w-0 grid-cols-[32px_minmax(0,1fr)_48px_68px_68px_32px] items-center gap-1 border-t px-2 py-2 sm:grid-cols-[30px_1fr_52px_76px_76px_30px] sm:gap-1.5"
                   >
                     {/* Catalog picker button */}
                     <Popover
@@ -347,7 +348,7 @@ export function QuoteFormDialog({
                           type="button"
                           variant="outline"
                           size="icon"
-                          className="size-8"
+                          className="col-start-1 row-start-1 size-8 shrink-0 sm:col-auto sm:row-auto"
                           title="Selecionar produto"
                         >
                           <BookOpen className="size-3.5" />
@@ -401,14 +402,14 @@ export function QuoteFormDialog({
                       placeholder="Ex: Camiseta personalizada"
                       value={item.name}
                       onChange={(e) => setItem(idx, 'name', e.target.value)}
-                      className="h-8 text-sm"
+                      className="col-span-4 col-start-2 row-start-1 h-8 min-w-0 w-full text-sm sm:col-auto sm:row-auto"
                     />
                     <Input
                       type="number"
                       min={1}
                       value={item.quantity}
                       onChange={(e) => setItem(idx, 'quantity', e.target.value)}
-                      className="h-8 text-sm text-center"
+                      className="col-start-3 row-start-2 h-8 w-full shrink-0 text-center sm:col-auto sm:row-auto sm:w-auto"
                     />
                     <Input
                       type="number"
@@ -417,16 +418,16 @@ export function QuoteFormDialog({
                       placeholder="0,00"
                       value={item.unitPrice || ''}
                       onChange={(e) => setItem(idx, 'unitPrice', e.target.value)}
-                      className="h-8 text-sm text-right"
+                      className="col-start-4 row-start-2 h-8 w-full shrink-0 text-right sm:col-auto sm:row-auto sm:w-auto"
                     />
-                    <div className="text-sm font-medium text-right pr-1">
+                    <div className="col-start-5 row-start-2 min-w-0 text-right text-sm font-medium sm:col-auto sm:row-auto sm:pr-1">
                       {formatCurrency(item.quantity * item.unitPrice)}
                     </div>
                     <Button
                       type="button"
                       variant="ghost"
                       size="icon"
-                      className="size-8 text-destructive hover:text-destructive"
+                      className="col-start-6 row-start-1 size-8 shrink-0 text-destructive hover:text-destructive sm:col-auto sm:row-auto"
                       disabled={form.items.length === 1}
                       onClick={() => removeItem(idx)}
                     >
@@ -437,7 +438,7 @@ export function QuoteFormDialog({
 
                 {/* Subtotal / Desconto / Total */}
                 {discountAmt > 0 && (
-                  <div className="grid grid-cols-[1fr_52px_76px_76px_30px] gap-1.5 items-center px-2 py-2 bg-muted border-t">
+                  <div className="grid grid-cols-[minmax(0,1fr)_48px_68px_68px_28px] items-center gap-1 border-t bg-muted px-2 py-2 sm:grid-cols-[1fr_52px_76px_76px_30px] sm:gap-1.5">
                     <span className="col-span-3 text-sm text-right text-muted-foreground">
                       Subtotal
                     </span>
@@ -448,7 +449,7 @@ export function QuoteFormDialog({
                   </div>
                 )}
                 {discountAmt > 0 && (
-                  <div className="grid grid-cols-[1fr_52px_76px_76px_30px] gap-1.5 items-center px-2 py-2 bg-muted border-t">
+                  <div className="grid grid-cols-[minmax(0,1fr)_48px_68px_68px_28px] items-center gap-1 border-t bg-muted px-2 py-2 sm:grid-cols-[1fr_52px_76px_76px_30px] sm:gap-1.5">
                     <span className="col-span-3 text-sm text-right text-green-700 dark:text-green-400">
                       Desconto (
                       {form.discountType === 'percent'
@@ -462,7 +463,7 @@ export function QuoteFormDialog({
                     <span />
                   </div>
                 )}
-                <div className="grid grid-cols-[1fr_52px_76px_76px_30px] gap-1.5 items-center px-2 py-2 bg-muted border-t">
+                <div className="grid grid-cols-[minmax(0,1fr)_48px_68px_68px_28px] items-center gap-1 border-t bg-muted px-2 py-2 sm:grid-cols-[1fr_52px_76px_76px_30px] sm:gap-1.5">
                   <span className="col-span-3 text-sm font-semibold text-right">Total</span>
                   <span className="text-sm font-bold text-right">
                     {formatCurrency(finalTotal)}
@@ -620,7 +621,7 @@ export function QuoteFormDialog({
           {/* Cor do card */}
           <div className="space-y-2">
             <Label>Cor do card</Label>
-            <div className="flex flex-wrap gap-2 items-center">
+              <div className="flex flex-wrap items-center gap-2">
               <button
                 type="button"
                 onClick={() => setForm({ ...form, cardColor: '' })}
@@ -632,20 +633,7 @@ export function QuoteFormDialog({
               >
                 ✕
               </button>
-              {[
-                '#ef4444',
-                '#f97316',
-                '#eab308',
-                '#22c55e',
-                '#06b6d4',
-                '#3b82f6',
-                '#8b5cf6',
-                '#ec4899',
-                '#a855f7',
-                '#14b8a6',
-                '#f43f5e',
-                '#84cc16',
-              ].map((color) => (
+              {TAG_COLORS.map(({ value: color, name }) => (
                 <button
                   key={color}
                   type="button"
@@ -661,17 +649,18 @@ export function QuoteFormDialog({
                       : 'border-transparent hover:scale-105'
                   }`}
                   style={{ backgroundColor: color }}
+                  title={name}
                 />
               ))}
             </div>
           </div>
         </div>
 
-        <DialogFooter className="mt-4">
+        <DialogFooter className="mt-4 flex-col-reverse gap-2 sm:flex-row sm:justify-end">
           <Button variant="outline" onClick={() => handleOpen(false)}>
             Cancelar
           </Button>
-          <Button onClick={handleSave} disabled={saving}>
+          <Button onClick={handleSave} disabled={saving} className="w-full sm:w-auto">
             {saving ? (
               <>
                 <Loader2 className="size-4 mr-2 animate-spin" /> Salvando...
