@@ -5,7 +5,7 @@ import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Textarea } from './ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
-import { Plus, Loader2, Paperclip, Upload, ImageIcon, ExternalLink, Repeat2 } from 'lucide-react';
+import { Plus, Loader2, Repeat2, Paperclip, Upload, ImageIcon, ExternalLink } from 'lucide-react';
 import { OrderStatus, PaymentStatus, PaymentMethod, Customer, Tag, OrderAttachment, Product } from '../types';
 import { TagInput } from './TagInput';
 import { Switch } from './ui/switch';
@@ -20,8 +20,10 @@ import { toast } from 'sonner';
 import { SafeImg } from './SafeMedia';
 import { trackOrderCreated } from '../../services/analyticsService';
 import { NewOrderCustomerSelect } from './orders/NewOrderCustomerSelect';
-import { NewOrderItemsSection, ProductItem } from './orders/NewOrderItemsSection';
+import { NewOrderItemsSelect } from './orders/NewOrderItemsSelect';
+import { NewOrderPaymentSection } from './orders/NewOrderPaymentSection';
 import { NewOrderGallerySelect } from './orders/NewOrderGallerySelect';
+import { ProductItem } from './orders/OrderEditForm';
 
 export function NewOrderDialog() {
   const { user, hasPermission } = useAuth();
@@ -49,13 +51,17 @@ export function NewOrderDialog() {
   const [products, setProducts] = useState<ProductItem[]>([{ name: '', quantity: '1', unitPrice: '' }]);
   const [tags, setTags] = useState<Tag[]>([]);
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
-  const [pendingGallery, setPendingGallery] = useState<{ file: File; title: string }[]>([]);
+  const [pendingGallery] = useState<{ file: File; title: string }[]>([]);
   const [localAttachments, setLocalAttachments] = useState<OrderAttachment[]>([]);
   const [isUploadingAttachment, setIsUploadingAttachment] = useState(false);
 
   const [galleryItems, setGalleryItems] = useState<import('../types').GalleryItem[]>([]);
+  const [galleryBrowserOpen, setGalleryBrowserOpen] = useState(false);
   const [selectedGalleryIds, setSelectedGalleryIds] = useState<string[]>([]);
+  const [galleryBrowserSearch, setGalleryBrowserSearch] = useState('');
   const [catalogProducts, setCatalogProducts] = useState<Product[]>([]);
+  const [catalogSearch, setCatalogSearch] = useState('');
+  const [catalogOpenIdx, setCatalogOpenIdx] = useState<number | null>(null);
 
   const totalPrice = useMemo(() => {
     return products.reduce((sum, p) => {
@@ -161,7 +167,6 @@ export function NewOrderDialog() {
           email: formData.customerEmail || undefined,
         });
 
-        // Refletir imediatamente na lista local
         setCustomers(prev => [
           {
             id: customerId,
@@ -228,7 +233,6 @@ export function NewOrderDialog() {
         await firebaseCustomerService.incrementCustomerStats(customerId, totalAmount);
       }
 
-      // Upload dos anexos pendentes
       if (pendingFiles.length > 0) {
         setIsUploadingAttachment(true);
         try {
@@ -256,7 +260,6 @@ export function NewOrderDialog() {
         }
       }
 
-      // Upload das artes da galeria pendentes
       for (const g of pendingGallery) {
         try {
           const tempId = `${Date.now()}_${Math.random().toString(36).slice(2)}`;
@@ -273,7 +276,6 @@ export function NewOrderDialog() {
         }
       }
 
-      // Vincular artes selecionadas da galeria ao pedido
       for (const gid of selectedGalleryIds) {
         try {
           await firebaseGalleryService.updateItem(gid, { orderId: createdOrder.id });
@@ -303,9 +305,9 @@ export function NewOrderDialog() {
       setIsNewCustomer(false);
       localAttachments.forEach(a => URL.revokeObjectURL(a.url));
       setPendingFiles([]);
-      setPendingGallery([]);
       setLocalAttachments([]);
       setSelectedGalleryIds([]);
+      setGalleryBrowserSearch('');
     } catch (err) {
       console.error('Erro ao criar pedido:', err);
       toast.error('Erro ao criar pedido. Tente novamente.');
@@ -333,26 +335,29 @@ export function NewOrderDialog() {
           <div className="sr-only">Formulário para criar um novo pedido</div>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
-          {/* Seleção e dados do cliente */}
           <NewOrderCustomerSelect
             selectedCustomer={selectedCustomer}
             onSelectCustomer={setSelectedCustomer}
             customers={customers}
             isNewCustomer={isNewCustomer}
             customerName={formData.customerName}
-            onCustomerNameChange={(customerName) => setFormData({ ...formData, customerName })}
+            onCustomerNameChange={(name) => setFormData({ ...formData, customerName: name })}
             customerPhone={formData.customerPhone}
-            onCustomerPhoneChange={(customerPhone) => setFormData({ ...formData, customerPhone })}
+            onCustomerPhoneChange={(phone) => setFormData({ ...formData, customerPhone: phone })}
             customerEmail={formData.customerEmail}
-            onCustomerEmailChange={(customerEmail) => setFormData({ ...formData, customerEmail })}
+            onCustomerEmailChange={(email) => setFormData({ ...formData, customerEmail: email })}
           />
 
-          {/* Produtos */}
-          <NewOrderItemsSection
+          <NewOrderItemsSelect
             products={products}
             onProductsChange={setProducts}
             catalogProducts={catalogProducts}
+            catalogSearch={catalogSearch}
+            onCatalogSearchChange={setCatalogSearch}
+            catalogOpenIdx={catalogOpenIdx}
+            onCatalogOpenIdxChange={setCatalogOpenIdx}
             totalPrice={totalPrice}
+            formatCurrency={formatCurrency}
           />
 
           <div className="grid grid-cols-1 gap-4">
@@ -448,12 +453,15 @@ export function NewOrderDialog() {
             </div>
           </div>
 
-          {/* Artes da galeria do cliente */}
           <NewOrderGallerySelect
             galleryItems={galleryItems}
             selectedGalleryIds={selectedGalleryIds}
             onSelectedGalleryIdsChange={setSelectedGalleryIds}
-            selectedCustomerId={selectedCustomer}
+            galleryBrowserOpen={galleryBrowserOpen}
+            onGalleryBrowserOpenChange={setGalleryBrowserOpen}
+            galleryBrowserSearch={galleryBrowserSearch}
+            onGalleryBrowserSearchChange={setGalleryBrowserSearch}
+            selectedCustomer={selectedCustomer}
             customerName={formData.customerName}
           />
 
@@ -508,70 +516,17 @@ export function NewOrderDialog() {
             )}
           </div>
 
-          {/* Informações de Pagamento */}
           {!formData.isExchange && (
-            <div className="border-t pt-4 space-y-4">
-              <h3 className="font-medium text-sm">Informações de Pagamento</h3>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="paymentStatus">Status de Pagamento *</Label>
-                  <Select
-                    value={formData.paymentStatus}
-                    onValueChange={(value: PaymentStatus) => setFormData({ ...formData, paymentStatus: value })}
-                  >
-                    <SelectTrigger id="paymentStatus">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="pending">Pendente</SelectItem>
-                      <SelectItem value="partial">Parcial</SelectItem>
-                      <SelectItem value="paid">Pago</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="paymentMethod">Forma de Pagamento</Label>
-                  <Select
-                    value={formData.paymentMethod}
-                    onValueChange={(value: PaymentMethod) => setFormData({ ...formData, paymentMethod: value })}
-                  >
-                    <SelectTrigger id="paymentMethod">
-                      <SelectValue placeholder="Selecione..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="pix">PIX</SelectItem>
-                      <SelectItem value="cash">Dinheiro</SelectItem>
-                      <SelectItem value="credit">Cartão de Crédito</SelectItem>
-                      <SelectItem value="debit">Cartão de Débito</SelectItem>
-                      <SelectItem value="transfer">Transferência</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-
-              {formData.paymentStatus !== 'pending' && (
-                <div className="space-y-2">
-                  <Label htmlFor="paidAmount">Valor Pago (R$)</Label>
-                  <Input
-                    id="paidAmount"
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    max={totalPrice || undefined}
-                    value={formData.paidAmount}
-                    onChange={(e) => setFormData({ ...formData, paidAmount: e.target.value })}
-                    placeholder={totalPrice > 0 ? `Máximo: ${formatCurrency(totalPrice)}` : 'Informe o valor pago'}
-                  />
-                  {formData.paidAmount && totalPrice > 0 && (
-                    <p className="text-sm text-muted-foreground">
-                      Restante: {formatCurrency(totalPrice - parseFloat(formData.paidAmount))}
-                    </p>
-                  )}
-                </div>
-              )}
-            </div>
+            <NewOrderPaymentSection
+              paymentStatus={formData.paymentStatus}
+              onPaymentStatusChange={(status) => setFormData({ ...formData, paymentStatus: status })}
+              paymentMethod={formData.paymentMethod}
+              onPaymentMethodChange={(method) => setFormData({ ...formData, paymentMethod: method })}
+              paidAmount={formData.paidAmount}
+              onPaidAmountChange={(paid) => setFormData({ ...formData, paidAmount: paid })}
+              totalPrice={totalPrice}
+              formatCurrency={formatCurrency}
+            />
           )}
 
           <div className="flex justify-end gap-2 pt-4">

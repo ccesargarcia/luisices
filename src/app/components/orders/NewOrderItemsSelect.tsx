@@ -1,36 +1,37 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { Product } from '../../types';
-import { Label } from '../ui/label';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
+import { Label } from '../ui/label';
 import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover';
 import { Plus, Trash2, BookOpen } from 'lucide-react';
-import { formatCurrency } from '../../utils/currency';
+import { ProductItem } from './OrderEditForm';
 
-export interface ProductItem {
-  name: string;
-  quantity: string;
-  unitPrice: string;
-}
-
-interface NewOrderItemsSectionProps {
+interface NewOrderItemsSelectProps {
   products: ProductItem[];
   onProductsChange: (
     updater: ProductItem[] | ((prev: ProductItem[]) => ProductItem[])
   ) => void;
   catalogProducts: Product[];
+  catalogSearch: string;
+  onCatalogSearchChange: (search: string) => void;
+  catalogOpenIdx: number | null;
+  onCatalogOpenIdxChange: (idx: number | null) => void;
   totalPrice: number;
+  formatCurrency: (v: number) => string;
 }
 
-export function NewOrderItemsSection({
+export function NewOrderItemsSelect({
   products,
   onProductsChange,
   catalogProducts,
+  catalogSearch,
+  onCatalogSearchChange,
+  catalogOpenIdx,
+  onCatalogOpenIdxChange,
   totalPrice,
-}: NewOrderItemsSectionProps) {
-  const [catalogSearch, setCatalogSearch] = useState('');
-  const [catalogOpenIdx, setCatalogOpenIdx] = useState<number | null>(null);
-
+  formatCurrency,
+}: NewOrderItemsSelectProps) {
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between">
@@ -41,17 +42,14 @@ export function NewOrderItemsSection({
           size="sm"
           className="gap-1 h-7 text-xs"
           onClick={() =>
-            onProductsChange((prev) => [
-              ...prev,
-              { name: '', quantity: '1', unitPrice: '' },
-            ])
+            onProductsChange((prev) => [...prev, { name: '', quantity: '1', unitPrice: '' }])
           }
         >
           <Plus className="size-3" /> Adicionar item
         </Button>
       </div>
 
-      {/* Header das colunas */}
+      {/* header das colunas */}
       <div className="grid grid-cols-[36px_1fr_56px_96px_36px] gap-2 px-1">
         <span />
         <span className="text-xs text-muted-foreground">Produto</span>
@@ -69,8 +67,8 @@ export function NewOrderItemsSection({
                 <Popover
                   open={catalogOpenIdx === idx}
                   onOpenChange={(v) => {
-                    setCatalogOpenIdx(v ? idx : null);
-                    if (v) setCatalogSearch('');
+                    onCatalogOpenIdxChange(v ? idx : null);
+                    if (v) onCatalogSearchChange('');
                   }}
                 >
                   <PopoverTrigger asChild>
@@ -88,7 +86,7 @@ export function NewOrderItemsSection({
                     <Input
                       placeholder="Buscar produto..."
                       value={catalogSearch}
-                      onChange={(e) => setCatalogSearch(e.target.value)}
+                      onChange={(e) => onCatalogSearchChange(e.target.value)}
                       className="h-8 text-sm mb-2"
                       autoFocus
                     />
@@ -112,7 +110,7 @@ export function NewOrderItemsSection({
                                     : item
                                 )
                               );
-                              setCatalogOpenIdx(null);
+                              onCatalogOpenIdxChange(null);
                             }}
                           >
                             <span className="truncate">{p.name}</span>
