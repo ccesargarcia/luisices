@@ -24,6 +24,10 @@ jobs:
       - name: Install Firebase CLI
         run: npm install -g firebase-tools
 
+      - name: Install Functions Dependencies
+        working-directory: functions
+        run: npm ci
+
       - name: Deploy Firebase Functions (dev)
         env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_DEV }}
@@ -33,5 +37,5 @@ jobs:
           export GOOGLE_APPLICATION_CREDENTIALS="$HOME/firebase-service-account.json"
           echo "$RESEND_API_KEY" > "$HOME/resend_api_key.txt"
           firebase use luisices-dev --project luisices-dev
-          firebase functions:secrets:set RESEND_API_KEY --project luisices-dev --data-file "$HOME/resend_api_key.txt" --quiet || true
+          firebase functions:secrets:set RESEND_API_KEY --project luisices-dev --data-file "$HOME/resend_api_key.txt" || true
           firebase deploy --only functions --project luisices-dev --force
