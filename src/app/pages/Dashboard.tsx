@@ -422,7 +422,7 @@ export function Dashboard() {
             <Package className="size-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{stats.total}</div>
+            <div className="min-w-0 break-words text-lg font-bold leading-tight tabular-nums sm:text-2xl">{stats.total}</div>
             <p className="text-xs text-muted-foreground mt-1">
               {stats.completed} concluídos
             </p>
@@ -437,7 +437,7 @@ export function Dashboard() {
             <DollarSign className="size-4 text-green-600" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{formatCurrency(stats.totalRevenue)}</div>
+            <div className="min-w-0 break-words text-lg font-bold leading-tight tabular-nums sm:text-2xl">{formatCurrency(stats.totalRevenue)}</div>
             <p className="text-xs text-muted-foreground mt-1">
               {stats.completed} pedido{stats.completed !== 1 ? 's' : ''} concluído{stats.completed !== 1 ? 's' : ''}
             </p>
@@ -452,7 +452,7 @@ export function Dashboard() {
             <TrendingUp className="size-4 text-blue-600" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{formatCurrency(stats.expectedRevenue)}</div>
+            <div className="min-w-0 break-words text-lg font-bold leading-tight tabular-nums sm:text-2xl">{formatCurrency(stats.expectedRevenue)}</div>
             <p className="text-xs text-muted-foreground mt-1">
               {stats.pending + stats.inProgress} pedido{(stats.pending + stats.inProgress) !== 1 ? 's' : ''} a entregar
             </p>
@@ -467,7 +467,7 @@ export function Dashboard() {
             <Target className="size-4 text-purple-600" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{formatCurrency(stats.averageOrderValue)}</div>
+            <div className="min-w-0 break-words text-lg font-bold leading-tight tabular-nums sm:text-2xl">{formatCurrency(stats.averageOrderValue)}</div>
             <p className="text-xs text-muted-foreground mt-1">
               Em {stats.total} pedidos
             </p>
@@ -485,7 +485,7 @@ export function Dashboard() {
             <Clock className="size-4 text-blue-600" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{stats.inProgress}</div>
+            <div className="min-w-0 break-words text-lg font-bold leading-tight tabular-nums sm:text-2xl">{stats.inProgress}</div>
             <p className="text-xs text-muted-foreground mt-1">
               {stats.pending} aguardando
             </p>
@@ -500,7 +500,7 @@ export function Dashboard() {
             <AlertCircle className="size-4 text-yellow-600" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{formatCurrency(stats.totalPending)}</div>
+            <div className="min-w-0 break-words text-lg font-bold leading-tight tabular-nums sm:text-2xl">{formatCurrency(stats.totalPending)}</div>
             <p className="text-xs text-muted-foreground mt-1">
               {stats.pendingPayments} {stats.pendingPayments === 1 ? 'pedido sem pagamento completo' : 'pedidos sem pagamento completo'}
             </p>
@@ -515,7 +515,7 @@ export function Dashboard() {
             <TrendingUp className="size-4 text-green-600" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{formatCurrency(stats.totalPaid)}</div>
+            <div className="min-w-0 break-words text-lg font-bold leading-tight tabular-nums sm:text-2xl">{formatCurrency(stats.totalPaid)}</div>
             <p className="text-xs text-muted-foreground mt-1">
               {stats.paidOrders} pagos · {stats.partialOrders} parciais
             </p>
@@ -529,7 +529,7 @@ export function Dashboard() {
       {stats.total > 0 && (showCard('statusChart') || showCard('weeklyChart')) && (
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 lg:gap-6">
           {showCard('statusChart') && (
-          <Card>
+          <Card className="min-w-0 overflow-hidden">
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-medium">Distribuição de Status</CardTitle>
             </CardHeader>
@@ -570,11 +570,11 @@ export function Dashboard() {
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-medium">Pedidos por Semana</CardTitle>
             </CardHeader>
-            <CardContent>
-              <ChartContainer config={weeklyChartConfig} className="h-[220px]">
-                <BarChart data={ordersPerWeek} margin={{ top: 4, right: 4, left: -22, bottom: 0 }}>
+            <CardContent className="min-w-0 overflow-hidden">
+              <ChartContainer config={weeklyChartConfig} className="h-[240px] w-full">
+                <BarChart data={ordersPerWeek} margin={{ top: 4, right: 8, left: 0, bottom: 24 }}>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                  <XAxis dataKey="semana" tick={{ fontSize: 10 }} tickLine={false} axisLine={false} />
+                  <XAxis dataKey="semana" interval="preserveStartEnd" tick={{ fontSize: 9 }} tickMargin={8} tickLine={false} axisLine={false} />
                   <YAxis allowDecimals={false} tick={{ fontSize: 10 }} tickLine={false} axisLine={false} />
                   <ChartTooltip content={<ChartTooltipContent />} />
                   <Bar dataKey="pedidos" fill="var(--color-pedidos)" radius={[4, 4, 0, 0]} />

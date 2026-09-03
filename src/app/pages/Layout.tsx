@@ -90,6 +90,7 @@ export function Layout() {
 
   const mobilePrimaryNav = orderedNav.slice(0, 4);
   const mobileMoreNav = orderedNav.slice(4);
+  const canAccessSettings = userProfile?.role === 'user' || hasPermission((p) => p.settings);
 
   const businessName = settings?.businessName || 'Papelaria Personalizada';
   const hasLogo = !!settings?.logo;
@@ -149,7 +150,7 @@ export function Layout() {
             );
           })}
         </nav>
-        <Link
+        {canAccessSettings && <Link
           to="/configuracoes"
           title={sidebarCollapsed ? 'Configurações' : undefined}
           className={cn(
@@ -159,7 +160,7 @@ export function Layout() {
         >
           <SettingsIcon className="size-5" />
           <span className={sidebarCollapsed ? 'hidden' : 'inline'}>Configurações</span>
-        </Link>
+        </Link>}
         <Button
           type="button"
           variant="ghost"
@@ -252,10 +253,10 @@ export function Layout() {
                   </div>
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={() => navigate('/configuracoes')} className="cursor-pointer">
+                {canAccessSettings && <DropdownMenuItem onClick={() => navigate('/configuracoes')} className="cursor-pointer">
                   <SettingsIcon className="size-4 mr-2" />
                   Configurações
-                </DropdownMenuItem>
+                </DropdownMenuItem>}
                 <DropdownMenuItem onClick={() => setAboutOpen(true)} className="cursor-pointer">
                   <Info className="size-4 mr-2" />
                   Sobre
@@ -500,12 +501,12 @@ export function Layout() {
               </DropdownMenuItem>
             ))}
             <DropdownMenuSeparator />
-            <DropdownMenuItem asChild>
+            {canAccessSettings && <DropdownMenuItem asChild>
               <Link to="/configuracoes" className="flex cursor-pointer items-center gap-2">
                 <SettingsIcon className="size-4" />
                 Configurações
               </Link>
-            </DropdownMenuItem>
+            </DropdownMenuItem>}
           </DropdownMenuContent>
         </DropdownMenu>
       </nav>

@@ -25,7 +25,7 @@ export function QuoteStatsCards({ stats }: QuoteStatsCardsProps) {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="text-2xl font-bold">{stats.draft + stats.sent}</div>
+          <div className="min-w-0 break-words text-lg font-bold leading-tight tabular-nums sm:text-2xl">{stats.draft + stats.sent}</div>
           <p className="text-xs text-muted-foreground mt-1">
             {formatCurrency(stats.pendingTotal)}
           </p>
@@ -39,7 +39,7 @@ export function QuoteStatsCards({ stats }: QuoteStatsCardsProps) {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="text-2xl font-bold text-green-600">{stats.approved}</div>
+          <div className="min-w-0 break-words text-lg font-bold leading-tight tabular-nums text-green-600 sm:text-2xl">{stats.approved}</div>
           <p className="text-xs text-muted-foreground mt-1">
             {stats.conversionRate !== null
               ? `${stats.conversionRate}% de conversão`
@@ -55,7 +55,7 @@ export function QuoteStatsCards({ stats }: QuoteStatsCardsProps) {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="text-2xl font-bold text-red-600">
+          <div className="min-w-0 break-words text-lg font-bold leading-tight tabular-nums text-red-600 sm:text-2xl">
             {stats.rejected + stats.expired}
           </div>
           <p className="text-xs text-muted-foreground mt-1">não convertidos</p>
@@ -69,7 +69,7 @@ export function QuoteStatsCards({ stats }: QuoteStatsCardsProps) {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="text-2xl font-bold">{stats.total}</div>
+          <div className="min-w-0 break-words text-lg font-bold leading-tight tabular-nums sm:text-2xl">{stats.total}</div>
         </CardContent>
       </Card>
     </div>

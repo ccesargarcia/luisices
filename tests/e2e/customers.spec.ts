@@ -65,7 +65,7 @@ test.describe('Clientes - CRUD', () => {
     await expect(customerCard).toBeVisible({ timeout: 5000 });
 
     // CLEANUP: Excluir o cliente criado
-    const card = page.locator('.grid .hover\\:shadow-md').filter({ hasText: testCustomer.name }).first();
+    const card = page.locator('[data-slot="card"]').filter({ hasText: testCustomer.name }).first();
     const deleteBtn = card.locator('button').filter({ has: page.locator('.text-destructive') });
     await deleteBtn.click();
 

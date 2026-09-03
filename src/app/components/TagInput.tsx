@@ -40,10 +40,10 @@ export function TagInput({ tags, onChange, placeholder = 'Digite e pressione Ent
     <div className="space-y-2">
       <div className="flex min-w-0 flex-wrap gap-2 rounded-md border bg-background p-2">
         {tags.map((tag, index) => (
-          <Badge 
-            key={index} 
+          <Badge
+            key={index}
             className="gap-1 pr-1 border-0"
-            style={{ 
+            style={{
               backgroundColor: tag.color,
               color: getTextColor(tag.color)
             }}
@@ -77,7 +77,7 @@ export function TagInput({ tags, onChange, placeholder = 'Digite e pressione Ent
                       key={color.value}
                       type="button"
                       className="size-8 rounded border-2 hover:scale-110 transition-transform"
-                      style={{ 
+                      style={{
                         backgroundColor: color.value,
                         borderColor: selectedColor === color.value ? '#000' : 'transparent'
                       }}

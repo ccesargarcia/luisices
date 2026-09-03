@@ -235,7 +235,7 @@ test.describe.serial('Ciclo de vida: Cliente + Pedido', () => {
     await page.waitForTimeout(500);
 
     // Localizar o card do cliente
-    const customerCard = page.locator('.grid .hover\\:shadow-md').filter({ hasText: testCustomer.name }).first();
+    const customerCard = page.locator('[data-slot="card"]').filter({ hasText: testCustomer.name }).first();
     await expect(customerCard).toBeVisible({ timeout: 5000 });
 
     // Clicar no botão de excluir (ícone de lixeira) dentro do card do cliente

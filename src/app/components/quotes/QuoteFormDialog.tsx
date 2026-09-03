@@ -182,6 +182,15 @@ export function QuoteFormDialog({
   const finalTotal = Math.max(0, subtotal - discountAmt);
 
   async function handleSave() {
+    const discountValue = form.discount === '' ? 0 : Number(form.discount);
+    if (!Number.isFinite(discountValue) || discountValue < 0) {
+      toast.error('O desconto deve ser igual ou superior a 0.');
+      return;
+    }
+    if (form.discountType === 'percent' && discountValue > 100) {
+      toast.error('O desconto percentual não pode ser superior a 100%.');
+      return;
+    }
     if (!form.customerName.trim()) {
       toast.error('Informe o nome do cliente');
       return;
@@ -521,10 +530,22 @@ export function QuoteFormDialog({
                 <Input
                   type="number"
                   min={0}
+                  max={form.discountType === 'percent' ? 100 : undefined}
                   step="0.01"
                   placeholder="0"
                   value={form.discount}
-                  onChange={(e) => setForm({ ...form, discount: e.target.value })}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    if (value === '') {
+                      setForm({ ...form, discount: '' });
+                      return;
+                    }
+                    const numericValue = Math.max(0, Number(value));
+                    const normalizedValue = form.discountType === 'percent'
+                      ? Math.min(100, numericValue)
+                      : numericValue;
+                    setForm({ ...form, discount: String(normalizedValue) });
+                  }}
                 />
                 <Select
                   value={form.discountType}

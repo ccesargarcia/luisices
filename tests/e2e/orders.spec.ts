@@ -182,7 +182,7 @@ test.describe('Pedidos - CRUD', () => {
     await expect(searchInput).toBeVisible({ timeout: 10000 });
     await searchInput.fill(customerName);
 
-    const customerCard = page.locator('.grid .hover\\:shadow-md').filter({ hasText: customerName }).first();
+    const customerCard = page.locator('[data-slot="card"]').filter({ hasText: customerName }).first();
     await expect(customerCard).toBeVisible({ timeout: 10000 });
 
     // Cleanup: remover cliente criado (não falhar no teste se não conseguir)

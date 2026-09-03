@@ -16,8 +16,8 @@ test.beforeEach(async ({ page }) => {
   await page.fill('input[type="password"]', TEST_USER.password);
   await page.click('button[type="submit"]');
 
-  // Verificar que o dashboard está carregado (em vez de confiar na URL)
-  await expect(page.getByRole('heading', { name: /Bom dia|Boa tarde|Boa noite/i })).toBeVisible({ timeout: 30000 });
+  await page.waitForURL('**/dashboard', { timeout: 30000 });
+  await expect(page.locator('main').first()).toBeVisible({ timeout: 10000 });
 
   await page.goto('/configuracoes');
   await expect(page.locator('main h1').first()).toContainText(/Configurações/i, { timeout: 10000 });
@@ -27,7 +27,7 @@ test.describe('Configurações', () => {
   test('deve exibir seções de configuração', async ({ page }) => {
     // Verificar seções principais
     await expect(page.getByRole('heading', { name: 'Informações do Negócio' })).toBeVisible({ timeout: 5000 });
-    await expect(page.getByRole('heading', { name: 'Personalização' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Aparência e identidade visual' })).toBeVisible();
   });
 
   test('deve preencher informações do negócio', async ({ page }) => {
@@ -69,7 +69,7 @@ test.describe('Configurações', () => {
 
   test('deve alterar tema claro/escuro', async ({ page }) => {
     // Procurar seção de personalização
-    const personalizacao = page.getByRole('heading', { name: 'Personalização' });
+    const personalizacao = page.getByRole('heading', { name: 'Aparência e identidade visual' });
     await expect(personalizacao).toBeVisible({ timeout: 5000 });
 
     // Clicar em tema escuro

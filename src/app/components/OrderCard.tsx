@@ -126,7 +126,9 @@ export function OrderCard({ order, onClick, isSelected = false, onToggleSelect }
               <span>{formatDateShort(order.deliveryDate)}</span>
             </div>
             {order.payment && order.payment.remainingAmount > 0 && order.payment.paidAmount > 0 && (
-              <span className="text-orange-600">Resta {formatCurrency(order.payment.remainingAmount)}</span>
+              <span className="rounded-md border border-amber-500/25 bg-amber-500/10 px-2 py-1 text-amber-700 dark:border-amber-300/25 dark:bg-amber-300/10 dark:text-amber-200">
+                Resta {formatCurrency(order.payment.remainingAmount)}
+              </span>
             )}
           </div>
           {/* Tags (compact) */}
@@ -202,7 +204,7 @@ export function OrderCard({ order, onClick, isSelected = false, onToggleSelect }
                 <span className="truncate">{formatCurrency(order.price)} ({order.quantity} un.)</span>
               </div>
               {order.payment && order.payment.paidAmount > 0 && order.payment.remainingAmount > 0 && (
-                <div className="flex items-center gap-1 text-xs text-orange-600 bg-orange-50 px-2 py-1 rounded shrink-0">
+                <div className="flex shrink-0 items-center gap-1 rounded-md border border-amber-500/25 bg-amber-500/10 px-2 py-1 text-xs text-amber-700 dark:border-amber-300/25 dark:bg-amber-300/10 dark:text-amber-200">
                   <DollarSign className="size-3" />
                   <span>Resta: {formatCurrency(order.payment.remainingAmount)}</span>
                 </div>

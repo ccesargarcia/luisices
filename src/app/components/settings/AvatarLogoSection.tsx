@@ -23,13 +23,24 @@ export function AvatarLogoSection({
   onImageUpload,
   onImageRemove,
 }: AvatarLogoSectionProps) {
+  const acceptedImageTypes = 'image/jpeg,image/png,image/webp';
+
+  const handleImageChange = (
+    event: React.ChangeEvent<HTMLInputElement>,
+    type: 'avatar' | 'logo' | 'banner',
+  ) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (file) void onImageUpload(file, type);
+  };
+
   return (
     <div className="grid gap-6 md:grid-cols-2">
       {/* Avatar */}
       <Card>
         <CardHeader>
           <CardTitle>Avatar</CardTitle>
-          <CardDescription>Sua foto de perfil (PNG, JPG - máx 5MB)</CardDescription>
+          <CardDescription>Sua foto de perfil (JPG, PNG ou WebP; máximo de 5 MB)</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex flex-col items-start gap-4 sm:flex-row sm:items-center">
@@ -65,11 +76,10 @@ export function AvatarLogoSection({
               <Input
                 id="avatar-upload"
                 type="file"
-                accept="image/*"
+                accept={acceptedImageTypes}
                 className="hidden"
                 onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (file) onImageUpload(file, 'avatar');
+                  handleImageChange(e, 'avatar');
                 }}
               />
               {avatarUrl && (
@@ -93,7 +103,7 @@ export function AvatarLogoSection({
       <Card>
         <CardHeader>
           <CardTitle>Logo do Negócio</CardTitle>
-          <CardDescription>Logo da sua papelaria (PNG, JPG - máx 5MB)</CardDescription>
+          <CardDescription>Logo da sua papelaria (JPG, PNG ou WebP; máximo de 5 MB)</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           {logoUrl ? (
@@ -137,11 +147,10 @@ export function AvatarLogoSection({
             <Input
               id="logo-upload"
               type="file"
-              accept="image/*"
+              accept={acceptedImageTypes}
               className="hidden"
               onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (file) onImageUpload(file, 'logo');
+                handleImageChange(e, 'logo');
               }}
             />
             {logoUrl && (

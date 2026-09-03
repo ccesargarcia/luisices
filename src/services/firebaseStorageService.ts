@@ -63,9 +63,9 @@ export class FirebaseStorageService {
     userId: string,
     folder: 'avatar' | 'logo' | 'banner'
   ): Promise<string> {
-    // Validar tipo de arquivo
-    if (!file.type.startsWith('image/')) {
-      throw new Error('Arquivo deve ser uma imagem');
+    const allowedImageTypes = ['image/jpeg', 'image/png', 'image/webp'];
+    if (!allowedImageTypes.includes(file.type)) {
+      throw new Error('Formato não suportado. Envie uma imagem JPG, PNG ou WebP.');
     }
 
     // Validar tamanho (máximo 5MB)

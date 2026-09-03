@@ -155,6 +155,13 @@ export function NewOrderDialog() {
       return;
     }
 
+    const totalAmount = totalPrice;
+    const paidAmount = formData.paidAmount ? parseFloat(formData.paidAmount) : 0;
+    if (!Number.isFinite(paidAmount) || paidAmount < 0 || paidAmount > totalAmount) {
+      toast.error(`O valor pago deve estar entre R$ 0,00 e ${formatCurrency(totalAmount)}.`);
+      return;
+    }
+
     setLoading(true);
 
     try {
@@ -182,9 +189,6 @@ export function NewOrderDialog() {
           ...prev,
         ]);
       }
-
-      const totalAmount = totalPrice;
-      const paidAmount = formData.paidAmount ? parseFloat(formData.paidAmount) : 0;
 
       const productName = products
         .filter(p => p.name.trim())

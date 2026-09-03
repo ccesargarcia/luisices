@@ -73,28 +73,34 @@ export function NewOrderPaymentSection({
         </div>
       </div>
 
-      {paymentStatus !== 'pending' && (
-        <div className="space-y-2">
-          <Label htmlFor="paidAmount">Valor Pago (R$)</Label>
-          <Input
-            id="paidAmount"
-            type="number"
-            min="0"
-            step="0.01"
-            max={totalPrice || undefined}
-            value={paidAmount}
-            onChange={(e) => onPaidAmountChange(e.target.value)}
-            placeholder={
-              totalPrice > 0 ? `Máximo: ${formatCurrency(totalPrice)}` : 'Informe o valor pago'
+      <div className="space-y-2">
+        <Label htmlFor="paidAmount">Valor Pago (R$)</Label>
+        <Input
+          id="paidAmount"
+          type="number"
+          min="0"
+          step="0.01"
+          max={totalPrice || undefined}
+          value={paidAmount}
+          onChange={(e) => {
+            const value = e.target.value;
+            if (value === '') {
+              onPaidAmountChange('');
+              return;
             }
-          />
-          {paidAmount && totalPrice > 0 && (
-            <p className="text-sm text-muted-foreground">
-              Restante: {formatCurrency(totalPrice - parseFloat(paidAmount))}
-            </p>
-          )}
-        </div>
-      )}
+            const normalized = Math.min(totalPrice, Math.max(0, Number(value)));
+            onPaidAmountChange(Number.isFinite(normalized) ? String(normalized) : '');
+          }}
+          placeholder={
+            totalPrice > 0 ? `Máximo: ${formatCurrency(totalPrice)}` : 'Informe o valor pago'
+          }
+        />
+        {paidAmount && totalPrice > 0 && (
+          <p className="text-sm text-muted-foreground">
+            Restante: {formatCurrency(Math.max(0, totalPrice - parseFloat(paidAmount)))}
+          </p>
+        )}
+      </div>
     </div>
   );
 }

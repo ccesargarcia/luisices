@@ -100,7 +100,7 @@ test.describe('Orçamentos - CRUD', () => {
     await searchInput2.fill(clientName);
     await page.waitForTimeout(500);
 
-    const customerCard = page.locator('.grid .hover\\:shadow-md').filter({ hasText: clientName }).first();
+    const customerCard = page.locator('[data-slot="card"]').filter({ hasText: clientName }).first();
     if (await customerCard.isVisible({ timeout: 3000 })) {
       const custDeleteBtn = customerCard.locator('button').filter({ has: page.locator('.text-destructive') });
       await custDeleteBtn.click();

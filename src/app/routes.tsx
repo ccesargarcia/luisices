@@ -106,7 +106,7 @@ export const router = createBrowserRouter([
       },
       {
         path: 'configuracoes',
-        element: <Lazy><PermissionRoute check={p => p.settings}><Settings /></PermissionRoute></Lazy>,
+        element: <Lazy><PermissionRoute check={p => p.settings} allowUserRole><Settings /></PermissionRoute></Lazy>,
       },
       {
         path: 'settings',  // Alias em inglês

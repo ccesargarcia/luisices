@@ -299,7 +299,7 @@ export const DEFAULT_USER_PERMISSIONS: Permission = {
   gallery:   { view: true, create: true, delete: false },
   reports:   false,
   exchanges: false,
-  settings:  false,
+  settings:  true,
   users:     { view: false, create: false, edit: false, delete: false },
 };
 

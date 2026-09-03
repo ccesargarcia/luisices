@@ -137,7 +137,7 @@ function KpiCard({ title, value, sub, icon: Icon, iconClass, trend }: {
         </div>
       </CardHeader>
       <CardContent className="space-y-1">
-        <div className="text-2xl font-bold tracking-tight">{value}</div>
+        <div className="min-w-0 break-words text-lg font-bold leading-tight tracking-tight tabular-nums sm:text-2xl">{value}</div>
         <div className="flex items-center gap-2 flex-wrap">
           <p className="text-xs text-muted-foreground">{sub}</p>
           {trend}
