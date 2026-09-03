@@ -23,7 +23,21 @@ const getResend = (apiKey) => apiKey ? new Resend(apiKey) : null;
 
 const getAppUrl = () => {
   const projectId = process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT;
-  return projectId === 'luisices-dev' ? 'https://luisices-dev.web.app' : 'https://luisices.com.br';
+  return projectId === 'luisices-dev' ? 'https://dev.luisices.com.br' : 'https://luisices.com.br';
+};
+
+const formatActionLink = (rawFirebaseLink, fallbackMode = 'resetPassword') => {
+  try {
+    const parsed = new URL(rawFirebaseLink);
+    const mode = parsed.searchParams.get('mode') || fallbackMode;
+    const oobCode = parsed.searchParams.get('oobCode');
+    if (oobCode) {
+      return `${getAppUrl()}/action?mode=${encodeURIComponent(mode)}&oobCode=${encodeURIComponent(oobCode)}`;
+    }
+  } catch (e) {
+    console.error('[formatActionLink] Error parsing raw link:', e);
+  }
+  return rawFirebaseLink;
 };
 
 const isAdminRequest = async (request) => {
@@ -47,10 +61,11 @@ exports.sendAdminPasswordReset = onCall({ secrets: [RESEND_API_KEY] }, async (re
   if (!resend) throw new functions.https.HttpsError('failed-precondition', 'Resend não configurado.');
 
   try {
-    const resetLink = await admin.auth().generatePasswordResetLink(email.trim(), {
+    const rawResetLink = await admin.auth().generatePasswordResetLink(email.trim(), {
       url: `${getAppUrl()}/action`,
       handleCodeInApp: true,
     });
+    const resetLink = formatActionLink(rawResetLink);
     await resend.emails.send({
       from: 'Luisices <noreply@luisices.com.br>',
       to: [email.trim()],
@@ -207,19 +222,14 @@ exports.sendPasswordResetEmail = onCall({ secrets: [RESEND_API_KEY] }, async (re
   try {
     console.log(`[sendPasswordResetEmail] Iniciando para: ${email}`);
 
-    // Determinar URL baseada no ambiente (dev ou prod)
-    const projectId = process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT;
-    const isDev = projectId === 'luisices-dev';
-    const actionUrl = isDev
-      ? 'https://luisices-dev.web.app/action'  // Firebase Hosting Dev
-      : 'https://luisices.com.br/action';      // Produção
-
-    console.log(`[sendPasswordResetEmail] Projeto: ${projectId}, URL: ${actionUrl}`);
+    const actionUrl = `${getAppUrl()}/action`;
+    console.log(`[sendPasswordResetEmail] URL de ação: ${actionUrl}`);
 
     // Gerar link de reset de senha do Firebase Auth
-    const resetLink = await admin.auth().generatePasswordResetLink(email, {
+    const rawResetLink = await admin.auth().generatePasswordResetLink(email, {
       url: actionUrl,
     });
+    const resetLink = formatActionLink(rawResetLink);
 
     console.log(`[sendPasswordResetEmail] Link gerado com sucesso`);
 
