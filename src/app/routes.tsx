@@ -6,22 +6,46 @@ import { PermissionRoute } from './components/PermissionRoute';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { Loader2 } from 'lucide-react';
 import { Register } from './pages/Register';
+import { Login } from './pages/Login';
+import { ResetPassword } from './pages/ResetPassword';
+import { AuthAction } from './pages/AuthAction';
 
-// Páginas carregadas sob demanda — o bundle inicial fica menor
-const Dashboard      = lazy(() => import('./pages/Dashboard').then(m => ({ default: m.Dashboard })));
-const WeeklyCalendar = lazy(() => import('./pages/WeeklyCalendar').then(m => ({ default: m.WeeklyCalendar })));
-const Customers      = lazy(() => import('./pages/Customers').then(m => ({ default: m.Customers })));
-const Reports        = lazy(() => import('./pages/Reports').then(m => ({ default: m.Reports })));
-const Settings       = lazy(() => import('./pages/Settings').then(m => ({ default: m.Settings })));
-const Quotes         = lazy(() => import('./pages/Quotes').then(m => ({ default: m.Quotes })));
-const Products       = lazy(() => import('./pages/Products').then(m => ({ default: m.Products })));
-const Gallery        = lazy(() => import('./pages/Gallery').then(m => ({ default: m.Gallery })));
-const Exchanges      = lazy(() => import('./pages/Exchanges').then(m => ({ default: m.Exchanges })));
-const Users          = lazy(() => import('./pages/Users').then(m => ({ default: m.Users })));
-const FixNegativeValues = lazy(() => import('./pages/FixNegativeValues').then(m => ({ default: m.default })));
-const Login          = lazy(() => import('./pages/Login').then(m => ({ default: m.Login })));
-const ResetPassword  = lazy(() => import('./pages/ResetPassword').then(m => ({ default: m.ResetPassword })));
-const AuthAction     = lazy(() => import('./pages/AuthAction').then(m => ({ default: m.AuthAction })));
+/**
+ * Carregador lazy resiliente a atualizações de build/deploy.
+ * Se o hash do chunk mudou no servidor e o navegador falhar no import dinâmico,
+ * recarrega a página automaticamente uma vez para buscar os novos bundles.
+ */
+function lazyWithRetry<T extends React.ComponentType<any>>(
+  factory: () => Promise<{ default: T }>
+) {
+  return lazy(async () => {
+    try {
+      return await factory();
+    } catch (error) {
+      const hasReloaded = sessionStorage.getItem('chunk_reload');
+      if (!hasReloaded) {
+        sessionStorage.setItem('chunk_reload', 'true');
+        window.location.reload();
+        return new Promise(() => {});
+      }
+      sessionStorage.removeItem('chunk_reload');
+      throw error;
+    }
+  });
+}
+
+// Páginas carregadas sob demanda com retry automático
+const Dashboard      = lazyWithRetry(() => import('./pages/Dashboard').then(m => ({ default: m.Dashboard })));
+const WeeklyCalendar = lazyWithRetry(() => import('./pages/WeeklyCalendar').then(m => ({ default: m.WeeklyCalendar })));
+const Customers      = lazyWithRetry(() => import('./pages/Customers').then(m => ({ default: m.Customers })));
+const Reports        = lazyWithRetry(() => import('./pages/Reports').then(m => ({ default: m.Reports })));
+const Settings       = lazyWithRetry(() => import('./pages/Settings').then(m => ({ default: m.Settings })));
+const Quotes         = lazyWithRetry(() => import('./pages/Quotes').then(m => ({ default: m.Quotes })));
+const Products       = lazyWithRetry(() => import('./pages/Products').then(m => ({ default: m.Products })));
+const Gallery        = lazyWithRetry(() => import('./pages/Gallery').then(m => ({ default: m.Gallery })));
+const Exchanges      = lazyWithRetry(() => import('./pages/Exchanges').then(m => ({ default: m.Exchanges })));
+const Users          = lazyWithRetry(() => import('./pages/Users').then(m => ({ default: m.Users })));
+const FixNegativeValues = lazyWithRetry(() => import('./pages/FixNegativeValues').then(m => ({ default: m.default })));
 
 function PageLoader() {
   return (
@@ -43,22 +67,22 @@ const basename = import.meta.env.BASE_URL || '/';
 export const router = createBrowserRouter([
   {
     path: '/login',
-    element: <Lazy><Login /></Lazy>,
+    element: <Login />,
     errorElement: <ErrorBoundary />,
   },
   {
     path: '/registrar',
-    element: <Lazy><Register /></Lazy>,
+    element: <Register />,
     errorElement: <ErrorBoundary />,
   },
   {
     path: '/recuperar-senha',
-    element: <Lazy><ResetPassword /></Lazy>,
+    element: <ResetPassword />,
     errorElement: <ErrorBoundary />,
   },
   {
     path: '/action',
-    element: <Lazy><AuthAction /></Lazy>,
+    element: <AuthAction />,
     errorElement: <ErrorBoundary />,
   },
   {
