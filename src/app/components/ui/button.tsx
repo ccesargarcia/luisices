@@ -9,13 +9,13 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
-        default: "bg-primary text-primary-foreground hover:bg-primary/90",
+        default: "border border-white/45 bg-[var(--button-glass-bg)] text-[var(--button-glass-text)] shadow-sm backdrop-blur-md hover:bg-[var(--button-glass-hover)] hover:shadow-[0_6px_20px_rgb(123_84_85_/_20%)]",
         destructive:
-          "bg-destructive text-white hover:bg-destructive/90 focus-visible:ring-destructive/20 dark:focus-visible:ring-destructive/40 dark:bg-destructive/60",
+          "border border-white/20 bg-destructive/80 text-white shadow-sm backdrop-blur-md hover:bg-destructive/90 focus-visible:ring-destructive/20 dark:focus-visible:ring-destructive/40 dark:bg-destructive/60",
         outline:
-          "border bg-background text-foreground hover:bg-accent hover:text-accent-foreground dark:bg-input/30 dark:border-input dark:hover:bg-input/50",
+          "border border-white/50 bg-white/25 text-primary shadow-sm backdrop-blur-md hover:bg-white/45 hover:text-primary dark:border-white/15 dark:bg-[var(--button-glass-bg)] dark:text-[var(--button-glass-text)] dark:hover:bg-[var(--button-glass-hover)]",
         secondary:
-          "bg-secondary text-secondary-foreground hover:bg-secondary/80",
+          "border border-white/40 bg-secondary/15 text-secondary shadow-sm backdrop-blur-md hover:bg-secondary/25",
         ghost:
           "hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50",
         link: "text-primary underline-offset-4 hover:underline",
@@ -47,6 +47,7 @@ const Button = React.forwardRef<
     <Comp
       ref={ref}
       data-slot="button"
+      data-variant={variant ?? "default"}
       className={cn(buttonVariants({ variant, size, className }))}
       {...props}
     />

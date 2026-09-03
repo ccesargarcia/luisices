@@ -63,9 +63,9 @@ export class FirebaseStorageService {
     userId: string,
     folder: 'avatar' | 'logo' | 'banner'
   ): Promise<string> {
-    // Validar tipo de arquivo
-    if (!file.type.startsWith('image/')) {
-      throw new Error('Arquivo deve ser uma imagem');
+    const allowedImageTypes = ['image/jpeg', 'image/png', 'image/webp'];
+    if (!allowedImageTypes.includes(file.type)) {
+      throw new Error('Formato não suportado. Envie uma imagem JPG, PNG ou WebP.');
     }
 
     // Validar tamanho (máximo 5MB)
@@ -101,7 +101,10 @@ export class FirebaseStorageService {
    * Upload de imagem da galeria de artes (máx 15MB)
    */
   async uploadGalleryImage(file: File, userId: string, itemId: string): Promise<string> {
-    if (!file.type.startsWith('image/')) throw new Error('Arquivo deve ser uma imagem');
+    const allowedImageTypes = ['image/jpeg', 'image/png', 'image/webp'];
+    if (!allowedImageTypes.includes(file.type)) {
+      throw new Error('Formato não suportado. Envie uma imagem JPG, PNG ou WebP.');
+    }
     if (file.size > 15 * 1024 * 1024) throw new Error('Imagem muito grande. Máximo: 15MB');
     const timestamp = Date.now();
     const ext = file.name.split('.').pop();

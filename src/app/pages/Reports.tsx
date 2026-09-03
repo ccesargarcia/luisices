@@ -106,7 +106,7 @@ function Trend({ current, previous }: { current: number; previous: number }) {
   if (previous === 0 && current === 0) return null;
   if (previous === 0) return (
     <span className="inline-flex items-center gap-0.5 text-xs font-medium text-emerald-600">
-      <TrendingUp className="size-3" /> novo
+      <TrendingUp className="size-3" /> novo período
     </span>
   );
   const pct = ((current - previous) / previous) * 100;
@@ -118,7 +118,7 @@ function Trend({ current, previous }: { current: number; previous: number }) {
       eq ? 'text-muted-foreground' : up ? 'text-emerald-600' : 'text-red-500',
     )}>
       {eq ? <Minus className="size-3" /> : up ? <TrendingUp className="size-3" /> : <TrendingDown className="size-3" />}
-      {eq ? 'igual' : `${up ? '+' : ''}${pct.toFixed(1)}%`}
+      {eq ? 'sem variação' : `${up ? '+' : ''}${pct.toFixed(1)}%`}
     </span>
   );
 }
@@ -137,7 +137,7 @@ function KpiCard({ title, value, sub, icon: Icon, iconClass, trend }: {
         </div>
       </CardHeader>
       <CardContent className="space-y-1">
-        <div className="text-2xl font-bold tracking-tight">{value}</div>
+        <div className="min-w-0 break-words text-lg font-bold leading-tight tracking-tight tabular-nums sm:text-2xl">{value}</div>
         <div className="flex items-center gap-2 flex-wrap">
           <p className="text-xs text-muted-foreground">{sub}</p>
           {trend}
@@ -320,13 +320,13 @@ export function Reports() {
   const maxCust = stats.topCustomers[0]?.revenue ?? 1;
 
   return (
-    <div className="space-y-6 p-4 sm:p-6">
+    <div className="space-y-8 p-3 sm:p-6">
 
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+      <div className="flex flex-col items-start justify-between gap-4 border-b border-border/60 pb-6 sm:flex-row sm:items-center">
         <div>
-          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Relatórios</h1>
-          <p className="text-muted-foreground text-sm">{PERIOD_LABELS[period]}</p>
+          <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">Relatórios</h1>
+          <p className="mt-1 text-sm text-muted-foreground">{PERIOD_LABELS[period]}</p>
         </div>
         <Button onClick={exportCsv} variant="outline" className="gap-2 self-start sm:self-auto">
           <Download className="size-4" /> Exportar CSV
@@ -334,14 +334,14 @@ export function Reports() {
       </div>
 
       {/* Period selector */}
-      <div className="flex gap-1 bg-muted rounded-xl p-1 w-fit">
+      <div className="glass-chip flex w-fit flex-wrap gap-1 rounded-lg p-1">
         {(['week', 'month', 'quarter', 'year'] as Period[]).map(p => (
           <button
             key={p}
             onClick={() => setPeriod(p)}
             className={cn(
               'px-3 py-1.5 rounded-lg text-sm font-medium transition-all',
-              period === p ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground',
+              period === p ? 'bg-primary/15 text-primary shadow-sm' : 'text-muted-foreground hover:text-foreground',
             )}
           >
             {p === 'week' ? 'Semana' : p === 'month' ? 'Mês' : p === 'quarter' ? 'Trimestre' : 'Ano'}
@@ -356,10 +356,20 @@ export function Reports() {
           {allTags.map(tag => (
             <Badge
               key={tag.name}
-              className={cn('cursor-pointer hover:opacity-80 border-0 transition-opacity',
-                selTags.includes(tag.name) ? 'ring-2 ring-offset-2 ring-black/50' : '')}
+              className={cn(
+                'cursor-pointer border transition-colors hover:brightness-95',
+                selTags.includes(tag.name)
+                  ? 'border-primary/50 ring-2 ring-primary/30 ring-offset-1'
+                  : 'border-border/60',
+              )}
               onClick={() => setSelTags(p => p.includes(tag.name) ? p.filter(t => t !== tag.name) : [...p, tag.name])}
-              style={{ backgroundColor: tag.color, color: getTextColor(tag.color) }}
+              style={{
+                backgroundColor: `color-mix(in srgb, ${tag.color} 22%, transparent)`,
+                borderColor: selTags.includes(tag.name)
+                  ? `color-mix(in srgb, ${tag.color} 55%, var(--border))`
+                  : undefined,
+                color: 'var(--foreground)',
+              }}
             >
               {tag.name}
               {selTags.includes(tag.name) && <X className="size-3 ml-1" />}
@@ -372,7 +382,7 @@ export function Reports() {
       )}
 
       {/* KPI Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-4">
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-6 xl:gap-6">
         <KpiCard
           title="Receita Total"
           value={formatCurrency(stats.revenue)}

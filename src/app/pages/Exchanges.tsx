@@ -174,7 +174,7 @@ export function Exchanges() {
       setDetailsOpen(false);
       setSelectedOrder(null);
     } catch {
-      toast.error('Erro ao deletar pedido');
+      toast.error('Não foi possível remover o pedido. Tente novamente.');
     }
   };
 

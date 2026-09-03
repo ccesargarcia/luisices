@@ -2,6 +2,7 @@ import { Order } from '../types';
 import { Badge } from './ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Button } from './ui/button';
+import { Checkbox } from './ui/checkbox';
 import { Phone, Calendar, Package, DollarSign, Tag, MessageCircle, Smartphone, Banknote, CreditCard, ArrowLeftRight, Repeat2, Users } from 'lucide-react';
 import { getTextColor } from '../utils/tagColors';
 import { openWhatsAppForOrder } from '../utils/whatsapp';
@@ -20,13 +21,15 @@ function hexToRgba(hex: string, alpha: number) {
 interface OrderCardProps {
   order: Order;
   onClick?: () => void;
+  isSelected?: boolean;
+  onToggleSelect?: (orderId: string, selected: boolean) => void;
 }
 
 const statusColors = {
-  pending: 'bg-yellow-100 text-yellow-800 border-yellow-200',
-  'in-progress': 'bg-blue-100 text-blue-800 border-blue-200',
-  completed: 'bg-green-100 text-green-800 border-green-200',
-  cancelled: 'bg-red-100 text-red-800 border-red-200',
+  pending: 'bg-yellow-100 text-yellow-800 border-yellow-200 dark:bg-yellow-950/40 dark:text-yellow-200 dark:border-yellow-800/60',
+  'in-progress': 'bg-blue-100 text-blue-800 border-blue-200 dark:bg-blue-950/40 dark:text-blue-200 dark:border-blue-800/60',
+  completed: 'bg-green-100 text-green-800 border-green-200 dark:bg-green-950/40 dark:text-green-200 dark:border-green-800/60',
+  cancelled: 'bg-red-100 text-red-800 border-red-200 dark:bg-red-950/40 dark:text-red-200 dark:border-red-800/60',
 };
 
 const statusLabels = {
@@ -36,11 +39,16 @@ const statusLabels = {
   cancelled: 'Cancelado',
 };
 
-export function OrderCard({ order, onClick }: OrderCardProps) {
+export function OrderCard({ order, onClick, isSelected = false, onToggleSelect }: OrderCardProps) {
   const { settings } = useUserSettings();
   const { user } = useAuth();
   const compact = settings?.compactCards ?? false;
   const isShared = order.userId && order.userId !== user?.uid;
+
+  const handleSelectToggle = (event: React.MouseEvent | React.KeyboardEvent) => {
+    event.stopPropagation();
+    onToggleSelect?.(order.id, !isSelected);
+  };
   const getPaymentIcon = (method?: string) => {
     switch (method) {
       case 'pix': return <Smartphone className="size-3.5" />;
@@ -65,7 +73,7 @@ export function OrderCard({ order, onClick }: OrderCardProps) {
 
   return (
     <Card
-      className="hover:shadow-md transition-all cursor-pointer overflow-hidden"
+      className="glass-panel cursor-pointer overflow-hidden relative transition-all hover:-translate-y-0.5 hover:border-primary/40"
       onClick={onClick}
       style={order.cardColor ? {
         backgroundColor: hexToRgba(order.cardColor, 0.18),
@@ -73,11 +81,22 @@ export function OrderCard({ order, onClick }: OrderCardProps) {
         borderWidth: 1.5,
       } : undefined}
     >
+      {onToggleSelect && (
+        <div className="absolute left-3 top-3 z-10">
+          <Checkbox
+            checked={isSelected}
+            onCheckedChange={(checked) => onToggleSelect(order.id, Boolean(checked))}
+            onClick={(event) => event.stopPropagation()}
+            aria-label={`Selecionar pedido ${order.customerName}`}
+            className="bg-background border-2 shadow-sm"
+          />
+        </div>
+      )}
       {compact ? (
         /* ── COMPACT ─────────────────────────────────────── */
         <div className="px-3 py-2 space-y-1">
           {/* Row 1: name + status */}
-          <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center justify-between gap-2 pl-8">
             <span className="font-semibold text-sm truncate flex-1">{order.customerName}</span>
             <div className="flex items-center gap-1.5 shrink-0">
               {isShared && (
@@ -107,7 +126,9 @@ export function OrderCard({ order, onClick }: OrderCardProps) {
               <span>{formatDateShort(order.deliveryDate)}</span>
             </div>
             {order.payment && order.payment.remainingAmount > 0 && order.payment.paidAmount > 0 && (
-              <span className="text-orange-600">Resta {formatCurrency(order.payment.remainingAmount)}</span>
+              <span className="rounded-md border border-amber-500/25 bg-amber-500/10 px-2 py-1 text-amber-700 dark:border-amber-300/25 dark:bg-amber-300/10 dark:text-amber-200">
+                Resta {formatCurrency(order.payment.remainingAmount)}
+              </span>
             )}
           </div>
           {/* Tags (compact) */}
@@ -129,7 +150,7 @@ export function OrderCard({ order, onClick }: OrderCardProps) {
         /* ── COMFORTABLE ─────────────────────────────────── */
         <>
           <CardHeader className="pb-3">
-            <div className="flex items-start justify-between gap-2">
+            <div className="flex items-start justify-between gap-2 pl-8">
               <div className="min-w-0 flex-1">
                 <CardTitle className="text-base sm:text-lg leading-snug break-words">{order.customerName}</CardTitle>
                 <div className="flex items-center gap-1.5 mt-1 flex-wrap">
@@ -183,7 +204,7 @@ export function OrderCard({ order, onClick }: OrderCardProps) {
                 <span className="truncate">{formatCurrency(order.price)} ({order.quantity} un.)</span>
               </div>
               {order.payment && order.payment.paidAmount > 0 && order.payment.remainingAmount > 0 && (
-                <div className="flex items-center gap-1 text-xs text-orange-600 bg-orange-50 px-2 py-1 rounded shrink-0">
+                <div className="flex shrink-0 items-center gap-1 rounded-md border border-amber-500/25 bg-amber-500/10 px-2 py-1 text-xs text-amber-700 dark:border-amber-300/25 dark:bg-amber-300/10 dark:text-amber-200">
                   <DollarSign className="size-3" />
                   <span>Resta: {formatCurrency(order.payment.remainingAmount)}</span>
                 </div>

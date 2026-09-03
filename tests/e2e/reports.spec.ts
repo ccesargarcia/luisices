@@ -16,8 +16,8 @@ test.beforeEach(async ({ page }) => {
   await page.fill('input[type="password"]', TEST_USER.password);
   await page.click('button[type="submit"]');
 
-  // Verificar que o dashboard está carregado (em vez de confiar na URL)
-  await expect(page.getByRole('heading', { name: /Bom dia|Boa tarde|Boa noite/i })).toBeVisible({ timeout: 30000 });
+  await page.waitForURL('**/dashboard', { timeout: 30000 });
+  await expect(page.locator('main').first()).toBeVisible({ timeout: 10000 });
 
   await page.goto('/relatorios');
   await expect(page.locator('main').first()).toBeVisible({ timeout: 10000 });
@@ -31,44 +31,24 @@ test.describe('Relatórios', () => {
   });
 
   test('deve alterar período dos relatórios', async ({ page }) => {
-    await page.waitForTimeout(2000);
-
     // Clicar em diferentes períodos
-    const monthBtn = page.getByRole('button', { name: /Último Mês/i }).first();
-    if (await monthBtn.isVisible({ timeout: 3000 })) {
-      await monthBtn.click();
-      await page.waitForTimeout(1000);
-    }
+    const monthBtn = page.getByRole('button', { name: 'Mês', exact: true });
+    await expect(monthBtn).toBeVisible({ timeout: 5000 });
+    await monthBtn.click();
 
-    const weekBtn = page.getByRole('button', { name: /Última Semana/i }).first();
-    if (await weekBtn.isVisible({ timeout: 3000 })) {
-      await weekBtn.click();
-      await page.waitForTimeout(1000);
-    }
+    const weekBtn = page.getByRole('button', { name: 'Semana', exact: true });
+    await expect(weekBtn).toBeVisible({ timeout: 5000 });
+    await weekBtn.click();
   });
 
   test('deve exibir métricas de pedidos', async ({ page }) => {
-    await page.waitForTimeout(2000);
-
     // Verificar métricas de pedidos
-    const concluidos = page.getByText('Pedidos Concluídos');
-    const cancelados = page.getByText('Cancelados');
-
-    if (await concluidos.isVisible({ timeout: 5000 })) {
-      await expect(concluidos).toBeVisible();
-    }
-
-    if (await cancelados.isVisible({ timeout: 3000 })) {
-      await expect(cancelados).toBeVisible();
-    }
+    await expect(page.getByText(/concluídos/i).first()).toBeVisible({ timeout: 5000 });
+    await expect(page.getByText(/cancelados/i).first()).toBeVisible({ timeout: 5000 });
   });
 
   test('deve ter botão de exportar CSV', async ({ page }) => {
-    await page.waitForTimeout(2000);
-
     const downloadBtn = page.getByRole('button', { name: /Download|Exportar|CSV/i }).first();
-    if (await downloadBtn.isVisible({ timeout: 3000 })) {
-      await expect(downloadBtn).toBeVisible();
-    }
+    await expect(downloadBtn).toBeVisible({ timeout: 5000 });
   });
 });

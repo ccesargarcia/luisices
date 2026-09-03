@@ -23,7 +23,6 @@ test.describe('Galeria', () => {
     // Navegar para galeria
     await page.goto('/galeria');
     await page.waitForLoadState('domcontentloaded');
-    await page.waitForTimeout(2000);
 
     // 1. Verificar que a página carregou
     const main = page.locator('main').first();
@@ -31,36 +30,29 @@ test.describe('Galeria', () => {
 
     // 2. Verificar botão de upload
     const uploadBtn = page.getByRole('button', { name: /Nova Arte|Upload|Adicionar/i }).first();
-    if (await uploadBtn.isVisible({ timeout: 5000 })) {
-      // Abrir dialog de nova arte
-      await uploadBtn.click();
+    await expect(uploadBtn).toBeVisible({ timeout: 10000 });
+    // Abrir dialog de nova arte
+    await uploadBtn.click();
 
       const dialog = page.locator('[role="dialog"]').first();
       await expect(dialog).toBeVisible({ timeout: 5000 });
 
       // Verificar campos do formulário
       const titleInput = dialog.locator('#gallery-title');
-      if (await titleInput.isVisible({ timeout: 2000 })) {
-        await expect(titleInput).toBeVisible();
-      }
+      await expect(titleInput).toBeVisible({ timeout: 5000 });
 
       // Fechar dialog
       const cancelBtn = dialog.getByRole('button', { name: /Cancelar|Fechar/i }).first();
-      if (await cancelBtn.isVisible({ timeout: 2000 })) {
-        await cancelBtn.click();
-        await page.waitForTimeout(500);
-      } else {
-        await page.keyboard.press('Escape');
-        await page.waitForTimeout(500);
-      }
-    }
+      await expect(cancelBtn).toBeVisible({ timeout: 5000 });
+      await cancelBtn.click();
+      await expect(dialog).not.toBeVisible({ timeout: 5000 });
 
     // 3. Verificar imagens na galeria (se existem)
     const imgCount = await page.locator('img').count();
     if (imgCount > 0) {
       // Clicar na primeira imagem para abrir lightbox
       await page.locator('img').first().click();
-      await page.waitForTimeout(1000);
+      await expect(page.locator('[role="dialog"]').first()).toBeVisible({ timeout: 5000 });
       await page.keyboard.press('Escape');
     }
   });

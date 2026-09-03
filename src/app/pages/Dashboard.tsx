@@ -25,7 +25,8 @@ import {
   Calendar,
   Target,
   Repeat2,
-  Download
+  Download,
+  Trash2,
 } from 'lucide-react';
 import { getTextColor } from '../utils/tagColors';
 import { useFirebaseOrders } from '../../hooks/useFirebaseOrders';
@@ -40,6 +41,16 @@ import { exportOrdersToExcel } from '../utils/exportData';
 import { toast } from 'sonner';
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts';
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from '../components/ui/chart';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '../components/ui/alert-dialog';
 
 const statusChartConfig = {
   value: { label: 'Pedidos' },
@@ -62,7 +73,7 @@ function EmptyState({ message, hint }: { message: string; hint?: string }) {
 function getGreeting() {
   const hour = new Date().getHours();
 
-  if (hour < 6) return 'Boa madrugada';
+  if (hour < 6) return 'Boa noite';
   if (hour < 12) return 'Bom dia';
   if (hour < 18) return 'Boa tarde';
   return 'Boa noite';
@@ -73,13 +84,32 @@ export function Dashboard() {
   const { orders, loading, error } = useFirebaseOrders();
   const { settings } = useUserSettings();
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
+  const [selectedOrderIds, setSelectedOrderIds] = useState<string[]>([]);
   const [detailsOpen, setDetailsOpen] = useState(false);
+  const [isBulkOrderDeleteOpen, setIsBulkOrderDeleteOpen] = useState(false);
+  const [bulkOrderDeleting, setBulkOrderDeleting] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [showExchangeOnly, setShowExchangeOnly] = useState(false);
 
   const visibleCards = settings?.dashboardCards ?? DEFAULT_DASHBOARD_CARDS;
   const showCard = (id: string) => visibleCards.includes(id);
+  const firstGridCount = ['total', 'revenue', 'open', 'avgTicket'].filter(showCard).length;
+  const secondGridCount = ['inProgress', 'toReceive', 'received'].filter(showCard).length;
+  const firstGridClass = firstGridCount === 1
+    ? 'grid-cols-1'
+    : firstGridCount === 2
+      ? 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-2'
+      : firstGridCount === 3
+        ? 'grid-cols-2 lg:grid-cols-3'
+        : 'grid-cols-2 lg:grid-cols-4';
+  const secondGridClass = secondGridCount === 1
+    ? 'grid-cols-1'
+    : secondGridCount === 2
+      ? 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-2'
+      : 'grid-cols-2 lg:grid-cols-3';
+  const firstGridLastItemClass = firstGridCount === 3 ? 'col-span-2 lg:col-span-1' : '';
+  const secondGridLastItemClass = secondGridCount === 3 ? 'col-span-2 lg:col-span-1' : '';
   const handleOrderClick = (order: Order) => {
     setSelectedOrder(order);
     setDetailsOpen(true);
@@ -108,7 +138,7 @@ export function Dashboard() {
       setSelectedOrder(null);
     } catch (err) {
       console.error('Erro ao deletar pedido:', err);
-      toast.error('Erro ao deletar pedido');
+      toast.error('Não foi possível remover o pedido. Tente novamente.');
     }
   };
 
@@ -288,6 +318,59 @@ export function Dashboard() {
     );
   };
 
+  const toggleOrderSelection = (orderId: string, selected: boolean) => {
+    setSelectedOrderIds(prev => {
+      if (selected) {
+        return prev.includes(orderId) ? prev : [...prev, orderId];
+      }
+      return prev.filter(id => id !== orderId);
+    });
+  };
+
+  const allFilteredOrdersSelected =
+    filteredOrders.length > 0 &&
+    filteredOrders.every(order => selectedOrderIds.includes(order.id));
+
+  const toggleSelectAllVisibleOrders = () => {
+    if (allFilteredOrdersSelected) {
+      setSelectedOrderIds(prev => prev.filter(id => !filteredOrders.some(order => order.id === id)));
+      return;
+    }
+
+    setSelectedOrderIds(prev => {
+      const next = new Set(prev);
+      filteredOrders.forEach(order => next.add(order.id));
+      return [...next];
+    });
+  };
+
+  const handleBulkDeleteOrders = async () => {
+    if (selectedOrderIds.length === 0) return;
+
+    setBulkOrderDeleting(true);
+    try {
+      const ordersToDelete = orders.filter((order) => selectedOrderIds.includes(order.id));
+
+      await Promise.all(
+        ordersToDelete.map(async (order) => {
+          await firebaseOrderService.deleteOrder(order.id);
+          if (order.customerId && order.price) {
+            await firebaseCustomerService.decrementCustomerStats(order.customerId, order.price).catch(() => {});
+          }
+        }),
+      );
+
+      toast.success(`${ordersToDelete.length} pedido${ordersToDelete.length === 1 ? '' : 's'} excluído${ordersToDelete.length === 1 ? '' : 's'}`);
+      setSelectedOrderIds([]);
+      setIsBulkOrderDeleteOpen(false);
+    } catch (err) {
+      console.error('Erro ao excluir pedidos em massa:', err);
+      toast.error('Erro ao excluir pedidos selecionados');
+    } finally {
+      setBulkOrderDeleting(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="space-y-6">
@@ -325,14 +408,14 @@ export function Dashboard() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-border/60 pb-6">
         <div>
-          <h1 className="text-2xl sm:text-3xl font-bold">
+          <h1 className="text-3xl sm:text-4xl font-bold tracking-tight">
             {getGreeting()}{user?.displayName ? `, ${user.displayName.split(' ')[0]}` : ''}!
           </h1>
-          <p className="text-muted-foreground">Gerencie seus pedidos personalizados</p>
+          <p className="mt-1 text-muted-foreground">Gerencie seus pedidos personalizados</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex w-full flex-wrap gap-2 sm:w-auto">
           <Button
             variant="outline"
             size="default"
@@ -347,7 +430,7 @@ export function Dashboard() {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div data-kpi-grid data-count={firstGridCount} className={`grid gap-4 lg:gap-6 ${firstGridClass}`}>
         {showCard('total') && (
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
@@ -355,7 +438,7 @@ export function Dashboard() {
             <Package className="size-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{stats.total}</div>
+            <div className="min-w-0 break-words text-lg font-bold leading-tight tabular-nums sm:text-2xl">{stats.total}</div>
             <p className="text-xs text-muted-foreground mt-1">
               {stats.completed} concluídos
             </p>
@@ -370,7 +453,7 @@ export function Dashboard() {
             <DollarSign className="size-4 text-green-600" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{formatCurrency(stats.totalRevenue)}</div>
+            <div className="min-w-0 break-words text-lg font-bold leading-tight tabular-nums sm:text-2xl">{formatCurrency(stats.totalRevenue)}</div>
             <p className="text-xs text-muted-foreground mt-1">
               {stats.completed} pedido{stats.completed !== 1 ? 's' : ''} concluído{stats.completed !== 1 ? 's' : ''}
             </p>
@@ -385,7 +468,7 @@ export function Dashboard() {
             <TrendingUp className="size-4 text-blue-600" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{formatCurrency(stats.expectedRevenue)}</div>
+            <div className="min-w-0 break-words text-lg font-bold leading-tight tabular-nums sm:text-2xl">{formatCurrency(stats.expectedRevenue)}</div>
             <p className="text-xs text-muted-foreground mt-1">
               {stats.pending + stats.inProgress} pedido{(stats.pending + stats.inProgress) !== 1 ? 's' : ''} a entregar
             </p>
@@ -400,7 +483,7 @@ export function Dashboard() {
             <Target className="size-4 text-purple-600" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{formatCurrency(stats.averageOrderValue)}</div>
+            <div className="min-w-0 break-words text-lg font-bold leading-tight tabular-nums sm:text-2xl">{formatCurrency(stats.averageOrderValue)}</div>
             <p className="text-xs text-muted-foreground mt-1">
               Em {stats.total} pedidos
             </p>
@@ -410,7 +493,7 @@ export function Dashboard() {
       </div>
 
       {/* Métricas adicionais */}
-      <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      <div data-kpi-grid data-count={secondGridCount} className={`grid gap-4 lg:gap-6 ${secondGridClass}`}>
         {showCard('inProgress') && (
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
@@ -418,7 +501,7 @@ export function Dashboard() {
             <Clock className="size-4 text-blue-600" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{stats.inProgress}</div>
+            <div className="min-w-0 break-words text-lg font-bold leading-tight tabular-nums sm:text-2xl">{stats.inProgress}</div>
             <p className="text-xs text-muted-foreground mt-1">
               {stats.pending} aguardando
             </p>
@@ -433,7 +516,7 @@ export function Dashboard() {
             <AlertCircle className="size-4 text-yellow-600" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{formatCurrency(stats.totalPending)}</div>
+            <div className="min-w-0 break-words text-lg font-bold leading-tight tabular-nums sm:text-2xl">{formatCurrency(stats.totalPending)}</div>
             <p className="text-xs text-muted-foreground mt-1">
               {stats.pendingPayments} {stats.pendingPayments === 1 ? 'pedido sem pagamento completo' : 'pedidos sem pagamento completo'}
             </p>
@@ -448,7 +531,7 @@ export function Dashboard() {
             <TrendingUp className="size-4 text-green-600" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{formatCurrency(stats.totalPaid)}</div>
+            <div className="min-w-0 break-words text-lg font-bold leading-tight tabular-nums sm:text-2xl">{formatCurrency(stats.totalPaid)}</div>
             <p className="text-xs text-muted-foreground mt-1">
               {stats.paidOrders} pagos · {stats.partialOrders} parciais
             </p>
@@ -460,9 +543,9 @@ export function Dashboard() {
 
       {/* Gráficos */}
       {stats.total > 0 && (showCard('statusChart') || showCard('weeklyChart')) && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 lg:gap-6">
           {showCard('statusChart') && (
-          <Card>
+          <Card className="min-w-0 overflow-hidden">
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-medium">Distribuição de Status</CardTitle>
             </CardHeader>
@@ -503,11 +586,11 @@ export function Dashboard() {
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-medium">Pedidos por Semana</CardTitle>
             </CardHeader>
-            <CardContent>
-              <ChartContainer config={weeklyChartConfig} className="h-[220px]">
-                <BarChart data={ordersPerWeek} margin={{ top: 4, right: 4, left: -22, bottom: 0 }}>
+            <CardContent className="min-w-0 overflow-hidden">
+              <ChartContainer config={weeklyChartConfig} className="h-[240px] w-full">
+                <BarChart data={ordersPerWeek} margin={{ top: 4, right: 8, left: 0, bottom: 24 }}>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                  <XAxis dataKey="semana" tick={{ fontSize: 10 }} tickLine={false} axisLine={false} />
+                  <XAxis dataKey="semana" interval="preserveStartEnd" tick={{ fontSize: 9 }} tickMargin={8} tickLine={false} axisLine={false} />
                   <YAxis allowDecimals={false} tick={{ fontSize: 10 }} tickLine={false} axisLine={false} />
                   <ChartTooltip content={<ChartTooltipContent />} />
                   <Bar dataKey="pedidos" fill="var(--color-pedidos)" radius={[4, 4, 0, 0]} />
@@ -569,11 +652,19 @@ export function Dashboard() {
             {allTags.map((tag) => (
               <Badge
                 key={tag.name}
-                className={`cursor-pointer hover:opacity-80 transition-opacity border-0 ${
-                  selectedTags.includes(tag.name) ? 'ring-2 ring-offset-2 ring-black' : ''
+                className={`cursor-pointer border transition-colors hover:brightness-95 ${
+                  selectedTags.includes(tag.name)
+                    ? 'border-primary/50 ring-2 ring-primary/30 ring-offset-1'
+                    : 'border-border/60'
                 }`}
                 onClick={() => toggleTag(tag.name)}
-                style={{ backgroundColor: tag.color, color: getTextColor(tag.color) }}
+                style={{
+                  backgroundColor: `color-mix(in srgb, ${tag.color} 22%, transparent)`,
+                  borderColor: selectedTags.includes(tag.name)
+                    ? `color-mix(in srgb, ${tag.color} 55%, var(--border))`
+                    : undefined,
+                  color: 'var(--foreground)',
+                }}
               >
                 {tag.name}
                 {selectedTags.includes(tag.name) && (
@@ -584,8 +675,8 @@ export function Dashboard() {
             <Badge
               className={`cursor-pointer hover:opacity-80 transition-opacity gap-1 ${
                 showExchangeOnly
-                  ? 'bg-purple-600 text-white ring-2 ring-offset-2 ring-purple-400'
-                  : 'bg-purple-100 text-purple-800 border border-purple-300'
+                  ? 'border border-primary/50 bg-primary/20 text-primary ring-2 ring-primary/30 ring-offset-1'
+                  : 'border border-border/60 bg-muted/40 text-muted-foreground'
               }`}
               onClick={() => setShowExchangeOnly(prev => !prev)}
             >
@@ -601,6 +692,38 @@ export function Dashboard() {
               >
                 Limpar filtros
               </Badge>
+            )}
+          </div>
+        </div>
+      )}
+
+      {(selectedOrderIds.length > 0 || filteredOrders.length > 0) && (
+        <div className="glass-chip flex flex-col gap-3 rounded-lg p-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-2 flex-wrap">
+            <p className="text-sm text-primary">
+              {selectedOrderIds.length} selecionado{selectedOrderIds.length === 1 ? '' : 's'}
+            </p>
+            <Button variant="outline" size="sm" onClick={toggleSelectAllVisibleOrders}>
+              {allFilteredOrdersSelected ? 'Desmarcar todos' : 'Selecionar todos'}
+            </Button>
+          </div>
+          <div className="flex items-center gap-2">
+            {selectedOrderIds.length > 0 && (
+              <Button variant="outline" size="sm" onClick={() => setSelectedOrderIds([])}>
+                Limpar
+              </Button>
+            )}
+            {selectedOrderIds.length > 0 && (
+              <Button
+                variant="destructive"
+                size="sm"
+                className="gap-2"
+                onClick={() => setIsBulkOrderDeleteOpen(true)}
+                disabled={bulkOrderDeleting}
+              >
+                <Trash2 className="size-4" />
+                Excluir selecionados
+              </Button>
             )}
           </div>
         </div>
@@ -624,7 +747,7 @@ export function Dashboard() {
           {filteredOrders.length === 0 ? (
             <EmptyState
               message="Nenhum pedido encontrado"
-              hint={searchQuery || selectedTags.length > 0 || showExchangeOnly ? 'Tente ajustar os filtros.' : 'Crie seu primeiro pedido clicando em "Novo Pedido".'}
+              hint={searchQuery || selectedTags.length > 0 || showExchangeOnly ? 'Ajuste os filtros para realizar uma nova busca.' : 'Crie seu primeiro pedido selecionando “Novo Pedido”.'}
             />
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -632,6 +755,8 @@ export function Dashboard() {
                 <OrderCard
                   key={order.id}
                   order={order}
+                  isSelected={selectedOrderIds.includes(order.id)}
+                  onToggleSelect={toggleOrderSelection}
                   onClick={() => handleOrderClick(order)}
                 />
               ))}
@@ -650,6 +775,8 @@ export function Dashboard() {
                   <OrderCard
                     key={order.id}
                     order={order}
+                    isSelected={selectedOrderIds.includes(order.id)}
+                    onToggleSelect={toggleOrderSelection}
                     onClick={() => handleOrderClick(order)}
                   />
                 ))}
@@ -668,6 +795,8 @@ export function Dashboard() {
                   <OrderCard
                     key={order.id}
                     order={order}
+                    isSelected={selectedOrderIds.includes(order.id)}
+                    onToggleSelect={toggleOrderSelection}
                     onClick={() => handleOrderClick(order)}
                   />
                 ))}
@@ -686,6 +815,8 @@ export function Dashboard() {
                   <OrderCard
                     key={order.id}
                     order={order}
+                    isSelected={selectedOrderIds.includes(order.id)}
+                    onToggleSelect={toggleOrderSelection}
                     onClick={() => handleOrderClick(order)}
                   />
                 ))}
@@ -693,6 +824,28 @@ export function Dashboard() {
           )}
         </TabsContent>
       </Tabs>
+
+      <AlertDialog open={isBulkOrderDeleteOpen} onOpenChange={setIsBulkOrderDeleteOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir pedidos selecionados?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Você está prestes a excluir <strong>{selectedOrderIds.length}</strong> pedido{selectedOrderIds.length === 1 ? '' : 's'}.
+              Essa ação pode ser revertida apenas removendo os registros do banco.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleBulkDeleteOrders}
+              className="bg-destructive text-destructive-foreground"
+              disabled={bulkOrderDeleting}
+            >
+              {bulkOrderDeleting ? 'Excluindo...' : 'Excluir selecionados'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <OrderDetailsDialog
         order={selectedOrder}

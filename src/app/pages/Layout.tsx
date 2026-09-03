@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router';
-import { LayoutDashboard, Calendar, Users, Package2, LogOut, Settings as SettingsIcon, BarChart3, FileText, ShoppingBag, Images, AtSign, Globe, Phone, Mail, MapPin, MessageCircle, ArrowLeftRight, UserCog, Info } from 'lucide-react';
+import { LayoutDashboard, Calendar, Users, Package2, LogOut, Settings as SettingsIcon, BarChart3, FileText, ShoppingBag, Images, AtSign, Globe, Phone, Mail, MapPin, MessageCircle, ArrowLeftRight, UserCog, Info, PanelLeftClose, PanelLeftOpen, MoreHorizontal } from 'lucide-react';
 import { cn } from '../components/ui/utils';
 import { useAuth } from '../../contexts/AuthContext';
 import { useUserSettings } from '../../hooks/useUserSettings';
@@ -88,16 +88,97 @@ export function Layout() {
     });
   }, [settings?.navOrder]);
 
+  const mobilePrimaryNav = orderedNav.slice(0, 4);
+  const mobileMoreNav = orderedNav.slice(4);
+  const canAccessSettings = userProfile?.role === 'user' || hasPermission((p) => p.settings);
+
   const businessName = settings?.businessName || 'Papelaria Personalizada';
   const hasLogo = !!settings?.logo;
   const isDevEnvironment = import.meta.env.VITE_FIREBASE_PROJECT_ID?.endsWith('-dev') ?? false;
   const appVersion = __APP_VERSION__ || '0.0.0';
   const [aboutOpen, setAboutOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    return window.localStorage.getItem('luisices-sidebar-collapsed') === 'true';
+  });
+
+  const toggleSidebar = () => {
+    setSidebarCollapsed((collapsed) => {
+      const next = !collapsed;
+      window.localStorage.setItem('luisices-sidebar-collapsed', String(next));
+      return next;
+    });
+  };
 
   return (
-    <div className="min-h-screen bg-background overflow-x-hidden flex flex-col">
-      <header className="border-b bg-card">
-        <div className="container mx-auto px-4 py-3">
+    <div className="min-h-screen overflow-x-hidden bg-transparent flex flex-col">
+      <aside className={cn(
+        'hidden md:flex fixed inset-y-0 left-0 z-40 flex-col border-r border-white/40 bg-sidebar/70 py-8 shadow-[0_8px_32px_rgb(123_84_85_/_8%)] backdrop-blur-2xl transition-[width] duration-300',
+        sidebarCollapsed ? 'w-20' : 'w-72',
+      )}>
+        <div className={cn('mb-8 flex items-center px-6', sidebarCollapsed ? 'justify-center' : 'gap-4')}>
+          {hasLogo ? (
+            <img src={settings.logo} alt={businessName} className={cn('h-12 w-12 shrink-0 rounded-full border border-white/40 object-contain shadow-sm', sidebarCollapsed && 'h-10 w-10')} />
+          ) : (
+            <div className={cn('flex size-12 shrink-0 items-center justify-center rounded-full border border-white/40 bg-primary text-primary-foreground shadow-sm', sidebarCollapsed && 'size-10')}>
+              <Package2 className="size-6" />
+            </div>
+          )}
+          <div className={cn('min-w-0 overflow-hidden transition-opacity duration-200', sidebarCollapsed ? 'w-0 opacity-0' : 'opacity-100')}>
+            <h2 className="truncate text-lg font-bold tracking-tight text-primary">{businessName}</h2>
+            <p className="truncate text-sm text-muted-foreground">{settings?.businessTagline || 'Sistema de Gestão'}</p>
+          </div>
+        </div>
+        <nav className="flex flex-1 flex-col gap-2">
+          {orderedNav.map((item) => {
+            const isActive = location.pathname === item.href;
+            return (
+              <Link
+                key={item.href}
+                to={item.href}
+                title={sidebarCollapsed ? item.name : undefined}
+                className={cn(
+                  'flex items-center border-l-4 px-6 py-3 text-sm font-medium transition-colors',
+                  sidebarCollapsed ? 'justify-center' : 'gap-4',
+                  isActive
+                    ? 'border-primary bg-primary/10 text-primary'
+                    : 'border-transparent text-muted-foreground hover:border-primary/30 hover:bg-primary/5 hover:text-foreground',
+                )}
+              >
+                <item.icon className="size-5 shrink-0" />
+                <span className={cn('truncate transition-opacity duration-200', sidebarCollapsed ? 'hidden' : 'inline')}>{item.name}</span>
+              </Link>
+            );
+          })}
+        </nav>
+        {canAccessSettings && <Link
+          to="/configuracoes"
+          title={sidebarCollapsed ? 'Configurações' : undefined}
+          className={cn(
+            'mx-6 flex items-center rounded-lg px-3 py-3 text-sm font-medium text-muted-foreground transition-colors hover:bg-primary/5 hover:text-foreground',
+            sidebarCollapsed ? 'justify-center' : 'gap-4',
+          )}
+        >
+          <SettingsIcon className="size-5" />
+          <span className={sidebarCollapsed ? 'hidden' : 'inline'}>Configurações</span>
+        </Link>}
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          onClick={toggleSidebar}
+          title={sidebarCollapsed ? 'Expandir menu' : 'Recolher menu'}
+          aria-label={sidebarCollapsed ? 'Expandir menu' : 'Recolher menu'}
+          className="mx-auto mt-3 text-muted-foreground hover:text-primary"
+        >
+          {sidebarCollapsed ? <PanelLeftOpen className="size-5" /> : <PanelLeftClose className="size-5" />}
+        </Button>
+      </aside>
+
+      <header className={cn(
+        'min-w-0 border-b border-white/40 bg-card/85 backdrop-blur-2xl transition-[margin,width] duration-300',
+        sidebarCollapsed ? 'md:ml-20 md:w-[calc(100%-5rem)]' : 'md:ml-72 md:w-[calc(100%-18rem)]',
+      )}>
+        <div className="w-full px-4 py-3">
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-2 min-w-0">
               {hasLogo ? (
@@ -172,10 +253,10 @@ export function Layout() {
                   </div>
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={() => navigate('/configuracoes')} className="cursor-pointer">
+                {canAccessSettings && <DropdownMenuItem onClick={() => navigate('/configuracoes')} className="cursor-pointer">
                   <SettingsIcon className="size-4 mr-2" />
                   Configurações
-                </DropdownMenuItem>
+                </DropdownMenuItem>}
                 <DropdownMenuItem onClick={() => setAboutOpen(true)} className="cursor-pointer">
                   <Info className="size-4 mr-2" />
                   Sobre
@@ -191,7 +272,7 @@ export function Layout() {
         </div>
       </header>
 
-      <nav className="border-b bg-card sticky top-0 z-10 hidden sm:block">
+      <nav className="hidden">
         <div className="container mx-auto px-2 sm:px-4">
           <div className="flex overflow-x-auto scrollbar-none">
             {orderedNav.map((item) => {
@@ -216,12 +297,18 @@ export function Layout() {
         </div>
       </nav>
 
-      <main className="container mx-auto px-3 sm:px-4 py-4 sm:py-8 flex-1 pb-24 sm:pb-8">
+      <main className={cn(
+        'min-w-0 w-full flex-1 px-3 py-4 pb-24 transition-[margin,width] duration-300 sm:px-4 sm:py-8 sm:pb-8',
+        sidebarCollapsed ? 'md:ml-20 md:w-[calc(100%-5rem)]' : 'md:ml-72 md:w-[calc(100%-18rem)]',
+      )}>
         <Outlet />
       </main>
 
-      <footer className="border-t bg-card mt-auto">
-        <div className="container mx-auto px-4 py-6">
+      <footer className={cn(
+        'mt-auto min-w-0 border-t border-white/40 bg-card/85 backdrop-blur-2xl transition-[margin,width] duration-300',
+        sidebarCollapsed ? 'md:ml-20 md:w-[calc(100%-5rem)]' : 'md:ml-72 md:w-[calc(100%-18rem)]',
+      )}>
+        <div className="w-full px-4 py-6">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             {/* Identidade */}
             <div className="flex items-center gap-3 min-w-0">
@@ -371,8 +458,8 @@ export function Layout() {
       </footer>
 
       {/* Navegação inferior — somente mobile */}
-      <nav className="sm:hidden fixed bottom-0 inset-x-0 z-50 bg-card border-t flex">
-        {orderedNav.map((item) => {
+      <nav className="fixed inset-x-0 bottom-0 z-50 flex border-t border-white/40 bg-card/90 backdrop-blur-2xl sm:hidden">
+        {mobilePrimaryNav.map((item) => {
           const isActive = location.pathname === item.href;
           return (
             <Link
@@ -390,6 +477,38 @@ export function Layout() {
             </Link>
           );
         })}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              aria-label="Mais opções"
+              className={cn(
+                'flex min-w-0 flex-1 flex-col items-center justify-center gap-0.5 py-2 text-[10px] font-medium text-muted-foreground transition-colors hover:text-foreground',
+                mobileMoreNav.some((item) => location.pathname === item.href) && 'text-primary',
+              )}
+            >
+              <MoreHorizontal className="size-5 shrink-0" />
+              <span className="truncate px-0.5 leading-tight">Mais</span>
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" side="top" sideOffset={8} className="mb-2 w-52">
+            {mobileMoreNav.map((item) => (
+              <DropdownMenuItem key={item.href} asChild>
+                <Link to={item.href} className="flex cursor-pointer items-center gap-2">
+                  <item.icon className="size-4" />
+                  {item.name}
+                </Link>
+              </DropdownMenuItem>
+            ))}
+            <DropdownMenuSeparator />
+            {canAccessSettings && <DropdownMenuItem asChild>
+              <Link to="/configuracoes" className="flex cursor-pointer items-center gap-2">
+                <SettingsIcon className="size-4" />
+                Configurações
+              </Link>
+            </DropdownMenuItem>}
+          </DropdownMenuContent>
+        </DropdownMenu>
       </nav>
     </div>
   );
