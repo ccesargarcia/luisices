@@ -110,7 +110,7 @@ test.beforeEach(async ({ page }, testInfo) => {
   await page.fill('input[type="password"]', TEST_USER.password);
   await page.click('button[type="submit"]');
   await page.waitForURL('**/dashboard', { timeout: 15000 });
-  await page.waitForTimeout(1000);
+  await expect(page.getByRole('button', { name: /Novo Pedido/i })).toBeVisible({ timeout: 10000 });
 
   // Cria um pedido via UI para garantir que sempre exista um card
   const newOrderBtn = page.getByRole('button', { name: /Novo Pedido/i });

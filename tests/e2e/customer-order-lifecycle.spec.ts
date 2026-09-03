@@ -49,9 +49,8 @@ test.describe.serial('Ciclo de vida: Cliente + Pedido', () => {
     await dialog.getByPlaceholder(/Nome completo/i).fill(testCustomer.name);
     await dialog.getByPlaceholder(/00000-0000/i).fill(testCustomer.phone);
     const emailInput = dialog.getByPlaceholder(/email@exemplo/i);
-    if (await emailInput.isVisible({ timeout: 1000 })) {
-      await emailInput.fill(testCustomer.email);
-    }
+    await expect(emailInput).toBeVisible({ timeout: 5000 });
+    await emailInput.fill(testCustomer.email);
 
     // Salvar
       await dialog.getByRole('button', { name: /Criar Cliente/i }).click();

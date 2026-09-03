@@ -219,8 +219,8 @@ test.describe('Pedidos - CRUD', () => {
     // Aguardar cards carregarem
     await page.waitForTimeout(2000);
 
-    // Clicar no primeiro card de pedido
-    const orderCard = page.locator('.cursor-pointer').first();
+    // Clicar no primeiro card real de pedido, sem confundir com filtros clicáveis
+    const orderCard = page.locator('[data-slot="card"].cursor-pointer').first();
     await expect(orderCard).toBeVisible({ timeout: 10000 });
     await orderCard.scrollIntoViewIfNeeded();
     await orderCard.click();
