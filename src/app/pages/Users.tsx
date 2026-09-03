@@ -429,23 +429,23 @@ export function Users() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between gap-3 flex-wrap">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-border/60 pb-6">
         <div>
-          <h1 className="text-2xl font-bold">Usuários</h1>
-          <p className="text-muted-foreground text-sm">Gerencie quem tem acesso ao sistema</p>
+          <h1 className="text-3xl sm:text-4xl font-bold tracking-tight">Usuários</h1>
+          <p className="text-muted-foreground mt-1 text-sm sm:text-base">Gerencie quem tem acesso ao sistema</p>
         </div>
-        <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={fetchUsers}>
-            <RefreshCw className="size-4 mr-1" />
-            Atualizar
+        <div className="flex w-full sm:w-auto flex-wrap items-center gap-2">
+          <Button variant="outline" size="sm" onClick={fetchUsers} className="gap-1.5" title="Atualizar lista">
+            <RefreshCw className="size-4" />
+            <span className="hidden sm:inline">Atualizar</span>
           </Button>
-          <Button size="sm" variant="outline" onClick={() => setInviteOpen(true)}>
-            <MailPlus className="size-4 mr-1" />
-            Enviar convite
+          <Button size="sm" variant="outline" onClick={() => setInviteOpen(true)} className="gap-1.5 flex-1 sm:flex-none">
+            <MailPlus className="size-4" />
+            <span>Enviar convite</span>
           </Button>
-          <Button size="sm" onClick={openCreate}>
-            <UserPlus className="size-4 mr-1" />
-            Novo usuário
+          <Button size="sm" onClick={openCreate} className="gap-1.5 flex-1 sm:flex-none">
+            <UserPlus className="size-4" />
+            <span>Novo usuário</span>
           </Button>
         </div>
       </div>
