@@ -329,3 +329,33 @@ exports.sendPasswordResetEmail = onCall({ secrets: [RESEND_API_KEY] }, async (re
     throw new functions.https.HttpsError('internal', 'Erro ao enviar email de recuperação');
   }
 });
+
+/** Remove um usuário do Firebase Auth e do Firestore (apenas admin). */
+exports.deleteUser = onCall(async (request) => {
+  if (!(await isAdminRequest(request))) {
+    throw new functions.https.HttpsError('permission-denied', 'Apenas administradores podem remover usuários.');
+  }
+  const { uid } = request.data || {};
+  if (!uid || typeof uid !== 'string') {
+    throw new functions.https.HttpsError('invalid-argument', 'UID do usuário é obrigatório.');
+  }
+  if (uid === request.auth.uid) {
+    throw new functions.https.HttpsError('failed-precondition', 'Você não pode remover sua própria conta de administrador.');
+  }
+
+  try {
+    // 1. Remove do Firebase Auth
+    await admin.auth().deleteUser(uid).catch((err) => {
+      console.warn('[deleteUser] Auth delete warning:', err?.message || err);
+    });
+
+    // 2. Remove o perfil do Firestore
+    await admin.firestore().doc(`userProfiles/${uid}`).delete();
+
+    return { success: true };
+  } catch (error) {
+    console.error('[deleteUser] Error:', error);
+    throw new functions.https.HttpsError('internal', 'Não foi possível remover o usuário.');
+  }
+});
+

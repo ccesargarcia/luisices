@@ -23,6 +23,16 @@ import {
   DialogFooter,
 } from '../components/ui/dialog';
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '../components/ui/alert-dialog';
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -52,6 +62,7 @@ import {
   AlertCircle,
   MailPlus,
   KeyRound,
+  Trash2,
 } from 'lucide-react';
 
 // ─── Permission matrix helpers ───────────────────────────────────────────────
@@ -343,6 +354,8 @@ export function Users() {
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviting, setInviting] = useState(false);
   const [resettingUid, setResettingUid] = useState<string | null>(null);
+  const [deleteUserTarget, setDeleteUserTarget] = useState<UserProfile | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const fetchUsers = useCallback(async () => {
     setLoading(true);
@@ -411,6 +424,25 @@ export function Users() {
       toast.error(error instanceof Error ? error.message : 'Não foi possível enviar o convite');
     } finally {
       setInviting(false);
+    }
+  }
+
+  async function confirmDeleteUser() {
+    if (!deleteUserTarget) return;
+    if (deleteUserTarget.uid === currentUser?.uid) {
+      toast.error('Você não pode excluir sua própria conta');
+      return;
+    }
+    setDeleting(true);
+    try {
+      await firebaseUserService.deleteUser(deleteUserTarget.uid);
+      setUsers(prev => prev.filter(u => u.uid !== deleteUserTarget.uid));
+      toast.success(`Usuário ${deleteUserTarget.displayName || deleteUserTarget.email} excluído.`);
+      setDeleteUserTarget(null);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Não foi possível excluir o usuário');
+    } finally {
+      setDeleting(false);
     }
   }
 
@@ -555,14 +587,21 @@ export function Users() {
                       </div>
                     </TableCell>
                     <TableCell className="text-right">
-                      <Button size="icon" variant="ghost" onClick={() => openEdit(u)} className="size-8" aria-label={`Editar ${u.displayName}`}>
-                        <Pencil className="size-3.5" />
-                      </Button>
-                      {u.uid !== currentUser?.uid && (
-                        <Button size="icon" variant="ghost" onClick={() => sendPasswordReset(u)} disabled={resettingUid === u.uid} className="size-8" title="Enviar redefinição de senha" aria-label={`Enviar redefinição de senha para ${u.displayName}`}>
-                          {resettingUid === u.uid ? <Loader2 className="size-3.5 animate-spin" /> : <KeyRound className="size-3.5" />}
+                      <div className="flex items-center justify-end gap-1">
+                        <Button size="icon" variant="ghost" onClick={() => openEdit(u)} className="size-8" aria-label={`Editar ${u.displayName}`} title="Editar usuário">
+                          <Pencil className="size-3.5" />
                         </Button>
-                      )}
+                        {u.uid !== currentUser?.uid && (
+                          <>
+                            <Button size="icon" variant="ghost" onClick={() => sendPasswordReset(u)} disabled={resettingUid === u.uid} className="size-8" title="Enviar redefinição de senha" aria-label={`Enviar redefinição de senha para ${u.displayName}`}>
+                              {resettingUid === u.uid ? <Loader2 className="size-3.5 animate-spin" /> : <KeyRound className="size-3.5" />}
+                            </Button>
+                            <Button size="icon" variant="ghost" onClick={() => setDeleteUserTarget(u)} className="size-8 text-destructive hover:text-destructive hover:bg-destructive/10" title="Excluir usuário" aria-label={`Excluir ${u.displayName}`}>
+                              <Trash2 className="size-3.5" />
+                            </Button>
+                          </>
+                        )}
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -588,15 +627,20 @@ export function Users() {
                       </p>
                       <p className="text-xs text-muted-foreground truncate">{u.email}</p>
                     </div>
-                    <div className="flex shrink-0">
-                    <Button size="icon" variant="ghost" onClick={() => openEdit(u)} className="size-8" aria-label={`Editar ${u.displayName}`}>
-                      <Pencil className="size-3.5" />
-                    </Button>
-                    {u.uid !== currentUser?.uid && (
-                      <Button size="icon" variant="ghost" onClick={() => sendPasswordReset(u)} disabled={resettingUid === u.uid} className="size-8" title="Enviar redefinição de senha" aria-label={`Enviar redefinição de senha para ${u.displayName}`}>
-                        {resettingUid === u.uid ? <Loader2 className="size-3.5 animate-spin" /> : <KeyRound className="size-3.5" />}
+                    <div className="flex shrink-0 gap-0.5">
+                      <Button size="icon" variant="ghost" onClick={() => openEdit(u)} className="size-8" aria-label={`Editar ${u.displayName}`} title="Editar usuário">
+                        <Pencil className="size-3.5" />
                       </Button>
-                    )}
+                      {u.uid !== currentUser?.uid && (
+                        <>
+                          <Button size="icon" variant="ghost" onClick={() => sendPasswordReset(u)} disabled={resettingUid === u.uid} className="size-8" title="Enviar redefinição de senha" aria-label={`Enviar redefinição de senha para ${u.displayName}`}>
+                            {resettingUid === u.uid ? <Loader2 className="size-3.5 animate-spin" /> : <KeyRound className="size-3.5" />}
+                          </Button>
+                          <Button size="icon" variant="ghost" onClick={() => setDeleteUserTarget(u)} className="size-8 text-destructive hover:text-destructive hover:bg-destructive/10" title="Excluir usuário" aria-label={`Excluir ${u.displayName}`}>
+                            <Trash2 className="size-3.5" />
+                          </Button>
+                        </>
+                      )}
                     </div>
                   </div>
                   <div className="flex items-center justify-between">
@@ -656,6 +700,31 @@ export function Users() {
           </form>
         </DialogContent>
       </Dialog>
+
+      {/* Confirmation Dialog for Deleting User */}
+      <AlertDialog open={Boolean(deleteUserTarget)} onOpenChange={(open) => { if (!open) setDeleteUserTarget(null); }}>
+        <AlertDialogContent className="w-[calc(100%-1rem)] max-w-md">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir usuário</AlertDialogTitle>
+            <AlertDialogDescription>
+              Tem certeza que deseja remover o usuário <strong>{deleteUserTarget?.displayName || deleteUserTarget?.email}</strong>? Esta ação excluirá a conta de acesso e não poderá ser desfeita.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <AlertDialogCancel disabled={deleting}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault();
+                confirmDeleteUser();
+              }}
+              disabled={deleting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deleting ? <><Loader2 className="size-4 mr-2 animate-spin" /> Excluindo...</> : 'Excluir definitivamente'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

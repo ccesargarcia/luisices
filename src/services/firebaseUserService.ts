@@ -12,6 +12,7 @@ import {
   getDoc,
   setDoc,
   updateDoc,
+  deleteDoc,
   query,
   orderBy,
 } from 'firebase/firestore';
@@ -130,6 +131,19 @@ export class FirebaseUserService {
    */
   async setUserActive(uid: string, active: boolean): Promise<void> {
     await updateDoc(doc(db, USERS_COLLECTION, uid), { active });
+  }
+
+  /**
+   * Remove permanentemente um usuário (Firebase Auth + Firestore).
+   */
+  async deleteUser(uid: string): Promise<void> {
+    try {
+      const callable = httpsCallable<{ uid: string }, { success: boolean }>(functions, 'deleteUser');
+      await callable({ uid });
+    } catch (err) {
+      console.warn('[firebaseUserService.deleteUser] Callable failed, deleting directly from Firestore:', err);
+      await deleteDoc(doc(db, USERS_COLLECTION, uid));
+    }
   }
 
   /**
