@@ -139,10 +139,10 @@ exports.validateUserInvitation = onCall(async (request) => {
   return { email: data.email, expiresAt: data.expiresAt.toDate().toISOString() };
 });
 
-/** Conclui o cadastro convidado somente após a confirmação do e-mail. */
+/** Conclui o cadastro convidado e inicializa o perfil do usuário. */
 exports.completeUserInvitation = onCall(async (request) => {
-  if (!request.auth || request.auth.token.email_verified !== true) {
-    throw new functions.https.HttpsError('failed-precondition', 'Confirme seu e-mail antes de concluir o cadastro.');
+  if (!request.auth) {
+    throw new functions.https.HttpsError('unauthenticated', 'Usuário não autenticado.');
   }
   const { token } = request.data || {};
   if (!token || typeof token !== 'string') {
@@ -163,27 +163,31 @@ exports.completeUserInvitation = onCall(async (request) => {
       throw new functions.https.HttpsError('failed-precondition', 'Este convite já foi utilizado.');
     }
     transaction.set(profileRef, {
-    uid: request.auth.uid,
-    email: data.email,
-    displayName: request.auth.token.name || data.email,
-    role: 'user',
-    permissions: {
-      dashboard: true,
-      orders: { view: true, create: true, edit: true, delete: false },
-      customers: { view: true, create: true, edit: true, delete: false },
-      products: { view: true, create: false, edit: false, delete: false },
-      quotes: { view: true, create: true, edit: true, delete: false },
-      gallery: { view: true, create: true, delete: false },
-      reports: false,
-      exchanges: false,
-      settings: true,
-      users: { view: false, create: false, edit: false, delete: false },
-    },
-    active: true,
-    createdAt: new Date().toISOString(),
-    createdBy: data.invitedBy,
+      uid: request.auth.uid,
+      email: data.email,
+      displayName: request.auth.token.name || data.email,
+      role: 'user',
+      permissions: {
+        dashboard: true,
+        orders: { view: true, create: true, edit: true, delete: false },
+        customers: { view: true, create: true, edit: true, delete: false },
+        products: { view: true, create: false, edit: false, delete: false },
+        quotes: { view: true, create: true, edit: true, delete: false },
+        gallery: { view: true, create: true, delete: false },
+        reports: false,
+        exchanges: false,
+        settings: true,
+        users: { view: false, create: false, edit: false, delete: false },
+      },
+      active: true,
+      createdAt: new Date().toISOString(),
+      createdBy: data.invitedBy,
     }, { merge: false });
-    transaction.update(invitationRef, { status: 'accepted', acceptedBy: request.auth.uid, acceptedAt: admin.firestore.FieldValue.serverTimestamp() });
+    transaction.update(invitationRef, {
+      status: 'accepted',
+      acceptedBy: request.auth.uid,
+      acceptedAt: admin.firestore.FieldValue.serverTimestamp()
+    });
   });
   return { success: true };
 });

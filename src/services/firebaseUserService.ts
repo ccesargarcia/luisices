@@ -83,20 +83,21 @@ export class FirebaseUserService {
 
   /**
    * Busca o perfil de um usuário no Firestore.
-   * Se não existir, cria um perfil padrão de admin (primeiro usuário do sistema).
+   * Se não existir, inicializa automaticamente com perfil padrão de usuário ('user') e DEFAULT_USER_PERMISSIONS.
    */
   async getUserProfile(uid: string, email?: string, displayName?: string): Promise<UserProfile | null> {
     const snap = await getDoc(doc(db, USERS_COLLECTION, uid));
     if (snap.exists()) return snap.data() as UserProfile;
 
-    // Contas novas só recebem perfil depois da confirmação do e-mail.
-    if (email && auth.currentUser?.emailVerified === true) {
+    // Se o usuário está autenticado mas ainda não tem perfil salvo no Firestore,
+    // inicializa automaticamente com perfil de usuário comum e permissões padrão.
+    if (email && auth.currentUser) {
       const profile: UserProfile = {
         uid,
         email,
-        displayName: displayName || email,
-        role: 'admin',
-        permissions: ADMIN_PERMISSIONS,
+        displayName: displayName || email.split('@')[0],
+        role: 'user',
+        permissions: { ...DEFAULT_USER_PERMISSIONS },
         active: true,
         createdAt: new Date().toISOString(),
         createdBy: uid,
