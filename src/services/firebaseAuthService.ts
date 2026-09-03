@@ -11,6 +11,8 @@ import {
   onAuthStateChanged,
   User,
   updateProfile,
+  sendEmailVerification,
+  reload,
 } from 'firebase/auth';
 import { httpsCallable } from 'firebase/functions';
 import { auth, functions } from '../lib/firebase';
@@ -19,7 +21,7 @@ export class FirebaseAuthService {
   /**
    * Registrar novo usuário
    */
-  async register(email: string, password: string, displayName?: string): Promise<User> {
+  async register(email: string, password: string, displayName?: string, verificationContinueUrl?: string): Promise<User> {
     const userCredential = await createUserWithEmailAndPassword(
       auth,
       email,
@@ -31,7 +33,18 @@ export class FirebaseAuthService {
       await updateProfile(userCredential.user, { displayName });
     }
 
+    await sendEmailVerification(userCredential.user, {
+      url: verificationContinueUrl || `${window.location.origin}/action?mode=verifyEmail`,
+      handleCodeInApp: true,
+    });
+
     return userCredential.user;
+  }
+
+  async reloadCurrentUser(): Promise<User | null> {
+    if (!auth.currentUser) return null;
+    await reload(auth.currentUser);
+    return auth.currentUser;
   }
 
   /**

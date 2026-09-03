@@ -15,12 +15,26 @@ import {
   query,
   orderBy,
 } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { httpsCallable } from 'firebase/functions';
+import { auth, db, functions } from '../lib/firebase';
 import { UserProfile, UserRole, Permission, ADMIN_PERMISSIONS, DEFAULT_USER_PERMISSIONS } from '../app/types';
 
 const USERS_COLLECTION = 'userProfiles';
 
 export class FirebaseUserService {
+  async sendAdminPasswordReset(email: string): Promise<void> {
+    const callable = httpsCallable(functions, 'sendAdminPasswordReset');
+    await callable({ email });
+  }
+
+  async createUserInvitation(email: string): Promise<{ expiresAt: string }> {
+    const callable = httpsCallable<{ email: string }, { success: boolean; expiresAt: string }>(
+      functions,
+      'createUserInvitation',
+    );
+    const result = await callable({ email });
+    return result.data;
+  }
   /**
    * Cria um novo usuário via Firebase Auth REST API (sem deslogar o admin atual),
    * depois salva o UserProfile no Firestore.
@@ -75,8 +89,8 @@ export class FirebaseUserService {
     const snap = await getDoc(doc(db, USERS_COLLECTION, uid));
     if (snap.exists()) return snap.data() as UserProfile;
 
-    // Cria perfil admin automaticamente ao primeiro acesso
-    if (email) {
+    // Contas novas só recebem perfil depois da confirmação do e-mail.
+    if (email && auth.currentUser?.emailVerified === true) {
       const profile: UserProfile = {
         uid,
         email,

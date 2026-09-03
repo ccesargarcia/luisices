@@ -50,6 +50,8 @@ import {
   Loader2,
   RefreshCw,
   AlertCircle,
+  MailPlus,
+  KeyRound,
 } from 'lucide-react';
 
 // ─── Permission matrix helpers ───────────────────────────────────────────────
@@ -337,6 +339,10 @@ export function Users() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<UserProfile | null>(null);
   const [togglingUid, setTogglingUid] = useState<string | null>(null);
+  const [inviteOpen, setInviteOpen] = useState(false);
+  const [inviteEmail, setInviteEmail] = useState('');
+  const [inviting, setInviting] = useState(false);
+  const [resettingUid, setResettingUid] = useState<string | null>(null);
 
   const fetchUsers = useCallback(async () => {
     setLoading(true);
@@ -379,6 +385,35 @@ export function Users() {
     setDialogOpen(true);
   }
 
+  async function sendPasswordReset(u: UserProfile) {
+    setResettingUid(u.uid);
+    try {
+      await firebaseUserService.sendAdminPasswordReset(u.email);
+      toast.success(`Link de redefinição enviado para ${u.email}`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Não foi possível enviar o link de redefinição');
+    } finally {
+      setResettingUid(null);
+    }
+  }
+
+  async function sendInvitation(event: React.FormEvent) {
+    event.preventDefault();
+    if (!inviteEmail.trim()) return;
+    setInviting(true);
+    try {
+      const result = await firebaseUserService.createUserInvitation(inviteEmail.trim());
+      const expiresAt = new Date(result.expiresAt).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
+      toast.success(`Convite enviado. Válido até ${expiresAt}.`);
+      setInviteEmail('');
+      setInviteOpen(false);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Não foi possível enviar o convite');
+    } finally {
+      setInviting(false);
+    }
+  }
+
   const totalActive   = users.filter(u => u.active).length;
   const totalAdmins   = users.filter(u => u.role === 'admin').length;
   const totalInactive = users.filter(u => !u.active).length;
@@ -403,6 +438,10 @@ export function Users() {
           <Button variant="outline" size="sm" onClick={fetchUsers}>
             <RefreshCw className="size-4 mr-1" />
             Atualizar
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => setInviteOpen(true)}>
+            <MailPlus className="size-4 mr-1" />
+            Enviar convite
           </Button>
           <Button size="sm" onClick={openCreate}>
             <UserPlus className="size-4 mr-1" />
@@ -516,9 +555,14 @@ export function Users() {
                       </div>
                     </TableCell>
                     <TableCell className="text-right">
-                      <Button size="icon" variant="ghost" onClick={() => openEdit(u)} className="size-8">
+                      <Button size="icon" variant="ghost" onClick={() => openEdit(u)} className="size-8" aria-label={`Editar ${u.displayName}`}>
                         <Pencil className="size-3.5" />
                       </Button>
+                      {u.uid !== currentUser?.uid && (
+                        <Button size="icon" variant="ghost" onClick={() => sendPasswordReset(u)} disabled={resettingUid === u.uid} className="size-8" title="Enviar redefinição de senha" aria-label={`Enviar redefinição de senha para ${u.displayName}`}>
+                          {resettingUid === u.uid ? <Loader2 className="size-3.5 animate-spin" /> : <KeyRound className="size-3.5" />}
+                        </Button>
+                      )}
                     </TableCell>
                   </TableRow>
                 ))}
@@ -544,9 +588,16 @@ export function Users() {
                       </p>
                       <p className="text-xs text-muted-foreground truncate">{u.email}</p>
                     </div>
-                    <Button size="icon" variant="ghost" onClick={() => openEdit(u)} className="size-8 flex-shrink-0">
+                    <div className="flex shrink-0">
+                    <Button size="icon" variant="ghost" onClick={() => openEdit(u)} className="size-8" aria-label={`Editar ${u.displayName}`}>
                       <Pencil className="size-3.5" />
                     </Button>
+                    {u.uid !== currentUser?.uid && (
+                      <Button size="icon" variant="ghost" onClick={() => sendPasswordReset(u)} disabled={resettingUid === u.uid} className="size-8" title="Enviar redefinição de senha" aria-label={`Enviar redefinição de senha para ${u.displayName}`}>
+                        {resettingUid === u.uid ? <Loader2 className="size-3.5 animate-spin" /> : <KeyRound className="size-3.5" />}
+                      </Button>
+                    )}
+                    </div>
                   </div>
                   <div className="flex items-center justify-between">
                     {u.role === 'admin' ? (
@@ -584,6 +635,27 @@ export function Users() {
         onClose={() => setDialogOpen(false)}
         onSaved={fetchUsers}
       />
+
+      <Dialog open={inviteOpen} onOpenChange={setInviteOpen}>
+        <DialogContent className="w-[calc(100%-1rem)] max-w-md">
+          <DialogHeader>
+            <DialogTitle>Enviar convite</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={sendInvitation} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="invite-email">E-mail da pessoa convidada</Label>
+              <Input id="invite-email" type="email" value={inviteEmail} onChange={(event) => setInviteEmail(event.target.value)} placeholder="pessoa@empresa.com" required />
+              <p className="text-xs text-muted-foreground">O convite expira em 48 horas. O acesso só é concluído após a confirmação do e-mail.</p>
+            </div>
+            <DialogFooter className="flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+              <Button type="button" variant="outline" onClick={() => setInviteOpen(false)} disabled={inviting}>Cancelar</Button>
+              <Button type="submit" disabled={inviting} className="w-full sm:w-auto">
+                {inviting ? <><Loader2 className="size-4 mr-2 animate-spin" /> Enviando...</> : <><MailPlus className="size-4 mr-2" /> Enviar convite</>}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

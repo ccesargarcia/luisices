@@ -73,6 +73,7 @@ export function OrderCard({ order, onClick, isSelected = false, onToggleSelect }
 
   return (
     <Card
+      data-testid="order-card"
       className="glass-panel cursor-pointer overflow-hidden relative transition-all hover:-translate-y-0.5 hover:border-primary/40"
       onClick={onClick}
       style={order.cardColor ? {

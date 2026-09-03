@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { useNavigate, Link } from 'react-router';
+import { useEffect, useState } from 'react';
+import { useNavigate, Link, useSearchParams } from 'react-router';
 import { useAuth } from '../../contexts/AuthContext';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -8,6 +8,9 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Alert, AlertDescription } from '../components/ui/alert';
 import { Loader2, UserPlus, Mail, Lock, User } from 'lucide-react';
 import { trackSignUp } from '../../services/analyticsService';
+import { httpsCallable } from 'firebase/functions';
+import { functions } from '../../lib/firebase';
+import { firebaseAuthService } from '../../services/firebaseAuthService';
 
 export function Register() {
   const [name, setName] = useState('');
@@ -16,8 +19,22 @@ export function Register() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const { register } = useAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const inviteToken = searchParams.get('invite') || '';
+  const [inviteEmail, setInviteEmail] = useState('');
+  const [inviteLoading, setInviteLoading] = useState(Boolean(inviteToken));
+
+  useEffect(() => {
+    if (!inviteToken) return;
+    httpsCallable<{ token: string }, { email: string }>(functions, 'validateUserInvitation')({ token: inviteToken })
+      .then(({ data }) => {
+        setInviteEmail(data.email);
+        setEmail(data.email);
+      })
+      .catch((err) => setError(err?.message || 'Convite inválido ou expirado.'))
+      .finally(() => setInviteLoading(false));
+  }, [inviteToken]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -36,9 +53,20 @@ export function Register() {
     setLoading(true);
 
     try {
-      await register(email, password, name);
+      if (!inviteToken) throw new Error('Este cadastro só pode ser acessado por um convite válido.');
+      if (inviteToken && inviteLoading) throw new Error('Validando convite. Aguarde um instante.');
+      if (inviteToken && inviteEmail && email.toLowerCase() !== inviteEmail.toLowerCase()) {
+        throw new Error('Use o mesmo e-mail do convite.');
+      }
+      const verificationUrl = inviteToken
+        ? `${window.location.origin}/action?mode=verifyEmail&invite=${encodeURIComponent(inviteToken)}`
+        : undefined;
+      await firebaseAuthService.register(email, password, name, verificationUrl);
+      if (inviteToken) {
+        await firebaseAuthService.reloadCurrentUser();
+      }
       trackSignUp('email');
-      navigate('/');
+      navigate(`/login?verificationSent=${inviteToken ? 'invite' : 'signup'}`);
     } catch (err: any) {
       console.error('Erro ao criar conta:', err);
       setError(err.message || 'Erro ao criar conta. Tente novamente.');
@@ -53,7 +81,7 @@ export function Register() {
         <CardHeader className="space-y-1">
           <CardTitle className="text-2xl font-bold text-center">Criar Conta</CardTitle>
           <CardDescription className="text-center">
-            Preencha os dados para começar
+            Aceite o convite para criar seu acesso
           </CardDescription>
         </CardHeader>
         <form onSubmit={handleSubmit}>
@@ -94,6 +122,7 @@ export function Register() {
                   className="pl-10"
                   required
                   autoComplete="email"
+                  readOnly={Boolean(inviteEmail)}
                 />
               </div>
             </div>

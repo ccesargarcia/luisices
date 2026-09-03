@@ -5,6 +5,7 @@ import { ProtectedRoute } from './components/ProtectedRoute';
 import { PermissionRoute } from './components/PermissionRoute';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { Loader2 } from 'lucide-react';
+import { Register } from './pages/Register';
 
 // Páginas carregadas sob demanda — o bundle inicial fica menor
 const Dashboard      = lazy(() => import('./pages/Dashboard').then(m => ({ default: m.Dashboard })));
@@ -47,7 +48,8 @@ export const router = createBrowserRouter([
   },
   {
     path: '/registrar',
-    element: <Navigate to="/login" replace />,
+    element: <Lazy><Register /></Lazy>,
+    errorElement: <ErrorBoundary />,
   },
   {
     path: '/recuperar-senha',

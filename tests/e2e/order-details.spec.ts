@@ -79,39 +79,18 @@ async function closeAnyOpenDialog(page: Page) {
   }
 }
 
-// Cleanup: Excluir o pedido criado após cada teste
-test.afterEach(async ({ page }, testInfo) => {
-  await closeAnyOpenDialog(page);
-
-  // Buscar o pedido criado pelo nome único
-  const { product } = getTestOrderData(testInfo);
-  const orderCard = page.locator('[data-slot="card"]').filter({ hasText: product }).first();
-  if (await orderCard.count()) {
-    await orderCard.click();
-
-    const detailsDialog = page.locator('[role="dialog"]').first();
-    await expect(detailsDialog).toBeVisible({ timeout: 10000 });
-
-    const deleteBtn = detailsDialog.getByRole('button', { name: /Excluir Pedido/i });
-    await deleteBtn.scrollIntoViewIfNeeded();
-    await deleteBtn.click();
-
-    const alertDialog = page.locator('[role="alertdialog"]');
-    await expect(alertDialog).toBeVisible({ timeout: 5000 });
-    await alertDialog.getByRole('button', { name: /Excluir/i }).click();
-    await expect(alertDialog).not.toBeVisible({ timeout: 10000 });
-  }
-});
-
-test.beforeEach(async ({ page }, testInfo) => {
+test.beforeEach(async ({ page }) => {
   test.setTimeout(60000);
   await page.goto('/');
   await page.fill('input[type="email"]', TEST_USER.email);
   await page.fill('input[type="password"]', TEST_USER.password);
   await page.click('button[type="submit"]');
   await page.waitForURL('**/dashboard', { timeout: 15000 });
-  await expect(page.getByRole('button', { name: /Novo Pedido/i })).toBeVisible({ timeout: 10000 });
+});
 
+test.describe('Detalhes do Pedido', () => {
+  test.beforeEach(async ({ page }, testInfo) => {
+    await expect(page.getByRole('button', { name: /Novo Pedido/i })).toBeVisible({ timeout: 10000 });
   // Cria um pedido via UI para garantir que sempre exista um card
   const newOrderBtn = page.getByRole('button', { name: /Novo Pedido/i });
   await newOrderBtn.click();
@@ -147,15 +126,32 @@ test.beforeEach(async ({ page }, testInfo) => {
   // O diálogo deveria fechar ao criar o pedido; algumas vezes ele permanece
   // aberto por conta de validação ou atraso na resposta do backend.
   await expect(dialog).not.toBeVisible({ timeout: 15000 });
-  const orderCard = page.locator('[data-slot="card"]').filter({ hasText: product }).first();
+  const orderCard = page.getByTestId('order-card').filter({ hasText: product }).first();
   await expect(orderCard).toBeVisible({ timeout: 10000 });
-});
+  });
 
-test.describe('Detalhes do Pedido', () => {
+  test.afterEach(async ({ page }, testInfo) => {
+    await closeAnyOpenDialog(page);
+    const { product } = getTestOrderData(testInfo);
+    const orderCard = page.getByTestId('order-card').filter({ hasText: product }).first();
+    if (await orderCard.count()) {
+      await orderCard.click();
+      const detailsDialog = page.locator('[role="dialog"]').first();
+      await expect(detailsDialog).toBeVisible({ timeout: 10000 });
+      const deleteBtn = detailsDialog.getByRole('button', { name: /Excluir Pedido/i });
+      await deleteBtn.scrollIntoViewIfNeeded();
+      await deleteBtn.click();
+      const alertDialog = page.locator('[role="alertdialog"]');
+      await expect(alertDialog).toBeVisible({ timeout: 5000 });
+      await alertDialog.getByRole('button', { name: /Excluir/i }).click();
+      await expect(alertDialog).not.toBeVisible({ timeout: 10000 });
+    }
+  });
+
   test('deve abrir e visualizar detalhes completos', async ({ page }, testInfo) => {
     // Clicar no primeiro card de pedido
     const { product } = getTestOrderData(testInfo);
-    const orderCard = page.locator('[data-slot="card"]').filter({ hasText: product }).first();
+    const orderCard = page.getByTestId('order-card').filter({ hasText: product }).first();
     await expect(orderCard).toBeVisible({ timeout: 10000 });
     await expect.poll(() => orderCard.count()).toBe(1);
     await orderCard.click();
@@ -173,7 +169,7 @@ test.describe('Detalhes do Pedido', () => {
 
   test('deve exibir informações de pagamento', async ({ page }, testInfo) => {
     const { product } = getTestOrderData(testInfo);
-    const orderCard = page.locator('[data-slot="card"]').filter({ hasText: product }).first();
+    const orderCard = page.getByTestId('order-card').filter({ hasText: product }).first();
     await expect(orderCard).toBeVisible({ timeout: 10000 });
     await orderCard.click();
 
@@ -187,7 +183,7 @@ test.describe('Detalhes do Pedido', () => {
 
   test('deve entrar em modo de edição', async ({ page }, testInfo) => {
     const { product } = getTestOrderData(testInfo);
-    const orderCard = page.locator('[data-slot="card"]').filter({ hasText: product }).first();
+    const orderCard = page.getByTestId('order-card').filter({ hasText: product }).first();
     await expect(orderCard).toBeVisible({ timeout: 10000 });
     await orderCard.click();
 
