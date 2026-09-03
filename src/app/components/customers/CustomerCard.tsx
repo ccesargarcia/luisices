@@ -135,6 +135,7 @@ export function CustomerCard({
               variant="ghost"
               onClick={() => onOpenHistory(customer)}
               title="Ver histórico de pedidos"
+              aria-label={`Ver histórico de ${customer.name}`}
               className="h-9 w-9 sm:h-8 sm:w-8"
             >
               <History className="size-4" />
@@ -144,6 +145,7 @@ export function CustomerCard({
                 size="icon"
                 variant="ghost"
                 onClick={() => onOpenEdit(customer)}
+                aria-label={`Editar ${customer.name}`}
                 className="h-9 w-9 sm:h-8 sm:w-8"
               >
                 <Edit className="size-4" />
@@ -154,6 +156,7 @@ export function CustomerCard({
                 size="icon"
                 variant="ghost"
                 onClick={() => onOpenDelete(customer)}
+                aria-label={`Remover ${customer.name}`}
                 className="h-9 w-9 sm:h-8 sm:w-8"
               >
                 <Trash2 className="size-4 text-destructive" />

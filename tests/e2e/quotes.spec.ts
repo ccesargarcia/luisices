@@ -101,15 +101,14 @@ test.describe('Orçamentos - CRUD', () => {
     await page.waitForTimeout(500);
 
     const customerCard = page.locator('[data-slot="card"]').filter({ hasText: clientName }).first();
-    if (await customerCard.isVisible({ timeout: 3000 })) {
-      const custDeleteBtn = customerCard.locator('button').filter({ has: page.locator('.text-destructive') });
-      await custDeleteBtn.click();
+    await expect(customerCard).toBeVisible({ timeout: 5000 });
+    const custDeleteBtn = customerCard.locator('button').filter({ has: page.locator('.text-destructive') });
+    await custDeleteBtn.click();
 
       const custAlertDialog = page.locator('[role="alertdialog"]');
       await expect(custAlertDialog).toBeVisible({ timeout: 5000 });
       await custAlertDialog.getByRole('button', { name: /Excluir/i }).click();
       await expect(custAlertDialog).not.toBeVisible({ timeout: 10000 });
-    }
   });
 
   test('deve buscar orçamentos', async ({ page }) => {
@@ -120,8 +119,7 @@ test.describe('Orçamentos - CRUD', () => {
     await page.waitForTimeout(500);
 
     const noResults = page.getByText(/Nenhum orçamento/i);
-    const count = await noResults.count();
-    expect(count).toBeGreaterThanOrEqual(0);
+    await expect(noResults).toBeVisible({ timeout: 5000 });
   });
 
   test('deve validar campos obrigatórios', async ({ page }) => {

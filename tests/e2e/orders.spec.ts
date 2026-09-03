@@ -209,8 +209,7 @@ test.describe('Pedidos - CRUD', () => {
 
     // Nenhum resultado esperado
     const noResults = page.getByText(/Nenhum pedido/i);
-    const count = await noResults.count();
-    expect(count).toBeGreaterThanOrEqual(0);
+    await expect(noResults).toBeVisible({ timeout: 5000 });
   });
 
   test('deve abrir detalhes de um pedido', async ({ page }) => {
@@ -222,29 +221,14 @@ test.describe('Pedidos - CRUD', () => {
 
     // Clicar no primeiro card de pedido
     const orderCard = page.locator('.cursor-pointer').first();
-    if (await orderCard.isVisible({ timeout: 5000 })) {
-      await orderCard.scrollIntoViewIfNeeded();
-      // Tenta clicar com retries caso um modal esteja bloqueando a interação
-      for (let i = 0; i < 3; i++) {
-        try {
-          await orderCard.click();
-          break;
-        } catch {
-          await closeAnyOpenDialog(page);
-          await page.waitForTimeout(500);
-        }
-      }
+    await expect(orderCard).toBeVisible({ timeout: 10000 });
+    await orderCard.scrollIntoViewIfNeeded();
+    await orderCard.click();
 
       // Verificar que o dialog de detalhes abriu
-      const detailsDialog = page.locator('[role="dialog"]').first();
-      if (!(await detailsDialog.isVisible({ timeout: 5000 }).catch(() => false))) {
-        test.skip('Não foi possível abrir o diálogo de detalhes do pedido.');
-        return;
-      }
-      await expect(detailsDialog.getByText(/Detalhes do Pedido/i)).toBeVisible({ timeout: 5000 });
-    } else {
-      test.skip('Nenhum pedido disponível para testar detalhes.');
-    }
+    const detailsDialog = page.locator('[role="dialog"]').first();
+    await expect(detailsDialog).toBeVisible({ timeout: 5000 });
+    await expect(detailsDialog.getByText(/Detalhes do Pedido/i)).toBeVisible({ timeout: 5000 });
   });
 
   test('deve navegar para agenda semanal', async ({ page }) => {
@@ -253,15 +237,11 @@ test.describe('Pedidos - CRUD', () => {
 
     // Verificar botões de navegação de semana
     const nextBtn = page.getByRole('button', { name: /Próxima|→|›/i }).first();
-    if (await nextBtn.isVisible({ timeout: 2000 })) {
-      await nextBtn.click();
-      await page.waitForTimeout(500);
-    }
+    await expect(nextBtn).toBeVisible({ timeout: 5000 });
+    await nextBtn.click();
 
     const prevBtn = page.getByRole('button', { name: /Anterior|←|‹/i }).first();
-    if (await prevBtn.isVisible({ timeout: 2000 })) {
-      await prevBtn.click();
-      await page.waitForTimeout(500);
-    }
+    await expect(prevBtn).toBeVisible({ timeout: 5000 });
+    await prevBtn.click();
   });
 });

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
 import { Button } from '../ui/button';
-import { LayoutDashboard, GripVertical, Loader2 } from 'lucide-react';
+import { LayoutDashboard, GripVertical, Loader2, Calendar, Users, BarChart3, FileText, ShoppingBag, Images, ArrowLeftRight, UserCog, ChevronUp, ChevronDown } from 'lucide-react';
 
 export const NAV_ITEMS = [
   { href: '/', label: 'Dashboard' },
@@ -11,6 +11,8 @@ export const NAV_ITEMS = [
   { href: '/orcamentos', label: 'Orçamentos' },
   { href: '/produtos', label: 'Produtos' },
   { href: '/galeria', label: 'Galeria' },
+  { href: '/permutas', label: 'Permutas' },
+  { href: '/usuarios', label: 'Usuários' },
 ];
 
 export const DEFAULT_NAV_ORDER = NAV_ITEMS.map((i) => i.href);
@@ -29,6 +31,26 @@ export function NavigationOrderSection({
   saving,
 }: NavigationOrderSectionProps) {
   const [dragNavIdx, setDragNavIdx] = useState<number | null>(null);
+
+  const moveNavItem = (index: number, direction: -1 | 1) => {
+    const targetIndex = index + direction;
+    if (targetIndex < 0 || targetIndex >= navOrder.length) return;
+    const next = [...navOrder];
+    [next[index], next[targetIndex]] = [next[targetIndex], next[index]];
+    onNavOrderChange(next);
+  };
+
+  const icons = {
+    '/': LayoutDashboard,
+    '/agenda': Calendar,
+    '/clientes': Users,
+    '/relatorios': BarChart3,
+    '/orcamentos': FileText,
+    '/produtos': ShoppingBag,
+    '/galeria': Images,
+    '/permutas': ArrowLeftRight,
+    '/usuarios': UserCog,
+  };
 
   return (
     <Card>
@@ -68,9 +90,34 @@ export function NavigationOrderSection({
                   dragNavIdx === idx ? 'opacity-40' : 'opacity-100'
                 }`}
               >
-                <GripVertical className="size-4 text-muted-foreground flex-shrink-0" />
+                <GripVertical className="hidden size-4 shrink-0 cursor-grab text-muted-foreground sm:block" />
+                {React.createElement(icons[href as keyof typeof icons], { className: 'size-4 shrink-0 text-muted-foreground sm:hidden' })}
                 <span className="text-sm font-medium flex-1">{item.label}</span>
                 <span className="text-xs text-muted-foreground">#{idx + 1}</span>
+                <div className="flex shrink-0 items-center gap-1">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    disabled={idx === 0}
+                    onClick={() => moveNavItem(idx, -1)}
+                    aria-label={`Mover ${item.label} para cima`}
+                    className="size-8"
+                  >
+                    <ChevronUp className="size-4" />
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    disabled={idx === navOrder.length - 1}
+                    onClick={() => moveNavItem(idx, 1)}
+                    aria-label={`Mover ${item.label} para baixo`}
+                    className="size-8"
+                  >
+                    <ChevronDown className="size-4" />
+                  </Button>
+                </div>
               </div>
             );
           })}

@@ -240,7 +240,7 @@ test.describe.serial('Ciclo de vida: Cliente + Pedido', () => {
 
     // Clicar no botão de excluir (ícone de lixeira) dentro do card do cliente
     // O botão é um icon button com Trash2, variante ghost
-    const deleteBtn = customerCard.locator('button').filter({ has: page.locator('.text-destructive') });
+    const deleteBtn = customerCard.getByRole('button', { name: new RegExp(`Remover ${testCustomer.name}`, 'i') });
     await deleteBtn.click();
 
     // Confirmar exclusão

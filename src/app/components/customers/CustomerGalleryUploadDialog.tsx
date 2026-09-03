@@ -38,6 +38,7 @@ export function CustomerGalleryUploadDialog({
   const [tags, setTags] = useState<Tag[]>([]);
   const [saving, setSaving] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const acceptedImageTypes = 'image/jpeg,image/png,image/webp';
 
   const resetForm = () => {
     setFile(null);
@@ -54,8 +55,8 @@ export function CustomerGalleryUploadDialog({
   };
 
   const handleFilePick = (f: File) => {
-    if (!f.type.startsWith('image/')) {
-      toast.error('Selecione uma imagem');
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(f.type)) {
+      toast.error('Formato não suportado. Use JPG, PNG ou WebP.');
       return;
     }
     if (f.size > 15 * 1024 * 1024) {
@@ -109,7 +110,7 @@ export function CustomerGalleryUploadDialog({
           <input
             ref={fileInputRef}
             type="file"
-            accept="image/*"
+            accept={acceptedImageTypes}
             className="hidden"
             onChange={(e) => {
               const f = e.target.files?.[0];

@@ -50,6 +50,7 @@ export function GalleryUploadDialog({
   const [saving, setSaving] = useState(false);
   const [dragging, setDragging] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const acceptedImageTypes = 'image/jpeg,image/png,image/webp';
 
   const reset = () => {
     setFile(null);
@@ -68,8 +69,8 @@ export function GalleryUploadDialog({
   };
 
   const pickFile = (f: File) => {
-    if (!f.type.startsWith('image/')) {
-      toast.error('Selecione uma imagem');
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(f.type)) {
+      toast.error('Formato não suportado. Use JPG, PNG ou WebP.');
       return;
     }
     if (f.size > 15 * 1024 * 1024) {
@@ -185,7 +186,7 @@ export function GalleryUploadDialog({
           <input
             ref={inputRef}
             type="file"
-            accept="image/*"
+              accept={acceptedImageTypes}
             className="hidden"
             onChange={(e) => {
               const f = e.target.files?.[0];

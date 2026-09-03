@@ -48,9 +48,8 @@ test.describe('Clientes - CRUD', () => {
     await dialog.getByPlaceholder(/Nome completo/i).fill(testCustomer.name);
     await dialog.getByPlaceholder(/00000-0000/i).fill(testCustomer.phone);
     const emailInput = dialog.getByPlaceholder(/email@exemplo/i);
-    if (await emailInput.isVisible({ timeout: 1000 })) {
-      await emailInput.fill(testCustomer.email);
-    }
+        await expect(emailInput).toBeVisible({ timeout: 5000 });
+        await emailInput.fill(testCustomer.email);
 
     // Salvar
     const saveButton = dialog.getByRole('button', { name: /Criar Cliente/i });
@@ -66,7 +65,7 @@ test.describe('Clientes - CRUD', () => {
 
     // CLEANUP: Excluir o cliente criado
     const card = page.locator('[data-slot="card"]').filter({ hasText: testCustomer.name }).first();
-    const deleteBtn = card.locator('button').filter({ has: page.locator('.text-destructive') });
+    const deleteBtn = card.getByRole('button', { name: new RegExp(`Remover ${testCustomer.name}`, 'i') });
     await deleteBtn.click();
 
     const alertDialog = page.locator('[role="alertdialog"]');
@@ -86,17 +85,13 @@ test.describe('Clientes - CRUD', () => {
 
     // Deve mostrar mensagem de nenhum resultado ou lista vazia
     const noResults = page.getByText(/Nenhum cliente/i);
-    const count = await noResults.count();
-    expect(count).toBeGreaterThanOrEqual(0);
+    await expect(noResults).toBeVisible({ timeout: 5000 });
   });
 
   test('deve exportar clientes para Excel', async ({ page }) => {
     // Verificar que o botão de exportar existe
     const exportButton = page.getByRole('button').filter({ hasText: /Excel|Exportar/i }).first();
 
-    if (await exportButton.isVisible({ timeout: 2000 })) {
-      await expect(exportButton).toBeVisible();
-      // Não vamos clicar para não baixar arquivo de fato
-    }
+    await expect(exportButton).toBeVisible({ timeout: 5000 });
   });
 });

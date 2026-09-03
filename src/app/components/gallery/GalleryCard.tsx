@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { GalleryItem } from '../../types';
 import { Skeleton } from '../ui/skeleton';
-import { User, ZoomIn } from 'lucide-react';
+import { ImageOff, User, ZoomIn } from 'lucide-react';
 import { cn } from '../ui/utils';
 
 interface GalleryCardProps {
@@ -11,6 +11,7 @@ interface GalleryCardProps {
 
 export function GalleryCard({ item, onClick }: GalleryCardProps) {
   const [loaded, setLoaded] = useState(false);
+  const [imageError, setImageError] = useState(false);
   return (
     <button
       type="button"
@@ -18,16 +19,27 @@ export function GalleryCard({ item, onClick }: GalleryCardProps) {
       className="group rounded-lg overflow-hidden border bg-card shadow-sm hover:shadow-md transition-shadow text-left w-full"
     >
       <div className="relative aspect-square bg-muted overflow-hidden">
-        {!loaded && <Skeleton className="absolute inset-0" />}
-        <img
-          src={item.imageUrl}
-          alt={item.title}
-          onLoad={() => setLoaded(true)}
-          className={cn(
-            'w-full h-full object-cover transition-transform duration-200 group-hover:scale-105',
-            !loaded && 'opacity-0'
-          )}
-        />
+        {!loaded && !imageError && <Skeleton className="absolute inset-0" />}
+        {imageError ? (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-muted px-4 text-center text-muted-foreground">
+            <ImageOff className="size-8" />
+            <span className="text-xs">Imagem indisponível</span>
+          </div>
+        ) : (
+          <img
+            src={item.imageUrl}
+            alt={item.title}
+            onLoad={() => setLoaded(true)}
+            onError={() => {
+              setImageError(true);
+              setLoaded(false);
+            }}
+            className={cn(
+              'w-full h-full object-cover transition-transform duration-200 group-hover:scale-105',
+              !loaded && 'opacity-0'
+            )}
+          />
+        )}
         {/* Overlay on hover */}
         <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center">
           <ZoomIn className="size-7 text-white opacity-0 group-hover:opacity-100 transition-opacity" />

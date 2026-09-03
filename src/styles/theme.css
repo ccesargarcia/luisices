@@ -251,6 +251,16 @@
 }
 
 @layer components {
+  [data-kpi-grid][data-count='3'] > [data-slot='card']:last-child {
+    grid-column: span 2;
+  }
+
+  @media (min-width: 1024px) {
+    [data-kpi-grid][data-count='3'] > [data-slot='card']:last-child {
+      grid-column: span 1;
+    }
+  }
+
   .glass-panel {
     border: 1px solid var(--glass-border);
     background: var(--card);

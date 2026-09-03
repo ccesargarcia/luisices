@@ -94,6 +94,22 @@ export function Dashboard() {
 
   const visibleCards = settings?.dashboardCards ?? DEFAULT_DASHBOARD_CARDS;
   const showCard = (id: string) => visibleCards.includes(id);
+  const firstGridCount = ['total', 'revenue', 'open', 'avgTicket'].filter(showCard).length;
+  const secondGridCount = ['inProgress', 'toReceive', 'received'].filter(showCard).length;
+  const firstGridClass = firstGridCount === 1
+    ? 'grid-cols-1'
+    : firstGridCount === 2
+      ? 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-2'
+      : firstGridCount === 3
+        ? 'grid-cols-2 lg:grid-cols-3'
+        : 'grid-cols-2 lg:grid-cols-4';
+  const secondGridClass = secondGridCount === 1
+    ? 'grid-cols-1'
+    : secondGridCount === 2
+      ? 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-2'
+      : 'grid-cols-2 lg:grid-cols-3';
+  const firstGridLastItemClass = firstGridCount === 3 ? 'col-span-2 lg:col-span-1' : '';
+  const secondGridLastItemClass = secondGridCount === 3 ? 'col-span-2 lg:col-span-1' : '';
   const handleOrderClick = (order: Order) => {
     setSelectedOrder(order);
     setDetailsOpen(true);
@@ -414,7 +430,7 @@ export function Dashboard() {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4 lg:gap-6">
+      <div data-kpi-grid data-count={firstGridCount} className={`grid gap-4 lg:gap-6 ${firstGridClass}`}>
         {showCard('total') && (
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
@@ -477,7 +493,7 @@ export function Dashboard() {
       </div>
 
       {/* Métricas adicionais */}
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-3 lg:gap-6">
+      <div data-kpi-grid data-count={secondGridCount} className={`grid gap-4 lg:gap-6 ${secondGridClass}`}>
         {showCard('inProgress') && (
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
