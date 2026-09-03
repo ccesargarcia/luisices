@@ -471,7 +471,7 @@ export class FirebaseOrderService {
     workflow.steps[step] = {
       completed,
       completedAt: completed ? new Date().toISOString() : undefined,
-      completedBy: completed ? (auth.currentUser?.displayName || auth.currentUser?.email || undefined) : undefined,
+      completedBy: completed ? auth.currentUser?.displayName || auth.currentUser?.email : undefined,
       notes,
     };
 

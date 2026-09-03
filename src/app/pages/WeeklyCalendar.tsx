@@ -100,7 +100,7 @@ export function WeeklyCalendar() {
       setDetailsOpen(false);
       setSelectedOrder(null);
     } catch {
-      toast.error('Não foi possível remover o pedido. Tente novamente.');
+      toast.error('Erro ao deletar pedido');
     }
   };
 
@@ -137,14 +137,14 @@ export function WeeklyCalendar() {
           <p className="text-muted-foreground">Visualize entregas por dia da semana</p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="icon" aria-label="Semana anterior" onClick={() => setCurrentWeekOffset((o) => o - 1)}>
+          <Button variant="outline" size="icon" onClick={() => setCurrentWeekOffset((o) => o - 1)}>
             <ChevronLeft className="size-4" />
           </Button>
           <div className="flex items-center gap-2 px-4 py-2 bg-muted rounded-md">
             <CalendarIcon className="size-4" />
             <span className="font-medium">{getWeekRange()}</span>
           </div>
-          <Button variant="outline" size="icon" aria-label="Próxima semana" onClick={() => setCurrentWeekOffset((o) => o + 1)}>
+          <Button variant="outline" size="icon" onClick={() => setCurrentWeekOffset((o) => o + 1)}>
             <ChevronRight className="size-4" />
           </Button>
           {currentWeekOffset !== 0 && (

@@ -20,11 +20,6 @@ export interface UserSettings {
   businessPhone?: string;
   businessEmail?: string;
   businessAddress?: string;
-  businessNumber?: string;
-  businessComplement?: string;
-  businessZipCode?: string;
-  businessCity?: string;
-  businessState?: string;
 
   // Identidade do negócio
   businessTagline?: string;      // Slogan exibido no cabeçalho

@@ -38,12 +38,12 @@ export function TagInput({ tags, onChange, placeholder = 'Digite e pressione Ent
 
   return (
     <div className="space-y-2">
-      <div className="flex min-w-0 flex-wrap gap-2 rounded-md border bg-background p-2">
+      <div className="flex flex-wrap gap-2 min-h-[32px] p-2 border rounded-md bg-background">
         {tags.map((tag, index) => (
-          <Badge
-            key={index}
+          <Badge 
+            key={index} 
             className="gap-1 pr-1 border-0"
-            style={{
+            style={{ 
               backgroundColor: tag.color,
               color: getTextColor(tag.color)
             }}
@@ -58,7 +58,7 @@ export function TagInput({ tags, onChange, placeholder = 'Digite e pressione Ent
             </button>
           </Badge>
         ))}
-        <div className="flex min-w-[min(120px,100%)] flex-1 items-center gap-1">
+        <div className="flex items-center gap-1 flex-1 min-w-[120px]">
           <Popover open={showColorPicker} onOpenChange={setShowColorPicker}>
             <PopoverTrigger asChild>
               <button
@@ -77,7 +77,7 @@ export function TagInput({ tags, onChange, placeholder = 'Digite e pressione Ent
                       key={color.value}
                       type="button"
                       className="size-8 rounded border-2 hover:scale-110 transition-transform"
-                      style={{
+                      style={{ 
                         backgroundColor: color.value,
                         borderColor: selectedColor === color.value ? '#000' : 'transparent'
                       }}
@@ -103,7 +103,7 @@ export function TagInput({ tags, onChange, placeholder = 'Digite e pressione Ent
           />
         </div>
       </div>
-      <p className="break-words text-xs leading-relaxed text-muted-foreground">
+      <p className="text-xs text-muted-foreground">
         Clique no círculo colorido para escolher a cor, digite a tag e pressione Enter
       </p>
     </div>

@@ -8,8 +8,6 @@ import {
 } from 'firebase/firestore';
 import { db, auth } from '../lib/firebase';
 import { Quote } from '../app/types';
-import { firebaseQuoteService } from '../services/firebaseQuoteService';
-import { isQuoteExpired } from '../app/components/quotes/quoteHelpers';
 
 export function useFirebaseQuotes() {
   const [quotes, setQuotes] = useState<Quote[]>([]);
@@ -67,17 +65,7 @@ export function useFirebaseQuotes() {
             updatedAt: raw.updatedAt?.toDate?.()?.toISOString() ?? undefined,
           } as Quote;
         });
-        const expiredQuotes = data.filter(isQuoteExpired);
-        setQuotes(data.map((quote) => (
-          isQuoteExpired(quote) ? { ...quote, status: 'expired' as const } : quote
-        )));
-        if (expiredQuotes.length > 0) {
-          void Promise.all(
-            expiredQuotes.map((quote) => firebaseQuoteService.updateStatus(quote.id, 'expired')),
-          ).catch((expirationError) => {
-            console.error('Erro ao atualizar orçamentos vencidos:', expirationError);
-          });
-        }
+        setQuotes(data);
         setLoading(false);
       },
       (err) => {

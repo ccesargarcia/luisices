@@ -8,6 +8,7 @@ Este diretório contém os testes end-to-end (E2E) automatizados usando Playwrig
 
 ```
 tests/e2e/
+├── smoke.spec.ts          # 🔥 Smoke tests - testes críticos básicos
 ├── auth.spec.ts           # 🔐 Autenticação (login, logout, reset)
 ├── navigation.spec.ts     # 🧭 Navegação entre páginas
 ├── dashboard.spec.ts      # 📊 Dashboard e estatísticas
@@ -45,6 +46,9 @@ npx playwright install
 ### ▶️ Executar testes:
 
 ```bash
+# Smoke tests (mais rápido - ~30s)
+npm run test:smoke
+
 # Todos os testes E2E
 npm run test:e2e
 
@@ -151,7 +155,10 @@ npx playwright show-trace test-results/.../trace.zip
 
 ## 📊 CI/CD
 
-Os testes rodam automaticamente em pull requests e no workflow de deploy para DEV. A produção deve ser promovida após a validação no ambiente de desenvolvimento.
+Os testes rodam automaticamente em:
+- ✅ Pull Requests
+- ✅ Push para `main` ou `dev`
+- ✅ Deploy para produção
 
 ---
 

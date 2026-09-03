@@ -1,16 +1,16 @@
 export const TAG_COLORS = [
-  { name: 'Vermelho', value: '#b86b6b', textColor: '#ffffff' },
-  { name: 'Laranja', value: '#bf8a62', textColor: '#ffffff' },
-  { name: 'Amarelo', value: '#b49a5a', textColor: '#1f1b1b' },
-  { name: 'Lima', value: '#879b62', textColor: '#1f1b1b' },
-  { name: 'Verde', value: '#638d75', textColor: '#ffffff' },
-  { name: 'Esmeralda', value: '#5b9181', textColor: '#ffffff' },
-  { name: 'Azul Claro', value: '#6e9eaa', textColor: '#ffffff' },
-  { name: 'Azul', value: '#6785a8', textColor: '#ffffff' },
-  { name: 'Índigo', value: '#7d7da8', textColor: '#ffffff' },
-  { name: 'Roxo', value: '#8d789f', textColor: '#ffffff' },
-  { name: 'Rosa', value: '#b97886', textColor: '#ffffff' },
-  { name: 'Cinza', value: '#77737a', textColor: '#ffffff' },
+  { name: 'Vermelho', value: '#ef4444', textColor: '#ffffff' },
+  { name: 'Laranja', value: '#f97316', textColor: '#ffffff' },
+  { name: 'Amarelo', value: '#eab308', textColor: '#000000' },
+  { name: 'Lima', value: '#84cc16', textColor: '#000000' },
+  { name: 'Verde', value: '#22c55e', textColor: '#ffffff' },
+  { name: 'Esmeralda', value: '#10b981', textColor: '#ffffff' },
+  { name: 'Azul Claro', value: '#06b6d4', textColor: '#ffffff' },
+  { name: 'Azul', value: '#3b82f6', textColor: '#ffffff' },
+  { name: 'Índigo', value: '#6366f1', textColor: '#ffffff' },
+  { name: 'Roxo', value: '#a855f7', textColor: '#ffffff' },
+  { name: 'Rosa', value: '#ec4899', textColor: '#ffffff' },
+  { name: 'Cinza', value: '#6b7280', textColor: '#ffffff' },
 ];
 
 export const getTextColor = (bgColor: string): string => {
