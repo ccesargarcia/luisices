@@ -97,7 +97,28 @@ exports.createUserInvitation = onCall({ secrets: [RESEND_API_KEY] }, async (requ
 
   try {
     const existing = await admin.auth().getUserByEmail(normalizedEmail).catch(() => null);
-    if (existing) throw new functions.https.HttpsError('already-exists', 'Este e-mail já possui uma conta.');
+    if (existing) {
+      // Verifica se o usuário tem perfil ativo no Firestore
+      const profileSnap = await admin.firestore().doc(`userProfiles/${existing.uid}`).get();
+      if (profileSnap.exists && profileSnap.data().active) {
+        throw new functions.https.HttpsError('already-exists', 'Este e-mail já possui uma conta ativa.');
+      }
+      // Se não possui perfil no Firestore ou a conta foi excluída/inativa, limpa a conta órfã no Auth
+      await admin.auth().deleteUser(existing.uid).catch((err) => {
+        console.warn('[createUserInvitation] Limpeza de Auth órfão:', err?.message || err);
+      });
+      if (profileSnap.exists) {
+        await admin.firestore().doc(`userProfiles/${existing.uid}`).delete().catch(() => null);
+      }
+    }
+
+    // Limpa convites pendentes anteriores para o mesmo email
+    const oldInvites = await admin.firestore().collection('invitations').where('email', '==', normalizedEmail).get();
+    if (!oldInvites.empty) {
+      const batch = admin.firestore().batch();
+      oldInvites.docs.forEach(d => batch.delete(d.ref));
+      await batch.commit();
+    }
 
     const token = crypto.randomBytes(32).toString('hex');
     const expiresAt = new Date(Date.now() + 48 * 60 * 60 * 1000);
@@ -344,13 +365,27 @@ exports.deleteUser = onCall(async (request) => {
   }
 
   try {
-    // 1. Remove do Firebase Auth
+    // 1. Busca perfil para pegar o email (se existir)
+    const profileSnap = await admin.firestore().doc(`userProfiles/${uid}`).get();
+    const userEmail = profileSnap.exists ? profileSnap.data().email : null;
+
+    // 2. Remove do Firebase Auth
     await admin.auth().deleteUser(uid).catch((err) => {
       console.warn('[deleteUser] Auth delete warning:', err?.message || err);
     });
 
-    // 2. Remove o perfil do Firestore
+    // 3. Remove o perfil do Firestore
     await admin.firestore().doc(`userProfiles/${uid}`).delete();
+
+    // 4. Limpa convites associados a esse e-mail
+    if (userEmail) {
+      const invites = await admin.firestore().collection('invitations').where('email', '==', userEmail.toLowerCase()).get();
+      if (!invites.empty) {
+        const batch = admin.firestore().batch();
+        invites.docs.forEach(d => batch.delete(d.ref));
+        await batch.commit();
+      }
+    }
 
     return { success: true };
   } catch (error) {
