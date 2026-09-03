@@ -147,7 +147,8 @@ test.beforeEach(async ({ page }, testInfo) => {
   // O diálogo deveria fechar ao criar o pedido; algumas vezes ele permanece
   // aberto por conta de validação ou atraso na resposta do backend.
   await expect(dialog).not.toBeVisible({ timeout: 15000 });
-  await expect(page.locator('[data-slot="card"]').filter({ hasText: TEST_ORDER_PRODUCT }).first()).toBeVisible({ timeout: 10000 });
+  const orderCard = page.locator('[data-slot="card"]').filter({ hasText: product }).first();
+  await expect(orderCard).toBeVisible({ timeout: 10000 });
 });
 
 test.describe('Detalhes do Pedido', () => {

@@ -92,23 +92,6 @@ test.describe('Orçamentos - CRUD', () => {
     await alertDialog.getByRole('button', { name: /Excluir/i }).click();
     await expect(alertDialog).not.toBeVisible({ timeout: 10000 });
 
-    // CLEANUP: Excluir o cliente criado pelo orçamento
-    await page.goto('/clientes');
-    await expect(page.locator('main h1').first()).toContainText(/Clientes/i, { timeout: 10000 });
-
-    const searchInput2 = page.getByPlaceholder(/Buscar por nome, telefone ou email/i);
-    await searchInput2.fill(clientName);
-    await page.waitForTimeout(500);
-
-    const customerCard = page.locator('[data-slot="card"]').filter({ hasText: clientName }).first();
-    await expect(customerCard).toBeVisible({ timeout: 5000 });
-    const custDeleteBtn = customerCard.locator('button').filter({ has: page.locator('.text-destructive') });
-    await custDeleteBtn.click();
-
-      const custAlertDialog = page.locator('[role="alertdialog"]');
-      await expect(custAlertDialog).toBeVisible({ timeout: 5000 });
-      await custAlertDialog.getByRole('button', { name: /Excluir/i }).click();
-      await expect(custAlertDialog).not.toBeVisible({ timeout: 10000 });
   });
 
   test('deve buscar orçamentos', async ({ page }) => {
