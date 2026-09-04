@@ -70,7 +70,9 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
             updatedAt: data.updatedAt,
             tags: data.tags,
             payment: data.payment,
-            createdByName: data.createdByName,
+            createdByName: data.createdByName || (data.userId === user.uid
+              ? user.displayName || user.email || user.uid
+              : undefined),
             assignedTo: data.assignedTo,
             assignedToName: data.assignedToName,
             assignedAt: data.assignedAt,

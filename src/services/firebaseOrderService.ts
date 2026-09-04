@@ -114,7 +114,7 @@ export class FirebaseOrderService {
     const ordersRef = collection(db, ORDERS_COLLECTION);
     const newOrderRef = await addDoc(ordersRef, {
       userId,
-      createdByName: auth.currentUser?.displayName || auth.currentUser?.email || null,
+      createdByName: auth.currentUser?.displayName || auth.currentUser?.email || userId,
       orderNumber,
       customerName: orderData.customerName,
       customerPhone: orderData.customerPhone,
