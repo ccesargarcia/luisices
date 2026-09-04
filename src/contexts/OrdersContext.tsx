@@ -37,12 +37,18 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
 
     setState(prev => ({ ...prev, loading: true, error: null }));
 
-    const ordersQuery = query(
-      collection(db, 'orders'),
-      where('userId', '==', user.uid),
-      where('deletedAt', '==', null),
-      orderBy('createdAt', 'desc')
-    );
+    const ordersQuery = userProfile?.role === 'admin'
+      ? query(
+          collection(db, 'orders'),
+          where('deletedAt', '==', null),
+          orderBy('createdAt', 'desc')
+        )
+      : query(
+          collection(db, 'orders'),
+          where('userId', '==', user.uid),
+          where('deletedAt', '==', null),
+          orderBy('createdAt', 'desc')
+        );
 
     const mapSnapshot = (snapshot: QuerySnapshot<DocumentData>): Order[] => snapshot.docs.map(doc => {
           const data = doc.data();
