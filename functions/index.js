@@ -203,6 +203,9 @@ exports.completeUserInvitation = onCall(async (request) => {
   const invitation = await invitationRef.get();
   if (!invitation.exists) throw new functions.https.HttpsError('not-found', 'Convite inválido ou expirado.');
   const data = invitation.data();
+  if (data.status === 'accepted' && data.acceptedBy === request.auth.uid) {
+    return { success: true, alreadyCompleted: true };
+  }
   if (data.status !== 'pending' || data.expiresAt.toDate() <= new Date() || data.email !== request.auth.token.email.toLowerCase()) {
     throw new functions.https.HttpsError('failed-precondition', 'Convite inválido, expirado ou destinado a outro e-mail.');
   }

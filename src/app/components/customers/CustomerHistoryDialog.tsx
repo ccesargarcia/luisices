@@ -100,7 +100,7 @@ export function CustomerHistoryDialog({
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="w-full max-w-full sm:max-w-2xl max-h-[90vh] flex flex-col overflow-hidden">
+        <DialogContent className="w-full max-w-full sm:max-w-2xl max-h-[90dvh] flex flex-col overflow-hidden">
           <DialogHeader>
             <DialogTitle>{customer?.name}</DialogTitle>
           </DialogHeader>

@@ -236,7 +236,7 @@ export function QuoteDetailsDialog({
       </AlertDialog>
 
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="w-full max-w-full sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="w-full max-w-full sm:max-w-2xl max-h-[90dvh] overflow-y-auto">
           <DialogHeader>
             <div className="flex items-center gap-3">
               <DialogTitle>{quote.quoteNumber}</DialogTitle>

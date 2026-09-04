@@ -130,7 +130,7 @@ export function GalleryUploadDialog({
         if (!v) handleClose();
       }}
     >
-      <DialogContent className="w-full max-w-full sm:max-w-lg max-h-[90vh] overflow-y-auto">
+      <DialogContent className="w-full max-w-full sm:max-w-lg max-h-[90dvh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Nova Arte</DialogTitle>
         </DialogHeader>

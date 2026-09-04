@@ -102,7 +102,7 @@ export function EditFolderDialog({
         if (!v) onClose();
       }}
     >
-      <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-md max-h-[90dvh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Editar pasta — {folderName}</DialogTitle>
         </DialogHeader>

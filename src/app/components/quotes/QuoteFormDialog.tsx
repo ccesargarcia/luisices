@@ -254,7 +254,7 @@ export function QuoteFormDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleOpen}>
-      <DialogContent className="max-h-[90vh] min-w-0 max-w-2xl overflow-x-hidden overflow-y-auto">
+      <DialogContent className="max-h-[90dvh] min-w-0 max-w-2xl overflow-x-hidden overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{editing ? 'Editar Orçamento' : 'Novo Orçamento'}</DialogTitle>
         </DialogHeader>
