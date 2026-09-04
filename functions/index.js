@@ -4,7 +4,6 @@ const { defineSecret } = require('firebase-functions/params');
 const admin = require('firebase-admin');
 const { Resend } = require('resend');
 const { RateLimiterMemory } = require('rate-limiter-flexible');
-const crypto = require('crypto');
 
 admin.initializeApp();
 
@@ -20,198 +19,6 @@ const RESEND_API_KEY = defineSecret('RESEND_API_KEY');
 
 // Helper para inicializar Resend com a chave
 const getResend = (apiKey) => apiKey ? new Resend(apiKey) : null;
-
-const getAppUrl = () => {
-  const projectId = process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT;
-  return projectId === 'luisices-dev' ? 'https://dev.luisices.com.br' : 'https://luisices.com.br';
-};
-
-const formatActionLink = (rawFirebaseLink, fallbackMode = 'resetPassword') => {
-  try {
-    const parsed = new URL(rawFirebaseLink);
-    const mode = parsed.searchParams.get('mode') || fallbackMode;
-    const oobCode = parsed.searchParams.get('oobCode');
-    if (oobCode) {
-      return `${getAppUrl()}/action?mode=${encodeURIComponent(mode)}&oobCode=${encodeURIComponent(oobCode)}`;
-    }
-  } catch (e) {
-    console.error('[formatActionLink] Error parsing raw link:', e);
-  }
-  return rawFirebaseLink;
-};
-
-const isAdminRequest = async (request) => {
-  if (!request.auth) return false;
-  const profile = await admin.firestore().doc(`userProfiles/${request.auth.uid}`).get();
-  return profile.exists && profile.data().role === 'admin' && profile.data().active !== false;
-};
-
-const hashToken = (token) => crypto.createHash('sha256').update(token).digest('hex');
-
-/** Envia ao administrador um link seguro para redefinir a senha de outro usuário. */
-exports.sendAdminPasswordReset = onCall({ secrets: [RESEND_API_KEY] }, async (request) => {
-  if (!(await isAdminRequest(request))) {
-    throw new functions.https.HttpsError('permission-denied', 'Apenas administradores podem redefinir senhas.');
-  }
-  const { email } = request.data || {};
-  if (!email || typeof email !== 'string') {
-    throw new functions.https.HttpsError('invalid-argument', 'E-mail do usuário é obrigatório.');
-  }
-  const resend = getResend(RESEND_API_KEY.value());
-  if (!resend) throw new functions.https.HttpsError('failed-precondition', 'Resend não configurado.');
-
-  try {
-    const rawResetLink = await admin.auth().generatePasswordResetLink(email.trim(), {
-      url: `${getAppUrl()}/action`,
-      handleCodeInApp: true,
-    });
-    const resetLink = formatActionLink(rawResetLink);
-    await resend.emails.send({
-      from: 'Luisices <noreply@luisices.com.br>',
-      to: [email.trim()],
-      subject: 'Redefinição de senha - Luisices',
-      html: `<p>Olá,</p><p>Um administrador solicitou a redefinição da senha da sua conta Luisices.</p><p><a href="${resetLink}">Definir nova senha</a></p><p>Este link expira em 1 hora e pode ser usado uma única vez.</p><p>Se você não esperava este e-mail, entre em contato com o administrador.</p>`,
-    });
-    return { success: true };
-  } catch (error) {
-    if (error.code === 'auth/user-not-found') {
-      throw new functions.https.HttpsError('not-found', 'Usuário não encontrado.');
-    }
-    console.error('[sendAdminPasswordReset]', error);
-    throw new functions.https.HttpsError('internal', 'Não foi possível enviar o link de redefinição.');
-  }
-});
-
-/** Cria convite de cadastro com token armazenado apenas em hash e validade de 48 horas. */
-exports.createUserInvitation = onCall({ secrets: [RESEND_API_KEY] }, async (request) => {
-  if (!(await isAdminRequest(request))) {
-    throw new functions.https.HttpsError('permission-denied', 'Apenas administradores podem enviar convites.');
-  }
-  const { email } = request.data || {};
-  if (!email || typeof email !== 'string') {
-    throw new functions.https.HttpsError('invalid-argument', 'E-mail do convite é obrigatório.');
-  }
-  const normalizedEmail = email.trim().toLowerCase();
-  const resend = getResend(RESEND_API_KEY.value());
-  if (!resend) throw new functions.https.HttpsError('failed-precondition', 'Resend não configurado.');
-
-  try {
-    const existing = await admin.auth().getUserByEmail(normalizedEmail).catch(() => null);
-    if (existing) {
-      // Verifica se o usuário tem perfil ativo no Firestore
-      const profileSnap = await admin.firestore().doc(`userProfiles/${existing.uid}`).get();
-      if (profileSnap.exists && profileSnap.data().active) {
-        throw new functions.https.HttpsError('already-exists', 'Este e-mail já possui uma conta ativa.');
-      }
-      // Se não possui perfil no Firestore ou a conta foi excluída/inativa, limpa a conta órfã no Auth
-      await admin.auth().deleteUser(existing.uid).catch((err) => {
-        console.warn('[createUserInvitation] Limpeza de Auth órfão:', err?.message || err);
-      });
-      if (profileSnap.exists) {
-        await admin.firestore().doc(`userProfiles/${existing.uid}`).delete().catch(() => null);
-      }
-    }
-
-    // Limpa convites pendentes anteriores para o mesmo email
-    const oldInvites = await admin.firestore().collection('invitations').where('email', '==', normalizedEmail).get();
-    if (!oldInvites.empty) {
-      const batch = admin.firestore().batch();
-      oldInvites.docs.forEach(d => batch.delete(d.ref));
-      await batch.commit();
-    }
-
-    const token = crypto.randomBytes(32).toString('hex');
-    const expiresAt = new Date(Date.now() + 48 * 60 * 60 * 1000);
-    await admin.firestore().collection('invitations').doc(hashToken(token)).set({
-      email: normalizedEmail,
-      invitedBy: request.auth.uid,
-      status: 'pending',
-      expiresAt: admin.firestore.Timestamp.fromDate(expiresAt),
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
-    });
-
-    const inviteLink = `${getAppUrl()}/registrar?invite=${token}`;
-    await resend.emails.send({
-      from: 'Luisices <noreply@luisices.com.br>',
-      to: [normalizedEmail],
-      subject: 'Convite para acessar a plataforma Luisices',
-      html: `<p>Você foi convidado para acessar a plataforma Luisices.</p><p><a href="${inviteLink}">Aceitar convite e criar conta</a></p><p>O convite expira em 48 horas. Após criar a senha, será necessário confirmar o e-mail para concluir o cadastro.</p>`,
-    });
-    return { success: true, expiresAt: expiresAt.toISOString() };
-  } catch (error) {
-    if (error instanceof functions.https.HttpsError) throw error;
-    console.error('[createUserInvitation]', error);
-    throw new functions.https.HttpsError('internal', 'Não foi possível enviar o convite.');
-  }
-});
-
-/** Valida um convite sem expor o token armazenado. */
-exports.validateUserInvitation = onCall(async (request) => {
-  const { token } = request.data || {};
-  if (!token || typeof token !== 'string') {
-    throw new functions.https.HttpsError('invalid-argument', 'Convite inválido.');
-  }
-  const snapshot = await admin.firestore().collection('invitations').doc(hashToken(token)).get();
-  if (!snapshot.exists) throw new functions.https.HttpsError('not-found', 'Convite inválido ou expirado.');
-  const data = snapshot.data();
-  if (data.status !== 'pending' || data.expiresAt.toDate() <= new Date()) {
-    throw new functions.https.HttpsError('failed-precondition', 'Convite inválido ou expirado.');
-  }
-  return { email: data.email, expiresAt: data.expiresAt.toDate().toISOString() };
-});
-
-/** Conclui o cadastro convidado e inicializa o perfil do usuário. */
-exports.completeUserInvitation = onCall(async (request) => {
-  if (!request.auth) {
-    throw new functions.https.HttpsError('unauthenticated', 'Usuário não autenticado.');
-  }
-  const { token } = request.data || {};
-  if (!token || typeof token !== 'string') {
-    throw new functions.https.HttpsError('invalid-argument', 'Convite inválido.');
-  }
-  const invitationRef = admin.firestore().collection('invitations').doc(hashToken(token));
-  const invitation = await invitationRef.get();
-  if (!invitation.exists) throw new functions.https.HttpsError('not-found', 'Convite inválido ou expirado.');
-  const data = invitation.data();
-  if (data.status !== 'pending' || data.expiresAt.toDate() <= new Date() || data.email !== request.auth.token.email.toLowerCase()) {
-    throw new functions.https.HttpsError('failed-precondition', 'Convite inválido, expirado ou destinado a outro e-mail.');
-  }
-
-  const profileRef = admin.firestore().doc(`userProfiles/${request.auth.uid}`);
-  await admin.firestore().runTransaction(async (transaction) => {
-    const currentInvitation = await transaction.get(invitationRef);
-    if (!currentInvitation.exists || currentInvitation.data().status !== 'pending') {
-      throw new functions.https.HttpsError('failed-precondition', 'Este convite já foi utilizado.');
-    }
-    transaction.set(profileRef, {
-      uid: request.auth.uid,
-      email: data.email,
-      displayName: request.auth.token.name || data.email,
-      role: 'user',
-      permissions: {
-        dashboard: true,
-        orders: { view: true, create: true, edit: true, delete: false },
-        customers: { view: true, create: true, edit: true, delete: false },
-        products: { view: true, create: false, edit: false, delete: false },
-        quotes: { view: true, create: true, edit: true, delete: false },
-        gallery: { view: true, create: true, delete: false },
-        reports: false,
-        exchanges: false,
-        settings: true,
-        users: { view: false, create: false, edit: false, delete: false },
-      },
-      active: true,
-      createdAt: new Date().toISOString(),
-      createdBy: data.invitedBy,
-    }, { merge: false });
-    transaction.update(invitationRef, {
-      status: 'accepted',
-      acceptedBy: request.auth.uid,
-      acceptedAt: admin.firestore.FieldValue.serverTimestamp()
-    });
-  });
-  return { success: true };
-});
 
 /**
  * Cloud Function para enviar email de recuperação de senha via Resend
@@ -246,16 +53,21 @@ exports.sendPasswordResetEmail = onCall({ secrets: [RESEND_API_KEY] }, async (re
 
   try {
     console.log(`[sendPasswordResetEmail] Iniciando para: ${email}`);
-
-    const actionUrl = `${getAppUrl()}/action`;
-    console.log(`[sendPasswordResetEmail] URL de ação: ${actionUrl}`);
-
+    
+    // Determinar URL baseada no ambiente (dev ou prod)
+    const projectId = process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT;
+    const isDev = projectId === 'luisices-dev';
+    const actionUrl = isDev 
+      ? 'https://luisices-dev.web.app/action'  // Firebase Hosting Dev
+      : 'https://luisices.com.br/action';      // Produção
+    
+    console.log(`[sendPasswordResetEmail] Projeto: ${projectId}, URL: ${actionUrl}`);
+    
     // Gerar link de reset de senha do Firebase Auth
-    const rawResetLink = await admin.auth().generatePasswordResetLink(email, {
+    const resetLink = await admin.auth().generatePasswordResetLink(email, {
       url: actionUrl,
     });
-    const resetLink = formatActionLink(rawResetLink);
-
+    
     console.log(`[sendPasswordResetEmail] Link gerado com sucesso`);
 
     // Enviar email via Resend
@@ -350,47 +162,3 @@ exports.sendPasswordResetEmail = onCall({ secrets: [RESEND_API_KEY] }, async (re
     throw new functions.https.HttpsError('internal', 'Erro ao enviar email de recuperação');
   }
 });
-
-/** Remove um usuário do Firebase Auth e do Firestore (apenas admin). */
-exports.deleteUser = onCall(async (request) => {
-  if (!(await isAdminRequest(request))) {
-    throw new functions.https.HttpsError('permission-denied', 'Apenas administradores podem remover usuários.');
-  }
-  const { uid } = request.data || {};
-  if (!uid || typeof uid !== 'string') {
-    throw new functions.https.HttpsError('invalid-argument', 'UID do usuário é obrigatório.');
-  }
-  if (uid === request.auth.uid) {
-    throw new functions.https.HttpsError('failed-precondition', 'Você não pode remover sua própria conta de administrador.');
-  }
-
-  try {
-    // 1. Busca perfil para pegar o email (se existir)
-    const profileSnap = await admin.firestore().doc(`userProfiles/${uid}`).get();
-    const userEmail = profileSnap.exists ? profileSnap.data().email : null;
-
-    // 2. Remove do Firebase Auth
-    await admin.auth().deleteUser(uid).catch((err) => {
-      console.warn('[deleteUser] Auth delete warning:', err?.message || err);
-    });
-
-    // 3. Remove o perfil do Firestore
-    await admin.firestore().doc(`userProfiles/${uid}`).delete();
-
-    // 4. Limpa convites associados a esse e-mail
-    if (userEmail) {
-      const invites = await admin.firestore().collection('invitations').where('email', '==', userEmail.toLowerCase()).get();
-      if (!invites.empty) {
-        const batch = admin.firestore().batch();
-        invites.docs.forEach(d => batch.delete(d.ref));
-        await batch.commit();
-      }
-    }
-
-    return { success: true };
-  } catch (error) {
-    console.error('[deleteUser] Error:', error);
-    throw new functions.https.HttpsError('internal', 'Não foi possível remover o usuário.');
-  }
-});
-

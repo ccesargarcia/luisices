@@ -23,16 +23,6 @@ import {
   DialogFooter,
 } from '../components/ui/dialog';
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '../components/ui/alert-dialog';
-import {
   Select,
   SelectContent,
   SelectItem,
@@ -60,9 +50,6 @@ import {
   Loader2,
   RefreshCw,
   AlertCircle,
-  MailPlus,
-  KeyRound,
-  Trash2,
 } from 'lucide-react';
 
 // ─── Permission matrix helpers ───────────────────────────────────────────────
@@ -350,12 +337,6 @@ export function Users() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<UserProfile | null>(null);
   const [togglingUid, setTogglingUid] = useState<string | null>(null);
-  const [inviteOpen, setInviteOpen] = useState(false);
-  const [inviteEmail, setInviteEmail] = useState('');
-  const [inviting, setInviting] = useState(false);
-  const [resettingUid, setResettingUid] = useState<string | null>(null);
-  const [deleteUserTarget, setDeleteUserTarget] = useState<UserProfile | null>(null);
-  const [deleting, setDeleting] = useState(false);
 
   const fetchUsers = useCallback(async () => {
     setLoading(true);
@@ -398,54 +379,6 @@ export function Users() {
     setDialogOpen(true);
   }
 
-  async function sendPasswordReset(u: UserProfile) {
-    setResettingUid(u.uid);
-    try {
-      await firebaseUserService.sendAdminPasswordReset(u.email);
-      toast.success(`Link de redefinição enviado para ${u.email}`);
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Não foi possível enviar o link de redefinição');
-    } finally {
-      setResettingUid(null);
-    }
-  }
-
-  async function sendInvitation(event: React.FormEvent) {
-    event.preventDefault();
-    if (!inviteEmail.trim()) return;
-    setInviting(true);
-    try {
-      const result = await firebaseUserService.createUserInvitation(inviteEmail.trim());
-      const expiresAt = new Date(result.expiresAt).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
-      toast.success(`Convite enviado. Válido até ${expiresAt}.`);
-      setInviteEmail('');
-      setInviteOpen(false);
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Não foi possível enviar o convite');
-    } finally {
-      setInviting(false);
-    }
-  }
-
-  async function confirmDeleteUser() {
-    if (!deleteUserTarget) return;
-    if (deleteUserTarget.uid === currentUser?.uid) {
-      toast.error('Você não pode excluir sua própria conta');
-      return;
-    }
-    setDeleting(true);
-    try {
-      await firebaseUserService.deleteUser(deleteUserTarget.uid);
-      setUsers(prev => prev.filter(u => u.uid !== deleteUserTarget.uid));
-      toast.success(`Usuário ${deleteUserTarget.displayName || deleteUserTarget.email} excluído.`);
-      setDeleteUserTarget(null);
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Não foi possível excluir o usuário');
-    } finally {
-      setDeleting(false);
-    }
-  }
-
   const totalActive   = users.filter(u => u.active).length;
   const totalAdmins   = users.filter(u => u.role === 'admin').length;
   const totalInactive = users.filter(u => !u.active).length;
@@ -461,23 +394,19 @@ export function Users() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-border/60 pb-6">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
         <div>
-          <h1 className="text-3xl sm:text-4xl font-bold tracking-tight">Usuários</h1>
-          <p className="text-muted-foreground mt-1 text-sm sm:text-base">Gerencie quem tem acesso ao sistema</p>
+          <h1 className="text-2xl font-bold">Usuários</h1>
+          <p className="text-muted-foreground text-sm">Gerencie quem tem acesso ao sistema</p>
         </div>
-        <div className="flex w-full sm:w-auto flex-wrap items-center gap-2">
-          <Button variant="outline" size="sm" onClick={fetchUsers} className="gap-1.5" title="Atualizar lista">
-            <RefreshCw className="size-4" />
-            <span className="hidden sm:inline">Atualizar</span>
+        <div className="flex gap-2">
+          <Button variant="outline" size="sm" onClick={fetchUsers}>
+            <RefreshCw className="size-4 mr-1" />
+            Atualizar
           </Button>
-          <Button size="sm" variant="outline" onClick={() => setInviteOpen(true)} className="gap-1.5 flex-1 sm:flex-none">
-            <MailPlus className="size-4" />
-            <span>Enviar convite</span>
-          </Button>
-          <Button size="sm" onClick={openCreate} className="gap-1.5 flex-1 sm:flex-none">
-            <UserPlus className="size-4" />
-            <span>Novo usuário</span>
+          <Button size="sm" onClick={openCreate}>
+            <UserPlus className="size-4 mr-1" />
+            Novo usuário
           </Button>
         </div>
       </div>
@@ -587,21 +516,9 @@ export function Users() {
                       </div>
                     </TableCell>
                     <TableCell className="text-right">
-                      <div className="flex items-center justify-end gap-1">
-                        <Button size="icon" variant="ghost" onClick={() => openEdit(u)} className="size-8" aria-label={`Editar ${u.displayName}`} title="Editar usuário">
-                          <Pencil className="size-3.5" />
-                        </Button>
-                        {u.uid !== currentUser?.uid && (
-                          <>
-                            <Button size="icon" variant="ghost" onClick={() => sendPasswordReset(u)} disabled={resettingUid === u.uid} className="size-8" title="Enviar redefinição de senha" aria-label={`Enviar redefinição de senha para ${u.displayName}`}>
-                              {resettingUid === u.uid ? <Loader2 className="size-3.5 animate-spin" /> : <KeyRound className="size-3.5" />}
-                            </Button>
-                            <Button size="icon" variant="ghost" onClick={() => setDeleteUserTarget(u)} className="size-8 text-destructive hover:text-destructive hover:bg-destructive/10" title="Excluir usuário" aria-label={`Excluir ${u.displayName}`}>
-                              <Trash2 className="size-3.5" />
-                            </Button>
-                          </>
-                        )}
-                      </div>
+                      <Button size="icon" variant="ghost" onClick={() => openEdit(u)} className="size-8">
+                        <Pencil className="size-3.5" />
+                      </Button>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -627,21 +544,9 @@ export function Users() {
                       </p>
                       <p className="text-xs text-muted-foreground truncate">{u.email}</p>
                     </div>
-                    <div className="flex shrink-0 gap-0.5">
-                      <Button size="icon" variant="ghost" onClick={() => openEdit(u)} className="size-8" aria-label={`Editar ${u.displayName}`} title="Editar usuário">
-                        <Pencil className="size-3.5" />
-                      </Button>
-                      {u.uid !== currentUser?.uid && (
-                        <>
-                          <Button size="icon" variant="ghost" onClick={() => sendPasswordReset(u)} disabled={resettingUid === u.uid} className="size-8" title="Enviar redefinição de senha" aria-label={`Enviar redefinição de senha para ${u.displayName}`}>
-                            {resettingUid === u.uid ? <Loader2 className="size-3.5 animate-spin" /> : <KeyRound className="size-3.5" />}
-                          </Button>
-                          <Button size="icon" variant="ghost" onClick={() => setDeleteUserTarget(u)} className="size-8 text-destructive hover:text-destructive hover:bg-destructive/10" title="Excluir usuário" aria-label={`Excluir ${u.displayName}`}>
-                            <Trash2 className="size-3.5" />
-                          </Button>
-                        </>
-                      )}
-                    </div>
+                    <Button size="icon" variant="ghost" onClick={() => openEdit(u)} className="size-8 flex-shrink-0">
+                      <Pencil className="size-3.5" />
+                    </Button>
                   </div>
                   <div className="flex items-center justify-between">
                     {u.role === 'admin' ? (
@@ -679,52 +584,6 @@ export function Users() {
         onClose={() => setDialogOpen(false)}
         onSaved={fetchUsers}
       />
-
-      <Dialog open={inviteOpen} onOpenChange={setInviteOpen}>
-        <DialogContent className="w-[calc(100%-1rem)] max-w-md">
-          <DialogHeader>
-            <DialogTitle>Enviar convite</DialogTitle>
-          </DialogHeader>
-          <form onSubmit={sendInvitation} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="invite-email">E-mail da pessoa convidada</Label>
-              <Input id="invite-email" type="email" value={inviteEmail} onChange={(event) => setInviteEmail(event.target.value)} placeholder="pessoa@empresa.com" required />
-              <p className="text-xs text-muted-foreground">O convite expira em 48 horas. O acesso só é concluído após a confirmação do e-mail.</p>
-            </div>
-            <DialogFooter className="flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-              <Button type="button" variant="outline" onClick={() => setInviteOpen(false)} disabled={inviting}>Cancelar</Button>
-              <Button type="submit" disabled={inviting} className="w-full sm:w-auto">
-                {inviting ? <><Loader2 className="size-4 mr-2 animate-spin" /> Enviando...</> : <><MailPlus className="size-4 mr-2" /> Enviar convite</>}
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
-
-      {/* Confirmation Dialog for Deleting User */}
-      <AlertDialog open={Boolean(deleteUserTarget)} onOpenChange={(open) => { if (!open) setDeleteUserTarget(null); }}>
-        <AlertDialogContent className="w-[calc(100%-1rem)] max-w-md">
-          <AlertDialogHeader>
-            <AlertDialogTitle>Excluir usuário</AlertDialogTitle>
-            <AlertDialogDescription>
-              Tem certeza que deseja remover o usuário <strong>{deleteUserTarget?.displayName || deleteUserTarget?.email}</strong>? Esta ação excluirá a conta de acesso e não poderá ser desfeita.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter className="flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-            <AlertDialogCancel disabled={deleting}>Cancelar</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={(e) => {
-                e.preventDefault();
-                confirmDeleteUser();
-              }}
-              disabled={deleting}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
-              {deleting ? <><Loader2 className="size-4 mr-2 animate-spin" /> Excluindo...</> : 'Excluir definitivamente'}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </div>
   );
 }
