@@ -495,8 +495,8 @@ export function Products() {
 
       ) : (
         /* ── List view ────────────────────────────────────────────── */
-        <div className="rounded-md border overflow-hidden">
-          <table className="w-full text-sm">
+        <div className="rounded-md border overflow-x-auto">
+          <table className="w-full min-w-[560px] text-sm">
             <thead>
               <tr className="border-b bg-muted/40">
                 <th className="text-left px-4 py-2.5 font-medium text-muted-foreground w-10"></th>
@@ -520,7 +520,7 @@ export function Products() {
                       )}
                     </div>
                   </td>
-                  <td className="px-4 py-2.5 font-medium">{product.name}</td>
+                  <td className="max-w-[220px] break-words px-4 py-2.5 font-medium">{product.name}</td>
                   <td className="px-4 py-2.5 hidden sm:table-cell">
                     {product.category
                       ? <Badge variant="secondary" className="text-xs font-normal">{product.category}</Badge>

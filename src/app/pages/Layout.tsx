@@ -458,7 +458,7 @@ export function Layout() {
       </footer>
 
       {/* Navegação inferior — somente mobile */}
-      <nav className="fixed inset-x-0 bottom-0 z-50 flex border-t border-white/40 bg-card/90 backdrop-blur-2xl sm:hidden">
+      <nav className="fixed inset-x-0 bottom-0 z-50 flex border-t border-white/40 bg-card/90 pb-[env(safe-area-inset-bottom)] backdrop-blur-2xl sm:hidden">
         {mobilePrimaryNav.map((item) => {
           const isActive = location.pathname === item.href;
           return (
