@@ -337,3 +337,22 @@ Em baixo volume, parte do sistema pode permanecer nas franquias gratuitas. O dep
 - **ViaCEP:** serviço externo sem SLA assumido pelo projeto.
 
 Consulte os painéis de Billing do Google Cloud/Firebase, Resend e do provedor da Evolution API. Arquivos grandes, listeners em tempo real e muitos e-mails podem aumentar o consumo.
+
+## Markdown para agentes
+
+O site mantém HTML como resposta padrão para navegadores. Para entregar Markdown quando um agente enviar `Accept: text/markdown`, o domínio `luisices.com.br` deve estar atrás do Cloudflare com **Markdown for Agents** habilitado.
+
+No Cloudflare Dashboard:
+
+1. Abra a zona `luisices.com.br`.
+2. Acesse **AI Crawl Control**.
+3. Ative **Markdown for Agents** para a zona ou crie uma Configuration Rule para o domínio.
+4. Mantenha o `Vary: Accept` configurado no origin para separar cache HTML e Markdown.
+
+Teste após o deploy:
+
+```bash
+curl -i https://luisices.com.br/login -H 'Accept: text/markdown'
+```
+
+A resposta esperada deve conter `Content-Type: text/markdown; charset=utf-8` e `Vary: Accept`. Sem Cloudflare Markdown for Agents habilitado, um Firebase Hosting estático não consegue mudar o corpo apenas com base no header `Accept`.
