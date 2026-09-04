@@ -10,8 +10,7 @@ service cloud.firestore {
     function isAdmin() {
       return request.auth != null
         && exists(/databases/$(database)/documents/userProfiles/$(request.auth.uid))
-        && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.role == 'admin'
-        && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.active == true;
+        && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.role == 'admin';
     }
 
     function isAssignedEmployee(assignedTo) {
@@ -89,8 +88,7 @@ service cloud.firestore {
       function isAdmin() {
         return request.auth != null
           && exists(/databases/$(database)/documents/userProfiles/$(request.auth.uid))
-          && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.role == 'admin'
-          && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.active == true;
+          && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.role == 'admin';
       }
 
       // Leitura: usuário lê apenas o próprio perfil; admin lê todos
