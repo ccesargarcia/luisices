@@ -275,6 +275,7 @@ export interface UserProfile {
   active: boolean;
   createdAt: string;
   createdBy: string;
+  lastPasswordResetRequestedAt?: string;
 }
 
 export const ADMIN_PERMISSIONS: Permission = {
