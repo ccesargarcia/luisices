@@ -75,6 +75,42 @@ export function NewOrderDialog() {
   const formatCurrency = (v: number) =>
     new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
 
+  const resetForm = () => {
+    localAttachments.forEach(attachment => {
+      if (attachment.url.startsWith('blob:')) URL.revokeObjectURL(attachment.url);
+    });
+    setSelectedCustomer('');
+    setIsNewCustomer(false);
+    setFormData({
+      customerName: '',
+      customerPhone: '',
+      customerEmail: '',
+      deliveryDate: '',
+      notes: '',
+      status: 'pending',
+      paymentStatus: 'pending',
+      paymentMethod: '',
+      paidAmount: '',
+      isExchange: false,
+      exchangeNotes: '',
+      cardColor: '',
+    });
+    setProducts([{ name: '', quantity: '1', unitPrice: '' }]);
+    setTags([]);
+    setPendingFiles([]);
+    setLocalAttachments([]);
+    setGalleryBrowserOpen(false);
+    setSelectedGalleryIds([]);
+    setGalleryBrowserSearch('');
+    setCatalogSearch('');
+    setCatalogOpenIdx(null);
+  };
+
+  // Every opening starts a clean order draft, including after Cancel/close.
+  useEffect(() => {
+    if (open) resetForm();
+  }, [open]);
+
   // Pré-preencher datas e método de pagamento com os padrões configurados
   useEffect(() => {
     if (!open) return;
