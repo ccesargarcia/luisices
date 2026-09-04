@@ -32,6 +32,8 @@ const normalizeWhatsAppNumber = (phone) => {
 
 const sendWhatsAppMessage = async (phone, text) => {
   if (!phone || !EVOLUTION_API_KEY.value()) return;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8000);
   const response = await fetch(
     `${EVOLUTION_API_URL}/message/sendText/${encodeURIComponent(EVOLUTION_INSTANCE)}`,
     {
@@ -41,8 +43,10 @@ const sendWhatsAppMessage = async (phone, text) => {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({ number: normalizeWhatsAppNumber(phone), text }),
+      signal: controller.signal,
     },
   );
+  clearTimeout(timeout);
   if (!response.ok) throw new Error(`Evolution API respondeu ${response.status}`);
 };
 
@@ -91,22 +95,27 @@ exports.sendAdminPasswordReset = onCall({ secrets: [RESEND_API_KEY, EVOLUTION_AP
       handleCodeInApp: true,
     });
     const resetLink = formatActionLink(rawResetLink);
-    const profileQuery = await admin.firestore().collection('userProfiles')
-      .where('email', '==', email.trim().toLowerCase()).limit(1).get();
+    const [profileQuery, authUser] = await Promise.all([
+      admin.firestore().collection('userProfiles')
+        .where('email', '==', email.trim().toLowerCase()).limit(1).get(),
+      admin.auth().getUserByEmail(email.trim()),
+    ]);
     const phone = profileQuery.empty ? null : profileQuery.docs[0].data().whatsappPhone;
-    await admin.firestore().doc(`userProfiles/${await admin.auth().getUserByEmail(email.trim()).then(user => user.uid)}`).set({
-      lastPasswordResetRequestedAt: new Date().toISOString(),
-    }, { merge: true });
-    await resend.emails.send({
+    const emailPromise = resend.emails.send({
       from: 'Luisices <noreply@luisices.com.br>',
       to: [email.trim()],
       subject: 'Redefinição de senha - Luisices',
       html: `<p>Olá,</p><p>Um administrador solicitou a redefinição da senha da sua conta Luisices.</p><p><a href="${resetLink}">Definir nova senha</a></p><p>Este link expira em 1 hora e pode ser usado uma única vez.</p><p>Se você não esperava este e-mail, entre em contato com o administrador.</p>`,
     });
-    if (phone) {
-      await sendWhatsAppMessage(phone, `Redefinição de senha Luisices\n\nAcesse o link:\n${resetLink}\n\nO link expira em 1 hora.`)
-        .catch(error => console.error('[sendAdminPasswordReset] Evolution API:', error));
-    }
+    const profilePromise = admin.firestore().doc(`userProfiles/${authUser.uid}`).set({
+      lastPasswordResetRequestedAt: new Date().toISOString(),
+    }, { merge: true });
+    const whatsappPromise = phone
+      ? sendWhatsAppMessage(phone, `Redefinição de senha Luisices\n\nAcesse o link:\n${resetLink}\n\nO link expira em 1 hora.`)
+      : Promise.resolve();
+    await Promise.all([emailPromise, profilePromise, whatsappPromise.catch(error => {
+      console.error('[sendAdminPasswordReset] Evolution API:', error);
+    })]);
     return { success: true };
   } catch (error) {
     if (error.code === 'auth/user-not-found') {
@@ -146,16 +155,18 @@ exports.createUserInvitation = onCall({ secrets: [RESEND_API_KEY, EVOLUTION_API_
     });
 
     const inviteLink = `${getAppUrl()}/registrar?invite=${token}`;
-    await resend.emails.send({
+    const emailPromise = resend.emails.send({
       from: 'Luisices <noreply@luisices.com.br>',
       to: [normalizedEmail],
       subject: 'Convite para acessar a plataforma Luisices',
       html: `<p>Você foi convidado para acessar a plataforma Luisices.</p><p><a href="${inviteLink}">Aceitar convite e criar conta</a></p><p>O convite expira em 48 horas. Após criar a senha, será necessário confirmar o e-mail para concluir o cadastro.</p>`,
     });
-    if (whatsappPhone) {
-      await sendWhatsAppMessage(whatsappPhone, `Convite Luisices\n\nAcesse o link para criar sua conta:\n${inviteLink}\n\nO convite expira em 48 horas.`)
-        .catch(error => console.error('[createUserInvitation] Evolution API:', error));
-    }
+    const whatsappPromise = whatsappPhone
+      ? sendWhatsAppMessage(whatsappPhone, `Convite Luisices\n\nAcesse o link para criar sua conta:\n${inviteLink}\n\nO convite expira em 48 horas.`)
+      : Promise.resolve();
+    await Promise.all([emailPromise, whatsappPromise.catch(error => {
+      console.error('[createUserInvitation] Evolution API:', error);
+    })]);
     return { success: true, expiresAt: expiresAt.toISOString() };
   } catch (error) {
     if (error instanceof functions.https.HttpsError) throw error;
