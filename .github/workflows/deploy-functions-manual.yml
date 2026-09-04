@@ -33,10 +33,13 @@ jobs:
         env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_DEV }}
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          EVOLUTION_API_KEY: ${{ secrets.EVOLUTION_API_KEY }}
         run: |
           echo "$FIREBASE_SERVICE_ACCOUNT" > "$HOME/firebase-service-account.json"
           export GOOGLE_APPLICATION_CREDENTIALS="$HOME/firebase-service-account.json"
           echo "$RESEND_API_KEY" > "$HOME/resend_api_key.txt"
+          echo "$EVOLUTION_API_KEY" > "$HOME/evolution_api_key.txt"
           firebase use luisices-dev --project luisices-dev
           firebase functions:secrets:set RESEND_API_KEY --project luisices-dev --data-file "$HOME/resend_api_key.txt" || true
+          firebase functions:secrets:set EVOLUTION_API_KEY --project luisices-dev --data-file "$HOME/evolution_api_key.txt" || true
           firebase deploy --only functions --project luisices-dev --force --debug

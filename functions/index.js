@@ -17,9 +17,34 @@ const rateLimiter = new RateLimiterMemory({
 // Configurar Resend API Key usando o novo sistema de params
 // Execute: firebase functions:secrets:set RESEND_API_KEY
 const RESEND_API_KEY = defineSecret('RESEND_API_KEY');
+const EVOLUTION_API_KEY = defineSecret('EVOLUTION_API_KEY');
+
+const EVOLUTION_API_URL = 'https://wa.luisices.com.br';
+const EVOLUTION_INSTANCE = 'homeassistant';
 
 // Helper para inicializar Resend com a chave
 const getResend = (apiKey) => apiKey ? new Resend(apiKey) : null;
+
+const normalizeWhatsAppNumber = (phone) => {
+  const digits = String(phone || '').replace(/\D/g, '');
+  return digits.startsWith('55') ? digits : `55${digits}`;
+};
+
+const sendWhatsAppMessage = async (phone, text) => {
+  if (!phone || !EVOLUTION_API_KEY.value()) return;
+  const response = await fetch(
+    `${EVOLUTION_API_URL}/message/sendText/${encodeURIComponent(EVOLUTION_INSTANCE)}`,
+    {
+      method: 'POST',
+      headers: {
+        apikey: EVOLUTION_API_KEY.value(),
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ number: normalizeWhatsAppNumber(phone), text }),
+    },
+  );
+  if (!response.ok) throw new Error(`Evolution API respondeu ${response.status}`);
+};
 
 const getAppUrl = () => {
   const projectId = process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT;
@@ -49,7 +74,7 @@ const isAdminRequest = async (request) => {
 const hashToken = (token) => crypto.createHash('sha256').update(token).digest('hex');
 
 /** Envia ao administrador um link seguro para redefinir a senha de outro usuário. */
-exports.sendAdminPasswordReset = onCall({ secrets: [RESEND_API_KEY] }, async (request) => {
+exports.sendAdminPasswordReset = onCall({ secrets: [RESEND_API_KEY, EVOLUTION_API_KEY] }, async (request) => {
   if (!(await isAdminRequest(request))) {
     throw new functions.https.HttpsError('permission-denied', 'Apenas administradores podem redefinir senhas.');
   }
@@ -66,6 +91,9 @@ exports.sendAdminPasswordReset = onCall({ secrets: [RESEND_API_KEY] }, async (re
       handleCodeInApp: true,
     });
     const resetLink = formatActionLink(rawResetLink);
+    const profileQuery = await admin.firestore().collection('userProfiles')
+      .where('email', '==', email.trim().toLowerCase()).limit(1).get();
+    const phone = profileQuery.empty ? null : profileQuery.docs[0].data().whatsappPhone;
     await admin.firestore().doc(`userProfiles/${await admin.auth().getUserByEmail(email.trim()).then(user => user.uid)}`).set({
       lastPasswordResetRequestedAt: new Date().toISOString(),
     }, { merge: true });
@@ -75,6 +103,10 @@ exports.sendAdminPasswordReset = onCall({ secrets: [RESEND_API_KEY] }, async (re
       subject: 'Redefinição de senha - Luisices',
       html: `<p>Olá,</p><p>Um administrador solicitou a redefinição da senha da sua conta Luisices.</p><p><a href="${resetLink}">Definir nova senha</a></p><p>Este link expira em 1 hora e pode ser usado uma única vez.</p><p>Se você não esperava este e-mail, entre em contato com o administrador.</p>`,
     });
+    if (phone) {
+      await sendWhatsAppMessage(phone, `Redefinição de senha Luisices\n\nAcesse o link:\n${resetLink}\n\nO link expira em 1 hora.`)
+        .catch(error => console.error('[sendAdminPasswordReset] Evolution API:', error));
+    }
     return { success: true };
   } catch (error) {
     if (error.code === 'auth/user-not-found') {
@@ -86,11 +118,11 @@ exports.sendAdminPasswordReset = onCall({ secrets: [RESEND_API_KEY] }, async (re
 });
 
 /** Cria convite de cadastro com token armazenado apenas em hash e validade de 48 horas. */
-exports.createUserInvitation = onCall({ secrets: [RESEND_API_KEY] }, async (request) => {
+exports.createUserInvitation = onCall({ secrets: [RESEND_API_KEY, EVOLUTION_API_KEY] }, async (request) => {
   if (!(await isAdminRequest(request))) {
     throw new functions.https.HttpsError('permission-denied', 'Apenas administradores podem enviar convites.');
   }
-  const { email } = request.data || {};
+  const { email, whatsappPhone } = request.data || {};
   if (!email || typeof email !== 'string') {
     throw new functions.https.HttpsError('invalid-argument', 'E-mail do convite é obrigatório.');
   }
@@ -106,6 +138,7 @@ exports.createUserInvitation = onCall({ secrets: [RESEND_API_KEY] }, async (requ
     const expiresAt = new Date(Date.now() + 48 * 60 * 60 * 1000);
     await admin.firestore().collection('invitations').doc(hashToken(token)).set({
       email: normalizedEmail,
+      whatsappPhone: whatsappPhone || null,
       invitedBy: request.auth.uid,
       status: 'pending',
       expiresAt: admin.firestore.Timestamp.fromDate(expiresAt),
@@ -119,6 +152,10 @@ exports.createUserInvitation = onCall({ secrets: [RESEND_API_KEY] }, async (requ
       subject: 'Convite para acessar a plataforma Luisices',
       html: `<p>Você foi convidado para acessar a plataforma Luisices.</p><p><a href="${inviteLink}">Aceitar convite e criar conta</a></p><p>O convite expira em 48 horas. Após criar a senha, será necessário confirmar o e-mail para concluir o cadastro.</p>`,
     });
+    if (whatsappPhone) {
+      await sendWhatsAppMessage(whatsappPhone, `Convite Luisices\n\nAcesse o link para criar sua conta:\n${inviteLink}\n\nO convite expira em 48 horas.`)
+        .catch(error => console.error('[createUserInvitation] Evolution API:', error));
+    }
     return { success: true, expiresAt: expiresAt.toISOString() };
   } catch (error) {
     if (error instanceof functions.https.HttpsError) throw error;
@@ -168,6 +205,7 @@ exports.completeUserInvitation = onCall(async (request) => {
     transaction.set(profileRef, {
       uid: request.auth.uid,
       email: data.email,
+      whatsappPhone: data.whatsappPhone || null,
       displayName: request.auth.token.name || data.email,
       role: 'user',
       permissions: {
@@ -237,6 +275,9 @@ exports.sendPasswordResetEmail = onCall({ secrets: [RESEND_API_KEY] }, async (re
       url: actionUrl,
     });
     const resetLink = formatActionLink(rawResetLink);
+    const profileQuery = await admin.firestore().collection('userProfiles')
+      .where('email', '==', email.trim().toLowerCase()).limit(1).get();
+    const phone = profileQuery.empty ? null : profileQuery.docs[0].data().whatsappPhone;
 
     console.log(`[sendPasswordResetEmail] Link gerado com sucesso`);
 
@@ -301,6 +342,11 @@ exports.sendPasswordResetEmail = onCall({ secrets: [RESEND_API_KEY] }, async (re
         </html>
       `,
     });
+
+    if (phone) {
+      await sendWhatsAppMessage(phone, `Recuperação de senha Luisices\n\nAcesse o link:\n${resetLink}\n\nO link expira em 1 hora.`)
+        .catch(error => console.error('[sendPasswordResetEmail] Evolution API:', error));
+    }
 
     if (error) {
       console.error('[sendPasswordResetEmail] Erro ao enviar email via Resend:', JSON.stringify(error));

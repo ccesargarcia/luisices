@@ -28,12 +28,12 @@ export class FirebaseUserService {
     await callable({ email });
   }
 
-  async createUserInvitation(email: string): Promise<{ expiresAt: string }> {
-    const callable = httpsCallable<{ email: string }, { success: boolean; expiresAt: string }>(
+  async createUserInvitation(email: string, whatsappPhone?: string): Promise<{ expiresAt: string }> {
+    const callable = httpsCallable<{ email: string; whatsappPhone?: string }, { success: boolean; expiresAt: string }>(
       functions,
       'createUserInvitation',
     );
-    const result = await callable({ email });
+    const result = await callable({ email, whatsappPhone });
     return result.data;
   }
   /**

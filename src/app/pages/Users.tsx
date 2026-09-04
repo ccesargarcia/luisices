@@ -358,6 +358,7 @@ export function Users() {
   const [togglingUid, setTogglingUid] = useState<string | null>(null);
   const [inviteOpen, setInviteOpen] = useState(false);
   const [inviteEmail, setInviteEmail] = useState('');
+  const [inviteWhatsapp, setInviteWhatsapp] = useState('');
   const [inviting, setInviting] = useState(false);
   const [resettingUid, setResettingUid] = useState<string | null>(null);
   const [deleteUserTarget, setDeleteUserTarget] = useState<UserProfile | null>(null);
@@ -421,10 +422,11 @@ export function Users() {
     if (!inviteEmail.trim()) return;
     setInviting(true);
     try {
-      const result = await firebaseUserService.createUserInvitation(inviteEmail.trim());
+      const result = await firebaseUserService.createUserInvitation(inviteEmail.trim(), inviteWhatsapp.trim() || undefined);
       const expiresAt = new Date(result.expiresAt).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
       toast.success(`Convite enviado. Válido até ${expiresAt}.`);
       setInviteEmail('');
+      setInviteWhatsapp('');
       setInviteOpen(false);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Não foi possível enviar o convite');
@@ -699,6 +701,8 @@ export function Users() {
             <div className="space-y-2">
               <Label htmlFor="invite-email">E-mail da pessoa convidada</Label>
               <Input id="invite-email" type="email" value={inviteEmail} onChange={(event) => setInviteEmail(event.target.value)} placeholder="pessoa@empresa.com" required />
+              <Label htmlFor="invite-whatsapp">WhatsApp (opcional)</Label>
+              <Input id="invite-whatsapp" type="tel" value={inviteWhatsapp} onChange={(event) => setInviteWhatsapp(event.target.value)} placeholder="5511999999999" />
               <p className="text-xs text-muted-foreground">O convite expira em 48 horas. O acesso só é concluído após a confirmação do e-mail.</p>
             </div>
             <DialogFooter className="flex-col-reverse gap-2 sm:flex-row sm:justify-end">

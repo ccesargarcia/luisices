@@ -276,6 +276,7 @@ export interface UserProfile {
   createdAt: string;
   createdBy: string;
   lastPasswordResetRequestedAt?: string;
+  whatsappPhone?: string;
 }
 
 export const ADMIN_PERMISSIONS: Permission = {
