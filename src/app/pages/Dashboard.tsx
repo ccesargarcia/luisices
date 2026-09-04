@@ -1,5 +1,5 @@
 import { useMemo, useState, useEffect } from 'react';
-import { Order, OrderStatus } from '../types';
+import { Order, OrderStatus, UserProfile } from '../types';
 import { OrderCard } from '../components/OrderCard';
 import { OrderDetailsDialog } from '../components/OrderDetailsDialog';
 import { NewOrderDialog } from '../components/NewOrderDialog';
@@ -9,6 +9,7 @@ import { DashboardCardSkeleton, OrderCardSkeleton } from '../components/Skeleton
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
 import { Input } from '../components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
 import {
@@ -31,6 +32,7 @@ import {
 import { getTextColor } from '../utils/tagColors';
 import { useFirebaseOrders } from '../../hooks/useFirebaseOrders';
 import { firebaseOrderService } from '../../services/firebaseOrderService';
+import { firebaseUserService } from '../../services/firebaseUserService';
 import { firebaseCustomerService } from '../../services/firebaseCustomerService';
 import { useAuth } from '../../contexts/AuthContext';
 import { useUserSettings } from '../../hooks/useUserSettings';
@@ -80,7 +82,7 @@ function getGreeting() {
 }
 
 export function Dashboard() {
-  const { user } = useAuth();
+  const { user, userProfile } = useAuth();
   const { orders, loading, error } = useFirebaseOrders();
   const { settings } = useUserSettings();
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
@@ -91,6 +93,25 @@ export function Dashboard() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [showExchangeOnly, setShowExchangeOnly] = useState(false);
+  const [creatorFilter, setCreatorFilter] = useState('all');
+  const [creatorProfiles, setCreatorProfiles] = useState<UserProfile[]>([]);
+
+  useEffect(() => {
+    if (userProfile?.role !== 'admin') {
+      setCreatorProfiles([]);
+      return;
+    }
+    firebaseUserService.listUsers().then(setCreatorProfiles).catch(() => setCreatorProfiles([]));
+  }, [userProfile?.role]);
+
+  const creatorOptions = useMemo(() => {
+    const options = new Map<string, string>();
+    creatorProfiles.forEach(profile => options.set(profile.uid, profile.displayName || profile.email));
+    orders.forEach(order => {
+      if (!options.has(order.userId)) options.set(order.userId, order.createdByName || 'Usuário proprietário');
+    });
+    return [...options.entries()].sort((a, b) => a[1].localeCompare(b[1]));
+  }, [creatorProfiles, orders]);
 
   const visibleCards = settings?.dashboardCards ?? DEFAULT_DASHBOARD_CARDS;
   const showCard = (id: string) => visibleCards.includes(id);
@@ -111,7 +132,10 @@ export function Dashboard() {
   const firstGridLastItemClass = firstGridCount === 3 ? 'col-span-2 lg:col-span-1' : '';
   const secondGridLastItemClass = secondGridCount === 3 ? 'col-span-2 lg:col-span-1' : '';
   const handleOrderClick = (order: Order) => {
-    setSelectedOrder(order);
+    setSelectedOrder({
+      ...order,
+      createdByName: order.createdByName || creatorProfiles.find(profile => profile.uid === order.userId)?.displayName,
+    });
     setDetailsOpen(true);
   };
 
@@ -294,8 +318,12 @@ export function Dashboard() {
       filtered = filtered.filter(order => order.isExchange);
     }
 
+    if (creatorFilter !== 'all') {
+      filtered = filtered.filter(order => order.userId === creatorFilter);
+    }
+
     return filtered;
-  }, [orders, searchQuery, selectedTags, showExchangeOnly, user]);
+  }, [orders, searchQuery, selectedTags, showExchangeOnly, creatorFilter, user]);
 
   // Obter todas as tags únicas
   const allTags = useMemo(() => {
@@ -645,6 +673,23 @@ export function Dashboard() {
         />
       </div>
 
+      {userProfile?.role === 'admin' && creatorOptions.length > 0 && (
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <span className="text-sm font-medium">Criado por:</span>
+          <Select value={creatorFilter} onValueChange={setCreatorFilter}>
+            <SelectTrigger className="w-full sm:w-64">
+              <SelectValue placeholder="Todos os usuários" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todos os usuários</SelectItem>
+              {creatorOptions.map(([uid, name]) => (
+                <SelectItem key={uid} value={uid}>{name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
+
       {(allTags.length > 0 || true) && (
         <div className="space-y-2">
           <div className="text-sm font-medium">Filtrar por tags:</div>
@@ -684,11 +729,11 @@ export function Dashboard() {
               Permuta / Parceria
               {showExchangeOnly && <X className="size-3 ml-0.5" />}
             </Badge>
-            {(selectedTags.length > 0 || showExchangeOnly) && (
+            {(selectedTags.length > 0 || showExchangeOnly || creatorFilter !== 'all') && (
               <Badge
                 variant="secondary"
                 className="cursor-pointer"
-                onClick={() => { setSelectedTags([]); setShowExchangeOnly(false); }}
+                onClick={() => { setSelectedTags([]); setShowExchangeOnly(false); setCreatorFilter('all'); }}
               >
                 Limpar filtros
               </Badge>

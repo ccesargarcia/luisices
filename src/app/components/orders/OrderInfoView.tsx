@@ -11,6 +11,7 @@ import {
   Clock,
   Tag as TagIcon,
   Repeat2,
+  UserRoundCheck,
 } from 'lucide-react';
 import { formatDate } from '../../utils/date';
 import { formatCurrency } from '../../utils/currency';
@@ -80,6 +81,14 @@ export function OrderInfoView({ order }: OrderInfoViewProps) {
               <div className="font-medium">{formatDate(order.createdAt)}</div>
             </div>
           </div>
+        </div>
+      </div>
+
+      <div className="flex items-start gap-3 rounded-lg border bg-muted/30 p-3">
+        <UserRoundCheck className="size-5 text-muted-foreground mt-0.5" />
+        <div>
+          <div className="text-sm text-muted-foreground">Criado por</div>
+          <div className="font-medium">{order.createdByName || 'Usuário proprietário'}</div>
         </div>
       </div>
 
