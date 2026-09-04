@@ -114,6 +114,7 @@ export class FirebaseOrderService {
     const ordersRef = collection(db, ORDERS_COLLECTION);
     const newOrderRef = await addDoc(ordersRef, {
       userId,
+      createdByName: auth.currentUser?.displayName || auth.currentUser?.email || null,
       orderNumber,
       customerName: orderData.customerName,
       customerPhone: orderData.customerPhone,
@@ -175,6 +176,7 @@ export class FirebaseOrderService {
       createdAt: data.createdAt?.toDate().toISOString(),
       tags: data.tags,
       payment: data.payment,
+      createdByName: data.createdByName,
       assignedTo: data.assignedTo,
       assignedToName: data.assignedToName,
       assignedAt: data.assignedAt,
@@ -237,6 +239,7 @@ export class FirebaseOrderService {
         createdAt: data.createdAt?.toDate().toISOString(),
         tags: data.tags,
         payment: data.payment,
+        createdByName: data.createdByName,
         assignedTo: data.assignedTo,
         assignedToName: data.assignedToName,
         assignedAt: data.assignedAt,

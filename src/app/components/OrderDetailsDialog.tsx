@@ -116,8 +116,6 @@ export function OrderDetailsDialog({ order, open, onOpenChange, onUpdateStatus, 
 
   if (!order) return null;
 
-  const isAssignedEmployee = userProfile?.role === 'funcionario' && order.assignedTo === user?.uid;
-
   const resetEditData = () => {
     const parsedProducts: ProductItem[] = order.productName
       .split(',')
@@ -343,7 +341,7 @@ export function OrderDetailsDialog({ order, open, onOpenChange, onUpdateStatus, 
                       {isDuplicating ? 'Duplicando...' : 'Duplicar'}
                     </Button>
                   )}
-                  {hasPermission(p => p.orders?.edit ?? false) && !isAssignedEmployee && (
+                  {hasPermission(p => p.orders?.edit ?? false) && (
                     <Button
                       size="sm"
                       variant="outline"
@@ -387,6 +385,11 @@ export function OrderDetailsDialog({ order, open, onOpenChange, onUpdateStatus, 
             /* Modo de Visualização */
             <>
               <OrderInfoView order={order} />
+
+              <div className="rounded-lg border bg-muted/30 p-3 text-sm">
+                <span className="text-muted-foreground">Criado por: </span>
+                <span className="font-medium">{order.createdByName || 'Usuário proprietário'}</span>
+              </div>
 
               <div className="rounded-lg border p-4 space-y-2">
                 <label className="text-sm font-medium">Responsável pela execução</label>

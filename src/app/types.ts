@@ -90,6 +90,7 @@ export interface Order {
   tags?: Tag[];
   payment?: Payment;
   userId: string;
+  createdByName?: string;
   assignedTo?: string;
   assignedToName?: string;
   assignedAt?: string;

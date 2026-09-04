@@ -64,6 +64,7 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
             updatedAt: data.updatedAt,
             tags: data.tags,
             payment: data.payment,
+            createdByName: data.createdByName,
             assignedTo: data.assignedTo,
             assignedToName: data.assignedToName,
             assignedAt: data.assignedAt,

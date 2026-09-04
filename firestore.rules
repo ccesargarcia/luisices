@@ -22,6 +22,16 @@ service cloud.firestore {
         && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.active == true;
     }
 
+    function isAssignedEmployeeEditor(assignedTo) {
+      return isAssignedEmployee(assignedTo)
+        && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.permissions.orders.edit == true;
+    }
+
+    function isAssignedEmployeeDeleter(assignedTo) {
+      return isAssignedEmployee(assignedTo)
+        && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.permissions.orders.delete == true;
+    }
+
     // Regras para pedidos (orders)
     match /orders/{orderId} {
       allow read: if isOwner(resource.data.userId)
@@ -31,13 +41,13 @@ service cloud.firestore {
       allow update: if isOwner(resource.data.userId)
         || isAdmin()
         || (
-          isAssignedEmployee(resource.data.assignedTo)
+          isAssignedEmployeeEditor(resource.data.assignedTo)
           && request.resource.data.userId == resource.data.userId
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-            'status', 'notes', 'productionWorkflow', 'attachments', 'updatedAt'
-          ])
+          && request.resource.data.assignedTo == resource.data.assignedTo
         );
-      allow delete: if isOwner(resource.data.userId) || isAdmin();
+      allow delete: if isOwner(resource.data.userId)
+        || isAdmin()
+        || isAssignedEmployeeDeleter(resource.data.assignedTo);
     }
 
     // Regras para clientes (customers)
