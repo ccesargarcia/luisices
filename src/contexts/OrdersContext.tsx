@@ -8,7 +8,7 @@
  */
 
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
-import { collection, query, where, orderBy, onSnapshot } from 'firebase/firestore';
+import { collection, query, where, orderBy, onSnapshot, QuerySnapshot, DocumentData } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { useAuth } from './AuthContext';
 import { Order } from '../app/types';
@@ -26,7 +26,7 @@ const OrdersContext = createContext<OrdersState>({
 });
 
 export function OrdersProvider({ children }: { children: ReactNode }) {
-  const { user } = useAuth();
+  const { user, userProfile } = useAuth();
   const [state, setState] = useState<OrdersState>({ orders: [], loading: true, error: null });
 
   useEffect(() => {
@@ -44,10 +44,7 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
       orderBy('createdAt', 'desc')
     );
 
-    const unsubscribe = onSnapshot(
-      ordersQuery,
-      (snapshot) => {
-        const orders: Order[] = snapshot.docs.map(doc => {
+    const mapSnapshot = (snapshot: QuerySnapshot<DocumentData>): Order[] => snapshot.docs.map(doc => {
           const data = doc.data();
           return {
             id: doc.id,
@@ -67,6 +64,10 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
             updatedAt: data.updatedAt,
             tags: data.tags,
             payment: data.payment,
+            assignedTo: data.assignedTo,
+            assignedToName: data.assignedToName,
+            assignedAt: data.assignedAt,
+            assignedBy: data.assignedBy,
             productionWorkflow: data.productionWorkflow,
             attachments: data.attachments,
             isExchange: data.isExchange ?? false,
@@ -77,16 +78,51 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
           } as Order;
         });
 
-        setState({ orders, loading: false, error: null });
+    let ownOrders: Order[] = [];
+    let assignedOrders: Order[] = [];
+    const publish = () => {
+      const ordersById = new Map<string, Order>();
+      [...ownOrders, ...assignedOrders].forEach(order => ordersById.set(order.id, order));
+      const orders = [...ordersById.values()].sort((a, b) =>
+        String(b.createdAt).localeCompare(String(a.createdAt))
+      );
+      setState({ orders, loading: false, error: null });
+    };
+
+    const unsubscribers = [onSnapshot(
+      ordersQuery,
+      (snapshot) => {
+        ownOrders = mapSnapshot(snapshot);
+        publish();
       },
       (err) => {
         console.error('OrdersContext: erro no snapshot:', err);
         setState(prev => ({ ...prev, loading: false, error: err.message }));
       }
-    );
+    )];
 
-    return () => unsubscribe();
-  }, [user]);
+    if (userProfile?.role === 'funcionario') {
+      const assignedQuery = query(
+        collection(db, 'orders'),
+        where('assignedTo', '==', user.uid),
+        where('deletedAt', '==', null),
+        orderBy('createdAt', 'desc')
+      );
+      unsubscribers.push(onSnapshot(
+        assignedQuery,
+        (snapshot) => {
+          assignedOrders = mapSnapshot(snapshot);
+          publish();
+        },
+        (err) => {
+          console.error('OrdersContext: erro nos pedidos atribuídos:', err);
+          setState(prev => ({ ...prev, loading: false, error: err.message }));
+        }
+      ));
+    }
+
+    return () => unsubscribers.forEach(unsubscribe => unsubscribe());
+  }, [user, userProfile?.role]);
 
   return <OrdersContext.Provider value={state}>{children}</OrdersContext.Provider>;
 }

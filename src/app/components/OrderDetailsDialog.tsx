@@ -3,13 +3,14 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
-import { Order, OrderStatus, ProductionStep, PaymentStatus, PaymentMethod, Tag, ExchangeItem, GalleryItem } from '../types';
+import { Order, OrderStatus, ProductionStep, PaymentStatus, PaymentMethod, Tag, ExchangeItem, GalleryItem, UserProfile } from '../types';
 import { Trash2, Edit, Copy, Download } from 'lucide-react';
 import { exportOrderPDF } from '../utils/exportPdf';
 import { useUserSettings } from '../../hooks/useUserSettings';
 import { useState, useMemo, useEffect } from 'react';
 import { ProductionWorkflowComponent } from './ProductionWorkflow';
 import { firebaseOrderService } from '../../services/firebaseOrderService';
+import { firebaseUserService } from '../../services/firebaseUserService';
 import { firebaseStorageService } from '../../services/firebaseStorageService';
 import { firebaseGalleryService } from '../../services/firebaseGalleryService';
 import { useAuth } from '../../contexts/AuthContext';
@@ -42,7 +43,7 @@ const statusLabels = {
 };
 
 export function OrderDetailsDialog({ order, open, onOpenChange, onUpdateStatus, onDeleteOrder }: OrderDetailsDialogProps) {
-  const { user, hasPermission } = useAuth();
+  const { user, userProfile, hasPermission } = useAuth();
   const { settings } = useUserSettings();
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -51,6 +52,8 @@ export function OrderDetailsDialog({ order, open, onOpenChange, onUpdateStatus, 
   const [localAttachments, setLocalAttachments] = useState<import('../types').OrderAttachment[]>([]);
   const [customerGallery, setCustomerGallery] = useState<GalleryItem[]>([]);
   const [galleryLoading, setGalleryLoading] = useState(false);
+  const [employees, setEmployees] = useState<UserProfile[]>([]);
+  const [assigning, setAssigning] = useState(false);
 
   const [editProducts, setEditProducts] = useState<ProductItem[]>([{ name: '', quantity: '1', unitPrice: '' }]);
   const [editTags, setEditTags] = useState<Tag[]>([]);
@@ -85,6 +88,13 @@ export function OrderDetailsDialog({ order, open, onOpenChange, onUpdateStatus, 
     setIsEditing(false);
   }, [order?.id]);
 
+  useEffect(() => {
+    if (!open || userProfile?.role !== 'admin') return;
+    firebaseUserService.listUsers()
+      .then(users => setEmployees(users.filter(candidate => candidate.role === 'funcionario' && candidate.active)))
+      .catch(() => setEmployees([]));
+  }, [open, userProfile?.role]);
+
   // Sincronizar anexos quando o pedido mudar (ex: listener Firestore)
   useEffect(() => {
     setLocalAttachments(order?.attachments ?? []);
@@ -105,6 +115,8 @@ export function OrderDetailsDialog({ order, open, onOpenChange, onUpdateStatus, 
   }, [order?.id, order?.customerId, order?.customerName, user]);
 
   if (!order) return null;
+
+  const isAssignedEmployee = userProfile?.role === 'funcionario' && order.assignedTo === user?.uid;
 
   const resetEditData = () => {
     const parsedProducts: ProductItem[] = order.productName
@@ -150,6 +162,21 @@ export function OrderDetailsDialog({ order, open, onOpenChange, onUpdateStatus, 
   const handleCancelEdit = () => {
     setIsEditing(false);
     resetEditData();
+  };
+
+  const handleAssign = async (value: string) => {
+    if (!order || userProfile?.role !== 'admin') return;
+    const employee = employees.find(candidate => candidate.uid === value) || null;
+    setAssigning(true);
+    try {
+      await firebaseOrderService.assignOrder(order.id, employee);
+      toast.success(employee ? `Pedido atribuído a ${employee.displayName}` : 'Atribuição removida');
+    } catch (error) {
+      console.error('Erro ao atribuir pedido:', error);
+      toast.error('Não foi possível atualizar o responsável');
+    } finally {
+      setAssigning(false);
+    }
   };
 
   const handleSaveEdit = async () => {
@@ -316,7 +343,7 @@ export function OrderDetailsDialog({ order, open, onOpenChange, onUpdateStatus, 
                       {isDuplicating ? 'Duplicando...' : 'Duplicar'}
                     </Button>
                   )}
-                  {hasPermission(p => p.orders?.edit ?? false) && (
+                  {hasPermission(p => p.orders?.edit ?? false) && !isAssignedEmployee && (
                     <Button
                       size="sm"
                       variant="outline"
@@ -360,6 +387,29 @@ export function OrderDetailsDialog({ order, open, onOpenChange, onUpdateStatus, 
             /* Modo de Visualização */
             <>
               <OrderInfoView order={order} />
+
+              <div className="rounded-lg border p-4 space-y-2">
+                <label className="text-sm font-medium">Responsável pela execução</label>
+                {userProfile?.role === 'admin' ? (
+                  <Select
+                    value={order.assignedTo || '__none__'}
+                    onValueChange={value => handleAssign(value === '__none__' ? '' : value)}
+                    disabled={assigning}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Sem responsável" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__none__">Sem responsável</SelectItem>
+                      {employees.map(employee => (
+                        <SelectItem key={employee.uid} value={employee.uid}>{employee.displayName}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <p className="text-sm text-muted-foreground">{order.assignedToName || 'Sem responsável atribuído'}</p>
+                )}
+              </div>
 
               {/* Artes do Cliente */}
               <OrderGallerySection

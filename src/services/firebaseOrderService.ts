@@ -34,6 +34,10 @@ export class FirebaseOrderService {
     return user.uid;
   }
 
+  private canAccessAssignedOrder(data: Record<string, any>, userId: string): boolean {
+    return data.userId === userId || data.assignedTo === userId;
+  }
+
   /**
    * Gerar número do pedido sequencial (#2026-0001)
    */
@@ -121,6 +125,10 @@ export class FirebaseOrderService {
       notes: orderData.notes || null,
       tags: orderData.tags || null,
       customerId: orderData.customerId || null,
+      assignedTo: orderData.assignedTo || null,
+      assignedToName: orderData.assignedToName || null,
+      assignedAt: orderData.assignedAt || null,
+      assignedBy: orderData.assignedBy || null,
       payment,
       isExchange: orderData.isExchange || false,
       exchangeNotes: orderData.exchangeNotes || null,
@@ -148,7 +156,7 @@ export class FirebaseOrderService {
     const data = orderSnap.data();
 
     // Verificar se o pedido pertence ao usuário
-    if (data.userId !== userId) {
+    if (!this.canAccessAssignedOrder(data, userId)) {
       throw new Error('Você não tem permissão para acessar este pedido');
     }
 
@@ -167,6 +175,10 @@ export class FirebaseOrderService {
       createdAt: data.createdAt?.toDate().toISOString(),
       tags: data.tags,
       payment: data.payment,
+      assignedTo: data.assignedTo,
+      assignedToName: data.assignedToName,
+      assignedAt: data.assignedAt,
+      assignedBy: data.assignedBy,
       productionWorkflow: data.productionWorkflow,
       attachments: data.attachments,
       isExchange: data.isExchange ?? false,
@@ -225,6 +237,10 @@ export class FirebaseOrderService {
         createdAt: data.createdAt?.toDate().toISOString(),
         tags: data.tags,
         payment: data.payment,
+        assignedTo: data.assignedTo,
+        assignedToName: data.assignedToName,
+        assignedAt: data.assignedAt,
+        assignedBy: data.assignedBy,
         productionWorkflow: data.productionWorkflow,
         attachments: data.attachments,
         isExchange: data.isExchange ?? false,
@@ -232,6 +248,22 @@ export class FirebaseOrderService {
         exchangeItems: data.exchangeItems,
         cardColor: data.cardColor,
       } as Order;
+    });
+  }
+
+  async assignOrder(orderId: string, employee: { uid: string; displayName: string } | null): Promise<void> {
+    const userId = this.getCurrentUserId();
+    const profileSnap = await getDoc(doc(db, 'userProfiles', userId));
+    if (!profileSnap.exists() || profileSnap.data().role !== 'admin') {
+      throw new Error('Apenas administradores podem atribuir pedidos');
+    }
+
+    await updateDoc(doc(db, ORDERS_COLLECTION, orderId), {
+      assignedTo: employee?.uid || null,
+      assignedToName: employee?.displayName || null,
+      assignedAt: employee ? new Date().toISOString() : null,
+      assignedBy: employee ? userId : null,
+      updatedAt: new Date().toISOString(),
     });
   }
 
@@ -244,7 +276,7 @@ export class FirebaseOrderService {
 
     // Verificar propriedade
     const orderSnap = await getDoc(orderRef);
-    if (!orderSnap.exists() || orderSnap.data().userId !== userId) {
+    if (!orderSnap.exists() || !this.canAccessAssignedOrder(orderSnap.data(), userId)) {
       throw new Error('Pedido não encontrado ou sem permissão');
     }
 
@@ -262,7 +294,7 @@ export class FirebaseOrderService {
 
     // Verificar propriedade
     const orderSnap = await getDoc(orderRef);
-    if (!orderSnap.exists() || orderSnap.data().userId !== userId) {
+    if (!orderSnap.exists() || !this.canAccessAssignedOrder(orderSnap.data(), userId)) {
       throw new Error('Pedido não encontrado ou sem permissão');
     }
 
@@ -359,7 +391,7 @@ export class FirebaseOrderService {
     const orderRef = doc(db, ORDERS_COLLECTION, orderId);
     const orderSnap = await getDoc(orderRef);
 
-    if (!orderSnap.exists() || orderSnap.data().userId !== userId) {
+    if (!orderSnap.exists() || !this.canAccessAssignedOrder(orderSnap.data(), userId)) {
       throw new Error('Pedido não encontrado ou sem permissão');
     }
 
@@ -375,7 +407,7 @@ export class FirebaseOrderService {
     const orderRef = doc(db, ORDERS_COLLECTION, orderId);
     const orderSnap = await getDoc(orderRef);
 
-    if (!orderSnap.exists() || orderSnap.data().userId !== userId) {
+    if (!orderSnap.exists() || !this.canAccessAssignedOrder(orderSnap.data(), userId)) {
       throw new Error('Pedido não encontrado ou sem permissão');
     }
 

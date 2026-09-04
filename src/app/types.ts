@@ -90,6 +90,10 @@ export interface Order {
   tags?: Tag[];
   payment?: Payment;
   userId: string;
+  assignedTo?: string;
+  assignedToName?: string;
+  assignedAt?: string;
+  assignedBy?: string;
   productionWorkflow?: ProductionWorkflow;
   attachments?: OrderAttachment[];
   orderNumber?: string;

@@ -7,11 +7,37 @@ service cloud.firestore {
       return request.auth != null && request.auth.uid == userId;
     }
 
+    function isAdmin() {
+      return request.auth != null
+        && exists(/databases/$(database)/documents/userProfiles/$(request.auth.uid))
+        && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.role == 'admin'
+        && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.active != false;
+    }
+
+    function isAssignedEmployee(assignedTo) {
+      return request.auth != null
+        && assignedTo == request.auth.uid
+        && exists(/databases/$(database)/documents/userProfiles/$(request.auth.uid))
+        && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.role == 'funcionario'
+        && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.active != false;
+    }
+
     // Regras para pedidos (orders)
     match /orders/{orderId} {
-      allow read: if isOwner(resource.data.userId);
+      allow read: if isOwner(resource.data.userId)
+        || isAdmin()
+        || isAssignedEmployee(resource.data.assignedTo);
       allow create: if isOwner(request.resource.data.userId);
-      allow update, delete: if isOwner(resource.data.userId);
+      allow update: if isOwner(resource.data.userId)
+        || isAdmin()
+        || (
+          isAssignedEmployee(resource.data.assignedTo)
+          && request.resource.data.userId == resource.data.userId
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'status', 'notes', 'productionWorkflow', 'attachments', 'updatedAt'
+          ])
+        );
+      allow delete: if isOwner(resource.data.userId) || isAdmin();
     }
 
     // Regras para clientes (customers)
