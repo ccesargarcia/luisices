@@ -239,7 +239,7 @@ exports.completeUserInvitation = onCall(async (request) => {
  * Trigger: Chamada HTTP (v2)
  * Endpoint: https://REGION-PROJECT_ID.cloudfunctions.net/sendPasswordResetEmail
  */
-exports.sendPasswordResetEmail = onCall({ secrets: [RESEND_API_KEY] }, async (request) => {
+exports.sendPasswordResetEmail = onCall({ secrets: [RESEND_API_KEY, EVOLUTION_API_KEY] }, async (request) => {
   const { email } = request.data;
 
   if (!email) {

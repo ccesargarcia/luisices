@@ -3,6 +3,42 @@
 
 Este documento descreve o sistema Luisices pelo ponto de vista do negócio. O produto apoia a gestão diária de uma papelaria personalizada, desde o primeiro contato com o cliente até a produção, entrega, recebimento e relacionamento posterior.
 
+## Regras de negócio
+
+### Acesso e usuários
+
+- O acesso exige autenticação por e-mail e senha.
+- Perfis ficam em `userProfiles/{uid}` e possuem `role`, `permissions` e `active`.
+- Somente administradores ativos gerenciam usuários, convites, permissões, resets e exclusões.
+- Um administrador não pode excluir a própria conta.
+- Usuários inativos não podem acessar o sistema.
+- Usuários comuns não podem alterar o próprio papel, permissões ou status.
+- O perfil de um convite aceito recebe o papel `user` e as permissões padrão configuradas no sistema.
+
+### Convites
+
+- O convite é destinado a um único e-mail e expira em 48 horas.
+- O token bruto aparece apenas no link enviado; o Firestore armazena somente seu hash.
+- O e-mail informado no convite fica bloqueado no cadastro.
+- O convite só pode ser concluído pelo mesmo endereço de e-mail convidado.
+- Após o aceite, o convite muda de `pending` para `accepted` e não pode ser reutilizado.
+- O convite pode ser enviado por Resend e, se um telefone for informado, também pela Evolution API.
+
+### Senhas
+
+- O reset gera um link de uso único com validade de uma hora.
+- O link pode ser enviado por Resend e opcionalmente por WhatsApp.
+- Senhas nunca são armazenadas pela aplicação.
+- O Firebase Auth não disponibiliza histórico da senha anterior; portanto, a aplicação não consegue garantir a não reutilização sem um mecanismo adicional próprio.
+- O reset público possui limite de três tentativas por e-mail a cada hora.
+
+### Dados operacionais
+
+- Pedidos, clientes, orçamentos, produtos e itens da galeria devem respeitar o `userId` conforme as regras do Firestore.
+- Alterações de permissões só têm efeito após novo login do usuário.
+- Orçamentos podem expirar conforme a data configurada e seu status atual.
+- Pedidos de permuta podem representar troca/parceria sem cobrança monetária convencional.
+
 ## 1. Visão geral
 
 O Luisices centraliza:

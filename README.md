@@ -72,7 +72,12 @@ Para consultar a visão completa do produto, regras e fluxos de negócio, veja [
 - Configuração de cards do dashboard
 
 ### 🔐 Autenticação & Segurança
-- Login, registro e recuperação de senha via Firebase Auth
+- Login, cadastro por convite e recuperação de senha via Firebase Auth
+- Administradores podem convidar, editar, desativar, excluir e solicitar reset de outros usuários
+- Convites expiram em 48 horas e armazenam somente o hash do token
+- O e-mail do convite fica bloqueado no cadastro e deve ser o mesmo endereço convidado
+- E-mails são enviados pelo Resend; WhatsApp é opcional e usa a Evolution API no backend
+- O Firebase Auth não expõe histórico de senhas; a aplicação não armazena senhas
 - **Firestore Security Rules** com isolamento por usuário
 - Proteção contra XSS com componentes sanitizados
 
@@ -139,7 +144,16 @@ Os testes E2E usam Playwright e exigem um usuário de teste e as variáveis desc
 
 ---
 
-## 🚀 Deploy (GitHub Pages)
+## 🚀 Deploy
+
+### Ambientes
+
+| Ambiente | Branch | URL | Destino |
+|---|---|---|---|
+| Desenvolvimento | `develop` | https://dev.luisices.com.br | Firebase Hosting `luisices-dev` |
+| Produção | `main` | https://luisices.com.br | GitHub Pages |
+
+O deploy padrão de `develop` executa os testes E2E antes de publicar. O marcador `[skip tests]` deve ser usado somente quando solicitado. O deploy das Functions é separado e manual.
 
 O projeto está configurado para deploy automático via **GitHub Actions**.
 
@@ -175,6 +189,19 @@ O GitHub Actions irá:
 3. Site disponível em ~3-5 minutos
 
 **URL de produção**: `https://<seu-usuario>.github.io/<repo>/` ou domínio customizado
+
+### Deploy manual das Functions
+
+No GitHub Actions, abra **Deploy Firebase Functions (Manual)** e selecione `develop`. Esse workflow instala as dependências em `functions/` e publica somente no projeto `luisices-dev`.
+
+Secrets adicionais:
+
+```text
+RESEND_API_KEY
+EVOLUTION_API_KEY
+```
+
+A Evolution API usa a instância `homeassistant` em `https://wa.luisices.com.br`. A chave nunca deve ser colocada no código ou no frontend.
 
 ### Firestore Rules (Importante!)
 
@@ -295,3 +322,18 @@ Este projeto é privado e de uso exclusivo.
 ## 🙏 Créditos
 
 Desenvolvido com React, TypeScript, Firebase e shadcn/ui.
+
+## 💰 Custos e limites
+
+Em baixo volume, parte do sistema pode permanecer nas franquias gratuitas. O deploy de Cloud Functions normalmente exige o plano Blaze, e os valores variam conforme região, plano e volume.
+
+- **Firebase Auth:** usuários ativos e métodos de autenticação conforme o plano.
+- **Firestore:** leituras, escritas, listeners, consultas e armazenamento acima das cotas.
+- **Storage:** espaço armazenado, operações e downloads.
+- **Hosting/GitHub Pages:** tráfego, armazenamento, minutos de Actions e artefatos conforme as cotas.
+- **Cloud Functions:** invocações, CPU, memória, tempo e rede; Functions v2 também usa Cloud Build, Artifact Registry e Cloud Run.
+- **Resend:** quantidade de e-mails enviados conforme o plano.
+- **Evolution API/WhatsApp:** hospedagem, manutenção da instância e eventuais tarifas do provedor WhatsApp.
+- **ViaCEP:** serviço externo sem SLA assumido pelo projeto.
+
+Consulte os painéis de Billing do Google Cloud/Firebase, Resend e do provedor da Evolution API. Arquivos grandes, listeners em tempo real e muitos e-mails podem aumentar o consumo.

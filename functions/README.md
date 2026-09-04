@@ -1,6 +1,6 @@
 # Firebase Cloud Functions - Luisices
 
-Funções serverless para envio de emails via SendGrid.
+Funções serverless para autenticação, convites, gestão de usuários e envio de mensagens via Resend e Evolution API.
 
 ## 📦 Instalação
 
@@ -11,11 +11,14 @@ npm install
 
 ## 🔧 Configuração
 
-### 1. Configurar SendGrid API Key
+### 1. Configurar secrets
 
 ```bash
-firebase functions:config:set sendgrid.key="SG.sua_api_key_aqui"
+firebase functions:secrets:set RESEND_API_KEY
+firebase functions:secrets:set EVOLUTION_API_KEY
 ```
+
+`EVOLUTION_API_KEY` é opcional para usar somente e-mail. A API usa `https://wa.luisices.com.br` e a instância `homeassistant`.
 
 ### 2. Para desenvolvimento local
 
@@ -45,10 +48,18 @@ http://localhost:4000
 
 ## 📋 Funções Disponíveis
 
+### Gestão de usuários
+
+- `sendAdminPasswordReset`: administrador envia reset para outro usuário.
+- `createUserInvitation`: cria convite com token em hash e validade de 48 horas; aceita WhatsApp opcional.
+- `validateUserInvitation`: valida o convite.
+- `completeUserInvitation`: cria o perfil `user` e marca o convite como utilizado.
+- `deleteUser`: remove a conta do Firebase Auth e o perfil do Firestore; não permite excluir o próprio administrador.
+
 ### `sendPasswordResetEmail`
 
 **Trigger**: HTTPS Callable
-**Descrição**: Envia email de recuperação de senha via SendGrid
+**Descrição**: Envia e-mail via Resend e, quando há telefone no perfil, também via Evolution API.
 
 **Parâmetros**:
 ```typescript
@@ -75,6 +86,7 @@ const sendResetEmail = httpsCallable(functions, 'sendPasswordResetEmail');
 await sendResetEmail({ email: 'usuario@exemplo.com' });
 ```
 
-## 📚 Documentação
+## 📚 Observações
 
-- [SENDGRID_SETUP.md](../SENDGRID_SETUP.md) - Guia completo de configuração do SendGrid
+- O Firebase Auth não fornece histórico de senhas. A aplicação não armazena nem compara senhas anteriores.
+- O deploy manual no GitHub Actions é recomendado quando o Firebase CLI local estiver bloqueado pela rede corporativa.

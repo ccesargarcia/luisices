@@ -18,7 +18,7 @@ tests/e2e/
 ### Testes Rápidos (Smoke Tests)
 
 ```bash
-npm run test:smoke
+npm run test:ci
 ```
 
 ### Todos os Testes
@@ -76,4 +76,4 @@ test('descrição do teste', async ({ page }) => {
 
 ## 📚 Mais Informações
 
-Consulte [TESTING_GUIDE.md](../../TESTING_GUIDE.md) na raiz do projeto.
+Consulte os arquivos `.spec.ts` desta pasta e o workflow `.github/workflows/test-actions.yml`.
