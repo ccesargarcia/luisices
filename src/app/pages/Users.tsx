@@ -125,7 +125,7 @@ function PermissionMatrix({ permissions, onChange }: PermissionMatrixProps) {
   }
 
   return (
-    <div className="space-y-3 max-h-[40vh] overflow-y-auto pr-1">
+    <div className="space-y-3 max-h-[35dvh] overflow-y-auto pr-1 sm:max-h-[40vh]">
       {MODULES.map(({ key, label, type }) => (
         <div key={key} className="border rounded-md p-3 space-y-2">
           <p className="text-sm font-semibold">{label}</p>
@@ -260,7 +260,7 @@ function UserFormDialog({ open, editingUser, currentUserUid, onClose, onSaved }:
 
   return (
     <Dialog open={open} onOpenChange={v => { if (!v) onClose(); }}>
-      <DialogContent className="max-w-lg max-h-[90dvh] overflow-y-auto">
+      <DialogContent className="w-[calc(100vw-1rem)] max-w-[calc(100vw-1rem)] max-h-[calc(100dvh-1rem)] overflow-y-auto p-4 sm:w-full sm:max-w-lg sm:max-h-[90dvh] sm:p-6">
         <DialogHeader>
           <DialogTitle>{isEdit ? 'Editar usuário' : 'Novo usuário'}</DialogTitle>
         </DialogHeader>
@@ -324,14 +324,14 @@ function UserFormDialog({ open, editingUser, currentUserUid, onClose, onSaved }:
           </div>
 
           {/* Shortcut preset buttons */}
-          <div className="flex gap-2">
-            <Button type="button" size="sm" variant="outline" onClick={() => applyPreset('admin')}>
+          <div className="flex flex-wrap gap-2">
+            <Button type="button" size="sm" variant="outline" className="min-w-0 whitespace-normal text-left" onClick={() => applyPreset('admin')}>
               <ShieldCheck className="size-3.5 mr-1" /> Preset Admin
             </Button>
-            <Button type="button" size="sm" variant="outline" onClick={() => applyPreset('user')}>
+            <Button type="button" size="sm" variant="outline" className="min-w-0 whitespace-normal text-left" onClick={() => applyPreset('user')}>
               <User className="size-3.5 mr-1" /> Preset Usuário
             </Button>
-            <Button type="button" size="sm" variant="outline" onClick={() => applyPreset('funcionario')}>
+            <Button type="button" size="sm" variant="outline" className="min-w-0 whitespace-normal text-left" onClick={() => applyPreset('funcionario')}>
               <User className="size-3.5 mr-1" /> Preset Funcionário
             </Button>
           </div>
