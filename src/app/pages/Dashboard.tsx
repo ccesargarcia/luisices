@@ -93,7 +93,9 @@ export function Dashboard() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [showExchangeOnly, setShowExchangeOnly] = useState(false);
-  const [creatorFilter, setCreatorFilter] = useState('all');
+  const [creatorFilter, setCreatorFilter] = useState(
+    userProfile?.role === 'admin' ? user?.uid || 'all' : 'all',
+  );
   const [creatorProfiles, setCreatorProfiles] = useState<UserProfile[]>([]);
 
   useEffect(() => {
@@ -166,29 +168,34 @@ export function Dashboard() {
     }
   };
 
+  const creatorFilteredOrders = useMemo(() => {
+    if (creatorFilter === 'all') return orders;
+    return orders.filter(order => order.userId === creatorFilter);
+  }, [orders, creatorFilter]);
+
   const stats = useMemo(() => {
-    const total = orders.length;
-    const pending = orders.filter(o => o.status === 'pending').length;
-    const inProgress = orders.filter(o => o.status === 'in-progress').length;
-    const completed = orders.filter(o => o.status === 'completed').length;
-    const cancelled = orders.filter(o => o.status === 'cancelled').length;
+    const total = creatorFilteredOrders.length;
+    const pending = creatorFilteredOrders.filter(o => o.status === 'pending').length;
+    const inProgress = creatorFilteredOrders.filter(o => o.status === 'in-progress').length;
+    const completed = creatorFilteredOrders.filter(o => o.status === 'completed').length;
+    const cancelled = creatorFilteredOrders.filter(o => o.status === 'cancelled').length;
 
     // Métricas financeiras
-    const totalRevenue = orders
+    const totalRevenue = creatorFilteredOrders
       .filter(o => o.status === 'completed')
       .reduce((sum, o) => sum + o.price, 0);
 
     // Pagamentos
-    const paidOrders = orders.filter(o => o.payment?.status === 'paid').length;
-    const partialOrders = orders.filter(o => o.payment?.status === 'partial').length;
+    const paidOrders = creatorFilteredOrders.filter(o => o.payment?.status === 'paid').length;
+    const partialOrders = creatorFilteredOrders.filter(o => o.payment?.status === 'partial').length;
 
     // Pedidos ativos (não cancelados) sem pagamento completo
-    const activeOrders = orders.filter(o => o.status !== 'cancelled');
+    const activeOrders = creatorFilteredOrders.filter(o => o.status !== 'cancelled');
     const pendingPayments = activeOrders.filter(o =>
       !o.payment || o.payment.status === 'pending' || o.payment.status === 'partial'
     ).length;
 
-    const totalPaid = orders.reduce((sum, o) => sum + (o.payment?.paidAmount || 0), 0);
+    const totalPaid = creatorFilteredOrders.reduce((sum, o) => sum + (o.payment?.paidAmount || 0), 0);
 
     // "A Receber": total do que ainda não foi pago em pedidos ativos
     const totalPending = activeOrders
@@ -199,16 +206,16 @@ export function Dashboard() {
       }, 0);
 
     // Previsão de receita (pedidos em andamento + pendentes)
-    const expectedRevenue = orders
+    const expectedRevenue = creatorFilteredOrders
       .filter(o => o.status === 'pending' || o.status === 'in-progress')
       .reduce((sum, o) => sum + o.price, 0);
 
     // Ticket médio
-    const averageOrderValue = total > 0 ? orders.reduce((sum, o) => sum + o.price, 0) / total : 0;
+    const averageOrderValue = total > 0 ? creatorFilteredOrders.reduce((sum, o) => sum + o.price, 0) / total : 0;
 
     // Produtos mais vendidos
     const productCounts = new Map<string, { count: number; revenue: number }>();
-    orders.forEach(order => {
+    creatorFilteredOrders.forEach(order => {
       const current = productCounts.get(order.productName) || { count: 0, revenue: 0 };
       productCounts.set(order.productName, {
         count: current.count + 1,
@@ -222,7 +229,7 @@ export function Dashboard() {
       .slice(0, 5);
 
     // Taxa de entrega no prazo (pedidos entregues na semana atual vs entrega esperada)
-    const thisWeekOrders = orders.filter(o => {
+    const thisWeekOrders = creatorFilteredOrders.filter(o => {
       const deliveryDate = parseLocalDate(o.deliveryDate);
       const now = new Date();
       const weekStart = new Date(now);
@@ -237,7 +244,7 @@ export function Dashboard() {
     // Pedidos atrasados: pendentes ou em produção com data de entrega já passada
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    const overdueOrders = orders.filter(o => {
+    const overdueOrders = creatorFilteredOrders.filter(o => {
       if (o.status !== 'pending' && o.status !== 'in-progress') return false;
       const delivery = parseLocalDate(o.deliveryDate);
       return delivery < today;
@@ -262,7 +269,7 @@ export function Dashboard() {
       deliveriesThisWeek,
       overdue,
     };
-  }, [orders]);
+  }, [creatorFilteredOrders]);
 
   const statusChartData = useMemo(() => [
     { status: 'Pendente', value: stats.pending, fill: '#f59e0b' },
@@ -281,7 +288,7 @@ export function Dashboard() {
       weekStart.setDate(currentSunday.getDate() - (7 - i) * 7);
       const weekEnd = new Date(weekStart);
       weekEnd.setDate(weekStart.getDate() + 7);
-      const count = orders.filter(o => {
+      const count = creatorFilteredOrders.filter(o => {
         const created = new Date(o.createdAt);
         return created >= weekStart && created < weekEnd;
       }).length;
@@ -290,10 +297,10 @@ export function Dashboard() {
         pedidos: count,
       };
     });
-  }, [orders]);
+  }, [creatorFilteredOrders]);
 
   const filteredOrders = useMemo(() => {
-    let filtered = orders;
+    let filtered = creatorFilteredOrders;
 
     // Filtro por busca
     if (searchQuery) {
@@ -318,12 +325,8 @@ export function Dashboard() {
       filtered = filtered.filter(order => order.isExchange);
     }
 
-    if (creatorFilter !== 'all') {
-      filtered = filtered.filter(order => order.userId === creatorFilter);
-    }
-
     return filtered;
-  }, [orders, searchQuery, selectedTags, showExchangeOnly, creatorFilter, user]);
+  }, [creatorFilteredOrders, searchQuery, selectedTags, showExchangeOnly, user]);
 
   // Obter todas as tags únicas
   const allTags = useMemo(() => {
