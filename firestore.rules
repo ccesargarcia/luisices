@@ -11,7 +11,7 @@ service cloud.firestore {
       return request.auth != null
         && exists(/databases/$(database)/documents/userProfiles/$(request.auth.uid))
         && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.role == 'admin'
-        && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.active != false;
+        && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.active == true;
     }
 
     function isAssignedEmployee(assignedTo) {
@@ -19,7 +19,7 @@ service cloud.firestore {
         && assignedTo == request.auth.uid
         && exists(/databases/$(database)/documents/userProfiles/$(request.auth.uid))
         && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.role == 'funcionario'
-        && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.active != false;
+        && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.active == true;
     }
 
     // Regras para pedidos (orders)
@@ -79,7 +79,8 @@ service cloud.firestore {
       function isAdmin() {
         return request.auth != null
           && exists(/databases/$(database)/documents/userProfiles/$(request.auth.uid))
-          && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.role == 'admin';
+          && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.role == 'admin'
+          && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.active == true;
       }
 
       // Leitura: usuário lê apenas o próprio perfil; admin lê todos
