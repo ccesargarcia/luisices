@@ -7,6 +7,7 @@ import {
   Permission,
   ADMIN_PERMISSIONS,
   DEFAULT_USER_PERMISSIONS,
+  EMPLOYEE_PERMISSIONS,
   ModulePermission,
 } from '../types';
 import { Button } from '../components/ui/button';
@@ -215,7 +216,13 @@ function UserFormDialog({ open, editingUser, currentUserUid, onClose, onSaved }:
 
   function applyPreset(r: UserRole) {
     setRole(r);
-    setPermissions(r === 'admin' ? deepClonePermission(ADMIN_PERMISSIONS) : deepClonePermission(DEFAULT_USER_PERMISSIONS));
+    setPermissions(
+      r === 'admin'
+        ? deepClonePermission(ADMIN_PERMISSIONS)
+        : r === 'funcionario'
+          ? deepClonePermission(EMPLOYEE_PERMISSIONS)
+          : deepClonePermission(DEFAULT_USER_PERMISSIONS),
+    );
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -311,6 +318,7 @@ function UserFormDialog({ open, editingUser, currentUserUid, onClose, onSaved }:
               <SelectContent>
                 <SelectItem value="admin">Admin — acesso total</SelectItem>
                 <SelectItem value="user">Usuário — acesso restrito</SelectItem>
+                <SelectItem value="funcionario">Funcionário — operação</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -322,6 +330,9 @@ function UserFormDialog({ open, editingUser, currentUserUid, onClose, onSaved }:
             </Button>
             <Button type="button" size="sm" variant="outline" onClick={() => applyPreset('user')}>
               <User className="size-3.5 mr-1" /> Preset Usuário
+            </Button>
+            <Button type="button" size="sm" variant="outline" onClick={() => applyPreset('funcionario')}>
+              <User className="size-3.5 mr-1" /> Preset Funcionário
             </Button>
           </div>
 
@@ -575,6 +586,10 @@ export function Users() {
                         <Badge className="bg-yellow-500/20 text-yellow-700 border-yellow-300 hover:bg-yellow-500/30">
                           <ShieldCheck className="size-3 mr-1" /> Admin
                         </Badge>
+                      ) : u.role === 'funcionario' ? (
+                        <Badge className="bg-blue-500/15 text-blue-700 border-blue-300">
+                          <User className="size-3 mr-1" /> Funcionário
+                        </Badge>
                       ) : (
                         <Badge variant="secondary">
                           <User className="size-3 mr-1" /> Usuário
@@ -655,6 +670,10 @@ export function Users() {
                     {u.role === 'admin' ? (
                       <Badge className="bg-yellow-500/20 text-yellow-700 border-yellow-300">
                         <ShieldCheck className="size-3 mr-1" /> Admin
+                      </Badge>
+                    ) : u.role === 'funcionario' ? (
+                      <Badge className="bg-blue-500/15 text-blue-700 border-blue-300">
+                        <User className="size-3 mr-1" /> Funcionário
                       </Badge>
                     ) : (
                       <Badge variant="secondary">

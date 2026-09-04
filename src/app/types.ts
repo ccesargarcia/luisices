@@ -244,7 +244,7 @@ export interface GalleryItem {
 
 // ─── User Management ─────────────────────────────────────────────────────────
 
-export type UserRole = 'admin' | 'user';
+export type UserRole = 'admin' | 'user' | 'funcionario';
 
 export interface ModulePermission {
   view: boolean;
@@ -302,6 +302,19 @@ export const DEFAULT_USER_PERMISSIONS: Permission = {
   reports:   false,
   exchanges: false,
   settings:  true,
+  users:     { view: false, create: false, edit: false, delete: false },
+};
+
+export const EMPLOYEE_PERMISSIONS: Permission = {
+  dashboard: true,
+  orders:    { view: true, create: false, edit: true, delete: false },
+  customers: { view: true, create: false, edit: false, delete: false },
+  products:  { view: true, create: false, edit: false, delete: false },
+  quotes:    { view: true, create: false, edit: false, delete: false },
+  gallery:   { view: true, create: true, delete: false },
+  reports:   false,
+  exchanges: false,
+  settings:  false,
   users:     { view: false, create: false, edit: false, delete: false },
 };
 
