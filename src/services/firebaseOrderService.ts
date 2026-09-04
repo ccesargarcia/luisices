@@ -425,9 +425,24 @@ export class FirebaseOrderService {
     const userId = this.getCurrentUserId();
     const orderRef = doc(db, ORDERS_COLLECTION, orderId);
 
-    // Verificar propriedade
     const orderSnap = await getDoc(orderRef);
-    if (!orderSnap.exists() || orderSnap.data().userId !== userId) {
+    if (!orderSnap.exists()) {
+      throw new Error('Pedido não encontrado ou sem permissão');
+    }
+
+    const data = orderSnap.data();
+    const profileSnap = await getDoc(doc(db, 'userProfiles', userId));
+    const profile = profileSnap.exists() ? profileSnap.data() : null;
+    const canDelete = data.userId === userId
+      || profile?.role === 'admin'
+      || (
+        profile?.role === 'funcionario'
+        && profile.active === true
+        && data.assignedTo === userId
+        && profile.permissions?.orders?.delete === true
+      );
+
+    if (!canDelete) {
       throw new Error('Pedido não encontrado ou sem permissão');
     }
 
