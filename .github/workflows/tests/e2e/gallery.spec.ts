@@ -1,0 +1,56 @@
+import { test, expect } from '@playwright/test';
+
+/**
+ * Testes da Galeria de Artes
+ */
+
+const TEST_USER = {
+  email: process.env.TEST_USER_EMAIL || 'teste@exemplo.com',
+  password: process.env.TEST_USER_PASSWORD || 'senha123',
+};
+
+test.describe('Galeria', () => {
+  test('deve carregar galeria e interagir com elementos', async ({ page }) => {
+    test.setTimeout(60000);
+
+    // Login
+    // Login is now handled by auth.setup.ts
+  await page.goto('/dashboard'); // Go directly to dashboard instead of / and waiting for redirect
+
+    // Navegar para galeria
+    await page.goto('/galeria');
+    await page.waitForLoadState('domcontentloaded');
+
+    // 1. Verificar que a página carregou
+    const main = page.locator('main').first();
+    await expect(main).toBeVisible({ timeout: 10000 });
+
+    // 2. Verificar botão de upload
+    const uploadBtn = page.getByRole('button', { name: /Nova Arte|Upload|Adicionar/i }).first();
+    await expect(uploadBtn).toBeVisible({ timeout: 10000 });
+    // Abrir dialog de nova arte
+    await uploadBtn.click();
+
+      const dialog = page.locator('[role="dialog"]').first();
+      await expect(dialog).toBeVisible({ timeout: 5000 });
+
+      // Verificar campos do formulário
+      const titleInput = dialog.locator('#gallery-title');
+      await expect(titleInput).toBeVisible({ timeout: 5000 });
+
+      // Fechar dialog
+      const cancelBtn = dialog.getByRole('button', { name: /Cancelar|Fechar/i }).first();
+      await expect(cancelBtn).toBeVisible({ timeout: 5000 });
+      await cancelBtn.click();
+      await expect(dialog).not.toBeVisible({ timeout: 5000 });
+
+    // 3. Verificar imagens na galeria (se existem)
+    const imgCount = await page.locator('img').count();
+    if (imgCount > 0) {
+      // Clicar na primeira imagem para abrir lightbox
+      await page.locator('img').first().click();
+      await expect(page.locator('[role="dialog"]').first()).toBeVisible({ timeout: 5000 });
+      await page.keyboard.press('Escape');
+    }
+  });
+});
