@@ -14,11 +14,8 @@ test.describe('Galeria', () => {
     test.setTimeout(60000);
 
     // Login
-    await page.goto('/');
-    await page.fill('input[type="email"]', TEST_USER.email);
-    await page.fill('input[type="password"]', TEST_USER.password);
-    await page.click('button[type="submit"]');
-    await page.waitForURL('**/dashboard', { timeout: 15000 });
+    // Login is now handled by auth.setup.ts
+  await page.goto('/dashboard'); // Go directly to dashboard instead of / and waiting for redirect
 
     // Navegar para galeria
     await page.goto('/galeria');
