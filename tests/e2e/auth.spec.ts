@@ -11,8 +11,6 @@ const TEST_USER = {
   password: process.env.TEST_USER_PASSWORD || 'senha123',
 };
 
-test.use({ storageState: { cookies: [], origins: [] } });
-
 test.describe('Autenticação', () => {
   test('deve exibir página de login', async ({ page }) => {
     await page.goto('/');

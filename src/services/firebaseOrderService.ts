@@ -135,6 +135,19 @@ export class FirebaseOrderService {
       exchangeNotes: orderData.exchangeNotes || null,
       exchangeItems: this.sanitizeExchangeItems(orderData.exchangeItems),
       cardColor: orderData.cardColor || null,
+      productionWorkflow: {
+        currentStep: 'design',
+        steps: {
+          design: { completed: false },
+          approval: { completed: false },
+          printing: { completed: false },
+          cutting: { completed: false },
+          assembly: { completed: false },
+          'quality-check': { completed: false },
+          packaging: { completed: false },
+        },
+        startedAt: new Date().toISOString(),
+      },
       createdAt: Timestamp.now(),
       deletedAt: null,
     });
