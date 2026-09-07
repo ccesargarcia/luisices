@@ -18,7 +18,7 @@ setup('authenticate', async ({ page }) => {
   await page.click('button[type="submit"]');
   
   // Esperar até que a navegação para o dashboard ocorra
-  await page.waitForURL('**/dashboard', { timeout: 15000 });
+  await page.waitForURL('**/dashboard', { timeout: process.env.CI ? 30000 : 15000 });
   
   // Salvar estado da autenticação
   await page.context().storageState({ path: authFile });
