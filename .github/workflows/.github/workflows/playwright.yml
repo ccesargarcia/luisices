@@ -66,7 +66,7 @@ jobs:
           # Criar .env.test
           printf 'TEST_USER_EMAIL=%s\n' "$TEST_EMAIL" >> .env.test
           printf 'TEST_USER_PASSWORD=%s\n' "$TEST_PASS" >> .env.test
-          printf 'PLAYWRIGHT_BASE_URL=https://dev.luisices.com.br\n' >> .env.test
+          printf 'PLAYWRIGHT_BASE_URL=http://localhost:4173\n' >> .env.test
 
       - name: Build (dev)
         run: npm run build
