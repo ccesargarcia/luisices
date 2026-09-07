@@ -82,7 +82,7 @@ function getGreeting() {
 }
 
 export function Dashboard() {
-  const { user, userProfile } = useAuth();
+  const { user, userProfile, hasPermission } = useAuth();
   const { orders, loading, error } = useFirebaseOrders();
   const { settings } = useUserSettings();
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
@@ -756,7 +756,7 @@ export function Dashboard() {
             </Button>
           </div>
           <div className="flex items-center gap-2">
-            {selectedOrderIds.length > 0 && (
+            {selectedOrderIds.length > 0 && hasPermission(p => p.orders?.delete ?? false) && (
               <Button variant="outline" size="sm" onClick={() => setSelectedOrderIds([])}>
                 Limpar
               </Button>
