@@ -160,7 +160,7 @@ export function Emails() {
     return sentEmails.filter((e) => e.sentAt && e.sentAt.startsWith(today)).length;
   }, [sentEmails]);
 
-  const dailyUsed = usage ? usage.daily.used : sentTodayCount;
+  const dailyUsed = Math.max(usage?.daily.used ?? 0, sentTodayCount);
   const dailyLimit = usage?.daily.limit ?? 100;
   const dailyRemaining = Math.max(0, dailyLimit - dailyUsed);
   const dailyPercent = Math.min(100, Math.round((dailyUsed / dailyLimit) * 100));

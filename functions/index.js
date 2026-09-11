@@ -571,80 +571,21 @@ exports.getEmailUsage = onCall({ cors: true, secrets: [RESEND_API_KEY] }, async 
     throw new functions.https.HttpsError('unauthenticated', 'Usuário não autenticado.');
   }
 
-  if (!(await isAdminRequest(request))) {
-    throw new functions.https.HttpsError('permission-denied', 'Apenas administradores podem consultar a cota de e-mails.');
+  const profile = await admin.firestore().doc(`userProfiles/${request.auth.uid}`).get();
+  const profileData = profile.exists ? profile.data() : null;
+  const hasEmailPerm = profileData?.role === 'admin' || profileData?.permissions?.emails === true;
+  if (!hasEmailPerm) {
+    throw new functions.https.HttpsError('permission-denied', 'Sem permissão para consultar a cota de e-mails.');
   }
 
-  const apiKey = RESEND_API_KEY.value();
-  if (!apiKey) {
-    throw new functions.https.HttpsError('failed-precondition', 'Resend não configurado.');
-  }
+  // 1. Sempre computar contagem real do Firestore para garantir feedback em tempo real
+  const now = new Date();
+  const startOfTodayUtc = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 0, 0));
+  const startOfMonthUtc = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1, 0, 0, 0));
 
-  // 1. Consultar métricas reais diretamente no endpoint oficial do Resend (GET https://api.resend.com/emails/metrics)
+  let firestoreTodayCount = 0;
+  let firestoreMonthCount = 0;
   try {
-    const now = new Date();
-    const todayStr = now.toISOString().split('T')[0]; // YYYY-MM-DD em UTC
-    const firstDayOfMonthStr = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}-01`;
-
-    const [dailyRes, monthlyRes] = await Promise.all([
-      fetch(`https://api.resend.com/emails/metrics?start_date=${todayStr}&end_date=${todayStr}&metrics=sent,delivered`, {
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          'Content-Type': 'application/json',
-          'User-Agent': 'Luisices-Functions/1.0',
-        },
-      }),
-      fetch(`https://api.resend.com/emails/metrics?start_date=${firstDayOfMonthStr}&end_date=${todayStr}&metrics=sent,delivered`, {
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          'Content-Type': 'application/json',
-          'User-Agent': 'Luisices-Functions/1.0',
-        },
-      }),
-    ]);
-
-    if (dailyRes.ok && monthlyRes.ok) {
-      const dailyData = await dailyRes.json();
-      const monthlyData = await monthlyRes.json();
-
-      const dailySent = Number(dailyData?.totals?.sent ?? 0);
-      const monthlySent = Number(monthlyData?.totals?.sent ?? 0);
-
-      // Próximo reset diário: 00:00:00 UTC do dia seguinte
-      const nextUtcMidnight = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1, 0, 0, 0));
-      const nextUtcMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1, 0, 0, 0));
-
-      return {
-        success: true,
-        source: 'resend_api',
-        daily: {
-          used: dailySent,
-          limit: 100, // Cota diária do plano gratuito Resend
-          sent: dailySent,
-          received: 0,
-          resetsAt: nextUtcMidnight.toISOString(),
-        },
-        monthly: {
-          used: monthlySent,
-          limit: 3000, // Cota mensal do plano gratuito Resend
-          sent: monthlySent,
-          received: 0,
-          resetsAt: nextUtcMonth.toISOString(),
-        },
-      };
-    } else {
-      console.warn('[getEmailUsage] Resend /emails/metrics retornou status:', dailyRes.status, monthlyRes.status);
-    }
-  } catch (err) {
-    console.warn('[getEmailUsage] Erro ao consultar https://api.resend.com/emails/metrics:', err);
-  }
-
-  // 2. Fallback resiliente: calcular a partir do histórico do Firestore
-  try {
-    const now = new Date();
-    const startOfTodayUtc = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 0, 0));
-    const startOfMonthUtc = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1, 0, 0, 0));
-
     const [todaySnap, monthSnap] = await Promise.all([
       admin.firestore().collection('sentEmails')
         .where('sentAt', '>=', startOfTodayUtc.toISOString())
@@ -653,46 +594,80 @@ exports.getEmailUsage = onCall({ cors: true, secrets: [RESEND_API_KEY] }, async 
         .where('sentAt', '>=', startOfMonthUtc.toISOString())
         .get(),
     ]);
-
-    return {
-      success: true,
-      source: 'firestore_fallback',
-      daily: {
-        used: todaySnap.size,
-        limit: 100,
-        sent: todaySnap.size,
-        received: 0,
-        resetsAt: new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1, 0, 0, 0)).toISOString(),
-      },
-      monthly: {
-        used: monthSnap.size,
-        limit: 3000,
-        sent: monthSnap.size,
-        received: 0,
-        resetsAt: new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1, 0, 0, 0)).toISOString(),
-      },
-    };
-  } catch (firestoreErr) {
-    console.error('[getEmailUsage] Erro no fallback do Firestore:', firestoreErr);
-    return {
-      success: true,
-      source: 'default',
-      daily: {
-        used: 0,
-        limit: 100,
-        sent: 0,
-        received: 0,
-        resetsAt: null,
-      },
-      monthly: {
-        used: 0,
-        limit: 3000,
-        sent: 0,
-        received: 0,
-        resetsAt: null,
-      },
-    };
+    firestoreTodayCount = todaySnap.size;
+    firestoreMonthCount = monthSnap.size;
+  } catch (fsErr) {
+    console.warn('[getEmailUsage] Erro ao consultar sentEmails no Firestore:', fsErr);
   }
+
+  // 2. Tentar consultar métricas oficiais do Resend
+  let resendDailySent = 0;
+  let resendMonthlySent = 0;
+  let source = 'firestore_fallback';
+
+  const apiKey = RESEND_API_KEY.value();
+  if (apiKey) {
+    try {
+      const todayStr = now.toISOString().split('T')[0];
+      const firstDayOfMonthStr = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}-01`;
+
+      const [dailyRes, monthlyRes] = await Promise.all([
+        fetch(`https://api.resend.com/emails/metrics?start_date=${todayStr}&end_date=${todayStr}&metrics=sent,delivered`, {
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+            'Content-Type': 'application/json',
+            'User-Agent': 'Luisices-Functions/1.0',
+          },
+        }),
+        fetch(`https://api.resend.com/emails/metrics?start_date=${firstDayOfMonthStr}&end_date=${todayStr}&metrics=sent,delivered`, {
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+            'Content-Type': 'application/json',
+            'User-Agent': 'Luisices-Functions/1.0',
+          },
+        }),
+      ]);
+
+      if (dailyRes.ok && monthlyRes.ok) {
+        const dailyData = await dailyRes.json();
+        const monthlyData = await monthlyRes.json();
+        resendDailySent = Number(dailyData?.totals?.sent ?? 0);
+        resendMonthlySent = Number(monthlyData?.totals?.sent ?? 0);
+        source = 'resend_api';
+        console.log(`[getEmailUsage] Resend metrics sucesso - Hoje: ${resendDailySent}, Mês: ${resendMonthlySent}`);
+      } else {
+        console.warn(`[getEmailUsage] Resend /emails/metrics status: daily=${dailyRes.status}, monthly=${monthlyRes.status}`);
+      }
+    } catch (err) {
+      console.warn('[getEmailUsage] Erro ao consultar https://api.resend.com/emails/metrics:', err);
+    }
+  }
+
+  // O valor final é o máximo entre Resend e Firestore (cobre os 15 min de cache da API Resend)
+  const finalDailyUsed = Math.max(resendDailySent, firestoreTodayCount);
+  const finalMonthlyUsed = Math.max(resendMonthlySent, firestoreMonthCount);
+
+  const nextUtcMidnight = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1, 0, 0, 0));
+  const nextUtcMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1, 0, 0, 0));
+
+  return {
+    success: true,
+    source,
+    daily: {
+      used: finalDailyUsed,
+      limit: 100, // Cota diária do plano gratuito Resend
+      sent: finalDailyUsed,
+      received: 0,
+      resetsAt: nextUtcMidnight.toISOString(),
+    },
+    monthly: {
+      used: finalMonthlyUsed,
+      limit: 3000, // Cota mensal do plano gratuito Resend
+      sent: finalMonthlyUsed,
+      received: 0,
+      resetsAt: nextUtcMonth.toISOString(),
+    },
+  };
 });
 
 /**
