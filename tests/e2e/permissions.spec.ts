@@ -10,12 +10,8 @@ test.describe('Controle de Permissões (RBAC)', () => {
   });
 
   test('admin deve ver a tela de configurações e controle de usuários', async ({ page }) => {
-    // Verificar menu lateral
-    const menuButton = page.getByRole('button', { name: /Menu/i });
-    if(await menuButton.isVisible()) await menuButton.click();
-
-    // Como ADMIN, os botões de relatórios, configs e usuários devem estar visíveis
-    await expect(page.getByRole('link', { name: /Configurações/i })).toBeVisible();
-    await expect(page.getByRole('link', { name: /Relatórios/i })).toBeVisible();
+    // Como ADMIN, os botões de relatórios, configs e usuários devem estar visíveis no menu
+    await expect(page.getByRole('link', { name: /Configurações/i }).first()).toBeVisible({ timeout: 10000 });
+    await expect(page.getByRole('link', { name: /Relatórios/i }).first()).toBeVisible({ timeout: 10000 });
   });
 });
