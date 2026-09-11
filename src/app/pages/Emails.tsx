@@ -16,6 +16,16 @@ import {
   DialogTitle,
 } from '../components/ui/dialog';
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '../components/ui/alert-dialog';
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -161,6 +171,11 @@ export function Emails() {
   // Selected email IDs (derivados em tempo real)
   const [selectedReceivedEmailId, setSelectedReceivedEmailId] = useState<string | null>(null);
   const [selectedSentEmailId, setSelectedSentEmailId] = useState<string | null>(null);
+  const [emailToDelete, setEmailToDelete] = useState<{
+    type: 'received' | 'sent';
+    id: string;
+    subject: string;
+  } | null>(null);
 
   const selectedReceivedEmail = useMemo(
     () => (selectedReceivedEmailId ? receivedEmails.find((e) => e.id === selectedReceivedEmailId) ?? null : null),
@@ -650,11 +665,13 @@ export function Emails() {
                         size="icon"
                         className="size-8 text-muted-foreground hover:text-destructive"
                         title="Excluir"
-                        onClick={() => {
-                          if (confirm('Deseja excluir este e-mail?')) {
-                            deleteReceived(email.id);
-                            toast.success('E-mail excluído.');
-                          }
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setEmailToDelete({
+                            type: 'received',
+                            id: email.id,
+                            subject: email.subject || '(Sem assunto)',
+                          });
                         }}
                       >
                         <Trash2 className="size-4" />
@@ -670,23 +687,34 @@ export function Emails() {
         {/* ─── TAB: ENVIADOS ────────────────────────────────────────── */}
         <TabsContent value="sent" className="space-y-4 m-0">
           <Card className="border shadow-xs overflow-hidden">
-            {sentEmails.length === 0 ? (
+            {loading ? (
+              <div className="flex flex-col items-center justify-center p-12 text-muted-foreground">
+                <Loader2 className="size-8 animate-spin text-primary mb-2" />
+                <p className="text-sm">Carregando histórico de enviados...</p>
+              </div>
+            ) : filteredSent.length === 0 ? (
               <div className="flex flex-col items-center justify-center p-12 text-center">
                 <div className="size-14 rounded-full bg-muted flex items-center justify-center mb-3">
                   <Send className="size-7 text-muted-foreground" />
                 </div>
-                <h3 className="font-semibold text-lg">Nenhum e-mail enviado</h3>
+                <h3 className="font-semibold text-lg">
+                  {searchQuery ? 'Nenhum e-mail encontrado' : 'Nenhum e-mail enviado'}
+                </h3>
                 <p className="text-sm text-muted-foreground max-w-md mt-1">
-                  Os e-mails disparados pelo sistema ficarão registrados aqui com confirmação de entrega.
+                  {searchQuery
+                    ? 'Nenhum disparo corresponde aos critérios de pesquisa.'
+                    : 'Os e-mails disparados pelo sistema ficarão registrados aqui com confirmação de entrega.'}
                 </p>
-                <Button
-                  size="sm"
-                  onClick={() => setActiveTab('compose')}
-                  className="mt-4 gap-2"
-                >
-                  <Plus className="size-4" />
-                  Escrever primeira mensagem
-                </Button>
+                {!searchQuery && (
+                  <Button
+                    size="sm"
+                    onClick={() => setActiveTab('compose')}
+                    className="mt-4 gap-2"
+                  >
+                    <Plus className="size-4" />
+                    Escrever primeira mensagem
+                  </Button>
+                )}
               </div>
             ) : (
               <div className="divide-y divide-border">
@@ -730,11 +758,13 @@ export function Emails() {
                         size="icon"
                         className="size-8 text-muted-foreground hover:text-destructive"
                         title="Excluir do histórico"
-                        onClick={() => {
-                          if (confirm('Deseja remover este registro do histórico de enviados?')) {
-                            deleteSent(email.id);
-                            toast.success('Registro removido.');
-                          }
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setEmailToDelete({
+                            type: 'sent',
+                            id: email.id,
+                            subject: email.subject || '(Sem assunto)',
+                          });
                         }}
                       >
                         <Trash2 className="size-4" />
@@ -1080,11 +1110,11 @@ export function Emails() {
                     variant="outline"
                     size="sm"
                     onClick={() => {
-                      if (confirm('Deseja excluir este e-mail?')) {
-                        deleteReceived(selectedReceivedEmail.id);
-                        setSelectedReceivedEmailId(null);
-                        toast.success('E-mail excluído.');
-                      }
+                      setEmailToDelete({
+                        type: 'received',
+                        id: selectedReceivedEmail.id,
+                        subject: selectedReceivedEmail.subject || '(Sem assunto)',
+                      });
                     }}
                     className="gap-1.5 h-8 text-xs text-destructive hover:text-destructive"
                   >
@@ -1101,7 +1131,7 @@ export function Emails() {
                     <iframe
                       title="Conteúdo do e-mail"
                       srcDoc={selectedReceivedEmail.html}
-                      sandbox="allow-same-origin allow-popups"
+                      sandbox="allow-popups"
                       className="w-full min-h-[350px] border-0"
                     />
                   </div>
@@ -1157,10 +1187,27 @@ export function Emails() {
         <DialogContent className="max-w-2xl max-h-[80vh] flex flex-col p-0 overflow-hidden">
           {selectedSentEmail && (
             <>
-              <div className="p-6 pb-4 border-b border-border/60 space-y-2">
-                <DialogTitle className="text-lg font-bold">
-                  {selectedSentEmail.subject || '(Sem assunto)'}
-                </DialogTitle>
+              <div className="p-6 pb-4 border-b border-border/60 space-y-3">
+                <div className="flex items-start justify-between gap-4">
+                  <DialogTitle className="text-lg font-bold">
+                    {selectedSentEmail.subject || '(Sem assunto)'}
+                  </DialogTitle>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setEmailToDelete({
+                        type: 'sent',
+                        id: selectedSentEmail.id,
+                        subject: selectedSentEmail.subject || '(Sem assunto)',
+                      });
+                    }}
+                    className="gap-1.5 h-8 text-xs text-destructive hover:text-destructive shrink-0"
+                  >
+                    <Trash2 className="size-3.5" />
+                    Excluir
+                  </Button>
+                </div>
                 <div className="text-xs text-muted-foreground space-y-1 pt-1">
                   <div>
                     <span className="font-semibold text-foreground">Para:</span> {selectedSentEmail.to.join(', ')}
@@ -1181,7 +1228,7 @@ export function Emails() {
                     <iframe
                       title="Visualização do e-mail enviado"
                       srcDoc={selectedSentEmail.html}
-                      sandbox="allow-same-origin allow-popups"
+                      sandbox="allow-popups"
                       className="w-full min-h-[300px] border-0"
                     />
                   </div>
@@ -1195,6 +1242,52 @@ export function Emails() {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* ─── MODAL DE CONFIRMAÇÃO DE EXCLUSÃO ─────────────────────── */}
+      <AlertDialog
+        open={Boolean(emailToDelete)}
+        onOpenChange={(open) => {
+          if (!open) setEmailToDelete(null);
+        }}
+      >
+        <AlertDialogContent className="w-[calc(100%-1rem)] max-w-md">
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {emailToDelete?.type === 'received' ? 'Excluir e-mail' : 'Remover do histórico'}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {emailToDelete?.type === 'received'
+                ? `Tem certeza que deseja excluir o e-mail "${emailToDelete?.subject}"? Esta ação não poderá ser desfeita.`
+                : `Tem certeza que deseja remover o registro "${emailToDelete?.subject}" do histórico de disparos?`}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (!emailToDelete) return;
+                if (emailToDelete.type === 'received') {
+                  deleteReceived(emailToDelete.id);
+                  if (selectedReceivedEmailId === emailToDelete.id) {
+                    setSelectedReceivedEmailId(null);
+                  }
+                  toast.success('E-mail excluído.');
+                } else {
+                  deleteSent(emailToDelete.id);
+                  if (selectedSentEmailId === emailToDelete.id) {
+                    setSelectedSentEmailId(null);
+                  }
+                  toast.success('Registro removido do histórico.');
+                }
+                setEmailToDelete(null);
+              }}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Excluir definitivamente
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

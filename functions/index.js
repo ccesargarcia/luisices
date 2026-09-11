@@ -14,6 +14,12 @@ const rateLimiter = new RateLimiterMemory({
   duration: 3600, // 1 hora em segundos
 });
 
+// Rate limiter para envio customizado de e-mails: máximo de 50 disparos por hora por usuário admin
+const customEmailLimiter = new RateLimiterMemory({
+  points: 50,
+  duration: 3600, // 1 hora em segundos
+});
+
 // Configurar Resend API Key usando o novo sistema de params
 // Execute: firebase functions:secrets:set RESEND_API_KEY
 const RESEND_API_KEY = defineSecret('RESEND_API_KEY');
@@ -436,18 +442,56 @@ exports.sendCustomEmail = onCall({ cors: true, secrets: [RESEND_API_KEY] }, asyn
     throw new functions.https.HttpsError('permission-denied', 'Apenas administradores podem disparar e-mails pelo sistema.');
   }
 
+  // Rate Limiting: proteção contra abusos, loops e exaustão de cota
+  try {
+    await customEmailLimiter.consume(request.auth.uid);
+  } catch {
+    throw new functions.https.HttpsError(
+      'resource-exhausted',
+      'Limite de envio de e-mails atingido (máximo de 50 disparos por hora). Tente novamente mais tarde.'
+    );
+  }
+
   const { to, subject, html, text, from, replyTo, cc, bcc } = request.data || {};
 
   if (!to || (Array.isArray(to) && to.length === 0)) {
     throw new functions.https.HttpsError('invalid-argument', 'Pelo menos um destinatário é obrigatório.');
   }
 
+  const recipientList = Array.isArray(to)
+    ? to.map((e) => String(e).trim()).filter(Boolean)
+    : [String(to).trim()];
+
+  if (recipientList.length === 0) {
+    throw new functions.https.HttpsError('invalid-argument', 'Pelo menos um destinatário válido é obrigatório.');
+  }
+
+  if (recipientList.length > 50) {
+    throw new functions.https.HttpsError('invalid-argument', 'O número máximo de destinatários por envio é 50.');
+  }
+
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  for (const email of recipientList) {
+    if (!emailRegex.test(email)) {
+      throw new functions.https.HttpsError('invalid-argument', `Endereço de e-mail inválido: "${email}"`);
+    }
+  }
+
   if (!subject || typeof subject !== 'string' || !subject.trim()) {
     throw new functions.https.HttpsError('invalid-argument', 'Assunto é obrigatório.');
   }
 
+  if (subject.trim().length > 200) {
+    throw new functions.https.HttpsError('invalid-argument', 'O assunto do e-mail não pode ultrapassar 200 caracteres.');
+  }
+
   if (!html && !text) {
     throw new functions.https.HttpsError('invalid-argument', 'Conteúdo da mensagem (HTML ou texto) é obrigatório.');
+  }
+
+  const bodyLength = (html ? String(html).length : 0) + (text ? String(text).length : 0);
+  if (bodyLength > 500 * 1024) {
+    throw new functions.https.HttpsError('invalid-argument', 'O tamanho da mensagem excede o limite máximo permitido (500 KB).');
   }
 
   const resend = getResend(RESEND_API_KEY.value());
@@ -455,9 +499,6 @@ exports.sendCustomEmail = onCall({ cors: true, secrets: [RESEND_API_KEY] }, asyn
     throw new functions.https.HttpsError('failed-precondition', 'Resend não configurado.');
   }
 
-  const recipientList = Array.isArray(to)
-    ? to.map((e) => String(e).trim()).filter(Boolean)
-    : [String(to).trim()];
   const isDev = (process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT) === 'luisices-dev';
   const defaultSender = isDev
     ? 'Luisices Dev <contato@dev.luisices.com.br>'
@@ -546,6 +587,59 @@ exports.resendReceivingWebhook = onRequest({ cors: true, secrets: [RESEND_API_KE
   }
 
   try {
+    // Validação de assinatura Svix (se RESEND_WEBHOOK_SECRET estiver configurado no ambiente)
+    const webhookSecret = process.env.RESEND_WEBHOOK_SECRET;
+    if (webhookSecret) {
+      const svixId = req.headers['svix-id'];
+      const svixTimestamp = req.headers['svix-timestamp'];
+      const svixSignature = req.headers['svix-signature'];
+
+      if (!svixId || !svixTimestamp || !svixSignature) {
+        console.warn('[resendReceivingWebhook] Cabeçalhos de assinatura Svix ausentes');
+        return res.status(401).json({ error: 'Assinatura do webhook ausente' });
+      }
+
+      // Proteção contra replay attack (janela de 5 minutos)
+      const now = Math.floor(Date.now() / 1000);
+      const timestampNum = parseInt(String(svixTimestamp), 10);
+      if (isNaN(timestampNum) || Math.abs(now - timestampNum) > 300) {
+        console.warn('[resendReceivingWebhook] Timestamp fora da tolerância de 5 minutos:', timestampNum);
+        return res.status(401).json({ error: 'Timestamp do webhook expirado ou inválido' });
+      }
+
+      try {
+        const secretBytes = webhookSecret.startsWith('whsec_')
+          ? Buffer.from(webhookSecret.slice(6), 'base64')
+          : Buffer.from(webhookSecret);
+        const rawContent = req.rawBody ? req.rawBody.toString('utf8') : JSON.stringify(req.body);
+        const signedContent = `${svixId}.${svixTimestamp}.${rawContent}`;
+        const computedSignature = crypto.createHmac('sha256', secretBytes).update(signedContent).digest('base64');
+
+        const providedSignatures = String(svixSignature)
+          .split(' ')
+          .map((s) => s.split(',')[1])
+          .filter(Boolean);
+
+        const signatureValid = providedSignatures.some((sig) => {
+          try {
+            const a = Buffer.from(sig, 'base64');
+            const b = Buffer.from(computedSignature, 'base64');
+            return a.length === b.length && crypto.timingSafeEqual(a, b);
+          } catch {
+            return false;
+          }
+        });
+
+        if (!signatureValid) {
+          console.warn('[resendReceivingWebhook] Assinatura Svix rejeitada');
+          return res.status(401).json({ error: 'Assinatura Svix inválida' });
+        }
+      } catch (err) {
+        console.error('[resendReceivingWebhook] Falha na validação criptográfica:', err);
+        return res.status(401).json({ error: 'Falha na validação de assinatura' });
+      }
+    }
+
     const event = req.body;
     console.log('[resendReceivingWebhook] Recebido evento:', event?.type);
 
