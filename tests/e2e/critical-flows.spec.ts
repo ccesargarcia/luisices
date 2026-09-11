@@ -10,7 +10,7 @@ test.describe('Fluxos Críticos de Negócio', () => {
   test('deve bloquear a criação de pedidos para clientes inadimplentes', async ({ page }) => {
     test.setTimeout(60000);
     const timestamp = Date.now();
-    const customerName = `Inadimplente Teste ${timestamp}`;
+    const customerName = `Cliente Bloqueio ${timestamp}`;
     const customerPhone = `11988${String(Math.floor(100000 + Math.random() * 900000))}`;
 
     // 1. Criar um cliente com status Inadimplente na página de clientes
@@ -62,7 +62,7 @@ test.describe('Fluxos Críticos de Negócio', () => {
     await clientOption.click();
 
     // 3. Validar que o alerta visual de cliente inadimplente é exibido
-    const defaulterAlert = orderDialog.getByText(/inadimplente/i);
+    const defaulterAlert = orderDialog.locator('[data-slot="alert"]').or(orderDialog.getByText('Este cliente está marcado como')).first();
     await expect(defaulterAlert).toBeVisible({ timeout: 5000 });
 
     // 4. Validar que o botão de confirmação está bloqueado (disabled)
@@ -139,7 +139,7 @@ test.describe('Fluxos Críticos de Negócio', () => {
     await expect(quoteDialog).not.toBeVisible({ timeout: 15000 });
 
     // 2. Localizar o card do orçamento criado e abrir os detalhes
-    const searchQuote = page.getByPlaceholder(/Buscar por cliente ou número/i);
+    const searchQuote = page.getByPlaceholder(/Buscar por cliente/i);
     await expect(searchQuote).toBeVisible({ timeout: 10000 });
     await searchQuote.fill(clientName);
 

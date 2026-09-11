@@ -51,7 +51,7 @@ test.describe('Autenticação', () => {
 
     // Aguardar mensagem de erro (toast, alert, etc)
     await expect(
-      page.locator('[role="alert"]').or(page.locator('.sonner')).or(page.getByText(/inválid|erro|incorret/i))
+      page.locator('[role="alert"]').or(page.locator('.sonner')).or(page.getByText(/inválid|erro|incorret/i)).first()
     ).toBeVisible({ timeout: 10000 });
   });
 

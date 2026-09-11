@@ -110,8 +110,8 @@ test.describe.serial('Ciclo de vida: Cliente + Pedido', () => {
     const detailsDialog = page.locator('[role="dialog"]').first();
     await expect(detailsDialog).toBeVisible({ timeout: 5000 });
 
-    // Clicar em "Editar Pedido"
-    const editBtn = detailsDialog.getByRole('button', { name: /Editar Pedido/i });
+    // Clicar em "Editar"
+    const editBtn = detailsDialog.getByRole('button', { name: /^Editar$/i }).or(detailsDialog.getByRole('button', { name: /Editar/i })).first();
     await expect(editBtn).toBeVisible({ timeout: 5000 });
     await editBtn.click();
 
