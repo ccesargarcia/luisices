@@ -142,5 +142,16 @@ service cloud.firestore {
       // Deleção: somente admins
       allow delete: if isAdmin();
     }
+
+    // Regras para Central de E-mails Resend (recebidos e enviados)
+    match /receivedEmails/{emailId} {
+      allow read, update, delete: if request.auth != null;
+      allow create: if request.auth != null && isAdmin();
+    }
+
+    match /sentEmails/{emailId} {
+      allow read, update, delete: if request.auth != null;
+      allow create: if request.auth != null;
+    }
   }
 }

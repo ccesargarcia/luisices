@@ -1,5 +1,5 @@
 const functions = require('firebase-functions');
-const { onCall } = require('firebase-functions/v2/https');
+const { onCall, onRequest } = require('firebase-functions/v2/https');
 const { defineSecret } = require('firebase-functions/params');
 const admin = require('firebase-admin');
 const { Resend } = require('resend');
@@ -421,4 +421,192 @@ exports.deleteUser = onCall(async (request) => {
     throw new functions.https.HttpsError('internal', 'Não foi possível remover o usuário.');
   }
 });
+
+/**
+ * Cloud Function para envio de e-mails via Resend pela plataforma Luisices.
+ * Salva o histórico de envios na coleção 'sentEmails'.
+ */
+exports.sendCustomEmail = onCall({ secrets: [RESEND_API_KEY] }, async (request) => {
+  if (!request.auth) {
+    throw new functions.https.HttpsError('unauthenticated', 'Usuário não autenticado.');
+  }
+
+  const { to, subject, html, text, from, replyTo, cc, bcc } = request.data || {};
+
+  if (!to || (Array.isArray(to) && to.length === 0)) {
+    throw new functions.https.HttpsError('invalid-argument', 'Pelo menos um destinatário é obrigatório.');
+  }
+
+  if (!subject || typeof subject !== 'string' || !subject.trim()) {
+    throw new functions.https.HttpsError('invalid-argument', 'Assunto é obrigatório.');
+  }
+
+  if (!html && !text) {
+    throw new functions.https.HttpsError('invalid-argument', 'Conteúdo da mensagem (HTML ou texto) é obrigatório.');
+  }
+
+  const resend = getResend(RESEND_API_KEY.value());
+  if (!resend) {
+    throw new functions.https.HttpsError('failed-precondition', 'Resend não configurado.');
+  }
+
+  const recipientList = Array.isArray(to)
+    ? to.map((e) => String(e).trim()).filter(Boolean)
+    : [String(to).trim()];
+  const senderEmail = from && from.trim() ? from.trim() : 'Luisices <contato@luisices.com.br>';
+
+  try {
+    const payload = {
+      from: senderEmail,
+      to: recipientList,
+      subject: subject.trim(),
+    };
+
+    if (html) payload.html = html;
+    if (text) payload.text = text;
+    if (replyTo) payload.reply_to = replyTo.trim();
+    if (cc && Array.isArray(cc) && cc.length > 0) {
+      payload.cc = cc.map((c) => String(c).trim()).filter(Boolean);
+    }
+    if (bcc && Array.isArray(bcc) && bcc.length > 0) {
+      payload.bcc = bcc.map((b) => String(b).trim()).filter(Boolean);
+    }
+
+    console.log(`[sendCustomEmail] Enviando e-mail para: ${recipientList.join(', ')} - Assunto: ${subject}`);
+    const { data: resendData, error: resendError } = await resend.emails.send(payload);
+
+    if (resendError) {
+      console.error('[sendCustomEmail] Erro retornado pela API Resend:', JSON.stringify(resendError));
+      throw new functions.https.HttpsError(
+        'internal',
+        resendError.message || 'Falha ao disparar o e-mail via Resend.'
+      );
+    }
+
+    const emailRecord = {
+      resendId: resendData?.id || null,
+      from: senderEmail,
+      to: recipientList,
+      cc: payload.cc || [],
+      bcc: payload.bcc || [],
+      subject: subject.trim(),
+      html: html || '',
+      text: text || '',
+      status: 'sent',
+      senderUid: request.auth.uid,
+      senderEmail: request.auth.token.email || '',
+      sentAt: new Date().toISOString(),
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    };
+
+    const docRef = await admin.firestore().collection('sentEmails').add(emailRecord);
+
+    return {
+      success: true,
+      emailId: resendData?.id,
+      id: docRef.id,
+    };
+  } catch (error) {
+    console.error('[sendCustomEmail] Exceção:', error);
+    if (error instanceof functions.https.HttpsError) throw error;
+    throw new functions.https.HttpsError('internal', error.message || 'Erro ao enviar e-mail.');
+  }
+});
+
+/**
+ * Webhook HTTP para recebimento de e-mails via Resend (email.received).
+ * Armazena e-mails recebidos na coleção 'receivedEmails'.
+ *
+ * Configuração no Resend Dashboard:
+ * URL: https://<regiao>-<projeto>.cloudfunctions.net/resendReceivingWebhook
+ * Eventos selecionados: email.received
+ */
+exports.resendReceivingWebhook = onRequest({ secrets: [RESEND_API_KEY] }, async (req, res) => {
+  if (req.method === 'GET' || req.method === 'OPTIONS') {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'POST, GET, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, svix-id, svix-timestamp, svix-signature');
+    if (req.method === 'OPTIONS') {
+      return res.status(204).send('');
+    }
+    return res.status(200).json({ status: 'active', message: 'Luisices Resend Webhook ativo e operacional' });
+  }
+
+  if (req.method !== 'POST') {
+    return res.status(405).json({ error: 'Method Not Allowed' });
+  }
+
+  try {
+    const event = req.body;
+    console.log('[resendReceivingWebhook] Recebido evento:', event?.type);
+
+    if (!event || event.type !== 'email.received') {
+      console.log('[resendReceivingWebhook] Evento não é email.received, ignorado:', event?.type);
+      return res.status(200).json({ status: 'ignored', type: event?.type });
+    }
+
+    const eventData = event.data || {};
+    const emailId = eventData.email_id || eventData.id;
+
+    if (!emailId) {
+      console.warn('[resendReceivingWebhook] Nenhum email_id no payload:', eventData);
+      return res.status(400).json({ error: 'Payload sem email_id' });
+    }
+
+    // Buscar o conteúdo completo (HTML, texto, anexos) via Resend API
+    let fullEmail = null;
+    const apiKey = RESEND_API_KEY.value();
+
+    if (apiKey) {
+      try {
+        const resend = getResend(apiKey);
+        if (resend?.emails?.receiving && typeof resend.emails.receiving.get === 'function') {
+          const resendResult = await resend.emails.receiving.get(emailId);
+          fullEmail = resendResult?.data || null;
+        } else {
+          const resp = await fetch(`https://api.resend.com/emails/receiving/${emailId}`, {
+            headers: {
+              Authorization: `Bearer ${apiKey}`,
+              'Content-Type': 'application/json',
+            },
+          });
+          if (resp.ok) {
+            fullEmail = await resp.json();
+          } else {
+            console.warn('[resendReceivingWebhook] API Resend retornou status:', resp.status);
+          }
+        }
+      } catch (fetchErr) {
+        console.warn('[resendReceivingWebhook] Erro ao recuperar corpo completo do e-mail:', fetchErr);
+      }
+    }
+
+    const emailDoc = {
+      resendId: emailId,
+      from: fullEmail?.from || eventData.from || '',
+      to: fullEmail?.to || (Array.isArray(eventData.to) ? eventData.to : [eventData.to].filter(Boolean)),
+      cc: fullEmail?.cc || eventData.cc || [],
+      bcc: fullEmail?.bcc || eventData.bcc || [],
+      subject: fullEmail?.subject || eventData.subject || '(Sem assunto)',
+      html: fullEmail?.html || '',
+      text: fullEmail?.text || '',
+      attachments: fullEmail?.attachments || eventData.attachments || [],
+      raw: fullEmail?.raw || null,
+      read: false,
+      starred: false,
+      archived: false,
+      receivedAt: eventData.created_at || new Date().toISOString(),
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    };
+
+    await admin.firestore().collection('receivedEmails').doc(emailId).set(emailDoc, { merge: true });
+    console.log(`[resendReceivingWebhook] E-mail recebido salvo com sucesso: ${emailId}`);
+
+    return res.status(200).json({ ok: true, id: emailId });
+  } catch (error) {
+    console.error('[resendReceivingWebhook] Falha ao processar webhook:', error);
+    return res.status(500).json({ error: 'Erro interno ao processar webhook de recebimento' });
+  }
+});
+
 

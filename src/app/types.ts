@@ -338,3 +338,65 @@ export interface SharedAccess {
   expiresAt?: string; // Opcional - data de expiração do compartilhamento
   active: boolean; // Permite desativar sem deletar
 }
+
+// ─── Central de E-mails Resend ────────────────────────────────────────────────
+
+export interface EmailAttachment {
+  id: string;
+  filename: string;
+  contentType: string;
+  contentDisposition?: string | null;
+  contentId?: string | null;
+  size?: number;
+  downloadUrl?: string;
+}
+
+export interface ReceivedEmail {
+  id: string;
+  resendId: string;
+  from: string;
+  to: string[];
+  cc?: string[];
+  bcc?: string[];
+  subject: string;
+  html?: string;
+  text?: string;
+  attachments?: EmailAttachment[];
+  raw?: {
+    download_url?: string;
+    expires_at?: string;
+  } | null;
+  read: boolean;
+  starred: boolean;
+  archived?: boolean;
+  receivedAt: string;
+  createdAt?: any;
+}
+
+export interface SentEmail {
+  id: string;
+  resendId?: string;
+  from: string;
+  to: string[];
+  cc?: string[];
+  bcc?: string[];
+  subject: string;
+  html?: string;
+  text?: string;
+  status: 'sent' | 'failed' | 'pending';
+  senderUid: string;
+  senderEmail: string;
+  sentAt: string;
+  createdAt?: any;
+}
+
+export interface SendEmailPayload {
+  to: string[];
+  subject: string;
+  html?: string;
+  text?: string;
+  from?: string;
+  replyTo?: string;
+  cc?: string[];
+  bcc?: string[];
+}
