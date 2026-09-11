@@ -208,24 +208,6 @@ test.describe('Detalhes do Pedido', () => {
       await expect(cancelBtn).toBeVisible({ timeout: 5000 });
       await cancelBtn.click();
   });
-
-  test('deve exibir workflow de produção', async ({ page }, testInfo) => {
-    const { product } = getTestOrderData(testInfo);
-    const orderCard = page.locator('[data-slot="card"]').filter({ hasText: product }).first();
-    await expect(orderCard).toBeVisible({ timeout: 10000 });
-    await orderCard.click();
-
-    const dialog = page.locator('[role="dialog"]').first();
-    await expect(dialog).toBeVisible({ timeout: 10000 });
-
-    // Procurar workflow de produção (pode precisar scroll)
-    const workflowTitle = dialog.getByText(/Workflow de Produção/i);
-    await expect(workflowTitle).toBeVisible({ timeout: 5000 });
-
-      // Verificar etapas do workflow
-      const designStep = dialog.getByText('Design');
-      await expect(designStep.first()).toBeVisible({ timeout: 3000 });
-  });
 });
 
 test.describe('Dashboard - Filtros e Alertas', () => {

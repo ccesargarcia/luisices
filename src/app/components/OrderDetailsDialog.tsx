@@ -3,12 +3,11 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
-import { Order, OrderStatus, ProductionStep, PaymentStatus, PaymentMethod, Tag, ExchangeItem, GalleryItem, UserProfile } from '../types';
+import { Order, OrderStatus, PaymentStatus, PaymentMethod, Tag, ExchangeItem, GalleryItem, UserProfile } from '../types';
 import { Trash2, Edit, Copy, Download } from 'lucide-react';
 import { exportOrderPDF } from '../utils/exportPdf';
 import { useUserSettings } from '../../hooks/useUserSettings';
 import { useState, useMemo, useEffect } from 'react';
-import { ProductionWorkflowComponent } from './ProductionWorkflow';
 import { firebaseOrderService } from '../../services/firebaseOrderService';
 import { firebaseUserService } from '../../services/firebaseUserService';
 import { firebaseStorageService } from '../../services/firebaseStorageService';
@@ -320,15 +319,6 @@ export function OrderDetailsDialog({ order, open, onOpenChange, onUpdateStatus, 
     }
   };
 
-  const handleUpdateWorkflowStep = async (step: ProductionStep, completed: boolean) => {
-    try {
-      await firebaseOrderService.updateProductionStep(order.id, step, completed);
-    } catch (error) {
-      console.error('Erro ao atualizar workflow:', error);
-      toast.error('Erro ao atualizar etapa do workflow');
-    }
-  };
-
   const handleDuplicate = async () => {
     if (!order) return;
     setIsDuplicating(true);
@@ -518,17 +508,6 @@ export function OrderDetailsDialog({ order, open, onOpenChange, onUpdateStatus, 
                 onUploadAttachment={handleUploadAttachment}
                 onRemoveAttachment={handleRemoveAttachment}
               />
-
-              {/* Workflow de Produção */}
-              {order.productionWorkflow && (
-                <div className="border-t pt-4">
-                  <ProductionWorkflowComponent
-                    workflow={order.productionWorkflow}
-                    onUpdateStep={handleUpdateWorkflowStep}
-                    readonly={false}
-                  />
-                </div>
-              )}
 
               <div className="space-y-2">
                 <label className="text-sm font-medium">Atualizar Status</label>

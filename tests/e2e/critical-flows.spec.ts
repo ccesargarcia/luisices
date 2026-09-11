@@ -60,39 +60,4 @@ test.describe.skip('Fluxos Críticos e Financeiros', () => {
     await page.locator('button[type="submit"]').click();
     await expect(page.getByText(/Existem pagamentos pendentes/i).or(page.getByText(/inadimplente/i))).toBeVisible({ timeout: 5000 });
   });
-
-  test('ao interagir com o Workflow de Produção, status deve mudar de Pendente para Em Produção', async ({ page }) => {
-    await page.goto('/dashboard');
-    
-    // Procurar por qualquer pedido pendente
-    const pendingTab = page.getByRole('tab', { name: /Pendentes/i });
-    await pendingTab.click();
-    
-    // Pega o primeiro card
-    const firstCard = page.locator('[data-testid="order-card"]').first();
-    if(await firstCard.count() === 0) {
-       // Pular se nao tiver pedido pra testar
-       test.skip();
-       return;
-    }
-    await firstCard.click();
-
-    const dialog = page.locator('[role="dialog"]').first();
-    await expect(dialog).toBeVisible({ timeout: 10000 });
-
-    // O status no combobox "Atualizar Status" deve ser "Pendente"
-    const statusSelect = dialog.locator('button[role="combobox"]').filter({ hasText: /Pendente|Em Produção|Concluído/i });
-    const currentStatus = await statusSelect.textContent();
-    
-    if(currentStatus?.includes('Pendente')) {
-        // Clicar em Design (concluir a primeira etapa)
-        const designCheckbox = dialog.getByRole('checkbox', { name: /Design/i });
-        await designCheckbox.click();
-        
-        await page.waitForTimeout(1000); // Esperar sync Firebase
-        
-        // O status deve ter mudado para "Em Produção" automaticamente
-        await expect(statusSelect).toHaveText(/Em Produção/i);
-    }
-  });
 });

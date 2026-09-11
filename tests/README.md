@@ -12,7 +12,7 @@ tests/e2e/
 ├── customers.spec.ts                 # CRUD e regras de clientes
 ├── gallery.spec.ts                   # Galeria de artes e uploads
 ├── navigation.spec.ts                # Navegação entre páginas e rotas
-├── order-details.spec.ts             # Detalhes e workflow de produção do pedido
+├── order-details.spec.ts             # Detalhes do pedido
 ├── orders.spec.ts                    # Gestão e listagem de pedidos
 ├── permissions.spec.ts               # Validação de permissões e papéis (RBAC)
 ├── products.spec.ts                  # CRUD de produtos e catálogo
