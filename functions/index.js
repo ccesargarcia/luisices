@@ -233,6 +233,7 @@ exports.completeUserInvitation = onCall(async (request) => {
         exchanges: false,
         settings: true,
         users: { view: false, create: false, edit: false, delete: false },
+        emails: false,
       },
       active: true,
       createdAt: new Date().toISOString(),
@@ -431,6 +432,10 @@ exports.sendCustomEmail = onCall({ cors: true, secrets: [RESEND_API_KEY] }, asyn
     throw new functions.https.HttpsError('unauthenticated', 'Usuário não autenticado.');
   }
 
+  if (!(await isAdminRequest(request))) {
+    throw new functions.https.HttpsError('permission-denied', 'Apenas administradores podem disparar e-mails pelo sistema.');
+  }
+
   const { to, subject, html, text, from, replyTo, cc, bcc } = request.data || {};
 
   if (!to || (Array.isArray(to) && to.length === 0)) {
@@ -579,6 +584,11 @@ exports.resendReceivingWebhook = onRequest({ cors: true, secrets: [RESEND_API_KE
       } catch (fetchErr) {
         console.warn('[resendReceivingWebhook] Erro ao recuperar corpo completo do e-mail:', fetchErr);
       }
+    }
+
+    if (apiKey && !fullEmail) {
+      console.warn('[resendReceivingWebhook] Rejeitado: e-mail não validado no Resend:', emailId);
+      return res.status(404).json({ error: 'Email could not be verified on Resend' });
     }
 
     const emailDoc = {

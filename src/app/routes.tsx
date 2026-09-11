@@ -146,7 +146,7 @@ export const router = createBrowserRouter([
       },
       {
         path: 'emails',
-        element: <Lazy><Emails /></Lazy>,
+        element: <Lazy><PermissionRoute check={p => p.emails ?? false}><Emails /></PermissionRoute></Lazy>,
       },
       {
         path: 'ajuda',

@@ -269,6 +269,7 @@ export interface Permission {
   exchanges: boolean;
   settings: boolean;
   users: ModulePermission;
+  emails?: boolean;
 }
 
 export interface UserProfile {
@@ -295,6 +296,7 @@ export const ADMIN_PERMISSIONS: Permission = {
   exchanges: true,
   settings:  true,
   users:     { view: true, create: true, edit: true, delete: true },
+  emails:    true,
 };
 
 export const DEFAULT_USER_PERMISSIONS: Permission = {
@@ -308,6 +310,7 @@ export const DEFAULT_USER_PERMISSIONS: Permission = {
   exchanges: true,
   settings:  true,
   users:     { view: false, create: false, edit: false, delete: false },
+  emails:    false,
 };
 
 export const EMPLOYEE_PERMISSIONS: Permission = {
@@ -321,6 +324,7 @@ export const EMPLOYEE_PERMISSIONS: Permission = {
   exchanges: false,
   settings:  false,
   users:     { view: false, create: false, edit: false, delete: false },
+  emails:    false,
 };
 
 // Tipos para sistema de compartilhamento de dados
