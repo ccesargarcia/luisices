@@ -504,7 +504,7 @@ export function Reports() {
 
         <Card>
           <CardHeader><CardTitle className="text-base">Status dos Pedidos</CardTitle></CardHeader>
-          <CardContent className="flex items-center gap-6">
+          <CardContent className="flex flex-col sm:flex-row items-center gap-4 sm:gap-6">
             {stats.statusData.length === 0 ? (
               <p className="text-sm text-muted-foreground py-4">Nenhum pedido no período</p>
             ) : (
@@ -517,7 +517,7 @@ export function Reports() {
                     <Tooltip formatter={(v: number) => [v, 'pedidos']} />
                   </PieChart>
                 </ResponsiveContainer>
-                <div className="space-y-2 flex-1">
+                <div className="space-y-2 w-full flex-1">
                   {stats.statusData.map(d => (
                     <div key={d.key} className="flex items-center justify-between text-sm">
                       <div className="flex items-center gap-2">
@@ -540,7 +540,7 @@ export function Reports() {
 
         <Card>
           <CardHeader><CardTitle className="text-base">Métodos de Pagamento</CardTitle></CardHeader>
-          <CardContent className="flex items-center gap-4">
+          <CardContent className="flex flex-col sm:flex-row items-center gap-4">
             {stats.paymentData.length === 0 ? (
               <p className="text-sm text-muted-foreground py-4">Nenhum pagamento no período</p>
             ) : (
@@ -553,7 +553,7 @@ export function Reports() {
                     <Tooltip formatter={(v: number) => [formatCurrency(v), '']} />
                   </PieChart>
                 </ResponsiveContainer>
-                <div className="space-y-2 flex-1 min-w-0">
+                <div className="space-y-2 w-full flex-1 min-w-0">
                   {stats.paymentData.map(d => (
                     <div key={d.method} className="flex items-center justify-between text-sm">
                       <div className="flex items-center gap-2 min-w-0">

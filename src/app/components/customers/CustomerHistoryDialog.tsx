@@ -93,7 +93,7 @@ export function CustomerHistoryDialog({
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="w-full max-w-full sm:max-w-2xl max-h-[90dvh] flex flex-col overflow-hidden">
+        <DialogContent className="w-[calc(100vw-1.5rem)] sm:w-full sm:max-w-2xl max-h-[90dvh] flex flex-col overflow-hidden">
           <DialogHeader>
             <DialogTitle>{customer?.name}</DialogTitle>
           </DialogHeader>
@@ -222,7 +222,7 @@ export function CustomerHistoryDialog({
       {/* Gallery Lightbox */}
       {lightboxItem && (
         <Dialog open onOpenChange={() => setLightboxItem(null)}>
-          <DialogContent className="w-full max-w-full sm:max-w-2xl p-0 overflow-hidden">
+          <DialogContent className="w-[calc(100vw-1.5rem)] sm:w-full sm:max-w-2xl p-0 overflow-hidden">
             <div className="flex items-center justify-between px-4 py-3 border-b">
               <DialogTitle className="text-sm font-semibold truncate flex-1">
                 {lightboxItem.title}

@@ -127,7 +127,7 @@ export function AdminTeamFilter({ variant = 'header', className }: AdminTeamFilt
         )}
       </PopoverTrigger>
 
-      <PopoverContent align={variant === 'header' ? 'end' : 'start'} className="w-80 sm:w-96 p-0 shadow-xl">
+      <PopoverContent align={variant === 'header' ? 'end' : 'start'} className="w-[calc(100vw-1.5rem)] sm:w-96 max-w-[384px] p-0 shadow-xl">
         <div className="p-3.5 border-b bg-muted/20">
           <div className="flex items-center justify-between gap-2">
             <div>
