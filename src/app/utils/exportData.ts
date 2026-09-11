@@ -99,6 +99,26 @@ export function exportQuotesToExcel(quotes: Quote[], filename = 'orcamentos') {
 
 // ========== CSV EXPORT ==========
 
+/**
+ * Sanitiza valores de células para prevenir CSV/Formula Injection (OWASP).
+ * Se o texto iniciar com '=', '+', '-', '@', '\t' ou '\r', prefixa com apóstrofo (')
+ * para forçar planilhas (Excel/Calc) a interpretarem como texto puro, não fórmula executável.
+ */
+function sanitizeCSVValue(value: unknown): string {
+  if (value == null) return '';
+  let str = String(value);
+
+  if (/^[=+\-@\t\r]/.test(str)) {
+    str = `'${str}`;
+  }
+
+  if (str.includes(',') || str.includes('"') || str.includes('\n') || str.includes('\r')) {
+    return `"${str.replace(/"/g, '""')}"`;
+  }
+
+  return str;
+}
+
 export function exportToCSV<T extends Record<string, any>>(
   data: T[],
   filename: string,
@@ -111,22 +131,16 @@ export function exportToCSV<T extends Record<string, any>>(
 
   const keys = Object.keys(data[0]) as (keyof T)[];
   const headerRow = headers
-    ? keys.map(key => headers[key] || String(key)).join(',')
-    : keys.join(',');
+    ? keys.map(key => sanitizeCSVValue(headers[key] || String(key))).join(',')
+    : keys.map(key => sanitizeCSVValue(String(key))).join(',');
 
   const rows = data.map(row =>
-    keys.map(key => {
-      const value = row[key];
-      // Escapar vírgulas e aspas
-      const stringValue = String(value == null ? '' : value);
-      return stringValue.includes(',') || stringValue.includes('"')
-        ? `"${stringValue.replace(/"/g, '""')}"`
-        : stringValue;
-    }).join(',')
+    keys.map(key => sanitizeCSVValue(row[key])).join(',')
   );
 
-  const csv = [headerRow, ...rows].join('\n');
-  downloadFile(csv, `${filename}_${new Date().toISOString().split('T')[0]}.csv`, 'text/csv');
+  // Prefixa com BOM UTF-8 (\uFEFF) para preservar acentos no Excel
+  const csv = '\uFEFF' + [headerRow, ...rows].join('\n');
+  downloadFile(csv, `${filename}_${new Date().toISOString().split('T')[0]}.csv`, 'text/csv;charset=utf-8;');
 }
 
 // ========== JSON EXPORT ==========
