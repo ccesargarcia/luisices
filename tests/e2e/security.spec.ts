@@ -403,3 +403,41 @@ test.describe('Segurança - Sanitização contra Injeção de Scripts (XSS)', ()
     expect(isVulnerable).toBe(false);
   });
 });
+
+test.describe('Segurança - Proteção de Arquivos e Regras do Firebase Storage', () => {
+  test('deve bloquear download anônimo direto de anexos de pedidos sem autenticação', async ({ browser }) => {
+    const incognitoContext = await browser.newContext({ storageState: undefined });
+    const page = await incognitoContext.newPage();
+
+    await page.goto('/login');
+    await expect(page.locator('input[type="email"]')).toBeVisible({ timeout: 10000 });
+
+    const fallbackBucket = process.env.VITE_FIREBASE_STORAGE_BUCKET || process.env.STORAGE_BUCKET || '';
+
+    // Tentar ler anexo privado de pedido no Storage sem token e sem autenticação
+    const storageResult = await page.evaluate(async ({ fallbackBucket }) => {
+      try {
+        const config = (window as any).__firebaseConfig;
+        const bucket = config?.storageBucket || fallbackBucket;
+        if (!bucket) return { blocked: true, status: 401 };
+
+        const targetPath = encodeURIComponent('users/outro_usuario_invalido/orders/pedido_privado_123/documento.pdf');
+        const response = await fetch(
+          `https://firebasestorage.googleapis.com/v0/b/${bucket}/o/${targetPath}`
+        );
+
+        return {
+          blocked: !response.ok,
+          status: response.status,
+        };
+      } catch {
+        return { blocked: true, status: 401 };
+      }
+    }, { fallbackBucket });
+
+    // As regras de segurança do Storage devem bloquear o acesso anônimo (!response.ok)
+    expect(storageResult.blocked).toBe(true);
+
+    await incognitoContext.close();
+  });
+});

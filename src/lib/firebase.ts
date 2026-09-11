@@ -58,6 +58,7 @@ if (typeof window !== 'undefined') {
   (window as any).__firebaseConfig = {
     projectId: firebaseConfig.projectId,
     apiKey: firebaseConfig.apiKey,
+    storageBucket: firebaseConfig.storageBucket,
   };
   (window as any).__firebaseAuth = auth;
   (window as any).__firebaseDb = db;
