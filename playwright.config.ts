@@ -17,7 +17,7 @@ export default defineConfig({
   testDir: './tests/e2e',
 
   /* Timeout máximo por teste */
-  timeout: 30 * 1000,
+  timeout: process.env.CI ? 60 * 1000 : 30 * 1000,
 
   /* Configuração de expectativas */
   expect: {
@@ -62,9 +62,14 @@ export default defineConfig({
 
   /* Configurar projetos para diferentes navegadores */
   projects: [
+    { name: 'setup', testMatch: /.*.setup.ts/ },
     {
       name: 'chromium',
-      use: { ...devices['Desktop Chrome'] },
+      use: { 
+        ...devices['Desktop Chrome'],
+        
+      },
+      
     },
     {
       name: 'mobile-chromium',

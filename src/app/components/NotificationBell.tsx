@@ -15,7 +15,7 @@ interface Notification {
 
 export function NotificationBell() {
   const { user } = useAuth();
-  const { orders } = useFirebaseOrders();
+  const { allOrders: orders } = useFirebaseOrders();
   const [customers, setCustomers] = useState<Customer[]>([]);
 
   // IDs descartados persistidos no localStorage por usuário
@@ -159,7 +159,7 @@ export function NotificationBell() {
           )}
         </button>
       </PopoverTrigger>
-      <PopoverContent align="end" className="w-80 p-0">
+      <PopoverContent align="end" className="w-[calc(100vw-1.5rem)] sm:w-80 max-w-sm p-0">
         <div className="px-3 py-2.5 border-b flex items-center justify-between">
           <h3 className="font-semibold text-sm">Notificações</h3>
           {visibleNotifications.length > 0 && (

@@ -42,4 +42,5 @@ jobs:
           firebase use luisices-dev --project luisices-dev
           firebase functions:secrets:set RESEND_API_KEY --project luisices-dev --data-file "$HOME/resend_api_key.txt" || true
           firebase functions:secrets:set EVOLUTION_API_KEY --project luisices-dev --data-file "$HOME/evolution_api_key.txt" || true
+          firebase deploy --only firestore:rules --project luisices-dev
           firebase deploy --only functions --project luisices-dev --force --debug

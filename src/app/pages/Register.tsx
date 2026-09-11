@@ -63,12 +63,6 @@ export function Register() {
         : undefined;
       await firebaseAuthService.register(email, password, name, verificationUrl);
       if (inviteToken) {
-        try {
-          const completeInvitation = httpsCallable(functions, 'completeUserInvitation');
-          await completeInvitation({ token: inviteToken });
-        } catch (invErr) {
-          console.warn('[Register] Complete invitation warning:', invErr);
-        }
         await firebaseAuthService.reloadCurrentUser();
       }
       trackSignUp('email');

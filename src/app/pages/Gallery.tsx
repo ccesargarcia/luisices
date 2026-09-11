@@ -293,7 +293,7 @@ export function Gallery() {
         {isFlatView && (
           <>
             <Select value={filterCustomer || '__all__'} onValueChange={v => setFilterCustomer(v === '__all__' ? '' : v)}>
-              <SelectTrigger className="w-44">
+              <SelectTrigger className="w-full sm:w-44">
                 <User className="size-4 mr-1 text-muted-foreground" />
                 <SelectValue placeholder="Cliente" />
               </SelectTrigger>
@@ -306,7 +306,7 @@ export function Gallery() {
             </Select>
             {allTags.length > 0 && (
               <Select value={filterTag || '__all__'} onValueChange={v => setFilterTag(v === '__all__' ? '' : v)}>
-                <SelectTrigger className="w-36">
+                <SelectTrigger className="w-full sm:w-36">
                   <TagIcon className="size-4 mr-1 text-muted-foreground" />
                   <SelectValue placeholder="Tag" />
                 </SelectTrigger>
@@ -320,7 +320,7 @@ export function Gallery() {
         )}
         {isRootFolders && allFolderTags.length > 0 && (
           <Select value={filterFolderTag || '__all__'} onValueChange={v => setFilterFolderTag(v === '__all__' ? '' : v)}>
-            <SelectTrigger className="w-36">
+            <SelectTrigger className="w-full sm:w-36">
               <TagIcon className="size-4 mr-1 text-muted-foreground" />
               <SelectValue placeholder="Tag" />
             </SelectTrigger>

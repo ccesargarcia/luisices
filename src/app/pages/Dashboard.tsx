@@ -1,5 +1,5 @@
 import { useMemo, useState, useEffect } from 'react';
-import { Order, OrderStatus } from '../types';
+import { Order, OrderStatus, UserProfile } from '../types';
 import { OrderCard } from '../components/OrderCard';
 import { OrderDetailsDialog } from '../components/OrderDetailsDialog';
 import { NewOrderDialog } from '../components/NewOrderDialog';
@@ -9,6 +9,7 @@ import { DashboardCardSkeleton, OrderCardSkeleton } from '../components/Skeleton
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
 import { Input } from '../components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
 import {
@@ -27,10 +28,14 @@ import {
   Repeat2,
   Download,
   Trash2,
+  Users,
+  UserCheck,
 } from 'lucide-react';
+import { AdminTeamFilter } from '../components/AdminTeamFilter';
 import { getTextColor } from '../utils/tagColors';
 import { useFirebaseOrders } from '../../hooks/useFirebaseOrders';
 import { firebaseOrderService } from '../../services/firebaseOrderService';
+import { firebaseUserService } from '../../services/firebaseUserService';
 import { firebaseCustomerService } from '../../services/firebaseCustomerService';
 import { useAuth } from '../../contexts/AuthContext';
 import { useUserSettings } from '../../hooks/useUserSettings';
@@ -41,6 +46,14 @@ import { exportOrdersToExcel } from '../utils/exportData';
 import { toast } from 'sonner';
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts';
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from '../components/ui/chart';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '../components/ui/dialog';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -80,17 +93,37 @@ function getGreeting() {
 }
 
 export function Dashboard() {
-  const { user } = useAuth();
-  const { orders, loading, error } = useFirebaseOrders();
+  const { user, userProfile, hasPermission } = useAuth();
+  const {
+    orders,
+    loading,
+    error,
+    isFilterActive,
+    selectedFilterLabel,
+    clearUserFilter,
+    teamMembers,
+  } = useFirebaseOrders();
   const { settings } = useUserSettings();
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [selectedOrderIds, setSelectedOrderIds] = useState<string[]>([]);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [isBulkOrderDeleteOpen, setIsBulkOrderDeleteOpen] = useState(false);
   const [bulkOrderDeleting, setBulkOrderDeleting] = useState(false);
+  const [isBulkAssignOpen, setIsBulkAssignOpen] = useState(false);
+  const [bulkAssignTargetUid, setBulkAssignTargetUid] = useState<string>('__none__');
+  const [bulkAssigning, setBulkAssigning] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [showExchangeOnly, setShowExchangeOnly] = useState(false);
+  const [creatorProfiles, setCreatorProfiles] = useState<UserProfile[]>([]);
+
+  useEffect(() => {
+    if (userProfile?.role !== 'admin' && userProfile?.role !== 'funcionario') {
+      setCreatorProfiles([]);
+      return;
+    }
+    firebaseUserService.listUsers().then(setCreatorProfiles).catch(() => setCreatorProfiles([]));
+  }, [userProfile?.role]);
 
   const visibleCards = settings?.dashboardCards ?? DEFAULT_DASHBOARD_CARDS;
   const showCard = (id: string) => visibleCards.includes(id);
@@ -111,7 +144,16 @@ export function Dashboard() {
   const firstGridLastItemClass = firstGridCount === 3 ? 'col-span-2 lg:col-span-1' : '';
   const secondGridLastItemClass = secondGridCount === 3 ? 'col-span-2 lg:col-span-1' : '';
   const handleOrderClick = (order: Order) => {
-    setSelectedOrder(order);
+    const creatorName = (order.createdByName && order.createdByName !== 'Usuário proprietário')
+      ? order.createdByName
+      : creatorProfiles.find(profile => profile.uid === order.userId)?.displayName
+        || (order.userId === user?.uid ? user.displayName || user.email || 'Você' : undefined)
+        || (order.createdByName !== 'Usuário proprietário' ? order.createdByName : undefined);
+
+    setSelectedOrder({
+      ...order,
+      createdByName: creatorName,
+    });
     setDetailsOpen(true);
   };
 
@@ -295,7 +337,7 @@ export function Dashboard() {
     }
 
     return filtered;
-  }, [orders, searchQuery, selectedTags, showExchangeOnly, user]);
+  }, [orders, searchQuery, selectedTags, showExchangeOnly]);
 
   // Obter todas as tags únicas
   const allTags = useMemo(() => {
@@ -371,6 +413,30 @@ export function Dashboard() {
     }
   };
 
+  const handleBulkAssignOrders = async () => {
+    if (selectedOrderIds.length === 0 || userProfile?.role !== 'admin') return;
+
+    const targetMember = bulkAssignTargetUid !== '__none__'
+      ? teamMembers.find((m) => m.uid === bulkAssignTargetUid) || null
+      : null;
+
+    setBulkAssigning(true);
+    try {
+      await firebaseOrderService.assignOrdersBulk(selectedOrderIds, targetMember);
+      const targetName = targetMember ? targetMember.displayName : 'Sem responsável';
+      toast.success(
+        `${selectedOrderIds.length} pedido${selectedOrderIds.length === 1 ? '' : 's'} atribuído${selectedOrderIds.length === 1 ? '' : 's'} para ${targetName}`
+      );
+      setSelectedOrderIds([]);
+      setIsBulkAssignOpen(false);
+    } catch (err: any) {
+      console.error('Erro ao atribuir pedidos em lote:', err);
+      toast.error(err?.message || 'Erro ao atribuir pedidos');
+    } finally {
+      setBulkAssigning(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="space-y-6">
@@ -429,6 +495,25 @@ export function Dashboard() {
           <NewOrderDialog />
         </div>
       </div>
+
+      {isFilterActive && (
+        <div className="flex items-center justify-between gap-3 rounded-lg border border-primary/30 bg-primary/5 px-4 py-3 text-sm text-primary shadow-xs">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <Users className="size-4 shrink-0" />
+            <span className="truncate">
+              Visualizando dados de: <strong>{selectedFilterLabel}</strong> ({orders.length} pedidos encontrados)
+            </span>
+          </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={clearUserFilter}
+            className="h-7 text-xs text-primary hover:bg-primary/10 shrink-0 font-medium"
+          >
+            Visualizar tudo
+          </Button>
+        </div>
+      )}
 
       <div data-kpi-grid data-count={firstGridCount} className={`grid gap-4 lg:gap-6 ${firstGridClass}`}>
         {showCard('total') && (
@@ -635,14 +720,21 @@ export function Dashboard() {
       {/* Pedidos Atrasados */}
       {showCard('overdue') && <OverdueOrders orders={orders} onOrderClick={handleOrderClick} />}
 
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
-        <Input
-          placeholder="Buscar por cliente, produto ou telefone..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          className="pl-10"
-        />
+      <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+          <Input
+            placeholder="Buscar por cliente, produto ou telefone..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="pl-10"
+          />
+        </div>
+        {userProfile?.role === 'admin' && (
+          <div className="shrink-0">
+            <AdminTeamFilter variant="inline" />
+          </div>
+        )}
       </div>
 
       {(allTags.length > 0 || true) && (
@@ -684,11 +776,11 @@ export function Dashboard() {
               Permuta / Parceria
               {showExchangeOnly && <X className="size-3 ml-0.5" />}
             </Badge>
-            {(selectedTags.length > 0 || showExchangeOnly) && (
+            {(selectedTags.length > 0 || showExchangeOnly || isFilterActive) && (
               <Badge
                 variant="secondary"
-                className="cursor-pointer"
-                onClick={() => { setSelectedTags([]); setShowExchangeOnly(false); }}
+                className="cursor-pointer hover:bg-muted"
+                onClick={() => { setSelectedTags([]); setShowExchangeOnly(false); clearUserFilter(); }}
               >
                 Limpar filtros
               </Badge>
@@ -707,21 +799,35 @@ export function Dashboard() {
               {allFilteredOrdersSelected ? 'Desmarcar todos' : 'Selecionar todos'}
             </Button>
           </div>
-          <div className="flex items-center gap-2">
-            {selectedOrderIds.length > 0 && (
-              <Button variant="outline" size="sm" onClick={() => setSelectedOrderIds([])}>
-                Limpar
+          <div className="flex items-center gap-2 flex-wrap">
+            {selectedOrderIds.length > 0 && userProfile?.role === 'admin' && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1.5 h-9 text-xs sm:text-sm font-medium"
+                onClick={() => {
+                  setBulkAssignTargetUid('__none__');
+                  setIsBulkAssignOpen(true);
+                }}
+              >
+                <UserCheck className="size-4 text-primary shrink-0" />
+                <span>Atribuir ({selectedOrderIds.length})</span>
               </Button>
             )}
             {selectedOrderIds.length > 0 && (
+              <Button variant="ghost" size="sm" className="h-9 text-xs sm:text-sm" onClick={() => setSelectedOrderIds([])}>
+                Limpar
+              </Button>
+            )}
+            {selectedOrderIds.length > 0 && (hasPermission(p => p.orders?.delete ?? false) || userProfile?.role === 'user') && (
               <Button
                 variant="destructive"
                 size="sm"
-                className="gap-2"
+                className="gap-2 h-9 text-xs sm:text-sm"
                 onClick={() => setIsBulkOrderDeleteOpen(true)}
                 disabled={bulkOrderDeleting}
               >
-                <Trash2 className="size-4" />
+                <Trash2 className="size-4 shrink-0" />
                 Excluir selecionados
               </Button>
             )}
@@ -824,6 +930,60 @@ export function Dashboard() {
           )}
         </TabsContent>
       </Tabs>
+
+      {/* Diálogo de Atribuição em Lote */}
+      <Dialog open={isBulkAssignOpen} onOpenChange={setIsBulkAssignOpen}>
+        <DialogContent className="w-[calc(100%-1.5rem)] sm:max-w-md max-h-[85dvh] overflow-y-auto p-4 sm:p-6">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-base sm:text-lg">
+              <Users className="size-5 text-primary" />
+              Atribuir Pedidos em Lote
+            </DialogTitle>
+            <DialogDescription className="text-xs sm:text-sm text-muted-foreground mt-1">
+              Defina o responsável pela execução dos <strong className="text-foreground">{selectedOrderIds.length}</strong> pedidos selecionados.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="py-3 space-y-2">
+            <label className="text-xs sm:text-sm font-medium">Membro da equipe responsável</label>
+            <Select
+              value={bulkAssignTargetUid}
+              onValueChange={setBulkAssignTargetUid}
+            >
+              <SelectTrigger className="h-11 sm:h-10 text-base sm:text-sm">
+                <SelectValue placeholder="Selecione um responsável" />
+              </SelectTrigger>
+              <SelectContent className="max-h-56">
+                <SelectItem value="__none__">Sem responsável (Remover atribuição)</SelectItem>
+                {teamMembers.map((member) => (
+                  <SelectItem key={member.uid} value={member.uid}>
+                    {member.displayName} {member.role === 'funcionario' ? '(Equipe)' : member.role === 'admin' ? '(Admin)' : ''}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <DialogFooter className="flex-col-reverse sm:flex-row gap-2 sm:gap-0 pt-2">
+            <Button
+              variant="outline"
+              onClick={() => setIsBulkAssignOpen(false)}
+              disabled={bulkAssigning}
+              className="w-full sm:w-auto h-10 text-sm"
+            >
+              Cancelar
+            </Button>
+            <Button
+              onClick={handleBulkAssignOrders}
+              disabled={bulkAssigning}
+              className="w-full sm:w-auto h-10 text-sm gap-2"
+            >
+              {bulkAssigning && <Loader2 className="size-4 animate-spin" />}
+              Salvar Atribuição
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <AlertDialog open={isBulkOrderDeleteOpen} onOpenChange={setIsBulkOrderDeleteOpen}>
         <AlertDialogContent>
