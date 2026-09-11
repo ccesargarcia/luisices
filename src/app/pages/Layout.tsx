@@ -18,6 +18,7 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from '../components/ui/avatar';
 import { ThemeToggle } from '../../components/ThemeToggle';
 import { NotificationBell } from '../components/NotificationBell';
+import { AdminTeamFilter } from '../components/AdminTeamFilter';
 import { Badge } from '../components/ui/badge';
 import {
   Dialog,
@@ -231,7 +232,8 @@ export function Layout() {
               </div>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5 sm:gap-2">
+              <AdminTeamFilter variant="header" />
               <NotificationBell />
               <ThemeToggle />
               <DropdownMenu>

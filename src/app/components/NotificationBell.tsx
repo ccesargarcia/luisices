@@ -15,7 +15,7 @@ interface Notification {
 
 export function NotificationBell() {
   const { user } = useAuth();
-  const { orders } = useFirebaseOrders();
+  const { allOrders: orders } = useFirebaseOrders();
   const [customers, setCustomers] = useState<Customer[]>([]);
 
   // IDs descartados persistidos no localStorage por usuário

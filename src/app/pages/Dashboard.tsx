@@ -28,7 +28,9 @@ import {
   Repeat2,
   Download,
   Trash2,
+  Users,
 } from 'lucide-react';
+import { AdminTeamFilter } from '../components/AdminTeamFilter';
 import { getTextColor } from '../utils/tagColors';
 import { useFirebaseOrders } from '../../hooks/useFirebaseOrders';
 import { firebaseOrderService } from '../../services/firebaseOrderService';
@@ -83,7 +85,14 @@ function getGreeting() {
 
 export function Dashboard() {
   const { user, userProfile, hasPermission } = useAuth();
-  const { orders, loading, error } = useFirebaseOrders();
+  const {
+    orders,
+    loading,
+    error,
+    isFilterActive,
+    selectedFilterLabel,
+    clearUserFilter,
+  } = useFirebaseOrders();
   const { settings } = useUserSettings();
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [selectedOrderIds, setSelectedOrderIds] = useState<string[]>([]);
@@ -93,9 +102,6 @@ export function Dashboard() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [showExchangeOnly, setShowExchangeOnly] = useState(false);
-  const [creatorFilter, setCreatorFilter] = useState(
-    userProfile?.role === 'admin' ? user?.uid || 'all' : 'all',
-  );
   const [creatorProfiles, setCreatorProfiles] = useState<UserProfile[]>([]);
 
   useEffect(() => {
@@ -105,15 +111,6 @@ export function Dashboard() {
     }
     firebaseUserService.listUsers().then(setCreatorProfiles).catch(() => setCreatorProfiles([]));
   }, [userProfile?.role]);
-
-  const creatorOptions = useMemo(() => {
-    const options = new Map<string, string>();
-    creatorProfiles.forEach(profile => options.set(profile.uid, profile.displayName || profile.email));
-    orders.forEach(order => {
-      if (!options.has(order.userId)) options.set(order.userId, order.createdByName || 'Usuário proprietário');
-    });
-    return [...options.entries()].sort((a, b) => a[1].localeCompare(b[1]));
-  }, [creatorProfiles, orders]);
 
   const visibleCards = settings?.dashboardCards ?? DEFAULT_DASHBOARD_CARDS;
   const showCard = (id: string) => visibleCards.includes(id);
@@ -168,34 +165,29 @@ export function Dashboard() {
     }
   };
 
-  const creatorFilteredOrders = useMemo(() => {
-    if (creatorFilter === 'all') return orders;
-    return orders.filter(order => order.userId === creatorFilter);
-  }, [orders, creatorFilter]);
-
   const stats = useMemo(() => {
-    const total = creatorFilteredOrders.length;
-    const pending = creatorFilteredOrders.filter(o => o.status === 'pending').length;
-    const inProgress = creatorFilteredOrders.filter(o => o.status === 'in-progress').length;
-    const completed = creatorFilteredOrders.filter(o => o.status === 'completed').length;
-    const cancelled = creatorFilteredOrders.filter(o => o.status === 'cancelled').length;
+    const total = orders.length;
+    const pending = orders.filter(o => o.status === 'pending').length;
+    const inProgress = orders.filter(o => o.status === 'in-progress').length;
+    const completed = orders.filter(o => o.status === 'completed').length;
+    const cancelled = orders.filter(o => o.status === 'cancelled').length;
 
     // Métricas financeiras
-    const totalRevenue = creatorFilteredOrders
+    const totalRevenue = orders
       .filter(o => o.status === 'completed')
       .reduce((sum, o) => sum + o.price, 0);
 
     // Pagamentos
-    const paidOrders = creatorFilteredOrders.filter(o => o.payment?.status === 'paid').length;
-    const partialOrders = creatorFilteredOrders.filter(o => o.payment?.status === 'partial').length;
+    const paidOrders = orders.filter(o => o.payment?.status === 'paid').length;
+    const partialOrders = orders.filter(o => o.payment?.status === 'partial').length;
 
     // Pedidos ativos (não cancelados) sem pagamento completo
-    const activeOrders = creatorFilteredOrders.filter(o => o.status !== 'cancelled');
+    const activeOrders = orders.filter(o => o.status !== 'cancelled');
     const pendingPayments = activeOrders.filter(o =>
       !o.payment || o.payment.status === 'pending' || o.payment.status === 'partial'
     ).length;
 
-    const totalPaid = creatorFilteredOrders.reduce((sum, o) => sum + (o.payment?.paidAmount || 0), 0);
+    const totalPaid = orders.reduce((sum, o) => sum + (o.payment?.paidAmount || 0), 0);
 
     // "A Receber": total do que ainda não foi pago em pedidos ativos
     const totalPending = activeOrders
@@ -206,16 +198,16 @@ export function Dashboard() {
       }, 0);
 
     // Previsão de receita (pedidos em andamento + pendentes)
-    const expectedRevenue = creatorFilteredOrders
+    const expectedRevenue = orders
       .filter(o => o.status === 'pending' || o.status === 'in-progress')
       .reduce((sum, o) => sum + o.price, 0);
 
     // Ticket médio
-    const averageOrderValue = total > 0 ? creatorFilteredOrders.reduce((sum, o) => sum + o.price, 0) / total : 0;
+    const averageOrderValue = total > 0 ? orders.reduce((sum, o) => sum + o.price, 0) / total : 0;
 
     // Produtos mais vendidos
     const productCounts = new Map<string, { count: number; revenue: number }>();
-    creatorFilteredOrders.forEach(order => {
+    orders.forEach(order => {
       const current = productCounts.get(order.productName) || { count: 0, revenue: 0 };
       productCounts.set(order.productName, {
         count: current.count + 1,
@@ -229,7 +221,7 @@ export function Dashboard() {
       .slice(0, 5);
 
     // Taxa de entrega no prazo (pedidos entregues na semana atual vs entrega esperada)
-    const thisWeekOrders = creatorFilteredOrders.filter(o => {
+    const thisWeekOrders = orders.filter(o => {
       const deliveryDate = parseLocalDate(o.deliveryDate);
       const now = new Date();
       const weekStart = new Date(now);
@@ -244,7 +236,7 @@ export function Dashboard() {
     // Pedidos atrasados: pendentes ou em produção com data de entrega já passada
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    const overdueOrders = creatorFilteredOrders.filter(o => {
+    const overdueOrders = orders.filter(o => {
       if (o.status !== 'pending' && o.status !== 'in-progress') return false;
       const delivery = parseLocalDate(o.deliveryDate);
       return delivery < today;
@@ -269,7 +261,7 @@ export function Dashboard() {
       deliveriesThisWeek,
       overdue,
     };
-  }, [creatorFilteredOrders]);
+  }, [orders]);
 
   const statusChartData = useMemo(() => [
     { status: 'Pendente', value: stats.pending, fill: '#f59e0b' },
@@ -288,7 +280,7 @@ export function Dashboard() {
       weekStart.setDate(currentSunday.getDate() - (7 - i) * 7);
       const weekEnd = new Date(weekStart);
       weekEnd.setDate(weekStart.getDate() + 7);
-      const count = creatorFilteredOrders.filter(o => {
+      const count = orders.filter(o => {
         const created = new Date(o.createdAt);
         return created >= weekStart && created < weekEnd;
       }).length;
@@ -297,10 +289,10 @@ export function Dashboard() {
         pedidos: count,
       };
     });
-  }, [creatorFilteredOrders]);
+  }, [orders]);
 
   const filteredOrders = useMemo(() => {
-    let filtered = creatorFilteredOrders;
+    let filtered = orders;
 
     // Filtro por busca
     if (searchQuery) {
@@ -326,7 +318,7 @@ export function Dashboard() {
     }
 
     return filtered;
-  }, [creatorFilteredOrders, searchQuery, selectedTags, showExchangeOnly, user]);
+  }, [orders, searchQuery, selectedTags, showExchangeOnly]);
 
   // Obter todas as tags únicas
   const allTags = useMemo(() => {
@@ -460,6 +452,25 @@ export function Dashboard() {
           <NewOrderDialog />
         </div>
       </div>
+
+      {isFilterActive && (
+        <div className="flex items-center justify-between gap-3 rounded-lg border border-primary/30 bg-primary/5 px-4 py-3 text-sm text-primary shadow-xs">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <Users className="size-4 shrink-0" />
+            <span className="truncate">
+              Visualizando dados de: <strong>{selectedFilterLabel}</strong> ({orders.length} pedidos encontrados)
+            </span>
+          </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={clearUserFilter}
+            className="h-7 text-xs text-primary hover:bg-primary/10 shrink-0 font-medium"
+          >
+            Visualizar tudo
+          </Button>
+        </div>
+      )}
 
       <div data-kpi-grid data-count={firstGridCount} className={`grid gap-4 lg:gap-6 ${firstGridClass}`}>
         {showCard('total') && (
@@ -666,32 +677,22 @@ export function Dashboard() {
       {/* Pedidos Atrasados */}
       {showCard('overdue') && <OverdueOrders orders={orders} onOrderClick={handleOrderClick} />}
 
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
-        <Input
-          placeholder="Buscar por cliente, produto ou telefone..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          className="pl-10"
-        />
-      </div>
-
-      {userProfile?.role === 'admin' && creatorOptions.length > 0 && (
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-          <span className="text-sm font-medium">Criado por:</span>
-          <Select value={creatorFilter} onValueChange={setCreatorFilter}>
-            <SelectTrigger className="w-full sm:w-64">
-              <SelectValue placeholder="Todos os usuários" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todos os usuários</SelectItem>
-              {creatorOptions.map(([uid, name]) => (
-                <SelectItem key={uid} value={uid}>{name}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+      <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+          <Input
+            placeholder="Buscar por cliente, produto ou telefone..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="pl-10"
+          />
         </div>
-      )}
+        {userProfile?.role === 'admin' && (
+          <div className="shrink-0">
+            <AdminTeamFilter variant="inline" />
+          </div>
+        )}
+      </div>
 
       {(allTags.length > 0 || true) && (
         <div className="space-y-2">
@@ -732,11 +733,11 @@ export function Dashboard() {
               Permuta / Parceria
               {showExchangeOnly && <X className="size-3 ml-0.5" />}
             </Badge>
-            {(selectedTags.length > 0 || showExchangeOnly || creatorFilter !== 'all') && (
+            {(selectedTags.length > 0 || showExchangeOnly || isFilterActive) && (
               <Badge
                 variant="secondary"
-                className="cursor-pointer"
-                onClick={() => { setSelectedTags([]); setShowExchangeOnly(false); setCreatorFilter('all'); }}
+                className="cursor-pointer hover:bg-muted"
+                onClick={() => { setSelectedTags([]); setShowExchangeOnly(false); clearUserFilter(); }}
               >
                 Limpar filtros
               </Badge>

@@ -6,8 +6,9 @@ import { OrderDetailsDialog } from '../components/OrderDetailsDialog';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
-import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, Loader2, TrendingUp } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, Loader2, TrendingUp, Users } from 'lucide-react';
 import { useFirebaseOrders } from '../../hooks/useFirebaseOrders';
+import { AdminTeamFilter } from '../components/AdminTeamFilter';
 import { firebaseOrderService } from '../../services/firebaseOrderService';
 import { firebaseCustomerService } from '../../services/firebaseCustomerService';
 import { toast } from 'sonner';
@@ -40,7 +41,14 @@ const STATUS_COLORS: Record<OrderStatus, string> = {
 type StatusFilter = '' | OrderStatus;
 
 export function WeeklyCalendar() {
-  const { orders, loading, error } = useFirebaseOrders();
+  const {
+    orders,
+    loading,
+    error,
+    isFilterActive,
+    selectedFilterLabel,
+    clearUserFilter,
+  } = useFirebaseOrders();
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [currentWeekOffset, setCurrentWeekOffset] = useState(0);
@@ -136,24 +144,46 @@ export function WeeklyCalendar() {
           <h1 className="text-2xl sm:text-3xl font-bold">Agenda Semanal</h1>
           <p className="text-muted-foreground">Visualize entregas por dia da semana</p>
         </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" size="icon" aria-label="Semana anterior" onClick={() => setCurrentWeekOffset((o) => o - 1)}>
-            <ChevronLeft className="size-4" />
-          </Button>
-          <div className="flex items-center gap-2 px-4 py-2 bg-muted rounded-md">
-            <CalendarIcon className="size-4" />
-            <span className="font-medium">{getWeekRange()}</span>
-          </div>
-          <Button variant="outline" size="icon" aria-label="Próxima semana" onClick={() => setCurrentWeekOffset((o) => o + 1)}>
-            <ChevronRight className="size-4" />
-          </Button>
-          {currentWeekOffset !== 0 && (
-            <Button variant="outline" onClick={() => setCurrentWeekOffset(0)}>
-              Hoje
+        <div className="flex flex-wrap items-center gap-2">
+          <AdminTeamFilter variant="inline" />
+          <div className="flex items-center gap-1 sm:gap-2">
+            <Button variant="outline" size="icon" aria-label="Semana anterior" onClick={() => setCurrentWeekOffset((o) => o - 1)}>
+              <ChevronLeft className="size-4" />
             </Button>
-          )}
+            <div className="flex items-center gap-2 px-3 sm:px-4 py-2 bg-muted rounded-md text-xs sm:text-sm">
+              <CalendarIcon className="size-4" />
+              <span className="font-medium">{getWeekRange()}</span>
+            </div>
+            <Button variant="outline" size="icon" aria-label="Próxima semana" onClick={() => setCurrentWeekOffset((o) => o + 1)}>
+              <ChevronRight className="size-4" />
+            </Button>
+            {currentWeekOffset !== 0 && (
+              <Button variant="outline" size="sm" onClick={() => setCurrentWeekOffset(0)}>
+                Hoje
+              </Button>
+            )}
+          </div>
         </div>
       </div>
+
+      {isFilterActive && (
+        <div className="flex items-center justify-between gap-3 rounded-lg border border-primary/30 bg-primary/5 px-4 py-2.5 text-sm text-primary shadow-xs">
+          <div className="flex items-center gap-2 min-w-0">
+            <Users className="size-4 shrink-0" />
+            <span className="truncate">
+              Visualizando agenda de: <strong>{selectedFilterLabel}</strong> ({weekStats.total} {weekStats.total === 1 ? 'entrega' : 'entregas'} nesta semana)
+            </span>
+          </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={clearUserFilter}
+            className="h-7 text-xs text-primary hover:bg-primary/10 shrink-0 font-medium"
+          >
+            Visualizar tudo
+          </Button>
+        </div>
+      )}
 
       {/* Summary + Status filter */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
