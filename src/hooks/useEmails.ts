@@ -16,6 +16,7 @@ export function useEmails() {
     try {
       setLoadingUsage(true);
       const data = await emailService.getEmailUsage();
+      console.log('[useEmails] Cota consultada:', data);
       setUsage(data);
     } catch (err) {
       console.warn('[useEmails] Não foi possível consultar cota de e-mail:', err);
