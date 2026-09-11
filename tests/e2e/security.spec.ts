@@ -93,6 +93,21 @@ test.describe('Segurança - Fluxos de Autenticação e Registro', () => {
     const incognitoContext = await browser.newContext({ storageState: undefined });
     const page = await incognitoContext.newPage();
 
+    // Interceptar chamada da Cloud Function caso o serviço de e-mail externo (Resend)
+    // não possua chave ativa no ambiente de CI/teste
+    await page.route('**/sendPasswordResetEmail', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          result: {
+            success: true,
+            message: 'Se o email estiver cadastrado, você receberá instruções de recuperação.',
+          },
+        }),
+      });
+    });
+
     await page.goto('/recuperar-senha');
     await page.waitForLoadState('domcontentloaded');
 
@@ -110,7 +125,10 @@ test.describe('Segurança - Fluxos de Autenticação e Registro', () => {
     // O sistema informa que o link foi enviado caso exista
     await expect(
       page.getByText(/E-mail enviado com sucesso|Se o e-mail|Verifique sua caixa/i).first()
-    ).toBeVisible({ timeout: 20000 });
+    ).toBeVisible({ timeout: 15000 });
+
+    // Garantir que jamais vaza se o usuário existe ou não (anti-enumeração)
+    await expect(page.getByText(/E-mail não encontrado|usuário não encontrado/i)).not.toBeVisible();
 
     await incognitoContext.close();
   });
