@@ -114,7 +114,7 @@ export function Layout() {
   };
 
   return (
-    <div className="min-h-screen overflow-x-hidden bg-transparent flex flex-col">
+    <div className="min-h-[100dvh] w-full max-w-full overflow-x-clip bg-transparent flex flex-col">
       <aside className={cn(
         'hidden md:flex fixed inset-y-0 left-0 z-40 flex-col border-r border-white/40 bg-sidebar/70 py-8 shadow-[0_8px_32px_rgb(123_84_85_/_8%)] backdrop-blur-2xl transition-[width] duration-300',
         sidebarCollapsed ? 'w-20' : 'w-72',

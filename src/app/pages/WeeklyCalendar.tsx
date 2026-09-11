@@ -479,7 +479,7 @@ export function WeeklyCalendar() {
 
       {/* QUADRO SEMANAL COMPLETO (Sempre visível em Desktop e opcional no Mobile) */}
       <div className={cn(viewMode === 'board' ? 'block' : 'hidden lg:block')}>
-        <div className="overflow-x-auto pb-4 pt-1 -mx-2 px-2">
+        <div className="overflow-x-auto pb-4 pt-1 -mx-2 px-2 touch-pan-x">
           {/* Garante largura mínima total de 1050px para NUNCA espremer colunas */}
           <div className="min-w-[1050px] grid grid-cols-7 gap-3 items-start">
             {weekDays.map((day) => {
