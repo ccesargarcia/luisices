@@ -12,6 +12,7 @@ import { Badge } from '../components/ui/badge';
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from '../components/ui/dialog';
@@ -1056,7 +1057,13 @@ export function Emails() {
         open={!!selectedReceivedEmailId}
         onOpenChange={(open) => !open && setSelectedReceivedEmailId(null)}
       >
-        <DialogContent className="max-w-3xl max-h-[85vh] flex flex-col p-0 overflow-hidden">
+        <DialogContent
+          className="max-w-3xl max-h-[85vh] flex flex-col p-0 overflow-hidden"
+          aria-describedby={undefined}
+        >
+          <DialogDescription className="sr-only">
+            Detalhes e visualização do e-mail recebido
+          </DialogDescription>
           {selectedReceivedEmail && (
             <>
               {/* Modal Header */}
@@ -1184,7 +1191,13 @@ export function Emails() {
         open={!!selectedSentEmailId}
         onOpenChange={(open) => !open && setSelectedSentEmailId(null)}
       >
-        <DialogContent className="max-w-2xl max-h-[80vh] flex flex-col p-0 overflow-hidden">
+        <DialogContent
+          className="max-w-2xl max-h-[80vh] flex flex-col p-0 overflow-hidden"
+          aria-describedby={undefined}
+        >
+          <DialogDescription className="sr-only">
+            Detalhes e visualização do e-mail enviado
+          </DialogDescription>
           {selectedSentEmail && (
             <>
               <div className="p-6 pb-4 border-b border-border/60 space-y-3">
