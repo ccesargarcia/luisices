@@ -580,41 +580,63 @@ exports.getEmailUsage = onCall({ cors: true, secrets: [RESEND_API_KEY] }, async 
     throw new functions.https.HttpsError('failed-precondition', 'Resend não configurado.');
   }
 
-  // 1. Tentar consultar a API de Usage do Resend (GET https://api.resend.com/usage)
+  // 1. Consultar métricas reais diretamente no endpoint oficial do Resend (GET https://api.resend.com/emails/metrics)
   try {
-    const res = await fetch('https://api.resend.com/usage', {
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-    });
+    const now = new Date();
+    const todayStr = now.toISOString().split('T')[0]; // YYYY-MM-DD em UTC
+    const firstDayOfMonthStr = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}-01`;
 
-    if (res.ok) {
-      const data = await res.json();
-      const daily = data?.emails?.daily || {};
-      const monthly = data?.emails?.monthly || {};
+    const [dailyRes, monthlyRes] = await Promise.all([
+      fetch(`https://api.resend.com/emails/metrics?start_date=${todayStr}&end_date=${todayStr}&metrics=sent,delivered`, {
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+          'User-Agent': 'Luisices-Functions/1.0',
+        },
+      }),
+      fetch(`https://api.resend.com/emails/metrics?start_date=${firstDayOfMonthStr}&end_date=${todayStr}&metrics=sent,delivered`, {
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+          'User-Agent': 'Luisices-Functions/1.0',
+        },
+      }),
+    ]);
+
+    if (dailyRes.ok && monthlyRes.ok) {
+      const dailyData = await dailyRes.json();
+      const monthlyData = await monthlyRes.json();
+
+      const dailySent = Number(dailyData?.totals?.sent ?? 0);
+      const monthlySent = Number(monthlyData?.totals?.sent ?? 0);
+
+      // Próximo reset diário: 00:00:00 UTC do dia seguinte
+      const nextUtcMidnight = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1, 0, 0, 0));
+      const nextUtcMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1, 0, 0, 0));
+
       return {
         success: true,
         source: 'resend_api',
         daily: {
-          used: Number(daily.used ?? 0),
-          limit: daily.limit !== undefined && daily.limit !== null ? Number(daily.limit) : 100,
-          sent: Number(daily.sent ?? 0),
-          received: Number(daily.received ?? 0),
-          resetsAt: daily.resets_at || null,
+          used: dailySent,
+          limit: 100, // Cota diária do plano gratuito Resend
+          sent: dailySent,
+          received: 0,
+          resetsAt: nextUtcMidnight.toISOString(),
         },
         monthly: {
-          used: Number(monthly.used ?? 0),
-          limit: monthly.limit !== undefined && monthly.limit !== null ? Number(monthly.limit) : 3000,
-          sent: Number(monthly.sent ?? 0),
-          received: Number(monthly.received ?? 0),
-          resetsAt: monthly.resets_at || null,
+          used: monthlySent,
+          limit: 3000, // Cota mensal do plano gratuito Resend
+          sent: monthlySent,
+          received: 0,
+          resetsAt: nextUtcMonth.toISOString(),
         },
       };
+    } else {
+      console.warn('[getEmailUsage] Resend /emails/metrics retornou status:', dailyRes.status, monthlyRes.status);
     }
-    console.warn('[getEmailUsage] Resend /usage retornou status:', res.status);
   } catch (err) {
-    console.warn('[getEmailUsage] Erro ao consultar https://api.resend.com/usage:', err);
+    console.warn('[getEmailUsage] Erro ao consultar https://api.resend.com/emails/metrics:', err);
   }
 
   // 2. Fallback resiliente: calcular a partir do histórico do Firestore
@@ -795,8 +817,7 @@ exports.resendReceivingWebhook = onRequest({ cors: true, secrets: [RESEND_API_KE
     }
 
     if (apiKey && !fullEmail) {
-      console.warn('[resendReceivingWebhook] Rejeitado: e-mail não validado no Resend:', emailId);
-      return res.status(404).json({ error: 'Email could not be verified on Resend' });
+      console.warn('[resendReceivingWebhook] Aviso: Não foi possível obter corpo completo via API Resend (pode ser restrição de chave ou indisponibilidade). Salvando com metadados do payload do webhook:', emailId);
     }
 
     const emailDoc = {
