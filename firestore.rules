@@ -13,12 +13,15 @@ service cloud.firestore {
         && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.role == 'admin';
     }
 
-    function isAssignedEmployee(assignedTo) {
+    function isActiveEmployee() {
       return request.auth != null
-        && assignedTo == request.auth.uid
         && exists(/databases/$(database)/documents/userProfiles/$(request.auth.uid))
         && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.role == 'funcionario'
         && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.active == true;
+    }
+
+    function isAssignedEmployee(assignedTo) {
+      return assignedTo == request.auth.uid && isActiveEmployee();
     }
 
     function isAssignedEmployeeEditor(assignedTo) {
@@ -51,30 +54,57 @@ service cloud.firestore {
 
     // Regras para clientes (customers)
     match /customers/{customerId} {
-      allow read: if isOwner(resource.data.userId);
-      allow create: if isOwner(request.resource.data.userId);
-      allow update, delete: if isOwner(resource.data.userId);
+      allow read: if isOwner(resource.data.userId)
+        || isAdmin()
+        || (isActiveEmployee() && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.permissions.customers.view == true);
+      allow create: if isOwner(request.resource.data.userId) || isAdmin();
+      allow update: if isOwner(resource.data.userId)
+        || isAdmin()
+        || (isActiveEmployee() && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.permissions.customers.edit == true);
+      allow delete: if isOwner(resource.data.userId)
+        || isAdmin()
+        || (isActiveEmployee() && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.permissions.customers.delete == true);
     }
 
     // Regras para orçamentos (quotes)
     match /quotes/{quoteId} {
-      allow read: if isOwner(resource.data.userId);
-      allow create: if isOwner(request.resource.data.userId);
-      allow update, delete: if isOwner(resource.data.userId);
+      allow read: if isOwner(resource.data.userId)
+        || isAdmin()
+        || (isActiveEmployee() && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.permissions.quotes.view == true);
+      allow create: if isOwner(request.resource.data.userId) || isAdmin();
+      allow update: if isOwner(resource.data.userId)
+        || isAdmin()
+        || (isActiveEmployee() && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.permissions.quotes.edit == true);
+      allow delete: if isOwner(resource.data.userId)
+        || isAdmin()
+        || (isActiveEmployee() && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.permissions.quotes.delete == true);
     }
 
     // Regras para produtos (products)
     match /products/{productId} {
-      allow read: if isOwner(resource.data.userId);
-      allow create: if isOwner(request.resource.data.userId);
-      allow update, delete: if isOwner(resource.data.userId);
+      allow read: if isOwner(resource.data.userId)
+        || isAdmin()
+        || (isActiveEmployee() && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.permissions.products.view == true);
+      allow create: if isOwner(request.resource.data.userId) || isAdmin();
+      allow update: if isOwner(resource.data.userId)
+        || isAdmin()
+        || (isActiveEmployee() && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.permissions.products.edit == true);
+      allow delete: if isOwner(resource.data.userId)
+        || isAdmin()
+        || (isActiveEmployee() && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.permissions.products.delete == true);
     }
 
     // Regras para galeria de artes (gallery)
     match /gallery/{itemId} {
-      allow read: if isOwner(resource.data.userId);
-      allow create: if isOwner(request.resource.data.userId);
-      allow update, delete: if isOwner(resource.data.userId);
+      allow read: if isOwner(resource.data.userId)
+        || isAdmin()
+        || (isActiveEmployee() && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.permissions.gallery.view == true);
+      allow create: if isOwner(request.resource.data.userId)
+        || isAdmin()
+        || (isActiveEmployee() && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.permissions.gallery.create == true);
+      allow update, delete: if isOwner(resource.data.userId)
+        || isAdmin()
+        || (isActiveEmployee() && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.permissions.gallery.delete == true);
     }
 
     // Regras para configurações de usuário (users)

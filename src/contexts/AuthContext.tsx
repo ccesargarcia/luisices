@@ -97,17 +97,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const hasPermission = useCallback(
     (check: (p: UserProfile['permissions']) => boolean): boolean => {
       if (!userProfile || !userProfile.active) {
-        console.log('[hasPermission] Sem perfil ou usuário inativo:', { userProfile });
         return false;
       }
-      const result = check(userProfile.permissions);
-      console.log('[hasPermission] Verificação:', {
-        role: userProfile.role,
-        email: userProfile.email,
-        permissions: userProfile.permissions,
-        result
-      });
-      return result;
+      return check(userProfile.permissions);
     },
     [userProfile],
   );

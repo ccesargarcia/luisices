@@ -34,8 +34,16 @@ export class FirebaseOrderService {
     return user.uid;
   }
 
-  private canAccessAssignedOrder(data: Record<string, any>, userId: string): boolean {
-    return data.userId === userId || data.assignedTo === userId;
+  private async canAccessAssignedOrder(data: Record<string, any>, userId: string): Promise<boolean> {
+    if (data.userId === userId || data.assignedTo === userId) {
+      return true;
+    }
+    try {
+      const profileSnap = await getDoc(doc(db, 'userProfiles', userId));
+      return profileSnap.exists() && profileSnap.data().role === 'admin';
+    } catch {
+      return false;
+    }
   }
 
   /**
@@ -170,12 +178,17 @@ export class FirebaseOrderService {
     const data = orderSnap.data();
 
     // Verificar se o pedido pertence ao usuário
-    if (!this.canAccessAssignedOrder(data, userId)) {
+    if (!(await this.canAccessAssignedOrder(data, userId))) {
       throw new Error('Você não tem permissão para acessar este pedido');
     }
 
+    return this.mapOrderDoc(orderSnap);
+  }
+
+  private mapOrderDoc(doc: any): Order {
+    const data = doc.data();
     return {
-      id: orderSnap.id,
+      id: doc.id,
       orderNumber: data.orderNumber,
       customerName: data.customerName,
       customerPhone: data.customerPhone,
@@ -186,7 +199,7 @@ export class FirebaseOrderService {
       status: data.status,
       deliveryDate: data.deliveryDate,
       notes: data.notes,
-      createdAt: data.createdAt?.toDate().toISOString(),
+      createdAt: data.createdAt?.toDate ? data.createdAt.toDate().toISOString() : data.createdAt,
       tags: data.tags,
       payment: data.payment,
       createdByName: data.createdByName,
@@ -220,51 +233,55 @@ export class FirebaseOrderService {
   }
 
   /**
-   * Listar pedidos do usuário autenticado
+   * Listar pedidos do usuário autenticado (ou todos se admin, próprios + atribuídos se funcionário)
    */
   async getOrders(): Promise<Order[]> {
     const userId = this.getCurrentUserId();
     const ordersRef = collection(db, ORDERS_COLLECTION);
 
-    const q = query(
+    let role = 'user';
+    try {
+      const profileSnap = await getDoc(doc(db, 'userProfiles', userId));
+      if (profileSnap.exists()) {
+        role = profileSnap.data().role;
+      }
+    } catch {}
+
+    if (role === 'admin') {
+      const q = query(
+        ordersRef,
+        where('deletedAt', '==', null),
+        orderBy('createdAt', 'desc')
+      );
+      const snapshot = await getDocs(q);
+      return snapshot.docs.map(doc => this.mapOrderDoc(doc));
+    }
+
+    const ownQuery = query(
       ordersRef,
       where('userId', '==', userId),
       where('deletedAt', '==', null),
       orderBy('createdAt', 'desc')
     );
+    const ownSnapshot = await getDocs(ownQuery);
 
-    const snapshot = await getDocs(q);
+    if (role === 'funcionario') {
+      const assignedQuery = query(
+        ordersRef,
+        where('assignedTo', '==', userId),
+        where('deletedAt', '==', null),
+        orderBy('createdAt', 'desc')
+      );
+      const assignedSnapshot = await getDocs(assignedQuery);
+      const orderMap = new Map<string, Order>();
+      ownSnapshot.docs.forEach(d => orderMap.set(d.id, this.mapOrderDoc(d)));
+      assignedSnapshot.docs.forEach(d => orderMap.set(d.id, this.mapOrderDoc(d)));
+      return [...orderMap.values()].sort((a, b) =>
+        String(b.createdAt || '').localeCompare(String(a.createdAt || ''))
+      );
+    }
 
-    return snapshot.docs.map(doc => {
-      const data = doc.data();
-      return {
-        id: doc.id,
-        orderNumber: data.orderNumber,
-        customerName: data.customerName,
-        customerPhone: data.customerPhone,
-        customerId: data.customerId,
-        productName: data.productName,
-        quantity: data.quantity,
-        price: data.price,
-        status: data.status,
-        deliveryDate: data.deliveryDate,
-        notes: data.notes,
-        createdAt: data.createdAt?.toDate().toISOString(),
-        tags: data.tags,
-        payment: data.payment,
-        createdByName: data.createdByName,
-        assignedTo: data.assignedTo,
-        assignedToName: data.assignedToName,
-        assignedAt: data.assignedAt,
-        assignedBy: data.assignedBy,
-        productionWorkflow: data.productionWorkflow,
-        attachments: data.attachments,
-        isExchange: data.isExchange ?? false,
-        exchangeNotes: data.exchangeNotes,
-        exchangeItems: data.exchangeItems,
-        cardColor: data.cardColor,
-      } as Order;
-    });
+    return ownSnapshot.docs.map(doc => this.mapOrderDoc(doc));
   }
 
   async assignOrder(orderId: string, employee: { uid: string; displayName: string } | null): Promise<void> {
@@ -292,7 +309,7 @@ export class FirebaseOrderService {
 
     // Verificar propriedade
     const orderSnap = await getDoc(orderRef);
-    if (!orderSnap.exists() || !this.canAccessAssignedOrder(orderSnap.data(), userId)) {
+    if (!orderSnap.exists() || !(await this.canAccessAssignedOrder(orderSnap.data(), userId))) {
       throw new Error('Pedido não encontrado ou sem permissão');
     }
 
@@ -310,7 +327,7 @@ export class FirebaseOrderService {
 
     // Verificar propriedade
     const orderSnap = await getDoc(orderRef);
-    if (!orderSnap.exists() || !this.canAccessAssignedOrder(orderSnap.data(), userId)) {
+    if (!orderSnap.exists() || !(await this.canAccessAssignedOrder(orderSnap.data(), userId))) {
       throw new Error('Pedido não encontrado ou sem permissão');
     }
 
@@ -361,7 +378,7 @@ export class FirebaseOrderService {
     const orderRef = doc(db, ORDERS_COLLECTION, orderId);
     const orderSnap = await getDoc(orderRef);
 
-    if (!orderSnap.exists() || orderSnap.data().userId !== userId) {
+    if (!orderSnap.exists() || !(await this.canAccessAssignedOrder(orderSnap.data(), userId))) {
       throw new Error('Pedido não encontrado ou sem permissão');
     }
 
@@ -407,7 +424,7 @@ export class FirebaseOrderService {
     const orderRef = doc(db, ORDERS_COLLECTION, orderId);
     const orderSnap = await getDoc(orderRef);
 
-    if (!orderSnap.exists() || !this.canAccessAssignedOrder(orderSnap.data(), userId)) {
+    if (!orderSnap.exists() || !(await this.canAccessAssignedOrder(orderSnap.data(), userId))) {
       throw new Error('Pedido não encontrado ou sem permissão');
     }
 
@@ -423,7 +440,7 @@ export class FirebaseOrderService {
     const orderRef = doc(db, ORDERS_COLLECTION, orderId);
     const orderSnap = await getDoc(orderRef);
 
-    if (!orderSnap.exists() || !this.canAccessAssignedOrder(orderSnap.data(), userId)) {
+    if (!orderSnap.exists() || !(await this.canAccessAssignedOrder(orderSnap.data(), userId))) {
       throw new Error('Pedido não encontrado ou sem permissão');
     }
 
@@ -473,7 +490,7 @@ export class FirebaseOrderService {
 
     // Verificar propriedade
     const orderSnap = await getDoc(orderRef);
-    if (!orderSnap.exists() || orderSnap.data().userId !== userId) {
+    if (!orderSnap.exists() || !(await this.canAccessAssignedOrder(orderSnap.data(), userId))) {
       throw new Error('Pedido não encontrado ou sem permissão');
     }
 
@@ -511,7 +528,7 @@ export class FirebaseOrderService {
 
     // Verificar propriedade
     const orderSnap = await getDoc(orderRef);
-    if (!orderSnap.exists() || orderSnap.data().userId !== userId) {
+    if (!orderSnap.exists() || !(await this.canAccessAssignedOrder(orderSnap.data(), userId))) {
       throw new Error('Pedido não encontrado ou sem permissão');
     }
 
