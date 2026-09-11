@@ -2,7 +2,7 @@
  * Firebase User Management Service
  *
  * Gerencia criação e perfis de usuários.
- * Usa a REST API do Firebase Auth para criar usuários sem deslogar o admin.
+ * Usa Cloud Functions para operações sensíveis (createUser, deleteUser) com validação de admin no servidor.
  */
 
 import {
@@ -37,8 +37,8 @@ export class FirebaseUserService {
     return result.data;
   }
   /**
-   * Cria um novo usuário via Firebase Auth REST API (sem deslogar o admin atual),
-   * depois salva o UserProfile no Firestore.
+   * Cria um novo usuário via Cloud Function segura (com validação de admin no servidor),
+   * depois retorna o UserProfile criado.
    */
   async createUser(
     email: string,
@@ -48,38 +48,13 @@ export class FirebaseUserService {
     permissions: Permission,
     createdBy: string,
   ): Promise<UserProfile> {
-    const apiKey = import.meta.env.VITE_FIREBASE_API_KEY;
-    const res = await fetch(
-      `https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=${apiKey}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password, displayName, returnSecureToken: false }),
-      },
-    );
+    const callable = httpsCallable<
+      { email: string; password: string; displayName: string; role: string; permissions: Permission; createdBy: string },
+      { success: boolean; uid: string; profile: UserProfile }
+    >(functions, 'createUser');
 
-    if (!res.ok) {
-      const err = await res.json();
-      const msg = err?.error?.message || 'Erro ao criar usuário';
-      throw new Error(msg);
-    }
-
-    const data = await res.json();
-    const uid: string = data.localId;
-
-    const profile: UserProfile = {
-      uid,
-      email,
-      displayName,
-      role,
-      permissions,
-      active: true,
-      createdAt: new Date().toISOString(),
-      createdBy,
-    };
-
-    await setDoc(doc(db, USERS_COLLECTION, uid), profile);
-    return profile;
+    const result = await callable({ email, password, displayName, role, permissions, createdBy });
+    return result.data.profile;
   }
 
   /**

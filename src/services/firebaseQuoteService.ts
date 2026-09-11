@@ -145,13 +145,33 @@ export class FirebaseQuoteService {
 
   // ─── Read single ─────────────────────────────────────────────────────────────
   async getQuoteById(id: string): Promise<Quote> {
+    const userId = this.getCurrentUserId();
     const snap = await getDoc(doc(db, QUOTES_COLLECTION, id));
     if (!snap.exists()) throw new Error(`Orçamento ${id} não encontrado`);
-    return this.mapDoc(snap.id, snap.data());
+    const data = snap.data();
+    if (data.userId !== userId) {
+      // Verificar se é admin
+      const profileSnap = await getDoc(doc(db, 'userProfiles', userId));
+      if (!profileSnap.exists() || profileSnap.data().role !== 'admin') {
+        throw new Error('Você não tem permissão para acessar este orçamento');
+      }
+    }
+    return this.mapDoc(snap.id, data);
   }
 
   // ─── Update ──────────────────────────────────────────────────────────────────
   async updateQuote(id: string, changes: Partial<Quote>): Promise<void> {
+    const userId = this.getCurrentUserId();
+    const quoteSnap = await getDoc(doc(db, QUOTES_COLLECTION, id));
+    if (!quoteSnap.exists()) throw new Error(`Orçamento ${id} não encontrado`);
+    const quoteData = quoteSnap.data();
+    if (quoteData.userId !== userId) {
+      const profileSnap = await getDoc(doc(db, 'userProfiles', userId));
+      if (!profileSnap.exists() || profileSnap.data().role !== 'admin') {
+        throw new Error('Você não tem permissão para editar este orçamento');
+      }
+    }
+
     const { id: _id, userId: _uid, createdAt: _ca, quoteNumber: _qn, ...rest } = changes as any;
     // Firestore rejeita undefined — converte para null e garante valores positivos
     const sanitized = Object.fromEntries(
@@ -193,6 +213,16 @@ export class FirebaseQuoteService {
 
   // ─── Delete ──────────────────────────────────────────────────────────────────
   async deleteQuote(id: string): Promise<void> {
+    const userId = this.getCurrentUserId();
+    const quoteSnap = await getDoc(doc(db, QUOTES_COLLECTION, id));
+    if (!quoteSnap.exists()) throw new Error(`Orçamento ${id} não encontrado`);
+    const quoteData = quoteSnap.data();
+    if (quoteData.userId !== userId) {
+      const profileSnap = await getDoc(doc(db, 'userProfiles', userId));
+      if (!profileSnap.exists() || profileSnap.data().role !== 'admin') {
+        throw new Error('Você não tem permissão para excluir este orçamento');
+      }
+    }
     await deleteDoc(doc(db, QUOTES_COLLECTION, id));
   }
 }

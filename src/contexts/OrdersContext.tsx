@@ -329,7 +329,7 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
 
       return false;
     });
-  }, [allOrders, isFilterActive, selectedUserIds, profiles]);
+  }, [enrichedOrders, isFilterActive, selectedUserIds, profiles]);
 
   const selectedFilterLabel = useMemo(() => {
     if (!isFilterActive) return 'Todos (Tudo)';
