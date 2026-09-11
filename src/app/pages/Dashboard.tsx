@@ -813,7 +813,7 @@ export function Dashboard() {
                 Limpar
               </Button>
             )}
-            {selectedOrderIds.length > 0 && hasPermission(p => p.orders?.delete ?? false) && (
+            {selectedOrderIds.length > 0 && (hasPermission(p => p.orders?.delete ?? false) || userProfile?.role === 'user') && (
               <Button
                 variant="destructive"
                 size="sm"

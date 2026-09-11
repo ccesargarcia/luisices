@@ -299,13 +299,13 @@ export const ADMIN_PERMISSIONS: Permission = {
 
 export const DEFAULT_USER_PERMISSIONS: Permission = {
   dashboard: true,
-  orders:    { view: true, create: true, edit: true, delete: false },
-  customers: { view: true, create: true, edit: true, delete: false },
-  products:  { view: true, create: false, edit: false, delete: false },
-  quotes:    { view: true, create: true, edit: true, delete: false },
-  gallery:   { view: true, create: true, delete: false },
-  reports:   false,
-  exchanges: false,
+  orders:    { view: true, create: true, edit: true, delete: true },
+  customers: { view: true, create: true, edit: true, delete: true },
+  products:  { view: true, create: true, edit: true, delete: true },
+  quotes:    { view: true, create: true, edit: true, delete: true },
+  gallery:   { view: true, create: true, delete: true },
+  reports:   true,
+  exchanges: true,
   settings:  true,
   users:     { view: false, create: false, edit: false, delete: false },
 };

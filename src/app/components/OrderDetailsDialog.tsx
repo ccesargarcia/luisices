@@ -465,7 +465,7 @@ export function OrderDetailsDialog({ order, open, onOpenChange, onUpdateStatus, 
               </div>
 
               <div className="flex justify-between items-center pt-4">
-                {onDeleteOrder && hasPermission(p => p.orders?.delete ?? false) && (
+                {onDeleteOrder && (hasPermission(p => p.orders?.delete ?? false) || order.userId === user?.uid) && (
                   <AlertDialog>
                     <AlertDialogTrigger asChild>
                       <Button variant="outline" className="gap-2">

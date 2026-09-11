@@ -113,7 +113,7 @@ export const router = createBrowserRouter([
       },
       {
         path: 'relatorios',
-        element: <Lazy><PermissionRoute check={p => p.reports}><Reports /></PermissionRoute></Lazy>,
+        element: <Lazy><PermissionRoute check={p => p.reports} allowUserRole><Reports /></PermissionRoute></Lazy>,
       },
       {
         path: 'orcamentos',
@@ -129,7 +129,7 @@ export const router = createBrowserRouter([
       },
       {
         path: 'permutas',
-        element: <Lazy><PermissionRoute check={p => p.exchanges}><Exchanges /></PermissionRoute></Lazy>,
+        element: <Lazy><PermissionRoute check={p => p.exchanges} allowUserRole><Exchanges /></PermissionRoute></Lazy>,
       },
       {
         path: 'configuracoes',

@@ -5,7 +5,7 @@ import { doc, onSnapshot } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { firebaseAuthService } from '../services/firebaseAuthService';
 import { firebaseUserService } from '../services/firebaseUserService';
-import { UserProfile } from '../app/types';
+import { UserProfile, ADMIN_PERMISSIONS, DEFAULT_USER_PERMISSIONS, EMPLOYEE_PERMISSIONS } from '../app/types';
 import { setUserAnalytics } from '../services/analyticsService';
 import { toast } from 'sonner';
 
@@ -75,16 +75,48 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 return;
               }
 
-              const profile = snap.data() as UserProfile;
+              const data = snap.data() as UserProfile;
 
               // Se o administrador desativar a conta, efetua logout imediatamente
-              if (!profile.active) {
+              if (!data.active) {
                 toast.error('Sua conta foi desativada pelo administrador.');
                 firebaseAuthService.logout().catch(() => {});
                 setUserProfile(null);
                 setLoading(false);
                 return;
               }
+
+              const fallbackPermissions = data.role === 'admin'
+                ? ADMIN_PERMISSIONS
+                : data.role === 'funcionario'
+                  ? EMPLOYEE_PERMISSIONS
+                  : DEFAULT_USER_PERMISSIONS;
+
+              // Para usuários padrão ('user'), assegura acesso aos seus relatórios, permutas e exclusão dos próprios pedidos
+              const permissions = data.role === 'admin'
+                ? ADMIN_PERMISSIONS
+                : data.role === 'user'
+                  ? {
+                      ...DEFAULT_USER_PERMISSIONS,
+                      ...(data.permissions || {}),
+                      reports: true,
+                      exchanges: true,
+                      settings: true,
+                      orders: {
+                        ...DEFAULT_USER_PERMISSIONS.orders,
+                        ...(data.permissions?.orders || {}),
+                        delete: true,
+                      },
+                    }
+                  : {
+                      ...fallbackPermissions,
+                      ...(data.permissions || {}),
+                    };
+
+              const profile: UserProfile = {
+                ...data,
+                permissions,
+              };
 
               setUserProfile(profile);
               setUserAnalytics(u.uid, profile.role);
@@ -150,6 +182,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     (check: (p: UserProfile['permissions']) => boolean): boolean => {
       if (!userProfile || !userProfile.active) {
         return false;
+      }
+      if (userProfile.role === 'admin') {
+        return true;
       }
       return check(userProfile.permissions);
     },
