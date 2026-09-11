@@ -121,8 +121,8 @@ service cloud.firestore {
           && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.role == 'admin';
       }
 
-      // Leitura: usuário lê apenas o próprio perfil; admin lê todos
-      allow read: if request.auth != null && (request.auth.uid == uid || isAdmin());
+      // Leitura: usuário lê apenas o próprio perfil; admin e funcionários ativos leem todos para colaboração na equipe
+      allow read: if request.auth != null && (request.auth.uid == uid || isAdmin() || isActiveEmployee());
 
       // Criação: usuário cria o próprio perfil (primeiro acesso automático), ou admin cria para outro
       allow create: if request.auth != null && (request.auth.uid == uid || isAdmin());

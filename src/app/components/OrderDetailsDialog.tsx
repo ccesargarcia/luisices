@@ -14,6 +14,7 @@ import { firebaseUserService } from '../../services/firebaseUserService';
 import { firebaseStorageService } from '../../services/firebaseStorageService';
 import { firebaseGalleryService } from '../../services/firebaseGalleryService';
 import { useAuth } from '../../contexts/AuthContext';
+import { useOrders } from '../../contexts/OrdersContext';
 import { toast } from 'sonner';
 import { OrderInfoView } from './orders/OrderInfoView';
 import { OrderEditForm, ProductItem, OrderEditState } from './orders/OrderEditForm';
@@ -45,6 +46,7 @@ const statusLabels = {
 export function OrderDetailsDialog({ order, open, onOpenChange, onUpdateStatus, onDeleteOrder }: OrderDetailsDialogProps) {
   const { user, userProfile, hasPermission } = useAuth();
   const { settings } = useUserSettings();
+  const { teamMembers } = useOrders();
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isDuplicating, setIsDuplicating] = useState(false);
@@ -89,9 +91,10 @@ export function OrderDetailsDialog({ order, open, onOpenChange, onUpdateStatus, 
   }, [order?.id]);
 
   const [allUsers, setAllUsers] = useState<UserProfile[]>([]);
+  const [singleCreatorName, setSingleCreatorName] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!open || userProfile?.role !== 'admin') return;
+    if (!open || (userProfile?.role !== 'admin' && userProfile?.role !== 'funcionario')) return;
     firebaseUserService.listUsers()
       .then(users => {
         setAllUsers(users);
@@ -103,7 +106,53 @@ export function OrderDetailsDialog({ order, open, onOpenChange, onUpdateStatus, 
       });
   }, [open, userProfile?.role]);
 
+  // Fallback dedicado para buscar o criador direto caso o pedido ainda não tenha o nome resolvido
+  useEffect(() => {
+    if (!open || !order?.userId) {
+      setSingleCreatorName(null);
+      return;
+    }
+
+    if (order.createdByName && order.createdByName !== 'Usuário proprietário') {
+      setSingleCreatorName(order.createdByName);
+      return;
+    }
+
+    if (order.userId === user?.uid) {
+      setSingleCreatorName(user.displayName || user.email || 'Você');
+      return;
+    }
+
+    const inTeam = teamMembers?.find(m => m.uid === order.userId);
+    if (inTeam?.displayName) {
+      setSingleCreatorName(inTeam.displayName);
+      return;
+    }
+
+    const inAll = allUsers.find(u => u.uid === order.userId);
+    if (inAll?.displayName || inAll?.email) {
+      setSingleCreatorName(inAll.displayName || inAll.email || null);
+      return;
+    }
+
+    let active = true;
+    firebaseUserService.getUserProfile(order.userId)
+      .then(profile => {
+        if (active && profile) {
+          setSingleCreatorName(profile.displayName || profile.email || null);
+        }
+      })
+      .catch(() => {});
+
+    return () => {
+      active = false;
+    };
+  }, [open, order?.id, order?.userId, order?.createdByName, user, teamMembers, allUsers]);
+
   const displayCreatedByName = useMemo(() => {
+    if (singleCreatorName && singleCreatorName !== 'Usuário proprietário') {
+      return singleCreatorName;
+    }
     if (order?.createdByName && order.createdByName !== 'Usuário proprietário') {
       return order.createdByName;
     }
@@ -111,13 +160,19 @@ export function OrderDetailsDialog({ order, open, onOpenChange, onUpdateStatus, 
       if (order.userId === user?.uid) {
         return user.displayName || user.email || 'Você';
       }
+      const inTeam = teamMembers?.find(m => m.uid === order.userId);
+      if (inTeam?.displayName) {
+        return inTeam.displayName;
+      }
       const found = allUsers.find(u => u.uid === order.userId);
       if (found?.displayName || found?.email) {
         return found.displayName || found.email;
       }
     }
-    return order?.createdByName;
-  }, [order?.createdByName, order?.userId, user, allUsers]);
+    return (order?.createdByName && order.createdByName !== 'Usuário proprietário')
+      ? order.createdByName
+      : undefined;
+  }, [order?.createdByName, order?.userId, user, allUsers, singleCreatorName, teamMembers]);
 
   const effectiveOrder = useMemo(() => {
     if (!order) return null;

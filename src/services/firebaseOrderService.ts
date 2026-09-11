@@ -292,13 +292,31 @@ export class FirebaseOrderService {
       throw new Error('Apenas administradores podem atribuir pedidos');
     }
 
-    await updateDoc(doc(db, ORDERS_COLLECTION, orderId), {
+    const orderRef = doc(db, ORDERS_COLLECTION, orderId);
+    const orderSnap = await getDoc(orderRef);
+    const updateData: Record<string, any> = {
       assignedTo: employee?.uid || null,
       assignedToName: employee?.displayName || null,
       assignedAt: employee ? new Date().toISOString() : null,
       assignedBy: employee ? userId : null,
       updatedAt: new Date().toISOString(),
-    });
+    };
+
+    if (orderSnap.exists()) {
+      const orderData = orderSnap.data();
+      if (!orderData.createdByName || orderData.createdByName === 'Usuário proprietário') {
+        const creatorUid = orderData.userId;
+        if (creatorUid) {
+          const creatorSnap = await getDoc(doc(db, 'userProfiles', creatorUid));
+          if (creatorSnap.exists()) {
+            const cData = creatorSnap.data();
+            updateData.createdByName = cData.displayName || cData.email || 'Usuário';
+          }
+        }
+      }
+    }
+
+    await updateDoc(orderRef, updateData);
   }
 
   async assignOrdersBulk(orderIds: string[], employee: { uid: string; displayName: string } | null): Promise<void> {
@@ -419,6 +437,7 @@ export class FirebaseOrderService {
     const price = this.ensurePositive(data.price);
     const newOrderRef = await addDoc(ordersRef, {
       userId,
+      createdByName: auth.currentUser?.displayName || auth.currentUser?.email || userId,
       orderNumber,
       customerName: data.customerName,
       customerPhone: data.customerPhone,

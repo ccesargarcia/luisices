@@ -118,7 +118,7 @@ export function Dashboard() {
   const [creatorProfiles, setCreatorProfiles] = useState<UserProfile[]>([]);
 
   useEffect(() => {
-    if (userProfile?.role !== 'admin') {
+    if (userProfile?.role !== 'admin' && userProfile?.role !== 'funcionario') {
       setCreatorProfiles([]);
       return;
     }
@@ -144,9 +144,15 @@ export function Dashboard() {
   const firstGridLastItemClass = firstGridCount === 3 ? 'col-span-2 lg:col-span-1' : '';
   const secondGridLastItemClass = secondGridCount === 3 ? 'col-span-2 lg:col-span-1' : '';
   const handleOrderClick = (order: Order) => {
+    const creatorName = (order.createdByName && order.createdByName !== 'Usuário proprietário')
+      ? order.createdByName
+      : creatorProfiles.find(profile => profile.uid === order.userId)?.displayName
+        || (order.userId === user?.uid ? user.displayName || user.email || 'Você' : undefined)
+        || (order.createdByName !== 'Usuário proprietário' ? order.createdByName : undefined);
+
     setSelectedOrder({
       ...order,
-      createdByName: order.createdByName || creatorProfiles.find(profile => profile.uid === order.userId)?.displayName,
+      createdByName: creatorName,
     });
     setDetailsOpen(true);
   };

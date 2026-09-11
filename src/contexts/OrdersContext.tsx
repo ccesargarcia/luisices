@@ -76,9 +76,9 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
   const [profiles, setProfiles] = useState<UserProfile[]>([]);
   const [selectedUserIds, setSelectedUserIdsState] = useState<string[]>(getInitialSelectedUsers);
 
-  // Carregar perfis em tempo real quando for admin
+  // Carregar perfis em tempo real quando for admin ou funcionário
   useEffect(() => {
-    if (!user || userProfile?.role !== 'admin') {
+    if (!user || (userProfile?.role !== 'admin' && userProfile?.role !== 'funcionario')) {
       setProfiles([]);
       return;
     }
@@ -235,9 +235,9 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
     });
   }, [allOrders, profiles, user]);
 
-  // Lista de membros de equipe para o filtro
+  // Lista de membros de equipe para o filtro e resolução de nomes
   const teamMembers = useMemo((): TeamMemberOption[] => {
-    if (userProfile?.role !== 'admin') return [];
+    if (userProfile?.role !== 'admin' && userProfile?.role !== 'funcionario') return [];
 
     const memberMap = new Map<string, TeamMemberOption>();
 

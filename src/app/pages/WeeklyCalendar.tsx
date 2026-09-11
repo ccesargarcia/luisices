@@ -161,7 +161,7 @@ export function WeeklyCalendar() {
       ? order.createdByName
       : teamMembers.find(m => m.uid === order.userId)?.displayName
         || (order.userId === user?.uid ? user.displayName || user.email || 'Você' : undefined)
-        || order.createdByName;
+        || (order.createdByName !== 'Usuário proprietário' ? order.createdByName : undefined);
 
     setSelectedOrder({
       ...order,
