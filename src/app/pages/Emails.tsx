@@ -147,6 +147,21 @@ export function Emails() {
   const [searchQuery, setSearchQuery] = useState('');
   const [filterType, setFilterType] = useState<'all' | 'unread' | 'starred' | 'archived'>('all');
 
+  const isDev = useMemo(() => {
+    return (
+      import.meta.env.DEV ||
+      import.meta.env.VITE_FIREBASE_PROJECT_ID === 'luisices-dev' ||
+      (typeof window !== 'undefined' &&
+        (window.location.hostname.includes('dev') ||
+          window.location.hostname === 'localhost' ||
+          window.location.hostname === '127.0.0.1'))
+    );
+  }, []);
+
+  const defaultSender = isDev
+    ? 'Luisices Dev <contato@dev.luisices.com.br>'
+    : 'Luisices <contato@luisices.com.br>';
+
   // Detail modal
   const [selectedReceivedEmail, setSelectedReceivedEmail] = useState<ReceivedEmail | null>(null);
   const [selectedSentEmail, setSelectedSentEmail] = useState<SentEmail | null>(null);
@@ -154,7 +169,9 @@ export function Emails() {
   // Compose form
   const [recipient, setRecipient] = useState('');
   const [selectedCustomer, setSelectedCustomer] = useState<string>('');
-  const [sender, setSender] = useState('Luisices <contato@luisices.com.br>');
+  const [sender, setSender] = useState(defaultSender);
+  const [customSender, setCustomSender] = useState('');
+  const [isCustomSender, setIsCustomSender] = useState(false);
   const [subject, setSubject] = useState('');
   const [body, setBody] = useState('');
   const [cc, setCc] = useState('');
@@ -265,24 +282,26 @@ export function Emails() {
 
     setIsSending(true);
     try {
+      const activeSender = isCustomSender && customSender.trim() ? customSender.trim() : sender;
+
       // Transform plain text with linebreaks to formatted HTML
       const formattedHtml = `
         <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; color: #2d3748; max-width: 600px; margin: 0 auto; padding: 20px;">
           <div style="background-color: #f7fafc; border-left: 4px solid #4f46e5; padding: 15px 20px; border-radius: 4px; margin-bottom: 25px;">
-            <h2 style="margin: 0; color: #1a202c; font-size: 18px;">Luisices Papelaria Personalizada</h2>
+            <h2 style="margin: 0; color: #1a202c; font-size: 18px;">Luisices Papelaria Personalizada ${isDev ? '(Ambiente DEV)' : ''}</h2>
           </div>
           <div style="font-size: 15px; white-space: pre-wrap; margin-bottom: 30px;">${body}</div>
           <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 25px 0;" />
           <div style="font-size: 12px; color: #718096; line-height: 1.5;">
             <p style="margin: 0;"><strong>Luisices Personalizados</strong></p>
-            <p style="margin: 3px 0 0 0;">WhatsApp: (11) 97060-6433 | contato@luisices.com.br</p>
-            <p style="margin: 3px 0 0 0;"><a href="https://luisices.com.br" style="color: #4f46e5; text-decoration: none;">luisices.com.br</a></p>
+            <p style="margin: 3px 0 0 0;">WhatsApp: (11) 97060-6433 | ${isDev ? 'contato@dev.luisices.com.br' : 'contato@luisices.com.br'}</p>
+            <p style="margin: 3px 0 0 0;"><a href="${isDev ? 'https://dev.luisices.com.br' : 'https://luisices.com.br'}" style="color: #4f46e5; text-decoration: none;">${isDev ? 'dev.luisices.com.br' : 'luisices.com.br'}</a></p>
           </div>
         </div>
       `;
 
       const payload: SendEmailPayload = {
-        from: sender,
+        from: activeSender,
         to: recipientList,
         subject: subject.trim(),
         text: body,
@@ -342,7 +361,9 @@ export function Emails() {
     return date.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' });
   };
 
-  const projectUrl = 'https://us-central1-luisices.cloudfunctions.net/resendReceivingWebhook';
+  const projectUrl = isDev
+    ? 'https://us-central1-luisices-dev.cloudfunctions.net/resendReceivingWebhook'
+    : 'https://us-central1-luisices.cloudfunctions.net/resendReceivingWebhook';
 
   return (
     <div className="container mx-auto p-4 md:p-6 max-w-7xl space-y-6">
@@ -734,23 +755,71 @@ export function Emails() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {/* Sender address */}
                   <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-muted-foreground">Remetente (From):</label>
-                    <Select value={sender} onValueChange={setSender}>
-                      <SelectTrigger className="h-10 text-sm">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="Luisices <contato@luisices.com.br>">
-                          Luisices &lt;contato@luisices.com.br&gt;
-                        </SelectItem>
-                        <SelectItem value="Luisices <noreply@luisices.com.br>">
-                          Luisices &lt;noreply@luisices.com.br&gt;
-                        </SelectItem>
-                        <SelectItem value="Atendimento Luisices <suporte@luisices.com.br>">
-                          Atendimento &lt;suporte@luisices.com.br&gt;
-                        </SelectItem>
-                      </SelectContent>
-                    </Select>
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-semibold text-muted-foreground flex items-center gap-1.5">
+                        <span>Remetente (From):</span>
+                        {isDev && (
+                          <Badge variant="outline" className="text-[10px] bg-amber-500/10 text-amber-600 border-amber-300">
+                            Ambiente DEV
+                          </Badge>
+                        )}
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => setIsCustomSender(!isCustomSender)}
+                        className="text-[11px] text-primary hover:underline"
+                      >
+                        {isCustomSender ? 'Selecionar da Lista' : 'Digitar Manual'}
+                      </button>
+                    </div>
+
+                    {isCustomSender ? (
+                      <Input
+                        placeholder="Ex: Luisices Teste <contato@dev.luisices.com.br>"
+                        value={customSender}
+                        onChange={(e) => setCustomSender(e.target.value)}
+                        className="h-10 text-sm"
+                      />
+                    ) : (
+                      <Select value={sender} onValueChange={setSender}>
+                        <SelectTrigger className="h-10 text-sm">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {isDev ? (
+                            <>
+                              <SelectItem value="Luisices Dev <contato@dev.luisices.com.br>">
+                                Luisices Dev &lt;contato@dev.luisices.com.br&gt;
+                              </SelectItem>
+                              <SelectItem value="Luisices Dev <noreply@dev.luisices.com.br>">
+                                Luisices Dev &lt;noreply@dev.luisices.com.br&gt;
+                              </SelectItem>
+                              <SelectItem value="Atendimento Dev <suporte@dev.luisices.com.br>">
+                                Atendimento Dev &lt;suporte@dev.luisices.com.br&gt;
+                              </SelectItem>
+                              <SelectItem value="Resend Sandbox <onboarding@resend.dev>">
+                                Resend Sandbox &lt;onboarding@resend.dev&gt;
+                              </SelectItem>
+                              <SelectItem value="Luisices Prod <contato@luisices.com.br>">
+                                Luisices Prod &lt;contato@luisices.com.br&gt;
+                              </SelectItem>
+                            </>
+                          ) : (
+                            <>
+                              <SelectItem value="Luisices <contato@luisices.com.br>">
+                                Luisices &lt;contato@luisices.com.br&gt;
+                              </SelectItem>
+                              <SelectItem value="Luisices <noreply@luisices.com.br>">
+                                Luisices &lt;noreply@luisices.com.br&gt;
+                              </SelectItem>
+                              <SelectItem value="Atendimento Luisices <suporte@luisices.com.br>">
+                                Atendimento &lt;suporte@luisices.com.br&gt;
+                              </SelectItem>
+                            </>
+                          )}
+                        </SelectContent>
+                      </Select>
+                    )}
                   </div>
 
                   {/* Customer Quick Selector */}

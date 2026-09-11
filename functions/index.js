@@ -458,7 +458,11 @@ exports.sendCustomEmail = onCall({ cors: true, secrets: [RESEND_API_KEY] }, asyn
   const recipientList = Array.isArray(to)
     ? to.map((e) => String(e).trim()).filter(Boolean)
     : [String(to).trim()];
-  const senderEmail = from && from.trim() ? from.trim() : 'Luisices <contato@luisices.com.br>';
+  const isDev = (process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT) === 'luisices-dev';
+  const defaultSender = isDev
+    ? 'Luisices Dev <contato@dev.luisices.com.br>'
+    : 'Luisices <contato@luisices.com.br>';
+  const senderEmail = from && from.trim() ? from.trim() : defaultSender;
 
   try {
     const payload = {
