@@ -86,5 +86,48 @@ test.describe('Autenticação', () => {
     await page.waitForURL((url) => !url.pathname.includes('/dashboard'), { timeout: 15000 });
     await expect(page.locator('input[type="email"]')).toBeVisible({ timeout: 10000 });
   });
+
+  test('deve acessar tela de recuperação de senha e validar formulário', async ({ page }) => {
+    await page.goto('/recuperar-senha');
+    await page.waitForLoadState('domcontentloaded');
+
+    // 1. Validar cabeçalho
+    await expect(page.getByRole('heading', { name: /Recuperar Senha/i })).toBeVisible({ timeout: 5000 });
+    await expect(page.getByText('Digite seu e-mail para receber as instruções')).toBeVisible({ timeout: 5000 });
+
+    // 2. Validar input de e-mail e botão de envio
+    const emailInput = page.locator('#email');
+    await expect(emailInput).toBeVisible({ timeout: 5000 });
+
+    const submitBtn = page.getByRole('button', { name: /Enviar E-mail/i });
+    await expect(submitBtn).toBeVisible({ timeout: 5000 });
+
+    // 3. Validar link de retorno ao login
+    const backBtn = page.getByRole('button', { name: /Voltar para o login/i });
+    await expect(backBtn).toBeVisible({ timeout: 5000 });
+  });
+
+  test('deve acessar tela de registro e validar bloqueio sem convite', async ({ page }) => {
+    await page.goto('/registrar');
+    await page.waitForLoadState('domcontentloaded');
+
+    // 1. Validar cabeçalho
+    await expect(page.getByRole('heading', { name: /Criar Conta/i })).toBeVisible({ timeout: 5000 });
+
+    // 2. Preencher dados de cadastro
+    await page.locator('#name').fill('Usuário Teste');
+    await page.locator('#email').fill('novo-teste@exemplo.com');
+    await page.locator('#password').fill('Senha123456');
+    await page.locator('#confirmPassword').fill('Senha123456');
+
+    // 3. Tentar submeter sem convite válido
+    const submitBtn = page.getByRole('button', { name: /Criar Conta/i });
+    await submitBtn.click();
+
+    // 4. Deve exibir alerta informando necessidade de convite
+    const alert = page.getByText(/Este cadastro só pode ser acessado por um convite válido/i).first();
+    await expect(alert).toBeVisible({ timeout: 10000 });
+  });
 });
+
 

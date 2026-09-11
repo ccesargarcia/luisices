@@ -14,10 +14,14 @@ test.beforeEach(async ({ page }) => {
 test.describe('Navegação entre Páginas', () => {
   const pages = [
     { name: 'Dashboard', path: '/dashboard' },
+    { name: 'Agenda', path: '/agenda' },
     { name: 'Clientes', path: '/clientes' },
     { name: 'Produtos', path: '/produtos' },
     { name: 'Orçamentos', path: '/orcamentos' },
+    { name: 'Permutas', path: '/permutas' },
+    { name: 'Relatórios', path: '/relatorios' },
     { name: 'Galeria', path: '/galeria' },
+    { name: 'Configurações', path: '/configuracoes' },
     { name: 'Ajuda', path: '/ajuda' },
   ];
 
