@@ -92,20 +92,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                   ? EMPLOYEE_PERMISSIONS
                   : DEFAULT_USER_PERMISSIONS;
 
-              // Para usuários padrão ('user'), assegura acesso aos seus relatórios, permutas e exclusão dos próprios pedidos
+              // Para usuários padrão ('user'), usa DEFAULT_USER_PERMISSIONS como base e respeita permissões do Firestore
               const permissions = data.role === 'admin'
                 ? ADMIN_PERMISSIONS
                 : data.role === 'user'
                   ? {
                       ...DEFAULT_USER_PERMISSIONS,
                       ...(data.permissions || {}),
-                      reports: true,
-                      exchanges: true,
-                      settings: true,
+                      reports: data.permissions?.reports ?? DEFAULT_USER_PERMISSIONS.reports,
+                      exchanges: data.permissions?.exchanges ?? DEFAULT_USER_PERMISSIONS.exchanges,
+                      settings: data.permissions?.settings ?? DEFAULT_USER_PERMISSIONS.settings,
                       orders: {
                         ...DEFAULT_USER_PERMISSIONS.orders,
                         ...(data.permissions?.orders || {}),
-                        delete: true,
+                        delete: data.permissions?.orders?.delete ?? DEFAULT_USER_PERMISSIONS.orders.delete,
                       },
                     }
                   : {

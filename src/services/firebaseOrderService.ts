@@ -214,6 +214,8 @@ export class FirebaseOrderService {
       exchangeNotes: data.exchangeNotes,
       exchangeItems: data.exchangeItems,
       cardColor: data.cardColor,
+      userId: data.userId,
+      updatedAt: data.updatedAt?.toDate ? data.updatedAt.toDate().toISOString() : data.updatedAt,
     } as Order;
   }
 
@@ -651,27 +653,7 @@ export class FirebaseOrderService {
 
     const snapshot = await getDocs(q);
 
-    return snapshot.docs.map(doc => {
-      const data = doc.data();
-      return {
-        id: doc.id,
-        customerName: data.customerName,
-        customerPhone: data.customerPhone,
-        productName: data.productName,
-        quantity: data.quantity,
-        price: data.price,
-        status: data.status,
-        deliveryDate: data.deliveryDate,
-        notes: data.notes,
-        createdAt: data.createdAt?.toDate().toISOString(),
-        updatedAt: data.updatedAt?.toDate().toISOString(),
-        tags: data.tags,
-        payment: data.payment,
-        userId: data.userId,
-        customerId: data.customerId,
-        productionWorkflow: data.productionWorkflow,
-      } as Order;
-    });
+    return snapshot.docs.map(doc => this.mapOrderDoc(doc));
   }
 }
 

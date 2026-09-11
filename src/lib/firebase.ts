@@ -54,14 +54,19 @@ if (typeof window !== 'undefined') {
     }
   });
 
-  // Expor referências para diagnósticos e testes E2E de segurança
-  (window as any).__firebaseConfig = {
-    projectId: firebaseConfig.projectId,
-    apiKey: firebaseConfig.apiKey,
-    storageBucket: firebaseConfig.storageBucket,
-  };
-  (window as any).__firebaseAuth = auth;
-  (window as any).__firebaseDb = db;
+  // Expor referências apenas em desenvolvimento ou testes locais para diagnósticos e testes E2E
+  const isLocalOrDev = import.meta.env.DEV ||
+    ['localhost', '127.0.0.1', '0.0.0.0'].includes(window.location.hostname);
+
+  if (isLocalOrDev) {
+    (window as any).__firebaseConfig = {
+      projectId: firebaseConfig.projectId,
+      apiKey: firebaseConfig.apiKey,
+      storageBucket: firebaseConfig.storageBucket,
+    };
+    (window as any).__firebaseAuth = auth;
+    (window as any).__firebaseDb = db;
+  }
 }
 
 export { analytics };

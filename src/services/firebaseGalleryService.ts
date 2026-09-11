@@ -8,6 +8,7 @@ import {
   collection,
   addDoc,
   updateDoc,
+  getDoc,
   doc,
   getDocs,
   query,
@@ -16,7 +17,7 @@ import {
   Timestamp,
 } from 'firebase/firestore';
 import { ref, deleteObject } from 'firebase/storage';
-import { db, storage } from '../lib/firebase';
+import { db, storage, auth } from '../lib/firebase';
 import type { GalleryItem } from '../app/types';
 import { FirebaseStorageService } from './firebaseStorageService';
 
@@ -24,6 +25,28 @@ const storageService = new FirebaseStorageService();
 
 export class FirebaseGalleryService {
   private collectionName = 'gallery';
+
+  private getCurrentUserId(): string {
+    const user = auth.currentUser;
+    if (!user) throw new Error('É necessário estar autenticado para realizar esta operação');
+    return user.uid;
+  }
+
+  private async canModifyItem(itemUserId: string, currentUserId: string): Promise<boolean> {
+    if (itemUserId === currentUserId) return true;
+    try {
+      const profileSnap = await getDoc(doc(db, 'userProfiles', currentUserId));
+      if (!profileSnap.exists()) return false;
+      const profile = profileSnap.data();
+      if (profile.role === 'admin') return true;
+      if (profile.role === 'funcionario' && profile.active && profile.permissions?.gallery?.delete) {
+        return true;
+      }
+      return false;
+    } catch {
+      return false;
+    }
+  }
 
   // ─── Read ────────────────────────────────────────────────────────────────────
 
@@ -89,12 +112,24 @@ export class FirebaseGalleryService {
     id: string,
     updates: Partial<Pick<GalleryItem, 'title' | 'description' | 'customerId' | 'customerName' | 'orderId' | 'orderNumber' | 'tags'>>
   ): Promise<void> {
+    const userId = this.getCurrentUserId();
+    const snap = await getDoc(doc(db, this.collectionName, id));
+    if (!snap.exists()) throw new Error('Item da galeria não encontrado');
+    if (!(await this.canModifyItem(snap.data().userId, userId))) {
+      throw new Error('Você não tem permissão para editar este item');
+    }
     await updateDoc(doc(db, this.collectionName, id), updates);
   }
 
   // ─── Delete (soft) ────────────────────────────────────────────────────────────
 
   async deleteItem(id: string): Promise<void> {
+    const userId = this.getCurrentUserId();
+    const snap = await getDoc(doc(db, this.collectionName, id));
+    if (!snap.exists()) throw new Error('Item da galeria não encontrado');
+    if (!(await this.canModifyItem(snap.data().userId, userId))) {
+      throw new Error('Você não tem permissão para excluir este item');
+    }
     await updateDoc(doc(db, this.collectionName, id), {
       deletedAt: Timestamp.now(),
     });

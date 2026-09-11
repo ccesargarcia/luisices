@@ -154,7 +154,7 @@ export const router = createBrowserRouter([
       },
       {
         path: 'corrigir-valores',
-        element: <Lazy><ProtectedRoute><FixNegativeValues /></ProtectedRoute></Lazy>,
+        element: <Lazy><ProtectedRoute adminOnly><FixNegativeValues /></ProtectedRoute></Lazy>,
       },
     ],
   },

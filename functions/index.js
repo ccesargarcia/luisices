@@ -286,7 +286,8 @@ exports.sendPasswordResetEmail = onCall({ secrets: [RESEND_API_KEY, EVOLUTION_AP
   }
 
   try {
-    console.log(`[sendPasswordResetEmail] Iniciando para: ${email}`);
+    const maskedEmail = typeof email === 'string' ? email.replace(/(.{2})(.*)(@.*)/, '$1***$3') : '***';
+    console.log(`[sendPasswordResetEmail] Iniciando para: ${maskedEmail}`);
 
     const actionUrl = `${getAppUrl()}/action`;
     console.log(`[sendPasswordResetEmail] URL de ação: ${actionUrl}`);
@@ -429,6 +430,67 @@ exports.deleteUser = onCall(async (request) => {
   }
 });
 
+/** Cria um novo usuário via Firebase Auth e inicializa o perfil no Firestore (apenas admin). */
+exports.createUser = onCall(async (request) => {
+  if (!(await isAdminRequest(request))) {
+    throw new functions.https.HttpsError('permission-denied', 'Apenas administradores podem criar usuários.');
+  }
+
+  const { email, password, displayName, role, permissions, createdBy } = request.data || {};
+
+  if (!email || typeof email !== 'string') {
+    throw new functions.https.HttpsError('invalid-argument', 'E-mail é obrigatório.');
+  }
+  if (!password || typeof password !== 'string' || password.length < 6) {
+    throw new functions.https.HttpsError('invalid-argument', 'Senha deve ter pelo menos 6 caracteres.');
+  }
+  if (!displayName || typeof displayName !== 'string') {
+    throw new functions.https.HttpsError('invalid-argument', 'Nome é obrigatório.');
+  }
+
+  const allowedRoles = ['admin', 'funcionario', 'user'];
+  if (!role || !allowedRoles.includes(role)) {
+    throw new functions.https.HttpsError('invalid-argument', 'Role inválido.');
+  }
+
+  try {
+    // 1. Criar usuário no Firebase Auth
+    const userRecord = await admin.auth().createUser({
+      email: email.trim(),
+      password,
+      displayName: displayName.trim(),
+    });
+
+    // 2. Criar perfil no Firestore
+    const profile = {
+      uid: userRecord.uid,
+      email: email.trim(),
+      displayName: displayName.trim(),
+      role,
+      permissions: permissions || {},
+      active: true,
+      createdAt: new Date().toISOString(),
+      createdBy: createdBy || request.auth.uid,
+    };
+
+    await admin.firestore().doc(`userProfiles/${userRecord.uid}`).set(profile);
+
+    return { success: true, uid: userRecord.uid, profile };
+  } catch (error) {
+    if (error.code === 'auth/email-already-exists') {
+      throw new functions.https.HttpsError('already-exists', 'Este e-mail já possui uma conta.');
+    }
+    if (error.code === 'auth/invalid-email') {
+      throw new functions.https.HttpsError('invalid-argument', 'E-mail inválido.');
+    }
+    if (error.code === 'auth/weak-password') {
+      throw new functions.https.HttpsError('invalid-argument', 'Senha muito fraca.');
+    }
+    console.error('[createUser] Error:', error);
+    throw new functions.https.HttpsError('internal', 'Não foi possível criar o usuário.');
+  }
+});
+
 /**
  * Cloud Function para envio de e-mails via Resend pela plataforma Luisices.
  * Salva o histórico de envios na coleção 'sentEmails'.
@@ -503,7 +565,19 @@ exports.sendCustomEmail = onCall({ cors: true, secrets: [RESEND_API_KEY] }, asyn
   const defaultSender = isDev
     ? 'Luisices Dev <contato@dev.luisices.com.br>'
     : 'Luisices <contato@luisices.com.br>';
-  const senderEmail = from && from.trim() ? from.trim() : defaultSender;
+
+  let senderEmail = defaultSender;
+  if (from && from.trim()) {
+    const trimmedFrom = from.trim();
+    const domainMatch = trimmedFrom.match(/@([a-zA-Z0-9.-]+)>?$/);
+    const domain = domainMatch ? domainMatch[1].toLowerCase() : '';
+    if (domain === 'luisices.com.br' || domain === 'dev.luisices.com.br' || domain.endsWith('.luisices.com.br')) {
+      senderEmail = trimmedFrom;
+    } else {
+      console.warn(`[sendCustomEmail] Remetente com domínio não autorizado (${domain}). Usando padrão: ${defaultSender}`);
+      senderEmail = defaultSender;
+    }
+  }
 
   try {
     const payload = {
@@ -695,7 +769,7 @@ exports.resendReceivingWebhook = onRequest({ cors: true, secrets: [RESEND_API_KE
   }
 
   try {
-    // Validação de assinatura Svix (se RESEND_WEBHOOK_SECRET estiver configurado no ambiente)
+    // Validação de assinatura Svix
     const webhookSecret = process.env.RESEND_WEBHOOK_SECRET;
     if (webhookSecret) {
       const svixId = req.headers['svix-id'];
@@ -746,6 +820,8 @@ exports.resendReceivingWebhook = onRequest({ cors: true, secrets: [RESEND_API_KE
         console.error('[resendReceivingWebhook] Falha na validação criptográfica:', err);
         return res.status(401).json({ error: 'Falha na validação de assinatura' });
       }
+    } else {
+      console.warn('[resendReceivingWebhook] AVISO: RESEND_WEBHOOK_SECRET não configurado. Para habilitar validação estrita de assinaturas Svix, configure o secret no Firebase.');
     }
 
     const event = req.body;
