@@ -14,7 +14,8 @@ tests/e2e/
 ├── customers.spec.ts      # 👥 CRUD de clientes
 ├── products.spec.ts       # 🎨 CRUD de produtos
 ├── quotes.spec.ts         # 📝 CRUD de orçamentos
-└── orders.spec.ts         # 📦 CRUD de pedidos (agenda semanal)
+├── orders.spec.ts         # 📦 CRUD de pedidos (agenda semanal)
+└── security.spec.ts       # 🛡️ Testes de segurança, RBAC e isolamento de dados
 ```
 
 ---
@@ -54,6 +55,7 @@ npm run test:products     # Apenas produtos
 npm run test:quotes       # Apenas orçamentos
 npm run test:orders       # Apenas pedidos
 npm run test:navigation   # Apenas navegação
+npm run test:security     # Apenas testes de segurança e RBAC
 
 # Interface visual (modo debug)
 npm run test:e2e:ui

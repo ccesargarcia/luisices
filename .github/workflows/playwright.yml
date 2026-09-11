@@ -4,9 +4,27 @@ on:
   workflow_dispatch:
     inputs:
       test_target:
-        description: 'Qual grupo de testes executar (ex: e2e, ci, customers)'
-        required: false
-        default: 'e2e'
+        description: 'Qual grupo de testes executar'
+        required: true
+        type: choice
+        options:
+          - security
+          - e2e
+          - critical
+          - customers
+          - orders
+          - products
+          - quotes
+          - lifecycle
+          - navigation
+          - settings
+          - reports
+          - gallery
+          - exchanges
+          - calendar
+          - users
+          - help
+        default: 'security'
 
 permissions:
   contents: read
