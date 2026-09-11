@@ -482,4 +482,4 @@ Os smoke tests rodam **automaticamente** no GitHub Actions quando você faz push
 
 ---
 
-**Última atualização:** 6 de março de 2026
+**Última atualização:** 11 de setembro de 2026 (Atualizações de segurança, HSTS, PWA Cache e suíte completa E2E)
