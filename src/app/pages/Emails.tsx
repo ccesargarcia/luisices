@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useEmails } from '../../hooks/useEmails';
 import { useFirebaseCustomers } from '../../hooks/useFirebaseCustomers';
@@ -14,7 +14,6 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogDescription,
 } from '../components/ui/dialog';
 import {
   Select,
@@ -30,23 +29,19 @@ import {
   Star,
   Trash2,
   Reply,
-  RefreshCw,
   Search,
-  ExternalLink,
-  Copy,
-  Check,
+  X,
   Paperclip,
   Eye,
   Sparkles,
-  User,
   Clock,
   Archive,
   MailCheck,
-  HelpCircle,
   Loader2,
+  Plus,
   SendHorizontal,
-  ChevronRight,
-  ShieldCheck,
+  MailOpen,
+  ArrowDownLeft,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -112,7 +107,7 @@ Equipe Luisices`,
   },
   {
     id: 'thank_you',
-    name: 'Agradecimento e Avaliação',
+    name: 'Agradecimento ao Cliente',
     subject: 'Obrigado por escolher a Luisices! 💖',
     body: `Olá, [Nome do Cliente]!
 
@@ -135,6 +130,7 @@ export function Emails() {
     sentEmails,
     unreadCount,
     loading,
+    error,
     sendEmail,
     markAsRead,
     toggleStar,
@@ -142,10 +138,6 @@ export function Emails() {
     deleteReceived,
     deleteSent,
   } = useEmails();
-
-  const [activeTab, setActiveTab] = useState<'inbox' | 'sent' | 'compose' | 'settings'>('inbox');
-  const [searchQuery, setSearchQuery] = useState('');
-  const [filterType, setFilterType] = useState<'all' | 'unread' | 'starred' | 'archived'>('all');
 
   const isDev = useMemo(() => {
     return (
@@ -162,9 +154,23 @@ export function Emails() {
     ? 'Luisices Dev <contato@dev.luisices.com.br>'
     : 'Luisices <contato@luisices.com.br>';
 
-  // Detail modal
-  const [selectedReceivedEmail, setSelectedReceivedEmail] = useState<ReceivedEmail | null>(null);
-  const [selectedSentEmail, setSelectedSentEmail] = useState<SentEmail | null>(null);
+  const [activeTab, setActiveTab] = useState<'inbox' | 'sent' | 'compose'>('inbox');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [filterType, setFilterType] = useState<'all' | 'unread' | 'starred' | 'archived'>('all');
+
+  // Selected email IDs (derivados em tempo real)
+  const [selectedReceivedEmailId, setSelectedReceivedEmailId] = useState<string | null>(null);
+  const [selectedSentEmailId, setSelectedSentEmailId] = useState<string | null>(null);
+
+  const selectedReceivedEmail = useMemo(
+    () => (selectedReceivedEmailId ? receivedEmails.find((e) => e.id === selectedReceivedEmailId) ?? null : null),
+    [receivedEmails, selectedReceivedEmailId]
+  );
+
+  const selectedSentEmail = useMemo(
+    () => (selectedSentEmailId ? sentEmails.find((e) => e.id === selectedSentEmailId) ?? null : null),
+    [sentEmails, selectedSentEmailId]
+  );
 
   // Compose form
   const [recipient, setRecipient] = useState('');
@@ -180,26 +186,18 @@ export function Emails() {
   const [isSending, setIsSending] = useState(false);
   const [previewMode, setPreviewMode] = useState<'edit' | 'preview'>('edit');
 
-  // Copy helper
-  const [copiedKey, setCopiedKey] = useState<string | null>(null);
-
-  const copyToClipboard = (text: string, key: string) => {
-    navigator.clipboard.writeText(text);
-    setCopiedKey(key);
-    toast.success('Copiado para a área de transferência!');
-    setTimeout(() => setCopiedKey(null), 2000);
-  };
+  // Statistics
+  const starredCount = useMemo(() => receivedEmails.filter((e) => e.starred && !e.archived).length, [receivedEmails]);
+  const totalInbox = useMemo(() => receivedEmails.filter((e) => !e.archived).length, [receivedEmails]);
 
   // Filtered received emails
   const filteredReceived = useMemo(() => {
     return receivedEmails.filter((email) => {
-      // Filter by type
       if (filterType === 'unread' && email.read) return false;
       if (filterType === 'starred' && !email.starred) return false;
       if (filterType === 'archived' && !email.archived) return false;
       if (filterType !== 'archived' && email.archived) return false;
 
-      // Filter by search query
       if (searchQuery.trim()) {
         const query = searchQuery.toLowerCase();
         const matchSubject = email.subject?.toLowerCase().includes(query);
@@ -226,20 +224,19 @@ export function Emails() {
     });
   }, [sentEmails, searchQuery]);
 
-  // Select customer helper in compose
+  // Handle customer selection
   const handleSelectCustomer = (customerId: string) => {
     setSelectedCustomer(customerId);
     const found = customers.find((c) => c.id === customerId);
     if (found && found.email) {
       setRecipient(found.email);
-      // If body has template placeholder, auto-replace name
       if (body.includes('[Nome do Cliente]')) {
         setBody((prev) => prev.replace(/\[Nome do Cliente\]/g, found.name));
       }
     }
   };
 
-  // Template change helper
+  // Handle template selection
   const handleSelectTemplate = (templateId: string) => {
     const tpl = EMAIL_TEMPLATES.find((t) => t.id === templateId);
     if (!tpl) return;
@@ -254,7 +251,7 @@ export function Emails() {
     setBody(newBody);
   };
 
-  // Send email action
+  // Handle send email
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!recipient.trim()) {
@@ -284,11 +281,10 @@ export function Emails() {
     try {
       const activeSender = isCustomSender && customSender.trim() ? customSender.trim() : sender;
 
-      // Transform plain text with linebreaks to formatted HTML
       const formattedHtml = `
         <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; color: #2d3748; max-width: 600px; margin: 0 auto; padding: 20px;">
           <div style="background-color: #f7fafc; border-left: 4px solid #4f46e5; padding: 15px 20px; border-radius: 4px; margin-bottom: 25px;">
-            <h2 style="margin: 0; color: #1a202c; font-size: 18px;">Luisices Papelaria Personalizada ${isDev ? '(Ambiente DEV)' : ''}</h2>
+            <h2 style="margin: 0; color: #1a202c; font-size: 18px;">Luisices Papelaria Personalizada</h2>
           </div>
           <div style="font-size: 15px; white-space: pre-wrap; margin-bottom: 30px;">${body}</div>
           <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 25px 0;" />
@@ -316,7 +312,7 @@ export function Emails() {
       }
 
       await sendEmail(payload);
-      toast.success('E-mail enviado com sucesso via Resend!');
+      toast.success('E-mail enviado com sucesso!');
 
       // Reset form
       setRecipient('');
@@ -329,15 +325,15 @@ export function Emails() {
       setActiveTab('sent');
     } catch (err: any) {
       console.error('Erro ao enviar e-mail:', err);
-      toast.error(err.message || 'Falha ao enviar e-mail. Verifique a configuração do Resend.');
+      toast.error(err.message || 'Falha ao enviar e-mail.');
     } finally {
       setIsSending(false);
     }
   };
 
-  // Reply helper
+  // Reply
   const handleReply = (email: ReceivedEmail) => {
-    setSelectedReceivedEmail(null);
+    setSelectedReceivedEmailId(null);
     setRecipient(email.from);
     setSubject(email.subject.startsWith('Re:') ? email.subject : `Re: ${email.subject}`);
     const originalText = email.text || email.subject;
@@ -345,10 +341,11 @@ export function Emails() {
     setActiveTab('compose');
   };
 
-  // Format date helper
+  // Safe date formatter
   const formatDate = (isoString?: string) => {
     if (!isoString) return '';
     const date = new Date(isoString);
+    if (Number.isNaN(date.getTime())) return '';
     const now = new Date();
     const isToday =
       date.getDate() === now.getDate() &&
@@ -361,56 +358,95 @@ export function Emails() {
     return date.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' });
   };
 
-  const projectUrl = isDev
-    ? 'https://us-central1-luisices-dev.cloudfunctions.net/resendReceivingWebhook'
-    : 'https://us-central1-luisices.cloudfunctions.net/resendReceivingWebhook';
-
   return (
-    <div className="container mx-auto p-4 md:p-6 max-w-7xl space-y-6">
+    <div className="space-y-8">
       {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b pb-5">
+      <div className="flex flex-col items-start justify-between gap-4 border-b border-border/60 pb-6 sm:flex-row sm:items-center">
         <div>
-          <div className="flex items-center gap-3">
-            <div className="size-10 rounded-lg bg-primary/10 text-primary flex items-center justify-center font-bold">
-              <Mail className="size-5" />
-            </div>
-            <div>
-              <h1 className="text-2xl font-bold tracking-tight">Central de E-mails</h1>
-              <p className="text-sm text-muted-foreground">
-                Envio e recebimento de e-mails corporativos integrados ao Resend
-              </p>
-            </div>
+          <div className="flex items-center gap-2">
+            <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">Central de E-mails</h1>
+            {isDev && (
+              <Badge variant="outline" className="bg-yellow-500/10 text-yellow-600 border-yellow-400 font-mono text-[10px] px-1.5 py-0 h-5">
+                DEV
+              </Badge>
+            )}
           </div>
+          <p className="text-muted-foreground mt-1">
+            Gerenciamento, envio e recebimento de e-mails corporativos
+          </p>
         </div>
 
-        <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setActiveTab('settings')}
-            className="gap-1.5"
-          >
-            <ShieldCheck className="size-4 text-emerald-500" />
-            <span className="hidden sm:inline">Configurações & DNS</span>
-          </Button>
-
-          <Button
-            size="sm"
-            onClick={() => {
-              setActiveTab('compose');
-            }}
-            className="gap-2"
-          >
-            <SendHorizontal className="size-4" />
+        <div className="flex w-full flex-wrap gap-2 sm:w-auto">
+          <Button onClick={() => setActiveTab('compose')} className="gap-2">
+            <Plus className="size-4" />
             <span>Novo E-mail</span>
           </Button>
         </div>
       </div>
 
-      {/* Main Tabs */}
-      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)} className="w-full">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
-          <TabsList className="grid grid-cols-4 w-full sm:w-auto h-10">
+      {/* Summary Cards */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground flex items-center justify-between">
+              <span>Caixa de Entrada</span>
+              <Inbox className="size-4 text-muted-foreground/70" />
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{totalInbox}</div>
+            <p className="text-xs text-muted-foreground mt-1">mensagens recebidas</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground flex items-center justify-between">
+              <span>Não Lidos</span>
+              <MailOpen className="size-4 text-primary" />
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className={`text-2xl font-bold ${unreadCount > 0 ? 'text-primary' : 'text-foreground'}`}>
+              {unreadCount}
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">
+              {unreadCount === 1 ? 'mensagem aguardando' : 'mensagens aguardando'}
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground flex items-center justify-between">
+              <span>Enviados</span>
+              <Send className="size-4 text-emerald-600" />
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-emerald-600">{sentEmails.length}</div>
+            <p className="text-xs text-muted-foreground mt-1">mensagens disparadas</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground flex items-center justify-between">
+              <span>Favoritos</span>
+              <Star className="size-4 text-amber-500 fill-amber-500" />
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-amber-600">{starredCount}</div>
+            <p className="text-xs text-muted-foreground mt-1">marcados com estrela</p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Main Tabs Container */}
+      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)} className="w-full space-y-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <TabsList className="glass-chip h-10 p-1 flex">
             <TabsTrigger value="inbox" className="gap-2 text-xs sm:text-sm">
               <Inbox className="size-4" />
               <span>Caixa de Entrada</span>
@@ -428,17 +464,12 @@ export function Emails() {
             </TabsTrigger>
 
             <TabsTrigger value="compose" className="gap-2 text-xs sm:text-sm">
-              <Sparkles className="size-4 text-primary" />
-              <span>Escrever</span>
-            </TabsTrigger>
-
-            <TabsTrigger value="settings" className="gap-2 text-xs sm:text-sm">
-              <HelpCircle className="size-4" />
-              <span>Guia Resend</span>
+              <SendHorizontal className="size-4" />
+              <span>Nova Mensagem</span>
             </TabsTrigger>
           </TabsList>
 
-          {/* Search bar for list tabs */}
+          {/* Search & Filter Bar for List Views */}
           {(activeTab === 'inbox' || activeTab === 'sent') && (
             <div className="relative w-full sm:w-72">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
@@ -446,15 +477,24 @@ export function Emails() {
                 placeholder="Pesquisar e-mails..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-9 h-10"
+                className={`pl-9 h-10 ${searchQuery ? 'pr-9' : ''}`}
               />
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                >
+                  <X className="size-4" />
+                </button>
+              )}
             </div>
           )}
         </div>
 
-        {/* ─── TAB: CAIXA DE ENTRADA (RECEBIDOS) ────────────────────── */}
-        <TabsContent value="inbox" className="space-y-4">
-          {/* Filter Bar */}
+        {/* ─── TAB: CAIXA DE ENTRADA ────────────────────────────────── */}
+        <TabsContent value="inbox" className="space-y-4 m-0">
+          {/* Filter Chips */}
           <div className="flex items-center gap-2 overflow-x-auto pb-1">
             <Button
               variant={filterType === 'all' ? 'default' : 'outline'}
@@ -462,7 +502,7 @@ export function Emails() {
               onClick={() => setFilterType('all')}
               className="text-xs h-8"
             >
-              Todos ({receivedEmails.filter((e) => !e.archived).length})
+              Todos ({totalInbox})
             </Button>
             <Button
               variant={filterType === 'unread' ? 'default' : 'outline'}
@@ -484,7 +524,7 @@ export function Emails() {
               className="text-xs h-8 gap-1"
             >
               <Star className="size-3 text-amber-500 fill-amber-500" />
-              Favoritos
+              Favoritos ({starredCount})
             </Button>
             <Button
               variant={filterType === 'archived' ? 'default' : 'outline'}
@@ -502,7 +542,7 @@ export function Emails() {
             {loading ? (
               <div className="flex flex-col items-center justify-center p-12 text-muted-foreground">
                 <Loader2 className="size-8 animate-spin text-primary mb-2" />
-                <p>Sincronizando e-mails...</p>
+                <p className="text-sm">Sincronizando mensagens...</p>
               </div>
             ) : filteredReceived.length === 0 ? (
               <div className="flex flex-col items-center justify-center p-12 text-center">
@@ -513,17 +553,8 @@ export function Emails() {
                 <p className="text-sm text-muted-foreground max-w-md mt-1">
                   {searchQuery
                     ? 'Nenhuma mensagem corresponde aos critérios de pesquisa.'
-                    : 'Os e-mails recebidos através do seu domínio personalizado cadastrado no Resend aparecerão automaticamente aqui.'}
+                    : 'Os e-mails recebidos aparecerão aqui automaticamente.'}
                 </p>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setActiveTab('settings')}
-                  className="mt-4 gap-2"
-                >
-                  <ExternalLink className="size-4" />
-                  Ver como configurar recebimento
-                </Button>
               </div>
             ) : (
               <div className="divide-y divide-border">
@@ -531,7 +562,7 @@ export function Emails() {
                   <div
                     key={email.id}
                     onClick={() => {
-                      setSelectedReceivedEmail(email);
+                      setSelectedReceivedEmailId(email.id);
                       if (!email.read) {
                         markAsRead(email.id, true);
                       }
@@ -540,7 +571,7 @@ export function Emails() {
                       !email.read ? 'bg-primary/5 font-medium' : ''
                     }`}
                   >
-                    {/* Star button */}
+                    {/* Star Button */}
                     <button
                       type="button"
                       onClick={(e) => {
@@ -548,25 +579,26 @@ export function Emails() {
                         toggleStar(email.id, !email.starred);
                       }}
                       className="text-muted-foreground hover:text-amber-500 transition-colors p-1"
+                      title={email.starred ? 'Remover dos favoritos' : 'Marcar como favorito'}
                     >
                       <Star
                         className={`size-4 ${
-                          email.starred ? 'text-amber-500 fill-amber-500' : 'text-muted-foreground/40'
+                          email.starred ? 'text-amber-500 fill-amber-500' : 'text-muted-foreground/30'
                         }`}
                       />
                     </button>
 
-                    {/* Unread indicator */}
+                    {/* Unread Status Dot */}
                     <div className="flex items-center justify-center size-2">
                       {!email.read && <div className="size-2 rounded-full bg-primary" />}
                     </div>
 
-                    {/* Sender avatar/initial */}
+                    {/* Sender Initial Avatar */}
                     <div className="size-9 rounded-full bg-primary/10 text-primary flex items-center justify-center font-bold text-xs shrink-0">
                       {email.from ? email.from[0].toUpperCase() : '?'}
                     </div>
 
-                    {/* Content preview */}
+                    {/* Content Preview */}
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between gap-2 mb-0.5">
                         <span className={`text-sm truncate ${!email.read ? 'font-bold text-foreground' : 'text-foreground/90'}`}>
@@ -591,7 +623,7 @@ export function Emails() {
                       </p>
                     </div>
 
-                    {/* Action buttons on hover */}
+                    {/* Actions */}
                     <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
                       <Button
                         variant="ghost"
@@ -635,8 +667,8 @@ export function Emails() {
           </Card>
         </TabsContent>
 
-        {/* ─── TAB: E-MAILS ENVIADOS ───────────────────────────────── */}
-        <TabsContent value="sent" className="space-y-4">
+        {/* ─── TAB: ENVIADOS ────────────────────────────────────────── */}
+        <TabsContent value="sent" className="space-y-4 m-0">
           <Card className="border shadow-xs overflow-hidden">
             {sentEmails.length === 0 ? (
               <div className="flex flex-col items-center justify-center p-12 text-center">
@@ -645,15 +677,15 @@ export function Emails() {
                 </div>
                 <h3 className="font-semibold text-lg">Nenhum e-mail enviado</h3>
                 <p className="text-sm text-muted-foreground max-w-md mt-1">
-                  Os e-mails disparados através desta plataforma ficarão registrados aqui com confirmação de entrega do Resend.
+                  Os e-mails disparados pelo sistema ficarão registrados aqui com confirmação de entrega.
                 </p>
                 <Button
                   size="sm"
                   onClick={() => setActiveTab('compose')}
                   className="mt-4 gap-2"
                 >
-                  <Sparkles className="size-4" />
-                  Escrever primeiro e-mail
+                  <Plus className="size-4" />
+                  Escrever primeira mensagem
                 </Button>
               </div>
             ) : (
@@ -661,7 +693,7 @@ export function Emails() {
                 {filteredSent.map((email) => (
                   <div
                     key={email.id}
-                    onClick={() => setSelectedSentEmail(email)}
+                    onClick={() => setSelectedSentEmailId(email.id)}
                     className="flex items-center gap-3 p-4 cursor-pointer transition-colors hover:bg-muted/50"
                   >
                     <div className="size-9 rounded-full bg-emerald-500/10 text-emerald-600 flex items-center justify-center font-bold text-xs shrink-0">
@@ -688,7 +720,7 @@ export function Emails() {
                       </div>
 
                       <p className="text-xs text-muted-foreground truncate max-w-xl">
-                        {email.text || '(Conteúdo em HTML)'}
+                        {email.text || '(Conteúdo formatado em HTML)'}
                       </p>
                     </div>
 
@@ -697,7 +729,7 @@ export function Emails() {
                         variant="ghost"
                         size="icon"
                         className="size-8 text-muted-foreground hover:text-destructive"
-                        title="Excluir histórico"
+                        title="Excluir do histórico"
                         onClick={() => {
                           if (confirm('Deseja remover este registro do histórico de enviados?')) {
                             deleteSent(email.id);
@@ -715,10 +747,10 @@ export function Emails() {
           </Card>
         </TabsContent>
 
-        {/* ─── TAB: ESCREVER E-MAIL (COMPOR) ───────────────────────── */}
-        <TabsContent value="compose" className="space-y-6">
+        {/* ─── TAB: NOVA MENSAGEM (COMPOR) ─────────────────────────── */}
+        <TabsContent value="compose" className="space-y-6 m-0">
           <Card className="border shadow-xs">
-            <CardHeader className="pb-4 border-b">
+            <CardHeader className="pb-4 border-b border-border/60">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div>
                   <CardTitle className="text-lg flex items-center gap-2">
@@ -726,11 +758,11 @@ export function Emails() {
                     Nova Mensagem
                   </CardTitle>
                   <CardDescription>
-                    Envie e-mails corporativos via Resend para clientes e fornecedores
+                    Envie e-mails para clientes e fornecedores
                   </CardDescription>
                 </div>
 
-                {/* Templates Dropdown */}
+                {/* Templates Selector */}
                 <div className="flex items-center gap-2">
                   <Sparkles className="size-4 text-amber-500 shrink-0" />
                   <Select onValueChange={handleSelectTemplate}>
@@ -751,19 +783,12 @@ export function Emails() {
 
             <CardContent className="pt-5">
               <form onSubmit={handleSend} className="space-y-4">
-                {/* Remetente & Cliente Picker */}
+                {/* Remetente & Cliente */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {/* Sender address */}
+                  {/* Sender */}
                   <div className="space-y-1.5">
                     <div className="flex items-center justify-between">
-                      <label className="text-xs font-semibold text-muted-foreground flex items-center gap-1.5">
-                        <span>Remetente (From):</span>
-                        {isDev && (
-                          <Badge variant="outline" className="text-[10px] bg-amber-500/10 text-amber-600 border-amber-300">
-                            Ambiente DEV
-                          </Badge>
-                        )}
-                      </label>
+                      <label className="text-xs font-semibold text-muted-foreground">Remetente (From):</label>
                       <button
                         type="button"
                         onClick={() => setIsCustomSender(!isCustomSender)}
@@ -775,7 +800,7 @@ export function Emails() {
 
                     {isCustomSender ? (
                       <Input
-                        placeholder="Ex: Luisices Teste <contato@dev.luisices.com.br>"
+                        placeholder="Ex: Luisices <contato@luisices.com.br>"
                         value={customSender}
                         onChange={(e) => setCustomSender(e.target.value)}
                         className="h-10 text-sm"
@@ -796,9 +821,6 @@ export function Emails() {
                               </SelectItem>
                               <SelectItem value="Atendimento Dev <suporte@dev.luisices.com.br>">
                                 Atendimento Dev &lt;suporte@dev.luisices.com.br&gt;
-                              </SelectItem>
-                              <SelectItem value="Resend Sandbox <onboarding@resend.dev>">
-                                Resend Sandbox &lt;onboarding@resend.dev&gt;
                               </SelectItem>
                               <SelectItem value="Luisices Prod <contato@luisices.com.br>">
                                 Luisices Prod &lt;contato@luisices.com.br&gt;
@@ -824,8 +846,8 @@ export function Emails() {
 
                   {/* Customer Quick Selector */}
                   <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-muted-foreground flex items-center justify-between">
-                      <span>Preencher com Cliente Cadastrado:</span>
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-semibold text-muted-foreground">Preencher com Cliente Cadastrado:</label>
                       {selectedCustomer && (
                         <button
                           type="button"
@@ -838,10 +860,10 @@ export function Emails() {
                           Limpar
                         </button>
                       )}
-                    </label>
+                    </div>
                     <Select value={selectedCustomer} onValueChange={handleSelectCustomer}>
                       <SelectTrigger className="h-10 text-sm">
-                        <SelectValue placeholder="Selecione um cliente para auto-preencher..." />
+                        <SelectValue placeholder="Selecione um cliente cadastrado..." />
                       </SelectTrigger>
                       <SelectContent className="max-h-60">
                         {customers
@@ -856,7 +878,7 @@ export function Emails() {
                   </div>
                 </div>
 
-                {/* Recipient (To) */}
+                {/* Recipient */}
                 <div className="space-y-1.5">
                   <div className="flex items-center justify-between">
                     <label className="text-xs font-semibold text-muted-foreground">Destinatário (Para):</label>
@@ -869,14 +891,14 @@ export function Emails() {
                     </button>
                   </div>
                   <Input
-                    placeholder="email@cliente.com.br (separe múltiplos com vírgula)"
+                    placeholder="cliente@exemplo.com.br (separe múltiplos com vírgula)"
                     value={recipient}
                     onChange={(e) => setRecipient(e.target.value)}
                     required
                   />
                 </div>
 
-                {/* CC and BCC */}
+                {/* CC & BCC */}
                 {showCcBcc && (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-1">
                     <div className="space-y-1.5">
@@ -902,14 +924,14 @@ export function Emails() {
                 <div className="space-y-1.5">
                   <label className="text-xs font-semibold text-muted-foreground">Assunto:</label>
                   <Input
-                    placeholder="Ex: Seu orçamento personalizado Luisices"
+                    placeholder="Ex: Seu orçamento personalizado - Luisices"
                     value={subject}
                     onChange={(e) => setSubject(e.target.value)}
                     required
                   />
                 </div>
 
-                {/* Mode toggle: Edit vs Preview */}
+                {/* Message Body & Preview Toggle */}
                 <div className="space-y-1.5">
                   <div className="flex items-center justify-between">
                     <label className="text-xs font-semibold text-muted-foreground">Mensagem:</label>
@@ -931,7 +953,7 @@ export function Emails() {
                         }`}
                       >
                         <Eye className="size-3.5" />
-                        Prévia do E-mail
+                        Prévia
                       </button>
                     </div>
                   </div>
@@ -941,12 +963,11 @@ export function Emails() {
                       placeholder="Escreva sua mensagem aqui..."
                       value={body}
                       onChange={(e) => setBody(e.target.value)}
-                      rows={12}
-                      className="font-mono text-sm leading-relaxed"
+                      className="min-h-[220px] font-sans text-sm leading-relaxed"
                       required
                     />
                   ) : (
-                    <div className="border rounded-md p-5 bg-white text-gray-900 min-h-[300px] max-h-[450px] overflow-y-auto">
+                    <div className="border rounded-md p-5 bg-white text-gray-900 min-h-[220px] max-h-[450px] overflow-y-auto">
                       <div className="max-w-[550px] mx-auto">
                         <div className="bg-gray-50 border-l-4 border-indigo-600 p-3 rounded mb-4">
                           <h3 className="text-sm font-bold text-gray-800 m-0">Luisices Papelaria Personalizada</h3>
@@ -957,16 +978,16 @@ export function Emails() {
                         <hr className="border-t border-gray-200 my-4" />
                         <div className="text-xs text-gray-500">
                           <p className="m-0 font-bold">Luisices Personalizados</p>
-                          <p className="m-0">WhatsApp: (11) 97060-6433 | contato@luisices.com.br</p>
-                          <p className="m-0 text-indigo-600">luisices.com.br</p>
+                          <p className="m-0">WhatsApp: (11) 97060-6433 | {isDev ? 'contato@dev.luisices.com.br' : 'contato@luisices.com.br'}</p>
+                          <p className="m-0 text-indigo-600">{isDev ? 'dev.luisices.com.br' : 'luisices.com.br'}</p>
                         </div>
                       </div>
                     </div>
                   )}
                 </div>
 
-                {/* Footer Buttons */}
-                <div className="flex items-center justify-end gap-3 pt-3 border-t">
+                {/* Action Buttons */}
+                <div className="flex items-center justify-end gap-3 pt-3 border-t border-border/60">
                   <Button
                     type="button"
                     variant="outline"
@@ -998,178 +1019,21 @@ export function Emails() {
             </CardContent>
           </Card>
         </TabsContent>
-
-        {/* ─── TAB: GUIA DE CONFIGURAÇÃO (DNS & WEBHOOK) ───────────── */}
-        <TabsContent value="settings" className="space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Card 1: Custom Receiving Domain */}
-            <Card className="border shadow-xs">
-              <CardHeader>
-                <div className="flex items-center gap-2">
-                  <div className="size-8 rounded-lg bg-primary/10 text-primary flex items-center justify-center">
-                    <Mail className="size-4" />
-                  </div>
-                  <div>
-                    <CardTitle className="text-base">1. Domínio de Recebimento (DNS MX)</CardTitle>
-                    <CardDescription>
-                      Configure o registro MX para receber e-mails no seu domínio
-                    </CardDescription>
-                  </div>
-                </div>
-              </CardHeader>
-
-              <CardContent className="space-y-4 text-sm">
-                <p className="text-muted-foreground leading-relaxed">
-                  Para que os e-mails enviados para <code>@luisices.com.br</code> ou um subdomínio cheguem ao Resend, é necessário adicionar o registro MX no seu provedor de DNS (ex: Cloudflare, Hostinger, Registro.br).
-                </p>
-
-                <div className="bg-muted/50 border rounded-lg p-3 space-y-2 font-mono text-xs">
-                  <div className="flex justify-between items-center py-1 border-b border-border/50">
-                    <span className="text-muted-foreground">Tipo de Registro:</span>
-                    <span className="font-bold">MX</span>
-                  </div>
-                  <div className="flex justify-between items-center py-1 border-b border-border/50">
-                    <span className="text-muted-foreground">Nome / Host:</span>
-                    <span className="font-bold">@ (ou mail / inbound)</span>
-                  </div>
-                  <div className="flex justify-between items-center py-1 border-b border-border/50">
-                    <span className="text-muted-foreground">Prioridade:</span>
-                    <span className="font-bold">10</span>
-                  </div>
-                  <div className="flex justify-between items-center py-1">
-                    <span className="text-muted-foreground">Valor / Servidor:</span>
-                    <span className="font-bold text-primary truncate max-w-[200px]">
-                      feedback-smtp.us-east-1.amazonses.com
-                    </span>
-                  </div>
-                </div>
-
-                <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-3 text-xs text-amber-900 dark:text-amber-200">
-                  <strong>Atenção:</strong> Se você já possui um servidor de e-mail ativo no domínio raiz (como Titan ou Google Workspace), utilize um subdomínio como <code>mail.luisices.com.br</code> para não interromper a caixa existente.
-                </div>
-
-                <a
-                  href="https://resend.com/docs/dashboard/receiving/custom-domains"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="inline-flex items-center gap-1.5 text-xs text-primary hover:underline font-medium pt-1"
-                >
-                  <ExternalLink className="size-3.5" />
-                  Abrir documentação oficial do Resend (Custom Domains)
-                </a>
-              </CardContent>
-            </Card>
-
-            {/* Card 2: Webhook Endpoint */}
-            <Card className="border shadow-xs">
-              <CardHeader>
-                <div className="flex items-center gap-2">
-                  <div className="size-8 rounded-lg bg-emerald-500/10 text-emerald-600 flex items-center justify-center">
-                    <ShieldCheck className="size-4" />
-                  </div>
-                  <div>
-                    <CardTitle className="text-base">2. Webhook no Painel Resend</CardTitle>
-                    <CardDescription>
-                      Cadastre a rota para que os e-mails cheguem instantaneamente aqui
-                    </CardDescription>
-                  </div>
-                </div>
-              </CardHeader>
-
-              <CardContent className="space-y-4 text-sm">
-                <p className="text-muted-foreground leading-relaxed">
-                  No painel do Resend em <strong>Webhooks &rarr; Add Webhook</strong>, adicione a URL abaixo e marque o evento <code>email.received</code>:
-                </p>
-
-                <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-muted-foreground">Endpoint Webhook (Cloud Functions):</label>
-                  <div className="flex items-center gap-2">
-                    <Input
-                      readOnly
-                      value={projectUrl}
-                      className="font-mono text-xs bg-muted"
-                    />
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      onClick={() => copyToClipboard(projectUrl, 'webhook')}
-                      title="Copiar URL"
-                    >
-                      {copiedKey === 'webhook' ? <Check className="size-4 text-emerald-500" /> : <Copy className="size-4" />}
-                    </Button>
-                  </div>
-                </div>
-
-                <div className="bg-muted/50 border rounded-lg p-3 space-y-1.5 text-xs">
-                  <div className="font-semibold text-foreground">Passo a passo no Resend:</div>
-                  <ol className="list-decimal list-inside space-y-1 text-muted-foreground">
-                    <li>Acesse <a href="https://resend.com/webhooks" target="_blank" rel="noreferrer" className="text-primary hover:underline">resend.com/webhooks</a></li>
-                    <li>Clique em <strong>Add Webhook</strong></li>
-                    <li>Cole a URL acima no campo <strong>Endpoint URL</strong></li>
-                    <li>Selecione o evento <strong>email.received</strong></li>
-                    <li>Clique em <strong>Add</strong> para salvar</li>
-                  </ol>
-                </div>
-
-                <a
-                  href="https://resend.com/docs/dashboard/receiving/create-receiving-webhook"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="inline-flex items-center gap-1.5 text-xs text-primary hover:underline font-medium pt-1"
-                >
-                  <ExternalLink className="size-3.5" />
-                  Abrir documentação oficial do Resend (Create Receiving Webhook)
-                </a>
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* Secret configuration guide */}
-          <Card className="border shadow-xs">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base flex items-center gap-2">
-                <Sparkles className="size-4 text-primary" />
-                Chave da API Resend (RESEND_API_KEY)
-              </CardTitle>
-              <CardDescription>
-                A chave de API é gerenciada de forma segura através do Google Cloud Secret Manager nas Cloud Functions.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3 text-sm">
-              <p className="text-muted-foreground">
-                Para atualizar a chave no backend do Firebase, basta rodar o comando abaixo no terminal de desenvolvimento:
-              </p>
-              <div className="flex items-center gap-2 bg-muted rounded-lg p-3 font-mono text-xs">
-                <code className="flex-1">firebase functions:secrets:set RESEND_API_KEY</code>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="size-7"
-                  onClick={() => copyToClipboard('firebase functions:secrets:set RESEND_API_KEY', 'cmd')}
-                >
-                  {copiedKey === 'cmd' ? <Check className="size-3 text-emerald-500" /> : <Copy className="size-3" />}
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
       </Tabs>
 
       {/* ─── MODAL: DETALHES DO E-MAIL RECEBIDO ─────────────────────── */}
       <Dialog
-        open={!!selectedReceivedEmail}
-        onOpenChange={(open) => !open && setSelectedReceivedEmail(null)}
+        open={!!selectedReceivedEmailId}
+        onOpenChange={(open) => !open && setSelectedReceivedEmailId(null)}
       >
         <DialogContent className="max-w-3xl max-h-[85vh] flex flex-col p-0 overflow-hidden">
           {selectedReceivedEmail && (
             <>
-              {/* Header */}
-              <div className="p-6 pb-4 border-b space-y-3">
-                <div className="flex items-start justify-between gap-4">
-                  <DialogTitle className="text-xl font-bold leading-tight">
-                    {selectedReceivedEmail.subject || '(Sem assunto)'}
-                  </DialogTitle>
-                </div>
+              {/* Modal Header */}
+              <div className="p-6 pb-4 border-b border-border/60 space-y-3">
+                <DialogTitle className="text-xl font-bold leading-tight">
+                  {selectedReceivedEmail.subject || '(Sem assunto)'}
+                </DialogTitle>
 
                 <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground pt-1">
                   <div className="space-y-1">
@@ -1189,7 +1053,7 @@ export function Emails() {
                   </div>
                 </div>
 
-                {/* Action buttons */}
+                {/* Modal Actions */}
                 <div className="flex items-center gap-2 pt-2">
                   <Button
                     size="sm"
@@ -1205,7 +1069,6 @@ export function Emails() {
                     size="sm"
                     onClick={() => {
                       markAsRead(selectedReceivedEmail.id, !selectedReceivedEmail.read);
-                      setSelectedReceivedEmail((prev) => prev ? { ...prev, read: !prev.read } : null);
                     }}
                     className="gap-1.5 h-8 text-xs"
                   >
@@ -1219,7 +1082,7 @@ export function Emails() {
                     onClick={() => {
                       if (confirm('Deseja excluir este e-mail?')) {
                         deleteReceived(selectedReceivedEmail.id);
-                        setSelectedReceivedEmail(null);
+                        setSelectedReceivedEmailId(null);
                         toast.success('E-mail excluído.');
                       }
                     }}
@@ -1231,24 +1094,24 @@ export function Emails() {
                 </div>
               </div>
 
-              {/* Body */}
+              {/* Modal Body */}
               <div className="flex-1 overflow-y-auto p-6">
                 {selectedReceivedEmail.html ? (
                   <div className="w-full bg-white rounded-md border p-2">
                     <iframe
                       title="Conteúdo do e-mail"
                       srcDoc={selectedReceivedEmail.html}
-                      sandbox="allow-same-origin"
+                      sandbox="allow-same-origin allow-popups"
                       className="w-full min-h-[350px] border-0"
                     />
                   </div>
                 ) : (
                   <div className="whitespace-pre-wrap font-sans text-sm leading-relaxed p-4 bg-muted/30 rounded-md">
-                    {selectedReceivedEmail.text || '(Mensagem vazia)'}
+                    {selectedReceivedEmail.text || '(Mensagem sem texto)'}
                   </div>
                 )}
 
-                {/* Attachments if any */}
+                {/* Attachments */}
                 {selectedReceivedEmail.attachments && selectedReceivedEmail.attachments.length > 0 && (
                   <div className="mt-6 pt-4 border-t space-y-2">
                     <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
@@ -1288,13 +1151,13 @@ export function Emails() {
 
       {/* ─── MODAL: DETALHES DO E-MAIL ENVIADO ──────────────────────── */}
       <Dialog
-        open={!!selectedSentEmail}
-        onOpenChange={(open) => !open && setSelectedSentEmail(null)}
+        open={!!selectedSentEmailId}
+        onOpenChange={(open) => !open && setSelectedSentEmailId(null)}
       >
         <DialogContent className="max-w-2xl max-h-[80vh] flex flex-col p-0 overflow-hidden">
           {selectedSentEmail && (
             <>
-              <div className="p-6 pb-4 border-b space-y-2">
+              <div className="p-6 pb-4 border-b border-border/60 space-y-2">
                 <DialogTitle className="text-lg font-bold">
                   {selectedSentEmail.subject || '(Sem assunto)'}
                 </DialogTitle>
@@ -1318,7 +1181,7 @@ export function Emails() {
                     <iframe
                       title="Visualização do e-mail enviado"
                       srcDoc={selectedSentEmail.html}
-                      sandbox="allow-same-origin"
+                      sandbox="allow-same-origin allow-popups"
                       className="w-full min-h-[300px] border-0"
                     />
                   </div>
@@ -1335,4 +1198,5 @@ export function Emails() {
     </div>
   );
 }
+
 export default Emails;
