@@ -157,7 +157,7 @@ test.describe('Fluxos Críticos de Negócio', () => {
 
     // 4. Validar notificação de sucesso e/ou que o status mudou para aprovado
     await expect(
-      page.getByText(/criado com sucesso/i).or(page.getByText(/Aprovado/i)).or(detailsDialog.getByText(/Aprovado/i))
+      page.getByText(/criado com sucesso/i).or(detailsDialog.getByText('Aprovado', { exact: true })).first()
     ).toBeVisible({ timeout: 15000 });
 
     // Fechar diálogo de detalhes se aberto

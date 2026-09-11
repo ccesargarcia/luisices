@@ -187,6 +187,6 @@ test.describe('Dashboard - Filtros e Alertas', () => {
     // A ausência de pedidos é um estado válido; o Dashboard deve apresentar uma das mensagens reais.
     const emptyState = page.getByText(/Nenhuma entrega programada|Nenhum pedido em atraso|Tudo em dia/i).first();
     const alertSection = page.getByText(/Próximas Entregas|Pedidos Atrasados/i).first();
-    await expect(emptyState.or(alertSection)).toBeVisible({ timeout: 10000 });
+    await expect(emptyState.or(alertSection).first()).toBeVisible({ timeout: 10000 });
   });
 });
