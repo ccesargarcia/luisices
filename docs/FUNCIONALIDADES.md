@@ -8,12 +8,12 @@ Este documento descreve o sistema Luisices pelo ponto de vista do negócio. O pr
 ### Acesso e usuários
 
 - O acesso exige autenticação por e-mail e senha.
-- Perfis ficam em `userProfiles/{uid}` e possuem `role`, `permissions` e `active`.
-- Somente administradores ativos gerenciam usuários, convites, permissões, resets e exclusões.
+- Perfis ficam em `userProfiles/{uid}` e possuem `role` (`admin`, `funcionario` ou `user`), `permissions` e `active`.
+- Somente administradores ativos gerenciam usuários, convites, permissões, delegação de pedidos, resets e exclusões.
 - Um administrador não pode excluir a própria conta.
 - Usuários inativos não podem acessar o sistema.
-- Usuários comuns não podem alterar o próprio papel, permissões ou status.
-- O perfil de um convite aceito recebe o papel `user` e as permissões padrão configuradas no sistema.
+- Usuários comuns e funcionários não podem alterar o próprio papel, permissões ou status.
+- O perfil de um convite aceito recebe o papel `user` e as permissões padrão configuradas no sistema (podendo ser promovido a `funcionario` ou `admin` pelo administrador).
 
 ### Convites
 
@@ -34,8 +34,10 @@ Este documento descreve o sistema Luisices pelo ponto de vista do negócio. O pr
 
 ### Dados operacionais
 
-- Pedidos, clientes, orçamentos, produtos e itens da galeria devem respeitar o `userId` conforme as regras do Firestore.
-- Alterações de permissões só têm efeito após novo login do usuário.
+- Pedidos, clientes, orçamentos, produtos e itens da galeria respeitam o `userId` conforme as regras do Firestore.
+- Pedidos podem ser atribuídos por administradores a um colaborador (`funcionario`), concedendo permissão de visualização e atualização de workflow ao responsável delegado.
+- Usuários comuns (`user`) gerenciam dados criados por eles mesmos, podendo excluir seus próprios pedidos e acessar seus relatórios financeiros individuais e permutas.
+- Alterações de permissões e status têm efeito imediato em tempo real via listeners no perfil do usuário, sem necessidade de novo login.
 - Orçamentos podem expirar conforme a data configurada e seu status atual.
 - Pedidos de permuta podem representar troca/parceria sem cobrança monetária convencional.
 
@@ -448,28 +450,50 @@ Usuários podem consultar suas permissões; administradores gerenciam permissõe
 
 A restauração das configurações padrão remove personalizações, incluindo imagens enviadas, mediante confirmação.
 
-## 13. Usuários e permissões
+## 13. Usuários, permissões e equipe (RBAC)
 
-O sistema trabalha com os perfis:
+O sistema opera com três papéis fundamentais:
 
-- Administrador.
-- Usuário.
+- **Administrador (`admin`)**:
+  - Acesso irrestrito a todos os módulos, configurações e relatórios consolidados da empresa.
+  - Gerenciamento de equipe e usuários (convidar, definir papéis, alterar permissões, resetar senhas e desativar contas).
+  - Delegação de pedidos para funcionários responsáveis (individualmente ou em lote via *bulk assign*).
+  - Filtro de equipe na Dashboard (`AdminTeamFilter`) para acompanhar a carga de trabalho de cada colaborador.
 
-As permissões são organizadas por módulo e operação:
+- **Funcionário (`funcionario`)**:
+  - Perfil focado na esteira produtiva e operacional.
+  - Visualiza e acompanha pedidos atribuídos a ele por um administrador ou criados por ele.
+  - Atualiza as etapas do workflow de produção (Design → Aprovação → Impressão → Corte → Montagem → Qualidade → Embalagem).
+  - Tem acesso aos cadastros de clientes e produtos conforme as permissões delegadas pelo administrador.
 
-- Visualizar.
-- Criar.
-- Editar.
-- Excluir.
+- **Usuário (`user`)**:
+  - Perfil padrão para operação comercial autônoma.
+  - Gerencia seus próprios pedidos, clientes, produtos e orçamentos.
+  - Pode excluir pedidos cadastrados por ele mesmo.
+  - Acessa relatórios financeiros e controle de permutas/trocas escopados estritamente aos seus próprios dados.
 
-O acesso é controlado em duas camadas:
+### Matriz de permissões granulares
 
-1. A navegação mostra apenas módulos permitidos.
-2. Os próprios fluxos validam as permissões antes de executar ações.
+As permissões são controladas por módulo e operação:
+- **Visualizar** (`view`)
+- **Criar** (`create`)
+- **Editar** (`edit`)
+- **Excluir** (`delete`)
 
-O gerenciamento de usuários é restrito a administradores.
+### Revogação de acesso em tempo real
 
-## 14. Regras de negócio importantes
+O sistema utiliza listeners do Firestore no contexto de autenticação (`AuthContext`). Se um usuário tiver seu perfil desativado, seu papel alterado ou permissões revogadas por um administrador, a interface e as rotas protegidas reagem imediatamente, bloqueando o acesso e redirecionando a sessão sem que seja necessário novo login.
+
+## 14. Central de Ajuda & Guia Operacional (`/ajuda`)
+
+Disponível para todos os usuários autenticados via rota `/ajuda`, reúne:
+
+- **Guia Operacional Interativo**: explicação passo a passo dos fluxos do sistema (pedidos, produção, orçamentos e clientes).
+- **FAQ Dinâmico**: respostas rápidas para dúvidas operacionais mais comuns e boas práticas.
+- **Catálogo de Atalhos de Teclado**: guia de produtividade para navegação rápida pelo sistema.
+- **Canais de Atendimento**: atalhos para suporte via WhatsApp e e-mail com a equipe técnica.
+
+## 15. Regras de negócio importantes
 
 - Clientes inadimplentes não podem receber novos pedidos.
 - Clientes com pedidos ativos não podem ser removidos.
@@ -481,7 +505,7 @@ O gerenciamento de usuários é restrito a administradores.
 - Dados são isolados por usuário nas regras do Firebase.
 - Operações indisponíveis por permissão não devem ser executadas apenas por ocultação visual; o backend também deve impedir o acesso.
 
-## 15. Fluxos recomendados
+## 16. Fluxos recomendados
 
 ### Novo cliente e pedido
 
@@ -513,7 +537,7 @@ O gerenciamento de usuários é restrito a administradores.
 5. Cobrar valores pendentes.
 6. Usar relatórios para avaliar o período.
 
-## 16. Limites e responsabilidades
+## 17. Limites e responsabilidades
 
 - O ViaCEP depende de disponibilidade externa e cobre endereços brasileiros.
 - Endereços não localizados devem ser preenchidos manualmente.

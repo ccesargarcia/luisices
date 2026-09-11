@@ -6,11 +6,19 @@ Esta pasta contém testes automatizados end-to-end (E2E) usando Playwright.
 
 ```
 tests/e2e/
-├── smoke.spec.ts           # Testes rápidos e críticos (rodar antes de deploy)
-├── auth.spec.ts            # Autenticação (login, logout, erros)
-├── dashboard.spec.ts       # Dashboard (cards, filtros, busca, compartilhados)
-├── shared-access.spec.ts   # Compartilhamento de acesso
-└── navigation.spec.ts      # Navegação entre páginas
+├── auth.spec.ts                      # Autenticação (login, logout, erros)
+├── critical-flows.spec.ts            # Fluxos críticos da aplicação
+├── customer-order-lifecycle.spec.ts  # Ciclo completo cliente -> pedido
+├── customers.spec.ts                 # CRUD e regras de clientes
+├── gallery.spec.ts                   # Galeria de artes e uploads
+├── navigation.spec.ts                # Navegação entre páginas e rotas
+├── order-details.spec.ts             # Detalhes e workflow de produção do pedido
+├── orders.spec.ts                    # Gestão e listagem de pedidos
+├── permissions.spec.ts               # Validação de permissões e papéis (RBAC)
+├── products.spec.ts                  # CRUD de produtos e catálogo
+├── quotes.spec.ts                    # CRUD e conversão de orçamentos
+├── reports.spec.ts                   # Relatórios e exportações
+└── settings.spec.ts                  # Configurações do usuário e sistema
 ```
 
 ## 🚀 Como Rodar

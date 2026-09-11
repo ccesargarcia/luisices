@@ -67,7 +67,7 @@ Este diretório contém os workflows de CI/CD para deploy automático do projeto
 | `PLAYWRIGHT_BASE_URL_DEV` | DEV | URL do ambiente de testes |
 | `FIREBASE_SERVICE_ACCOUNT_DEV` | DEV | Service Account JSON (dev) |
 
-**👉 Veja o guia completo:** [SECRETS_QUICKSTART.md](./SECRETS_QUICKSTART.md)
+**👉 Veja o guia completo:** [SETUP_SECRETS.md](./SETUP_SECRETS.md)
 
 ---
 
@@ -190,7 +190,6 @@ PLAYWRIGHT_BASE_URL=https://dev.luisices.com.br npm run test:smoke
 
 ## 📚 Documentação Adicional
 
-- [Configurar Secrets (Guia Rápido)](./SECRETS_QUICKSTART.md)
 - [Configurar Secrets (Documentação Completa)](./SETUP_SECRETS.md)
 - [Playwright CI/CD](https://playwright.dev/docs/ci)
 - [Firebase Hosting + GitHub Actions](https://firebase.google.com/docs/hosting/github-integration)
