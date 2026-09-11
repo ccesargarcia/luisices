@@ -88,12 +88,44 @@ export function OrderDetailsDialog({ order, open, onOpenChange, onUpdateStatus, 
     setIsEditing(false);
   }, [order?.id]);
 
+  const [allUsers, setAllUsers] = useState<UserProfile[]>([]);
+
   useEffect(() => {
     if (!open || userProfile?.role !== 'admin') return;
     firebaseUserService.listUsers()
-      .then(users => setEmployees(users.filter(candidate => candidate.role === 'funcionario' && candidate.active)))
-      .catch(() => setEmployees([]));
+      .then(users => {
+        setAllUsers(users);
+        setEmployees(users.filter(candidate => candidate.role === 'funcionario' && candidate.active));
+      })
+      .catch(() => {
+        setAllUsers([]);
+        setEmployees([]);
+      });
   }, [open, userProfile?.role]);
+
+  const displayCreatedByName = useMemo(() => {
+    if (order?.createdByName && order.createdByName !== 'Usuário proprietário') {
+      return order.createdByName;
+    }
+    if (order?.userId) {
+      if (order.userId === user?.uid) {
+        return user.displayName || user.email || 'Você';
+      }
+      const found = allUsers.find(u => u.uid === order.userId);
+      if (found?.displayName || found?.email) {
+        return found.displayName || found.email;
+      }
+    }
+    return order?.createdByName;
+  }, [order?.createdByName, order?.userId, user, allUsers]);
+
+  const effectiveOrder = useMemo(() => {
+    if (!order) return null;
+    return {
+      ...order,
+      createdByName: displayCreatedByName,
+    };
+  }, [order, displayCreatedByName]);
 
   // Sincronizar anexos quando o pedido mudar (ex: listener Firestore)
   useEffect(() => {
@@ -323,7 +355,7 @@ export function OrderDetailsDialog({ order, open, onOpenChange, onUpdateStatus, 
                   <Button
                     size="sm"
                     variant="outline"
-                    onClick={() => exportOrderPDF(order, settings?.businessName)}
+                    onClick={() => exportOrderPDF(effectiveOrder || order, settings?.businessName)}
                     className="gap-2"
                   >
                     <Download className="size-4" />
@@ -384,12 +416,7 @@ export function OrderDetailsDialog({ order, open, onOpenChange, onUpdateStatus, 
           ) : (
             /* Modo de Visualização */
             <>
-              <OrderInfoView order={order} />
-
-              <div className="rounded-lg border bg-muted/30 p-3 text-sm">
-                <span className="text-muted-foreground">Criado por: </span>
-                <span className="font-medium">{order.createdByName || 'Usuário proprietário'}</span>
-              </div>
+              <OrderInfoView order={effectiveOrder || order} />
 
               <div className="rounded-lg border p-4 space-y-2">
                 <label className="text-sm font-medium">Responsável pela execução</label>

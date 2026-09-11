@@ -25,6 +25,7 @@ import { firebaseOrderService } from '../../services/firebaseOrderService';
 import { firebaseCustomerService } from '../../services/firebaseCustomerService';
 import { toast } from 'sonner';
 import { cn } from '../components/ui/utils';
+import { useAuth } from '../../contexts/AuthContext';
 
 function hexToRgba(hex: string, alpha: number) {
   const cleanHex = hex.replace('#', '');
@@ -60,6 +61,7 @@ type StatusFilter = '' | OrderStatus;
 type CalendarViewMode = 'adaptive' | 'board' | 'day';
 
 export function WeeklyCalendar() {
+  const { user } = useAuth();
   const {
     orders,
     loading,
@@ -67,6 +69,7 @@ export function WeeklyCalendar() {
     isFilterActive,
     selectedFilterLabel,
     clearUserFilter,
+    teamMembers,
   } = useFirebaseOrders();
 
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
@@ -154,7 +157,16 @@ export function WeeklyCalendar() {
   };
 
   const handleOrderClick = (order: Order) => {
-    setSelectedOrder(order);
+    const creatorName = (order.createdByName && order.createdByName !== 'Usuário proprietário')
+      ? order.createdByName
+      : teamMembers.find(m => m.uid === order.userId)?.displayName
+        || (order.userId === user?.uid ? user.displayName || user.email || 'Você' : undefined)
+        || order.createdByName;
+
+    setSelectedOrder({
+      ...order,
+      createdByName: creatorName,
+    });
     setDetailsOpen(true);
   };
 

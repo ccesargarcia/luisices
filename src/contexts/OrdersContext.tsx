@@ -212,6 +212,29 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
     return () => unsubscribers.forEach(unsubscribe => unsubscribe());
   }, [user, userProfile?.role]);
 
+  // Enriquece pedidos com o nome do criador se disponível nos perfis
+  const enrichedOrders = useMemo(() => {
+    const profileMap = new Map<string, string>();
+    profiles.forEach((p) => {
+      if (p.uid) {
+        const name = p.displayName || p.email;
+        if (name) profileMap.set(p.uid, name);
+      }
+    });
+
+    return allOrders.map((order) => {
+      const existing = order.createdByName;
+      if (existing && existing !== 'Usuário proprietário') {
+        return order;
+      }
+      const resolved = (order.userId && profileMap.get(order.userId))
+        || (order.userId === user?.uid ? user.displayName || user.email || 'Você' : undefined);
+
+      if (!resolved) return order;
+      return { ...order, createdByName: resolved };
+    });
+  }, [allOrders, profiles, user]);
+
   // Lista de membros de equipe para o filtro
   const teamMembers = useMemo((): TeamMemberOption[] => {
     if (userProfile?.role !== 'admin') return [];
@@ -228,7 +251,7 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
       });
     });
 
-    allOrders.forEach((o) => {
+    enrichedOrders.forEach((o) => {
       if (o.assignedTo && !memberMap.has(o.assignedTo)) {
         memberMap.set(o.assignedTo, {
           uid: o.assignedTo,
@@ -248,7 +271,7 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
     });
 
     // Contabiliza pedidos atribuídos ou de responsabilidade
-    allOrders.forEach((o) => {
+    enrichedOrders.forEach((o) => {
       if (o.assignedTo && memberMap.has(o.assignedTo)) {
         memberMap.get(o.assignedTo)!.orderCount += 1;
       } else if (!o.assignedTo && o.userId && memberMap.has(o.userId)) {
@@ -261,11 +284,11 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
       if (a.role !== 'admin' && b.role === 'admin') return -1;
       return a.displayName.localeCompare(b.displayName);
     });
-  }, [profiles, allOrders, userProfile?.role]);
+  }, [profiles, enrichedOrders, userProfile?.role]);
 
   const unassignedCount = useMemo(() => {
-    return allOrders.filter(o => !o.assignedTo).length;
-  }, [allOrders]);
+    return enrichedOrders.filter(o => !o.assignedTo).length;
+  }, [enrichedOrders]);
 
   const isFilterActive = useMemo(() => {
     if (userProfile?.role !== 'admin') return false;
@@ -277,10 +300,10 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
   // Filtra pedidos se o admin tiver selecionado responsáveis específicos
   const filteredOrders = useMemo(() => {
     if (!isFilterActive) {
-      return allOrders;
+      return enrichedOrders;
     }
 
-    return allOrders.filter((order) => {
+    return enrichedOrders.filter((order) => {
       // 1. "Sem responsável" selecionado
       if (selectedUserIds.includes('unassigned') && !order.assignedTo) {
         return true;
@@ -368,7 +391,7 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
     <OrdersContext.Provider
       value={{
         orders: filteredOrders,
-        allOrders,
+        allOrders: enrichedOrders,
         loading,
         error,
         selectedUserIds,
