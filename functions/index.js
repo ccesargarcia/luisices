@@ -4,8 +4,27 @@ const { defineSecret } = require('firebase-functions/params');
 const admin = require('firebase-admin');
 const { Resend } = require('resend');
 const { RateLimiterMemory } = require('rate-limiter-flexible');
+const fs = require('fs');
 
 admin.initializeApp();
+
+// Helper para obter o email da Service Account
+const getServiceAccount = () => {
+  if (process.env.FUNCTION_SERVICE_ACCOUNT) {
+    return process.env.FUNCTION_SERVICE_ACCOUNT;
+  }
+  if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
+    try {
+      const saJson = JSON.parse(fs.readFileSync(process.env.GOOGLE_APPLICATION_CREDENTIALS, 'utf8'));
+      if (saJson && saJson.client_email) {
+        return saJson.client_email;
+      }
+    } catch (e) {
+      // Ignora erro de leitura/parse caso o arquivo não exista ou seja inválido
+    }
+  }
+  return undefined;
+};
 
 // Rate limiter: 3 tentativas por email a cada hora
 const rateLimiter = new RateLimiterMemory({
@@ -26,7 +45,14 @@ const getResend = (apiKey) => apiKey ? new Resend(apiKey) : null;
  * Trigger: Chamada HTTP (v2)
  * Endpoint: https://REGION-PROJECT_ID.cloudfunctions.net/sendPasswordResetEmail
  */
-exports.sendPasswordResetEmail = onCall({ secrets: [RESEND_API_KEY] }, async (request) => {
+const serviceAccount = getServiceAccount();
+
+exports.sendPasswordResetEmail = onCall(
+  {
+    secrets: [RESEND_API_KEY],
+    ...(serviceAccount ? { serviceAccount } : {}),
+  },
+  async (request) => {
   const { email } = request.data;
 
   if (!email) {
