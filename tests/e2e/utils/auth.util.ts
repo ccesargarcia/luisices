@@ -1,6 +1,9 @@
 import { Page, expect } from '@playwright/test';
 import * as fs from 'fs';
 import * as path from 'path';
+import dotenv from 'dotenv';
+
+dotenv.config({ path: '.env.test' });
 
 export function getTestCredentials() {
   return {

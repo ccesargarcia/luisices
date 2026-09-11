@@ -1,11 +1,9 @@
 import { defineConfig, devices } from '@playwright/test';
 import dotenv from 'dotenv';
 
-// Carregar variáveis de ambiente do .env.test APENAS localmente
-// No CI, as credenciais vêm das GitHub Secrets (process.env)
-if (!process.env.CI) {
-  dotenv.config({ path: '.env.test' });
-}
+// Carregar variáveis de ambiente do .env.test (se existir)
+dotenv.config({ path: '.env.test' });
+
 
 /**
  * Configuração de Testes E2E com Playwright
