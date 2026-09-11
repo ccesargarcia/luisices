@@ -404,3 +404,21 @@ export interface SendEmailPayload {
   cc?: string[];
   bcc?: string[];
 }
+
+export interface EmailUsage {
+  daily: {
+    used: number;
+    limit: number | null;
+    sent: number;
+    received: number;
+    resetsAt?: string | null;
+  };
+  monthly: {
+    used: number;
+    limit: number | null;
+    sent: number;
+    received: number;
+    resetsAt?: string | null;
+  };
+  source?: 'resend_api' | 'firestore_fallback' | 'default';
+}

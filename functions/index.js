@@ -564,6 +564,116 @@ exports.sendCustomEmail = onCall({ cors: true, secrets: [RESEND_API_KEY] }, asyn
 });
 
 /**
+ * Cloud Function para consultar a cota / limite de envio de e-mails via Resend API (ou fallback via Firestore).
+ */
+exports.getEmailUsage = onCall({ cors: true, secrets: [RESEND_API_KEY] }, async (request) => {
+  if (!request.auth) {
+    throw new functions.https.HttpsError('unauthenticated', 'Usuário não autenticado.');
+  }
+
+  if (!(await isAdminRequest(request))) {
+    throw new functions.https.HttpsError('permission-denied', 'Apenas administradores podem consultar a cota de e-mails.');
+  }
+
+  const apiKey = RESEND_API_KEY.value();
+  if (!apiKey) {
+    throw new functions.https.HttpsError('failed-precondition', 'Resend não configurado.');
+  }
+
+  // 1. Tentar consultar a API de Usage do Resend (GET https://api.resend.com/usage)
+  try {
+    const res = await fetch('https://api.resend.com/usage', {
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      const daily = data?.emails?.daily || {};
+      const monthly = data?.emails?.monthly || {};
+      return {
+        success: true,
+        source: 'resend_api',
+        daily: {
+          used: Number(daily.used ?? 0),
+          limit: daily.limit !== undefined && daily.limit !== null ? Number(daily.limit) : 100,
+          sent: Number(daily.sent ?? 0),
+          received: Number(daily.received ?? 0),
+          resetsAt: daily.resets_at || null,
+        },
+        monthly: {
+          used: Number(monthly.used ?? 0),
+          limit: monthly.limit !== undefined && monthly.limit !== null ? Number(monthly.limit) : 3000,
+          sent: Number(monthly.sent ?? 0),
+          received: Number(monthly.received ?? 0),
+          resetsAt: monthly.resets_at || null,
+        },
+      };
+    }
+    console.warn('[getEmailUsage] Resend /usage retornou status:', res.status);
+  } catch (err) {
+    console.warn('[getEmailUsage] Erro ao consultar https://api.resend.com/usage:', err);
+  }
+
+  // 2. Fallback resiliente: calcular a partir do histórico do Firestore
+  try {
+    const now = new Date();
+    const startOfTodayUtc = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 0, 0));
+    const startOfMonthUtc = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1, 0, 0, 0));
+
+    const [todaySnap, monthSnap] = await Promise.all([
+      admin.firestore().collection('sentEmails')
+        .where('sentAt', '>=', startOfTodayUtc.toISOString())
+        .get(),
+      admin.firestore().collection('sentEmails')
+        .where('sentAt', '>=', startOfMonthUtc.toISOString())
+        .get(),
+    ]);
+
+    return {
+      success: true,
+      source: 'firestore_fallback',
+      daily: {
+        used: todaySnap.size,
+        limit: 100,
+        sent: todaySnap.size,
+        received: 0,
+        resetsAt: new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1, 0, 0, 0)).toISOString(),
+      },
+      monthly: {
+        used: monthSnap.size,
+        limit: 3000,
+        sent: monthSnap.size,
+        received: 0,
+        resetsAt: new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1, 0, 0, 0)).toISOString(),
+      },
+    };
+  } catch (firestoreErr) {
+    console.error('[getEmailUsage] Erro no fallback do Firestore:', firestoreErr);
+    return {
+      success: true,
+      source: 'default',
+      daily: {
+        used: 0,
+        limit: 100,
+        sent: 0,
+        received: 0,
+        resetsAt: null,
+      },
+      monthly: {
+        used: 0,
+        limit: 3000,
+        sent: 0,
+        received: 0,
+        resetsAt: null,
+      },
+    };
+  }
+});
+
+/**
  * Webhook HTTP para recebimento de e-mails via Resend (email.received).
  * Armazena e-mails recebidos na coleção 'receivedEmails'.
  *

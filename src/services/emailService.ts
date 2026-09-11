@@ -8,7 +8,7 @@ import {
 } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import { db, functions } from '../lib/firebase';
-import { SendEmailPayload } from '../app/types';
+import { SendEmailPayload, EmailUsage } from '../app/types';
 
 export class EmailService {
   /**
@@ -21,6 +21,22 @@ export class EmailService {
     );
     const result = await callable(payload);
     return result.data;
+  }
+
+  /**
+   * Consulta a cota / limite de envio diário e mensal de e-mails
+   */
+  async getEmailUsage(): Promise<EmailUsage> {
+    const callable = httpsCallable<
+      void,
+      { success: boolean; daily: EmailUsage['daily']; monthly: EmailUsage['monthly']; source?: EmailUsage['source'] }
+    >(functions, 'getEmailUsage');
+    const result = await callable();
+    return {
+      daily: result.data.daily,
+      monthly: result.data.monthly,
+      source: result.data.source,
+    };
   }
 
   /**

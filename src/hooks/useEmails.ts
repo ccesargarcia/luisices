@@ -1,14 +1,32 @@
 import { useState, useEffect, useCallback } from 'react';
 import { collection, query, orderBy, onSnapshot } from 'firebase/firestore';
 import { db, auth } from '../lib/firebase';
-import { ReceivedEmail, SentEmail, SendEmailPayload } from '../app/types';
+import { ReceivedEmail, SentEmail, SendEmailPayload, EmailUsage } from '../app/types';
 import { emailService } from '../services/emailService';
 
 export function useEmails() {
   const [receivedEmails, setReceivedEmails] = useState<ReceivedEmail[]>([]);
   const [sentEmails, setSentEmails] = useState<SentEmail[]>([]);
+  const [usage, setUsage] = useState<EmailUsage | null>(null);
+  const [loadingUsage, setLoadingUsage] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  const refreshUsage = useCallback(async () => {
+    try {
+      setLoadingUsage(true);
+      const data = await emailService.getEmailUsage();
+      setUsage(data);
+    } catch (err) {
+      console.warn('[useEmails] Não foi possível consultar cota de e-mail:', err);
+    } finally {
+      setLoadingUsage(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    refreshUsage();
+  }, [refreshUsage]);
 
   useEffect(() => {
     const user = auth.currentUser;
@@ -90,8 +108,11 @@ export function useEmails() {
   }, []);
 
   const sendEmail = useCallback(async (payload: SendEmailPayload) => {
-    return await emailService.sendEmail(payload);
-  }, []);
+    const res = await emailService.sendEmail(payload);
+    // Atualiza cota após envio
+    refreshUsage().catch(() => {});
+    return res;
+  }, [refreshUsage]);
 
   const markAsRead = useCallback(async (id: string, read: boolean) => {
     await emailService.markAsRead(id, read);
@@ -119,6 +140,9 @@ export function useEmails() {
     receivedEmails,
     sentEmails,
     unreadCount,
+    usage,
+    loadingUsage,
+    refreshUsage,
     loading,
     error,
     sendEmail,

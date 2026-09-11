@@ -53,6 +53,8 @@ import {
   SendHorizontal,
   MailOpen,
   ArrowDownLeft,
+  Gauge,
+  RefreshCw,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -140,6 +142,9 @@ export function Emails() {
     receivedEmails,
     sentEmails,
     unreadCount,
+    usage,
+    loadingUsage,
+    refreshUsage,
     loading,
     error,
     sendEmail,
@@ -149,6 +154,16 @@ export function Emails() {
     deleteReceived,
     deleteSent,
   } = useEmails();
+
+  const sentTodayCount = useMemo(() => {
+    const today = new Date().toISOString().split('T')[0];
+    return sentEmails.filter((e) => e.sentAt && e.sentAt.startsWith(today)).length;
+  }, [sentEmails]);
+
+  const dailyUsed = usage ? usage.daily.used : sentTodayCount;
+  const dailyLimit = usage?.daily.limit ?? 100;
+  const dailyRemaining = Math.max(0, dailyLimit - dailyUsed);
+  const dailyPercent = Math.min(100, Math.round((dailyUsed / dailyLimit) * 100));
 
   const isDev = useMemo(() => {
     return (
@@ -401,7 +416,7 @@ export function Emails() {
       </div>
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground flex items-center justify-between">
@@ -455,6 +470,60 @@ export function Emails() {
           <CardContent>
             <div className="text-2xl font-bold text-amber-600">{starredCount}</div>
             <p className="text-xs text-muted-foreground mt-1">marcados com estrela</p>
+          </CardContent>
+        </Card>
+
+        <Card className="col-span-2 md:col-span-1 border-primary/20 bg-primary/5">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground flex items-center justify-between">
+              <span>Cota Diária</span>
+              <div className="flex items-center gap-1.5">
+                <Gauge className="size-4 text-primary" />
+                <button
+                  type="button"
+                  onClick={() => refreshUsage()}
+                  title="Atualizar dados de cota"
+                  className="text-muted-foreground hover:text-foreground transition-colors p-0.5 rounded"
+                >
+                  <RefreshCw className={`size-3 ${loadingUsage ? 'animate-spin' : ''}`} />
+                </button>
+              </div>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-baseline justify-between">
+              <div className="text-2xl font-bold">
+                {dailyUsed} <span className="text-sm font-normal text-muted-foreground">/ {dailyLimit}</span>
+              </div>
+              <span
+                className={`text-xs font-semibold ${
+                  dailyPercent >= 90
+                    ? 'text-destructive'
+                    : dailyPercent >= 75
+                    ? 'text-amber-600'
+                    : 'text-emerald-600'
+                }`}
+              >
+                {dailyRemaining} restam
+              </span>
+            </div>
+            {/* Progress bar */}
+            <div className="w-full bg-muted/60 rounded-full h-1.5 mt-2.5 overflow-hidden">
+              <div
+                className={`h-full transition-all duration-500 rounded-full ${
+                  dailyPercent >= 90
+                    ? 'bg-destructive'
+                    : dailyPercent >= 75
+                    ? 'bg-amber-500'
+                    : 'bg-emerald-500'
+                }`}
+                style={{ width: `${dailyPercent}%` }}
+              />
+            </div>
+            <p className="text-[11px] text-muted-foreground mt-1.5 flex items-center justify-between">
+              <span>{dailyPercent}% consumido</span>
+              <span className="text-[10px] text-muted-foreground/80">reset às 21h</span>
+            </p>
           </CardContent>
         </Card>
       </div>
@@ -1017,34 +1086,47 @@ export function Emails() {
                   )}
                 </div>
 
-                {/* Action Buttons */}
-                <div className="flex items-center justify-end gap-3 pt-3 border-t border-border/60">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => {
-                      setBody('');
-                      setSubject('');
-                      setRecipient('');
-                      setSelectedCustomer('');
-                    }}
-                  >
-                    Limpar
-                  </Button>
+                {/* Action Buttons & Daily Quota Status */}
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 pt-3 border-t border-border/60">
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <Gauge className="size-4 text-primary shrink-0" />
+                    <span>
+                      Cota diária: <strong>{dailyUsed} de {dailyLimit}</strong> envios hoje ({dailyRemaining} disponíveis)
+                    </span>
+                  </div>
 
-                  <Button type="submit" disabled={isSending} className="gap-2 px-6">
-                    {isSending ? (
-                      <>
-                        <Loader2 className="size-4 animate-spin" />
-                        Enviando...
-                      </>
-                    ) : (
-                      <>
-                        <Send className="size-4" />
-                        Enviar E-mail
-                      </>
-                    )}
-                  </Button>
+                  <div className="flex items-center justify-end gap-3">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => {
+                        setBody('');
+                        setSubject('');
+                        setRecipient('');
+                        setSelectedCustomer('');
+                      }}
+                    >
+                      Limpar
+                    </Button>
+
+                    <Button
+                      type="submit"
+                      disabled={isSending || dailyRemaining === 0}
+                      className="gap-2 px-6"
+                    >
+                      {isSending ? (
+                        <>
+                          <Loader2 className="size-4 animate-spin" />
+                          Enviando...
+                        </>
+                      ) : (
+                        <>
+                          <Send className="size-4" />
+                          Enviar E-mail
+                        </>
+                      )}
+                    </Button>
+                  </div>
                 </div>
               </form>
             </CardContent>
