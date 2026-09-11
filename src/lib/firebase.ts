@@ -5,7 +5,7 @@
  */
 
 import { initializeApp } from 'firebase/app';
-import { getAuth } from 'firebase/auth';
+import { browserLocalPersistence, getAuth, setPersistence } from 'firebase/auth';
 import {
   initializeFirestore,
   persistentLocalCache,
@@ -38,6 +38,9 @@ export const db = initializeFirestore(app, {
 
 // Serviços exportados
 export const auth = getAuth(app);
+setPersistence(auth, browserLocalPersistence).catch(error => {
+  console.warn('[Firebase] Não foi possível ativar persistência local:', error);
+});
 export const storage = getStorage(app);
 export const functions = getFunctions(app);
 

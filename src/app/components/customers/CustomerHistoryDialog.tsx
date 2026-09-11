@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Customer, Order, GalleryItem } from '../../types';
 import { formatDate } from '../../utils/date';
 import { formatCurrency } from '../../utils/currency';
@@ -13,7 +13,7 @@ import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
 import { Skeleton } from '../ui/skeleton';
 import { ShoppingBag, Images, Plus, Upload, ZoomIn, Trash2, X, Loader2 } from 'lucide-react';
-import { firebaseOrderService } from '../../../services/firebaseOrderService';
+import { useOrders } from '../../../contexts/OrdersContext';
 import { firebaseGalleryService } from '../../../services/firebaseGalleryService';
 import { CustomerGalleryUploadDialog } from './CustomerGalleryUploadDialog';
 import { toast } from 'sonner';
@@ -31,51 +31,44 @@ export function CustomerHistoryDialog({
   customer,
   userId,
 }: CustomerHistoryDialogProps) {
-  const [orders, setOrders] = useState<Order[]>([]);
+  const { orders: allContextOrders, loading: loadingOrders } = useOrders();
   const [gallery, setGallery] = useState<GalleryItem[]>([]);
-  const [loadingOrders, setLoadingOrders] = useState(false);
   const [loadingGallery, setLoadingGallery] = useState(false);
   const [lightboxItem, setLightboxItem] = useState<GalleryItem | null>(null);
   const [uploadOpen, setUploadOpen] = useState(false);
 
+  const orders = useMemo(() => {
+    if (!open || !customer) return [];
+    return allContextOrders.filter(
+      (o) => o.customerId === customer.id || o.customerName === customer.name
+    );
+  }, [open, customer, allContextOrders]);
+
   useEffect(() => {
-    if (!open || !customer) {
-      setOrders([]);
+    if (!open || !customer || !userId) {
       setGallery([]);
       return;
     }
 
     let isCancelled = false;
-    setLoadingOrders(true);
     setLoadingGallery(true);
 
-    async function loadData() {
-      if (!customer) return;
+    async function loadGallery() {
       try {
-        const [allOrders, galleryItems] = await Promise.all([
-          firebaseOrderService.getOrders(),
-          userId ? firebaseGalleryService.getItems(userId) : Promise.resolve([]),
-        ]);
-
+        const galleryItems = await firebaseGalleryService.getItems(userId);
         if (!isCancelled) {
-          setOrders(
-            allOrders.filter(
-              (o) => o.customerId === customer.id || o.customerName === customer.name
-            )
-          );
           setGallery(galleryItems.filter((g) => g.customerId === customer.id));
         }
       } catch (error) {
-        console.error('Erro ao carregar histórico do cliente:', error);
+        console.error('Erro ao carregar histórico da galeria:', error);
       } finally {
         if (!isCancelled) {
-          setLoadingOrders(false);
           setLoadingGallery(false);
         }
       }
     }
 
-    loadData();
+    loadGallery();
 
     return () => {
       isCancelled = true;
@@ -100,7 +93,7 @@ export function CustomerHistoryDialog({
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="w-full max-w-full sm:max-w-2xl max-h-[90vh] flex flex-col overflow-hidden">
+        <DialogContent className="w-[calc(100vw-1.5rem)] sm:w-full sm:max-w-2xl max-h-[90dvh] flex flex-col overflow-hidden">
           <DialogHeader>
             <DialogTitle>{customer?.name}</DialogTitle>
           </DialogHeader>
@@ -229,7 +222,7 @@ export function CustomerHistoryDialog({
       {/* Gallery Lightbox */}
       {lightboxItem && (
         <Dialog open onOpenChange={() => setLightboxItem(null)}>
-          <DialogContent className="w-full max-w-full sm:max-w-2xl p-0 overflow-hidden">
+          <DialogContent className="w-[calc(100vw-1.5rem)] sm:w-full sm:max-w-2xl p-0 overflow-hidden">
             <div className="flex items-center justify-between px-4 py-3 border-b">
               <DialogTitle className="text-sm font-semibold truncate flex-1">
                 {lightboxItem.title}

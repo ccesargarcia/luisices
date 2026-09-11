@@ -37,6 +37,7 @@ import { useFirebaseOrders } from '../../hooks/useFirebaseOrders';
 import { useFirebaseQuotes } from '../../hooks/useFirebaseQuotes';
 import { useFirebaseCustomers } from '../../hooks/useFirebaseCustomers';
 import { useUserSettings } from '../../hooks/useUserSettings';
+import { AdminTeamFilter } from '../components/AdminTeamFilter';
 
 type Period = 'week' | 'month' | 'quarter' | 'year';
 
@@ -150,7 +151,13 @@ function KpiCard({ title, value, sub, icon: Icon, iconClass, trend }: {
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 export function Reports() {
-  const { orders, loading }        = useFirebaseOrders();
+  const {
+    orders,
+    loading,
+    isFilterActive,
+    selectedFilterLabel,
+    clearUserFilter,
+  } = useFirebaseOrders();
   const { quotes }                 = useFirebaseQuotes();
   const { customers }              = useFirebaseCustomers();
   const { settings }               = useUserSettings();
@@ -333,21 +340,46 @@ export function Reports() {
         </Button>
       </div>
 
-      {/* Period selector */}
-      <div className="glass-chip flex w-fit flex-wrap gap-1 rounded-lg p-1">
-        {(['week', 'month', 'quarter', 'year'] as Period[]).map(p => (
-          <button
-            key={p}
-            onClick={() => setPeriod(p)}
-            className={cn(
-              'px-3 py-1.5 rounded-lg text-sm font-medium transition-all',
-              period === p ? 'bg-primary/15 text-primary shadow-sm' : 'text-muted-foreground hover:text-foreground',
-            )}
-          >
-            {p === 'week' ? 'Semana' : p === 'month' ? 'Mês' : p === 'quarter' ? 'Trimestre' : 'Ano'}
-          </button>
-        ))}
+      {/* Period selector and team filter */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="glass-chip flex w-fit flex-wrap gap-1 rounded-lg p-1">
+          {(['week', 'month', 'quarter', 'year'] as Period[]).map(p => (
+            <button
+              key={p}
+              onClick={() => setPeriod(p)}
+              className={cn(
+                'px-3 py-1.5 rounded-lg text-sm font-medium transition-all',
+                period === p ? 'bg-primary/15 text-primary shadow-sm' : 'text-muted-foreground hover:text-foreground',
+              )}
+            >
+              {p === 'week' ? 'Semana' : p === 'month' ? 'Mês' : p === 'quarter' ? 'Trimestre' : 'Ano'}
+            </button>
+          ))}
+        </div>
+
+        <div className="shrink-0">
+          <AdminTeamFilter variant="inline" />
+        </div>
       </div>
+
+      {isFilterActive && (
+        <div className="flex items-center justify-between gap-3 rounded-lg border border-primary/30 bg-primary/5 px-4 py-2.5 text-sm text-primary shadow-xs">
+          <div className="flex items-center gap-2 min-w-0">
+            <Users className="size-4 shrink-0" />
+            <span className="truncate">
+              Relatório filtrado por: <strong>{selectedFilterLabel}</strong> ({curOrders.length} pedidos no período)
+            </span>
+          </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={clearUserFilter}
+            className="h-7 text-xs text-primary hover:bg-primary/10 shrink-0 font-medium"
+          >
+            Visualizar tudo
+          </Button>
+        </div>
+      )}
 
       {/* Tag filter */}
       {allTags.length > 0 && (
@@ -472,7 +504,7 @@ export function Reports() {
 
         <Card>
           <CardHeader><CardTitle className="text-base">Status dos Pedidos</CardTitle></CardHeader>
-          <CardContent className="flex items-center gap-6">
+          <CardContent className="flex flex-col sm:flex-row items-center gap-4 sm:gap-6">
             {stats.statusData.length === 0 ? (
               <p className="text-sm text-muted-foreground py-4">Nenhum pedido no período</p>
             ) : (
@@ -485,7 +517,7 @@ export function Reports() {
                     <Tooltip formatter={(v: number) => [v, 'pedidos']} />
                   </PieChart>
                 </ResponsiveContainer>
-                <div className="space-y-2 flex-1">
+                <div className="space-y-2 w-full flex-1">
                   {stats.statusData.map(d => (
                     <div key={d.key} className="flex items-center justify-between text-sm">
                       <div className="flex items-center gap-2">
@@ -508,7 +540,7 @@ export function Reports() {
 
         <Card>
           <CardHeader><CardTitle className="text-base">Métodos de Pagamento</CardTitle></CardHeader>
-          <CardContent className="flex items-center gap-4">
+          <CardContent className="flex flex-col sm:flex-row items-center gap-4">
             {stats.paymentData.length === 0 ? (
               <p className="text-sm text-muted-foreground py-4">Nenhum pagamento no período</p>
             ) : (
@@ -521,7 +553,7 @@ export function Reports() {
                     <Tooltip formatter={(v: number) => [formatCurrency(v), '']} />
                   </PieChart>
                 </ResponsiveContainer>
-                <div className="space-y-2 flex-1 min-w-0">
+                <div className="space-y-2 w-full flex-1 min-w-0">
                   {stats.paymentData.map(d => (
                     <div key={d.method} className="flex items-center justify-between text-sm">
                       <div className="flex items-center gap-2 min-w-0">

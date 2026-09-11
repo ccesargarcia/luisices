@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router';
-import { LayoutDashboard, Calendar, Users, Package2, LogOut, Settings as SettingsIcon, BarChart3, FileText, ShoppingBag, Images, AtSign, Globe, Phone, Mail, MapPin, MessageCircle, ArrowLeftRight, UserCog, Info, PanelLeftClose, PanelLeftOpen, MoreHorizontal } from 'lucide-react';
+import { LayoutDashboard, Calendar, Users, Package2, LogOut, Settings as SettingsIcon, BarChart3, FileText, ShoppingBag, Images, AtSign, Globe, Phone, Mail, MapPin, MessageCircle, ArrowLeftRight, UserCog, Info, PanelLeftClose, PanelLeftOpen, MoreHorizontal, HelpCircle } from 'lucide-react';
 import { cn } from '../components/ui/utils';
 import { useAuth } from '../../contexts/AuthContext';
 import { useUserSettings } from '../../hooks/useUserSettings';
@@ -18,6 +18,7 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from '../components/ui/avatar';
 import { ThemeToggle } from '../../components/ThemeToggle';
 import { NotificationBell } from '../components/NotificationBell';
+import { AdminTeamFilter } from '../components/AdminTeamFilter';
 import { Badge } from '../components/ui/badge';
 import {
   Dialog,
@@ -65,17 +66,20 @@ export function Layout() {
     { name: 'Dashboard',       href: '/',           icon: LayoutDashboard, check: (p: any) => p.dashboard },
     { name: 'Agenda Semanal', href: '/agenda',      icon: Calendar,        check: (p: any) => p.orders?.view },
     { name: 'Clientes',       href: '/clientes',    icon: Users,           check: (p: any) => p.customers?.view },
-    { name: 'Relatórios',     href: '/relatorios',  icon: BarChart3,       check: (p: any) => p.reports },
+    { name: 'Relatórios',     href: '/relatorios',  icon: BarChart3,       check: (p: any) => p.reports, allowUserRole: true },
     { name: 'Orçamentos',     href: '/orcamentos',  icon: FileText,        check: (p: any) => p.quotes?.view },
     { name: 'Produtos',       href: '/produtos',    icon: ShoppingBag,     check: (p: any) => p.products?.view },
     { name: 'Galeria',        href: '/galeria',     icon: Images,          check: (p: any) => p.gallery?.view },
-    { name: 'Permutas',       href: '/permutas',    icon: ArrowLeftRight,  check: (p: any) => p.exchanges },
+    { name: 'Permutas',       href: '/permutas',    icon: ArrowLeftRight,  check: (p: any) => p.exchanges, allowUserRole: true },
     { name: 'Usuários',       href: '/usuarios',    icon: UserCog,         check: (p: any) => p.users?.view },
   ];
 
   const navigation = useMemo(() => {
     if (!userProfile) return [];
-    return allNavItems.filter(item => hasPermission(item.check));
+    return allNavItems.filter(item => {
+      if ((item as any).allowUserRole && (userProfile.role === 'user' || userProfile.role === 'admin')) return true;
+      return hasPermission(item.check);
+    });
   }, [userProfile, hasPermission]);
 
   const orderedNav = useMemo(() => {
@@ -154,13 +158,30 @@ export function Layout() {
           to="/configuracoes"
           title={sidebarCollapsed ? 'Configurações' : undefined}
           className={cn(
-            'mx-6 flex items-center rounded-lg px-3 py-3 text-sm font-medium text-muted-foreground transition-colors hover:bg-primary/5 hover:text-foreground',
+            'mx-6 flex items-center rounded-lg px-3 py-3 text-sm font-medium transition-colors',
+            location.pathname === '/configuracoes'
+              ? 'bg-primary/10 text-primary font-semibold'
+              : 'text-muted-foreground hover:bg-primary/5 hover:text-foreground',
             sidebarCollapsed ? 'justify-center' : 'gap-4',
           )}
         >
-          <SettingsIcon className="size-5" />
+          <SettingsIcon className="size-5 shrink-0" />
           <span className={sidebarCollapsed ? 'hidden' : 'inline'}>Configurações</span>
         </Link>}
+        <Link
+          to="/ajuda"
+          title={sidebarCollapsed ? 'Central de Ajuda' : undefined}
+          className={cn(
+            'mx-6 flex items-center rounded-lg px-3 py-3 text-sm font-medium transition-colors',
+            location.pathname === '/ajuda'
+              ? 'bg-primary/10 text-primary font-semibold'
+              : 'text-muted-foreground hover:bg-primary/5 hover:text-foreground',
+            sidebarCollapsed ? 'justify-center' : 'gap-4',
+          )}
+        >
+          <HelpCircle className="size-5 shrink-0" />
+          <span className={sidebarCollapsed ? 'hidden' : 'inline'}>Central de Ajuda</span>
+        </Link>
         <Button
           type="button"
           variant="ghost"
@@ -231,9 +252,20 @@ export function Layout() {
               </div>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5 sm:gap-2">
+              <AdminTeamFilter variant="header" />
               <NotificationBell />
               <ThemeToggle />
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => navigate('/ajuda')}
+                className="relative size-9 rounded-full text-muted-foreground hover:text-foreground"
+                title="Central de Ajuda & Guia de Uso"
+                aria-label="Central de Ajuda"
+              >
+                <HelpCircle className="size-4" />
+              </Button>
               <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" className="relative size-10 rounded-full">
@@ -257,6 +289,10 @@ export function Layout() {
                   <SettingsIcon className="size-4 mr-2" />
                   Configurações
                 </DropdownMenuItem>}
+                <DropdownMenuItem onClick={() => navigate('/ajuda')} className="cursor-pointer">
+                  <HelpCircle className="size-4 mr-2" />
+                  Central de Ajuda
+                </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => setAboutOpen(true)} className="cursor-pointer">
                   <Info className="size-4 mr-2" />
                   Sobre
@@ -501,6 +537,12 @@ export function Layout() {
               </DropdownMenuItem>
             ))}
             <DropdownMenuSeparator />
+            <DropdownMenuItem asChild>
+              <Link to="/ajuda" className="flex cursor-pointer items-center gap-2">
+                <HelpCircle className="size-4" />
+                Central de Ajuda
+              </Link>
+            </DropdownMenuItem>
             {canAccessSettings && <DropdownMenuItem asChild>
               <Link to="/configuracoes" className="flex cursor-pointer items-center gap-2">
                 <SettingsIcon className="size-4" />

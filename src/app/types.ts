@@ -90,6 +90,11 @@ export interface Order {
   tags?: Tag[];
   payment?: Payment;
   userId: string;
+  createdByName?: string;
+  assignedTo?: string;
+  assignedToName?: string;
+  assignedAt?: string;
+  assignedBy?: string;
   productionWorkflow?: ProductionWorkflow;
   attachments?: OrderAttachment[];
   orderNumber?: string;
@@ -244,7 +249,7 @@ export interface GalleryItem {
 
 // ─── User Management ─────────────────────────────────────────────────────────
 
-export type UserRole = 'admin' | 'user';
+export type UserRole = 'admin' | 'user' | 'funcionario';
 
 export interface ModulePermission {
   view: boolean;
@@ -294,14 +299,27 @@ export const ADMIN_PERMISSIONS: Permission = {
 
 export const DEFAULT_USER_PERMISSIONS: Permission = {
   dashboard: true,
-  orders:    { view: true, create: true, edit: true, delete: false },
-  customers: { view: true, create: true, edit: true, delete: false },
+  orders:    { view: true, create: true, edit: true, delete: true },
+  customers: { view: true, create: true, edit: true, delete: true },
+  products:  { view: true, create: true, edit: true, delete: true },
+  quotes:    { view: true, create: true, edit: true, delete: true },
+  gallery:   { view: true, create: true, delete: true },
+  reports:   true,
+  exchanges: true,
+  settings:  true,
+  users:     { view: false, create: false, edit: false, delete: false },
+};
+
+export const EMPLOYEE_PERMISSIONS: Permission = {
+  dashboard: true,
+  orders:    { view: true, create: false, edit: true, delete: false },
+  customers: { view: true, create: false, edit: false, delete: false },
   products:  { view: true, create: false, edit: false, delete: false },
-  quotes:    { view: true, create: true, edit: true, delete: false },
+  quotes:    { view: true, create: false, edit: false, delete: false },
   gallery:   { view: true, create: true, delete: false },
   reports:   false,
   exchanges: false,
-  settings:  true,
+  settings:  false,
   users:     { view: false, create: false, edit: false, delete: false },
 };
 

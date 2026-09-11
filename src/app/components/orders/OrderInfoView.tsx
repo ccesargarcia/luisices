@@ -11,16 +11,25 @@ import {
   Clock,
   Tag as TagIcon,
   Repeat2,
+  UserRoundCheck,
 } from 'lucide-react';
 import { formatDate } from '../../utils/date';
 import { formatCurrency } from '../../utils/currency';
 import { getTextColor } from '../../utils/tagColors';
+import { useOrders } from '../../../contexts/OrdersContext';
 
 interface OrderInfoViewProps {
   order: Order;
 }
 
 export function OrderInfoView({ order }: OrderInfoViewProps) {
+  const { teamMembers } = useOrders();
+  const createdByDisplay = (order.createdByName && order.createdByName !== 'Usuário proprietário')
+    ? order.createdByName
+    : teamMembers.find(m => m.uid === order.userId)?.displayName
+      || (order.createdByName && order.createdByName !== 'Usuário proprietário' ? order.createdByName : undefined)
+      || 'Usuário proprietário';
+
   return (
     <>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
@@ -80,6 +89,14 @@ export function OrderInfoView({ order }: OrderInfoViewProps) {
               <div className="font-medium">{formatDate(order.createdAt)}</div>
             </div>
           </div>
+        </div>
+      </div>
+
+      <div className="flex items-start gap-3 rounded-lg border bg-muted/30 p-3">
+        <UserRoundCheck className="size-5 text-muted-foreground mt-0.5" />
+        <div>
+          <div className="text-sm text-muted-foreground">Criado por</div>
+          <div className="font-medium">{createdByDisplay}</div>
         </div>
       </div>
 

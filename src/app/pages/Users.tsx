@@ -7,6 +7,7 @@ import {
   Permission,
   ADMIN_PERMISSIONS,
   DEFAULT_USER_PERMISSIONS,
+  EMPLOYEE_PERMISSIONS,
   ModulePermission,
 } from '../types';
 import { Button } from '../components/ui/button';
@@ -124,7 +125,7 @@ function PermissionMatrix({ permissions, onChange }: PermissionMatrixProps) {
   }
 
   return (
-    <div className="space-y-3 max-h-[40vh] overflow-y-auto pr-1">
+    <div className="space-y-3 max-h-[35dvh] overflow-y-auto pr-1 sm:max-h-[40vh]">
       {MODULES.map(({ key, label, type }) => (
         <div key={key} className="border rounded-md p-3 space-y-2">
           <p className="text-sm font-semibold">{label}</p>
@@ -215,7 +216,13 @@ function UserFormDialog({ open, editingUser, currentUserUid, onClose, onSaved }:
 
   function applyPreset(r: UserRole) {
     setRole(r);
-    setPermissions(r === 'admin' ? deepClonePermission(ADMIN_PERMISSIONS) : deepClonePermission(DEFAULT_USER_PERMISSIONS));
+    setPermissions(
+      r === 'admin'
+        ? deepClonePermission(ADMIN_PERMISSIONS)
+        : r === 'funcionario'
+          ? deepClonePermission(EMPLOYEE_PERMISSIONS)
+          : deepClonePermission(DEFAULT_USER_PERMISSIONS),
+    );
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -236,7 +243,7 @@ function UserFormDialog({ open, editingUser, currentUserUid, onClose, onSaved }:
           role,
           permissions,
         });
-        toast.success('Usuário atualizado. O usuário precisa fazer logout/login para aplicar as mudanças.');
+        toast.success('Usuário atualizado com sucesso. As alterações já estão ativas em tempo real.');
       } else {
         await firebaseUserService.createUser(email.trim(), password, displayName.trim(), role, permissions, currentUserUid);
         toast.success('Usuário criado com sucesso');
@@ -253,7 +260,7 @@ function UserFormDialog({ open, editingUser, currentUserUid, onClose, onSaved }:
 
   return (
     <Dialog open={open} onOpenChange={v => { if (!v) onClose(); }}>
-      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+      <DialogContent className="w-[calc(100vw-1rem)] max-w-[calc(100vw-1rem)] max-h-[calc(100dvh-1rem)] overflow-y-auto p-4 sm:w-full sm:max-w-lg sm:max-h-[90dvh] sm:p-6">
         <DialogHeader>
           <DialogTitle>{isEdit ? 'Editar usuário' : 'Novo usuário'}</DialogTitle>
         </DialogHeader>
@@ -311,17 +318,21 @@ function UserFormDialog({ open, editingUser, currentUserUid, onClose, onSaved }:
               <SelectContent>
                 <SelectItem value="admin">Admin — acesso total</SelectItem>
                 <SelectItem value="user">Usuário — acesso restrito</SelectItem>
+                <SelectItem value="funcionario">Funcionário — operação</SelectItem>
               </SelectContent>
             </Select>
           </div>
 
           {/* Shortcut preset buttons */}
-          <div className="flex gap-2">
-            <Button type="button" size="sm" variant="outline" onClick={() => applyPreset('admin')}>
+          <div className="flex flex-wrap gap-2">
+            <Button type="button" size="sm" variant="outline" className="min-w-0 whitespace-normal text-left" onClick={() => applyPreset('admin')}>
               <ShieldCheck className="size-3.5 mr-1" /> Preset Admin
             </Button>
-            <Button type="button" size="sm" variant="outline" onClick={() => applyPreset('user')}>
+            <Button type="button" size="sm" variant="outline" className="min-w-0 whitespace-normal text-left" onClick={() => applyPreset('user')}>
               <User className="size-3.5 mr-1" /> Preset Usuário
+            </Button>
+            <Button type="button" size="sm" variant="outline" className="min-w-0 whitespace-normal text-left" onClick={() => applyPreset('funcionario')}>
+              <User className="size-3.5 mr-1" /> Preset Funcionário
             </Button>
           </div>
 
@@ -575,6 +586,10 @@ export function Users() {
                         <Badge className="bg-yellow-500/20 text-yellow-700 border-yellow-300 hover:bg-yellow-500/30">
                           <ShieldCheck className="size-3 mr-1" /> Admin
                         </Badge>
+                      ) : u.role === 'funcionario' ? (
+                        <Badge className="bg-blue-500/15 text-blue-700 border-blue-300">
+                          <User className="size-3 mr-1" /> Funcionário
+                        </Badge>
                       ) : (
                         <Badge variant="secondary">
                           <User className="size-3 mr-1" /> Usuário
@@ -655,6 +670,10 @@ export function Users() {
                     {u.role === 'admin' ? (
                       <Badge className="bg-yellow-500/20 text-yellow-700 border-yellow-300">
                         <ShieldCheck className="size-3 mr-1" /> Admin
+                      </Badge>
+                    ) : u.role === 'funcionario' ? (
+                      <Badge className="bg-blue-500/15 text-blue-700 border-blue-300">
+                        <User className="size-3 mr-1" /> Funcionário
                       </Badge>
                     ) : (
                       <Badge variant="secondary">

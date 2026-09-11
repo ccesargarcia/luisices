@@ -81,12 +81,13 @@ export function FolderCard({
           <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors" />
         </div>
 
-        {/* Edit button — top right on hover */}
+        {/* Edit button — visible on touch devices, hover on desktop */}
         <button
           type="button"
           onClick={onEdit}
-          className="absolute top-[14%] right-1.5 opacity-0 group-hover:opacity-100 transition-opacity bg-black/40 hover:bg-black/60 text-white rounded-full p-1 z-10"
+          className="absolute top-[14%] right-1.5 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity bg-black/50 hover:bg-black/70 text-white rounded-full p-1.5 z-10"
           title="Editar pasta"
+          aria-label={`Editar pasta ${name}`}
         >
           <Pencil className="size-3" />
         </button>
@@ -95,8 +96,9 @@ export function FolderCard({
           <button
             type="button"
             onClick={onDelete}
-            className="absolute bottom-[14%] right-1.5 opacity-0 group-hover:opacity-100 transition-opacity bg-black/40 hover:bg-red-600 text-white rounded-full p-1 z-10"
+            className="absolute bottom-[14%] right-1.5 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity bg-black/50 hover:bg-red-600 text-white rounded-full p-1.5 z-10"
             title="Remover pasta vazia"
+            aria-label={`Remover pasta vazia ${name}`}
           >
             <Trash2 className="size-3" />
           </button>
