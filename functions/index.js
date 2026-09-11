@@ -426,7 +426,7 @@ exports.deleteUser = onCall(async (request) => {
  * Cloud Function para envio de e-mails via Resend pela plataforma Luisices.
  * Salva o histórico de envios na coleção 'sentEmails'.
  */
-exports.sendCustomEmail = onCall({ secrets: [RESEND_API_KEY] }, async (request) => {
+exports.sendCustomEmail = onCall({ cors: true, secrets: [RESEND_API_KEY] }, async (request) => {
   if (!request.auth) {
     throw new functions.https.HttpsError('unauthenticated', 'Usuário não autenticado.');
   }
@@ -521,7 +521,7 @@ exports.sendCustomEmail = onCall({ secrets: [RESEND_API_KEY] }, async (request) 
  * URL: https://<regiao>-<projeto>.cloudfunctions.net/resendReceivingWebhook
  * Eventos selecionados: email.received
  */
-exports.resendReceivingWebhook = onRequest({ secrets: [RESEND_API_KEY] }, async (req, res) => {
+exports.resendReceivingWebhook = onRequest({ cors: true, secrets: [RESEND_API_KEY] }, async (req, res) => {
   if (req.method === 'GET' || req.method === 'OPTIONS') {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'POST, GET, OPTIONS');
