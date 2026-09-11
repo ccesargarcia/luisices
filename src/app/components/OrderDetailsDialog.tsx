@@ -1,4 +1,4 @@
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from './ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from './ui/alert-dialog';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
@@ -446,7 +446,9 @@ export function OrderDetailsDialog({ order, open, onOpenChange, onUpdateStatus, 
               </Badge>
             </div>
           </div>
-          <div className="sr-only">Informações detalhadas do pedido</div>
+          <DialogDescription className="sr-only">
+            {isEditing ? 'Formulário para edição dos dados do pedido' : 'Informações detalhadas do pedido'}
+          </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-6">

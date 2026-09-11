@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from './ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from './ui/dialog';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
@@ -386,7 +386,7 @@ export function NewOrderDialog() {
       <DialogContent className="w-[calc(100%-1rem)] max-w-2xl max-h-[90dvh] min-h-[70dvh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Adicionar Novo Pedido</DialogTitle>
-          <div className="sr-only">Formulário para criar um novo pedido</div>
+          <DialogDescription className="sr-only">Formulário para criar um novo pedido</DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
           <NewOrderCustomerSelect
