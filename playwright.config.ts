@@ -1,7 +1,8 @@
 import { defineConfig, devices } from '@playwright/test';
 import dotenv from 'dotenv';
 
-// Carregar variáveis de ambiente do .env.test (se existir)
+// Carregar variáveis de ambiente do .env.local e .env.test (se existirem)
+dotenv.config({ path: '.env.local' });
 dotenv.config({ path: '.env.test' });
 
 

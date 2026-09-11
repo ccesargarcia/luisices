@@ -53,6 +53,14 @@ if (typeof window !== 'undefined') {
       console.log('[Firebase] Analytics inicializado');
     }
   });
+
+  // Expor referências para diagnósticos e testes E2E de segurança
+  (window as any).__firebaseConfig = {
+    projectId: firebaseConfig.projectId,
+    apiKey: firebaseConfig.apiKey,
+  };
+  (window as any).__firebaseAuth = auth;
+  (window as any).__firebaseDb = db;
 }
 
 export { analytics };
