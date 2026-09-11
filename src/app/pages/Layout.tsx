@@ -71,6 +71,7 @@ export function Layout() {
     { name: 'Produtos',       href: '/produtos',    icon: ShoppingBag,     check: (p: any) => p.products?.view },
     { name: 'Galeria',        href: '/galeria',     icon: Images,          check: (p: any) => p.gallery?.view },
     { name: 'Permutas',       href: '/permutas',    icon: ArrowLeftRight,  check: (p: any) => p.exchanges, allowUserRole: true },
+    { name: 'E-mails',        href: '/emails',      icon: Mail,            check: (p: any) => p.emails ?? false },
     { name: 'Usuários',       href: '/usuarios',    icon: UserCog,         check: (p: any) => p.users?.view },
   ];
 

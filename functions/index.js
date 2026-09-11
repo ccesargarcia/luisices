@@ -1,5 +1,5 @@
 const functions = require('firebase-functions');
-const { onCall } = require('firebase-functions/v2/https');
+const { onCall, onRequest } = require('firebase-functions/v2/https');
 const { defineSecret } = require('firebase-functions/params');
 const admin = require('firebase-admin');
 const { Resend } = require('resend');
@@ -11,6 +11,12 @@ admin.initializeApp();
 // Rate limiter: 3 tentativas por email a cada hora
 const rateLimiter = new RateLimiterMemory({
   points: 3,
+  duration: 3600, // 1 hora em segundos
+});
+
+// Rate limiter para envio customizado de e-mails: máximo de 50 disparos por hora por usuário admin
+const customEmailLimiter = new RateLimiterMemory({
+  points: 50,
   duration: 3600, // 1 hora em segundos
 });
 
@@ -233,6 +239,7 @@ exports.completeUserInvitation = onCall(async (request) => {
         exchanges: false,
         settings: true,
         users: { view: false, create: false, edit: false, delete: false },
+        emails: false,
       },
       active: true,
       createdAt: new Date().toISOString(),
@@ -421,4 +428,403 @@ exports.deleteUser = onCall(async (request) => {
     throw new functions.https.HttpsError('internal', 'Não foi possível remover o usuário.');
   }
 });
+
+/**
+ * Cloud Function para envio de e-mails via Resend pela plataforma Luisices.
+ * Salva o histórico de envios na coleção 'sentEmails'.
+ */
+exports.sendCustomEmail = onCall({ cors: true, secrets: [RESEND_API_KEY] }, async (request) => {
+  if (!request.auth) {
+    throw new functions.https.HttpsError('unauthenticated', 'Usuário não autenticado.');
+  }
+
+  if (!(await isAdminRequest(request))) {
+    throw new functions.https.HttpsError('permission-denied', 'Apenas administradores podem disparar e-mails pelo sistema.');
+  }
+
+  // Rate Limiting: proteção contra abusos, loops e exaustão de cota
+  try {
+    await customEmailLimiter.consume(request.auth.uid);
+  } catch {
+    throw new functions.https.HttpsError(
+      'resource-exhausted',
+      'Limite de envio de e-mails atingido (máximo de 50 disparos por hora). Tente novamente mais tarde.'
+    );
+  }
+
+  const { to, subject, html, text, from, replyTo, cc, bcc } = request.data || {};
+
+  if (!to || (Array.isArray(to) && to.length === 0)) {
+    throw new functions.https.HttpsError('invalid-argument', 'Pelo menos um destinatário é obrigatório.');
+  }
+
+  const recipientList = Array.isArray(to)
+    ? to.map((e) => String(e).trim()).filter(Boolean)
+    : [String(to).trim()];
+
+  if (recipientList.length === 0) {
+    throw new functions.https.HttpsError('invalid-argument', 'Pelo menos um destinatário válido é obrigatório.');
+  }
+
+  if (recipientList.length > 50) {
+    throw new functions.https.HttpsError('invalid-argument', 'O número máximo de destinatários por envio é 50.');
+  }
+
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  for (const email of recipientList) {
+    if (!emailRegex.test(email)) {
+      throw new functions.https.HttpsError('invalid-argument', `Endereço de e-mail inválido: "${email}"`);
+    }
+  }
+
+  if (!subject || typeof subject !== 'string' || !subject.trim()) {
+    throw new functions.https.HttpsError('invalid-argument', 'Assunto é obrigatório.');
+  }
+
+  if (subject.trim().length > 200) {
+    throw new functions.https.HttpsError('invalid-argument', 'O assunto do e-mail não pode ultrapassar 200 caracteres.');
+  }
+
+  if (!html && !text) {
+    throw new functions.https.HttpsError('invalid-argument', 'Conteúdo da mensagem (HTML ou texto) é obrigatório.');
+  }
+
+  const bodyLength = (html ? String(html).length : 0) + (text ? String(text).length : 0);
+  if (bodyLength > 500 * 1024) {
+    throw new functions.https.HttpsError('invalid-argument', 'O tamanho da mensagem excede o limite máximo permitido (500 KB).');
+  }
+
+  const resend = getResend(RESEND_API_KEY.value());
+  if (!resend) {
+    throw new functions.https.HttpsError('failed-precondition', 'Resend não configurado.');
+  }
+
+  const isDev = (process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT) === 'luisices-dev';
+  const defaultSender = isDev
+    ? 'Luisices Dev <contato@dev.luisices.com.br>'
+    : 'Luisices <contato@luisices.com.br>';
+  const senderEmail = from && from.trim() ? from.trim() : defaultSender;
+
+  try {
+    const payload = {
+      from: senderEmail,
+      to: recipientList,
+      subject: subject.trim(),
+    };
+
+    if (html) payload.html = html;
+    if (text) payload.text = text;
+    if (replyTo) payload.reply_to = replyTo.trim();
+    if (cc && Array.isArray(cc) && cc.length > 0) {
+      payload.cc = cc.map((c) => String(c).trim()).filter(Boolean);
+    }
+    if (bcc && Array.isArray(bcc) && bcc.length > 0) {
+      payload.bcc = bcc.map((b) => String(b).trim()).filter(Boolean);
+    }
+
+    console.log(`[sendCustomEmail] Enviando e-mail para: ${recipientList.join(', ')} - Assunto: ${subject}`);
+    const { data: resendData, error: resendError } = await resend.emails.send(payload);
+
+    if (resendError) {
+      console.error('[sendCustomEmail] Erro retornado pela API Resend:', JSON.stringify(resendError));
+      throw new functions.https.HttpsError(
+        'internal',
+        resendError.message || 'Falha ao disparar o e-mail via Resend.'
+      );
+    }
+
+    const emailRecord = {
+      resendId: resendData?.id || null,
+      from: senderEmail,
+      to: recipientList,
+      cc: payload.cc || [],
+      bcc: payload.bcc || [],
+      subject: subject.trim(),
+      html: html || '',
+      text: text || '',
+      status: 'sent',
+      senderUid: request.auth.uid,
+      senderEmail: request.auth.token.email || '',
+      sentAt: new Date().toISOString(),
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    };
+
+    const docRef = await admin.firestore().collection('sentEmails').add(emailRecord);
+
+    return {
+      success: true,
+      emailId: resendData?.id,
+      id: docRef.id,
+    };
+  } catch (error) {
+    console.error('[sendCustomEmail] Exceção:', error);
+    if (error instanceof functions.https.HttpsError) throw error;
+    throw new functions.https.HttpsError('internal', error.message || 'Erro ao enviar e-mail.');
+  }
+});
+
+/**
+ * Cloud Function para consultar a cota / limite de envio de e-mails via Resend API (ou fallback via Firestore).
+ */
+exports.getEmailUsage = onCall({ cors: true, secrets: [RESEND_API_KEY] }, async (request) => {
+  if (!request.auth) {
+    throw new functions.https.HttpsError('unauthenticated', 'Usuário não autenticado.');
+  }
+
+  if (!(await isAdminRequest(request))) {
+    throw new functions.https.HttpsError('permission-denied', 'Apenas administradores podem consultar a cota de e-mails.');
+  }
+
+  const apiKey = RESEND_API_KEY.value();
+  if (!apiKey) {
+    throw new functions.https.HttpsError('failed-precondition', 'Resend não configurado.');
+  }
+
+  // 1. Tentar consultar a API de Usage do Resend (GET https://api.resend.com/usage)
+  try {
+    const res = await fetch('https://api.resend.com/usage', {
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      const daily = data?.emails?.daily || {};
+      const monthly = data?.emails?.monthly || {};
+      return {
+        success: true,
+        source: 'resend_api',
+        daily: {
+          used: Number(daily.used ?? 0),
+          limit: daily.limit !== undefined && daily.limit !== null ? Number(daily.limit) : 100,
+          sent: Number(daily.sent ?? 0),
+          received: Number(daily.received ?? 0),
+          resetsAt: daily.resets_at || null,
+        },
+        monthly: {
+          used: Number(monthly.used ?? 0),
+          limit: monthly.limit !== undefined && monthly.limit !== null ? Number(monthly.limit) : 3000,
+          sent: Number(monthly.sent ?? 0),
+          received: Number(monthly.received ?? 0),
+          resetsAt: monthly.resets_at || null,
+        },
+      };
+    }
+    console.warn('[getEmailUsage] Resend /usage retornou status:', res.status);
+  } catch (err) {
+    console.warn('[getEmailUsage] Erro ao consultar https://api.resend.com/usage:', err);
+  }
+
+  // 2. Fallback resiliente: calcular a partir do histórico do Firestore
+  try {
+    const now = new Date();
+    const startOfTodayUtc = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 0, 0));
+    const startOfMonthUtc = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1, 0, 0, 0));
+
+    const [todaySnap, monthSnap] = await Promise.all([
+      admin.firestore().collection('sentEmails')
+        .where('sentAt', '>=', startOfTodayUtc.toISOString())
+        .get(),
+      admin.firestore().collection('sentEmails')
+        .where('sentAt', '>=', startOfMonthUtc.toISOString())
+        .get(),
+    ]);
+
+    return {
+      success: true,
+      source: 'firestore_fallback',
+      daily: {
+        used: todaySnap.size,
+        limit: 100,
+        sent: todaySnap.size,
+        received: 0,
+        resetsAt: new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1, 0, 0, 0)).toISOString(),
+      },
+      monthly: {
+        used: monthSnap.size,
+        limit: 3000,
+        sent: monthSnap.size,
+        received: 0,
+        resetsAt: new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1, 0, 0, 0)).toISOString(),
+      },
+    };
+  } catch (firestoreErr) {
+    console.error('[getEmailUsage] Erro no fallback do Firestore:', firestoreErr);
+    return {
+      success: true,
+      source: 'default',
+      daily: {
+        used: 0,
+        limit: 100,
+        sent: 0,
+        received: 0,
+        resetsAt: null,
+      },
+      monthly: {
+        used: 0,
+        limit: 3000,
+        sent: 0,
+        received: 0,
+        resetsAt: null,
+      },
+    };
+  }
+});
+
+/**
+ * Webhook HTTP para recebimento de e-mails via Resend (email.received).
+ * Armazena e-mails recebidos na coleção 'receivedEmails'.
+ *
+ * Configuração no Resend Dashboard:
+ * URL: https://<regiao>-<projeto>.cloudfunctions.net/resendReceivingWebhook
+ * Eventos selecionados: email.received
+ */
+exports.resendReceivingWebhook = onRequest({ cors: true, secrets: [RESEND_API_KEY] }, async (req, res) => {
+  if (req.method === 'GET' || req.method === 'OPTIONS') {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'POST, GET, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, svix-id, svix-timestamp, svix-signature');
+    if (req.method === 'OPTIONS') {
+      return res.status(204).send('');
+    }
+    return res.status(200).json({ status: 'active', message: 'Luisices Resend Webhook ativo e operacional' });
+  }
+
+  if (req.method !== 'POST') {
+    return res.status(405).json({ error: 'Method Not Allowed' });
+  }
+
+  try {
+    // Validação de assinatura Svix (se RESEND_WEBHOOK_SECRET estiver configurado no ambiente)
+    const webhookSecret = process.env.RESEND_WEBHOOK_SECRET;
+    if (webhookSecret) {
+      const svixId = req.headers['svix-id'];
+      const svixTimestamp = req.headers['svix-timestamp'];
+      const svixSignature = req.headers['svix-signature'];
+
+      if (!svixId || !svixTimestamp || !svixSignature) {
+        console.warn('[resendReceivingWebhook] Cabeçalhos de assinatura Svix ausentes');
+        return res.status(401).json({ error: 'Assinatura do webhook ausente' });
+      }
+
+      // Proteção contra replay attack (janela de 5 minutos)
+      const now = Math.floor(Date.now() / 1000);
+      const timestampNum = parseInt(String(svixTimestamp), 10);
+      if (isNaN(timestampNum) || Math.abs(now - timestampNum) > 300) {
+        console.warn('[resendReceivingWebhook] Timestamp fora da tolerância de 5 minutos:', timestampNum);
+        return res.status(401).json({ error: 'Timestamp do webhook expirado ou inválido' });
+      }
+
+      try {
+        const secretBytes = webhookSecret.startsWith('whsec_')
+          ? Buffer.from(webhookSecret.slice(6), 'base64')
+          : Buffer.from(webhookSecret);
+        const rawContent = req.rawBody ? req.rawBody.toString('utf8') : JSON.stringify(req.body);
+        const signedContent = `${svixId}.${svixTimestamp}.${rawContent}`;
+        const computedSignature = crypto.createHmac('sha256', secretBytes).update(signedContent).digest('base64');
+
+        const providedSignatures = String(svixSignature)
+          .split(' ')
+          .map((s) => s.split(',')[1])
+          .filter(Boolean);
+
+        const signatureValid = providedSignatures.some((sig) => {
+          try {
+            const a = Buffer.from(sig, 'base64');
+            const b = Buffer.from(computedSignature, 'base64');
+            return a.length === b.length && crypto.timingSafeEqual(a, b);
+          } catch {
+            return false;
+          }
+        });
+
+        if (!signatureValid) {
+          console.warn('[resendReceivingWebhook] Assinatura Svix rejeitada');
+          return res.status(401).json({ error: 'Assinatura Svix inválida' });
+        }
+      } catch (err) {
+        console.error('[resendReceivingWebhook] Falha na validação criptográfica:', err);
+        return res.status(401).json({ error: 'Falha na validação de assinatura' });
+      }
+    }
+
+    const event = req.body;
+    console.log('[resendReceivingWebhook] Recebido evento:', event?.type);
+
+    if (!event || event.type !== 'email.received') {
+      console.log('[resendReceivingWebhook] Evento não é email.received, ignorado:', event?.type);
+      return res.status(200).json({ status: 'ignored', type: event?.type });
+    }
+
+    const eventData = event.data || {};
+    const emailId = eventData.email_id || eventData.id;
+
+    if (!emailId) {
+      console.warn('[resendReceivingWebhook] Nenhum email_id no payload:', eventData);
+      return res.status(400).json({ error: 'Payload sem email_id' });
+    }
+
+    // Buscar o conteúdo completo (HTML, texto, anexos) via Resend API
+    let fullEmail = null;
+    const apiKey = RESEND_API_KEY.value();
+
+    if (apiKey) {
+      try {
+        const resend = getResend(apiKey);
+        if (resend?.emails?.receiving && typeof resend.emails.receiving.get === 'function') {
+          const resendResult = await resend.emails.receiving.get(emailId);
+          fullEmail = resendResult?.data || null;
+        } else {
+          const resp = await fetch(`https://api.resend.com/emails/receiving/${emailId}`, {
+            headers: {
+              Authorization: `Bearer ${apiKey}`,
+              'Content-Type': 'application/json',
+            },
+          });
+          if (resp.ok) {
+            fullEmail = await resp.json();
+          } else {
+            console.warn('[resendReceivingWebhook] API Resend retornou status:', resp.status);
+          }
+        }
+      } catch (fetchErr) {
+        console.warn('[resendReceivingWebhook] Erro ao recuperar corpo completo do e-mail:', fetchErr);
+      }
+    }
+
+    if (apiKey && !fullEmail) {
+      console.warn('[resendReceivingWebhook] Rejeitado: e-mail não validado no Resend:', emailId);
+      return res.status(404).json({ error: 'Email could not be verified on Resend' });
+    }
+
+    const emailDoc = {
+      resendId: emailId,
+      from: fullEmail?.from || eventData.from || '',
+      to: fullEmail?.to || (Array.isArray(eventData.to) ? eventData.to : [eventData.to].filter(Boolean)),
+      cc: fullEmail?.cc || eventData.cc || [],
+      bcc: fullEmail?.bcc || eventData.bcc || [],
+      subject: fullEmail?.subject || eventData.subject || '(Sem assunto)',
+      html: fullEmail?.html || '',
+      text: fullEmail?.text || '',
+      attachments: fullEmail?.attachments || eventData.attachments || [],
+      raw: fullEmail?.raw || null,
+      read: false,
+      starred: false,
+      archived: false,
+      receivedAt: eventData.created_at || new Date().toISOString(),
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    };
+
+    await admin.firestore().collection('receivedEmails').doc(emailId).set(emailDoc, { merge: true });
+    console.log(`[resendReceivingWebhook] E-mail recebido salvo com sucesso: ${emailId}`);
+
+    return res.status(200).json({ ok: true, id: emailId });
+  } catch (error) {
+    console.error('[resendReceivingWebhook] Falha ao processar webhook:', error);
+    return res.status(500).json({ error: 'Erro interno ao processar webhook de recebimento' });
+  }
+});
+
 

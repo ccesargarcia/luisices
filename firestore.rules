@@ -142,5 +142,14 @@ service cloud.firestore {
       // Deleção: somente admins
       allow delete: if isAdmin();
     }
+
+    // Regras para Central de E-mails Resend (estritamente restrito a administradores)
+    match /receivedEmails/{emailId} {
+      allow read, write: if isAdmin();
+    }
+
+    match /sentEmails/{emailId} {
+      allow read, write: if isAdmin();
+    }
   }
 }

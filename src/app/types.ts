@@ -269,6 +269,7 @@ export interface Permission {
   exchanges: boolean;
   settings: boolean;
   users: ModulePermission;
+  emails?: boolean;
 }
 
 export interface UserProfile {
@@ -295,6 +296,7 @@ export const ADMIN_PERMISSIONS: Permission = {
   exchanges: true,
   settings:  true,
   users:     { view: true, create: true, edit: true, delete: true },
+  emails:    true,
 };
 
 export const DEFAULT_USER_PERMISSIONS: Permission = {
@@ -308,6 +310,7 @@ export const DEFAULT_USER_PERMISSIONS: Permission = {
   exchanges: true,
   settings:  true,
   users:     { view: false, create: false, edit: false, delete: false },
+  emails:    false,
 };
 
 export const EMPLOYEE_PERMISSIONS: Permission = {
@@ -321,6 +324,7 @@ export const EMPLOYEE_PERMISSIONS: Permission = {
   exchanges: false,
   settings:  false,
   users:     { view: false, create: false, edit: false, delete: false },
+  emails:    false,
 };
 
 // Tipos para sistema de compartilhamento de dados
@@ -337,4 +341,84 @@ export interface SharedAccess {
   createdAt: string;
   expiresAt?: string; // Opcional - data de expiração do compartilhamento
   active: boolean; // Permite desativar sem deletar
+}
+
+// ─── Central de E-mails Resend ────────────────────────────────────────────────
+
+export interface EmailAttachment {
+  id: string;
+  filename: string;
+  contentType: string;
+  contentDisposition?: string | null;
+  contentId?: string | null;
+  size?: number;
+  downloadUrl?: string;
+}
+
+export interface ReceivedEmail {
+  id: string;
+  resendId: string;
+  from: string;
+  to: string[];
+  cc?: string[];
+  bcc?: string[];
+  subject: string;
+  html?: string;
+  text?: string;
+  attachments?: EmailAttachment[];
+  raw?: {
+    download_url?: string;
+    expires_at?: string;
+  } | null;
+  read: boolean;
+  starred: boolean;
+  archived?: boolean;
+  receivedAt: string;
+  createdAt?: any;
+}
+
+export interface SentEmail {
+  id: string;
+  resendId?: string;
+  from: string;
+  to: string[];
+  cc?: string[];
+  bcc?: string[];
+  subject: string;
+  html?: string;
+  text?: string;
+  status: 'sent' | 'failed' | 'pending';
+  senderUid: string;
+  senderEmail: string;
+  sentAt: string;
+  createdAt?: any;
+}
+
+export interface SendEmailPayload {
+  to: string[];
+  subject: string;
+  html?: string;
+  text?: string;
+  from?: string;
+  replyTo?: string;
+  cc?: string[];
+  bcc?: string[];
+}
+
+export interface EmailUsage {
+  daily: {
+    used: number;
+    limit: number | null;
+    sent: number;
+    received: number;
+    resetsAt?: string | null;
+  };
+  monthly: {
+    used: number;
+    limit: number | null;
+    sent: number;
+    received: number;
+    resetsAt?: string | null;
+  };
+  source?: 'resend_api' | 'firestore_fallback' | 'default';
 }
