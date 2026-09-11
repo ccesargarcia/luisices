@@ -11,9 +11,6 @@ Para consultar a visão completa do produto, regras e fluxos de negócio, veja [
 ### 📦 Pedidos
 - Cadastro completo com cliente, produto, valor, data de entrega e status
 - **Workflow de produção** em 7 etapas (Design → Aprovação → Impressão → Corte → Montagem → Qualidade → Embalagem)
-- **Atribuição para equipe**: delegação de pedidos para funcionários responsáveis (`assignedTo`)
-- **Ações em lote**: atribuição rápida de múltiplos pedidos a um colaborador
-- **Filtro de equipe**: administradores filtram visão por colaborador responsável
 - Controle de pagamento com múltiplos métodos (PIX, dinheiro, cartão, transferência)
 - **Trocas/Parcerias**: pedidos sem cobrança monetária com itens de permuta
 - Anexos (fotos e PDFs) com thumbnails automáticos
@@ -43,7 +40,7 @@ Para consultar a visão completa do produto, regras e fluxos de negócio, veja [
 ### 📊 Trocas/Parcerias
 - Gestão de pedidos em permuta
 - Controle de itens recebidos e valores estimados
-- Relatórios específicos de trocas (com acesso escopado para usuário comum)
+- Relatórios específicos de trocas
 
 ### 🎨 Galeria de Artes
 - Upload e organização de trabalhos realizados
@@ -54,29 +51,19 @@ Para consultar a visão completa do produto, regras e fluxos de negócio, veja [
 ### 📅 Agenda Semanal
 - Visualização de entregas nos próximos 7 dias
 - Filtros por status e resumo semanal
-- Destaque do dia atual e correção de fuso horário
+- Destaque do dia atual
 
 ### 📈 Dashboard & Relatórios
 - **KPIs em tempo real**: receita, ticket médio, pedidos em aberto
 - Alertas de entregas e pedidos em atraso
 - Gráficos de faturamento e análises por período
 - Top produtos e top clientes
-- Relatórios individuais para usuários comuns (escopados estritamente ao seu próprio faturamento)
 
-### 👤 Sistema de Permissões (RBAC)
-- **3 Papéis no sistema**:
-  - **Admin**: controle total, gerenciamento de equipe/usuários, delegação de pedidos e métricas globais
-  - **Funcionário**: execução da produção, acompanhamento de pedidos atribuídos ou próprios e atualização de etapas
-  - **User**: gestão de clientes, produtos, orçamentos e pedidos próprios (com exclusão de pedidos criados por ele e relatórios individuais)
+### 👤 Sistema de Permissões
+- **Roles**: Admin e User
 - **Permissões granulares** por módulo (view, create, edit, delete)
-- **Revogação em tempo real**: alterações de papel, permissão ou status são aplicadas imediatamente na sessão via Firestore listeners sem necessidade de novo login
-- Gerenciamento de equipe e usuários (admin only)
-
-### 💡 Central de Ajuda & Guia Operacional (`/ajuda`)
-- Guia operacional interativo com passo a passo para cada fluxo do sistema
-- FAQ com soluções para dúvidas frequentes do dia a dia
-- Catálogo de atalhos de teclado rápidos para navegação
-- Atalho direto para suporte via WhatsApp e e-mail
+- Gerenciamento de usuários (admin only)
+- Controle de acesso em toda aplicação
 
 ### ⚙️ Configurações
 - Personalização visual: logo, banner, avatar
@@ -265,7 +252,7 @@ Para evitar uso indevido da sua API key:
 
 ### Firestore Security Rules
 
-O projeto usa regras granulares que garantem isolamento de dados por usuário, acesso global para administradores e leitura/edição para funcionários aos pedidos que lhes forem atribuídos:
+O projeto usa regras que garantem isolamento total de dados por usuário:
 
 ```javascript
 rules_version = '2';
@@ -275,31 +262,13 @@ service cloud.firestore {
       return request.auth != null && request.auth.uid == userId;
     }
 
-    function isAdmin() {
-      return request.auth != null
-        && exists(/databases/$(database)/documents/userProfiles/$(request.auth.uid))
-        && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.role == 'admin';
-    }
-
-    function isAssignedEmployee(assignedTo) {
-      return assignedTo == request.auth.uid && isActiveEmployee();
-    }
-
     match /orders/{orderId} {
-      allow read: if isOwner(resource.data.userId) || isAdmin() || isAssignedEmployee(resource.data.assignedTo);
-      allow create: if isOwner(request.resource.data.userId);
-      allow update: if isOwner(resource.data.userId) || isAdmin() || isAssignedEmployeeEditor(resource.data.assignedTo);
-      allow delete: if isOwner(resource.data.userId) || isAdmin() || isAssignedEmployeeDeleter(resource.data.assignedTo);
+      allow read, write: if isOwner(resource.data.userId);
     }
-    // ... outras coleções (customers, products, quotes, gallery, exchanges)
+    // ... outras coleções seguem o mesmo padrão
   }
 }
 ```
-
-> **⚠️ Importante:** Ao publicar novas versões ou ambientes, execute o deploy das regras do Firestore:
-> ```bash
-> firebase deploy --only firestore:rules
-> ```
 
 Veja o arquivo `firestore.rules` para detalhes completos.
 
@@ -307,7 +276,7 @@ Veja o arquivo `firestore.rules` para detalhes completos.
 
 ## 🛠️ Desenvolvimento
 
-### Scripts NPM Disponíveis
+### Scripts Disponíveis
 
 ```bash
 # Desenvolvimento (com hot reload)
@@ -325,16 +294,6 @@ npm run test:e2e
 # Testes E2E usados no CI
 npm run test:ci
 ```
-
-### Scripts Utilitários (`scripts/`)
-
-Ferramentas Node.js para suporte, manutenção e testes:
-
-- `node scripts/make-admin.mjs <email>`: Promove uma conta existente diretamente ao papel de Administrador (`admin`) no Firestore.
-- `node scripts/create-test-user.mjs`: Cria ou atualiza usuário de teste para execução dos testes automatizados (Playwright).
-- `node scripts/create-random-customers.mjs`: Popula a base com clientes e endereços realistas para testes de carga e staging.
-- `node scripts/optimize-login-bg.mjs`: Processa a imagem bruta de fundo (`assets/login-bg.png`) e gera variantes ultra-otimizadas (`.avif`, `.webp`, `.png`) em `public/images/`.
-- `node scripts/fix-negative-values.mjs`: Varre e corrige valores numéricos negativos legados no banco de dados.
 
 ### Estrutura do Projeto
 
@@ -378,22 +337,3 @@ Em baixo volume, parte do sistema pode permanecer nas franquias gratuitas. O dep
 - **ViaCEP:** serviço externo sem SLA assumido pelo projeto.
 
 Consulte os painéis de Billing do Google Cloud/Firebase, Resend e do provedor da Evolution API. Arquivos grandes, listeners em tempo real e muitos e-mails podem aumentar o consumo.
-
-## Markdown para agentes
-
-O site mantém HTML como resposta padrão para navegadores. Para entregar Markdown quando um agente enviar `Accept: text/markdown`, o domínio `luisices.com.br` deve estar atrás do Cloudflare com **Markdown for Agents** habilitado.
-
-No Cloudflare Dashboard:
-
-1. Abra a zona `luisices.com.br`.
-2. Acesse **AI Crawl Control**.
-3. Ative **Markdown for Agents** para a zona ou crie uma Configuration Rule para o domínio.
-4. Mantenha o `Vary: Accept` configurado no origin para separar cache HTML e Markdown.
-
-Teste após o deploy:
-
-```bash
-curl -i https://luisices.com.br/login -H 'Accept: text/markdown'
-```
-
-A resposta esperada deve conter `Content-Type: text/markdown; charset=utf-8` e `Vary: Accept`. Sem Cloudflare Markdown for Agents habilitado, um Firebase Hosting estático não consegue mudar o corpo apenas com base no header `Accept`.

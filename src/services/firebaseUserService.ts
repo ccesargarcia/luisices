@@ -18,7 +18,7 @@ import {
 } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import { auth, db, functions } from '../lib/firebase';
-import { UserProfile, UserRole, Permission, ADMIN_PERMISSIONS, DEFAULT_USER_PERMISSIONS, EMPLOYEE_PERMISSIONS } from '../app/types';
+import { UserProfile, UserRole, Permission, ADMIN_PERMISSIONS, DEFAULT_USER_PERMISSIONS } from '../app/types';
 
 const USERS_COLLECTION = 'userProfiles';
 
@@ -150,9 +150,7 @@ export class FirebaseUserService {
    * Retorna permissões padrão por role.
    */
   getDefaultPermissions(role: UserRole): Permission {
-    if (role === 'admin') return { ...ADMIN_PERMISSIONS };
-    if (role === 'funcionario') return { ...EMPLOYEE_PERMISSIONS };
-    return { ...DEFAULT_USER_PERMISSIONS };
+    return role === 'admin' ? { ...ADMIN_PERMISSIONS } : { ...DEFAULT_USER_PERMISSIONS };
   }
 }
 

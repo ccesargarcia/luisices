@@ -31,7 +31,7 @@ const PAGE_SIZE = 12;
 
 export function Customers() {
   const { user, hasPermission } = useAuth();
-  const { allOrders } = useOrders();
+  const { orders } = useOrders();
 
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
@@ -100,23 +100,23 @@ export function Customers() {
   // Mapa de pedidos em aberto e total de pedidos por cliente a partir de OrdersContext
   const openOrdersMap = useMemo(() => {
     const map: Record<string, number> = {};
-    allOrders.forEach((o) => {
+    orders.forEach((o) => {
       if (o.customerId && o.status !== 'completed' && o.status !== 'cancelled') {
         map[o.customerId] = (map[o.customerId] || 0) + 1;
       }
     });
     return map;
-  }, [allOrders]);
+  }, [orders]);
 
   const totalOrdersMap = useMemo(() => {
     const map: Record<string, number> = {};
-    allOrders.forEach((o) => {
+    orders.forEach((o) => {
       if (o.customerId) {
         map[o.customerId] = (map[o.customerId] || 0) + 1;
       }
     });
     return map;
-  }, [allOrders]);
+  }, [orders]);
 
   // Filtragem de clientes
   const filteredCustomers = useMemo(() => {

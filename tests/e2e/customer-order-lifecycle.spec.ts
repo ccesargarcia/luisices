@@ -31,10 +31,10 @@ test.describe.serial('Ciclo de vida: Cliente + Pedido', () => {
   test('1 - Criar cliente', async ({ page }) => {
     // Login
     await page.goto('/');
-  await page.fill('input[type="email"]', TEST_USER.email);
-  await page.fill('input[type="password"]', TEST_USER.password);
-  await page.click('button[type="submit"]');
-  await page.waitForURL('**/dashboard', { timeout: 15000 });
+    await page.fill('input[type="email"]', TEST_USER.email);
+    await page.fill('input[type="password"]', TEST_USER.password);
+    await page.click('button[type="submit"]');
+    await page.waitForURL('**/dashboard', { timeout: 15000 });
 
     // Ir para Clientes
     await page.goto('/clientes');
@@ -66,10 +66,10 @@ test.describe.serial('Ciclo de vida: Cliente + Pedido', () => {
     test.setTimeout(60000);
     // Login
     await page.goto('/');
-  await page.fill('input[type="email"]', TEST_USER.email);
-  await page.fill('input[type="password"]', TEST_USER.password);
-  await page.click('button[type="submit"]');
-  await page.waitForURL('**/dashboard', { timeout: 15000 });
+    await page.fill('input[type="email"]', TEST_USER.email);
+    await page.fill('input[type="password"]', TEST_USER.password);
+    await page.click('button[type="submit"]');
+    await page.waitForURL('**/dashboard', { timeout: 15000 });
 
     // Clicar em "Novo Pedido"
     const newOrderBtn = page.getByRole('button', { name: /Novo Pedido/i });
@@ -127,10 +127,10 @@ test.describe.serial('Ciclo de vida: Cliente + Pedido', () => {
   test('3 - Editar o pedido', async ({ page }) => {
     // Login
     await page.goto('/');
-  await page.fill('input[type="email"]', TEST_USER.email);
-  await page.fill('input[type="password"]', TEST_USER.password);
-  await page.click('button[type="submit"]');
-  await page.waitForURL('**/dashboard', { timeout: 15000 });
+    await page.fill('input[type="email"]', TEST_USER.email);
+    await page.fill('input[type="password"]', TEST_USER.password);
+    await page.click('button[type="submit"]');
+    await page.waitForURL('**/dashboard', { timeout: 15000 });
 
     // Aguardar cards carregarem
     await page.waitForTimeout(2000);
@@ -174,10 +174,10 @@ test.describe.serial('Ciclo de vida: Cliente + Pedido', () => {
   test('4 - Remover o pedido', async ({ page }) => {
     // Login
     await page.goto('/');
-  await page.fill('input[type="email"]', TEST_USER.email);
-  await page.fill('input[type="password"]', TEST_USER.password);
-  await page.click('button[type="submit"]');
-  await page.waitForURL('**/dashboard', { timeout: 15000 });
+    await page.fill('input[type="email"]', TEST_USER.email);
+    await page.fill('input[type="password"]', TEST_USER.password);
+    await page.click('button[type="submit"]');
+    await page.waitForURL('**/dashboard', { timeout: 15000 });
 
     // Aguardar cards carregarem
     await page.waitForTimeout(2000);
@@ -219,10 +219,10 @@ test.describe.serial('Ciclo de vida: Cliente + Pedido', () => {
   test('5 - Remover o cliente', async ({ page }) => {
     // Login
     await page.goto('/');
-  await page.fill('input[type="email"]', TEST_USER.email);
-  await page.fill('input[type="password"]', TEST_USER.password);
-  await page.click('button[type="submit"]');
-  await page.waitForURL('**/dashboard', { timeout: 15000 });
+    await page.fill('input[type="email"]', TEST_USER.email);
+    await page.fill('input[type="password"]', TEST_USER.password);
+    await page.click('button[type="submit"]');
+    await page.waitForURL('**/dashboard', { timeout: 15000 });
 
     // Ir para Clientes
     await page.goto('/clientes');

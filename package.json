@@ -24,8 +24,7 @@
     "test:debug": "playwright test --debug",
     "test:report": "playwright show-report",
     "create:customers": "node scripts/create-random-customers.mjs",
-    "optimize:images": "node scripts/optimize-login-bg.mjs",
-    "test:critical": "playwright test tests/e2e/critical-flows.spec.ts tests/e2e/permissions.spec.ts"
+    "optimize:images": "node scripts/optimize-login-bg.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",

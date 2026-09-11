@@ -42,10 +42,6 @@
           {
             "key": "Permissions-Policy",
             "value": "geolocation=(), microphone=(), camera=()"
-          },
-          {
-            "key": "Vary",
-            "value": "Accept"
           }
         ]
       },

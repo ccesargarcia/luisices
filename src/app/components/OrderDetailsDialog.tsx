@@ -1,20 +1,18 @@
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from './ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from './ui/alert-dialog';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
-import { Order, OrderStatus, ProductionStep, PaymentStatus, PaymentMethod, Tag, ExchangeItem, GalleryItem, UserProfile } from '../types';
+import { Order, OrderStatus, ProductionStep, PaymentStatus, PaymentMethod, Tag, ExchangeItem, GalleryItem } from '../types';
 import { Trash2, Edit, Copy, Download } from 'lucide-react';
 import { exportOrderPDF } from '../utils/exportPdf';
 import { useUserSettings } from '../../hooks/useUserSettings';
 import { useState, useMemo, useEffect } from 'react';
 import { ProductionWorkflowComponent } from './ProductionWorkflow';
 import { firebaseOrderService } from '../../services/firebaseOrderService';
-import { firebaseUserService } from '../../services/firebaseUserService';
 import { firebaseStorageService } from '../../services/firebaseStorageService';
 import { firebaseGalleryService } from '../../services/firebaseGalleryService';
 import { useAuth } from '../../contexts/AuthContext';
-import { useOrders } from '../../contexts/OrdersContext';
 import { toast } from 'sonner';
 import { OrderInfoView } from './orders/OrderInfoView';
 import { OrderEditForm, ProductItem, OrderEditState } from './orders/OrderEditForm';
@@ -44,9 +42,8 @@ const statusLabels = {
 };
 
 export function OrderDetailsDialog({ order, open, onOpenChange, onUpdateStatus, onDeleteOrder }: OrderDetailsDialogProps) {
-  const { user, userProfile, hasPermission } = useAuth();
+  const { user, hasPermission } = useAuth();
   const { settings } = useUserSettings();
-  const { teamMembers } = useOrders();
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isDuplicating, setIsDuplicating] = useState(false);
@@ -54,8 +51,6 @@ export function OrderDetailsDialog({ order, open, onOpenChange, onUpdateStatus, 
   const [localAttachments, setLocalAttachments] = useState<import('../types').OrderAttachment[]>([]);
   const [customerGallery, setCustomerGallery] = useState<GalleryItem[]>([]);
   const [galleryLoading, setGalleryLoading] = useState(false);
-  const [employees, setEmployees] = useState<UserProfile[]>([]);
-  const [assigning, setAssigning] = useState(false);
 
   const [editProducts, setEditProducts] = useState<ProductItem[]>([{ name: '', quantity: '1', unitPrice: '' }]);
   const [editTags, setEditTags] = useState<Tag[]>([]);
@@ -89,98 +84,6 @@ export function OrderDetailsDialog({ order, open, onOpenChange, onUpdateStatus, 
   useEffect(() => {
     setIsEditing(false);
   }, [order?.id]);
-
-  const [allUsers, setAllUsers] = useState<UserProfile[]>([]);
-  const [singleCreatorName, setSingleCreatorName] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!open || (userProfile?.role !== 'admin' && userProfile?.role !== 'funcionario')) return;
-    firebaseUserService.listUsers()
-      .then(users => {
-        setAllUsers(users);
-        setEmployees(users.filter(candidate => candidate.role === 'funcionario' && candidate.active));
-      })
-      .catch(() => {
-        setAllUsers([]);
-        setEmployees([]);
-      });
-  }, [open, userProfile?.role]);
-
-  // Fallback dedicado para buscar o criador direto caso o pedido ainda não tenha o nome resolvido
-  useEffect(() => {
-    if (!open || !order?.userId) {
-      setSingleCreatorName(null);
-      return;
-    }
-
-    if (order.createdByName && order.createdByName !== 'Usuário proprietário') {
-      setSingleCreatorName(order.createdByName);
-      return;
-    }
-
-    if (order.userId === user?.uid) {
-      setSingleCreatorName(user.displayName || user.email || 'Você');
-      return;
-    }
-
-    const inTeam = teamMembers?.find(m => m.uid === order.userId);
-    if (inTeam?.displayName) {
-      setSingleCreatorName(inTeam.displayName);
-      return;
-    }
-
-    const inAll = allUsers.find(u => u.uid === order.userId);
-    if (inAll?.displayName || inAll?.email) {
-      setSingleCreatorName(inAll.displayName || inAll.email || null);
-      return;
-    }
-
-    let active = true;
-    firebaseUserService.getUserProfile(order.userId)
-      .then(profile => {
-        if (active && profile) {
-          setSingleCreatorName(profile.displayName || profile.email || null);
-        }
-      })
-      .catch(() => {});
-
-    return () => {
-      active = false;
-    };
-  }, [open, order?.id, order?.userId, order?.createdByName, user, teamMembers, allUsers]);
-
-  const displayCreatedByName = useMemo(() => {
-    if (singleCreatorName && singleCreatorName !== 'Usuário proprietário') {
-      return singleCreatorName;
-    }
-    if (order?.createdByName && order.createdByName !== 'Usuário proprietário') {
-      return order.createdByName;
-    }
-    if (order?.userId) {
-      if (order.userId === user?.uid) {
-        return user.displayName || user.email || 'Você';
-      }
-      const inTeam = teamMembers?.find(m => m.uid === order.userId);
-      if (inTeam?.displayName) {
-        return inTeam.displayName;
-      }
-      const found = allUsers.find(u => u.uid === order.userId);
-      if (found?.displayName || found?.email) {
-        return found.displayName || found.email;
-      }
-    }
-    return (order?.createdByName && order.createdByName !== 'Usuário proprietário')
-      ? order.createdByName
-      : undefined;
-  }, [order?.createdByName, order?.userId, user, allUsers, singleCreatorName, teamMembers]);
-
-  const effectiveOrder = useMemo(() => {
-    if (!order) return null;
-    return {
-      ...order,
-      createdByName: displayCreatedByName,
-    };
-  }, [order, displayCreatedByName]);
 
   // Sincronizar anexos quando o pedido mudar (ex: listener Firestore)
   useEffect(() => {
@@ -247,21 +150,6 @@ export function OrderDetailsDialog({ order, open, onOpenChange, onUpdateStatus, 
   const handleCancelEdit = () => {
     setIsEditing(false);
     resetEditData();
-  };
-
-  const handleAssign = async (value: string) => {
-    if (!order || userProfile?.role !== 'admin') return;
-    const employee = employees.find(candidate => candidate.uid === value) || null;
-    setAssigning(true);
-    try {
-      await firebaseOrderService.assignOrder(order.id, employee);
-      toast.success(employee ? `Pedido atribuído a ${employee.displayName}` : 'Atribuição removida');
-    } catch (error) {
-      console.error('Erro ao atribuir pedido:', error);
-      toast.error('Não foi possível atualizar o responsável');
-    } finally {
-      setAssigning(false);
-    }
   };
 
   const handleSaveEdit = async () => {
@@ -398,7 +286,7 @@ export function OrderDetailsDialog({ order, open, onOpenChange, onUpdateStatus, 
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="w-[calc(100vw-1.5rem)] sm:w-full sm:max-w-2xl max-h-[90dvh] overflow-y-auto">
+      <DialogContent className="w-full max-w-full sm:max-w-2xl max-h-[90dvh] overflow-y-auto">
         <DialogHeader>
           <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2">
             <DialogTitle className="text-base sm:text-lg">
@@ -410,7 +298,7 @@ export function OrderDetailsDialog({ order, open, onOpenChange, onUpdateStatus, 
                   <Button
                     size="sm"
                     variant="outline"
-                    onClick={() => exportOrderPDF(effectiveOrder || order, settings?.businessName)}
+                    onClick={() => exportOrderPDF(order, settings?.businessName)}
                     className="gap-2"
                   >
                     <Download className="size-4" />
@@ -446,9 +334,7 @@ export function OrderDetailsDialog({ order, open, onOpenChange, onUpdateStatus, 
               </Badge>
             </div>
           </div>
-          <DialogDescription className="sr-only">
-            {isEditing ? 'Formulário para edição dos dados do pedido' : 'Informações detalhadas do pedido'}
-          </DialogDescription>
+          <div className="sr-only">Informações detalhadas do pedido</div>
         </DialogHeader>
 
         <div className="space-y-6">
@@ -473,30 +359,7 @@ export function OrderDetailsDialog({ order, open, onOpenChange, onUpdateStatus, 
           ) : (
             /* Modo de Visualização */
             <>
-              <OrderInfoView order={effectiveOrder || order} />
-
-              <div className="rounded-lg border p-4 space-y-2">
-                <label className="text-sm font-medium">Responsável pela execução</label>
-                {userProfile?.role === 'admin' ? (
-                  <Select
-                    value={order.assignedTo || '__none__'}
-                    onValueChange={value => handleAssign(value === '__none__' ? '' : value)}
-                    disabled={assigning}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Sem responsável" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="__none__">Sem responsável</SelectItem>
-                      {employees.map(employee => (
-                        <SelectItem key={employee.uid} value={employee.uid}>{employee.displayName}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                ) : (
-                  <p className="text-sm text-muted-foreground">{order.assignedToName || 'Sem responsável atribuído'}</p>
-                )}
-              </div>
+              <OrderInfoView order={order} />
 
               {/* Artes do Cliente */}
               <OrderGallerySection
@@ -549,7 +412,7 @@ export function OrderDetailsDialog({ order, open, onOpenChange, onUpdateStatus, 
               </div>
 
               <div className="flex justify-between items-center pt-4">
-                {onDeleteOrder && (hasPermission(p => p.orders?.delete ?? false) || order.userId === user?.uid) && (
+                {onDeleteOrder && hasPermission(p => p.orders?.delete ?? false) && (
                   <AlertDialog>
                     <AlertDialogTrigger asChild>
                       <Button variant="outline" className="gap-2">
