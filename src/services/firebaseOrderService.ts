@@ -16,6 +16,7 @@ import {
   orderBy,
   Timestamp,
   runTransaction,
+  writeBatch,
 } from 'firebase/firestore';
 import { db, auth } from '../lib/firebase';
 import { Order, OrderStatus, ProductionStep, ProductionWorkflow } from '../app/types';
@@ -298,6 +299,35 @@ export class FirebaseOrderService {
       assignedBy: employee ? userId : null,
       updatedAt: new Date().toISOString(),
     });
+  }
+
+  async assignOrdersBulk(orderIds: string[], employee: { uid: string; displayName: string } | null): Promise<void> {
+    if (orderIds.length === 0) return;
+    const userId = this.getCurrentUserId();
+    const profileSnap = await getDoc(doc(db, 'userProfiles', userId));
+    if (!profileSnap.exists() || profileSnap.data().role !== 'admin') {
+      throw new Error('Apenas administradores podem atribuir pedidos');
+    }
+
+    const now = new Date().toISOString();
+    const payload = {
+      assignedTo: employee?.uid || null,
+      assignedToName: employee?.displayName || null,
+      assignedAt: employee ? now : null,
+      assignedBy: employee ? userId : null,
+      updatedAt: now,
+    };
+
+    // Firestore batch comporta até 500 operações por lote
+    const BATCH_SIZE = 500;
+    for (let i = 0; i < orderIds.length; i += BATCH_SIZE) {
+      const chunk = orderIds.slice(i, i + BATCH_SIZE);
+      const batch = writeBatch(db);
+      for (const id of chunk) {
+        batch.update(doc(db, ORDERS_COLLECTION, id), payload);
+      }
+      await batch.commit();
+    }
   }
 
   /**

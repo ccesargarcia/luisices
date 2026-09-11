@@ -1,10 +1,13 @@
 // @refresh reset
 import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
 import { User } from 'firebase/auth';
+import { doc, onSnapshot } from 'firebase/firestore';
+import { db } from '../lib/firebase';
 import { firebaseAuthService } from '../services/firebaseAuthService';
 import { firebaseUserService } from '../services/firebaseUserService';
 import { UserProfile } from '../app/types';
 import { setUserAnalytics } from '../services/analyticsService';
+import { toast } from 'sonner';
 
 interface AuthContextType {
   user: User | null;
@@ -42,23 +45,72 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    const unsubscribe = firebaseAuthService.onAuthChange(async (u) => {
+    let profileUnsub: (() => void) | null = null;
+
+    const authUnsubscribe = firebaseAuthService.onAuthChange(async (u) => {
+      if (profileUnsub) {
+        profileUnsub();
+        profileUnsub = null;
+      }
+
       setLoading(true);
       setUser(u);
+
       if (u) {
         try {
-          await loadProfile(u);
+          // Garante que o documento existe no Firestore
+          await firebaseUserService.getUserProfile(
+            u.uid,
+            u.email ?? undefined,
+            u.displayName ?? undefined,
+          );
+
+          // Assina atualizações em tempo real do perfil do usuário
+          profileUnsub = onSnapshot(
+            doc(db, 'userProfiles', u.uid),
+            (snap) => {
+              if (!snap.exists()) {
+                setUserProfile(null);
+                setLoading(false);
+                return;
+              }
+
+              const profile = snap.data() as UserProfile;
+
+              // Se o administrador desativar a conta, efetua logout imediatamente
+              if (!profile.active) {
+                toast.error('Sua conta foi desativada pelo administrador.');
+                firebaseAuthService.logout().catch(() => {});
+                setUserProfile(null);
+                setLoading(false);
+                return;
+              }
+
+              setUserProfile(profile);
+              setUserAnalytics(u.uid, profile.role);
+              setLoading(false);
+            },
+            (err) => {
+              console.error('Erro ao escutar perfil do usuário em tempo real:', err);
+              setLoading(false);
+            }
+          );
         } catch (err) {
           console.error('Erro ao carregar perfil do usuário:', err);
           setUserProfile(null);
+          setLoading(false);
         }
       } else {
         setUserProfile(null);
+        setLoading(false);
       }
-      setLoading(false);
     });
-    return () => unsubscribe();
-  }, [loadProfile]);
+
+    return () => {
+      if (profileUnsub) profileUnsub();
+      authUnsubscribe();
+    };
+  }, []);
 
   const login = async (email: string, password: string) => {
     const user = await firebaseAuthService.login(email, password);

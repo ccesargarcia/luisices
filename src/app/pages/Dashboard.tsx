@@ -29,6 +29,7 @@ import {
   Download,
   Trash2,
   Users,
+  UserCheck,
 } from 'lucide-react';
 import { AdminTeamFilter } from '../components/AdminTeamFilter';
 import { getTextColor } from '../utils/tagColors';
@@ -45,6 +46,14 @@ import { exportOrdersToExcel } from '../utils/exportData';
 import { toast } from 'sonner';
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts';
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from '../components/ui/chart';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '../components/ui/dialog';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -92,6 +101,7 @@ export function Dashboard() {
     isFilterActive,
     selectedFilterLabel,
     clearUserFilter,
+    teamMembers,
   } = useFirebaseOrders();
   const { settings } = useUserSettings();
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
@@ -99,6 +109,9 @@ export function Dashboard() {
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [isBulkOrderDeleteOpen, setIsBulkOrderDeleteOpen] = useState(false);
   const [bulkOrderDeleting, setBulkOrderDeleting] = useState(false);
+  const [isBulkAssignOpen, setIsBulkAssignOpen] = useState(false);
+  const [bulkAssignTargetUid, setBulkAssignTargetUid] = useState<string>('__none__');
+  const [bulkAssigning, setBulkAssigning] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [showExchangeOnly, setShowExchangeOnly] = useState(false);
@@ -391,6 +404,30 @@ export function Dashboard() {
       toast.error('Erro ao excluir pedidos selecionados');
     } finally {
       setBulkOrderDeleting(false);
+    }
+  };
+
+  const handleBulkAssignOrders = async () => {
+    if (selectedOrderIds.length === 0 || userProfile?.role !== 'admin') return;
+
+    const targetMember = bulkAssignTargetUid !== '__none__'
+      ? teamMembers.find((m) => m.uid === bulkAssignTargetUid) || null
+      : null;
+
+    setBulkAssigning(true);
+    try {
+      await firebaseOrderService.assignOrdersBulk(selectedOrderIds, targetMember);
+      const targetName = targetMember ? targetMember.displayName : 'Sem responsável';
+      toast.success(
+        `${selectedOrderIds.length} pedido${selectedOrderIds.length === 1 ? '' : 's'} atribuído${selectedOrderIds.length === 1 ? '' : 's'} para ${targetName}`
+      );
+      setSelectedOrderIds([]);
+      setIsBulkAssignOpen(false);
+    } catch (err: any) {
+      console.error('Erro ao atribuir pedidos em lote:', err);
+      toast.error(err?.message || 'Erro ao atribuir pedidos');
+    } finally {
+      setBulkAssigning(false);
     }
   };
 
@@ -756,21 +793,35 @@ export function Dashboard() {
               {allFilteredOrdersSelected ? 'Desmarcar todos' : 'Selecionar todos'}
             </Button>
           </div>
-          <div className="flex items-center gap-2">
-            {selectedOrderIds.length > 0 && hasPermission(p => p.orders?.delete ?? false) && (
-              <Button variant="outline" size="sm" onClick={() => setSelectedOrderIds([])}>
-                Limpar
+          <div className="flex items-center gap-2 flex-wrap">
+            {selectedOrderIds.length > 0 && userProfile?.role === 'admin' && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1.5 h-9 text-xs sm:text-sm font-medium"
+                onClick={() => {
+                  setBulkAssignTargetUid('__none__');
+                  setIsBulkAssignOpen(true);
+                }}
+              >
+                <UserCheck className="size-4 text-primary shrink-0" />
+                <span>Atribuir ({selectedOrderIds.length})</span>
               </Button>
             )}
             {selectedOrderIds.length > 0 && (
+              <Button variant="ghost" size="sm" className="h-9 text-xs sm:text-sm" onClick={() => setSelectedOrderIds([])}>
+                Limpar
+              </Button>
+            )}
+            {selectedOrderIds.length > 0 && hasPermission(p => p.orders?.delete ?? false) && (
               <Button
                 variant="destructive"
                 size="sm"
-                className="gap-2"
+                className="gap-2 h-9 text-xs sm:text-sm"
                 onClick={() => setIsBulkOrderDeleteOpen(true)}
                 disabled={bulkOrderDeleting}
               >
-                <Trash2 className="size-4" />
+                <Trash2 className="size-4 shrink-0" />
                 Excluir selecionados
               </Button>
             )}
@@ -873,6 +924,60 @@ export function Dashboard() {
           )}
         </TabsContent>
       </Tabs>
+
+      {/* Diálogo de Atribuição em Lote */}
+      <Dialog open={isBulkAssignOpen} onOpenChange={setIsBulkAssignOpen}>
+        <DialogContent className="w-[calc(100%-1.5rem)] sm:max-w-md max-h-[85dvh] overflow-y-auto p-4 sm:p-6">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-base sm:text-lg">
+              <Users className="size-5 text-primary" />
+              Atribuir Pedidos em Lote
+            </DialogTitle>
+            <DialogDescription className="text-xs sm:text-sm text-muted-foreground mt-1">
+              Defina o responsável pela execução dos <strong className="text-foreground">{selectedOrderIds.length}</strong> pedidos selecionados.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="py-3 space-y-2">
+            <label className="text-xs sm:text-sm font-medium">Membro da equipe responsável</label>
+            <Select
+              value={bulkAssignTargetUid}
+              onValueChange={setBulkAssignTargetUid}
+            >
+              <SelectTrigger className="h-11 sm:h-10 text-base sm:text-sm">
+                <SelectValue placeholder="Selecione um responsável" />
+              </SelectTrigger>
+              <SelectContent className="max-h-56">
+                <SelectItem value="__none__">Sem responsável (Remover atribuição)</SelectItem>
+                {teamMembers.map((member) => (
+                  <SelectItem key={member.uid} value={member.uid}>
+                    {member.displayName} {member.role === 'funcionario' ? '(Equipe)' : member.role === 'admin' ? '(Admin)' : ''}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <DialogFooter className="flex-col-reverse sm:flex-row gap-2 sm:gap-0 pt-2">
+            <Button
+              variant="outline"
+              onClick={() => setIsBulkAssignOpen(false)}
+              disabled={bulkAssigning}
+              className="w-full sm:w-auto h-10 text-sm"
+            >
+              Cancelar
+            </Button>
+            <Button
+              onClick={handleBulkAssignOrders}
+              disabled={bulkAssigning}
+              className="w-full sm:w-auto h-10 text-sm gap-2"
+            >
+              {bulkAssigning && <Loader2 className="size-4 animate-spin" />}
+              Salvar Atribuição
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <AlertDialog open={isBulkOrderDeleteOpen} onOpenChange={setIsBulkOrderDeleteOpen}>
         <AlertDialogContent>

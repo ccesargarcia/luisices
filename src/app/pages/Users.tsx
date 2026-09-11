@@ -243,7 +243,7 @@ function UserFormDialog({ open, editingUser, currentUserUid, onClose, onSaved }:
           role,
           permissions,
         });
-        toast.success('Usuário atualizado. O usuário precisa fazer logout/login para aplicar as mudanças.');
+        toast.success('Usuário atualizado com sucesso. As alterações já estão ativas em tempo real.');
       } else {
         await firebaseUserService.createUser(email.trim(), password, displayName.trim(), role, permissions, currentUserUid);
         toast.success('Usuário criado com sucesso');
