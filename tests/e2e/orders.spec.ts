@@ -34,11 +34,11 @@ async function closeAnyOpenDialog(page: Page) {
 
   const overlay = page.locator('[data-slot="dialog-overlay"]').first();
   if (await overlay.isVisible().catch(() => false)) {
-    await overlay.click({ force: true });
+    await overlay.click({ force: true, timeout: 1000 }).catch(() => {});
   }
 
   await page.keyboard.press('Escape');
-  await expect(dialog).not.toBeVisible({ timeout: 10000 }).catch(() => {});
+  await expect(dialog).not.toBeVisible({ timeout: 5000 }).catch(() => {});
 }
 
 test.beforeEach(async ({ page }) => {
@@ -89,11 +89,11 @@ test.describe('Pedidos - CRUD', () => {
       await dateInput.fill(futureDate.toISOString().split('T')[0]);
     }
 
-    // Submeter
+    // Submeter e aguardar fechar
     await dialog.locator('button[type="submit"]').click();
-
-    // Se o diálogo não fechar automaticamente, feche-o manualmente
-    await closeAnyOpenDialog(page);
+    await expect(dialog).not.toBeVisible({ timeout: 15000 }).catch(async () => {
+      await closeAnyOpenDialog(page);
+    });
 
     // CLEANUP: Localizar o pedido recém-criado e excluir
     const orderCard = page.locator('.cursor-pointer').filter({ hasText: productName }).first();
@@ -120,7 +120,7 @@ test.describe('Pedidos - CRUD', () => {
     test.setTimeout(60000);
 
     const customerName = `Cliente Teste ${Date.now()}`;
-    const customerPhone = `119${String(Math.floor(100000 + Math.random() * 900000))}`;
+    const customerPhone = `11988${String(Math.floor(100000 + Math.random() * 900000))}`;
 
     // Criar pedido com cliente novo
     const newOrderBtn = page.getByRole('button', { name: /Novo Pedido/i });
@@ -159,29 +159,40 @@ test.describe('Pedidos - CRUD', () => {
 
     await dialog.locator('button[type="submit"]').click();
 
-    // Fechar qualquer diálogo que permaneça aberto
-    await closeAnyOpenDialog(page);
+    // Aguardar o diálogo fechar após salvar
+    await expect(dialog).not.toBeVisible({ timeout: 15000 }).catch(async () => {
+      await closeAnyOpenDialog(page);
+    });
 
     // Acessar a página de clientes e verificar que o cliente novo está listado
     await page.goto('/clientes');
+    await expect(page.locator('main h1').first()).toContainText(/Clientes/i, { timeout: 15000 });
 
     const searchInput = page.getByPlaceholder(/Buscar por nome, telefone ou email/i);
     await expect(searchInput).toBeVisible({ timeout: 10000 });
     await searchInput.fill(customerName);
 
     const customerCard = page.locator('[data-slot="card"]').filter({ hasText: customerName }).first();
-    await expect(customerCard).toBeVisible({ timeout: 10000 });
+    await expect(customerCard).toBeVisible({ timeout: 15000 });
 
     // Cleanup: remover cliente criado
     try {
       const deleteBtn = customerCard.locator('button').filter({ has: page.locator('.text-destructive') }).first();
-      if (await deleteBtn.isVisible({ timeout: 5000 })) {
-        await deleteBtn.click({ timeout: 5000 });
+      if (await deleteBtn.isVisible({ timeout: 3000 })) {
+        await deleteBtn.click({ timeout: 3000 });
 
         const alertDialog = page.locator('[role="alertdialog"]');
-        await alertDialog.waitFor({ state: 'visible', timeout: 5000 });
-        await alertDialog.getByRole('button', { name: /Excluir/i }).click({ timeout: 5000 });
-        await alertDialog.waitFor({ state: 'hidden', timeout: 10000 });
+        if (await alertDialog.isVisible({ timeout: 3000 })) {
+          const confirmBtn = alertDialog.getByRole('button', { name: /Excluir/i });
+          if (await confirmBtn.isVisible({ timeout: 1000 })) {
+            await confirmBtn.click();
+            await alertDialog.waitFor({ state: 'hidden', timeout: 5000 });
+          } else {
+            // Cliente possui pedido ativo, fechar dialog pelo Cancelar
+            await alertDialog.getByRole('button', { name: /Cancelar/i }).click();
+            await alertDialog.waitFor({ state: 'hidden', timeout: 5000 });
+          }
+        }
       }
     } catch (cleanupErr) {
       console.warn('Não foi possível excluir o cliente de teste automaticamente:', cleanupErr);

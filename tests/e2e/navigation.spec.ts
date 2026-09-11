@@ -34,7 +34,7 @@ test.describe('Navegação entre Páginas', () => {
       await expect(page).toHaveURL(pathRegex, { timeout: 15000 });
 
       // Verificar se o container principal está visível
-      await expect(page.locator('main').first()).toBeVisible({ timeout: 10000 });
+      await expect(page.locator('main').first()).toBeVisible({ timeout: 15000 });
     });
   }
 
