@@ -45,8 +45,8 @@ export function Register() {
       return;
     }
 
-    if (password.length < 6) {
-      setError('A senha deve ter pelo menos 6 caracteres.');
+    if (password.length < 8) {
+      setError('A senha deve ter pelo menos 8 caracteres.');
       return;
     }
 
@@ -141,10 +141,10 @@ export function Register() {
                   className="pl-10"
                   required
                   autoComplete="new-password"
-                  minLength={6}
+                  minLength={8}
                 />
               </div>
-              <p className="text-xs text-muted-foreground">Mínimo de 6 caracteres</p>
+              <p className="text-xs text-muted-foreground">Mínimo de 8 caracteres</p>
             </div>
 
             <div className="space-y-2">
