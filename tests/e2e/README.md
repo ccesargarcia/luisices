@@ -67,6 +67,15 @@ npm run test:debug
 npm run test:report
 ```
 
+### 🌐 Execução no GitHub Actions (CI):
+
+O workflow de CI ([.github/workflows/test-actions.yml](../../.github/workflows/test-actions.yml)) suporta execução parametrizada:
+
+* **Suíte Completa (Padrão)**: Qualquer commit regular sem tags executa todos os testes E2E em paralelo (`npm run test:e2e`).
+* **Tag `[test:security]`**: Executa exclusivamente a suíte de segurança e regras do Firestore/Storage (`tests/e2e/security.spec.ts`).
+* **Tag `[test:critical]`**: Executa os fluxos críticos de pedidos, permissões RBAC e segurança.
+* **Manual (Workflow Dispatch)**: É possível disparar qualquer grupo de testes pelo menu dropdown na interface do GitHub Actions.
+
 ---
 
 ## 📝 Estrutura dos Testes
