@@ -608,18 +608,19 @@ exports.getEmailUsage = onCall({ cors: true, secrets: [RESEND_API_KEY] }, async 
   const apiKey = RESEND_API_KEY.value();
   if (apiKey) {
     try {
-      const todayStr = now.toISOString().split('T')[0];
-      const firstDayOfMonthStr = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}-01`;
+      const startOfTodayIso = `${now.toISOString().split('T')[0]}T00:00:00Z`;
+      const startOfMonthIso = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}-01T00:00:00Z`;
 
+      // Omitir end_date faz o Resend assumir o horário atual (now), pegando todos os envios de hoje
       const [dailyRes, monthlyRes] = await Promise.all([
-        fetch(`https://api.resend.com/emails/metrics?start_date=${todayStr}&end_date=${todayStr}&metrics=sent,delivered`, {
+        fetch(`https://api.resend.com/emails/metrics?start_date=${startOfTodayIso}&metrics=sent,delivered`, {
           headers: {
             Authorization: `Bearer ${apiKey}`,
             'Content-Type': 'application/json',
             'User-Agent': 'Luisices-Functions/1.0',
           },
         }),
-        fetch(`https://api.resend.com/emails/metrics?start_date=${firstDayOfMonthStr}&end_date=${todayStr}&metrics=sent,delivered`, {
+        fetch(`https://api.resend.com/emails/metrics?start_date=${startOfMonthIso}&metrics=sent,delivered`, {
           headers: {
             Authorization: `Bearer ${apiKey}`,
             'Content-Type': 'application/json',
