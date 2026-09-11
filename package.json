@@ -10,7 +10,7 @@
     "fix-negative-values": "node scripts/fix-negative-values.mjs",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
-    "test:ci": "playwright test tests/e2e/auth.spec.ts tests/e2e/customers.spec.ts tests/e2e/products.spec.ts tests/e2e/quotes.spec.ts tests/e2e/orders.spec.ts tests/e2e/navigation.spec.ts tests/e2e/customer-order-lifecycle.spec.ts tests/e2e/settings.spec.ts tests/e2e/reports.spec.ts tests/e2e/gallery.spec.ts tests/e2e/order-details.spec.ts --reporter=list",
+    "test:ci": "playwright test --project=chromium --reporter=list",
     "test:customers": "playwright test tests/e2e/customers.spec.ts",
     "test:products": "playwright test tests/e2e/products.spec.ts",
     "test:quotes": "playwright test tests/e2e/quotes.spec.ts",

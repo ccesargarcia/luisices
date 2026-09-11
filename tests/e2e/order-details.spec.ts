@@ -1,4 +1,5 @@
 import { test, expect, type Page, type TestInfo } from '@playwright/test';
+import { ensureAuthenticated } from './utils/auth.util';
 
 /**
  * Testes de Detalhes do Pedido, Status e Pagamento
@@ -81,11 +82,7 @@ async function closeAnyOpenDialog(page: Page) {
 
 test.beforeEach(async ({ page }) => {
   test.setTimeout(60000);
-  await page.goto('/');
-  await page.fill('input[type="email"]', TEST_USER.email);
-  await page.fill('input[type="password"]', TEST_USER.password);
-  await page.click('button[type="submit"]');
-  await page.waitForURL('**/dashboard', { timeout: 15000 });
+  await ensureAuthenticated(page);
 });
 
 test.describe('Detalhes do Pedido', () => {

@@ -1,20 +1,12 @@
 import { test, expect } from '@playwright/test';
+import { ensureAuthenticated } from './utils/auth.util';
 
 /**
  * Testes CRUD de Orçamentos
  */
 
-const TEST_USER = {
-  email: process.env.TEST_USER_EMAIL || 'teste@exemplo.com',
-  password: process.env.TEST_USER_PASSWORD || 'senha123',
-};
-
 test.beforeEach(async ({ page }) => {
-  await page.goto('/');
-  await page.fill('input[type="email"]', TEST_USER.email);
-  await page.fill('input[type="password"]', TEST_USER.password);
-  await page.click('button[type="submit"]');
-  await page.waitForURL('**/dashboard', { timeout: 10000 });
+  await ensureAuthenticated(page);
 
   await page.goto('/orcamentos');
   await expect(page.locator('main h1').first()).toContainText(/Orçamentos/i, { timeout: 10000 });

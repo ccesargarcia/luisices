@@ -64,9 +64,9 @@ jobs:
           TEST_USER_EMAIL: ${{ secrets.TEST_USER_EMAIL }}
           TEST_USER_PASSWORD: ${{ secrets.TEST_USER_PASSWORD }}
           PLAYWRIGHT_BASE_URL: http://localhost:4173
-        # Dois workers equilibram tempo de execução e estabilidade com o usuário Firebase compartilhado.
+        # Executa o projeto chromium (que executa auth.setup.ts primeiro) e todos os testes E2E com workers: 1 em CI
         # Generate HTML report so it can be uploaded as an artifact.
-        run: npx playwright test --workers=2 tests/e2e/auth.spec.ts tests/e2e/customers.spec.ts tests/e2e/products.spec.ts tests/e2e/quotes.spec.ts tests/e2e/orders.spec.ts tests/e2e/navigation.spec.ts tests/e2e/customer-order-lifecycle.spec.ts tests/e2e/settings.spec.ts tests/e2e/reports.spec.ts tests/e2e/gallery.spec.ts tests/e2e/order-details.spec.ts --reporter=list,html
+        run: npx playwright test --project=chromium --reporter=list,html
 
       - name: Upload test report
         if: always()

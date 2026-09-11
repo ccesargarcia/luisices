@@ -54,6 +54,8 @@ coverage/
 test-results/
 playwright-report/
 playwright/.cache/
+playwright/.auth/
+.auth/
 .env.test
 *.mp4
 *.webm

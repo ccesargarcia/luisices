@@ -62,19 +62,23 @@ export default defineConfig({
 
   /* Configurar projetos para diferentes navegadores */
   projects: [
-    { name: 'setup', testMatch: /.*.setup.ts/ },
+    { name: 'setup', testMatch: /.*\.setup\.ts/ },
     {
       name: 'chromium',
       use: { 
         ...devices['Desktop Chrome'],
-        
+        storageState: 'playwright/.auth/user.json',
       },
-      
+      dependencies: ['setup'],
     },
     {
       name: 'mobile-chromium',
       testMatch: /responsive\.spec\.ts/,
-      use: { ...devices['Pixel 5'] },
+      use: {
+        ...devices['Pixel 5'],
+        storageState: 'playwright/.auth/user.json',
+      },
+      dependencies: ['setup'],
     },
 
     // Descomente para testar em outros navegadores
