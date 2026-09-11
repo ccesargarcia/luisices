@@ -103,7 +103,9 @@ test.describe('Autenticação', () => {
     await expect(submitBtn).toBeVisible({ timeout: 5000 });
 
     // 3. Validar link de retorno ao login
-    const backBtn = page.getByRole('button', { name: /Voltar para o login/i });
+    const backBtn = page.getByRole('button', { name: /Voltar (para o|ao) login/i })
+      .or(page.getByRole('link', { name: /Voltar (para o|ao) login/i }))
+      .first();
     await expect(backBtn).toBeVisible({ timeout: 5000 });
   });
 

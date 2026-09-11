@@ -268,9 +268,9 @@ function UserFormDialog({ open, editingUser, currentUserUid, onClose, onSaved }:
         <form onSubmit={handleSubmit} className="space-y-4">
           {/* Name */}
           <div className="space-y-1.5">
-            <Label htmlFor="uf-name">Nome</Label>
+            <Label htmlFor="user-name">Nome</Label>
             <Input
-              id="uf-name"
+              id="user-name"
               value={displayName}
               onChange={e => setDisplayName(e.target.value)}
               placeholder="Nome completo"
@@ -280,9 +280,9 @@ function UserFormDialog({ open, editingUser, currentUserUid, onClose, onSaved }:
 
           {/* Email */}
           <div className="space-y-1.5">
-            <Label htmlFor="uf-email">E-mail</Label>
+            <Label htmlFor="user-email">E-mail</Label>
             <Input
-              id="uf-email"
+              id="user-email"
               type="email"
               value={email}
               onChange={e => setEmail(e.target.value)}
@@ -295,9 +295,9 @@ function UserFormDialog({ open, editingUser, currentUserUid, onClose, onSaved }:
           {/* Password (create only) */}
           {!isEdit && (
             <div className="space-y-1.5">
-              <Label htmlFor="uf-pass">Senha</Label>
+              <Label htmlFor="user-password">Senha</Label>
               <Input
-                id="uf-pass"
+                id="user-password"
                 type="password"
                 value={password}
                 onChange={e => setPassword(e.target.value)}
@@ -340,7 +340,7 @@ function UserFormDialog({ open, editingUser, currentUserUid, onClose, onSaved }:
 
           {/* Permission Matrix */}
           <div className="space-y-2">
-            <p className="text-sm font-semibold">Permissões granulares</p>
+            <p className="text-sm font-semibold">Permissões de acesso</p>
             <PermissionMatrix permissions={permissions} onChange={setPermissions} />
           </div>
 

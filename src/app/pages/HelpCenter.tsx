@@ -380,7 +380,8 @@ export function HelpCenter() {
           <Input
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="O que você precisa aprender? Ex: permuta, atribuir, pagamento, relatórios..."
+            placeholder="Buscar tópicos, dúvidas ou funcionalidades... Ex: permuta, atribuir, pagamento"
+            aria-label="Buscar tópicos, dúvidas ou funcionalidades"
             className="h-11 pl-10 pr-4 text-base sm:text-sm bg-background/90 rounded-xl shadow-xs border-primary/20 focus:border-primary"
           />
           {searchQuery && (

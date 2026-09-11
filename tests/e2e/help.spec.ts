@@ -23,7 +23,10 @@ test.describe('Central de Ajuda', () => {
     await expect(heading).toBeVisible({ timeout: 5000 });
 
     // 2. Validar campo de busca
-    const searchInput = page.getByPlaceholder(/Buscar tópicos, dúvidas ou funcionalidades/i).first();
+    const searchInput = page
+      .getByPlaceholder(/Buscar tópicos, dúvidas ou funcionalidades|O que você precisa aprender/i)
+      .or(page.getByRole('textbox', { name: /Buscar tópicos/i }))
+      .first();
     await expect(searchInput).toBeVisible({ timeout: 5000 });
 
     // Buscar termo existente

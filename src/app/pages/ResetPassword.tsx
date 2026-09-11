@@ -116,9 +116,9 @@ export function ResetPassword() {
             )}
 
             <Link to="/login" className="w-full">
-              <Button type="button" variant="outline" className="w-full">
+              <Button type="button" variant="outline" className="w-full" aria-label="Voltar para o login">
                 <ArrowLeft className="size-4 mr-2" />
-                Voltar ao Login
+                Voltar para o login
               </Button>
             </Link>
           </CardFooter>

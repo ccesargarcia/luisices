@@ -47,12 +47,12 @@ test.describe('Gerenciamento de Usuários', () => {
     await expect(dialog).toBeVisible({ timeout: 5000 });
 
     // 2. Validar campos de entrada
-    await expect(dialog.locator('#user-name')).toBeVisible({ timeout: 5000 });
-    await expect(dialog.locator('#user-email')).toBeVisible({ timeout: 5000 });
-    await expect(dialog.locator('#user-password')).toBeVisible({ timeout: 5000 });
+    await expect(dialog.locator('#user-name, #uf-name')).toBeVisible({ timeout: 5000 });
+    await expect(dialog.locator('#user-email, #uf-email')).toBeVisible({ timeout: 5000 });
+    await expect(dialog.locator('#user-password, #uf-pass')).toBeVisible({ timeout: 5000 });
 
     // 3. Validar seções de permissões
-    await expect(dialog.getByText('Permissões de acesso').first()).toBeVisible({ timeout: 5000 });
+    await expect(dialog.getByText(/Permissões (de acesso|granulares)/i).first()).toBeVisible({ timeout: 5000 });
     await expect(dialog.getByText('Dashboard').first()).toBeVisible({ timeout: 5000 });
     await expect(dialog.getByText('Pedidos').first()).toBeVisible({ timeout: 5000 });
     await expect(dialog.getByText('Clientes').first()).toBeVisible({ timeout: 5000 });

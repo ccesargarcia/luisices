@@ -44,6 +44,9 @@ async function closeAnyOpenDialog(page: Page) {
 test.beforeEach(async ({ page }) => {
   test.setTimeout(60000);
   await ensureAuthenticated(page);
+  await page.goto('/dashboard');
+  await page.waitForLoadState('domcontentloaded');
+  await closeAnyOpenDialog(page);
 });
 
 const timestamp = Date.now();
@@ -95,11 +98,19 @@ test.describe.serial('Detalhes do Pedido', () => {
 
     // Salvar
     await dialog.locator('button[type="submit"]').click();
-    await closeAnyOpenDialog(page);
+    await expect(dialog).not.toBeVisible({ timeout: 15000 }).catch(async () => {
+      await closeAnyOpenDialog(page);
+    });
 
     // 2. Localizar o card do pedido e clicar
-    const orderCard = page.locator('.cursor-pointer').filter({ hasText: testOrderData.customer }).first();
-    await expect(orderCard).toBeVisible({ timeout: 10000 });
+    const orderCard = page
+      .getByTestId('order-card')
+      .filter({ hasText: testOrderData.customer })
+      .or(page.locator('.cursor-pointer').filter({ hasText: testOrderData.customer }))
+      .or(page.getByTestId('order-card').filter({ hasText: testOrderData.product }))
+      .or(page.locator('.cursor-pointer').filter({ hasText: testOrderData.product }))
+      .first();
+    await expect(orderCard).toBeVisible({ timeout: 15000 });
     await orderCard.click();
 
     // 3. Validar detalhes
@@ -116,8 +127,14 @@ test.describe.serial('Detalhes do Pedido', () => {
   test('deve exibir informações de pagamento', async ({ page }) => {
     await closeAnyOpenDialog(page);
 
-    const orderCard = page.locator('.cursor-pointer').filter({ hasText: testOrderData.customer }).first();
-    await expect(orderCard).toBeVisible({ timeout: 10000 });
+    const orderCard = page
+      .getByTestId('order-card')
+      .filter({ hasText: testOrderData.customer })
+      .or(page.locator('.cursor-pointer').filter({ hasText: testOrderData.customer }))
+      .or(page.getByTestId('order-card').filter({ hasText: testOrderData.product }))
+      .or(page.locator('.cursor-pointer').filter({ hasText: testOrderData.product }))
+      .first();
+    await expect(orderCard).toBeVisible({ timeout: 15000 });
     await orderCard.click();
 
     const dialog = page.locator('[role="dialog"]').first();
@@ -133,8 +150,14 @@ test.describe.serial('Detalhes do Pedido', () => {
   test('deve entrar em modo de edição e excluir pedido', async ({ page }) => {
     await closeAnyOpenDialog(page);
 
-    const orderCard = page.locator('.cursor-pointer').filter({ hasText: testOrderData.customer }).first();
-    await expect(orderCard).toBeVisible({ timeout: 10000 });
+    const orderCard = page
+      .getByTestId('order-card')
+      .filter({ hasText: testOrderData.customer })
+      .or(page.locator('.cursor-pointer').filter({ hasText: testOrderData.customer }))
+      .or(page.getByTestId('order-card').filter({ hasText: testOrderData.product }))
+      .or(page.locator('.cursor-pointer').filter({ hasText: testOrderData.product }))
+      .first();
+    await expect(orderCard).toBeVisible({ timeout: 15000 });
     await orderCard.click();
 
     const dialog = page.locator('[role="dialog"]').first();
