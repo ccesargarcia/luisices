@@ -136,6 +136,9 @@ export interface Product {
   photoUrl?: string;
   createdAt: string;
   updatedAt?: string;
+  recipeId?: string;
+  unitCost?: number;
+  profitMargin?: number;
 }
 
 export interface Quote {
@@ -270,6 +273,101 @@ export interface Permission {
   settings: boolean;
   users: ModulePermission;
   emails?: boolean;
+  pricing?: boolean;
+}
+
+// ─── Pricing & Costs (Papelaria Personalizada) ────────────────────────────────
+
+export type SupplyUnit = 'folha' | 'metro' | 'cm' | 'unidade' | 'ml' | 'g' | 'pacote';
+
+export type SupplyCategory =
+  | 'papeis'
+  | 'fitas_aviamentos'
+  | 'impressao_tintas'
+  | 'embalagens'
+  | 'adesivos_colas'
+  | 'outros';
+
+export interface SupplyItem {
+  id: string;
+  userId: string;
+  name: string;
+  category: SupplyCategory;
+  purchasePrice: number;       // Preço de compra do pacote/rolo (ex: R$ 35,00)
+  packageQuantity: number;     // Quantidade no pacote/rolo (ex: 100)
+  unit: SupplyUnit;            // Unidade fracionada (ex: 'folha', 'metro')
+  unitCost: number;            // Custo unitário = purchasePrice / packageQuantity
+  supplier?: string;           // Loja/fornecedor
+  notes?: string;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export interface RecipeItem {
+  supplyId?: string;           // ID do insumo se veio do catálogo
+  name: string;
+  category?: SupplyCategory;
+  unit: SupplyUnit;
+  unitCost: number;            // Custo por unidade fracionada
+  quantityUsed: number;        // Quantidade consumida por unidade do produto
+  totalCost: number;           // unitCost * quantityUsed
+  isCustomItem?: boolean;      // Item avulso sem cadastro prévio
+}
+
+export interface MonthlyFixedExpenses {
+  rent?: number;               // Aluguel
+  electricity?: number;        // Energia
+  internet?: number;           // Internet
+  meiTax?: number;             // DAS MEI
+  softwareSubscriptions?: number; // Softwares (Canva, Silhouette, etc.)
+  otherFixedExpenses?: number;    // Outros
+}
+
+export interface StudioPricingSettings {
+  userId: string;
+  desiredSalary: number;       // Pró-labore mensal desejado (ex: R$ 3000)
+  workingDaysPerMonth: number; // Dias trabalhados/mês (ex: 20)
+  workingHoursPerDay: number;  // Horas/dia (ex: 6)
+  monthlyFixedExpenses: MonthlyFixedExpenses;
+  defaultWasteMarginPercent: number;    // Perda padrão (ex: 10%)
+  defaultPaymentFeePercent: number;     // Taxa de cartão padrão (ex: 4.5%)
+  defaultProfitMarginPercent: number;  // Margem de lucro padrão (ex: 50%)
+  updatedAt?: string;
+}
+
+export interface BatchTier {
+  quantity: number;
+  scaleDiscountPercent: number;
+  unitCost: number;
+  unitPrice: number;
+  totalPrice: number;
+  totalProfit: number;
+}
+
+export interface ProductPricingRecipe {
+  id: string;
+  userId: string;
+  productId?: string;          // Vinculado a um Product existente
+  productName: string;
+  category?: string;
+  items: RecipeItem[];
+  materialsCost: number;
+  wasteMarginPercent: number;
+  materialsCostWithWaste: number;
+  laborMode: 'time' | 'proportional';
+  productionTimeMinutes?: number;
+  hourlyRateApplied: number;
+  proportionalPercent?: number;
+  laborCost: number;
+  fixedCostsShare: number;
+  totalUnitCost: number;
+  paymentFeePercent: number;
+  profitMarginPercent: number;
+  suggestedUnitPrice: number;
+  manualUnitPrice?: number;
+  batchTiers?: BatchTier[];
+  createdAt: string;
+  updatedAt?: string;
 }
 
 export interface UserProfile {
@@ -297,6 +395,7 @@ export const ADMIN_PERMISSIONS: Permission = {
   settings:  true,
   users:     { view: true, create: true, edit: true, delete: true },
   emails:    true,
+  pricing:   true,
 };
 
 export const DEFAULT_USER_PERMISSIONS: Permission = {
@@ -311,6 +410,7 @@ export const DEFAULT_USER_PERMISSIONS: Permission = {
   settings:  true,
   users:     { view: false, create: false, edit: false, delete: false },
   emails:    false,
+  pricing:   true,
 };
 
 export const EMPLOYEE_PERMISSIONS: Permission = {
@@ -325,6 +425,7 @@ export const EMPLOYEE_PERMISSIONS: Permission = {
   settings:  false,
   users:     { view: false, create: false, edit: false, delete: false },
   emails:    false,
+  pricing:   false,
 };
 
 // Tipos para sistema de compartilhamento de dados

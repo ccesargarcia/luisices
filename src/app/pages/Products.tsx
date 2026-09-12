@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { Link } from 'react-router';
 import { formatCurrency } from '../utils/currency';
 import { Product } from '../types';
 import { firebaseProductService } from '../../services/firebaseProductService';
@@ -35,6 +36,7 @@ import {
   LayoutList,
   TrendingUp,
   TrendingDown,
+  Coins,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '../components/ui/utils';
@@ -312,12 +314,20 @@ export function Products() {
             Cadastre produtos e serviços para usar rapidamente nos orçamentos e pedidos
           </p>
         </div>
-        {hasPermission(p => p.products?.create ?? false) && (
-          <Button data-testid="new-product-button" onClick={openNew} className="gap-2">
-            <Plus className="size-4" />
-            <span className="hidden sm:inline">Novo Produto</span>
-          </Button>
-        )}
+        <div className="flex items-center gap-2">
+          <Link to="/precificacao">
+            <Button variant="outline" className="gap-2 border-primary/30 text-primary hover:bg-primary/5">
+              <Coins className="size-4" />
+              <span className="hidden sm:inline">Precificação & Custos</span>
+            </Button>
+          </Link>
+          {hasPermission(p => p.products?.create ?? false) && (
+            <Button data-testid="new-product-button" onClick={openNew} className="gap-2">
+              <Plus className="size-4" />
+              <span className="hidden sm:inline">Novo Produto</span>
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* Stats – 4 cards */}
@@ -468,7 +478,24 @@ export function Products() {
                               <p className="text-xs text-muted-foreground">por unidade</p>
                             </div>
                           </div>
+                          {product.unitCost != null && product.unitCost > 0 && (
+                            <div className="flex items-center justify-between text-[11px] bg-muted/40 px-2 py-1 rounded mt-2">
+                              <span className="text-muted-foreground">
+                                Custo: <strong>{formatCurrency(product.unitCost)}</strong>
+                              </span>
+                              {product.profitMargin != null && (
+                                <Badge variant="outline" className="text-[10px] h-4 text-emerald-600 dark:text-emerald-400 border-emerald-500/30">
+                                  {product.profitMargin}% margem
+                                </Badge>
+                              )}
+                            </div>
+                          )}
                           <div className="flex gap-2 mt-3">
+                            <Link to="/precificacao">
+                              <Button size="sm" variant="ghost" className="h-7 px-2 text-xs text-primary hover:bg-primary/10" title="Ver ficha técnica de precificação">
+                                <Coins className="size-3.5" />
+                              </Button>
+                            </Link>
                             {hasPermission(p => p.products?.edit ?? false) && (
                               <Button size="sm" variant="outline" className="flex-1 h-7 text-xs"
                                 onClick={() => openEdit(product)}>
@@ -534,6 +561,11 @@ export function Products() {
                   </td>
                   <td className="px-4 py-2.5">
                     <div className="flex gap-1 justify-end">
+                      <Link to="/precificacao">
+                        <Button size="icon" variant="ghost" className="h-9 w-9 sm:h-7 sm:w-7 text-primary hover:text-primary hover:bg-primary/10" title="Ver ficha técnica">
+                          <Coins className="size-3.5" />
+                        </Button>
+                      </Link>
                       {hasPermission(p => p.products?.edit ?? false) && (
                         <Button size="icon" variant="ghost" className="h-9 w-9 sm:h-7 sm:w-7" onClick={() => openEdit(product)}>
                           <Pencil className="size-3.5" />

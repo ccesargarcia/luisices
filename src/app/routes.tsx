@@ -47,6 +47,7 @@ const Exchanges      = lazyWithRetry(() => import('./pages/Exchanges').then(m =>
 const Users          = lazyWithRetry(() => import('./pages/Users').then(m => ({ default: m.Users })));
 const HelpCenter     = lazyWithRetry(() => import('./pages/HelpCenter').then(m => ({ default: m.HelpCenter })));
 const Emails         = lazyWithRetry(() => import('./pages/Emails').then(m => ({ default: m.Emails })));
+const Pricing        = lazyWithRetry(() => import('./pages/Pricing').then(m => ({ default: m.Pricing })));
 const FixNegativeValues = lazyWithRetry(() => import('./pages/FixNegativeValues').then(m => ({ default: m.default })));
 
 function PageLoader() {
@@ -123,6 +124,10 @@ export const router = createBrowserRouter([
       {
         path: 'produtos',
         element: <Lazy><PermissionRoute check={p => p.products?.view ?? false}><Products /></PermissionRoute></Lazy>,
+      },
+      {
+        path: 'precificacao',
+        element: <Lazy><PermissionRoute check={p => p.pricing ?? false} allowUserRole><Pricing /></PermissionRoute></Lazy>,
       },
       {
         path: 'galeria',

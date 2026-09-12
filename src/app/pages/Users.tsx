@@ -86,6 +86,7 @@ const MODULES: ModuleConfig[] = [
   { key: 'settings',   label: 'Configurações', type: 'boolean' },
   { key: 'users',      label: 'Usuários',   type: 'crud' },
   { key: 'emails',     label: 'Central de E-mails', type: 'boolean' },
+  { key: 'pricing',    label: 'Precificação & Custos', type: 'boolean' },
 ];
 
 function deepClonePermission(p: Permission): Permission {

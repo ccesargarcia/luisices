@@ -112,6 +112,25 @@ service cloud.firestore {
       allow read, write: if isOwner(userId);
     }
 
+    // Regras para insumos e matérias-primas (supplies)
+    match /supplies/{supplyId} {
+      allow read: if isOwner(resource.data.userId) || isAdmin();
+      allow create: if isOwner(request.resource.data.userId) || isAdmin();
+      allow update, delete: if isOwner(resource.data.userId) || isAdmin();
+    }
+
+    // Regras para fichas técnicas de precificação (pricingRecipes)
+    match /pricingRecipes/{recipeId} {
+      allow read: if isOwner(resource.data.userId) || isAdmin();
+      allow create: if isOwner(request.resource.data.userId) || isAdmin();
+      allow update, delete: if isOwner(resource.data.userId) || isAdmin();
+    }
+
+    // Regras para configurações do ateliê (pricingSettings)
+    match /pricingSettings/{userId} {
+      allow read, write: if isOwner(userId) || isAdmin();
+    }
+
     // Perfis de usuário do sistema de permissões
     match /userProfiles/{uid} {
       // Verifica se o solicitante é admin (busca o próprio perfil)
