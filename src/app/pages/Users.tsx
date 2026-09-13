@@ -83,6 +83,7 @@ const MODULES: ModuleConfig[] = [
   { key: 'gallery',    label: 'Galeria',    type: 'gallery' },
   { key: 'exchanges',  label: 'Permutas',   type: 'boolean' },
   { key: 'reports',    label: 'Relatórios', type: 'boolean' },
+  { key: 'store',      label: 'Personalizar Lojinha Online', type: 'boolean' },
   { key: 'settings',   label: 'Configurações', type: 'boolean' },
   { key: 'users',      label: 'Usuários',   type: 'crud' },
   { key: 'emails',     label: 'Central de E-mails', type: 'boolean' },

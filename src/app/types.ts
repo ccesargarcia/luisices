@@ -278,6 +278,7 @@ export interface Permission {
   users: ModulePermission;
   emails?: boolean;
   pricing?: boolean;
+  store?: boolean;
 }
 
 // ─── Pricing & Costs (Papelaria Personalizada) ────────────────────────────────
@@ -400,6 +401,7 @@ export const ADMIN_PERMISSIONS: Permission = {
   users:     { view: true, create: true, edit: true, delete: true },
   emails:    true,
   pricing:   true,
+  store:     true,
 };
 
 export const DEFAULT_USER_PERMISSIONS: Permission = {
@@ -415,6 +417,7 @@ export const DEFAULT_USER_PERMISSIONS: Permission = {
   users:     { view: false, create: false, edit: false, delete: false },
   emails:    false,
   pricing:   true,
+  store:     true,
 };
 
 export const EMPLOYEE_PERMISSIONS: Permission = {
@@ -430,6 +433,7 @@ export const EMPLOYEE_PERMISSIONS: Permission = {
   users:     { view: false, create: false, edit: false, delete: false },
   emails:    false,
   pricing:   false,
+  store:     false,
 };
 
 // Tipos para sistema de compartilhamento de dados

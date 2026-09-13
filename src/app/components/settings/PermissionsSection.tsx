@@ -91,6 +91,11 @@ export function PermissionsSection({ userProfile, isAdmin }: PermissionsSectionP
                     <Check className="size-3.5 text-green-600" /> Permutas
                   </div>
                 )}
+                {userProfile.permissions.store && (
+                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                    <Check className="size-3.5 text-green-600" /> Personalizar Lojinha
+                  </div>
+                )}
                 {userProfile.permissions.settings && (
                   <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
                     <Check className="size-3.5 text-green-600" /> Configurações
