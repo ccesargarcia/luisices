@@ -128,6 +128,11 @@ export function Dashboard() {
     firebaseUserService.listUsers().then(setCreatorProfiles).catch(() => setCreatorProfiles([]));
   }, [userProfile?.role]);
 
+  const currentMonthName = useMemo(() => {
+    const name = new Intl.DateTimeFormat('pt-BR', { month: 'long' }).format(new Date());
+    return name.charAt(0).toUpperCase() + name.slice(1);
+  }, []);
+
   const visibleCards = settings?.dashboardCards ?? DEFAULT_DASHBOARD_CARDS;
   const showCard = (id: string) => visibleCards.includes(id);
   const firstGridCount = ['total', 'revenue', 'open', 'avgTicket'].filter(showCard).length;
@@ -543,7 +548,7 @@ export function Dashboard() {
           <CardContent>
             <div className="min-w-0 break-words text-lg font-bold leading-tight tabular-nums sm:text-2xl">{stats.total}</div>
             <p className="text-xs text-muted-foreground mt-1">
-              {stats.completed} concluídos
+              {stats.completed} concluído{stats.completed !== 1 ? 's' : ''} no quadro
             </p>
           </CardContent>
         </Card>
@@ -552,13 +557,15 @@ export function Dashboard() {
         {showCard('revenue') && (
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Receita Total</CardTitle>
+            <CardTitle className="text-sm font-medium">Receita ({currentMonthName})</CardTitle>
             <DollarSign className="size-4 text-green-600" />
           </CardHeader>
           <CardContent>
             <div className="min-w-0 break-words text-lg font-bold leading-tight tabular-nums sm:text-2xl">{formatCurrency(stats.totalRevenue)}</div>
             <p className="text-xs text-muted-foreground mt-1">
-              {stats.completed} pedido{stats.completed !== 1 ? 's' : ''} concluído{stats.completed !== 1 ? 's' : ''}
+              {ledgerStats.completedCount > 0
+                ? `${ledgerStats.completedCount} pedido${ledgerStats.completedCount !== 1 ? 's' : ''} concluído${ledgerStats.completedCount !== 1 ? 's' : ''} em ${currentMonthName.toLowerCase()}`
+                : `${stats.completed} pedido${stats.completed !== 1 ? 's' : ''} concluído${stats.completed !== 1 ? 's' : ''}`}
             </p>
           </CardContent>
         </Card>
@@ -582,13 +589,13 @@ export function Dashboard() {
         {showCard('avgTicket') && (
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Ticket Médio</CardTitle>
+            <CardTitle className="text-sm font-medium">Ticket Médio ({currentMonthName})</CardTitle>
             <Target className="size-4 text-purple-600" />
           </CardHeader>
           <CardContent>
             <div className="min-w-0 break-words text-lg font-bold leading-tight tabular-nums sm:text-2xl">{formatCurrency(stats.averageOrderValue)}</div>
             <p className="text-xs text-muted-foreground mt-1">
-              Em {stats.total} pedidos
+              Média por venda em {currentMonthName.toLowerCase()}
             </p>
           </CardContent>
         </Card>
@@ -606,7 +613,7 @@ export function Dashboard() {
           <CardContent>
             <div className="min-w-0 break-words text-lg font-bold leading-tight tabular-nums sm:text-2xl">{stats.inProgress}</div>
             <p className="text-xs text-muted-foreground mt-1">
-              {stats.pending} aguardando
+              {stats.pending} aguardando início
             </p>
           </CardContent>
         </Card>
@@ -621,7 +628,7 @@ export function Dashboard() {
           <CardContent>
             <div className="min-w-0 break-words text-lg font-bold leading-tight tabular-nums sm:text-2xl">{formatCurrency(stats.totalPending)}</div>
             <p className="text-xs text-muted-foreground mt-1">
-              {stats.pendingPayments} {stats.pendingPayments === 1 ? 'pedido sem pagamento completo' : 'pedidos sem pagamento completo'}
+              {stats.pendingPayments} {stats.pendingPayments === 1 ? 'pedido ativo pendente' : 'pedidos ativos pendentes'}
             </p>
           </CardContent>
         </Card>
@@ -630,13 +637,13 @@ export function Dashboard() {
         {showCard('received') && (
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Já Recebido</CardTitle>
+            <CardTitle className="text-sm font-medium">Recebido ({currentMonthName})</CardTitle>
             <TrendingUp className="size-4 text-green-600" />
           </CardHeader>
           <CardContent>
             <div className="min-w-0 break-words text-lg font-bold leading-tight tabular-nums sm:text-2xl">{formatCurrency(stats.totalPaid)}</div>
             <p className="text-xs text-muted-foreground mt-1">
-              {stats.paidOrders} pagos · {stats.partialOrders} parciais
+              Pagamentos em {currentMonthName.toLowerCase()}
             </p>
           </CardContent>
         </Card>

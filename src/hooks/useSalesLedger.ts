@@ -227,6 +227,7 @@ export function useSalesLedger(options?: {
 
     return {
       totalSalesCount: totalCount,
+      completedCount: completedSales.length,
       completedRevenue,
       totalValidAmount,
       totalPaid,

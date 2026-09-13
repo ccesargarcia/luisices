@@ -82,16 +82,15 @@ O Dashboard é o ponto de acompanhamento diário da operação.
 
 ### Indicadores
 
-Apresenta indicadores configuráveis, como:
+Apresenta indicadores operacionais e do período corrente configuráveis, como:
 
-- Receita total.
-- Total de pedidos.
-- Pedidos pendentes.
-- Pedidos em produção.
-- Pedidos concluídos.
-- Valores a receber.
-- Ticket médio.
-- Valores pagos e parciais.
+- Receita do mês atual (baseada nas vendas concluídas no mês vigente).
+- Total de pedidos no quadro operacional.
+- Total em aberto (valor de pedidos a produzir e entregar).
+- Pedidos em produção e aguardando início.
+- Valores a receber (pagamentos pendentes exclusivamente de pedidos ativos).
+- Recebido no mês atual (pagamentos computados no mês vigente).
+- Ticket médio do mês atual (descartando pedidos cancelados).
 
 ### Acompanhamento operacional
 
