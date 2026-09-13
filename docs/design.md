@@ -179,14 +179,103 @@ erDiagram
 
 ## 6. Diretrizes de UI/UX e Design System
 
-### 6.1 Fundamentos Visuais
-* **Cores Semânticas:**
-  * Primária: Azul/Índigo vibrante (`hsl(var(--primary))`) para ações principais e seleções ativas.
-  * Sucesso: Esmeralda (`#10B981`) para concluídos, pagamentos confirmados e metas.
-  * Alerta: Âmbar/Laranja (`#F59E0B`) para pendências, pagamentos parciais e prazos próximos.
-  * Perigo: Vermelho (`#EF4444`) para atrasos, inadimplência e ações destrutivas.
-  * Produção/Workflow: Violeta/Roxo (`#8B5CF6`) para itens em processo fabril.
-* **Tipografia:** Fonte Sans moderna (Inter / Geist), com escala tipográfica legível e suporte a números tabulares (`tabular-nums`) para evitar oscilações em tabelas e cards.
+### 6.1 Fundamentos Visuais e Linguagem Glassmorphism
+O Luisices utiliza uma identidade visual baseada em **Glassmorphism**, com superfícies translúcidas, desfoque de fundo (`backdrop-blur`), bordas sutis com luminosidade interna e profundidade em camadas. O sistema suporta nativamente **Modo Claro**, **Modo Escuro** e sincronização automática com as preferências do **Sistema Operacional**.
+
+---
+
+### 6.2 Tokens de Cores: Modo Claro vs. Modo Escuro (Especificação Completa)
+
+Abaixo estão todos os tokens CSS definidos em `src/styles/theme.css` e aplicados via Tailwind CSS:
+
+| Token CSS | Modo Claro (`:root`) | Modo Escuro (`.dark`) | Uso / Aplicação |
+| :--- | :--- | :--- | :--- |
+| `--background` | `#fff8f7` (Branco Rosado suave) | `#161214` (Preto Carbono com matiz Rose) | Fundo principal da página |
+| `--foreground` | `#221a1a` (Grafite escuro) | `#e8e0e3` (Cinza Claro Pérola) | Texto padrão de alto contraste |
+| `--card` | `rgb(255 255 255 / 55%)` | `rgb(31 25 27 / 86%)` | Superfície de cartões, listas e painéis |
+| `--card-foreground` | `#221a1a` | `#e8e0e3` | Títulos e textos dentro de cartões |
+| `--popover` | `rgb(255 255 255 / 75%)` | `rgb(36 28 31 / 88%)` | Menus suspensos, dropdowns e popovers |
+| `--popover-foreground` | `#221a1a` | `#e8e0e3` | Texto em menus e popovers |
+| `--primary` | `#613d3e` (Rosewood Escuro) | `#f4b7b9` (Rose Blush Suave / Pastel) | Botões primários, seleções ativas e badges |
+| `--primary-foreground` | `#ffffff` (Branco puro) | `#4c2527` (Vinho Profundo contrastante) | Texto dentro de botões primários |
+| `--secondary` | `#5d5c76` (Índigo Acinzentado) | `#b9b5d4` (Lavanda Suave) | Ações secundárias e elementos de apoio |
+| `--secondary-foreground`| `#ffffff` | `#28253a` (Roxo Escuro contrastante) | Texto em botões secundários |
+| `--muted` | `rgb(255 240 240 / 65%)` | `rgb(43 34 37 / 90%)` | Fundos secundários e áreas desativadas |
+| `--muted-foreground` | `#504444` (Marrom Neutro) | `#c9c0b8` / `#9b9197` (Cinza Neutro) | Textos auxiliares, legendas e rótulos |
+| `--accent` | `#e2dfff` (Lilás Claro) | `#534150` (Ameixa Escuro) | Realces sutis e itens sob hover |
+| `--accent-foreground` | `#45445d` | `#d8bfd1` (Orquídea Suave) | Texto de itens em realce |
+| `--destructive` | `#ba1a1a` (Vermelho Rubi) | `#e58e8e` (Salmão Rosado Suave) | Ações críticas, alertas e botões de exclusão |
+| `--destructive-foreground` | `#ffffff` | `#321114` (Bordô Escuro) | Texto sobre botões destrutivos |
+| `--border` | `rgb(255 255 255 / 33%)` | `rgb(235 205 205 / 16%)` | Linhas divisórias e bordas de inputs |
+| `--input` | `rgb(255 255 255 / 40%)` | `rgb(18 14 16 / 70%)` | Fundo de campos de texto e caixas de seleção |
+| `--ring` | `#e2dfff` | `#d8bfd1` | Anel de foco acessível (focus-visible) |
+| `--sidebar` | `rgb(255 248 247 / 64%)` | `rgb(23 19 21 / 90%)` | Fundo da barra lateral / menu de navegação |
+| `--sidebar-border` | `rgb(255 255 255 / 30%)` | `rgb(235 205 205 / 16%)` | Borda divisória da sidebar |
+| `--glass-border` | `rgb(255 255 255 / 45%)` | `rgb(235 205 205 / 18%)` | Borda com brilho vítreo translúcido |
+| `--glass-shadow` | `0 8px 32px rgb(230 180 180 / 15%)` | `0 16px 40px -8px rgb(0 0 0 / 65%)` | Sombra volumétrica de profundidade |
+| `--button-glass-bg` | `rgb(123 84 85 / 15%)` | `rgb(211 154 156 / 14%)` | Fundo de botões estilo vidro |
+| `--button-glass-text` | `#7b5455` | `#e8c5c8` | Texto de botões estilo vidro |
+
+---
+
+### 6.3 Iluminação de Fundo & Gradientes Atmosféricos
+
+O sistema utiliza iluminação atmosférica radial fixa (`background-attachment: fixed`) sob a interface para criar profundidade e sensação tridimensional:
+
+* **Modo Claro:**
+  * Base: `linear-gradient(135deg, #fceee9 0%, #fff8f7 52%, #ede7f6 100%)`
+  * Luz Superior Esquerda: `radial-gradient(circle at 8% 8%, rgb(247 214 208 / 80%) 0, transparent 34%)`
+  * Luz Central: `radial-gradient(circle at 52% 38%, rgb(209 196 233 / 65%) 0, transparent 38%)`
+  * Luz Inferior Direita: `radial-gradient(circle at 92% 82%, rgb(187 222 251 / 60%) 0, transparent 36%)`
+
+* **Modo Escuro (`.dark`):**
+  * Base: `#161214` (e fundo do HTML em `#0f0d0e`)
+  * Brilho Blush: `radial-gradient(circle at 15% 10%, rgb(91 50 52 / 22%) 0, transparent 45%)`
+  * Brilho Lavanda: `radial-gradient(circle at 85% 25%, rgb(40 25 45 / 28%) 0, transparent 50%)`
+  * Brilho Azul Noturno: `radial-gradient(circle at 50% 80%, rgb(18 28 32 / 30%) 0, transparent 60%)`
+
+---
+
+### 6.4 Paletas de Cores de Destaque Customizáveis
+
+Além da alternância Claro/Escuro, os usuários podem personalizar a cor primária de destaque do ateliê em **Configurações > Aparência**:
+
+| Chave | Nome | Hex Exibição | CSS Primária | Ring / Foco |
+| :--- | :--- | :--- | :--- | :--- |
+| `default` | **Padrão (Rosewood)** | `#613d3e` | `#613d3e` | `oklch(0.708 0 0)` |
+| `rose` | **Rosa** | `#c9868b` | `#c9868b` | `oklch(0.645 0.246 16.439)` |
+| `purple` | **Roxo** | `#8b7eaa` | `#8b7eaa` | `oklch(0.627 0.265 303.9)` |
+| `blue` | **Azul** | `#718fa3` | `#718fa3` | `oklch(0.546 0.245 264.052)` |
+| `green` | **Verde** | `#759986` | `#759986` | `oklch(0.527 0.154 150.069)` |
+| `orange` | **Laranja** | `#b18a63` | `#b18a63` | `oklch(0.646 0.222 41.116)` |
+| `custom` | **Personalizado** | *Qualquer Hex* | *Hex livre* | *Mesmo Hex* |
+
+---
+
+### 6.5 Cores Semânticas de Negócio e Status
+
+Estas cores mantêm consistência funcional independente do tema ativo:
+
+* **Status de Pedidos:**
+  * Concluído: `#10B981` (Esmeralda)
+  * Em andamento / Produção: `#3B82F6` (Azul)
+  * Pendente / Aguardando início: `#F59E0B` (Âmbar)
+  * Cancelado: `#EF4444` (Vermelho)
+* **Status Financeiro:**
+  * Pago: `#10B981` (Verde)
+  * Parcial / Sinal recebido: `#3B82F6` (Azul)
+  * Pendente / A receber: `#F59E0B` (Laranja)
+* **Métodos de Pagamento:**
+  * PIX: `#6366F1` (Índigo)
+  * Dinheiro: `#10B981` (Esmeralda)
+  * Cartão de Crédito: `#F59E0B` (Âmbar)
+  * Cartão de Débito: `#EF4444` (Vermelho)
+  * Transferência bancária: `#8B5CF6` (Roxo)
+
+---
+
+### 6.6 Tipografia e Responsividade Mobile
+* **Tipografia:** Família Sans moderna (`var(--font-family-sans)` / Inter / Geist) com escala tipográfica legível e suporte a números tabulares (`tabular-nums`) para evitar oscilações em contadores monetários e tabelas.
 * **Layouts Fluidos e Mobile-First:**
   * Todos os diálogos e modais ocupam `calc(100vw - 1.5rem)` em smartphones com `max-h-[90dvh]` e rolagem interna.
   * Interceptação nativa do botão "Voltar" do navegador/Android (`popstate` listener) para fechar modais antes de sair da página.
