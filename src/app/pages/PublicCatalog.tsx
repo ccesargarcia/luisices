@@ -46,98 +46,6 @@ export interface CartItem {
   customName?: string;
 }
 
-// Dados de demonstração refinados caso o ateliê ainda não tenha produtos cadastrados no Firestore
-const MOCK_PRODUCTS: CatalogProduct[] = [
-  {
-    id: 'prod-1',
-    name: 'Planner Espiral Floral Permanente 2025',
-    category: 'Planners',
-    price: 89.90,
-    description: 'Capa dura com laminação fosca acetinada, hot stamping dourado e miolo floral delicado em papel 90g.',
-    leadTimeDays: 5,
-    badge: 'Mais Pedido',
-    isCustomizable: true,
-    imageUrl: 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?auto=format&fit=crop&w=800&q=80',
-  },
-  {
-    id: 'prod-2',
-    name: 'Kit Lembrancinhas Maternidade Chuva de Amor (10 un)',
-    category: 'Maternidade',
-    price: 65.00,
-    description: 'Caixinhas pirâmide afetivas com laço de cetim luxo, aplique em camadas 3D e tag personalizada.',
-    leadTimeDays: 7,
-    badge: 'Personalizável',
-    isCustomizable: true,
-    imageUrl: 'https://images.unsplash.com/photo-1513519245088-0e12902e5a38?auto=format&fit=crop&w=800&q=80',
-  },
-  {
-    id: 'prod-3',
-    name: 'Caderno Brochura Pautado Personalizado',
-    category: 'Cadernos',
-    price: 42.00,
-    description: 'Capa flexível aveludada, costura aparente artesanal e 80 folhas pautadas em papel pólen soft 80g.',
-    leadTimeDays: 4,
-    badge: 'Exclusivo',
-    isCustomizable: true,
-    imageUrl: 'https://images.unsplash.com/photo-1589829085413-56de8ae18c73?auto=format&fit=crop&w=800&q=80',
-  },
-  {
-    id: 'prod-4',
-    name: 'Caixas Cenário Festa Safari Chic (5 un)',
-    category: 'Festas & Kits',
-    price: 78.00,
-    description: 'Caixas de acrílico revestidas em papel especial texturizado, detalhes em dourado e biscuit afetivo.',
-    leadTimeDays: 6,
-    badge: 'Destaque',
-    isCustomizable: true,
-    imageUrl: 'https://images.unsplash.com/photo-1530103862676-de8c9debad1d?auto=format&fit=crop&w=800&q=80',
-  },
-  {
-    id: 'prod-5',
-    name: 'Topo de Bolo Camadas Luxo Dourado & Flores',
-    category: 'Festas & Kits',
-    price: 45.00,
-    description: 'Acabamento em papéis especiais perolados 180g e lamicote dourado 250g com flores feitas à mão.',
-    leadTimeDays: 3,
-    badge: 'Tendência',
-    isCustomizable: true,
-    imageUrl: 'https://images.unsplash.com/photo-1535141192574-5d4897c13136?auto=format&fit=crop&w=800&q=80',
-  },
-  {
-    id: 'prod-6',
-    name: 'Livro do Bebê Recordações & Primeiros Momentos',
-    category: 'Maternidade',
-    price: 95.00,
-    description: 'Acompanhamento do 1º ao 5º ano de vida, capa almofadada personalizada com gravação e caixa protetora.',
-    leadTimeDays: 8,
-    badge: 'Afetivo',
-    isCustomizable: true,
-    imageUrl: 'https://images.unsplash.com/photo-1544816155-12df9643f363?auto=format&fit=crop&w=800&q=80',
-  },
-  {
-    id: 'prod-7',
-    name: 'Chaveiro Botton Coração com Pingente de Seda',
-    category: 'Lembrancinhas',
-    price: 14.90,
-    description: 'Chaveiro botton resinado de alto brilho com pingente tassel de seda e tag de agradecimento.',
-    leadTimeDays: 3,
-    badge: 'Econômico',
-    isCustomizable: true,
-    imageUrl: 'https://images.unsplash.com/photo-1582139329536-e7284fece509?auto=format&fit=crop&w=800&q=80',
-  },
-  {
-    id: 'prod-8',
-    name: 'Bloco de Notas Capa Dura Floral 10x15cm',
-    category: 'Cadernos',
-    price: 24.50,
-    description: 'Bloco compacto para bolsa com capa dura laminada, elástico lurex brilhante e 100 folhas destacáveis.',
-    leadTimeDays: 4,
-    badge: 'Mimo',
-    isCustomizable: true,
-    imageUrl: 'https://images.unsplash.com/photo-1517842645767-c639042777db?auto=format&fit=crop&w=800&q=80',
-  }
-];
-
 export function PublicCatalog() {
   const { setTheme } = useTheme();
 
@@ -155,7 +63,18 @@ export function PublicCatalog() {
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [selectedCategory, setSelectedCategory] = useState<string>('todos');
   const [sortBy, setSortBy] = useState<string>('destaque');
-  const [products, setProducts] = useState<CatalogProduct[]>(MOCK_PRODUCTS);
+
+  // Produtos reais com cache em localStorage para evitar flash de dados fictícios
+  const [products, setProducts] = useState<CatalogProduct[]>(() => {
+    try {
+      const cached = localStorage.getItem('luisices_public_catalog_products');
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch {}
+    return [];
+  });
   const [loadingProducts, setLoadingProducts] = useState(true);
 
   // Informações do negócio e customizações da lojinha com cache em localStorage para evitar flash no F5
@@ -346,7 +265,7 @@ export function PublicCatalog() {
         try {
           const publicQuery = query(collection(db, 'products'), where('isPublic', '==', true));
           const productsSnap = await getDocs(publicQuery);
-          if (!productsSnap.empty && !isCancelled) {
+          if (!isCancelled) {
             const list: CatalogProduct[] = [];
             productsSnap.forEach((d) => {
               const data = d.data();
@@ -365,12 +284,13 @@ export function PublicCatalog() {
               }
             });
 
-            if (list.length > 0) {
-              setProducts(list);
-            }
+            setProducts(list);
+            try {
+              localStorage.setItem('luisices_public_catalog_products', JSON.stringify(list));
+            } catch {}
           }
         } catch (prodErr) {
-          console.warn('Usando catálogo demonstrativo de produtos:', prodErr);
+          console.warn('Erro ao carregar produtos do catálogo público:', prodErr);
         }
       } catch (err) {
         console.warn('Erro ao carregar dados do catálogo:', err);
@@ -787,96 +707,120 @@ export function PublicCatalog() {
 
           {/* 3. Grid Responsivo de Produtos: 2 colunas mobile / 3 tablet / 4 desktop */}
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-5 lg:gap-6">
-            {filteredProducts.map((prod) => (
-              <article
-                key={prod.id}
-                className="group flex flex-col h-full rounded-2xl bg-white/70 dark:bg-[#1f191b]/85 backdrop-blur-md border border-white/60 dark:border-[#ebcdcd]/15 shadow-xs hover:shadow-xl hover:-translate-y-1 transition-all duration-200 overflow-hidden"
-              >
-                {/* Imagem do Produto (Aspect-Square padrão e-commerce) */}
-                <div 
-                  className="relative aspect-square w-full overflow-hidden bg-stone-100 dark:bg-stone-900 cursor-pointer"
-                  onClick={() => handleOpenPreview(prod)}
+            {loadingProducts && products.length === 0 ? (
+              Array.from({ length: 8 }).map((_, i) => (
+                <div
+                  key={`skeleton-${i}`}
+                  className="flex flex-col h-full rounded-2xl bg-white/70 dark:bg-[#1f191b]/85 border border-white/60 dark:border-[#ebcdcd]/15 p-3 space-y-3 animate-pulse"
                 >
-                  <img
-                    src={prod.imageUrl}
-                    alt={prod.name}
-                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                    loading="lazy"
-                  />
-                  <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
-                    <span className="bg-white/95 dark:bg-black/90 text-[11px] font-bold px-3 py-1.5 rounded-full flex items-center gap-1.5 shadow-md text-stone-900 dark:text-stone-100">
-                      <Eye size={13} /> Ver detalhes
-                    </span>
+                  <div className="aspect-square w-full rounded-xl bg-stone-200/80 dark:bg-stone-800" />
+                  <div className="space-y-1.5 flex-1">
+                    <div className="h-3 w-1/3 rounded bg-stone-200/70 dark:bg-stone-800" />
+                    <div className="h-4 w-4/5 rounded bg-stone-200/80 dark:bg-stone-800" />
                   </div>
-
-                  {/* Badge de Destaque / Categoria */}
-                  {prod.badge && (
-                    <span className="absolute top-2 left-2 px-2 py-0.5 rounded-md text-[10px] font-bold bg-[#613d3e]/90 dark:bg-[#f4b7b9]/90 text-white dark:text-[#4c2527] backdrop-blur-xs shadow-xs">
-                      {prod.badge}
-                    </span>
-                  )}
-
-                  {/* Preço sobre a imagem em telas pequenas */}
-                  <span className="sm:hidden absolute bottom-2 right-2 px-2 py-0.5 rounded-md text-[11px] font-extrabold bg-white/95 dark:bg-[#161214]/95 text-[#221a1a] dark:text-[#e8e0e3] backdrop-blur-xs tabular-nums shadow-xs">
-                    {formatCurrency(prod.price)}
-                  </span>
+                  <div className="h-8 w-full rounded-xl bg-stone-200/80 dark:bg-stone-800 mt-2" />
                 </div>
-
-                {/* Detalhes do Produto */}
-                <div className="p-3 sm:p-4 flex-1 flex flex-col justify-between space-y-2">
-                  <div className="space-y-1">
-                    <span className="text-[10px] sm:text-[11px] font-medium text-stone-400 dark:text-stone-500 uppercase tracking-wider block truncate">
-                      {prod.category}
-                    </span>
-                    <h3 
-                      className="text-xs sm:text-sm font-bold text-[#221a1a] dark:text-[#e8e0e3] line-clamp-2 leading-snug cursor-pointer group-hover:text-[#613d3e] dark:group-hover:text-[#f4b7b9] transition-colors"
-                      onClick={() => handleOpenPreview(prod)}
-                      title={prod.name}
-                    >
-                      {prod.name}
-                    </h3>
-                  </div>
-
-                  {/* Prazo de Confecção & Preço Desktop */}
-                  <div className="space-y-1.5 pt-1">
-                    <div className="inline-flex items-center gap-1 text-[10px] sm:text-[11px] font-medium text-amber-700 dark:text-amber-300 bg-amber-500/10 px-2 py-0.5 rounded-md">
-                      <Clock size={11} />
-                      <span>Até {prod.leadTimeDays} dias úteis</span>
-                    </div>
-
-                    <div className="hidden sm:flex items-baseline justify-between pt-0.5">
-                      <span className="text-xs text-stone-400 font-medium">Valor:</span>
-                      <span className="text-base font-extrabold text-[#613d3e] dark:text-[#f4b7b9] tabular-nums">
-                        {formatCurrency(prod.price)}
+              ))
+            ) : (
+              filteredProducts.map((prod) => (
+                <article
+                  key={prod.id}
+                  className="group flex flex-col h-full rounded-2xl bg-white/70 dark:bg-[#1f191b]/85 backdrop-blur-md border border-white/60 dark:border-[#ebcdcd]/15 shadow-xs hover:shadow-xl hover:-translate-y-1 transition-all duration-200 overflow-hidden"
+                >
+                  {/* Imagem do Produto (Aspect-Square padrão e-commerce) */}
+                  <div 
+                    className="relative aspect-square w-full overflow-hidden bg-stone-100 dark:bg-stone-900 cursor-pointer"
+                    onClick={() => handleOpenPreview(prod)}
+                  >
+                    <img
+                      src={prod.imageUrl}
+                      alt={prod.name}
+                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                      loading="lazy"
+                    />
+                    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
+                      <span className="bg-white/95 dark:bg-black/90 text-[11px] font-bold px-3 py-1.5 rounded-full flex items-center gap-1.5 shadow-md text-stone-900 dark:text-stone-100">
+                        <Eye size={13} /> Ver detalhes
                       </span>
                     </div>
+
+                    {/* Badge de Destaque / Categoria */}
+                    {prod.badge && (
+                      <span className="absolute top-2 left-2 px-2 py-0.5 rounded-md text-[10px] font-bold bg-[#613d3e]/90 dark:bg-[#f4b7b9]/90 text-white dark:text-[#4c2527] backdrop-blur-xs shadow-xs">
+                        {prod.badge}
+                      </span>
+                    )}
+
+                    {/* Preço sobre a imagem em telas pequenas */}
+                    <span className="sm:hidden absolute bottom-2 right-2 px-2 py-0.5 rounded-md text-[11px] font-extrabold bg-white/95 dark:bg-[#161214]/95 text-[#221a1a] dark:text-[#e8e0e3] backdrop-blur-xs tabular-nums shadow-xs">
+                      {formatCurrency(prod.price)}
+                    </span>
                   </div>
 
-                  {/* Botão de Adição / Personalização */}
-                  <button
-                    onClick={() => handleOpenPreview(prod)}
-                    className="w-full mt-2 py-2 sm:py-2.5 px-3 rounded-xl font-semibold text-[11px] sm:text-xs flex items-center justify-center gap-1.5 bg-[#613d3e] dark:bg-[#f4b7b9] text-white dark:text-[#4c2527] hover:opacity-95 active:scale-98 transition-all shadow-xs cursor-pointer"
-                  >
-                    <ShoppingBag size={13} />
-                    <span>Personalizar</span>
-                  </button>
-                </div>
-              </article>
-            ))}
+                  {/* Detalhes do Produto */}
+                  <div className="p-3 sm:p-4 flex-1 flex flex-col justify-between space-y-2">
+                    <div className="space-y-1">
+                      <span className="text-[10px] sm:text-[11px] font-medium text-stone-400 dark:text-stone-500 uppercase tracking-wider block truncate">
+                        {prod.category}
+                      </span>
+                      <h3 
+                        className="text-xs sm:text-sm font-bold text-[#221a1a] dark:text-[#e8e0e3] line-clamp-2 leading-snug cursor-pointer group-hover:text-[#613d3e] dark:group-hover:text-[#f4b7b9] transition-colors"
+                        onClick={() => handleOpenPreview(prod)}
+                        title={prod.name}
+                      >
+                        {prod.name}
+                      </h3>
+                    </div>
+
+                    {/* Prazo de Confecção & Preço Desktop */}
+                    <div className="space-y-1.5 pt-1">
+                      <div className="inline-flex items-center gap-1 text-[10px] sm:text-[11px] font-medium text-amber-700 dark:text-amber-300 bg-amber-500/10 px-2 py-0.5 rounded-md">
+                        <Clock size={11} />
+                        <span>Até {prod.leadTimeDays} dias úteis</span>
+                      </div>
+
+                      <div className="hidden sm:flex items-baseline justify-between pt-0.5">
+                        <span className="text-xs text-stone-400 font-medium">Valor:</span>
+                        <span className="text-base font-extrabold text-[#613d3e] dark:text-[#f4b7b9] tabular-nums">
+                          {formatCurrency(prod.price)}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Botão de Adição / Personalização */}
+                    <button
+                      onClick={() => handleOpenPreview(prod)}
+                      className="w-full mt-2 py-2 sm:py-2.5 px-3 rounded-xl font-semibold text-[11px] sm:text-xs flex items-center justify-center gap-1.5 bg-[#613d3e] dark:bg-[#f4b7b9] text-white dark:text-[#4c2527] hover:opacity-95 active:scale-98 transition-all shadow-xs cursor-pointer"
+                    >
+                      <ShoppingBag size={13} />
+                      <span>Personalizar</span>
+                    </button>
+                  </div>
+                </article>
+              ))
+            )}
           </div>
 
-          {/* Feedback de Busca Vazia */}
-          {filteredProducts.length === 0 && (
+          {/* Feedback de Busca Vazia / Catálogo Vazio */}
+          {!loadingProducts && filteredProducts.length === 0 && (
             <div className="text-center py-16 text-[#504444] dark:text-[#c9c0b8] bg-white/40 dark:bg-[#1f191b]/50 rounded-3xl p-8 border border-white/50 max-w-lg mx-auto">
               <Search size={32} className="mx-auto text-stone-400 mb-2 opacity-50" />
-              <p className="text-sm font-semibold">Nenhum produto encontrado para sua busca.</p>
-              <p className="text-xs text-stone-400 mt-1">Tente buscar por outros termos ou selecione "Todos os produtos".</p>
-              <button
-                onClick={() => { setSearchQuery(''); setSelectedCategory('todos'); }}
-                className="mt-4 px-4 py-2 rounded-xl text-xs font-semibold bg-[#613d3e] text-white cursor-pointer"
-              >
-                Limpar filtros
-              </button>
+              <p className="text-sm font-semibold">
+                {products.length === 0 ? 'Nenhum produto cadastrado no catálogo ainda.' : 'Nenhum produto encontrado para sua busca.'}
+              </p>
+              <p className="text-xs text-stone-400 mt-1">
+                {products.length === 0
+                  ? 'Os produtos marcados como públicos no painel aparecerão aqui.'
+                  : 'Tente buscar por outros termos ou selecione "Todos os produtos".'}
+              </p>
+              {products.length > 0 && (searchQuery || selectedCategory !== 'todos') && (
+                <button
+                  onClick={() => { setSearchQuery(''); setSelectedCategory('todos'); }}
+                  className="mt-4 px-4 py-2 rounded-xl text-xs font-semibold bg-[#613d3e] text-white cursor-pointer"
+                >
+                  Limpar filtros
+                </button>
+              )}
             </div>
           )}
 
