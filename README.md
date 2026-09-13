@@ -72,6 +72,16 @@ Para consultar a visão completa do produto, regras e fluxos de negócio, veja [
 - **Revogação em tempo real**: alterações de papel, permissão ou status são aplicadas imediatamente na sessão via Firestore listeners sem necessidade de novo login
 - Gerenciamento de equipe e usuários (admin only)
 
+### 🛍️ Lojinha Online & Catálogo Público (`/catalogo`)
+- **Catálogo público para clientes**: vitrine digital responsiva e rápida para compartilhamento no Instagram, WhatsApp ou link na bio, permitindo pedidos sem necessidade de login
+- **Separação de Catálogos**: módulo dedicado para **Produtos da Lojinha** (`/produtos-lojinha`), separando a coleção pública (`storeProducts`) dos produtos internos do ateliê (`products`)
+- **Submenu Lojinha Online**: menu expansível na barra lateral com acesso aos *Produtos da Lojinha* e à *Personalização da Lojinha*
+- **Persistência de visualização**: alternância entre modos Galeria (Cards) e Lista detalhada com preferência salva localmente e visual responsivo sem barras de rolagem desnecessárias
+- **Banners rotativos e vitrine**: suporte a múltiplos banners estilo propaganda com carrossel automático, intervalo personalizável e opção de banner fixo
+- **Sacola de encomendas e WhatsApp**: cálculo de subtotal dinâmico, campo de personalização por item (ex: nome, tema), notas do cliente e geração de mensagem pronta para envio no WhatsApp
+- **Tema claro padrão com isolamento total**: o catálogo público inicia obrigatoriamente no tema claro como padrão em todas as sessões; o alternador do catálogo não afeta e não sobrescreve o tema do painel administrativo
+- **Permissões específicas (RBAC)**: controle granular no perfil de usuários para gerenciar a vitrine online e personalizar a loja
+
 ### 💡 Central de Ajuda & Guia Operacional (`/ajuda`)
 - Guia operacional interativo com passo a passo para cada fluxo do sistema
 - FAQ com soluções para dúvidas frequentes do dia a dia

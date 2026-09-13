@@ -1,5 +1,4 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
-import { useTheme } from 'next-themes';
 import { 
   Search, 
   ShoppingBag, 
@@ -48,18 +47,8 @@ export interface CartItem {
 }
 
 export function PublicCatalog() {
-  const { setTheme } = useTheme();
-
-  // Controle de tema (Claro por padrão, com persistência de preferência)
-  const [isDarkMode, setIsDarkMode] = useState<boolean>(() => {
-    try {
-      const saved = localStorage.getItem('luisices_catalog_theme');
-      if (saved) return saved === 'dark';
-      return false;
-    } catch {
-      return false;
-    }
-  });
+  // Controle de tema: a lojinha é SEMPRE tema Claro como padrão (default)
+  const [isDarkMode, setIsDarkMode] = useState<boolean>(false);
 
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [selectedCategory, setSelectedCategory] = useState<string>('todos');
@@ -157,61 +146,36 @@ export function PublicCatalog() {
     setHeaderBgError(false);
   }, [businessInfo.headerBackground]);
 
-  // Guarda o tema da área administrativa antes de abrir o catálogo
-  const originalThemeRef = useRef<string | null>(null);
-  useEffect(() => {
-    originalThemeRef.current = localStorage.getItem('theme') || 'system';
-    return () => {
-      if (originalThemeRef.current) {
-        try {
-          setTheme(originalThemeRef.current);
-        } catch {}
-      }
-    };
-  }, [setTheme]);
-
-  // Sincronizar classes 'dark' / 'light' no elemento raiz html para o Tailwind responder
+  // Isolar o tema da lojinha: a lojinha é SEMPRE claro por padrão e NUNCA altera o tema administrativo
   useEffect(() => {
     const root = document.documentElement;
+    const adminTheme = localStorage.getItem('theme') || 'system';
+    const systemPrefersDark = typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches;
+    const adminIsDark = adminTheme === 'dark' || (adminTheme === 'system' && systemPrefersDark);
+
     if (isDarkMode) {
       root.classList.add('dark');
       root.classList.remove('light');
-      try {
-        setTheme('dark');
-      } catch {}
     } else {
       root.classList.remove('dark');
       root.classList.add('light');
-      try {
-        setTheme('light');
-      } catch {}
     }
-  }, [isDarkMode, setTheme]);
 
-  // Alternar tema Claro / Escuro
-  const toggleTheme = () => {
-    setIsDarkMode((prev) => {
-      const next = !prev;
-      const themeValue = next ? 'dark' : 'light';
-      try {
-        localStorage.setItem('luisices_catalog_theme', themeValue);
-      } catch {}
-      const root = document.documentElement;
-      if (next) {
+    return () => {
+      // Ao sair do catálogo para o painel administrativo, restaura fielmente o tema escolhido pelo usuário
+      if (adminIsDark) {
         root.classList.add('dark');
         root.classList.remove('light');
-        try {
-          setTheme('dark');
-        } catch {}
       } else {
         root.classList.remove('dark');
         root.classList.add('light');
-        try {
-          setTheme('light');
-        } catch {}
       }
-      return next;
-    });
+    };
+  }, [isDarkMode]);
+
+  // Alternar tema Claro / Escuro da lojinha (sem alterar o tema administrativo)
+  const toggleTheme = () => {
+    setIsDarkMode((prev) => !prev);
   };
 
   // Salvar carrinho

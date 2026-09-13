@@ -311,9 +311,9 @@ Ao aprovar um orçamento, o sistema pode convertê-lo em pedido, mantendo a rela
 - Tags.
 - Status por abas.
 
-## 8. Produtos
+## 8. Produtos (Ateliê Interno)
 
-O catálogo de Produtos acelera o preenchimento de pedidos e orçamentos.
+O catálogo de Produtos acelera o preenchimento de pedidos e orçamentos do ateliê.
 
 Cada produto pode conter:
 
@@ -324,7 +324,30 @@ Cada produto pode conter:
 - Imagem.
 - Data de criação e atualização.
 
-Produtos podem ser selecionados durante a criação de pedidos e orçamentos, mas itens personalizados também podem ser digitados manualmente.
+Produtos internos são selecionados durante a criação de pedidos e orçamentos operacionais, permitindo manter o controle de insumos e produtos de apoio sem expô-los diretamente ao público externo.
+
+## 8.1. Lojinha Online & Catálogo Público (`/catalogo`)
+
+A Lojinha Online é a vitrine comercial digital voltada para o cliente final, permitindo divulgar produtos prontos para encomenda via redes sociais (Instagram, link na bio, WhatsApp) com fechamento direto de pedidos.
+
+### Separação de catálogos (`storeProducts` vs `products`)
+- **Produtos Internos (`products`):** cadastrados para suporte à confecção, orçamentos e pedidos da rotina interna do ateliê.
+- **Produtos da Lojinha (`storeProducts`):** itens com fotos, descrições comerciais, categorias e preços voltados para a vitrine pública. Essa separação impede conflitos operacionais e permite restringir quem pode gerenciar a vitrine externa através de permissões dedicadas.
+
+### Gestão no painel administrativo
+- **Submenu "Lojinha Online":** agrupamento intuitivo na barra lateral com acesso aos *Produtos da Lojinha* (`/produtos-lojinha`) e à tela de *Personalizar Loja* (`/personalizar-lojinha`).
+- **Modos de visualização:** alternância entre visualização em Grade/Galeria e Lista detalhada, com persistência da preferência do usuário em `localStorage` e layout responsivo que elimina barras de rolagem excessivas.
+- **Controle de permissões (RBAC):** suporte a permissão específica `storeProducts` (visualizar, criar, editar e excluir) para controlar quais colaboradores têm autonomia sobre o catálogo público.
+
+### Experiência do cliente no Catálogo Público (`/catalogo`)
+- **Acesso livre:** visualização instantânea sem necessidade de login.
+- **Banners rotativos:** carrossel de propaganda e anúncios com transição automática configurável, intervalo em segundos personalizável e opção de banner fixo.
+- **Sacola de encomendas:** adição rápida de produtos com seletor de quantidade e campos para personalização de nomes e observações da encomenda.
+- **Checkout via WhatsApp:** geração automática de mensagem estruturada e amigável com a lista de itens, nomes personalizados, subtotal e dados de entrega para envio direto ao WhatsApp do ateliê.
+- **Isolamento de tema e padrão claro obrigatório:**
+  - O catálogo público adota **sempre o tema claro como padrão** em qualquer carregamento inicial.
+  - O alternador de tema na vitrine opera em escopo local e não grava na chave global do painel administrativo.
+  - Ao sair da lojinha e retornar ao painel interno, a preferência de tema da área administrativa é fielmente restabelecida, impedindo que a navegação do cliente altere a experiência do operador.
 
 ## 9. Galeria
 
@@ -487,10 +510,18 @@ O sistema opera com três papéis fundamentais:
 ### Matriz de permissões granulares
 
 As permissões são controladas por módulo e operação:
-- **Visualizar** (`view`)
-- **Criar** (`create`)
-- **Editar** (`edit`)
-- **Excluir** (`delete`)
+- **Operações:** Visualizar (`view`), Criar (`create`), Editar (`edit`), Excluir (`delete`).
+- **Módulos disponíveis:**
+  - **Pedidos (`orders`)**
+  - **Clientes (`customers`)**
+  - **Produtos do Ateliê (`products`)**
+  - **Produtos da Lojinha (`storeProducts`)**: controle sobre a vitrine pública de vendas.
+  - **Orçamentos (`quotes`)**
+  - **Galeria (`gallery`)**
+  - **Permutas/Trocas (`exchanges`)**
+  - **Relatórios (`reports`)**
+  - **Personalização da Loja (`storeSettings`)**
+  - **Usuários e Equipe (`users`)**: exclusivo para administradores.
 
 ### Revogação de acesso em tempo real
 
@@ -516,6 +547,8 @@ Disponível para todos os usuários autenticados via rota `/ajuda`, reúne:
 - Pedidos de permuta podem não ter cobrança monetária.
 - Dados são isolados por usuário nas regras do Firebase.
 - Operações indisponíveis por permissão não devem ser executadas apenas por ocultação visual; o backend também deve impedir o acesso.
+- A Lojinha Online (`/catalogo`) adota obrigatoriamente o **tema claro como padrão (default)**; o alternador de tema do catálogo opera isolado sem sobrescrever a preferência do painel administrativo.
+- A vitrine pública (`/catalogo`) lê apenas a coleção `storeProducts` e dados de identidade visual públicos, mantendo os produtos internos do ateliê (`products`) e dados operacionais protegidos.
 
 ## 16. Fluxos recomendados
 
