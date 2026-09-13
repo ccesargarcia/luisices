@@ -504,6 +504,8 @@ function ImportFromAtelierDialog({ open, onOpenChange, onImported }: ImportFromA
   );
 }
 
+const STORE_PRODUCTS_VIEW_MODE_KEY = 'luisices_store_products_view_mode';
+
 // ─── Página Principal de Produtos da Lojinha ─────────────────────────────────
 export function StoreProducts() {
   const { userProfile } = useAuth();
@@ -513,7 +515,20 @@ export function StoreProducts() {
   const [search, setSearch] = useState('');
   const [filterCategory, setFilterCategory] = useState('todos');
   const [filterStatus, setFilterStatus] = useState<'todos' | 'ativos' | 'pausados'>('todos');
-  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>(() => {
+    try {
+      const saved = localStorage.getItem(STORE_PRODUCTS_VIEW_MODE_KEY);
+      if (saved === 'grid' || saved === 'list') return saved;
+    } catch {}
+    return 'grid';
+  });
+
+  const handleSetViewMode = (mode: 'grid' | 'list') => {
+    setViewMode(mode);
+    try {
+      localStorage.setItem(STORE_PRODUCTS_VIEW_MODE_KEY, mode);
+    } catch {}
+  };
 
   const [formOpen, setFormOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
@@ -604,7 +619,7 @@ export function StoreProducts() {
   const pausedCount = storeProducts.filter((p) => p.active === false).length;
 
   return (
-    <div className="space-y-6 pb-16">
+    <div className="space-y-6 pb-16 w-full max-w-full overflow-x-hidden">
       {/* Header com Boas-vindas e Ações */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
@@ -725,8 +740,8 @@ export function StoreProducts() {
       </div>
 
       {/* Barra de Filtros e Busca */}
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-card p-3 rounded-2xl border border-border shadow-2xs">
-        <div className="w-full sm:flex-1 relative">
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-card p-3 rounded-2xl border border-border shadow-2xs">
+        <div className="w-full sm:flex-1 relative min-w-0">
           <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
           <Input
             placeholder="Buscar por nome, categoria ou descrição..."
@@ -736,12 +751,12 @@ export function StoreProducts() {
           />
         </div>
 
-        <div className="w-full sm:w-auto flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
           {/* Filtro de Categoria */}
           <select
             value={filterCategory}
             onChange={(e) => setFilterCategory(e.target.value)}
-            className="h-9 px-3 rounded-lg bg-background border border-border text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary cursor-pointer"
+            className="h-9 px-2.5 rounded-lg bg-background border border-border text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary cursor-pointer flex-1 sm:flex-none min-w-[130px] max-w-full"
           >
             <option value="todos">Todas as Categorias</option>
             {categories.map((cat) => (
@@ -753,7 +768,7 @@ export function StoreProducts() {
           <select
             value={filterStatus}
             onChange={(e) => setFilterStatus(e.target.value as any)}
-            className="h-9 px-3 rounded-lg bg-background border border-border text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary cursor-pointer"
+            className="h-9 px-2.5 rounded-lg bg-background border border-border text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary cursor-pointer flex-1 sm:flex-none min-w-[110px] max-w-full"
           >
             <option value="todos">Todos os Status</option>
             <option value="ativos">Apenas Ativos</option>
@@ -761,17 +776,17 @@ export function StoreProducts() {
           </select>
 
           {/* Alternador Grid / Lista */}
-          <div className="flex items-center bg-muted/60 p-0.5 rounded-lg border border-border shrink-0">
+          <div className="flex items-center bg-muted/60 p-0.5 rounded-lg border border-border shrink-0 ml-auto sm:ml-0">
             <button
-              onClick={() => setViewMode('grid')}
-              className={`p-1.5 rounded-md transition-colors ${viewMode === 'grid' ? 'bg-background shadow-xs text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
-              title="Visualização em grade"
+              onClick={() => handleSetViewMode('grid')}
+              className={`p-1.5 rounded-md transition-colors ${viewMode === 'grid' ? 'bg-background shadow-xs text-foreground font-semibold' : 'text-muted-foreground hover:text-foreground'}`}
+              title="Visualização em galeria (grade)"
             >
               <LayoutGrid size={15} />
             </button>
             <button
-              onClick={() => setViewMode('list')}
-              className={`p-1.5 rounded-md transition-colors ${viewMode === 'list' ? 'bg-background shadow-xs text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+              onClick={() => handleSetViewMode('list')}
+              className={`p-1.5 rounded-md transition-colors ${viewMode === 'list' ? 'bg-background shadow-xs text-foreground font-semibold' : 'text-muted-foreground hover:text-foreground'}`}
               title="Visualização em lista"
             >
               <LayoutList size={15} />
@@ -851,16 +866,16 @@ export function StoreProducts() {
               </div>
 
               {/* Informações */}
-              <CardContent className="p-3.5 flex-1 flex flex-col justify-between space-y-3">
-                <div className="space-y-1">
+              <CardContent className="p-3.5 flex-1 flex flex-col justify-between space-y-3 min-w-0">
+                <div className="space-y-1 min-w-0">
                   <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider block truncate">
                     {prod.category}
                   </span>
-                  <h3 className="text-xs sm:text-sm font-bold text-foreground line-clamp-2 leading-tight" title={prod.name}>
+                  <h3 className="text-xs sm:text-sm font-bold text-foreground line-clamp-2 leading-tight break-words" title={prod.name}>
                     {prod.name}
                   </h3>
                   {prod.description && (
-                    <p className="text-[11px] text-muted-foreground line-clamp-2 pt-0.5 leading-relaxed">
+                    <p className="text-[11px] text-muted-foreground line-clamp-2 pt-0.5 leading-relaxed break-words">
                       {prod.description}
                     </p>
                   )}
@@ -922,38 +937,48 @@ export function StoreProducts() {
           ))}
         </div>
       ) : (
-        /* Visualização em Lista */
+        /* Visualização em Lista - Responsiva sem overflow ou barra de rolagem horizontal */
         <div className="rounded-2xl border border-border overflow-hidden bg-card divide-y divide-border">
           {filteredProducts.map((prod) => (
-            <div key={prod.id} className="p-3 sm:p-4 flex items-center justify-between gap-4 hover:bg-muted/30 transition-colors">
-              <div className="flex items-center gap-3 min-w-0">
+            <div
+              key={prod.id}
+              className="p-3 sm:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4 hover:bg-muted/30 transition-colors"
+            >
+              {/* Foto + Dados principais */}
+              <div className="flex items-center gap-3 min-w-0 flex-1">
                 {prod.imageUrl ? (
-                  <img src={prod.imageUrl} alt={prod.name} className="size-14 rounded-xl object-cover shrink-0" />
+                  <img src={prod.imageUrl} alt={prod.name} className="size-12 sm:size-14 rounded-xl object-cover shrink-0" />
                 ) : (
-                  <div className="size-14 rounded-xl bg-muted flex items-center justify-center text-muted-foreground shrink-0">
+                  <div className="size-12 sm:size-14 rounded-xl bg-muted flex items-center justify-center text-muted-foreground shrink-0">
                     <ImageIcon size={20} />
                   </div>
                 )}
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2">
-                    <h3 className="text-xs sm:text-sm font-bold text-foreground truncate">{prod.name}</h3>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h3 className="text-xs sm:text-sm font-bold text-foreground truncate max-w-full" title={prod.name}>
+                      {prod.name}
+                    </h3>
                     {prod.badge && (
-                      <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-[#613d3e] text-white">
+                      <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-[#613d3e] text-white shrink-0">
                         {prod.badge}
                       </span>
                     )}
                   </div>
-                  <p className="text-[11px] text-muted-foreground truncate">{prod.category} • Até {prod.leadTimeDays} dias úteis</p>
+                  <p className="text-[11px] text-muted-foreground truncate">
+                    {prod.category} • Até {prod.leadTimeDays} dias úteis
+                    {prod.isCustomizable && ' • Personalizável'}
+                  </p>
                 </div>
               </div>
 
-              <div className="flex items-center gap-4 shrink-0">
+              {/* Preço + Switch Ativo + Ações */}
+              <div className="flex items-center justify-between sm:justify-end gap-3 sm:gap-4 pt-2 sm:pt-0 border-t sm:border-t-0 border-border/50 shrink-0">
                 <span className="text-sm font-extrabold text-primary tabular-nums">
                   {formatCurrency(prod.price)}
                 </span>
 
                 <div className="flex items-center gap-1.5">
-                  <span className="text-xs text-muted-foreground hidden sm:inline">
+                  <span className="text-xs text-muted-foreground">
                     {prod.active ? 'No ar' : 'Pausado'}
                   </span>
                   <Switch
@@ -973,6 +998,7 @@ export function StoreProducts() {
                           setFormOpen(true);
                         }}
                         className="size-8"
+                        title="Editar produto"
                       >
                         <Pencil size={13} />
                       </Button>
@@ -983,6 +1009,7 @@ export function StoreProducts() {
                         variant="ghost"
                         onClick={() => setDeleteTarget(prod)}
                         className="size-8 text-red-500 hover:text-red-700"
+                        title="Excluir produto"
                       >
                         <Trash2 size={13} />
                       </Button>

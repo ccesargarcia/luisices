@@ -317,6 +317,8 @@ function ProductFormDialog({ open, onOpenChange, editing, existingCategories, us
   );
 }
 
+const ATELIER_PRODUCTS_VIEW_MODE_KEY = 'luisices_atelier_products_view_mode';
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export function Products() {
@@ -325,7 +327,21 @@ export function Products() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [filterCategory, setFilterCategory] = useState('');
-  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>(() => {
+    try {
+      const saved = localStorage.getItem(ATELIER_PRODUCTS_VIEW_MODE_KEY);
+      if (saved === 'grid' || saved === 'list') return saved;
+    } catch {}
+    return 'grid';
+  });
+
+  const handleSetViewMode = (mode: 'grid' | 'list') => {
+    setViewMode(mode);
+    try {
+      localStorage.setItem(ATELIER_PRODUCTS_VIEW_MODE_KEY, mode);
+    } catch {}
+  };
+
   const [formOpen, setFormOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Product | null>(null);
@@ -482,12 +498,12 @@ export function Products() {
         <div className="flex border rounded-md overflow-hidden">
           <Button variant="ghost" size="icon"
             className={cn('rounded-none border-0', viewMode === 'grid' && 'bg-muted')}
-            onClick={() => setViewMode('grid')}>
+            onClick={() => handleSetViewMode('grid')}>
             <LayoutGrid className="size-4" />
           </Button>
           <Button variant="ghost" size="icon"
             className={cn('rounded-none border-0', viewMode === 'list' && 'bg-muted')}
-            onClick={() => setViewMode('list')}>
+            onClick={() => handleSetViewMode('list')}>
             <LayoutList className="size-4" />
           </Button>
         </div>
