@@ -21,14 +21,19 @@ import {
   Phone,
   Info,
   Bell,
+  Building2,
+  Upload,
+  X,
   Eye,
   ShoppingBag
 } from 'lucide-react';
 import { toast } from 'sonner';
 
 export function StoreCustomization() {
-  const { settings, loading, updateSettings } = useUserSettings();
+  const { settings, loading, updateSettings, uploadLogo, removeLogo } = useUserSettings();
   const [saving, setSaving] = useState(false);
+  const [uploadingLogo, setUploadingLogo] = useState(false);
+  const [currentLogo, setCurrentLogo] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState('identity');
 
   // Estado dos campos do formulário
@@ -56,6 +61,7 @@ export function StoreCustomization() {
   // Carregar dados quando settings estiver pronto
   useEffect(() => {
     if (settings) {
+      setCurrentLogo(settings.logo || null);
       setFormData({
         businessName: settings.businessName || '',
         businessTagline: settings.businessTagline || '',
@@ -78,6 +84,44 @@ export function StoreCustomization() {
       });
     }
   }, [settings]);
+
+  const handleLogoUpload = async (file: File) => {
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+      toast.error('Formato inválido. Use imagem JPG, PNG ou WebP.');
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error('A imagem deve ter no máximo 5 MB.');
+      return;
+    }
+
+    setUploadingLogo(true);
+    try {
+      const url = await uploadLogo(file);
+      setCurrentLogo(url);
+      toast.success('Logo da loja enviado com sucesso!');
+    } catch (error) {
+      console.error('Erro no upload do logo:', error);
+      toast.error(error instanceof Error ? error.message : 'Erro ao fazer upload do logo');
+    } finally {
+      setUploadingLogo(false);
+    }
+  };
+
+  const handleLogoRemove = async () => {
+    if (!confirm('Deseja realmente remover o logo da loja?')) return;
+    setUploadingLogo(true);
+    try {
+      await removeLogo();
+      setCurrentLogo(null);
+      toast.success('Logo da loja removido com sucesso!');
+    } catch (error) {
+      console.error('Erro ao remover logo:', error);
+      toast.error('Erro ao remover logo');
+    } finally {
+      setUploadingLogo(false);
+    }
+  };
 
   const handleChange = (field: keyof typeof formData, value: string) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
@@ -157,7 +201,7 @@ export function StoreCustomization() {
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
             <TabsList className="grid grid-cols-4 w-full h-auto p-1 bg-muted/60">
               <TabsTrigger value="identity" className="text-xs py-2">
-                Vitrine & Banner
+                Logo & Vitrine
               </TabsTrigger>
               <TabsTrigger value="whatsapp" className="text-xs py-2">
                 WhatsApp
@@ -170,8 +214,98 @@ export function StoreCustomization() {
               </TabsTrigger>
             </TabsList>
 
-            {/* ABA 1: Identidade & Banner */}
+            {/* ABA 1: Logo & Vitrine */}
             <TabsContent value="identity" className="space-y-5 pt-3">
+              {/* Card de Upload do Logo */}
+              <Card className="border-primary/25 shadow-xs">
+                <CardHeader>
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <Building2 className="size-4 text-primary" />
+                    Logo do Ateliê / Loja
+                  </CardTitle>
+                  <CardDescription className="text-xs">
+                    Exibido em destaque no cabeçalho e no rodapé da sua lojinha pública online (JPG, PNG ou WebP até 5 MB).
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+                    {currentLogo ? (
+                      <div className="relative group size-20 rounded-xl overflow-hidden border border-border bg-muted/40 p-1.5 flex items-center justify-center shrink-0">
+                        <img
+                          src={currentLogo}
+                          alt="Logo da Loja"
+                          className="w-full h-full object-contain"
+                        />
+                      </div>
+                    ) : (
+                      <div className="size-20 rounded-xl border-2 border-dashed border-border bg-muted/20 flex flex-col items-center justify-center text-muted-foreground shrink-0 gap-1">
+                        <Building2 className="size-7 opacity-50" />
+                        <span className="text-[10px]">Sem logo</span>
+                      </div>
+                    )}
+
+                    <div className="flex-1 space-y-2 w-full">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Label htmlFor="store-logo-upload" className="cursor-pointer">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            disabled={uploadingLogo}
+                            className="gap-2 border-primary/30 text-primary hover:bg-primary/5"
+                            asChild
+                          >
+                            <span>
+                              {uploadingLogo ? (
+                                <>
+                                  <Loader2 className="size-3.5 animate-spin" />
+                                  Enviando logo...
+                                </>
+                              ) : (
+                                <>
+                                  <Upload className="size-3.5" />
+                                  {currentLogo ? 'Trocar Logo' : 'Enviar Logo'}
+                                </>
+                              )}
+                            </span>
+                          </Button>
+                        </Label>
+                        <Input
+                          id="store-logo-upload"
+                          type="file"
+                          accept="image/jpeg,image/png,image/webp"
+                          className="hidden"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            e.target.value = '';
+                            if (file) void handleLogoUpload(file);
+                          }}
+                        />
+
+                        {currentLogo && (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            disabled={uploadingLogo}
+                            onClick={handleLogoRemove}
+                            className="gap-1.5 text-destructive hover:text-destructive hover:bg-destructive/10 text-xs"
+                          >
+                            <X className="size-3.5" />
+                            Remover
+                          </Button>
+                        )}
+                      </div>
+                      <p className="text-[11px] text-muted-foreground">
+                        {currentLogo
+                          ? '✅ Logo configurado e sincronizado com a lojinha pública online.'
+                          : 'Envie um logotipo quadrado ou redondo (fundo transparente fica lindo na vitrine!).'}
+                      </p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
               <Card>
                 <CardHeader>
                   <CardTitle className="text-base flex items-center gap-2">
@@ -420,6 +554,39 @@ export function StoreCustomization() {
 
             {/* ABA 4: Loja & Contato */}
             <TabsContent value="contact" className="space-y-5 pt-3">
+              {/* Resumo do Logo */}
+              <div className="flex items-center justify-between p-3.5 rounded-xl border border-border/70 bg-muted/20">
+                <div className="flex items-center gap-3">
+                  {currentLogo ? (
+                    <img
+                      src={currentLogo}
+                      alt="Logo"
+                      className="size-12 rounded-lg object-contain border border-border bg-white p-1"
+                    />
+                  ) : (
+                    <div className="size-12 rounded-lg border border-dashed border-border bg-muted/40 flex items-center justify-center text-muted-foreground">
+                      <Building2 className="size-5 opacity-60" />
+                    </div>
+                  )}
+                  <div>
+                    <p className="text-xs font-semibold">Logo do Ateliê</p>
+                    <p className="text-[11px] text-muted-foreground">
+                      {currentLogo ? 'Logo cadastrado e ativo no catálogo público' : 'Nenhum logo configurado no momento'}
+                    </p>
+                  </div>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setActiveTab('identity')}
+                  className="text-xs gap-1.5 border-primary/30 text-primary hover:bg-primary/5"
+                >
+                  <Building2 className="size-3.5" />
+                  {currentLogo ? 'Trocar Logo' : 'Enviar Logo'}
+                </Button>
+              </div>
+
               <Card>
                 <CardHeader>
                   <CardTitle className="text-base flex items-center gap-2">
@@ -544,20 +711,29 @@ export function StoreCustomization() {
 
               {/* Header simulado */}
               <div className="p-3 bg-white/80 border-b border-stone-200/60 flex items-center justify-between">
-                <div>
-                  <div className="flex items-center gap-1.5">
-                    <span className="font-bold text-xs text-[#613d3e]">
-                      {formData.businessName || 'Luisices'}
-                    </span>
-                    <span className="text-[9px] px-1.5 py-0.2 rounded-full bg-[#613d3e]/10 text-[#613d3e] font-medium">
-                      {formData.catalogBadge || 'Atelier'}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-1 text-[10px] text-stone-500">
-                    <span className="size-1.5 rounded-full bg-emerald-500" />
-                    <span className="truncate max-w-[170px]">
-                      {formData.catalogStatusText || 'Atendimento WhatsApp ativo'}
-                    </span>
+                <div className="flex items-center gap-2">
+                  {currentLogo ? (
+                    <img
+                      src={currentLogo}
+                      alt="Logo"
+                      className="size-8 rounded-full object-cover border border-white/60 shadow-xs shrink-0"
+                    />
+                  ) : null}
+                  <div>
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-bold text-xs text-[#613d3e]">
+                        {formData.businessName || 'Luisices'}
+                      </span>
+                      <span className="text-[9px] px-1.5 py-0.2 rounded-full bg-[#613d3e]/10 text-[#613d3e] font-medium">
+                        {formData.catalogBadge || 'Atelier'}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1 text-[10px] text-stone-500">
+                      <span className="size-1.5 rounded-full bg-emerald-500 shrink-0" />
+                      <span className="truncate max-w-[140px]">
+                        {formData.catalogStatusText || 'Atendimento WhatsApp ativo'}
+                      </span>
+                    </div>
                   </div>
                 </div>
                 <div className="flex items-center gap-1">
@@ -594,6 +770,13 @@ export function StoreCustomization() {
 
               {/* Rodapé simulado */}
               <div className="p-3 mt-3 border-t border-stone-200/60 bg-white/40 text-center space-y-1 text-[10px] text-stone-600">
+                {currentLogo ? (
+                  <img
+                    src={currentLogo}
+                    alt="Logo"
+                    className="size-9 rounded-full object-cover border border-white/60 shadow-xs mx-auto mb-1.5"
+                  />
+                ) : null}
                 <p className="font-bold text-[#613d3e] text-[11px]">
                   {formData.businessName || 'Luisices'}
                 </p>
