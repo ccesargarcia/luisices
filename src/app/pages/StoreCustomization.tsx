@@ -27,9 +27,102 @@ import {
   Upload,
   X,
   Eye,
-  ShoppingBag
+  ShoppingBag,
+  Wand2,
+  Heart
 } from 'lucide-react';
 import { toast } from 'sonner';
+
+export const STORE_TEMPLATES = [
+  {
+    id: 'afetiva',
+    name: 'Papelaria Afetiva & Festas',
+    icon: '🌸',
+    tag: 'Mais Popular',
+    description: 'Estilo acolhedor e carinhoso, perfeito para ateliês de encadernação, lembrancinhas e peças artesanais.',
+    data: {
+      catalogBadge: 'Atelier Afetivo',
+      catalogStatusText: 'Atendimento WhatsApp ativo • Encomendas abertas',
+      catalogAnnouncement: '✨ Encomendas abertas com envio carinhoso para todo o Brasil!',
+      catalogHeroTitle: 'Catálogo & Vitrine Afetiva',
+      businessTagline: 'Papelaria artesanal feita à mão para momentos únicos',
+      catalogHeroDescription: 'Cadernos, planners, mimos e lembrancinhas personalizados com acabamento artesanal de alto padrão. Faça sua encomenda direta pelo WhatsApp!',
+      catalogWhatsappGreeting: 'Olá! Gostaria de encomendar pelo catálogo do Ateliê:',
+      catalogWhatsappCustomizationLabel: 'Nome para a personalização:',
+      catalogWhatsappFooter: 'Poderia me passar as opções de frete/retirada e a chave PIX para confirmar o pedido?',
+      catalogFooterText: 'Papelaria artesanal feita à mão com afeto e dedicação para eternizar momentos únicos. ❤️',
+      catalogFooterLocation: 'Enviamos com carinho para todo o Brasil 📦',
+      catalogFooterBusinessHours: 'Segunda a Sexta, das 9h às 18h',
+      catalogFooterNotice: 'Produção artesanal sob encomenda. Os prazos começam a contar após a aprovação da arte.',
+    }
+  },
+  {
+    id: 'maternidade',
+    name: 'Maternidade & Primeiros Anos',
+    icon: '🍼',
+    tag: 'Delicado',
+    description: 'Foco em mães e bebês, perfeito para livros do bebê, cadernetas de saúde e lembrancinhas de batizado.',
+    data: {
+      catalogBadge: 'Maternidade & Baby',
+      catalogStatusText: 'Atendimento com carinho para mamães',
+      catalogAnnouncement: '🍼 Cadernetas de vacinação e kits de maternidade com acabamento protetor premium.',
+      catalogHeroTitle: 'Coleção Maternidade & Primeiros Anos',
+      businessTagline: 'Lembranças e encadernações delicadas para a chegada do seu bebê',
+      catalogHeroDescription: 'Cadernetas de vacina personalizadas, livros de recordação, caixas cartonadas e lembrancinhas afetivas para momentos inesquecíveis.',
+      catalogWhatsappGreeting: 'Olá! Gostaria de encomendar itens de maternidade pelo catálogo:',
+      catalogWhatsappCustomizationLabel: 'Nome do bebê e tema escolhido:',
+      catalogWhatsappFooter: 'Por favor, me envie as opções de frete e o prazo de confecção para o meu CEP.',
+      catalogFooterText: 'Feito com amor e cuidado para acolher as memórias mais preciosas da sua família. 👶',
+      catalogFooterLocation: 'Ateliê com envio seguro para todo o país ✈️',
+      catalogFooterBusinessHours: 'Segunda a Sexta, das 9h às 17h',
+      catalogFooterNotice: 'Recomendamos encomendar com antecedência de 20 a 30 dias da data prevista do parto.',
+    }
+  },
+  {
+    id: 'minimalista',
+    name: 'Ateliê Minimalista & Planners',
+    icon: '🌿',
+    tag: 'Elegante',
+    description: 'Design contemporâneo, limpo e refinado para planners, agendas, blocos de notas e encadernação artística.',
+    data: {
+      catalogBadge: 'Design & Papel',
+      catalogStatusText: 'Ateliê aberto para encomendas',
+      catalogAnnouncement: '📓 Planners permanentes e blocos de anotações com capa dura e hot stamping.',
+      catalogHeroTitle: 'Planners, Agendas & Papelaria Autoral',
+      businessTagline: 'Organização e encadernação artística em design clean e sofisticado',
+      catalogHeroDescription: 'Peças pensadas para quem valoriza estética funcional, papéis nobres de alta gramatura e acabamento artístico refinado.',
+      catalogWhatsappGreeting: 'Olá! Gostaria de encomendar pelo catálogo autoral:',
+      catalogWhatsappCustomizationLabel: 'Nome ou iniciais na capa:',
+      catalogWhatsappFooter: 'Poderia confirmar a disponibilidade e as opções de pagamento (PIX / Cartão)?',
+      catalogFooterText: 'Papelaria funcional e atemporal criada para inspirar a sua rotina diária.',
+      catalogFooterLocation: 'Produção artesanal sob demanda • Envio para todo o Brasil',
+      catalogFooterBusinessHours: 'Segunda a Sábado, das 10h às 19h',
+      catalogFooterNotice: 'Trabalhamos exclusivamente com papéis certificados FSC e laminação acetinada de toque aveludado.',
+    }
+  },
+  {
+    id: 'festas',
+    name: 'Kits de Festa & Scraps Criativos',
+    icon: '🎈',
+    tag: 'Colorido',
+    description: 'Alegre e vibrante, ideal para temas infantis, papelaria de festa, caixas personalizadas e topos de bolo.',
+    data: {
+      catalogBadge: 'Festas & Mimos',
+      catalogStatusText: 'Agenda de festas e comemorações aberta',
+      catalogAnnouncement: '🎉 Consulte nossos combos especiais "Pegue e Monte" para comemorações em casa!',
+      catalogHeroTitle: 'Kits de Festa & Lembrancinhas Temáticas',
+      businessTagline: 'Papelaria criativa e personalizados que transformam qualquer comemoração',
+      catalogHeroDescription: 'Caixas milk, pirâmides, topos de bolo, adesivos e lembranças personalizadas para a festa dos sonhos.',
+      catalogWhatsappGreeting: 'Olá! Quero solicitar um orçamento de festa pelo catálogo:',
+      catalogWhatsappCustomizationLabel: 'Nome do aniversariante, idade e data do evento:',
+      catalogWhatsappFooter: 'Qual o prazo de confecção para a minha data e as opções de frete?',
+      catalogFooterText: 'A alegria da sua celebração traduzida em recortes especiais e muito afeto!',
+      catalogFooterLocation: 'Enviamos kits com montagem prática para todo o Brasil 📦',
+      catalogFooterBusinessHours: 'Segunda a Sexta, das 9h às 18h',
+      catalogFooterNotice: 'Personalizamos em qualquer tema sob consulta. As artes são enviadas para prévia antes da impressão.',
+    }
+  }
+];
 
 export function StoreCustomization() {
   const { settings, loading, updateSettings, uploadCatalogLogo, removeCatalogLogo } = useUserSettings();
@@ -191,6 +284,19 @@ export function StoreCustomization() {
     setFormData((prev) => ({ ...prev, [field]: value }));
   };
 
+  const [showTemplates, setShowTemplates] = useState(false);
+
+  const applyTemplate = (templateId: string) => {
+    const tmpl = STORE_TEMPLATES.find((t) => t.id === templateId);
+    if (!tmpl) return;
+
+    setFormData((prev) => ({
+      ...prev,
+      ...tmpl.data,
+    }));
+    toast.success(`Modelo "${tmpl.name}" aplicado! Revise os textos e clique em Salvar Alterações.`);
+  };
+
   const handleSave = async () => {
     setSaving(true);
     try {
@@ -198,6 +304,31 @@ export function StoreCustomization() {
         ...formData,
         catalogLogo: currentCatalogLogo || '',
       });
+      // Salva no cache do navegador para a lojinha atualizar instantaneamente
+      try {
+        const publicData = {
+          name: formData.businessName || 'Luisices Papelaria Personalizada',
+          tagline: formData.businessTagline,
+          whatsapp: formData.whatsappPhone,
+          instagram: formData.instagramUrl ? formData.instagramUrl.replace(/^https?:\/\/(www\.)?instagram\.com\//, '').replace(/\/$/, '') : '',
+          website: formData.websiteUrl,
+          logo: currentCatalogLogo || '',
+          badge: formData.catalogBadge,
+          statusText: formData.catalogStatusText,
+          announcement: formData.catalogAnnouncement,
+          heroTitle: formData.catalogHeroTitle,
+          heroDescription: formData.catalogHeroDescription,
+          whatsappGreeting: formData.catalogWhatsappGreeting,
+          whatsappCustomizationLabel: formData.catalogWhatsappCustomizationLabel,
+          whatsappFooter: formData.catalogWhatsappFooter,
+          footerText: formData.catalogFooterText,
+          footerLocation: formData.catalogFooterLocation,
+          footerBusinessHours: formData.catalogFooterBusinessHours,
+          footerNotice: formData.catalogFooterNotice,
+          footerCopyright: formData.catalogFooterCopyright,
+        };
+        localStorage.setItem('luisices_public_store_settings', JSON.stringify(publicData));
+      } catch {}
       toast.success('Configurações da lojinha salvas com sucesso!');
     } catch (err) {
       console.error('Erro ao salvar personalizações:', err);
@@ -237,7 +368,17 @@ export function StoreCustomization() {
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => setShowTemplates((prev) => !prev)}
+            className={`gap-2 ${showTemplates ? 'bg-amber-50 dark:bg-amber-950/40 border-amber-500 text-amber-700 dark:text-amber-300' : 'border-amber-500/50 text-amber-700 dark:text-amber-300 hover:bg-amber-50/70'}`}
+          >
+            <Wand2 className="size-4 text-amber-500" />
+            <span>{showTemplates ? 'Ocultar Modelos' : 'Modelos & Inspirações'}</span>
+          </Button>
+
           <a href="/catalogo" target="_blank" rel="noopener noreferrer">
             <Button variant="outline" className="gap-2 border-primary/30 text-primary hover:bg-primary/5">
               <Globe className="size-4" />
@@ -260,6 +401,77 @@ export function StoreCustomization() {
           </Button>
         </div>
       </div>
+
+      {/* Caixa de Modelos & Inspirações Prontas */}
+      {showTemplates && (
+        <Card className="border-amber-500/30 bg-amber-50/20 dark:bg-amber-950/20 shadow-xs animate-in fade-in-50 duration-200">
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-xl bg-amber-500/15 text-amber-600 dark:text-amber-400">
+                  <Wand2 className="size-5" />
+                </div>
+                <div>
+                  <CardTitle className="text-base font-bold text-amber-950 dark:text-amber-200">
+                    Modelos de Inspiração Prontos para Uso
+                  </CardTitle>
+                  <CardDescription className="text-xs text-amber-800/80 dark:text-amber-300/80">
+                    Escolha um tema para preencher automaticamente os textos da vitrine. Você poderá editar cada campo à vontade antes de salvar!
+                  </CardDescription>
+                </div>
+              </div>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="size-7 text-amber-700 hover:bg-amber-100 dark:text-amber-300 dark:hover:bg-amber-900/50"
+                onClick={() => setShowTemplates(false)}
+              >
+                <X className="size-4" />
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent className="pt-0">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+              {STORE_TEMPLATES.map((tmpl) => (
+                <div
+                  key={tmpl.id}
+                  className="p-3.5 rounded-xl border border-amber-200/70 dark:border-amber-800/40 bg-card flex flex-col justify-between hover:shadow-md transition-all space-y-3"
+                >
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between gap-1">
+                      <span className="text-2xl">{tmpl.icon}</span>
+                      <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300">
+                        {tmpl.tag}
+                      </span>
+                    </div>
+                    <h4 className="font-bold text-xs text-foreground leading-tight">
+                      {tmpl.name}
+                    </h4>
+                    <p className="text-[11px] text-muted-foreground leading-snug">
+                      {tmpl.description}
+                    </p>
+                    <div className="p-2 rounded-lg bg-muted/50 text-[10px] space-y-0.5 text-muted-foreground font-mono">
+                      <p className="truncate"><span className="font-semibold text-foreground">Slogan:</span> {tmpl.data.businessTagline}</p>
+                      <p className="truncate"><span className="font-semibold text-foreground">Selo:</span> {tmpl.data.catalogBadge}</p>
+                    </div>
+                  </div>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => applyTemplate(tmpl.id)}
+                    className="w-full text-xs font-semibold gap-1.5 border-amber-500/50 text-amber-700 dark:text-amber-300 hover:bg-amber-500 hover:text-white dark:hover:text-black transition-colors"
+                  >
+                    <Wand2 className="size-3" />
+                    Aplicar este Modelo
+                  </Button>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Grid Principal: Formulário de Configuração (2/3) + Prévia Visual (1/3) */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
@@ -448,7 +660,7 @@ export function StoreCustomization() {
                 <CardContent className="space-y-4">
                   <div className="space-y-1.5">
                     <Label htmlFor="m-hero-title" className="text-xs font-semibold">
-                      Título da Vitrine
+                      Título Superior da Vitrine (Selo Pequeno)
                     </Label>
                     <Input
                       id="m-hero-title"
@@ -458,9 +670,32 @@ export function StoreCustomization() {
                     />
                   </div>
 
+                  {/* Frase Principal de Destaque / Slogan do Banner */}
+                  <div className="space-y-2 p-3 rounded-xl bg-primary/5 border border-primary/20">
+                    <div className="flex items-center justify-between">
+                      <Label htmlFor="m-hero-tagline" className="text-xs font-bold text-primary flex items-center gap-1.5">
+                        <Sparkles className="size-3.5 text-primary" />
+                        Frase de Destaque / Slogan Principal do Banner
+                      </Label>
+                      <span className="text-[10px] font-semibold text-primary bg-primary/10 px-2 py-0.5 rounded-full">
+                        Texto Central da Vitrine
+                      </span>
+                    </div>
+                    <Input
+                      id="m-hero-tagline"
+                      className="bg-background font-medium text-sm"
+                      placeholder="Ex: Papelaria artesanal feita à mão para momentos únicos"
+                      value={formData.businessTagline}
+                      onChange={(e) => handleChange('businessTagline', e.target.value)}
+                    />
+                    <p className="text-[11px] text-muted-foreground">
+                      Este é o texto principal exibido com destaque central no banner da vitrine da lojinha.
+                    </p>
+                  </div>
+
                   <div className="space-y-1.5">
                     <Label htmlFor="m-hero-desc" className="text-xs font-semibold">
-                      Texto de Boas-vindas / Instruções
+                      Texto de Boas-vindas / Instruções de Encomenda
                     </Label>
                     <Textarea
                       id="m-hero-desc"

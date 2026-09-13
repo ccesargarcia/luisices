@@ -135,28 +135,36 @@ export function PublicCatalog() {
   const [products, setProducts] = useState<CatalogProduct[]>(MOCK_PRODUCTS);
   const [loadingProducts, setLoadingProducts] = useState(true);
 
-  // Informações do negócio e customizações da lojinha (carregadas dinamicamente ou defaults afetivos)
-  const [businessInfo, setBusinessInfo] = useState({
-    name: 'Luisices',
-    tagline: 'Papelaria artesanal feita à mão para momentos únicos',
-    whatsapp: '5511999999999',
-    instagram: 'luisicesatelie',
-    website: '',
-    logo: '',
-    // Customizações da Loja
-    badge: 'Atelier',
-    statusText: 'Atendimento WhatsApp ativo',
-    announcement: '',
-    heroTitle: 'Catálogo & Vitrine Afetiva',
-    heroDescription: 'Escolha suas peças, informe o nome para personalização e envie o pedido formatado diretamente no nosso WhatsApp.',
-    whatsappGreeting: 'Olá! Gostaria de encomendar pelo catálogo do Ateliê:',
-    whatsappCustomizationLabel: 'Nome/Personalização:',
-    whatsappFooter: 'Poderia me passar as opções de frete/retirada e a chave PIX para confirmar?',
-    footerText: 'Papelaria artesanal feita à mão com afeto e dedicação para eternizar momentos únicos. ❤️',
-    footerLocation: 'Enviamos com carinho para todo o Brasil 📦',
-    footerBusinessHours: 'Segunda a Sexta, das 9h às 18h',
-    footerNotice: 'Produção artesanal sob encomenda. Os prazos começam a contar após a aprovação da arte.',
-    footerCopyright: `© ${new Date().getFullYear()} Luisices. Todos os direitos reservados.`,
+  // Informações do negócio e customizações da lojinha com cache em localStorage para evitar flash no F5
+  const [businessInfo, setBusinessInfo] = useState(() => {
+    try {
+      const cached = localStorage.getItem('luisices_public_store_settings');
+      if (cached) {
+        return JSON.parse(cached);
+      }
+    } catch {}
+    return {
+      name: 'Luisices Papelaria Personalizada',
+      tagline: 'Papelaria artesanal feita à mão para momentos únicos',
+      whatsapp: '5511999999999',
+      instagram: 'luisicesatelie',
+      website: '',
+      logo: '',
+      // Customizações da Loja
+      badge: 'Atelier',
+      statusText: 'Atendimento WhatsApp ativo',
+      announcement: '',
+      heroTitle: 'Catálogo & Vitrine Afetiva',
+      heroDescription: 'Escolha suas peças, informe o nome para personalização e envie o pedido formatado diretamente no nosso WhatsApp.',
+      whatsappGreeting: 'Olá! Gostaria de encomendar pelo catálogo do Ateliê:',
+      whatsappCustomizationLabel: 'Nome/Personalização:',
+      whatsappFooter: 'Poderia me passar as opções de frete/retirada e a chave PIX para confirmar?',
+      footerText: 'Papelaria artesanal feita à mão com afeto e dedicação para eternizar momentos únicos. ❤️',
+      footerLocation: 'Enviamos com carinho para todo o Brasil 📦',
+      footerBusinessHours: 'Segunda a Sexta, das 9h às 18h',
+      footerNotice: 'Produção artesanal sob encomenda. Os prazos começam a contar após a aprovação da arte.',
+      footerCopyright: `© ${new Date().getFullYear()} Luisices. Todos os direitos reservados.`,
+    };
   });
 
   // Estado da Sacola com persistência em localStorage
@@ -251,27 +259,33 @@ export function PublicCatalog() {
           const publicSettingsSnap = await getDoc(doc(db, 'storeSettings', 'public'));
           if (publicSettingsSnap.exists() && !isCancelled) {
             const s = publicSettingsSnap.data();
-            setBusinessInfo((prev) => ({
-              name: s.businessName || prev.name,
-              tagline: s.businessTagline || prev.tagline,
-              whatsapp: s.whatsappPhone || s.businessPhone || prev.whatsapp,
-              instagram: s.instagramUrl ? s.instagramUrl.replace(/^https?:\/\/(www\.)?instagram\.com\//, '').replace(/\/$/, '') : prev.instagram,
-              website: s.websiteUrl || prev.website,
-              logo: s.catalogLogo || '',
-              badge: s.catalogBadge || prev.badge,
-              statusText: s.catalogStatusText || prev.statusText,
-              announcement: s.catalogAnnouncement !== undefined ? s.catalogAnnouncement : prev.announcement,
-              heroTitle: s.catalogHeroTitle || prev.heroTitle,
-              heroDescription: s.catalogHeroDescription || prev.heroDescription,
-              whatsappGreeting: s.catalogWhatsappGreeting || prev.whatsappGreeting,
-              whatsappCustomizationLabel: s.catalogWhatsappCustomizationLabel || prev.whatsappCustomizationLabel,
-              whatsappFooter: s.catalogWhatsappFooter || prev.whatsappFooter,
-              footerText: s.catalogFooterText || prev.footerText,
-              footerLocation: s.catalogFooterLocation || prev.footerLocation,
-              footerBusinessHours: s.catalogFooterBusinessHours || prev.footerBusinessHours,
-              footerNotice: s.catalogFooterNotice || prev.footerNotice,
-              footerCopyright: s.catalogFooterCopyright || prev.footerCopyright,
-            }));
+            setBusinessInfo((prev: typeof businessInfo) => {
+              const updated = {
+                name: s.businessName !== undefined && s.businessName !== '' ? s.businessName : prev.name,
+                tagline: s.businessTagline !== undefined ? s.businessTagline : prev.tagline,
+                whatsapp: s.whatsappPhone || s.businessPhone || prev.whatsapp,
+                instagram: s.instagramUrl ? s.instagramUrl.replace(/^https?:\/\/(www\.)?instagram\.com\//, '').replace(/\/$/, '') : prev.instagram,
+                website: s.websiteUrl || prev.website,
+                logo: s.catalogLogo || '',
+                badge: s.catalogBadge !== undefined ? s.catalogBadge : prev.badge,
+                statusText: s.catalogStatusText !== undefined ? s.catalogStatusText : prev.statusText,
+                announcement: s.catalogAnnouncement !== undefined ? s.catalogAnnouncement : prev.announcement,
+                heroTitle: s.catalogHeroTitle !== undefined ? s.catalogHeroTitle : prev.heroTitle,
+                heroDescription: s.catalogHeroDescription !== undefined ? s.catalogHeroDescription : prev.heroDescription,
+                whatsappGreeting: s.catalogWhatsappGreeting !== undefined ? s.catalogWhatsappGreeting : prev.whatsappGreeting,
+                whatsappCustomizationLabel: s.catalogWhatsappCustomizationLabel !== undefined ? s.catalogWhatsappCustomizationLabel : prev.whatsappCustomizationLabel,
+                whatsappFooter: s.catalogWhatsappFooter !== undefined ? s.catalogWhatsappFooter : prev.whatsappFooter,
+                footerText: s.catalogFooterText !== undefined ? s.catalogFooterText : prev.footerText,
+                footerLocation: s.catalogFooterLocation !== undefined ? s.catalogFooterLocation : prev.footerLocation,
+                footerBusinessHours: s.catalogFooterBusinessHours !== undefined ? s.catalogFooterBusinessHours : prev.footerBusinessHours,
+                footerNotice: s.catalogFooterNotice !== undefined ? s.catalogFooterNotice : prev.footerNotice,
+                footerCopyright: s.catalogFooterCopyright !== undefined ? s.catalogFooterCopyright : prev.footerCopyright,
+              };
+              try {
+                localStorage.setItem('luisices_public_store_settings', JSON.stringify(updated));
+              } catch {}
+              return updated;
+            });
           }
         } catch (settingsErr) {
           console.warn('Configurações públicas locais em uso:', settingsErr);
@@ -520,9 +534,11 @@ export function PublicCatalog() {
               <Sparkles size={14} />
               <span>{businessInfo.heroTitle || 'Catálogo & Vitrine Afetiva'}</span>
             </div>
-            <h2 className="text-xl font-bold tracking-tight text-[#221a1a] dark:text-[#e8e0e3] leading-snug">
-              {businessInfo.tagline}
-            </h2>
+            {businessInfo.tagline ? (
+              <h2 className="text-xl font-bold tracking-tight text-[#221a1a] dark:text-[#e8e0e3] leading-snug">
+                {businessInfo.tagline}
+              </h2>
+            ) : null}
             <p className="mt-2 text-xs text-[#504444] dark:text-[#c9c0b8] leading-relaxed">
               {businessInfo.heroDescription || 'Escolha suas peças, informe o nome para personalização e envie o pedido formatado diretamente no nosso WhatsApp.'}
             </p>
