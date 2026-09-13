@@ -1299,6 +1299,8 @@ export function PublicCatalog() {
 
             </div>
           </div>
+        )}
+
         {/* BOTÃO FLUTUANTE DA SACOLA (Acesso permanente ao rolar o catálogo) */}
         {totalItemsCount > 0 && !isCartOpen && (
           <aside aria-label="Acesso rápido à sacola" className="fixed bottom-5 right-5 z-40 animate-in fade-in slide-in-from-bottom-3 duration-300">
