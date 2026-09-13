@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
 import { Button } from '../ui/button';
-import { LayoutDashboard, GripVertical, Loader2, Calendar, Users, BarChart3, FileText, ShoppingBag, Images, ArrowLeftRight, UserCog, ChevronUp, ChevronDown } from 'lucide-react';
+import { LayoutDashboard, GripVertical, Loader2, Calendar, Users, BarChart3, FileText, ShoppingBag, Images, ArrowLeftRight, UserCog, ChevronUp, ChevronDown, Coins, Mail, Store } from 'lucide-react';
 
 export const NAV_ITEMS = [
   { href: '/', label: 'Dashboard' },
@@ -10,8 +10,11 @@ export const NAV_ITEMS = [
   { href: '/relatorios', label: 'Relatórios' },
   { href: '/orcamentos', label: 'Orçamentos' },
   { href: '/produtos', label: 'Produtos' },
+  { href: '/precificacao', label: 'Precificação' },
   { href: '/galeria', label: 'Galeria' },
   { href: '/permutas', label: 'Permutas' },
+  { href: '/personalizar-lojinha', label: 'Personalizar Lojinha' },
+  { href: '/emails', label: 'E-mails' },
   { href: '/usuarios', label: 'Usuários' },
 ];
 
@@ -40,15 +43,18 @@ export function NavigationOrderSection({
     onNavOrderChange(next);
   };
 
-  const icons = {
+  const icons: Record<string, any> = {
     '/': LayoutDashboard,
     '/agenda': Calendar,
     '/clientes': Users,
     '/relatorios': BarChart3,
     '/orcamentos': FileText,
     '/produtos': ShoppingBag,
+    '/precificacao': Coins,
     '/galeria': Images,
     '/permutas': ArrowLeftRight,
+    '/personalizar-lojinha': Store,
+    '/emails': Mail,
     '/usuarios': UserCog,
   };
 
@@ -91,7 +97,7 @@ export function NavigationOrderSection({
                 }`}
               >
                 <GripVertical className="hidden size-4 shrink-0 cursor-grab text-muted-foreground sm:block" />
-                {React.createElement(icons[href as keyof typeof icons], { className: 'size-4 shrink-0 text-muted-foreground sm:hidden' })}
+                {icons[href] ? React.createElement(icons[href], { className: 'size-4 shrink-0 text-muted-foreground sm:hidden' }) : null}
                 <span className="text-sm font-medium flex-1">{item.label}</span>
                 <span className="text-xs text-muted-foreground">#{idx + 1}</span>
                 <div className="flex shrink-0 items-center gap-1">

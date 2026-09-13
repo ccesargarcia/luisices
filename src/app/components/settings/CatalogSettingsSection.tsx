@@ -1,4 +1,5 @@
 import React from 'react';
+import { Link } from 'react-router';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -74,13 +75,21 @@ export function CatalogSettingsSection({
             </div>
           </div>
 
-          <a href="/catalogo" target="_blank" rel="noopener noreferrer">
-            <Button variant="outline" size="sm" className="gap-2 border-primary/30 text-primary hover:bg-primary/5">
-              <Globe className="size-4" />
-              <span>Ver Catálogo</span>
-              <ExternalLink className="size-3.5 opacity-60" />
-            </Button>
-          </a>
+          <div className="flex flex-wrap items-center gap-2">
+            <Link to="/personalizar-lojinha">
+              <Button size="sm" className="gap-2 shadow-xs">
+                <Store className="size-4" />
+                <span>Abrir Painel Dedicado</span>
+              </Button>
+            </Link>
+            <a href="/catalogo" target="_blank" rel="noopener noreferrer">
+              <Button variant="outline" size="sm" className="gap-2 border-primary/30 text-primary hover:bg-primary/5">
+                <Globe className="size-4" />
+                <span>Ver Catálogo</span>
+                <ExternalLink className="size-3.5 opacity-60" />
+              </Button>
+            </a>
+          </div>
         </div>
       </CardHeader>
 
