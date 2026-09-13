@@ -60,13 +60,15 @@ export function StoreCustomization() {
     catalogFooterNotice: '',
   });
 
+  const [dataLoaded, setDataLoaded] = useState(false);
+
   // Carregar dados quando settings estiver pronto ou carregar de storeSettings/public
   useEffect(() => {
     let isCancelled = false;
 
     async function loadData() {
-      // Inicia com os dados de catalogLogo específico da lojinha (ou fallback para o logo geral)
-      let loadedLogo = settings?.catalogLogo || settings?.logo || null;
+      // Inicia apenas com o catalogLogo exclusivo da lojinha (sem fallback para o logo do painel)
+      let loadedLogo: string | null = settings?.catalogLogo || null;
       let data = {
         businessName: settings?.businessName || '',
         businessTagline: settings?.businessTagline || '',
@@ -93,13 +95,15 @@ export function StoreCustomization() {
         const publicSnap = await getDoc(doc(db, 'storeSettings', 'public'));
         if (publicSnap.exists() && !isCancelled) {
           const pub = publicSnap.data();
-          // Dá prioridade absoluta ao catalogLogo da loja
+          // Prioriza estritamente o catalogLogo exclusivo da loja pública
           if (pub.catalogLogo) {
             loadedLogo = pub.catalogLogo;
+          } else if (pub.catalogLogo === null || pub.catalogLogo === '') {
+            loadedLogo = null;
           } else if (settings?.catalogLogo) {
             loadedLogo = settings.catalogLogo;
-          } else if (pub.logo) {
-            loadedLogo = pub.logo;
+          } else {
+            loadedLogo = null;
           }
 
           data = {
@@ -129,7 +133,10 @@ export function StoreCustomization() {
 
       if (!isCancelled) {
         setCurrentCatalogLogo(loadedLogo);
-        setFormData(data);
+        if (!dataLoaded) {
+          setFormData(data);
+          setDataLoaded(true);
+        }
       }
     }
 
@@ -152,17 +159,8 @@ export function StoreCustomization() {
 
     setUploadingLogo(true);
     try {
-      const url = await uploadCatalogLogo(file);
+      const url = await uploadCatalogLogo(file, currentCatalogLogo || undefined);
       setCurrentCatalogLogo(url);
-      try {
-        await setDoc(
-          doc(db, 'storeSettings', 'public'),
-          { catalogLogo: url, updatedAt: new Date() },
-          { merge: true }
-        );
-      } catch (publicErr) {
-        console.warn('Aviso ao sincronizar catalogLogo em storeSettings/public:', publicErr);
-      }
       toast.success('Logo exclusivo da lojinha atualizado com sucesso!');
     } catch (error) {
       console.error('Erro no upload do logo da lojinha:', error);
@@ -175,21 +173,14 @@ export function StoreCustomization() {
   const handleLogoRemove = async () => {
     if (!confirm('Deseja realmente remover o logo exclusivo da lojinha pública?')) return;
     setUploadingLogo(true);
+    const previousLogo = currentCatalogLogo;
     try {
-      await removeCatalogLogo();
       setCurrentCatalogLogo(null);
-      try {
-        await setDoc(
-          doc(db, 'storeSettings', 'public'),
-          { catalogLogo: null, updatedAt: new Date() },
-          { merge: true }
-        );
-      } catch (publicErr) {
-        console.warn('Aviso ao remover catalogLogo em storeSettings/public:', publicErr);
-      }
+      await removeCatalogLogo(previousLogo || undefined);
       toast.success('Logo exclusivo da lojinha removido!');
     } catch (error) {
       console.error('Erro ao remover logo da lojinha:', error);
+      setCurrentCatalogLogo(previousLogo);
       toast.error('Erro ao remover logo');
     } finally {
       setUploadingLogo(false);
@@ -207,19 +198,6 @@ export function StoreCustomization() {
         ...formData,
         catalogLogo: currentCatalogLogo || '',
       });
-      try {
-        await setDoc(
-          doc(db, 'storeSettings', 'public'),
-          {
-            ...formData,
-            catalogLogo: currentCatalogLogo || null,
-            updatedAt: new Date(),
-          },
-          { merge: true }
-        );
-      } catch (publicErr) {
-        console.warn('Aviso ao sincronizar storeSettings/public:', publicErr);
-      }
       toast.success('Configurações da lojinha salvas com sucesso!');
     } catch (err) {
       console.error('Erro ao salvar personalizações:', err);

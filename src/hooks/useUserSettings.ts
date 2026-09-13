@@ -87,13 +87,14 @@ export function useUserSettings() {
   };
 
   // Upload de logo exclusivo do catálogo / lojinha pública online
-  const uploadCatalogLogo = async (file: File): Promise<string> => {
+  const uploadCatalogLogo = async (file: File, previousLogoUrl?: string): Promise<string> => {
     if (!user) throw new Error('Usuário não autenticado');
 
     try {
-      if (settings?.catalogLogo) {
+      const oldUrl = previousLogoUrl || settings?.catalogLogo;
+      if (oldUrl) {
         try {
-          await firebaseStorageService.deleteImage(settings.catalogLogo);
+          await firebaseStorageService.deleteImage(oldUrl);
         } catch (deleteError) {
           console.warn('Não foi possível deletar catalogLogo antigo (continuando):', deleteError);
         }
@@ -179,13 +180,14 @@ export function useUserSettings() {
   };
 
   // Remover logo do catálogo / lojinha pública
-  const removeCatalogLogo = async () => {
+  const removeCatalogLogo = async (logoUrlToDelete?: string) => {
     if (!user) throw new Error('Usuário não autenticado');
 
     try {
-      if (settings?.catalogLogo) {
+      const urlToDelete = logoUrlToDelete || settings?.catalogLogo;
+      if (urlToDelete) {
         try {
-          await firebaseStorageService.deleteImage(settings.catalogLogo);
+          await firebaseStorageService.deleteImage(urlToDelete);
         } catch (storageError) {
           console.warn('Erro ao deletar catalogLogo do Storage (continuando):', storageError);
         }

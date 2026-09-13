@@ -108,8 +108,13 @@ export class FirebaseSettingsService {
     // Verificar se documento existe
     const docSnap = await getDoc(docRef);
 
+    const cleanSettings: Record<string, any> = { ...settings };
+    if (settings.catalogLogo === '' || settings.catalogLogo === null) {
+      cleanSettings.catalogLogo = deleteField();
+    }
+
     const data = {
-      ...settings,
+      ...cleanSettings,
       userId,
       updatedAt: new Date(),
     };
@@ -129,8 +134,16 @@ export class FirebaseSettingsService {
       else if (settings.businessPhone !== undefined) publicData.whatsappPhone = settings.businessPhone;
       if (settings.instagramUrl !== undefined) publicData.instagramUrl = settings.instagramUrl;
       if (settings.websiteUrl !== undefined) publicData.websiteUrl = settings.websiteUrl;
-      if (settings.logo !== undefined) publicData.logo = settings.logo;
-      if (settings.catalogLogo !== undefined) publicData.catalogLogo = settings.catalogLogo;
+      
+      // Logo exclusivo da lojinha pública online (não usa o logo interno do painel)
+      if (settings.catalogLogo !== undefined) {
+        if (settings.catalogLogo && settings.catalogLogo.trim() !== '') {
+          publicData.catalogLogo = settings.catalogLogo;
+        } else {
+          publicData.catalogLogo = deleteField();
+          publicData.logo = deleteField(); // Limpa resquício de logo legado no catálogo público
+        }
+      }
 
       // Customizações da Lojinha / Catálogo
       if (settings.catalogBadge !== undefined) publicData.catalogBadge = settings.catalogBadge;
@@ -172,7 +185,7 @@ export class FirebaseSettingsService {
   }
 
   /**
-   * Atualizar logo
+   * Atualizar logo do painel administrativo
    */
   async updateLogo(userId: string, logoUrl: string | null): Promise<void> {
     const docRef = doc(db, 'users', userId, 'settings', 'profile');
@@ -185,19 +198,6 @@ export class FirebaseSettingsService {
       },
       { merge: true }
     );
-
-    try {
-      await setDoc(
-        doc(db, 'storeSettings', 'public'),
-        {
-          logo: logoUrl || null,
-          updatedAt: new Date(),
-        },
-        { merge: true }
-      );
-    } catch (e) {
-      console.warn('Erro ao sincronizar logo em storeSettings pública:', e);
-    }
   }
 
   /**
@@ -205,10 +205,12 @@ export class FirebaseSettingsService {
    */
   async updateCatalogLogo(userId: string, catalogLogoUrl: string | null): Promise<void> {
     const docRef = doc(db, 'users', userId, 'settings', 'profile');
+    const isRemove = catalogLogoUrl === null || catalogLogoUrl === '';
+
     await setDoc(
       docRef,
       {
-        catalogLogo: catalogLogoUrl === null ? deleteField() : catalogLogoUrl,
+        catalogLogo: isRemove ? deleteField() : catalogLogoUrl,
         userId,
         updatedAt: new Date(),
       },
@@ -219,7 +221,8 @@ export class FirebaseSettingsService {
       await setDoc(
         doc(db, 'storeSettings', 'public'),
         {
-          catalogLogo: catalogLogoUrl || null,
+          catalogLogo: isRemove ? deleteField() : catalogLogoUrl,
+          ...(isRemove ? { logo: deleteField() } : {}),
           updatedAt: new Date(),
         },
         { merge: true }
