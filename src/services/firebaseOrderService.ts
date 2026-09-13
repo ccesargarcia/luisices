@@ -20,6 +20,7 @@ import {
 } from 'firebase/firestore';
 import { db, auth } from '../lib/firebase';
 import { Order, OrderStatus, ProductionStep, ProductionWorkflow } from '../app/types';
+import { firebaseLedgerService } from './firebaseLedgerService';
 
 const ORDERS_COLLECTION = 'orders';
 
@@ -161,7 +162,12 @@ export class FirebaseOrderService {
       deletedAt: null,
     });
 
-    return this.getOrderById(newOrderRef.id);
+    const createdOrder = await this.getOrderById(newOrderRef.id);
+    firebaseLedgerService.recordOrderSale(createdOrder, userId).catch(err => {
+      console.warn('firebaseLedgerService: erro ao gravar venda no ledger:', err);
+    });
+
+    return createdOrder;
   }
 
   /**
@@ -366,6 +372,10 @@ export class FirebaseOrderService {
     await updateDoc(orderRef, {
       status,
     });
+
+    firebaseLedgerService.syncOrderStatus(orderId, status).catch(err => {
+      console.warn('firebaseLedgerService: erro ao sincronizar status:', err);
+    });
   }
 
   /**
@@ -417,6 +427,10 @@ export class FirebaseOrderService {
         ...cleanUpdates,
         updatedAt: new Date().toISOString(),
       });
+
+      firebaseLedgerService.syncOrderUpdates(orderId, cleanUpdates).catch(err => {
+        console.warn('firebaseLedgerService: erro ao sincronizar updates:', err);
+      });
     }
   }
 
@@ -464,7 +478,12 @@ export class FirebaseOrderService {
       deletedAt: null,
     });
 
-    return this.getOrderById(newOrderRef.id);
+    const createdOrder = await this.getOrderById(newOrderRef.id);
+    firebaseLedgerService.recordOrderSale(createdOrder, userId).catch(err => {
+      console.warn('firebaseLedgerService: erro ao gravar venda duplicada no ledger:', err);
+    });
+
+    return createdOrder;
   }
 
   /**
@@ -529,6 +548,10 @@ export class FirebaseOrderService {
 
     await updateDoc(orderRef, {
       deletedAt: Timestamp.now(),
+    });
+
+    firebaseLedgerService.markOrderDeletedFromOrders(orderId).catch(err => {
+      console.warn('firebaseLedgerService: erro ao marcar pedido como removido de orders:', err);
     });
   }
 
@@ -634,6 +657,12 @@ export class FirebaseOrderService {
     }
 
     await updateDoc(orderRef, updates);
+
+    if (updates.status) {
+      firebaseLedgerService.syncOrderStatus(orderId, updates.status).catch(err => {
+        console.warn('firebaseLedgerService: erro ao sincronizar status do workflow no ledger:', err);
+      });
+    }
   }
 
   /**

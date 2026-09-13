@@ -39,6 +39,7 @@ import { firebaseUserService } from '../../services/firebaseUserService';
 import { firebaseCustomerService } from '../../services/firebaseCustomerService';
 import { useAuth } from '../../contexts/AuthContext';
 import { useUserSettings } from '../../hooks/useUserSettings';
+import { useSalesLedger } from '../../hooks/useSalesLedger';
 import { DEFAULT_DASHBOARD_CARDS } from '../utils/dashboardCards';
 import { parseLocalDate } from '../utils/date';
 import { formatCurrency } from '../utils/currency';
@@ -102,8 +103,10 @@ export function Dashboard() {
     selectedFilterLabel,
     clearUserFilter,
     teamMembers,
+    selectedUserIds,
   } = useFirebaseOrders();
   const { settings } = useUserSettings();
+  const { stats: ledgerStats } = useSalesLedger({ teamUserIds: selectedUserIds });
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [selectedOrderIds, setSelectedOrderIds] = useState<string[]>([]);
   const [detailsOpen, setDetailsOpen] = useState(false);
@@ -173,11 +176,14 @@ export function Dashboard() {
     try {
       const order = orders.find(o => o.id === orderId);
       await firebaseOrderService.deleteOrder(orderId);
-      if (order?.customerId && order.price) {
+      // Preserva histórico se já gerou receita/foi concluído;
+      // apenas decrementa do cliente se era um rascunho pendente nunca pago
+      if (order?.customerId && order.price && order.status === 'pending' && (!order.payment || order.payment.status === 'pending')) {
         await firebaseCustomerService.decrementCustomerStats(order.customerId, order.price).catch(() => {});
       }
       setDetailsOpen(false);
       setSelectedOrder(null);
+      toast.success('Pedido removido!');
     } catch (err) {
       console.error('Erro ao deletar pedido:', err);
       toast.error('Não foi possível remover o pedido. Tente novamente.');
@@ -191,10 +197,13 @@ export function Dashboard() {
     const completed = orders.filter(o => o.status === 'completed').length;
     const cancelled = orders.filter(o => o.status === 'cancelled').length;
 
-    // Métricas financeiras
-    const totalRevenue = orders
+    // Métricas financeiras consolidadas (preserva vendas mesmo de pedidos arquivados/removidos do quadro)
+    const fallbackRevenue = orders
       .filter(o => o.status === 'completed')
       .reduce((sum, o) => sum + o.price, 0);
+    const totalRevenue = ledgerStats.completedRevenue > 0
+      ? ledgerStats.completedRevenue
+      : fallbackRevenue;
 
     // Pagamentos
     const paidOrders = orders.filter(o => o.payment?.status === 'paid').length;
@@ -206,7 +215,9 @@ export function Dashboard() {
       !o.payment || o.payment.status === 'pending' || o.payment.status === 'partial'
     ).length;
 
-    const totalPaid = orders.reduce((sum, o) => sum + (o.payment?.paidAmount || 0), 0);
+    const totalPaid = ledgerStats.totalPaid > 0
+      ? ledgerStats.totalPaid
+      : orders.reduce((sum, o) => sum + (o.payment?.paidAmount || 0), 0);
 
     // "A Receber": total do que ainda não foi pago em pedidos ativos
     const totalPending = activeOrders
@@ -221,8 +232,15 @@ export function Dashboard() {
       .filter(o => o.status === 'pending' || o.status === 'in-progress')
       .reduce((sum, o) => sum + o.price, 0);
 
-    // Ticket médio
-    const averageOrderValue = total > 0 ? orders.reduce((sum, o) => sum + o.price, 0) / total : 0;
+    // Ticket médio: DESCARTA CANCELADOS!
+    const validOrders = orders.filter(o => o.status !== 'cancelled');
+    const fallbackAverageOrderValue = validOrders.length > 0
+      ? validOrders.reduce((sum, o) => sum + o.price, 0) / validOrders.length
+      : 0;
+
+    const averageOrderValue = ledgerStats.averageTicket > 0
+      ? ledgerStats.averageTicket
+      : fallbackAverageOrderValue;
 
     // Produtos mais vendidos
     const productCounts = new Map<string, { count: number; revenue: number }>();
@@ -396,7 +414,7 @@ export function Dashboard() {
       await Promise.all(
         ordersToDelete.map(async (order) => {
           await firebaseOrderService.deleteOrder(order.id);
-          if (order.customerId && order.price) {
+          if (order.customerId && order.price && order.status === 'pending' && (!order.payment || order.payment.status === 'pending')) {
             await firebaseCustomerService.decrementCustomerStats(order.customerId, order.price).catch(() => {});
           }
         }),

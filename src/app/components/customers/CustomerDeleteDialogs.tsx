@@ -51,9 +51,13 @@ export function SingleCustomerDeleteDialog({
                 </span>
               </div>
             ) : (
-              <span>
-                Tem certeza que deseja excluir o cliente <strong>{customer?.name}</strong>?
-                Esta ação não pode ser desfeita.
+              <span className="space-y-1 block">
+                <span>
+                  Tem certeza que deseja excluir o cliente <strong>{customer?.name}</strong>?
+                </span>
+                <span className="block text-xs text-muted-foreground mt-1">
+                  O contato será removido da sua lista, mas o histórico financeiro de vendas já realizadas será mantido nos relatórios.
+                </span>
               </span>
             )}
           </AlertDialogDescription>
@@ -116,9 +120,14 @@ export function BulkCustomerDeleteDialog({
                 </ul>
               </div>
             ) : (
-              <span>
-                Tem certeza que deseja excluir <strong>{selectedCount}</strong> cliente
-                {selectedCount !== 1 ? 's' : ''}? Esta ação não pode ser desfeita.
+              <span className="space-y-1 block">
+                <span>
+                  Tem certeza que deseja excluir <strong>{selectedCount}</strong> cliente
+                  {selectedCount !== 1 ? 's' : ''}?
+                </span>
+                <span className="block text-xs text-muted-foreground mt-1">
+                  Os contatos serão removidos da sua lista, mas o histórico financeiro de vendas já realizadas será mantido nos relatórios.
+                </span>
               </span>
             )}
           </AlertDialogDescription>

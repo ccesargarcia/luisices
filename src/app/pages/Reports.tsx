@@ -38,8 +38,10 @@ import { useFirebaseQuotes } from '../../hooks/useFirebaseQuotes';
 import { useFirebaseCustomers } from '../../hooks/useFirebaseCustomers';
 import { useUserSettings } from '../../hooks/useUserSettings';
 import { AdminTeamFilter } from '../components/AdminTeamFilter';
+import { useSalesLedger } from '../../hooks/useSalesLedger';
+import { Input } from '../components/ui/input';
 
-type Period = 'week' | 'month' | 'quarter' | 'year';
+type Period = 'today' | 'week' | 'month' | 'quarter' | 'year' | 'all' | 'custom';
 
 const STATUS_COLORS: Record<string, string> = {
   completed:     '#10B981',
@@ -66,18 +68,38 @@ const PAYMENT_LABELS: Record<string, string> = {
 };
 
 const PERIOD_LABELS: Record<Period, string> = {
+  today:   'Hoje',
   week:    'Última Semana',
   month:   'Último Mês',
   quarter: 'Último Trimestre',
   year:    'Último Ano',
+  all:     'Todo o Histórico',
+  custom:  'Personalizado',
 };
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function getDateRange(period: Period, offset = 0) {
+function getDateRange(period: Period, offset = 0, customRange?: { start?: string; end?: string }) {
   const now  = new Date();
-  const days: Record<Period, number> = { week: 7, month: 30, quarter: 90, year: 365 };
-  const d    = days[period];
+  if (period === 'today') {
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+    todayStart.setDate(todayStart.getDate() - offset);
+    const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+    todayEnd.setDate(todayEnd.getDate() - offset);
+    return { start: todayStart, end: todayEnd };
+  }
+  if (period === 'all') {
+    return { start: new Date(2000, 0, 1), end: new Date(2100, 0, 1) };
+  }
+  if (period === 'custom') {
+    const cStart = customRange?.start ? new Date(customRange.start) : new Date(2000, 0, 1);
+    cStart.setHours(0, 0, 0, 0);
+    const cEnd = customRange?.end ? new Date(customRange.end) : new Date();
+    cEnd.setHours(23, 59, 59, 999);
+    return { start: cStart, end: cEnd };
+  }
+  const days: Record<string, number> = { week: 7, month: 30, quarter: 90, year: 365 };
+  const d    = days[period] || 30;
   const end  = new Date(now); end.setDate(now.getDate() - d * offset);
   const start = new Date(now); start.setDate(now.getDate() - d * (offset + 1));
   return { start, end };
@@ -153,64 +175,117 @@ function KpiCard({ title, value, sub, icon: Icon, iconClass, trend }: {
 export function Reports() {
   const {
     orders,
-    loading,
+    loading: ordersLoading,
     isFilterActive,
     selectedFilterLabel,
     clearUserFilter,
+    selectedUserIds,
   } = useFirebaseOrders();
   const { quotes }                 = useFirebaseQuotes();
   const { customers }              = useFirebaseCustomers();
   const { settings }               = useUserSettings();
   const [period, setPeriod]        = useState<Period>('month');
+  const [customStart, setCustomStart] = useState<string>('');
+  const [customEnd, setCustomEnd]     = useState<string>('');
   const [selTags, setSelTags]      = useState<string[]>([]);
+
+  const {
+    allSales,
+    loading: ledgerLoading,
+  } = useSalesLedger({ teamUserIds: selectedUserIds });
+
+  const loading = ordersLoading && ledgerLoading;
 
   useEffect(() => {
     if (settings?.defaultReportPeriod) setPeriod(settings.defaultReportPeriod);
   }, [settings?.defaultReportPeriod]);
 
-  const { start: curStart, end: curEnd }   = getDateRange(period, 0);
-  const { start: prevStart, end: prevEnd } = getDateRange(period, 1);
+  const { start: curStart, end: curEnd }   = useMemo(
+    () => getDateRange(period, 0, { start: customStart, end: customEnd }),
+    [period, customStart, customEnd],
+  );
+  const { start: prevStart, end: prevEnd } = useMemo(
+    () => getDateRange(period, 1, { start: customStart, end: customEnd }),
+    [period, customStart, customEnd],
+  );
 
-  const curOrders = useMemo(() =>
-    orders.filter(o => {
-      const d = new Date(o.createdAt);
+  // Vendas históricas consolidadas do ledger (preserva vendas de clientes/pedidos removidos)
+  const sourceSales = useMemo(() => {
+    if (allSales.length > 0) return allSales;
+    return orders.map(o => ({
+      id: o.id,
+      orderId: o.id,
+      orderNumber: o.orderNumber,
+      userId: o.userId || '',
+      customerId: o.customerId,
+      customerName: o.customerName || 'Cliente não informado',
+      productName: o.productName,
+      quantity: o.quantity || 1,
+      amount: o.price || 0,
+      paymentStatus: o.payment?.status || 'pending',
+      paidAmount: o.payment?.paidAmount || 0,
+      paymentMethod: o.payment?.method || null,
+      date: o.createdAt,
+      status: o.status,
+      tags: o.tags,
+      createdAt: o.createdAt,
+    } as any));
+  }, [allSales, orders]);
+
+  const curSales = useMemo(() =>
+    sourceSales.filter(s => {
+      const d = new Date(s.date || s.createdAt);
       if (d < curStart || d > curEnd) return false;
       if (selTags.length > 0) {
-        const t = o.tags?.map(x => x.name) ?? [];
-        return selTags.every(s => t.includes(s));
+        const t = s.tags?.map((x: any) => x.name) ?? [];
+        return selTags.every(sel => t.includes(sel));
       }
       return true;
     }),
-    [orders, curStart, curEnd, selTags],
+    [sourceSales, curStart, curEnd, selTags],
   );
 
-  const prevOrders = useMemo(() =>
-    orders.filter(o => { const d = new Date(o.createdAt); return d >= prevStart && d <= prevEnd; }),
-    [orders, prevStart, prevEnd],
-  );
+  const prevSales = useMemo(() => {
+    if (period === 'all' || period === 'custom') return [];
+    return sourceSales.filter(s => {
+      const d = new Date(s.date || s.createdAt);
+      return d >= prevStart && d <= prevEnd;
+    });
+  }, [sourceSales, prevStart, prevEnd, period]);
 
   const allTags = useMemo(() => {
     const map = new Map<string, Tag>();
-    orders
-      .filter(o => { const d = new Date(o.createdAt); return d >= curStart && d <= curEnd; })
-      .forEach(o => o.tags?.forEach(t => map.set(t.name, t)));
+    sourceSales
+      .filter(s => { const d = new Date(s.date || s.createdAt); return d >= curStart && d <= curEnd; })
+      .forEach(s => s.tags?.forEach((t: Tag) => map.set(t.name, t)));
     return Array.from(map.values());
-  }, [orders, curStart, curEnd]);
+  }, [sourceSales, curStart, curEnd]);
 
   const stats = useMemo(() => {
-    const total     = curOrders.length;
-    const completed = curOrders.filter(o => o.status === 'completed').length;
-    const cancelled = curOrders.filter(o => o.status === 'cancelled').length;
-    const inProg    = curOrders.filter(o => o.status === 'in-progress').length;
-    const pending   = curOrders.filter(o => o.status === 'pending').length;
+    const total     = curSales.length;
+    const completed = curSales.filter(s => s.status === 'completed').length;
+    const cancelled = curSales.filter(s => s.status === 'cancelled').length;
+    const inProg    = curSales.filter(s => s.status === 'in-progress').length;
+    const pending   = curSales.filter(s => s.status === 'pending').length;
 
-    const revenue    = curOrders.filter(o => o.status === 'completed').reduce((s, o) => s + o.price, 0);
-    const avgTicket  = total > 0 ? curOrders.reduce((s, o) => s + o.price, 0) / total : 0;
-    const conversion = total > 0 ? (completed / total) * 100 : 0;
+    // Faturamento realizado
+    const revenue    = curSales.filter(s => s.status === 'completed').reduce((s, o) => s + (o.amount || 0), 0);
 
-    const prevRevenue  = prevOrders.filter(o => o.status === 'completed').reduce((s, o) => s + o.price, 0);
-    const prevAvg      = prevOrders.length > 0 ? prevOrders.reduce((s, o) => s + o.price, 0) / prevOrders.length : 0;
-    const prevConv     = prevOrders.length > 0 ? (prevOrders.filter(o => o.status === 'completed').length / prevOrders.length) * 100 : 0;
+    // Regra: DESCARTA CANCELADOS NO TICKET MÉDIO E CONVERSÃO
+    const validSales = curSales.filter(s => s.status !== 'cancelled');
+    const validTotal = validSales.length;
+    const avgTicket  = completed > 0
+      ? revenue / completed
+      : (validTotal > 0 ? validSales.reduce((s, o) => s + (o.amount || 0), 0) / validTotal : 0);
+    const conversion = validTotal > 0 ? (completed / validTotal) * 100 : 0;
+
+    const prevCompletedSales = prevSales.filter(s => s.status === 'completed');
+    const prevValidSales = prevSales.filter(s => s.status !== 'cancelled');
+    const prevRevenue  = prevCompletedSales.reduce((s, o) => s + (o.amount || 0), 0);
+    const prevAvg      = prevCompletedSales.length > 0
+      ? prevRevenue / prevCompletedSales.length
+      : (prevValidSales.length > 0 ? prevValidSales.reduce((s, o) => s + (o.amount || 0), 0) / prevValidSales.length : 0);
+    const prevConv     = prevValidSales.length > 0 ? (prevCompletedSales.length / prevValidSales.length) * 100 : 0;
 
     const statusData = [
       { name: STATUS_LABELS['completed'],   value: completed, color: STATUS_COLORS['completed'],   key: 'completed' },
@@ -220,10 +295,10 @@ export function Reports() {
     ].filter(d => d.value > 0);
 
     const dailyMap = new Map<string, number>();
-    curOrders.forEach(o => {
+    curSales.forEach(o => {
       if (o.status === 'completed') {
-        const key = new Date(o.createdAt).toISOString().split('T')[0];
-        dailyMap.set(key, (dailyMap.get(key) ?? 0) + o.price);
+        const key = new Date(o.date || o.createdAt).toISOString().split('T')[0];
+        dailyMap.set(key, (dailyMap.get(key) ?? 0) + (o.amount || 0));
       }
     });
     const dailySales = Array.from(dailyMap.entries())
@@ -231,9 +306,12 @@ export function Reports() {
       .map(([date, total]) => ({ date: formatShortDate(date), total }));
 
     const prodMap = new Map<string, { count: number; revenue: number }>();
-    curOrders.forEach(o => {
+    curSales.forEach(o => {
       const cur = prodMap.get(o.productName) ?? { count: 0, revenue: 0 };
-      prodMap.set(o.productName, { count: cur.count + o.quantity, revenue: cur.revenue + (o.status === 'completed' ? o.price : 0) });
+      prodMap.set(o.productName, {
+        count: cur.count + (o.quantity || 1),
+        revenue: cur.revenue + (o.status === 'completed' ? (o.amount || 0) : 0),
+      });
     });
     const topProducts = Array.from(prodMap.entries())
       .map(([name, d]) => ({ name, ...d }))
@@ -241,10 +319,13 @@ export function Reports() {
       .slice(0, 8);
 
     const custMap = new Map<string, { count: number; revenue: number }>();
-    curOrders.forEach(o => {
+    curSales.forEach(o => {
       if (!o.customerName) return;
       const cur = custMap.get(o.customerName) ?? { count: 0, revenue: 0 };
-      custMap.set(o.customerName, { count: cur.count + 1, revenue: cur.revenue + (o.status === 'completed' ? o.price : 0) });
+      custMap.set(o.customerName, {
+        count: cur.count + 1,
+        revenue: cur.revenue + (o.status === 'completed' ? (o.amount || 0) : 0),
+      });
     });
     const topCustomers = Array.from(custMap.entries())
       .map(([name, d]) => ({ name, ...d }))
@@ -252,16 +333,28 @@ export function Reports() {
       .slice(0, 8);
 
     const payMap = new Map<string, { total: number; count: number }>();
-    curOrders.forEach(o => {
-      if (o.payment?.method && o.payment.paidAmount > 0) {
-        const cur = payMap.get(o.payment.method) ?? { total: 0, count: 0 };
-        payMap.set(o.payment.method, { total: cur.total + o.payment.paidAmount, count: cur.count + 1 });
+    curSales.forEach(o => {
+      const method = (o as any).paymentMethod || (o as any).payment?.method;
+      const paid = (o as any).paidAmount || (o as any).payment?.paidAmount || 0;
+      if (method && paid > 0) {
+        const cur = payMap.get(method) ?? { total: 0, count: 0 };
+        payMap.set(method, { total: cur.total + paid, count: cur.count + 1 });
       }
     });
     const paymentData = Array.from(payMap.entries())
-      .map(([method, d], i) => ({ method, label: PAYMENT_LABELS[method] ?? method, ...d, color: PAYMENT_COLORS[i % PAYMENT_COLORS.length] }))
+      .map(([method, d], i) => ({
+        method,
+        label: PAYMENT_LABELS[method] ?? method,
+        ...d,
+        color: PAYMENT_COLORS[i % PAYMENT_COLORS.length],
+      }))
       .sort((a, b) => b.total - a.total);
     const totalPaid = paymentData.reduce((s, p) => s + p.total, 0);
+
+    // Cancelados descartados
+    const cancelledAmount = curSales
+      .filter(s => s.status === 'cancelled')
+      .reduce((s, o) => s + (o.amount || 0), 0);
 
     // ── Quote stats ───────────────────────────────────────────────────────────
     const curQuotes  = quotes.filter(q => { const d = new Date(q.createdAt); return d >= curStart && d <= curEnd; });
@@ -279,22 +372,23 @@ export function Reports() {
     return {
       total, completed, cancelled, inProg, pending,
       revenue, prevRevenue, avgTicket, prevAvg, conversion, prevConv,
-      prevTotal: prevOrders.length,
+      prevTotal: prevSales.length,
+      cancelledAmount,
       statusData, dailySales, topProducts, topCustomers, paymentData, totalPaid,
       quoteCount, quoteValue, quoteApproved, quoteConversion, prevQuoteCount,
       newCustomers, prevNewCustomers,
     };
-  }, [curOrders, prevOrders, quotes, customers, curStart, curEnd, prevStart, prevEnd]);
+  }, [curSales, prevSales, quotes, customers, curStart, curEnd, prevStart, prevEnd]);
 
   const exportCsv = () => {
     const rows = [
       ['Relatório de Vendas', PERIOD_LABELS[period]],
       [],
-      ['Receita Total', formatCurrency(stats.revenue)],
-      ['Ticket Médio', formatCurrency(stats.avgTicket)],
+      ['Receita Total Realizada', formatCurrency(stats.revenue)],
+      ['Ticket Médio (sem cancelados)', formatCurrency(stats.avgTicket)],
       ['Total Pedidos', stats.total],
       ['Concluídos', stats.completed],
-      ['Cancelados', stats.cancelled],
+      ['Cancelados (Descartados)', `${stats.cancelled} (${formatCurrency(stats.cancelledAmount)})`],
       ['Taxa de Conversão', `${stats.conversion.toFixed(1)}%`],
       [],
       ['Orçamentos', stats.quoteCount],
@@ -343,7 +437,7 @@ export function Reports() {
       {/* Period selector and team filter */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div className="glass-chip flex w-fit flex-wrap gap-1 rounded-lg p-1">
-          {(['week', 'month', 'quarter', 'year'] as Period[]).map(p => (
+          {(['today', 'week', 'month', 'quarter', 'year', 'all', 'custom'] as Period[]).map(p => (
             <button
               key={p}
               onClick={() => setPeriod(p)}
@@ -352,7 +446,19 @@ export function Reports() {
                 period === p ? 'bg-primary/15 text-primary shadow-sm' : 'text-muted-foreground hover:text-foreground',
               )}
             >
-              {p === 'week' ? 'Semana' : p === 'month' ? 'Mês' : p === 'quarter' ? 'Trimestre' : 'Ano'}
+              {p === 'today'
+                ? 'Hoje'
+                : p === 'week'
+                  ? 'Semana'
+                  : p === 'month'
+                    ? 'Mês'
+                    : p === 'quarter'
+                      ? 'Trimestre'
+                      : p === 'year'
+                        ? 'Ano'
+                        : p === 'all'
+                          ? 'Tudo'
+                          : 'Personalizado'}
             </button>
           ))}
         </div>
@@ -362,12 +468,32 @@ export function Reports() {
         </div>
       </div>
 
+      {/* Custom date range inputs */}
+      {period === 'custom' && (
+        <div className="flex items-center gap-3 bg-muted/40 p-3 rounded-lg border border-border/60 flex-wrap">
+          <span className="text-xs font-medium text-muted-foreground">De:</span>
+          <Input
+            type="date"
+            className="w-auto h-8 text-sm"
+            value={customStart}
+            onChange={(e) => setCustomStart(e.target.value)}
+          />
+          <span className="text-xs font-medium text-muted-foreground">Até:</span>
+          <Input
+            type="date"
+            className="w-auto h-8 text-sm"
+            value={customEnd}
+            onChange={(e) => setCustomEnd(e.target.value)}
+          />
+        </div>
+      )}
+
       {isFilterActive && (
         <div className="flex items-center justify-between gap-3 rounded-lg border border-primary/30 bg-primary/5 px-4 py-2.5 text-sm text-primary shadow-xs">
           <div className="flex items-center gap-2 min-w-0">
             <Users className="size-4 shrink-0" />
             <span className="truncate">
-              Relatório filtrado por: <strong>{selectedFilterLabel}</strong> ({curOrders.length} pedidos no período)
+              Relatório filtrado por: <strong>{selectedFilterLabel}</strong> ({curSales.length} pedidos no período)
             </span>
           </div>
           <Button
@@ -426,7 +552,7 @@ export function Reports() {
         <KpiCard
           title="Ticket Médio"
           value={formatCurrency(stats.avgTicket)}
-          sub={`${stats.total} pedidos`}
+          sub={stats.cancelled > 0 ? `${stats.total - stats.cancelled} válidos (${stats.cancelled} desc.)` : `${stats.total} pedidos`}
           icon={BarChart3}
           iconClass="bg-violet-100 text-violet-600 dark:bg-violet-900/30"
           trend={<Trend current={stats.avgTicket} previous={stats.prevAvg} />}
@@ -434,7 +560,7 @@ export function Reports() {
         <KpiCard
           title="Total de Pedidos"
           value={String(stats.total)}
-          sub={`${stats.cancelled} cancelados`}
+          sub={stats.cancelled > 0 ? `${stats.cancelled} cancelados descartados` : 'Nenhum cancelado'}
           icon={Package}
           iconClass="bg-blue-100 text-blue-600 dark:bg-blue-900/30"
           trend={<Trend current={stats.total} previous={stats.prevTotal} />}

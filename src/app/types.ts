@@ -523,3 +523,32 @@ export interface EmailUsage {
   };
   source?: 'resend_api' | 'firestore_fallback' | 'default';
 }
+
+// Histórico Financeiro de Vendas (Sales Ledger)
+export interface SaleRecord {
+  id: string; // id único, mapeado para o orderId para evitar duplicações
+  orderId: string;
+  orderNumber?: string;
+  userId: string; // Dono da conta / criador do pedido
+  assignedTo?: string; // UID do funcionário atribuído
+  assignedToName?: string;
+  customerId?: string | null;
+  customerName: string;
+  customerPhone?: string | null;
+  productName: string;
+  quantity: number;
+  amount: number; // Valor monetário total
+  paymentStatus: PaymentStatus;
+  paidAmount: number;
+  paymentMethod?: PaymentMethod | null;
+  date: string; // ISO string para ordenação e filtro por período
+  deliveryDate?: string;
+  status: OrderStatus; // 'completed' | 'in-progress' | 'pending' | 'cancelled'
+  isDeletedFromOrders?: boolean; // Se o pedido foi removido da visão operacional
+  notes?: string | null;
+  tags?: Tag[] | null;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export type LedgerPeriod = 'today' | 'yesterday' | 'week' | 'month' | 'quarter' | 'year' | 'all' | 'custom';

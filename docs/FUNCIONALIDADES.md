@@ -376,7 +376,14 @@ Relatórios apoiam decisões comerciais e operacionais.
 - Métodos de pagamento.
 - Produtos mais vendidos.
 - Clientes com maior receita.
-- Tags e filtros por período.
+- Tags e filtros por período flexível (Hoje, Semana, Mês, Trimestre, Ano, Todo o Histórico ou Personalizado).
+- Suporte multi-usuário com filtro de equipe para administradores.
+
+### Histórico Financeiro e Descarte de Cancelados
+
+- **Independência Operacional x Contábil:** Os registros financeiros de vendas (`salesLedger`) são preservados de forma independente dos cadastros operacionais. A exclusão de um cliente da lista de contatos ou a remoção/arquivamento de um pedido da visualização de trabalho não apaga o histórico de faturamento nem o ticket médio consolidado da empresa.
+- **Descarte de Cancelados:** Pedidos com status cancelado são automaticamente descartados das métricas de faturamento e ticket médio para garantir relatórios fiéis.
+- **Busca por Períodos Customizados:** O usuário e administradores podem consultar relatórios em janelas de tempo personalizadas com comparação automática com períodos anteriores.
 
 ### Períodos
 

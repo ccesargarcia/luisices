@@ -25,6 +25,7 @@ import {
   BulkCustomerDeleteDialog,
 } from '../components/customers/CustomerDeleteDialogs';
 import { CustomerStatsCards } from '../components/customers/CustomerStatsCards';
+import { useSalesLedger } from '../../hooks/useSalesLedger';
 import { toast } from 'sonner';
 
 const PAGE_SIZE = 12;
@@ -32,6 +33,7 @@ const PAGE_SIZE = 12;
 export function Customers() {
   const { user, hasPermission } = useAuth();
   const { allOrders } = useOrders();
+  const { allTimeStats } = useSalesLedger();
 
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
@@ -169,15 +171,27 @@ export function Customers() {
     });
   };
 
-  // Estatísticas
+  // Estatísticas monetárias e da carteira de clientes
   const stats = useMemo(() => {
     const total = customers.length;
-    const totalRevenue = customers.reduce((sum, c) => sum + (c.totalSpent || 0), 0);
-    const totalOrders = customers.reduce((sum, c) => sum + (c.totalOrders || 0), 0);
-    const averagePerCustomer = total > 0 ? totalRevenue / total : 0;
+    // Histórico de faturamento e ticket médio consolidados do ledger (preserva valores mesmo se clientes forem excluídos)
+    const ledgerRevenue = allTimeStats.totalAllTimeRevenue || allTimeStats.totalAllTimeAmount;
+    const ledgerOrders = allTimeStats.totalAllTimeCount;
+
+    const totalRevenue = ledgerRevenue > 0
+      ? ledgerRevenue
+      : customers.reduce((sum, c) => sum + (c.totalSpent || 0), 0);
+
+    const totalOrders = ledgerOrders > 0
+      ? ledgerOrders
+      : customers.reduce((sum, c) => sum + (c.totalOrders || 0), 0);
+
+    const averagePerCustomer = totalOrders > 0
+      ? totalRevenue / totalOrders
+      : (total > 0 ? totalRevenue / total : 0);
 
     return { total, totalRevenue, totalOrders, averagePerCustomer };
-  }, [customers]);
+  }, [customers, allTimeStats]);
 
   // Ações de seleção e modais
   const toggleCustomerSelection = (customerId: string, selected: boolean) => {
