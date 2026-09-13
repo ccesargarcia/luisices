@@ -51,6 +51,7 @@ const Pricing        = lazyWithRetry(() => import('./pages/Pricing').then(m => (
 const FixNegativeValues = lazyWithRetry(() => import('./pages/FixNegativeValues').then(m => ({ default: m.default })));
 const PublicCatalog  = lazyWithRetry(() => import('./pages/PublicCatalog').then(m => ({ default: m.PublicCatalog })));
 const StoreCustomization = lazyWithRetry(() => import('./pages/StoreCustomization').then(m => ({ default: m.StoreCustomization })));
+const StoreProducts = lazyWithRetry(() => import('./pages/StoreProducts').then(m => ({ default: m.StoreProducts })));
 
 function PageLoader() {
   return (
@@ -174,6 +175,14 @@ export const router = isCatalogSubdomain
       {
         path: 'personalizar-lojinha',
         element: <Lazy><PermissionRoute check={p => p.store ?? false} allowUserRole><StoreCustomization /></PermissionRoute></Lazy>,
+      },
+      {
+        path: 'produtos-lojinha',
+        element: <Lazy><PermissionRoute check={p => p.storeProducts?.view ?? p.store ?? false} allowUserRole><StoreProducts /></PermissionRoute></Lazy>,
+      },
+      {
+        path: 'lojinha/produtos',
+        element: <Navigate to="/produtos-lojinha" replace />,
       },
       {
         path: 'settings',  // Alias em inglês

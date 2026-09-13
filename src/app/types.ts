@@ -279,6 +279,24 @@ export interface Permission {
   emails?: boolean;
   pricing?: boolean;
   store?: boolean;
+  storeProducts?: ModulePermission;
+}
+
+export interface StoreProduct {
+  id: string;
+  name: string;
+  price: number;
+  category: string;
+  description: string;
+  imageUrl?: string;
+  leadTimeDays: number;
+  badge?: string;
+  isCustomizable: boolean;
+  active: boolean;
+  order?: number;
+  internalProductId?: string;
+  createdAt: string;
+  updatedAt?: string;
 }
 
 // ─── Pricing & Costs (Papelaria Personalizada) ────────────────────────────────
@@ -402,6 +420,7 @@ export const ADMIN_PERMISSIONS: Permission = {
   emails:    true,
   pricing:   true,
   store:     true,
+  storeProducts: { view: true, create: true, edit: true, delete: true },
 };
 
 export const DEFAULT_USER_PERMISSIONS: Permission = {
@@ -418,6 +437,7 @@ export const DEFAULT_USER_PERMISSIONS: Permission = {
   emails:    false,
   pricing:   true,
   store:     true,
+  storeProducts: { view: true, create: true, edit: true, delete: false },
 };
 
 export const EMPLOYEE_PERMISSIONS: Permission = {
@@ -434,6 +454,7 @@ export const EMPLOYEE_PERMISSIONS: Permission = {
   emails:    false,
   pricing:   false,
   store:     false,
+  storeProducts: { view: false, create: false, edit: false, delete: false },
 };
 
 // Tipos para sistema de compartilhamento de dados

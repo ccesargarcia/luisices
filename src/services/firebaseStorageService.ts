@@ -52,6 +52,24 @@ export class FirebaseStorageService {
   }
 
   /**
+   * Upload de foto de produto da vitrine da lojinha pública
+   */
+  async uploadStoreProductPhoto(file: File, productId: string): Promise<string> {
+    if (!file.type.startsWith('image/')) throw new Error('Arquivo deve ser uma imagem');
+    if (file.size > 5 * 1024 * 1024) throw new Error('Imagem muito grande. Máximo: 5MB');
+
+    const timestamp = Date.now();
+    const ext = file.name.split('.').pop() || 'jpg';
+    const fileName = `store_product_${productId}_${timestamp}.${ext}`;
+    const storageRef = ref(storage, `store/products/${fileName}`);
+    await uploadBytes(storageRef, file, {
+      contentType: file.type,
+      customMetadata: { uploadedAt: new Date().toISOString() },
+    });
+    return getDownloadURL(storageRef);
+  }
+
+  /**
    * Upload de imagem com redimensionamento automático
    * @param file - Arquivo de imagem
    * @param userId - ID do usuário

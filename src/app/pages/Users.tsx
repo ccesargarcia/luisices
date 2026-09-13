@@ -75,23 +75,28 @@ interface ModuleConfig {
 }
 
 const MODULES: ModuleConfig[] = [
-  { key: 'dashboard',  label: 'Dashboard',  type: 'boolean' },
-  { key: 'orders',     label: 'Pedidos',    type: 'crud' },
-  { key: 'customers',  label: 'Clientes',   type: 'crud' },
-  { key: 'products',   label: 'Produtos',   type: 'crud' },
-  { key: 'quotes',     label: 'Orçamentos', type: 'crud' },
-  { key: 'gallery',    label: 'Galeria',    type: 'gallery' },
-  { key: 'exchanges',  label: 'Permutas',   type: 'boolean' },
-  { key: 'reports',    label: 'Relatórios', type: 'boolean' },
-  { key: 'store',      label: 'Personalizar Lojinha Online', type: 'boolean' },
-  { key: 'settings',   label: 'Configurações', type: 'boolean' },
-  { key: 'users',      label: 'Usuários',   type: 'crud' },
-  { key: 'emails',     label: 'Central de E-mails', type: 'boolean' },
-  { key: 'pricing',    label: 'Precificação & Custos', type: 'boolean' },
+  { key: 'dashboard',     label: 'Dashboard',                          type: 'boolean' },
+  { key: 'orders',        label: 'Pedidos',                            type: 'crud' },
+  { key: 'customers',     label: 'Clientes',                           type: 'crud' },
+  { key: 'products',      label: 'Produtos do Ateliê (Internos)',      type: 'crud' },
+  { key: 'storeProducts', label: 'Lojinha Online - Produtos da Vitrine', type: 'crud' },
+  { key: 'store',         label: 'Lojinha Online - Aparência & Banners', type: 'boolean' },
+  { key: 'quotes',        label: 'Orçamentos',                         type: 'crud' },
+  { key: 'gallery',       label: 'Galeria',                            type: 'gallery' },
+  { key: 'exchanges',     label: 'Permutas',                           type: 'boolean' },
+  { key: 'reports',       label: 'Relatórios',                         type: 'boolean' },
+  { key: 'settings',      label: 'Configurações',                      type: 'boolean' },
+  { key: 'users',         label: 'Usuários',                           type: 'crud' },
+  { key: 'emails',        label: 'Central de E-mails',                 type: 'boolean' },
+  { key: 'pricing',       label: 'Precificação & Custos',              type: 'boolean' },
 ];
 
 function deepClonePermission(p: Permission): Permission {
-  return JSON.parse(JSON.stringify(p));
+  const clone: Permission = JSON.parse(JSON.stringify(p || {}));
+  if (!clone.storeProducts) {
+    clone.storeProducts = { view: false, create: false, edit: false, delete: false };
+  }
+  return clone;
 }
 
 function formatUserDate(value?: string) {
@@ -116,6 +121,9 @@ function PermissionMatrix({ permissions, onChange }: PermissionMatrixProps) {
 
   function toggleCrudField(key: keyof Permission, field: keyof ModulePermission) {
     const next = deepClonePermission(permissions);
+    if (!next[key]) {
+      (next as any)[key] = { view: false, create: false, edit: false, delete: false };
+    }
     const mod = next[key] as ModulePermission;
     mod[field] = !mod[field];
     onChange(next);
@@ -150,7 +158,7 @@ function PermissionMatrix({ permissions, onChange }: PermissionMatrixProps) {
                 <div key={field} className="flex items-center gap-1.5">
                   <Checkbox
                     id={`perm-${key}-${field}`}
-                    checked={(permissions[key] as ModulePermission)[field]}
+                    checked={Boolean((permissions[key] as ModulePermission)?.[field])}
                     onCheckedChange={() => toggleCrudField(key, field)}
                   />
                   <Label htmlFor={`perm-${key}-${field}`} className="text-xs font-normal capitalize">

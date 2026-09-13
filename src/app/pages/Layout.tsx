@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router';
-import { LayoutDashboard, Calendar, Users, Package2, LogOut, Settings as SettingsIcon, BarChart3, FileText, ShoppingBag, Images, AtSign, Globe, Phone, Mail, MapPin, MessageCircle, ArrowLeftRight, UserCog, Info, PanelLeftClose, PanelLeftOpen, MoreHorizontal, HelpCircle, Coins, ExternalLink, Store } from 'lucide-react';
+import { LayoutDashboard, Calendar, Users, Package2, Package, LogOut, Settings as SettingsIcon, BarChart3, FileText, ShoppingBag, Images, AtSign, Globe, Phone, Mail, MapPin, MessageCircle, ArrowLeftRight, UserCog, Info, PanelLeftClose, PanelLeftOpen, MoreHorizontal, HelpCircle, Coins, ExternalLink, Store, Palette, ChevronDown, ChevronRight } from 'lucide-react';
 import { cn } from '../components/ui/utils';
 import { useAuth } from '../../contexts/AuthContext';
 import { useUserSettings } from '../../hooks/useUserSettings';
@@ -62,41 +62,96 @@ export function Layout() {
     return user.displayName[0].toUpperCase();
   };
 
+  const [storeSubmenuOpen, setStoreSubmenuOpen] = useState(true);
+
+  // Auto-expandir submenu da lojinha se estiver em uma rota da lojinha
+  useEffect(() => {
+    if (location.pathname.startsWith('/produtos-lojinha') || location.pathname.startsWith('/personalizar-lojinha')) {
+      setStoreSubmenuOpen(true);
+    }
+  }, [location.pathname]);
+
   const allNavItems = [
     { name: 'Dashboard',       href: '/',           icon: LayoutDashboard, check: (p: any) => p.dashboard },
     { name: 'Agenda Semanal', href: '/agenda',      icon: Calendar,        check: (p: any) => p.orders?.view },
     { name: 'Clientes',       href: '/clientes',    icon: Users,           check: (p: any) => p.customers?.view },
     { name: 'Relatórios',     href: '/relatorios',  icon: BarChart3,       check: (p: any) => p.reports, allowUserRole: true },
     { name: 'Orçamentos',     href: '/orcamentos',  icon: FileText,        check: (p: any) => p.quotes?.view },
-    { name: 'Produtos',       href: '/produtos',    icon: ShoppingBag,     check: (p: any) => p.products?.view },
+    { name: 'Produtos do Ateliê', href: '/produtos', icon: Package,        check: (p: any) => p.products?.view },
     { name: 'Precificação',   href: '/precificacao',icon: Coins,           check: (p: any) => p.pricing ?? false, allowUserRole: true },
     { name: 'Galeria',        href: '/galeria',     icon: Images,          check: (p: any) => p.gallery?.view },
     { name: 'Permutas',       href: '/permutas',    icon: ArrowLeftRight,  check: (p: any) => p.exchanges, allowUserRole: true },
-    { name: 'Personalizar Lojinha', href: '/personalizar-lojinha', icon: Store, check: (p: any) => p.store ?? false, allowUserRole: true },
+    {
+      name: 'Lojinha Online',
+      icon: Store,
+      check: (p: any) => Boolean(p.store || p.storeProducts?.view),
+      allowUserRole: true,
+      children: [
+        {
+          name: 'Produtos da Lojinha',
+          href: '/produtos-lojinha',
+          icon: ShoppingBag,
+          check: (p: any) => Boolean(p.storeProducts?.view ?? p.store ?? false),
+          allowUserRole: true,
+        },
+        {
+          name: 'Aparência & Vitrine',
+          href: '/personalizar-lojinha',
+          icon: Palette,
+          check: (p: any) => Boolean(p.store ?? false),
+          allowUserRole: true,
+        },
+      ],
+    },
     { name: 'E-mails',        href: '/emails',      icon: Mail,            check: (p: any) => p.emails ?? false },
     { name: 'Usuários',       href: '/usuarios',    icon: UserCog,         check: (p: any) => p.users?.view },
   ];
 
   const navigation = useMemo(() => {
     if (!userProfile) return [];
-    return allNavItems.filter(item => {
-      if ((item as any).allowUserRole && (userProfile.role === 'user' || userProfile.role === 'admin')) return true;
-      return hasPermission(item.check);
-    });
+    return allNavItems
+      .map(item => {
+        if (item.children) {
+          const allowedChildren = item.children.filter(child => {
+            if (child.allowUserRole && (userProfile.role === 'user' || userProfile.role === 'admin')) return true;
+            return hasPermission(child.check);
+          });
+          if (allowedChildren.length === 0) return null;
+          return { ...item, children: allowedChildren };
+        }
+        if ((item as any).allowUserRole && (userProfile.role === 'user' || userProfile.role === 'admin')) return item;
+        if (hasPermission(item.check)) return item;
+        return null;
+      })
+      .filter(Boolean) as any[];
   }, [userProfile, hasPermission]);
 
   const orderedNav = useMemo(() => {
     const order = settings?.navOrder;
     if (!order || order.length === 0) return navigation;
     return [...navigation].sort((a, b) => {
-      const ai = order.indexOf(a.href);
-      const bi = order.indexOf(b.href);
+      const aKey = a.href || a.name;
+      const bKey = b.href || b.name;
+      const ai = order.indexOf(aKey);
+      const bi = order.indexOf(bKey);
       return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
     });
-  }, [settings?.navOrder]);
+  }, [settings?.navOrder, navigation]);
 
-  const mobilePrimaryNav = orderedNav.slice(0, 4);
-  const mobileMoreNav = orderedNav.slice(4);
+  const flatNavForMobile = useMemo(() => {
+    const list: { name: string; href: string; icon: any }[] = [];
+    navigation.forEach(item => {
+      if (item.children) {
+        item.children.forEach((c: any) => list.push(c));
+      } else if (item.href) {
+        list.push(item);
+      }
+    });
+    return list;
+  }, [navigation]);
+
+  const mobilePrimaryNav = flatNavForMobile.slice(0, 4);
+  const mobileMoreNav = flatNavForMobile.slice(4);
   const canAccessSettings = userProfile?.role === 'user' || hasPermission((p) => p.settings);
 
   const businessName = settings?.businessName || 'Papelaria Personalizada';
@@ -135,8 +190,105 @@ export function Layout() {
             <p className="truncate text-sm text-muted-foreground">{settings?.businessTagline || 'Sistema de Gestão'}</p>
           </div>
         </div>
-        <nav className="flex flex-1 flex-col gap-2">
+        <nav className="flex flex-1 flex-col gap-1.5 overflow-y-auto pr-1">
           {orderedNav.map((item) => {
+            // Caso 1: Item com submenu (Lojinha Online)
+            if (item.children && item.children.length > 0) {
+              const isChildActive = item.children.some((c: any) => location.pathname === c.href);
+
+              if (sidebarCollapsed) {
+                return (
+                  <DropdownMenu key={item.name}>
+                    <DropdownMenuTrigger asChild>
+                      <button
+                        type="button"
+                        title={item.name}
+                        className={cn(
+                          'flex items-center justify-center border-l-4 py-3 text-sm font-medium transition-colors w-full cursor-pointer',
+                          isChildActive
+                            ? 'border-primary bg-primary/10 text-primary'
+                            : 'border-transparent text-muted-foreground hover:border-primary/30 hover:bg-primary/5 hover:text-foreground'
+                        )}
+                      >
+                        <item.icon className="size-5 shrink-0" />
+                      </button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent side="right" align="start" className="w-48 ml-2">
+                      <DropdownMenuLabel className="text-xs text-muted-foreground font-bold uppercase tracking-wider">
+                        {item.name}
+                      </DropdownMenuLabel>
+                      <DropdownMenuSeparator />
+                      {item.children.map((child: any) => {
+                        const isSubActive = location.pathname === child.href;
+                        return (
+                          <DropdownMenuItem key={child.href} asChild>
+                            <Link
+                              to={child.href}
+                              className={cn(
+                                'flex items-center gap-2 cursor-pointer text-xs',
+                                isSubActive && 'font-bold text-primary bg-primary/10'
+                              )}
+                            >
+                              <child.icon className="size-4" />
+                              <span>{child.name}</span>
+                            </Link>
+                          </DropdownMenuItem>
+                        );
+                      })}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                );
+              }
+
+              return (
+                <div key={item.name} className="flex flex-col">
+                  <button
+                    type="button"
+                    onClick={() => setStoreSubmenuOpen(prev => !prev)}
+                    className={cn(
+                      'flex items-center justify-between border-l-4 px-6 py-2.5 text-sm font-medium transition-colors cursor-pointer w-full text-left',
+                      isChildActive
+                        ? 'border-primary/60 text-primary font-semibold'
+                        : 'border-transparent text-muted-foreground hover:border-primary/30 hover:bg-primary/5 hover:text-foreground'
+                    )}
+                  >
+                    <div className="flex items-center gap-4 min-w-0">
+                      <item.icon className="size-5 shrink-0" />
+                      <span className="truncate">{item.name}</span>
+                    </div>
+                    <ChevronDown
+                      size={15}
+                      className={cn('transition-transform duration-200 shrink-0 text-muted-foreground', storeSubmenuOpen ? 'rotate-180 text-primary' : '')}
+                    />
+                  </button>
+
+                  {storeSubmenuOpen && (
+                    <div className="flex flex-col pl-11 pr-4 space-y-1 pt-1 pb-1">
+                      {item.children.map((child: any) => {
+                        const isSubActive = location.pathname === child.href;
+                        return (
+                          <Link
+                            key={child.href}
+                            to={child.href}
+                            className={cn(
+                              'flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition-all',
+                              isSubActive
+                                ? 'bg-primary text-primary-foreground font-bold shadow-xs'
+                                : 'text-muted-foreground hover:bg-primary/10 hover:text-foreground'
+                            )}
+                          >
+                            <child.icon className="size-3.5 shrink-0" />
+                            <span className="truncate">{child.name}</span>
+                          </Link>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
+            }
+
+            // Caso 2: Item normal de navegação
             const isActive = location.pathname === item.href;
             return (
               <Link
