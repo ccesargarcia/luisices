@@ -297,16 +297,16 @@ export interface SupplyItem {
   packageQuantity: number;     // Quantidade no pacote/rolo (ex: 100)
   unit: SupplyUnit;            // Unidade fracionada (ex: 'folha', 'metro')
   unitCost: number;            // Custo unitário = purchasePrice / packageQuantity
-  supplier?: string;           // Loja/fornecedor
-  notes?: string;
+  supplier?: string | null;    // Loja/fornecedor
+  notes?: string | null;
   createdAt: string;
   updatedAt?: string;
 }
 
 export interface RecipeItem {
-  supplyId?: string;           // ID do insumo se veio do catálogo
+  supplyId?: string | null;    // ID do insumo se veio do catálogo
   name: string;
-  category?: SupplyCategory;
+  category?: SupplyCategory | null;
   unit: SupplyUnit;
   unitCost: number;            // Custo por unidade fracionada
   quantityUsed: number;        // Quantidade consumida por unidade do produto
@@ -347,9 +347,9 @@ export interface BatchTier {
 export interface ProductPricingRecipe {
   id: string;
   userId: string;
-  productId?: string;          // Vinculado a um Product existente
+  productId?: string | null;          // Vinculado a um Product existente
   productName: string;
-  category?: string;
+  category?: string | null;
   items: RecipeItem[];
   materialsCost: number;
   wasteMarginPercent: number;
@@ -364,7 +364,7 @@ export interface ProductPricingRecipe {
   paymentFeePercent: number;
   profitMarginPercent: number;
   suggestedUnitPrice: number;
-  manualUnitPrice?: number;
+  manualUnitPrice?: number | null;
   batchTiers?: BatchTier[];
   createdAt: string;
   updatedAt?: string;

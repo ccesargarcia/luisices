@@ -108,7 +108,7 @@ export function PricingCalculatorTab({
   const [profitMarginPercent, setProfitMarginPercent] = useState<number>(
     studioSettings?.defaultProfitMarginPercent ?? DEFAULT_PRICING_SETTINGS.defaultProfitMarginPercent
   );
-  const [manualUnitPrice, setManualUnitPrice] = useState<number | undefined>(undefined);
+  const [manualUnitPrice, setManualUnitPrice] = useState<number | null | undefined>(undefined);
 
   // Modal para adicionar insumo do catálogo
   const [addSupplyModalOpen, setAddSupplyModalOpen] = useState(false);
@@ -282,9 +282,9 @@ export function PricingCalculatorTab({
     try {
       setSaving(true);
       const recipePayload = {
-        productId: selectedProductId !== 'custom' ? selectedProductId : undefined,
+        productId: selectedProductId !== 'custom' ? selectedProductId : null,
         productName: productName.trim(),
-        category: category.trim() || undefined,
+        category: category.trim() || null,
         items,
         materialsCost: calcResult.materialsCost,
         wasteMarginPercent: calcResult.wasteMarginPercent,
@@ -299,7 +299,7 @@ export function PricingCalculatorTab({
         paymentFeePercent: calcResult.paymentFeePercent,
         profitMarginPercent: calcResult.profitMarginPercent,
         suggestedUnitPrice: calcResult.suggestedUnitPrice,
-        manualUnitPrice: manualUnitPrice && manualUnitPrice > 0 ? manualUnitPrice : undefined,
+        manualUnitPrice: manualUnitPrice && manualUnitPrice > 0 ? manualUnitPrice : null,
         batchTiers: calcResult.batchTiers,
       };
 

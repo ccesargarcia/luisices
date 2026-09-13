@@ -34,6 +34,31 @@ const RECIPES_COLLECTION = 'pricingRecipes';
 const SETTINGS_COLLECTION = 'pricingSettings';
 const PRODUCTS_COLLECTION = 'products';
 
+/**
+ * Remove recursivamente valores undefined de objetos e arrays antes de enviar ao Firestore.
+ * O Firestore rejeita requisições que contenham propriedades com valor undefined.
+ */
+function sanitizeForFirestore<T>(data: T): T {
+  if (data === null || data === undefined) {
+    return data;
+  }
+  if (Array.isArray(data)) {
+    return data
+      .filter((item) => item !== undefined)
+      .map((item) => sanitizeForFirestore(item)) as unknown as T;
+  }
+  if (typeof data === 'object' && !(data instanceof Date)) {
+    const cleaned: Record<string, any> = {};
+    for (const [key, value] of Object.entries(data)) {
+      if (value !== undefined) {
+        cleaned[key] = sanitizeForFirestore(value);
+      }
+    }
+    return cleaned as T;
+  }
+  return data;
+}
+
 export const PRESET_SUPPLIES: Omit<SupplyItem, 'id' | 'userId' | 'createdAt' | 'updatedAt'>[] = [
   {
     name: 'Papel Offset 180g (A4)',
@@ -213,12 +238,16 @@ class FirebasePricingService {
   ): Promise<StudioPricingSettings> {
     const userId = this.getCurrentUserId();
     const docRef = doc(db, SETTINGS_COLLECTION, userId);
-    const updated: StudioPricingSettings = {
+    const updated: StudioPricingSettings = sanitizeForFirestore({
       ...DEFAULT_PRICING_SETTINGS,
       ...settings,
+      monthlyFixedExpenses: {
+        ...DEFAULT_PRICING_SETTINGS.monthlyFixedExpenses,
+        ...(settings.monthlyFixedExpenses || {}),
+      },
       userId,
       updatedAt: new Date().toISOString(),
-    };
+    });
     await setDoc(docRef, updated, { merge: true });
     return updated;
   }
@@ -278,13 +307,15 @@ class FirebasePricingService {
         ? Math.round((supply.purchasePrice / supply.packageQuantity) * 1000) / 1000
         : 0;
 
-    const payload = {
+    const payload = sanitizeForFirestore({
       ...supply,
+      supplier: supply.supplier || null,
+      notes: supply.notes || null,
       unitCost: calculatedUnitCost,
       userId,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
-    };
+    });
 
     const docRef = await addDoc(collection(db, SUPPLIES_COLLECTION), payload);
     return { id: docRef.id, ...payload };
@@ -296,10 +327,12 @@ class FirebasePricingService {
   ): Promise<void> {
     const purchasePrice = Number(data.purchasePrice);
     const packageQuantity = Number(data.packageQuantity);
-    const updates: Record<string, any> = {
+    const updates: Record<string, any> = sanitizeForFirestore({
       ...data,
+      supplier: data.supplier !== undefined ? (data.supplier || null) : undefined,
+      notes: data.notes !== undefined ? (data.notes || null) : undefined,
       updatedAt: new Date().toISOString(),
-    };
+    });
 
     if (!isNaN(purchasePrice) && !isNaN(packageQuantity) && packageQuantity > 0) {
       updates.unitCost = Math.round((purchasePrice / packageQuantity) * 1000) / 1000;
@@ -322,12 +355,14 @@ class FirebasePricingService {
 
     for (const item of PRESET_SUPPLIES) {
       const docRef = doc(collection(db, SUPPLIES_COLLECTION));
-      batch.set(docRef, {
+      batch.set(docRef, sanitizeForFirestore({
         ...item,
+        supplier: item.supplier || null,
+        notes: item.notes || null,
         userId,
         createdAt: now,
         updatedAt: now,
-      });
+      }));
     }
 
     await batch.commit();
@@ -343,7 +378,12 @@ class FirebasePricingService {
       productId: data.productId || undefined,
       productName: data.productName || '',
       category: data.category || undefined,
-      items: data.items || [],
+      items: (data.items || []).map((it: any) => ({
+        ...it,
+        supplyId: it.supplyId || undefined,
+        category: it.category || undefined,
+        isCustomItem: Boolean(it.isCustomItem),
+      })),
       materialsCost: Number(data.materialsCost) || 0,
       wasteMarginPercent: Number(data.wasteMarginPercent) || 0,
       materialsCostWithWaste: Number(data.materialsCostWithWaste) || 0,
@@ -403,25 +443,55 @@ class FirebasePricingService {
     const userId = this.getCurrentUserId();
     const now = new Date().toISOString();
 
-    if (recipe.id) {
-      const recipeRef = doc(db, RECIPES_COLLECTION, recipe.id);
-      const updatePayload = {
-        ...recipe,
-        userId,
-        updatedAt: now,
-      };
-      await updateDoc(recipeRef, updatePayload);
-      return { id: recipe.id, ...updatePayload, createdAt: now };
-    }
+    const sanitizedItems = (recipe.items || []).map((item) =>
+      sanitizeForFirestore({
+        ...item,
+        supplyId: item.supplyId || null,
+        category: item.category || null,
+        isCustomItem: Boolean(item.isCustomItem),
+      })
+    );
 
-    const createPayload = {
-      ...recipe,
+    const basePayload = {
+      productId: recipe.productId || null,
+      productName: recipe.productName,
+      category: recipe.category || null,
+      items: sanitizedItems,
+      materialsCost: Number(recipe.materialsCost) || 0,
+      wasteMarginPercent: Number(recipe.wasteMarginPercent) || 0,
+      materialsCostWithWaste: Number(recipe.materialsCostWithWaste) || 0,
+      laborMode: recipe.laborMode || 'time',
+      productionTimeMinutes: Number(recipe.productionTimeMinutes) || 0,
+      hourlyRateApplied: Number(recipe.hourlyRateApplied) || 0,
+      proportionalPercent: Number(recipe.proportionalPercent) || 0,
+      laborCost: Number(recipe.laborCost) || 0,
+      fixedCostsShare: Number(recipe.fixedCostsShare) || 0,
+      totalUnitCost: Number(recipe.totalUnitCost) || 0,
+      paymentFeePercent: Number(recipe.paymentFeePercent) || 0,
+      profitMarginPercent: Number(recipe.profitMarginPercent) || 0,
+      suggestedUnitPrice: Number(recipe.suggestedUnitPrice) || 0,
+      manualUnitPrice:
+        recipe.manualUnitPrice != null && Number(recipe.manualUnitPrice) > 0
+          ? Number(recipe.manualUnitPrice)
+          : null,
+      batchTiers: recipe.batchTiers || null,
       userId,
-      createdAt: now,
       updatedAt: now,
     };
+
+    if (recipe.id) {
+      const recipeRef = doc(db, RECIPES_COLLECTION, recipe.id);
+      const updatePayload = sanitizeForFirestore(basePayload);
+      await updateDoc(recipeRef, updatePayload);
+      return { id: recipe.id, ...updatePayload, createdAt: now } as ProductPricingRecipe;
+    }
+
+    const createPayload = sanitizeForFirestore({
+      ...basePayload,
+      createdAt: now,
+    });
     const docRef = await addDoc(collection(db, RECIPES_COLLECTION), createPayload);
-    return { id: docRef.id, ...createPayload };
+    return { id: docRef.id, ...createPayload } as ProductPricingRecipe;
   }
 
   async deleteRecipe(id: string): Promise<void> {
@@ -439,13 +509,16 @@ class FirebasePricingService {
     recipeId: string
   ): Promise<void> {
     const productRef = doc(db, PRODUCTS_COLLECTION, productId);
-    await updateDoc(productRef, {
-      unitPrice,
-      unitCost,
-      profitMargin,
-      recipeId,
-      updatedAt: new Date().toISOString(),
-    });
+    await updateDoc(
+      productRef,
+      sanitizeForFirestore({
+        unitPrice,
+        unitCost,
+        profitMargin,
+        recipeId,
+        updatedAt: new Date().toISOString(),
+      })
+    );
   }
 }
 

@@ -144,8 +144,8 @@ export function SuppliesTab({ supplies, loading, onRefresh }: SuppliesTabProps) 
           purchasePrice,
           packageQuantity,
           unit,
-          supplier: supplier.trim() || undefined,
-          notes: notes.trim() || undefined,
+          supplier: supplier.trim() || null,
+          notes: notes.trim() || null,
         });
         toast.success('Insumo atualizado com sucesso!');
       } else {
@@ -156,8 +156,8 @@ export function SuppliesTab({ supplies, loading, onRefresh }: SuppliesTabProps) 
           packageQuantity,
           unit,
           unitCost: calculatedUnitCost,
-          supplier: supplier.trim() || undefined,
-          notes: notes.trim() || undefined,
+          supplier: supplier.trim() || null,
+          notes: notes.trim() || null,
         });
         toast.success('Insumo cadastrado com sucesso!');
       }
