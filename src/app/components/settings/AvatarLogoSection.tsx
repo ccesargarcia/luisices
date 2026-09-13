@@ -102,8 +102,10 @@ export function AvatarLogoSection({
       {/* Logo */}
       <Card>
         <CardHeader>
-          <CardTitle>Logo do Negócio</CardTitle>
-          <CardDescription>Logo da sua papelaria (JPG, PNG ou WebP; máximo de 5 MB)</CardDescription>
+          <CardTitle>Logo do Negócio (Painel)</CardTitle>
+          <CardDescription>
+            Usado no painel interno e orçamentos. Para o logo da vitrine pública online, use o menu Personalizar Lojinha.
+          </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           {logoUrl ? (

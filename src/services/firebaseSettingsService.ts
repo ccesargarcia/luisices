@@ -58,6 +58,7 @@ export interface UserSettings {
   deliveryAlertDays?: number;    // Dias antes do prazo para mostrar alerta (padrão 3)
 
   // Customizações do Catálogo Online Público (Lojinha)
+  catalogLogo?: string;                      // Logo exclusivo da lojinha pública online (independente do painel)
   catalogBadge?: string;                      // Selo no header (ex: "Atelier", "Papelaria Afetiva")
   catalogStatusText?: string;                // Texto do status (ex: "Atendimento WhatsApp ativo")
   catalogHeroTitle?: string;                 // Título no banner principal (ex: "Catálogo & Vitrine Afetiva")
@@ -129,6 +130,7 @@ export class FirebaseSettingsService {
       if (settings.instagramUrl !== undefined) publicData.instagramUrl = settings.instagramUrl;
       if (settings.websiteUrl !== undefined) publicData.websiteUrl = settings.websiteUrl;
       if (settings.logo !== undefined) publicData.logo = settings.logo;
+      if (settings.catalogLogo !== undefined) publicData.catalogLogo = settings.catalogLogo;
 
       // Customizações da Lojinha / Catálogo
       if (settings.catalogBadge !== undefined) publicData.catalogBadge = settings.catalogBadge;
@@ -195,6 +197,35 @@ export class FirebaseSettingsService {
       );
     } catch (e) {
       console.warn('Erro ao sincronizar logo em storeSettings pública:', e);
+    }
+  }
+
+  /**
+   * Atualizar logo exclusivo do catálogo / lojinha pública online
+   */
+  async updateCatalogLogo(userId: string, catalogLogoUrl: string | null): Promise<void> {
+    const docRef = doc(db, 'users', userId, 'settings', 'profile');
+    await setDoc(
+      docRef,
+      {
+        catalogLogo: catalogLogoUrl === null ? deleteField() : catalogLogoUrl,
+        userId,
+        updatedAt: new Date(),
+      },
+      { merge: true }
+    );
+
+    try {
+      await setDoc(
+        doc(db, 'storeSettings', 'public'),
+        {
+          catalogLogo: catalogLogoUrl || null,
+          updatedAt: new Date(),
+        },
+        { merge: true }
+      );
+    } catch (e) {
+      console.warn('Erro ao sincronizar catalogLogo em storeSettings pública:', e);
     }
   }
 

@@ -32,10 +32,10 @@ import {
 import { toast } from 'sonner';
 
 export function StoreCustomization() {
-  const { settings, loading, updateSettings, uploadLogo, removeLogo } = useUserSettings();
+  const { settings, loading, updateSettings, uploadCatalogLogo, removeCatalogLogo } = useUserSettings();
   const [saving, setSaving] = useState(false);
   const [uploadingLogo, setUploadingLogo] = useState(false);
-  const [currentLogo, setCurrentLogo] = useState<string | null>(null);
+  const [currentCatalogLogo, setCurrentCatalogLogo] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState('identity');
 
   // Estado dos campos do formulário
@@ -65,8 +65,8 @@ export function StoreCustomization() {
     let isCancelled = false;
 
     async function loadData() {
-      // Começa com os dados das configurações do usuário logado
-      let loadedLogo = settings?.logo || null;
+      // Inicia com os dados de catalogLogo específico da lojinha (ou fallback para o logo geral)
+      let loadedLogo = settings?.catalogLogo || settings?.logo || null;
       let data = {
         businessName: settings?.businessName || '',
         businessTagline: settings?.businessTagline || '',
@@ -93,7 +93,15 @@ export function StoreCustomization() {
         const publicSnap = await getDoc(doc(db, 'storeSettings', 'public'));
         if (publicSnap.exists() && !isCancelled) {
           const pub = publicSnap.data();
-          if (pub.logo) loadedLogo = pub.logo;
+          // Dá prioridade absoluta ao catalogLogo da loja
+          if (pub.catalogLogo) {
+            loadedLogo = pub.catalogLogo;
+          } else if (settings?.catalogLogo) {
+            loadedLogo = settings.catalogLogo;
+          } else if (pub.logo) {
+            loadedLogo = pub.logo;
+          }
+
           data = {
             businessName: pub.businessName || data.businessName,
             businessTagline: pub.businessTagline || data.businessTagline,
@@ -120,7 +128,7 @@ export function StoreCustomization() {
       }
 
       if (!isCancelled) {
-        setCurrentLogo(loadedLogo);
+        setCurrentCatalogLogo(loadedLogo);
         setFormData(data);
       }
     }
@@ -144,20 +152,20 @@ export function StoreCustomization() {
 
     setUploadingLogo(true);
     try {
-      const url = await uploadLogo(file);
-      setCurrentLogo(url);
+      const url = await uploadCatalogLogo(file);
+      setCurrentCatalogLogo(url);
       try {
         await setDoc(
           doc(db, 'storeSettings', 'public'),
-          { logo: url, updatedAt: new Date() },
+          { catalogLogo: url, updatedAt: new Date() },
           { merge: true }
         );
       } catch (publicErr) {
-        console.warn('Aviso ao sincronizar logo em storeSettings/public:', publicErr);
+        console.warn('Aviso ao sincronizar catalogLogo em storeSettings/public:', publicErr);
       }
-      toast.success('Logo da loja enviado com sucesso!');
+      toast.success('Logo exclusivo da lojinha atualizado com sucesso!');
     } catch (error) {
-      console.error('Erro no upload do logo:', error);
+      console.error('Erro no upload do logo da lojinha:', error);
       toast.error(error instanceof Error ? error.message : 'Erro ao fazer upload do logo');
     } finally {
       setUploadingLogo(false);
@@ -165,23 +173,23 @@ export function StoreCustomization() {
   };
 
   const handleLogoRemove = async () => {
-    if (!confirm('Deseja realmente remover o logo da loja?')) return;
+    if (!confirm('Deseja realmente remover o logo exclusivo da lojinha pública?')) return;
     setUploadingLogo(true);
     try {
-      await removeLogo();
-      setCurrentLogo(null);
+      await removeCatalogLogo();
+      setCurrentCatalogLogo(null);
       try {
         await setDoc(
           doc(db, 'storeSettings', 'public'),
-          { logo: null, updatedAt: new Date() },
+          { catalogLogo: null, updatedAt: new Date() },
           { merge: true }
         );
       } catch (publicErr) {
-        console.warn('Aviso ao remover logo em storeSettings/public:', publicErr);
+        console.warn('Aviso ao remover catalogLogo em storeSettings/public:', publicErr);
       }
-      toast.success('Logo da loja removido com sucesso!');
+      toast.success('Logo exclusivo da lojinha removido!');
     } catch (error) {
-      console.error('Erro ao remover logo:', error);
+      console.error('Erro ao remover logo da lojinha:', error);
       toast.error('Erro ao remover logo');
     } finally {
       setUploadingLogo(false);
@@ -195,13 +203,16 @@ export function StoreCustomization() {
   const handleSave = async () => {
     setSaving(true);
     try {
-      await updateSettings(formData);
+      await updateSettings({
+        ...formData,
+        catalogLogo: currentCatalogLogo || '',
+      });
       try {
         await setDoc(
           doc(db, 'storeSettings', 'public'),
           {
             ...formData,
-            logo: currentLogo || null,
+            catalogLogo: currentCatalogLogo || null,
             updatedAt: new Date(),
           },
           { merge: true }
@@ -297,28 +308,33 @@ export function StoreCustomization() {
               {/* Card de Upload do Logo */}
               <Card className="border-primary/25 shadow-xs">
                 <CardHeader>
-                  <CardTitle className="text-base flex items-center gap-2">
-                    <Building2 className="size-4 text-primary" />
-                    Logo do Ateliê / Loja
-                  </CardTitle>
+                  <div className="flex items-center justify-between gap-2">
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <Building2 className="size-4 text-primary" />
+                      Logo Exclusivo da Lojinha Online
+                    </CardTitle>
+                    <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-primary/10 text-primary shrink-0">
+                      Exclusivo da Vitrine
+                    </span>
+                  </div>
                   <CardDescription className="text-xs">
-                    Exibido em destaque no cabeçalho e no rodapé da sua lojinha pública online (JPG, PNG ou WebP até 5 MB).
+                    Configure uma logo personalizada exclusivamente para a vitrine pública e rodapé da lojinha. Ela é <strong>totalmente independente</strong> da logo configurada no painel administrativo.
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
-                    {currentLogo ? (
+                    {currentCatalogLogo ? (
                       <div className="relative group size-20 rounded-xl overflow-hidden border border-border bg-muted/40 p-1.5 flex items-center justify-center shrink-0">
                         <img
-                          src={currentLogo}
-                          alt="Logo da Loja"
+                          src={currentCatalogLogo}
+                          alt="Logo Exclusivo da Lojinha"
                           className="w-full h-full object-contain"
                         />
                       </div>
                     ) : (
                       <div className="size-20 rounded-xl border-2 border-dashed border-border bg-muted/20 flex flex-col items-center justify-center text-muted-foreground shrink-0 gap-1">
                         <Building2 className="size-7 opacity-50" />
-                        <span className="text-[10px]">Sem logo</span>
+                        <span className="text-[10px]">Sem logo próprio</span>
                       </div>
                     )}
 
@@ -337,12 +353,12 @@ export function StoreCustomization() {
                               {uploadingLogo ? (
                                 <>
                                   <Loader2 className="size-3.5 animate-spin" />
-                                  Enviando logo...
+                                  Enviando logo da lojinha...
                                 </>
                               ) : (
                                 <>
                                   <Upload className="size-3.5" />
-                                  {currentLogo ? 'Trocar Logo' : 'Enviar Logo'}
+                                  {currentCatalogLogo ? 'Trocar Logo da Lojinha' : 'Enviar Logo Exclusivo'}
                                 </>
                               )}
                             </span>
@@ -360,7 +376,7 @@ export function StoreCustomization() {
                           }}
                         />
 
-                        {currentLogo && (
+                        {currentCatalogLogo && (
                           <Button
                             type="button"
                             variant="ghost"
@@ -370,14 +386,14 @@ export function StoreCustomization() {
                             className="gap-1.5 text-destructive hover:text-destructive hover:bg-destructive/10 text-xs"
                           >
                             <X className="size-3.5" />
-                            Remover
+                            Remover Logo da Lojinha
                           </Button>
                         )}
                       </div>
                       <p className="text-[11px] text-muted-foreground">
-                        {currentLogo
-                          ? '✅ Logo configurado e sincronizado com a lojinha pública online.'
-                          : 'Envie um logotipo quadrado ou redondo (fundo transparente fica lindo na vitrine!).'}
+                        {currentCatalogLogo
+                          ? '✅ Logo exclusivo ativo na lojinha pública online. A logo do painel administrativo permanece intacta.'
+                          : 'Envie um logotipo específico para seus clientes (fundo transparente é ideal). Se nenhum for enviado, a vitrine exibirá o nome da marca.'}
                       </p>
                     </div>
                   </div>
@@ -635,10 +651,10 @@ export function StoreCustomization() {
               {/* Resumo do Logo */}
               <div className="flex items-center justify-between p-3.5 rounded-xl border border-border/70 bg-muted/20">
                 <div className="flex items-center gap-3">
-                  {currentLogo ? (
+                  {currentCatalogLogo ? (
                     <img
-                      src={currentLogo}
-                      alt="Logo"
+                      src={currentCatalogLogo}
+                      alt="Logo da Lojinha"
                       className="size-12 rounded-lg object-contain border border-border bg-white p-1"
                     />
                   ) : (
@@ -647,9 +663,9 @@ export function StoreCustomization() {
                     </div>
                   )}
                   <div>
-                    <p className="text-xs font-semibold">Logo do Ateliê</p>
+                    <p className="text-xs font-semibold">Logo Exclusivo da Lojinha</p>
                     <p className="text-[11px] text-muted-foreground">
-                      {currentLogo ? 'Logo cadastrado e ativo no catálogo público' : 'Nenhum logo configurado no momento'}
+                      {currentCatalogLogo ? 'Logo específico da lojinha configurado e ativo' : 'Nenhum logo específico configurado'}
                     </p>
                   </div>
                 </div>
@@ -661,7 +677,7 @@ export function StoreCustomization() {
                   className="text-xs gap-1.5 border-primary/30 text-primary hover:bg-primary/5"
                 >
                   <Building2 className="size-3.5" />
-                  {currentLogo ? 'Trocar Logo' : 'Enviar Logo'}
+                  {currentCatalogLogo ? 'Trocar Logo' : 'Enviar Logo Exclusivo'}
                 </Button>
               </div>
 
@@ -790,10 +806,10 @@ export function StoreCustomization() {
               {/* Header simulado */}
               <div className="p-3 bg-white/80 border-b border-stone-200/60 flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  {currentLogo ? (
+                  {currentCatalogLogo ? (
                     <img
-                      src={currentLogo}
-                      alt="Logo"
+                      src={currentCatalogLogo}
+                      alt="Logo da Lojinha"
                       className="size-8 rounded-full object-cover border border-white/60 shadow-xs shrink-0"
                     />
                   ) : null}
@@ -848,10 +864,10 @@ export function StoreCustomization() {
 
               {/* Rodapé simulado */}
               <div className="p-3 mt-3 border-t border-stone-200/60 bg-white/40 text-center space-y-1 text-[10px] text-stone-600">
-                {currentLogo ? (
+                {currentCatalogLogo ? (
                   <img
-                    src={currentLogo}
-                    alt="Logo"
+                    src={currentCatalogLogo}
+                    alt="Logo da Lojinha"
                     className="size-9 rounded-full object-cover border border-white/60 shadow-xs mx-auto mb-1.5"
                   />
                 ) : null}

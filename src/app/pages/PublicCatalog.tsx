@@ -257,7 +257,7 @@ export function PublicCatalog() {
               whatsapp: s.whatsappPhone || s.businessPhone || prev.whatsapp,
               instagram: s.instagramUrl ? s.instagramUrl.replace(/^https?:\/\/(www\.)?instagram\.com\//, '').replace(/\/$/, '') : prev.instagram,
               website: s.websiteUrl || prev.website,
-              logo: s.logo || '',
+              logo: s.catalogLogo || s.logo || '',
               badge: s.catalogBadge || prev.badge,
               statusText: s.catalogStatusText || prev.statusText,
               announcement: s.catalogAnnouncement !== undefined ? s.catalogAnnouncement : prev.announcement,
