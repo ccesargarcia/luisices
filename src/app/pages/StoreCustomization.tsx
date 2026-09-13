@@ -240,10 +240,6 @@ export function StoreCustomization() {
           // Prioriza estritamente o catalogLogo exclusivo da loja pública
           if (pub.catalogLogo) {
             loadedLogo = pub.catalogLogo;
-          } else if (pub.catalogLogo === null || pub.catalogLogo === '') {
-            loadedLogo = null;
-          } else if (settings?.catalogLogo) {
-            loadedLogo = settings.catalogLogo;
           } else {
             loadedLogo = null;
           }
@@ -251,19 +247,13 @@ export function StoreCustomization() {
           // Prioriza estritamente o catalogBanner exclusivo da loja pública
           if (pub.catalogBanner) {
             loadedBanner = pub.catalogBanner;
-          } else if (pub.catalogBanner === null || pub.catalogBanner === '') {
-            loadedBanner = null;
-          } else if (settings?.catalogBanner) {
-            loadedBanner = settings.catalogBanner;
           } else {
             loadedBanner = null;
           }
 
           // Fundo personalizado da barra superior fixa
-          if (pub.catalogHeaderBackground !== undefined) {
-            loadedHeaderBg = pub.catalogHeaderBackground || null;
-          } else if (settings?.catalogHeaderBackground) {
-            loadedHeaderBg = settings.catalogHeaderBackground;
+          if (pub.catalogHeaderBackground) {
+            loadedHeaderBg = pub.catalogHeaderBackground;
           } else {
             loadedHeaderBg = null;
           }
@@ -331,6 +321,15 @@ export function StoreCustomization() {
     try {
       const url = await uploadCatalogLogo(file, currentCatalogLogo || undefined);
       setCurrentCatalogLogo(url);
+      try {
+        const cached = localStorage.getItem('luisices_public_store_settings');
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          parsed.logo = url;
+          parsed.catalogLogo = url;
+          localStorage.setItem('luisices_public_store_settings', JSON.stringify(parsed));
+        }
+      } catch {}
       toast.success('Logo exclusivo da lojinha atualizado com sucesso!');
     } catch (error) {
       console.error('Erro no upload do logo da lojinha:', error);
@@ -347,6 +346,15 @@ export function StoreCustomization() {
     try {
       setCurrentCatalogLogo(null);
       await removeCatalogLogo(previousLogo || undefined);
+      try {
+        const cached = localStorage.getItem('luisices_public_store_settings');
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          parsed.logo = '';
+          parsed.catalogLogo = '';
+          localStorage.setItem('luisices_public_store_settings', JSON.stringify(parsed));
+        }
+      } catch {}
       toast.success('Logo exclusivo da lojinha removido!');
     } catch (error) {
       console.error('Erro ao remover logo da lojinha:', error);
@@ -371,6 +379,15 @@ export function StoreCustomization() {
     try {
       const url = await uploadCatalogBanner(file, currentCatalogBanner || undefined);
       setCurrentCatalogBanner(url);
+      try {
+        const cached = localStorage.getItem('luisices_public_store_settings');
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          parsed.banner = url;
+          parsed.catalogBanner = url;
+          localStorage.setItem('luisices_public_store_settings', JSON.stringify(parsed));
+        }
+      } catch {}
       toast.success('Banner de capa da lojinha atualizado com sucesso!');
     } catch (error) {
       console.error('Erro no upload do banner da lojinha:', error);
@@ -387,6 +404,15 @@ export function StoreCustomization() {
     try {
       setCurrentCatalogBanner(null);
       await removeCatalogBanner(previousBanner || undefined);
+      try {
+        const cached = localStorage.getItem('luisices_public_store_settings');
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          parsed.banner = '';
+          parsed.catalogBanner = '';
+          localStorage.setItem('luisices_public_store_settings', JSON.stringify(parsed));
+        }
+      } catch {}
       toast.success('Banner de capa da lojinha removido!');
     } catch (error) {
       console.error('Erro ao remover banner da lojinha:', error);
@@ -411,6 +437,15 @@ export function StoreCustomization() {
     try {
       const url = await uploadCatalogHeaderBackground(file, currentCatalogHeaderBackground || undefined);
       setCurrentCatalogHeaderBackground(url);
+      try {
+        const cached = localStorage.getItem('luisices_public_store_settings');
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          parsed.headerBackground = url;
+          parsed.catalogHeaderBackground = url;
+          localStorage.setItem('luisices_public_store_settings', JSON.stringify(parsed));
+        }
+      } catch {}
       toast.success('Fundo da barra superior atualizado com sucesso!');
     } catch (error) {
       console.error('Erro no upload do fundo da barra superior:', error);
@@ -427,6 +462,15 @@ export function StoreCustomization() {
     try {
       setCurrentCatalogHeaderBackground(null);
       await removeCatalogHeaderBackground(previousBg || undefined);
+      try {
+        const cached = localStorage.getItem('luisices_public_store_settings');
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          parsed.headerBackground = '';
+          parsed.catalogHeaderBackground = '';
+          localStorage.setItem('luisices_public_store_settings', JSON.stringify(parsed));
+        }
+      } catch {}
       toast.success('Fundo da barra superior removido com sucesso!');
     } catch (error) {
       console.error('Erro ao remover fundo da barra superior:', error);
@@ -784,6 +828,7 @@ export function StoreCustomization() {
                         <img
                           src={currentCatalogLogo}
                           alt="Logo da Lojinha Online"
+                          onError={(e) => { e.currentTarget.style.display = 'none'; }}
                           className="max-h-full w-auto object-contain"
                         />
                       </div>
@@ -862,14 +907,14 @@ export function StoreCustomization() {
                   <div className="flex items-center justify-between gap-2">
                     <CardTitle className="text-base flex items-center gap-2">
                       <Palette className="size-4 text-primary" />
-                      Personalização da Barra Superior Fixa (Header)
+                      Barra Superior Fixa com Imagem (Full-Width)
                     </CardTitle>
                     <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-primary/10 text-primary shrink-0">
                       Fixa no Topo
                     </span>
                   </div>
                   <CardDescription className="text-xs">
-                    Esta barra acompanha o cliente durante toda a navegação na lojinha. Personalize a cor de fundo, adicione arte/imagem exclusiva de ponta a ponta, defina o contraste, altura e posição da logo.
+                    Esta barra acompanha o cliente durante toda a navegação exibindo exclusivamente sua arte/imagem de ponta a ponta. Os demais itens (busca, sacola e redes) ficam organizados na barra de ações dedicada da página.
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-6">
@@ -886,109 +931,45 @@ export function StoreCustomization() {
                       </span>
                     </div>
 
+                    {/* Barra Fixa Superior com Imagem */}
                     <div
-                      className={`relative w-full rounded-2xl border overflow-hidden transition-all duration-200 shadow-sm flex items-center justify-between px-4 py-3 ${
-                        formData.catalogHeaderTextColor === 'light' ? 'text-white border-white/20' : 'text-[#221a1a] border-border/80'
-                      }`}
+                      className="relative w-full rounded-2xl border overflow-hidden transition-all duration-200 shadow-sm flex items-center justify-center border-border/80 select-none"
                       style={{
                         backgroundColor: formData.catalogHeaderBgColor || '#ffffff',
-                        backgroundImage: currentCatalogHeaderBackground ? `url(${currentCatalogHeaderBackground})` : undefined,
-                        backgroundSize: 'cover',
-                        backgroundPosition: 'center',
-                        minHeight: formData.catalogHeaderHeight === 'compact' ? '54px' : formData.catalogHeaderHeight === 'large' ? '80px' : '66px',
+                        height: formData.catalogHeaderHeight === 'compact' ? '56px' : formData.catalogHeaderHeight === 'large' ? '88px' : '72px',
                       }}
                     >
-                      {/* Overlay suave para garantir legibilidade com artes de fundo */}
-                      {currentCatalogHeaderBackground && (
-                        <div
-                          className={`absolute inset-0 pointer-events-none ${
-                            formData.catalogHeaderTextColor === 'light' ? 'bg-black/25' : 'bg-white/30'
-                          }`}
+                      {currentCatalogHeaderBackground ? (
+                        <img
+                          src={currentCatalogHeaderBackground}
+                          alt="Arte de fundo da barra superior"
+                          className="w-full h-full object-cover object-center"
                         />
+                      ) : currentCatalogLogo ? (
+                        <div className="h-full py-2 flex items-center justify-center px-4">
+                          <img
+                            src={currentCatalogLogo}
+                            alt="Logo"
+                            onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                            className="max-h-full w-auto object-contain"
+                          />
+                        </div>
+                      ) : (
+                        <span className={`text-xs font-bold ${formData.catalogHeaderTextColor === 'light' ? 'text-white' : 'text-stone-700'}`}>
+                          {formData.businessName || 'Luisices Papelaria'}
+                        </span>
                       )}
+                    </div>
 
-                      <div className="relative z-10 w-full flex items-center justify-between gap-3">
-                        {/* Lado Esquerdo */}
-                        <div className={`flex items-center gap-2.5 ${
-                          formData.catalogHeaderLogoPosition === 'center' ? 'w-1/4' : ''
-                        }`}>
-                          {formData.catalogHeaderLogoPosition !== 'center' ? (
-                            <div className="flex items-center gap-2">
-                              {currentCatalogLogo ? (
-                                <img
-                                  src={currentCatalogLogo}
-                                  alt="Logo"
-                                  className={`w-auto object-contain shrink-0 ${
-                                    formData.catalogHeaderHeight === 'compact' ? 'h-7 max-w-[90px]' : formData.catalogHeaderHeight === 'large' ? 'h-11 max-w-[130px]' : 'h-9 max-w-[110px]'
-                                  }`}
-                                />
-                              ) : (
-                                <div className="h-8 px-2 rounded bg-black/10 flex items-center text-[10px] font-semibold">
-                                  Logo
-                                </div>
-                              )}
-                              {!formData.catalogHeaderHideText && (
-                                <span className="text-xs font-bold truncate max-w-[120px]">
-                                  {formData.businessName || 'Luisices'}
-                                </span>
-                              )}
-                            </div>
-                          ) : (
-                            <span className="text-[10px] opacity-70 truncate hidden sm:inline">
-                              @{cleanInstagram}
-                            </span>
-                          )}
-                        </div>
-
-                        {/* Centro */}
-                        {formData.catalogHeaderLogoPosition === 'center' ? (
-                          <div className="flex flex-col items-center justify-center text-center">
-                            {currentCatalogLogo ? (
-                              <img
-                                src={currentCatalogLogo}
-                                alt="Logo"
-                                className={`w-auto object-contain shrink-0 ${
-                                  formData.catalogHeaderHeight === 'compact' ? 'h-8 max-w-[100px]' : formData.catalogHeaderHeight === 'large' ? 'h-12 max-w-[140px]' : 'h-10 max-w-[120px]'
-                                }`}
-                              />
-                            ) : (
-                              <div className="h-8 px-3 rounded bg-black/10 flex items-center text-[10px] font-semibold">
-                                Logo Centralizado
-                              </div>
-                            )}
-                            {!formData.catalogHeaderHideText && (
-                              <span className="text-[11px] font-bold tracking-tight">
-                                {formData.businessName || 'Luisices'}
-                              </span>
-                            )}
-                          </div>
-                        ) : (
-                          /* Barra de busca simulada no centro quando logo à esquerda */
-                          <div className="hidden sm:flex flex-1 max-w-xs relative">
-                            <div className={`w-full py-1.5 px-3 rounded-full text-[11px] flex items-center gap-2 border ${
-                              formData.catalogHeaderTextColor === 'light'
-                                ? 'bg-white/20 border-white/30 text-white/80'
-                                : 'bg-black/5 border-black/10 text-stone-600'
-                            }`}>
-                              <Search size={12} className="opacity-70" />
-                              <span className="truncate">Buscar produtos...</span>
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Lado Direito: Sacola simulada */}
-                        <div className={`flex items-center gap-2 shrink-0 ${
-                          formData.catalogHeaderLogoPosition === 'center' ? 'w-1/4 justify-end' : ''
-                        }`}>
-                          <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold shadow-2xs ${
-                            formData.catalogHeaderTextColor === 'light'
-                              ? 'bg-white text-[#613d3e]'
-                              : 'bg-[#613d3e] text-white'
-                          }`}>
-                            <ShoppingBag size={12} />
-                            <span className="text-[11px]">R$ 0,00</span>
-                          </div>
-                        </div>
+                    {/* Barra de Ações Simulada (Busca e Sacola em área dedicada) */}
+                    <div className="rounded-xl border border-border/70 bg-muted/20 p-2.5 flex items-center justify-between gap-2.5">
+                      <div className="flex-1 relative flex items-center gap-2 bg-background rounded-lg border border-border/70 px-2.5 py-1.5 text-[11px] text-muted-foreground">
+                        <Search size={13} className="opacity-60 shrink-0" />
+                        <span className="truncate">Buscar produtos, temas, lembranças...</span>
+                      </div>
+                      <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#613d3e] text-white text-[11px] font-bold shadow-2xs shrink-0">
+                        <ShoppingBag size={12} />
+                        <span>Sacola (R$ 0,00)</span>
                       </div>
                     </div>
                   </div>
@@ -1547,6 +1528,7 @@ export function StoreCustomization() {
                     <img
                       src={currentCatalogLogo}
                       alt="Logo da Lojinha"
+                      onError={(e) => { e.currentTarget.style.display = 'none'; }}
                       className="size-12 rounded-lg object-contain border border-border bg-white p-1"
                     />
                   ) : (
@@ -1695,89 +1677,45 @@ export function StoreCustomization() {
                 </div>
               )}
 
-              {/* Header simulado */}
+              {/* Header simulado: Apenas a barra fixa com imagem */}
               <div
-                className={`p-2.5 border-b relative overflow-hidden transition-all duration-200 flex items-center justify-between ${
-                  formData.catalogHeaderTextColor === 'light' ? 'text-white' : 'text-[#221a1a]'
-                }`}
+                className="w-full border-b relative overflow-hidden transition-all duration-200 flex items-center justify-center select-none"
                 style={{
                   backgroundColor: formData.catalogHeaderBgColor || '#ffffff',
-                  backgroundImage: currentCatalogHeaderBackground ? `url(${currentCatalogHeaderBackground})` : undefined,
-                  backgroundSize: 'cover',
-                  backgroundPosition: 'center',
-                  minHeight: formData.catalogHeaderHeight === 'compact' ? '46px' : formData.catalogHeaderHeight === 'large' ? '64px' : '54px',
+                  height: formData.catalogHeaderHeight === 'compact' ? '42px' : formData.catalogHeaderHeight === 'large' ? '58px' : '48px',
                 }}
               >
-                {currentCatalogHeaderBackground && (
-                  <div
-                    className={`absolute inset-0 pointer-events-none ${
-                      formData.catalogHeaderTextColor === 'light' ? 'bg-black/25' : 'bg-white/30'
-                    }`}
+                {currentCatalogHeaderBackground ? (
+                  <img
+                    src={currentCatalogHeaderBackground}
+                    alt="Arte da barra"
+                    className="w-full h-full object-cover object-center"
                   />
+                ) : currentCatalogLogo ? (
+                  <div className="h-full py-1.5 flex items-center justify-center px-2">
+                    <img
+                      src={currentCatalogLogo}
+                      alt="Logo"
+                      onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                      className="max-h-full w-auto object-contain"
+                    />
+                  </div>
+                ) : (
+                  <span className={`text-[11px] font-bold ${formData.catalogHeaderTextColor === 'light' ? 'text-white' : 'text-[#613d3e]'}`}>
+                    {formData.businessName || 'Luisices'}
+                  </span>
                 )}
+              </div>
 
-                <div className="relative z-10 w-full flex items-center justify-between gap-2">
-                  {/* Lado Esquerdo */}
-                  <div className={`flex items-center gap-1.5 ${
-                    formData.catalogHeaderLogoPosition === 'center' ? 'w-1/4' : 'flex-1 min-w-0'
-                  }`}>
-                    {formData.catalogHeaderLogoPosition !== 'center' ? (
-                      <div className="flex items-center gap-1.5 min-w-0">
-                        {currentCatalogLogo ? (
-                          <img
-                            src={currentCatalogLogo}
-                            alt="Logo da Lojinha"
-                            className={`w-auto object-contain shrink-0 ${
-                              formData.catalogHeaderHeight === 'compact' ? 'h-6 max-w-[70px]' : formData.catalogHeaderHeight === 'large' ? 'h-9 max-w-[90px]' : 'h-7 max-w-[80px]'
-                            }`}
-                          />
-                        ) : null}
-                        {!formData.catalogHeaderHideText && (
-                          <span className="font-bold text-[11px] truncate">
-                            {formData.businessName || 'Luisices'}
-                          </span>
-                        )}
-                      </div>
-                    ) : (
-                      <span className="text-[9px] opacity-70 truncate">
-                        @{cleanInstagram}
-                      </span>
-                    )}
-                  </div>
-
-                  {/* Centro */}
-                  {formData.catalogHeaderLogoPosition === 'center' && (
-                    <div className="flex flex-col items-center justify-center text-center">
-                      {currentCatalogLogo ? (
-                        <img
-                          src={currentCatalogLogo}
-                          alt="Logo da Lojinha"
-                          className={`w-auto object-contain shrink-0 ${
-                            formData.catalogHeaderHeight === 'compact' ? 'h-6 max-w-[70px]' : formData.catalogHeaderHeight === 'large' ? 'h-9 max-w-[90px]' : 'h-7 max-w-[80px]'
-                          }`}
-                        />
-                      ) : null}
-                      {!formData.catalogHeaderHideText && (
-                        <span className="font-bold text-[10px] truncate leading-none mt-0.5">
-                          {formData.businessName || 'Luisices'}
-                        </span>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Lado Direito: Sacola simulada */}
-                  <div className={`flex items-center gap-1 shrink-0 ${
-                    formData.catalogHeaderLogoPosition === 'center' ? 'w-1/4 justify-end' : ''
-                  }`}>
-                    <div className={`flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-bold shadow-2xs ${
-                      formData.catalogHeaderTextColor === 'light'
-                        ? 'bg-white text-[#613d3e]'
-                        : 'bg-[#613d3e] text-white'
-                    }`}>
-                      <ShoppingBag size={10} />
-                      <span>R$ 0,00</span>
-                    </div>
-                  </div>
+              {/* Barra de Ações simulada: Busca e Sacola */}
+              <div className="p-2 mx-2.5 mt-2 rounded-xl bg-white/80 border border-stone-200/70 flex items-center justify-between gap-1.5 shadow-2xs">
+                <div className="flex-1 flex items-center gap-1.5 bg-stone-100/90 rounded-lg px-2 py-1 text-[10px] text-stone-500">
+                  <Search size={11} className="opacity-60 shrink-0" />
+                  <span className="truncate">Buscar mimos...</span>
+                </div>
+                <div className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[#613d3e] text-white text-[10px] font-bold shrink-0">
+                  <ShoppingBag size={10} />
+                  <span>R$ 0,00</span>
                 </div>
               </div>
 
@@ -1793,12 +1731,22 @@ export function StoreCustomization() {
                 </div>
                 {/* Informações da Loja */}
                 <div className="p-3">
-                  <div className="flex items-start justify-between gap-2 mb-1.5">
-                    <div>
-                      <p className="font-bold text-xs leading-tight text-[#221a1a]">
+                  <div className="flex items-center gap-2 mb-1.5">
+                    {currentCatalogLogo ? (
+                      <div className="size-9 rounded-lg overflow-hidden border border-border/80 p-0.5 bg-white shrink-0 flex items-center justify-center">
+                        <img
+                          src={currentCatalogLogo}
+                          alt="Logo"
+                          onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                          className="max-h-full w-auto object-contain"
+                        />
+                      </div>
+                    ) : null}
+                    <div className="min-w-0 flex-1">
+                      <p className="font-bold text-xs leading-tight text-[#221a1a] truncate">
                         {formData.businessName || 'Luisices'}
                       </p>
-                      <p className="font-semibold text-[10px] text-[#613d3e] leading-snug">
+                      <p className="font-semibold text-[10px] text-[#613d3e] leading-snug truncate">
                         {formData.businessTagline || 'Papelaria artesanal feita à mão'}
                       </p>
                     </div>
@@ -1830,6 +1778,7 @@ export function StoreCustomization() {
                   <img
                     src={currentCatalogLogo}
                     alt="Logo da Lojinha"
+                    onError={(e) => { e.currentTarget.style.display = 'none'; }}
                     className="max-h-7 w-auto object-contain mx-auto mb-1.5"
                   />
                 ) : null}

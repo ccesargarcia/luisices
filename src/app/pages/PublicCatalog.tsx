@@ -212,6 +212,16 @@ export function PublicCatalog() {
   const [selectedProductPreview, setSelectedProductPreview] = useState<CatalogProduct | null>(null);
   const [customerNotes, setCustomerNotes] = useState<string>('');
   const [previewCustomName, setPreviewCustomName] = useState<string>('');
+  const [logoError, setLogoError] = useState<boolean>(false);
+  const [headerBgError, setHeaderBgError] = useState<boolean>(false);
+
+  useEffect(() => {
+    setLogoError(false);
+  }, [businessInfo.logo]);
+
+  useEffect(() => {
+    setHeaderBgError(false);
+  }, [businessInfo.headerBackground]);
 
   // Guarda o tema da área administrativa antes de abrir o catálogo
   const originalThemeRef = useRef<string | null>(null);
@@ -528,250 +538,102 @@ export function PublicCatalog() {
           </aside>
         )}
 
-        {/* CABEÇALHO FIXO DA LOJINHA TOTALMENTE PERSONALIZÁVEL */}
+        {/* 1. CABEÇALHO FIXO DA LOJINHA (APENAS A BARRA FIXA COM A IMAGEM) */}
         <header
-          className={`sticky top-0 z-30 transition-all duration-200 border-b shadow-xs relative overflow-hidden ${
-            businessInfo.headerTextColor === 'light'
-              ? 'text-white'
-              : 'text-[#221a1a] dark:text-[#e8e0e3]'
-          }`}
+          className="sticky top-0 z-30 transition-all duration-200 border-b shadow-xs relative overflow-hidden w-full flex items-center justify-center select-none"
           style={{
             backgroundColor: businessInfo.headerBgColor || (isDarkMode ? '#1f191b' : '#ffffff'),
-            backgroundImage: businessInfo.headerBackground ? `url(${businessInfo.headerBackground})` : undefined,
-            backgroundSize: 'cover',
-            backgroundPosition: 'center',
-            borderColor: businessInfo.headerTextColor === 'light' ? 'rgba(255, 255, 255, 0.15)' : undefined,
+            height:
+              businessInfo.headerHeight === 'compact'
+                ? '56px'
+                : businessInfo.headerHeight === 'large'
+                ? '96px'
+                : '76px',
+            borderColor: isDarkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.08)',
           }}
         >
-          {/* Overlay suave caso haja imagem de fundo para garantir legibilidade perfeita */}
-          {businessInfo.headerBackground && (
-            <div
-              className={`absolute inset-0 pointer-events-none ${
-                businessInfo.headerTextColor === 'light'
-                  ? 'bg-black/25 backdrop-blur-[0.5px]'
-                  : 'bg-white/30 backdrop-blur-[0.5px]'
-              }`}
+          {businessInfo.headerBackground && !headerBgError ? (
+            <img
+              src={businessInfo.headerBackground}
+              alt="Barra do ateliê"
+              onError={() => setHeaderBgError(true)}
+              className="w-full h-full object-cover object-center pointer-events-none"
             />
+          ) : businessInfo.logo && !logoError ? (
+            <div className="h-full py-2 flex items-center justify-center px-4">
+              <img
+                src={businessInfo.logo}
+                alt={businessInfo.name}
+                onError={() => setLogoError(true)}
+                className="max-h-full w-auto object-contain drop-shadow-xs"
+              />
+            </div>
+          ) : (
+            <div className="flex items-center justify-center px-4">
+              <span className={`font-black text-base sm:text-lg tracking-tight ${
+                businessInfo.headerTextColor === 'light' ? 'text-white' : 'text-[#613d3e] dark:text-[#f4b7b9]'
+              }`}>
+                {businessInfo.name}
+              </span>
+            </div>
           )}
+        </header>
 
-          <div
-            className={`relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex items-center justify-between gap-3 sm:gap-4 ${
-              businessInfo.headerHeight === 'compact'
-                ? 'py-2 min-h-[58px]'
-                : businessInfo.headerHeight === 'large'
-                ? 'py-4 sm:py-5 min-h-[88px]'
-                : 'py-2.5 sm:py-3.5 min-h-[68px]'
-            }`}
-          >
-            {/* 1. LADO ESQUERDO: Marca ou Ações */}
-            <div className={`flex items-center gap-2.5 sm:gap-3 shrink-0 ${
-              businessInfo.headerLogoPosition === 'center' ? 'w-auto sm:w-1/4 justify-start' : ''
-            }`}>
-              {businessInfo.headerLogoPosition === 'center' ? (
-                /* No modo centralizado, o lado esquerdo mostra redes ou selo */
-                <div className="flex items-center gap-2">
-                  {businessInfo.instagram && (
-                    <a
-                      href={`https://instagram.com/${businessInfo.instagram}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-xs font-medium transition-all shadow-2xs ${
-                        businessInfo.headerTextColor === 'light'
-                          ? 'bg-white/20 hover:bg-white/30 text-white border border-white/30'
-                          : 'bg-stone-100/90 dark:bg-[#2b2225]/80 hover:bg-white text-stone-700 dark:text-stone-200 border border-stone-200/80'
-                      }`}
-                      title="Instagram do ateliê"
-                    >
-                      <Instagram size={14} />
-                      <span className="hidden md:inline text-[11px]">@{businessInfo.instagram}</span>
-                    </a>
-                  )}
-                  <button
-                    onClick={toggleTheme}
-                    title={isDarkMode ? 'Mudar para Modo Claro' : 'Mudar para Modo Escuro'}
-                    className={`p-2 rounded-full transition-all shadow-2xs cursor-pointer ${
-                      businessInfo.headerTextColor === 'light'
-                        ? 'bg-white/20 hover:bg-white/30 text-white border border-white/30'
-                        : 'bg-stone-100/90 dark:bg-[#2b2225]/80 hover:bg-white text-[#504444] dark:text-[#e8e0e3] border border-stone-200/80'
-                    }`}
-                    aria-label="Alternar tema"
-                  >
-                    {isDarkMode ? <Sun size={15} className="text-[#fbbf24]" /> : <Moon size={15} className="text-[#613d3e]" />}
-                  </button>
-                </div>
-              ) : (
-                /* No modo padrão/esquerda ou full: logo e nome */
-                <div className="flex items-center gap-2.5 sm:gap-3">
-                  {businessInfo.logo ? (
-                    <img
-                      src={businessInfo.logo}
-                      alt={businessInfo.name}
-                      className={`${
-                        businessInfo.headerHeight === 'large'
-                          ? 'max-h-14 sm:max-h-18'
-                          : businessInfo.headerHeight === 'compact'
-                          ? 'max-h-8 sm:max-h-9'
-                          : 'max-h-10 sm:max-h-12'
-                      } w-auto object-contain transition-transform hover:scale-102 drop-shadow-xs`}
-                    />
-                  ) : (
-                    <div className="size-9 rounded-full bg-[#613d3e]/10 dark:bg-[#f4b7b9]/20 flex items-center justify-center text-[#613d3e] dark:text-[#f4b7b9]">
-                      <Sparkles size={18} />
-                    </div>
-                  )}
-
-                  {!businessInfo.headerHideText && (
-                    <div className="hidden sm:block">
-                      <div className="flex items-center gap-2">
-                        <span className={`font-extrabold text-base tracking-tight leading-tight ${
-                          businessInfo.headerTextColor === 'light' ? 'text-white' : 'text-[#613d3e] dark:text-[#f4b7b9]'
-                        }`}>
-                          {businessInfo.name}
-                        </span>
-                        {businessInfo.badge && (
-                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                            businessInfo.headerTextColor === 'light'
-                              ? 'bg-white/20 text-white border border-white/30'
-                              : 'bg-[#613d3e]/10 dark:bg-[#f4b7b9]/15 text-[#613d3e] dark:text-[#f4b7b9]'
-                          }`}>
-                            {businessInfo.badge}
-                          </span>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-1.5 mt-0.5">
-                        <span className="size-2 rounded-full bg-[#10B981] animate-pulse shrink-0" />
-                        <span className={`text-[11px] font-medium ${
-                          businessInfo.headerTextColor === 'light' ? 'text-white/80' : 'text-[#504444] dark:text-[#c9c0b8]'
-                        }`}>
-                          {businessInfo.statusText || 'Atendimento WhatsApp ativo'}
-                        </span>
-                      </div>
-                    </div>
-                  )}
-                </div>
+        {/* 2. BARRA DE AÇÕES DA LOJINHA: BUSCA, SACOLA, REDES & TEMA (LOCALIZADA EM OUTRA ÁREA) */}
+        <section aria-label="Busca e sacola da loja" className="relative z-20 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-3 sm:pt-4">
+          <div className="bg-white/90 dark:bg-[#1f191b]/90 backdrop-blur-md rounded-2xl sm:rounded-3xl border border-stone-200/70 dark:border-[#ebcdcd]/15 p-3 sm:p-4 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-3 sm:gap-4">
+            
+            {/* Campo de Busca Principal Amplo */}
+            <div className="w-full sm:flex-1 relative">
+              <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-stone-400 dark:text-stone-500" />
+              <input
+                type="text"
+                placeholder="Buscar produtos, temas, lembranças..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-10 pr-9 py-2.5 text-xs sm:text-sm rounded-xl sm:rounded-2xl bg-stone-100/90 dark:bg-[#161214]/90 border border-stone-200/80 dark:border-stone-700 text-[#221a1a] dark:text-[#e8e0e3] placeholder:text-stone-400 dark:placeholder:text-stone-500 focus:outline-none focus:ring-2 focus:ring-[#613d3e]/30 dark:focus:ring-[#f4b7b9]/30 transition-all shadow-inner"
+              />
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-stone-400 hover:text-stone-700 dark:hover:text-stone-200 cursor-pointer"
+                  title="Limpar busca"
+                >
+                  <X size={14} />
+                </button>
               )}
             </div>
 
-            {/* 2. CENTRO: Logo Centralizada OU Barra de Busca */}
-            {businessInfo.headerLogoPosition === 'center' ? (
-              <div className="flex items-center justify-center flex-1 py-1">
-                {businessInfo.logo ? (
-                  <img
-                    src={businessInfo.logo}
-                    alt={businessInfo.name}
-                    className={`${
-                      businessInfo.headerHeight === 'large'
-                        ? 'max-h-16 sm:max-h-20'
-                        : businessInfo.headerHeight === 'compact'
-                        ? 'max-h-9 sm:max-h-11'
-                        : 'max-h-12 sm:max-h-15'
-                    } w-auto object-contain transition-transform hover:scale-102 drop-shadow-xs`}
-                  />
-                ) : (
-                  <span className={`font-black text-lg sm:text-xl tracking-tight text-center ${
-                    businessInfo.headerTextColor === 'light' ? 'text-white' : 'text-[#613d3e] dark:text-[#f4b7b9]'
-                  }`}>
-                    {businessInfo.name}
-                  </span>
-                )}
-              </div>
-            ) : (
-              <div className="flex-1 max-w-xl mx-2 sm:mx-4 relative">
-                <Search size={15} className={`absolute left-3.5 top-1/2 -translate-y-1/2 ${
-                  businessInfo.headerTextColor === 'light' ? 'text-white/60' : 'text-stone-400 dark:text-stone-500'
-                }`} />
-                <input
-                  type="text"
-                  placeholder="Buscar produtos, temas, lembranças..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className={`w-full pl-9 pr-8 py-2 text-xs rounded-full border transition-all shadow-inner ${
-                    businessInfo.headerTextColor === 'light'
-                      ? 'bg-white/20 border-white/30 text-white placeholder:text-white/60 focus:bg-white/30 focus:ring-2 focus:ring-white/40'
-                      : 'bg-stone-100/90 dark:bg-[#161214]/90 border-stone-200/80 dark:border-stone-700 text-[#221a1a] dark:text-[#e8e0e3] placeholder:text-stone-400 dark:placeholder:text-stone-500 focus:ring-2 focus:ring-[#613d3e]/30'
-                  }`}
-                />
-                {searchQuery && (
-                  <button
-                    onClick={() => setSearchQuery('')}
-                    className={`absolute right-2.5 top-1/2 -translate-y-1/2 p-1 ${
-                      businessInfo.headerTextColor === 'light' ? 'text-white/70 hover:text-white' : 'text-stone-400 hover:text-stone-700'
-                    }`}
-                    title="Limpar busca"
+            {/* Ações: Instagram, Alternador de Tema e Sacola de Encomendas */}
+            <div className="w-full sm:w-auto flex items-center justify-between sm:justify-end gap-2 shrink-0">
+              <div className="flex items-center gap-1.5 sm:gap-2">
+                {businessInfo.instagram && (
+                  <a
+                    href={`https://instagram.com/${businessInfo.instagram}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl sm:rounded-2xl text-xs font-medium bg-stone-100/90 dark:bg-[#2b2225]/80 hover:bg-stone-200/80 dark:hover:bg-[#34292d] text-stone-700 dark:text-stone-200 border border-stone-200/80 dark:border-[#ebcdcd]/20 transition-all shadow-2xs cursor-pointer"
+                    title="Instagram do ateliê"
                   >
-                    <X size={13} />
-                  </button>
+                    <Instagram size={15} className="text-[#E1306C]" />
+                    <span className="hidden md:inline text-xs">@{businessInfo.instagram}</span>
+                  </a>
                 )}
+
+                <button
+                  onClick={toggleTheme}
+                  title={isDarkMode ? 'Mudar para Modo Claro' : 'Mudar para Modo Escuro'}
+                  className="p-2.5 rounded-xl sm:rounded-2xl bg-stone-100/90 dark:bg-[#2b2225]/80 hover:bg-stone-200/80 dark:hover:bg-[#34292d] text-[#504444] dark:text-[#e8e0e3] border border-stone-200/80 dark:border-[#ebcdcd]/20 transition-all shadow-2xs cursor-pointer"
+                  aria-label="Alternar tema"
+                >
+                  {isDarkMode ? <Sun size={16} className="text-[#fbbf24]" /> : <Moon size={16} className="text-[#613d3e]" />}
+                </button>
               </div>
-            )}
 
-            {/* 3. LADO DIREITO: Busca (se logo no centro), Instagram/Tema (se logo à esquerda) e Sacola */}
-            <div className={`flex items-center gap-2 sm:gap-3 shrink-0 ${
-              businessInfo.headerLogoPosition === 'center' ? 'w-auto sm:w-1/4 justify-end' : ''
-            }`}>
-              {/* Campo de busca expansível no mobile se a logo estiver centralizada */}
-              {businessInfo.headerLogoPosition === 'center' && (
-                <div className="hidden sm:flex relative w-44 md:w-56">
-                  <Search size={14} className={`absolute left-3 top-1/2 -translate-y-1/2 ${
-                    businessInfo.headerTextColor === 'light' ? 'text-white/60' : 'text-stone-400'
-                  }`} />
-                  <input
-                    type="text"
-                    placeholder="Buscar..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className={`w-full pl-8 pr-6 py-1.5 text-xs rounded-full border ${
-                      businessInfo.headerTextColor === 'light'
-                        ? 'bg-white/20 border-white/30 text-white placeholder:text-white/60'
-                        : 'bg-stone-100/90 dark:bg-[#161214]/90 border-stone-200/80 text-[#221a1a] dark:text-[#e8e0e3] placeholder:text-stone-400'
-                    }`}
-                  />
-                </div>
-              )}
-
-              {/* Botões sociais se a logo estiver à esquerda */}
-              {businessInfo.headerLogoPosition !== 'center' && (
-                <>
-                  {businessInfo.instagram && (
-                    <a
-                      href={`https://instagram.com/${businessInfo.instagram}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className={`hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-all shadow-2xs ${
-                        businessInfo.headerTextColor === 'light'
-                          ? 'bg-white/20 hover:bg-white/30 text-white border border-white/30'
-                          : 'bg-stone-100/90 dark:bg-[#2b2225]/80 hover:bg-white text-stone-700 dark:text-stone-200 border border-stone-200/80'
-                      }`}
-                      title="Instagram do ateliê"
-                    >
-                      <Instagram size={14} />
-                      <span>@{businessInfo.instagram}</span>
-                    </a>
-                  )}
-
-                  <button
-                    onClick={toggleTheme}
-                    title={isDarkMode ? 'Mudar para Modo Claro' : 'Mudar para Modo Escuro'}
-                    className={`p-2 rounded-full transition-all shadow-2xs cursor-pointer ${
-                      businessInfo.headerTextColor === 'light'
-                        ? 'bg-white/20 hover:bg-white/30 text-white border border-white/30'
-                        : 'bg-stone-100/90 dark:bg-[#2b2225]/80 hover:bg-white text-[#504444] dark:text-[#e8e0e3] border border-stone-200/80'
-                    }`}
-                    aria-label="Alternar tema"
-                  >
-                    {isDarkMode ? <Sun size={15} className="text-[#fbbf24]" /> : <Moon size={15} className="text-[#613d3e]" />}
-                  </button>
-                </>
-              )}
-
-              {/* Botão da Sacola com Total */}
+              {/* Botão Principal da Sacola com Subtotal */}
               <button
                 onClick={() => setIsCartOpen(true)}
-                className={`relative flex items-center gap-2 px-3.5 py-2 rounded-full transition-all shadow-sm cursor-pointer active:scale-95 ${
-                  businessInfo.headerTextColor === 'light'
-                    ? 'bg-white text-[#613d3e] hover:bg-white/90 font-bold'
-                    : 'bg-[#613d3e] dark:bg-[#f4b7b9] text-white dark:text-[#4c2527] hover:opacity-95'
-                }`}
+                className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl sm:rounded-2xl bg-[#613d3e] dark:bg-[#f4b7b9] text-white dark:text-[#4c2527] hover:opacity-95 active:scale-98 transition-all shadow-sm font-bold text-xs sm:text-sm cursor-pointer"
                 aria-label="Abrir sacola de encomendas"
               >
                 <div className="relative">
@@ -782,41 +644,15 @@ export function PublicCatalog() {
                     </span>
                   )}
                 </div>
-                <span className="hidden sm:inline text-xs font-semibold">
-                  {totalItemsCount > 0 ? formatCurrency(subtotal) : 'Sacola'}
-                </span>
+                <span>{totalItemsCount > 0 ? formatCurrency(subtotal) : 'Sacola'}</span>
                 {totalItemsCount > 0 && (
-                  <span className="sm:hidden text-[11px] font-bold tabular-nums">
-                    {formatCurrency(subtotal)}
-                  </span>
+                  <span className="text-[11px] opacity-85 font-normal">({totalItemsCount})</span>
                 )}
               </button>
             </div>
 
           </div>
-
-          {/* Barra de busca no mobile se logo estiver centralizada */}
-          {businessInfo.headerLogoPosition === 'center' && (
-            <div className="sm:hidden px-4 pb-2.5 pt-0">
-              <div className="relative w-full">
-                <Search size={14} className={`absolute left-3 top-1/2 -translate-y-1/2 ${
-                  businessInfo.headerTextColor === 'light' ? 'text-white/60' : 'text-stone-400'
-                }`} />
-                <input
-                  type="text"
-                  placeholder="Buscar produtos, temas..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className={`w-full pl-8 pr-6 py-1.5 text-xs rounded-full border ${
-                    businessInfo.headerTextColor === 'light'
-                      ? 'bg-white/20 border-white/30 text-white placeholder:text-white/60'
-                      : 'bg-stone-100/90 dark:bg-[#161214]/90 border-stone-200/80 text-[#221a1a] dark:text-[#e8e0e3] placeholder:text-stone-400'
-                  }`}
-                />
-              </div>
-            </div>
-          )}
-        </header>
+        </section>
 
         {/* Banner de Capa Panorâmico (se cadastrado) */}
         {businessInfo.banner && (
@@ -841,15 +677,27 @@ export function PublicCatalog() {
             <section className="relative rounded-3xl bg-white/80 dark:bg-[#1f191b]/85 backdrop-blur-md border border-white/60 dark:border-[#ebcdcd]/15 p-5 sm:p-7 shadow-[0_8px_30px_rgb(0_0_0/4%)] dark:shadow-[0_16px_40px_-8px_rgb(0_0_0/50%)] space-y-3.5">
               
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                <div className="space-y-1">
-                  <h2 className="text-xl sm:text-2xl md:text-3xl font-extrabold tracking-tight text-[#221a1a] dark:text-[#e8e0e3] leading-tight">
-                    {businessInfo.name}
-                  </h2>
-                  {businessInfo.tagline && (
-                    <p className="text-sm sm:text-base font-medium text-[#613d3e] dark:text-[#f4b7b9] leading-snug">
-                      {businessInfo.tagline}
-                    </p>
+                <div className="flex items-center gap-3.5">
+                  {businessInfo.logo && !logoError && (
+                    <div className="relative h-14 sm:h-16 w-auto min-w-[56px] max-w-[120px] rounded-xl overflow-hidden bg-stone-100/80 dark:bg-[#161214]/60 p-1 flex items-center justify-center shrink-0 border border-stone-200/60 dark:border-stone-800 shadow-2xs">
+                      <img
+                        src={businessInfo.logo}
+                        alt={businessInfo.name}
+                        onError={() => setLogoError(true)}
+                        className="max-h-full w-auto object-contain"
+                      />
+                    </div>
                   )}
+                  <div className="space-y-1">
+                    <h2 className="text-xl sm:text-2xl md:text-3xl font-extrabold tracking-tight text-[#221a1a] dark:text-[#e8e0e3] leading-tight">
+                      {businessInfo.name}
+                    </h2>
+                    {businessInfo.tagline && (
+                      <p className="text-sm sm:text-base font-medium text-[#613d3e] dark:text-[#f4b7b9] leading-snug">
+                        {businessInfo.tagline}
+                      </p>
+                    )}
+                  </div>
                 </div>
 
                 {/* Selo & Status de Atendimento */}
@@ -1078,10 +926,11 @@ export function PublicCatalog() {
               {/* Coluna 1: Ateliê & Sobre */}
               <div className="space-y-2.5">
                 <div className="flex items-center justify-center md:justify-start gap-2">
-                  {businessInfo.logo ? (
+                  {businessInfo.logo && !logoError ? (
                     <img
                       src={businessInfo.logo}
                       alt={businessInfo.name}
+                      onError={() => setLogoError(true)}
                       className="size-7 rounded-full object-cover border border-white/60"
                     />
                   ) : null}
@@ -1450,6 +1299,26 @@ export function PublicCatalog() {
 
             </div>
           </div>
+        {/* BOTÃO FLUTUANTE DA SACOLA (Acesso permanente ao rolar o catálogo) */}
+        {totalItemsCount > 0 && !isCartOpen && (
+          <aside aria-label="Acesso rápido à sacola" className="fixed bottom-5 right-5 z-40 animate-in fade-in slide-in-from-bottom-3 duration-300">
+            <button
+              onClick={() => setIsCartOpen(true)}
+              className="flex items-center gap-2.5 px-4 py-3 rounded-full bg-[#613d3e] dark:bg-[#f4b7b9] text-white dark:text-[#4c2527] shadow-xl hover:scale-105 active:scale-95 transition-all font-bold text-xs sm:text-sm cursor-pointer ring-4 ring-white/60 dark:ring-black/40"
+              aria-label="Ver sacola de encomendas"
+            >
+              <div className="relative">
+                <ShoppingBag size={19} />
+                <span className="absolute -top-2 -right-2 size-4.5 bg-amber-400 text-stone-950 text-[10px] font-black rounded-full flex items-center justify-center tabular-nums shadow-xs">
+                  {totalItemsCount}
+                </span>
+              </div>
+              <div className="flex flex-col items-start leading-tight">
+                <span className="text-[10px] font-normal opacity-85">Sacola</span>
+                <span className="tabular-nums">{formatCurrency(subtotal)}</span>
+              </div>
+            </button>
+          </aside>
         )}
       </div>
     </div>

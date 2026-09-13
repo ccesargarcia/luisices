@@ -122,6 +122,12 @@ export class FirebaseSettingsService {
     if (settings.catalogLogo === '' || settings.catalogLogo === null) {
       cleanSettings.catalogLogo = deleteField();
     }
+    if (settings.catalogHeaderBackground === '' || settings.catalogHeaderBackground === null) {
+      cleanSettings.catalogHeaderBackground = deleteField();
+    }
+    if (settings.catalogBanner === '' || settings.catalogBanner === null) {
+      cleanSettings.catalogBanner = deleteField();
+    }
 
     const data = {
       ...cleanSettings,
