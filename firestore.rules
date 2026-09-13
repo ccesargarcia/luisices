@@ -97,7 +97,8 @@ service cloud.firestore {
 
     // Regras para produtos (products)
     match /products/{productId} {
-      allow read: if isOwner(resource.data.userId)
+      allow read: if resource.data.isPublic == true
+        || isOwner(resource.data.userId)
         || isAdmin()
         || (isActiveEmployee() && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.permissions.products.view == true);
       allow create: if isOwner(request.resource.data.userId) || isAdmin();
@@ -184,6 +185,12 @@ service cloud.firestore {
 
     match /sentEmails/{emailId} {
       allow read, write: if isAdmin();
+    }
+
+    // Regras para configurações públicas da loja / catálogo online
+    match /storeSettings/{docId} {
+      allow read: if true;
+      allow write: if request.auth != null && (isAdmin() || request.auth.uid != null);
     }
   }
 }

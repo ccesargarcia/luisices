@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router';
-import { LayoutDashboard, Calendar, Users, Package2, LogOut, Settings as SettingsIcon, BarChart3, FileText, ShoppingBag, Images, AtSign, Globe, Phone, Mail, MapPin, MessageCircle, ArrowLeftRight, UserCog, Info, PanelLeftClose, PanelLeftOpen, MoreHorizontal, HelpCircle, Coins } from 'lucide-react';
+import { LayoutDashboard, Calendar, Users, Package2, LogOut, Settings as SettingsIcon, BarChart3, FileText, ShoppingBag, Images, AtSign, Globe, Phone, Mail, MapPin, MessageCircle, ArrowLeftRight, UserCog, Info, PanelLeftClose, PanelLeftOpen, MoreHorizontal, HelpCircle, Coins, ExternalLink } from 'lucide-react';
 import { cn } from '../components/ui/utils';
 import { useAuth } from '../../contexts/AuthContext';
 import { useUserSettings } from '../../hooks/useUserSettings';
@@ -255,6 +255,17 @@ export function Layout() {
             </div>
 
             <div className="flex items-center gap-1.5 sm:gap-2">
+              <a
+                href="/catalogo"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium border border-primary/20 text-primary bg-primary/5 hover:bg-primary/10 transition-colors"
+                title="Abrir Catálogo Online público em nova aba"
+              >
+                <Globe className="size-3.5" />
+                <span>Catálogo</span>
+                <ExternalLink className="size-3 opacity-60" />
+              </a>
               <AdminTeamFilter variant="header" />
               <NotificationBell />
               <ThemeToggle />
@@ -287,6 +298,18 @@ export function Layout() {
                   </div>
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
+                <DropdownMenuItem asChild>
+                  <a
+                    href="/catalogo"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="cursor-pointer flex items-center"
+                  >
+                    <Globe className="size-4 mr-2" />
+                    Ver Catálogo Online
+                    <ExternalLink className="size-3 ml-auto opacity-50" />
+                  </a>
+                </DropdownMenuItem>
                 {canAccessSettings && <DropdownMenuItem onClick={() => navigate('/configuracoes')} className="cursor-pointer">
                   <SettingsIcon className="size-4 mr-2" />
                   Configurações

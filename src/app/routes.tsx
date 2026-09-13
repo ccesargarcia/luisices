@@ -49,6 +49,7 @@ const HelpCenter     = lazyWithRetry(() => import('./pages/HelpCenter').then(m =
 const Emails         = lazyWithRetry(() => import('./pages/Emails').then(m => ({ default: m.Emails })));
 const Pricing        = lazyWithRetry(() => import('./pages/Pricing').then(m => ({ default: m.Pricing })));
 const FixNegativeValues = lazyWithRetry(() => import('./pages/FixNegativeValues').then(m => ({ default: m.default })));
+const PublicCatalog  = lazyWithRetry(() => import('./pages/PublicCatalog').then(m => ({ default: m.PublicCatalog })));
 
 function PageLoader() {
   return (
@@ -67,35 +68,63 @@ function Lazy({ children }: { children: React.ReactNode }) {
 // Em produção (GitHub Pages): '/luisices/' ou o nome do seu repositório
 const basename = import.meta.env.BASE_URL || '/';
 
-export const router = createBrowserRouter([
-  {
-    path: '/login',
-    element: <Login />,
-    errorElement: <ErrorBoundary />,
-  },
-  {
-    path: '/registrar',
-    element: <Register />,
-    errorElement: <ErrorBoundary />,
-  },
-  {
-    path: '/recuperar-senha',
-    element: <ResetPassword />,
-    errorElement: <ErrorBoundary />,
-  },
-  {
-    path: '/action',
-    element: <AuthAction />,
-    errorElement: <ErrorBoundary />,
-  },
-  {
-    path: '/',
-    element: (
-      <ProtectedRoute>
-        <Layout />
-      </ProtectedRoute>
-    ),
-    errorElement: <ErrorBoundary />,
+// Detecção de subdomínio de catálogo (ex: catalogo.luisices.com.br)
+const isCatalogSubdomain = typeof window !== 'undefined' && (
+  window.location.hostname.startsWith('catalogo.') ||
+  window.location.hostname.startsWith('catalog.')
+);
+
+export const router = isCatalogSubdomain
+  ? createBrowserRouter([
+      {
+        path: '/login',
+        element: <Login />,
+        errorElement: <ErrorBoundary />,
+      },
+      {
+        path: '*',
+        element: <Lazy><PublicCatalog /></Lazy>,
+        errorElement: <ErrorBoundary />,
+      },
+    ], { basename })
+  : createBrowserRouter([
+      {
+        path: '/login',
+        element: <Login />,
+        errorElement: <ErrorBoundary />,
+      },
+      {
+        path: '/registrar',
+        element: <Register />,
+        errorElement: <ErrorBoundary />,
+      },
+      {
+        path: '/recuperar-senha',
+        element: <ResetPassword />,
+        errorElement: <ErrorBoundary />,
+      },
+      {
+        path: '/action',
+        element: <AuthAction />,
+        errorElement: <ErrorBoundary />,
+      },
+      {
+        path: '/catalogo',
+        element: <Lazy><PublicCatalog /></Lazy>,
+        errorElement: <ErrorBoundary />,
+      },
+      {
+        path: '/catalog',
+        element: <Navigate to="/catalogo" replace />,
+      },
+      {
+        path: '/',
+        element: (
+          <ProtectedRoute>
+            <Layout />
+          </ProtectedRoute>
+        ),
+        errorElement: <ErrorBoundary />,
     children: [
       {
         index: true,

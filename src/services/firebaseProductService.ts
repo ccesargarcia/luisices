@@ -42,6 +42,13 @@ class FirebaseProductService {
       photoUrl: data.photoUrl || undefined,
       createdAt: data.createdAt?.toDate?.()?.toISOString() ?? new Date().toISOString(),
       updatedAt: data.updatedAt?.toDate?.()?.toISOString() ?? undefined,
+      recipeId: data.recipeId || undefined,
+      unitCost: data.unitCost ?? undefined,
+      profitMargin: data.profitMargin ?? undefined,
+      isPublic: data.isPublic !== undefined ? Boolean(data.isPublic) : true,
+      leadTimeDays: data.leadTimeDays ? Number(data.leadTimeDays) : 5,
+      badge: data.badge || undefined,
+      isCustomizable: data.isCustomizable !== undefined ? Boolean(data.isCustomizable) : true,
     };
   }
 
@@ -73,6 +80,10 @@ class FirebaseProductService {
       description: data.description || null,
       category: data.category || null,
       photoUrl: null,
+      isPublic: data.isPublic !== undefined ? data.isPublic : true,
+      leadTimeDays: data.leadTimeDays ? Number(data.leadTimeDays) : 5,
+      badge: data.badge || null,
+      isCustomizable: data.isCustomizable !== undefined ? data.isCustomizable : true,
       createdAt: Timestamp.now(),
       updatedAt: Timestamp.now(),
     });

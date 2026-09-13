@@ -103,6 +103,23 @@ export class FirebaseSettingsService {
     } else {
       await setDoc(docRef, data);
     }
+
+    // Sincronizar dados públicos da loja para o catálogo online público
+    try {
+      const publicData: Record<string, any> = { updatedAt: new Date() };
+      if (settings.businessName !== undefined) publicData.businessName = settings.businessName;
+      if (settings.businessTagline !== undefined) publicData.businessTagline = settings.businessTagline;
+      if (settings.whatsappPhone !== undefined) publicData.whatsappPhone = settings.whatsappPhone;
+      else if (settings.businessPhone !== undefined) publicData.whatsappPhone = settings.businessPhone;
+      if (settings.instagramUrl !== undefined) publicData.instagramUrl = settings.instagramUrl;
+      if (settings.logo !== undefined) publicData.logo = settings.logo;
+
+      if (Object.keys(publicData).length > 1) {
+        await setDoc(doc(db, 'storeSettings', 'public'), publicData, { merge: true });
+      }
+    } catch (e) {
+      console.warn('Erro ao sincronizar storeSettings pública:', e);
+    }
   }
 
   /**
@@ -125,6 +142,15 @@ export class FirebaseSettingsService {
       logo: logoUrl === null ? deleteField() : logoUrl,
       updatedAt: new Date(),
     });
+
+    try {
+      await setDoc(doc(db, 'storeSettings', 'public'), {
+        logo: logoUrl || null,
+        updatedAt: new Date(),
+      }, { merge: true });
+    } catch (e) {
+      console.warn('Erro ao sincronizar logo em storeSettings pública:', e);
+    }
   }
 
   /**

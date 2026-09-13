@@ -139,6 +139,10 @@ export interface Product {
   recipeId?: string;
   unitCost?: number;
   profitMargin?: number;
+  isPublic?: boolean;          // Exibir no catálogo online público
+  leadTimeDays?: number;      // Prazo de confecção em dias úteis
+  badge?: string;             // Selo de destaque (ex: "Mais Vendido", "Lançamento")
+  isCustomizable?: boolean;   // Permite personalização com nome
 }
 
 export interface Quote {

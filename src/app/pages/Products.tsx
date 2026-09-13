@@ -37,6 +37,8 @@ import {
   TrendingUp,
   TrendingDown,
   Coins,
+  Globe,
+  ExternalLink,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '../components/ui/utils';
@@ -62,10 +64,23 @@ interface ProductFormState {
   unitPrice: string;
   category: string;
   description: string;
+  isPublic: boolean;
+  leadTimeDays: string;
+  badge: string;
+  isCustomizable: boolean;
 }
 
 function emptyForm(): ProductFormState {
-  return { name: '', unitPrice: '', category: '', description: '' };
+  return {
+    name: '',
+    unitPrice: '',
+    category: '',
+    description: '',
+    isPublic: true,
+    leadTimeDays: '5',
+    badge: '',
+    isCustomizable: true,
+  };
 }
 
 function formFromProduct(p: Product): ProductFormState {
@@ -74,6 +89,10 @@ function formFromProduct(p: Product): ProductFormState {
     unitPrice: p.unitPrice.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
     category: p.category || '',
     description: p.description || '',
+    isPublic: p.isPublic !== false,
+    leadTimeDays: String(p.leadTimeDays ?? 5),
+    badge: p.badge || '',
+    isCustomizable: p.isCustomizable !== false,
   };
 }
 
@@ -126,6 +145,10 @@ function ProductFormDialog({ open, onOpenChange, editing, existingCategories, us
         unitPrice: price,
         category: form.category.trim() || undefined,
         description: form.description.trim() || undefined,
+        isPublic: form.isPublic,
+        leadTimeDays: parseInt(form.leadTimeDays, 10) || 5,
+        badge: form.badge.trim() || undefined,
+        isCustomizable: form.isCustomizable,
       };
       let savedProduct: Product;
       if (editing) {
@@ -218,6 +241,67 @@ function ProductFormDialog({ open, onOpenChange, editing, existingCategories, us
             <Label htmlFor="p-desc">Descrição</Label>
             <Textarea id="p-desc" placeholder="Detalhes do produto..." value={form.description}
               onChange={(e) => setForm({ ...form, description: e.target.value })} rows={3} />
+          </div>
+
+          {/* Configurações do Catálogo Online Público */}
+          <div className="rounded-lg border border-primary/20 bg-primary/5 p-3 space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="space-y-0.5">
+                <Label className="text-sm font-medium text-foreground cursor-pointer flex items-center gap-1.5" htmlFor="p-public">
+                  <Globe className="size-4 text-primary" />
+                  Exibir no Catálogo Online
+                </Label>
+                <p className="text-xs text-muted-foreground">
+                  Disponível para clientes navegarem e pedirem via WhatsApp.
+                </p>
+              </div>
+              <input
+                type="checkbox"
+                id="p-public"
+                checked={form.isPublic}
+                onChange={(e) => setForm({ ...form, isPublic: e.target.checked })}
+                className="size-4 rounded border-gray-300 text-primary focus:ring-primary cursor-pointer accent-primary"
+              />
+            </div>
+
+            {form.isPublic && (
+              <div className="grid grid-cols-2 gap-3 pt-2 border-t border-primary/10">
+                <div className="space-y-1">
+                  <Label htmlFor="p-leadtime" className="text-xs">Prazo de Confecção (dias)</Label>
+                  <Input
+                    id="p-leadtime"
+                    type="number"
+                    min="0"
+                    value={form.leadTimeDays}
+                    onChange={(e) => setForm({ ...form, leadTimeDays: e.target.value })}
+                    placeholder="5"
+                    className="h-8 text-xs bg-background"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="p-badge" className="text-xs">Selo / Destaque</Label>
+                  <Input
+                    id="p-badge"
+                    value={form.badge}
+                    onChange={(e) => setForm({ ...form, badge: e.target.value })}
+                    placeholder="Ex: Mais Pedido"
+                    className="h-8 text-xs bg-background"
+                  />
+                </div>
+                <div className="col-span-2 flex items-center gap-2 pt-1">
+                  <input
+                    type="checkbox"
+                    id="p-customizable"
+                    checked={form.isCustomizable}
+                    onChange={(e) => setForm({ ...form, isCustomizable: e.target.checked })}
+                    className="size-3.5 rounded border-gray-300 text-primary focus:ring-primary cursor-pointer accent-primary"
+                  />
+                  <Label htmlFor="p-customizable" className="text-xs text-muted-foreground cursor-pointer select-none">
+                    Permite ao cliente informar nome para personalização
+                  </Label>
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
@@ -315,6 +399,13 @@ export function Products() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <a href="/catalogo" target="_blank" rel="noopener noreferrer">
+            <Button variant="outline" className="gap-2 border-primary/30 text-primary hover:bg-primary/5">
+              <Globe className="size-4" />
+              <span className="hidden sm:inline">Ver Catálogo Online</span>
+              <ExternalLink className="size-3 opacity-60" />
+            </Button>
+          </a>
           <Link to="/precificacao">
             <Button variant="outline" className="gap-2 border-primary/30 text-primary hover:bg-primary/5">
               <Coins className="size-4" />
@@ -456,12 +547,28 @@ export function Products() {
                     <div key={product.id} className="hover:shadow-md transition-shadow">
                       <Card className="overflow-hidden h-full flex flex-col">
                         {/* Photo – always same height; renders placeholder if no image */}
-                        <div className="w-full h-36 overflow-hidden bg-muted flex items-center justify-center flex-shrink-0">
+                        <div className="relative w-full h-36 overflow-hidden bg-muted flex items-center justify-center flex-shrink-0">
                           {product.photoUrl ? (
                             <SafeImg src={product.photoUrl} alt={product.name} className="w-full h-full object-cover" />
                           ) : (
                             <Package className="size-10 text-muted-foreground/25" />
                           )}
+                          <div className="absolute top-2 left-2 flex flex-wrap gap-1">
+                            {product.isPublic !== false ? (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-background/90 text-primary backdrop-blur-sm shadow-sm border border-border/50">
+                                <Globe className="size-2.5" /> Catálogo
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-background/80 text-muted-foreground backdrop-blur-sm">
+                                Privado
+                              </span>
+                            )}
+                            {product.badge && (
+                              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-500/90 text-white backdrop-blur-sm shadow-sm">
+                                {product.badge}
+                              </span>
+                            )}
+                          </div>
                         </div>
                         <CardContent className="p-4 flex flex-col flex-1">
                           <div className="flex items-start justify-between gap-2 flex-1">
@@ -547,7 +654,21 @@ export function Products() {
                       )}
                     </div>
                   </td>
-                  <td className="max-w-[220px] break-words px-4 py-2.5 font-medium">{product.name}</td>
+                  <td className="max-w-[220px] break-words px-4 py-2.5 font-medium">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span>{product.name}</span>
+                      {product.isPublic !== false && (
+                        <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium bg-primary/10 text-primary" title="Visível no Catálogo Online">
+                          <Globe className="size-2.5" /> Catálogo
+                        </span>
+                      )}
+                      {product.badge && (
+                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-500/15 text-amber-600">
+                          {product.badge}
+                        </span>
+                      )}
+                    </div>
+                  </td>
                   <td className="px-4 py-2.5 hidden sm:table-cell">
                     {product.category
                       ? <Badge variant="secondary" className="text-xs font-normal">{product.category}</Badge>
