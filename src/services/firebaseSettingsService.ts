@@ -60,6 +60,7 @@ export interface UserSettings {
   // Customizações do Catálogo Online Público (Lojinha)
   catalogLogo?: string;                      // Logo exclusivo da lojinha pública online (independente do painel)
   catalogBanner?: string;                    // Banner de capa exclusivo da lojinha pública online (formato LinkedIn / 4:1)
+  catalogBannerFixed?: boolean;              // Efeito Parallax/Vitrine: banner fixo ao fundo com produtos rolando por cima
   catalogBadge?: string;                      // Selo no header (ex: "Atelier", "Papelaria Afetiva")
   catalogStatusText?: string;                // Texto do status (ex: "Atendimento WhatsApp ativo")
   catalogHeroTitle?: string;                 // Título no banner principal (ex: "Catálogo & Vitrine Afetiva")
@@ -153,6 +154,10 @@ export class FirebaseSettingsService {
         } else {
           publicData.catalogBanner = deleteField();
         }
+      }
+
+      if (settings.catalogBannerFixed !== undefined) {
+        publicData.catalogBannerFixed = Boolean(settings.catalogBannerFixed);
       }
 
       // Customizações da Lojinha / Catálogo

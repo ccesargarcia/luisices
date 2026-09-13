@@ -160,13 +160,7 @@ export function PublicCatalog() {
 
   // Informações do negócio e customizações da lojinha com cache em localStorage para evitar flash no F5
   const [businessInfo, setBusinessInfo] = useState(() => {
-    try {
-      const cached = localStorage.getItem('luisices_public_store_settings');
-      if (cached) {
-        return JSON.parse(cached);
-      }
-    } catch {}
-    return {
+    const defaultInfo = {
       name: 'Luisices Papelaria Personalizada',
       tagline: 'Papelaria artesanal feita à mão para momentos únicos',
       whatsapp: '5511999999999',
@@ -174,6 +168,7 @@ export function PublicCatalog() {
       website: '',
       logo: '',
       banner: '',
+      bannerFixed: false,
       badge: 'Atelier Afetivo',
       statusText: 'Atendimento WhatsApp ativo',
       announcement: '✨ Encomendas abertas com envio carinhoso para todo o Brasil!',
@@ -188,6 +183,13 @@ export function PublicCatalog() {
       footerNotice: 'Produção artesanal sob encomenda. Os prazos começam a contar após a aprovação da arte.',
       footerCopyright: `© ${new Date().getFullYear()} Luisices. Todos os direitos reservados.`,
     };
+    try {
+      const cached = localStorage.getItem('luisices_public_store_settings');
+      if (cached) {
+        return { ...defaultInfo, ...JSON.parse(cached) };
+      }
+    } catch {}
+    return defaultInfo;
   });
 
   // Estado da Sacola com persistência em localStorage
@@ -204,6 +206,17 @@ export function PublicCatalog() {
   const [selectedProductPreview, setSelectedProductPreview] = useState<CatalogProduct | null>(null);
   const [customerNotes, setCustomerNotes] = useState<string>('');
   const [previewCustomName, setPreviewCustomName] = useState<string>('');
+
+  // Efeito Parallax suave quando o banner fixo está ativado
+  const [scrollY, setScrollY] = useState(0);
+  useEffect(() => {
+    if (!businessInfo.bannerFixed) return;
+    const handleScroll = () => {
+      setScrollY(window.scrollY);
+    };
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, [businessInfo.bannerFixed]);
 
   // Guarda o tema da área administrativa antes de abrir o catálogo
   const originalThemeRef = useRef<string | null>(null);
@@ -291,6 +304,7 @@ export function PublicCatalog() {
                 website: s.websiteUrl || prev.website,
                 logo: s.catalogLogo || '',
                 banner: s.catalogBanner || '',
+                bannerFixed: s.catalogBannerFixed !== undefined ? Boolean(s.catalogBannerFixed) : (prev.bannerFixed ?? false),
                 badge: s.catalogBadge !== undefined ? s.catalogBadge : prev.badge,
                 statusText: s.catalogStatusText !== undefined ? s.catalogStatusText : prev.statusText,
                 announcement: s.catalogAnnouncement !== undefined ? s.catalogAnnouncement : prev.announcement,
@@ -621,17 +635,27 @@ export function PublicCatalog() {
           {/* Banner de Capa Panorâmico (Estilo LinkedIn 4:1) & Bloco de Identidade Visual */}
           <section className="relative overflow-hidden rounded-3xl bg-white/75 dark:bg-[#1f191b]/85 backdrop-blur-md border border-white/60 dark:border-[#ebcdcd]/15 shadow-[0_8px_32px_rgb(230_180_180/15%)] dark:shadow-[0_16px_40px_-8px_rgb(0_0_0/65%)]">
             
-            {/* 1. Capa Panorâmica (4:1) */}
-            <div className="relative w-full aspect-[3.2/1] sm:aspect-[4/1] md:aspect-[4.5/1] overflow-hidden bg-gradient-to-r from-[#fceee9] via-[#f7d6d0] to-[#ede7f6] dark:from-[#2a1a1f] dark:via-[#3d2429] dark:to-[#1d1624]">
+            {/* 1. Capa Panorâmica (4:1) com suporte a Efeito Parallax / Fixo */}
+            <div className={`relative w-full aspect-[3.2/1] sm:aspect-[4/1] md:aspect-[4.5/1] overflow-hidden ${
+              businessInfo.bannerFixed ? 'sticky top-14 z-0' : ''
+            } bg-gradient-to-r from-[#fceee9] via-[#f7d6d0] to-[#ede7f6] dark:from-[#2a1a1f] dark:via-[#3d2429] dark:to-[#1d1624]`}>
               {businessInfo.banner ? (
                 <img
                   src={businessInfo.banner}
                   alt={`Banner de capa de ${businessInfo.name}`}
-                  className="w-full h-full object-cover"
+                  className="w-full h-full object-cover transition-transform duration-75 will-change-transform"
+                  style={businessInfo.bannerFixed ? {
+                    transform: `translateY(${Math.min(scrollY * 0.35, 90)}px) scale(1.05)`,
+                  } : undefined}
                 />
               ) : (
                 /* Fundo decorativo sutil padrão de papelaria afetiva com partículas */
-                <div className="w-full h-full flex items-center justify-end pr-8 sm:pr-16 opacity-30 select-none pointer-events-none">
+                <div 
+                  className="w-full h-full flex items-center justify-end pr-8 sm:pr-16 opacity-30 select-none pointer-events-none transition-transform duration-75"
+                  style={businessInfo.bannerFixed ? {
+                    transform: `translateY(${Math.min(scrollY * 0.35, 90)}px)`,
+                  } : undefined}
+                >
                   <div className="text-right space-y-1">
                     <Sparkles className="size-14 sm:size-24 text-[#613d3e] dark:text-[#f4b7b9] ml-auto opacity-35" />
                   </div>
@@ -640,7 +664,11 @@ export function PublicCatalog() {
             </div>
 
             {/* 2. Área de Identidade com Logo Sobreposto (Estilo Perfil do LinkedIn) */}
-            <div className="px-5 sm:px-8 pb-6 pt-0">
+            <div className={`px-5 sm:px-8 pb-6 pt-0 ${
+              businessInfo.bannerFixed
+                ? 'relative z-10 bg-white/90 dark:bg-[#1f191b]/95 backdrop-blur-xl border-t border-white/40 dark:border-white/5'
+                : ''
+            }`}>
               <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 -mt-10 sm:-mt-14 mb-4">
                 
                 {/* Logo Circular com borda ring sobreposta à capa */}

@@ -3,6 +3,7 @@ import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { useUserSettings } from '../../hooks/useUserSettings';
 import { Button } from '../components/ui/button';
+import { Switch } from '../components/ui/switch';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Textarea } from '../components/ui/textarea';
@@ -30,7 +31,8 @@ import {
   ShoppingBag,
   Wand2,
   Heart,
-  Image as ImageIcon
+  Image as ImageIcon,
+  Layers
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -162,6 +164,7 @@ export function StoreCustomization() {
     catalogFooterBusinessHours: '',
     catalogFooterCopyright: '',
     catalogFooterNotice: '',
+    catalogBannerFixed: false,
   });
 
   const [dataLoaded, setDataLoaded] = useState(false);
@@ -193,6 +196,7 @@ export function StoreCustomization() {
         catalogFooterBusinessHours: settings?.catalogFooterBusinessHours || '',
         catalogFooterCopyright: settings?.catalogFooterCopyright || '',
         catalogFooterNotice: settings?.catalogFooterNotice || '',
+        catalogBannerFixed: settings?.catalogBannerFixed || false,
       };
 
       // Carrega os dados compartilhados públicos da loja do Firestore
@@ -241,6 +245,7 @@ export function StoreCustomization() {
             catalogFooterBusinessHours: pub.catalogFooterBusinessHours || data.catalogFooterBusinessHours,
             catalogFooterCopyright: pub.catalogFooterCopyright || data.catalogFooterCopyright,
             catalogFooterNotice: pub.catalogFooterNotice || data.catalogFooterNotice,
+            catalogBannerFixed: pub.catalogBannerFixed !== undefined ? Boolean(pub.catalogBannerFixed) : (settings?.catalogBannerFixed || false),
           };
         }
       } catch (err) {
@@ -344,7 +349,7 @@ export function StoreCustomization() {
     }
   };
 
-  const handleChange = (field: keyof typeof formData, value: string) => {
+  const handleChange = (field: keyof typeof formData, value: any) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
   };
 
@@ -368,6 +373,7 @@ export function StoreCustomization() {
         ...formData,
         catalogLogo: currentCatalogLogo || '',
         catalogBanner: currentCatalogBanner || '',
+        catalogBannerFixed: Boolean(formData.catalogBannerFixed),
       });
       // Salva no cache do navegador para a lojinha atualizar instantaneamente
       try {
@@ -379,6 +385,7 @@ export function StoreCustomization() {
           website: formData.websiteUrl,
           logo: currentCatalogLogo || '',
           banner: currentCatalogBanner || '',
+          bannerFixed: Boolean(formData.catalogBannerFixed),
           badge: formData.catalogBadge,
           statusText: formData.catalogStatusText,
           announcement: formData.catalogAnnouncement,
@@ -661,6 +668,24 @@ export function StoreCustomization() {
                       ? '✅ Banner de capa panorâmico ativo no topo do catálogo público online.'
                       : '💡 Dica: Um banner em proporção 4:1 (ex: 1584x396px) cria uma apresentação visual marcante de estúdio, com o logo do ateliê sobreposto no canto inferior estilo LinkedIn.'}
                   </p>
+
+                  {/* Opção de Banner Fixo / Parallax */}
+                  <div className="pt-3 border-t border-border/60 flex items-center justify-between gap-4">
+                    <div className="space-y-0.5">
+                      <Label htmlFor="banner-fixed-switch" className="text-xs font-semibold flex items-center gap-1.5 cursor-pointer">
+                        <Layers className="size-3.5 text-primary" />
+                        Fixar banner de capa (Efeito Parallax / Vitrine)
+                      </Label>
+                      <p className="text-[11px] text-muted-foreground">
+                        O banner de capa fica fixado ao fundo e o catálogo de produtos sobe suavemente por cima dele ao rolar a página.
+                      </p>
+                    </div>
+                    <Switch
+                      id="banner-fixed-switch"
+                      checked={Boolean(formData.catalogBannerFixed)}
+                      onCheckedChange={(checked) => handleChange('catalogBannerFixed', checked)}
+                    />
+                  </div>
                 </CardContent>
               </Card>
 
