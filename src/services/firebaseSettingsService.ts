@@ -59,6 +59,7 @@ export interface UserSettings {
 
   // Customizações do Catálogo Online Público (Lojinha)
   catalogLogo?: string;                      // Logo exclusivo da lojinha pública online (independente do painel)
+  catalogBanner?: string;                    // Banner de capa exclusivo da lojinha pública online (formato LinkedIn / 4:1)
   catalogBadge?: string;                      // Selo no header (ex: "Atelier", "Papelaria Afetiva")
   catalogStatusText?: string;                // Texto do status (ex: "Atendimento WhatsApp ativo")
   catalogHeroTitle?: string;                 // Título no banner principal (ex: "Catálogo & Vitrine Afetiva")
@@ -142,6 +143,15 @@ export class FirebaseSettingsService {
         } else {
           publicData.catalogLogo = deleteField();
           publicData.logo = deleteField(); // Limpa resquício de logo legado no catálogo público
+        }
+      }
+
+      // Banner exclusivo da lojinha pública online (formato LinkedIn / 4:1)
+      if (settings.catalogBanner !== undefined) {
+        if (settings.catalogBanner && settings.catalogBanner.trim() !== '') {
+          publicData.catalogBanner = settings.catalogBanner;
+        } else {
+          publicData.catalogBanner = deleteField();
         }
       }
 
@@ -229,6 +239,37 @@ export class FirebaseSettingsService {
       );
     } catch (e) {
       console.warn('Erro ao sincronizar catalogLogo em storeSettings pública:', e);
+    }
+  }
+
+  /**
+   * Atualizar banner exclusivo do catálogo / lojinha pública online (formato LinkedIn / 4:1)
+   */
+  async updateCatalogBanner(userId: string, catalogBannerUrl: string | null): Promise<void> {
+    const docRef = doc(db, 'users', userId, 'settings', 'profile');
+    const isRemove = catalogBannerUrl === null || catalogBannerUrl === '';
+
+    await setDoc(
+      docRef,
+      {
+        catalogBanner: isRemove ? deleteField() : catalogBannerUrl,
+        userId,
+        updatedAt: new Date(),
+      },
+      { merge: true }
+    );
+
+    try {
+      await setDoc(
+        doc(db, 'storeSettings', 'public'),
+        {
+          catalogBanner: isRemove ? deleteField() : catalogBannerUrl,
+          updatedAt: new Date(),
+        },
+        { merge: true }
+      );
+    } catch (e) {
+      console.warn('Erro ao sincronizar catalogBanner em storeSettings pública:', e);
     }
   }
 

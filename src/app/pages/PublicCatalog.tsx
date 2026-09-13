@@ -173,6 +173,7 @@ export function PublicCatalog() {
       instagram: 'luisicesatelie',
       website: '',
       logo: '',
+      banner: '',
       badge: 'Atelier Afetivo',
       statusText: 'Atendimento WhatsApp ativo',
       announcement: '✨ Encomendas abertas com envio carinhoso para todo o Brasil!',
@@ -289,6 +290,7 @@ export function PublicCatalog() {
                 instagram: s.instagramUrl ? s.instagramUrl.replace(/^https?:\/\/(www\.)?instagram\.com\//, '').replace(/\/$/, '') : prev.instagram,
                 website: s.websiteUrl || prev.website,
                 logo: s.catalogLogo || '',
+                banner: s.catalogBanner || '',
                 badge: s.catalogBadge !== undefined ? s.catalogBadge : prev.badge,
                 statusText: s.catalogStatusText !== undefined ? s.catalogStatusText : prev.statusText,
                 announcement: s.catalogAnnouncement !== undefined ? s.catalogAnnouncement : prev.announcement,
@@ -616,56 +618,111 @@ export function PublicCatalog() {
         {/* 2. Conteúdo Principal Responsivo (Desktop até max-w-7xl) */}
         <main className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-4 sm:pt-6 space-y-6 sm:space-y-8">
           
-          {/* Hero Banner da Loja: Amplo e Sofisticado */}
-          <section className="relative overflow-hidden rounded-3xl p-5 sm:p-8 bg-white/70 dark:bg-[#1f191b]/85 backdrop-blur-md border border-white/60 dark:border-[#ebcdcd]/15 shadow-[0_8px_32px_rgb(230_180_180/15%)] dark:shadow-[0_16px_40px_-8px_rgb(0_0_0/65%)]">
-            <div className="max-w-3xl space-y-2.5">
-              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#613d3e]/10 dark:bg-[#f4b7b9]/15 text-[#613d3e] dark:text-[#f4b7b9] text-xs font-semibold">
-                <Sparkles size={14} />
-                <span>{businessInfo.heroTitle || 'Catálogo & Vitrine Afetiva'}</span>
-              </div>
-              
-              {businessInfo.tagline ? (
-                <h2 className="text-xl sm:text-2xl md:text-3xl font-extrabold tracking-tight text-[#221a1a] dark:text-[#e8e0e3] leading-tight">
-                  {businessInfo.tagline}
-                </h2>
-              ) : null}
-
-              <p className="text-xs sm:text-sm text-[#504444] dark:text-[#c9c0b8] leading-relaxed max-w-2xl">
-                {businessInfo.heroDescription || 'Escolha suas peças, informe o nome para personalização e envie o pedido formatado diretamente no nosso WhatsApp.'}
-              </p>
-
-              {/* Destaques de confiança (Pills informativas) */}
-              <div className="pt-2 flex flex-wrap gap-2 text-[11px] text-[#504444] dark:text-[#c9c0b8] font-medium">
-                <span className="inline-flex items-center gap-1 bg-stone-100/80 dark:bg-[#161214]/60 px-2.5 py-1 rounded-full border border-stone-200/60 dark:border-stone-800">
-                  <Sparkle size={12} className="text-[#613d3e] dark:text-[#f4b7b9]" /> Feito à mão com afeto
-                </span>
-                <span className="inline-flex items-center gap-1 bg-stone-100/80 dark:bg-[#161214]/60 px-2.5 py-1 rounded-full border border-stone-200/60 dark:border-stone-800">
-                  <ShieldCheck size={12} className="text-emerald-600 dark:text-emerald-400" /> Aprovação da arte prévia
-                </span>
-                <span className="inline-flex items-center gap-1 bg-stone-100/80 dark:bg-[#161214]/60 px-2.5 py-1 rounded-full border border-stone-200/60 dark:border-stone-800">
-                  <Truck size={12} className="text-sky-600 dark:text-sky-400" /> Envio seguro para todo Brasil
-                </span>
-              </div>
+          {/* Banner de Capa Panorâmico (Estilo LinkedIn 4:1) & Bloco de Identidade Visual */}
+          <section className="relative overflow-hidden rounded-3xl bg-white/75 dark:bg-[#1f191b]/85 backdrop-blur-md border border-white/60 dark:border-[#ebcdcd]/15 shadow-[0_8px_32px_rgb(230_180_180/15%)] dark:shadow-[0_16px_40px_-8px_rgb(0_0_0/65%)]">
+            
+            {/* 1. Capa Panorâmica (4:1) */}
+            <div className="relative w-full aspect-[3.2/1] sm:aspect-[4/1] md:aspect-[4.5/1] overflow-hidden bg-gradient-to-r from-[#fceee9] via-[#f7d6d0] to-[#ede7f6] dark:from-[#2a1a1f] dark:via-[#3d2429] dark:to-[#1d1624]">
+              {businessInfo.banner ? (
+                <img
+                  src={businessInfo.banner}
+                  alt={`Banner de capa de ${businessInfo.name}`}
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                /* Fundo decorativo sutil padrão de papelaria afetiva com partículas */
+                <div className="w-full h-full flex items-center justify-end pr-8 sm:pr-16 opacity-30 select-none pointer-events-none">
+                  <div className="text-right space-y-1">
+                    <Sparkles className="size-14 sm:size-24 text-[#613d3e] dark:text-[#f4b7b9] ml-auto opacity-35" />
+                  </div>
+                </div>
+              )}
             </div>
 
-            {/* Input de Busca no Mobile (oculto no desktop para não duplicar) */}
-            <div className="mt-4 md:hidden relative">
-              <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-stone-400 dark:text-stone-500" />
-              <input
-                type="text"
-                placeholder="Buscar por produto, tema, lembrança..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-10 pr-9 py-2.5 text-xs rounded-xl bg-white/90 dark:bg-[#120e10]/80 border border-stone-200/80 dark:border-[#ebcdcd]/20 text-[#221a1a] dark:text-[#e8e0e3] placeholder:text-stone-400 dark:placeholder:text-stone-500 focus:outline-none focus:ring-2 focus:ring-[#613d3e]/30 dark:focus:ring-[#f4b7b9]/30 transition-all shadow-inner"
-              />
-              {searchQuery && (
-                <button
-                  onClick={() => setSearchQuery('')}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-stone-400 hover:text-stone-700"
-                >
-                  <X size={14} />
-                </button>
-              )}
+            {/* 2. Área de Identidade com Logo Sobreposto (Estilo Perfil do LinkedIn) */}
+            <div className="px-5 sm:px-8 pb-6 pt-0">
+              <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 -mt-10 sm:-mt-14 mb-4">
+                
+                {/* Logo Circular com borda ring sobreposta à capa */}
+                <div className="relative size-20 sm:size-28 rounded-full ring-4 ring-white dark:ring-[#1f191b] bg-white dark:bg-[#161214] shadow-lg overflow-hidden shrink-0 flex items-center justify-center">
+                  {businessInfo.logo ? (
+                    <img
+                      src={businessInfo.logo}
+                      alt={businessInfo.name}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <div className="w-full h-full bg-[#613d3e]/10 dark:bg-[#f4b7b9]/20 flex items-center justify-center text-[#613d3e] dark:text-[#f4b7b9]">
+                      <Sparkles className="size-8 sm:size-10" />
+                    </div>
+                  )}
+                </div>
+
+                {/* Selo & Status de Atendimento */}
+                <div className="flex flex-wrap items-center gap-2 sm:mb-2">
+                  <span className="text-xs font-semibold px-3 py-1 rounded-full bg-[#613d3e]/10 dark:bg-[#f4b7b9]/15 text-[#613d3e] dark:text-[#f4b7b9]">
+                    {businessInfo.badge || 'Atelier Afetivo'}
+                  </span>
+                  <span className="inline-flex items-center gap-1.5 text-xs text-[#504444] dark:text-[#c9c0b8] font-medium bg-stone-100/80 dark:bg-[#161214]/60 px-3 py-1 rounded-full border border-stone-200/60 dark:border-stone-800">
+                    <span className="size-2 rounded-full bg-[#10B981] animate-pulse shrink-0" />
+                    {businessInfo.statusText || 'Atendimento WhatsApp ativo'}
+                  </span>
+                </div>
+
+              </div>
+
+              {/* Informações da Loja: Nome, Slogan/Tagline e Descrição */}
+              <div className="space-y-2 max-w-3xl">
+                <div className="flex items-center gap-2">
+                  <h2 className="text-xl sm:text-2xl md:text-3xl font-extrabold tracking-tight text-[#221a1a] dark:text-[#e8e0e3] leading-tight">
+                    {businessInfo.name}
+                  </h2>
+                </div>
+
+                {businessInfo.tagline ? (
+                  <p className="text-sm sm:text-base font-medium text-[#613d3e] dark:text-[#f4b7b9] leading-snug">
+                    {businessInfo.tagline}
+                  </p>
+                ) : null}
+
+                <p className="text-xs sm:text-sm text-[#504444] dark:text-[#c9c0b8] leading-relaxed max-w-2xl">
+                  {businessInfo.heroDescription || 'Escolha suas peças, informe o nome para personalização e envie o pedido formatado diretamente no nosso WhatsApp.'}
+                </p>
+
+                {/* Destaques de confiança (Pills informativas) */}
+                <div className="pt-2 flex flex-wrap gap-2 text-[11px] text-[#504444] dark:text-[#c9c0b8] font-medium">
+                  <span className="inline-flex items-center gap-1 bg-stone-100/80 dark:bg-[#161214]/60 px-2.5 py-1 rounded-full border border-stone-200/60 dark:border-stone-800">
+                    <Sparkle size={12} className="text-[#613d3e] dark:text-[#f4b7b9]" /> Feito à mão com afeto
+                  </span>
+                  <span className="inline-flex items-center gap-1 bg-stone-100/80 dark:bg-[#161214]/60 px-2.5 py-1 rounded-full border border-stone-200/60 dark:border-stone-800">
+                    <ShieldCheck size={12} className="text-emerald-600 dark:text-emerald-400" /> Aprovação da arte prévia
+                  </span>
+                  <span className="inline-flex items-center gap-1 bg-stone-100/80 dark:bg-[#161214]/60 px-2.5 py-1 rounded-full border border-stone-200/60 dark:border-stone-800">
+                    <Truck size={12} className="text-sky-600 dark:text-sky-400" /> Envio seguro para todo Brasil
+                  </span>
+                </div>
+              </div>
+
+              {/* Input de Busca no Mobile (oculto no desktop para não duplicar com o header) */}
+              <div className="mt-4 md:hidden relative">
+                <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-stone-400 dark:text-stone-500" />
+                <input
+                  type="text"
+                  placeholder="Buscar por produto, tema, lembrança..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full pl-10 pr-9 py-2.5 text-xs rounded-xl bg-white/90 dark:bg-[#120e10]/80 border border-stone-200/80 dark:border-[#ebcdcd]/20 text-[#221a1a] dark:text-[#e8e0e3] placeholder:text-stone-400 dark:placeholder:text-stone-500 focus:outline-none focus:ring-2 focus:ring-[#613d3e]/30 dark:focus:ring-[#f4b7b9]/30 transition-all shadow-inner"
+                />
+                {searchQuery && (
+                  <button
+                    onClick={() => setSearchQuery('')}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-stone-400 hover:text-stone-700"
+                  >
+                    <X size={14} />
+                  </button>
+                )}
+              </div>
+
             </div>
           </section>
 

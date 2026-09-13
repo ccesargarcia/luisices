@@ -110,6 +110,29 @@ export function useUserSettings() {
     }
   };
 
+  // Upload de banner da lojinha pública (formato LinkedIn / 4:1)
+  const uploadCatalogBanner = async (file: File, oldUrl?: string): Promise<string> => {
+    if (!user) throw new Error('Usuário não autenticado');
+
+    try {
+      if (oldUrl) {
+        try {
+          await firebaseStorageService.deleteImage(oldUrl);
+        } catch (deleteError) {
+          console.warn('Não foi possível deletar catalogBanner antigo (continuando):', deleteError);
+        }
+      }
+
+      const url = await firebaseStorageService.uploadImage(file, user.uid, 'catalog-banner');
+      await firebaseSettingsService.updateCatalogBanner(user.uid, url);
+
+      return url;
+    } catch (err) {
+      setError(err as Error);
+      throw err;
+    }
+  };
+
   // Upload de banner
   const uploadBanner = async (file: File): Promise<string> => {
     if (!user) throw new Error('Usuário não autenticado');
@@ -199,6 +222,26 @@ export function useUserSettings() {
     }
   };
 
+  // Remover banner do catálogo / lojinha pública
+  const removeCatalogBanner = async (bannerUrlToDelete?: string) => {
+    if (!user) throw new Error('Usuário não autenticado');
+
+    try {
+      const urlToDelete = bannerUrlToDelete || settings?.catalogBanner;
+      if (urlToDelete) {
+        try {
+          await firebaseStorageService.deleteImage(urlToDelete);
+        } catch (storageError) {
+          console.warn('Erro ao deletar catalogBanner do Storage (continuando):', storageError);
+        }
+      }
+      await firebaseSettingsService.updateCatalogBanner(user.uid, null);
+    } catch (err) {
+      setError(err as Error);
+      throw err;
+    }
+  };
+
   // Remover banner
   const removeBanner = async () => {
     if (!user) throw new Error('Usuário não autenticado');
@@ -235,6 +278,9 @@ export function useUserSettings() {
       if (settings?.catalogLogo) {
         await firebaseStorageService.deleteImage(settings.catalogLogo);
       }
+      if (settings?.catalogBanner) {
+        await firebaseStorageService.deleteImage(settings.catalogBanner);
+      }
       if (settings?.banner) {
         await firebaseStorageService.deleteImage(settings.banner);
       }
@@ -255,10 +301,12 @@ export function useUserSettings() {
     uploadAvatar,
     uploadLogo,
     uploadCatalogLogo,
+    uploadCatalogBanner,
     uploadBanner,
     removeAvatar,
     removeLogo,
     removeCatalogLogo,
+    removeCatalogBanner,
     removeBanner,
     resetToDefaults,
   };

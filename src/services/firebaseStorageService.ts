@@ -61,7 +61,7 @@ export class FirebaseStorageService {
   async uploadImage(
     file: File,
     userId: string,
-    folder: 'avatar' | 'logo' | 'banner' | 'catalog-logo'
+    folder: 'avatar' | 'logo' | 'banner' | 'catalog-logo' | 'catalog-banner'
   ): Promise<string> {
     const allowedImageTypes = ['image/jpeg', 'image/png', 'image/webp'];
     if (!allowedImageTypes.includes(file.type)) {
@@ -78,7 +78,9 @@ export class FirebaseStorageService {
     const timestamp = Date.now();
     const extension = file.name.split('.').pop();
     const fileName = `${folder}_${timestamp}.${extension}`;
-    const storagePath = `users/${userId}/${folder}/${fileName}`;
+    const storagePath = folder.startsWith('catalog-')
+      ? `store/${folder}/${fileName}`
+      : `users/${userId}/${folder}/${fileName}`;
     const storageRef = ref(storage, storagePath);
 
     // Metadata

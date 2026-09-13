@@ -29,7 +29,8 @@ import {
   Eye,
   ShoppingBag,
   Wand2,
-  Heart
+  Heart,
+  Image as ImageIcon
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -125,10 +126,20 @@ export const STORE_TEMPLATES = [
 ];
 
 export function StoreCustomization() {
-  const { settings, loading, updateSettings, uploadCatalogLogo, removeCatalogLogo } = useUserSettings();
+  const { 
+    settings, 
+    loading, 
+    updateSettings, 
+    uploadCatalogLogo, 
+    removeCatalogLogo,
+    uploadCatalogBanner,
+    removeCatalogBanner
+  } = useUserSettings();
   const [saving, setSaving] = useState(false);
   const [uploadingLogo, setUploadingLogo] = useState(false);
+  const [uploadingBanner, setUploadingBanner] = useState(false);
   const [currentCatalogLogo, setCurrentCatalogLogo] = useState<string | null>(null);
+  const [currentCatalogBanner, setCurrentCatalogBanner] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState('identity');
 
   // Estado dos campos do formulário
@@ -160,8 +171,9 @@ export function StoreCustomization() {
     let isCancelled = false;
 
     async function loadData() {
-      // Inicia apenas com o catalogLogo exclusivo da lojinha (sem fallback para o logo do painel)
+      // Inicia com catalogLogo e catalogBanner exclusivos da lojinha (sem fallback para o logo do painel)
       let loadedLogo: string | null = settings?.catalogLogo || null;
+      let loadedBanner: string | null = settings?.catalogBanner || null;
       let data = {
         businessName: settings?.businessName || '',
         businessTagline: settings?.businessTagline || '',
@@ -199,6 +211,17 @@ export function StoreCustomization() {
             loadedLogo = null;
           }
 
+          // Prioriza estritamente o catalogBanner exclusivo da loja pública
+          if (pub.catalogBanner) {
+            loadedBanner = pub.catalogBanner;
+          } else if (pub.catalogBanner === null || pub.catalogBanner === '') {
+            loadedBanner = null;
+          } else if (settings?.catalogBanner) {
+            loadedBanner = settings.catalogBanner;
+          } else {
+            loadedBanner = null;
+          }
+
           data = {
             businessName: pub.businessName || data.businessName,
             businessTagline: pub.businessTagline || data.businessTagline,
@@ -226,6 +249,7 @@ export function StoreCustomization() {
 
       if (!isCancelled) {
         setCurrentCatalogLogo(loadedLogo);
+        setCurrentCatalogBanner(loadedBanner);
         if (!dataLoaded) {
           setFormData(data);
           setDataLoaded(true);
@@ -280,6 +304,46 @@ export function StoreCustomization() {
     }
   };
 
+  const handleBannerUpload = async (file: File) => {
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+      toast.error('Formato inválido. Use imagem JPG, PNG ou WebP.');
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error('A imagem deve ter no máximo 5 MB.');
+      return;
+    }
+
+    setUploadingBanner(true);
+    try {
+      const url = await uploadCatalogBanner(file, currentCatalogBanner || undefined);
+      setCurrentCatalogBanner(url);
+      toast.success('Banner de capa da lojinha atualizado com sucesso!');
+    } catch (error) {
+      console.error('Erro no upload do banner da lojinha:', error);
+      toast.error(error instanceof Error ? error.message : 'Erro ao fazer upload do banner');
+    } finally {
+      setUploadingBanner(false);
+    }
+  };
+
+  const handleBannerRemove = async () => {
+    if (!confirm('Deseja realmente remover o banner de capa da lojinha pública?')) return;
+    setUploadingBanner(true);
+    const previousBanner = currentCatalogBanner;
+    try {
+      setCurrentCatalogBanner(null);
+      await removeCatalogBanner(previousBanner || undefined);
+      toast.success('Banner de capa da lojinha removido!');
+    } catch (error) {
+      console.error('Erro ao remover banner da lojinha:', error);
+      setCurrentCatalogBanner(previousBanner);
+      toast.error('Erro ao remover banner');
+    } finally {
+      setUploadingBanner(false);
+    }
+  };
+
   const handleChange = (field: keyof typeof formData, value: string) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
   };
@@ -303,6 +367,7 @@ export function StoreCustomization() {
       await updateSettings({
         ...formData,
         catalogLogo: currentCatalogLogo || '',
+        catalogBanner: currentCatalogBanner || '',
       });
       // Salva no cache do navegador para a lojinha atualizar instantaneamente
       try {
@@ -313,6 +378,7 @@ export function StoreCustomization() {
           instagram: formData.instagramUrl ? formData.instagramUrl.replace(/^https?:\/\/(www\.)?instagram\.com\//, '').replace(/\/$/, '') : '',
           website: formData.websiteUrl,
           logo: currentCatalogLogo || '',
+          banner: currentCatalogBanner || '',
           badge: formData.catalogBadge,
           statusText: formData.catalogStatusText,
           announcement: formData.catalogAnnouncement,
@@ -495,6 +561,109 @@ export function StoreCustomization() {
 
             {/* ABA 1: Logo & Vitrine */}
             <TabsContent value="identity" className="space-y-5 pt-3">
+              {/* Card de Upload do Banner de Capa Panorâmico (Estilo LinkedIn / 4:1) */}
+              <Card className="border-primary/25 shadow-xs">
+                <CardHeader>
+                  <div className="flex items-center justify-between gap-2">
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <ImageIcon className="size-4 text-primary" />
+                      Banner de Capa da Lojinha (Formato LinkedIn / Panorâmico)
+                    </CardTitle>
+                    <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-primary/10 text-primary shrink-0">
+                      Proporção 4:1
+                    </span>
+                  </div>
+                  <CardDescription className="text-xs">
+                    Adicione um banner panorâmico no topo do seu catálogo para estampar a identidade visual do seu ateliê, fotos de produtos ou arte de capa (como no cabeçalho do LinkedIn).
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {/* Prévia do Banner com Logo Sobreposto */}
+                  <div className="relative w-full aspect-[4/1] rounded-2xl overflow-hidden border border-border/80 bg-muted/30 flex items-center justify-center group shadow-xs">
+                    {currentCatalogBanner ? (
+                      <>
+                        <img
+                          src={currentCatalogBanner}
+                          alt="Banner de Capa da Lojinha"
+                          className="w-full h-full object-cover"
+                        />
+                        {/* Simulação do Logo Sobreposto */}
+                        <div className="absolute -bottom-2 left-4 size-12 sm:size-14 rounded-full ring-2 ring-background bg-background shadow-md overflow-hidden flex items-center justify-center">
+                          {currentCatalogLogo ? (
+                            <img src={currentCatalogLogo} alt="Logo" className="w-full h-full object-cover" />
+                          ) : (
+                            <Store className="size-5 text-muted-foreground opacity-50" />
+                          )}
+                        </div>
+                      </>
+                    ) : (
+                      <div className="flex flex-col items-center justify-center text-center p-4 text-muted-foreground gap-1.5">
+                        <ImageIcon className="size-7 opacity-40" />
+                        <p className="text-xs font-semibold">Nenhum banner de capa cadastrado</p>
+                        <p className="text-[10px] opacity-75">Recomendado: 1584 x 396 px (ou proporção 4:1) • JPG, PNG ou WebP até 5MB</p>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Label htmlFor="store-banner-upload" className="cursor-pointer">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={uploadingBanner}
+                        className="gap-2 border-primary/30 text-primary hover:bg-primary/5"
+                        asChild
+                      >
+                        <span>
+                          {uploadingBanner ? (
+                            <>
+                              <Loader2 className="size-3.5 animate-spin" />
+                              Enviando banner de capa...
+                            </>
+                          ) : (
+                            <>
+                              <Upload className="size-3.5" />
+                              {currentCatalogBanner ? 'Trocar Banner de Capa' : 'Enviar Banner de Capa'}
+                            </>
+                          )}
+                        </span>
+                      </Button>
+                    </Label>
+                    <Input
+                      id="store-banner-upload"
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        e.target.value = '';
+                        if (file) void handleBannerUpload(file);
+                      }}
+                    />
+
+                    {currentCatalogBanner && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        disabled={uploadingBanner}
+                        onClick={handleBannerRemove}
+                        className="gap-1.5 text-destructive hover:text-destructive hover:bg-destructive/10 text-xs"
+                      >
+                        <X className="size-3.5" />
+                        Remover Banner
+                      </Button>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-muted-foreground">
+                    {currentCatalogBanner
+                      ? '✅ Banner de capa panorâmico ativo no topo do catálogo público online.'
+                      : '💡 Dica: Um banner em proporção 4:1 (ex: 1584x396px) cria uma apresentação visual marcante de estúdio, com o logo do ateliê sobreposto no canto inferior estilo LinkedIn.'}
+                  </p>
+                </CardContent>
+              </Card>
+
               {/* Card de Upload do Logo */}
               <Card className="border-primary/25 shadow-xs">
                 <CardHeader>
@@ -1050,18 +1219,43 @@ export function StoreCustomization() {
                 </div>
               </div>
 
-              {/* Hero Banner simulado */}
-              <div className="p-3.5 m-2.5 rounded-xl bg-white/70 border border-white/60 shadow-2xs space-y-1">
-                <div className="flex items-center gap-1 text-[10px] font-semibold text-[#613d3e]">
-                  <Sparkles size={11} />
-                  <span>{formData.catalogHeroTitle || 'Catálogo & Vitrine Afetiva'}</span>
+              {/* Hero Banner simulado (estilo LinkedIn) */}
+              <div className="m-2.5 rounded-xl overflow-hidden border border-white/60 shadow-2xs bg-white/70">
+                {/* Capa */}
+                <div className="relative w-full aspect-[3.5/1] bg-gradient-to-r from-[#fceee9] via-[#f7d6d0] to-[#ede7f6] overflow-hidden flex items-center justify-center text-stone-400">
+                  {currentCatalogBanner ? (
+                    <img src={currentCatalogBanner} alt="Capa da Loja" className="w-full h-full object-cover" />
+                  ) : (
+                    <span className="text-[9px] font-medium opacity-60">Banner Panorâmico (LinkedIn)</span>
+                  )}
                 </div>
-                <p className="font-bold text-xs leading-tight text-[#221a1a]">
-                  {formData.businessTagline || 'Papelaria artesanal feita à mão'}
-                </p>
-                <p className="text-[10px] text-stone-600 leading-snug line-clamp-2">
-                  {formData.catalogHeroDescription || 'Escolha suas peças, informe o nome para personalização e envie o pedido...'}
-                </p>
+                {/* Informações com Logo Sobreposto */}
+                <div className="p-3 pt-0">
+                  <div className="-mt-5 mb-2 flex items-end justify-between">
+                    <div className="size-10 rounded-full ring-2 ring-white bg-white shadow-xs overflow-hidden flex items-center justify-center">
+                      {currentCatalogLogo ? (
+                        <img src={currentCatalogLogo} alt="Logo" className="w-full h-full object-cover" />
+                      ) : (
+                        <Sparkles size={14} className="text-[#613d3e]" />
+                      )}
+                    </div>
+                    <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-[#613d3e]/10 text-[#613d3e] font-semibold">
+                      {formData.catalogBadge || 'Atelier'}
+                    </span>
+                  </div>
+
+                  <div className="space-y-0.5">
+                    <p className="font-bold text-xs leading-tight text-[#221a1a]">
+                      {formData.businessName || 'Luisices'}
+                    </p>
+                    <p className="font-semibold text-[10px] text-[#613d3e] leading-snug">
+                      {formData.businessTagline || 'Papelaria artesanal feita à mão'}
+                    </p>
+                    <p className="text-[9px] text-stone-600 leading-snug line-clamp-2 pt-0.5">
+                      {formData.catalogHeroDescription || 'Escolha suas peças, informe o nome para personalização e envie o pedido...'}
+                    </p>
+                  </div>
+                </div>
               </div>
 
               {/* Miniatura de Produto simulado */}
