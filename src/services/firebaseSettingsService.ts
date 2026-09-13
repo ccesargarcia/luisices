@@ -57,6 +57,21 @@ export interface UserSettings {
   // Alertas
   deliveryAlertDays?: number;    // Dias antes do prazo para mostrar alerta (padrão 3)
 
+  // Customizações do Catálogo Online Público (Lojinha)
+  catalogBadge?: string;                      // Selo no header (ex: "Atelier", "Papelaria Afetiva")
+  catalogStatusText?: string;                // Texto do status (ex: "Atendimento WhatsApp ativo")
+  catalogHeroTitle?: string;                 // Título no banner principal (ex: "Catálogo & Vitrine Afetiva")
+  catalogHeroDescription?: string;           // Texto explicativo no hero
+  catalogAnnouncement?: string;              // Faixa de aviso/alerta no topo da página
+  catalogWhatsappGreeting?: string;          // Saudação inicial do pedido no WhatsApp
+  catalogWhatsappCustomizationLabel?: string;// Rótulo de personalização (ex: "Nome/Personalização:")
+  catalogWhatsappFooter?: string;            // Fechamento da mensagem do WhatsApp
+  catalogFooterText?: string;                // Texto afetivo/institucional no rodapé
+  catalogFooterLocation?: string;            // Localização e frete no rodapé
+  catalogFooterBusinessHours?: string;       // Horário de atendimento no rodapé
+  catalogFooterCopyright?: string;           // Linha de copyright no rodapé
+  catalogFooterNotice?: string;              // Aviso sobre prazos e políticas no rodapé
+
   // Metadata
   updatedAt: Date;
 }
@@ -112,7 +127,23 @@ export class FirebaseSettingsService {
       if (settings.whatsappPhone !== undefined) publicData.whatsappPhone = settings.whatsappPhone;
       else if (settings.businessPhone !== undefined) publicData.whatsappPhone = settings.businessPhone;
       if (settings.instagramUrl !== undefined) publicData.instagramUrl = settings.instagramUrl;
+      if (settings.websiteUrl !== undefined) publicData.websiteUrl = settings.websiteUrl;
       if (settings.logo !== undefined) publicData.logo = settings.logo;
+
+      // Customizações da Lojinha / Catálogo
+      if (settings.catalogBadge !== undefined) publicData.catalogBadge = settings.catalogBadge;
+      if (settings.catalogStatusText !== undefined) publicData.catalogStatusText = settings.catalogStatusText;
+      if (settings.catalogHeroTitle !== undefined) publicData.catalogHeroTitle = settings.catalogHeroTitle;
+      if (settings.catalogHeroDescription !== undefined) publicData.catalogHeroDescription = settings.catalogHeroDescription;
+      if (settings.catalogAnnouncement !== undefined) publicData.catalogAnnouncement = settings.catalogAnnouncement;
+      if (settings.catalogWhatsappGreeting !== undefined) publicData.catalogWhatsappGreeting = settings.catalogWhatsappGreeting;
+      if (settings.catalogWhatsappCustomizationLabel !== undefined) publicData.catalogWhatsappCustomizationLabel = settings.catalogWhatsappCustomizationLabel;
+      if (settings.catalogWhatsappFooter !== undefined) publicData.catalogWhatsappFooter = settings.catalogWhatsappFooter;
+      if (settings.catalogFooterText !== undefined) publicData.catalogFooterText = settings.catalogFooterText;
+      if (settings.catalogFooterLocation !== undefined) publicData.catalogFooterLocation = settings.catalogFooterLocation;
+      if (settings.catalogFooterBusinessHours !== undefined) publicData.catalogFooterBusinessHours = settings.catalogFooterBusinessHours;
+      if (settings.catalogFooterCopyright !== undefined) publicData.catalogFooterCopyright = settings.catalogFooterCopyright;
+      if (settings.catalogFooterNotice !== undefined) publicData.catalogFooterNotice = settings.catalogFooterNotice;
 
       if (Object.keys(publicData).length > 1) {
         await setDoc(doc(db, 'storeSettings', 'public'), publicData, { merge: true });

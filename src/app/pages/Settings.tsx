@@ -16,6 +16,7 @@ import { NavigationOrderSection, DEFAULT_NAV_ORDER } from '../components/setting
 import { CardDensitySection } from '../components/settings/CardDensitySection';
 import { WhatsAppTemplateSection } from '../components/settings/WhatsAppTemplateSection';
 import { PermissionsSection } from '../components/settings/PermissionsSection';
+import { CatalogSettingsSection, type CatalogCustomizationSettings } from '../components/settings/CatalogSettingsSection';
 import { DangerZoneSection } from '../components/settings/DangerZoneSection';
 
 export function Settings() {
@@ -70,6 +71,23 @@ export function Settings() {
     whatsappPhone: settings?.whatsappPhone || '',
   });
 
+  const [catalogSettings, setCatalogSettings] = useState<CatalogCustomizationSettings>({
+    catalogBadge: settings?.catalogBadge || '',
+    catalogStatusText: settings?.catalogStatusText || '',
+    catalogHeroTitle: settings?.catalogHeroTitle || '',
+    catalogHeroDescription: settings?.catalogHeroDescription || '',
+    catalogAnnouncement: settings?.catalogAnnouncement || '',
+    catalogWhatsappGreeting: settings?.catalogWhatsappGreeting || '',
+    catalogWhatsappCustomizationLabel: settings?.catalogWhatsappCustomizationLabel || '',
+    catalogWhatsappFooter: settings?.catalogWhatsappFooter || '',
+    catalogFooterText: settings?.catalogFooterText || '',
+    catalogFooterLocation: settings?.catalogFooterLocation || '',
+    catalogFooterBusinessHours: settings?.catalogFooterBusinessHours || '',
+    catalogFooterCopyright: settings?.catalogFooterCopyright || '',
+    catalogFooterNotice: settings?.catalogFooterNotice || '',
+  });
+  const [savingCatalogSettings, setSavingCatalogSettings] = useState(false);
+
   // Atualizar business info quando settings carregar
   useEffect(() => {
     if (settings) {
@@ -106,6 +124,21 @@ export function Settings() {
       setDefaultDeliveryDays(settings.defaultDeliveryDays ?? 0);
       setDefaultPaymentMethod(settings.defaultPaymentMethod ?? '');
       setCustomColorHex(settings.customColorHex ?? '#7c3aed');
+      setCatalogSettings({
+        catalogBadge: settings.catalogBadge || '',
+        catalogStatusText: settings.catalogStatusText || '',
+        catalogHeroTitle: settings.catalogHeroTitle || '',
+        catalogHeroDescription: settings.catalogHeroDescription || '',
+        catalogAnnouncement: settings.catalogAnnouncement || '',
+        catalogWhatsappGreeting: settings.catalogWhatsappGreeting || '',
+        catalogWhatsappCustomizationLabel: settings.catalogWhatsappCustomizationLabel || '',
+        catalogWhatsappFooter: settings.catalogWhatsappFooter || '',
+        catalogFooterText: settings.catalogFooterText || '',
+        catalogFooterLocation: settings.catalogFooterLocation || '',
+        catalogFooterBusinessHours: settings.catalogFooterBusinessHours || '',
+        catalogFooterCopyright: settings.catalogFooterCopyright || '',
+        catalogFooterNotice: settings.catalogFooterNotice || '',
+      });
     }
   }, [settings]);
 
@@ -124,7 +157,7 @@ export function Settings() {
       );
     } catch (error) {
       console.error('Erro no upload:', error);
-      toast.error(error instanceof Error ? error.message : 'Erro ao fazer upload');
+      toast.error(error instanceof Error ? error.message : 'Erro ao fazer upload da imagem');
     } finally {
       setUploading(null);
     }
@@ -169,6 +202,19 @@ export function Settings() {
       toast.error(error instanceof Error ? error.message : 'Erro ao atualizar informações');
     } finally {
       setSavingBusinessInfo(false);
+    }
+  };
+
+  const handleCatalogSettingsSave = async () => {
+    setSavingCatalogSettings(true);
+    try {
+      await updateSettings(catalogSettings);
+      toast.success('Personalizações da lojinha pública salvas com sucesso!');
+    } catch (error) {
+      console.error('Erro ao salvar personalizações da loja:', error);
+      toast.error('Erro ao salvar personalizações da lojinha');
+    } finally {
+      setSavingCatalogSettings(false);
     }
   };
 
@@ -333,6 +379,14 @@ export function Settings() {
         onChange={setBusinessInfo}
         onSave={handleBusinessInfoSave}
         saving={savingBusinessInfo}
+      />
+
+      {/* Catálogo Online & Lojinha Pública */}
+      <CatalogSettingsSection
+        settings={catalogSettings}
+        onChange={setCatalogSettings}
+        onSave={handleCatalogSettingsSave}
+        saving={savingCatalogSettings}
       />
 
       {/* Preferências do Dashboard */}

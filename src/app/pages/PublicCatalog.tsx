@@ -19,7 +19,9 @@ import {
   Instagram,
   Eye,
   Calendar,
-  AlertCircle
+  AlertCircle,
+  MapPin,
+  Globe
 } from 'lucide-react';
 import { formatCurrency } from '../utils/currency';
 import { collection, getDocs, doc, getDoc, query, where, limit } from 'firebase/firestore';
@@ -133,13 +135,28 @@ export function PublicCatalog() {
   const [products, setProducts] = useState<CatalogProduct[]>(MOCK_PRODUCTS);
   const [loadingProducts, setLoadingProducts] = useState(true);
 
-  // Informações do negócio (carregadas dinamicamente ou defaults de branding)
+  // Informações do negócio e customizações da lojinha (carregadas dinamicamente ou defaults afetivos)
   const [businessInfo, setBusinessInfo] = useState({
     name: 'Luisices',
     tagline: 'Papelaria artesanal feita à mão para momentos únicos',
     whatsapp: '5511999999999',
     instagram: 'luisicesatelie',
+    website: '',
     logo: '',
+    // Customizações da Loja
+    badge: 'Atelier',
+    statusText: 'Atendimento WhatsApp ativo',
+    announcement: '',
+    heroTitle: 'Catálogo & Vitrine Afetiva',
+    heroDescription: 'Escolha suas peças, informe o nome para personalização e envie o pedido formatado diretamente no nosso WhatsApp.',
+    whatsappGreeting: 'Olá! Gostaria de encomendar pelo catálogo do Ateliê:',
+    whatsappCustomizationLabel: 'Nome/Personalização:',
+    whatsappFooter: 'Poderia me passar as opções de frete/retirada e a chave PIX para confirmar?',
+    footerText: 'Papelaria artesanal feita à mão com afeto e dedicação para eternizar momentos únicos. ❤️',
+    footerLocation: 'Enviamos com carinho para todo o Brasil 📦',
+    footerBusinessHours: 'Segunda a Sexta, das 9h às 18h',
+    footerNotice: 'Produção artesanal sob encomenda. Os prazos começam a contar após a aprovação da arte.',
+    footerCopyright: `© ${new Date().getFullYear()} Luisices. Todos os direitos reservados.`,
   });
 
   // Estado da Sacola com persistência em localStorage
@@ -239,7 +256,21 @@ export function PublicCatalog() {
               tagline: s.businessTagline || prev.tagline,
               whatsapp: s.whatsappPhone || s.businessPhone || prev.whatsapp,
               instagram: s.instagramUrl ? s.instagramUrl.replace(/^https?:\/\/(www\.)?instagram\.com\//, '').replace(/\/$/, '') : prev.instagram,
+              website: s.websiteUrl || prev.website,
               logo: s.logo || '',
+              badge: s.catalogBadge || prev.badge,
+              statusText: s.catalogStatusText || prev.statusText,
+              announcement: s.catalogAnnouncement !== undefined ? s.catalogAnnouncement : prev.announcement,
+              heroTitle: s.catalogHeroTitle || prev.heroTitle,
+              heroDescription: s.catalogHeroDescription || prev.heroDescription,
+              whatsappGreeting: s.catalogWhatsappGreeting || prev.whatsappGreeting,
+              whatsappCustomizationLabel: s.catalogWhatsappCustomizationLabel || prev.whatsappCustomizationLabel,
+              whatsappFooter: s.catalogWhatsappFooter || prev.whatsappFooter,
+              footerText: s.catalogFooterText || prev.footerText,
+              footerLocation: s.catalogFooterLocation || prev.footerLocation,
+              footerBusinessHours: s.catalogFooterBusinessHours || prev.footerBusinessHours,
+              footerNotice: s.catalogFooterNotice || prev.footerNotice,
+              footerCopyright: s.catalogFooterCopyright || prev.footerCopyright,
             }));
           }
         } catch (settingsErr) {
@@ -366,14 +397,18 @@ export function PublicCatalog() {
   // Envio de Pedido no WhatsApp com Deep Link formatado
   const handleSendToWhatsApp = () => {
     const cleanPhone = businessInfo.whatsapp.replace(/\D/g, '');
-    let msg = `🌸 *Olá, ${businessInfo.name}! Gostaria de fazer uma encomenda pelo Catálogo:* \n\n`;
+    const greeting = businessInfo.whatsappGreeting || `🌸 *Olá, ${businessInfo.name}! Gostaria de fazer uma encomenda pelo Catálogo:*`;
+    const labelCustom = businessInfo.whatsappCustomizationLabel || 'Personalização/Nome:';
+    const footerMsg = businessInfo.whatsappFooter || 'Poderia me passar as opções de frete/retirada e a chave PIX para confirmar?';
+
+    let msg = `${greeting}\n\n`;
 
     cart.forEach((item, index) => {
       msg += `*Item ${index + 1}:* ${item.product.name}\n`;
       msg += `• Quantidade: ${item.quantity}x\n`;
       msg += `• Valor unitário: ${formatCurrency(item.product.price)}\n`;
       if (item.customName) {
-        msg += `• Personalização/Nome: ${item.customName}\n`;
+        msg += `• ${labelCustom} ${item.customName}\n`;
       }
       msg += `• Prazo de confecção: até ${item.product.leadTimeDays} dias úteis\n\n`;
     });
@@ -382,7 +417,7 @@ export function PublicCatalog() {
     if (customerNotes.trim()) {
       msg += `📝 *Observações / Data do Evento:* ${customerNotes}\n`;
     }
-    msg += `\nPoderia me passar as opções de frete/retirada e a chave PIX para confirmar?`;
+    msg += `\n${footerMsg}`;
 
     const encoded = encodeURIComponent(msg);
     window.open(`https://wa.me/${cleanPhone}?text=${encoded}`, '_blank');
@@ -412,6 +447,14 @@ export function PublicCatalog() {
           <div className="absolute bottom-10 left-1/4 w-96 h-96 rounded-full bg-[#bbdefb] dark:bg-[#121c20] blur-3xl" />
         </div>
 
+        {/* Barra de Aviso / Alerta Promocional (se preenchido no painel) */}
+        {businessInfo.announcement && (
+          <aside aria-label="Aviso do ateliê" className="sticky top-0 z-40 px-4 py-2 bg-gradient-to-r from-amber-500/20 via-amber-400/25 to-amber-500/20 border-b border-amber-500/30 text-amber-900 dark:text-amber-200 text-xs font-semibold text-center flex items-center justify-center gap-2 backdrop-blur-md">
+            <Sparkles size={14} className="shrink-0 text-amber-600 dark:text-amber-400 animate-pulse" />
+            <span>{businessInfo.announcement}</span>
+          </aside>
+        )}
+
         {/* 1. Header Fixo com Efeito Vidro */}
         <header className="sticky top-0 z-30 px-4 py-3 bg-white/75 dark:bg-[#1f191b]/85 backdrop-blur-md border-b border-white/40 dark:border-[#ebcdcd]/15 transition-colors shadow-xs">
           <div className="max-w-md mx-auto flex items-center justify-between">
@@ -429,13 +472,13 @@ export function PublicCatalog() {
                     {businessInfo.name}
                   </h1>
                   <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-[#613d3e]/10 dark:bg-[#f4b7b9]/15 text-[#613d3e] dark:text-[#f4b7b9]">
-                    Atelier
+                    {businessInfo.badge || 'Atelier'}
                   </span>
                 </div>
                 <div className="flex items-center gap-1.5">
                   <span className="inline-block size-2 rounded-full bg-[#10B981] animate-pulse" />
                   <span className="text-[11px] text-[#504444] dark:text-[#c9c0b8] font-medium">
-                    Atendimento WhatsApp ativo
+                    {businessInfo.statusText || 'Atendimento WhatsApp ativo'}
                   </span>
                 </div>
               </div>
@@ -475,13 +518,13 @@ export function PublicCatalog() {
           <section className="p-5 rounded-2xl bg-white/60 dark:bg-[#1f191b]/80 backdrop-blur-md border border-white/45 dark:border-[#ebcdcd]/15 shadow-[0_8px_32px_rgb(230_180_180/15%)] dark:shadow-[0_16px_40px_-8px_rgb(0_0_0/65%)]">
             <div className="flex items-center gap-1.5 text-xs font-semibold text-[#613d3e] dark:text-[#f4b7b9] mb-1.5">
               <Sparkles size={14} />
-              <span>Catálogo & Vitrine Afetiva</span>
+              <span>{businessInfo.heroTitle || 'Catálogo & Vitrine Afetiva'}</span>
             </div>
             <h2 className="text-xl font-bold tracking-tight text-[#221a1a] dark:text-[#e8e0e3] leading-snug">
               {businessInfo.tagline}
             </h2>
             <p className="mt-2 text-xs text-[#504444] dark:text-[#c9c0b8] leading-relaxed">
-              Escolha suas peças, informe o nome para personalização e envie o pedido formatado diretamente no nosso WhatsApp.
+              {businessInfo.heroDescription || 'Escolha suas peças, informe o nome para personalização e envie o pedido formatado diretamente no nosso WhatsApp.'}
             </p>
 
             {/* Input de Busca */}
@@ -613,35 +656,96 @@ export function PublicCatalog() {
             </p>
           </section>
 
-          {/* Footer Institucional */}
-          <footer className="text-center pt-2 pb-6 space-y-2 border-t border-white/30 dark:border-[#ebcdcd]/10">
-            <p className="text-xs font-bold text-[#613d3e] dark:text-[#f4b7b9]">
-              {businessInfo.name} Papelaria Afetiva & Personalizada
-            </p>
-            <p className="text-[11px] text-[#504444] dark:text-[#c9c0b8]">
-              Feito à mão com afeto e carinho em cada detalhe.
-            </p>
-            <div className="flex justify-center items-center gap-3 text-[11px] text-[#504444] dark:text-[#c9c0b8] pt-1">
+          {/* Footer Institucional Totalmente Personalizável */}
+          <footer className="pt-6 pb-8 space-y-4 border-t border-white/40 dark:border-[#ebcdcd]/15 text-center">
+            {/* Logo e Nome */}
+            <div className="flex flex-col items-center gap-1.5">
+              {businessInfo.logo ? (
+                <img
+                  src={businessInfo.logo}
+                  alt={businessInfo.name}
+                  className="size-10 rounded-full object-cover border border-white/60 shadow-xs mb-1"
+                />
+              ) : null}
+              <p className="text-sm font-bold text-[#613d3e] dark:text-[#f4b7b9]">
+                {businessInfo.name}
+              </p>
+              {businessInfo.footerText && (
+                <p className="text-xs text-[#504444] dark:text-[#c9c0b8] max-w-xs mx-auto leading-relaxed">
+                  {businessInfo.footerText}
+                </p>
+              )}
+            </div>
+
+            {/* Localização e Horário */}
+            {(businessInfo.footerLocation || businessInfo.footerBusinessHours) && (
+              <div className="flex flex-col sm:flex-row items-center justify-center gap-2 text-[11px] text-[#504444] dark:text-[#c9c0b8]">
+                {businessInfo.footerLocation && (
+                  <span className="inline-flex items-center gap-1">
+                    <MapPin size={12} className="text-[#613d3e] dark:text-[#f4b7b9] shrink-0" />
+                    {businessInfo.footerLocation}
+                  </span>
+                )}
+                {businessInfo.footerLocation && businessInfo.footerBusinessHours && (
+                  <span className="hidden sm:inline opacity-40">•</span>
+                )}
+                {businessInfo.footerBusinessHours && (
+                  <span className="inline-flex items-center gap-1">
+                    <Clock size={12} className="text-[#613d3e] dark:text-[#f4b7b9] shrink-0" />
+                    {businessInfo.footerBusinessHours}
+                  </span>
+                )}
+              </div>
+            )}
+
+            {/* Canais de Contato / Redes */}
+            <div className="flex justify-center items-center gap-3 text-xs pt-1">
               {businessInfo.instagram && (
                 <a
                   href={`https://instagram.com/${businessInfo.instagram}`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 hover:text-foreground underline underline-offset-2"
+                  className="inline-flex items-center gap-1 text-[#504444] dark:text-[#c9c0b8] hover:text-[#613d3e] dark:hover:text-[#f4b7b9] font-medium transition-colors"
                 >
-                  <Instagram size={13} />
+                  <Instagram size={14} />
                   <span>@{businessInfo.instagram}</span>
                 </a>
               )}
-              <span>•</span>
+              {businessInfo.website && (
+                <>
+                  <span className="opacity-30">•</span>
+                  <a
+                    href={businessInfo.website}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 text-[#504444] dark:text-[#c9c0b8] hover:text-[#613d3e] dark:hover:text-[#f4b7b9] font-medium transition-colors"
+                  >
+                    <Globe size={14} />
+                    <span>Site</span>
+                  </a>
+                </>
+              )}
+              <span className="opacity-30">•</span>
               <button
                 onClick={handleSendToWhatsApp}
-                className="inline-flex items-center gap-1 text-[#10B981] font-semibold hover:underline"
+                className="inline-flex items-center gap-1 text-[#10B981] font-semibold hover:underline cursor-pointer"
               >
-                <MessageCircle size={13} />
+                <MessageCircle size={14} />
                 <span>WhatsApp Oficial</span>
               </button>
             </div>
+
+            {/* Aviso de Prazos e Políticas */}
+            {businessInfo.footerNotice && (
+              <p className="text-[10px] text-muted-foreground max-w-sm mx-auto leading-relaxed pt-1 opacity-80">
+                {businessInfo.footerNotice}
+              </p>
+            )}
+
+            {/* Copyright */}
+            <p className="text-[10px] text-muted-foreground/60 pt-2">
+              {businessInfo.footerCopyright || `© ${new Date().getFullYear()} ${businessInfo.name}. Todos os direitos reservados.`}
+            </p>
           </footer>
         </main>
 
