@@ -133,6 +133,29 @@ export function useUserSettings() {
     }
   };
 
+  // Upload de arte/fundo da barra superior fixa da lojinha pública
+  const uploadCatalogHeaderBackground = async (file: File, oldUrl?: string): Promise<string> => {
+    if (!user) throw new Error('Usuário não autenticado');
+
+    try {
+      if (oldUrl) {
+        try {
+          await firebaseStorageService.deleteImage(oldUrl);
+        } catch (deleteError) {
+          console.warn('Não foi possível deletar catalogHeaderBackground antigo (continuando):', deleteError);
+        }
+      }
+
+      const url = await firebaseStorageService.uploadImage(file, user.uid, 'catalog-header');
+      await firebaseSettingsService.updateCatalogHeaderBackground(user.uid, url);
+
+      return url;
+    } catch (err) {
+      setError(err as Error);
+      throw err;
+    }
+  };
+
   // Upload de banner
   const uploadBanner = async (file: File): Promise<string> => {
     if (!user) throw new Error('Usuário não autenticado');
@@ -242,6 +265,26 @@ export function useUserSettings() {
     }
   };
 
+  // Remover imagem de fundo da barra superior fixa
+  const removeCatalogHeaderBackground = async (bgUrlToDelete?: string) => {
+    if (!user) throw new Error('Usuário não autenticado');
+
+    try {
+      const urlToDelete = bgUrlToDelete || settings?.catalogHeaderBackground;
+      if (urlToDelete) {
+        try {
+          await firebaseStorageService.deleteImage(urlToDelete);
+        } catch (storageError) {
+          console.warn('Erro ao deletar catalogHeaderBackground do Storage (continuando):', storageError);
+        }
+      }
+      await firebaseSettingsService.updateCatalogHeaderBackground(user.uid, null);
+    } catch (err) {
+      setError(err as Error);
+      throw err;
+    }
+  };
+
   // Remover banner
   const removeBanner = async () => {
     if (!user) throw new Error('Usuário não autenticado');
@@ -281,6 +324,9 @@ export function useUserSettings() {
       if (settings?.catalogBanner) {
         await firebaseStorageService.deleteImage(settings.catalogBanner);
       }
+      if (settings?.catalogHeaderBackground) {
+        await firebaseStorageService.deleteImage(settings.catalogHeaderBackground);
+      }
       if (settings?.banner) {
         await firebaseStorageService.deleteImage(settings.banner);
       }
@@ -302,11 +348,13 @@ export function useUserSettings() {
     uploadLogo,
     uploadCatalogLogo,
     uploadCatalogBanner,
+    uploadCatalogHeaderBackground,
     uploadBanner,
     removeAvatar,
     removeLogo,
     removeCatalogLogo,
     removeCatalogBanner,
+    removeCatalogHeaderBackground,
     removeBanner,
     resetToDefaults,
   };

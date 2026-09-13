@@ -61,7 +61,7 @@ export class FirebaseStorageService {
   async uploadImage(
     file: File,
     userId: string,
-    folder: 'avatar' | 'logo' | 'banner' | 'catalog-logo' | 'catalog-banner'
+    folder: 'avatar' | 'logo' | 'banner' | 'catalog-logo' | 'catalog-banner' | 'catalog-header'
   ): Promise<string> {
     const allowedImageTypes = ['image/jpeg', 'image/png', 'image/webp'];
     if (!allowedImageTypes.includes(file.type)) {

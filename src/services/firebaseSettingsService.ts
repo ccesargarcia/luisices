@@ -61,6 +61,14 @@ export interface UserSettings {
   catalogLogo?: string;                      // Logo exclusivo da lojinha pública online (independente do painel)
   catalogBanner?: string;                    // Banner de capa exclusivo da lojinha pública online (formato LinkedIn / 4:1)
   catalogBannerFixed?: boolean;              // Efeito Parallax/Vitrine: banner fixo ao fundo com produtos rolando por cima
+  // Personalização da Barra Superior Fixa (Header)
+  catalogHeaderBackground?: string;          // Imagem de fundo que preenche toda a barra superior fixa
+  catalogHeaderBgColor?: string;             // Cor de fundo personalizada da barra superior (hex, ex: #ffffff, #fceee9, etc.)
+  catalogHeaderTextColor?: 'dark' | 'light'; // Contraste dos elementos (escuro para fundos claros, claro para fundos escuros)
+  catalogHeaderLogoPosition?: 'left' | 'center' | 'full'; // Posição da logo na barra (esquerda, centro ou ocupando a barra)
+  catalogHeaderHeight?: 'compact' | 'normal' | 'large'; // Altura da barra fixa (compact: 60px, normal: 74px, large: 90px)
+  catalogHeaderHideText?: boolean;           // Ocultar texto do nome caso a logo já contenha o nome
+
   catalogBadge?: string;                      // Selo no header (ex: "Atelier", "Papelaria Afetiva")
   catalogStatusText?: string;                // Texto do status (ex: "Atendimento WhatsApp ativo")
   catalogHeroTitle?: string;                 // Título no banner principal (ex: "Catálogo & Vitrine Afetiva")
@@ -159,6 +167,18 @@ export class FirebaseSettingsService {
       if (settings.catalogBannerFixed !== undefined) {
         publicData.catalogBannerFixed = Boolean(settings.catalogBannerFixed);
       }
+
+      // Personalização da Barra Superior Fixa
+      if (settings.catalogHeaderBackground !== undefined) {
+        publicData.catalogHeaderBackground = settings.catalogHeaderBackground && settings.catalogHeaderBackground.trim() !== ''
+          ? settings.catalogHeaderBackground
+          : deleteField();
+      }
+      if (settings.catalogHeaderBgColor !== undefined) publicData.catalogHeaderBgColor = settings.catalogHeaderBgColor;
+      if (settings.catalogHeaderTextColor !== undefined) publicData.catalogHeaderTextColor = settings.catalogHeaderTextColor;
+      if (settings.catalogHeaderLogoPosition !== undefined) publicData.catalogHeaderLogoPosition = settings.catalogHeaderLogoPosition;
+      if (settings.catalogHeaderHeight !== undefined) publicData.catalogHeaderHeight = settings.catalogHeaderHeight;
+      if (settings.catalogHeaderHideText !== undefined) publicData.catalogHeaderHideText = settings.catalogHeaderHideText;
 
       // Customizações da Lojinha / Catálogo
       if (settings.catalogBadge !== undefined) publicData.catalogBadge = settings.catalogBadge;
@@ -275,6 +295,37 @@ export class FirebaseSettingsService {
       );
     } catch (e) {
       console.warn('Erro ao sincronizar catalogBanner em storeSettings pública:', e);
+    }
+  }
+
+  /**
+   * Atualizar imagem de fundo da barra superior fixa do catálogo
+   */
+  async updateCatalogHeaderBackground(userId: string, backgroundUrl: string | null): Promise<void> {
+    const docRef = doc(db, 'users', userId, 'settings', 'profile');
+    const isRemove = backgroundUrl === null || backgroundUrl === '';
+
+    await setDoc(
+      docRef,
+      {
+        catalogHeaderBackground: isRemove ? deleteField() : backgroundUrl,
+        userId,
+        updatedAt: new Date(),
+      },
+      { merge: true }
+    );
+
+    try {
+      await setDoc(
+        doc(db, 'storeSettings', 'public'),
+        {
+          catalogHeaderBackground: isRemove ? deleteField() : backgroundUrl,
+          updatedAt: new Date(),
+        },
+        { merge: true }
+      );
+    } catch (e) {
+      console.warn('Erro ao sincronizar catalogHeaderBackground em storeSettings pública:', e);
     }
   }
 

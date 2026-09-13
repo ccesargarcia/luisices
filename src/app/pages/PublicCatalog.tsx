@@ -169,6 +169,12 @@ export function PublicCatalog() {
       logo: '',
       banner: '',
       bannerFixed: false,
+      headerBackground: '',
+      headerBgColor: '',
+      headerTextColor: 'dark', // 'dark' | 'light'
+      headerLogoPosition: 'left', // 'left' | 'center' | 'full'
+      headerHeight: 'normal', // 'compact' | 'normal' | 'large'
+      headerHideText: false,
       badge: 'Atelier Afetivo',
       statusText: 'Atendimento WhatsApp ativo',
       announcement: '✨ Encomendas abertas com envio carinhoso para todo o Brasil!',
@@ -294,6 +300,12 @@ export function PublicCatalog() {
                 logo: s.catalogLogo || '',
                 banner: s.catalogBanner || '',
                 bannerFixed: s.catalogBannerFixed !== undefined ? Boolean(s.catalogBannerFixed) : (prev.bannerFixed ?? false),
+                headerBackground: s.catalogHeaderBackground !== undefined ? s.catalogHeaderBackground : (prev.headerBackground || ''),
+                headerBgColor: s.catalogHeaderBgColor !== undefined ? s.catalogHeaderBgColor : (prev.headerBgColor || ''),
+                headerTextColor: s.catalogHeaderTextColor || prev.headerTextColor || 'dark',
+                headerLogoPosition: s.catalogHeaderLogoPosition || prev.headerLogoPosition || 'left',
+                headerHeight: s.catalogHeaderHeight || prev.headerHeight || 'normal',
+                headerHideText: s.catalogHeaderHideText !== undefined ? Boolean(s.catalogHeaderHideText) : (prev.headerHideText || false),
                 badge: s.catalogBadge !== undefined ? s.catalogBadge : prev.badge,
                 statusText: s.catalogStatusText !== undefined ? s.catalogStatusText : prev.statusText,
                 announcement: s.catalogAnnouncement !== undefined ? s.catalogAnnouncement : prev.announcement,
@@ -516,132 +528,250 @@ export function PublicCatalog() {
           </aside>
         )}
 
-        {/* 1. CABEÇALHO EDITORIAL DE VITRINE EM 2 NÍVEIS */}
-        {/* Nível 1: Faixa Superior de Identidade da Marca (Logo em Destaque Nobre) */}
-        <section aria-label="Identidade do Ateliê" className="bg-white/90 dark:bg-[#1a1416]/95 backdrop-blur-md border-b border-stone-200/50 dark:border-white/5 py-4 sm:py-6 transition-colors shadow-2xs">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-              
-              {/* Esquerda (Desktop): Selos Afetivos & Status */}
-              <div className="hidden sm:flex flex-col gap-1.5 items-start text-left shrink-0">
-                <span className="text-[11px] font-bold tracking-wide uppercase px-2.5 py-0.5 rounded-full bg-[#613d3e]/10 dark:bg-[#f4b7b9]/15 text-[#613d3e] dark:text-[#f4b7b9]">
-                  {businessInfo.badge || 'Atelier Afetivo'}
-                </span>
-                <span className="inline-flex items-center gap-1.5 text-xs text-[#504444] dark:text-[#c9c0b8] font-medium bg-stone-100/80 dark:bg-[#161214]/60 px-2.5 py-1 rounded-full border border-stone-200/60 dark:border-stone-800">
-                  <span className="size-2 rounded-full bg-[#10B981] animate-pulse shrink-0" />
-                  {businessInfo.statusText || 'Atendimento WhatsApp ativo'}
-                </span>
-              </div>
+        {/* CABEÇALHO FIXO DA LOJINHA TOTALMENTE PERSONALIZÁVEL */}
+        <header
+          className={`sticky top-0 z-30 transition-all duration-200 border-b shadow-xs relative overflow-hidden ${
+            businessInfo.headerTextColor === 'light'
+              ? 'text-white'
+              : 'text-[#221a1a] dark:text-[#e8e0e3]'
+          }`}
+          style={{
+            backgroundColor: businessInfo.headerBgColor || (isDarkMode ? '#1f191b' : '#ffffff'),
+            backgroundImage: businessInfo.headerBackground ? `url(${businessInfo.headerBackground})` : undefined,
+            backgroundSize: 'cover',
+            backgroundPosition: 'center',
+            borderColor: businessInfo.headerTextColor === 'light' ? 'rgba(255, 255, 255, 0.15)' : undefined,
+          }}
+        >
+          {/* Overlay suave caso haja imagem de fundo para garantir legibilidade perfeita */}
+          {businessInfo.headerBackground && (
+            <div
+              className={`absolute inset-0 pointer-events-none ${
+                businessInfo.headerTextColor === 'light'
+                  ? 'bg-black/25 backdrop-blur-[0.5px]'
+                  : 'bg-white/30 backdrop-blur-[0.5px]'
+              }`}
+            />
+          )}
 
-              {/* Centro: Logo em Destaque Pleno (Formato Livre / Proporcional sem cortes circulares) */}
-              <div className="flex flex-col items-center justify-center text-center">
-                {businessInfo.logo ? (
-                  <div className="relative flex items-center justify-center py-1">
+          <div
+            className={`relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex items-center justify-between gap-3 sm:gap-4 ${
+              businessInfo.headerHeight === 'compact'
+                ? 'py-2 min-h-[58px]'
+                : businessInfo.headerHeight === 'large'
+                ? 'py-4 sm:py-5 min-h-[88px]'
+                : 'py-2.5 sm:py-3.5 min-h-[68px]'
+            }`}
+          >
+            {/* 1. LADO ESQUERDO: Marca ou Ações */}
+            <div className={`flex items-center gap-2.5 sm:gap-3 shrink-0 ${
+              businessInfo.headerLogoPosition === 'center' ? 'w-auto sm:w-1/4 justify-start' : ''
+            }`}>
+              {businessInfo.headerLogoPosition === 'center' ? (
+                /* No modo centralizado, o lado esquerdo mostra redes ou selo */
+                <div className="flex items-center gap-2">
+                  {businessInfo.instagram && (
+                    <a
+                      href={`https://instagram.com/${businessInfo.instagram}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-xs font-medium transition-all shadow-2xs ${
+                        businessInfo.headerTextColor === 'light'
+                          ? 'bg-white/20 hover:bg-white/30 text-white border border-white/30'
+                          : 'bg-stone-100/90 dark:bg-[#2b2225]/80 hover:bg-white text-stone-700 dark:text-stone-200 border border-stone-200/80'
+                      }`}
+                      title="Instagram do ateliê"
+                    >
+                      <Instagram size={14} />
+                      <span className="hidden md:inline text-[11px]">@{businessInfo.instagram}</span>
+                    </a>
+                  )}
+                  <button
+                    onClick={toggleTheme}
+                    title={isDarkMode ? 'Mudar para Modo Claro' : 'Mudar para Modo Escuro'}
+                    className={`p-2 rounded-full transition-all shadow-2xs cursor-pointer ${
+                      businessInfo.headerTextColor === 'light'
+                        ? 'bg-white/20 hover:bg-white/30 text-white border border-white/30'
+                        : 'bg-stone-100/90 dark:bg-[#2b2225]/80 hover:bg-white text-[#504444] dark:text-[#e8e0e3] border border-stone-200/80'
+                    }`}
+                    aria-label="Alternar tema"
+                  >
+                    {isDarkMode ? <Sun size={15} className="text-[#fbbf24]" /> : <Moon size={15} className="text-[#613d3e]" />}
+                  </button>
+                </div>
+              ) : (
+                /* No modo padrão/esquerda ou full: logo e nome */
+                <div className="flex items-center gap-2.5 sm:gap-3">
+                  {businessInfo.logo ? (
                     <img
                       src={businessInfo.logo}
                       alt={businessInfo.name}
-                      className="max-h-16 sm:max-h-20 md:max-h-24 w-auto object-contain transition-transform duration-200 hover:scale-102 drop-shadow-xs"
+                      className={`${
+                        businessInfo.headerHeight === 'large'
+                          ? 'max-h-14 sm:max-h-18'
+                          : businessInfo.headerHeight === 'compact'
+                          ? 'max-h-8 sm:max-h-9'
+                          : 'max-h-10 sm:max-h-12'
+                      } w-auto object-contain transition-transform hover:scale-102 drop-shadow-xs`}
                     />
-                  </div>
-                ) : (
-                  <div className="space-y-1 text-center py-1">
-                    <h1 className="text-2xl sm:text-3xl md:text-4xl font-black tracking-tight text-[#613d3e] dark:text-[#f4b7b9] leading-tight">
-                      {businessInfo.name}
-                    </h1>
-                    {businessInfo.tagline && (
-                      <p className="text-xs sm:text-sm font-medium text-[#504444] dark:text-[#c9c0b8]">
-                        {businessInfo.tagline}
-                      </p>
-                    )}
-                  </div>
-                )}
+                  ) : (
+                    <div className="size-9 rounded-full bg-[#613d3e]/10 dark:bg-[#f4b7b9]/20 flex items-center justify-center text-[#613d3e] dark:text-[#f4b7b9]">
+                      <Sparkles size={18} />
+                    </div>
+                  )}
 
-                {/* Selos de atendimento no Mobile (abaixo da logo) */}
-                <div className="flex sm:hidden items-center gap-2 mt-2">
-                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#613d3e]/10 dark:bg-[#f4b7b9]/15 text-[#613d3e] dark:text-[#f4b7b9]">
-                    {businessInfo.badge || 'Atelier Afetivo'}
-                  </span>
-                  <span className="inline-flex items-center gap-1 text-[11px] text-[#504444] dark:text-[#c9c0b8] font-medium bg-stone-100/80 dark:bg-[#161214]/60 px-2 py-0.5 rounded-full border border-stone-200/60 dark:border-stone-800">
-                    <span className="size-1.5 rounded-full bg-[#10B981] animate-pulse shrink-0" />
-                    {businessInfo.statusText || 'Atendimento WhatsApp ativo'}
-                  </span>
+                  {!businessInfo.headerHideText && (
+                    <div className="hidden sm:block">
+                      <div className="flex items-center gap-2">
+                        <span className={`font-extrabold text-base tracking-tight leading-tight ${
+                          businessInfo.headerTextColor === 'light' ? 'text-white' : 'text-[#613d3e] dark:text-[#f4b7b9]'
+                        }`}>
+                          {businessInfo.name}
+                        </span>
+                        {businessInfo.badge && (
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                            businessInfo.headerTextColor === 'light'
+                              ? 'bg-white/20 text-white border border-white/30'
+                              : 'bg-[#613d3e]/10 dark:bg-[#f4b7b9]/15 text-[#613d3e] dark:text-[#f4b7b9]'
+                          }`}>
+                            {businessInfo.badge}
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-1.5 mt-0.5">
+                        <span className="size-2 rounded-full bg-[#10B981] animate-pulse shrink-0" />
+                        <span className={`text-[11px] font-medium ${
+                          businessInfo.headerTextColor === 'light' ? 'text-white/80' : 'text-[#504444] dark:text-[#c9c0b8]'
+                        }`}>
+                          {businessInfo.statusText || 'Atendimento WhatsApp ativo'}
+                        </span>
+                      </div>
+                    </div>
+                  )}
                 </div>
-              </div>
+              )}
+            </div>
 
-              {/* Direita: Ações Sociais (Instagram & Alternador de Tema) */}
-              <div className="flex items-center gap-2 shrink-0">
-                {businessInfo.instagram && (
-                  <a
-                    href={`https://instagram.com/${businessInfo.instagram}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-stone-100/80 dark:bg-[#2b2225]/80 border border-stone-200/80 dark:border-[#ebcdcd]/20 text-stone-700 dark:text-stone-200 hover:text-[#E1306C] transition-all shadow-2xs cursor-pointer"
-                    title="Instagram do ateliê"
-                  >
-                    <Instagram size={14} />
-                    <span className="hidden sm:inline">@{businessInfo.instagram}</span>
-                  </a>
+            {/* 2. CENTRO: Logo Centralizada OU Barra de Busca */}
+            {businessInfo.headerLogoPosition === 'center' ? (
+              <div className="flex items-center justify-center flex-1 py-1">
+                {businessInfo.logo ? (
+                  <img
+                    src={businessInfo.logo}
+                    alt={businessInfo.name}
+                    className={`${
+                      businessInfo.headerHeight === 'large'
+                        ? 'max-h-16 sm:max-h-20'
+                        : businessInfo.headerHeight === 'compact'
+                        ? 'max-h-9 sm:max-h-11'
+                        : 'max-h-12 sm:max-h-15'
+                    } w-auto object-contain transition-transform hover:scale-102 drop-shadow-xs`}
+                  />
+                ) : (
+                  <span className={`font-black text-lg sm:text-xl tracking-tight text-center ${
+                    businessInfo.headerTextColor === 'light' ? 'text-white' : 'text-[#613d3e] dark:text-[#f4b7b9]'
+                  }`}>
+                    {businessInfo.name}
+                  </span>
                 )}
-
-                <button
-                  onClick={toggleTheme}
-                  title={isDarkMode ? 'Mudar para Modo Claro' : 'Mudar para Modo Escuro'}
-                  className="p-2 rounded-full bg-stone-100/80 dark:bg-[#2b2225]/80 border border-stone-200/80 dark:border-[#ebcdcd]/20 text-[#504444] dark:text-[#e8e0e3] hover:scale-105 active:scale-95 transition-all shadow-2xs cursor-pointer"
-                  aria-label="Alternar tema de cores"
-                >
-                  {isDarkMode ? <Sun size={16} className="text-[#fbbf24]" /> : <Moon size={16} className="text-[#613d3e]" />}
-                </button>
               </div>
-
-            </div>
-          </div>
-        </section>
-
-        {/* Nível 2: Barra de Ações & Compras Fixa (Sticky Navbar com Busca Expansiva & Sacola) */}
-        <header className="sticky top-0 z-30 bg-white/95 dark:bg-[#1f191b]/95 backdrop-blur-md border-b border-stone-200/60 dark:border-[#ebcdcd]/15 transition-colors shadow-xs">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-2.5 flex items-center justify-between gap-3 sm:gap-4">
-            
-            {/* Marca Compacta à Esquerda (Presença constante da loja) */}
-            <div className="flex items-center gap-2.5 shrink-0">
-              {businessInfo.logo ? (
-                <img
-                  src={businessInfo.logo}
-                  alt={businessInfo.name}
-                  className="h-7 sm:h-8 w-auto max-w-[100px] sm:max-w-[140px] object-contain"
+            ) : (
+              <div className="flex-1 max-w-xl mx-2 sm:mx-4 relative">
+                <Search size={15} className={`absolute left-3.5 top-1/2 -translate-y-1/2 ${
+                  businessInfo.headerTextColor === 'light' ? 'text-white/60' : 'text-stone-400 dark:text-stone-500'
+                }`} />
+                <input
+                  type="text"
+                  placeholder="Buscar produtos, temas, lembranças..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className={`w-full pl-9 pr-8 py-2 text-xs rounded-full border transition-all shadow-inner ${
+                    businessInfo.headerTextColor === 'light'
+                      ? 'bg-white/20 border-white/30 text-white placeholder:text-white/60 focus:bg-white/30 focus:ring-2 focus:ring-white/40'
+                      : 'bg-stone-100/90 dark:bg-[#161214]/90 border-stone-200/80 dark:border-stone-700 text-[#221a1a] dark:text-[#e8e0e3] placeholder:text-stone-400 dark:placeholder:text-stone-500 focus:ring-2 focus:ring-[#613d3e]/30'
+                  }`}
                 />
-              ) : (
-                <span className="text-xs sm:text-sm font-bold text-[#613d3e] dark:text-[#f4b7b9] tracking-tight truncate max-w-[120px] sm:max-w-[160px]">
-                  {businessInfo.name}
-                </span>
-              )}
-            </div>
+                {searchQuery && (
+                  <button
+                    onClick={() => setSearchQuery('')}
+                    className={`absolute right-2.5 top-1/2 -translate-y-1/2 p-1 ${
+                      businessInfo.headerTextColor === 'light' ? 'text-white/70 hover:text-white' : 'text-stone-400 hover:text-stone-700'
+                    }`}
+                    title="Limpar busca"
+                  >
+                    <X size={13} />
+                  </button>
+                )}
+              </div>
+            )}
 
-            {/* Centro: Barra de Busca Expandida para Desktop e Mobile */}
-            <div className="flex-1 max-w-xl relative">
-              <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-stone-400 dark:text-stone-500" />
-              <input
-                type="text"
-                placeholder="Buscar produtos, temas, lembranças..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-9 pr-8 py-2 text-xs rounded-full bg-stone-100/90 dark:bg-[#161214]/90 border border-stone-200/80 dark:border-stone-700 text-[#221a1a] dark:text-[#e8e0e3] placeholder:text-stone-400 dark:placeholder:text-stone-500 focus:outline-none focus:ring-2 focus:ring-[#613d3e]/30 dark:focus:ring-[#f4b7b9]/30 transition-all shadow-inner"
-              />
-              {searchQuery && (
-                <button
-                  onClick={() => setSearchQuery('')}
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-stone-400 hover:text-stone-700 dark:hover:text-stone-200"
-                  title="Limpar busca"
-                >
-                  <X size={13} />
-                </button>
+            {/* 3. LADO DIREITO: Busca (se logo no centro), Instagram/Tema (se logo à esquerda) e Sacola */}
+            <div className={`flex items-center gap-2 sm:gap-3 shrink-0 ${
+              businessInfo.headerLogoPosition === 'center' ? 'w-auto sm:w-1/4 justify-end' : ''
+            }`}>
+              {/* Campo de busca expansível no mobile se a logo estiver centralizada */}
+              {businessInfo.headerLogoPosition === 'center' && (
+                <div className="hidden sm:flex relative w-44 md:w-56">
+                  <Search size={14} className={`absolute left-3 top-1/2 -translate-y-1/2 ${
+                    businessInfo.headerTextColor === 'light' ? 'text-white/60' : 'text-stone-400'
+                  }`} />
+                  <input
+                    type="text"
+                    placeholder="Buscar..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className={`w-full pl-8 pr-6 py-1.5 text-xs rounded-full border ${
+                      businessInfo.headerTextColor === 'light'
+                        ? 'bg-white/20 border-white/30 text-white placeholder:text-white/60'
+                        : 'bg-stone-100/90 dark:bg-[#161214]/90 border-stone-200/80 text-[#221a1a] dark:text-[#e8e0e3] placeholder:text-stone-400'
+                    }`}
+                  />
+                </div>
               )}
-            </div>
 
-            {/* Direita: Botão da Sacola com Total em Destaque */}
-            <div className="shrink-0">
+              {/* Botões sociais se a logo estiver à esquerda */}
+              {businessInfo.headerLogoPosition !== 'center' && (
+                <>
+                  {businessInfo.instagram && (
+                    <a
+                      href={`https://instagram.com/${businessInfo.instagram}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className={`hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-all shadow-2xs ${
+                        businessInfo.headerTextColor === 'light'
+                          ? 'bg-white/20 hover:bg-white/30 text-white border border-white/30'
+                          : 'bg-stone-100/90 dark:bg-[#2b2225]/80 hover:bg-white text-stone-700 dark:text-stone-200 border border-stone-200/80'
+                      }`}
+                      title="Instagram do ateliê"
+                    >
+                      <Instagram size={14} />
+                      <span>@{businessInfo.instagram}</span>
+                    </a>
+                  )}
+
+                  <button
+                    onClick={toggleTheme}
+                    title={isDarkMode ? 'Mudar para Modo Claro' : 'Mudar para Modo Escuro'}
+                    className={`p-2 rounded-full transition-all shadow-2xs cursor-pointer ${
+                      businessInfo.headerTextColor === 'light'
+                        ? 'bg-white/20 hover:bg-white/30 text-white border border-white/30'
+                        : 'bg-stone-100/90 dark:bg-[#2b2225]/80 hover:bg-white text-[#504444] dark:text-[#e8e0e3] border border-stone-200/80'
+                    }`}
+                    aria-label="Alternar tema"
+                  >
+                    {isDarkMode ? <Sun size={15} className="text-[#fbbf24]" /> : <Moon size={15} className="text-[#613d3e]" />}
+                  </button>
+                </>
+              )}
+
+              {/* Botão da Sacola com Total */}
               <button
                 onClick={() => setIsCartOpen(true)}
-                className="relative flex items-center gap-2 px-3 sm:px-3.5 py-2 rounded-full bg-[#613d3e] dark:bg-[#f4b7b9] text-white dark:text-[#4c2527] hover:opacity-95 active:scale-95 transition-all shadow-sm cursor-pointer"
+                className={`relative flex items-center gap-2 px-3.5 py-2 rounded-full transition-all shadow-sm cursor-pointer active:scale-95 ${
+                  businessInfo.headerTextColor === 'light'
+                    ? 'bg-white text-[#613d3e] hover:bg-white/90 font-bold'
+                    : 'bg-[#613d3e] dark:bg-[#f4b7b9] text-white dark:text-[#4c2527] hover:opacity-95'
+                }`}
                 aria-label="Abrir sacola de encomendas"
               >
                 <div className="relative">
@@ -664,6 +794,28 @@ export function PublicCatalog() {
             </div>
 
           </div>
+
+          {/* Barra de busca no mobile se logo estiver centralizada */}
+          {businessInfo.headerLogoPosition === 'center' && (
+            <div className="sm:hidden px-4 pb-2.5 pt-0">
+              <div className="relative w-full">
+                <Search size={14} className={`absolute left-3 top-1/2 -translate-y-1/2 ${
+                  businessInfo.headerTextColor === 'light' ? 'text-white/60' : 'text-stone-400'
+                }`} />
+                <input
+                  type="text"
+                  placeholder="Buscar produtos, temas..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className={`w-full pl-8 pr-6 py-1.5 text-xs rounded-full border ${
+                    businessInfo.headerTextColor === 'light'
+                      ? 'bg-white/20 border-white/30 text-white placeholder:text-white/60'
+                      : 'bg-stone-100/90 dark:bg-[#161214]/90 border-stone-200/80 text-[#221a1a] dark:text-[#e8e0e3] placeholder:text-stone-400'
+                  }`}
+                />
+              </div>
+            </div>
+          )}
         </header>
 
         {/* Banner de Capa Panorâmico (se cadastrado) */}

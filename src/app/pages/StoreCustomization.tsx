@@ -32,7 +32,13 @@ import {
   Wand2,
   Heart,
   Image as ImageIcon,
-  Layers
+  Layers,
+  Palette,
+  AlignLeft,
+  AlignCenter,
+  Sun,
+  Moon,
+  Search,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -127,6 +133,18 @@ export const STORE_TEMPLATES = [
   }
 ];
 
+export const HEADER_COLOR_PRESETS = [
+  { name: 'Branco Puro', color: '#ffffff', textColor: 'dark' as const },
+  { name: 'Rosê Suave', color: '#fceee9', textColor: 'dark' as const },
+  { name: 'Rosa Quartzo', color: '#fae6e7', textColor: 'dark' as const },
+  { name: 'Pêssego Nude', color: '#fceede', textColor: 'dark' as const },
+  { name: 'Lavanda Floral', color: '#f3eef8', textColor: 'dark' as const },
+  { name: 'Creme Vanilla', color: '#fbf8f2', textColor: 'dark' as const },
+  { name: 'Grafite Nobre', color: '#1f191b', textColor: 'light' as const },
+  { name: 'Vinho Marsala', color: '#613d3e', textColor: 'light' as const },
+  { name: 'Dourado Suave', color: '#fcf4e6', textColor: 'dark' as const },
+];
+
 export function StoreCustomization() {
   const { 
     settings, 
@@ -135,13 +153,17 @@ export function StoreCustomization() {
     uploadCatalogLogo, 
     removeCatalogLogo,
     uploadCatalogBanner,
-    removeCatalogBanner
+    removeCatalogBanner,
+    uploadCatalogHeaderBackground,
+    removeCatalogHeaderBackground,
   } = useUserSettings();
   const [saving, setSaving] = useState(false);
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const [uploadingBanner, setUploadingBanner] = useState(false);
+  const [uploadingHeaderBackground, setUploadingHeaderBackground] = useState(false);
   const [currentCatalogLogo, setCurrentCatalogLogo] = useState<string | null>(null);
   const [currentCatalogBanner, setCurrentCatalogBanner] = useState<string | null>(null);
+  const [currentCatalogHeaderBackground, setCurrentCatalogHeaderBackground] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState('identity');
 
   // Estado dos campos do formulário
@@ -165,6 +187,11 @@ export function StoreCustomization() {
     catalogFooterCopyright: '',
     catalogFooterNotice: '',
     catalogBannerFixed: false,
+    catalogHeaderBgColor: '',
+    catalogHeaderTextColor: 'dark' as 'dark' | 'light',
+    catalogHeaderLogoPosition: 'left' as 'left' | 'center' | 'full',
+    catalogHeaderHeight: 'normal' as 'compact' | 'normal' | 'large',
+    catalogHeaderHideText: false,
   });
 
   const [dataLoaded, setDataLoaded] = useState(false);
@@ -177,6 +204,7 @@ export function StoreCustomization() {
       // Inicia com catalogLogo e catalogBanner exclusivos da lojinha (sem fallback para o logo do painel)
       let loadedLogo: string | null = settings?.catalogLogo || null;
       let loadedBanner: string | null = settings?.catalogBanner || null;
+      let loadedHeaderBg: string | null = settings?.catalogHeaderBackground || null;
       let data = {
         businessName: settings?.businessName || '',
         businessTagline: settings?.businessTagline || '',
@@ -197,6 +225,11 @@ export function StoreCustomization() {
         catalogFooterCopyright: settings?.catalogFooterCopyright || '',
         catalogFooterNotice: settings?.catalogFooterNotice || '',
         catalogBannerFixed: settings?.catalogBannerFixed || false,
+        catalogHeaderBgColor: settings?.catalogHeaderBgColor || '',
+        catalogHeaderTextColor: (settings?.catalogHeaderTextColor || 'dark') as 'dark' | 'light',
+        catalogHeaderLogoPosition: (settings?.catalogHeaderLogoPosition || 'left') as 'left' | 'center' | 'full',
+        catalogHeaderHeight: (settings?.catalogHeaderHeight || 'normal') as 'compact' | 'normal' | 'large',
+        catalogHeaderHideText: Boolean(settings?.catalogHeaderHideText),
       };
 
       // Carrega os dados compartilhados públicos da loja do Firestore
@@ -226,6 +259,15 @@ export function StoreCustomization() {
             loadedBanner = null;
           }
 
+          // Fundo personalizado da barra superior fixa
+          if (pub.catalogHeaderBackground !== undefined) {
+            loadedHeaderBg = pub.catalogHeaderBackground || null;
+          } else if (settings?.catalogHeaderBackground) {
+            loadedHeaderBg = settings.catalogHeaderBackground;
+          } else {
+            loadedHeaderBg = null;
+          }
+
           data = {
             businessName: pub.businessName || data.businessName,
             businessTagline: pub.businessTagline || data.businessTagline,
@@ -246,6 +288,11 @@ export function StoreCustomization() {
             catalogFooterCopyright: pub.catalogFooterCopyright || data.catalogFooterCopyright,
             catalogFooterNotice: pub.catalogFooterNotice || data.catalogFooterNotice,
             catalogBannerFixed: pub.catalogBannerFixed !== undefined ? Boolean(pub.catalogBannerFixed) : (settings?.catalogBannerFixed || false),
+            catalogHeaderBgColor: pub.catalogHeaderBgColor !== undefined ? pub.catalogHeaderBgColor : data.catalogHeaderBgColor,
+            catalogHeaderTextColor: pub.catalogHeaderTextColor || data.catalogHeaderTextColor,
+            catalogHeaderLogoPosition: pub.catalogHeaderLogoPosition || data.catalogHeaderLogoPosition,
+            catalogHeaderHeight: pub.catalogHeaderHeight || data.catalogHeaderHeight,
+            catalogHeaderHideText: pub.catalogHeaderHideText !== undefined ? Boolean(pub.catalogHeaderHideText) : data.catalogHeaderHideText,
           };
         }
       } catch (err) {
@@ -255,6 +302,7 @@ export function StoreCustomization() {
       if (!isCancelled) {
         setCurrentCatalogLogo(loadedLogo);
         setCurrentCatalogBanner(loadedBanner);
+        setCurrentCatalogHeaderBackground(loadedHeaderBg);
         if (!dataLoaded) {
           setFormData(data);
           setDataLoaded(true);
@@ -349,6 +397,46 @@ export function StoreCustomization() {
     }
   };
 
+  const handleHeaderBackgroundUpload = async (file: File) => {
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+      toast.error('Formato inválido. Use imagem JPG, PNG ou WebP.');
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error('A imagem deve ter no máximo 5 MB.');
+      return;
+    }
+
+    setUploadingHeaderBackground(true);
+    try {
+      const url = await uploadCatalogHeaderBackground(file, currentCatalogHeaderBackground || undefined);
+      setCurrentCatalogHeaderBackground(url);
+      toast.success('Fundo da barra superior atualizado com sucesso!');
+    } catch (error) {
+      console.error('Erro no upload do fundo da barra superior:', error);
+      toast.error(error instanceof Error ? error.message : 'Erro ao fazer upload da imagem');
+    } finally {
+      setUploadingHeaderBackground(false);
+    }
+  };
+
+  const handleHeaderBackgroundRemove = async () => {
+    if (!confirm('Deseja realmente remover a imagem de fundo da barra superior?')) return;
+    setUploadingHeaderBackground(true);
+    const previousBg = currentCatalogHeaderBackground;
+    try {
+      setCurrentCatalogHeaderBackground(null);
+      await removeCatalogHeaderBackground(previousBg || undefined);
+      toast.success('Fundo da barra superior removido com sucesso!');
+    } catch (error) {
+      console.error('Erro ao remover fundo da barra superior:', error);
+      setCurrentCatalogHeaderBackground(previousBg);
+      toast.error('Erro ao remover fundo');
+    } finally {
+      setUploadingHeaderBackground(false);
+    }
+  };
+
   const handleChange = (field: keyof typeof formData, value: any) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
   };
@@ -374,6 +462,12 @@ export function StoreCustomization() {
         catalogLogo: currentCatalogLogo || '',
         catalogBanner: currentCatalogBanner || '',
         catalogBannerFixed: Boolean(formData.catalogBannerFixed),
+        catalogHeaderBackground: currentCatalogHeaderBackground || '',
+        catalogHeaderBgColor: formData.catalogHeaderBgColor,
+        catalogHeaderTextColor: formData.catalogHeaderTextColor,
+        catalogHeaderLogoPosition: formData.catalogHeaderLogoPosition,
+        catalogHeaderHeight: formData.catalogHeaderHeight,
+        catalogHeaderHideText: Boolean(formData.catalogHeaderHideText),
       });
       // Salva no cache do navegador para a lojinha atualizar instantaneamente
       try {
@@ -386,6 +480,12 @@ export function StoreCustomization() {
           logo: currentCatalogLogo || '',
           banner: currentCatalogBanner || '',
           bannerFixed: Boolean(formData.catalogBannerFixed),
+          headerBackground: currentCatalogHeaderBackground || '',
+          headerBgColor: formData.catalogHeaderBgColor,
+          headerTextColor: formData.catalogHeaderTextColor,
+          headerLogoPosition: formData.catalogHeaderLogoPosition,
+          headerHeight: formData.catalogHeaderHeight,
+          headerHideText: Boolean(formData.catalogHeaderHideText),
           badge: formData.catalogBadge,
           statusText: formData.catalogStatusText,
           announcement: formData.catalogAnnouncement,
@@ -753,6 +853,419 @@ export function StoreCustomization() {
                       </p>
                     </div>
                   </div>
+                </CardContent>
+              </Card>
+
+              {/* Card de Personalização Completa da Barra Superior Fixa */}
+              <Card className="border-primary/25 shadow-xs">
+                <CardHeader>
+                  <div className="flex items-center justify-between gap-2">
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <Palette className="size-4 text-primary" />
+                      Personalização da Barra Superior Fixa (Header)
+                    </CardTitle>
+                    <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-primary/10 text-primary shrink-0">
+                      Fixa no Topo
+                    </span>
+                  </div>
+                  <CardDescription className="text-xs">
+                    Esta barra acompanha o cliente durante toda a navegação na lojinha. Personalize a cor de fundo, adicione arte/imagem exclusiva de ponta a ponta, defina o contraste, altura e posição da logo.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-6">
+
+                  {/* 1. Prévia em Tempo Real da Barra Superior */}
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <Label className="text-xs font-bold flex items-center gap-1.5 text-foreground">
+                        <Eye className="size-3.5 text-primary" />
+                        Prévia da Barra Fixa em Tempo Real
+                      </Label>
+                      <span className="text-[10px] text-muted-foreground">
+                        Como seus clientes verão no topo do catálogo
+                      </span>
+                    </div>
+
+                    <div
+                      className={`relative w-full rounded-2xl border overflow-hidden transition-all duration-200 shadow-sm flex items-center justify-between px-4 py-3 ${
+                        formData.catalogHeaderTextColor === 'light' ? 'text-white border-white/20' : 'text-[#221a1a] border-border/80'
+                      }`}
+                      style={{
+                        backgroundColor: formData.catalogHeaderBgColor || '#ffffff',
+                        backgroundImage: currentCatalogHeaderBackground ? `url(${currentCatalogHeaderBackground})` : undefined,
+                        backgroundSize: 'cover',
+                        backgroundPosition: 'center',
+                        minHeight: formData.catalogHeaderHeight === 'compact' ? '54px' : formData.catalogHeaderHeight === 'large' ? '80px' : '66px',
+                      }}
+                    >
+                      {/* Overlay suave para garantir legibilidade com artes de fundo */}
+                      {currentCatalogHeaderBackground && (
+                        <div
+                          className={`absolute inset-0 pointer-events-none ${
+                            formData.catalogHeaderTextColor === 'light' ? 'bg-black/25' : 'bg-white/30'
+                          }`}
+                        />
+                      )}
+
+                      <div className="relative z-10 w-full flex items-center justify-between gap-3">
+                        {/* Lado Esquerdo */}
+                        <div className={`flex items-center gap-2.5 ${
+                          formData.catalogHeaderLogoPosition === 'center' ? 'w-1/4' : ''
+                        }`}>
+                          {formData.catalogHeaderLogoPosition !== 'center' ? (
+                            <div className="flex items-center gap-2">
+                              {currentCatalogLogo ? (
+                                <img
+                                  src={currentCatalogLogo}
+                                  alt="Logo"
+                                  className={`w-auto object-contain shrink-0 ${
+                                    formData.catalogHeaderHeight === 'compact' ? 'h-7 max-w-[90px]' : formData.catalogHeaderHeight === 'large' ? 'h-11 max-w-[130px]' : 'h-9 max-w-[110px]'
+                                  }`}
+                                />
+                              ) : (
+                                <div className="h-8 px-2 rounded bg-black/10 flex items-center text-[10px] font-semibold">
+                                  Logo
+                                </div>
+                              )}
+                              {!formData.catalogHeaderHideText && (
+                                <span className="text-xs font-bold truncate max-w-[120px]">
+                                  {formData.businessName || 'Luisices'}
+                                </span>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="text-[10px] opacity-70 truncate hidden sm:inline">
+                              @{cleanInstagram}
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Centro */}
+                        {formData.catalogHeaderLogoPosition === 'center' ? (
+                          <div className="flex flex-col items-center justify-center text-center">
+                            {currentCatalogLogo ? (
+                              <img
+                                src={currentCatalogLogo}
+                                alt="Logo"
+                                className={`w-auto object-contain shrink-0 ${
+                                  formData.catalogHeaderHeight === 'compact' ? 'h-8 max-w-[100px]' : formData.catalogHeaderHeight === 'large' ? 'h-12 max-w-[140px]' : 'h-10 max-w-[120px]'
+                                }`}
+                              />
+                            ) : (
+                              <div className="h-8 px-3 rounded bg-black/10 flex items-center text-[10px] font-semibold">
+                                Logo Centralizado
+                              </div>
+                            )}
+                            {!formData.catalogHeaderHideText && (
+                              <span className="text-[11px] font-bold tracking-tight">
+                                {formData.businessName || 'Luisices'}
+                              </span>
+                            )}
+                          </div>
+                        ) : (
+                          /* Barra de busca simulada no centro quando logo à esquerda */
+                          <div className="hidden sm:flex flex-1 max-w-xs relative">
+                            <div className={`w-full py-1.5 px-3 rounded-full text-[11px] flex items-center gap-2 border ${
+                              formData.catalogHeaderTextColor === 'light'
+                                ? 'bg-white/20 border-white/30 text-white/80'
+                                : 'bg-black/5 border-black/10 text-stone-600'
+                            }`}>
+                              <Search size={12} className="opacity-70" />
+                              <span className="truncate">Buscar produtos...</span>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Lado Direito: Sacola simulada */}
+                        <div className={`flex items-center gap-2 shrink-0 ${
+                          formData.catalogHeaderLogoPosition === 'center' ? 'w-1/4 justify-end' : ''
+                        }`}>
+                          <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold shadow-2xs ${
+                            formData.catalogHeaderTextColor === 'light'
+                              ? 'bg-white text-[#613d3e]'
+                              : 'bg-[#613d3e] text-white'
+                          }`}>
+                            <ShoppingBag size={12} />
+                            <span className="text-[11px]">R$ 0,00</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 2. Upload de Imagem/Arte de Fundo da Barra Superior */}
+                  <div className="p-4 rounded-xl border border-border/80 bg-muted/20 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <Label className="text-xs font-bold flex items-center gap-1.5">
+                          <ImageIcon className="size-3.5 text-primary" />
+                          Arte / Imagem de Fundo da Barra (Full-Width)
+                        </Label>
+                        <p className="text-[11px] text-muted-foreground mt-0.5">
+                          Preenche toda a barra superior fixa com sua arte, padrão ou textura visual personalizada.
+                        </p>
+                      </div>
+                      {currentCatalogHeaderBackground && (
+                        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 shrink-0">
+                          Arte Ativa
+                        </span>
+                      )}
+                    </div>
+
+                    {currentCatalogHeaderBackground && (
+                      <div className="relative w-full h-14 rounded-lg overflow-hidden border border-border shadow-2xs">
+                        <img
+                          src={currentCatalogHeaderBackground}
+                          alt="Arte de fundo da barra superior"
+                          className="w-full h-full object-cover"
+                        />
+                      </div>
+                    )}
+
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Label htmlFor="header-bg-upload" className="cursor-pointer">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          disabled={uploadingHeaderBackground}
+                          className="gap-2 border-primary/30 text-primary hover:bg-primary/5 text-xs"
+                          asChild
+                        >
+                          <span>
+                            {uploadingHeaderBackground ? (
+                              <>
+                                <Loader2 className="size-3.5 animate-spin" />
+                                Enviando imagem da barra...
+                              </>
+                            ) : (
+                              <>
+                                <Upload className="size-3.5" />
+                                {currentCatalogHeaderBackground ? 'Trocar Imagem de Fundo' : 'Enviar Imagem para a Barra'}
+                              </>
+                            )}
+                          </span>
+                        </Button>
+                      </Label>
+                      <Input
+                        id="header-bg-upload"
+                        type="file"
+                        accept="image/jpeg,image/png,image/webp"
+                        className="hidden"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          e.target.value = '';
+                          if (file) void handleHeaderBackgroundUpload(file);
+                        }}
+                      />
+
+                      {currentCatalogHeaderBackground && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          disabled={uploadingHeaderBackground}
+                          onClick={handleHeaderBackgroundRemove}
+                          className="gap-1.5 text-destructive hover:text-destructive hover:bg-destructive/10 text-xs"
+                        >
+                          <X className="size-3.5" />
+                          Remover Imagem de Fundo
+                        </Button>
+                      )}
+                    </div>
+                    <p className="text-[11px] text-muted-foreground">
+                      💡 Recomendação: Use imagens panorâmicas horizontais (ex: 1920x100px ou texturas contínuas, WebP ou PNG até 5MB).
+                    </p>
+                  </div>
+
+                  {/* 3. Cor de Fundo da Barra Superior */}
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <Label className="text-xs font-bold flex items-center gap-1.5">
+                        <Palette className="size-3.5 text-primary" />
+                        Cor de Fundo da Barra Superior
+                      </Label>
+                      {formData.catalogHeaderBgColor && (
+                        <button
+                          type="button"
+                          onClick={() => handleChange('catalogHeaderBgColor', '')}
+                          className="text-[11px] text-primary hover:underline"
+                        >
+                          Restaurar Padrão
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Presets de Cor */}
+                    <div className="flex flex-wrap gap-2">
+                      {HEADER_COLOR_PRESETS.map((preset) => (
+                        <button
+                          key={preset.name}
+                          type="button"
+                          onClick={() => {
+                            handleChange('catalogHeaderBgColor', preset.color);
+                            handleChange('catalogHeaderTextColor', preset.textColor);
+                          }}
+                          className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs border transition-all ${
+                            formData.catalogHeaderBgColor.toLowerCase() === preset.color.toLowerCase()
+                              ? 'ring-2 ring-primary border-transparent font-bold scale-105'
+                              : 'border-border/80 hover:border-primary/50 text-muted-foreground'
+                          }`}
+                        >
+                          <span
+                            className="size-3.5 rounded-full border border-black/10 shrink-0 shadow-2xs"
+                            style={{ backgroundColor: preset.color }}
+                          />
+                          <span>{preset.name}</span>
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* Seletor Customizado Hexadecimal */}
+                    <div className="flex items-center gap-3">
+                      <div className="relative flex items-center gap-2">
+                        <input
+                          type="color"
+                          id="m-header-color-picker"
+                          value={formData.catalogHeaderBgColor || '#ffffff'}
+                          onChange={(e) => handleChange('catalogHeaderBgColor', e.target.value)}
+                          className="size-9 rounded-lg border border-border cursor-pointer p-0.5 bg-background"
+                        />
+                        <Label htmlFor="m-header-color-picker" className="text-xs font-semibold cursor-pointer">
+                          Seletor de Cor Livre
+                        </Label>
+                      </div>
+                      <div className="w-32">
+                        <Input
+                          placeholder="#ffffff"
+                          value={formData.catalogHeaderBgColor}
+                          onChange={(e) => handleChange('catalogHeaderBgColor', e.target.value)}
+                          className="text-xs uppercase font-mono"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 4. Contraste de Texto & Ícones */}
+                  <div className="space-y-2">
+                    <Label className="text-xs font-bold">
+                      Contraste dos Textos e Ícones da Barra
+                    </Label>
+                    <div className="grid grid-cols-2 gap-3">
+                      <button
+                        type="button"
+                        onClick={() => handleChange('catalogHeaderTextColor', 'dark')}
+                        className={`p-3 rounded-xl border text-left flex items-start gap-2.5 transition-all ${
+                          formData.catalogHeaderTextColor === 'dark'
+                            ? 'border-primary bg-primary/5 ring-1 ring-primary'
+                            : 'border-border/80 hover:border-border'
+                        }`}
+                      >
+                        <Moon className={`size-4 mt-0.5 shrink-0 ${formData.catalogHeaderTextColor === 'dark' ? 'text-primary' : 'text-muted-foreground'}`} />
+                        <div>
+                          <p className="text-xs font-semibold">Texto Escuro (Padrão)</p>
+                          <p className="text-[10px] text-muted-foreground">Ideal para fundos claros, tons pastel ou fundos brancos.</p>
+                        </div>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleChange('catalogHeaderTextColor', 'light')}
+                        className={`p-3 rounded-xl border text-left flex items-start gap-2.5 transition-all ${
+                          formData.catalogHeaderTextColor === 'light'
+                            ? 'border-primary bg-primary/5 ring-1 ring-primary'
+                            : 'border-border/80 hover:border-border'
+                        }`}
+                      >
+                        <Sun className={`size-4 mt-0.5 shrink-0 ${formData.catalogHeaderTextColor === 'light' ? 'text-primary' : 'text-muted-foreground'}`} />
+                        <div>
+                          <p className="text-xs font-semibold">Texto Claro (Branco)</p>
+                          <p className="text-[10px] text-muted-foreground">Ideal para artes escuras, cores intensas ou Marsala.</p>
+                        </div>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* 5. Posição da Logo & Altura da Barra */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label className="text-xs font-bold flex items-center gap-1.5">
+                        <AlignLeft className="size-3.5 text-primary" />
+                        Posição da Logo na Barra Fixa
+                      </Label>
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleChange('catalogHeaderLogoPosition', 'left')}
+                          className={`p-2.5 rounded-lg border text-center transition-all ${
+                            formData.catalogHeaderLogoPosition !== 'center'
+                              ? 'border-primary bg-primary/5 font-semibold text-primary'
+                              : 'border-border/80 text-muted-foreground hover:border-border text-xs'
+                          }`}
+                        >
+                          <AlignLeft className="size-4 mx-auto mb-1" />
+                          <span className="text-xs">À Esquerda</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleChange('catalogHeaderLogoPosition', 'center')}
+                          className={`p-2.5 rounded-lg border text-center transition-all ${
+                            formData.catalogHeaderLogoPosition === 'center'
+                              ? 'border-primary bg-primary/5 font-semibold text-primary'
+                              : 'border-border/80 text-muted-foreground hover:border-border text-xs'
+                          }`}
+                        >
+                          <AlignCenter className="size-4 mx-auto mb-1" />
+                          <span className="text-xs">Centralizada</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label className="text-xs font-bold">
+                        Altura da Barra Fixa
+                      </Label>
+                      <div className="grid grid-cols-3 gap-2">
+                        {[
+                          { id: 'compact', label: 'Compacta', sub: '58px' },
+                          { id: 'normal', label: 'Padrão', sub: '68px' },
+                          { id: 'large', label: 'Ampla', sub: '88px' },
+                        ].map((h) => (
+                          <button
+                            key={h.id}
+                            type="button"
+                            onClick={() => handleChange('catalogHeaderHeight', h.id)}
+                            className={`p-2 rounded-lg border text-center transition-all ${
+                              formData.catalogHeaderHeight === h.id
+                                ? 'border-primary bg-primary/5 font-semibold text-primary'
+                                : 'border-border/80 text-muted-foreground hover:border-border'
+                            }`}
+                          >
+                            <span className="text-xs block">{h.label}</span>
+                            <span className="text-[10px] opacity-70 block">{h.sub}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 6. Switch: Ocultar texto ao lado da logo */}
+                  <div className="flex items-center justify-between p-3 rounded-xl border border-border/70 bg-muted/10">
+                    <div className="space-y-0.5 pr-4">
+                      <Label htmlFor="m-hide-text" className="text-xs font-semibold cursor-pointer">
+                        Ocultar nome do ateliê em texto ao lado da logo
+                      </Label>
+                      <p className="text-[11px] text-muted-foreground">
+                        Ative se seu logotipo já possui o nome por extenso, evitando que o nome apareça duplicado.
+                      </p>
+                    </div>
+                    <Switch
+                      id="m-hide-text"
+                      checked={Boolean(formData.catalogHeaderHideText)}
+                      onCheckedChange={(checked) => handleChange('catalogHeaderHideText', checked)}
+                    />
+                  </div>
+
                 </CardContent>
               </Card>
 
@@ -1183,75 +1696,120 @@ export function StoreCustomization() {
               )}
 
               {/* Header simulado */}
-              <div className="p-3 bg-white/80 border-b border-stone-200/60 flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  {currentCatalogLogo ? (
-                    <img
-                      src={currentCatalogLogo}
-                      alt="Logo da Lojinha"
-                      className="size-8 rounded-full object-cover border border-white/60 shadow-xs shrink-0"
-                    />
-                  ) : null}
-                  <div>
-                    <div className="flex items-center gap-1.5">
-                      <span className="font-bold text-xs text-[#613d3e]">
-                        {formData.businessName || 'Luisices'}
+              <div
+                className={`p-2.5 border-b relative overflow-hidden transition-all duration-200 flex items-center justify-between ${
+                  formData.catalogHeaderTextColor === 'light' ? 'text-white' : 'text-[#221a1a]'
+                }`}
+                style={{
+                  backgroundColor: formData.catalogHeaderBgColor || '#ffffff',
+                  backgroundImage: currentCatalogHeaderBackground ? `url(${currentCatalogHeaderBackground})` : undefined,
+                  backgroundSize: 'cover',
+                  backgroundPosition: 'center',
+                  minHeight: formData.catalogHeaderHeight === 'compact' ? '46px' : formData.catalogHeaderHeight === 'large' ? '64px' : '54px',
+                }}
+              >
+                {currentCatalogHeaderBackground && (
+                  <div
+                    className={`absolute inset-0 pointer-events-none ${
+                      formData.catalogHeaderTextColor === 'light' ? 'bg-black/25' : 'bg-white/30'
+                    }`}
+                  />
+                )}
+
+                <div className="relative z-10 w-full flex items-center justify-between gap-2">
+                  {/* Lado Esquerdo */}
+                  <div className={`flex items-center gap-1.5 ${
+                    formData.catalogHeaderLogoPosition === 'center' ? 'w-1/4' : 'flex-1 min-w-0'
+                  }`}>
+                    {formData.catalogHeaderLogoPosition !== 'center' ? (
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        {currentCatalogLogo ? (
+                          <img
+                            src={currentCatalogLogo}
+                            alt="Logo da Lojinha"
+                            className={`w-auto object-contain shrink-0 ${
+                              formData.catalogHeaderHeight === 'compact' ? 'h-6 max-w-[70px]' : formData.catalogHeaderHeight === 'large' ? 'h-9 max-w-[90px]' : 'h-7 max-w-[80px]'
+                            }`}
+                          />
+                        ) : null}
+                        {!formData.catalogHeaderHideText && (
+                          <span className="font-bold text-[11px] truncate">
+                            {formData.businessName || 'Luisices'}
+                          </span>
+                        )}
+                      </div>
+                    ) : (
+                      <span className="text-[9px] opacity-70 truncate">
+                        @{cleanInstagram}
                       </span>
-                      <span className="text-[9px] px-1.5 py-0.2 rounded-full bg-[#613d3e]/10 text-[#613d3e] font-medium">
-                        {formData.catalogBadge || 'Atelier'}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-1 text-[10px] text-stone-500">
-                      <span className="size-1.5 rounded-full bg-emerald-500 shrink-0" />
-                      <span className="truncate max-w-[140px]">
-                        {formData.catalogStatusText || 'Atendimento WhatsApp ativo'}
-                      </span>
-                    </div>
+                    )}
                   </div>
-                </div>
-                <div className="flex items-center gap-1">
-                  <div className="size-6 rounded-full bg-stone-100 flex items-center justify-center text-stone-600">
-                    <ShoppingBag size={12} />
+
+                  {/* Centro */}
+                  {formData.catalogHeaderLogoPosition === 'center' && (
+                    <div className="flex flex-col items-center justify-center text-center">
+                      {currentCatalogLogo ? (
+                        <img
+                          src={currentCatalogLogo}
+                          alt="Logo da Lojinha"
+                          className={`w-auto object-contain shrink-0 ${
+                            formData.catalogHeaderHeight === 'compact' ? 'h-6 max-w-[70px]' : formData.catalogHeaderHeight === 'large' ? 'h-9 max-w-[90px]' : 'h-7 max-w-[80px]'
+                          }`}
+                        />
+                      ) : null}
+                      {!formData.catalogHeaderHideText && (
+                        <span className="font-bold text-[10px] truncate leading-none mt-0.5">
+                          {formData.businessName || 'Luisices'}
+                        </span>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Lado Direito: Sacola simulada */}
+                  <div className={`flex items-center gap-1 shrink-0 ${
+                    formData.catalogHeaderLogoPosition === 'center' ? 'w-1/4 justify-end' : ''
+                  }`}>
+                    <div className={`flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-bold shadow-2xs ${
+                      formData.catalogHeaderTextColor === 'light'
+                        ? 'bg-white text-[#613d3e]'
+                        : 'bg-[#613d3e] text-white'
+                    }`}>
+                      <ShoppingBag size={10} />
+                      <span>R$ 0,00</span>
+                    </div>
                   </div>
                 </div>
               </div>
 
-              {/* Hero Banner simulado (estilo LinkedIn) */}
+              {/* Hero Banner simulado (estilo Panorâmico sem bolinha de avatar) */}
               <div className="m-2.5 rounded-xl overflow-hidden border border-white/60 shadow-2xs bg-white/70">
                 {/* Capa */}
                 <div className="relative w-full aspect-[3.5/1] bg-gradient-to-r from-[#fceee9] via-[#f7d6d0] to-[#ede7f6] overflow-hidden flex items-center justify-center text-stone-400">
                   {currentCatalogBanner ? (
                     <img src={currentCatalogBanner} alt="Capa da Loja" className="w-full h-full object-cover" />
                   ) : (
-                    <span className="text-[9px] font-medium opacity-60">Banner Panorâmico (LinkedIn)</span>
+                    <span className="text-[9px] font-medium opacity-60">Banner Panorâmico</span>
                   )}
                 </div>
-                {/* Informações com Logo Sobreposto */}
-                <div className="p-3 pt-0">
-                  <div className="-mt-5 mb-2 flex items-end justify-between">
-                    <div className="size-10 rounded-full ring-2 ring-white bg-white shadow-xs overflow-hidden flex items-center justify-center">
-                      {currentCatalogLogo ? (
-                        <img src={currentCatalogLogo} alt="Logo" className="w-full h-full object-cover" />
-                      ) : (
-                        <Sparkles size={14} className="text-[#613d3e]" />
-                      )}
+                {/* Informações da Loja */}
+                <div className="p-3">
+                  <div className="flex items-start justify-between gap-2 mb-1.5">
+                    <div>
+                      <p className="font-bold text-xs leading-tight text-[#221a1a]">
+                        {formData.businessName || 'Luisices'}
+                      </p>
+                      <p className="font-semibold text-[10px] text-[#613d3e] leading-snug">
+                        {formData.businessTagline || 'Papelaria artesanal feita à mão'}
+                      </p>
                     </div>
-                    <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-[#613d3e]/10 text-[#613d3e] font-semibold">
+                    <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-[#613d3e]/10 text-[#613d3e] font-semibold shrink-0">
                       {formData.catalogBadge || 'Atelier'}
                     </span>
                   </div>
 
-                  <div className="space-y-0.5">
-                    <p className="font-bold text-xs leading-tight text-[#221a1a]">
-                      {formData.businessName || 'Luisices'}
-                    </p>
-                    <p className="font-semibold text-[10px] text-[#613d3e] leading-snug">
-                      {formData.businessTagline || 'Papelaria artesanal feita à mão'}
-                    </p>
-                    <p className="text-[9px] text-stone-600 leading-snug line-clamp-2 pt-0.5">
-                      {formData.catalogHeroDescription || 'Escolha suas peças, informe o nome para personalização e envie o pedido...'}
-                    </p>
-                  </div>
+                  <p className="text-[9px] text-stone-600 leading-snug line-clamp-2 pt-0.5">
+                    {formData.catalogHeroDescription || 'Escolha suas peças, informe o nome para personalização e envie o pedido...'}
+                  </p>
                 </div>
               </div>
 
@@ -1272,7 +1830,7 @@ export function StoreCustomization() {
                   <img
                     src={currentCatalogLogo}
                     alt="Logo da Lojinha"
-                    className="size-9 rounded-full object-cover border border-white/60 shadow-xs mx-auto mb-1.5"
+                    className="max-h-7 w-auto object-contain mx-auto mb-1.5"
                   />
                 ) : null}
                 <p className="font-bold text-[#613d3e] text-[11px]">
