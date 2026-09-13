@@ -199,5 +199,47 @@ service cloud.firestore {
             && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.permissions.store == true)
       );
     }
+
+    // Regras para produtos da vitrine da lojinha pública online (storeProducts)
+    match /storeProducts/{productId} {
+      // Leitura pública irrestrita para catálogo online (/catalogo)
+      allow read: if true;
+
+      // Criação, atualização e exclusão permitidas para administradores, donos ou usuários com permissão
+      allow create: if request.auth != null && (
+        isAdmin()
+        || isOwner(request.resource.data.userId)
+        || (exists(/databases/$(database)/documents/userProfiles/$(request.auth.uid))
+            && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.role == 'user')
+        || (isActiveEmployee() && (
+            get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.permissions.storeProducts.create == true
+            || get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.permissions.store == true
+          ))
+        || (!exists(/databases/$(database)/documents/userProfiles/$(request.auth.uid)))
+      );
+
+      allow update: if request.auth != null && (
+        isAdmin()
+        || isOwner(resource.data.userId)
+        || (exists(/databases/$(database)/documents/userProfiles/$(request.auth.uid))
+            && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.role == 'user')
+        || (isActiveEmployee() && (
+            get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.permissions.storeProducts.edit == true
+            || get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.permissions.store == true
+          ))
+        || (!exists(/databases/$(database)/documents/userProfiles/$(request.auth.uid)))
+      );
+
+      allow delete: if request.auth != null && (
+        isAdmin()
+        || isOwner(resource.data.userId)
+        || (exists(/databases/$(database)/documents/userProfiles/$(request.auth.uid))
+            && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.role == 'user')
+        || (isActiveEmployee() && (
+            get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.permissions.storeProducts.delete == true
+            || get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.permissions.store == true
+          ))
+      );
+    }
   }
 }

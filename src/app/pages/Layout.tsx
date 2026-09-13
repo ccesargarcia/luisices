@@ -490,31 +490,6 @@ export function Layout() {
         </div>
       </header>
 
-      <nav className="hidden">
-        <div className="container mx-auto px-2 sm:px-4">
-          <div className="flex overflow-x-auto scrollbar-none">
-            {orderedNav.map((item) => {
-              const isActive = location.pathname === item.href;
-              return (
-                <Link
-                  key={item.href}
-                  to={item.href}
-                  className={cn(
-                    'flex items-center gap-2 px-3 sm:px-4 py-3 text-sm font-medium border-b-2 transition-colors',
-                    isActive
-                      ? 'border-primary text-primary'
-                      : 'border-transparent text-muted-foreground hover:text-foreground hover:border-muted-foreground/30'
-                  )}
-                >
-                  <item.icon className="size-4 flex-shrink-0" />
-                  <span className="hidden sm:inline">{item.name}</span>
-                </Link>
-              );
-            })}
-          </div>
-        </div>
-      </nav>
-
       <main className={cn(
         'min-w-0 w-full flex-1 px-3 py-4 pb-24 transition-[margin,width] duration-300 sm:px-4 sm:py-8 sm:pb-8',
         sidebarCollapsed ? 'md:ml-20 md:w-[calc(100%-5rem)]' : 'md:ml-72 md:w-[calc(100%-18rem)]',

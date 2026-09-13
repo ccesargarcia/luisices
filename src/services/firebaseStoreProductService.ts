@@ -18,7 +18,7 @@ import {
   orderBy,
   Timestamp,
 } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { auth, db } from '../lib/firebase';
 import { StoreProduct, Product } from '../app/types';
 import { firebaseStorageService } from './firebaseStorageService';
 
@@ -57,15 +57,23 @@ class FirebaseStoreProductService {
       const snap = await getDocs(q);
       return snap.docs.map((d) => this.mapDoc(d.id, d.data()));
     } catch {
-      // Fallback sem orderBy caso index não esteja pronto
-      const snap = await getDocs(collection(db, STORE_PRODUCTS_COLLECTION));
-      return snap.docs
-        .map((d) => this.mapDoc(d.id, d.data()))
-        .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+      try {
+        // Fallback sem orderBy caso index não esteja pronto
+        const snap = await getDocs(collection(db, STORE_PRODUCTS_COLLECTION));
+        return snap.docs
+          .map((d) => this.mapDoc(d.id, d.data()))
+          .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+      } catch (fallbackErr) {
+        console.warn('Erro ao obter produtos da lojinha:', fallbackErr);
+        return [];
+      }
     }
   }
 
-  subscribeToStoreProducts(callback: (products: StoreProduct[]) => void): () => void {
+  subscribeToStoreProducts(
+    callback: (products: StoreProduct[]) => void,
+    onError?: (error: any) => void
+  ): () => void {
     const q = query(collection(db, STORE_PRODUCTS_COLLECTION));
     return onSnapshot(
       q,
@@ -77,12 +85,16 @@ class FirebaseStoreProductService {
       },
       (err) => {
         console.warn('Erro ao escutar produtos da lojinha:', err);
+        if (onError) {
+          onError(err);
+        }
       }
     );
   }
 
   async createStoreProduct(data: Partial<StoreProduct>): Promise<StoreProduct> {
     const now = Timestamp.now();
+    const currentUid = auth.currentUser?.uid || null;
     const ref = await addDoc(collection(db, STORE_PRODUCTS_COLLECTION), {
       name: data.name?.trim() || '',
       price: this.ensurePositive(data.price),
@@ -95,6 +107,7 @@ class FirebaseStoreProductService {
       active: data.active !== undefined ? data.active : true,
       order: data.order !== undefined ? Number(data.order) : 0,
       internalProductId: data.internalProductId || null,
+      userId: currentUid,
       createdAt: now,
       updatedAt: now,
     });

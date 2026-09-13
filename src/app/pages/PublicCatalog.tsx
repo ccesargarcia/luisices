@@ -282,24 +282,28 @@ export function PublicCatalog() {
 
         // 2. Carrega produtos públicos do Firestore (coleção dedicada 'storeProducts' com fallback)
         try {
-          const storeProductsSnap = await getDocs(collection(db, 'storeProducts'));
-          const storeList: CatalogProduct[] = [];
-          storeProductsSnap.forEach((d) => {
-            const data = d.data();
-            if (data.name && Number(data.price ?? data.unitPrice) > 0 && data.active !== false) {
-              storeList.push({
-                id: d.id,
-                name: data.name,
-                category: data.category || 'Geral',
-                price: Number(data.price ?? data.unitPrice) || 0,
-                description: data.description || 'Produto artesanal confeccionado com carinho sob encomenda.',
-                leadTimeDays: Number(data.leadTimeDays) || 5,
-                imageUrl: data.imageUrl || data.photoUrl || (data.images && data.images[0]) || 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?auto=format&fit=crop&w=800&q=80',
-                badge: data.badge || undefined,
-                isCustomizable: data.isCustomizable ?? true,
-              });
-            }
-          });
+          let storeList: CatalogProduct[] = [];
+          try {
+            const storeProductsSnap = await getDocs(collection(db, 'storeProducts'));
+            storeProductsSnap.forEach((d) => {
+              const data = d.data();
+              if (data.name && Number(data.price ?? data.unitPrice) > 0 && data.active !== false) {
+                storeList.push({
+                  id: d.id,
+                  name: data.name,
+                  category: data.category || 'Geral',
+                  price: Number(data.price ?? data.unitPrice) || 0,
+                  description: data.description || 'Produto artesanal confeccionado com carinho sob encomenda.',
+                  leadTimeDays: Number(data.leadTimeDays) || 5,
+                  imageUrl: data.imageUrl || data.photoUrl || (data.images && data.images[0]) || 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?auto=format&fit=crop&w=800&q=80',
+                  badge: data.badge || undefined,
+                  isCustomizable: data.isCustomizable ?? true,
+                });
+              }
+            });
+          } catch (storeQueryErr) {
+            console.warn('Coleção storeProducts ainda sem regras aplicadas ou vazia, recorrendo aos produtos do ateliê:', storeQueryErr);
+          }
 
           if (storeList.length > 0) {
             if (!isCancelled) {

@@ -45,6 +45,7 @@ import {
   CheckCircle2,
   Tag,
   ShoppingBag,
+  AlertTriangle,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -508,6 +509,7 @@ export function StoreProducts() {
   const { userProfile } = useAuth();
   const [storeProducts, setStoreProducts] = useState<StoreProduct[]>([]);
   const [loading, setLoading] = useState(true);
+  const [permissionError, setPermissionError] = useState(false);
   const [search, setSearch] = useState('');
   const [filterCategory, setFilterCategory] = useState('todos');
   const [filterStatus, setFilterStatus] = useState<'todos' | 'ativos' | 'pausados'>('todos');
@@ -526,10 +528,22 @@ export function StoreProducts() {
   // Escuta produtos da vitrine em tempo real
   useEffect(() => {
     setLoading(true);
-    const unsub = firebaseStoreProductService.subscribeToStoreProducts((list) => {
-      setStoreProducts(list);
-      setLoading(false);
-    });
+    const unsub = firebaseStoreProductService.subscribeToStoreProducts(
+      (list) => {
+        setStoreProducts(list);
+        setLoading(false);
+        setPermissionError(false);
+      },
+      (err: any) => {
+        setLoading(false);
+        if (
+          err?.code === 'permission-denied' ||
+          String(err?.message || '').toLowerCase().includes('permission')
+        ) {
+          setPermissionError(true);
+        }
+      }
+    );
     return unsub;
   }, []);
 
@@ -642,6 +656,22 @@ export function StoreProducts() {
           )}
         </div>
       </div>
+
+      {/* Alerta de Sincronização de Regras do Firestore */}
+      {permissionError && (
+        <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-foreground text-xs space-y-2">
+          <div className="flex items-center gap-2 font-bold text-sm text-amber-600 dark:text-amber-400">
+            <AlertTriangle className="size-4 shrink-0" />
+            <span>Regras do Firestore pendentes de sincronização</span>
+          </div>
+          <p className="text-muted-foreground leading-relaxed">
+            O Firestore recusou a leitura da coleção <code>storeProducts</code> (<em>Missing or insufficient permissions</em>). As regras de segurança para liberar a vitrine pública e a gestão já foram atualizadas no arquivo <code>firestore.rules</code> do projeto.
+          </p>
+          <p className="text-muted-foreground leading-relaxed">
+            Para aplicar no seu projeto Firebase, basta executar no terminal: <code className="bg-muted px-1.5 py-0.5 rounded font-mono text-[11px] font-semibold text-foreground">firebase deploy --only firestore:rules</code> ou copiar a regra para o Console do Firebase (Firestore Database &gt; Regras).
+          </p>
+        </div>
+      )}
 
       {/* Mini Cards de Indicadores Rápidos */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
