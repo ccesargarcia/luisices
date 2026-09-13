@@ -846,49 +846,7 @@ export function PublicCatalog() {
             </div>
           )}
 
-          {/* Banner Informativo: 3 Passos do Atendimento Artesanal (Desktop Grid) */}
-          <section className="rounded-3xl p-6 sm:p-8 bg-white/60 dark:bg-[#1f191b]/70 border border-white/50 dark:border-[#ebcdcd]/15 shadow-xs">
-            <div className="text-center max-w-xl mx-auto mb-6 space-y-1">
-              <h4 className="text-base sm:text-lg font-bold text-[#221a1a] dark:text-[#e8e0e3]">
-                Como funciona o atendimento artesanal?
-              </h4>
-              <p className="text-xs text-[#504444] dark:text-[#c9c0b8]">
-                Simples, rápido e com aprovação direta pelo WhatsApp antes da produção.
-              </p>
-            </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-6">
-              <div className="p-4 rounded-2xl bg-white/60 dark:bg-[#161214]/60 border border-stone-200/60 dark:border-stone-800 text-center space-y-2">
-                <div className="size-10 rounded-full bg-[#613d3e]/10 dark:bg-[#f4b7b9]/15 text-[#613d3e] dark:text-[#f4b7b9] flex items-center justify-center mx-auto font-bold text-sm">
-                  1
-                </div>
-                <h5 className="text-xs sm:text-sm font-bold text-foreground">Escolha & Personalize</h5>
-                <p className="text-[11px] text-[#504444] dark:text-[#c9c0b8] leading-relaxed">
-                  Selecione os mimos, defina o tema e informe o nome da aniversariante ou bebê para a capa.
-                </p>
-              </div>
-
-              <div className="p-4 rounded-2xl bg-white/60 dark:bg-[#161214]/60 border border-stone-200/60 dark:border-stone-800 text-center space-y-2">
-                <div className="size-10 rounded-full bg-[#10B981]/10 text-[#10B981] flex items-center justify-center mx-auto font-bold text-sm">
-                  2
-                </div>
-                <h5 className="text-xs sm:text-sm font-bold text-foreground">Aprovação no WhatsApp</h5>
-                <p className="text-[11px] text-[#504444] dark:text-[#c9c0b8] leading-relaxed">
-                  Sua sacola é enviada pronta para o nosso chat, onde enviamos a prévia digital da arte para você aprovar.
-                </p>
-              </div>
-
-              <div className="p-4 rounded-2xl bg-white/60 dark:bg-[#161214]/60 border border-stone-200/60 dark:border-stone-800 text-center space-y-2">
-                <div className="size-10 rounded-full bg-[#3B82F6]/10 text-[#3B82F6] flex items-center justify-center mx-auto font-bold text-sm">
-                  3
-                </div>
-                <h5 className="text-xs sm:text-sm font-bold text-foreground">Produção & Envio Afetivo</h5>
-                <p className="text-[11px] text-[#504444] dark:text-[#c9c0b8] leading-relaxed">
-                  Confeccionamos cada detalhe com materiais nobres e enviamos bem embalado para todo o Brasil.
-                </p>
-              </div>
-            </div>
-          </section>
 
           {/* Footer Institucional Responsivo com Multi-colunas */}
           <footer className="pt-8 pb-12 border-t border-stone-200/60 dark:border-[#ebcdcd]/15 text-xs text-[#504444] dark:text-[#c9c0b8]">
