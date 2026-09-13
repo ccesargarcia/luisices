@@ -325,25 +325,51 @@ export function PublicCatalog() {
     };
   }, []);
 
-  // Interceptar botão voltar do celular/navegador para fechar modais
+  // Controle de histórico e body scroll lock para modais (iPhone / Chrome mobile)
+  const isAnyModalOpen = Boolean(isCartOpen || selectedProductPreview);
+  const modalHistoryPushedRef = useRef(false);
+
   useEffect(() => {
     const handlePopState = () => {
-      if (isCartOpen) {
-        setIsCartOpen(false);
-      } else if (selectedProductPreview) {
-        setSelectedProductPreview(null);
-      }
+      modalHistoryPushedRef.current = false;
+      setIsCartOpen(false);
+      setSelectedProductPreview(null);
     };
 
-    if (isCartOpen || selectedProductPreview) {
-      window.history.pushState({ modalOpen: true }, '');
-      window.addEventListener('popstate', handlePopState);
+    window.addEventListener('popstate', handlePopState);
+
+    if (isAnyModalOpen) {
+      if (!modalHistoryPushedRef.current) {
+        window.history.pushState({ modalOpen: true }, '');
+        modalHistoryPushedRef.current = true;
+      }
+    } else {
+      if (modalHistoryPushedRef.current) {
+        modalHistoryPushedRef.current = false;
+        if (window.history.state?.modalOpen) {
+          window.history.back();
+        }
+      }
     }
 
     return () => {
       window.removeEventListener('popstate', handlePopState);
     };
-  }, [isCartOpen, selectedProductPreview]);
+  }, [isAnyModalOpen]);
+
+  // Travar o scroll de fundo no mobile enquanto modal ou sacola estiverem abertos
+  useEffect(() => {
+    if (isAnyModalOpen) {
+      const originalOverflow = document.body.style.overflow;
+      const originalTouchAction = document.body.style.touchAction;
+      document.body.style.overflow = 'hidden';
+      document.body.style.touchAction = 'none';
+      return () => {
+        document.body.style.overflow = originalOverflow;
+        document.body.style.touchAction = originalTouchAction;
+      };
+    }
+  }, [isAnyModalOpen]);
 
   // Categorias dinâmicas derivadas dos produtos
   const categories = useMemo(() => {
@@ -532,7 +558,7 @@ export function PublicCatalog() {
                 placeholder="Buscar produtos, temas, lembranças..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-10 pr-9 py-2.5 text-xs sm:text-sm rounded-xl sm:rounded-2xl bg-stone-100/90 dark:bg-[#161214]/90 border border-stone-200/80 dark:border-stone-700 text-[#221a1a] dark:text-[#e8e0e3] placeholder:text-stone-400 dark:placeholder:text-stone-500 focus:outline-none focus:ring-2 focus:ring-[#613d3e]/30 dark:focus:ring-[#f4b7b9]/30 transition-all shadow-inner"
+                className="w-full pl-10 pr-9 py-2.5 text-base sm:text-sm rounded-xl sm:rounded-2xl bg-stone-100/90 dark:bg-[#161214]/90 border border-stone-200/80 dark:border-stone-700 text-[#221a1a] dark:text-[#e8e0e3] placeholder:text-stone-400 dark:placeholder:text-stone-500 focus:outline-none focus:ring-2 focus:ring-[#613d3e]/30 dark:focus:ring-[#f4b7b9]/30 transition-all shadow-inner"
               />
               {searchQuery && (
                 <button
@@ -947,25 +973,33 @@ export function PublicCatalog() {
           </div>
         </main>
 
-        {/* 4. Barra Fixa Inferior de Conversão: Adaptativa (Bottom bar no mobile / Floating Dock no desktop) */}
-        {totalItemsCount > 0 && (
-          <aside className="fixed bottom-0 inset-x-0 sm:bottom-6 sm:inset-x-auto sm:left-1/2 sm:-translate-x-1/2 z-40 p-3 sm:p-2 sm:px-4 bg-white/90 dark:bg-[#161214]/95 backdrop-blur-xl border-t sm:border border-stone-200/80 dark:border-[#ebcdcd]/20 sm:rounded-2xl shadow-2xl animate-in slide-in-from-bottom-4">
-            <div className="max-w-md sm:w-[480px] mx-auto flex items-center justify-between gap-4">
-              <div>
-                <span className="block text-[10px] uppercase font-bold text-stone-500 dark:text-stone-400 tracking-wider">
-                  Subtotal ({totalItemsCount} {totalItemsCount === 1 ? 'item' : 'itens'})
-                </span>
-                <span className="text-base font-extrabold text-[#221a1a] dark:text-[#e8e0e3] tabular-nums">
-                  {formatCurrency(subtotal)}
-                </span>
+        {/* 4. Barra Fixa Inferior de Conversão: Adaptativa (Bottom bar no mobile com safe-area / Floating Dock no desktop) */}
+        {totalItemsCount > 0 && !isCartOpen && !selectedProductPreview && (
+          <aside className="fixed bottom-0 inset-x-0 sm:bottom-6 sm:inset-x-auto sm:left-1/2 sm:-translate-x-1/2 z-40 p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:p-2.5 sm:px-5 bg-white/95 dark:bg-[#161214]/95 backdrop-blur-xl border-t sm:border border-stone-200/80 dark:border-[#ebcdcd]/20 sm:rounded-2xl shadow-2xl animate-in slide-in-from-bottom-4 duration-200">
+            <div className="max-w-md sm:w-[480px] mx-auto flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2.5">
+                <div className="relative p-2 rounded-xl bg-[#613d3e]/10 dark:bg-[#f4b7b9]/15 text-[#613d3e] dark:text-[#f4b7b9]">
+                  <ShoppingBag size={18} />
+                  <span className="absolute -top-1.5 -right-1.5 size-4.5 bg-amber-400 text-stone-950 text-[10px] font-black rounded-full flex items-center justify-center tabular-nums shadow-xs">
+                    {totalItemsCount}
+                  </span>
+                </div>
+                <div>
+                  <span className="block text-[10px] uppercase font-bold text-stone-500 dark:text-stone-400 tracking-wider">
+                    {totalItemsCount} {totalItemsCount === 1 ? 'item' : 'itens'} na sacola
+                  </span>
+                  <span className="text-sm sm:text-base font-extrabold text-[#613d3e] dark:text-[#f4b7b9] tabular-nums">
+                    {formatCurrency(subtotal)}
+                  </span>
+                </div>
               </div>
 
               <button
                 onClick={() => setIsCartOpen(true)}
-                className="px-4 py-2.5 rounded-xl bg-[#10B981] hover:bg-[#059669] text-white font-semibold text-xs flex items-center gap-2 shadow-md active:scale-95 transition-all cursor-pointer"
+                className="px-4 py-2.5 rounded-xl bg-[#613d3e] dark:bg-[#f4b7b9] text-white dark:text-[#4c2527] font-bold text-xs flex items-center gap-2 shadow-md hover:opacity-95 active:scale-95 transition-all cursor-pointer"
               >
-                <MessageCircle size={16} />
-                <span>Ver Sacola & Enviar</span>
+                <span>Ver Sacola</span>
+                <Send size={13} />
               </button>
             </div>
           </aside>
@@ -974,10 +1008,17 @@ export function PublicCatalog() {
         {/* 5. Modal Responsivo de Prévia / Personalização (2 Colunas no Desktop) */}
         {selectedProductPreview && (
           <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/60 backdrop-blur-xs animate-in fade-in">
-            <div className="w-full sm:max-w-2xl md:max-w-3xl max-h-[92dvh] flex flex-col md:flex-row rounded-t-3xl sm:rounded-3xl bg-[#fff8f7] dark:bg-[#1f191b] border border-white/45 dark:border-[#ebcdcd]/20 shadow-2xl overflow-hidden animate-in slide-in-from-bottom-4 sm:slide-in-from-bottom-0 sm:zoom-in-95">
+            {/* Backdrop clicável para fechar no mobile e desktop */}
+            <div 
+              className="absolute inset-0" 
+              onClick={() => setSelectedProductPreview(null)} 
+              aria-hidden="true" 
+            />
+
+            <div className="relative z-10 w-full sm:max-w-2xl md:max-w-3xl h-[88dvh] sm:h-auto max-h-[88dvh] sm:max-h-[90vh] flex flex-col md:flex-row rounded-t-3xl sm:rounded-3xl bg-[#fff8f7] dark:bg-[#1f191b] border border-white/45 dark:border-[#ebcdcd]/20 shadow-2xl overflow-hidden animate-in slide-in-from-bottom-4 sm:slide-in-from-bottom-0 sm:zoom-in-95">
               
-              {/* Coluna Esquerda (Desktop): Imagem em Alta Resolução */}
-              <div className="relative aspect-video md:aspect-auto md:w-1/2 bg-stone-100 dark:bg-stone-900 overflow-hidden shrink-0">
+              {/* Coluna Esquerda (Desktop): Imagem */}
+              <div className="relative h-44 sm:h-auto md:w-1/2 bg-stone-100 dark:bg-stone-900 overflow-hidden shrink-0">
                 <img
                   src={selectedProductPreview.imageUrl}
                   alt={selectedProductPreview.name}
@@ -985,7 +1026,7 @@ export function PublicCatalog() {
                 />
                 <button
                   onClick={() => setSelectedProductPreview(null)}
-                  className="absolute top-3 right-3 p-2 rounded-full bg-black/50 text-white hover:bg-black/70 backdrop-blur-xs transition-colors cursor-pointer"
+                  className="absolute top-3 right-3 p-2 rounded-full bg-black/50 text-white hover:bg-black/70 backdrop-blur-xs transition-colors cursor-pointer z-10"
                   aria-label="Fechar prévia"
                 >
                   <X size={18} />
@@ -998,18 +1039,18 @@ export function PublicCatalog() {
               </div>
 
               {/* Coluna Direita (Desktop): Detalhes, Customização e Adição */}
-              <div className="p-5 md:p-6 flex-1 flex flex-col justify-between overflow-y-auto space-y-4">
-                <div className="space-y-3">
+              <div className="p-4 sm:p-6 flex-1 min-h-0 flex flex-col justify-between overflow-hidden">
+                <div className="space-y-3 overflow-y-auto flex-1 min-h-0 pr-1 overscroll-contain">
                   <div className="flex justify-between items-start gap-2">
                     <div>
                       <span className="text-xs font-semibold text-stone-400 uppercase tracking-wider">
                         {selectedProductPreview.category}
                       </span>
-                      <h3 className="text-lg md:text-xl font-extrabold text-[#221a1a] dark:text-[#e8e0e3] leading-snug">
+                      <h3 className="text-base sm:text-xl font-extrabold text-[#221a1a] dark:text-[#e8e0e3] leading-snug">
                         {selectedProductPreview.name}
                       </h3>
                     </div>
-                    <span className="text-lg md:text-xl font-extrabold text-[#613d3e] dark:text-[#f4b7b9] tabular-nums shrink-0">
+                    <span className="text-base sm:text-xl font-extrabold text-[#613d3e] dark:text-[#f4b7b9] tabular-nums shrink-0">
                       {formatCurrency(selectedProductPreview.price)}
                     </span>
                   </div>
@@ -1034,7 +1075,7 @@ export function PublicCatalog() {
                         placeholder="Ex: Nome da criança, idade ou tema desejado"
                         value={previewCustomName}
                         onChange={(e) => setPreviewCustomName(e.target.value)}
-                        className="w-full px-3.5 py-2 text-xs rounded-xl bg-white dark:bg-[#161214] border border-stone-300 dark:border-stone-700 text-[#221a1a] dark:text-[#e8e0e3] focus:outline-none focus:ring-2 focus:ring-[#613d3e]/30"
+                        className="w-full px-3.5 py-2 text-base sm:text-xs rounded-xl bg-white dark:bg-[#161214] border border-stone-300 dark:border-stone-700 text-[#221a1a] dark:text-[#e8e0e3] focus:outline-none focus:ring-2 focus:ring-[#613d3e]/30"
                       />
                       <p className="text-[10px] text-stone-400">
                         Você também poderá combinar mais detalhes da arte depois no WhatsApp.
@@ -1043,15 +1084,15 @@ export function PublicCatalog() {
                   )}
                 </div>
 
-                {/* Ação de Adicionar */}
-                <div className="pt-3 border-t border-stone-200/50 dark:border-stone-800">
+                {/* Ação de Adicionar - sempre visível fixada no rodapé */}
+                <div className="pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:pb-0 border-t border-stone-200/50 dark:border-stone-800 shrink-0">
                   <button
                     onClick={() => {
                       addToCart(selectedProductPreview, previewCustomName);
                       setSelectedProductPreview(null);
                       setIsCartOpen(true);
                     }}
-                    className="w-full py-3 px-4 rounded-xl font-bold text-xs flex items-center justify-center gap-2 bg-[#613d3e] dark:bg-[#f4b7b9] text-white dark:text-[#4c2527] hover:opacity-95 active:scale-[0.98] transition-all shadow-md cursor-pointer"
+                    className="w-full py-3 px-4 rounded-xl font-bold text-xs sm:text-sm flex items-center justify-center gap-2 bg-[#613d3e] dark:bg-[#f4b7b9] text-white dark:text-[#4c2527] hover:opacity-95 active:scale-[0.98] transition-all shadow-md cursor-pointer"
                   >
                     <ShoppingBag size={16} />
                     <span>Adicionar à Sacola de Encomendas</span>
@@ -1066,14 +1107,18 @@ export function PublicCatalog() {
         {/* 6. Gaveta Lateral / Slide-over Drawer da Sacola de Pedidos */}
         {isCartOpen && (
           <div className="fixed inset-0 z-50 flex items-end sm:items-stretch sm:justify-end bg-black/60 backdrop-blur-xs animate-in fade-in">
-            {/* Backdrop clicável no desktop */}
-            <div className="hidden sm:block absolute inset-0" onClick={() => setIsCartOpen(false)} />
+            {/* Backdrop clicável no mobile e desktop */}
+            <div 
+              className="absolute inset-0" 
+              onClick={() => setIsCartOpen(false)} 
+              aria-hidden="true" 
+            />
 
             {/* Container da Gaveta (Full-height slide-over no desktop, bottom sheet no mobile) */}
-            <div className="relative w-full sm:max-w-md h-auto max-h-[92dvh] sm:max-h-none sm:h-full flex flex-col rounded-t-3xl sm:rounded-none sm:rounded-l-3xl bg-[#fff8f7] dark:bg-[#1f191b] border-t sm:border-t-0 sm:border-l border-stone-200/80 dark:border-stone-800 shadow-2xl overflow-hidden animate-in slide-in-from-bottom-4 sm:slide-in-from-right duration-200">
+            <div className="relative z-10 w-full sm:max-w-md h-[88dvh] sm:h-full max-h-[88dvh] sm:max-h-none flex flex-col rounded-t-3xl sm:rounded-none sm:rounded-l-3xl bg-[#fff8f7] dark:bg-[#1f191b] border-t sm:border-t-0 sm:border-l border-stone-200/80 dark:border-stone-800 shadow-2xl overflow-hidden animate-in slide-in-from-bottom-4 sm:slide-in-from-right duration-200">
               
               {/* Header do Carrinho */}
-              <div className="p-4 sm:p-5 flex items-center justify-between border-b border-stone-200/60 dark:border-[#ebcdcd]/10">
+              <div className="p-4 sm:p-5 flex items-center justify-between border-b border-stone-200/60 dark:border-[#ebcdcd]/10 shrink-0">
                 <div className="flex items-center gap-2.5">
                   <div className="p-2 rounded-xl bg-[#613d3e]/10 dark:bg-[#f4b7b9]/15 text-[#613d3e] dark:text-[#f4b7b9]">
                     <ShoppingBag size={18} />
@@ -1097,7 +1142,7 @@ export function PublicCatalog() {
               </div>
 
               {/* Lista de Itens Adicionados */}
-              <div className="p-4 sm:p-5 flex-1 overflow-y-auto space-y-3">
+              <div className="p-4 sm:p-5 flex-1 min-h-0 overflow-y-auto space-y-3 overscroll-contain">
                 {cart.length === 0 ? (
                   <div className="text-center py-16 text-stone-400 space-y-2">
                     <ShoppingBag size={40} className="mx-auto opacity-30" />
@@ -1154,7 +1199,7 @@ export function PublicCatalog() {
                                 )
                               );
                             }}
-                            className="w-full px-2.5 py-1 text-xs rounded-lg bg-white dark:bg-[#161214] border border-stone-200 dark:border-stone-700 text-[#221a1a] dark:text-[#e8e0e3] focus:outline-none focus:ring-1 focus:ring-[#613d3e]"
+                            className="w-full px-2.5 py-1.5 text-base sm:text-xs rounded-lg bg-white dark:bg-[#161214] border border-stone-200 dark:border-stone-700 text-[#221a1a] dark:text-[#e8e0e3] focus:outline-none focus:ring-1 focus:ring-[#613d3e]"
                           />
                         </div>
                       )}
@@ -1199,7 +1244,7 @@ export function PublicCatalog() {
                       placeholder="Ex: Preciso receber até dia 20 para o aniversário..."
                       value={customerNotes}
                       onChange={(e) => setCustomerNotes(e.target.value)}
-                      className="w-full p-2.5 text-xs rounded-xl bg-white dark:bg-[#261f22] border border-stone-200 dark:border-stone-700 text-[#221a1a] dark:text-[#e8e0e3] focus:outline-none focus:ring-1 focus:ring-[#613d3e]"
+                      className="w-full p-2.5 text-base sm:text-xs rounded-xl bg-white dark:bg-[#261f22] border border-stone-200 dark:border-stone-700 text-[#221a1a] dark:text-[#e8e0e3] focus:outline-none focus:ring-1 focus:ring-[#613d3e]"
                     />
                   </div>
                 )}
@@ -1207,7 +1252,7 @@ export function PublicCatalog() {
 
               {/* Footer do Carrinho com Envio WhatsApp */}
               {cart.length > 0 && (
-                <div className="p-4 sm:p-5 bg-white/90 dark:bg-[#161214]/90 border-t border-stone-200/80 dark:border-stone-800 space-y-3">
+                <div className="p-4 sm:p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] bg-white/95 dark:bg-[#161214]/95 border-t border-stone-200/80 dark:border-stone-800 space-y-3 shrink-0">
                   <div className="flex justify-between items-center text-sm font-bold">
                     <span>Subtotal Estimado:</span>
                     <span className="text-lg text-[#613d3e] dark:text-[#f4b7b9] tabular-nums font-extrabold">
@@ -1217,7 +1262,7 @@ export function PublicCatalog() {
 
                   <button
                     onClick={handleSendToWhatsApp}
-                    className="w-full py-3.5 px-4 rounded-xl bg-[#10B981] hover:bg-[#059669] text-white font-bold text-xs flex items-center justify-center gap-2 shadow-lg active:scale-98 transition-all cursor-pointer"
+                    className="w-full py-3.5 px-4 rounded-xl bg-[#10B981] hover:bg-[#059669] text-white font-bold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg active:scale-98 transition-all cursor-pointer"
                   >
                     <Send size={15} />
                     <span>Confirmar & Enviar Pedido no WhatsApp</span>
@@ -1227,28 +1272,6 @@ export function PublicCatalog() {
 
             </div>
           </div>
-        )}
-
-        {/* BOTÃO FLUTUANTE DA SACOLA (Acesso permanente ao rolar o catálogo) */}
-        {totalItemsCount > 0 && !isCartOpen && (
-          <aside aria-label="Acesso rápido à sacola" className="fixed bottom-5 right-5 z-40 animate-in fade-in slide-in-from-bottom-3 duration-300">
-            <button
-              onClick={() => setIsCartOpen(true)}
-              className="flex items-center gap-2.5 px-4 py-3 rounded-full bg-[#613d3e] dark:bg-[#f4b7b9] text-white dark:text-[#4c2527] shadow-xl hover:scale-105 active:scale-95 transition-all font-bold text-xs sm:text-sm cursor-pointer ring-4 ring-white/60 dark:ring-black/40"
-              aria-label="Ver sacola de encomendas"
-            >
-              <div className="relative">
-                <ShoppingBag size={19} />
-                <span className="absolute -top-2 -right-2 size-4.5 bg-amber-400 text-stone-950 text-[10px] font-black rounded-full flex items-center justify-center tabular-nums shadow-xs">
-                  {totalItemsCount}
-                </span>
-              </div>
-              <div className="flex flex-col items-start leading-tight">
-                <span className="text-[10px] font-normal opacity-85">Sacola</span>
-                <span className="tabular-nums">{formatCurrency(subtotal)}</span>
-              </div>
-            </button>
-          </aside>
         )}
       </div>
     </div>
