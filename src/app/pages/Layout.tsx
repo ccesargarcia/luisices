@@ -174,23 +174,23 @@ export function Layout() {
   return (
     <div className="min-h-[100dvh] w-full max-w-full overflow-x-clip bg-transparent flex flex-col">
       <aside className={cn(
-        'hidden md:flex fixed inset-y-0 left-0 z-40 flex-col border-r border-white/40 bg-sidebar/70 py-8 shadow-[0_8px_32px_rgb(123_84_85_/_8%)] backdrop-blur-2xl transition-[width] duration-300',
+        'hidden md:flex fixed inset-y-0 left-0 z-40 flex-col border-r border-white/40 bg-sidebar/70 py-4 shadow-[0_8px_32px_rgb(123_84_85_/_8%)] backdrop-blur-2xl transition-[width] duration-300',
         sidebarCollapsed ? 'w-20' : 'w-72',
       )}>
-        <div className={cn('mb-8 flex items-center px-6', sidebarCollapsed ? 'justify-center' : 'gap-4')}>
+        <div className={cn('mb-4 flex items-center px-5', sidebarCollapsed ? 'justify-center' : 'gap-3')}>
           {hasLogo ? (
-            <img src={settings.logo} alt={businessName} className={cn('h-12 w-12 shrink-0 rounded-full border border-white/40 object-contain shadow-sm', sidebarCollapsed && 'h-10 w-10')} />
+            <img src={settings.logo} alt={businessName} className={cn('h-10 w-10 shrink-0 rounded-full border border-white/40 object-contain shadow-sm', sidebarCollapsed && 'h-9 w-9')} />
           ) : (
-            <div className={cn('flex size-12 shrink-0 items-center justify-center rounded-full border border-white/40 bg-primary text-primary-foreground shadow-sm', sidebarCollapsed && 'size-10')}>
-              <Package2 className="size-6" />
+            <div className={cn('flex size-10 shrink-0 items-center justify-center rounded-full border border-white/40 bg-primary text-primary-foreground shadow-sm', sidebarCollapsed && 'size-9')}>
+              <Package2 className="size-5" />
             </div>
           )}
           <div className={cn('min-w-0 overflow-hidden transition-opacity duration-200', sidebarCollapsed ? 'w-0 opacity-0' : 'opacity-100')}>
-            <h2 className="truncate text-lg font-bold tracking-tight text-primary">{businessName}</h2>
-            <p className="truncate text-sm text-muted-foreground">{settings?.businessTagline || 'Sistema de Gestão'}</p>
+            <h2 className="truncate text-base font-bold tracking-tight text-primary leading-tight">{businessName}</h2>
+            <p className="truncate text-xs text-muted-foreground">{settings?.businessTagline || 'Sistema de Gestão'}</p>
           </div>
         </div>
-        <nav className="flex flex-1 flex-col gap-1.5 overflow-y-auto pr-1">
+        <nav className="flex flex-1 flex-col gap-0.5 overflow-y-auto pr-1 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
           {orderedNav.map((item) => {
             // Caso 1: Item com submenu (Lojinha Online)
             if (item.children && item.children.length > 0) {
@@ -204,7 +204,7 @@ export function Layout() {
                         type="button"
                         title={item.name}
                         className={cn(
-                          'flex items-center justify-center border-l-4 py-3 text-sm font-medium transition-colors w-full cursor-pointer',
+                          'flex items-center justify-center border-l-4 py-2.5 text-sm font-medium transition-colors w-full cursor-pointer',
                           isChildActive
                             ? 'border-primary bg-primary/10 text-primary'
                             : 'border-transparent text-muted-foreground hover:border-primary/30 hover:bg-primary/5 hover:text-foreground'
@@ -246,24 +246,24 @@ export function Layout() {
                     type="button"
                     onClick={() => setStoreSubmenuOpen(prev => !prev)}
                     className={cn(
-                      'flex items-center justify-between border-l-4 px-6 py-2.5 text-sm font-medium transition-colors cursor-pointer w-full text-left',
+                      'flex items-center justify-between border-l-4 px-5 py-2 text-xs sm:text-sm font-medium transition-colors cursor-pointer w-full text-left',
                       isChildActive
                         ? 'border-primary/60 text-primary font-semibold'
                         : 'border-transparent text-muted-foreground hover:border-primary/30 hover:bg-primary/5 hover:text-foreground'
                     )}
                   >
-                    <div className="flex items-center gap-4 min-w-0">
+                    <div className="flex items-center gap-3.5 min-w-0">
                       <item.icon className="size-5 shrink-0" />
                       <span className="truncate">{item.name}</span>
                     </div>
                     <ChevronDown
-                      size={15}
+                      size={14}
                       className={cn('transition-transform duration-200 shrink-0 text-muted-foreground', storeSubmenuOpen ? 'rotate-180 text-primary' : '')}
                     />
                   </button>
 
                   {storeSubmenuOpen && (
-                    <div className="flex flex-col pl-11 pr-4 space-y-1 pt-1 pb-1">
+                    <div className="flex flex-col pl-9 pr-3 space-y-0.5 py-0.5">
                       {item.children.map((child: any) => {
                         const isSubActive = location.pathname === child.href;
                         return (
@@ -271,7 +271,7 @@ export function Layout() {
                             key={child.href}
                             to={child.href}
                             className={cn(
-                              'flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition-all',
+                              'flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all',
                               isSubActive
                                 ? 'bg-primary text-primary-foreground font-bold shadow-xs'
                                 : 'text-muted-foreground hover:bg-primary/10 hover:text-foreground'
@@ -296,8 +296,8 @@ export function Layout() {
                 to={item.href}
                 title={sidebarCollapsed ? item.name : undefined}
                 className={cn(
-                  'flex items-center border-l-4 px-6 py-3 text-sm font-medium transition-colors',
-                  sidebarCollapsed ? 'justify-center' : 'gap-4',
+                  'flex items-center border-l-4 px-5 py-2 text-xs sm:text-sm font-medium transition-colors',
+                  sidebarCollapsed ? 'justify-center' : 'gap-3.5',
                   isActive
                     ? 'border-primary bg-primary/10 text-primary'
                     : 'border-transparent text-muted-foreground hover:border-primary/30 hover:bg-primary/5 hover:text-foreground',
@@ -313,28 +313,28 @@ export function Layout() {
           to="/configuracoes"
           title={sidebarCollapsed ? 'Configurações' : undefined}
           className={cn(
-            'mx-6 flex items-center rounded-lg px-3 py-3 text-sm font-medium transition-colors',
+            'mx-4 flex items-center rounded-lg px-3 py-1.5 text-xs sm:text-sm font-medium transition-colors',
             location.pathname === '/configuracoes'
               ? 'bg-primary/10 text-primary font-semibold'
               : 'text-muted-foreground hover:bg-primary/5 hover:text-foreground',
-            sidebarCollapsed ? 'justify-center' : 'gap-4',
+            sidebarCollapsed ? 'justify-center' : 'gap-3.5',
           )}
         >
-          <SettingsIcon className="size-5 shrink-0" />
+          <SettingsIcon className="size-4.5 shrink-0" />
           <span className={sidebarCollapsed ? 'hidden' : 'inline'}>Configurações</span>
         </Link>}
         <Link
           to="/ajuda"
           title={sidebarCollapsed ? 'Central de Ajuda' : undefined}
           className={cn(
-            'mx-6 flex items-center rounded-lg px-3 py-3 text-sm font-medium transition-colors',
+            'mx-4 flex items-center rounded-lg px-3 py-1.5 text-xs sm:text-sm font-medium transition-colors',
             location.pathname === '/ajuda'
               ? 'bg-primary/10 text-primary font-semibold'
               : 'text-muted-foreground hover:bg-primary/5 hover:text-foreground',
-            sidebarCollapsed ? 'justify-center' : 'gap-4',
+            sidebarCollapsed ? 'justify-center' : 'gap-3.5',
           )}
         >
-          <HelpCircle className="size-5 shrink-0" />
+          <HelpCircle className="size-4.5 shrink-0" />
           <span className={sidebarCollapsed ? 'hidden' : 'inline'}>Central de Ajuda</span>
         </Link>
         <Button
@@ -344,7 +344,7 @@ export function Layout() {
           onClick={toggleSidebar}
           title={sidebarCollapsed ? 'Expandir menu' : 'Recolher menu'}
           aria-label={sidebarCollapsed ? 'Expandir menu' : 'Recolher menu'}
-          className="mx-auto mt-3 text-muted-foreground hover:text-primary"
+          className="mx-auto mt-1 text-muted-foreground hover:text-primary"
         >
           {sidebarCollapsed ? <PanelLeftOpen className="size-5" /> : <PanelLeftClose className="size-5" />}
         </Button>
