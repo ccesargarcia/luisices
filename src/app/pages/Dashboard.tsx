@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect } from 'react';
+import { useMemo, useState, useEffect, Fragment } from 'react';
 import { Order, OrderStatus, UserProfile } from '../types';
 import { OrderCard } from '../components/OrderCard';
 import { OrderDetailsDialog } from '../components/OrderDetailsDialog';
@@ -8,6 +8,7 @@ import { OverdueOrders } from '../components/OverdueOrders';
 import { DashboardCardSkeleton, OrderCardSkeleton } from '../components/SkeletonLoaders';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
+import { cn } from '../components/ui/utils';
 import { Input } from '../components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Badge } from '../components/ui/badge';
@@ -392,19 +393,83 @@ export function Dashboard() {
     });
   };
 
+  // Paginação e controle por aba
+  const [activeTab, setActiveTab] = useState<'all' | 'pending' | 'in-progress' | 'completed'>('all');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState<number | 'all'>(() => {
+    try {
+      const saved = localStorage.getItem('dashboard_orders_page_size');
+      if (saved === 'all') return 'all';
+      if (saved === '6') return 6;
+      if (saved === '12') return 12;
+      if (saved === '24') return 24;
+    } catch {}
+    return 12;
+  });
+
+  const tabOrdersMap = useMemo(() => ({
+    all: filteredOrders,
+    pending: filteredOrders.filter((o) => o.status === 'pending'),
+    'in-progress': filteredOrders.filter((o) => o.status === 'in-progress'),
+    completed: filteredOrders.filter((o) => o.status === 'completed'),
+  }), [filteredOrders]);
+
+  const activeTabOrders = tabOrdersMap[activeTab];
+  const totalTabOrders = activeTabOrders.length;
+  const effectivePageSize = typeof pageSize === 'number' ? pageSize : 12;
+  const totalPages = pageSize === 'all' ? 1 : Math.max(1, Math.ceil(totalTabOrders / effectivePageSize));
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, selectedTags, showExchangeOnly, activeTab, pageSize]);
+
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [totalPages, currentPage]);
+
+  const pagedOrders = useMemo(() => {
+    if (pageSize === 'all') return activeTabOrders;
+    const start = (currentPage - 1) * effectivePageSize;
+    return activeTabOrders.slice(start, start + effectivePageSize);
+  }, [activeTabOrders, currentPage, pageSize, effectivePageSize]);
+
+  const startItem = totalTabOrders === 0 ? 0 : (pageSize === 'all' ? 1 : (currentPage - 1) * effectivePageSize + 1);
+  const endItem = pageSize === 'all' ? totalTabOrders : Math.min(currentPage * effectivePageSize, totalTabOrders);
+
+  const handlePageSizeChange = (newSize: number | 'all') => {
+    setPageSize(newSize);
+    setCurrentPage(1);
+    try {
+      localStorage.setItem('dashboard_orders_page_size', String(newSize));
+    } catch {}
+  };
+
+  const handlePageChange = (newPage: number) => {
+    setCurrentPage(newPage);
+    const element = document.getElementById('dashboard-orders-section');
+    if (element) {
+      const rect = element.getBoundingClientRect();
+      if (rect.top < 0) {
+        element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    }
+  };
+
   const allFilteredOrdersSelected =
-    filteredOrders.length > 0 &&
-    filteredOrders.every(order => selectedOrderIds.includes(order.id));
+    activeTabOrders.length > 0 &&
+    activeTabOrders.every(order => selectedOrderIds.includes(order.id));
 
   const toggleSelectAllVisibleOrders = () => {
     if (allFilteredOrdersSelected) {
-      setSelectedOrderIds(prev => prev.filter(id => !filteredOrders.some(order => order.id === id)));
+      setSelectedOrderIds(prev => prev.filter(id => !activeTabOrders.some(order => order.id === id)));
       return;
     }
 
     setSelectedOrderIds(prev => {
       const next = new Set(prev);
-      filteredOrders.forEach(order => next.add(order.id));
+      activeTabOrders.forEach(order => next.add(order.id));
       return [...next];
     });
   };
@@ -860,49 +925,65 @@ export function Dashboard() {
         </div>
       )}
 
-      <Tabs defaultValue="all" className="space-y-4">
-        <TabsList className="flex flex-wrap h-auto gap-1 p-1">
-          <TabsTrigger value="all" className="flex-1 sm:flex-none">Todos ({filteredOrders.length})</TabsTrigger>
-          <TabsTrigger value="pending" className="flex-1 sm:flex-none">
-            Pendentes ({filteredOrders.filter(o => o.status === 'pending').length})
-          </TabsTrigger>
-          <TabsTrigger value="in-progress" className="flex-1 sm:flex-none">
-            Em Produção ({filteredOrders.filter(o => o.status === 'in-progress').length})
-          </TabsTrigger>
-          <TabsTrigger value="completed" className="flex-1 sm:flex-none">
-            Concluídos ({filteredOrders.filter(o => o.status === 'completed').length})
-          </TabsTrigger>
-        </TabsList>
+      <div id="dashboard-orders-section" className="space-y-4">
+        <Tabs
+          value={activeTab}
+          onValueChange={(val) => {
+            setActiveTab(val as any);
+            setCurrentPage(1);
+          }}
+          className="space-y-4"
+        >
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <TabsList className="flex flex-wrap h-auto gap-1 p-1">
+              <TabsTrigger value="all" className="flex-1 sm:flex-none">
+                Todos ({tabOrdersMap.all.length})
+              </TabsTrigger>
+              <TabsTrigger value="pending" className="flex-1 sm:flex-none">
+                Pendentes ({tabOrdersMap.pending.length})
+              </TabsTrigger>
+              <TabsTrigger value="in-progress" className="flex-1 sm:flex-none">
+                Em Produção ({tabOrdersMap['in-progress'].length})
+              </TabsTrigger>
+              <TabsTrigger value="completed" className="flex-1 sm:flex-none">
+                Concluídos ({tabOrdersMap.completed.length})
+              </TabsTrigger>
+            </TabsList>
 
-        <TabsContent value="all" className="space-y-4">
-          {filteredOrders.length === 0 ? (
-            <EmptyState
-              message="Nenhum pedido encontrado"
-              hint={searchQuery || selectedTags.length > 0 || showExchangeOnly ? 'Ajuste os filtros para realizar uma nova busca.' : 'Crie seu primeiro pedido selecionando “Novo Pedido”.'}
-            />
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {filteredOrders.map(order => (
-                <OrderCard
-                  key={order.id}
-                  order={order}
-                  isSelected={selectedOrderIds.includes(order.id)}
-                  onToggleSelect={toggleOrderSelection}
-                  onClick={() => handleOrderClick(order)}
-                />
-              ))}
-            </div>
-          )}
-        </TabsContent>
+            {/* Seletor de itens por página */}
+            {(filteredOrders.length > 6 || pageSize !== 12) && (
+              <div className="flex items-center gap-1.5 self-end sm:self-auto text-xs text-muted-foreground">
+                <span>Exibir:</span>
+                <div className="inline-flex items-center rounded-lg border border-border/60 bg-muted/40 p-0.5">
+                  {([6, 12, 24, 'all'] as const).map((size) => (
+                    <button
+                      key={size}
+                      type="button"
+                      onClick={() => handlePageSizeChange(size)}
+                      className={cn(
+                        'px-2.5 py-1 rounded-md transition-all font-medium',
+                        pageSize === size
+                          ? 'bg-background text-foreground shadow-xs'
+                          : 'text-muted-foreground hover:text-foreground'
+                      )}
+                    >
+                      {size === 'all' ? 'Todos' : size}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
 
-        <TabsContent value="pending" className="space-y-4">
-          {filteredOrders.filter(o => o.status === 'pending').length === 0 ? (
-            <EmptyState message="Nenhum pedido pendente" hint="Pedidos aguardando início aparecem aqui." />
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {filteredOrders
-                .filter(o => o.status === 'pending')
-                .map(order => (
+          <TabsContent value="all" className="space-y-4">
+            {tabOrdersMap.all.length === 0 ? (
+              <EmptyState
+                message="Nenhum pedido encontrado"
+                hint={searchQuery || selectedTags.length > 0 || showExchangeOnly ? 'Ajuste os filtros para realizar uma nova busca.' : 'Crie seu primeiro pedido selecionando “Novo Pedido”.'}
+              />
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {pagedOrders.map(order => (
                   <OrderCard
                     key={order.id}
                     order={order}
@@ -911,18 +992,16 @@ export function Dashboard() {
                     onClick={() => handleOrderClick(order)}
                   />
                 ))}
-            </div>
-          )}
-        </TabsContent>
+              </div>
+            )}
+          </TabsContent>
 
-        <TabsContent value="in-progress" className="space-y-4">
-          {filteredOrders.filter(o => o.status === 'in-progress').length === 0 ? (
-            <EmptyState message="Nenhum pedido em produção" hint="Pedidos em andamento aparecem aqui." />
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {filteredOrders
-                .filter(o => o.status === 'in-progress')
-                .map(order => (
+          <TabsContent value="pending" className="space-y-4">
+            {tabOrdersMap.pending.length === 0 ? (
+              <EmptyState message="Nenhum pedido pendente" hint="Pedidos aguardando início aparecem aqui." />
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {pagedOrders.map(order => (
                   <OrderCard
                     key={order.id}
                     order={order}
@@ -931,18 +1010,16 @@ export function Dashboard() {
                     onClick={() => handleOrderClick(order)}
                   />
                 ))}
-            </div>
-          )}
-        </TabsContent>
+              </div>
+            )}
+          </TabsContent>
 
-        <TabsContent value="completed" className="space-y-4">
-          {filteredOrders.filter(o => o.status === 'completed').length === 0 ? (
-            <EmptyState message="Nenhum pedido concluído" hint="Pedidos entregues aparecem aqui." />
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {filteredOrders
-                .filter(o => o.status === 'completed')
-                .map(order => (
+          <TabsContent value="in-progress" className="space-y-4">
+            {tabOrdersMap['in-progress'].length === 0 ? (
+              <EmptyState message="Nenhum pedido em produção" hint="Pedidos em andamento aparecem aqui." />
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {pagedOrders.map(order => (
                   <OrderCard
                     key={order.id}
                     order={order}
@@ -951,10 +1028,81 @@ export function Dashboard() {
                     onClick={() => handleOrderClick(order)}
                   />
                 ))}
+              </div>
+            )}
+          </TabsContent>
+
+          <TabsContent value="completed" className="space-y-4">
+            {tabOrdersMap.completed.length === 0 ? (
+              <EmptyState message="Nenhum pedido concluído" hint="Pedidos entregues aparecem aqui." />
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {pagedOrders.map(order => (
+                  <OrderCard
+                    key={order.id}
+                    order={order}
+                    isSelected={selectedOrderIds.includes(order.id)}
+                    onToggleSelect={toggleOrderSelection}
+                    onClick={() => handleOrderClick(order)}
+                  />
+                ))}
+              </div>
+            )}
+          </TabsContent>
+
+          {/* Controles de Paginação */}
+          {pageSize !== 'all' && totalPages > 1 && totalTabOrders > 0 && (
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-4 border-t border-border/50">
+              <p className="text-xs sm:text-sm text-muted-foreground">
+                Mostrando {startItem}–{endItem} de {totalTabOrders} pedido{totalTabOrders !== 1 ? 's' : ''} — Página{' '}
+                <strong className="text-foreground">{currentPage}</strong> de <strong>{totalPages}</strong>
+              </p>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handlePageChange(Math.max(1, currentPage - 1))}
+                  disabled={currentPage === 1}
+                >
+                  Anterior
+                </Button>
+                <div className="flex items-center gap-1">
+                  {Array.from({ length: totalPages }, (_, i) => i + 1)
+                    .filter((page) => {
+                      if (totalPages <= 5) return true;
+                      return page === 1 || page === totalPages || Math.abs(page - currentPage) <= 1;
+                    })
+                    .map((page, index, array) => {
+                      const prevPage = array[index - 1];
+                      const hasGap = prevPage && page - prevPage > 1;
+                      return (
+                        <Fragment key={page}>
+                          {hasGap && <span className="px-1 text-xs text-muted-foreground">…</span>}
+                          <Button
+                            variant={currentPage === page ? 'default' : 'outline'}
+                            size="sm"
+                            className="size-8 p-0 text-xs"
+                            onClick={() => handlePageChange(page)}
+                          >
+                            {page}
+                          </Button>
+                        </Fragment>
+                      );
+                    })}
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handlePageChange(Math.min(totalPages, currentPage + 1))}
+                  disabled={currentPage === totalPages}
+                >
+                  Próxima
+                </Button>
+              </div>
             </div>
           )}
-        </TabsContent>
-      </Tabs>
+        </Tabs>
+      </div>
 
       {/* Diálogo de Atribuição em Lote */}
       <Dialog open={isBulkAssignOpen} onOpenChange={setIsBulkAssignOpen}>

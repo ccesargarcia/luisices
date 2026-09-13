@@ -113,6 +113,12 @@ Usuários autorizados podem selecionar vários pedidos visíveis e removê-los e
 
 O usuário pode definir quais cards aparecem no Dashboard e ajustar a densidade de exibição.
 
+### Paginação e visualização
+
+- Paginação dos pedidos no quadro operacional por status (Todos, Pendentes, Em Produção e Concluídos).
+- Seletor flexível de itens por página (6, 12, 24 ou Todos).
+- Persistência da preferência de quantidade de pedidos por página no navegador.
+
 ## 4. Clientes
 
 O módulo de Clientes funciona como cadastro e histórico de relacionamento.
