@@ -158,10 +158,15 @@ export class FirebaseSettingsService {
    */
   async updateAvatar(userId: string, avatarUrl: string | null): Promise<void> {
     const docRef = doc(db, 'users', userId, 'settings', 'profile');
-    await updateDoc(docRef, {
-      avatar: avatarUrl === null ? deleteField() : avatarUrl,
-      updatedAt: new Date(),
-    });
+    await setDoc(
+      docRef,
+      {
+        avatar: avatarUrl === null ? deleteField() : avatarUrl,
+        userId,
+        updatedAt: new Date(),
+      },
+      { merge: true }
+    );
   }
 
   /**
@@ -169,16 +174,25 @@ export class FirebaseSettingsService {
    */
   async updateLogo(userId: string, logoUrl: string | null): Promise<void> {
     const docRef = doc(db, 'users', userId, 'settings', 'profile');
-    await updateDoc(docRef, {
-      logo: logoUrl === null ? deleteField() : logoUrl,
-      updatedAt: new Date(),
-    });
+    await setDoc(
+      docRef,
+      {
+        logo: logoUrl === null ? deleteField() : logoUrl,
+        userId,
+        updatedAt: new Date(),
+      },
+      { merge: true }
+    );
 
     try {
-      await setDoc(doc(db, 'storeSettings', 'public'), {
-        logo: logoUrl || null,
-        updatedAt: new Date(),
-      }, { merge: true });
+      await setDoc(
+        doc(db, 'storeSettings', 'public'),
+        {
+          logo: logoUrl || null,
+          updatedAt: new Date(),
+        },
+        { merge: true }
+      );
     } catch (e) {
       console.warn('Erro ao sincronizar logo em storeSettings pública:', e);
     }
@@ -189,10 +203,15 @@ export class FirebaseSettingsService {
    */
   async updateBanner(userId: string, bannerUrl: string | null): Promise<void> {
     const docRef = doc(db, 'users', userId, 'settings', 'profile');
-    await updateDoc(docRef, {
-      banner: bannerUrl === null ? deleteField() : bannerUrl,
-      updatedAt: new Date(),
-    });
+    await setDoc(
+      docRef,
+      {
+        banner: bannerUrl === null ? deleteField() : bannerUrl,
+        userId,
+        updatedAt: new Date(),
+      },
+      { merge: true }
+    );
   }
 
   /**

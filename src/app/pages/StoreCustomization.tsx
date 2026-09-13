@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from 'react';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { db } from '../../lib/firebase';
 import { useUserSettings } from '../../hooks/useUserSettings';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -58,31 +60,76 @@ export function StoreCustomization() {
     catalogFooterNotice: '',
   });
 
-  // Carregar dados quando settings estiver pronto
+  // Carregar dados quando settings estiver pronto ou carregar de storeSettings/public
   useEffect(() => {
-    if (settings) {
-      setCurrentLogo(settings.logo || null);
-      setFormData({
-        businessName: settings.businessName || '',
-        businessTagline: settings.businessTagline || '',
-        whatsappPhone: settings.whatsappPhone || settings.businessPhone || '',
-        instagramUrl: settings.instagramUrl || '',
-        websiteUrl: settings.websiteUrl || '',
-        catalogBadge: settings.catalogBadge || '',
-        catalogStatusText: settings.catalogStatusText || '',
-        catalogHeroTitle: settings.catalogHeroTitle || '',
-        catalogHeroDescription: settings.catalogHeroDescription || '',
-        catalogAnnouncement: settings.catalogAnnouncement || '',
-        catalogWhatsappGreeting: settings.catalogWhatsappGreeting || '',
-        catalogWhatsappCustomizationLabel: settings.catalogWhatsappCustomizationLabel || '',
-        catalogWhatsappFooter: settings.catalogWhatsappFooter || '',
-        catalogFooterText: settings.catalogFooterText || '',
-        catalogFooterLocation: settings.catalogFooterLocation || '',
-        catalogFooterBusinessHours: settings.catalogFooterBusinessHours || '',
-        catalogFooterCopyright: settings.catalogFooterCopyright || '',
-        catalogFooterNotice: settings.catalogFooterNotice || '',
-      });
+    let isCancelled = false;
+
+    async function loadData() {
+      // Começa com os dados das configurações do usuário logado
+      let loadedLogo = settings?.logo || null;
+      let data = {
+        businessName: settings?.businessName || '',
+        businessTagline: settings?.businessTagline || '',
+        whatsappPhone: settings?.whatsappPhone || settings?.businessPhone || '',
+        instagramUrl: settings?.instagramUrl || '',
+        websiteUrl: settings?.websiteUrl || '',
+        catalogBadge: settings?.catalogBadge || '',
+        catalogStatusText: settings?.catalogStatusText || '',
+        catalogHeroTitle: settings?.catalogHeroTitle || '',
+        catalogHeroDescription: settings?.catalogHeroDescription || '',
+        catalogAnnouncement: settings?.catalogAnnouncement || '',
+        catalogWhatsappGreeting: settings?.catalogWhatsappGreeting || '',
+        catalogWhatsappCustomizationLabel: settings?.catalogWhatsappCustomizationLabel || '',
+        catalogWhatsappFooter: settings?.catalogWhatsappFooter || '',
+        catalogFooterText: settings?.catalogFooterText || '',
+        catalogFooterLocation: settings?.catalogFooterLocation || '',
+        catalogFooterBusinessHours: settings?.catalogFooterBusinessHours || '',
+        catalogFooterCopyright: settings?.catalogFooterCopyright || '',
+        catalogFooterNotice: settings?.catalogFooterNotice || '',
+      };
+
+      // Carrega os dados compartilhados públicos da loja do Firestore
+      try {
+        const publicSnap = await getDoc(doc(db, 'storeSettings', 'public'));
+        if (publicSnap.exists() && !isCancelled) {
+          const pub = publicSnap.data();
+          if (pub.logo) loadedLogo = pub.logo;
+          data = {
+            businessName: pub.businessName || data.businessName,
+            businessTagline: pub.businessTagline || data.businessTagline,
+            whatsappPhone: pub.whatsappPhone || data.whatsappPhone,
+            instagramUrl: pub.instagramUrl || data.instagramUrl,
+            websiteUrl: pub.websiteUrl || data.websiteUrl,
+            catalogBadge: pub.catalogBadge || data.catalogBadge,
+            catalogStatusText: pub.catalogStatusText || data.catalogStatusText,
+            catalogHeroTitle: pub.catalogHeroTitle || data.catalogHeroTitle,
+            catalogHeroDescription: pub.catalogHeroDescription || data.catalogHeroDescription,
+            catalogAnnouncement: pub.catalogAnnouncement !== undefined ? pub.catalogAnnouncement : data.catalogAnnouncement,
+            catalogWhatsappGreeting: pub.catalogWhatsappGreeting || data.catalogWhatsappGreeting,
+            catalogWhatsappCustomizationLabel: pub.catalogWhatsappCustomizationLabel || data.catalogWhatsappCustomizationLabel,
+            catalogWhatsappFooter: pub.catalogWhatsappFooter || data.catalogWhatsappFooter,
+            catalogFooterText: pub.catalogFooterText || data.catalogFooterText,
+            catalogFooterLocation: pub.catalogFooterLocation || data.catalogFooterLocation,
+            catalogFooterBusinessHours: pub.catalogFooterBusinessHours || data.catalogFooterBusinessHours,
+            catalogFooterCopyright: pub.catalogFooterCopyright || data.catalogFooterCopyright,
+            catalogFooterNotice: pub.catalogFooterNotice || data.catalogFooterNotice,
+          };
+        }
+      } catch (err) {
+        console.warn('Aviso ao ler storeSettings/public:', err);
+      }
+
+      if (!isCancelled) {
+        setCurrentLogo(loadedLogo);
+        setFormData(data);
+      }
     }
+
+    loadData();
+
+    return () => {
+      isCancelled = true;
+    };
   }, [settings]);
 
   const handleLogoUpload = async (file: File) => {
@@ -99,6 +146,15 @@ export function StoreCustomization() {
     try {
       const url = await uploadLogo(file);
       setCurrentLogo(url);
+      try {
+        await setDoc(
+          doc(db, 'storeSettings', 'public'),
+          { logo: url, updatedAt: new Date() },
+          { merge: true }
+        );
+      } catch (publicErr) {
+        console.warn('Aviso ao sincronizar logo em storeSettings/public:', publicErr);
+      }
       toast.success('Logo da loja enviado com sucesso!');
     } catch (error) {
       console.error('Erro no upload do logo:', error);
@@ -114,6 +170,15 @@ export function StoreCustomization() {
     try {
       await removeLogo();
       setCurrentLogo(null);
+      try {
+        await setDoc(
+          doc(db, 'storeSettings', 'public'),
+          { logo: null, updatedAt: new Date() },
+          { merge: true }
+        );
+      } catch (publicErr) {
+        console.warn('Aviso ao remover logo em storeSettings/public:', publicErr);
+      }
       toast.success('Logo da loja removido com sucesso!');
     } catch (error) {
       console.error('Erro ao remover logo:', error);
@@ -131,6 +196,19 @@ export function StoreCustomization() {
     setSaving(true);
     try {
       await updateSettings(formData);
+      try {
+        await setDoc(
+          doc(db, 'storeSettings', 'public'),
+          {
+            ...formData,
+            logo: currentLogo || null,
+            updatedAt: new Date(),
+          },
+          { merge: true }
+        );
+      } catch (publicErr) {
+        console.warn('Aviso ao sincronizar storeSettings/public:', publicErr);
+      }
       toast.success('Configurações da lojinha salvas com sucesso!');
     } catch (err) {
       console.error('Erro ao salvar personalizações:', err);
