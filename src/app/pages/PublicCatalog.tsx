@@ -1,4 +1,5 @@
-import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
+import { useTheme } from 'next-themes';
 import { 
   Search, 
   ShoppingBag, 
@@ -113,12 +114,15 @@ const MOCK_PRODUCTS: CatalogProduct[] = [
 ];
 
 export function PublicCatalog() {
-  // Controle de tema (Claro / Escuro) com persistência
+  const { setTheme } = useTheme();
+
+  // Controle de tema (Claro por padrão, com persistência de preferência)
   const [isDarkMode, setIsDarkMode] = useState<boolean>(() => {
     try {
       const saved = localStorage.getItem('luisices_catalog_theme');
       if (saved) return saved === 'dark';
-      return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+      // Padrão definido explicitamente como modo claro
+      return false;
     } catch {
       return false;
     }
@@ -153,13 +157,59 @@ export function PublicCatalog() {
   const [customerNotes, setCustomerNotes] = useState<string>('');
   const [previewCustomName, setPreviewCustomName] = useState<string>('');
 
-  // Salvar tema
+  // Guarda o tema da área administrativa antes de abrir o catálogo
+  const originalThemeRef = useRef<string | null>(null);
+  useEffect(() => {
+    originalThemeRef.current = localStorage.getItem('theme') || 'system';
+    return () => {
+      if (originalThemeRef.current) {
+        try {
+          setTheme(originalThemeRef.current);
+        } catch {}
+      }
+    };
+  }, [setTheme]);
+
+  // Sincronizar classes 'dark' / 'light' no elemento raiz html para o Tailwind v4 responder
+  useEffect(() => {
+    const root = document.documentElement;
+    if (isDarkMode) {
+      root.classList.add('dark');
+      root.classList.remove('light');
+      try {
+        setTheme('dark');
+      } catch {}
+    } else {
+      root.classList.remove('dark');
+      root.classList.add('light');
+      try {
+        setTheme('light');
+      } catch {}
+    }
+  }, [isDarkMode, setTheme]);
+
+  // Alternar tema Claro / Escuro
   const toggleTheme = () => {
     setIsDarkMode((prev) => {
       const next = !prev;
+      const themeValue = next ? 'dark' : 'light';
       try {
-        localStorage.setItem('luisices_catalog_theme', next ? 'dark' : 'light');
+        localStorage.setItem('luisices_catalog_theme', themeValue);
       } catch {}
+      const root = document.documentElement;
+      if (next) {
+        root.classList.add('dark');
+        root.classList.remove('light');
+        try {
+          setTheme('dark');
+        } catch {}
+      } else {
+        root.classList.remove('dark');
+        root.classList.add('light');
+        try {
+          setTheme('light');
+        } catch {}
+      }
       return next;
     });
   };
