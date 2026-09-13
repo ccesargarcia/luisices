@@ -12,19 +12,20 @@ import {
   Plus, 
   Minus, 
   Trash2, 
-  X,
-  Send,
-  Heart,
-  ExternalLink,
-  Instagram,
-  Eye,
-  Calendar,
-  AlertCircle,
-  MapPin,
-  Globe
+  X, 
+  Send, 
+  Heart, 
+  Instagram, 
+  Eye, 
+  MapPin, 
+  Globe, 
+  ArrowUpDown, 
+  ShieldCheck, 
+  Truck,
+  Sparkle
 } from 'lucide-react';
 import { formatCurrency } from '../utils/currency';
-import { collection, getDocs, doc, getDoc, query, where, limit } from 'firebase/firestore';
+import { collection, getDocs, doc, getDoc, query, where } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 
 export interface CatalogProduct {
@@ -87,7 +88,7 @@ const MOCK_PRODUCTS: CatalogProduct[] = [
     price: 78.00,
     description: 'Caixas de acrílico revestidas em papel especial texturizado, detalhes em dourado e biscuit afetivo.',
     leadTimeDays: 6,
-    badge: 'Alta Festança',
+    badge: 'Destaque',
     isCustomizable: true,
     imageUrl: 'https://images.unsplash.com/photo-1530103862676-de8c9debad1d?auto=format&fit=crop&w=800&q=80',
   },
@@ -98,7 +99,7 @@ const MOCK_PRODUCTS: CatalogProduct[] = [
     price: 45.00,
     description: 'Acabamento em papéis especiais perolados 180g e lamicote dourado 250g com flores feitas à mão.',
     leadTimeDays: 3,
-    badge: 'Destaque',
+    badge: 'Tendência',
     isCustomizable: true,
     imageUrl: 'https://images.unsplash.com/photo-1535141192574-5d4897c13136?auto=format&fit=crop&w=800&q=80',
   },
@@ -112,6 +113,28 @@ const MOCK_PRODUCTS: CatalogProduct[] = [
     badge: 'Afetivo',
     isCustomizable: true,
     imageUrl: 'https://images.unsplash.com/photo-1544816155-12df9643f363?auto=format&fit=crop&w=800&q=80',
+  },
+  {
+    id: 'prod-7',
+    name: 'Chaveiro Botton Coração com Pingente de Seda',
+    category: 'Lembrancinhas',
+    price: 14.90,
+    description: 'Chaveiro botton resinado de alto brilho com pingente tassel de seda e tag de agradecimento.',
+    leadTimeDays: 3,
+    badge: 'Econômico',
+    isCustomizable: true,
+    imageUrl: 'https://images.unsplash.com/photo-1582139329536-e7284fece509?auto=format&fit=crop&w=800&q=80',
+  },
+  {
+    id: 'prod-8',
+    name: 'Bloco de Notas Capa Dura Floral 10x15cm',
+    category: 'Cadernos',
+    price: 24.50,
+    description: 'Bloco compacto para bolsa com capa dura laminada, elástico lurex brilhante e 100 folhas destacáveis.',
+    leadTimeDays: 4,
+    badge: 'Mimo',
+    isCustomizable: true,
+    imageUrl: 'https://images.unsplash.com/photo-1517842645767-c639042777db?auto=format&fit=crop&w=800&q=80',
   }
 ];
 
@@ -123,7 +146,6 @@ export function PublicCatalog() {
     try {
       const saved = localStorage.getItem('luisices_catalog_theme');
       if (saved) return saved === 'dark';
-      // Padrão definido explicitamente como modo claro
       return false;
     } catch {
       return false;
@@ -132,6 +154,7 @@ export function PublicCatalog() {
 
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [selectedCategory, setSelectedCategory] = useState<string>('todos');
+  const [sortBy, setSortBy] = useState<string>('destaque');
   const [products, setProducts] = useState<CatalogProduct[]>(MOCK_PRODUCTS);
   const [loadingProducts, setLoadingProducts] = useState(true);
 
@@ -150,10 +173,9 @@ export function PublicCatalog() {
       instagram: 'luisicesatelie',
       website: '',
       logo: '',
-      // Customizações da Loja
-      badge: 'Atelier',
+      badge: 'Atelier Afetivo',
       statusText: 'Atendimento WhatsApp ativo',
-      announcement: '',
+      announcement: '✨ Encomendas abertas com envio carinhoso para todo o Brasil!',
       heroTitle: 'Catálogo & Vitrine Afetiva',
       heroDescription: 'Escolha suas peças, informe o nome para personalização e envie o pedido formatado diretamente no nosso WhatsApp.',
       whatsappGreeting: 'Olá! Gostaria de encomendar pelo catálogo do Ateliê:',
@@ -195,7 +217,7 @@ export function PublicCatalog() {
     };
   }, [setTheme]);
 
-  // Sincronizar classes 'dark' / 'light' no elemento raiz html para o Tailwind v4 responder
+  // Sincronizar classes 'dark' / 'light' no elemento raiz html para o Tailwind responder
   useEffect(() => {
     const root = document.documentElement;
     if (isDarkMode) {
@@ -254,7 +276,7 @@ export function PublicCatalog() {
       try {
         setLoadingProducts(true);
 
-        // 1. Tenta carregar informações públicas da loja
+        // 1. Carrega informações públicas da loja
         try {
           const publicSettingsSnap = await getDoc(doc(db, 'storeSettings', 'public'));
           if (publicSettingsSnap.exists() && !isCancelled) {
@@ -365,32 +387,52 @@ export function PublicCatalog() {
     return ['todos', ...unique];
   }, [products]);
 
-  // Filtragem dinâmica
+  // Filtragem dinâmica e ordenação
   const filteredProducts = useMemo(() => {
-    return products.filter((prod) => {
+    let list = products.filter((prod) => {
       const matchesCat = selectedCategory === 'todos' || prod.category.toLowerCase() === selectedCategory.toLowerCase();
-      const q = searchQuery.toLowerCase();
-      const matchesSearch = !q || prod.name.toLowerCase().includes(q) || prod.description.toLowerCase().includes(q);
+      const q = searchQuery.toLowerCase().trim();
+      const matchesSearch = !q || prod.name.toLowerCase().includes(q) || prod.description.toLowerCase().includes(q) || prod.category.toLowerCase().includes(q);
       return matchesCat && matchesSearch;
     });
-  }, [products, selectedCategory, searchQuery]);
+
+    switch (sortBy) {
+      case 'preco-menor':
+        list.sort((a, b) => a.price - b.price);
+        break;
+      case 'preco-maior':
+        list.sort((a, b) => b.price - a.price);
+        break;
+      case 'nome-az':
+        list.sort((a, b) => a.name.localeCompare(b.name));
+        break;
+      case 'prazo':
+        list.sort((a, b) => a.leadTimeDays - b.leadTimeDays);
+        break;
+      default:
+        // 'destaque' mantém a ordem natural
+        break;
+    }
+
+    return list;
+  }, [products, selectedCategory, searchQuery, sortBy]);
 
   // Cálculos do Carrinho
   const totalItemsCount = useMemo(() => cart.reduce((acc, item) => acc + item.quantity, 0), [cart]);
   const subtotal = useMemo(() => cart.reduce((acc, item) => acc + item.product.price * item.quantity, 0), [cart]);
 
   // Ações da Sacola
-  const addToCart = useCallback((product: CatalogProduct, customName?: string) => {
+  const addToCart = useCallback((product: CatalogProduct, customName?: string, quantity: number = 1) => {
     setCart((prev) => {
       const existingIndex = prev.findIndex(
         (item) => item.product.id === product.id && (item.customName || '') === (customName || '')
       );
       if (existingIndex > -1) {
         return prev.map((item, idx) =>
-          idx === existingIndex ? { ...item, quantity: item.quantity + 1 } : item
+          idx === existingIndex ? { ...item, quantity: item.quantity + quantity } : item
         );
       }
-      return [...prev, { product, quantity: 1, customName: customName || undefined }];
+      return [...prev, { product, quantity, customName: customName || undefined }];
     });
   }, []);
 
@@ -448,7 +490,7 @@ export function PublicCatalog() {
         Container Principal com Iluminação Atmosférica Radial (Glassmorphism & Depth)
       */}
       <div
-        className="min-h-[100dvh] text-[#221a1a] dark:text-[#e8e0e3] transition-colors duration-300 font-sans pb-32
+        className="min-h-[100dvh] text-[#221a1a] dark:text-[#e8e0e3] transition-colors duration-300 font-sans pb-28
         bg-[#fff8f7] dark:bg-[#161214]
         [background-image:linear-gradient(135deg,#fceee9_0%,#fff8f7_52%,#ede7f6_100%)]
         dark:[background-image:none]
@@ -456,40 +498,46 @@ export function PublicCatalog() {
       >
         {/* Camada de Gradientes Atmosféricos Fixos */}
         <div className="fixed inset-0 pointer-events-none opacity-80 dark:opacity-40 z-0">
-          <div className="absolute top-0 left-0 w-96 h-96 rounded-full bg-[#f7d6d0] dark:bg-[#5b3234] blur-3xl -translate-x-1/2 -translate-y-1/2" />
-          <div className="absolute top-1/3 right-0 w-80 h-80 rounded-full bg-[#d1c4e9] dark:bg-[#28192d] blur-3xl translate-x-1/3" />
-          <div className="absolute bottom-10 left-1/4 w-96 h-96 rounded-full bg-[#bbdefb] dark:bg-[#121c20] blur-3xl" />
+          <div className="absolute top-0 left-0 w-96 sm:w-[500px] h-96 sm:h-[500px] rounded-full bg-[#f7d6d0] dark:bg-[#5b3234] blur-3xl -translate-x-1/3 -translate-y-1/3" />
+          <div className="absolute top-1/3 right-0 w-80 sm:w-[450px] h-80 sm:h-[450px] rounded-full bg-[#d1c4e9] dark:bg-[#28192d] blur-3xl translate-x-1/4" />
+          <div className="absolute bottom-10 left-1/4 w-96 sm:w-[500px] h-96 sm:h-[500px] rounded-full bg-[#bbdefb] dark:bg-[#121c20] blur-3xl" />
         </div>
 
         {/* Barra de Aviso / Alerta Promocional (se preenchido no painel) */}
         {businessInfo.announcement && (
           <aside aria-label="Aviso do ateliê" className="sticky top-0 z-40 px-4 py-2 bg-gradient-to-r from-amber-500/20 via-amber-400/25 to-amber-500/20 border-b border-amber-500/30 text-amber-900 dark:text-amber-200 text-xs font-semibold text-center flex items-center justify-center gap-2 backdrop-blur-md">
             <Sparkles size={14} className="shrink-0 text-amber-600 dark:text-amber-400 animate-pulse" />
-            <span>{businessInfo.announcement}</span>
+            <span className="truncate max-w-2xl">{businessInfo.announcement}</span>
           </aside>
         )}
 
-        {/* 1. Header Fixo com Efeito Vidro */}
-        <header className="sticky top-0 z-30 px-4 py-3 bg-white/75 dark:bg-[#1f191b]/85 backdrop-blur-md border-b border-white/40 dark:border-[#ebcdcd]/15 transition-colors shadow-xs">
-          <div className="max-w-md mx-auto flex items-center justify-between">
-            <div className="flex items-center gap-2.5">
+        {/* 1. Header Fixo Responsivo com Efeito Vidro (Inspirado em E-commerce Moderno & Stoqui) */}
+        <header className="sticky top-0 z-30 bg-white/80 dark:bg-[#1f191b]/90 backdrop-blur-md border-b border-stone-200/60 dark:border-[#ebcdcd]/15 transition-colors shadow-xs">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex items-center justify-between gap-4">
+            
+            {/* Esquerda: Identidade Visual / Logo & Status */}
+            <div className="flex items-center gap-3 shrink-0">
               {businessInfo.logo ? (
                 <img
                   src={businessInfo.logo}
                   alt={businessInfo.name}
-                  className="size-8 rounded-full object-cover border border-white/60 shadow-xs"
+                  className="size-9 sm:size-10 rounded-full object-cover border border-white/80 shadow-xs ring-1 ring-black/5 dark:ring-white/10"
                 />
-              ) : null}
+              ) : (
+                <div className="size-9 sm:size-10 rounded-full bg-[#613d3e]/10 dark:bg-[#f4b7b9]/20 flex items-center justify-center text-[#613d3e] dark:text-[#f4b7b9]">
+                  <Sparkles size={20} />
+                </div>
+              )}
               <div>
                 <div className="flex items-center gap-2">
-                  <h1 className="text-lg font-bold tracking-tight text-[#613d3e] dark:text-[#f4b7b9]">
+                  <h1 className="text-base sm:text-lg font-bold tracking-tight text-[#613d3e] dark:text-[#f4b7b9] leading-tight">
                     {businessInfo.name}
                   </h1>
-                  <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-[#613d3e]/10 dark:bg-[#f4b7b9]/15 text-[#613d3e] dark:text-[#f4b7b9]">
+                  <span className="hidden sm:inline-block text-[10px] font-semibold px-2 py-0.5 rounded-full bg-[#613d3e]/10 dark:bg-[#f4b7b9]/15 text-[#613d3e] dark:text-[#f4b7b9]">
                     {businessInfo.badge || 'Atelier'}
                   </span>
                 </div>
-                <div className="flex items-center gap-1.5">
+                <div className="flex items-center gap-1.5 mt-0.5">
                   <span className="inline-block size-2 rounded-full bg-[#10B981] animate-pulse" />
                   <span className="text-[11px] text-[#504444] dark:text-[#c9c0b8] font-medium">
                     {businessInfo.statusText || 'Atendimento WhatsApp ativo'}
@@ -498,65 +546,122 @@ export function PublicCatalog() {
               </div>
             </div>
 
-            {/* Alternador Claro / Escuro & Botão Sacola */}
-            <div className="flex items-center gap-2">
+            {/* Centro: Barra de Busca Expandida no Desktop (estilo Stoqui) */}
+            <div className="hidden md:flex flex-1 max-w-md mx-4 relative">
+              <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-stone-400 dark:text-stone-500" />
+              <input
+                type="text"
+                placeholder="Digite sua busca (produtos, temas, lembranças)..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-10 pr-9 py-2 text-xs rounded-full bg-stone-100/80 dark:bg-[#161214]/80 border border-stone-200 dark:border-stone-700 text-[#221a1a] dark:text-[#e8e0e3] placeholder:text-stone-400 dark:placeholder:text-stone-500 focus:outline-none focus:ring-2 focus:ring-[#613d3e]/30 dark:focus:ring-[#f4b7b9]/30 transition-all shadow-inner"
+              />
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-stone-400 hover:text-stone-700 dark:hover:text-stone-200"
+                  title="Limpar busca"
+                >
+                  <X size={14} />
+                </button>
+              )}
+            </div>
+
+            {/* Direita: Ações (Instagram, Tema & Sacola de Compras) */}
+            <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+              {businessInfo.instagram && (
+                <a
+                  href={`https://instagram.com/${businessInfo.instagram}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-white/70 dark:bg-[#2b2225]/80 border border-stone-200/80 dark:border-[#ebcdcd]/20 text-stone-700 dark:text-stone-200 hover:text-[#E1306C] transition-all shadow-2xs"
+                  title="Instagram do ateliê"
+                >
+                  <Instagram size={14} />
+                  <span>@{businessInfo.instagram}</span>
+                </a>
+              )}
+
               <button
                 onClick={toggleTheme}
                 title={isDarkMode ? 'Mudar para Modo Claro' : 'Mudar para Modo Escuro'}
-                className="p-2 rounded-full bg-white/60 dark:bg-[#2b2225]/80 border border-white/50 dark:border-[#ebcdcd]/20 text-[#504444] dark:text-[#e8e0e3] hover:scale-105 active:scale-95 transition-all shadow-xs"
+                className="p-2 sm:p-2.5 rounded-full bg-white/80 dark:bg-[#2b2225]/80 border border-stone-200/80 dark:border-[#ebcdcd]/20 text-[#504444] dark:text-[#e8e0e3] hover:scale-105 active:scale-95 transition-all shadow-2xs cursor-pointer"
                 aria-label="Alternar tema de cores"
               >
-                {isDarkMode ? <Sun size={18} className="text-[#fbbf24]" /> : <Moon size={18} className="text-[#613d3e]" />}
+                {isDarkMode ? <Sun size={17} className="text-[#fbbf24]" /> : <Moon size={17} className="text-[#613d3e]" />}
               </button>
 
               <button
                 onClick={() => setIsCartOpen(true)}
-                className="relative p-2 rounded-full bg-white/60 dark:bg-[#2b2225]/80 border border-white/50 dark:border-[#ebcdcd]/20 text-[#613d3e] dark:text-[#f4b7b9] hover:scale-105 active:scale-95 transition-all shadow-xs"
+                className="relative flex items-center gap-2 px-3 py-2 rounded-full bg-[#613d3e] dark:bg-[#f4b7b9] text-white dark:text-[#4c2527] hover:opacity-95 active:scale-95 transition-all shadow-sm cursor-pointer"
                 aria-label="Abrir sacola de encomendas"
               >
-                <ShoppingBag size={18} />
-                {totalItemsCount > 0 && (
-                  <span className="absolute -top-1 -right-1 size-5 bg-[#613d3e] dark:bg-[#f4b7b9] text-white dark:text-[#4c2527] text-xs font-bold rounded-full flex items-center justify-center tabular-nums shadow-sm animate-in zoom-in">
-                    {totalItemsCount}
-                  </span>
-                )}
+                <div className="relative">
+                  <ShoppingBag size={18} />
+                  {totalItemsCount > 0 && (
+                    <span className="absolute -top-2 -right-2 size-4.5 bg-amber-400 text-stone-950 text-[10px] font-black rounded-full flex items-center justify-center tabular-nums shadow-xs">
+                      {totalItemsCount}
+                    </span>
+                  )}
+                </div>
+                <span className="hidden sm:inline text-xs font-semibold">
+                  {totalItemsCount > 0 ? formatCurrency(subtotal) : 'Sacola'}
+                </span>
               </button>
             </div>
+
           </div>
         </header>
 
-        {/* 2. Conteúdo Principal */}
-        <main className="relative z-10 max-w-md mx-auto px-4 pt-4 space-y-5">
+        {/* 2. Conteúdo Principal Responsivo (Desktop até max-w-7xl) */}
+        <main className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-4 sm:pt-6 space-y-6 sm:space-y-8">
           
-          {/* Hero Banner da Loja */}
-          <section className="p-5 rounded-2xl bg-white/60 dark:bg-[#1f191b]/80 backdrop-blur-md border border-white/45 dark:border-[#ebcdcd]/15 shadow-[0_8px_32px_rgb(230_180_180/15%)] dark:shadow-[0_16px_40px_-8px_rgb(0_0_0/65%)]">
-            <div className="flex items-center gap-1.5 text-xs font-semibold text-[#613d3e] dark:text-[#f4b7b9] mb-1.5">
-              <Sparkles size={14} />
-              <span>{businessInfo.heroTitle || 'Catálogo & Vitrine Afetiva'}</span>
-            </div>
-            {businessInfo.tagline ? (
-              <h2 className="text-xl font-bold tracking-tight text-[#221a1a] dark:text-[#e8e0e3] leading-snug">
-                {businessInfo.tagline}
-              </h2>
-            ) : null}
-            <p className="mt-2 text-xs text-[#504444] dark:text-[#c9c0b8] leading-relaxed">
-              {businessInfo.heroDescription || 'Escolha suas peças, informe o nome para personalização e envie o pedido formatado diretamente no nosso WhatsApp.'}
-            </p>
+          {/* Hero Banner da Loja: Amplo e Sofisticado */}
+          <section className="relative overflow-hidden rounded-3xl p-5 sm:p-8 bg-white/70 dark:bg-[#1f191b]/85 backdrop-blur-md border border-white/60 dark:border-[#ebcdcd]/15 shadow-[0_8px_32px_rgb(230_180_180/15%)] dark:shadow-[0_16px_40px_-8px_rgb(0_0_0/65%)]">
+            <div className="max-w-3xl space-y-2.5">
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#613d3e]/10 dark:bg-[#f4b7b9]/15 text-[#613d3e] dark:text-[#f4b7b9] text-xs font-semibold">
+                <Sparkles size={14} />
+                <span>{businessInfo.heroTitle || 'Catálogo & Vitrine Afetiva'}</span>
+              </div>
+              
+              {businessInfo.tagline ? (
+                <h2 className="text-xl sm:text-2xl md:text-3xl font-extrabold tracking-tight text-[#221a1a] dark:text-[#e8e0e3] leading-tight">
+                  {businessInfo.tagline}
+                </h2>
+              ) : null}
 
-            {/* Input de Busca */}
-            <div className="mt-4 relative">
-              <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#504444]/60 dark:text-[#c9c0b8]/60" />
+              <p className="text-xs sm:text-sm text-[#504444] dark:text-[#c9c0b8] leading-relaxed max-w-2xl">
+                {businessInfo.heroDescription || 'Escolha suas peças, informe o nome para personalização e envie o pedido formatado diretamente no nosso WhatsApp.'}
+              </p>
+
+              {/* Destaques de confiança (Pills informativas) */}
+              <div className="pt-2 flex flex-wrap gap-2 text-[11px] text-[#504444] dark:text-[#c9c0b8] font-medium">
+                <span className="inline-flex items-center gap-1 bg-stone-100/80 dark:bg-[#161214]/60 px-2.5 py-1 rounded-full border border-stone-200/60 dark:border-stone-800">
+                  <Sparkle size={12} className="text-[#613d3e] dark:text-[#f4b7b9]" /> Feito à mão com afeto
+                </span>
+                <span className="inline-flex items-center gap-1 bg-stone-100/80 dark:bg-[#161214]/60 px-2.5 py-1 rounded-full border border-stone-200/60 dark:border-stone-800">
+                  <ShieldCheck size={12} className="text-emerald-600 dark:text-emerald-400" /> Aprovação da arte prévia
+                </span>
+                <span className="inline-flex items-center gap-1 bg-stone-100/80 dark:bg-[#161214]/60 px-2.5 py-1 rounded-full border border-stone-200/60 dark:border-stone-800">
+                  <Truck size={12} className="text-sky-600 dark:text-sky-400" /> Envio seguro para todo Brasil
+                </span>
+              </div>
+            </div>
+
+            {/* Input de Busca no Mobile (oculto no desktop para não duplicar) */}
+            <div className="mt-4 md:hidden relative">
+              <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-stone-400 dark:text-stone-500" />
               <input
                 type="text"
                 placeholder="Buscar por produto, tema, lembrança..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-9 pr-3 py-2.5 text-xs rounded-xl bg-white/70 dark:bg-[#120e10]/70 border border-white/60 dark:border-[#ebcdcd]/20 text-[#221a1a] dark:text-[#e8e0e3] placeholder-[#504444]/50 dark:placeholder-[#c9c0b8]/50 focus:outline-none focus:ring-2 focus:ring-[#613d3e]/30 dark:focus:ring-[#f4b7b9]/30 transition-all shadow-inner"
+                className="w-full pl-10 pr-9 py-2.5 text-xs rounded-xl bg-white/90 dark:bg-[#120e10]/80 border border-stone-200/80 dark:border-[#ebcdcd]/20 text-[#221a1a] dark:text-[#e8e0e3] placeholder:text-stone-400 dark:placeholder:text-stone-500 focus:outline-none focus:ring-2 focus:ring-[#613d3e]/30 dark:focus:ring-[#f4b7b9]/30 transition-all shadow-inner"
               />
               {searchQuery && (
                 <button
                   onClick={() => setSearchQuery('')}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground hover:text-foreground"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-stone-400 hover:text-stone-700"
                 >
                   <X size={14} />
                 </button>
@@ -564,224 +669,308 @@ export function PublicCatalog() {
             </div>
           </section>
 
-          {/* Filtro por Categorias (Pills Horizontais) */}
-          <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none">
-            {categories.map((cat) => {
-              const isActive = selectedCategory.toLowerCase() === cat.toLowerCase();
-              return (
-                <button
-                  key={cat}
-                  onClick={() => setSelectedCategory(cat)}
-                  className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-all duration-150 ${
-                    isActive
-                      ? 'bg-[#613d3e] dark:bg-[#f4b7b9] text-white dark:text-[#4c2527] shadow-sm'
-                      : 'bg-white/60 dark:bg-[#1f191b]/80 border border-white/45 dark:border-[#ebcdcd]/15 text-[#504444] dark:text-[#c9c0b8] hover:bg-white/90'
-                  }`}
+          {/* Barra de Filtros & Ordenação (Estilo Stoqui Shop) */}
+          <div className="space-y-3">
+            {/* Categorias (Scroll no mobile, flex-wrap no desktop) */}
+            <div className="flex items-center gap-2 overflow-x-auto pb-1.5 sm:flex-wrap scrollbar-none">
+              {categories.map((cat) => {
+                const isActive = selectedCategory.toLowerCase() === cat.toLowerCase();
+                return (
+                  <button
+                    key={cat}
+                    onClick={() => setSelectedCategory(cat)}
+                    className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-all duration-150 cursor-pointer ${
+                      isActive
+                        ? 'bg-[#613d3e] dark:bg-[#f4b7b9] text-white dark:text-[#4c2527] shadow-sm scale-102'
+                        : 'bg-white/70 dark:bg-[#1f191b]/80 border border-stone-200/70 dark:border-[#ebcdcd]/15 text-[#504444] dark:text-[#c9c0b8] hover:bg-white dark:hover:bg-[#2b2225]'
+                    }`}
+                  >
+                    {cat === 'todos' && <Sparkles size={12} />}
+                    <span>{cat === 'todos' ? 'Todos os produtos' : cat}</span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Barra de Contagem e Seletor de Ordenação */}
+            <div className="flex items-center justify-between gap-2 text-xs text-[#504444] dark:text-[#c9c0b8] pt-1">
+              <span className="font-medium">
+                <strong>{filteredProducts.length}</strong> {filteredProducts.length === 1 ? 'produto encontrado' : 'produtos encontrados'}
+              </span>
+
+              <div className="flex items-center gap-1.5">
+                <ArrowUpDown size={13} className="text-stone-400" />
+                <label htmlFor="catalog-sort" className="hidden sm:inline text-stone-500 font-medium">
+                  Ordenar:
+                </label>
+                <select
+                  id="catalog-sort"
+                  value={sortBy}
+                  onChange={(e) => setSortBy(e.target.value)}
+                  className="px-2.5 py-1 text-xs rounded-lg bg-white/80 dark:bg-[#1f191b]/90 border border-stone-200 dark:border-stone-700 text-[#221a1a] dark:text-[#e8e0e3] focus:outline-none focus:ring-1 focus:ring-[#613d3e] cursor-pointer"
                 >
-                  {cat === 'todos' && <Sparkles size={12} />}
-                  <span>{cat === 'todos' ? 'Todos os itens' : cat}</span>
-                </button>
-              );
-            })}
+                  <option value="destaque">Destaques</option>
+                  <option value="preco-menor">Menor preço</option>
+                  <option value="preco-maior">Maior preço</option>
+                  <option value="nome-az">Nome (A - Z)</option>
+                  <option value="prazo">Menor prazo</option>
+                </select>
+              </div>
+            </div>
           </div>
 
-          {/* Lista de Cards de Produtos */}
-          <div className="space-y-4">
+          {/* 3. Grid Responsivo de Produtos: 2 colunas mobile / 3 tablet / 4 desktop */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-5 lg:gap-6">
             {filteredProducts.map((prod) => (
               <article
                 key={prod.id}
-                className="overflow-hidden rounded-2xl bg-white/60 dark:bg-[#1f191b]/86 backdrop-blur-md border border-white/45 dark:border-[#ebcdcd]/16 shadow-[0_8px_32px_rgb(230_180_180/15%)] dark:shadow-[0_16px_40px_-8px_rgb(0_0_0/65%)] transition-all hover:translate-y-[-2px]"
+                className="group flex flex-col h-full rounded-2xl bg-white/70 dark:bg-[#1f191b]/85 backdrop-blur-md border border-white/60 dark:border-[#ebcdcd]/15 shadow-xs hover:shadow-xl hover:-translate-y-1 transition-all duration-200 overflow-hidden"
               >
-                {/* Imagem do Produto com Badges e Clique para Preview */}
+                {/* Imagem do Produto (Aspect-Square padrão e-commerce) */}
                 <div 
-                  className="relative aspect-[4/3] w-full overflow-hidden bg-stone-100 dark:bg-stone-900 cursor-pointer group"
+                  className="relative aspect-square w-full overflow-hidden bg-stone-100 dark:bg-stone-900 cursor-pointer"
                   onClick={() => handleOpenPreview(prod)}
                 >
                   <img
                     src={prod.imageUrl}
                     alt={prod.name}
-                    className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                     loading="lazy"
                   />
-                  <div className="absolute inset-0 bg-black/0 group-hover:bg-black/15 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
-                    <span className="bg-white/90 dark:bg-black/80 text-xs font-semibold px-3 py-1.5 rounded-full flex items-center gap-1.5 shadow-md">
+                  <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
+                    <span className="bg-white/95 dark:bg-black/90 text-[11px] font-bold px-3 py-1.5 rounded-full flex items-center gap-1.5 shadow-md text-stone-900 dark:text-stone-100">
                       <Eye size={13} /> Ver detalhes
                     </span>
                   </div>
 
+                  {/* Badge de Destaque / Categoria */}
                   {prod.badge && (
-                    <span className="absolute top-3 left-3 px-2.5 py-0.5 rounded-md text-[11px] font-semibold bg-[#613d3e]/85 dark:bg-[#f4b7b9]/90 text-white dark:text-[#4c2527] backdrop-blur-sm shadow-sm">
+                    <span className="absolute top-2 left-2 px-2 py-0.5 rounded-md text-[10px] font-bold bg-[#613d3e]/90 dark:bg-[#f4b7b9]/90 text-white dark:text-[#4c2527] backdrop-blur-xs shadow-xs">
                       {prod.badge}
                     </span>
                   )}
-                  <span className="absolute top-3 right-3 px-2.5 py-0.5 rounded-md text-xs font-bold bg-white/90 dark:bg-[#161214]/90 text-[#221a1a] dark:text-[#e8e0e3] backdrop-blur-sm tabular-nums shadow-sm">
+
+                  {/* Preço sobre a imagem em telas pequenas */}
+                  <span className="sm:hidden absolute bottom-2 right-2 px-2 py-0.5 rounded-md text-[11px] font-extrabold bg-white/95 dark:bg-[#161214]/95 text-[#221a1a] dark:text-[#e8e0e3] backdrop-blur-xs tabular-nums shadow-xs">
                     {formatCurrency(prod.price)}
                   </span>
                 </div>
 
                 {/* Detalhes do Produto */}
-                <div className="p-4 space-y-3">
-                  <div>
+                <div className="p-3 sm:p-4 flex-1 flex flex-col justify-between space-y-2">
+                  <div className="space-y-1">
+                    <span className="text-[10px] sm:text-[11px] font-medium text-stone-400 dark:text-stone-500 uppercase tracking-wider block truncate">
+                      {prod.category}
+                    </span>
                     <h3 
-                      className="text-sm font-bold text-[#221a1a] dark:text-[#e8e0e3] leading-snug cursor-pointer hover:underline"
+                      className="text-xs sm:text-sm font-bold text-[#221a1a] dark:text-[#e8e0e3] line-clamp-2 leading-snug cursor-pointer group-hover:text-[#613d3e] dark:group-hover:text-[#f4b7b9] transition-colors"
                       onClick={() => handleOpenPreview(prod)}
+                      title={prod.name}
                     >
                       {prod.name}
                     </h3>
-                    <p className="mt-1 text-xs text-[#504444] dark:text-[#c9c0b8] leading-relaxed line-clamp-2">
-                      {prod.description}
-                    </p>
                   </div>
 
-                  {/* Prazo Operacional de Confecção (Âmbar Semântico #F59E0B) */}
-                  <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-[#fef3c7] dark:bg-[#78350f]/30 border border-[#fde68a] dark:border-[#92400e]/40 text-[#92400e] dark:text-[#fbbf24] text-[11px] font-medium">
-                    <Clock size={12} />
-                    <span>Produção em até {prod.leadTimeDays} dias úteis</span>
+                  {/* Prazo de Confecção & Preço Desktop */}
+                  <div className="space-y-1.5 pt-1">
+                    <div className="inline-flex items-center gap-1 text-[10px] sm:text-[11px] font-medium text-amber-700 dark:text-amber-300 bg-amber-500/10 px-2 py-0.5 rounded-md">
+                      <Clock size={11} />
+                      <span>Até {prod.leadTimeDays} dias úteis</span>
+                    </div>
+
+                    <div className="hidden sm:flex items-baseline justify-between pt-0.5">
+                      <span className="text-xs text-stone-400 font-medium">Valor:</span>
+                      <span className="text-base font-extrabold text-[#613d3e] dark:text-[#f4b7b9] tabular-nums">
+                        {formatCurrency(prod.price)}
+                      </span>
+                    </div>
                   </div>
 
-                  {/* Botão de Ação Primário */}
+                  {/* Botão de Adição / Personalização */}
                   <button
                     onClick={() => handleOpenPreview(prod)}
-                    className="w-full py-2.5 px-4 rounded-xl font-medium text-xs flex items-center justify-center gap-2 bg-[#613d3e] dark:bg-[#f4b7b9] text-white dark:text-[#4c2527] hover:opacity-95 active:scale-[0.98] transition-all shadow-sm"
+                    className="w-full mt-2 py-2 sm:py-2.5 px-3 rounded-xl font-semibold text-[11px] sm:text-xs flex items-center justify-center gap-1.5 bg-[#613d3e] dark:bg-[#f4b7b9] text-white dark:text-[#4c2527] hover:opacity-95 active:scale-98 transition-all shadow-xs cursor-pointer"
                   >
-                    <ShoppingBag size={14} />
-                    <span>Personalizar & Adicionar à Sacola</span>
+                    <ShoppingBag size={13} />
+                    <span>Personalizar</span>
                   </button>
                 </div>
               </article>
             ))}
-
-            {filteredProducts.length === 0 && (
-              <div className="text-center py-12 text-[#504444] dark:text-[#c9c0b8] bg-white/30 dark:bg-[#1f191b]/40 rounded-2xl p-6 border border-white/40">
-                <p className="text-sm font-medium">Nenhum produto encontrado para sua busca.</p>
-                <p className="text-xs text-muted-foreground mt-1">Tente buscar por termos mais genéricos ou limpe o filtro.</p>
-              </div>
-            )}
           </div>
 
-          {/* Banner Informativo de Confiança */}
-          <section className="p-4 rounded-xl bg-white/45 dark:bg-[#1f191b]/50 border border-white/40 dark:border-[#ebcdcd]/10 text-center space-y-1.5">
-            <div className="size-8 rounded-full bg-[#613d3e]/10 dark:bg-[#f4b7b9]/15 text-[#613d3e] dark:text-[#f4b7b9] flex items-center justify-center mx-auto">
-              <Heart size={16} />
-            </div>
-            <h4 className="text-xs font-bold text-[#221a1a] dark:text-[#e8e0e3]">
-              Como funciona o atendimento artesanal?
-            </h4>
-            <p className="text-[11px] text-[#504444] dark:text-[#c9c0b8] leading-relaxed">
-              Você seleciona os itens e temas, envia a sacola diretamente para o nosso WhatsApp e nós elaboramos a prévia digital de aprovação antes de produzir cada detalhe.
-            </p>
-          </section>
-
-          {/* Footer Institucional Totalmente Personalizável */}
-          <footer className="pt-6 pb-8 space-y-4 border-t border-white/40 dark:border-[#ebcdcd]/15 text-center">
-            {/* Logo e Nome */}
-            <div className="flex flex-col items-center gap-1.5">
-              {businessInfo.logo ? (
-                <img
-                  src={businessInfo.logo}
-                  alt={businessInfo.name}
-                  className="size-10 rounded-full object-cover border border-white/60 shadow-xs mb-1"
-                />
-              ) : null}
-              <p className="text-sm font-bold text-[#613d3e] dark:text-[#f4b7b9]">
-                {businessInfo.name}
-              </p>
-              {businessInfo.footerText && (
-                <p className="text-xs text-[#504444] dark:text-[#c9c0b8] max-w-xs mx-auto leading-relaxed">
-                  {businessInfo.footerText}
-                </p>
-              )}
-            </div>
-
-            {/* Localização e Horário */}
-            {(businessInfo.footerLocation || businessInfo.footerBusinessHours) && (
-              <div className="flex flex-col sm:flex-row items-center justify-center gap-2 text-[11px] text-[#504444] dark:text-[#c9c0b8]">
-                {businessInfo.footerLocation && (
-                  <span className="inline-flex items-center gap-1">
-                    <MapPin size={12} className="text-[#613d3e] dark:text-[#f4b7b9] shrink-0" />
-                    {businessInfo.footerLocation}
-                  </span>
-                )}
-                {businessInfo.footerLocation && businessInfo.footerBusinessHours && (
-                  <span className="hidden sm:inline opacity-40">•</span>
-                )}
-                {businessInfo.footerBusinessHours && (
-                  <span className="inline-flex items-center gap-1">
-                    <Clock size={12} className="text-[#613d3e] dark:text-[#f4b7b9] shrink-0" />
-                    {businessInfo.footerBusinessHours}
-                  </span>
-                )}
-              </div>
-            )}
-
-            {/* Canais de Contato / Redes */}
-            <div className="flex justify-center items-center gap-3 text-xs pt-1">
-              {businessInfo.instagram && (
-                <a
-                  href={`https://instagram.com/${businessInfo.instagram}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 text-[#504444] dark:text-[#c9c0b8] hover:text-[#613d3e] dark:hover:text-[#f4b7b9] font-medium transition-colors"
-                >
-                  <Instagram size={14} />
-                  <span>@{businessInfo.instagram}</span>
-                </a>
-              )}
-              {businessInfo.website && (
-                <>
-                  <span className="opacity-30">•</span>
-                  <a
-                    href={businessInfo.website}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1 text-[#504444] dark:text-[#c9c0b8] hover:text-[#613d3e] dark:hover:text-[#f4b7b9] font-medium transition-colors"
-                  >
-                    <Globe size={14} />
-                    <span>Site</span>
-                  </a>
-                </>
-              )}
-              <span className="opacity-30">•</span>
+          {/* Feedback de Busca Vazia */}
+          {filteredProducts.length === 0 && (
+            <div className="text-center py-16 text-[#504444] dark:text-[#c9c0b8] bg-white/40 dark:bg-[#1f191b]/50 rounded-3xl p-8 border border-white/50 max-w-lg mx-auto">
+              <Search size={32} className="mx-auto text-stone-400 mb-2 opacity-50" />
+              <p className="text-sm font-semibold">Nenhum produto encontrado para sua busca.</p>
+              <p className="text-xs text-stone-400 mt-1">Tente buscar por outros termos ou selecione "Todos os produtos".</p>
               <button
-                onClick={handleSendToWhatsApp}
-                className="inline-flex items-center gap-1 text-[#10B981] font-semibold hover:underline cursor-pointer"
+                onClick={() => { setSearchQuery(''); setSelectedCategory('todos'); }}
+                className="mt-4 px-4 py-2 rounded-xl text-xs font-semibold bg-[#613d3e] text-white cursor-pointer"
               >
-                <MessageCircle size={14} />
-                <span>WhatsApp Oficial</span>
+                Limpar filtros
               </button>
             </div>
+          )}
 
-            {/* Aviso de Prazos e Políticas */}
-            {businessInfo.footerNotice && (
-              <p className="text-[10px] text-muted-foreground max-w-sm mx-auto leading-relaxed pt-1 opacity-80">
-                {businessInfo.footerNotice}
+          {/* Banner Informativo: 3 Passos do Atendimento Artesanal (Desktop Grid) */}
+          <section className="rounded-3xl p-6 sm:p-8 bg-white/60 dark:bg-[#1f191b]/70 border border-white/50 dark:border-[#ebcdcd]/15 shadow-xs">
+            <div className="text-center max-w-xl mx-auto mb-6 space-y-1">
+              <h4 className="text-base sm:text-lg font-bold text-[#221a1a] dark:text-[#e8e0e3]">
+                Como funciona o atendimento artesanal?
+              </h4>
+              <p className="text-xs text-[#504444] dark:text-[#c9c0b8]">
+                Simples, rápido e com aprovação direta pelo WhatsApp antes da produção.
               </p>
-            )}
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-6">
+              <div className="p-4 rounded-2xl bg-white/60 dark:bg-[#161214]/60 border border-stone-200/60 dark:border-stone-800 text-center space-y-2">
+                <div className="size-10 rounded-full bg-[#613d3e]/10 dark:bg-[#f4b7b9]/15 text-[#613d3e] dark:text-[#f4b7b9] flex items-center justify-center mx-auto font-bold text-sm">
+                  1
+                </div>
+                <h5 className="text-xs sm:text-sm font-bold text-foreground">Escolha & Personalize</h5>
+                <p className="text-[11px] text-[#504444] dark:text-[#c9c0b8] leading-relaxed">
+                  Selecione os mimos, defina o tema e informe o nome da aniversariante ou bebê para a capa.
+                </p>
+              </div>
+
+              <div className="p-4 rounded-2xl bg-white/60 dark:bg-[#161214]/60 border border-stone-200/60 dark:border-stone-800 text-center space-y-2">
+                <div className="size-10 rounded-full bg-[#10B981]/10 text-[#10B981] flex items-center justify-center mx-auto font-bold text-sm">
+                  2
+                </div>
+                <h5 className="text-xs sm:text-sm font-bold text-foreground">Aprovação no WhatsApp</h5>
+                <p className="text-[11px] text-[#504444] dark:text-[#c9c0b8] leading-relaxed">
+                  Sua sacola é enviada pronta para o nosso chat, onde enviamos a prévia digital da arte para você aprovar.
+                </p>
+              </div>
+
+              <div className="p-4 rounded-2xl bg-white/60 dark:bg-[#161214]/60 border border-stone-200/60 dark:border-stone-800 text-center space-y-2">
+                <div className="size-10 rounded-full bg-[#3B82F6]/10 text-[#3B82F6] flex items-center justify-center mx-auto font-bold text-sm">
+                  3
+                </div>
+                <h5 className="text-xs sm:text-sm font-bold text-foreground">Produção & Envio Afetivo</h5>
+                <p className="text-[11px] text-[#504444] dark:text-[#c9c0b8] leading-relaxed">
+                  Confeccionamos cada detalhe com materiais nobres e enviamos bem embalado para todo o Brasil.
+                </p>
+              </div>
+            </div>
+          </section>
+
+          {/* Footer Institucional Responsivo com Multi-colunas */}
+          <footer className="pt-8 pb-12 border-t border-stone-200/60 dark:border-[#ebcdcd]/15 text-xs text-[#504444] dark:text-[#c9c0b8]">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-8 text-center md:text-left">
+              {/* Coluna 1: Ateliê & Sobre */}
+              <div className="space-y-2.5">
+                <div className="flex items-center justify-center md:justify-start gap-2">
+                  {businessInfo.logo ? (
+                    <img
+                      src={businessInfo.logo}
+                      alt={businessInfo.name}
+                      className="size-7 rounded-full object-cover border border-white/60"
+                    />
+                  ) : null}
+                  <h4 className="font-bold text-sm text-[#613d3e] dark:text-[#f4b7b9]">
+                    {businessInfo.name}
+                  </h4>
+                </div>
+                {businessInfo.footerText && (
+                  <p className="text-xs text-[#504444] dark:text-[#c9c0b8] leading-relaxed max-w-sm mx-auto md:mx-0">
+                    {businessInfo.footerText}
+                  </p>
+                )}
+              </div>
+
+              {/* Coluna 2: Atendimento e Redes */}
+              <div className="space-y-2">
+                <h5 className="font-bold text-stone-900 dark:text-stone-100 uppercase tracking-wider text-[11px]">
+                  Canais de Atendimento
+                </h5>
+                <div className="flex flex-col items-center md:items-start gap-1.5 pt-1">
+                  <button
+                    onClick={handleSendToWhatsApp}
+                    className="inline-flex items-center gap-1.5 text-[#10B981] font-semibold hover:underline cursor-pointer"
+                  >
+                    <MessageCircle size={14} />
+                    <span>WhatsApp Oficial: {businessInfo.whatsapp}</span>
+                  </button>
+
+                  {businessInfo.instagram && (
+                    <a
+                      href={`https://instagram.com/${businessInfo.instagram}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 hover:text-[#E1306C] transition-colors"
+                    >
+                      <Instagram size={14} />
+                      <span>@{businessInfo.instagram}</span>
+                    </a>
+                  )}
+
+                  {businessInfo.website && (
+                    <a
+                      href={businessInfo.website}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 hover:underline"
+                    >
+                      <Globe size={14} />
+                      <span>Site Oficial</span>
+                    </a>
+                  )}
+                </div>
+              </div>
+
+              {/* Coluna 3: Localização & Prazos */}
+              <div className="space-y-2">
+                <h5 className="font-bold text-stone-900 dark:text-stone-100 uppercase tracking-wider text-[11px]">
+                  Envios & Funcionamento
+                </h5>
+                {businessInfo.footerLocation && (
+                  <p className="flex items-center justify-center md:justify-start gap-1.5">
+                    <MapPin size={13} className="text-[#613d3e] dark:text-[#f4b7b9] shrink-0" />
+                    <span>{businessInfo.footerLocation}</span>
+                  </p>
+                )}
+                {businessInfo.footerBusinessHours && (
+                  <p className="flex items-center justify-center md:justify-start gap-1.5">
+                    <Clock size={13} className="text-[#613d3e] dark:text-[#f4b7b9] shrink-0" />
+                    <span>{businessInfo.footerBusinessHours}</span>
+                  </p>
+                )}
+                {businessInfo.footerNotice && (
+                  <p className="text-[10px] text-stone-400 dark:text-stone-500 pt-1 leading-relaxed">
+                    {businessInfo.footerNotice}
+                  </p>
+                )}
+              </div>
+            </div>
 
             {/* Copyright */}
-            <p className="text-[10px] text-muted-foreground/60 pt-2">
-              {businessInfo.footerCopyright || `© ${new Date().getFullYear()} ${businessInfo.name}. Todos os direitos reservados.`}
-            </p>
+            <div className="pt-6 border-t border-stone-200/40 dark:border-stone-800 text-center text-[11px] text-stone-400">
+              <p>{businessInfo.footerCopyright || `© ${new Date().getFullYear()} ${businessInfo.name}. Todos os direitos reservados.`}</p>
+            </div>
           </footer>
+
         </main>
 
-        {/* 3. Barra Fixa Inferior de Conversão */}
+        {/* 4. Barra Fixa Inferior de Conversão: Adaptativa (Bottom bar no mobile / Floating Dock no desktop) */}
         {totalItemsCount > 0 && (
-          <aside className="fixed bottom-0 left-0 right-0 z-40 p-3 bg-white/85 dark:bg-[#161214]/90 backdrop-blur-xl border-t border-white/40 dark:border-[#ebcdcd]/15 shadow-2xl animate-in slide-in-from-bottom-4">
-            <div className="max-w-md mx-auto flex items-center justify-between gap-3">
+          <aside className="fixed bottom-0 inset-x-0 sm:bottom-6 sm:inset-x-auto sm:left-1/2 sm:-translate-x-1/2 z-40 p-3 sm:p-2 sm:px-4 bg-white/90 dark:bg-[#161214]/95 backdrop-blur-xl border-t sm:border border-stone-200/80 dark:border-[#ebcdcd]/20 sm:rounded-2xl shadow-2xl animate-in slide-in-from-bottom-4">
+            <div className="max-w-md sm:w-[480px] mx-auto flex items-center justify-between gap-4">
               <div>
-                <span className="block text-[10px] uppercase font-bold text-[#504444] dark:text-[#c9c0b8] tracking-wider">
-                  Subtotal Estimado ({totalItemsCount} {totalItemsCount === 1 ? 'item' : 'itens'})
+                <span className="block text-[10px] uppercase font-bold text-stone-500 dark:text-stone-400 tracking-wider">
+                  Subtotal ({totalItemsCount} {totalItemsCount === 1 ? 'item' : 'itens'})
                 </span>
-                <span className="text-base font-bold text-[#221a1a] dark:text-[#e8e0e3] tabular-nums">
+                <span className="text-base font-extrabold text-[#221a1a] dark:text-[#e8e0e3] tabular-nums">
                   {formatCurrency(subtotal)}
                 </span>
               </div>
 
-              {/* Botão Semântico Esmeralda (#10B981) */}
               <button
                 onClick={() => setIsCartOpen(true)}
-                className="px-4 py-2.5 rounded-xl bg-[#10B981] hover:bg-[#059669] text-white font-semibold text-xs flex items-center gap-2 shadow-md active:scale-95 transition-all"
+                className="px-4 py-2.5 rounded-xl bg-[#10B981] hover:bg-[#059669] text-white font-semibold text-xs flex items-center gap-2 shadow-md active:scale-95 transition-all cursor-pointer"
               >
                 <MessageCircle size={16} />
                 <span>Ver Sacola & Enviar</span>
@@ -790,13 +979,13 @@ export function PublicCatalog() {
           </aside>
         )}
 
-        {/* 4. Modal de Prévia / Detalhes do Produto */}
+        {/* 5. Modal Responsivo de Prévia / Personalização (2 Colunas no Desktop) */}
         {selectedProductPreview && (
           <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/60 backdrop-blur-xs animate-in fade-in">
-            <div className="w-full sm:max-w-md max-h-[90dvh] flex flex-col rounded-t-3xl sm:rounded-2xl bg-[#fff8f7] dark:bg-[#1f191b] border border-white/45 dark:border-[#ebcdcd]/20 shadow-2xl overflow-hidden animate-in slide-in-from-bottom-4 sm:slide-in-from-bottom-0 sm:zoom-in-95">
+            <div className="w-full sm:max-w-2xl md:max-w-3xl max-h-[92dvh] flex flex-col md:flex-row rounded-t-3xl sm:rounded-3xl bg-[#fff8f7] dark:bg-[#1f191b] border border-white/45 dark:border-[#ebcdcd]/20 shadow-2xl overflow-hidden animate-in slide-in-from-bottom-4 sm:slide-in-from-bottom-0 sm:zoom-in-95">
               
-              {/* Header com botão fechar */}
-              <div className="relative aspect-video w-full bg-stone-100 dark:bg-stone-900 overflow-hidden">
+              {/* Coluna Esquerda (Desktop): Imagem em Alta Resolução */}
+              <div className="relative aspect-video md:aspect-auto md:w-1/2 bg-stone-100 dark:bg-stone-900 overflow-hidden shrink-0">
                 <img
                   src={selectedProductPreview.imageUrl}
                   alt={selectedProductPreview.name}
@@ -804,90 +993,111 @@ export function PublicCatalog() {
                 />
                 <button
                   onClick={() => setSelectedProductPreview(null)}
-                  className="absolute top-3 right-3 p-1.5 rounded-full bg-black/50 text-white hover:bg-black/70 backdrop-blur-xs"
+                  className="absolute top-3 right-3 p-2 rounded-full bg-black/50 text-white hover:bg-black/70 backdrop-blur-xs transition-colors cursor-pointer"
+                  aria-label="Fechar prévia"
                 >
                   <X size={18} />
                 </button>
                 {selectedProductPreview.badge && (
-                  <span className="absolute bottom-3 left-3 px-2.5 py-0.5 rounded-md text-xs font-semibold bg-[#613d3e]/90 text-white backdrop-blur-sm">
+                  <span className="absolute bottom-3 left-3 px-3 py-1 rounded-md text-xs font-bold bg-[#613d3e]/90 text-white backdrop-blur-sm">
                     {selectedProductPreview.badge}
                   </span>
                 )}
               </div>
 
-              <div className="p-4 space-y-4 overflow-y-auto flex-1">
-                <div className="flex justify-between items-start gap-2">
-                  <h3 className="text-base font-bold text-[#221a1a] dark:text-[#e8e0e3] leading-snug">
-                    {selectedProductPreview.name}
-                  </h3>
-                  <span className="text-base font-bold text-[#613d3e] dark:text-[#f4b7b9] tabular-nums shrink-0">
-                    {formatCurrency(selectedProductPreview.price)}
-                  </span>
-                </div>
-
-                <p className="text-xs text-[#504444] dark:text-[#c9c0b8] leading-relaxed">
-                  {selectedProductPreview.description}
-                </p>
-
-                <div className="flex items-center gap-2 p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-700 dark:text-amber-300 text-xs">
-                  <Clock size={14} className="shrink-0" />
-                  <span>Prazo de confecção: <strong>até {selectedProductPreview.leadTimeDays} dias úteis</strong></span>
-                </div>
-
-                {selectedProductPreview.isCustomizable && (
-                  <div className="space-y-1.5 pt-1">
-                    <label className="block text-xs font-semibold text-[#221a1a] dark:text-[#e8e0e3]">
-                      Personalizar com Nome / Frase / Idade:
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="Ex: Nome da aniversariante, idade ou tema"
-                      value={previewCustomName}
-                      onChange={(e) => setPreviewCustomName(e.target.value)}
-                      className="w-full px-3 py-2 text-xs rounded-xl bg-white/90 dark:bg-[#161214] border border-stone-200 dark:border-stone-700 text-[#221a1a] dark:text-[#e8e0e3] focus:outline-none focus:ring-2 focus:ring-primary/40"
-                    />
-                    <p className="text-[10px] text-muted-foreground">
-                      Você também poderá ajustar esses detalhes depois no WhatsApp.
-                    </p>
+              {/* Coluna Direita (Desktop): Detalhes, Customização e Adição */}
+              <div className="p-5 md:p-6 flex-1 flex flex-col justify-between overflow-y-auto space-y-4">
+                <div className="space-y-3">
+                  <div className="flex justify-between items-start gap-2">
+                    <div>
+                      <span className="text-xs font-semibold text-stone-400 uppercase tracking-wider">
+                        {selectedProductPreview.category}
+                      </span>
+                      <h3 className="text-lg md:text-xl font-extrabold text-[#221a1a] dark:text-[#e8e0e3] leading-snug">
+                        {selectedProductPreview.name}
+                      </h3>
+                    </div>
+                    <span className="text-lg md:text-xl font-extrabold text-[#613d3e] dark:text-[#f4b7b9] tabular-nums shrink-0">
+                      {formatCurrency(selectedProductPreview.price)}
+                    </span>
                   </div>
-                )}
-              </div>
 
-              {/* Botão de confirmação de adição */}
-              <div className="p-4 border-t border-white/40 dark:border-[#ebcdcd]/10 bg-white/40 dark:bg-[#161214]/40">
-                <button
-                  onClick={() => {
-                    addToCart(selectedProductPreview, previewCustomName);
-                    setSelectedProductPreview(null);
-                    setIsCartOpen(true);
-                  }}
-                  className="w-full py-3 px-4 rounded-xl font-semibold text-xs flex items-center justify-center gap-2 bg-[#613d3e] dark:bg-[#f4b7b9] text-white dark:text-[#4c2527] hover:opacity-95 active:scale-[0.98] transition-all shadow-md"
-                >
-                  <ShoppingBag size={16} />
-                  <span>Adicionar à Sacola de Encomendas</span>
-                </button>
+                  <p className="text-xs text-[#504444] dark:text-[#c9c0b8] leading-relaxed">
+                    {selectedProductPreview.description}
+                  </p>
+
+                  <div className="flex items-center gap-2 p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-800 dark:text-amber-300 text-xs">
+                    <Clock size={14} className="shrink-0" />
+                    <span>Prazo de confecção: <strong>até {selectedProductPreview.leadTimeDays} dias úteis</strong></span>
+                  </div>
+
+                  {/* Campo de Personalização */}
+                  {selectedProductPreview.isCustomizable && (
+                    <div className="space-y-1.5 pt-1">
+                      <label className="block text-xs font-semibold text-[#221a1a] dark:text-[#e8e0e3]">
+                        Nome ou tema para personalização:
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="Ex: Nome da criança, idade ou tema desejado"
+                        value={previewCustomName}
+                        onChange={(e) => setPreviewCustomName(e.target.value)}
+                        className="w-full px-3.5 py-2 text-xs rounded-xl bg-white dark:bg-[#161214] border border-stone-300 dark:border-stone-700 text-[#221a1a] dark:text-[#e8e0e3] focus:outline-none focus:ring-2 focus:ring-[#613d3e]/30"
+                      />
+                      <p className="text-[10px] text-stone-400">
+                        Você também poderá combinar mais detalhes da arte depois no WhatsApp.
+                      </p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Ação de Adicionar */}
+                <div className="pt-3 border-t border-stone-200/50 dark:border-stone-800">
+                  <button
+                    onClick={() => {
+                      addToCart(selectedProductPreview, previewCustomName);
+                      setSelectedProductPreview(null);
+                      setIsCartOpen(true);
+                    }}
+                    className="w-full py-3 px-4 rounded-xl font-bold text-xs flex items-center justify-center gap-2 bg-[#613d3e] dark:bg-[#f4b7b9] text-white dark:text-[#4c2527] hover:opacity-95 active:scale-[0.98] transition-all shadow-md cursor-pointer"
+                  >
+                    <ShoppingBag size={16} />
+                    <span>Adicionar à Sacola de Encomendas</span>
+                  </button>
+                </div>
               </div>
 
             </div>
           </div>
         )}
 
-        {/* 5. Modal / Gaveta Lateral da Sacola de Pedidos */}
+        {/* 6. Gaveta Lateral / Slide-over Drawer da Sacola de Pedidos */}
         {isCartOpen && (
-          <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/50 backdrop-blur-xs animate-in fade-in">
-            <div className="w-full sm:max-w-md max-h-[90dvh] flex flex-col rounded-t-3xl sm:rounded-2xl bg-[#fff8f7] dark:bg-[#1f191b] border border-white/45 dark:border-[#ebcdcd]/20 shadow-2xl overflow-hidden animate-in slide-in-from-bottom-4 sm:slide-in-from-bottom-0 sm:zoom-in-95">
+          <div className="fixed inset-0 z-50 flex items-end sm:items-stretch sm:justify-end bg-black/60 backdrop-blur-xs animate-in fade-in">
+            {/* Backdrop clicável no desktop */}
+            <div className="hidden sm:block absolute inset-0" onClick={() => setIsCartOpen(false)} />
+
+            {/* Container da Gaveta (Full-height slide-over no desktop, bottom sheet no mobile) */}
+            <div className="relative w-full sm:max-w-md h-auto max-h-[92dvh] sm:max-h-none sm:h-full flex flex-col rounded-t-3xl sm:rounded-none sm:rounded-l-3xl bg-[#fff8f7] dark:bg-[#1f191b] border-t sm:border-t-0 sm:border-l border-stone-200/80 dark:border-stone-800 shadow-2xl overflow-hidden animate-in slide-in-from-bottom-4 sm:slide-in-from-right duration-200">
               
               {/* Header do Carrinho */}
-              <div className="p-4 flex items-center justify-between border-b border-white/40 dark:border-[#ebcdcd]/10">
-                <div className="flex items-center gap-2">
-                  <ShoppingBag size={18} className="text-[#613d3e] dark:text-[#f4b7b9]" />
-                  <h3 className="text-sm font-bold text-[#221a1a] dark:text-[#e8e0e3]">
-                    Sua Sacola de Encomendas ({totalItemsCount})
-                  </h3>
+              <div className="p-4 sm:p-5 flex items-center justify-between border-b border-stone-200/60 dark:border-[#ebcdcd]/10">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-2 rounded-xl bg-[#613d3e]/10 dark:bg-[#f4b7b9]/15 text-[#613d3e] dark:text-[#f4b7b9]">
+                    <ShoppingBag size={18} />
+                  </div>
+                  <div>
+                    <h3 className="text-sm sm:text-base font-bold text-[#221a1a] dark:text-[#e8e0e3]">
+                      Sacola de Encomendas
+                    </h3>
+                    <span className="text-[11px] text-stone-400 font-medium">
+                      {totalItemsCount} {totalItemsCount === 1 ? 'item adicionado' : 'itens adicionados'}
+                    </span>
+                  </div>
                 </div>
                 <button
                   onClick={() => setIsCartOpen(false)}
-                  className="p-1.5 rounded-full hover:bg-stone-200 dark:hover:bg-stone-800 text-[#504444] dark:text-[#c9c0b8]"
+                  className="p-2 rounded-full hover:bg-stone-200 dark:hover:bg-stone-800 text-stone-500 cursor-pointer"
                   aria-label="Fechar sacola"
                 >
                   <X size={18} />
@@ -895,31 +1105,31 @@ export function PublicCatalog() {
               </div>
 
               {/* Lista de Itens Adicionados */}
-              <div className="p-4 flex-1 overflow-y-auto space-y-3">
+              <div className="p-4 sm:p-5 flex-1 overflow-y-auto space-y-3">
                 {cart.length === 0 ? (
-                  <div className="text-center py-12 text-[#504444] dark:text-[#c9c0b8] space-y-2">
-                    <ShoppingBag size={32} className="mx-auto opacity-30" />
-                    <p className="text-sm font-medium">Sua sacola está vazia no momento.</p>
-                    <p className="text-xs text-muted-foreground">Escolha os produtos que deseja personalizar na vitrine.</p>
+                  <div className="text-center py-16 text-stone-400 space-y-2">
+                    <ShoppingBag size={40} className="mx-auto opacity-30" />
+                    <p className="text-sm font-semibold text-stone-600 dark:text-stone-300">Sua sacola está vazia.</p>
+                    <p className="text-xs">Explore o catálogo e adicione os mimos que deseja encomendar.</p>
                   </div>
                 ) : (
                   cart.map((item, idx) => (
                     <div
                       key={`${item.product.id}-${item.customName || idx}`}
-                      className="p-3 rounded-xl bg-white/70 dark:bg-[#261f22] border border-white/50 dark:border-[#ebcdcd]/10 space-y-2 shadow-2xs"
+                      className="p-3.5 rounded-2xl bg-white/80 dark:bg-[#261f22] border border-stone-200/70 dark:border-[#ebcdcd]/10 space-y-2.5 shadow-2xs"
                     >
                       <div className="flex justify-between items-start gap-2">
-                        <div className="flex items-center gap-2.5 min-w-0">
+                        <div className="flex items-center gap-3 min-w-0">
                           <img
                             src={item.product.imageUrl}
                             alt={item.product.name}
-                            className="size-10 rounded-lg object-cover border border-white/50 shrink-0"
+                            className="size-12 rounded-xl object-cover border border-white/60 shrink-0"
                           />
                           <div className="min-w-0">
-                            <h4 className="text-xs font-bold text-[#221a1a] dark:text-[#e8e0e3] truncate">
+                            <h4 className="text-xs font-bold text-[#221a1a] dark:text-[#e8e0e3] truncate" title={item.product.name}>
                               {item.product.name}
                             </h4>
-                            <span className="text-[11px] font-semibold text-[#613d3e] dark:text-[#f4b7b9] tabular-nums">
+                            <span className="text-xs font-bold text-[#613d3e] dark:text-[#f4b7b9] tabular-nums">
                               {formatCurrency(item.product.price * item.quantity)}
                             </span>
                           </div>
@@ -927,22 +1137,22 @@ export function PublicCatalog() {
 
                         <button
                           onClick={() => updateQuantity(item.product.id, -item.quantity, item.customName)}
-                          className="text-[#ba1a1a] dark:text-[#e58e8e] p-1.5 hover:bg-red-500/10 rounded-md transition-colors"
+                          className="text-red-500 hover:text-red-700 p-1.5 hover:bg-red-50 dark:hover:bg-red-950/30 rounded-lg transition-colors cursor-pointer"
                           title="Remover item"
                         >
-                          <Trash2 size={14} />
+                          <Trash2 size={15} />
                         </button>
                       </div>
 
-                      {/* Campo para nome/personalização */}
+                      {/* Campo editável para nome/personalização */}
                       {item.product.isCustomizable && (
                         <div>
-                          <label className="block text-[10px] font-medium text-[#504444] dark:text-[#c9c0b8] mb-0.5">
-                            Nome / Frase para personalização:
+                          <label className="block text-[10px] font-semibold text-stone-500 dark:text-stone-400 mb-1">
+                            Personalização / Nome:
                           </label>
                           <input
                             type="text"
-                            placeholder="Ex: Nome da criança, idade ou tema"
+                            placeholder="Ex: Nome da criança ou tema"
                             value={item.customName || ''}
                             onChange={(e) => {
                               const val = e.target.value;
@@ -952,30 +1162,30 @@ export function PublicCatalog() {
                                 )
                               );
                             }}
-                            className="w-full px-2.5 py-1 text-xs rounded-lg bg-white/90 dark:bg-[#161214] border border-stone-200 dark:border-stone-700 text-[#221a1a] dark:text-[#e8e0e3] focus:outline-none focus:ring-1 focus:ring-primary/40"
+                            className="w-full px-2.5 py-1 text-xs rounded-lg bg-white dark:bg-[#161214] border border-stone-200 dark:border-stone-700 text-[#221a1a] dark:text-[#e8e0e3] focus:outline-none focus:ring-1 focus:ring-[#613d3e]"
                           />
                         </div>
                       )}
 
                       {/* Controle de Quantidade */}
                       <div className="flex items-center justify-between pt-1 text-[11px]">
-                        <span className="text-[10px] text-[#504444] dark:text-[#c9c0b8]">
+                        <span className="text-[10px] text-stone-400">
                           Prazo: {item.product.leadTimeDays} dias úteis
                         </span>
-                        <div className="flex items-center gap-1.5 bg-stone-100 dark:bg-[#161214] rounded-lg p-0.5 border border-border/40">
+                        <div className="flex items-center gap-1.5 bg-stone-100 dark:bg-[#161214] rounded-lg p-0.5 border border-stone-200 dark:border-stone-700">
                           <button
                             onClick={() => updateQuantity(item.product.id, -1, item.customName)}
-                            className="p-1 rounded text-[#504444] dark:text-[#c9c0b8] hover:bg-stone-200 dark:hover:bg-stone-800"
+                            className="p-1 rounded text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-800 cursor-pointer"
                             aria-label="Diminuir quantidade"
                           >
                             <Minus size={12} />
                           </button>
-                          <span className="text-xs font-bold px-1.5 tabular-nums">
+                          <span className="text-xs font-bold px-2 tabular-nums">
                             {item.quantity}
                           </span>
                           <button
                             onClick={() => updateQuantity(item.product.id, 1, item.customName)}
-                            className="p-1 rounded text-[#504444] dark:text-[#c9c0b8] hover:bg-stone-200 dark:hover:bg-stone-800"
+                            className="p-1 rounded text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-800 cursor-pointer"
                             aria-label="Aumentar quantidade"
                           >
                             <Plus size={12} />
@@ -986,18 +1196,18 @@ export function PublicCatalog() {
                   ))
                 )}
 
-                {/* Observações Gerais */}
+                {/* Observações Gerais / Data do Evento */}
                 {cart.length > 0 && (
                   <div className="pt-2 space-y-1">
-                    <label className="block text-[11px] font-semibold text-[#221a1a] dark:text-[#e8e0e3]">
+                    <label className="block text-xs font-semibold text-[#221a1a] dark:text-[#e8e0e3]">
                       Observações ou data do seu evento:
                     </label>
                     <textarea
                       rows={2}
-                      placeholder="Ex: Preciso receber até dia 20 para o aniversário do meu filho..."
+                      placeholder="Ex: Preciso receber até dia 20 para o aniversário..."
                       value={customerNotes}
                       onChange={(e) => setCustomerNotes(e.target.value)}
-                      className="w-full p-2.5 text-xs rounded-xl bg-white/80 dark:bg-[#261f22] border border-stone-200 dark:border-stone-700 text-[#221a1a] dark:text-[#e8e0e3] focus:outline-none focus:ring-1 focus:ring-primary/40"
+                      className="w-full p-2.5 text-xs rounded-xl bg-white dark:bg-[#261f22] border border-stone-200 dark:border-stone-700 text-[#221a1a] dark:text-[#e8e0e3] focus:outline-none focus:ring-1 focus:ring-[#613d3e]"
                     />
                   </div>
                 )}
@@ -1005,17 +1215,17 @@ export function PublicCatalog() {
 
               {/* Footer do Carrinho com Envio WhatsApp */}
               {cart.length > 0 && (
-                <div className="p-4 bg-white/70 dark:bg-[#161214]/75 border-t border-white/40 dark:border-[#ebcdcd]/10 space-y-3">
+                <div className="p-4 sm:p-5 bg-white/90 dark:bg-[#161214]/90 border-t border-stone-200/80 dark:border-stone-800 space-y-3">
                   <div className="flex justify-between items-center text-sm font-bold">
                     <span>Subtotal Estimado:</span>
-                    <span className="text-base text-[#613d3e] dark:text-[#f4b7b9] tabular-nums">
+                    <span className="text-lg text-[#613d3e] dark:text-[#f4b7b9] tabular-nums font-extrabold">
                       {formatCurrency(subtotal)}
                     </span>
                   </div>
 
                   <button
                     onClick={handleSendToWhatsApp}
-                    className="w-full py-3.5 px-4 rounded-xl bg-[#10B981] hover:bg-[#059669] text-white font-semibold text-xs flex items-center justify-center gap-2 shadow-lg active:scale-[0.98] transition-all"
+                    className="w-full py-3.5 px-4 rounded-xl bg-[#10B981] hover:bg-[#059669] text-white font-bold text-xs flex items-center justify-center gap-2 shadow-lg active:scale-98 transition-all cursor-pointer"
                   >
                     <Send size={15} />
                     <span>Confirmar & Enviar Pedido no WhatsApp</span>
