@@ -133,6 +133,26 @@ export function useUserSettings() {
     }
   };
 
+  // Upload individual de imagem de banner para múltiplos banners rotativos
+  const uploadCatalogBannerImage = async (file: File): Promise<string> => {
+    if (!user) throw new Error('Usuário não autenticado');
+    try {
+      return await firebaseStorageService.uploadImage(file, user.uid, 'catalog-banner');
+    } catch (err) {
+      setError(err as Error);
+      throw err;
+    }
+  };
+
+  // Deletar imagem de banner avulsa do Firebase Storage
+  const deleteCatalogBannerImage = async (imageUrl: string): Promise<void> => {
+    try {
+      await firebaseStorageService.deleteImage(imageUrl);
+    } catch (storageError) {
+      console.warn('Erro ao deletar imagem de banner do Storage (continuando):', storageError);
+    }
+  };
+
   // Upload de arte/fundo da barra superior fixa da lojinha pública
   const uploadCatalogHeaderBackground = async (file: File, oldUrl?: string): Promise<string> => {
     if (!user) throw new Error('Usuário não autenticado');
@@ -348,6 +368,8 @@ export function useUserSettings() {
     uploadLogo,
     uploadCatalogLogo,
     uploadCatalogBanner,
+    uploadCatalogBannerImage,
+    deleteCatalogBannerImage,
     uploadCatalogHeaderBackground,
     uploadBanner,
     removeAvatar,

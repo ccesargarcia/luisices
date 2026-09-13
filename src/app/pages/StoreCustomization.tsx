@@ -39,8 +39,15 @@ import {
   Sun,
   Moon,
   Search,
+  ChevronUp,
+  ChevronDown,
+  ArrowUp,
+  ArrowDown,
+  Plus,
+  Trash2,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { BannerCarousel, CatalogBannerItem } from '../components/catalog/BannerCarousel';
 
 export const STORE_TEMPLATES = [
   {
@@ -153,6 +160,8 @@ export function StoreCustomization() {
     uploadCatalogLogo, 
     removeCatalogLogo,
     uploadCatalogBanner,
+    uploadCatalogBannerImage,
+    deleteCatalogBannerImage,
     removeCatalogBanner,
     uploadCatalogHeaderBackground,
     removeCatalogHeaderBackground,
@@ -163,6 +172,9 @@ export function StoreCustomization() {
   const [uploadingHeaderBackground, setUploadingHeaderBackground] = useState(false);
   const [currentCatalogLogo, setCurrentCatalogLogo] = useState<string | null>(null);
   const [currentCatalogBanner, setCurrentCatalogBanner] = useState<string | null>(null);
+  const [catalogBanners, setCatalogBanners] = useState<CatalogBannerItem[]>([]);
+  const [catalogBannerInterval, setCatalogBannerInterval] = useState<number>(5);
+  const [catalogBannerAutoPlay, setCatalogBannerAutoPlay] = useState<boolean>(true);
   const [currentCatalogHeaderBackground, setCurrentCatalogHeaderBackground] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState('identity');
 
@@ -235,10 +247,12 @@ export function StoreCustomization() {
       };
 
       // Carrega os dados compartilhados públicos da loja do Firestore
+      let pubData: any = null;
       try {
         const publicSnap = await getDoc(doc(db, 'storeSettings', 'public'));
         if (publicSnap.exists() && !isCancelled) {
           const pub = publicSnap.data();
+          pubData = pub;
           // Prioriza estritamente o catalogLogo exclusivo da loja pública
           if (pub.catalogLogo) {
             loadedLogo = pub.catalogLogo;
@@ -296,6 +310,26 @@ export function StoreCustomization() {
         setCurrentCatalogLogo(loadedLogo);
         setCurrentCatalogBanner(loadedBanner);
         setCurrentCatalogHeaderBackground(loadedHeaderBg);
+
+        // Carrega múltiplos banners rotativos (carrossel / propaganda)
+        let loadedBanners: CatalogBannerItem[] = [];
+        if (Array.isArray(pubData?.catalogBanners) && pubData.catalogBanners.length > 0) {
+          loadedBanners = pubData.catalogBanners;
+        } else if (Array.isArray(settings?.catalogBanners) && settings.catalogBanners.length > 0) {
+          loadedBanners = settings.catalogBanners;
+        } else if (loadedBanner) {
+          loadedBanners = [{ id: 'b-default', imageUrl: loadedBanner }];
+        }
+        setCatalogBanners(loadedBanners);
+
+        const loadedInterval = Number(pubData?.catalogBannerInterval || settings?.catalogBannerInterval) || 5;
+        setCatalogBannerInterval(loadedInterval);
+
+        const loadedAutoPlay = pubData?.catalogBannerAutoPlay !== undefined
+          ? Boolean(pubData.catalogBannerAutoPlay)
+          : (settings?.catalogBannerAutoPlay !== undefined ? Boolean(settings.catalogBannerAutoPlay) : true);
+        setCatalogBannerAutoPlay(loadedAutoPlay);
+
         if (!dataLoaded) {
           setFormData(data);
           setDataLoaded(true);
@@ -368,6 +402,102 @@ export function StoreCustomization() {
     }
   };
 
+  const handleAddBanner = async (file: File) => {
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+      toast.error('Formato inválido. Use imagem JPG, PNG ou WebP.');
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error('A imagem deve ter no máximo 5 MB.');
+      return;
+    }
+
+    setUploadingBanner(true);
+    try {
+      const url = await uploadCatalogBannerImage(file);
+      const newBanner: CatalogBannerItem = {
+        id: `b-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+        imageUrl: url,
+        title: '',
+        linkUrl: '',
+      };
+      const updated = [...catalogBanners, newBanner];
+      setCatalogBanners(updated);
+      setCurrentCatalogBanner(updated[0]?.imageUrl || url);
+
+      try {
+        const cached = localStorage.getItem('luisices_public_store_settings');
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          parsed.banner = updated[0]?.imageUrl || url;
+          parsed.catalogBanner = updated[0]?.imageUrl || url;
+          parsed.banners = updated;
+          parsed.catalogBanners = updated;
+          parsed.bannerInterval = catalogBannerInterval;
+          parsed.catalogBannerInterval = catalogBannerInterval;
+          parsed.bannerAutoPlay = catalogBannerAutoPlay;
+          parsed.catalogBannerAutoPlay = catalogBannerAutoPlay;
+          localStorage.setItem('luisices_public_store_settings', JSON.stringify(parsed));
+        }
+      } catch {}
+
+      toast.success(`Banner #${updated.length} adicionado ao carrossel!`);
+    } catch (error) {
+      console.error('Erro ao adicionar banner:', error);
+      toast.error(error instanceof Error ? error.message : 'Erro ao adicionar banner');
+    } finally {
+      setUploadingBanner(false);
+    }
+  };
+
+  const handleRemoveBanner = async (index: number) => {
+    const bannerToRemove = catalogBanners[index];
+    if (!bannerToRemove) return;
+    if (!confirm(`Deseja realmente remover o Banner #${index + 1}?`)) return;
+
+    const updated = catalogBanners.filter((_, i) => i !== index);
+    setCatalogBanners(updated);
+    setCurrentCatalogBanner(updated[0]?.imageUrl || null);
+
+    try {
+      await deleteCatalogBannerImage(bannerToRemove.imageUrl);
+    } catch (err) {
+      console.warn('Erro ao deletar imagem do storage:', err);
+    }
+
+    try {
+      const cached = localStorage.getItem('luisices_public_store_settings');
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        parsed.banner = updated[0]?.imageUrl || '';
+        parsed.catalogBanner = updated[0]?.imageUrl || '';
+        parsed.banners = updated;
+        parsed.catalogBanners = updated;
+        localStorage.setItem('luisices_public_store_settings', JSON.stringify(parsed));
+      }
+    } catch {}
+
+    toast.success('Banner removido do carrossel!');
+  };
+
+  const handleMoveBanner = (index: number, direction: 'up' | 'down') => {
+    const targetIndex = direction === 'up' ? index - 1 : index + 1;
+    if (targetIndex < 0 || targetIndex >= catalogBanners.length) return;
+
+    const updated = [...catalogBanners];
+    const [moved] = updated.splice(index, 1);
+    updated.splice(targetIndex, 0, moved);
+
+    setCatalogBanners(updated);
+    setCurrentCatalogBanner(updated[0]?.imageUrl || null);
+  };
+
+  const handleUpdateBannerField = (index: number, field: 'title' | 'linkUrl', value: string) => {
+    setCatalogBanners((prev) =>
+      prev.map((b, i) => (i === index ? { ...b, [field]: value } : b))
+    );
+  };
+
   const handleBannerUpload = async (file: File) => {
     if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
       toast.error('Formato inválido. Use imagem JPG, PNG ou WebP.');
@@ -382,6 +512,12 @@ export function StoreCustomization() {
     try {
       const url = await uploadCatalogBanner(file, currentCatalogBanner || undefined);
       setCurrentCatalogBanner(url);
+      setCatalogBanners((prev) => {
+        if (prev.length === 0) {
+          return [{ id: `b-${Date.now()}`, imageUrl: url }];
+        }
+        return prev.map((b, idx) => (idx === 0 ? { ...b, imageUrl: url } : b));
+      });
       try {
         const cached = localStorage.getItem('luisices_public_store_settings');
         if (cached) {
@@ -406,6 +542,7 @@ export function StoreCustomization() {
     const previousBanner = currentCatalogBanner;
     try {
       setCurrentCatalogBanner(null);
+      setCatalogBanners([]);
       await removeCatalogBanner(previousBanner || undefined);
       try {
         const cached = localStorage.getItem('luisices_public_store_settings');
@@ -413,6 +550,8 @@ export function StoreCustomization() {
           const parsed = JSON.parse(cached);
           parsed.banner = '';
           parsed.catalogBanner = '';
+          parsed.banners = [];
+          parsed.catalogBanners = [];
           localStorage.setItem('luisices_public_store_settings', JSON.stringify(parsed));
         }
       } catch {}
@@ -507,7 +646,10 @@ export function StoreCustomization() {
       await updateSettings({
         ...formData,
         catalogLogo: currentCatalogLogo || '',
-        catalogBanner: currentCatalogBanner || '',
+        catalogBanner: catalogBanners[0]?.imageUrl || currentCatalogBanner || '',
+        catalogBanners,
+        catalogBannerInterval,
+        catalogBannerAutoPlay,
         catalogBannerFixed: Boolean(formData.catalogBannerFixed),
         catalogHeaderBackground: currentCatalogHeaderBackground || '',
         catalogHeaderBgColor: formData.catalogHeaderBgColor,
@@ -526,8 +668,16 @@ export function StoreCustomization() {
           instagram: formData.instagramUrl ? formData.instagramUrl.replace(/^https?:\/\/(www\.)?instagram\.com\//, '').replace(/\/$/, '') : '',
           website: formData.websiteUrl,
           logo: currentCatalogLogo || '',
-          banner: currentCatalogBanner || '',
+          banner: catalogBanners[0]?.imageUrl || currentCatalogBanner || '',
+          catalogBanner: catalogBanners[0]?.imageUrl || currentCatalogBanner || '',
+          banners: catalogBanners,
+          catalogBanners: catalogBanners,
+          bannerInterval: catalogBannerInterval,
+          catalogBannerInterval: catalogBannerInterval,
+          bannerAutoPlay: catalogBannerAutoPlay,
+          catalogBannerAutoPlay: catalogBannerAutoPlay,
           bannerFixed: Boolean(formData.catalogBannerFixed),
+          catalogBannerFixed: Boolean(formData.catalogBannerFixed),
           headerBackground: currentCatalogHeaderBackground || '',
           headerBgColor: formData.catalogHeaderBgColor,
           headerTextColor: formData.catalogHeaderTextColor,
@@ -718,95 +868,237 @@ export function StoreCustomization() {
 
             {/* ABA 1: Logo & Vitrine */}
             <TabsContent value="identity" className="space-y-5 pt-3">
-              {/* Card de Upload do Banner de Capa Panorâmico (Proporção 4:1) */}
+              {/* Card de Gestão dos Banners Rotativos (Vitrine / Propaganda 4:1) */}
               <Card className="border-primary/25 shadow-xs">
                 <CardHeader>
                   <div className="flex items-center justify-between gap-2">
                     <CardTitle className="text-base flex items-center gap-2">
-                      <ImageIcon className="size-4 text-primary" />
-                      Banner de Capa da Lojinha (Formato Panorâmico 4:1)
+                      <Layers className="size-4 text-primary" />
+                      Banners Rotativos & Vitrine de Propaganda (Carrossel)
                     </CardTitle>
                     <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-primary/10 text-primary shrink-0">
-                      Proporção 4:1
+                      {catalogBanners.length} {catalogBanners.length === 1 ? 'propaganda ativa' : 'propagandas ativas'}
                     </span>
                   </div>
                   <CardDescription className="text-xs">
-                    Adicione um banner panorâmico no topo do seu catálogo para destacar a identidade visual do seu ateliê, promoções ou fotos de produtos em destaque.
+                    Crie uma vitrine em carrossel rotativo no topo do seu catálogo. Adicione quantos banners desejar, reordene e defina a velocidade da transição automática estilo propaganda comercial.
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  {/* Prévia do Banner Panorâmico */}
-                  <div className="relative w-full aspect-[4/1] rounded-2xl overflow-hidden border border-border/80 bg-muted/30 flex items-center justify-center group shadow-xs">
-                    {currentCatalogBanner ? (
-                      <img
-                        src={currentCatalogBanner}
-                        alt="Banner de Capa da Lojinha"
-                        className="w-full h-full object-cover"
+                  {/* Barra de Controles de Rotação Automática e Intervalo */}
+                  <div className="p-3 rounded-xl bg-muted/40 border border-border/60 flex flex-wrap items-center justify-between gap-3">
+                    <div className="flex items-center gap-2.5">
+                      <Switch
+                        id="banner-autoplay-toggle"
+                        checked={catalogBannerAutoPlay}
+                        onCheckedChange={(checked) => setCatalogBannerAutoPlay(checked)}
                       />
+                      <div>
+                        <Label htmlFor="banner-autoplay-toggle" className="text-xs font-semibold cursor-pointer">
+                          Rotação Automática
+                        </Label>
+                        <p className="text-[10px] text-muted-foreground">
+                          {catalogBannerAutoPlay ? 'Alterna os banners de forma automática' : 'Troca pausada (apenas manual)'}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-medium text-muted-foreground">Tempo por banner:</span>
+                      <div className="flex items-center gap-1 bg-background p-1 rounded-lg border border-border/80">
+                        {[
+                          { val: 3, label: '3s' },
+                          { val: 5, label: '5s' },
+                          { val: 7, label: '7s' },
+                          { val: 10, label: '10s' },
+                        ].map((item) => (
+                          <button
+                            key={item.val}
+                            type="button"
+                            onClick={() => setCatalogBannerInterval(item.val)}
+                            className={`px-2.5 py-1 rounded-md text-xs font-semibold transition-all ${
+                              catalogBannerInterval === item.val
+                                ? 'bg-primary text-primary-foreground shadow-2xs'
+                                : 'text-muted-foreground hover:text-foreground hover:bg-muted/60'
+                            }`}
+                          >
+                            {item.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Prévia em Tempo Real do Carrossel */}
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between text-xs text-muted-foreground font-medium">
+                      <span className="flex items-center gap-1.5">
+                        <Eye className="size-3.5 text-primary" />
+                        Prévia em Tempo Real
+                      </span>
+                      {catalogBanners.length > 1 && (
+                        <span className="text-[11px] text-primary/80">
+                          {catalogBannerAutoPlay ? `Alternando a cada ${catalogBannerInterval} segundos` : 'Pausado na visualização'}
+                        </span>
+                      )}
+                    </div>
+
+                    {catalogBanners.length > 0 ? (
+                      <div className="border border-border/80 rounded-2xl overflow-hidden shadow-xs bg-muted/20">
+                        <BannerCarousel
+                          banners={catalogBanners}
+                          intervalSeconds={catalogBannerInterval}
+                          autoPlay={catalogBannerAutoPlay}
+                          aspectRatioClass="aspect-[4/1]"
+                          roundedClass="rounded-2xl"
+                          storeName={formData.businessName || 'Ateliê'}
+                        />
+                      </div>
                     ) : (
-                      <div className="flex flex-col items-center justify-center text-center p-4 text-muted-foreground gap-1.5">
-                        <ImageIcon className="size-7 opacity-40" />
-                        <p className="text-xs font-semibold">Nenhum banner de capa cadastrado</p>
-                        <p className="text-[10px] opacity-75">Recomendado: 1584 x 396 px (ou proporção 4:1) • JPG, PNG ou WebP até 5MB</p>
+                      <div className="relative w-full aspect-[4/1] rounded-2xl border-2 border-dashed border-border/80 bg-muted/20 flex flex-col items-center justify-center p-4 text-center text-muted-foreground gap-1.5">
+                        <ImageIcon className="size-7 opacity-40 text-primary" />
+                        <p className="text-xs font-semibold text-foreground/80">Nenhum banner cadastrado</p>
+                        <p className="text-[10px] opacity-75 max-w-md">
+                          Adicione banners no formato panorâmico 4:1 (recomendado: 1584 x 396 px) para criar o carrossel de propaganda.
+                        </p>
                       </div>
                     )}
                   </div>
 
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Label htmlFor="store-banner-upload" className="cursor-pointer">
+                  {/* Botão de Adicionar Novo Banner */}
+                  <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
+                    <Label htmlFor="store-banner-upload-multi" className="cursor-pointer inline-block">
                       <Button
                         type="button"
-                        variant="outline"
+                        variant="default"
                         size="sm"
                         disabled={uploadingBanner}
-                        className="gap-2 border-primary/30 text-primary hover:bg-primary/5"
+                        className="gap-2 shadow-xs"
                         asChild
                       >
                         <span>
                           {uploadingBanner ? (
                             <>
-                              <Loader2 className="size-3.5 animate-spin" />
-                              Enviando banner de capa...
+                              <Loader2 className="size-4 animate-spin" />
+                              Enviando banner...
                             </>
                           ) : (
                             <>
-                              <Upload className="size-3.5" />
-                              {currentCatalogBanner ? 'Trocar Banner de Capa' : 'Enviar Banner de Capa'}
+                              <Plus className="size-4" />
+                              Adicionar Banner / Propaganda
                             </>
                           )}
                         </span>
                       </Button>
                     </Label>
                     <Input
-                      id="store-banner-upload"
+                      id="store-banner-upload-multi"
                       type="file"
                       accept="image/jpeg,image/png,image/webp"
                       className="hidden"
                       onChange={(e) => {
                         const file = e.target.files?.[0];
                         e.target.value = '';
-                        if (file) void handleBannerUpload(file);
+                        if (file) void handleAddBanner(file);
                       }}
                     />
-
-                    {currentCatalogBanner && (
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        disabled={uploadingBanner}
-                        onClick={handleBannerRemove}
-                        className="gap-1.5 text-destructive hover:text-destructive hover:bg-destructive/10 text-xs"
-                      >
-                        <X className="size-3.5" />
-                        Remover Banner
-                      </Button>
-                    )}
+                    <span className="text-[11px] text-muted-foreground">
+                      JPG, PNG ou WebP até 5MB • Formato Panorâmico 4:1
+                    </span>
                   </div>
+
+                  {/* Lista Ordenável de Banners Cadastrados */}
+                  {catalogBanners.length > 0 && (
+                    <div className="space-y-3 pt-2">
+                      <div className="flex items-center justify-between text-xs font-semibold text-muted-foreground">
+                        <span>Banners Cadastrados ({catalogBanners.length})</span>
+                        <span className="text-[10px] font-normal">Use as setas para reordenar a sequência de exibição</span>
+                      </div>
+                      <div className="space-y-2.5">
+                        {catalogBanners.map((banner, index) => (
+                          <div
+                            key={banner.id || `banner-${index}`}
+                            className="flex flex-col sm:flex-row items-start sm:items-center gap-3 p-3 rounded-xl border border-border/70 bg-card/60 hover:border-primary/40 transition-colors shadow-2xs"
+                          >
+                            {/* Thumbnail & Posição */}
+                            <div className="flex items-center gap-2.5 shrink-0">
+                              <span className="flex items-center justify-center size-6 rounded-full bg-primary/10 text-primary text-xs font-bold">
+                                {index + 1}
+                              </span>
+                              <div className="w-28 sm:w-32 aspect-[4/1] rounded-lg overflow-hidden border border-border/80 bg-muted shrink-0 shadow-2xs">
+                                <img
+                                  src={banner.imageUrl}
+                                  alt={banner.title || `Banner ${index + 1}`}
+                                  className="w-full h-full object-cover"
+                                />
+                              </div>
+                            </div>
+
+                            {/* Título e Link */}
+                            <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-2 w-full min-w-0">
+                              <div className="space-y-1">
+                                <Label className="text-[10px] text-muted-foreground">Legenda / Título (opcional)</Label>
+                                <Input
+                                  placeholder="Ex: Volta às Aulas com 15% OFF"
+                                  value={banner.title || ''}
+                                  onChange={(e) => handleUpdateBannerField(index, 'title', e.target.value)}
+                                  className="h-8 text-xs bg-background/80"
+                                />
+                              </div>
+                              <div className="space-y-1">
+                                <Label className="text-[10px] text-muted-foreground">Link de Clique (opcional)</Label>
+                                <Input
+                                  placeholder="Ex: https://instagram.com/... ou link promocional"
+                                  value={banner.linkUrl || ''}
+                                  onChange={(e) => handleUpdateBannerField(index, 'linkUrl', e.target.value)}
+                                  className="h-8 text-xs bg-background/80"
+                                />
+                              </div>
+                            </div>
+
+                            {/* Controles de Ordenação e Remoção */}
+                            <div className="flex items-center gap-1 shrink-0 self-end sm:self-center">
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                disabled={index === 0}
+                                onClick={() => handleMoveBanner(index, 'up')}
+                                title="Subir posição (exibir antes)"
+                                className="size-8 text-muted-foreground hover:text-foreground"
+                              >
+                                <ArrowUp className="size-4" />
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                disabled={index === catalogBanners.length - 1}
+                                onClick={() => handleMoveBanner(index, 'down')}
+                                title="Descer posição (exibir depois)"
+                                className="size-8 text-muted-foreground hover:text-foreground"
+                              >
+                                <ArrowDown className="size-4" />
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => handleRemoveBanner(index)}
+                                title="Remover este banner"
+                                className="size-8 text-destructive hover:text-destructive hover:bg-destructive/10"
+                              >
+                                <Trash2 className="size-4" />
+                              </Button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
                   <p className="text-[11px] text-muted-foreground">
-                    {currentCatalogBanner
-                      ? '✅ Banner de capa panorâmico ativo no topo do catálogo público online.'
-                      : '💡 Dica: Um banner em proporção 4:1 (ex: 1584x396px) cria uma apresentação visual marcante de vitrine no topo do seu catálogo.'}
+                    💡 <strong>Dica Pro:</strong> Os banners em estilo carrossel giram automaticamente para seus clientes enquanto navegam pelos seus produtos, aumentando a visualização de lançamentos e promoções.
                   </p>
                 </CardContent>
               </Card>
@@ -1749,13 +2041,24 @@ export function StoreCustomization() {
               </div>
 
               {/* Banner de Capa simulado (se houver) */}
-              {currentCatalogBanner && (
+              {catalogBanners.length > 0 ? (
+                <div className="m-2.5 rounded-xl overflow-hidden border border-white/60 shadow-2xs">
+                  <BannerCarousel
+                    banners={catalogBanners}
+                    intervalSeconds={catalogBannerInterval}
+                    autoPlay={catalogBannerAutoPlay}
+                    aspectRatioClass="aspect-[3.5/1]"
+                    roundedClass="rounded-xl"
+                    storeName={formData.businessName || 'Ateliê'}
+                  />
+                </div>
+              ) : currentCatalogBanner ? (
                 <div className="m-2.5 rounded-xl overflow-hidden border border-white/60 shadow-2xs">
                   <div className="relative w-full aspect-[3.5/1] bg-gradient-to-r from-[#fceee9] via-[#f7d6d0] to-[#ede7f6] overflow-hidden flex items-center justify-center text-stone-400">
                     <img src={currentCatalogBanner} alt="Capa da Loja" className="w-full h-full object-cover" />
                   </div>
                 </div>
-              )}
+              ) : null}
 
               {/* Informações da Loja / Apresentação (Hero) */}
               {formData.catalogShowHero && (

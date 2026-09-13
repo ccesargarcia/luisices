@@ -7,6 +7,13 @@
 import { doc, getDoc, setDoc, updateDoc, deleteField } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 
+export interface CatalogBannerItem {
+  id: string;
+  imageUrl: string;
+  title?: string;
+  linkUrl?: string;
+}
+
 export interface UserSettings {
   userId: string;
 
@@ -60,6 +67,9 @@ export interface UserSettings {
   // Customizações do Catálogo Online Público (Lojinha)
   catalogLogo?: string;                      // Logo exclusivo da lojinha pública online (independente do painel)
   catalogBanner?: string;                    // Banner de capa exclusivo da lojinha pública online (formato LinkedIn / 4:1)
+  catalogBanners?: CatalogBannerItem[];       // Lista de banners rotativos (estilo propaganda)
+  catalogBannerInterval?: number;            // Tempo de transição em segundos (ex: 3, 5, 7, 10)
+  catalogBannerAutoPlay?: boolean;           // Rotação automática ativa (autoplay)
   catalogBannerFixed?: boolean;              // Efeito Parallax/Vitrine: banner fixo ao fundo com produtos rolando por cima
   // Personalização da Barra Superior Fixa (Header)
   catalogHeaderBackground?: string;          // Imagem de fundo que preenche toda a barra superior fixa
@@ -129,6 +139,9 @@ export class FirebaseSettingsService {
     if (settings.catalogBanner === '' || settings.catalogBanner === null) {
       cleanSettings.catalogBanner = deleteField();
     }
+    if (settings.catalogBanners !== undefined && settings.catalogBanners.length === 0) {
+      cleanSettings.catalogBanners = deleteField();
+    }
 
     const data = {
       ...cleanSettings,
@@ -186,6 +199,17 @@ export class FirebaseSettingsService {
       if (settings.catalogHeaderLogoPosition !== undefined) publicData.catalogHeaderLogoPosition = settings.catalogHeaderLogoPosition;
       if (settings.catalogHeaderHeight !== undefined) publicData.catalogHeaderHeight = settings.catalogHeaderHeight;
       if (settings.catalogHeaderHideText !== undefined) publicData.catalogHeaderHideText = settings.catalogHeaderHideText;
+
+      // Banners Rotativos (Carrossel / Propaganda)
+      if (settings.catalogBanners !== undefined) {
+        publicData.catalogBanners = settings.catalogBanners.length > 0 ? settings.catalogBanners : deleteField();
+      }
+      if (settings.catalogBannerInterval !== undefined) {
+        publicData.catalogBannerInterval = settings.catalogBannerInterval;
+      }
+      if (settings.catalogBannerAutoPlay !== undefined) {
+        publicData.catalogBannerAutoPlay = settings.catalogBannerAutoPlay;
+      }
 
       // Customizações da Lojinha / Catálogo
       if (settings.catalogBadge !== undefined) publicData.catalogBadge = settings.catalogBadge;

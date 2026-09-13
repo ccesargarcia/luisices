@@ -27,6 +27,7 @@ import {
 import { formatCurrency } from '../utils/currency';
 import { collection, getDocs, doc, getDoc, query, where } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
+import { BannerCarousel, CatalogBannerItem } from '../components/catalog/BannerCarousel';
 
 export interface CatalogProduct {
   id: string;
@@ -87,6 +88,9 @@ export function PublicCatalog() {
       website: '',
       logo: '',
       banner: '',
+      banners: [] as CatalogBannerItem[],
+      bannerInterval: 5,
+      bannerAutoPlay: true,
       bannerFixed: false,
       headerBackground: '',
       headerBgColor: '',
@@ -112,7 +116,17 @@ export function PublicCatalog() {
     try {
       const cached = localStorage.getItem('luisices_public_store_settings');
       if (cached) {
-        return { ...defaultInfo, ...JSON.parse(cached) };
+        const parsed = JSON.parse(cached);
+        const parsedBanners: CatalogBannerItem[] = Array.isArray(parsed.banners) && parsed.banners.length > 0
+          ? parsed.banners
+          : (parsed.banner ? [{ id: 'b-default', imageUrl: parsed.banner }] : []);
+        return {
+          ...defaultInfo,
+          ...parsed,
+          banners: parsedBanners,
+          bannerInterval: Number(parsed.bannerInterval) || 5,
+          bannerAutoPlay: parsed.bannerAutoPlay !== undefined ? Boolean(parsed.bannerAutoPlay) : true,
+        };
       }
     } catch {}
     return defaultInfo;
@@ -229,6 +243,11 @@ export function PublicCatalog() {
                 website: s.websiteUrl || prev.website,
                 logo: s.catalogLogo || '',
                 banner: s.catalogBanner || '',
+                banners: Array.isArray(s.catalogBanners) && s.catalogBanners.length > 0
+                  ? (s.catalogBanners as CatalogBannerItem[])
+                  : (s.catalogBanner ? [{ id: 'b-default', imageUrl: s.catalogBanner }] : (prev.banners || [])),
+                bannerInterval: Number(s.catalogBannerInterval) || prev.bannerInterval || 5,
+                bannerAutoPlay: s.catalogBannerAutoPlay !== undefined ? Boolean(s.catalogBannerAutoPlay) : (prev.bannerAutoPlay ?? true),
                 bannerFixed: s.catalogBannerFixed !== undefined ? Boolean(s.catalogBannerFixed) : (prev.bannerFixed ?? false),
                 headerBackground: s.catalogHeaderBackground !== undefined ? s.catalogHeaderBackground : (prev.headerBackground || ''),
                 headerBgColor: s.catalogHeaderBgColor !== undefined ? s.catalogHeaderBgColor : (prev.headerBgColor || ''),
@@ -576,17 +595,20 @@ export function PublicCatalog() {
           </div>
         </section>
 
-        {/* Banner de Capa Panorâmico (se cadastrado) */}
-        {businessInfo.banner && (
+        {/* Banner de Capa Rotativo / Carrossel Panorâmico (se cadastrado) */}
+        {((businessInfo.banners && businessInfo.banners.length > 0) || businessInfo.banner) && (
           <div className="w-full relative z-0">
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-3 sm:pt-4">
-              <div className="relative w-full aspect-[3.2/1] sm:aspect-[4/1] md:aspect-[4.5/1] rounded-2xl sm:rounded-3xl overflow-hidden shadow-sm bg-gradient-to-r from-[#fceee9] via-[#f7d6d0] to-[#ede7f6] dark:from-[#2a1a1f] dark:via-[#3d2429] dark:to-[#1d1624]">
-                <img
-                  src={businessInfo.banner}
-                  alt={`Banner de capa de ${businessInfo.name}`}
-                  className="w-full h-full object-cover"
-                />
-              </div>
+              <BannerCarousel
+                banners={
+                  businessInfo.banners && businessInfo.banners.length > 0
+                    ? businessInfo.banners
+                    : [{ id: 'b-default', imageUrl: businessInfo.banner }]
+                }
+                intervalSeconds={businessInfo.bannerInterval}
+                autoPlay={businessInfo.bannerAutoPlay}
+                storeName={businessInfo.name}
+              />
             </div>
           </div>
         )}
