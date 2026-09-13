@@ -568,41 +568,31 @@ export function StoreCustomization() {
 
             {/* ABA 1: Logo & Vitrine */}
             <TabsContent value="identity" className="space-y-5 pt-3">
-              {/* Card de Upload do Banner de Capa Panorâmico (Estilo LinkedIn / 4:1) */}
+              {/* Card de Upload do Banner de Capa Panorâmico (Proporção 4:1) */}
               <Card className="border-primary/25 shadow-xs">
                 <CardHeader>
                   <div className="flex items-center justify-between gap-2">
                     <CardTitle className="text-base flex items-center gap-2">
                       <ImageIcon className="size-4 text-primary" />
-                      Banner de Capa da Lojinha (Formato LinkedIn / Panorâmico)
+                      Banner de Capa da Lojinha (Formato Panorâmico 4:1)
                     </CardTitle>
                     <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-primary/10 text-primary shrink-0">
                       Proporção 4:1
                     </span>
                   </div>
                   <CardDescription className="text-xs">
-                    Adicione um banner panorâmico no topo do seu catálogo para estampar a identidade visual do seu ateliê, fotos de produtos ou arte de capa (como no cabeçalho do LinkedIn).
+                    Adicione um banner panorâmico no topo do seu catálogo para destacar a identidade visual do seu ateliê, promoções ou fotos de produtos em destaque.
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  {/* Prévia do Banner com Logo Sobreposto */}
+                  {/* Prévia do Banner Panorâmico */}
                   <div className="relative w-full aspect-[4/1] rounded-2xl overflow-hidden border border-border/80 bg-muted/30 flex items-center justify-center group shadow-xs">
                     {currentCatalogBanner ? (
-                      <>
-                        <img
-                          src={currentCatalogBanner}
-                          alt="Banner de Capa da Lojinha"
-                          className="w-full h-full object-cover"
-                        />
-                        {/* Simulação do Logo Sobreposto */}
-                        <div className="absolute -bottom-2 left-4 size-12 sm:size-14 rounded-full ring-2 ring-background bg-background shadow-md overflow-hidden flex items-center justify-center">
-                          {currentCatalogLogo ? (
-                            <img src={currentCatalogLogo} alt="Logo" className="w-full h-full object-cover" />
-                          ) : (
-                            <Store className="size-5 text-muted-foreground opacity-50" />
-                          )}
-                        </div>
-                      </>
+                      <img
+                        src={currentCatalogBanner}
+                        alt="Banner de Capa da Lojinha"
+                        className="w-full h-full object-cover"
+                      />
                     ) : (
                       <div className="flex flex-col items-center justify-center text-center p-4 text-muted-foreground gap-1.5">
                         <ImageIcon className="size-7 opacity-40" />
@@ -666,15 +656,15 @@ export function StoreCustomization() {
                   <p className="text-[11px] text-muted-foreground">
                     {currentCatalogBanner
                       ? '✅ Banner de capa panorâmico ativo no topo do catálogo público online.'
-                      : '💡 Dica: Um banner em proporção 4:1 (ex: 1584x396px) cria uma apresentação visual marcante de estúdio, com o logo do ateliê sobreposto no canto inferior estilo LinkedIn.'}
+                      : '💡 Dica: Um banner em proporção 4:1 (ex: 1584x396px) cria uma apresentação visual marcante de vitrine no topo do seu catálogo.'}
                   </p>
 
-                  {/* Opção de Banner Fixo / Parallax */}
+                  {/* Opção de Banner Fixo / Vitrine */}
                   <div className="pt-3 border-t border-border/60 flex items-center justify-between gap-4">
                     <div className="space-y-0.5">
                       <Label htmlFor="banner-fixed-switch" className="text-xs font-semibold flex items-center gap-1.5 cursor-pointer">
                         <Layers className="size-3.5 text-primary" />
-                        Fixar banner de capa (Efeito Parallax / Vitrine)
+                        Fixar banner de capa (Efeito Vitrine)
                       </Label>
                       <p className="text-[11px] text-muted-foreground">
                         O banner de capa fica fixado ao fundo e o catálogo de produtos sobe suavemente por cima dele ao rolar a página.

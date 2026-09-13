@@ -207,17 +207,6 @@ export function PublicCatalog() {
   const [customerNotes, setCustomerNotes] = useState<string>('');
   const [previewCustomName, setPreviewCustomName] = useState<string>('');
 
-  // Efeito Parallax suave quando o banner fixo está ativado
-  const [scrollY, setScrollY] = useState(0);
-  useEffect(() => {
-    if (!businessInfo.bannerFixed) return;
-    const handleScroll = () => {
-      setScrollY(window.scrollY);
-    };
-    window.addEventListener('scroll', handleScroll, { passive: true });
-    return () => window.removeEventListener('scroll', handleScroll);
-  }, [businessInfo.bannerFixed]);
-
   // Guarda o tema da área administrativa antes de abrir o catálogo
   const originalThemeRef = useRef<string | null>(null);
   useEffect(() => {
@@ -521,7 +510,7 @@ export function PublicCatalog() {
 
         {/* Barra de Aviso / Alerta Promocional (se preenchido no painel) */}
         {businessInfo.announcement && (
-          <aside aria-label="Aviso do ateliê" className="sticky top-0 z-40 px-4 py-2 bg-gradient-to-r from-amber-500/20 via-amber-400/25 to-amber-500/20 border-b border-amber-500/30 text-amber-900 dark:text-amber-200 text-xs font-semibold text-center flex items-center justify-center gap-2 backdrop-blur-md">
+          <aside aria-label="Aviso do ateliê" className="relative z-20 px-4 py-2 bg-gradient-to-r from-amber-500/20 via-amber-400/25 to-amber-500/20 border-b border-amber-500/30 text-amber-900 dark:text-amber-200 text-xs font-semibold text-center flex items-center justify-center gap-2 backdrop-blur-md">
             <Sparkles size={14} className="shrink-0 text-amber-600 dark:text-amber-400 animate-pulse" />
             <span className="truncate max-w-2xl">{businessInfo.announcement}</span>
           </aside>
@@ -629,65 +618,48 @@ export function PublicCatalog() {
           </div>
         </header>
 
-        {/* 2. Conteúdo Principal Responsivo (Desktop até max-w-7xl) */}
-        <main className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-4 sm:pt-6 space-y-6 sm:space-y-8">
-          
-          {/* Banner de Capa Panorâmico (Estilo LinkedIn 4:1) & Bloco de Identidade Visual */}
-          <section className="relative overflow-hidden rounded-3xl bg-white/75 dark:bg-[#1f191b]/85 backdrop-blur-md border border-white/60 dark:border-[#ebcdcd]/15 shadow-[0_8px_32px_rgb(230_180_180/15%)] dark:shadow-[0_16px_40px_-8px_rgb(0_0_0/65%)]">
-            
-            {/* 1. Capa Panorâmica (4:1) com suporte a Efeito Parallax / Fixo */}
-            <div className={`relative w-full aspect-[3.2/1] sm:aspect-[4/1] md:aspect-[4.5/1] overflow-hidden ${
-              businessInfo.bannerFixed ? 'sticky top-14 z-0' : ''
-            } bg-gradient-to-r from-[#fceee9] via-[#f7d6d0] to-[#ede7f6] dark:from-[#2a1a1f] dark:via-[#3d2429] dark:to-[#1d1624]`}>
-              {businessInfo.banner ? (
+        {/* Banner de Capa Panorâmico (se cadastrado) */}
+        {businessInfo.banner && (
+          <div className={`w-full ${
+            businessInfo.bannerFixed ? 'sticky top-14 sm:top-16 z-0' : 'relative z-0'
+          }`}>
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-3 sm:pt-4">
+              <div className="relative w-full aspect-[3.2/1] sm:aspect-[4/1] md:aspect-[4.5/1] rounded-2xl sm:rounded-3xl overflow-hidden shadow-sm bg-gradient-to-r from-[#fceee9] via-[#f7d6d0] to-[#ede7f6] dark:from-[#2a1a1f] dark:via-[#3d2429] dark:to-[#1d1624]">
                 <img
                   src={businessInfo.banner}
                   alt={`Banner de capa de ${businessInfo.name}`}
-                  className="w-full h-full object-cover transition-transform duration-75 will-change-transform"
-                  style={businessInfo.bannerFixed ? {
-                    transform: `translateY(${Math.min(scrollY * 0.35, 90)}px) scale(1.05)`,
-                  } : undefined}
+                  className="w-full h-full object-cover"
                 />
-              ) : (
-                /* Fundo decorativo sutil padrão de papelaria afetiva com partículas */
-                <div 
-                  className="w-full h-full flex items-center justify-end pr-8 sm:pr-16 opacity-30 select-none pointer-events-none transition-transform duration-75"
-                  style={businessInfo.bannerFixed ? {
-                    transform: `translateY(${Math.min(scrollY * 0.35, 90)}px)`,
-                  } : undefined}
-                >
-                  <div className="text-right space-y-1">
-                    <Sparkles className="size-14 sm:size-24 text-[#613d3e] dark:text-[#f4b7b9] ml-auto opacity-35" />
-                  </div>
-                </div>
-              )}
+              </div>
             </div>
+          </div>
+        )}
 
-            {/* 2. Área de Identidade com Logo Sobreposto (Estilo Perfil do LinkedIn) */}
-            <div className={`px-5 sm:px-8 pb-6 pt-0 ${
-              businessInfo.bannerFixed
-                ? 'relative z-10 bg-white/90 dark:bg-[#1f191b]/95 backdrop-blur-xl border-t border-white/40 dark:border-white/5'
-                : ''
-            }`}>
-              <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 -mt-10 sm:-mt-14 mb-4">
-                
-                {/* Logo Circular com borda ring sobreposta à capa */}
-                <div className="relative size-20 sm:size-28 rounded-full ring-4 ring-white dark:ring-[#1f191b] bg-white dark:bg-[#161214] shadow-lg overflow-hidden shrink-0 flex items-center justify-center">
-                  {businessInfo.logo ? (
-                    <img
-                      src={businessInfo.logo}
-                      alt={businessInfo.name}
-                      className="w-full h-full object-cover"
-                    />
-                  ) : (
-                    <div className="w-full h-full bg-[#613d3e]/10 dark:bg-[#f4b7b9]/20 flex items-center justify-center text-[#613d3e] dark:text-[#f4b7b9]">
-                      <Sparkles className="size-8 sm:size-10" />
-                    </div>
+        {/* 2. Conteúdo Principal Responsivo (Desktop até max-w-7xl) */}
+        <main className={`relative z-10 ${
+          businessInfo.bannerFixed && businessInfo.banner
+            ? 'bg-[#fff8f7] dark:bg-[#161214] rounded-t-3xl shadow-[0_-16px_36px_rgba(0,0,0,0.07)] dark:shadow-[0_-16px_36px_rgba(0,0,0,0.45)] -mt-4 sm:-mt-6'
+            : ''
+        }`}>
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-4 sm:pt-6 space-y-6 sm:space-y-8">
+            
+            {/* Bloco de Apresentação da Loja & Selos de Confiança */}
+            <section className="relative rounded-3xl bg-white/80 dark:bg-[#1f191b]/85 backdrop-blur-md border border-white/60 dark:border-[#ebcdcd]/15 p-5 sm:p-7 shadow-[0_8px_30px_rgb(0_0_0/4%)] dark:shadow-[0_16px_40px_-8px_rgb(0_0_0/50%)] space-y-3.5">
+              
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="space-y-1">
+                  <h2 className="text-xl sm:text-2xl md:text-3xl font-extrabold tracking-tight text-[#221a1a] dark:text-[#e8e0e3] leading-tight">
+                    {businessInfo.name}
+                  </h2>
+                  {businessInfo.tagline && (
+                    <p className="text-sm sm:text-base font-medium text-[#613d3e] dark:text-[#f4b7b9] leading-snug">
+                      {businessInfo.tagline}
+                    </p>
                   )}
                 </div>
 
                 {/* Selo & Status de Atendimento */}
-                <div className="flex flex-wrap items-center gap-2 sm:mb-2">
+                <div className="flex flex-wrap items-center gap-2 shrink-0">
                   <span className="text-xs font-semibold px-3 py-1 rounded-full bg-[#613d3e]/10 dark:bg-[#f4b7b9]/15 text-[#613d3e] dark:text-[#f4b7b9]">
                     {businessInfo.badge || 'Atelier Afetivo'}
                   </span>
@@ -696,43 +668,27 @@ export function PublicCatalog() {
                     {businessInfo.statusText || 'Atendimento WhatsApp ativo'}
                   </span>
                 </div>
-
               </div>
 
-              {/* Informações da Loja: Nome, Slogan/Tagline e Descrição */}
-              <div className="space-y-2 max-w-3xl">
-                <div className="flex items-center gap-2">
-                  <h2 className="text-xl sm:text-2xl md:text-3xl font-extrabold tracking-tight text-[#221a1a] dark:text-[#e8e0e3] leading-tight">
-                    {businessInfo.name}
-                  </h2>
-                </div>
+              <p className="text-xs sm:text-sm text-[#504444] dark:text-[#c9c0b8] leading-relaxed max-w-2xl">
+                {businessInfo.heroDescription || 'Escolha suas peças, informe o nome para personalização e envie o pedido formatado diretamente no nosso WhatsApp.'}
+              </p>
 
-                {businessInfo.tagline ? (
-                  <p className="text-sm sm:text-base font-medium text-[#613d3e] dark:text-[#f4b7b9] leading-snug">
-                    {businessInfo.tagline}
-                  </p>
-                ) : null}
-
-                <p className="text-xs sm:text-sm text-[#504444] dark:text-[#c9c0b8] leading-relaxed max-w-2xl">
-                  {businessInfo.heroDescription || 'Escolha suas peças, informe o nome para personalização e envie o pedido formatado diretamente no nosso WhatsApp.'}
-                </p>
-
-                {/* Destaques de confiança (Pills informativas) */}
-                <div className="pt-2 flex flex-wrap gap-2 text-[11px] text-[#504444] dark:text-[#c9c0b8] font-medium">
-                  <span className="inline-flex items-center gap-1 bg-stone-100/80 dark:bg-[#161214]/60 px-2.5 py-1 rounded-full border border-stone-200/60 dark:border-stone-800">
-                    <Sparkle size={12} className="text-[#613d3e] dark:text-[#f4b7b9]" /> Feito à mão com afeto
-                  </span>
-                  <span className="inline-flex items-center gap-1 bg-stone-100/80 dark:bg-[#161214]/60 px-2.5 py-1 rounded-full border border-stone-200/60 dark:border-stone-800">
-                    <ShieldCheck size={12} className="text-emerald-600 dark:text-emerald-400" /> Aprovação da arte prévia
-                  </span>
-                  <span className="inline-flex items-center gap-1 bg-stone-100/80 dark:bg-[#161214]/60 px-2.5 py-1 rounded-full border border-stone-200/60 dark:border-stone-800">
-                    <Truck size={12} className="text-sky-600 dark:text-sky-400" /> Envio seguro para todo Brasil
-                  </span>
-                </div>
+              {/* Destaques de confiança (Pills informativas) */}
+              <div className="pt-1 flex flex-wrap gap-2 text-[11px] text-[#504444] dark:text-[#c9c0b8] font-medium">
+                <span className="inline-flex items-center gap-1 bg-stone-100/80 dark:bg-[#161214]/60 px-2.5 py-1 rounded-full border border-stone-200/60 dark:border-stone-800">
+                  <Sparkle size={12} className="text-[#613d3e] dark:text-[#f4b7b9]" /> Feito à mão com afeto
+                </span>
+                <span className="inline-flex items-center gap-1 bg-stone-100/80 dark:bg-[#161214]/60 px-2.5 py-1 rounded-full border border-stone-200/60 dark:border-stone-800">
+                  <ShieldCheck size={12} className="text-emerald-600 dark:text-emerald-400" /> Aprovação da arte prévia
+                </span>
+                <span className="inline-flex items-center gap-1 bg-stone-100/80 dark:bg-[#161214]/60 px-2.5 py-1 rounded-full border border-stone-200/60 dark:border-stone-800">
+                  <Truck size={12} className="text-sky-600 dark:text-sky-400" /> Envio seguro para todo Brasil
+                </span>
               </div>
 
               {/* Input de Busca no Mobile (oculto no desktop para não duplicar com o header) */}
-              <div className="mt-4 md:hidden relative">
+              <div className="mt-2 md:hidden relative">
                 <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-stone-400 dark:text-stone-500" />
                 <input
                   type="text"
@@ -751,8 +707,7 @@ export function PublicCatalog() {
                 )}
               </div>
 
-            </div>
-          </section>
+            </section>
 
           {/* Barra de Filtros & Ordenação (Estilo Stoqui Shop) */}
           <div className="space-y-3">
@@ -1038,6 +993,7 @@ export function PublicCatalog() {
             </div>
           </footer>
 
+          </div>
         </main>
 
         {/* 4. Barra Fixa Inferior de Conversão: Adaptativa (Bottom bar no mobile / Floating Dock no desktop) */}
