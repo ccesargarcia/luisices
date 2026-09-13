@@ -178,6 +178,7 @@ export function PublicCatalog() {
       badge: 'Atelier Afetivo',
       statusText: 'Atendimento WhatsApp ativo',
       announcement: '✨ Encomendas abertas com envio carinhoso para todo o Brasil!',
+      showHero: true,
       heroTitle: 'Catálogo & Vitrine Afetiva',
       heroDescription: 'Escolha suas peças, informe o nome para personalização e envie o pedido formatado diretamente no nosso WhatsApp.',
       whatsappGreeting: 'Olá! Gostaria de encomendar pelo catálogo do Ateliê:',
@@ -321,6 +322,7 @@ export function PublicCatalog() {
                 announcement: s.catalogAnnouncement !== undefined ? s.catalogAnnouncement : prev.announcement,
                 heroTitle: s.catalogHeroTitle !== undefined ? s.catalogHeroTitle : prev.heroTitle,
                 heroDescription: s.catalogHeroDescription !== undefined ? s.catalogHeroDescription : prev.heroDescription,
+                showHero: s.catalogShowHero !== undefined ? Boolean(s.catalogShowHero) : (prev.showHero ?? true),
                 whatsappGreeting: s.catalogWhatsappGreeting !== undefined ? s.catalogWhatsappGreeting : prev.whatsappGreeting,
                 whatsappCustomizationLabel: s.catalogWhatsappCustomizationLabel !== undefined ? s.catalogWhatsappCustomizationLabel : prev.whatsappCustomizationLabel,
                 whatsappFooter: s.catalogWhatsappFooter !== undefined ? s.catalogWhatsappFooter : prev.whatsappFooter,
@@ -673,63 +675,65 @@ export function PublicCatalog() {
         <main className="relative z-10">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-4 sm:pt-6 space-y-6 sm:space-y-8">
             
-            {/* Bloco de Apresentação da Loja & Selos de Confiança */}
-            <section className="relative rounded-3xl bg-white/80 dark:bg-[#1f191b]/85 backdrop-blur-md border border-white/60 dark:border-[#ebcdcd]/15 p-5 sm:p-7 shadow-[0_8px_30px_rgb(0_0_0/4%)] dark:shadow-[0_16px_40px_-8px_rgb(0_0_0/50%)] space-y-3.5">
-              
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                <div className="flex items-center gap-3.5">
-                  {businessInfo.logo && !logoError && (
-                    <div className="relative h-14 sm:h-16 w-auto min-w-[56px] max-w-[120px] rounded-xl overflow-hidden bg-stone-100/80 dark:bg-[#161214]/60 p-1 flex items-center justify-center shrink-0 border border-stone-200/60 dark:border-stone-800 shadow-2xs">
-                      <img
-                        src={businessInfo.logo}
-                        alt={businessInfo.name}
-                        onError={() => setLogoError(true)}
-                        className="max-h-full w-auto object-contain"
-                      />
-                    </div>
-                  )}
-                  <div className="space-y-1">
-                    <h2 className="text-xl sm:text-2xl md:text-3xl font-extrabold tracking-tight text-[#221a1a] dark:text-[#e8e0e3] leading-tight">
-                      {businessInfo.name}
-                    </h2>
-                    {businessInfo.tagline && (
-                      <p className="text-sm sm:text-base font-medium text-[#613d3e] dark:text-[#f4b7b9] leading-snug">
-                        {businessInfo.tagline}
-                      </p>
+            {/* Bloco de Apresentação da Loja & Selos de Confiança (Opcional) */}
+            {businessInfo.showHero && (
+              <section className="relative rounded-3xl bg-white/80 dark:bg-[#1f191b]/85 backdrop-blur-md border border-white/60 dark:border-[#ebcdcd]/15 p-5 sm:p-7 shadow-[0_8px_30px_rgb(0_0_0/4%)] dark:shadow-[0_16px_40px_-8px_rgb(0_0_0/50%)] space-y-3.5">
+                
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="flex items-center gap-3.5">
+                    {businessInfo.logo && !logoError && (
+                      <div className="relative h-14 sm:h-16 w-auto min-w-[56px] max-w-[120px] rounded-xl overflow-hidden bg-stone-100/80 dark:bg-[#161214]/60 p-1 flex items-center justify-center shrink-0 border border-stone-200/60 dark:border-stone-800 shadow-2xs">
+                        <img
+                          src={businessInfo.logo}
+                          alt={businessInfo.name}
+                          onError={() => setLogoError(true)}
+                          className="max-h-full w-auto object-contain"
+                        />
+                      </div>
                     )}
+                    <div className="space-y-1">
+                      <h2 className="text-xl sm:text-2xl md:text-3xl font-extrabold tracking-tight text-[#221a1a] dark:text-[#e8e0e3] leading-tight">
+                        {businessInfo.name}
+                      </h2>
+                      {businessInfo.tagline && (
+                        <p className="text-sm sm:text-base font-medium text-[#613d3e] dark:text-[#f4b7b9] leading-snug">
+                          {businessInfo.tagline}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Selo & Status de Atendimento */}
+                  <div className="flex flex-wrap items-center gap-2 shrink-0">
+                    <span className="text-xs font-semibold px-3 py-1 rounded-full bg-[#613d3e]/10 dark:bg-[#f4b7b9]/15 text-[#613d3e] dark:text-[#f4b7b9]">
+                      {businessInfo.badge || 'Atelier Afetivo'}
+                    </span>
+                    <span className="inline-flex items-center gap-1.5 text-xs text-[#504444] dark:text-[#c9c0b8] font-medium bg-stone-100/80 dark:bg-[#161214]/60 px-3 py-1 rounded-full border border-stone-200/60 dark:border-stone-800">
+                      <span className="size-2 rounded-full bg-[#10B981] animate-pulse shrink-0" />
+                      {businessInfo.statusText || 'Atendimento WhatsApp ativo'}
+                    </span>
                   </div>
                 </div>
 
-                {/* Selo & Status de Atendimento */}
-                <div className="flex flex-wrap items-center gap-2 shrink-0">
-                  <span className="text-xs font-semibold px-3 py-1 rounded-full bg-[#613d3e]/10 dark:bg-[#f4b7b9]/15 text-[#613d3e] dark:text-[#f4b7b9]">
-                    {businessInfo.badge || 'Atelier Afetivo'}
+                <p className="text-xs sm:text-sm text-[#504444] dark:text-[#c9c0b8] leading-relaxed max-w-2xl">
+                  {businessInfo.heroDescription || 'Escolha suas peças, informe o nome para personalização e envie o pedido formatado diretamente no nosso WhatsApp.'}
+                </p>
+
+                {/* Destaques de confiança (Pills informativas) */}
+                <div className="pt-1 flex flex-wrap gap-2 text-[11px] text-[#504444] dark:text-[#c9c0b8] font-medium">
+                  <span className="inline-flex items-center gap-1 bg-stone-100/80 dark:bg-[#161214]/60 px-2.5 py-1 rounded-full border border-stone-200/60 dark:border-stone-800">
+                    <Sparkle size={12} className="text-[#613d3e] dark:text-[#f4b7b9]" /> Feito à mão com afeto
                   </span>
-                  <span className="inline-flex items-center gap-1.5 text-xs text-[#504444] dark:text-[#c9c0b8] font-medium bg-stone-100/80 dark:bg-[#161214]/60 px-3 py-1 rounded-full border border-stone-200/60 dark:border-stone-800">
-                    <span className="size-2 rounded-full bg-[#10B981] animate-pulse shrink-0" />
-                    {businessInfo.statusText || 'Atendimento WhatsApp ativo'}
+                  <span className="inline-flex items-center gap-1 bg-stone-100/80 dark:bg-[#161214]/60 px-2.5 py-1 rounded-full border border-stone-200/60 dark:border-stone-800">
+                    <ShieldCheck size={12} className="text-emerald-600 dark:text-emerald-400" /> Aprovação da arte prévia
+                  </span>
+                  <span className="inline-flex items-center gap-1 bg-stone-100/80 dark:bg-[#161214]/60 px-2.5 py-1 rounded-full border border-stone-200/60 dark:border-stone-800">
+                    <Truck size={12} className="text-sky-600 dark:text-sky-400" /> Envio seguro para todo Brasil
                   </span>
                 </div>
-              </div>
 
-              <p className="text-xs sm:text-sm text-[#504444] dark:text-[#c9c0b8] leading-relaxed max-w-2xl">
-                {businessInfo.heroDescription || 'Escolha suas peças, informe o nome para personalização e envie o pedido formatado diretamente no nosso WhatsApp.'}
-              </p>
-
-              {/* Destaques de confiança (Pills informativas) */}
-              <div className="pt-1 flex flex-wrap gap-2 text-[11px] text-[#504444] dark:text-[#c9c0b8] font-medium">
-                <span className="inline-flex items-center gap-1 bg-stone-100/80 dark:bg-[#161214]/60 px-2.5 py-1 rounded-full border border-stone-200/60 dark:border-stone-800">
-                  <Sparkle size={12} className="text-[#613d3e] dark:text-[#f4b7b9]" /> Feito à mão com afeto
-                </span>
-                <span className="inline-flex items-center gap-1 bg-stone-100/80 dark:bg-[#161214]/60 px-2.5 py-1 rounded-full border border-stone-200/60 dark:border-stone-800">
-                  <ShieldCheck size={12} className="text-emerald-600 dark:text-emerald-400" /> Aprovação da arte prévia
-                </span>
-                <span className="inline-flex items-center gap-1 bg-stone-100/80 dark:bg-[#161214]/60 px-2.5 py-1 rounded-full border border-stone-200/60 dark:border-stone-800">
-                  <Truck size={12} className="text-sky-600 dark:text-sky-400" /> Envio seguro para todo Brasil
-                </span>
-              </div>
-
-            </section>
+              </section>
+            )}
 
           {/* Barra de Filtros & Ordenação (Estilo Stoqui Shop) */}
           <div className="space-y-3">

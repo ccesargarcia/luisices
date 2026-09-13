@@ -192,6 +192,7 @@ export function StoreCustomization() {
     catalogHeaderLogoPosition: 'left' as 'left' | 'center' | 'full',
     catalogHeaderHeight: 'normal' as 'compact' | 'normal' | 'large',
     catalogHeaderHideText: false,
+    catalogShowHero: true,
   });
 
   const [dataLoaded, setDataLoaded] = useState(false);
@@ -230,6 +231,7 @@ export function StoreCustomization() {
         catalogHeaderLogoPosition: (settings?.catalogHeaderLogoPosition || 'left') as 'left' | 'center' | 'full',
         catalogHeaderHeight: (settings?.catalogHeaderHeight || 'normal') as 'compact' | 'normal' | 'large',
         catalogHeaderHideText: Boolean(settings?.catalogHeaderHideText),
+        catalogShowHero: settings?.catalogShowHero !== undefined ? Boolean(settings.catalogShowHero) : true,
       };
 
       // Carrega os dados compartilhados públicos da loja do Firestore
@@ -283,6 +285,7 @@ export function StoreCustomization() {
             catalogHeaderLogoPosition: pub.catalogHeaderLogoPosition || data.catalogHeaderLogoPosition,
             catalogHeaderHeight: pub.catalogHeaderHeight || data.catalogHeaderHeight,
             catalogHeaderHideText: pub.catalogHeaderHideText !== undefined ? Boolean(pub.catalogHeaderHideText) : data.catalogHeaderHideText,
+            catalogShowHero: pub.catalogShowHero !== undefined ? Boolean(pub.catalogShowHero) : data.catalogShowHero,
           };
         }
       } catch (err) {
@@ -512,6 +515,7 @@ export function StoreCustomization() {
         catalogHeaderLogoPosition: formData.catalogHeaderLogoPosition,
         catalogHeaderHeight: formData.catalogHeaderHeight,
         catalogHeaderHideText: Boolean(formData.catalogHeaderHideText),
+        catalogShowHero: Boolean(formData.catalogShowHero),
       });
       // Salva no cache do navegador para a lojinha atualizar instantaneamente
       try {
@@ -535,6 +539,8 @@ export function StoreCustomization() {
           announcement: formData.catalogAnnouncement,
           heroTitle: formData.catalogHeroTitle,
           heroDescription: formData.catalogHeroDescription,
+          showHero: Boolean(formData.catalogShowHero),
+          catalogShowHero: Boolean(formData.catalogShowHero),
           whatsappGreeting: formData.catalogWhatsappGreeting,
           whatsappCustomizationLabel: formData.catalogWhatsappCustomizationLabel,
           whatsappFooter: formData.catalogWhatsappFooter,
@@ -1318,6 +1324,29 @@ export function StoreCustomization() {
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
+                  {/* Switch: Exibir Apresentação & Vitrine */}
+                  <div className="flex items-center justify-between p-3 rounded-xl border border-border/70 bg-muted/10">
+                    <div className="space-y-0.5 pr-4">
+                      <Label htmlFor="m-show-hero" className="text-xs font-semibold cursor-pointer">
+                        Exibir cartão de Apresentação & Vitrine (Banner Hero)
+                      </Label>
+                      <p className="text-[11px] text-muted-foreground">
+                        Ative para exibir o cartão de boas-vindas com dados do ateliê, slogan e selos de confiança. Desative caso queira ir direto para a vitrine de produtos.
+                      </p>
+                    </div>
+                    <Switch
+                      id="m-show-hero"
+                      checked={Boolean(formData.catalogShowHero)}
+                      onCheckedChange={(checked) => handleChange('catalogShowHero', checked)}
+                    />
+                  </div>
+
+                  {!formData.catalogShowHero && (
+                    <p className="text-[11px] text-amber-600 dark:text-amber-400 font-medium px-1">
+                      ⚠️ Este cartão está desativado e não será exibido no catálogo público.
+                    </p>
+                  )}
+
                   <div className="space-y-1.5">
                     <Label htmlFor="m-hero-title" className="text-xs font-semibold">
                       Título Superior da Vitrine (Selo Pequeno)
@@ -1719,18 +1748,18 @@ export function StoreCustomization() {
                 </div>
               </div>
 
-              {/* Hero Banner simulado (estilo Panorâmico sem bolinha de avatar) */}
-              <div className="m-2.5 rounded-xl overflow-hidden border border-white/60 shadow-2xs bg-white/70">
-                {/* Capa */}
-                <div className="relative w-full aspect-[3.5/1] bg-gradient-to-r from-[#fceee9] via-[#f7d6d0] to-[#ede7f6] overflow-hidden flex items-center justify-center text-stone-400">
-                  {currentCatalogBanner ? (
+              {/* Banner de Capa simulado (se houver) */}
+              {currentCatalogBanner && (
+                <div className="m-2.5 rounded-xl overflow-hidden border border-white/60 shadow-2xs">
+                  <div className="relative w-full aspect-[3.5/1] bg-gradient-to-r from-[#fceee9] via-[#f7d6d0] to-[#ede7f6] overflow-hidden flex items-center justify-center text-stone-400">
                     <img src={currentCatalogBanner} alt="Capa da Loja" className="w-full h-full object-cover" />
-                  ) : (
-                    <span className="text-[9px] font-medium opacity-60">Banner Panorâmico</span>
-                  )}
+                  </div>
                 </div>
-                {/* Informações da Loja */}
-                <div className="p-3">
+              )}
+
+              {/* Informações da Loja / Apresentação (Hero) */}
+              {formData.catalogShowHero && (
+                <div className="m-2.5 p-3 rounded-xl border border-white/60 shadow-2xs bg-white/70">
                   <div className="flex items-center gap-2 mb-1.5">
                     {currentCatalogLogo ? (
                       <div className="size-9 rounded-lg overflow-hidden border border-border/80 p-0.5 bg-white shrink-0 flex items-center justify-center">
@@ -1759,7 +1788,7 @@ export function StoreCustomization() {
                     {formData.catalogHeroDescription || 'Escolha suas peças, informe o nome para personalização e envie o pedido...'}
                   </p>
                 </div>
-              </div>
+              )}
 
               {/* Miniatura de Produto simulado */}
               <div className="p-2.5 mx-2.5 rounded-lg bg-white/50 border border-stone-200/50 flex items-center gap-2">

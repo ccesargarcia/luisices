@@ -68,6 +68,7 @@ export interface UserSettings {
   catalogHeaderLogoPosition?: 'left' | 'center' | 'full'; // Posição da logo na barra (esquerda, centro ou ocupando a barra)
   catalogHeaderHeight?: 'compact' | 'normal' | 'large'; // Altura da barra fixa (compact: 60px, normal: 74px, large: 90px)
   catalogHeaderHideText?: boolean;           // Ocultar texto do nome caso a logo já contenha o nome
+  catalogShowHero?: boolean;                 // Exibir ou ocultar cartão de apresentação/vitrine (hero)
 
   catalogBadge?: string;                      // Selo no header (ex: "Atelier", "Papelaria Afetiva")
   catalogStatusText?: string;                // Texto do status (ex: "Atendimento WhatsApp ativo")
@@ -191,6 +192,7 @@ export class FirebaseSettingsService {
       if (settings.catalogStatusText !== undefined) publicData.catalogStatusText = settings.catalogStatusText;
       if (settings.catalogHeroTitle !== undefined) publicData.catalogHeroTitle = settings.catalogHeroTitle;
       if (settings.catalogHeroDescription !== undefined) publicData.catalogHeroDescription = settings.catalogHeroDescription;
+      if (settings.catalogShowHero !== undefined) publicData.catalogShowHero = settings.catalogShowHero;
       if (settings.catalogAnnouncement !== undefined) publicData.catalogAnnouncement = settings.catalogAnnouncement;
       if (settings.catalogWhatsappGreeting !== undefined) publicData.catalogWhatsappGreeting = settings.catalogWhatsappGreeting;
       if (settings.catalogWhatsappCustomizationLabel !== undefined) publicData.catalogWhatsappCustomizationLabel = settings.catalogWhatsappCustomizationLabel;
