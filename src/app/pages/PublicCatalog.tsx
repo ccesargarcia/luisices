@@ -325,48 +325,15 @@ export function PublicCatalog() {
     };
   }, []);
 
-  // Controle de histórico e body scroll lock para modais (iPhone / Chrome mobile)
+  // Travar o scroll de fundo enquanto modal ou sacola estiverem abertos
   const isAnyModalOpen = Boolean(isCartOpen || selectedProductPreview);
-  const modalHistoryPushedRef = useRef(false);
 
-  useEffect(() => {
-    const handlePopState = () => {
-      modalHistoryPushedRef.current = false;
-      setIsCartOpen(false);
-      setSelectedProductPreview(null);
-    };
-
-    window.addEventListener('popstate', handlePopState);
-
-    if (isAnyModalOpen) {
-      if (!modalHistoryPushedRef.current) {
-        window.history.pushState({ modalOpen: true }, '');
-        modalHistoryPushedRef.current = true;
-      }
-    } else {
-      if (modalHistoryPushedRef.current) {
-        modalHistoryPushedRef.current = false;
-        if (window.history.state?.modalOpen) {
-          window.history.back();
-        }
-      }
-    }
-
-    return () => {
-      window.removeEventListener('popstate', handlePopState);
-    };
-  }, [isAnyModalOpen]);
-
-  // Travar o scroll de fundo no mobile enquanto modal ou sacola estiverem abertos
   useEffect(() => {
     if (isAnyModalOpen) {
       const originalOverflow = document.body.style.overflow;
-      const originalTouchAction = document.body.style.touchAction;
       document.body.style.overflow = 'hidden';
-      document.body.style.touchAction = 'none';
       return () => {
         document.body.style.overflow = originalOverflow;
-        document.body.style.touchAction = originalTouchAction;
       };
     }
   }, [isAnyModalOpen]);
@@ -820,11 +787,18 @@ export function PublicCatalog() {
                       </h3>
                     </div>
 
-                    {/* Prazo de Confecção & Preço Desktop */}
+                    {/* Prazo de Confecção, Selo Personalizável & Preço Desktop */}
                     <div className="space-y-1.5 pt-1">
-                      <div className="inline-flex items-center gap-1 text-[10px] sm:text-[11px] font-medium text-amber-700 dark:text-amber-300 bg-amber-500/10 px-2 py-0.5 rounded-md">
-                        <Clock size={11} />
-                        <span>Até {prod.leadTimeDays} dias úteis</span>
+                      <div className="flex items-center justify-between gap-1">
+                        <div className="inline-flex items-center gap-1 text-[10px] sm:text-[11px] font-medium text-amber-700 dark:text-amber-300 bg-amber-500/10 px-2 py-0.5 rounded-md">
+                          <Clock size={11} />
+                          <span>Até {prod.leadTimeDays} dias úteis</span>
+                        </div>
+                        {prod.isCustomizable && (
+                          <span className="text-[10px] font-semibold text-[#613d3e] dark:text-[#f4b7b9] inline-flex items-center gap-0.5">
+                            <Sparkles size={10} /> Personalizável
+                          </span>
+                        )}
                       </div>
 
                       <div className="hidden sm:flex items-baseline justify-between pt-0.5">
@@ -835,13 +809,23 @@ export function PublicCatalog() {
                       </div>
                     </div>
 
-                    {/* Botão de Adição / Personalização */}
+                    {/* Botão de Adição à Sacola / Carrinho */}
                     <button
-                      onClick={() => handleOpenPreview(prod)}
-                      className="w-full mt-2 py-2 sm:py-2.5 px-3 rounded-xl font-semibold text-[11px] sm:text-xs flex items-center justify-center gap-1.5 bg-[#613d3e] dark:bg-[#f4b7b9] text-white dark:text-[#4c2527] hover:opacity-95 active:scale-98 transition-all shadow-xs cursor-pointer"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (prod.isCustomizable) {
+                          handleOpenPreview(prod);
+                        } else {
+                          addToCart(prod);
+                          setIsCartOpen(true);
+                        }
+                      }}
+                      className="w-full mt-2 py-2 sm:py-2.5 px-3 rounded-xl font-bold text-[11px] sm:text-xs flex items-center justify-center gap-1.5 bg-[#613d3e] dark:bg-[#f4b7b9] text-white dark:text-[#4c2527] hover:opacity-95 active:scale-98 transition-all shadow-xs cursor-pointer"
+                      title={prod.isCustomizable ? 'Personalizar e adicionar à sacola' : 'Adicionar à sacola de encomendas'}
+                      aria-label="Adicionar ao carrinho"
                     >
-                      <ShoppingBag size={13} />
-                      <span>Personalizar</span>
+                      <ShoppingBag size={13} className="shrink-0" />
+                      <span>Adicionar à Sacola</span>
                     </button>
                   </div>
                 </article>
@@ -1015,10 +999,10 @@ export function PublicCatalog() {
               aria-hidden="true" 
             />
 
-            <div className="relative z-10 w-full sm:max-w-2xl md:max-w-3xl h-[88dvh] sm:h-auto max-h-[88dvh] sm:max-h-[90vh] flex flex-col md:flex-row rounded-t-3xl sm:rounded-3xl bg-[#fff8f7] dark:bg-[#1f191b] border border-white/45 dark:border-[#ebcdcd]/20 shadow-2xl overflow-hidden animate-in slide-in-from-bottom-4 sm:slide-in-from-bottom-0 sm:zoom-in-95">
+            <div className="relative z-10 w-full sm:max-w-2xl md:max-w-3xl h-auto max-h-[90vh] sm:max-h-[85vh] flex flex-col md:flex-row rounded-t-3xl sm:rounded-3xl bg-[#fff8f7] dark:bg-[#1f191b] border border-white/45 dark:border-[#ebcdcd]/20 shadow-2xl overflow-hidden animate-in slide-in-from-bottom-4 sm:slide-in-from-bottom-0 sm:zoom-in-95">
               
               {/* Coluna Esquerda (Desktop): Imagem */}
-              <div className="relative h-44 sm:h-auto md:w-1/2 bg-stone-100 dark:bg-stone-900 overflow-hidden shrink-0">
+              <div className="relative h-40 sm:h-auto md:w-1/2 bg-stone-100 dark:bg-stone-900 overflow-hidden shrink-0">
                 <img
                   src={selectedProductPreview.imageUrl}
                   alt={selectedProductPreview.name}
@@ -1084,18 +1068,18 @@ export function PublicCatalog() {
                   )}
                 </div>
 
-                {/* Ação de Adicionar - sempre visível fixada no rodapé */}
-                <div className="pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:pb-0 border-t border-stone-200/50 dark:border-stone-800 shrink-0">
+                {/* Ação de Adicionar - sempre visível fixada no rodapé com safe area */}
+                <div className="pt-3 pb-[max(1rem,env(safe-area-inset-bottom))] sm:pb-0 border-t border-stone-200/50 dark:border-stone-800 shrink-0 bg-[#fff8f7] dark:bg-[#1f191b]">
                   <button
                     onClick={() => {
                       addToCart(selectedProductPreview, previewCustomName);
                       setSelectedProductPreview(null);
                       setIsCartOpen(true);
                     }}
-                    className="w-full py-3 px-4 rounded-xl font-bold text-xs sm:text-sm flex items-center justify-center gap-2 bg-[#613d3e] dark:bg-[#f4b7b9] text-white dark:text-[#4c2527] hover:opacity-95 active:scale-[0.98] transition-all shadow-md cursor-pointer"
+                    className="w-full py-3.5 px-4 rounded-xl font-bold text-xs sm:text-sm flex items-center justify-center gap-2 bg-[#613d3e] dark:bg-[#f4b7b9] text-white dark:text-[#4c2527] hover:opacity-95 active:scale-[0.98] transition-all shadow-md cursor-pointer"
                   >
                     <ShoppingBag size={16} />
-                    <span>Adicionar à Sacola de Encomendas</span>
+                    <span>Adicionar à Sacola</span>
                   </button>
                 </div>
               </div>
@@ -1115,7 +1099,7 @@ export function PublicCatalog() {
             />
 
             {/* Container da Gaveta (Full-height slide-over no desktop, bottom sheet no mobile) */}
-            <div className="relative z-10 w-full sm:max-w-md h-[88dvh] sm:h-full max-h-[88dvh] sm:max-h-none flex flex-col rounded-t-3xl sm:rounded-none sm:rounded-l-3xl bg-[#fff8f7] dark:bg-[#1f191b] border-t sm:border-t-0 sm:border-l border-stone-200/80 dark:border-stone-800 shadow-2xl overflow-hidden animate-in slide-in-from-bottom-4 sm:slide-in-from-right duration-200">
+            <div className="relative z-10 w-full sm:max-w-md h-[88vh] sm:h-full max-h-[90vh] sm:max-h-none flex flex-col rounded-t-3xl sm:rounded-none sm:rounded-l-3xl bg-[#fff8f7] dark:bg-[#1f191b] border-t sm:border-t-0 sm:border-l border-stone-200/80 dark:border-stone-800 shadow-2xl overflow-hidden animate-in slide-in-from-bottom-4 sm:slide-in-from-right duration-200">
               
               {/* Header do Carrinho */}
               <div className="p-4 sm:p-5 flex items-center justify-between border-b border-stone-200/60 dark:border-[#ebcdcd]/10 shrink-0">
