@@ -516,93 +516,136 @@ export function PublicCatalog() {
           </aside>
         )}
 
-        {/* 1. Header Fixo Responsivo com Efeito Vidro (Inspirado em E-commerce Moderno & Stoqui) */}
-        <header className="sticky top-0 z-30 bg-white/80 dark:bg-[#1f191b]/90 backdrop-blur-md border-b border-stone-200/60 dark:border-[#ebcdcd]/15 transition-colors shadow-xs">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex items-center justify-between gap-4">
-            
-            {/* Esquerda: Identidade Visual / Logo & Status */}
-            <div className="flex items-center gap-3 shrink-0">
-              {businessInfo.logo ? (
-                <img
-                  src={businessInfo.logo}
-                  alt={businessInfo.name}
-                  className="size-9 sm:size-10 rounded-full object-cover border border-white/80 shadow-xs ring-1 ring-black/5 dark:ring-white/10"
-                />
-              ) : (
-                <div className="size-9 sm:size-10 rounded-full bg-[#613d3e]/10 dark:bg-[#f4b7b9]/20 flex items-center justify-center text-[#613d3e] dark:text-[#f4b7b9]">
-                  <Sparkles size={20} />
-                </div>
-              )}
-              <div>
-                <div className="flex items-center gap-2">
-                  <h1 className="text-base sm:text-lg font-bold tracking-tight text-[#613d3e] dark:text-[#f4b7b9] leading-tight">
-                    {businessInfo.name}
-                  </h1>
-                  <span className="hidden sm:inline-block text-[10px] font-semibold px-2 py-0.5 rounded-full bg-[#613d3e]/10 dark:bg-[#f4b7b9]/15 text-[#613d3e] dark:text-[#f4b7b9]">
-                    {businessInfo.badge || 'Atelier'}
+        {/* 1. CABEÇALHO EDITORIAL DE VITRINE EM 2 NÍVEIS */}
+        {/* Nível 1: Faixa Superior de Identidade da Marca (Logo em Destaque Nobre) */}
+        <section aria-label="Identidade do Ateliê" className="bg-white/90 dark:bg-[#1a1416]/95 backdrop-blur-md border-b border-stone-200/50 dark:border-white/5 py-4 sm:py-6 transition-colors shadow-2xs">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+              
+              {/* Esquerda (Desktop): Selos Afetivos & Status */}
+              <div className="hidden sm:flex flex-col gap-1.5 items-start text-left shrink-0">
+                <span className="text-[11px] font-bold tracking-wide uppercase px-2.5 py-0.5 rounded-full bg-[#613d3e]/10 dark:bg-[#f4b7b9]/15 text-[#613d3e] dark:text-[#f4b7b9]">
+                  {businessInfo.badge || 'Atelier Afetivo'}
+                </span>
+                <span className="inline-flex items-center gap-1.5 text-xs text-[#504444] dark:text-[#c9c0b8] font-medium bg-stone-100/80 dark:bg-[#161214]/60 px-2.5 py-1 rounded-full border border-stone-200/60 dark:border-stone-800">
+                  <span className="size-2 rounded-full bg-[#10B981] animate-pulse shrink-0" />
+                  {businessInfo.statusText || 'Atendimento WhatsApp ativo'}
+                </span>
+              </div>
+
+              {/* Centro: Logo em Destaque Pleno (Formato Livre / Proporcional sem cortes circulares) */}
+              <div className="flex flex-col items-center justify-center text-center">
+                {businessInfo.logo ? (
+                  <div className="relative flex items-center justify-center py-1">
+                    <img
+                      src={businessInfo.logo}
+                      alt={businessInfo.name}
+                      className="max-h-16 sm:max-h-20 md:max-h-24 w-auto object-contain transition-transform duration-200 hover:scale-102 drop-shadow-xs"
+                    />
+                  </div>
+                ) : (
+                  <div className="space-y-1 text-center py-1">
+                    <h1 className="text-2xl sm:text-3xl md:text-4xl font-black tracking-tight text-[#613d3e] dark:text-[#f4b7b9] leading-tight">
+                      {businessInfo.name}
+                    </h1>
+                    {businessInfo.tagline && (
+                      <p className="text-xs sm:text-sm font-medium text-[#504444] dark:text-[#c9c0b8]">
+                        {businessInfo.tagline}
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {/* Selos de atendimento no Mobile (abaixo da logo) */}
+                <div className="flex sm:hidden items-center gap-2 mt-2">
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#613d3e]/10 dark:bg-[#f4b7b9]/15 text-[#613d3e] dark:text-[#f4b7b9]">
+                    {businessInfo.badge || 'Atelier Afetivo'}
                   </span>
-                </div>
-                <div className="flex items-center gap-1.5 mt-0.5">
-                  <span className="inline-block size-2 rounded-full bg-[#10B981] animate-pulse" />
-                  <span className="text-[11px] text-[#504444] dark:text-[#c9c0b8] font-medium">
+                  <span className="inline-flex items-center gap-1 text-[11px] text-[#504444] dark:text-[#c9c0b8] font-medium bg-stone-100/80 dark:bg-[#161214]/60 px-2 py-0.5 rounded-full border border-stone-200/60 dark:border-stone-800">
+                    <span className="size-1.5 rounded-full bg-[#10B981] animate-pulse shrink-0" />
                     {businessInfo.statusText || 'Atendimento WhatsApp ativo'}
                   </span>
                 </div>
               </div>
+
+              {/* Direita: Ações Sociais (Instagram & Alternador de Tema) */}
+              <div className="flex items-center gap-2 shrink-0">
+                {businessInfo.instagram && (
+                  <a
+                    href={`https://instagram.com/${businessInfo.instagram}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-stone-100/80 dark:bg-[#2b2225]/80 border border-stone-200/80 dark:border-[#ebcdcd]/20 text-stone-700 dark:text-stone-200 hover:text-[#E1306C] transition-all shadow-2xs cursor-pointer"
+                    title="Instagram do ateliê"
+                  >
+                    <Instagram size={14} />
+                    <span className="hidden sm:inline">@{businessInfo.instagram}</span>
+                  </a>
+                )}
+
+                <button
+                  onClick={toggleTheme}
+                  title={isDarkMode ? 'Mudar para Modo Claro' : 'Mudar para Modo Escuro'}
+                  className="p-2 rounded-full bg-stone-100/80 dark:bg-[#2b2225]/80 border border-stone-200/80 dark:border-[#ebcdcd]/20 text-[#504444] dark:text-[#e8e0e3] hover:scale-105 active:scale-95 transition-all shadow-2xs cursor-pointer"
+                  aria-label="Alternar tema de cores"
+                >
+                  {isDarkMode ? <Sun size={16} className="text-[#fbbf24]" /> : <Moon size={16} className="text-[#613d3e]" />}
+                </button>
+              </div>
+
+            </div>
+          </div>
+        </section>
+
+        {/* Nível 2: Barra de Ações & Compras Fixa (Sticky Navbar com Busca Expansiva & Sacola) */}
+        <header className="sticky top-0 z-30 bg-white/95 dark:bg-[#1f191b]/95 backdrop-blur-md border-b border-stone-200/60 dark:border-[#ebcdcd]/15 transition-colors shadow-xs">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-2.5 flex items-center justify-between gap-3 sm:gap-4">
+            
+            {/* Marca Compacta à Esquerda (Presença constante da loja) */}
+            <div className="flex items-center gap-2.5 shrink-0">
+              {businessInfo.logo ? (
+                <img
+                  src={businessInfo.logo}
+                  alt={businessInfo.name}
+                  className="h-7 sm:h-8 w-auto max-w-[100px] sm:max-w-[140px] object-contain"
+                />
+              ) : (
+                <span className="text-xs sm:text-sm font-bold text-[#613d3e] dark:text-[#f4b7b9] tracking-tight truncate max-w-[120px] sm:max-w-[160px]">
+                  {businessInfo.name}
+                </span>
+              )}
             </div>
 
-            {/* Centro: Barra de Busca Expandida no Desktop (estilo Stoqui) */}
-            <div className="hidden md:flex flex-1 max-w-md mx-4 relative">
-              <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-stone-400 dark:text-stone-500" />
+            {/* Centro: Barra de Busca Expandida para Desktop e Mobile */}
+            <div className="flex-1 max-w-xl relative">
+              <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-stone-400 dark:text-stone-500" />
               <input
                 type="text"
-                placeholder="Digite sua busca (produtos, temas, lembranças)..."
+                placeholder="Buscar produtos, temas, lembranças..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-10 pr-9 py-2 text-xs rounded-full bg-stone-100/80 dark:bg-[#161214]/80 border border-stone-200 dark:border-stone-700 text-[#221a1a] dark:text-[#e8e0e3] placeholder:text-stone-400 dark:placeholder:text-stone-500 focus:outline-none focus:ring-2 focus:ring-[#613d3e]/30 dark:focus:ring-[#f4b7b9]/30 transition-all shadow-inner"
+                className="w-full pl-9 pr-8 py-2 text-xs rounded-full bg-stone-100/90 dark:bg-[#161214]/90 border border-stone-200/80 dark:border-stone-700 text-[#221a1a] dark:text-[#e8e0e3] placeholder:text-stone-400 dark:placeholder:text-stone-500 focus:outline-none focus:ring-2 focus:ring-[#613d3e]/30 dark:focus:ring-[#f4b7b9]/30 transition-all shadow-inner"
               />
               {searchQuery && (
                 <button
                   onClick={() => setSearchQuery('')}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-stone-400 hover:text-stone-700 dark:hover:text-stone-200"
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-stone-400 hover:text-stone-700 dark:hover:text-stone-200"
                   title="Limpar busca"
                 >
-                  <X size={14} />
+                  <X size={13} />
                 </button>
               )}
             </div>
 
-            {/* Direita: Ações (Instagram, Tema & Sacola de Compras) */}
-            <div className="flex items-center gap-2 sm:gap-3 shrink-0">
-              {businessInfo.instagram && (
-                <a
-                  href={`https://instagram.com/${businessInfo.instagram}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-white/70 dark:bg-[#2b2225]/80 border border-stone-200/80 dark:border-[#ebcdcd]/20 text-stone-700 dark:text-stone-200 hover:text-[#E1306C] transition-all shadow-2xs"
-                  title="Instagram do ateliê"
-                >
-                  <Instagram size={14} />
-                  <span>@{businessInfo.instagram}</span>
-                </a>
-              )}
-
-              <button
-                onClick={toggleTheme}
-                title={isDarkMode ? 'Mudar para Modo Claro' : 'Mudar para Modo Escuro'}
-                className="p-2 sm:p-2.5 rounded-full bg-white/80 dark:bg-[#2b2225]/80 border border-stone-200/80 dark:border-[#ebcdcd]/20 text-[#504444] dark:text-[#e8e0e3] hover:scale-105 active:scale-95 transition-all shadow-2xs cursor-pointer"
-                aria-label="Alternar tema de cores"
-              >
-                {isDarkMode ? <Sun size={17} className="text-[#fbbf24]" /> : <Moon size={17} className="text-[#613d3e]" />}
-              </button>
-
+            {/* Direita: Botão da Sacola com Total em Destaque */}
+            <div className="shrink-0">
               <button
                 onClick={() => setIsCartOpen(true)}
-                className="relative flex items-center gap-2 px-3 py-2 rounded-full bg-[#613d3e] dark:bg-[#f4b7b9] text-white dark:text-[#4c2527] hover:opacity-95 active:scale-95 transition-all shadow-sm cursor-pointer"
+                className="relative flex items-center gap-2 px-3 sm:px-3.5 py-2 rounded-full bg-[#613d3e] dark:bg-[#f4b7b9] text-white dark:text-[#4c2527] hover:opacity-95 active:scale-95 transition-all shadow-sm cursor-pointer"
                 aria-label="Abrir sacola de encomendas"
               >
                 <div className="relative">
-                  <ShoppingBag size={18} />
+                  <ShoppingBag size={17} />
                   {totalItemsCount > 0 && (
                     <span className="absolute -top-2 -right-2 size-4.5 bg-amber-400 text-stone-950 text-[10px] font-black rounded-full flex items-center justify-center tabular-nums shadow-xs">
                       {totalItemsCount}
@@ -612,6 +655,11 @@ export function PublicCatalog() {
                 <span className="hidden sm:inline text-xs font-semibold">
                   {totalItemsCount > 0 ? formatCurrency(subtotal) : 'Sacola'}
                 </span>
+                {totalItemsCount > 0 && (
+                  <span className="sm:hidden text-[11px] font-bold tabular-nums">
+                    {formatCurrency(subtotal)}
+                  </span>
+                )}
               </button>
             </div>
 
@@ -620,9 +668,7 @@ export function PublicCatalog() {
 
         {/* Banner de Capa Panorâmico (se cadastrado) */}
         {businessInfo.banner && (
-          <div className={`w-full ${
-            businessInfo.bannerFixed ? 'sticky top-14 sm:top-16 z-0' : 'relative z-0'
-          }`}>
+          <div className="w-full relative z-0">
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-3 sm:pt-4">
               <div className="relative w-full aspect-[3.2/1] sm:aspect-[4/1] md:aspect-[4.5/1] rounded-2xl sm:rounded-3xl overflow-hidden shadow-sm bg-gradient-to-r from-[#fceee9] via-[#f7d6d0] to-[#ede7f6] dark:from-[#2a1a1f] dark:via-[#3d2429] dark:to-[#1d1624]">
                 <img
@@ -636,11 +682,7 @@ export function PublicCatalog() {
         )}
 
         {/* 2. Conteúdo Principal Responsivo (Desktop até max-w-7xl) */}
-        <main className={`relative z-10 ${
-          businessInfo.bannerFixed && businessInfo.banner
-            ? 'bg-[#fff8f7] dark:bg-[#161214] rounded-t-3xl shadow-[0_-16px_36px_rgba(0,0,0,0.07)] dark:shadow-[0_-16px_36px_rgba(0,0,0,0.45)] -mt-4 sm:-mt-6'
-            : ''
-        }`}>
+        <main className="relative z-10">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-4 sm:pt-6 space-y-6 sm:space-y-8">
             
             {/* Bloco de Apresentação da Loja & Selos de Confiança */}
@@ -685,26 +727,6 @@ export function PublicCatalog() {
                 <span className="inline-flex items-center gap-1 bg-stone-100/80 dark:bg-[#161214]/60 px-2.5 py-1 rounded-full border border-stone-200/60 dark:border-stone-800">
                   <Truck size={12} className="text-sky-600 dark:text-sky-400" /> Envio seguro para todo Brasil
                 </span>
-              </div>
-
-              {/* Input de Busca no Mobile (oculto no desktop para não duplicar com o header) */}
-              <div className="mt-2 md:hidden relative">
-                <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-stone-400 dark:text-stone-500" />
-                <input
-                  type="text"
-                  placeholder="Buscar por produto, tema, lembrança..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full pl-10 pr-9 py-2.5 text-xs rounded-xl bg-white/90 dark:bg-[#120e10]/80 border border-stone-200/80 dark:border-[#ebcdcd]/20 text-[#221a1a] dark:text-[#e8e0e3] placeholder:text-stone-400 dark:placeholder:text-stone-500 focus:outline-none focus:ring-2 focus:ring-[#613d3e]/30 dark:focus:ring-[#f4b7b9]/30 transition-all shadow-inner"
-                />
-                {searchQuery && (
-                  <button
-                    onClick={() => setSearchQuery('')}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-stone-400 hover:text-stone-700"
-                  >
-                    <X size={14} />
-                  </button>
-                )}
               </div>
 
             </section>

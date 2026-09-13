@@ -658,24 +658,6 @@ export function StoreCustomization() {
                       ? '✅ Banner de capa panorâmico ativo no topo do catálogo público online.'
                       : '💡 Dica: Um banner em proporção 4:1 (ex: 1584x396px) cria uma apresentação visual marcante de vitrine no topo do seu catálogo.'}
                   </p>
-
-                  {/* Opção de Banner Fixo / Vitrine */}
-                  <div className="pt-3 border-t border-border/60 flex items-center justify-between gap-4">
-                    <div className="space-y-0.5">
-                      <Label htmlFor="banner-fixed-switch" className="text-xs font-semibold flex items-center gap-1.5 cursor-pointer">
-                        <Layers className="size-3.5 text-primary" />
-                        Fixar banner de capa (Efeito Vitrine)
-                      </Label>
-                      <p className="text-[11px] text-muted-foreground">
-                        O banner de capa fica fixado ao fundo e o catálogo de produtos sobe suavemente por cima dele ao rolar a página.
-                      </p>
-                    </div>
-                    <Switch
-                      id="banner-fixed-switch"
-                      checked={Boolean(formData.catalogBannerFixed)}
-                      onCheckedChange={(checked) => handleChange('catalogBannerFixed', checked)}
-                    />
-                  </div>
                 </CardContent>
               </Card>
 
@@ -692,23 +674,23 @@ export function StoreCustomization() {
                     </span>
                   </div>
                   <CardDescription className="text-xs">
-                    Configure uma logo personalizada exclusivamente para a vitrine pública e rodapé da lojinha. Ela é <strong>totalmente independente</strong> da logo configurada no painel administrativo.
+                    Configure a logo da sua marca para a vitrine pública online. O novo cabeçalho da loja exibirá sua logo com proporções naturais (horizontal ou quadrada), com destaque nobre no topo da loja e presença constante na barra de navegação.
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
                     {currentCatalogLogo ? (
-                      <div className="relative group size-20 rounded-xl overflow-hidden border border-border bg-muted/40 p-1.5 flex items-center justify-center shrink-0">
+                      <div className="relative group h-20 min-w-[90px] max-w-[240px] rounded-xl overflow-hidden border border-border bg-muted/40 p-2 flex items-center justify-center shrink-0 shadow-2xs">
                         <img
                           src={currentCatalogLogo}
-                          alt="Logo Exclusivo da Lojinha"
-                          className="w-full h-full object-contain"
+                          alt="Logo da Lojinha Online"
+                          className="max-h-full w-auto object-contain"
                         />
                       </div>
                     ) : (
-                      <div className="size-20 rounded-xl border-2 border-dashed border-border bg-muted/20 flex flex-col items-center justify-center text-muted-foreground shrink-0 gap-1">
-                        <Building2 className="size-7 opacity-50" />
-                        <span className="text-[10px]">Sem logo próprio</span>
+                      <div className="h-20 w-36 rounded-xl border-2 border-dashed border-border bg-muted/20 flex flex-col items-center justify-center text-muted-foreground shrink-0 gap-1 p-2">
+                        <Building2 className="size-6 opacity-50" />
+                        <span className="text-[10px] text-center">Sem logo cadastrado</span>
                       </div>
                     )}
 
@@ -732,7 +714,7 @@ export function StoreCustomization() {
                               ) : (
                                 <>
                                   <Upload className="size-3.5" />
-                                  {currentCatalogLogo ? 'Trocar Logo da Lojinha' : 'Enviar Logo Exclusivo'}
+                                  {currentCatalogLogo ? 'Trocar Logo da Lojinha' : 'Enviar Logo Completo'}
                                 </>
                               )}
                             </span>
@@ -766,8 +748,8 @@ export function StoreCustomization() {
                       </div>
                       <p className="text-[11px] text-muted-foreground">
                         {currentCatalogLogo
-                          ? '✅ Logo exclusivo ativo na lojinha pública online. A logo do painel administrativo permanece intacta.'
-                          : 'Envie um logotipo específico para seus clientes (fundo transparente é ideal). Se nenhum for enviado, a vitrine exibirá o nome da marca.'}
+                          ? '✅ Logo completo ativo na vitrine online pública. Exibido em destaque no cabeçalho e na barra de busca fixa.'
+                          : '💡 Dica: Envie o logotipo completo do seu ateliê (horizontal ou quadrado, de preferência em PNG transparente ou WebP).'}
                       </p>
                     </div>
                   </div>
