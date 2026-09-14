@@ -190,12 +190,15 @@ service cloud.firestore {
     // Regras para configurações públicas da loja / catálogo online
     match /storeSettings/{docId} {
       allow read: if true;
-      // Escrita restrita a administradores ou usuários ativos com permissão explícita de loja
+      // Escrita restrita a administradores ou usuários ativos com permissão explícita de loja ou role user
       allow write: if request.auth != null && (
         isAdmin()
         || (exists(/databases/$(database)/documents/userProfiles/$(request.auth.uid))
             && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.active == true
-            && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.permissions.store == true)
+            && (
+              get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.role == 'user'
+              || get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.permissions.store == true
+            ))
       );
     }
 
@@ -204,36 +207,39 @@ service cloud.firestore {
       // Leitura pública irrestrita para catálogo online (/catalogo)
       allow read: if true;
 
-      // Criação permitida para administradores ou usuários ativos com permissão de loja
+      // Criação permitida para administradores, role user ou usuários ativos com permissão de loja
       allow create: if request.auth != null && (
         isAdmin()
         || (exists(/databases/$(database)/documents/userProfiles/$(request.auth.uid))
             && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.active == true
             && (
-              get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.permissions.storeProducts.create == true
+              get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.role == 'user'
+              || get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.permissions.storeProducts.create == true
               || get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.permissions.store == true
             ))
       );
 
-      // Atualização permitida para administradores, donos do produto ou usuários com permissão
+      // Atualização permitida para administradores, role user, donos do produto ou usuários com permissão
       allow update: if request.auth != null && (
         isAdmin()
         || (exists(/databases/$(database)/documents/userProfiles/$(request.auth.uid))
             && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.active == true
             && (
-              isOwner(resource.data.userId)
+              get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.role == 'user'
+              || isOwner(resource.data.userId)
               || get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.permissions.storeProducts.edit == true
               || get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.permissions.store == true
             ))
       );
 
-      // Exclusão permitida para administradores, donos do produto ou usuários ativos com permissão de exclusão
+      // Exclusão permitida para administradores, role user, donos do produto ou usuários ativos com permissão de exclusão
       allow delete: if request.auth != null && (
         isAdmin()
         || (exists(/databases/$(database)/documents/userProfiles/$(request.auth.uid))
             && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.active == true
             && (
-              isOwner(resource.data.userId)
+              get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.role == 'user'
+              || isOwner(resource.data.userId)
               || get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.permissions.storeProducts.delete == true
             ))
       );
