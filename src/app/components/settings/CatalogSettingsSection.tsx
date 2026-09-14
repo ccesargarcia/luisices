@@ -21,6 +21,7 @@ import {
   Bell,
   Phone,
 } from 'lucide-react';
+import { formatPhoneForDisplay } from '../../utils/whatsapp';
 
 export interface CatalogCustomizationSettings {
   catalogWhatsappPhone?: string;
@@ -198,9 +199,9 @@ export function CatalogSettingsSection({
             </Label>
             <Input
               id="c-wa-phone"
-              placeholder="Ex: (11) 99999-9999 ou 5511999999999"
-              value={settings.catalogWhatsappPhone || ''}
-              onChange={(e) => updateField('catalogWhatsappPhone', e.target.value)}
+              placeholder="Ex: (11) 99999-9999"
+              value={formatPhoneForDisplay(settings.catalogWhatsappPhone || '')}
+              onChange={(e) => updateField('catalogWhatsappPhone', formatPhoneForDisplay(e.target.value))}
             />
             <p className="text-[11px] text-muted-foreground">
               Número de WhatsApp para onde os clientes enviarão os pedidos da vitrine pública. Segregado do WhatsApp institucional do ateliê.

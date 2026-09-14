@@ -24,6 +24,7 @@ import {
   Sparkle
 } from 'lucide-react';
 import { formatCurrency } from '../utils/currency';
+import { normalizePhoneForWhatsApp, formatPhoneForDisplay } from '../utils/whatsapp';
 import { collection, onSnapshot, doc, getDoc } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { BannerCarousel, CatalogBannerItem } from '../components/catalog/BannerCarousel';
@@ -386,7 +387,7 @@ export function PublicCatalog() {
 
   // Envio de Pedido no WhatsApp com Deep Link formatado
   const handleSendToWhatsApp = () => {
-    const cleanPhone = businessInfo.whatsapp.replace(/\D/g, '');
+    const cleanPhone = normalizePhoneForWhatsApp(businessInfo.whatsapp);
     const greeting = businessInfo.whatsappGreeting || `🌸 *Olá, ${businessInfo.name}! Gostaria de fazer uma encomenda pelo Catálogo:*`;
     const labelCustom = businessInfo.whatsappCustomizationLabel || 'Personalização/Nome:';
     const footerMsg = businessInfo.whatsappFooter || 'Poderia me passar as opções de frete/retirada e a chave PIX para confirmar?';
@@ -877,7 +878,7 @@ export function PublicCatalog() {
                       className="inline-flex items-center gap-1.5 text-[#10B981] font-semibold hover:underline cursor-pointer"
                     >
                       <MessageCircle size={14} />
-                      <span>WhatsApp Oficial: {businessInfo.whatsapp}</span>
+                      <span>WhatsApp Oficial: {formatPhoneForDisplay(businessInfo.whatsapp)}</span>
                     </button>
                   ) : null}
 

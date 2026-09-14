@@ -14,6 +14,7 @@ import {
   Globe,
   Loader2,
 } from 'lucide-react';
+import { formatPhoneForDisplay } from '../../utils/whatsapp';
 
 export interface BusinessInfo {
   businessName: string;
@@ -120,9 +121,9 @@ export function BusinessInfoSection({
             <Input
               id="businessPhone"
               placeholder="(11) 99999-9999"
-              value={businessInfo.businessPhone}
+              value={formatPhoneForDisplay(businessInfo.businessPhone)}
               onChange={(e) =>
-                onChange({ ...businessInfo, businessPhone: e.target.value })
+                onChange({ ...businessInfo, businessPhone: formatPhoneForDisplay(e.target.value) })
               }
             />
           </div>
@@ -259,10 +260,10 @@ export function BusinessInfoSection({
             </Label>
             <Input
               id="whatsappPhone"
-              placeholder="5511999999999"
-              value={businessInfo.whatsappPhone}
+              placeholder="(11) 99999-9999"
+              value={formatPhoneForDisplay(businessInfo.whatsappPhone)}
               onChange={(e) =>
-                onChange({ ...businessInfo, whatsappPhone: e.target.value })
+                onChange({ ...businessInfo, whatsappPhone: formatPhoneForDisplay(e.target.value) })
               }
             />
             <p className="text-xs text-muted-foreground">

@@ -48,6 +48,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { BannerCarousel, CatalogBannerItem } from '../components/catalog/BannerCarousel';
+import { formatPhoneForDisplay } from '../utils/whatsapp';
 
 export const STORE_TEMPLATES = [
   {
@@ -223,7 +224,7 @@ export function StoreCustomization() {
       let data = {
         businessName: '',
         businessTagline: '',
-        catalogWhatsappPhone: settings?.catalogWhatsappPhone || '',
+        catalogWhatsappPhone: formatPhoneForDisplay(settings?.catalogWhatsappPhone || ''),
         instagramUrl: '',
         websiteUrl: '',
         catalogBadge: settings?.catalogBadge || '',
@@ -280,7 +281,7 @@ export function StoreCustomization() {
           data = {
             businessName: pub.businessName || '',
             businessTagline: pub.businessTagline || '',
-            catalogWhatsappPhone: pub.catalogWhatsappPhone || '',
+            catalogWhatsappPhone: formatPhoneForDisplay(pub.catalogWhatsappPhone || ''),
             instagramUrl: pub.instagramUrl || '',
             websiteUrl: pub.websiteUrl || '',
             catalogBadge: pub.catalogBadge || data.catalogBadge,
@@ -1913,7 +1914,7 @@ export function StoreCustomization() {
                         id="m-biz-phone"
                         placeholder="Ex: (11) 99999-9999"
                         value={formData.catalogWhatsappPhone}
-                        onChange={(e) => handleChange('catalogWhatsappPhone', e.target.value)}
+                        onChange={(e) => handleChange('catalogWhatsappPhone', formatPhoneForDisplay(e.target.value))}
                       />
                       <p className="text-[11px] text-muted-foreground">
                         Número dedicado para receber pedidos dos clientes via catálogo online. Não altera o WhatsApp institucional do ateliê.

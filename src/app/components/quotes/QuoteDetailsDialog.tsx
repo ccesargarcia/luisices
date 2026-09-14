@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Quote, OrderStatus } from '../../types';
 import { formatCurrency } from '../../utils/currency';
 import { formatDateTime as formatDateTimeUtil } from '../../utils/date';
+import { normalizePhoneForWhatsApp, formatPhoneForDisplay } from '../../utils/whatsapp';
 import { getTextColor } from '../../utils/tagColors';
 import { useUserSettings } from '../../../hooks/useUserSettings';
 import { useAuth } from '../../../contexts/AuthContext';
@@ -260,14 +261,14 @@ export function QuoteDetailsDialog({
               <div className="flex items-center gap-2 text-sm">
                 <Phone className="size-4 text-muted-foreground flex-shrink-0" />
                 <a
-                  href={`https://wa.me/55${quote.customerPhone.replace(/\D/g, '')}?text=${encodeURIComponent(
+                  href={`https://wa.me/${normalizePhoneForWhatsApp(quote.customerPhone)}?text=${encodeURIComponent(
                     buildWhatsAppMessage(quote, settings ?? undefined)
                   )}`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-green-600 hover:underline"
                 >
-                  {quote.customerPhone}
+                  {formatPhoneForDisplay(quote.customerPhone)}
                 </a>
               </div>
             </div>

@@ -5,6 +5,7 @@ import { cn } from '../components/ui/utils';
 import { useAuth } from '../../contexts/AuthContext';
 import { useUserSettings } from '../../hooks/useUserSettings';
 import { applyColorTheme } from '../utils/colorThemes';
+import { normalizePhoneForWhatsApp } from '../utils/whatsapp';
 import { trackPageView } from '../../services/analyticsService';
 import { Button } from '../components/ui/button';
 import {
@@ -560,7 +561,7 @@ export function Layout() {
                 )}
                 {settings?.whatsappPhone && (
                   <a
-                    href={`https://wa.me/${settings.whatsappPhone.replace(/\D/g, '')}`}
+                    href={`https://wa.me/${normalizePhoneForWhatsApp(settings.whatsappPhone)}`}
                     target="_blank"
                     rel="noopener noreferrer"
                     title="WhatsApp"
