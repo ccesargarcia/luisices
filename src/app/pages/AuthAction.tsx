@@ -58,10 +58,8 @@ export function AuthAction() {
     }
 
     // Verificar se o código é válido e obter o email
-    console.log('[AuthAction] Verificando código...');
     verifyPasswordResetCode(auth, oobCode)
       .then((emailAddress) => {
-        console.log('[AuthAction] Código válido! Email:', emailAddress);
         setEmail(emailAddress);
         setVerifying(false);
       })

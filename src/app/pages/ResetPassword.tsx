@@ -22,9 +22,7 @@ export function ResetPassword() {
     setLoading(true);
 
     try {
-      console.log('[ResetPassword] Enviando email para:', email);
       await resetPassword(email);
-      console.log('[ResetPassword] Email enviado com sucesso (ou email não existe)');
       setSuccess(true);
     } catch (err: any) {
       console.error('[ResetPassword] Erro ao enviar email:', err);

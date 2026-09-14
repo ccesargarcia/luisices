@@ -485,6 +485,36 @@ Usuários podem consultar suas permissões; administradores gerenciam permissõe
 
 A restauração das configurações padrão remove personalizações, incluindo imagens enviadas, mediante confirmação.
 
+## 12. Central de E-mails (`/emails`)
+
+Disponível exclusivamente para administradores, centraliza o envio, monitoramento e recebimento de e-mails transacionais e de relacionamento.
+
+### Envio de E-mails
+
+- Composição de e-mail com destinatário, assunto, corpo e preview em tempo real.
+- Seleção do remetente entre os domínios verificados (`contato@`, `noreply@`, `suporte@luisices.com.br`).
+- Envio via Resend com feedback imediato de sucesso ou falha.
+- Rate limiting: máximo de 50 disparos por hora por usuário administrador.
+
+### Controle de Cota Diária
+
+- Exibe a cota de envio do dia atual (enviados / limite) com barra de progresso visual.
+- Sincronização via Cloud Function `getEmailUsage` que combina a API do Resend com contagem local no Firestore.
+- Fallback para contagem do Firestore em caso de indisponibilidade da API Resend (cobrindo os 15 min de cache da API).
+
+### Recebimento de E-mails (Webhook)
+
+- Webhook HTTP seguro (`resendReceivingWebhook`) integrado à Cloud Function correspondente.
+- Validação de assinatura Svix com proteção contra replay attacks (janela de 5 minutos).
+- E-mails recebidos são armazenados na coleção `receivedEmails/{emailId}` e exibidos na interface.
+
+### Segurança
+
+- Módulo restrito ao papel `admin` — funcionários e usuários comuns não têm acesso.
+- Rate limiting aplicado no backend para prevenir abuso.
+- Validação rigorosa de payload e verificação de assinatura Svix no webhook.
+- Em ambiente de desenvolvimento (`luisices-dev`), utiliza remetentes e domínios `dev.luisices.com.br`; em produção (`papelaria-dashboard`), utiliza os domínios verificados `luisices.com.br`.
+
 ## 13. Usuários, permissões e equipe (RBAC)
 
 O sistema opera com três papéis fundamentais:
@@ -548,7 +578,8 @@ Disponível para todos os usuários autenticados via rota `/ajuda`, reúne:
 - Dados são isolados por usuário nas regras do Firebase.
 - Operações indisponíveis por permissão não devem ser executadas apenas por ocultação visual; o backend também deve impedir o acesso.
 - A Lojinha Online (`/catalogo`) adota obrigatoriamente o **tema claro como padrão (default)**; o alternador de tema do catálogo opera isolado sem sobrescrever a preferência do painel administrativo.
-- A vitrine pública (`/catalogo`) lê apenas a coleção `storeProducts` e dados de identidade visual públicos, mantendo os produtos internos do ateliê (`products`) e dados operacionais protegidos.
+- A vitrine pública (`/catalogo`) lê **exclusivamente** a coleção `storeProducts`. Quando a coleção está vazia, o catálogo exibe estado vazio — não há fallback para produtos internos (`products`). O cache local (`localStorage`) é invalidado a cada carregamento para garantir consistência imediata após remoções.
+
 
 ## 16. Fluxos recomendados
 

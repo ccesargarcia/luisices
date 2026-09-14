@@ -82,6 +82,13 @@ Para consultar a visão completa do produto, regras e fluxos de negócio, veja [
 - **Tema claro padrão com isolamento total**: o catálogo público inicia obrigatoriamente no tema claro como padrão em todas as sessões; o alternador do catálogo não afeta e não sobrescreve o tema do painel administrativo
 - **Permissões específicas (RBAC)**: controle granular no perfil de usuários para gerenciar a vitrine online e personalizar a loja
 
+### 📧 Central de E-mails (`/emails`)
+- **Envio de e-mails transacionais** via Resend com seleção de remetente, composição e preview em tempo real (exclusivo para admins)
+- **Controle de cota diária** com barra de progresso sincronizada em tempo real via Cloud Function e fallback local no Firestore
+- **Recebimento de e-mails** via webhook HTTP com validação de assinatura Svix e proteção contra replay attacks
+- **Rate limiting** no backend: máximo de 50 disparos por hora por administrador
+- Alternância automática de remetentes e domínios entre ambiente dev (`dev.luisices.com.br`) e produção (`luisices.com.br`)
+
 ### 💡 Central de Ajuda & Guia Operacional (`/ajuda`)
 - Guia operacional interativo com passo a passo para cada fluxo do sistema
 - FAQ com soluções para dúvidas frequentes do dia a dia
