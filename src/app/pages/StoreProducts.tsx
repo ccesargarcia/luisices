@@ -110,15 +110,29 @@ function StoreProductDialog({ open, onOpenChange, editing, existingCategories }:
   const [saving, setSaving] = useState(false);
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+  const [isCustomCategory, setIsCustomCategory] = useState<boolean>(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (open) {
-      setForm(editing ? formFromStoreProduct(editing) : emptyForm());
+      const initial = editing ? formFromStoreProduct(editing) : emptyForm();
+      // Se estamos criando novo produto e já existem categorias, sugere a primeira se não tiver selecionado
+      if (!editing && existingCategories.length > 0 && !initial.category) {
+        initial.category = existingCategories[0];
+      }
+      setForm(initial);
       setPhotoFile(null);
       setPhotoPreview(editing?.imageUrl ?? null);
+
+      if (existingCategories.length === 0) {
+        setIsCustomCategory(true);
+      } else if (editing?.category && !existingCategories.includes(editing.category)) {
+        setIsCustomCategory(true);
+      } else {
+        setIsCustomCategory(false);
+      }
     }
-  }, [open, editing]);
+  }, [open, editing, existingCategories]);
 
   function handlePhotoSelect(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -254,21 +268,65 @@ function StoreProductDialog({ open, onOpenChange, editing, existingCategories }:
           </div>
 
           {/* Categoria & Preço */}
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="space-y-1.5">
-              <Label htmlFor="sp-category" className="text-xs font-semibold">Categoria</Label>
-              <Input
-                id="sp-category"
-                placeholder="Ex: Maternidade, Lembranças..."
-                value={form.category}
-                onChange={(e) => setForm({ ...form, category: e.target.value })}
-                list="store-categories-list"
-              />
-              <datalist id="store-categories-list">
-                {existingCategories.map((c) => (
-                  <option key={c} value={c} />
-                ))}
-              </datalist>
+              <div className="flex items-center justify-between">
+                <Label htmlFor="sp-category" className="text-xs font-semibold">Categoria</Label>
+                {existingCategories.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const next = !isCustomCategory;
+                      setIsCustomCategory(next);
+                      if (next) {
+                        setForm((prev) => ({ ...prev, category: '' }));
+                      } else {
+                        setForm((prev) => ({ ...prev, category: existingCategories[0] || '' }));
+                      }
+                    }}
+                    className="text-[11px] text-primary hover:underline font-medium cursor-pointer"
+                  >
+                    {isCustomCategory ? '← Escolher existente' : '+ Nova categoria'}
+                  </button>
+                )}
+              </div>
+
+              {isCustomCategory || existingCategories.length === 0 ? (
+                <div className="space-y-1">
+                  <Input
+                    id="sp-category"
+                    placeholder="Digite o nome da nova categoria..."
+                    value={form.category}
+                    onChange={(e) => setForm({ ...form, category: e.target.value })}
+                    autoFocus={isCustomCategory && existingCategories.length > 0}
+                  />
+                  {existingCategories.length > 0 && (
+                    <p className="text-[10px] text-muted-foreground leading-tight">
+                      Ficará salva no dropdown para futuros cadastros.
+                    </p>
+                  )}
+                </div>
+              ) : (
+                <select
+                  id="sp-category"
+                  value={form.category}
+                  onChange={(e) => {
+                    if (e.target.value === '__new__') {
+                      setIsCustomCategory(true);
+                      setForm({ ...form, category: '' });
+                    } else {
+                      setForm({ ...form, category: e.target.value });
+                    }
+                  }}
+                  className="w-full h-9 px-3 rounded-lg border border-input bg-background text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary cursor-pointer"
+                >
+                  <option value="" disabled>Selecione uma categoria...</option>
+                  {existingCategories.map((c) => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                  <option value="__new__">➕ Cadastrar nova categoria...</option>
+                </select>
+              )}
             </div>
 
             <div className="space-y-1.5">
@@ -867,10 +925,13 @@ export function StoreProducts() {
 
               {/* Informações */}
               <CardContent className="p-3.5 flex-1 flex flex-col justify-between space-y-3 min-w-0">
-                <div className="space-y-1 min-w-0">
-                  <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider block truncate">
-                    {prod.category}
-                  </span>
+                <div className="space-y-1.5 min-w-0">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-primary/10 text-primary border border-primary/20 max-w-full">
+                      <Tag size={10} className="shrink-0" />
+                      <span className="truncate">{prod.category || 'Geral'}</span>
+                    </span>
+                  </div>
                   <h3 className="text-xs sm:text-sm font-bold text-foreground line-clamp-2 leading-tight break-words" title={prod.name}>
                     {prod.name}
                   </h3>
@@ -964,10 +1025,15 @@ export function StoreProducts() {
                       </span>
                     )}
                   </div>
-                  <p className="text-[11px] text-muted-foreground truncate">
-                    {prod.category} • Até {prod.leadTimeDays} dias úteis
-                    {prod.isCustomizable && ' • Personalizável'}
-                  </p>
+                  <div className="flex items-center gap-2 flex-wrap pt-1">
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-primary/10 text-primary border border-primary/20 shrink-0">
+                      <Tag size={10} className="shrink-0" />
+                      <span>{prod.category || 'Geral'}</span>
+                    </span>
+                    <span className="text-[11px] text-muted-foreground">
+                      • Até {prod.leadTimeDays} dias úteis{prod.isCustomizable ? ' • Personalizável' : ''}
+                    </span>
+                  </div>
                 </div>
               </div>
 

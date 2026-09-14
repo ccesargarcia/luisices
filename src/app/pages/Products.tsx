@@ -109,15 +109,28 @@ function ProductFormDialog({ open, onOpenChange, editing, existingCategories, us
   const [saving, setSaving] = useState(false);
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+  const [isCustomCategory, setIsCustomCategory] = useState<boolean>(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (open) {
-      setForm(editing ? formFromProduct(editing) : emptyForm());
+      const initial = editing ? formFromProduct(editing) : emptyForm();
+      if (!editing && existingCategories.length > 0 && !initial.category) {
+        initial.category = existingCategories[0];
+      }
+      setForm(initial);
       setPhotoFile(null);
       setPhotoPreview(editing?.photoUrl ?? null);
+
+      if (existingCategories.length === 0) {
+        setIsCustomCategory(true);
+      } else if (editing?.category && !existingCategories.includes(editing.category)) {
+        setIsCustomCategory(true);
+      } else {
+        setIsCustomCategory(false);
+      }
     }
-  }, [open]);
+  }, [open, editing, existingCategories]);
 
   function handlePhotoSelect(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -227,13 +240,64 @@ function ProductFormDialog({ open, onOpenChange, editing, existingCategories, us
               </div>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="p-category">Categoria</Label>
-              <Input id="p-category" list="category-options" placeholder="Ex: Impressão"
-                value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}
-                autoComplete="off" />
-              <datalist id="category-options">
-                {existingCategories.map((c) => <option key={c} value={c} />)}
-              </datalist>
+              <div className="flex items-center justify-between">
+                <Label htmlFor="p-category">Categoria</Label>
+                {existingCategories.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const next = !isCustomCategory;
+                      setIsCustomCategory(next);
+                      if (next) {
+                        setForm((prev) => ({ ...prev, category: '' }));
+                      } else {
+                        setForm((prev) => ({ ...prev, category: existingCategories[0] || '' }));
+                      }
+                    }}
+                    className="text-xs text-primary hover:underline font-medium cursor-pointer"
+                  >
+                    {isCustomCategory ? '← Escolher existente' : '+ Nova categoria'}
+                  </button>
+                )}
+              </div>
+
+              {isCustomCategory || existingCategories.length === 0 ? (
+                <div className="space-y-1">
+                  <Input
+                    id="p-category"
+                    placeholder="Digite a nova categoria..."
+                    value={form.category}
+                    onChange={(e) => setForm({ ...form, category: e.target.value })}
+                    autoComplete="off"
+                    autoFocus={isCustomCategory && existingCategories.length > 0}
+                  />
+                  {existingCategories.length > 0 && (
+                    <p className="text-[10px] text-muted-foreground leading-tight">
+                      Ficará salva no dropdown para futuros produtos.
+                    </p>
+                  )}
+                </div>
+              ) : (
+                <select
+                  id="p-category"
+                  value={form.category}
+                  onChange={(e) => {
+                    if (e.target.value === '__new__') {
+                      setIsCustomCategory(true);
+                      setForm({ ...form, category: '' });
+                    } else {
+                      setForm({ ...form, category: e.target.value });
+                    }
+                  }}
+                  className="w-full h-9 px-3 rounded-lg border border-input bg-background text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary cursor-pointer"
+                >
+                  <option value="" disabled>Selecione uma categoria...</option>
+                  {existingCategories.map((c) => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                  <option value="__new__">➕ Cadastrar nova categoria...</option>
+                </select>
+              )}
             </div>
           </div>
 

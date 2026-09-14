@@ -23,6 +23,7 @@ import {
   Truck,
   Sparkle,
   CheckCircle2,
+  Tag,
 } from 'lucide-react';
 import { formatCurrency } from '../utils/currency';
 import { normalizePhoneForWhatsApp, formatPhoneForDisplay } from '../utils/whatsapp';
@@ -767,8 +768,8 @@ export function PublicCatalog() {
 
           {/* Barra de Filtros & Ordenação (Estilo Stoqui Shop) */}
           <div className="space-y-3">
-            {/* Categorias (Scroll no mobile, flex-wrap no desktop) */}
-            <div className="flex items-center gap-2 overflow-x-auto pb-1.5 sm:flex-wrap scrollbar-none">
+            {/* Categorias: flex-wrap responsivo sem barra de rolagem horizontal tanto no mobile quanto no desktop */}
+            <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
               {categories.map((cat) => {
                 const isActive = selectedCategory.toLowerCase() === cat.toLowerCase();
                 return (
@@ -873,9 +874,10 @@ export function PublicCatalog() {
 
                   {/* Detalhes do Produto */}
                   <div className="p-3 sm:p-4 flex-1 flex flex-col justify-between space-y-2">
-                    <div className="space-y-1">
-                      <span className="text-[10px] sm:text-[11px] font-medium text-stone-400 dark:text-stone-500 uppercase tracking-wider block truncate">
-                        {prod.category}
+                    <div className="space-y-1.5">
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] sm:text-[11px] font-semibold bg-[#613d3e]/10 dark:bg-[#f4b7b9]/15 text-[#613d3e] dark:text-[#f4b7b9] border border-[#613d3e]/20 dark:border-[#f4b7b9]/20 w-fit max-w-full">
+                        <Tag size={10} className="shrink-0" />
+                        <span className="truncate">{prod.category || 'Geral'}</span>
                       </span>
                       <h3 
                         className="text-xs sm:text-sm font-bold text-[#221a1a] dark:text-[#e8e0e3] line-clamp-2 leading-snug cursor-pointer group-hover:text-[#613d3e] dark:group-hover:text-[#f4b7b9] transition-colors"
@@ -1132,8 +1134,9 @@ export function PublicCatalog() {
                 <div className="space-y-3 overflow-y-auto flex-1 min-h-0 pr-1 overscroll-contain">
                   <div className="flex justify-between items-start gap-2">
                     <div>
-                      <span className="text-xs font-semibold text-stone-400 uppercase tracking-wider">
-                        {selectedProductPreview.category}
+                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-[11px] font-semibold bg-[#613d3e]/10 dark:bg-[#f4b7b9]/15 text-[#613d3e] dark:text-[#f4b7b9] border border-[#613d3e]/20 dark:border-[#f4b7b9]/20 mb-1">
+                        <Tag size={11} className="shrink-0" />
+                        <span>{selectedProductPreview.category || 'Geral'}</span>
                       </span>
                       <h3 className="text-base sm:text-xl font-extrabold text-[#221a1a] dark:text-[#e8e0e3] leading-snug">
                         {selectedProductPreview.name}
