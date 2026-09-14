@@ -147,7 +147,7 @@ const MODULE_GUIDES: GuideSection[] = [
       },
     ],
     tips: [
-      'Acesse a vitrine pelo link direto /catalogo, por /loja ou pelo subdomínio loja.dev.luisices.com.br.',
+      'Acesse a vitrine pelo link direto /catalogo, por /loja ou pelo subdomínio direto loja.luisices.com.br (ou loja.dev.luisices.com.br em desenvolvimento).',
       'Você pode adicionar uma conta de Instagram de Parceria/Colab que é exibida elegantemente no cabeçalho e rodapé da lojinha.',
     ],
   },
@@ -359,7 +359,7 @@ const FAQ_LIST = [
   },
   {
     q: 'Como configurar o endereço / domínio da minha lojinha?',
-    a: 'Sua vitrine pública atende automaticamente tanto pelo caminho dev.luisices.com.br/loja (ou /catalogo) quanto pelo subdomínio direto loja.dev.luisices.com.br, facilitando colocar o link na bio do Instagram.',
+    a: 'Sua vitrine pública atende automaticamente tanto pelo caminho luisices.com.br/loja (ou /catalogo) quanto pelo subdomínio direto loja.luisices.com.br (e em desenvolvimento por loja.dev.luisices.com.br), facilitando colocar o link na bio do Instagram.',
   },
   {
     q: 'Como registrar um pagamento com entrada (sinal) e saldo na entrega?',

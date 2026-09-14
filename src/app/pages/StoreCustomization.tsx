@@ -2490,8 +2490,9 @@ export function StoreCustomization() {
                 Sua vitrine pública pode ser acessada e divulgada de várias formas:
               </p>
               <ul className="text-xs text-muted-foreground space-y-1 list-disc pl-4">
-                <li><code>loja.dev.luisices.com.br</code> (subdomínio direto para bio do Instagram).</li>
-                <li><code>dev.luisices.com.br/loja</code> ou <code>dev.luisices.com.br/catalogo</code>.</li>
+                <li><code>loja.luisices.com.br</code> ou <code>catalogo.luisices.com.br</code> (subdomínios diretos para bio do Instagram).</li>
+                <li><code>luisices.com.br/loja</code> ou <code>luisices.com.br/catalogo</code>.</li>
+                <li>Em desenvolvimento, atende igualmente por <code>loja.dev.luisices.com.br</code> e <code>dev.luisices.com.br/loja</code>.</li>
                 <li>Todas as rotas abrem a vitrine completa de forma responsiva no celular ou computador.</li>
               </ul>
             </div>
