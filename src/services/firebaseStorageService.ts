@@ -11,7 +11,7 @@ import {
   deleteObject,
   UploadMetadata,
 } from 'firebase/storage';
-import { storage } from '../lib/firebase';
+import { auth, storage } from '../lib/firebase';
 import type { OrderAttachment } from '../app/types';
 
 export class FirebaseStorageService {
