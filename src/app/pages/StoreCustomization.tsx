@@ -786,6 +786,19 @@ export function StoreCustomization() {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          <Button onClick={handleSave} disabled={saving} size="sm" className="gap-2">
+            {saving ? (
+              <>
+                <Loader2 className="size-4 animate-spin" />
+                Salvando...
+              </>
+            ) : (
+              <>
+                <CheckCircle2 className="size-4" />
+                Salvar Alterações
+              </>
+            )}
+          </Button>
           <Button
             type="button"
             variant="outline"
@@ -895,7 +908,7 @@ export function StoreCustomization() {
         {/* Formulário com Abas (2 Colunas) */}
         <div className="lg:col-span-2 space-y-6">
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-            <TabsList className="grid grid-cols-5 w-full h-auto p-1 bg-muted/60">
+            <TabsList className="flex flex-wrap w-full h-auto p-1 bg-muted/60">
               <TabsTrigger value="identity" className="text-xs py-2">
                 Logo & Vitrine
               </TabsTrigger>
@@ -2179,7 +2192,7 @@ export function StoreCustomization() {
         </div>
 
         {/* Coluna Lateral: Prévia Visual ao Vivo (1 Coluna) */}
-        <div className="lg:col-span-1 sticky top-6 space-y-4">
+        <div className="lg:col-span-1 lg:sticky lg:top-6 space-y-4">
           <Card className="overflow-hidden border-primary/25 shadow-md">
             <CardHeader className="bg-primary/5 py-3 border-b border-primary/10">
               <div className="flex items-center justify-between">
