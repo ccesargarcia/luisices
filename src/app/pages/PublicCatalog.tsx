@@ -39,9 +39,12 @@ export interface CatalogProduct {
   imageUrl: string;
   badge?: string;
   isCustomizable?: boolean;
+  order?: number;
+  createdAt?: string;
 }
 
 export interface CartItem {
+  id: string;
   product: CatalogProduct;
   quantity: number;
   customName?: string;
@@ -115,7 +118,13 @@ export function PublicCatalog() {
   const [cart, setCart] = useState<CartItem[]>(() => {
     try {
       const saved = localStorage.getItem('luisices_catalog_cart');
-      return saved ? JSON.parse(saved) : [];
+      if (!saved) return [];
+      const parsed = JSON.parse(saved);
+      if (!Array.isArray(parsed)) return [];
+      return parsed.map((item: any, idx: number) => ({
+        ...item,
+        id: item.id || `cart-${idx}-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      }));
     } catch {
       return [];
     }
@@ -189,9 +198,9 @@ export function PublicCatalog() {
           setBusinessInfo((prev: typeof businessInfo) => ({
             name: s.businessName !== undefined && s.businessName !== '' ? s.businessName : prev.name,
             tagline: s.businessTagline !== undefined ? s.businessTagline : '',
-            whatsapp: s.catalogWhatsappPhone || s.whatsappPhone || s.businessPhone || prev.whatsapp,
-            instagram: s.instagramUrl ? s.instagramUrl.replace(/^https?:\/\/(www\.)?instagram\.com\//, '').replace(/\/$/, '') : prev.instagram,
-            website: s.websiteUrl || prev.website,
+            whatsapp: s.catalogWhatsappPhone || s.whatsappPhone || s.businessPhone || '',
+            instagram: s.instagramUrl ? s.instagramUrl.replace(/^https?:\/\/(www\.)?instagram\.com\//, '').replace(/\/$/, '') : '',
+            website: s.websiteUrl || '',
             logo: s.catalogLogo || '',
             banner: s.catalogBanner || '',
             banners: Array.isArray(s.catalogBanners) && s.catalogBanners.length > 0
@@ -240,19 +249,36 @@ export function PublicCatalog() {
         snap.forEach((d) => {
           const data = d.data();
           if (data.name && Number(data.price ?? data.unitPrice) > 0 && data.active !== false) {
+            const rawLead = data.leadTimeDays;
+            const leadTimeDays = rawLead !== undefined && rawLead !== null && !isNaN(Number(rawLead))
+              ? Math.max(0, Number(rawLead))
+              : 5;
             storeList.push({
               id: d.id,
               name: data.name,
               category: data.category || 'Geral',
               price: Number(data.price ?? data.unitPrice) || 0,
               description: data.description || 'Produto artesanal confeccionado com carinho sob encomenda.',
-              leadTimeDays: Number(data.leadTimeDays) || 5,
+              leadTimeDays,
               imageUrl: data.imageUrl || data.photoUrl || (data.images && data.images[0]) || 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?auto=format&fit=crop&w=800&q=80',
               badge: data.badge || undefined,
               isCustomizable: data.isCustomizable ?? true,
+              order: data.order !== undefined ? Number(data.order) : undefined,
+              createdAt: data.createdAt?.toDate?.()?.toISOString() ?? (typeof data.createdAt === 'string' ? data.createdAt : undefined),
             });
           }
         });
+
+        // Ordenar produtos por prioridade configurada (ordem do ateliê ou mais recentes primeiro)
+        storeList.sort((a, b) => {
+          if (a.order !== undefined && b.order !== undefined && a.order !== b.order) {
+            return a.order - b.order;
+          }
+          if (a.order !== undefined && b.order === undefined) return -1;
+          if (a.order === undefined && b.order !== undefined) return 1;
+          return (b.createdAt || '').localeCompare(a.createdAt || '');
+        });
+
         setProducts(storeList);
         setLoadingProducts(false);
 
@@ -295,6 +321,21 @@ export function PublicCatalog() {
       };
     }
   }, [isAnyModalOpen]);
+
+  // Fechar modal ou sacola com a tecla Escape
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (selectedProductPreview) {
+          setSelectedProductPreview(null);
+        } else if (isCartOpen) {
+          setIsCartOpen(false);
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectedProductPreview, isCartOpen]);
 
   // Categorias dinâmicas derivadas dos produtos
   const categories = useMemo(() => {
@@ -358,24 +399,26 @@ export function PublicCatalog() {
 
   // Ações da Sacola
   const addToCart = useCallback((product: CatalogProduct, customName?: string, quantity: number = 1) => {
+    const trimmedCustom = (customName || '').trim();
     setCart((prev) => {
       const existingIndex = prev.findIndex(
-        (item) => item.product.id === product.id && (item.customName || '') === (customName || '')
+        (item) => item.product.id === product.id && (item.customName || '').trim() === trimmedCustom
       );
       if (existingIndex > -1) {
         return prev.map((item, idx) =>
           idx === existingIndex ? { ...item, quantity: item.quantity + quantity } : item
         );
       }
-      return [...prev, { product, quantity, customName: customName || undefined }];
+      const newItemId = `item-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+      return [...prev, { id: newItemId, product, quantity, customName: trimmedCustom || undefined }];
     });
   }, []);
 
-  const updateQuantity = useCallback((productId: string, delta: number, customName?: string) => {
+  const updateQuantity = useCallback((cartItemId: string, delta: number) => {
     setCart((prev) =>
       prev
         .map((item) => {
-          if (item.product.id === productId && (item.customName || '') === (customName || '')) {
+          if (item.id === cartItemId) {
             const newQ = item.quantity + delta;
             return newQ > 0 ? { ...item, quantity: newQ } : null;
           }
@@ -385,9 +428,18 @@ export function PublicCatalog() {
     );
   }, []);
 
+  const removeFromCart = useCallback((cartItemId: string) => {
+    setCart((prev) => prev.filter((item) => item.id !== cartItemId));
+  }, []);
+
   // Envio de Pedido no WhatsApp com Deep Link formatado
   const handleSendToWhatsApp = () => {
     const cleanPhone = normalizePhoneForWhatsApp(businessInfo.whatsapp);
+    if (!cleanPhone) {
+      alert('O número de WhatsApp da loja ainda não foi configurado pelo ateliê. Por favor, entre em contato através das redes sociais ou site.');
+      return;
+    }
+
     const greeting = businessInfo.whatsappGreeting || `🌸 *Olá, ${businessInfo.name}! Gostaria de fazer uma encomenda pelo Catálogo:*`;
     const labelCustom = businessInfo.whatsappCustomizationLabel || 'Personalização/Nome:';
     const footerMsg = businessInfo.whatsappFooter || 'Poderia me passar as opções de frete/retirada e a chave PIX para confirmar?';
@@ -401,7 +453,9 @@ export function PublicCatalog() {
       if (item.customName) {
         msg += `• ${labelCustom} ${item.customName}\n`;
       }
-      msg += `• Prazo de confecção: até ${item.product.leadTimeDays} dias úteis\n\n`;
+      msg += item.product.leadTimeDays > 0
+        ? `• Prazo de confecção: até ${item.product.leadTimeDays} dias úteis\n\n`
+        : `• Prazo: Pronta entrega\n\n`;
     });
 
     msg += `✨ *Subtotal Estimado:* ${formatCurrency(subtotal)}\n`;
@@ -732,6 +786,9 @@ export function PublicCatalog() {
                     <img
                       src={prod.imageUrl}
                       alt={prod.name}
+                      onError={(e) => {
+                        e.currentTarget.src = 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?auto=format&fit=crop&w=800&q=80';
+                      }}
                       className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                       loading="lazy"
                       decoding="async"
@@ -775,7 +832,7 @@ export function PublicCatalog() {
                       <div className="flex items-center justify-between gap-1">
                         <div className="inline-flex items-center gap-1 text-[10px] sm:text-[11px] font-medium text-amber-700 dark:text-amber-300 bg-amber-500/10 px-2 py-0.5 rounded-md">
                           <Clock size={11} />
-                          <span>Até {prod.leadTimeDays} dias úteis</span>
+                          <span>{prod.leadTimeDays > 0 ? `Até ${prod.leadTimeDays} dias úteis` : 'Pronta entrega'}</span>
                         </div>
                         {prod.isCustomizable && (
                           <span className="text-[10px] font-semibold text-[#613d3e] dark:text-[#f4b7b9] inline-flex items-center gap-0.5">
@@ -991,6 +1048,9 @@ export function PublicCatalog() {
                 <img
                   src={selectedProductPreview.imageUrl}
                   alt={selectedProductPreview.name}
+                  onError={(e) => {
+                    e.currentTarget.src = 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?auto=format&fit=crop&w=800&q=80';
+                  }}
                   className="w-full h-full object-cover"
                   decoding="async"
                 />
@@ -1031,7 +1091,7 @@ export function PublicCatalog() {
 
                   <div className="flex items-center gap-2 p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-800 dark:text-amber-300 text-xs">
                     <Clock size={14} className="shrink-0" />
-                    <span>Prazo de confecção: <strong>até {selectedProductPreview.leadTimeDays} dias úteis</strong></span>
+                    <span>Prazo de confecção: <strong>{selectedProductPreview.leadTimeDays > 0 ? `até ${selectedProductPreview.leadTimeDays} dias úteis` : 'Pronta entrega'}</strong></span>
                   </div>
 
                   {/* Campo de Personalização */}
@@ -1120,9 +1180,9 @@ export function PublicCatalog() {
                     <p className="text-xs">Explore o catálogo e adicione os mimos que deseja encomendar.</p>
                   </div>
                 ) : (
-                  cart.map((item, idx) => (
+                  cart.map((item) => (
                     <div
-                      key={`${item.product.id}-${item.customName || idx}`}
+                      key={item.id}
                       className="p-3.5 rounded-2xl bg-white/80 dark:bg-[#261f22] border border-stone-200/70 dark:border-[#ebcdcd]/10 space-y-2.5 shadow-2xs"
                     >
                       <div className="flex justify-between items-start gap-2">
@@ -1130,6 +1190,9 @@ export function PublicCatalog() {
                           <img
                             src={item.product.imageUrl}
                             alt={item.product.name}
+                            onError={(e) => {
+                              e.currentTarget.src = 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?auto=format&fit=crop&w=800&q=80';
+                            }}
                             className="size-12 rounded-xl object-cover border border-white/60 shrink-0"
                             decoding="async"
                           />
@@ -1144,7 +1207,7 @@ export function PublicCatalog() {
                         </div>
 
                         <button
-                          onClick={() => updateQuantity(item.product.id, -item.quantity, item.customName)}
+                          onClick={() => removeFromCart(item.id)}
                           className="text-red-500 hover:text-red-700 p-1.5 hover:bg-red-50 dark:hover:bg-red-950/30 rounded-lg transition-colors cursor-pointer"
                           title="Remover item"
                         >
@@ -1165,8 +1228,8 @@ export function PublicCatalog() {
                             onChange={(e) => {
                               const val = e.target.value;
                               setCart((prev) =>
-                                prev.map((ci, cIdx) =>
-                                  cIdx === idx ? { ...ci, customName: val } : ci
+                                prev.map((ci) =>
+                                  ci.id === item.id ? { ...ci, customName: val } : ci
                                 )
                               );
                             }}
@@ -1178,11 +1241,11 @@ export function PublicCatalog() {
                       {/* Controle de Quantidade */}
                       <div className="flex items-center justify-between pt-1 text-[11px]">
                         <span className="text-[10px] text-stone-400">
-                          Prazo: {item.product.leadTimeDays} dias úteis
+                          {item.product.leadTimeDays > 0 ? `Prazo: ${item.product.leadTimeDays} dias úteis` : 'Pronta entrega'}
                         </span>
                         <div className="flex items-center gap-1.5 bg-stone-100 dark:bg-[#161214] rounded-lg p-0.5 border border-stone-200 dark:border-stone-700">
                           <button
-                            onClick={() => updateQuantity(item.product.id, -1, item.customName)}
+                            onClick={() => updateQuantity(item.id, -1)}
                             className="p-1 rounded text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-800 cursor-pointer"
                             aria-label="Diminuir quantidade"
                           >
@@ -1192,7 +1255,7 @@ export function PublicCatalog() {
                             {item.quantity}
                           </span>
                           <button
-                            onClick={() => updateQuantity(item.product.id, 1, item.customName)}
+                            onClick={() => updateQuantity(item.id, 1)}
                             className="p-1 rounded text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-800 cursor-pointer"
                             aria-label="Aumentar quantidade"
                           >

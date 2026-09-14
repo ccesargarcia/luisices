@@ -154,14 +154,8 @@ export function BannerCarousel({
         {validBanners.map((banner, idx) => {
           const isActive = idx === currentIndex;
           const safeBannerLink = sanitizeBannerLink(banner.linkUrl);
-          const slideContent = (
-            <div
-              key={banner.id || `banner-${idx}`}
-              className={`absolute inset-0 transition-opacity duration-700 ease-in-out ${
-                isActive ? 'opacity-100 z-10 pointer-events-auto' : 'opacity-0 z-0 pointer-events-none'
-              }`}
-              aria-hidden={!isActive}
-            >
+          const innerContent = (
+            <>
               <img
                 src={banner.imageUrl}
                 alt={banner.title || `Banner ${idx + 1} de ${storeName}`}
@@ -186,8 +180,12 @@ export function BannerCarousel({
                   )}
                 </div>
               )}
-            </div>
+            </>
           );
+
+          const slideClasses = `absolute inset-0 transition-opacity duration-700 ease-in-out ${
+            isActive ? 'opacity-100 z-10 pointer-events-auto' : 'opacity-0 z-0 pointer-events-none'
+          }`;
 
           if (safeBannerLink) {
             return (
@@ -196,15 +194,24 @@ export function BannerCarousel({
                 href={safeBannerLink}
                 target={safeBannerLink.startsWith('http') ? '_blank' : '_self'}
                 rel="noopener noreferrer"
-                className="block"
+                className={slideClasses}
                 tabIndex={isActive ? 0 : -1}
+                aria-hidden={!isActive}
               >
-                {slideContent}
+                {innerContent}
               </a>
             );
           }
 
-          return slideContent;
+          return (
+            <div
+              key={banner.id || `banner-${idx}`}
+              className={slideClasses}
+              aria-hidden={!isActive}
+            >
+              {innerContent}
+            </div>
+          );
         })}
 
         {/* Botão Anterior */}
