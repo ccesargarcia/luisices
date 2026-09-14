@@ -3,22 +3,81 @@ const { onCall, onRequest } = require('firebase-functions/v2/https');
 const { defineSecret } = require('firebase-functions/params');
 const admin = require('firebase-admin');
 const { Resend } = require('resend');
-const { RateLimiterMemory } = require('rate-limiter-flexible');
+// Rate limiter distribuído via Firestore substitui o RateLimiterMemory
 const crypto = require('crypto');
 
 admin.initializeApp();
 
-// Rate limiter: 3 tentativas por email a cada hora
-const rateLimiter = new RateLimiterMemory({
-  points: 3,
-  duration: 3600, // 1 hora em segundos
-});
+// Função utilitária de mascaramento para LGPD e proteção de logs
+const maskEmail = (email) => {
+  if (!email || typeof email !== 'string') return '***';
+  const parts = email.trim().split('@');
+  if (parts.length !== 2) return '***';
+  const [user, domain] = parts;
+  const maskedUser = user.length <= 2 ? user[0] + '***' : user.slice(0, 2) + '***' + user.slice(-1);
+  return `${maskedUser}@${domain}`;
+};
 
-// Rate limiter para envio customizado de e-mails: máximo de 50 disparos por hora por usuário admin
-const customEmailLimiter = new RateLimiterMemory({
-  points: 50,
-  duration: 3600, // 1 hora em segundos
-});
+/**
+ * Rate Limiter distribuído baseado em Firestore.
+ * Previne contorno de rate limit em ambientes multi-instância de Cloud Functions.
+ *
+ * @param {string} key Identificador da operação e entidade (ex: 'reset_email', 'custom_email_uid')
+ * @param {number} maxPoints Quantidade máxima permitida na janela
+ * @param {number} windowSeconds Janela de tempo em segundos
+ * @returns {Promise<{ allowed: boolean, retryAfterMinutes: number }>}
+ */
+const consumeDistributedRateLimit = async (key, maxPoints, windowSeconds) => {
+  const safeKey = crypto.createHash('sha256').update(String(key).toLowerCase()).digest('hex');
+  const docRef = admin.firestore().collection('_rateLimits').doc(safeKey);
+  const now = Date.now();
+  const windowMs = windowSeconds * 1000;
+
+  try {
+    return await admin.firestore().runTransaction(async (transaction) => {
+      const doc = await transaction.get(docRef);
+      if (!doc.exists) {
+        transaction.set(docRef, {
+          points: 1,
+          resetAt: now + windowMs,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+        return { allowed: true, retryAfterMinutes: 0 };
+      }
+
+      const data = doc.data() || {};
+      const resetAt = typeof data.resetAt === 'number' ? data.resetAt : now + windowMs;
+
+      // Se a janela expirou, reinicia a contagem
+      if (now >= resetAt) {
+        transaction.set(docRef, {
+          points: 1,
+          resetAt: now + windowMs,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+        return { allowed: true, retryAfterMinutes: 0 };
+      }
+
+      const currentPoints = typeof data.points === 'number' ? data.points : 0;
+      if (currentPoints >= maxPoints) {
+        const remainingMs = Math.max(0, resetAt - now);
+        const retryAfterMinutes = Math.max(1, Math.ceil(remainingMs / 1000 / 60));
+        return { allowed: false, retryAfterMinutes };
+      }
+
+      transaction.update(docRef, {
+        points: admin.firestore.FieldValue.increment(1),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+
+      return { allowed: true, retryAfterMinutes: 0 };
+    });
+  } catch (err) {
+    console.error('[consumeDistributedRateLimit] Falha ao processar limite no Firestore:', err);
+    // Em caso de falha transitória do Firestore, não bloquear a operação por padrão
+    return { allowed: true, retryAfterMinutes: 0 };
+  }
+};
 
 // Configurar Resend API Key usando o novo sistema de params
 // Execute: firebase functions:secrets:set RESEND_API_KEY
@@ -267,15 +326,13 @@ exports.sendPasswordResetEmail = onCall({ secrets: [RESEND_API_KEY, EVOLUTION_AP
     throw new functions.https.HttpsError('invalid-argument', 'Email é obrigatório');
   }
 
-  // Rate limiting: prevenir abuso
-  try {
-    await rateLimiter.consume(email.toLowerCase());
-  } catch (rateLimiterRes) {
-    const retryAfter = Math.ceil(rateLimiterRes.msBeforeNext / 1000 / 60); // minutos
-    console.warn(`[sendPasswordResetEmail] Rate limit excedido para: ${email}`);
+  // Rate limiting distribuído: prevenir abuso
+  const limitCheck = await consumeDistributedRateLimit(`reset_${email.toLowerCase()}`, 3, 3600);
+  if (!limitCheck.allowed) {
+    console.warn(`[sendPasswordResetEmail] Rate limit excedido para: ${maskEmail(email)}`);
     throw new functions.https.HttpsError(
       'resource-exhausted',
-      `Muitas tentativas. Tente novamente em ${retryAfter} minuto(s).`
+      `Muitas tentativas. Tente novamente em ${limitCheck.retryAfterMinutes} minuto(s).`
     );
   }
 
@@ -286,7 +343,7 @@ exports.sendPasswordResetEmail = onCall({ secrets: [RESEND_API_KEY, EVOLUTION_AP
   }
 
   try {
-    const maskedEmail = typeof email === 'string' ? email.replace(/(.{2})(.*)(@.*)/, '$1***$3') : '***';
+    const maskedEmail = maskEmail(email);
     console.log(`[sendPasswordResetEmail] Iniciando para: ${maskedEmail}`);
 
     const actionUrl = `${getAppUrl()}/action`;
@@ -504,13 +561,13 @@ exports.sendCustomEmail = onCall({ cors: true, secrets: [RESEND_API_KEY] }, asyn
     throw new functions.https.HttpsError('permission-denied', 'Apenas administradores podem disparar e-mails pelo sistema.');
   }
 
-  // Rate Limiting: proteção contra abusos, loops e exaustão de cota
-  try {
-    await customEmailLimiter.consume(request.auth.uid);
-  } catch {
+  // Rate Limiting distribuído: proteção contra abusos, loops e exaustão de cota
+  const customLimit = await consumeDistributedRateLimit(`custom_email_${request.auth.uid}`, 50, 3600);
+  if (!customLimit.allowed) {
+    console.warn(`[sendCustomEmail] Rate limit de disparo excedido para o usuário: ${request.auth.uid}`);
     throw new functions.https.HttpsError(
       'resource-exhausted',
-      'Limite de envio de e-mails atingido (máximo de 50 disparos por hora). Tente novamente mais tarde.'
+      `Limite de envio de e-mails atingido (máximo de 50 disparos por hora). Tente novamente em ${customLimit.retryAfterMinutes} minuto(s).`
     );
   }
 
@@ -596,7 +653,7 @@ exports.sendCustomEmail = onCall({ cors: true, secrets: [RESEND_API_KEY] }, asyn
       payload.bcc = bcc.map((b) => String(b).trim()).filter(Boolean);
     }
 
-    console.log(`[sendCustomEmail] Enviando e-mail para: ${recipientList.join(', ')} - Assunto: ${subject}`);
+    console.log(`[sendCustomEmail] Enviando e-mail para ${recipientList.length} destinatário(s) [${recipientList.map(maskEmail).join(', ')}] - Assunto: ${subject}`);
     const { data: resendData, error: resendError } = await resend.emails.send(payload);
 
     if (resendError) {
@@ -836,7 +893,7 @@ exports.resendReceivingWebhook = onRequest({ cors: true, secrets: [RESEND_API_KE
     const emailId = eventData.email_id || eventData.id;
 
     if (!emailId) {
-      console.warn('[resendReceivingWebhook] Nenhum email_id no payload:', eventData);
+      console.warn('[resendReceivingWebhook] Nenhum email_id no payload recebido');
       return res.status(400).json({ error: 'Payload sem email_id' });
     }
 

@@ -284,5 +284,11 @@ service cloud.firestore {
             ))
       );
     }
+
+    // Regras para controle interno de Rate Limiting (Cloud Functions Admin SDK apenas)
+    match /_rateLimits/{limitId} {
+      // Bloqueia qualquer acesso direto vindo de clientes web
+      allow read, write: if false;
+    }
   }
 }

@@ -40,14 +40,14 @@ Itens mapeados na auditoria de segurança para serem abordados em próximas etap
 - [ ] **`storage.rules` (L24):** Restringir leitura irrestrita (`allow read: if true`) para exigir usuário autenticado (`request.auth != null`).
 - [ ] **`firebase.json` (L22-53):** Adicionar headers de `Content-Security-Policy` (CSP) para proteção contra injeção e clickjacking no hosting.
 - [ ] **`functions/index.js` (L506):** Validar se o domínio do campo `from` na função `sendCustomEmail` pertence exclusivamente a `luisices.com.br` / `dev.luisices.com.br`.
-- [ ] **`functions/index.js` (L12-21):** Migrar limitadores de taxa baseados em memória (`RateLimiterMemory`) para controle distribuído no Firestore, prevenindo bypass em múltiplas instâncias de Cloud Functions.
+- [x] **`functions/index.js` (L12-21):** Migrar limitadores de taxa baseados em memória (`RateLimiterMemory`) para controle distribuído no Firestore, prevenindo bypass em múltiplas instâncias de Cloud Functions. *(Concluído na branch feature/functions-hardening)*
 
 ### Severidade Baixa / Qualidade (🔵)
 - [ ] **`validationSchemas.ts`:**
   - Padronizar regra de tamanho de senha (atualmente 6 chars no login vs 8 no registro).
   - Adicionar validação de complexidade de senha no registro (maiúscula, minúscula, número).
   - Padronizar obrigatoriedade do campo `phone` entre schema e serviço de clientes.
-- [ ] **`functions/index.js`:** Mascarar e-mails e tokens em saídas de `console.log` para conformidade com LGPD.
+- [x] **`functions/index.js`:** Mascarar e-mails e tokens em saídas de `console.log` para conformidade com LGPD. *(Concluído na branch feature/functions-hardening)*
 - [ ] **`.github/workflows/deploy.yml`:** Atualizar action `peaceiris/actions-gh-pages@v3` para `@v4` (evitar runtime Node depreciado).
 
 ---
