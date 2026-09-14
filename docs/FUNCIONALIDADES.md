@@ -335,15 +335,22 @@ A Lojinha Online é a vitrine comercial digital voltada para o cliente final, pe
 - **Produtos da Lojinha (`storeProducts`):** itens com fotos, descrições comerciais, categorias e preços voltados para a vitrine pública. Essa separação impede conflitos operacionais e permite restringir quem pode gerenciar a vitrine externa através de permissões dedicadas.
 
 ### Gestão no painel administrativo
-- **Submenu "Lojinha Online":** agrupamento intuitivo na barra lateral com acesso aos *Produtos da Lojinha* (`/produtos-lojinha`) e à tela de *Personalizar Loja* (`/personalizar-lojinha`).
+- **Submenu "Lojinha Online":** agrupamento intuitivo na barra lateral com acesso aos *Produtos da Lojinha* (`/produtos-lojinha`), *Personalizar Loja* (`/personalizar-lojinha`) e *Pedidos da Lojinha* (`/pedidos-lojinha`).
 - **Modos de visualização:** alternância entre visualização em Grade/Galeria e Lista detalhada, com persistência da preferência do usuário em `localStorage` e layout responsivo que elimina barras de rolagem excessivas.
 - **Controle de permissões (RBAC):** suporte a permissão específica `storeProducts` (visualizar, criar, editar e excluir) para controlar quais colaboradores têm autonomia sobre o catálogo público.
+- **Toggle de Publicação (Loja No Ar / Manutenção):**
+  - Chave liga/desliga na aba *Publicação & Flags* da tela de personalização.
+  - Ao despublicar, a loja entra instantaneamente em modo de manutenção para os visitantes, exibindo logotipo, mensagem personalizada ou padrão e atalhos de contato via WhatsApp e Instagram.
+- **Feature Flags e Controle de Funcionalidades:**
+  - **Pedidos Online (Sacola):** permite ativar ou desativar o fluxo de carrinho/sacola e envio de pedidos. Quando desativada, a loja opera em modo vitrine/catálogo institucional, ocultando a gaveta de sacola e trocando os botões de compra por "Ver Detalhes" e link direto de consulta no WhatsApp com o nome do produto pré-preenchido.
+  - **Modo Escuro:** toggle que controla se os visitantes podem alternar para o tema escuro ou se a loja opera estritamente no tema claro.
 
 ### Experiência do cliente no Catálogo Público (`/catalogo`)
 - **Acesso livre:** visualização instantânea sem necessidade de login.
 - **Banners rotativos:** carrossel de propaganda e anúncios com transição automática configurável, intervalo em segundos personalizável e opção de banner fixo.
-- **Sacola de encomendas:** adição rápida de produtos com seletor de quantidade e campos para personalização de nomes e observações da encomenda.
-- **Checkout via WhatsApp:** geração automática de mensagem estruturada e amigável com a lista de itens, nomes personalizados, subtotal e dados de entrega para envio direto ao WhatsApp do ateliê.
+- **Sacola de encomendas adaptativa:** adição rápida de produtos com seletor de quantidade e campos para personalização quando o modo de pedidos online está ativo. Quando inativo, direciona o cliente para o atendimento direto no WhatsApp.
+- **Checkout via WhatsApp:** geração automática de mensagem estruturada e amigável com a lista de itens, código do pedido gerado, nomes personalizados, subtotal e dados de entrega para envio direto ao WhatsApp do ateliê.
+- **Página de Manutenção:** tela dedicada com gradientes suaves, identidade visual e canais diretos de contato quando a loja estiver temporariamente despublicada.
 - **Isolamento de tema e padrão claro obrigatório:**
   - O catálogo público adota **sempre o tema claro como padrão** em qualquer carregamento inicial.
   - O alternador de tema na vitrine opera em escopo local e não grava na chave global do painel administrativo.

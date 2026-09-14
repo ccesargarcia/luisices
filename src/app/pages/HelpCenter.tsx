@@ -17,6 +17,8 @@ import {
   ChevronRight,
   Package,
   ArrowRight,
+  Store,
+  Globe,
 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { Input } from '../components/ui/input';
@@ -288,9 +290,64 @@ const MODULE_GUIDES: GuideSection[] = [
       'Você pode atribuir tags às fotos da galeria para filtrar temas como #Aniversario, #Casamento, #Batizado.',
     ],
   },
+  {
+    id: 'store',
+    title: 'Lojinha Online & Catálogo Público',
+    badge: 'Vendas Online',
+    icon: Store,
+    description:
+      'Vitrine digital para divulgar no Instagram/WhatsApp, receber pedidos e controlar disponibilidade, banners e opções de compra.',
+    colorClass: 'text-amber-600 bg-amber-600/10 border-amber-600/20',
+    steps: [
+      {
+        title: 'Vitrine Comercial Separada (storeProducts)',
+        desc: 'Os produtos da lojinha são independentes dos produtos internos da oficina. Cadastre fotos vendedoras, preços promocionais e selos de destaque em "Produtos da Lojinha".',
+      },
+      {
+        title: 'Personalização Visual Completa',
+        desc: 'Em "Personalizar Loja", defina logo, capa com banners rotativos automáticos, cor ou arte de fundo do cabeçalho, frases de boas-vindas e regras de frete.',
+      },
+      {
+        title: 'Controle de Publicação (Toggle Loja No Ar)',
+        desc: 'Na aba "Publicação & Flags", ative ou desative a loja inteira com um clique. Se despublicada, seus clientes visualizam uma página elegante de manutenção com seus contatos.',
+      },
+      {
+        title: 'Feature Flags & Controle da Sacola (Pedidos Online)',
+        desc: 'Você pode manter a vitrine no ar apenas para consulta/vitrine desligando "Pedidos Online (Sacola)". Os botões se ajustam para "Ver Detalhes" e "Consultar pelo WhatsApp" sem carrinho.',
+      },
+      {
+        title: 'Gestão de Pedidos da Lojinha',
+        desc: 'Acesse "Pedidos da Lojinha" para acompanhar pedidos enviados pelos clientes com código de rastreio, status de atendimento e conversão direta para a produção.',
+      },
+    ],
+    tips: [
+      'Acesse a vitrine pelo link direto /catalogo ou pelo subdomínio configurado para compartilhar na bio do Instagram.',
+      'A lojinha abre sempre no tema claro por padrão para garantir a melhor leitura das fotos e identidade visual das suas peças.',
+    ],
+  },
 ];
 
 const FAQ_LIST = [
+  {
+    q: 'Como funciona a publicação e o botão de despublicar a lojinha?',
+    a: 'Em "Personalizar Loja" > aba "Publicação & Flags", existe a chave "Loja Publicada". Ao desligá-la e salvar, a vitrine pública entra em modo manutenção imediatamente. Os visitantes veem sua logomarca, uma mensagem explicativa personalizável e botões para falar com você no WhatsApp ou Instagram.',
+  },
+  {
+    q: 'O que acontece ao desativar o botão "Pedidos Online (Sacola)"?',
+    a: 'A loja continua visível como uma vitrine/portfólio online, mas a sacola de compras e o checkout são ocultados. Nos produtos, o botão muda de "Adicionar à Sacola" para "Ver Detalhes" e direciona o cliente para tirar dúvidas diretamente no WhatsApp.',
+  },
+  {
+    q: 'Qual a diferença entre os "Produtos do Ateliê" e os "Produtos da Lojinha"?',
+    a: 'Os produtos do ateliê servem para suporte interno à produção, orçamentos e insumos. Os "Produtos da Lojinha" compõem exclusivamente a vitrine pública que seus clientes enxergam. Você pode inclusive clicar em "Importar do Ateliê" para trazer peças internas para a lojinha com um clique.',
+  },
+  {
+    q: 'Como os pedidos feitos na lojinha chegam até mim?',
+    a: 'Quando o cliente fecha a sacola, o sistema gera uma mensagem formatada e detalhada no WhatsApp oficial da sua loja com o código do pedido, lista de itens, opções de personalização e dados de entrega, além de gravar na tela de "Pedidos da Lojinha" no painel administrativo.',
+  },
+  {
+    q: 'Por que o catálogo público abre sempre no tema claro?',
+    a: 'O catálogo adota o tema claro obrigatório para valorizar as fotos dos seus produtos, contrastes de papéis artesanais e garantir a identidade visual do seu ateliê para clientes que acessam via celular.',
+  },
   {
     q: 'Como funciona a atribuição de pedidos para funcionários?',
     a: 'Administradores podem atribuir pedidos individualmente na tela de Novo Pedido, nos Detalhes do Pedido ou em lote selecionando vários pedidos no Dashboard. O funcionário atribuído terá acesso para visualizar o pedido e atualizar as etapas de produção.',

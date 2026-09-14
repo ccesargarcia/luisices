@@ -1092,24 +1092,38 @@ export function PublicCatalog() {
                       </div>
                     </div>
 
-                    {/* Botão de Adição à Sacola / Carrinho */}
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (prod.isCustomizable) {
+                    {/* Botão de Adição à Sacola / Consulta */}
+                    {featureFlags.enableOnlineOrders !== false ? (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (prod.isCustomizable) {
+                            handleOpenPreview(prod);
+                          } else {
+                            addToCart(prod);
+                            setIsCartOpen(true);
+                          }
+                        }}
+                        className="w-full mt-2 py-2 sm:py-2.5 px-3 rounded-xl font-bold text-[11px] sm:text-xs flex items-center justify-center gap-1.5 bg-[#613d3e] dark:bg-[#f4b7b9] text-white dark:text-[#4c2527] hover:opacity-95 active:scale-98 transition-all shadow-xs cursor-pointer"
+                        title={prod.isCustomizable ? 'Personalizar e adicionar à sacola' : 'Adicionar à sacola de encomendas'}
+                        aria-label="Adicionar ao carrinho"
+                      >
+                        <ShoppingBag size={13} className="shrink-0" />
+                        <span>Adicionar à Sacola</span>
+                      </button>
+                    ) : (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
                           handleOpenPreview(prod);
-                        } else {
-                          addToCart(prod);
-                          setIsCartOpen(true);
-                        }
-                      }}
-                      className="w-full mt-2 py-2 sm:py-2.5 px-3 rounded-xl font-bold text-[11px] sm:text-xs flex items-center justify-center gap-1.5 bg-[#613d3e] dark:bg-[#f4b7b9] text-white dark:text-[#4c2527] hover:opacity-95 active:scale-98 transition-all shadow-xs cursor-pointer"
-                      title={prod.isCustomizable ? 'Personalizar e adicionar à sacola' : 'Adicionar à sacola de encomendas'}
-                      aria-label="Adicionar ao carrinho"
-                    >
-                      <ShoppingBag size={13} className="shrink-0" />
-                      <span>Adicionar à Sacola</span>
-                    </button>
+                        }}
+                        className="w-full mt-2 py-2 sm:py-2.5 px-3 rounded-xl font-bold text-[11px] sm:text-xs flex items-center justify-center gap-1.5 bg-stone-100 dark:bg-stone-800 text-[#613d3e] dark:text-[#f4b7b9] border border-[#613d3e]/20 dark:border-[#f4b7b9]/20 hover:bg-[#613d3e]/10 active:scale-98 transition-all cursor-pointer"
+                        title="Ver detalhes do produto"
+                      >
+                        <Eye size={13} className="shrink-0" />
+                        <span>Ver Detalhes</span>
+                      </button>
+                    )}
                   </div>
                 </article>
               ))
@@ -1378,19 +1392,35 @@ export function PublicCatalog() {
                   )}
                 </div>
 
-                {/* Ação de Adicionar - sempre visível fixada no rodapé com safe area */}
+                {/* Ação de Adicionar ou Consulta direta via WhatsApp */}
                 <div className="pt-3 pb-[max(1rem,env(safe-area-inset-bottom))] sm:pb-0 border-t border-stone-200/50 dark:border-stone-800 shrink-0 bg-[#fff8f7] dark:bg-[#1f191b]">
-                  <button
-                    onClick={() => {
-                      addToCart(selectedProductPreview, previewCustomName);
-                      setSelectedProductPreview(null);
-                      setIsCartOpen(true);
-                    }}
-                    className="w-full py-3.5 px-4 rounded-xl font-bold text-xs sm:text-sm flex items-center justify-center gap-2 bg-[#613d3e] dark:bg-[#f4b7b9] text-white dark:text-[#4c2527] hover:opacity-95 active:scale-[0.98] transition-all shadow-md cursor-pointer"
-                  >
-                    <ShoppingBag size={16} />
-                    <span>Adicionar à Sacola</span>
-                  </button>
+                  {featureFlags.enableOnlineOrders !== false ? (
+                    <button
+                      onClick={() => {
+                        addToCart(selectedProductPreview, previewCustomName);
+                        setSelectedProductPreview(null);
+                        setIsCartOpen(true);
+                      }}
+                      className="w-full py-3.5 px-4 rounded-xl font-bold text-xs sm:text-sm flex items-center justify-center gap-2 bg-[#613d3e] dark:bg-[#f4b7b9] text-white dark:text-[#4c2527] hover:opacity-95 active:scale-[0.98] transition-all shadow-md cursor-pointer"
+                    >
+                      <ShoppingBag size={16} />
+                      <span>Adicionar à Sacola</span>
+                    </button>
+                  ) : (
+                    <a
+                      href={`https://wa.me/${normalizePhoneForWhatsApp(businessInfo.whatsapp)}?text=${encodeURIComponent(
+                        `Olá! Gostaria de mais informações sobre "${selectedProductPreview.name}" (${formatCurrency(selectedProductPreview.price)})${
+                          previewCustomName.trim() ? ` para a personalização: "${previewCustomName.trim()}"` : ''
+                        }.`
+                      )}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="w-full py-3.5 px-4 rounded-xl font-bold text-xs sm:text-sm flex items-center justify-center gap-2 bg-green-600 hover:bg-green-700 text-white transition-all shadow-md cursor-pointer"
+                    >
+                      <MessageCircle size={16} />
+                      <span>Consultar pelo WhatsApp</span>
+                    </a>
+                  )}
                 </div>
               </div>
 
