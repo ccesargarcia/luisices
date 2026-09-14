@@ -379,6 +379,22 @@ export function PublicCatalog() {
   const totalItemsCount = useMemo(() => cart.reduce((acc, item) => acc + item.quantity, 0), [cart]);
   const subtotal = useMemo(() => cart.reduce((acc, item) => acc + item.product.price * item.quantity, 0), [cart]);
 
+  // Higienização de links externos para prevenir esquemas maliciosos (ex: javascript:)
+  const sanitizedWebsiteUrl = useMemo(() => {
+    if (!businessInfo.website) return null;
+    const trimmed = businessInfo.website.trim();
+    if (/^https?:\/\//i.test(trimmed)) return trimmed;
+    if (/^[a-zA-Z0-9-]+(\.[a-zA-Z0-9-]+)+/i.test(trimmed) && !trimmed.includes(':')) {
+      return `https://${trimmed}`;
+    }
+    return null;
+  }, [businessInfo.website]);
+
+  const cleanInstagram = useMemo(() => {
+    if (!businessInfo.instagram) return '';
+    return businessInfo.instagram.replace(/[^a-zA-Z0-9._]/g, '');
+  }, [businessInfo.instagram]);
+
   // Ações da Sacola
   const addToCart = useCallback((product: CatalogProduct, customName?: string, quantity: number = 1) => {
     setCart((prev) => {
@@ -538,16 +554,16 @@ export function PublicCatalog() {
             {/* Ações: Instagram, Alternador de Tema e Sacola de Encomendas */}
             <div className="w-full sm:w-auto flex items-center justify-between sm:justify-end gap-2 shrink-0">
               <div className="flex items-center gap-1.5 sm:gap-2">
-                {businessInfo.instagram && (
+                {cleanInstagram && (
                   <a
-                    href={`https://instagram.com/${businessInfo.instagram}`}
+                    href={`https://instagram.com/${cleanInstagram}`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl sm:rounded-2xl text-xs font-medium bg-stone-100/90 dark:bg-[#2b2225]/80 hover:bg-stone-200/80 dark:hover:bg-[#34292d] text-stone-700 dark:text-stone-200 border border-stone-200/80 dark:border-[#ebcdcd]/20 transition-all shadow-2xs cursor-pointer"
                     title="Instagram do ateliê"
                   >
                     <Instagram size={15} className="text-[#E1306C]" />
-                    <span className="hidden md:inline text-xs">@{businessInfo.instagram}</span>
+                    <span className="hidden md:inline text-xs">@{cleanInstagram}</span>
                   </a>
                 )}
 
@@ -894,21 +910,21 @@ export function PublicCatalog() {
                     <span>WhatsApp Oficial: {businessInfo.whatsapp}</span>
                   </button>
 
-                  {businessInfo.instagram && (
+                  {cleanInstagram && (
                     <a
-                      href={`https://instagram.com/${businessInfo.instagram}`}
+                      href={`https://instagram.com/${cleanInstagram}`}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="inline-flex items-center gap-1.5 hover:text-[#E1306C] transition-colors"
                     >
                       <Instagram size={14} />
-                      <span>@{businessInfo.instagram}</span>
+                      <span>@{cleanInstagram}</span>
                     </a>
                   )}
 
-                  {businessInfo.website && (
+                  {sanitizedWebsiteUrl && (
                     <a
-                      href={businessInfo.website}
+                      href={sanitizedWebsiteUrl}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="inline-flex items-center gap-1.5 hover:underline"

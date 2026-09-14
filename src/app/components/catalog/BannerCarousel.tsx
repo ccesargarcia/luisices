@@ -8,6 +8,17 @@ export interface CatalogBannerItem {
   linkUrl?: string;
 }
 
+/**
+ * Sanitiza URLs de banners para prevenir injeção de scripts (ex: javascript:)
+ */
+function sanitizeBannerLink(url?: string): string | null {
+  if (!url) return null;
+  const trimmed = url.trim();
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  if (trimmed.startsWith('/') && !trimmed.startsWith('//')) return trimmed;
+  return null;
+}
+
 interface BannerCarouselProps {
   banners: CatalogBannerItem[];
   intervalSeconds?: number;
@@ -107,11 +118,12 @@ export function BannerCarousel({
       </div>
     );
 
-    if (single.linkUrl) {
+    const safeSingleLink = sanitizeBannerLink(single.linkUrl);
+    if (safeSingleLink) {
       return (
         <a
-          href={single.linkUrl}
-          target={single.linkUrl.startsWith('http') ? '_blank' : '_self'}
+          href={safeSingleLink}
+          target={safeSingleLink.startsWith('http') ? '_blank' : '_self'}
           rel="noopener noreferrer"
           className="block group cursor-pointer transition-transform duration-200 active:scale-[0.99]"
         >
@@ -139,6 +151,7 @@ export function BannerCarousel({
       >
         {validBanners.map((banner, idx) => {
           const isActive = idx === currentIndex;
+          const safeBannerLink = sanitizeBannerLink(banner.linkUrl);
           const slideContent = (
             <div
               key={banner.id || `banner-${idx}`}
@@ -154,14 +167,14 @@ export function BannerCarousel({
               />
 
               {/* Título ou Link indicador */}
-              {(banner.title || banner.linkUrl) && (
+              {(banner.title || safeBannerLink) && (
                 <div className="absolute bottom-3 left-3 sm:bottom-4 sm:left-4 z-20 flex items-center gap-2">
                   {banner.title && (
                     <span className="px-2.5 py-1 rounded-lg bg-black/60 backdrop-blur-md text-white text-[10px] sm:text-xs font-semibold shadow-xs">
                       {banner.title}
                     </span>
                   )}
-                  {banner.linkUrl && (
+                  {safeBannerLink && (
                     <span className="p-1 rounded-lg bg-white/85 text-stone-900 shadow-xs hidden sm:inline-flex items-center">
                       <ExternalLink size={12} />
                     </span>
@@ -171,12 +184,12 @@ export function BannerCarousel({
             </div>
           );
 
-          if (banner.linkUrl) {
+          if (safeBannerLink) {
             return (
               <a
                 key={banner.id || `banner-${idx}`}
-                href={banner.linkUrl}
-                target={banner.linkUrl.startsWith('http') ? '_blank' : '_self'}
+                href={safeBannerLink}
+                target={safeBannerLink.startsWith('http') ? '_blank' : '_self'}
                 rel="noopener noreferrer"
                 className="block"
                 tabIndex={isActive ? 0 : -1}

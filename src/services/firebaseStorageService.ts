@@ -62,9 +62,13 @@ export class FirebaseStorageService {
     const ext = file.name.split('.').pop() || 'jpg';
     const fileName = `store_product_${productId}_${timestamp}.${ext}`;
     const storageRef = ref(storage, `store/products/${fileName}`);
+    const currentUid = auth.currentUser?.uid || '';
     await uploadBytes(storageRef, file, {
       contentType: file.type,
-      customMetadata: { uploadedAt: new Date().toISOString() },
+      customMetadata: {
+        uploadedAt: new Date().toISOString(),
+        userId: currentUid,
+      },
     });
     return getDownloadURL(storageRef);
   }
@@ -102,10 +106,12 @@ export class FirebaseStorageService {
     const storageRef = ref(storage, storagePath);
 
     // Metadata
+    const currentUid = auth.currentUser?.uid || userId;
     const metadata: UploadMetadata = {
       contentType: file.type,
       customMetadata: {
         uploadedAt: new Date().toISOString(),
+        userId: currentUid,
       },
     };
 
