@@ -81,6 +81,20 @@ export function ErrorBoundary() {
     errorMessage.includes('Failed to fetch') ||
     errorMessage.includes('Loading chunk');
 
+  const handleReload = async () => {
+    try {
+      if ('caches' in window) {
+        const cacheNames = await caches.keys();
+        await Promise.all(cacheNames.map((name) => caches.delete(name)));
+      }
+      if ('serviceWorker' in navigator) {
+        const registrations = await navigator.serviceWorker.getRegistrations();
+        await Promise.all(registrations.map((reg) => reg.unregister()));
+      }
+    } catch {}
+    window.location.reload();
+  };
+
   return (
     <div style={{
       display: 'flex',
@@ -95,7 +109,7 @@ export function ErrorBoundary() {
       <h1>{isChunkError ? 'Nova versão disponível' : 'Algo deu errado'}</h1>
       <p style={{ color: '#666', marginBottom: '2rem' }}>
         {isChunkError
-          ? 'Uma nova versão do sistema foi publicada. Recarregue a página para atualizar.'
+          ? 'Uma nova versão do sistema foi publicada. Recarregue a página para aplicar as alterações.'
           : 'Ocorreu um erro inesperado na aplicação.'}
       </p>
       <pre style={{
@@ -111,7 +125,7 @@ export function ErrorBoundary() {
       <div style={{ display: 'flex', gap: '1rem', marginTop: '2rem' }}>
         <button
           type="button"
-          onClick={() => window.location.reload()}
+          onClick={handleReload}
           style={{
             padding: '0.75rem 1.5rem',
             backgroundColor: '#3b82f6',
@@ -122,7 +136,7 @@ export function ErrorBoundary() {
             cursor: 'pointer'
           }}
         >
-          Recarregar Página
+          Atualizar e Recarregar
         </button>
         <Link
           to="/"

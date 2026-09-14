@@ -57,83 +57,82 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(u);
 
       if (u) {
-        try {
-          // Garante que o documento existe no Firestore
-          await firebaseUserService.getUserProfile(
-            u.uid,
-            u.email ?? undefined,
-            u.displayName ?? undefined,
-          );
-
-          // Assina atualizações em tempo real do perfil do usuário
-          profileUnsub = onSnapshot(
-            doc(db, 'userProfiles', u.uid),
-            (snap) => {
-              if (!snap.exists()) {
-                setUserProfile(null);
-                setLoading(false);
-                return;
+        // Assina atualizações em tempo real do perfil do usuário diretamente
+        profileUnsub = onSnapshot(
+          doc(db, 'userProfiles', u.uid),
+          async (snap) => {
+            if (!snap.exists()) {
+              // Se o documento ainda não existir no primeiro acesso, inicializa via getUserProfile
+              try {
+                const created = await firebaseUserService.getUserProfile(
+                  u.uid,
+                  u.email ?? undefined,
+                  u.displayName ?? undefined,
+                );
+                if (created) {
+                  setUserProfile(created);
+                }
+              } catch (initErr) {
+                console.warn('Erro ao inicializar perfil de usuário:', initErr);
               }
-
-              const data = snap.data() as UserProfile;
-
-              // Se o administrador desativar a conta, efetua logout imediatamente
-              if (!data.active) {
-                toast.error('Sua conta foi desativada pelo administrador.');
-                firebaseAuthService.logout().catch(() => {});
-                setUserProfile(null);
-                setLoading(false);
-                return;
-              }
-
-              const fallbackPermissions = data.role === 'admin'
-                ? ADMIN_PERMISSIONS
-                : data.role === 'funcionario'
-                  ? EMPLOYEE_PERMISSIONS
-                  : DEFAULT_USER_PERMISSIONS;
-
-              // Para usuários padrão ('user'), usa DEFAULT_USER_PERMISSIONS como base e respeita permissões do Firestore
-              const permissions = data.role === 'admin'
-                ? ADMIN_PERMISSIONS
-                : data.role === 'user'
-                  ? {
-                      ...DEFAULT_USER_PERMISSIONS,
-                      ...(data.permissions || {}),
-                      reports: data.permissions?.reports ?? DEFAULT_USER_PERMISSIONS.reports,
-                      exchanges: data.permissions?.exchanges ?? DEFAULT_USER_PERMISSIONS.exchanges,
-                      settings: data.permissions?.settings ?? DEFAULT_USER_PERMISSIONS.settings,
-                      store: data.permissions?.store ?? DEFAULT_USER_PERMISSIONS.store,
-                      orders: {
-                        ...DEFAULT_USER_PERMISSIONS.orders,
-                        ...(data.permissions?.orders || {}),
-                        delete: data.permissions?.orders?.delete ?? DEFAULT_USER_PERMISSIONS.orders.delete,
-                      },
-                    }
-                  : {
-                      ...fallbackPermissions,
-                      ...(data.permissions || {}),
-                      store: data.permissions?.store ?? false,
-                    };
-
-              const profile: UserProfile = {
-                ...data,
-                permissions,
-              };
-
-              setUserProfile(profile);
-              setUserAnalytics(u.uid, profile.role);
               setLoading(false);
-            },
-            (err) => {
-              console.error('Erro ao escutar perfil do usuário em tempo real:', err);
-              setLoading(false);
+              return;
             }
-          );
-        } catch (err) {
-          console.error('Erro ao carregar perfil do usuário:', err);
-          setUserProfile(null);
-          setLoading(false);
-        }
+
+            const data = snap.data() as UserProfile;
+
+            // Se o administrador desativar a conta, efetua logout imediatamente
+            if (!data.active) {
+              toast.error('Sua conta foi desativada pelo administrador.');
+              firebaseAuthService.logout().catch(() => {});
+              setUserProfile(null);
+              setLoading(false);
+              return;
+            }
+
+            const fallbackPermissions = data.role === 'admin'
+              ? ADMIN_PERMISSIONS
+              : data.role === 'funcionario'
+                ? EMPLOYEE_PERMISSIONS
+                : DEFAULT_USER_PERMISSIONS;
+
+            // Para usuários padrão ('user'), usa DEFAULT_USER_PERMISSIONS como base e respeita permissões do Firestore
+            const permissions = data.role === 'admin'
+              ? ADMIN_PERMISSIONS
+              : data.role === 'user'
+                ? {
+                    ...DEFAULT_USER_PERMISSIONS,
+                    ...(data.permissions || {}),
+                    reports: data.permissions?.reports ?? DEFAULT_USER_PERMISSIONS.reports,
+                    exchanges: data.permissions?.exchanges ?? DEFAULT_USER_PERMISSIONS.exchanges,
+                    settings: data.permissions?.settings ?? DEFAULT_USER_PERMISSIONS.settings,
+                    store: data.permissions?.store ?? DEFAULT_USER_PERMISSIONS.store,
+                    orders: {
+                      ...DEFAULT_USER_PERMISSIONS.orders,
+                      ...(data.permissions?.orders || {}),
+                      delete: data.permissions?.orders?.delete ?? DEFAULT_USER_PERMISSIONS.orders.delete,
+                    },
+                  }
+                : {
+                    ...fallbackPermissions,
+                    ...(data.permissions || {}),
+                    store: data.permissions?.store ?? false,
+                  };
+
+            const profile: UserProfile = {
+              ...data,
+              permissions,
+            };
+
+            setUserProfile(profile);
+            setUserAnalytics(u.uid, profile.role);
+            setLoading(false);
+          },
+          (err) => {
+            console.error('Erro ao escutar perfil do usuário em tempo real:', err);
+            setLoading(false);
+          }
+        );
       } else {
         setUserProfile(null);
         setLoading(false);

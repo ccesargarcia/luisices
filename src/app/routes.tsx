@@ -13,7 +13,7 @@ import { AuthAction } from './pages/AuthAction';
 /**
  * Carregador lazy resiliente a atualizações de build/deploy.
  * Se o hash do chunk mudou no servidor e o navegador falhar no import dinâmico,
- * recarrega a página automaticamente uma vez para buscar os novos bundles.
+ * limpa os caches antigos e recarrega uma única vez. Se persistir, deixa o ErrorBoundary tratar.
  */
 function lazyWithRetry<T extends React.ComponentType<any>>(
   factory: () => Promise<{ default: T }>
@@ -22,14 +22,29 @@ function lazyWithRetry<T extends React.ComponentType<any>>(
     try {
       return await factory();
     } catch (error) {
-      const hasReloaded = sessionStorage.getItem('chunk_reload');
-      if (!hasReloaded) {
-        sessionStorage.setItem('chunk_reload', 'true');
-        window.location.reload();
-        return new Promise(() => {});
+      const now = Date.now();
+      const lastReload = Number(sessionStorage.getItem('last_chunk_reload') || '0');
+
+      if (now - lastReload < 15000) {
+        console.warn('[lazyWithRetry] Falha persistente ao carregar chunk. Evitando loop de recarregamento.');
+        throw error;
       }
-      sessionStorage.removeItem('chunk_reload');
-      throw error;
+
+      sessionStorage.setItem('last_chunk_reload', String(now));
+
+      try {
+        if ('caches' in window) {
+          const cacheNames = await caches.keys();
+          await Promise.all(cacheNames.map((name) => caches.delete(name)));
+        }
+        if ('serviceWorker' in navigator) {
+          const registrations = await navigator.serviceWorker.getRegistrations();
+          await Promise.all(registrations.map((reg) => reg.unregister()));
+        }
+      } catch {}
+
+      window.location.reload();
+      return new Promise(() => {});
     }
   });
 }
