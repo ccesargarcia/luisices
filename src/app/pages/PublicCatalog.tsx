@@ -24,7 +24,7 @@ import {
   Sparkle
 } from 'lucide-react';
 import { formatCurrency } from '../utils/currency';
-import { collection, getDocs, doc, getDoc } from 'firebase/firestore';
+import { collection, onSnapshot, doc, getDoc } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { BannerCarousel, CatalogBannerItem } from '../components/catalog/BannerCarousel';
 
@@ -185,110 +185,107 @@ export function PublicCatalog() {
     } catch {}
   }, [cart]);
 
-  // Carregar produtos e configurações públicas do Firestore
+  // Carregar configurações públicas da loja (uma vez, via getDoc)
   useEffect(() => {
     let isCancelled = false;
 
-    async function loadCatalogData() {
+    async function loadSettings() {
       try {
-        setLoadingProducts(true);
-
-        // 1. Carrega informações públicas da loja
-        try {
-          const publicSettingsSnap = await getDoc(doc(db, 'storeSettings', 'public'));
-          if (publicSettingsSnap.exists() && !isCancelled) {
-            const s = publicSettingsSnap.data();
-            setBusinessInfo((prev: typeof businessInfo) => {
-              const updated = {
-                name: s.businessName !== undefined && s.businessName !== '' ? s.businessName : prev.name,
-                tagline: s.businessTagline !== undefined ? s.businessTagline : prev.tagline,
-                whatsapp: s.catalogWhatsappPhone || s.whatsappPhone || s.businessPhone || prev.whatsapp,
-                instagram: s.instagramUrl ? s.instagramUrl.replace(/^https?:\/\/(www\.)?instagram\.com\//, '').replace(/\/$/, '') : prev.instagram,
-                website: s.websiteUrl || prev.website,
-                logo: s.catalogLogo || '',
-                banner: s.catalogBanner || '',
-                banners: Array.isArray(s.catalogBanners) && s.catalogBanners.length > 0
-                  ? (s.catalogBanners as CatalogBannerItem[])
-                  : (s.catalogBanner ? [{ id: 'b-default', imageUrl: s.catalogBanner }] : (prev.banners || [])),
-                bannerInterval: Number(s.catalogBannerInterval) || prev.bannerInterval || 5,
-                bannerAutoPlay: s.catalogBannerAutoPlay !== undefined ? Boolean(s.catalogBannerAutoPlay) : (prev.bannerAutoPlay ?? true),
-                bannerFixed: s.catalogBannerFixed !== undefined ? Boolean(s.catalogBannerFixed) : (prev.bannerFixed ?? false),
-                headerBackground: s.catalogHeaderBackground !== undefined ? s.catalogHeaderBackground : (prev.headerBackground || ''),
-                headerBgColor: s.catalogHeaderBgColor !== undefined ? s.catalogHeaderBgColor : (prev.headerBgColor || ''),
-                headerTextColor: s.catalogHeaderTextColor || prev.headerTextColor || 'dark',
-                headerLogoPosition: s.catalogHeaderLogoPosition || prev.headerLogoPosition || 'left',
-                headerHeight: s.catalogHeaderHeight || prev.headerHeight || 'normal',
-                headerHideText: s.catalogHeaderHideText !== undefined ? Boolean(s.catalogHeaderHideText) : (prev.headerHideText || false),
-                badge: s.catalogBadge !== undefined ? s.catalogBadge : prev.badge,
-                statusText: s.catalogStatusText !== undefined ? s.catalogStatusText : prev.statusText,
-                announcement: s.catalogAnnouncement !== undefined ? s.catalogAnnouncement : prev.announcement,
-                heroTitle: s.catalogHeroTitle !== undefined ? s.catalogHeroTitle : prev.heroTitle,
-                heroDescription: s.catalogHeroDescription !== undefined ? s.catalogHeroDescription : prev.heroDescription,
-                showHero: s.catalogShowHero !== undefined ? Boolean(s.catalogShowHero) : (prev.showHero ?? true),
-                whatsappGreeting: s.catalogWhatsappGreeting !== undefined ? s.catalogWhatsappGreeting : prev.whatsappGreeting,
-                whatsappCustomizationLabel: s.catalogWhatsappCustomizationLabel !== undefined ? s.catalogWhatsappCustomizationLabel : prev.whatsappCustomizationLabel,
-                whatsappFooter: s.catalogWhatsappFooter !== undefined ? s.catalogWhatsappFooter : prev.whatsappFooter,
-                footerText: s.catalogFooterText !== undefined ? s.catalogFooterText : prev.footerText,
-                footerLocation: s.catalogFooterLocation !== undefined ? s.catalogFooterLocation : prev.footerLocation,
-                footerBusinessHours: s.catalogFooterBusinessHours !== undefined ? s.catalogFooterBusinessHours : prev.footerBusinessHours,
-                footerNotice: s.catalogFooterNotice !== undefined ? s.catalogFooterNotice : prev.footerNotice,
-                footerCopyright: s.catalogFooterCopyright !== undefined ? s.catalogFooterCopyright : prev.footerCopyright,
-              };
-              try {
-                localStorage.setItem('luisices_public_store_settings', JSON.stringify(updated));
-              } catch {}
-              return updated;
-            });
-          }
-        } catch (settingsErr) {
-          console.warn('Configurações públicas locais em uso:', settingsErr);
-        }
-
-        // 2. Carrega produtos públicos do Firestore (coleção dedicada 'storeProducts')
-        // Limpa o cache anterior para garantir que a vitrine reflita o estado real do Firestore
-        try { localStorage.removeItem('luisices_public_catalog_products'); } catch {}
-        try {
-          const storeList: CatalogProduct[] = [];
-          const storeProductsSnap = await getDocs(collection(db, 'storeProducts'));
-          storeProductsSnap.forEach((d) => {
-            const data = d.data();
-            if (data.name && Number(data.price ?? data.unitPrice) > 0 && data.active !== false) {
-              storeList.push({
-                id: d.id,
-                name: data.name,
-                category: data.category || 'Geral',
-                price: Number(data.price ?? data.unitPrice) || 0,
-                description: data.description || 'Produto artesanal confeccionado com carinho sob encomenda.',
-                leadTimeDays: Number(data.leadTimeDays) || 5,
-                imageUrl: data.imageUrl || data.photoUrl || (data.images && data.images[0]) || 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?auto=format&fit=crop&w=800&q=80',
-                badge: data.badge || undefined,
-                isCustomizable: data.isCustomizable ?? true,
-              });
-            }
-          });
-
-          if (!isCancelled) {
-            setProducts(storeList);
+        const publicSettingsSnap = await getDoc(doc(db, 'storeSettings', 'public'));
+        if (publicSettingsSnap.exists() && !isCancelled) {
+          const s = publicSettingsSnap.data();
+          setBusinessInfo((prev: typeof businessInfo) => {
+            const updated = {
+              name: s.businessName !== undefined && s.businessName !== '' ? s.businessName : prev.name,
+              tagline: s.businessTagline !== undefined ? s.businessTagline : prev.tagline,
+              whatsapp: s.catalogWhatsappPhone || s.whatsappPhone || s.businessPhone || prev.whatsapp,
+              instagram: s.instagramUrl ? s.instagramUrl.replace(/^https?:\/\/(www\.)?instagram\.com\//, '').replace(/\/$/, '') : prev.instagram,
+              website: s.websiteUrl || prev.website,
+              logo: s.catalogLogo || '',
+              banner: s.catalogBanner || '',
+              banners: Array.isArray(s.catalogBanners) && s.catalogBanners.length > 0
+                ? (s.catalogBanners as CatalogBannerItem[])
+                : (s.catalogBanner ? [{ id: 'b-default', imageUrl: s.catalogBanner }] : (prev.banners || [])),
+              bannerInterval: Number(s.catalogBannerInterval) || prev.bannerInterval || 5,
+              bannerAutoPlay: s.catalogBannerAutoPlay !== undefined ? Boolean(s.catalogBannerAutoPlay) : (prev.bannerAutoPlay ?? true),
+              bannerFixed: s.catalogBannerFixed !== undefined ? Boolean(s.catalogBannerFixed) : (prev.bannerFixed ?? false),
+              headerBackground: s.catalogHeaderBackground !== undefined ? s.catalogHeaderBackground : (prev.headerBackground || ''),
+              headerBgColor: s.catalogHeaderBgColor !== undefined ? s.catalogHeaderBgColor : (prev.headerBgColor || ''),
+              headerTextColor: s.catalogHeaderTextColor || prev.headerTextColor || 'dark',
+              headerLogoPosition: s.catalogHeaderLogoPosition || prev.headerLogoPosition || 'left',
+              headerHeight: s.catalogHeaderHeight || prev.headerHeight || 'normal',
+              headerHideText: s.catalogHeaderHideText !== undefined ? Boolean(s.catalogHeaderHideText) : (prev.headerHideText || false),
+              badge: s.catalogBadge !== undefined ? s.catalogBadge : prev.badge,
+              statusText: s.catalogStatusText !== undefined ? s.catalogStatusText : prev.statusText,
+              announcement: s.catalogAnnouncement !== undefined ? s.catalogAnnouncement : prev.announcement,
+              heroTitle: s.catalogHeroTitle !== undefined ? s.catalogHeroTitle : prev.heroTitle,
+              heroDescription: s.catalogHeroDescription !== undefined ? s.catalogHeroDescription : prev.heroDescription,
+              showHero: s.catalogShowHero !== undefined ? Boolean(s.catalogShowHero) : (prev.showHero ?? true),
+              whatsappGreeting: s.catalogWhatsappGreeting !== undefined ? s.catalogWhatsappGreeting : prev.whatsappGreeting,
+              whatsappCustomizationLabel: s.catalogWhatsappCustomizationLabel !== undefined ? s.catalogWhatsappCustomizationLabel : prev.whatsappCustomizationLabel,
+              whatsappFooter: s.catalogWhatsappFooter !== undefined ? s.catalogWhatsappFooter : prev.whatsappFooter,
+              footerText: s.catalogFooterText !== undefined ? s.catalogFooterText : prev.footerText,
+              footerLocation: s.catalogFooterLocation !== undefined ? s.catalogFooterLocation : prev.footerLocation,
+              footerBusinessHours: s.catalogFooterBusinessHours !== undefined ? s.catalogFooterBusinessHours : prev.footerBusinessHours,
+              footerNotice: s.catalogFooterNotice !== undefined ? s.catalogFooterNotice : prev.footerNotice,
+              footerCopyright: s.catalogFooterCopyright !== undefined ? s.catalogFooterCopyright : prev.footerCopyright,
+            };
             try {
-              localStorage.setItem('luisices_public_catalog_products', JSON.stringify(storeList));
+              localStorage.setItem('luisices_public_store_settings', JSON.stringify(updated));
             } catch {}
-          }
-        } catch (prodErr) {
-          console.warn('Erro ao carregar produtos do catálogo público:', prodErr);
+            return updated;
+          });
         }
-      } catch (err) {
-        console.warn('Erro ao carregar dados do catálogo:', err);
-      } finally {
-        if (!isCancelled) setLoadingProducts(false);
+      } catch (settingsErr) {
+        console.warn('Configurações públicas locais em uso:', settingsErr);
       }
     }
 
-    loadCatalogData();
-
-    return () => {
-      isCancelled = true;
-    };
+    loadSettings();
+    return () => { isCancelled = true; };
   }, []);
+
+  // Escutar produtos da vitrine em tempo real via onSnapshot
+  // O localStorage serve apenas como cache de inicialização (evita flash branco).
+  // O listener substitui os dados imediatamente após o primeiro snapshot, sem precisar recarregar a página.
+  useEffect(() => {
+    const unsubscribe = onSnapshot(
+      collection(db, 'storeProducts'),
+      (snap) => {
+        const storeList: CatalogProduct[] = [];
+        snap.forEach((d) => {
+          const data = d.data();
+          if (data.name && Number(data.price ?? data.unitPrice) > 0 && data.active !== false) {
+            storeList.push({
+              id: d.id,
+              name: data.name,
+              category: data.category || 'Geral',
+              price: Number(data.price ?? data.unitPrice) || 0,
+              description: data.description || 'Produto artesanal confeccionado com carinho sob encomenda.',
+              leadTimeDays: Number(data.leadTimeDays) || 5,
+              imageUrl: data.imageUrl || data.photoUrl || (data.images && data.images[0]) || 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?auto=format&fit=crop&w=800&q=80',
+              badge: data.badge || undefined,
+              isCustomizable: data.isCustomizable ?? true,
+            });
+          }
+        });
+        setProducts(storeList);
+        setLoadingProducts(false);
+        // Atualiza o cache local com os dados mais recentes
+        try {
+          localStorage.setItem('luisices_public_catalog_products', JSON.stringify(storeList));
+        } catch {}
+      },
+      (err) => {
+        console.warn('Erro ao escutar produtos da vitrine pública:', err);
+        setLoadingProducts(false);
+      }
+    );
+
+    return () => unsubscribe();
+  }, []);
+
+
 
   // Travar o scroll de fundo enquanto modal ou sacola estiverem abertos
   const isAnyModalOpen = Boolean(isCartOpen || selectedProductPreview);
