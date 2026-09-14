@@ -105,6 +105,9 @@ export default defineConfig(({ command, mode }) => {
     // Copiar 404.html para dist/ durante o build
     publicDir: 'public',
     build: {
+      target: 'es2022',
+      cssCodeSplit: true,
+      minify: 'esbuild',
       rollupOptions: {
         input: {
           main: path.resolve(__dirname, 'index.html'),

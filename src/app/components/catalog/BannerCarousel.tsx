@@ -109,6 +109,8 @@ export function BannerCarousel({
           src={single.imageUrl}
           alt={single.title || `Banner de capa de ${storeName}`}
           className="w-full h-full object-cover"
+          decoding="async"
+          fetchPriority="high"
         />
         {single.title && (
           <div className="absolute bottom-2 left-3 bg-black/50 backdrop-blur-xs text-white text-[11px] px-2.5 py-1 rounded-lg">
@@ -164,6 +166,9 @@ export function BannerCarousel({
                 src={banner.imageUrl}
                 alt={banner.title || `Banner ${idx + 1} de ${storeName}`}
                 className="w-full h-full object-cover object-center"
+                decoding="async"
+                loading={idx === 0 ? 'eager' : 'lazy'}
+                fetchPriority={idx === 0 ? 'high' : 'low'}
               />
 
               {/* Título ou Link indicador */}

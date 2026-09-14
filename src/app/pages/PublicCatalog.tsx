@@ -712,6 +712,7 @@ export function PublicCatalog() {
                       alt={prod.name}
                       className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                       loading="lazy"
+                      decoding="async"
                     />
                     <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
                       <span className="bg-white/95 dark:bg-black/90 text-[11px] font-bold px-3 py-1.5 rounded-full flex items-center gap-1.5 shadow-md text-stone-900 dark:text-stone-100">
@@ -967,6 +968,7 @@ export function PublicCatalog() {
                   src={selectedProductPreview.imageUrl}
                   alt={selectedProductPreview.name}
                   className="w-full h-full object-cover"
+                  decoding="async"
                 />
                 <button
                   onClick={() => setSelectedProductPreview(null)}
@@ -1105,6 +1107,7 @@ export function PublicCatalog() {
                             src={item.product.imageUrl}
                             alt={item.product.name}
                             className="size-12 rounded-xl object-cover border border-white/60 shrink-0"
+                            decoding="async"
                           />
                           <div className="min-w-0">
                             <h4 className="text-xs font-bold text-[#221a1a] dark:text-[#e8e0e3] truncate" title={item.product.name}>
