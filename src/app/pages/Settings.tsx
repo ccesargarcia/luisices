@@ -72,6 +72,7 @@ export function Settings() {
   });
 
   const [catalogSettings, setCatalogSettings] = useState<CatalogCustomizationSettings>({
+    catalogWhatsappPhone: settings?.catalogWhatsappPhone || '',
     catalogBadge: settings?.catalogBadge || '',
     catalogStatusText: settings?.catalogStatusText || '',
     catalogHeroTitle: settings?.catalogHeroTitle || '',
@@ -125,6 +126,7 @@ export function Settings() {
       setDefaultPaymentMethod(settings.defaultPaymentMethod ?? '');
       setCustomColorHex(settings.customColorHex ?? '#7c3aed');
       setCatalogSettings({
+        catalogWhatsappPhone: settings.catalogWhatsappPhone || '',
         catalogBadge: settings.catalogBadge || '',
         catalogStatusText: settings.catalogStatusText || '',
         catalogHeroTitle: settings.catalogHeroTitle || '',

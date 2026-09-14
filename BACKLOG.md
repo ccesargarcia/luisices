@@ -61,11 +61,15 @@ Itens mapeados na auditoria de segurança para serem abordados em próximas etap
 - **Segurança no Firestore:** Adição de regras granulares para a coleção `/storeProducts/{productId}` em `firestore.rules` (leitura pública para o catálogo e escrita permitida a usuários autenticados).
 - **Isolamento de tema e padrão claro:** Resolução de interferência de tema entre o catálogo público e o painel administrativo. O catálogo público adota estritamente o tema claro como default em todos os carregamentos; o alternador do catálogo não sobrescreve a chave de tema do painel administrativo e restaura a preferência original do usuário ao retornar ao painel.
 - **Permissões RBAC:** Adição do módulo `storeProducts` na matriz de permissões do usuário em `Users.tsx`.
-- **Correção no Teste E2E de Relatórios (`reports.spec.ts`):** Ajuste da asserção de métricas de pedidos para corresponder tanto ao singular quanto ao plural (`/cancelado/i` e `/concluído/i`) e alinhamento do subtítulo do card para `'0 cancelados'` quando zerado, eliminando a falha no CI.
 - **Hardening de Segurança da Lojinha Online:**
   - *`firestore.rules`:* Bloqueio de gravação em `storeSettings/public` para usuários sem permissão explícita de loja (`permissions.store == true` ou `isAdmin()`), prevenindo sequestro do WhatsApp de vendas; remoção da brecha `!exists(...)` em `storeProducts` e restrição de exclusão/edição exigindo propriedade ou permissão.
   - *`storage.rules`:* Restrição de exclusão de imagens públicas na pasta `store/**` atrelando metadados de upload ao `userId` do operador.
   - *Sanitização de URLs (`PublicCatalog.tsx` e `BannerCarousel.tsx`):* Higienização contra esquemas perigosos (`javascript:`) nos links de site oficial, Instagram e banners rotativos.
+- **Segregação de WhatsApp (Lojinha vs Institucional):**
+  - Segregação completa entre o WhatsApp de recebimento de pedidos da vitrine pública (`catalogWhatsappPhone`) e o WhatsApp institucional de orçamentos e contato interno do ateliê (`whatsappPhone`).
+  - Campo específico com ícone e texto explicativo adicionado à tela de Personalizar Loja (`StoreCustomization.tsx`) e na aba de Catálogo em Configurações (`CatalogSettingsSection.tsx`).
+  - Atualização do serviço (`firebaseSettingsService.ts`) para sincronizar `storeSettings/public` priorizando o WhatsApp da loja sem sobrescrever o WhatsApp institucional, e impedindo que a alteração dos dados institucionais apague o WhatsApp da lojinha pública.
+  - Catálogo público (`PublicCatalog.tsx`) consome prioritariamente o número dedicado da vitrine com fallback seguro.
 
 ### Commit `0c8a534` — *fix(tests): remover clique fora do viewport no teste de permissoes*
 - Ajuste no teste `tests/e2e/permissions.spec.ts` removendo clique cego de fechamento de menu que estourava timeout em telas menores.

@@ -182,7 +182,7 @@ export function StoreCustomization() {
   const [formData, setFormData] = useState({
     businessName: '',
     businessTagline: '',
-    whatsappPhone: '',
+    catalogWhatsappPhone: '',
     instagramUrl: '',
     websiteUrl: '',
     catalogBadge: '',
@@ -221,7 +221,7 @@ export function StoreCustomization() {
       let data = {
         businessName: settings?.businessName || '',
         businessTagline: settings?.businessTagline || '',
-        whatsappPhone: settings?.whatsappPhone || settings?.businessPhone || '',
+        catalogWhatsappPhone: settings?.catalogWhatsappPhone || settings?.whatsappPhone || settings?.businessPhone || '',
         instagramUrl: settings?.instagramUrl || '',
         websiteUrl: settings?.websiteUrl || '',
         catalogBadge: settings?.catalogBadge || '',
@@ -277,7 +277,7 @@ export function StoreCustomization() {
           data = {
             businessName: pub.businessName || data.businessName,
             businessTagline: pub.businessTagline || data.businessTagline,
-            whatsappPhone: pub.whatsappPhone || data.whatsappPhone,
+            catalogWhatsappPhone: pub.catalogWhatsappPhone || pub.whatsappPhone || data.catalogWhatsappPhone,
             instagramUrl: pub.instagramUrl || data.instagramUrl,
             websiteUrl: pub.websiteUrl || data.websiteUrl,
             catalogBadge: pub.catalogBadge || data.catalogBadge,
@@ -664,7 +664,8 @@ export function StoreCustomization() {
         const publicData = {
           name: formData.businessName || 'Luisices Papelaria Personalizada',
           tagline: formData.businessTagline,
-          whatsapp: formData.whatsappPhone,
+          whatsapp: formData.catalogWhatsappPhone,
+          catalogWhatsappPhone: formData.catalogWhatsappPhone,
           instagram: formData.instagramUrl ? formData.instagramUrl.replace(/^https?:\/\/(www\.)?instagram\.com\//, '').replace(/\/$/, '') : '',
           website: formData.websiteUrl,
           logo: currentCatalogLogo || '',
@@ -1903,14 +1904,17 @@ export function StoreCustomization() {
                     <div className="space-y-1.5">
                       <Label htmlFor="m-biz-phone" className="text-xs font-semibold flex items-center gap-1">
                         <Phone className="size-3.5 text-muted-foreground" />
-                        WhatsApp de Recebimento de Pedidos
+                        WhatsApp de Recebimento de Pedidos (Exclusivo da Lojinha)
                       </Label>
                       <Input
                         id="m-biz-phone"
                         placeholder="Ex: (11) 99999-9999"
-                        value={formData.whatsappPhone}
-                        onChange={(e) => handleChange('whatsappPhone', e.target.value)}
+                        value={formData.catalogWhatsappPhone}
+                        onChange={(e) => handleChange('catalogWhatsappPhone', e.target.value)}
                       />
+                      <p className="text-[11px] text-muted-foreground">
+                        Número dedicado para receber pedidos dos clientes via catálogo online. Não altera o WhatsApp institucional do ateliê.
+                      </p>
                     </div>
                   </div>
 

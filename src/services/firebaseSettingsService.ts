@@ -65,6 +65,7 @@ export interface UserSettings {
   deliveryAlertDays?: number;    // Dias antes do prazo para mostrar alerta (padrão 3)
 
   // Customizações do Catálogo Online Público (Lojinha)
+  catalogWhatsappPhone?: string;             // WhatsApp exclusivo de recebimento de pedidos da Lojinha (segregado do ateliê)
   catalogLogo?: string;                      // Logo exclusivo da lojinha pública online (independente do painel)
   catalogBanner?: string;                    // Banner de capa exclusivo da lojinha pública online (formato LinkedIn / 4:1)
   catalogBanners?: CatalogBannerItem[];       // Lista de banners rotativos (estilo propaganda)
@@ -130,6 +131,9 @@ export class FirebaseSettingsService {
     const docSnap = await getDoc(docRef);
 
     const cleanSettings: Record<string, any> = { ...settings };
+    if (settings.catalogWhatsappPhone === '' || settings.catalogWhatsappPhone === null) {
+      cleanSettings.catalogWhatsappPhone = deleteField();
+    }
     if (settings.catalogLogo === '' || settings.catalogLogo === null) {
       cleanSettings.catalogLogo = deleteField();
     }
@@ -160,8 +164,29 @@ export class FirebaseSettingsService {
       const publicData: Record<string, any> = { updatedAt: new Date() };
       if (settings.businessName !== undefined) publicData.businessName = settings.businessName;
       if (settings.businessTagline !== undefined) publicData.businessTagline = settings.businessTagline;
-      if (settings.whatsappPhone !== undefined) publicData.whatsappPhone = settings.whatsappPhone;
-      else if (settings.businessPhone !== undefined) publicData.whatsappPhone = settings.businessPhone;
+
+      // WhatsApp exclusivo da lojinha pública online (segregado do painel do ateliê)
+      const existingCatalogPhone = docSnap.exists() ? docSnap.data()?.catalogWhatsappPhone : undefined;
+
+      if (settings.catalogWhatsappPhone !== undefined) {
+        if (settings.catalogWhatsappPhone && settings.catalogWhatsappPhone.trim() !== '') {
+          publicData.catalogWhatsappPhone = settings.catalogWhatsappPhone;
+          publicData.whatsappPhone = settings.catalogWhatsappPhone;
+        } else {
+          publicData.catalogWhatsappPhone = deleteField();
+          if (settings.whatsappPhone) {
+            publicData.whatsappPhone = settings.whatsappPhone;
+          }
+        }
+      } else if (!existingCatalogPhone || existingCatalogPhone.trim() === '') {
+        // Fallback apenas se catalogWhatsappPhone ainda não estiver configurado no perfil
+        if (settings.whatsappPhone !== undefined) {
+          publicData.whatsappPhone = settings.whatsappPhone;
+        } else if (settings.businessPhone !== undefined) {
+          publicData.whatsappPhone = settings.businessPhone;
+        }
+      }
+
       if (settings.instagramUrl !== undefined) publicData.instagramUrl = settings.instagramUrl;
       if (settings.websiteUrl !== undefined) publicData.websiteUrl = settings.websiteUrl;
       

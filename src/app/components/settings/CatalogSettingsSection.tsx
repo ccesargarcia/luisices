@@ -18,10 +18,12 @@ import {
   FileText,
   Loader2,
   CheckCircle2,
-  Bell
+  Bell,
+  Phone,
 } from 'lucide-react';
 
 export interface CatalogCustomizationSettings {
+  catalogWhatsappPhone?: string;
   catalogBadge?: string;
   catalogStatusText?: string;
   catalogHeroTitle?: string;
@@ -186,7 +188,23 @@ export function CatalogSettingsSection({
         <div className="space-y-4 rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-4">
           <div className="flex items-center gap-2 font-semibold text-sm text-emerald-700 dark:text-emerald-400">
             <MessageCircle className="size-4" />
-            <span>Formato do Pedido via WhatsApp</span>
+            <span>WhatsApp e Formato do Pedido</span>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label htmlFor="c-wa-phone" className="text-xs font-semibold flex items-center gap-1.5 text-foreground">
+              <Phone className="size-3.5 text-emerald-600 dark:text-emerald-400" />
+              WhatsApp de Recebimento de Pedidos (Exclusivo da Lojinha)
+            </Label>
+            <Input
+              id="c-wa-phone"
+              placeholder="Ex: (11) 99999-9999 ou 5511999999999"
+              value={settings.catalogWhatsappPhone || ''}
+              onChange={(e) => updateField('catalogWhatsappPhone', e.target.value)}
+            />
+            <p className="text-[11px] text-muted-foreground">
+              Número de WhatsApp para onde os clientes enviarão os pedidos da vitrine pública. Segregado do WhatsApp institucional do ateliê.
+            </p>
           </div>
 
           <div className="space-y-1.5">

@@ -255,7 +255,7 @@ export function BusinessInfoSection({
           <div className="space-y-2">
             <Label htmlFor="whatsappPhone">
               <MessageSquare className="size-4 inline mr-2" />
-              WhatsApp
+              WhatsApp Institucional do Ateliê
             </Label>
             <Input
               id="whatsappPhone"
@@ -266,7 +266,7 @@ export function BusinessInfoSection({
               }
             />
             <p className="text-xs text-muted-foreground">
-              Código do país + DDD + número, sem espaços
+              WhatsApp oficial para orçamentos e contato interno (segregado do WhatsApp da lojinha pública)
             </p>
           </div>
 

@@ -202,7 +202,7 @@ export function PublicCatalog() {
               const updated = {
                 name: s.businessName !== undefined && s.businessName !== '' ? s.businessName : prev.name,
                 tagline: s.businessTagline !== undefined ? s.businessTagline : prev.tagline,
-                whatsapp: s.whatsappPhone || s.businessPhone || prev.whatsapp,
+                whatsapp: s.catalogWhatsappPhone || s.whatsappPhone || s.businessPhone || prev.whatsapp,
                 instagram: s.instagramUrl ? s.instagramUrl.replace(/^https?:\/\/(www\.)?instagram\.com\//, '').replace(/\/$/, '') : prev.instagram,
                 website: s.websiteUrl || prev.website,
                 logo: s.catalogLogo || '',
