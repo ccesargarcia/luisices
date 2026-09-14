@@ -33,8 +33,8 @@ test.describe('Relatórios', () => {
 
   test('deve exibir métricas de pedidos', async ({ page }) => {
     // Verificar métricas de pedidos
-    await expect(page.getByText(/concluídos/i).first()).toBeVisible({ timeout: 5000 });
-    await expect(page.getByText(/cancelados/i).first()).toBeVisible({ timeout: 5000 });
+    await expect(page.getByText(/concluído/i).first()).toBeVisible({ timeout: 5000 });
+    await expect(page.getByText(/cancelado/i).first()).toBeVisible({ timeout: 5000 });
   });
 
   test('deve ter botão de exportar CSV', async ({ page }) => {

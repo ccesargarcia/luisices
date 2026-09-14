@@ -560,7 +560,7 @@ export function Reports() {
         <KpiCard
           title="Total de Pedidos"
           value={String(stats.total)}
-          sub={stats.cancelled > 0 ? `${stats.cancelled} cancelados descartados` : 'Nenhum cancelado'}
+          sub={stats.cancelled > 0 ? `${stats.cancelled} cancelados descartados` : '0 cancelados'}
           icon={Package}
           iconClass="bg-blue-100 text-blue-600 dark:bg-blue-900/30"
           trend={<Trend current={stats.total} previous={stats.prevTotal} />}
