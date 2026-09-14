@@ -58,48 +58,57 @@ export function PublicCatalog() {
   const [products, setProducts] = useState<CatalogProduct[]>([]);
   const [loadingProducts, setLoadingProducts] = useState(true);
 
-  // Limpeza de caches antigos de versões anteriores no localStorage
+  // Limpeza de caches obsoletos de produtos no localStorage
   useEffect(() => {
     try {
       localStorage.removeItem('luisices_public_catalog_products');
-      localStorage.removeItem('luisices_public_store_settings');
     } catch {}
   }, []);
 
-  // Informações do negócio e customizações da lojinha
-  const [businessInfo, setBusinessInfo] = useState(() => ({
-    name: 'Luisices Papelaria Personalizada',
-    tagline: 'Papelaria artesanal feita à mão para momentos únicos',
-    whatsapp: '5511999999999',
-    instagram: 'luisicesatelie',
-    website: '',
-    logo: '',
-    banner: '',
-    banners: [] as CatalogBannerItem[],
-    bannerInterval: 5,
-    bannerAutoPlay: true,
-    bannerFixed: false,
-    headerBackground: '',
-    headerBgColor: '',
-    headerTextColor: 'dark', // 'dark' | 'light'
-    headerLogoPosition: 'left', // 'left' | 'center' | 'full'
-    headerHeight: 'normal', // 'compact' | 'normal' | 'large'
-    headerHideText: false,
-    badge: 'Atelier Afetivo',
-    statusText: 'Atendimento WhatsApp ativo',
-    announcement: '',
-    showHero: true,
-    heroTitle: 'Catálogo & Vitrine Afetiva',
-    heroDescription: 'Escolha suas peças, informe o nome para personalização e envie o pedido formatado diretamente no nosso WhatsApp.',
-    whatsappGreeting: 'Olá! Gostaria de encomendar pelo catálogo do Ateliê:',
-    whatsappCustomizationLabel: 'Nome/Personalização:',
-    whatsappFooter: 'Poderia me passar as opções de frete/retirada e a chave PIX para confirmar?',
-    footerText: 'Papelaria artesanal feita à mão com afeto e dedicação para eternizar momentos únicos. ❤️',
-    footerLocation: 'Enviamos com carinho para todo o Brasil 📦',
-    footerBusinessHours: 'Segunda a Sexta, das 9h às 18h',
-    footerNotice: 'Produção artesanal sob encomenda. Os prazos começam a contar após a aprovação da arte.',
-    footerCopyright: `© ${new Date().getFullYear()} Luisices. Todos os direitos reservados.`,
-  }));
+  // Informações do negócio e customizações da lojinha (recuperadas do localStorage para evitar qualquer flash no reload)
+  const [businessInfo, setBusinessInfo] = useState(() => {
+    let saved: any = null;
+    try {
+      const raw = typeof window !== 'undefined' ? localStorage.getItem('luisices_public_store_settings') : null;
+      if (raw) saved = JSON.parse(raw);
+    } catch {}
+
+    return {
+      name: saved?.businessName || saved?.name || 'Luisices Papelaria Personalizada',
+      tagline: saved?.businessTagline !== undefined ? saved.businessTagline : (saved?.tagline || ''),
+      whatsapp: saved?.catalogWhatsappPhone || saved?.whatsappPhone || saved?.businessPhone || saved?.whatsapp || '',
+      instagram: saved?.instagramUrl
+        ? saved.instagramUrl.replace(/^https?:\/\/(www\.)?instagram\.com\//, '').replace(/\/$/, '')
+        : (saved?.instagram || ''),
+      website: saved?.websiteUrl || saved?.website || '',
+      logo: saved?.catalogLogo || saved?.logo || '',
+      banner: saved?.catalogBanner || saved?.banner || '',
+      banners: (saved?.catalogBanners || saved?.banners || []) as CatalogBannerItem[],
+      bannerInterval: Number(saved?.catalogBannerInterval || saved?.bannerInterval) || 5,
+      bannerAutoPlay: saved?.catalogBannerAutoPlay !== undefined ? Boolean(saved.catalogBannerAutoPlay) : (saved?.bannerAutoPlay ?? true),
+      bannerFixed: saved?.catalogBannerFixed !== undefined ? Boolean(saved.catalogBannerFixed) : (saved?.bannerFixed ?? false),
+      headerBackground: saved?.catalogHeaderBackground || saved?.headerBackground || '',
+      headerBgColor: saved?.catalogHeaderBgColor || saved?.headerBgColor || '',
+      headerTextColor: (saved?.catalogHeaderTextColor || saved?.headerTextColor || 'dark') as 'dark' | 'light',
+      headerLogoPosition: (saved?.catalogHeaderLogoPosition || saved?.headerLogoPosition || 'left') as 'left' | 'center' | 'full',
+      headerHeight: (saved?.catalogHeaderHeight || saved?.headerHeight || 'normal') as 'compact' | 'normal' | 'large',
+      headerHideText: Boolean(saved?.catalogHeaderHideText ?? saved?.headerHideText ?? false),
+      badge: saved?.catalogBadge !== undefined ? saved.catalogBadge : '',
+      statusText: saved?.catalogStatusText !== undefined ? saved.catalogStatusText : '',
+      announcement: saved?.catalogAnnouncement !== undefined ? saved.catalogAnnouncement : '',
+      showHero: saved?.catalogShowHero !== undefined ? Boolean(saved.catalogShowHero) : (saved?.showHero !== undefined ? Boolean(saved.showHero) : false),
+      heroTitle: saved?.catalogHeroTitle || saved?.heroTitle || '',
+      heroDescription: saved?.catalogHeroDescription || saved?.heroDescription || '',
+      whatsappGreeting: saved?.catalogWhatsappGreeting || saved?.whatsappGreeting || 'Olá! Gostaria de encomendar pelo catálogo do Ateliê:',
+      whatsappCustomizationLabel: saved?.catalogWhatsappCustomizationLabel || saved?.whatsappCustomizationLabel || 'Nome/Personalização:',
+      whatsappFooter: saved?.catalogWhatsappFooter || saved?.whatsappFooter || 'Poderia me passar as opções de frete/retirada e a chave PIX para confirmar?',
+      footerText: saved?.catalogFooterText || saved?.footerText || '',
+      footerLocation: saved?.catalogFooterLocation || saved?.footerLocation || '',
+      footerBusinessHours: saved?.catalogFooterBusinessHours || saved?.footerBusinessHours || '',
+      footerNotice: saved?.catalogFooterNotice || saved?.footerNotice || '',
+      footerCopyright: saved?.catalogFooterCopyright || saved?.footerCopyright || `© ${new Date().getFullYear()} Luisices. Todos os direitos reservados.`,
+    };
+  });
 
   // Estado da Sacola com persistência em localStorage
   const [cart, setCart] = useState<CartItem[]>(() => {
@@ -172,9 +181,13 @@ export function PublicCatalog() {
       (publicSettingsSnap) => {
         if (publicSettingsSnap.exists()) {
           const s = publicSettingsSnap.data();
+          try {
+            localStorage.setItem('luisices_public_store_settings', JSON.stringify(s));
+          } catch {}
+
           setBusinessInfo((prev: typeof businessInfo) => ({
             name: s.businessName !== undefined && s.businessName !== '' ? s.businessName : prev.name,
-            tagline: s.businessTagline !== undefined ? s.businessTagline : prev.tagline,
+            tagline: s.businessTagline !== undefined ? s.businessTagline : '',
             whatsapp: s.catalogWhatsappPhone || s.whatsappPhone || s.businessPhone || prev.whatsapp,
             instagram: s.instagramUrl ? s.instagramUrl.replace(/^https?:\/\/(www\.)?instagram\.com\//, '').replace(/\/$/, '') : prev.instagram,
             website: s.websiteUrl || prev.website,
@@ -182,29 +195,29 @@ export function PublicCatalog() {
             banner: s.catalogBanner || '',
             banners: Array.isArray(s.catalogBanners) && s.catalogBanners.length > 0
               ? (s.catalogBanners as CatalogBannerItem[])
-              : (s.catalogBanner ? [{ id: 'b-default', imageUrl: s.catalogBanner }] : (prev.banners || [])),
+              : (s.catalogBanner ? [{ id: 'b-default', imageUrl: s.catalogBanner }] : []),
             bannerInterval: Number(s.catalogBannerInterval) || prev.bannerInterval || 5,
-            bannerAutoPlay: s.catalogBannerAutoPlay !== undefined ? Boolean(s.catalogBannerAutoPlay) : (prev.bannerAutoPlay ?? true),
-            bannerFixed: s.catalogBannerFixed !== undefined ? Boolean(s.catalogBannerFixed) : (prev.bannerFixed ?? false),
-            headerBackground: s.catalogHeaderBackground !== undefined ? s.catalogHeaderBackground : (prev.headerBackground || ''),
-            headerBgColor: s.catalogHeaderBgColor !== undefined ? s.catalogHeaderBgColor : (prev.headerBgColor || ''),
-            headerTextColor: s.catalogHeaderTextColor || prev.headerTextColor || 'dark',
-            headerLogoPosition: s.catalogHeaderLogoPosition || prev.headerLogoPosition || 'left',
-            headerHeight: s.catalogHeaderHeight || prev.headerHeight || 'normal',
-            headerHideText: s.catalogHeaderHideText !== undefined ? Boolean(s.catalogHeaderHideText) : (prev.headerHideText || false),
-            badge: s.catalogBadge !== undefined ? s.catalogBadge : prev.badge,
-            statusText: s.catalogStatusText !== undefined ? s.catalogStatusText : prev.statusText,
+            bannerAutoPlay: s.catalogBannerAutoPlay !== undefined ? Boolean(s.catalogBannerAutoPlay) : true,
+            bannerFixed: s.catalogBannerFixed !== undefined ? Boolean(s.catalogBannerFixed) : false,
+            headerBackground: s.catalogHeaderBackground || '',
+            headerBgColor: s.catalogHeaderBgColor || '',
+            headerTextColor: s.catalogHeaderTextColor || 'dark',
+            headerLogoPosition: s.catalogHeaderLogoPosition || 'left',
+            headerHeight: s.catalogHeaderHeight || 'normal',
+            headerHideText: Boolean(s.catalogHeaderHideText),
+            badge: s.catalogBadge !== undefined ? s.catalogBadge : '',
+            statusText: s.catalogStatusText !== undefined ? s.catalogStatusText : '',
             announcement: s.catalogAnnouncement !== undefined ? s.catalogAnnouncement : '',
-            heroTitle: s.catalogHeroTitle !== undefined ? s.catalogHeroTitle : prev.heroTitle,
-            heroDescription: s.catalogHeroDescription !== undefined ? s.catalogHeroDescription : prev.heroDescription,
-            showHero: s.catalogShowHero !== undefined ? Boolean(s.catalogShowHero) : (prev.showHero ?? true),
-            whatsappGreeting: s.catalogWhatsappGreeting !== undefined ? s.catalogWhatsappGreeting : prev.whatsappGreeting,
-            whatsappCustomizationLabel: s.catalogWhatsappCustomizationLabel !== undefined ? s.catalogWhatsappCustomizationLabel : prev.whatsappCustomizationLabel,
-            whatsappFooter: s.catalogWhatsappFooter !== undefined ? s.catalogWhatsappFooter : prev.whatsappFooter,
-            footerText: s.catalogFooterText !== undefined ? s.catalogFooterText : prev.footerText,
-            footerLocation: s.catalogFooterLocation !== undefined ? s.catalogFooterLocation : prev.footerLocation,
-            footerBusinessHours: s.catalogFooterBusinessHours !== undefined ? s.catalogFooterBusinessHours : prev.footerBusinessHours,
-            footerNotice: s.catalogFooterNotice !== undefined ? s.catalogFooterNotice : prev.footerNotice,
+            heroTitle: s.catalogHeroTitle !== undefined ? s.catalogHeroTitle : '',
+            heroDescription: s.catalogHeroDescription !== undefined ? s.catalogHeroDescription : '',
+            showHero: s.catalogShowHero !== undefined ? Boolean(s.catalogShowHero) : false,
+            whatsappGreeting: s.catalogWhatsappGreeting || prev.whatsappGreeting,
+            whatsappCustomizationLabel: s.catalogWhatsappCustomizationLabel || prev.whatsappCustomizationLabel,
+            whatsappFooter: s.catalogWhatsappFooter || prev.whatsappFooter,
+            footerText: s.catalogFooterText !== undefined ? s.catalogFooterText : '',
+            footerLocation: s.catalogFooterLocation !== undefined ? s.catalogFooterLocation : '',
+            footerBusinessHours: s.catalogFooterBusinessHours !== undefined ? s.catalogFooterBusinessHours : '',
+            footerNotice: s.catalogFooterNotice !== undefined ? s.catalogFooterNotice : '',
             footerCopyright: s.catalogFooterCopyright !== undefined ? s.catalogFooterCopyright : prev.footerCopyright,
           }));
         }
@@ -599,20 +612,28 @@ export function PublicCatalog() {
                   </div>
 
                   {/* Selo & Status de Atendimento */}
-                  <div className="flex flex-wrap items-center gap-2 shrink-0">
-                    <span className="text-xs font-semibold px-3 py-1 rounded-full bg-[#613d3e]/10 dark:bg-[#f4b7b9]/15 text-[#613d3e] dark:text-[#f4b7b9]">
-                      {businessInfo.badge || 'Atelier Afetivo'}
-                    </span>
-                    <span className="inline-flex items-center gap-1.5 text-xs text-[#504444] dark:text-[#c9c0b8] font-medium bg-stone-100/80 dark:bg-[#161214]/60 px-3 py-1 rounded-full border border-stone-200/60 dark:border-stone-800">
-                      <span className="size-2 rounded-full bg-[#10B981] animate-pulse shrink-0" />
-                      {businessInfo.statusText || 'Atendimento WhatsApp ativo'}
-                    </span>
-                  </div>
+                  {(businessInfo.badge || businessInfo.statusText) && (
+                    <div className="flex flex-wrap items-center gap-2 shrink-0">
+                      {businessInfo.badge ? (
+                        <span className="text-xs font-semibold px-3 py-1 rounded-full bg-[#613d3e]/10 dark:bg-[#f4b7b9]/15 text-[#613d3e] dark:text-[#f4b7b9]">
+                          {businessInfo.badge}
+                        </span>
+                      ) : null}
+                      {businessInfo.statusText ? (
+                        <span className="inline-flex items-center gap-1.5 text-xs text-[#504444] dark:text-[#c9c0b8] font-medium bg-stone-100/80 dark:bg-[#161214]/60 px-3 py-1 rounded-full border border-stone-200/60 dark:border-stone-800">
+                          <span className="size-2 rounded-full bg-[#10B981] animate-pulse shrink-0" />
+                          {businessInfo.statusText}
+                        </span>
+                      ) : null}
+                    </div>
+                  )}
                 </div>
 
-                <p className="text-xs sm:text-sm text-[#504444] dark:text-[#c9c0b8] leading-relaxed max-w-2xl">
-                  {businessInfo.heroDescription || 'Escolha suas peças, informe o nome para personalização e envie o pedido formatado diretamente no nosso WhatsApp.'}
-                </p>
+                {businessInfo.heroDescription ? (
+                  <p className="text-xs sm:text-sm text-[#504444] dark:text-[#c9c0b8] leading-relaxed max-w-2xl">
+                    {businessInfo.heroDescription}
+                  </p>
+                ) : null}
 
                 {/* Destaques de confiança (Pills informativas) */}
                 <div className="pt-1 flex flex-wrap gap-2 text-[11px] text-[#504444] dark:text-[#c9c0b8] font-medium">
@@ -850,13 +871,15 @@ export function PublicCatalog() {
                   Canais de Atendimento
                 </h5>
                 <div className="flex flex-col items-center md:items-start gap-1.5 pt-1">
-                  <button
-                    onClick={handleSendToWhatsApp}
-                    className="inline-flex items-center gap-1.5 text-[#10B981] font-semibold hover:underline cursor-pointer"
-                  >
-                    <MessageCircle size={14} />
-                    <span>WhatsApp Oficial: {businessInfo.whatsapp}</span>
-                  </button>
+                  {businessInfo.whatsapp ? (
+                    <button
+                      onClick={handleSendToWhatsApp}
+                      className="inline-flex items-center gap-1.5 text-[#10B981] font-semibold hover:underline cursor-pointer"
+                    >
+                      <MessageCircle size={14} />
+                      <span>WhatsApp Oficial: {businessInfo.whatsapp}</span>
+                    </button>
+                  ) : null}
 
                   {cleanInstagram && (
                     <a
