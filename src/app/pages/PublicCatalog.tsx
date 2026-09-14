@@ -24,6 +24,7 @@ import {
   Sparkle,
   CheckCircle2,
   Tag,
+  ShieldAlert,
 } from 'lucide-react';
 import { formatCurrency } from '../utils/currency';
 import { normalizePhoneForWhatsApp, formatPhoneForDisplay } from '../utils/whatsapp';
@@ -151,6 +152,38 @@ export function PublicCatalog() {
   const [logoError, setLogoError] = useState<boolean>(false);
   const [headerBgError, setHeaderBgError] = useState<boolean>(false);
 
+  // Estado de publicação da loja (feature flag principal)
+  const [storePublished, setStorePublished] = useState<boolean>(() => {
+    try {
+      const cached = localStorage.getItem('luisices_public_store_settings');
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        return parsed.storePublished !== undefined ? Boolean(parsed.storePublished) : true;
+      }
+    } catch {}
+    return true; // padrão: publicada
+  });
+  const [storeUnpublishMessage, setStoreUnpublishMessage] = useState<string>(() => {
+    try {
+      const cached = localStorage.getItem('luisices_public_store_settings');
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        return parsed.storeUnpublishMessage || '';
+      }
+    } catch {}
+    return '';
+  });
+  const [featureFlags, setFeatureFlags] = useState<Record<string, boolean>>(() => {
+    try {
+      const cached = localStorage.getItem('luisices_public_store_settings');
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        return { enableOnlineOrders: true, enableDarkMode: true, ...(parsed.featureFlags || {}) };
+      }
+    } catch {}
+    return { enableOnlineOrders: true, enableDarkMode: true };
+  });
+
   useEffect(() => {
     setLogoError(false);
   }, [businessInfo.logo]);
@@ -255,6 +288,13 @@ export function PublicCatalog() {
             footerNotice: s.catalogFooterNotice !== undefined ? s.catalogFooterNotice : '',
             footerCopyright: s.catalogFooterCopyright !== undefined ? s.catalogFooterCopyright : prev.footerCopyright,
           }));
+
+          // Atualizar estado de publicação da loja em tempo real
+          setStorePublished(s.storePublished !== undefined ? Boolean(s.storePublished) : true);
+          setStoreUnpublishMessage(s.storeUnpublishMessage || '');
+          if (s.featureFlags && typeof s.featureFlags === 'object') {
+            setFeatureFlags((prev) => ({ ...prev, ...s.featureFlags }));
+          }
         }
       },
       (settingsErr) => {
@@ -558,6 +598,106 @@ export function PublicCatalog() {
     setPreviewCustomName('');
   };
 
+  // ─── Página de Loja Despublicada (Manutenção / Fora do Ar) ───
+  if (!storePublished) {
+    return (
+      <div className={isDarkMode ? 'dark' : ''}>
+        <div
+          className={`min-h-[100dvh] flex flex-col items-center justify-center text-[#221a1a] dark:text-[#e8e0e3] transition-colors duration-500 font-sans
+          bg-[#fff8f7] dark:bg-[#161214]
+          [background-image:linear-gradient(135deg,#fceee9_0%,#fff8f7_52%,#ede7f6_100%)]
+          dark:[background-image:none]
+          relative selection:bg-[#613d3e] selection:text-white px-6`}
+        >
+          {/* Camada de Gradientes Atmosféricos Fixos */}
+          <div className="fixed inset-0 pointer-events-none opacity-80 dark:opacity-40 z-0">
+            <div className="absolute top-0 left-0 w-96 sm:w-[500px] h-96 sm:h-[500px] rounded-full bg-[#f7d6d0] dark:bg-[#5b3234] blur-3xl -translate-x-1/3 -translate-y-1/3" />
+            <div className="absolute top-1/3 right-0 w-80 sm:w-[450px] h-80 sm:h-[450px] rounded-full bg-[#d1c4e9] dark:bg-[#28192d] blur-3xl translate-x-1/4" />
+            <div className="absolute bottom-10 left-1/4 w-96 sm:w-[500px] h-96 sm:h-[500px] rounded-full bg-[#bbdefb] dark:bg-[#121c20] blur-3xl" />
+          </div>
+
+          <div className="relative z-10 flex flex-col items-center text-center max-w-md space-y-6 animate-in fade-in-50 duration-700">
+            {/* Logo da loja */}
+            {businessInfo.logo && !logoError && (
+              <img
+                src={businessInfo.logo}
+                alt={businessInfo.name}
+                onError={() => setLogoError(true)}
+                className="h-20 sm:h-24 w-auto object-contain drop-shadow-md"
+              />
+            )}
+
+            {/* Ícone de manutenção */}
+            <div className="p-4 rounded-2xl bg-amber-500/10 dark:bg-amber-500/20 border border-amber-500/20">
+              <ShieldAlert className="size-10 sm:size-12 text-amber-600 dark:text-amber-400" />
+            </div>
+
+            {/* Título */}
+            <div className="space-y-2">
+              <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">
+                {businessInfo.name || 'Loja'}
+              </h1>
+              <p className="text-base sm:text-lg text-[#613d3e]/80 dark:text-[#d4a0a2]/80 font-medium">
+                Estamos em manutenção
+              </p>
+            </div>
+
+            {/* Mensagem personalizada ou padrão */}
+            <div className="p-5 rounded-2xl bg-white/60 dark:bg-white/5 border border-[#613d3e]/10 dark:border-white/10 backdrop-blur-sm shadow-sm max-w-sm">
+              <p className="text-sm sm:text-base text-[#221a1a]/70 dark:text-[#e8e0e3]/70 leading-relaxed">
+                {storeUnpublishMessage || 'Nossa loja está temporariamente fora do ar para atualizações. Voltaremos em breve com novidades! 💕'}
+              </p>
+            </div>
+
+            {/* Botão de contato via WhatsApp */}
+            {businessInfo.whatsapp && (
+              <a
+                href={`https://wa.me/${normalizePhoneForWhatsApp(businessInfo.whatsapp)}?text=${encodeURIComponent('Olá! Vi que a loja está em manutenção. Gostaria de saber quando volta ao ar.')}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2.5 px-6 py-3 rounded-xl bg-green-600 hover:bg-green-700 text-white font-semibold text-sm shadow-md hover:shadow-lg transition-all duration-200"
+              >
+                <MessageCircle className="size-5" />
+                Falar pelo WhatsApp
+              </a>
+            )}
+
+            {/* Redes sociais */}
+            <div className="flex items-center gap-3 pt-2">
+              {businessInfo.instagram && (
+                <a
+                  href={`https://instagram.com/${businessInfo.instagram}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="p-2.5 rounded-xl bg-[#E1306C]/10 hover:bg-[#E1306C]/20 transition-colors"
+                  title="Instagram"
+                >
+                  <Instagram className="size-5 text-[#E1306C]" />
+                </a>
+              )}
+              {businessInfo.website && (
+                <a
+                  href={businessInfo.website}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="p-2.5 rounded-xl bg-[#613d3e]/10 hover:bg-[#613d3e]/20 dark:bg-white/10 dark:hover:bg-white/20 transition-colors"
+                  title="Website"
+                >
+                  <Globe className="size-5 text-[#613d3e] dark:text-[#d4a0a2]" />
+                </a>
+              )}
+            </div>
+
+            {/* Rodapé */}
+            <p className="text-[11px] text-[#221a1a]/40 dark:text-[#e8e0e3]/30 pt-4">
+              {businessInfo.footerCopyright || `© ${new Date().getFullYear()} ${businessInfo.name}. Todos os direitos reservados.`}
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className={isDarkMode ? 'dark' : ''}>
       {/* 
@@ -568,7 +708,7 @@ export function PublicCatalog() {
         bg-[#fff8f7] dark:bg-[#161214]
         [background-image:linear-gradient(135deg,#fceee9_0%,#fff8f7_52%,#ede7f6_100%)]
         dark:[background-image:none]
-        relative selection:bg-[#613d3e] selection:text-white ${totalItemsCount > 0 ? 'pb-24 sm:pb-20' : 'pb-4'}`}
+        relative selection:bg-[#613d3e] selection:text-white ${featureFlags.enableOnlineOrders !== false && totalItemsCount > 0 ? 'pb-24 sm:pb-20' : 'pb-4'}`}
       >
         {/* Camada de Gradientes Atmosféricos Fixos */}
         <div className="fixed inset-0 pointer-events-none opacity-80 dark:opacity-40 z-0">
@@ -680,6 +820,7 @@ export function PublicCatalog() {
                   </a>
                 )}
 
+                {featureFlags.enableDarkMode !== false && (
                 <button
                   onClick={toggleTheme}
                   title={isDarkMode ? 'Mudar para Modo Claro' : 'Mudar para Modo Escuro'}
@@ -688,9 +829,11 @@ export function PublicCatalog() {
                 >
                   {isDarkMode ? <Sun size={16} className="text-[#fbbf24]" /> : <Moon size={16} className="text-[#613d3e]" />}
                 </button>
+                )}
               </div>
 
               {/* Botão Principal da Sacola com Subtotal */}
+              {featureFlags.enableOnlineOrders !== false && (
               <button
                 onClick={() => setIsCartOpen(true)}
                 className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl sm:rounded-2xl bg-[#613d3e] dark:bg-[#f4b7b9] text-white dark:text-[#4c2527] hover:opacity-95 active:scale-98 transition-all shadow-sm font-bold text-xs sm:text-sm cursor-pointer"
@@ -709,6 +852,7 @@ export function PublicCatalog() {
                   <span className="text-[11px] opacity-85 font-normal">({totalItemsCount})</span>
                 )}
               </button>
+              )}
             </div>
 
           </div>
@@ -1119,7 +1263,7 @@ export function PublicCatalog() {
         </main>
 
         {/* 4. Barra Fixa Inferior de Conversão: Adaptativa (Bottom bar no mobile com safe-area / Floating Dock no desktop) */}
-        {totalItemsCount > 0 && !isCartOpen && !selectedProductPreview && (
+        {featureFlags.enableOnlineOrders !== false && totalItemsCount > 0 && !isCartOpen && !selectedProductPreview && (
           <aside className="fixed bottom-0 inset-x-0 sm:bottom-6 sm:inset-x-auto sm:left-1/2 sm:-translate-x-1/2 z-40 p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:p-2.5 sm:px-5 bg-white/95 dark:bg-[#161214]/95 backdrop-blur-xl border-t sm:border border-stone-200/80 dark:border-[#ebcdcd]/20 sm:rounded-2xl shadow-2xl animate-in slide-in-from-bottom-4 duration-200">
             <div className="max-w-md sm:w-[480px] mx-auto flex items-center justify-between gap-3">
               <div className="flex items-center gap-2.5">

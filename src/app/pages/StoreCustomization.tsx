@@ -45,6 +45,10 @@ import {
   ArrowDown,
   Plus,
   Trash2,
+  ToggleLeft,
+  Power,
+  Zap,
+  ShieldAlert,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { BannerCarousel, CatalogBannerItem } from '../components/catalog/BannerCarousel';
@@ -211,6 +215,14 @@ export function StoreCustomization() {
 
   const [dataLoaded, setDataLoaded] = useState(false);
 
+  // Estado de publicação e feature flags
+  const [storePublished, setStorePublished] = useState<boolean>(true);
+  const [storeUnpublishMessage, setStoreUnpublishMessage] = useState<string>('');
+  const [featureFlags, setFeatureFlags] = useState<Record<string, boolean>>({
+    enableOnlineOrders: true,
+    enableDarkMode: true,
+  });
+
   // Carregar dados quando settings estiver pronto ou carregar de storeSettings/public
   useEffect(() => {
     let isCancelled = false;
@@ -339,6 +351,19 @@ export function StoreCustomization() {
         if (!dataLoaded) {
           setFormData(data);
           setDataLoaded(true);
+
+          // Carregar estado de publicação e feature flags
+          const loadedPublished = pubData?.storePublished !== undefined
+            ? Boolean(pubData.storePublished)
+            : (settings?.storePublished !== undefined ? Boolean(settings.storePublished) : true);
+          setStorePublished(loadedPublished);
+
+          const loadedUnpublishMsg = pubData?.storeUnpublishMessage || settings?.storeUnpublishMessage || '';
+          setStoreUnpublishMessage(loadedUnpublishMsg);
+
+          const defaultFlags = { enableOnlineOrders: true, enableDarkMode: true };
+          const loadedFlags = pubData?.featureFlags || settings?.featureFlags || defaultFlags;
+          setFeatureFlags({ ...defaultFlags, ...loadedFlags });
         }
       }
     }
@@ -664,6 +689,9 @@ export function StoreCustomization() {
         catalogHeaderHeight: formData.catalogHeaderHeight,
         catalogHeaderHideText: Boolean(formData.catalogHeaderHideText),
         catalogShowHero: Boolean(formData.catalogShowHero),
+        storePublished,
+        storeUnpublishMessage,
+        featureFlags,
       });
       // Salva no cache do navegador para a lojinha atualizar instantaneamente
       try {
@@ -708,6 +736,9 @@ export function StoreCustomization() {
           footerBusinessHours: formData.catalogFooterBusinessHours,
           footerNotice: formData.catalogFooterNotice,
           footerCopyright: formData.catalogFooterCopyright,
+          storePublished,
+          storeUnpublishMessage,
+          featureFlags,
         };
         localStorage.setItem('luisices_public_store_settings', JSON.stringify(publicData));
       } catch {}
@@ -864,7 +895,7 @@ export function StoreCustomization() {
         {/* Formulário com Abas (2 Colunas) */}
         <div className="lg:col-span-2 space-y-6">
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-            <TabsList className="grid grid-cols-4 w-full h-auto p-1 bg-muted/60">
+            <TabsList className="grid grid-cols-5 w-full h-auto p-1 bg-muted/60">
               <TabsTrigger value="identity" className="text-xs py-2">
                 Logo & Vitrine
               </TabsTrigger>
@@ -876,6 +907,10 @@ export function StoreCustomization() {
               </TabsTrigger>
               <TabsTrigger value="contact" className="text-xs py-2">
                 Loja & Contato
+              </TabsTrigger>
+              <TabsTrigger value="operations" className="text-xs py-2">
+                <Power className="size-3 mr-1 inline" />
+                Operação
               </TabsTrigger>
             </TabsList>
 
@@ -1984,6 +2019,142 @@ export function StoreCustomization() {
                       value={formData.websiteUrl}
                       onChange={(e) => handleChange('websiteUrl', e.target.value)}
                     />
+                  </div>
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            {/* ABA 5: Operação — Publicação & Feature Flags */}
+            <TabsContent value="operations" className="space-y-5 pt-3">
+              {/* Card Principal: Publicação da Loja */}
+              <Card className={`shadow-xs transition-colors ${!storePublished ? 'border-red-500/40 bg-red-50/30 dark:bg-red-950/20' : 'border-green-500/25'}`}>
+                <CardHeader>
+                  <div className="flex items-center justify-between gap-2">
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <Power className={`size-4 ${storePublished ? 'text-green-600' : 'text-red-500'}`} />
+                      Publicação da Loja
+                    </CardTitle>
+                    <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full ${storePublished ? 'bg-green-500/15 text-green-700 dark:text-green-400' : 'bg-red-500/15 text-red-600 dark:text-red-400'}`}>
+                      {storePublished ? '🟢 Publicada' : '🔴 Fora do Ar'}
+                    </span>
+                  </div>
+                  <CardDescription className="text-xs">
+                    Controle se a sua loja pública está visível para os clientes. Ao despublicar, os visitantes verão uma página de manutenção com a mensagem que você definir abaixo.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {/* Toggle Publicar / Despublicar */}
+                  <div className={`p-4 rounded-xl border transition-colors ${!storePublished ? 'bg-red-50/50 dark:bg-red-950/30 border-red-500/30' : 'bg-green-50/50 dark:bg-green-950/20 border-green-500/30'}`}>
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-3">
+                        <Switch
+                          id="store-published-toggle"
+                          checked={storePublished}
+                          onCheckedChange={(checked) => setStorePublished(checked)}
+                        />
+                        <div>
+                          <Label htmlFor="store-published-toggle" className="text-sm font-bold cursor-pointer">
+                            {storePublished ? 'Loja Publicada' : 'Loja Despublicada'}
+                          </Label>
+                          <p className="text-[11px] text-muted-foreground mt-0.5">
+                            {storePublished
+                              ? 'A vitrine pública está aberta e acessível para os clientes.'
+                              : 'Os clientes verão uma página de manutenção ao acessar a loja.'}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Mensagem personalizada (exibida quando despublicada) */}
+                  {!storePublished && (
+                    <div className="space-y-2 animate-in fade-in-50 duration-200">
+                      <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-50/80 dark:bg-amber-950/30 border border-amber-500/30">
+                        <ShieldAlert className="size-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                        <p className="text-[11px] text-amber-800 dark:text-amber-300">
+                          <span className="font-bold">Atenção:</span> A loja está fora do ar. Os visitantes verão a mensagem abaixo ao acessar o catálogo. Salve para aplicar.
+                        </p>
+                      </div>
+
+                      <Label htmlFor="unpublish-message" className="text-xs font-semibold">
+                        Mensagem de Manutenção Personalizada
+                      </Label>
+                      <Textarea
+                        id="unpublish-message"
+                        rows={3}
+                        placeholder="Ex: Estamos preparando novidades incríveis! Voltamos em breve com peças especiais para você. 💕"
+                        value={storeUnpublishMessage}
+                        onChange={(e) => setStoreUnpublishMessage(e.target.value)}
+                        className="text-sm"
+                      />
+                      <p className="text-[10px] text-muted-foreground">
+                        Deixe em branco para usar a mensagem padrão. A página de manutenção inclui seu logo, WhatsApp e redes sociais automaticamente.
+                      </p>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* Card: Feature Flags */}
+              <Card className="border-primary/25 shadow-xs">
+                <CardHeader>
+                  <div className="flex items-center justify-between gap-2">
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <Zap className="size-4 text-primary" />
+                      Feature Flags
+                    </CardTitle>
+                    <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-primary/10 text-primary">
+                      Controle de Funcionalidades
+                    </span>
+                  </div>
+                  <CardDescription className="text-xs">
+                    Ative ou desative funcionalidades da loja sem precisar fazer um novo deploy. As mudanças são aplicadas em tempo real após salvar.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  {/* Toggle: Pedidos Online */}
+                  <div className="flex items-center justify-between p-3.5 rounded-xl border border-border/70 bg-muted/20 hover:bg-muted/40 transition-colors">
+                    <div className="flex items-center gap-3">
+                      <div className="p-1.5 rounded-lg bg-green-500/10">
+                        <ShoppingBag className="size-4 text-green-600" />
+                      </div>
+                      <div>
+                        <Label className="text-xs font-bold cursor-pointer">Pedidos Online (Sacola)</Label>
+                        <p className="text-[10px] text-muted-foreground">
+                          Habilita o carrinho de compras e envio de pedidos via WhatsApp.
+                        </p>
+                      </div>
+                    </div>
+                    <Switch
+                      checked={featureFlags.enableOnlineOrders !== false}
+                      onCheckedChange={(checked) => setFeatureFlags((prev) => ({ ...prev, enableOnlineOrders: checked }))}
+                    />
+                  </div>
+
+                  {/* Toggle: Modo Escuro */}
+                  <div className="flex items-center justify-between p-3.5 rounded-xl border border-border/70 bg-muted/20 hover:bg-muted/40 transition-colors">
+                    <div className="flex items-center gap-3">
+                      <div className="p-1.5 rounded-lg bg-indigo-500/10">
+                        <Moon className="size-4 text-indigo-600" />
+                      </div>
+                      <div>
+                        <Label className="text-xs font-bold cursor-pointer">Modo Escuro</Label>
+                        <p className="text-[10px] text-muted-foreground">
+                          Permite que os visitantes alternem para o tema escuro na lojinha.
+                        </p>
+                      </div>
+                    </div>
+                    <Switch
+                      checked={featureFlags.enableDarkMode !== false}
+                      onCheckedChange={(checked) => setFeatureFlags((prev) => ({ ...prev, enableDarkMode: checked }))}
+                    />
+                  </div>
+
+                  <div className="pt-2">
+                    <p className="text-[10px] text-muted-foreground flex items-center gap-1">
+                      <Info className="size-3 opacity-60" />
+                      Novas feature flags serão adicionadas automaticamente conforme novas funcionalidades forem implementadas.
+                    </p>
                   </div>
                 </CardContent>
               </Card>

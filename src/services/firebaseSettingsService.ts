@@ -96,6 +96,11 @@ export interface UserSettings {
   catalogFooterCopyright?: string;           // Linha de copyright no rodapé
   catalogFooterNotice?: string;              // Aviso sobre prazos e políticas no rodapé
 
+  // Publicação e Feature Flags
+  storePublished?: boolean;                  // Loja publicada (true) ou despublicada (false) — controle de visibilidade
+  storeUnpublishMessage?: string;            // Mensagem personalizada exibida quando a loja está despublicada
+  featureFlags?: Record<string, boolean>;    // Feature toggles genéricos (ex: enableOnlineOrders, enableDarkMode, enableCoupons)
+
   // Metadata
   updatedAt: Date;
 }
@@ -251,6 +256,11 @@ export class FirebaseSettingsService {
       if (settings.catalogFooterBusinessHours !== undefined) publicData.catalogFooterBusinessHours = settings.catalogFooterBusinessHours;
       if (settings.catalogFooterCopyright !== undefined) publicData.catalogFooterCopyright = settings.catalogFooterCopyright;
       if (settings.catalogFooterNotice !== undefined) publicData.catalogFooterNotice = settings.catalogFooterNotice;
+
+      // Publicação e Feature Flags — sincronizados instantaneamente para a loja pública
+      if (settings.storePublished !== undefined) publicData.storePublished = settings.storePublished;
+      if (settings.storeUnpublishMessage !== undefined) publicData.storeUnpublishMessage = settings.storeUnpublishMessage;
+      if (settings.featureFlags !== undefined) publicData.featureFlags = settings.featureFlags;
 
       if (Object.keys(publicData).length > 1) {
         await setDoc(doc(db, 'storeSettings', 'public'), publicData, { merge: true });
