@@ -9,6 +9,7 @@ import { Label } from '../components/ui/label';
 import { Textarea } from '../components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '../components/ui/dialog';
 import {
   Store,
   Globe,
@@ -23,6 +24,7 @@ import {
   AtSign,
   Phone,
   Info,
+  HelpCircle,
   Bell,
   Building2,
   Upload,
@@ -222,6 +224,7 @@ export function StoreCustomization() {
     enableOnlineOrders: true,
     enableDarkMode: true,
   });
+  const [showHelpModal, setShowHelpModal] = useState(false);
 
   // Carregar dados quando settings estiver pronto ou carregar de storeSettings/public
   useEffect(() => {
@@ -786,19 +789,16 @@ export function StoreCustomization() {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <Button onClick={handleSave} disabled={saving} size="sm" className="gap-2">
-            {saving ? (
-              <>
-                <Loader2 className="size-4 animate-spin" />
-                Salvando...
-              </>
-            ) : (
-              <>
-                <CheckCircle2 className="size-4" />
-                Salvar Alterações
-              </>
-            )}
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => setShowHelpModal(true)}
+            className="gap-2 border-primary/30 text-primary hover:bg-primary/5"
+          >
+            <HelpCircle className="size-4 text-primary" />
+            <span>Ajuda & FAQ da Lojinha</span>
           </Button>
+
           <Button
             type="button"
             variant="outline"
@@ -2362,6 +2362,148 @@ export function StoreCustomization() {
           </Card>
         </div>
       </div>
+
+      {/* Modal de Ajuda & Guia Completo da Lojinha */}
+      <Dialog open={showHelpModal} onOpenChange={setShowHelpModal}>
+        <DialogContent className="max-w-3xl max-h-[88vh] flex flex-col p-0 overflow-hidden">
+          <DialogHeader className="p-6 pb-4 border-b border-border/60 bg-muted/20">
+            <div className="flex items-center gap-2.5">
+              <div className="p-2 rounded-xl bg-primary/10 text-primary">
+                <HelpCircle className="size-5" />
+              </div>
+              <div>
+                <DialogTitle className="text-lg font-bold">
+                  Central de Ajuda & Guia da Lojinha
+                </DialogTitle>
+                <DialogDescription className="text-xs text-muted-foreground mt-0.5">
+                  Tudo o que você precisa saber sobre o funcionamento e recursos da sua vitrine pública online.
+                </DialogDescription>
+              </div>
+            </div>
+          </DialogHeader>
+
+          <div className="flex-1 overflow-y-auto p-6 space-y-5 text-sm">
+            {/* Seção 1: Publicação & Manutenção */}
+            <div className="p-4 rounded-xl border border-border/70 bg-card space-y-2">
+              <div className="flex items-center gap-2">
+                <span className="text-base">🟢</span>
+                <h3 className="font-bold text-sm text-foreground">
+                  Publicação da Loja & Modo Manutenção
+                </h3>
+              </div>
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                Na aba <strong>"Operação"</strong>, você encontra a chave <strong>"Loja Publicada"</strong>. Ao desligar essa chave e salvar:
+              </p>
+              <ul className="text-xs text-muted-foreground space-y-1 list-disc pl-4">
+                <li>A vitrine sai do ar instantaneamente sem precisar fazer deploy.</li>
+                <li>Os visitantes veem uma tela acolhedora de manutenção com a logo do seu ateliê.</li>
+                <li>Você pode personalizar a mensagem explicativa (ex: aviso de férias, atualização de catálogo ou reforma).</li>
+                <li>O botão direto de WhatsApp continua visível para os clientes entrarem em contato com você.</li>
+              </ul>
+            </div>
+
+            {/* Seção 2: Feature Flags (Pedidos Online) */}
+            <div className="p-4 rounded-xl border border-border/70 bg-card space-y-2">
+              <div className="flex items-center gap-2">
+                <span className="text-base">⚡</span>
+                <h3 className="font-bold text-sm text-foreground">
+                  Feature Flags: Pedidos Online vs. Modo Vitrine
+                </h3>
+              </div>
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                Também na aba <strong>"Operação"</strong>, você pode controlar funcionalidades específicas:
+              </p>
+              <ul className="text-xs text-muted-foreground space-y-1 list-disc pl-4">
+                <li>
+                  <strong>Pedidos Online (Sacola):</strong> Se o ateliê estiver com capacidade lotada, desative essa opção. A loja continua no ar exibindo suas peças, mas sem carrinho. O botão de compra vira <em>"Ver Detalhes"</em> e direciona o cliente para tirar dúvidas no WhatsApp.
+                </li>
+                <li>
+                  <strong>Modo Escuro:</strong> Permite que os clientes alternem entre o tema claro e escuro. Por padrão, o tema claro sempre valoriza as fotos dos seus mimos e papelaria.
+                </li>
+              </ul>
+            </div>
+
+            {/* Seção 3: Banners Rotativos & Carrossel */}
+            <div className="p-4 rounded-xl border border-border/70 bg-card space-y-2">
+              <div className="flex items-center gap-2">
+                <span className="text-base">🖼️</span>
+                <h3 className="font-bold text-sm text-foreground">
+                  Banners Rotativos & Vitrine de Propaganda
+                </h3>
+              </div>
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                Na aba <strong>"Logo & Vitrine"</strong>, você pode montar um carrossel no topo do catálogo:
+              </p>
+              <ul className="text-xs text-muted-foreground space-y-1 list-disc pl-4">
+                <li><strong>Formato Recomendado:</strong> Imagens na proporção 4:1 (estilo banner do LinkedIn, ex: 1200x300px ou 1600x400px).</li>
+                <li><strong>Rotação Automática:</strong> Alterne a velocidade da propaganda (3s, 5s, 7s ou 10s).</li>
+                <li><strong>Efeito Parallax / Vitrine Fixa:</strong> Mantém o banner fixo no fundo com os produtos rolando suavemente por cima.</li>
+              </ul>
+            </div>
+
+            {/* Seção 4: Barra Superior Fixa (Header) */}
+            <div className="p-4 rounded-xl border border-border/70 bg-card space-y-2">
+              <div className="flex items-center gap-2">
+                <span className="text-base">🎨</span>
+                <h3 className="font-bold text-sm text-foreground">
+                  Personalização da Barra Superior Fixa
+                </h3>
+              </div>
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                A barra superior acompanha o cliente enquanto ele rola a página da loja:
+              </p>
+              <ul className="text-xs text-muted-foreground space-y-1 list-disc pl-4">
+                <li><strong>Arte de Fundo:</strong> Você pode enviar uma imagem personalizada que preenche toda a barra.</li>
+                <li><strong>Cores Pré-definidas:</strong> Escolha entre tons afetivos (Rosê, Lavanda, Pêssego, Vinho Marsala) ou digite sua cor hex.</li>
+                <li><strong>Contraste:</strong> Defina textos/ícones escuros para fundos claros ou textos brancos para fundos escuros.</li>
+                <li><strong>Posição da Logo:</strong> À esquerda, centralizada ou ocupando a barra.</li>
+              </ul>
+            </div>
+
+            {/* Seção 5: Pedidos no WhatsApp & Histórico */}
+            <div className="p-4 rounded-xl border border-border/70 bg-card space-y-2">
+              <div className="flex items-center gap-2">
+                <span className="text-base">💬</span>
+                <h3 className="font-bold text-sm text-foreground">
+                  Como Funcionam os Pedidos da Lojinha
+                </h3>
+              </div>
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                Quando o cliente finaliza o pedido na sacola da lojinha:
+              </p>
+              <ul className="text-xs text-muted-foreground space-y-1 list-disc pl-4">
+                <li>O sistema gera um código de pedido único e rastreável (ex: <code>#LJ-1234</code>).</li>
+                <li>Abre o WhatsApp oficial configurado para a lojinha com uma mensagem limpa contendo todos os produtos, quantidades, nomes de personalização e subtotal.</li>
+                <li>O pedido é salvo automaticamente no painel em <strong>"Pedidos da Lojinha"</strong> para que sua equipe confira e avance para a produção.</li>
+              </ul>
+            </div>
+
+            {/* Seção 6: Endereço & Domínios */}
+            <div className="p-4 rounded-xl border border-border/70 bg-card space-y-2">
+              <div className="flex items-center gap-2">
+                <span className="text-base">🌐</span>
+                <h3 className="font-bold text-sm text-foreground">
+                  Links de Acesso & Domínios
+                </h3>
+              </div>
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                Sua vitrine pública pode ser acessada e divulgada de várias formas:
+              </p>
+              <ul className="text-xs text-muted-foreground space-y-1 list-disc pl-4">
+                <li><code>loja.dev.luisices.com.br</code> (subdomínio direto para bio do Instagram).</li>
+                <li><code>dev.luisices.com.br/loja</code> ou <code>dev.luisices.com.br/catalogo</code>.</li>
+                <li>Todas as rotas abrem a vitrine completa de forma responsiva no celular ou computador.</li>
+              </ul>
+            </div>
+          </div>
+
+          <div className="p-4 border-t border-border/60 bg-muted/20 flex justify-end">
+            <Button type="button" onClick={() => setShowHelpModal(false)} className="px-6">
+              Fechar Guia
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

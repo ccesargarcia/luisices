@@ -471,6 +471,7 @@ export function PublicCatalog() {
 
   // Ações da Sacola
   const addToCart = useCallback((product: CatalogProduct, customName?: string, quantity: number = 1) => {
+    if (featureFlags.enableOnlineOrders === false) return;
     const trimmedCustom = (customName || '').trim();
     setCart((prev) => {
       const existingIndex = prev.findIndex(
@@ -1429,7 +1430,7 @@ export function PublicCatalog() {
         )}
 
         {/* 6. Gaveta Lateral / Slide-over Drawer da Sacola de Pedidos */}
-        {isCartOpen && (
+        {isCartOpen && featureFlags.enableOnlineOrders !== false && (
           <div className="fixed inset-0 z-50 flex items-end sm:items-stretch sm:justify-end bg-black/60 backdrop-blur-xs animate-in fade-in">
             {/* Backdrop clicável no mobile e desktop */}
             <div 
