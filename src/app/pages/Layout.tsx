@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router';
-import { LayoutDashboard, Calendar, Users, Package2, Package, LogOut, Settings as SettingsIcon, BarChart3, FileText, ShoppingBag, Images, AtSign, Globe, Phone, Mail, MapPin, MessageCircle, ArrowLeftRight, UserCog, Info, PanelLeftClose, PanelLeftOpen, MoreHorizontal, HelpCircle, Coins, ExternalLink, Store, Palette, ChevronDown, ChevronRight } from 'lucide-react';
+import { LayoutDashboard, Calendar, Users, Package2, Package, LogOut, Settings as SettingsIcon, BarChart3, FileText, ShoppingBag, Images, AtSign, Globe, Phone, Mail, MapPin, MessageCircle, ArrowLeftRight, UserCog, Info, PanelLeftClose, PanelLeftOpen, MoreHorizontal, HelpCircle, Coins, ExternalLink, Store, Palette, ChevronDown, ChevronRight, ClipboardList } from 'lucide-react';
 import { cn } from '../components/ui/utils';
 import { useAuth } from '../../contexts/AuthContext';
 import { useUserSettings } from '../../hooks/useUserSettings';
@@ -67,7 +67,11 @@ export function Layout() {
 
   // Auto-expandir submenu da lojinha se estiver em uma rota da lojinha
   useEffect(() => {
-    if (location.pathname.startsWith('/produtos-lojinha') || location.pathname.startsWith('/personalizar-lojinha')) {
+    if (
+      location.pathname.startsWith('/produtos-lojinha') ||
+      location.pathname.startsWith('/personalizar-lojinha') ||
+      location.pathname.startsWith('/pedidos-lojinha')
+    ) {
       setStoreSubmenuOpen(true);
     }
   }, [location.pathname]);
@@ -88,6 +92,13 @@ export function Layout() {
       check: (p: any) => Boolean(p.store || p.storeProducts?.view),
       allowUserRole: true,
       children: [
+        {
+          name: 'Pedidos Recebidos',
+          href: '/pedidos-lojinha',
+          icon: ClipboardList,
+          check: (p: any) => Boolean(p.store ?? false),
+          allowUserRole: true,
+        },
         {
           name: 'Produtos da Lojinha',
           href: '/produtos-lojinha',

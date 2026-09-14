@@ -21,13 +21,15 @@ import {
   ArrowUpDown, 
   ShieldCheck, 
   Truck,
-  Sparkle
+  Sparkle,
+  CheckCircle2,
 } from 'lucide-react';
 import { formatCurrency } from '../utils/currency';
 import { normalizePhoneForWhatsApp, formatPhoneForDisplay } from '../utils/whatsapp';
 import { collection, onSnapshot, doc, getDoc } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { BannerCarousel, CatalogBannerItem } from '../components/catalog/BannerCarousel';
+import { firebaseCatalogOrderService } from '../../services/firebaseCatalogOrderService';
 
 export interface CatalogProduct {
   id: string;
@@ -134,6 +136,8 @@ export function PublicCatalog() {
   const [selectedProductPreview, setSelectedProductPreview] = useState<CatalogProduct | null>(null);
   const [customerNotes, setCustomerNotes] = useState<string>('');
   const [previewCustomName, setPreviewCustomName] = useState<string>('');
+  const [submittedOrderInfo, setSubmittedOrderInfo] = useState<{ orderCode: string; whatsappUrl: string } | null>(null);
+  const [submittingOrder, setSubmittingOrder] = useState<boolean>(false);
   const [logoError, setLogoError] = useState<boolean>(false);
   const [headerBgError, setHeaderBgError] = useState<boolean>(false);
 
@@ -310,7 +314,7 @@ export function PublicCatalog() {
 
 
   // Travar o scroll de fundo enquanto modal ou sacola estiverem abertos
-  const isAnyModalOpen = Boolean(isCartOpen || selectedProductPreview);
+  const isAnyModalOpen = Boolean(isCartOpen || selectedProductPreview || submittedOrderInfo);
 
   useEffect(() => {
     if (isAnyModalOpen) {
@@ -326,7 +330,9 @@ export function PublicCatalog() {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        if (selectedProductPreview) {
+        if (submittedOrderInfo) {
+          setSubmittedOrderInfo(null);
+        } else if (selectedProductPreview) {
           setSelectedProductPreview(null);
         } else if (isCartOpen) {
           setIsCartOpen(false);
@@ -335,7 +341,7 @@ export function PublicCatalog() {
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedProductPreview, isCartOpen]);
+  }, [selectedProductPreview, isCartOpen, submittedOrderInfo]);
 
   // Categorias dinâmicas derivadas dos produtos
   const categories = useMemo(() => {
@@ -432,40 +438,85 @@ export function PublicCatalog() {
     setCart((prev) => prev.filter((item) => item.id !== cartItemId));
   }, []);
 
-  // Envio de Pedido no WhatsApp com Deep Link formatado
-  const handleSendToWhatsApp = () => {
+  // Envio de Pedido no WhatsApp com Deep Link formatado e registro no histórico
+  const handleSendToWhatsApp = async () => {
+    if (submittingOrder) return;
+
     const cleanPhone = normalizePhoneForWhatsApp(businessInfo.whatsapp);
     if (!cleanPhone) {
       alert('O número de WhatsApp da loja ainda não foi configurado pelo ateliê. Por favor, entre em contato através das redes sociais ou site.');
       return;
     }
 
-    const greeting = businessInfo.whatsappGreeting || `🌸 *Olá, ${businessInfo.name}! Gostaria de fazer uma encomenda pelo Catálogo:*`;
+    setSubmittingOrder(true);
+
+    const orderCode = `LJ-${Math.floor(1000 + Math.random() * 9000)}`;
+    const greeting = businessInfo.whatsappGreeting || `🌸 *Olá, ${businessInfo.name}! Gostaria de confirmar esta encomenda pelo Catálogo:*`;
     const labelCustom = businessInfo.whatsappCustomizationLabel || 'Personalização/Nome:';
     const footerMsg = businessInfo.whatsappFooter || 'Poderia me passar as opções de frete/retirada e a chave PIX para confirmar?';
 
-    let msg = `${greeting}\n\n`;
+    let msg = `🛍️ *NOVO PEDIDO DA LOJINHA* • \`#${orderCode}\`\n`;
+    msg += `━━━━━━━━━━━━━━━━━━━━\n`;
+    msg += `${greeting}\n\n`;
+    msg += `📦 *ITENS ESCOLHIDOS:*\n`;
 
     cart.forEach((item, index) => {
-      msg += `*Item ${index + 1}:* ${item.product.name}\n`;
-      msg += `• Quantidade: ${item.quantity}x\n`;
-      msg += `• Valor unitário: ${formatCurrency(item.product.price)}\n`;
+      msg += `*${index + 1}️⃣ ${item.product.name}* (${item.quantity}x)\n`;
+      msg += `   💰 ${formatCurrency(item.product.price)} un.`;
+      if (item.quantity > 1) {
+        msg += ` = ${formatCurrency(item.product.price * item.quantity)}`;
+      }
+      msg += `\n`;
       if (item.customName) {
-        msg += `• ${labelCustom} ${item.customName}\n`;
+        msg += `   ✍️ *${labelCustom}* ${item.customName}\n`;
       }
       msg += item.product.leadTimeDays > 0
-        ? `• Prazo de confecção: até ${item.product.leadTimeDays} dias úteis\n\n`
-        : `• Prazo: Pronta entrega\n\n`;
+        ? `   ⏳ *Prazo:* até ${item.product.leadTimeDays} dias úteis\n\n`
+        : `   ⏳ *Prazo:* Pronta entrega\n\n`;
     });
 
-    msg += `✨ *Subtotal Estimado:* ${formatCurrency(subtotal)}\n`;
+    msg += `━━━━━━━━━━━━━━━━━━━━\n`;
+    msg += `✨ *Subtotal dos Produtos:* *${formatCurrency(subtotal)}*\n`;
     if (customerNotes.trim()) {
       msg += `📝 *Observações / Data do Evento:* ${customerNotes}\n`;
     }
-    msg += `\n${footerMsg}`;
+    msg += `\n📍 *DADOS PARA O ATENDIMENTO:*\n`;
+    msg += `• Meu CEP ou bairro para cálculo do frete: \n`;
+    msg += `• Como prefiro pagar: ( ) PIX  ( ) Cartão\n\n`;
+    msg += `${footerMsg}`;
 
     const encoded = encodeURIComponent(msg);
-    window.open(`https://wa.me/${cleanPhone}?text=${encoded}`, '_blank');
+    const whatsappUrl = `https://wa.me/${cleanPhone}?text=${encoded}`;
+
+    // Registrar no histórico de pedidos do Firestore (coleção catalogOrders)
+    try {
+      await firebaseCatalogOrderService.createCatalogOrder({
+        orderCode,
+        customerNotes: customerNotes.trim() || undefined,
+        items: cart.map((item) => ({
+          productId: item.product.id,
+          productName: item.product.name,
+          price: item.product.price,
+          quantity: item.quantity,
+          customName: item.customName || undefined,
+          leadTimeDays: item.product.leadTimeDays,
+          imageUrl: item.product.imageUrl || undefined,
+        })),
+        totalItems: totalItemsCount,
+        subtotal,
+        status: 'received',
+      });
+    } catch (err) {
+      console.warn('Aviso ao registrar pedido no Firestore:', err);
+    } finally {
+      setSubmittingOrder(false);
+    }
+
+    // Abrir o WhatsApp
+    window.open(whatsappUrl, '_blank');
+
+    // Abre o modal de confirmação com o código do pedido
+    setSubmittedOrderInfo({ orderCode, whatsappUrl });
   };
 
   const handleOpenPreview = (product: CatalogProduct) => {
@@ -1296,14 +1347,102 @@ export function PublicCatalog() {
 
                   <button
                     onClick={handleSendToWhatsApp}
-                    className="w-full py-3.5 px-4 rounded-xl bg-[#10B981] hover:bg-[#059669] text-white font-bold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg active:scale-98 transition-all cursor-pointer"
+                    disabled={submittingOrder}
+                    className="w-full py-3.5 px-4 rounded-xl bg-[#10B981] hover:bg-[#059669] text-white font-bold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg active:scale-98 transition-all cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
                   >
-                    <Send size={15} />
-                    <span>Confirmar & Enviar Pedido no WhatsApp</span>
+                    {submittingOrder ? (
+                      <>
+                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                        <span>Registrando e abrindo WhatsApp...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Send size={15} />
+                        <span>Confirmar & Enviar Pedido no WhatsApp</span>
+                      </>
+                    )}
                   </button>
                 </div>
               )}
 
+            </div>
+          </div>
+        )}
+
+        {/* 6. MODAL DE CONFIRMAÇÃO DE PEDIDO ENVIADO */}
+        {submittedOrderInfo && (
+          <div 
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in"
+            onClick={() => setSubmittedOrderInfo(null)}
+          >
+            <div 
+              className="bg-white dark:bg-[#1f191b] rounded-3xl max-w-md w-full p-6 shadow-2xl border border-stone-200/80 dark:border-[#ebcdcd]/20 relative text-center space-y-5 animate-scale-up"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <button 
+                onClick={() => setSubmittedOrderInfo(null)}
+                className="absolute top-4 right-4 p-2 rounded-full text-stone-400 hover:text-stone-600 dark:hover:text-stone-200 hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors cursor-pointer"
+                title="Fechar"
+              >
+                <X size={18} />
+              </button>
+
+              <div className="w-16 h-16 mx-auto rounded-full bg-emerald-100 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shadow-inner">
+                <CheckCircle2 size={36} />
+              </div>
+
+              <div className="space-y-2">
+                <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#613d3e]/10 dark:bg-[#f4b7b9]/15 text-[#613d3e] dark:text-[#f4b7b9] font-mono font-bold text-xs">
+                  Pedido #{submittedOrderInfo.orderCode}
+                </div>
+                <h3 className="text-xl font-black text-stone-900 dark:text-stone-100 tracking-tight">
+                  Pedido Enviado com Sucesso!
+                </h3>
+                <p className="text-xs sm:text-sm text-stone-500 dark:text-stone-400 leading-relaxed">
+                  Seu pedido foi registrado em nosso ateliê e a conversa foi iniciada no WhatsApp. Nossa equipe já tem acesso à sua seleção de itens!
+                </p>
+              </div>
+
+              <div className="p-3.5 rounded-2xl bg-stone-50 dark:bg-stone-900/50 border border-stone-200/60 dark:border-stone-800 text-left space-y-1.5 text-xs text-stone-600 dark:text-stone-300">
+                <div className="flex items-center gap-2 font-semibold text-stone-800 dark:text-stone-200">
+                  <Sparkles size={14} className="text-amber-500" />
+                  <span>Próximos passos no WhatsApp:</span>
+                </div>
+                <p className="text-[11px] text-stone-500 dark:text-stone-400">
+                  Envie a mensagem no aplicativo e informe seu CEP para cálculo do frete e opções de pagamento (PIX ou Cartão).
+                </p>
+              </div>
+
+              <div className="flex flex-col gap-2 pt-2">
+                <a
+                  href={submittedOrderInfo.whatsappUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-full py-3 px-4 rounded-xl bg-[#10B981] hover:bg-[#059669] text-white font-bold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-md transition-all active:scale-98 cursor-pointer"
+                >
+                  <MessageCircle size={16} />
+                  <span>Reabrir WhatsApp</span>
+                </a>
+
+                <button
+                  onClick={() => {
+                    setCart([]);
+                    setCustomerNotes('');
+                    setIsCartOpen(false);
+                    setSubmittedOrderInfo(null);
+                  }}
+                  className="w-full py-2.5 px-4 rounded-xl bg-stone-100 hover:bg-stone-200 dark:bg-stone-800 dark:hover:bg-stone-700 text-stone-800 dark:text-stone-200 font-semibold text-xs sm:text-sm transition-colors cursor-pointer"
+                >
+                  Concluir e Limpar Sacola
+                </button>
+
+                <button
+                  onClick={() => setSubmittedOrderInfo(null)}
+                  className="w-full py-2 text-stone-400 hover:text-stone-600 dark:hover:text-stone-300 text-xs font-medium transition-colors cursor-pointer"
+                >
+                  Continuar Comprando
+                </button>
+              </div>
             </div>
           </div>
         )}

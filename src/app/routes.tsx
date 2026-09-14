@@ -52,6 +52,7 @@ const FixNegativeValues = lazyWithRetry(() => import('./pages/FixNegativeValues'
 const PublicCatalog  = lazyWithRetry(() => import('./pages/PublicCatalog').then(m => ({ default: m.PublicCatalog })));
 const StoreCustomization = lazyWithRetry(() => import('./pages/StoreCustomization').then(m => ({ default: m.StoreCustomization })));
 const StoreProducts = lazyWithRetry(() => import('./pages/StoreProducts').then(m => ({ default: m.StoreProducts })));
+const StoreOrders = lazyWithRetry(() => import('./pages/StoreOrders').then(m => ({ default: m.StoreOrders })));
 
 function PageLoader() {
   return (
@@ -185,6 +186,14 @@ export const router = isCatalogSubdomain
       {
         path: 'produtos-lojinha',
         element: <Lazy><PermissionRoute check={p => p.storeProducts?.view ?? p.store ?? false} allowUserRole><StoreProducts /></PermissionRoute></Lazy>,
+      },
+      {
+        path: 'pedidos-lojinha',
+        element: <Lazy><PermissionRoute check={p => p.store ?? false} allowUserRole><StoreOrders /></PermissionRoute></Lazy>,
+      },
+      {
+        path: 'lojinha/pedidos',
+        element: <Navigate to="/pedidos-lojinha" replace />,
       },
       {
         path: 'lojinha/produtos',

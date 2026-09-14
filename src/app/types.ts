@@ -299,6 +299,31 @@ export interface StoreProduct {
   updatedAt?: string;
 }
 
+export type CatalogOrderStatus = 'received' | 'in_contact' | 'converted' | 'cancelled';
+
+export interface CatalogOrderItem {
+  productId: string;
+  productName: string;
+  price: number;
+  quantity: number;
+  customName?: string;
+  leadTimeDays: number;
+  imageUrl?: string;
+}
+
+export interface CatalogOrder {
+  id: string;
+  orderCode: string;
+  customerNotes?: string;
+  items: CatalogOrderItem[];
+  totalItems: number;
+  subtotal: number;
+  status: CatalogOrderStatus;
+  createdAt: string;
+  updatedAt?: string;
+  convertedOrderId?: string;
+}
+
 // ─── Pricing & Costs (Papelaria Personalizada) ────────────────────────────────
 
 export type SupplyUnit = 'folha' | 'metro' | 'cm' | 'unidade' | 'ml' | 'g' | 'pacote';
