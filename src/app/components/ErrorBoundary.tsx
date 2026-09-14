@@ -79,7 +79,9 @@ export function ErrorBoundary() {
   const isChunkError =
     errorMessage.includes('dynamically imported module') ||
     errorMessage.includes('Failed to fetch') ||
-    errorMessage.includes('Loading chunk');
+    errorMessage.includes('Loading chunk') ||
+    errorMessage.includes('Importing a module script failed') ||
+    errorMessage.includes('error loading dynamically imported module');
 
   const handleReload = async () => {
     try {
@@ -122,7 +124,7 @@ export function ErrorBoundary() {
       }}>
         {errorMessage}
       </pre>
-      <div style={{ display: 'flex', gap: '1rem', marginTop: '2rem' }}>
+      <div style={{ display: 'flex', gap: '1rem', marginTop: '2rem', flexWrap: 'wrap', justifyContent: 'center' }}>
         <button
           type="button"
           onClick={handleReload}
@@ -142,14 +144,16 @@ export function ErrorBoundary() {
           to="/"
           style={{
             padding: '0.75rem 1.5rem',
-            backgroundColor: '#6b7280',
-            color: 'white',
+            backgroundColor: '#e2e8f0',
+            color: '#1e293b',
             borderRadius: '6px',
             textDecoration: 'none',
-            fontSize: '1rem'
+            fontSize: '1rem',
+            display: 'inline-flex',
+            alignItems: 'center'
           }}
         >
-          Voltar para o Dashboard
+          Voltar ao Início
         </Link>
       </div>
     </div>

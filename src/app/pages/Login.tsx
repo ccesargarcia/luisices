@@ -14,15 +14,15 @@ export function Login() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const { login, isAuthenticated, loading: authLoading } = useAuth();
+  const { login, isAuthenticated, loading: authLoading, userProfile } = useAuth();
   const navigate = useNavigate();
 
-  // Se o usuário já estiver autenticado e tentar acessar /login, redireciona para o dashboard com replace
+  // Se o usuário já estiver autenticado e ativo e tentar acessar /login, redireciona para o dashboard com replace
   useEffect(() => {
-    if (!authLoading && isAuthenticated) {
+    if (!authLoading && isAuthenticated && userProfile && userProfile.active !== false) {
       navigate('/', { replace: true });
     }
-  }, [isAuthenticated, authLoading, navigate]);
+  }, [isAuthenticated, authLoading, userProfile, navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

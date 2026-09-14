@@ -11,9 +11,9 @@ import { ResetPassword } from './pages/ResetPassword';
 import { AuthAction } from './pages/AuthAction';
 
 /**
- * Carregador lazy resiliente a atualizações de build/deploy.
- * Se o hash do chunk mudou no servidor e o navegador falhar no import dinâmico,
- * limpa os caches antigos e recarrega uma única vez. Se persistir, deixa o ErrorBoundary tratar.
+ * Carregador lazy resiliente a falhas temporárias de rede.
+ * Tenta novamente em memória se o primeiro import falhar (sem recarregar a janela).
+ * Se persistir, repassa o erro para o ErrorBoundary exibir a mensagem amigável com botão de atualização.
  */
 function lazyWithRetry<T extends React.ComponentType<any>>(
   factory: () => Promise<{ default: T }>
@@ -21,30 +21,15 @@ function lazyWithRetry<T extends React.ComponentType<any>>(
   return lazy(async () => {
     try {
       return await factory();
-    } catch (error) {
-      const now = Date.now();
-      const lastReload = Number(sessionStorage.getItem('last_chunk_reload') || '0');
-
-      if (now - lastReload < 15000) {
-        console.warn('[lazyWithRetry] Falha persistente ao carregar chunk. Evitando loop de recarregamento.');
-        throw error;
-      }
-
-      sessionStorage.setItem('last_chunk_reload', String(now));
-
+    } catch (firstError) {
+      console.warn('[lazyWithRetry] Falha no primeiro carregamento do chunk, tentando novamente...', firstError);
+      await new Promise((resolve) => setTimeout(resolve, 800));
       try {
-        if ('caches' in window) {
-          const cacheNames = await caches.keys();
-          await Promise.all(cacheNames.map((name) => caches.delete(name)));
-        }
-        if ('serviceWorker' in navigator) {
-          const registrations = await navigator.serviceWorker.getRegistrations();
-          await Promise.all(registrations.map((reg) => reg.unregister()));
-        }
-      } catch {}
-
-      window.location.reload();
-      return new Promise(() => {});
+        return await factory();
+      } catch (secondError) {
+        console.error('[lazyWithRetry] Falha persistente ao carregar componente:', secondError);
+        throw secondError;
+      }
     }
   });
 }

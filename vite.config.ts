@@ -46,7 +46,7 @@ export default defineConfig(({ command, mode }) => {
       },
     }),
     VitePWA({
-      registerType: 'autoUpdate',
+      selfDestroying: true,
       includeAssets: ['favicon.ico', 'icon-192.png', 'icon-512.png'],
       manifest: {
         name: 'Luisices - Papelaria Personalizada',
@@ -65,25 +65,6 @@ export default defineConfig(({ command, mode }) => {
             src: 'icon-512.png',
             sizes: '512x512',
             type: 'image/png',
-          },
-        ],
-      },
-      workbox: {
-        globPatterns: ['**/*.{js,css,ico,png,svg,woff,woff2}'],
-        cleanupOutdatedCaches: true,
-        clientsClaim: true,
-        skipWaiting: true,
-        runtimeCaching: [
-          {
-            urlPattern: /^https:\/\/firebasestorage\.googleapis\.com\/.*/i,
-            handler: 'StaleWhileRevalidate',
-            options: {
-              cacheName: 'firebase-images-cache',
-              expiration: {
-                maxEntries: 150,
-                maxAgeSeconds: 60 * 60 * 24 * 7, // 7 dias com revalidação em background
-              },
-            },
           },
         ],
       },
