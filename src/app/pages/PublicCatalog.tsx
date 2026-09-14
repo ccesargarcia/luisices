@@ -54,8 +54,14 @@ export interface CartItem {
 }
 
 export function PublicCatalog() {
-  // Controle de tema: a lojinha é SEMPRE tema Claro como padrão (default)
-  const [isDarkMode, setIsDarkMode] = useState<boolean>(false);
+  // Controle de tema: recupera preferência salva no localStorage para persistir entre recarregamentos
+  const [isDarkMode, setIsDarkMode] = useState<boolean>(() => {
+    try {
+      const saved = localStorage.getItem('luisices_catalog_theme');
+      if (saved) return saved === 'dark';
+    } catch {}
+    return false;
+  });
 
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [selectedCategory, setSelectedCategory] = useState<string>('todos');
@@ -153,7 +159,7 @@ export function PublicCatalog() {
     setHeaderBgError(false);
   }, [businessInfo.headerBackground]);
 
-  // Isolar o tema da lojinha: a lojinha é SEMPRE claro por padrão e NUNCA altera o tema administrativo
+  // Isolar o tema da lojinha: persiste a escolha da lojinha e restaura o tema do painel ao desmontar
   useEffect(() => {
     const root = document.documentElement;
     const adminTheme = localStorage.getItem('theme') || 'system';
@@ -168,6 +174,10 @@ export function PublicCatalog() {
       root.classList.add('light');
     }
 
+    try {
+      localStorage.setItem('luisices_catalog_theme', isDarkMode ? 'dark' : 'light');
+    } catch {}
+
     return () => {
       // Ao sair do catálogo para o painel administrativo, restaura fielmente o tema escolhido pelo usuário
       if (adminIsDark) {
@@ -180,9 +190,15 @@ export function PublicCatalog() {
     };
   }, [isDarkMode]);
 
-  // Alternar tema Claro / Escuro da lojinha (sem alterar o tema administrativo)
+  // Alternar tema Claro / Escuro da lojinha (persistindo no localStorage sem alterar o tema administrativo)
   const toggleTheme = () => {
-    setIsDarkMode((prev) => !prev);
+    setIsDarkMode((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem('luisices_catalog_theme', next ? 'dark' : 'light');
+      } catch {}
+      return next;
+    });
   };
 
   // Salvar carrinho
