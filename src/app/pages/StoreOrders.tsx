@@ -300,86 +300,91 @@ export function StoreOrders() {
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
           <Button
             variant="outline"
             size="sm"
             onClick={handleManualRefresh}
             disabled={loading}
+            className="h-8.5 text-xs shrink-0"
           >
-            <RefreshCw className={`w-4 h-4 mr-1.5 ${loading ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${loading ? 'animate-spin' : ''}`} />
             Atualizar
           </Button>
-          <Button variant="outline" size="sm" asChild>
+          <Button variant="outline" size="sm" asChild className="h-8.5 text-xs shrink-0">
             <Link to="/produtos-lojinha">
-              <ShoppingBag className="w-4 h-4 mr-1.5" />
+              <ShoppingBag className="w-3.5 h-3.5 mr-1.5" />
               Produtos da Lojinha
             </Link>
           </Button>
-          <Button variant="default" size="sm" asChild>
-            <a href="/catalogo" target="_blank" rel="noopener noreferrer">
-              <ExternalLink className="w-4 h-4 mr-1.5" />
-              Abrir Lojinha
-            </a>
-          </Button>
+          <a
+            href="/catalogo"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center justify-center gap-1.5 px-3 h-8.5 rounded-md text-xs font-semibold bg-[#613d3e] hover:bg-[#4a2e2f] text-white shadow-xs transition-all shrink-0 cursor-pointer"
+          >
+            <Globe className="w-3.5 h-3.5" />
+            <span>Abrir Lojinha</span>
+            <ExternalLink className="w-3 h-3 opacity-70" />
+          </a>
         </div>
       </div>
 
       {/* Cards de Métricas / KPIs */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4">
         <Card className="bg-card/50">
-          <CardHeader className="p-4 pb-2">
-            <CardDescription className="text-xs font-medium">Total de Pedidos</CardDescription>
-            <CardTitle className="text-2xl font-bold">{stats.totalCount}</CardTitle>
+          <CardHeader className="p-3 sm:p-4 pb-1 sm:pb-2">
+            <CardDescription className="text-[11px] sm:text-xs font-medium truncate">Total de Pedidos</CardDescription>
+            <CardTitle className="text-xl sm:text-2xl font-bold">{stats.totalCount}</CardTitle>
           </CardHeader>
-          <CardContent className="p-4 pt-0">
-            <p className="text-[11px] text-muted-foreground">
+          <CardContent className="p-3 sm:p-4 pt-0">
+            <p className="text-[10px] sm:text-[11px] text-muted-foreground truncate">
               Recebidos via sacola online
             </p>
           </CardContent>
         </Card>
 
         <Card className="bg-card/50 border-emerald-500/20">
-          <CardHeader className="p-4 pb-2">
-            <CardDescription className="text-xs font-medium text-emerald-600 dark:text-emerald-400">
+          <CardHeader className="p-3 sm:p-4 pb-1 sm:pb-2">
+            <CardDescription className="text-[11px] sm:text-xs font-medium text-emerald-600 dark:text-emerald-400 truncate">
               Novos / Recebidos
             </CardDescription>
-            <CardTitle className="text-2xl font-bold text-emerald-700 dark:text-emerald-300">
+            <CardTitle className="text-xl sm:text-2xl font-bold text-emerald-700 dark:text-emerald-300">
               {stats.receivedCount}
             </CardTitle>
           </CardHeader>
-          <CardContent className="p-4 pt-0">
-            <p className="text-[11px] text-muted-foreground">
+          <CardContent className="p-3 sm:p-4 pt-0">
+            <p className="text-[10px] sm:text-[11px] text-muted-foreground truncate">
               Aguardando contato no WhatsApp
             </p>
           </CardContent>
         </Card>
 
         <Card className="bg-card/50 border-purple-500/20">
-          <CardHeader className="p-4 pb-2">
-            <CardDescription className="text-xs font-medium text-purple-600 dark:text-purple-400">
+          <CardHeader className="p-3 sm:p-4 pb-1 sm:pb-2">
+            <CardDescription className="text-[11px] sm:text-xs font-medium text-purple-600 dark:text-purple-400 truncate">
               Convertidos em Produção
             </CardDescription>
-            <CardTitle className="text-2xl font-bold text-purple-700 dark:text-purple-300">
+            <CardTitle className="text-xl sm:text-2xl font-bold text-purple-700 dark:text-purple-300">
               {stats.convertedCount}
             </CardTitle>
           </CardHeader>
-          <CardContent className="p-4 pt-0">
-            <p className="text-[11px] text-muted-foreground">
+          <CardContent className="p-3 sm:p-4 pt-0">
+            <p className="text-[10px] sm:text-[11px] text-muted-foreground truncate">
               Viraram pedidos oficiais no ateliê
             </p>
           </CardContent>
         </Card>
 
         <Card className="bg-card/50">
-          <CardHeader className="p-4 pb-2">
-            <CardDescription className="text-xs font-medium">Faturamento Estimado</CardDescription>
-            <CardTitle className="text-2xl font-bold text-[#613d3e] dark:text-[#f4b7b9]">
+          <CardHeader className="p-3 sm:p-4 pb-1 sm:pb-2">
+            <CardDescription className="text-[11px] sm:text-xs font-medium truncate">Faturamento Estimado</CardDescription>
+            <CardTitle className="text-xl sm:text-2xl font-bold text-[#613d3e] dark:text-[#f4b7b9] truncate">
               {formatCurrency(stats.totalPotential)}
             </CardTitle>
           </CardHeader>
-          <CardContent className="p-4 pt-0">
-            <p className="text-[11px] text-muted-foreground">
+          <CardContent className="p-3 sm:p-4 pt-0">
+            <p className="text-[10px] sm:text-[11px] text-muted-foreground truncate">
               Subtotal acumulado (não cancelados)
             </p>
           </CardContent>
@@ -408,12 +413,12 @@ export function StoreOrders() {
         </div>
 
         {/* Abas / Botões de Status */}
-        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 md:pb-0 scrollbar-none">
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 md:pb-0 scrollbar-none w-full md:w-auto -mx-1 px-1">
           <Button
             size="sm"
             variant={selectedStatus === 'all' ? 'default' : 'ghost'}
             onClick={() => setSelectedStatus('all')}
-            className="rounded-full text-xs h-8 px-3"
+            className="rounded-full text-xs h-8 px-3 shrink-0"
           >
             Todos ({orders.length})
           </Button>
@@ -421,7 +426,7 @@ export function StoreOrders() {
             size="sm"
             variant={selectedStatus === 'received' ? 'default' : 'ghost'}
             onClick={() => setSelectedStatus('received')}
-            className="rounded-full text-xs h-8 px-3"
+            className="rounded-full text-xs h-8 px-3 shrink-0"
           >
             Novos ({stats.receivedCount})
           </Button>
@@ -429,7 +434,7 @@ export function StoreOrders() {
             size="sm"
             variant={selectedStatus === 'in_contact' ? 'default' : 'ghost'}
             onClick={() => setSelectedStatus('in_contact')}
-            className="rounded-full text-xs h-8 px-3"
+            className="rounded-full text-xs h-8 px-3 shrink-0"
           >
             Em Atendimento ({stats.inContactCount})
           </Button>
@@ -437,7 +442,7 @@ export function StoreOrders() {
             size="sm"
             variant={selectedStatus === 'converted' ? 'default' : 'ghost'}
             onClick={() => setSelectedStatus('converted')}
-            className="rounded-full text-xs h-8 px-3"
+            className="rounded-full text-xs h-8 px-3 shrink-0"
           >
             Convertidos ({stats.convertedCount})
           </Button>
@@ -445,7 +450,7 @@ export function StoreOrders() {
             size="sm"
             variant={selectedStatus === 'cancelled' ? 'default' : 'ghost'}
             onClick={() => setSelectedStatus('cancelled')}
-            className="rounded-full text-xs h-8 px-3"
+            className="rounded-full text-xs h-8 px-3 shrink-0"
           >
             Cancelados
           </Button>
@@ -487,12 +492,16 @@ export function StoreOrders() {
               Limpar Filtros
             </Button>
           ) : (
-            <Button size="sm" asChild>
-              <a href="/catalogo" target="_blank" rel="noopener noreferrer">
-                <ExternalLink className="w-4 h-4 mr-1.5" />
-                Visualizar Catálogo Online
-              </a>
-            </Button>
+            <a
+              href="/catalogo"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-bold bg-[#613d3e] hover:bg-[#4a2e2f] text-white shadow-sm transition-all cursor-pointer"
+            >
+              <Globe className="w-4 h-4" />
+              <span>Visualizar Catálogo Online</span>
+              <ExternalLink className="w-3.5 h-3.5 opacity-70" />
+            </a>
           )}
         </div>
       ) : (
@@ -505,27 +514,27 @@ export function StoreOrders() {
                 key={order.id}
                 className="overflow-hidden hover:border-primary/40 transition-all shadow-xs"
               >
-                <div className="p-4 sm:p-5 flex flex-col md:flex-row md:items-center justify-between gap-4 border-b bg-muted/20">
+                <div className="p-3.5 sm:p-5 flex flex-col md:flex-row md:items-center justify-between gap-3 sm:gap-4 border-b bg-muted/20">
                   {/* Cabeçalho do Card */}
-                  <div className="flex flex-wrap items-center gap-3">
-                    <span className="font-mono font-bold text-base text-[#613d3e] dark:text-[#f4b7b9]">
+                  <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+                    <span className="font-mono font-bold text-sm sm:text-base text-[#613d3e] dark:text-[#f4b7b9]">
                       #{order.orderCode}
                     </span>
                     {renderStatusBadge(order.status)}
-                    <span className="text-xs text-muted-foreground flex items-center gap-1">
+                    <span className="text-[11px] sm:text-xs text-muted-foreground flex items-center gap-1">
                       <Clock className="w-3.5 h-3.5" />
                       {formatDate(order.createdAt)}
                     </span>
                   </div>
 
                   {/* Ações Rápidas de Status */}
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
                     {order.status === 'received' && (
                       <Button
                         size="sm"
                         variant="outline"
                         onClick={() => handleStatusChange(order.id, 'in_contact')}
-                        className="h-8 text-xs text-sky-600 hover:text-sky-700 hover:bg-sky-50 dark:hover:bg-sky-950/30"
+                        className="h-8 text-xs text-sky-600 hover:text-sky-700 hover:bg-sky-50 dark:hover:bg-sky-950/30 shrink-0"
                       >
                         Iniciar Atendimento
                       </Button>
@@ -535,7 +544,7 @@ export function StoreOrders() {
                       <Button
                         size="sm"
                         onClick={() => handleOpenConvert(order)}
-                        className="h-8 text-xs bg-[#613d3e] hover:bg-[#4a2e2f] text-white"
+                        className="h-8 text-xs bg-[#613d3e] hover:bg-[#4a2e2f] text-white shrink-0"
                       >
                         <Sparkles className="w-3.5 h-3.5 mr-1" />
                         Converter em Pedido Oficial
@@ -547,7 +556,7 @@ export function StoreOrders() {
                         size="sm"
                         variant="secondary"
                         asChild
-                        className="h-8 text-xs gap-1.5"
+                        className="h-8 text-xs gap-1.5 shrink-0"
                       >
                         <Link to="/agenda">
                           <CheckCircle2 className="w-3.5 h-3.5 text-purple-600" />
@@ -560,7 +569,7 @@ export function StoreOrders() {
                       size="sm"
                       variant="ghost"
                       onClick={() => setDetailOrder(order)}
-                      className="h-8 text-xs"
+                      className="h-8 text-xs shrink-0"
                     >
                       <Eye className="w-3.5 h-3.5 mr-1" />
                       Detalhes
@@ -569,8 +578,8 @@ export function StoreOrders() {
                 </div>
 
                 {/* Conteúdo dos Itens do Pedido */}
-                <div className="p-4 sm:p-5 space-y-3">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                <div className="p-3.5 sm:p-5 space-y-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 sm:gap-3">
                     {order.items.map((item, idx) => (
                       <div
                         key={idx}
@@ -591,7 +600,7 @@ export function StoreOrders() {
                           <p className="font-semibold text-foreground truncate">
                             {item.quantity}x {item.productName}
                           </p>
-                          <p className="text-muted-foreground">
+                          <p className="text-muted-foreground truncate">
                             {formatCurrency(item.price)} un. • Total:{' '}
                             <span className="font-medium text-foreground">
                               {formatCurrency(item.price * item.quantity)}
@@ -622,18 +631,18 @@ export function StoreOrders() {
                   )}
 
                   {/* Rodapé do Card com Subtotal */}
-                  <div className="pt-2 flex flex-wrap items-center justify-between gap-3 text-xs">
-                    <div className="flex items-center gap-3 text-muted-foreground">
+                  <div className="pt-2 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs border-t border-border/40">
+                    <div className="flex items-center gap-3 text-muted-foreground flex-wrap">
                       <span>Total de {order.totalItems} {order.totalItems === 1 ? 'item' : 'itens'}</span>
                       {order.convertedOrderId && (
-                        <span className="text-purple-600 dark:text-purple-400 font-medium">
+                        <span className="text-purple-600 dark:text-purple-400 font-medium truncate">
                           ID Oficial: {order.convertedOrderId.slice(0, 8)}...
                         </span>
                       )}
                     </div>
 
-                    <div className="flex items-center gap-4">
-                      <div className="text-right">
+                    <div className="flex items-center justify-between sm:justify-end gap-4 w-full sm:w-auto">
+                      <div className="text-left sm:text-right">
                         <span className="text-muted-foreground text-[11px] mr-1.5">Subtotal Estimado:</span>
                         <span className="text-base font-black text-[#613d3e] dark:text-[#f4b7b9] tabular-nums">
                           {formatCurrency(order.subtotal)}
@@ -643,7 +652,7 @@ export function StoreOrders() {
                       <Button
                         size="icon"
                         variant="ghost"
-                        className="h-8 w-8 text-destructive hover:bg-destructive/10"
+                        className="h-8 w-8 text-destructive hover:bg-destructive/10 shrink-0"
                         onClick={() => setOrderToDelete(order)}
                         title="Excluir do histórico"
                       >
