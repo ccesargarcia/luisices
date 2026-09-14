@@ -87,6 +87,9 @@ export function PublicCatalog() {
       instagram: saved?.instagramUrl
         ? saved.instagramUrl.replace(/^https?:\/\/(www\.)?instagram\.com\//, '').replace(/\/$/, '')
         : (saved?.instagram || ''),
+      instagramColab: saved?.instagramColabUrl
+        ? saved.instagramColabUrl.replace(/^https?:\/\/(www\.)?instagram\.com\//, '').replace(/\/$/, '')
+        : (saved?.instagramColab || ''),
       website: saved?.websiteUrl || saved?.website || '',
       logo: saved?.catalogLogo || saved?.logo || '',
       banner: saved?.catalogBanner || saved?.banner || '',
@@ -205,6 +208,7 @@ export function PublicCatalog() {
             tagline: s.businessTagline !== undefined ? s.businessTagline : '',
             whatsapp: s.catalogWhatsappPhone || s.whatsappPhone || s.businessPhone || '',
             instagram: s.instagramUrl ? s.instagramUrl.replace(/^https?:\/\/(www\.)?instagram\.com\//, '').replace(/\/$/, '') : '',
+            instagramColab: s.instagramColabUrl ? s.instagramColabUrl.replace(/^https?:\/\/(www\.)?instagram\.com\//, '').replace(/\/$/, '') : '',
             website: s.websiteUrl || '',
             logo: s.catalogLogo || '',
             banner: s.catalogBanner || '',
@@ -403,6 +407,11 @@ export function PublicCatalog() {
     if (!businessInfo.instagram) return '';
     return businessInfo.instagram.replace(/[^a-zA-Z0-9._]/g, '');
   }, [businessInfo.instagram]);
+
+  const cleanInstagramColab = useMemo(() => {
+    if (!businessInfo.instagramColab) return '';
+    return businessInfo.instagramColab.replace(/[^a-zA-Z0-9._]/g, '');
+  }, [businessInfo.instagramColab]);
 
   // Ações da Sacola
   const addToCart = useCallback((product: CatalogProduct, customName?: string, quantity: number = 1) => {
@@ -639,6 +648,20 @@ export function PublicCatalog() {
                   >
                     <Instagram size={15} className="text-[#E1306C]" />
                     <span className="hidden md:inline text-xs">@{cleanInstagram}</span>
+                  </a>
+                )}
+
+                {cleanInstagramColab && (
+                  <a
+                    href={`https://instagram.com/${cleanInstagramColab}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl sm:rounded-2xl text-xs font-medium bg-pink-50/90 dark:bg-pink-950/40 hover:bg-pink-100/90 dark:hover:bg-pink-950/60 text-pink-800 dark:text-pink-200 border border-pink-200/80 dark:border-pink-900/40 transition-all shadow-2xs cursor-pointer"
+                    title="Instagram de parceria / colab"
+                  >
+                    <Instagram size={15} className="text-[#E1306C]" />
+                    <span className="hidden md:inline text-xs">@{cleanInstagramColab}</span>
+                    <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-md bg-[#E1306C] text-white">Colab</span>
                   </a>
                 )}
 
@@ -1009,6 +1032,19 @@ export function PublicCatalog() {
                     >
                       <Instagram size={14} />
                       <span>@{cleanInstagram}</span>
+                    </a>
+                  )}
+
+                  {cleanInstagramColab && (
+                    <a
+                      href={`https://instagram.com/${cleanInstagramColab}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 hover:text-[#E1306C] transition-colors"
+                    >
+                      <Instagram size={14} className="text-[#E1306C]" />
+                      <span>@{cleanInstagramColab}</span>
+                      <span className="text-[9px] font-bold uppercase tracking-wider px-1 rounded bg-[#E1306C]/15 text-[#E1306C]">Colab</span>
                     </a>
                   )}
 

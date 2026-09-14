@@ -36,6 +36,7 @@ export interface UserSettings {
   // Identidade do negócio
   businessTagline?: string;      // Slogan exibido no cabeçalho
   instagramUrl?: string;         // Link para o Instagram
+  instagramColabUrl?: string;    // Link para o Instagram de Parceria / Colab
   websiteUrl?: string;           // Link para o site
   whatsappPhone?: string;        // Número WhatsApp (ex: 5511999999999)
 
@@ -174,6 +175,7 @@ export class FirebaseSettingsService {
         if (settings.businessName !== undefined) publicData.businessName = settings.businessName;
         if (settings.businessTagline !== undefined) publicData.businessTagline = settings.businessTagline;
         if (settings.instagramUrl !== undefined) publicData.instagramUrl = settings.instagramUrl;
+        if (settings.instagramColabUrl !== undefined) publicData.instagramColabUrl = settings.instagramColabUrl;
         if (settings.websiteUrl !== undefined) publicData.websiteUrl = settings.websiteUrl;
       }
 

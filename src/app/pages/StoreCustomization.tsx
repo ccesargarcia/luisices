@@ -185,6 +185,7 @@ export function StoreCustomization() {
     businessTagline: '',
     catalogWhatsappPhone: '',
     instagramUrl: '',
+    instagramColabUrl: '',
     websiteUrl: '',
     catalogBadge: '',
     catalogStatusText: '',
@@ -283,6 +284,7 @@ export function StoreCustomization() {
             businessTagline: pub.businessTagline || '',
             catalogWhatsappPhone: formatPhoneForDisplay(pub.catalogWhatsappPhone || ''),
             instagramUrl: pub.instagramUrl || '',
+            instagramColabUrl: pub.instagramColabUrl || '',
             websiteUrl: pub.websiteUrl || '',
             catalogBadge: pub.catalogBadge || data.catalogBadge,
             catalogStatusText: pub.catalogStatusText || data.catalogStatusText,
@@ -671,6 +673,8 @@ export function StoreCustomization() {
           whatsapp: formData.catalogWhatsappPhone,
           catalogWhatsappPhone: formData.catalogWhatsappPhone,
           instagram: formData.instagramUrl ? formData.instagramUrl.replace(/^https?:\/\/(www\.)?instagram\.com\//, '').replace(/\/$/, '') : '',
+          instagramColab: formData.instagramColabUrl ? formData.instagramColabUrl.replace(/^https?:\/\/(www\.)?instagram\.com\//, '').replace(/\/$/, '') : '',
+          instagramColabUrl: formData.instagramColabUrl,
           website: formData.websiteUrl,
           logo: currentCatalogLogo || '',
           banner: catalogBanners[0]?.imageUrl || currentCatalogBanner || '',
@@ -727,6 +731,10 @@ export function StoreCustomization() {
   const cleanInstagram = formData.instagramUrl
     ? formData.instagramUrl.replace(/^https?:\/\/(www\.)?instagram\.com\//, '').replace(/\/$/, '')
     : 'luisicesatelie';
+
+  const cleanInstagramColab = formData.instagramColabUrl
+    ? formData.instagramColabUrl.replace(/^https?:\/\/(www\.)?instagram\.com\//, '').replace(/\/$/, '')
+    : '';
 
   return (
     <div className="space-y-6 pb-12">
@@ -1938,7 +1946,7 @@ export function StoreCustomization() {
                     <div className="space-y-1.5">
                       <Label htmlFor="m-biz-insta" className="text-xs font-semibold flex items-center gap-1">
                         <AtSign className="size-3.5 text-muted-foreground" />
-                        Instagram
+                        Instagram Principal
                       </Label>
                       <Input
                         id="m-biz-insta"
@@ -1949,17 +1957,33 @@ export function StoreCustomization() {
                     </div>
 
                     <div className="space-y-1.5">
-                      <Label htmlFor="m-biz-web" className="text-xs font-semibold flex items-center gap-1">
-                        <Globe className="size-3.5 text-muted-foreground" />
-                        Website Oficial (Opcional)
+                      <Label htmlFor="m-biz-insta-colab" className="text-xs font-semibold flex items-center gap-1">
+                        <AtSign className="size-3.5 text-[#E1306C]" />
+                        Instagram Parceiro / Colab (Opcional)
                       </Label>
                       <Input
-                        id="m-biz-web"
-                        placeholder="Ex: https://luisices.com.br"
-                        value={formData.websiteUrl}
-                        onChange={(e) => handleChange('websiteUrl', e.target.value)}
+                        id="m-biz-insta-colab"
+                        placeholder="Ex: https://instagram.com/parceiro_atelie"
+                        value={formData.instagramColabUrl}
+                        onChange={(e) => handleChange('instagramColabUrl', e.target.value)}
                       />
+                      <p className="text-[10px] text-muted-foreground">
+                        Exibido na lojinha para cenários de colabs, parceiros ou marcas parceiras.
+                      </p>
                     </div>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label htmlFor="m-biz-web" className="text-xs font-semibold flex items-center gap-1">
+                      <Globe className="size-3.5 text-muted-foreground" />
+                      Website Oficial (Opcional)
+                    </Label>
+                    <Input
+                      id="m-biz-web"
+                      placeholder="Ex: https://luisices.com.br"
+                      value={formData.websiteUrl}
+                      onChange={(e) => handleChange('websiteUrl', e.target.value)}
+                    />
                   </div>
                 </CardContent>
               </Card>
@@ -2136,8 +2160,14 @@ export function StoreCustomization() {
                   </p>
                 )}
                 {cleanInstagram && (
-                  <p className="text-[9px] text-stone-500">
-                    @{cleanInstagram}
+                  <p className="text-[9px] text-stone-500 flex items-center justify-center gap-1">
+                    <span>@{cleanInstagram}</span>
+                    {cleanInstagramColab && (
+                      <>
+                        <span>•</span>
+                        <span className="text-[#E1306C]">@{cleanInstagramColab} (Colab)</span>
+                      </>
+                    )}
                   </p>
                 )}
                 <p className="text-[8px] text-stone-400 pt-1">
