@@ -411,11 +411,11 @@ export function PublicCatalog() {
         Container Principal com Iluminação Atmosférica Radial (Glassmorphism & Depth)
       */}
       <div
-        className="min-h-[100dvh] text-[#221a1a] dark:text-[#e8e0e3] transition-colors duration-300 font-sans pb-28
+        className={`min-h-[100dvh] flex flex-col justify-between text-[#221a1a] dark:text-[#e8e0e3] transition-colors duration-300 font-sans
         bg-[#fff8f7] dark:bg-[#161214]
         [background-image:linear-gradient(135deg,#fceee9_0%,#fff8f7_52%,#ede7f6_100%)]
         dark:[background-image:none]
-        relative selection:bg-[#613d3e] selection:text-white"
+        relative selection:bg-[#613d3e] selection:text-white ${totalItemsCount > 0 ? 'pb-24 sm:pb-20' : 'pb-4'}`}
       >
         {/* Camada de Gradientes Atmosféricos Fixos */}
         <div className="fixed inset-0 pointer-events-none opacity-80 dark:opacity-40 z-0">
@@ -567,7 +567,7 @@ export function PublicCatalog() {
         )}
 
         {/* 2. Conteúdo Principal Responsivo (Desktop até max-w-7xl) */}
-        <main className="relative z-10">
+        <main className="relative z-10 flex-1">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-4 sm:pt-6 space-y-6 sm:space-y-8">
             
             {/* Bloco de Apresentação da Loja & Selos de Confiança (Opcional) */}
@@ -820,7 +820,7 @@ export function PublicCatalog() {
 
 
           {/* Footer Institucional Responsivo com Multi-colunas */}
-          <footer className="pt-8 pb-12 border-t border-stone-200/60 dark:border-[#ebcdcd]/15 text-xs text-[#504444] dark:text-[#c9c0b8]">
+          <footer className="mt-8 pt-8 pb-6 border-t border-stone-200/60 dark:border-[#ebcdcd]/15 text-xs text-[#504444] dark:text-[#c9c0b8]">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-8 text-center md:text-left">
               {/* Coluna 1: Ateliê & Sobre */}
               <div className="space-y-2.5">
