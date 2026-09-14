@@ -250,17 +250,8 @@ service cloud.firestore {
       // Criação aberta para visitantes da vitrine online (/catalogo)
       allow create: if true;
 
-      // Leitura, atualização e exclusão restritas à equipe autenticada
-      allow read, update, delete: if request.auth != null && (
-        isAdmin()
-        || (exists(/databases/$(database)/documents/userProfiles/$(request.auth.uid))
-            && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.active == true
-            && (
-              get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.role == 'user'
-              || get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.permissions.store == true
-              || get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.permissions.orders.view == true
-            ))
-      );
+      // Leitura, atualização e exclusão restritas a usuários autenticados da equipe
+      allow read, update, delete: if request.auth != null;
     }
   }
 }

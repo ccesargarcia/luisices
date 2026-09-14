@@ -43,17 +43,49 @@ class FirebaseCatalogOrderService {
    */
   async createCatalogOrder(orderData: Omit<CatalogOrder, 'id' | 'createdAt'>): Promise<string> {
     const now = Timestamp.now();
-    const docRef = await addDoc(collection(db, CATALOG_ORDERS_COLLECTION), {
-      orderCode: orderData.orderCode,
-      customerNotes: orderData.customerNotes || null,
-      items: orderData.items || [],
-      totalItems: orderData.totalItems || 0,
-      subtotal: orderData.subtotal || 0,
-      status: orderData.status || 'received',
+    const sanitizedItems = (orderData.items || []).map((item) => {
+      const clean: Record<string, any> = {
+        productId: String(item.productId || ''),
+        productName: String(item.productName || 'Produto'),
+        price: Number(item.price || 0),
+        quantity: Number(item.quantity || 1),
+        leadTimeDays: Number(item.leadTimeDays || 0),
+      };
+      if (item.customName && typeof item.customName === 'string' && item.customName.trim()) {
+        clean.customName = item.customName.trim();
+      }
+      if (item.imageUrl && typeof item.imageUrl === 'string' && item.imageUrl.trim()) {
+        clean.imageUrl = item.imageUrl.trim();
+      }
+      return clean;
+    });
+
+    const docData: Record<string, any> = {
+      orderCode: String(orderData.orderCode || `LJ-${Math.floor(1000 + Math.random() * 9000)}`),
+      items: sanitizedItems,
+      totalItems: Number(orderData.totalItems || sanitizedItems.reduce((acc, i) => acc + (i.quantity || 1), 0)),
+      subtotal: Number(orderData.subtotal || 0),
+      status: (orderData.status as CatalogOrderStatus) || 'received',
       createdAt: now,
       updatedAt: now,
-    });
+    };
+
+    if (orderData.customerNotes && typeof orderData.customerNotes === 'string' && orderData.customerNotes.trim()) {
+      docData.customerNotes = orderData.customerNotes.trim();
+    }
+
+    const docRef = await addDoc(collection(db, CATALOG_ORDERS_COLLECTION), docData);
     return docRef.id;
+  }
+
+  /**
+   * Busca a lista de pedidos da lojinha sob demanda
+   */
+  async getCatalogOrders(): Promise<CatalogOrder[]> {
+    const snap = await getDocs(collection(db, CATALOG_ORDERS_COLLECTION));
+    return snap.docs
+      .map((d) => this.mapDoc(d.id, d.data()))
+      .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
   }
 
   /**

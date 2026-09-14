@@ -493,21 +493,29 @@ export function PublicCatalog() {
       await firebaseCatalogOrderService.createCatalogOrder({
         orderCode,
         customerNotes: customerNotes.trim() || undefined,
-        items: cart.map((item) => ({
-          productId: item.product.id,
-          productName: item.product.name,
-          price: item.product.price,
-          quantity: item.quantity,
-          customName: item.customName || undefined,
-          leadTimeDays: item.product.leadTimeDays,
-          imageUrl: item.product.imageUrl || undefined,
-        })),
+        items: cart.map((item) => {
+          const itemData: any = {
+            productId: item.product.id,
+            productName: item.product.name,
+            price: item.product.price,
+            quantity: item.quantity,
+            leadTimeDays: item.product.leadTimeDays,
+          };
+          if (item.customName && item.customName.trim()) {
+            itemData.customName = item.customName.trim();
+          }
+          if (item.product.imageUrl) {
+            itemData.imageUrl = item.product.imageUrl;
+          }
+          return itemData;
+        }),
         totalItems: totalItemsCount,
         subtotal,
         status: 'received',
       });
+      console.log('Pedido registrado no Firestore:', orderCode);
     } catch (err) {
-      console.warn('Aviso ao registrar pedido no Firestore:', err);
+      console.error('Erro ao registrar pedido no Firestore:', err);
     } finally {
       setSubmittingOrder(false);
     }

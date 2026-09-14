@@ -189,7 +189,7 @@ export const router = isCatalogSubdomain
       },
       {
         path: 'pedidos-lojinha',
-        element: <Lazy><PermissionRoute check={p => p.store ?? false} allowUserRole><StoreOrders /></PermissionRoute></Lazy>,
+        element: <Lazy><PermissionRoute check={p => Boolean(p.store || p.storeProducts?.view || p.orders?.view)} allowUserRole><StoreOrders /></PermissionRoute></Lazy>,
       },
       {
         path: 'lojinha/pedidos',

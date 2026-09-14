@@ -73,14 +73,37 @@ export function StoreOrders() {
         setLoading(false);
       },
       (err) => {
-        console.error('Erro ao buscar pedidos da lojinha:', err);
-        toast.error('Erro ao carregar pedidos da lojinha.');
-        setLoading(false);
+        console.error('Erro ao escutar pedidos da lojinha:', err);
+        // Tentar busca manual única caso onSnapshot falhe
+        firebaseCatalogOrderService.getCatalogOrders()
+          .then((list) => {
+            setOrders(list);
+            setLoading(false);
+          })
+          .catch((fetchErr) => {
+            console.error('Erro na busca manual:', fetchErr);
+            toast.error('Erro ao carregar pedidos da lojinha.');
+            setLoading(false);
+          });
       }
     );
 
     return () => unsubscribe();
   }, []);
+
+  const handleManualRefresh = async () => {
+    try {
+      setLoading(true);
+      const list = await firebaseCatalogOrderService.getCatalogOrders();
+      setOrders(list);
+      toast.success('Lista de pedidos atualizada!');
+    } catch (err) {
+      console.error('Erro ao atualizar pedidos:', err);
+      toast.error('Erro ao recarregar pedidos.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   // Preenchimento padrão ao abrir modal de conversão
   const handleOpenConvert = (order: CatalogOrder) => {
@@ -278,6 +301,15 @@ export function StoreOrders() {
         </div>
 
         <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleManualRefresh}
+            disabled={loading}
+          >
+            <RefreshCw className={`w-4 h-4 mr-1.5 ${loading ? 'animate-spin' : ''}`} />
+            Atualizar
+          </Button>
           <Button variant="outline" size="sm" asChild>
             <Link to="/produtos-lojinha">
               <ShoppingBag className="w-4 h-4 mr-1.5" />

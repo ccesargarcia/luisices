@@ -96,7 +96,7 @@ export function Layout() {
           name: 'Pedidos Recebidos',
           href: '/pedidos-lojinha',
           icon: ClipboardList,
-          check: (p: any) => Boolean(p.store ?? false),
+          check: (p: any) => Boolean(p.store || p.storeProducts?.view || p.orders?.view),
           allowUserRole: true,
         },
         {

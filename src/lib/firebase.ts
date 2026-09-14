@@ -34,6 +34,7 @@ export const db = initializeFirestore(app, {
   localCache: persistentLocalCache({
     tabManager: persistentMultipleTabManager(),
   }),
+  ignoreUndefinedProperties: true,
 });
 
 // Serviços exportados
