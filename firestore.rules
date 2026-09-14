@@ -247,11 +247,42 @@ service cloud.firestore {
 
     // Regras para histórico de pedidos da Lojinha Pública (catalogOrders)
     match /catalogOrders/{orderId} {
-      // Criação aberta para visitantes da vitrine online (/catalogo)
-      allow create: if true;
+      // Criação aberta para visitantes da vitrine online (/catalogo) com validação de payload
+      allow create: if request.resource.data.keys().hasAll(['orderCode', 'items', 'totalItems', 'subtotal', 'status'])
+        && request.resource.data.orderCode is string
+        && request.resource.data.orderCode.size() <= 50
+        && request.resource.data.items is list
+        && request.resource.data.items.size() <= 100
+        && request.resource.data.totalItems is number
+        && request.resource.data.totalItems >= 1
+        && request.resource.data.totalItems <= 1000
+        && request.resource.data.subtotal is number
+        && request.resource.data.subtotal >= 0
+        && request.resource.data.status in ['received', 'converted', 'cancelled']
+        && (!('customerNotes' in request.resource.data) || (request.resource.data.customerNotes is string && request.resource.data.customerNotes.size() <= 2000));
 
-      // Leitura, atualização e exclusão restritas a usuários autenticados da equipe
-      allow read, update, delete: if request.auth != null;
+      // Leitura permitida para administradores, role user ou membros autorizados
+      allow read: if request.auth != null && (
+        isAdmin()
+        || (exists(/databases/$(database)/documents/userProfiles/$(request.auth.uid))
+            && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.active == true
+            && (
+              get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.role == 'user'
+              || get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.permissions.store == true
+              || get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.permissions.orders.view == true
+            ))
+      );
+
+      // Atualização e exclusão restritas a administradores ou gestores da loja
+      allow update, delete: if request.auth != null && (
+        isAdmin()
+        || (exists(/databases/$(database)/documents/userProfiles/$(request.auth.uid))
+            && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.active == true
+            && (
+              get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.role == 'user'
+              || get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.permissions.store == true
+            ))
+      );
     }
   }
 }
