@@ -24,7 +24,7 @@ import {
   Sparkle
 } from 'lucide-react';
 import { formatCurrency } from '../utils/currency';
-import { collection, getDocs, doc, getDoc, query, where } from 'firebase/firestore';
+import { collection, getDocs, doc, getDoc } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { BannerCarousel, CatalogBannerItem } from '../components/catalog/BannerCarousel';
 
@@ -244,66 +244,34 @@ export function PublicCatalog() {
           console.warn('Configurações públicas locais em uso:', settingsErr);
         }
 
-        // 2. Carrega produtos públicos do Firestore (coleção dedicada 'storeProducts' com fallback)
+        // 2. Carrega produtos públicos do Firestore (coleção dedicada 'storeProducts')
+        // Limpa o cache anterior para garantir que a vitrine reflita o estado real do Firestore
+        try { localStorage.removeItem('luisices_public_catalog_products'); } catch {}
         try {
-          let storeList: CatalogProduct[] = [];
-          try {
-            const storeProductsSnap = await getDocs(collection(db, 'storeProducts'));
-            storeProductsSnap.forEach((d) => {
-              const data = d.data();
-              if (data.name && Number(data.price ?? data.unitPrice) > 0 && data.active !== false) {
-                storeList.push({
-                  id: d.id,
-                  name: data.name,
-                  category: data.category || 'Geral',
-                  price: Number(data.price ?? data.unitPrice) || 0,
-                  description: data.description || 'Produto artesanal confeccionado com carinho sob encomenda.',
-                  leadTimeDays: Number(data.leadTimeDays) || 5,
-                  imageUrl: data.imageUrl || data.photoUrl || (data.images && data.images[0]) || 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?auto=format&fit=crop&w=800&q=80',
-                  badge: data.badge || undefined,
-                  isCustomizable: data.isCustomizable ?? true,
-                });
-              }
-            });
-          } catch (storeQueryErr) {
-            console.warn('Coleção storeProducts ainda sem regras aplicadas ou vazia, recorrendo aos produtos do ateliê:', storeQueryErr);
-          }
-
-          if (storeList.length > 0) {
-            if (!isCancelled) {
-              setProducts(storeList);
-              try {
-                localStorage.setItem('luisices_public_catalog_products', JSON.stringify(storeList));
-              } catch {}
-            }
-          } else {
-            // Fallback para coleção legada 'products' com isPublic == true
-            const publicQuery = query(collection(db, 'products'), where('isPublic', '==', true));
-            const productsSnap = await getDocs(publicQuery);
-            if (!isCancelled) {
-              const list: CatalogProduct[] = [];
-              productsSnap.forEach((d) => {
-                const data = d.data();
-                if (data.name && Number(data.unitPrice) > 0) {
-                  list.push({
-                    id: d.id,
-                    name: data.name,
-                    category: data.category || 'Geral',
-                    price: Number(data.unitPrice) || 0,
-                    description: data.description || 'Produto artesanal confeccionado com carinho sob encomenda.',
-                    leadTimeDays: Number(data.leadTimeDays) || 5,
-                    imageUrl: data.photoUrl || (data.images && data.images[0]) || 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?auto=format&fit=crop&w=800&q=80',
-                    badge: data.badge || undefined,
-                    isCustomizable: data.isCustomizable ?? true,
-                  });
-                }
+          const storeList: CatalogProduct[] = [];
+          const storeProductsSnap = await getDocs(collection(db, 'storeProducts'));
+          storeProductsSnap.forEach((d) => {
+            const data = d.data();
+            if (data.name && Number(data.price ?? data.unitPrice) > 0 && data.active !== false) {
+              storeList.push({
+                id: d.id,
+                name: data.name,
+                category: data.category || 'Geral',
+                price: Number(data.price ?? data.unitPrice) || 0,
+                description: data.description || 'Produto artesanal confeccionado com carinho sob encomenda.',
+                leadTimeDays: Number(data.leadTimeDays) || 5,
+                imageUrl: data.imageUrl || data.photoUrl || (data.images && data.images[0]) || 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?auto=format&fit=crop&w=800&q=80',
+                badge: data.badge || undefined,
+                isCustomizable: data.isCustomizable ?? true,
               });
-
-              setProducts(list);
-              try {
-                localStorage.setItem('luisices_public_catalog_products', JSON.stringify(list));
-              } catch {}
             }
+          });
+
+          if (!isCancelled) {
+            setProducts(storeList);
+            try {
+              localStorage.setItem('luisices_public_catalog_products', JSON.stringify(storeList));
+            } catch {}
           }
         } catch (prodErr) {
           console.warn('Erro ao carregar produtos do catálogo público:', prodErr);
