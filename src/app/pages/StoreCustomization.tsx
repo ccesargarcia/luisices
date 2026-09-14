@@ -2160,12 +2160,12 @@ export function StoreCustomization() {
                   </p>
                 )}
                 {cleanInstagram && (
-                  <p className="text-[9px] text-stone-500 flex items-center justify-center gap-1">
+                  <p className="text-[9px] text-stone-500 flex items-center justify-center gap-1.5 flex-wrap">
                     <span>@{cleanInstagram}</span>
                     {cleanInstagramColab && (
                       <>
                         <span>•</span>
-                        <span className="text-[#E1306C]">@{cleanInstagramColab} (Colab)</span>
+                        <span>@{cleanInstagramColab}</span>
                       </>
                     )}
                   </p>

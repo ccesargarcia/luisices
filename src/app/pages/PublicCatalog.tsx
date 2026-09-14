@@ -656,12 +656,11 @@ export function PublicCatalog() {
                     href={`https://instagram.com/${cleanInstagramColab}`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl sm:rounded-2xl text-xs font-medium bg-pink-50/90 dark:bg-pink-950/40 hover:bg-pink-100/90 dark:hover:bg-pink-950/60 text-pink-800 dark:text-pink-200 border border-pink-200/80 dark:border-pink-900/40 transition-all shadow-2xs cursor-pointer"
-                    title="Instagram de parceria / colab"
+                    className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl sm:rounded-2xl text-xs font-medium bg-stone-100/90 dark:bg-[#2b2225]/80 hover:bg-stone-200/80 dark:hover:bg-[#34292d] text-stone-700 dark:text-stone-200 border border-stone-200/80 dark:border-[#ebcdcd]/20 transition-all shadow-2xs cursor-pointer"
+                    title={`Instagram @${cleanInstagramColab}`}
                   >
                     <Instagram size={15} className="text-[#E1306C]" />
                     <span className="hidden md:inline text-xs">@{cleanInstagramColab}</span>
-                    <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-md bg-[#E1306C] text-white">Colab</span>
                   </a>
                 )}
 
@@ -1012,52 +1011,59 @@ export function PublicCatalog() {
                 <h5 className="font-bold text-stone-900 dark:text-stone-100 uppercase tracking-wider text-[11px]">
                   Canais de Atendimento
                 </h5>
-                <div className="flex flex-col items-center md:items-start gap-1.5 pt-1">
+                <div className="flex flex-col items-center md:items-start gap-2 pt-1">
                   {businessInfo.whatsapp ? (
                     <button
                       onClick={handleSendToWhatsApp}
-                      className="inline-flex items-center gap-1.5 text-[#10B981] font-semibold hover:underline cursor-pointer"
+                      className="inline-flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400 font-semibold hover:underline cursor-pointer"
                     >
                       <MessageCircle size={14} />
                       <span>WhatsApp Oficial: {formatPhoneForDisplay(businessInfo.whatsapp)}</span>
                     </button>
                   ) : null}
 
-                  {cleanInstagram && (
-                    <a
-                      href={`https://instagram.com/${cleanInstagram}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1.5 hover:text-[#E1306C] transition-colors"
-                    >
-                      <Instagram size={14} />
-                      <span>@{cleanInstagram}</span>
-                    </a>
-                  )}
+                  {/* Redes Sociais em formato horizontal harmônico e elegante */}
+                  {(cleanInstagram || cleanInstagramColab || sanitizedWebsiteUrl) && (
+                    <div className="flex items-center justify-center md:justify-start gap-2 flex-wrap pt-0.5">
+                      {cleanInstagram && (
+                        <a
+                          href={`https://instagram.com/${cleanInstagram}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-stone-100/90 dark:bg-stone-800/80 hover:bg-stone-200/90 dark:hover:bg-stone-700/80 text-stone-700 dark:text-stone-300 border border-stone-200/70 dark:border-stone-700/60 transition-colors"
+                          title={`Instagram @${cleanInstagram}`}
+                        >
+                          <Instagram size={13} className="text-[#E1306C]" />
+                          <span>@{cleanInstagram}</span>
+                        </a>
+                      )}
 
-                  {cleanInstagramColab && (
-                    <a
-                      href={`https://instagram.com/${cleanInstagramColab}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1.5 hover:text-[#E1306C] transition-colors"
-                    >
-                      <Instagram size={14} className="text-[#E1306C]" />
-                      <span>@{cleanInstagramColab}</span>
-                      <span className="text-[9px] font-bold uppercase tracking-wider px-1 rounded bg-[#E1306C]/15 text-[#E1306C]">Colab</span>
-                    </a>
-                  )}
+                      {cleanInstagramColab && (
+                        <a
+                          href={`https://instagram.com/${cleanInstagramColab}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-stone-100/90 dark:bg-stone-800/80 hover:bg-stone-200/90 dark:hover:bg-stone-700/80 text-stone-700 dark:text-stone-300 border border-stone-200/70 dark:border-stone-700/60 transition-colors"
+                          title={`Instagram @${cleanInstagramColab}`}
+                        >
+                          <Instagram size={13} className="text-[#E1306C]" />
+                          <span>@{cleanInstagramColab}</span>
+                        </a>
+                      )}
 
-                  {sanitizedWebsiteUrl && (
-                    <a
-                      href={sanitizedWebsiteUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1.5 hover:underline"
-                    >
-                      <Globe size={14} />
-                      <span>Site Oficial</span>
-                    </a>
+                      {sanitizedWebsiteUrl && (
+                        <a
+                          href={sanitizedWebsiteUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-stone-100/90 dark:bg-stone-800/80 hover:bg-stone-200/90 dark:hover:bg-stone-700/80 text-stone-700 dark:text-stone-300 border border-stone-200/70 dark:border-stone-700/60 transition-colors"
+                          title="Site Oficial"
+                        >
+                          <Globe size={13} className="text-stone-500" />
+                          <span>Site</span>
+                        </a>
+                      )}
+                    </div>
                   )}
                 </div>
               </div>

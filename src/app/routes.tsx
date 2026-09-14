@@ -71,13 +71,19 @@ function Lazy({ children }: { children: React.ReactNode }) {
 // Em produção (GitHub Pages): '/luisices/' ou o nome do seu repositório
 const basename = import.meta.env.BASE_URL || '/';
 
-// Detecção de subdomínio de catálogo (ex: catalogo.dev.luisices.com.br, catalogo.luisices.com.br)
-// Também aceita parâmetro ?view=catalog para testes locais ou de desenvolvimento
-const isCatalogSubdomain = typeof window !== 'undefined' && (
-  window.location.hostname.startsWith('catalogo.') ||
-  window.location.hostname.startsWith('catalog.') ||
-  new URLSearchParams(window.location.search).get('view') === 'catalog'
-);
+// Detecção de subdomínio de catálogo/loja (ex: loja.dev.luisices.com.br, catalogo.dev.luisices.com.br, etc.)
+// Também aceita parâmetro ?view=loja ou ?view=catalog para testes locais ou de desenvolvimento
+const isCatalogSubdomain = typeof window !== 'undefined' && (() => {
+  const host = window.location.hostname.toLowerCase();
+  const view = (new URLSearchParams(window.location.search).get('view') || '').toLowerCase();
+  return (
+    host.startsWith('loja.') ||
+    host.startsWith('lojinha.') ||
+    host.startsWith('catalogo.') ||
+    host.startsWith('catalog.') ||
+    ['loja', 'lojinha', 'catalog', 'catalogo'].includes(view)
+  );
+})();
 
 export const router = isCatalogSubdomain
   ? createBrowserRouter([
@@ -118,13 +124,22 @@ export const router = isCatalogSubdomain
         errorElement: <ErrorBoundary />,
       },
       {
+        path: '/loja',
+        element: <Lazy><PublicCatalog /></Lazy>,
+        errorElement: <ErrorBoundary />,
+      },
+      {
+        path: '/lojinha',
+        element: <Navigate to="/loja" replace />,
+      },
+      {
         path: '/catalogo',
         element: <Lazy><PublicCatalog /></Lazy>,
         errorElement: <ErrorBoundary />,
       },
       {
         path: '/catalog',
-        element: <Navigate to="/catalogo" replace />,
+        element: <Navigate to="/loja" replace />,
       },
       {
         path: '/',
