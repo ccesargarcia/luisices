@@ -1,7 +1,24 @@
-name: Deploy Firebase Functions (Manual)
+name: Deploy Firebase Functions & Rules
 
 on:
   workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Ambiente de destino'
+        required: true
+        default: 'dev'
+        type: choice
+        options:
+          - dev
+          - prod
+  push:
+    branches:
+      - develop
+      - main
+    paths:
+      - 'functions/**'
+      - 'firestore.rules'
+      - 'storage.rules'
 
 permissions:
   contents: read
@@ -18,8 +35,9 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v5
         with:
-          node-version: '24'
+          node-version: '20'
           cache: 'npm'
+          cache-dependency-path: functions/package-lock.json
 
       - name: Install Firebase CLI
         run: npm install -g firebase-tools
@@ -28,14 +46,52 @@ jobs:
         working-directory: functions
         run: npm ci
 
-      - name: Deploy Firebase Functions (dev)
+      - name: Determine Target Environment
+        id: env
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            TARGET="${{ inputs.environment }}"
+          elif [ "${{ github.ref }}" = "refs/heads/main" ]; then
+            TARGET="prod"
+          else
+            TARGET="dev"
+          fi
+          echo "target=$TARGET" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy Firebase Functions & Rules (Dev)
+        if: steps.env.outputs.target == 'dev'
         env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_DEV }}
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          EVOLUTION_API_KEY: ${{ secrets.EVOLUTION_API_KEY }}
         run: |
           echo "$FIREBASE_SERVICE_ACCOUNT" > "$HOME/firebase-service-account.json"
           export GOOGLE_APPLICATION_CREDENTIALS="$HOME/firebase-service-account.json"
           echo "$RESEND_API_KEY" > "$HOME/resend_api_key.txt"
+          echo "$EVOLUTION_API_KEY" > "$HOME/evolution_api_key.txt"
           firebase use luisices-dev --project luisices-dev
           firebase functions:secrets:set RESEND_API_KEY --project luisices-dev --data-file "$HOME/resend_api_key.txt" || true
-          firebase deploy --only functions --project luisices-dev --force
+          firebase functions:secrets:set EVOLUTION_API_KEY --project luisices-dev --data-file "$HOME/evolution_api_key.txt" || true
+          firebase deploy --only firestore:rules,storage:rules --project luisices-dev
+          firebase deploy --only functions --project luisices-dev --force --debug
+
+      - name: Deploy Firebase Functions & Rules (Production)
+        if: steps.env.outputs.target == 'prod'
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_PROD || secrets.FIREBASE_SERVICE_ACCOUNT }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          EVOLUTION_API_KEY: ${{ secrets.EVOLUTION_API_KEY }}
+        run: |
+          if [ -z "$FIREBASE_SERVICE_ACCOUNT" ]; then
+            echo "❌ ERRO: Secret FIREBASE_SERVICE_ACCOUNT_PROD não encontrado no GitHub."
+            exit 1
+          fi
+          echo "$FIREBASE_SERVICE_ACCOUNT" > "$HOME/firebase-service-account.json"
+          export GOOGLE_APPLICATION_CREDENTIALS="$HOME/firebase-service-account.json"
+          echo "$RESEND_API_KEY" > "$HOME/resend_api_key.txt"
+          echo "$EVOLUTION_API_KEY" > "$HOME/evolution_api_key.txt"
+          firebase use papelaria-dashboard --project papelaria-dashboard
+          firebase functions:secrets:set RESEND_API_KEY --project papelaria-dashboard --data-file "$HOME/resend_api_key.txt" || true
+          firebase functions:secrets:set EVOLUTION_API_KEY --project papelaria-dashboard --data-file "$HOME/evolution_api_key.txt" || true
+          firebase deploy --only firestore:rules,storage:rules --project papelaria-dashboard
+          firebase deploy --only functions --project papelaria-dashboard --force --debug
