@@ -70,18 +70,24 @@ function Lazy({ children }: { children: React.ReactNode }) {
 // Em produção (GitHub Pages): '/luisices/' ou o nome do seu repositório
 const basename = import.meta.env.BASE_URL || '/';
 
-// Detecção de subdomínio de catálogo (ex: catalogo.luisices.com.br)
+// Detecção de subdomínio de catálogo (ex: catalogo.dev.luisices.com.br, catalogo.luisices.com.br)
+// Também aceita parâmetro ?view=catalog para testes locais ou de desenvolvimento
 const isCatalogSubdomain = typeof window !== 'undefined' && (
   window.location.hostname.startsWith('catalogo.') ||
-  window.location.hostname.startsWith('catalog.')
+  window.location.hostname.startsWith('catalog.') ||
+  new URLSearchParams(window.location.search).get('view') === 'catalog'
 );
 
 export const router = isCatalogSubdomain
   ? createBrowserRouter([
       {
-        path: '/login',
-        element: <Login />,
+        path: '/',
+        element: <Lazy><PublicCatalog /></Lazy>,
         errorElement: <ErrorBoundary />,
+      },
+      {
+        path: '/login',
+        element: <Navigate to="/" replace />,
       },
       {
         path: '*',
