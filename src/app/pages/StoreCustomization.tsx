@@ -218,12 +218,14 @@ export function StoreCustomization() {
       let loadedLogo: string | null = settings?.catalogLogo || null;
       let loadedBanner: string | null = settings?.catalogBanner || null;
       let loadedHeaderBg: string | null = settings?.catalogHeaderBackground || null;
+      // Dados exclusivos da lojinha — sem fallback para o painel de Configurações.
+      // Os valores só vêm de storeSettings/public (gerenciado pela tela Personalizar Lojinha).
       let data = {
-        businessName: settings?.businessName || '',
-        businessTagline: settings?.businessTagline || '',
-        catalogWhatsappPhone: settings?.catalogWhatsappPhone || settings?.whatsappPhone || settings?.businessPhone || '',
-        instagramUrl: settings?.instagramUrl || '',
-        websiteUrl: settings?.websiteUrl || '',
+        businessName: '',
+        businessTagline: '',
+        catalogWhatsappPhone: settings?.catalogWhatsappPhone || '',
+        instagramUrl: '',
+        websiteUrl: '',
         catalogBadge: settings?.catalogBadge || '',
         catalogStatusText: settings?.catalogStatusText || '',
         catalogHeroTitle: settings?.catalogHeroTitle || '',
@@ -274,12 +276,13 @@ export function StoreCustomization() {
             loadedHeaderBg = null;
           }
 
+          // Merge exclusivo da lojinha — sem fallback para dados do painel de Configurações.
           data = {
-            businessName: pub.businessName || data.businessName,
-            businessTagline: pub.businessTagline || data.businessTagline,
-            catalogWhatsappPhone: pub.catalogWhatsappPhone || pub.whatsappPhone || data.catalogWhatsappPhone,
-            instagramUrl: pub.instagramUrl || data.instagramUrl,
-            websiteUrl: pub.websiteUrl || data.websiteUrl,
+            businessName: pub.businessName || '',
+            businessTagline: pub.businessTagline || '',
+            catalogWhatsappPhone: pub.catalogWhatsappPhone || '',
+            instagramUrl: pub.instagramUrl || '',
+            websiteUrl: pub.websiteUrl || '',
             catalogBadge: pub.catalogBadge || data.catalogBadge,
             catalogStatusText: pub.catalogStatusText || data.catalogStatusText,
             catalogHeroTitle: pub.catalogHeroTitle || data.catalogHeroTitle,

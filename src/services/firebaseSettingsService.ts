@@ -159,36 +159,34 @@ export class FirebaseSettingsService {
       await setDoc(docRef, data);
     }
 
-    // Sincronizar dados públicos da loja para o catálogo online público
+    // Sincronizar dados públicos da loja para o catálogo online público.
+    // IMPORTANTE: apenas campos exclusivos da lojinha (catalog*) são sincronizados para storeSettings/public.
+    // Campos do painel (businessName, businessTagline, whatsappPhone, instagramUrl, websiteUrl) NÃO
+    // vazam para a lojinha — a lojinha gerencia seus próprios valores de forma independente via StoreCustomization.
     try {
       const publicData: Record<string, any> = { updatedAt: new Date() };
-      if (settings.businessName !== undefined) publicData.businessName = settings.businessName;
-      if (settings.businessTagline !== undefined) publicData.businessTagline = settings.businessTagline;
 
-      // WhatsApp exclusivo da lojinha pública online (segregado do painel do ateliê)
-      const existingCatalogPhone = docSnap.exists() ? docSnap.data()?.catalogWhatsappPhone : undefined;
+      // Somente sincroniza dados de identidade/contato quando o save vem da tela da Lojinha
+      // (StoreCustomization), identificado pela presença de ao menos um campo catalog*.
+      // Saves do painel de Configurações (Settings) NÃO atualizam esses campos na loja pública.
+      const hasCatalogFields = Object.keys(settings).some((key) => key.startsWith('catalog'));
+      if (hasCatalogFields) {
+        if (settings.businessName !== undefined) publicData.businessName = settings.businessName;
+        if (settings.businessTagline !== undefined) publicData.businessTagline = settings.businessTagline;
+        if (settings.instagramUrl !== undefined) publicData.instagramUrl = settings.instagramUrl;
+        if (settings.websiteUrl !== undefined) publicData.websiteUrl = settings.websiteUrl;
+      }
 
+      // WhatsApp exclusivo da lojinha pública online — sem fallback para o painel.
       if (settings.catalogWhatsappPhone !== undefined) {
         if (settings.catalogWhatsappPhone && settings.catalogWhatsappPhone.trim() !== '') {
           publicData.catalogWhatsappPhone = settings.catalogWhatsappPhone;
           publicData.whatsappPhone = settings.catalogWhatsappPhone;
         } else {
           publicData.catalogWhatsappPhone = deleteField();
-          if (settings.whatsappPhone) {
-            publicData.whatsappPhone = settings.whatsappPhone;
-          }
-        }
-      } else if (!existingCatalogPhone || existingCatalogPhone.trim() === '') {
-        // Fallback apenas se catalogWhatsappPhone ainda não estiver configurado no perfil
-        if (settings.whatsappPhone !== undefined) {
-          publicData.whatsappPhone = settings.whatsappPhone;
-        } else if (settings.businessPhone !== undefined) {
-          publicData.whatsappPhone = settings.businessPhone;
+          publicData.whatsappPhone = deleteField();
         }
       }
-
-      if (settings.instagramUrl !== undefined) publicData.instagramUrl = settings.instagramUrl;
-      if (settings.websiteUrl !== undefined) publicData.websiteUrl = settings.websiteUrl;
       
       // Logo exclusivo da lojinha pública online (não usa o logo interno do painel)
       if (settings.catalogLogo !== undefined) {
