@@ -7,7 +7,7 @@
 
 import * as Sentry from '@sentry/react';
 
-const DEFAULT_SENTRY_DSN = 'https://772f6fcaa2e37c6b2e8474b9e61ce327@o4512090827980800.ingest.us.sentry.io/4512090840367104';
+const DEFAULT_SENTRY_DSN = 'https://d29ba26f91dac0c5c56b94866f16c461@o4512090827980800.ingest.us.sentry.io/4512090844626944';
 
 export function initSentry() {
   const dsn = import.meta.env.VITE_SENTRY_DSN || DEFAULT_SENTRY_DSN;
