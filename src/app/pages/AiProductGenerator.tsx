@@ -61,6 +61,7 @@ import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Textarea } from '../components/ui/textarea';
 import { Badge } from '../components/ui/badge';
+import { Slider } from '../components/ui/slider';
 import {
   Dialog,
   DialogContent,
@@ -113,6 +114,9 @@ export function AiProductGenerator() {
   const [selectedCutSheetIndex, setSelectedCutSheetIndex] = useState<number>(0);
   const [showCutMatGrid, setShowCutMatGrid] = useState<boolean>(true);
   const [cutMatViewMode, setCutMatViewMode] = useState<'sheet' | 'stacked3d'>('sheet');
+  const [traceThreshold, setTraceThreshold] = useState<number>(30);
+  const [traceOffsetMm, setTraceOffsetMm] = useState<number>(3.0);
+  const [isTracing, setIsTracing] = useState<boolean>(false);
 
   // Estado do Estúdio de Prompts Realistas
   const [activePromptTab, setActivePromptTab] = useState<
@@ -437,6 +441,50 @@ export function AiProductGenerator() {
       toast.error('Erro ao inspecionar a imagem. Verifique a chave da API Gemini.');
     } finally {
       setAnalyzingImage(false);
+    }
+  };
+
+  // Recalcular rastreamento óptico e contorno de corte fiel da imagem
+  const handleRecalculateTrace = async (newOffset?: number, newThreshold?: number) => {
+    if (!blueprint || !blueprint.generatedImageUrl) {
+      toast.warning('Nenhuma imagem anexada para rastreamento.');
+      return;
+    }
+    const offset = newOffset !== undefined ? newOffset : traceOffsetMm;
+    const threshold = newThreshold !== undefined ? newThreshold : traceThreshold;
+
+    setIsTracing(true);
+    try {
+      const traced = await aiProductService.traceImageContoursAsync(blueprint.generatedImageUrl, {
+        offsetMm: offset,
+        threshold,
+      });
+
+      const isShaker = (blueprint.category || '').toLowerCase().includes('shaker');
+      const technicals = aiProductService.generateCutSheetsAndAssembly(
+        blueprint.productTitle,
+        blueprint.category,
+        blueprint.theme,
+        blueprint.targetAgeAndName,
+        blueprint.layers,
+        isShaker,
+        blueprint.layers[0]?.colorName || 'Colorido',
+        traced,
+        blueprint.generatedImageUrl
+      );
+
+      setBlueprint({
+        ...blueprint,
+        imageTrace: traced,
+        cutSheets: technicals.cutSheets,
+        assemblySteps: technicals.assemblySteps,
+      });
+      toast.success(`✨ Contorno fiel recalculado com offset de ${offset}mm!`);
+    } catch (err) {
+      console.error('Erro ao recalcular rastreamento:', err);
+      toast.error('Não foi possível recalcular o contorno da imagem.');
+    } finally {
+      setIsTracing(false);
     }
   };
 
@@ -2142,6 +2190,66 @@ export function AiProductGenerator() {
                                   {currentSheet.assemblyInstructions}
                                 </p>
                               </div>
+
+                              {/* Controles de Rastreio Óptico Fiel (Auto-Trace) quando houver imagem base */}
+                              {blueprint.generatedImageUrl && (
+                                <div className="p-3 rounded-xl bg-purple-500/10 border border-purple-500/20 text-xs space-y-2.5">
+                                  <div className="flex items-center justify-between">
+                                    <span className="font-bold flex items-center gap-1.5 text-purple-900 dark:text-purple-200">
+                                      <Sparkles className="size-3.5 text-purple-600" /> Rastreio Óptico Fiel (Auto-Trace)
+                                    </span>
+                                    {blueprint.imageTrace && (
+                                      <Badge variant="outline" className="text-[10px] bg-purple-100 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border-purple-300">
+                                        {blueprint.imageTrace.pointCount} nós
+                                      </Badge>
+                                    )}
+                                  </div>
+
+                                  <div className="space-y-1.5">
+                                    <div className="flex justify-between text-[11px] text-muted-foreground">
+                                      <span>Deslocamento Base (Offset):</span>
+                                      <span className="font-mono font-bold text-foreground">+{traceOffsetMm.toFixed(1)}mm</span>
+                                    </div>
+                                    <Slider
+                                      value={[traceOffsetMm]}
+                                      min={0.5}
+                                      max={6.0}
+                                      step={0.5}
+                                      onValueChange={(vals) => setTraceOffsetMm(vals[0])}
+                                    />
+                                  </div>
+
+                                  <div className="space-y-1.5">
+                                    <div className="flex justify-between text-[11px] text-muted-foreground">
+                                      <span>Sensibilidade de Fundo:</span>
+                                      <span className="font-mono font-bold text-foreground">{traceThreshold}</span>
+                                    </div>
+                                    <Slider
+                                      value={[traceThreshold]}
+                                      min={10}
+                                      max={80}
+                                      step={5}
+                                      onValueChange={(vals) => setTraceThreshold(vals[0])}
+                                    />
+                                  </div>
+
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => handleRecalculateTrace()}
+                                    disabled={isTracing}
+                                    className="w-full text-xs gap-1.5 h-8 border-purple-300 hover:bg-purple-100/50 dark:hover:bg-purple-950/40 text-purple-900 dark:text-purple-200 font-semibold"
+                                  >
+                                    {isTracing ? (
+                                      <Loader2 className="size-3.5 animate-spin" />
+                                    ) : (
+                                      <RefreshCw className="size-3.5" />
+                                    )}
+                                    {isTracing ? 'Vetorizando Imagem...' : 'Recalcular Contorno Fiel'}
+                                  </Button>
+                                </div>
+                              )}
                             </div>
 
                             {/* Botão de Download Direto do SVG */}

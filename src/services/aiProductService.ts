@@ -69,6 +69,13 @@ export interface AssemblyStep {
   componentsInvolved: string[];
 }
 
+export interface ImageTraceResult {
+  outerPath: string;
+  offsetPath: string;
+  bounds: { x: number; y: number; width: number; height: number };
+  pointCount: number;
+}
+
 export interface AiProductBlueprint {
   productTitle: string;
   category: string;
@@ -84,6 +91,7 @@ export interface AiProductBlueprint {
   silhouetteTips: string;
   suggestedImagePrompt: string;
   generatedImageUrl?: string;
+  imageTrace?: ImageTraceResult;
   realisticPrompts: RealisticPrompts;
   cutSheets: CutSheet[];
   assemblySteps: AssemblyStep[];
@@ -880,6 +888,394 @@ INSTRUÇÕES DE INSPEÇÃO VISUAL OBRIGATÓRIAS:
         },
       ];
 
+  /**
+   * Rastreamento vetorial real da imagem (Auto-Trace Silhouette / Marching Squares)
+   * Extrai o contorno exato da silhueta do produto a partir dos pixels da imagem
+   */
+  async traceImageContoursAsync(
+    imageBase64: string,
+    options: {
+      threshold?: number;
+      offsetMm?: number;
+      targetWidth?: number;
+      targetHeight?: number;
+      centerX?: number;
+      centerY?: number;
+    } = {}
+  ): Promise<ImageTraceResult> {
+    const offsetMm = options.offsetMm ?? 3.0;
+    const targetW = options.targetWidth ?? 440;
+    const targetH = options.targetHeight ?? 440;
+    const cX = options.centerX ?? 397;
+    const cY = options.centerY ?? 380;
+    const threshold = options.threshold ?? 30;
+
+    // Se estiver no browser com suporte a Canvas
+    if (typeof window !== 'undefined' && typeof document !== 'undefined') {
+      try {
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+
+        await new Promise<void>((resolve, reject) => {
+          img.onload = () => resolve();
+          img.onerror = (e) => reject(e);
+          img.src = imageBase64;
+        });
+
+        const aspect = img.width / img.height;
+        const gridW = 100;
+        const gridH = Math.max(20, Math.round(100 / aspect));
+
+        const canvas = document.createElement('canvas');
+        canvas.width = gridW;
+        canvas.height = gridH;
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        if (!ctx) throw new Error('Não foi possível inicializar Canvas 2D');
+
+        ctx.drawImage(img, 0, 0, gridW, gridH);
+        const imgData = ctx.getImageData(0, 0, gridW, gridH).data;
+
+        // Amostrar cantos para detectar cor e transparência de fundo
+        const cornerIndices = [0, (gridW - 1) * 4, ((gridH - 1) * gridW) * 4, ((gridH - 1) * gridW + (gridW - 1)) * 4];
+        let avgBgR = 0, avgBgG = 0, avgBgB = 0, avgBgA = 0;
+        for (const ci of cornerIndices) {
+          avgBgR += imgData[ci];
+          avgBgG += imgData[ci + 1];
+          avgBgB += imgData[ci + 2];
+          avgBgA += imgData[ci + 3];
+        }
+        avgBgR /= 4; avgBgG /= 4; avgBgB /= 4; avgBgA /= 4;
+
+        const isTransparent = avgBgA < 35;
+        const isLightBg = !isTransparent && avgBgR > 215 && avgBgG > 215 && avgBgB > 215;
+
+        // Construir matriz binária 2D
+        const grid: boolean[][] = [];
+        let minX = gridW, maxX = 0, minY = gridH, maxY = 0;
+        let fgCount = 0;
+
+        for (let y = 0; y < gridH; y++) {
+          grid[y] = [];
+          for (let x = 0; x < gridW; x++) {
+            const idx = (y * gridW + x) * 4;
+            const r = imgData[idx];
+            const g = imgData[idx + 1];
+            const b = imgData[idx + 2];
+            const a = imgData[idx + 3];
+
+            let isFg = false;
+            if (isTransparent) {
+              isFg = a > threshold;
+            } else if (isLightBg) {
+              const diff = Math.max(Math.abs(r - avgBgR), Math.abs(g - avgBgG), Math.abs(b - avgBgB));
+              isFg = diff > (threshold + 10) && a > 40;
+            } else {
+              const colorDist = Math.abs(r - avgBgR) + Math.abs(g - avgBgG) + Math.abs(b - avgBgB);
+              isFg = colorDist > (threshold + 25) && a > 40;
+            }
+
+            grid[y][x] = isFg;
+            if (isFg) {
+              fgCount++;
+              if (x < minX) minX = x;
+              if (x > maxX) maxX = x;
+              if (y < minY) minY = y;
+              if (y > maxY) maxY = y;
+            }
+          }
+        }
+
+        // Se encontrou primeiro plano, rastrear contorno exterior (Moore Neighborhood)
+        if (fgCount > 10 && maxX > minX && maxY > minY) {
+          // Achar primeiro pixel no topo
+          let startX = -1, startY = -1;
+          for (let y = 0; y < gridH && startY === -1; y++) {
+            for (let x = 0; x < gridW; x++) {
+              if (grid[y][x]) {
+                startX = x;
+                startY = y;
+                break;
+              }
+            }
+          }
+
+          if (startX !== -1) {
+            const contour: { x: number; y: number }[] = [];
+            const directions = [
+              { x: 0, y: -1 }, { x: 1, y: -1 }, { x: 1, y: 0 }, { x: 1, y: 1 },
+              { x: 0, y: 1 }, { x: -1, y: 1 }, { x: -1, y: 0 }, { x: -1, y: -1 }
+            ];
+
+            let currX = startX;
+            let currY = startY;
+            let dir = 0;
+            let iterations = 0;
+            const maxIterations = gridW * gridH * 2;
+
+            do {
+              contour.push({ x: currX, y: currY });
+              let foundNext = false;
+
+              // Buscar próximo vizinho ocupado no sentido horário
+              const startCheck = (dir + 5) % 8;
+              for (let i = 0; i < 8; i++) {
+                const checkDir = (startCheck + i) % 8;
+                const nextX = currX + directions[checkDir].x;
+                const nextY = currY + directions[checkDir].y;
+
+                if (nextX >= 0 && nextX < gridW && nextY >= 0 && nextY < gridH && grid[nextY][nextX]) {
+                  currX = nextX;
+                  currY = nextY;
+                  dir = checkDir;
+                  foundNext = true;
+                  break;
+                }
+              }
+
+              if (!foundNext) break;
+              iterations++;
+            } while ((currX !== startX || currY !== startY) && iterations < maxIterations);
+
+            if (contour.length >= 8) {
+              // Simplificar pontos (downsample para suavidade e performance)
+              const step = Math.max(1, Math.floor(contour.length / 45));
+              const sampled = contour.filter((_, i) => i % step === 0);
+
+              // Mapear pontos para o espaço de coordenadas da prancha A4
+              const boxW = Math.max(10, maxX - minX);
+              const boxH = Math.max(10, maxY - minY);
+              const scale = Math.min(targetW / boxW, targetH / boxH);
+
+              const mappedPoints = sampled.map((p) => {
+                const nx = (p.x - (minX + boxW / 2)) * scale + cX;
+                const ny = (p.y - (minY + boxH / 2)) * scale + cY;
+                return { x: Math.round(nx * 10) / 10, y: Math.round(ny * 10) / 10 };
+              });
+
+              // Gerar SVG Path com curvas suaves
+              const buildPath = (pts: { x: number; y: number }[]) => {
+                if (pts.length < 3) return '';
+                let d = `M ${pts[0].x} ${pts[0].y}`;
+                for (let i = 0; i < pts.length; i++) {
+                  const p0 = pts[(i - 1 + pts.length) % pts.length];
+                  const p1 = pts[i];
+                  const p2 = pts[(i + 1) % pts.length];
+                  const p3 = pts[(i + 2) % pts.length];
+
+                  const cp1x = p1.x + (p2.x - p0.x) / 6;
+                  const cp1y = p1.y + (p2.y - p0.y) / 6;
+                  const cp2x = p2.x - (p3.x - p1.x) / 6;
+                  const cp2y = p2.y - (p3.y - p1.y) / 6;
+
+                  d += ` C ${cp1x.toFixed(1)} ${cp1y.toFixed(1)}, ${cp2x.toFixed(1)} ${cp2y.toFixed(1)}, ${p2.x.toFixed(1)} ${p2.y.toFixed(1)}`;
+                }
+                return d + ' Z';
+              };
+
+              const outerPath = buildPath(mappedPoints);
+
+              // Gerar Contorno de Deslocamento / Offset (+N mm)
+              const offsetPx = offsetMm * 3.78; // 1mm = 3.78px a 96DPI
+              const offsetPoints = mappedPoints.map((p, i) => {
+                const prev = mappedPoints[(i - 1 + mappedPoints.length) % mappedPoints.length];
+                const next = mappedPoints[(i + 1) % mappedPoints.length];
+                const dx = next.x - prev.x;
+                const dy = next.y - prev.y;
+                const len = Math.hypot(dx, dy) || 1;
+                // Normal perpendicular apontando para fora
+                const nx = -dy / len;
+                const ny = dx / len;
+                return {
+                  x: Math.round((p.x + nx * offsetPx) * 10) / 10,
+                  y: Math.round((p.y + ny * offsetPx) * 10) / 10,
+                };
+              });
+
+              const offsetPath = buildPath(offsetPoints);
+
+              return {
+                outerPath,
+                offsetPath,
+                bounds: {
+                  x: Math.round(cX - (boxW * scale) / 2),
+                  y: Math.round(cY - (boxH * scale) / 2),
+                  width: Math.round(boxW * scale),
+                  height: Math.round(boxH * scale),
+                },
+                pointCount: mappedPoints.length,
+              };
+            }
+          }
+        }
+      } catch (err) {
+        console.warn('[AiProductService] Aviso no auto-trace óptico da imagem:', err);
+      }
+    }
+
+    // Fallback inteligente com geometria limpa adaptativa
+    const rW = targetW / 2;
+    const rH = targetH / 2;
+    const outerPath = `M ${cX - rW + 30} ${cY - rH} L ${cX + rW - 30} ${cY - rH} Q ${cX + rW} ${cY - rH} ${cX + rW} ${cY - rH + 30} L ${cX + rW} ${cY + rH - 30} Q ${cX + rW} ${cY + rH} ${cX + rW - 30} ${cY + rH} L ${cX - rW + 30} ${cY + rH} Q ${cX - rW} ${cY + rH} ${cX - rW} ${cY + rH - 30} L ${cX - rW} ${cY - rH + 30} Q ${cX - rW} ${cY - rH} ${cX - rW + 30} ${cY - rH} Z`;
+    const offsetPx = offsetMm * 3.78;
+    const offsetPath = `M ${cX - rW - offsetPx + 30} ${cY - rH - offsetPx} L ${cX + rW + offsetPx - 30} ${cY - rH - offsetPx} Q ${cX + rW + offsetPx} ${cY - rH - offsetPx} ${cX + rW + offsetPx} ${cY - rH - offsetPx + 30} L ${cX + rW + offsetPx} ${cY + rH + offsetPx - 30} Q ${cX + rW + offsetPx} ${cY + rH + offsetPx} ${cX + rW + offsetPx - 30} ${cY + rH + offsetPx} L ${cX - rW - offsetPx + 30} ${cY + rH + offsetPx} Q ${cX - rW - offsetPx} ${cY + rH + offsetPx} ${cX - rW - offsetPx} ${cY + rH + offsetPx - 30} L ${cX - rW - offsetPx} ${cY - rH - offsetPx + 30} Q ${cX - rW - offsetPx} ${cY - rH - offsetPx} ${cX - rW - offsetPx + 30} ${cY - rH - offsetPx} Z`;
+
+    return {
+      outerPath,
+      offsetPath,
+      bounds: { x: cX - rW, y: cY - rH, width: targetW, height: targetH },
+      pointCount: 4,
+    };
+  }
+
+  /**
+   * Inspeção multimodal reversa por imagem: lê a foto/render e gera a decomposição física completa
+   */
+  async reverseEngineerBlueprintFromImage(params: {
+    imageBase64: string;
+    userNotes?: string;
+    geminiApiKey?: string;
+    plotter?: string;
+    mimeType?: string;
+    tunedModelId?: string;
+    onProgress?: (event: AiProgressEvent) => void;
+  }): Promise<AiProductBlueprint> {
+    const apiKey = params.geminiApiKey || this.getApiKey();
+    const tunedModel = params.tunedModelId || this.getTunedModel();
+    const plotter = params.plotter || this.getDefaultPlotter();
+
+    return traceAIChat('reverse-engineer-image', `vision_${Date.now()}`, async () => {
+      params.onProgress?.({
+        stage: 'Rastreamento Óptico & Vetorização',
+        message: 'Executando rastreamento de contornos da imagem (Auto-Trace Silhouette)...',
+        progressPercent: 10,
+        logType: 'info',
+        timestamp: new Date().toLocaleTimeString(),
+      });
+
+      // Executar auto-trace vetorial da imagem em paralelo
+      const imageTrace = await this.traceImageContoursAsync(params.imageBase64, { offsetMm: 3.0 });
+
+      params.onProgress?.({
+        stage: 'Upload e Análise Multimodal',
+        message: 'Enviando imagem para inspeção visual profunda...',
+        progressPercent: 25,
+        logType: 'info',
+        timestamp: new Date().toLocaleTimeString(),
+      });
+
+      if (!apiKey) {
+        params.onProgress?.({
+          stage: 'Motor Adaptativo Local',
+          message: 'Chave Gemini não configurada. Ativando engenharia reversa adaptativa local com base nos contornos rastreados...',
+          progressPercent: 75,
+          logType: 'info',
+          timestamp: new Date().toLocaleTimeString(),
+        });
+
+        const fallback = this.generateSmartFallback({
+          productType: 'Topo de Bolo 3D',
+          theme: params.userNotes || 'Personalizado',
+          targetNameAndAge: params.userNotes || 'Personalizado',
+          colorPalette: 'Candy Colors / Pastéis',
+          complexity: 'avançado',
+          plotter,
+          customInstructions: params.userNotes || 'Engenharia reversa visual por imagem.',
+        });
+        fallback.generatedImageUrl = params.imageBase64;
+        fallback.imageTrace = imageTrace;
+
+        const technicals = this.generateCutSheetsAndAssembly(
+          fallback.productTitle,
+          fallback.category,
+          fallback.theme,
+          fallback.targetAgeAndName,
+          fallback.layers,
+          false,
+          fallback.layers[0]?.colorName || 'Colorido',
+          imageTrace,
+          params.imageBase64
+        );
+        fallback.cutSheets = technicals.cutSheets;
+        fallback.assemblySteps = technicals.assemblySteps;
+
+        return fallback;
+      }
+
+      const cleanBase64 = params.imageBase64.replace(/^data:image\/\w+;base64,/, '');
+      const mimeType = params.mimeType || (params.imageBase64.startsWith('data:image/png') ? 'image/png' : 'image/jpeg');
+
+      const visionSystemPrompt = `
+Você é uma Engenheira Especialista em Papelaria Personalizada de Luxo e Projetista de Corte para Silhouette Studio, Cricut Design Space e Brother ScanNCut.
+Sua missão é inspecionar minuciosamente a IMAGEM enviada (foto de produto real de papelaria de festa ou render hiper-realista gerado por IA) e realizar a ENGENHARIA REVERSA FÍSICA COMPLETA para produção e corte.
+
+INSTRUÇÕES DE INSPEÇÃO VISUAL OBRIGATÓRIAS:
+1. IDENTIFICAÇÃO DO PRODUTO & TEMA:
+   - Identifique a categoria exata (ex: "Topo de Bolo 3D", "Topo Shaker Luxo", "Caixa Milk 3D", "Caixa Pirâmide", "Letra 3D Personalizada", "Marcador de Página Luxo", etc.).
+   - Identifique o tema visual predominante (ex: "Astronauta", "Jardim Encantado", "Safari Baby", "Circo Rosa", "Sereia", "Dino Baby", "Princesas / Realeza", "Balão de Ar Quente", "Gamer", etc.).
+   - OCR Minucioso: Extraia exatamente qualquer nome, idade ou texto visível na imagem. Se não houver texto legível, sugira um nome harmonioso com idade (ex: "Helena - 3 anos").
+
+2. DECOMPOSIÇÃO REAL EM CAMADAS FÍSICAS (De baixo para cima, cada camada separada por folha de papel):
+   - Crie de 3 a 6 camadas físicas reais correspondendo aos elementos visuais vistos na imagem:
+     * Camada 1: Base de Fundo / Silhueta Estrutural Rígida (Papel Colorplus 180g-240g ou Kraft com a cor predominante do fundo).
+     * Camada 2: Molduras, Escalopes ou Fundo Intermediário com deslocamento (offset de 2.0mm a 3.0mm).
+     * Camadas 3 e 4: Elementos Temáticos 3D elevados com fita banana (personagens, borboletas, flores, foguetes, leõezinhos, balões).
+     * Camadas Especiais (se houver): Visor de acetato transparente e anel de vedação em EVA 2mm (se shaker).
+     * Camada Nobre / Superior: Nome em destaque cursivo soldado, idade em Lamicote (Dourado, Rose Gold, Prata) ou Glitter 250g.
+
+3. RETORNE ESTRITAMENTE UM JSON no formato:
+{
+  "productTitle": "Título comercial descritivo e luxuoso",
+  "category": "Topos de Bolo" | "Lembrancinhas" | "Papelaria Criativa" | "Kits Festa",
+  "description": "Descrição técnica e visual detalhada da peça inspecionada",
+  "targetAgeAndName": "Nome e Idade extraídos ou sugeridos",
+  "theme": "Tema detectado na imagem",
+  "recommendedPrice": 45.00,
+  "suggestedLeadTimeDays": 5,
+  "layers": [
+    {
+      "order": 1,
+      "name": "Nome descritivo exato da camada",
+      "paperType": "Ex: Colorplus Rosa Chá 180g",
+      "colorHex": "#E8B4B8",
+      "colorName": "Rosa Chá",
+      "cutDifficulty": "fácil" | "médio" | "delicado",
+      "offsetMm": 2.5,
+      "silhouetteSettings": { "blade": 3, "force": 30, "speed": 5, "passes": 1 },
+      "assemblyTip": "Instrução precisa de colagem e elevação 3D"
+    }
+  ],
+  "papersShoppingList": [
+    { "name": "Nome do papel", "gramature": "180g", "sheetsNeeded": 1 }
+  ],
+  "toolsAndAccessories": ["Fita banana 2mm", "Cola de silicone líquida", "Palitos acrílicos 15cm"],
+  "estimatedAssemblyMinutes": 25,
+  "silhouetteTips": "Dicas de corte na plotter ${plotter}",
+  "suggestedImagePrompt": "Prompt descritivo em inglês da imagem",
+  "realisticPrompts": {
+    "geminiImagenPrompt": "...",
+    "bananaTape3dPrompt": "...",
+    "ideogramPrompt": "...",
+    "midjourneyPrompt": "...",
+    "dallePrompt": "...",
+    "fluxPrompt": "...",
+    "macroLayersPrompt": "...",
+    "partyTableScenePrompt": "..."
+  }
+}
+`;
+
+      const parts: any[] = [
+        {
+          inlineData: {
+            mimeType,
+            data: cleanBase64,
+          },
+        },
+        {
+          text: `Analise cuidadosamente esta imagem de produto de papelaria personalizada e decomponha todas as suas camadas físicas, tema, nome e corte.${params.userNotes ? `\nObservações extras da artesã: ${params.userNotes}` : ''}`,
+        },
+      ];
+
       try {
         const rawText = await this.callGeminiWithCandidateModels(apiKey, tunedModel, {
           contents: [{ role: 'user', parts }],
@@ -894,8 +1290,9 @@ INSTRUÇÕES DE INSPEÇÃO VISUAL OBRIGATÓRIAS:
 
         const parsed = JSON.parse(rawText) as AiProductBlueprint;
         parsed.generatedImageUrl = params.imageBase64;
+        parsed.imageTrace = imageTrace;
 
-        // Gerar as pranchas de corte em SVG e os passos de montagem com base na anatomia detectada
+        // Gerar as pranchas de corte em SVG e os passos de montagem com base na anatomia detectada e contorno fiel
         const isShaker = (parsed.category || '').toLowerCase().includes('shaker') || (parsed.productTitle || '').toLowerCase().includes('shaker');
         const technicals = this.generateCutSheetsAndAssembly(
           parsed.productTitle || 'Produto de Papelaria Personalizada',
@@ -904,7 +1301,9 @@ INSTRUÇÕES DE INSPEÇÃO VISUAL OBRIGATÓRIAS:
           parsed.targetAgeAndName || 'Personalizado',
           parsed.layers || [],
           isShaker,
-          parsed.layers?.[0]?.colorName || 'Colorido'
+          parsed.layers?.[0]?.colorName || 'Colorido',
+          imageTrace,
+          params.imageBase64
         );
 
         parsed.cutSheets = technicals.cutSheets;
@@ -939,10 +1338,25 @@ INSTRUÇÕES DE INSPEÇÃO VISUAL OBRIGATÓRIAS:
           customInstructions: params.userNotes || 'Projeto físico gerado por engenharia reversa.',
         });
         fb.generatedImageUrl = params.imageBase64;
+        fb.imageTrace = imageTrace;
+
+        const technicals = this.generateCutSheetsAndAssembly(
+          fb.productTitle,
+          fb.category,
+          fb.theme,
+          fb.targetAgeAndName,
+          fb.layers,
+          false,
+          fb.layers[0]?.colorName || 'Colorido',
+          imageTrace,
+          params.imageBase64
+        );
+        fb.cutSheets = technicals.cutSheets;
+        fb.assemblySteps = technicals.assemblySteps;
 
         params.onProgress?.({
           stage: 'Concluído com Sucesso',
-          message: `Pranchas de corte em SVG e ficha técnica geradas com sucesso para "${fb.productTitle}"!`,
+          message: `Pranchas de corte em SVG fiéis à imagem geradas com sucesso para "${fb.productTitle}"!`,
           progressPercent: 100,
           logType: 'success',
           timestamp: new Date().toLocaleTimeString(),
@@ -955,7 +1369,8 @@ INSTRUÇÕES DE INSPEÇÃO VISUAL OBRIGATÓRIAS:
 
 
   /**
-   * Gera pranchas de corte em vetor SVG 100% personalizadas e dinâmicas para CADA camada física identificada
+   * Gera pranchas de corte em vetor SVG 100% personalizadas e dinâmicas para CADA camada física identificada,
+   * com suporte a contorno vetorial fiel rastreado diretamente da imagem enviada
    */
   generateCutSheetsAndAssembly(
     productTitle: string,
@@ -964,7 +1379,9 @@ INSTRUÇÕES DE INSPEÇÃO VISUAL OBRIGATÓRIAS:
     targetNameAndAge: string,
     layers: LayerSpec[],
     isShaker: boolean,
-    colorPalette: string
+    colorPalette: string,
+    imageTrace?: ImageTraceResult,
+    imageBase64?: string
   ): { cutSheets: CutSheet[]; assemblySteps: AssemblyStep[] } {
     const normType = productType.toLowerCase();
     const normTheme = theme.toLowerCase();
@@ -996,7 +1413,7 @@ INSTRUÇÕES DE INSPEÇÃO VISUAL OBRIGATÓRIAS:
     const effectiveLayers = layers.length > 0 ? layers : [
       {
         order: 1,
-        name: `Base Estrutural Silhueta do Tema (${theme})`,
+        name: `Base Estrutural Fiel da Imagem (${theme})`,
         paperType: 'Colorplus 180g',
         colorHex: '#CBD5E1',
         colorName: 'Cinza / Branco',
@@ -1007,6 +1424,17 @@ INSTRUÇÕES DE INSPEÇÃO VISUAL OBRIGATÓRIAS:
       },
       {
         order: 2,
+        name: `Print & Cut Contorno Fiel da Imagem`,
+        paperType: 'Papel Fotográfico Matte 180g',
+        colorHex: '#60A5FA',
+        colorName: 'Colorido / Impresso',
+        cutDifficulty: 'médio' as const,
+        offsetMm: 1.5,
+        silhouetteSettings: { blade: 2, force: 20, speed: 6, passes: 1 },
+        assemblyTip: 'Imprimir com marcas de registro e recortar com sangria de 1.5mm.',
+      },
+      {
+        order: 3,
         name: `Moldura & Escalopes 3D`,
         paperType: 'Colorplus 180g',
         colorHex: '#F472B6',
@@ -1015,17 +1443,6 @@ INSTRUÇÕES DE INSPEÇÃO VISUAL OBRIGATÓRIAS:
         offsetMm: 2.0,
         silhouetteSettings: { blade: 3, force: 30, speed: 5, passes: 1 },
         assemblyTip: 'Fixar sobre a base com fita banana de 2mm.',
-      },
-      {
-        order: 3,
-        name: `Elementos Temáticos 3D (${theme})`,
-        paperType: 'Colorplus 180g',
-        colorHex: '#60A5FA',
-        colorName: 'Azul / Colorido',
-        cutDifficulty: 'delicado' as const,
-        offsetMm: 1.5,
-        silhouetteSettings: { blade: 3, force: 28, speed: 4, passes: 1 },
-        assemblyTip: 'Montar as peças temáticas em camadas de relevo.',
       },
       {
         order: 4,
@@ -1055,7 +1472,7 @@ INSTRUÇÕES DE INSPEÇÃO VISUAL OBRIGATÓRIAS:
       const isNameLayer = layerNameLower.includes('nome') || layerNameLower.includes('idade') || layerNameLower.includes('letra') || layerNameLower.includes('lamicote') || paperLower.includes('lamicote') || paperLower.includes('glitter');
       const isFrameLayer = layerNameLower.includes('moldura') || layerNameLower.includes('escalope') || layerNameLower.includes('borda') || layerNameLower.includes('visor') || layerNameLower.includes('arco');
       const isShakerLayer = (isShaker && paperLower.includes('acetato')) || layerNameLower.includes('shaker') || layerNameLower.includes('anel') || paperLower.includes('eva');
-      const isPrintCutLayer = paperLower.includes('fotogr') || layerNameLower.includes('print') || layerNameLower.includes('ilustra');
+      const isPrintCutLayer = paperLower.includes('fotogr') || layerNameLower.includes('print') || layerNameLower.includes('ilustra') || (index === 1 && imageBase64);
 
       let svgContent = '';
 
@@ -1073,25 +1490,20 @@ INSTRUÇÕES DE INSPEÇÃO VISUAL OBRIGATÓRIAS:
   <text x="45" y="80" font-family="sans-serif" font-size="11" fill="#64748B">Linha Vermelha (#FF0000) = Corte | Azul Tracejado (#0000FF) = Vincos de Dobra</text>
 
   <g transform="translate(65, 120)">
-    <!-- Contorno Externo de Corte -->
     <path d="M 30 140 L 30 20 L 50 20 L 50 140 L 190 140 L 190 20 L 210 20 L 210 140 L 350 140 L 350 20 L 370 20 L 370 140 L 510 140 L 510 20 L 530 20 L 530 140 L 670 140 L 670 600 L 530 600 L 530 720 L 390 720 L 390 600 L 250 600 L 250 720 L 110 720 L 110 600 L 0 600 L 0 160 L 30 140 Z" ${fillWithOpacity} ${redCut}/>
-    <!-- Linhas de Vinco Horizontais -->
     <line x1="30" y1="140" x2="670" y2="140" ${scoreDash}/>
     <line x1="30" y1="260" x2="670" y2="260" ${scoreDash}/>
     <line x1="30" y1="600" x2="670" y2="600" ${scoreDash}/>
-    <!-- Linhas de Vinco Verticais -->
     <line x1="30" y1="140" x2="30" y2="600" ${scoreDash}/>
     <line x1="190" y1="140" x2="190" y2="600" ${scoreDash}/>
     <line x1="350" y1="140" x2="350" y2="600" ${scoreDash}/>
     <line x1="510" y1="140" x2="510" y2="600" ${scoreDash}/>
-    <!-- Vincos Diagonais Fechamento Triangular Superior -->
     <line x1="190" y1="260" x2="270" y2="140" ${scoreDash}/>
     <line x1="350" y1="260" x2="270" y2="140" ${scoreDash}/>
     <line x1="270" y1="140" x2="270" y2="20" ${scoreDash}/>
     <line x1="510" y1="260" x2="590" y2="140" ${scoreDash}/>
     <line x1="670" y1="260" x2="590" y2="140" ${scoreDash}/>
     <line x1="590" y1="140" x2="590" y2="20" ${scoreDash}/>
-    <!-- Furos para Fita de Cetim -->
     <circle cx="110" cy="80" r="5" fill="#FFFFFF" ${redCut}/>
     <circle cx="430" cy="80" r="5" fill="#FFFFFF" ${redCut}/>
     <text x="110" y="420" font-family="sans-serif" font-size="13" font-weight="bold" fill="#1E293B" text-anchor="middle">FRENTE</text>
@@ -1103,223 +1515,93 @@ INSTRUÇÕES DE INSPEÇÃO VISUAL OBRIGATÓRIAS:
       }
 
       // ─────────────────────────────────────────────────────────────────────────────
-      // 2. BASE ESTRUTURAL TRASEIRA COM OFFSET E GUIAS DE PALITO ACRÍLICO
+      // 2. BASE ESTRUTURAL TRASEIRA COM OFFSET FIEL DA IMAGEM E GUIAS DE PALITO
       // ─────────────────────────────────────────────────────────────────────────────
       else if (isBase) {
         sheetTitle = `Folha ${sheetNum}: Base Estrutural Traseira (${layer.paperType})`;
         piecesCount = 2;
         estimatedCutSeconds = 40;
 
-        let baseSilhouettePath = 'M 50 160 C 20 160 0 130 0 95 C 0 50 40 10 90 10 C 130 10 165 35 180 70 C 200 40 240 20 285 20 C 340 20 385 60 385 115 C 410 115 430 135 430 160 C 430 185 410 205 385 205 C 385 250 345 285 295 285 C 265 285 235 270 215 245 C 195 275 155 295 110 295 C 50 295 10 250 10 195 C 10 180 18 168 50 160 Z';
-        let baseLabel = `Base Estrutural Offset — ${theme}`;
+        let baseSilhouettePath = imageTrace?.offsetPath;
+        let baseLabel = imageTrace
+          ? `Base com Silhueta Fiel da Imagem (+3.0mm Offset)`
+          : `Base Estrutural Offset — ${theme}`;
 
-        if (isPrincess) {
-          baseSilhouettePath = 'M 40 280 L 40 120 L 90 120 L 90 60 L 140 100 L 190 40 L 240 100 L 290 60 L 290 120 L 340 120 L 340 280 Z';
-          baseLabel = 'Base Estrutural Castelo / Coroa Real';
-        } else if (isSpace) {
-          baseSilhouettePath = 'M 200 20 L 260 140 L 320 220 L 360 300 L 280 280 L 200 360 L 120 280 L 40 300 L 80 220 L 140 140 Z';
-          baseLabel = 'Base Foguete & Galáxia';
-        } else if (isSafari) {
-          baseSilhouettePath = 'M 60 140 C 20 100 20 40 80 20 C 140 0 220 10 280 40 C 340 10 420 40 400 120 C 420 180 380 260 320 280 C 260 300 180 290 120 270 C 40 260 20 180 60 140 Z';
-          baseLabel = 'Base Selva & Folhagens Safari';
-        } else if (isDino) {
-          baseSilhouettePath = 'M 80 240 L 40 180 L 80 120 L 160 80 L 240 40 L 340 60 L 420 120 L 400 200 L 320 260 L 220 280 L 140 270 Z';
-          baseLabel = 'Base Dinossauro & Vulcão';
-        } else if (isMermaid) {
-          baseSilhouettePath = 'M 190 20 C 260 60 280 160 250 240 C 300 220 360 250 380 310 C 320 320 260 300 220 260 C 180 320 110 330 60 290 C 80 230 140 200 160 150 C 140 80 160 40 190 20 Z';
-          baseLabel = 'Base Cauda de Sereia & Concha';
-        } else if (isBear) {
-          baseSilhouettePath = 'M 190 30 C 280 30 350 100 350 190 C 350 250 300 300 260 350 L 120 350 C 80 300 30 250 30 190 C 30 100 100 30 190 30 Z';
-          baseLabel = 'Base Balão de Ar Quente & Ursinho';
-        } else if (isGamer) {
-          baseSilhouettePath = 'M 60 100 C 40 100 20 130 20 180 L 40 300 C 50 330 80 330 100 300 L 140 240 L 240 240 L 280 300 C 300 330 330 330 340 300 L 360 180 C 360 130 340 100 320 100 Z';
-          baseLabel = 'Base Joystick Gamer 3D';
+        if (!baseSilhouettePath) {
+          if (isPrincess) {
+            baseSilhouettePath = 'M 40 280 L 40 120 L 90 120 L 90 60 L 140 100 L 190 40 L 240 100 L 290 60 L 290 120 L 340 120 L 340 280 Z';
+          } else if (isSpace) {
+            baseSilhouettePath = 'M 200 20 L 260 140 L 320 220 L 360 300 L 280 280 L 200 360 L 120 280 L 40 300 L 80 220 L 140 140 Z';
+          } else if (isSafari) {
+            baseSilhouettePath = 'M 60 140 C 20 100 20 40 80 20 C 140 0 220 10 280 40 C 340 10 420 40 400 120 C 420 180 380 260 320 280 C 260 300 180 290 120 270 C 40 260 20 180 60 140 Z';
+          } else if (isDino) {
+            baseSilhouettePath = 'M 80 240 L 40 180 L 80 120 L 160 80 L 240 40 L 340 60 L 420 120 L 400 200 L 320 260 L 220 280 L 140 270 Z';
+          } else {
+            baseSilhouettePath = 'M 50 160 C 20 160 0 130 0 95 C 0 50 40 10 90 10 C 130 10 165 35 180 70 C 200 40 240 20 285 20 C 340 20 385 60 385 115 C 410 115 430 135 430 160 C 430 185 410 205 385 205 C 385 250 345 285 295 285 C 265 285 235 270 215 245 C 195 275 155 295 110 295 C 50 295 10 250 10 195 C 10 180 18 168 50 160 Z';
+          }
         }
+
+        const bX = imageTrace?.bounds.x ?? 170;
+        const bY = imageTrace?.bounds.y ?? 130;
+        const bW = imageTrace?.bounds.width ?? 440;
+        const bH = imageTrace?.bounds.height ?? 440;
 
         svgContent = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 794 1123" width="100%" height="100%">
   <rect x="30" y="30" width="734" height="1063" fill="none" stroke="#CBD5E1" stroke-width="1" stroke-dasharray="4,4"/>
   <text x="45" y="60" font-family="sans-serif" font-size="14" font-weight="bold" fill="#334155">FOLHA ${sheetNum}: BASE ESTRUTURAL — ${theme.toUpperCase()}</text>
   <text x="45" y="80" font-family="sans-serif" font-size="11" fill="#64748B">Papel: ${layer.paperType} | Lâmina: ${layer.silhouetteSettings.blade} | Força: ${layer.silhouetteSettings.force} | Vel: ${layer.silhouetteSettings.speed}</text>
 
-  <!-- Silhueta Sólida de Sustentação 3D -->
-  <g transform="translate(170, 130)">
+  <!-- Silhueta Sólida de Sustentação 3D Recortada com Contorno Fiel da Imagem -->
+  <g>
+    ${imageBase64 && imageTrace ? `<image href="${imageBase64}" x="${bX}" y="${bY}" width="${bW}" height="${bH}" preserveAspectRatio="xMidYMid meet" opacity="0.12"/>` : ''}
     <path d="${baseSilhouettePath}" ${fillWithOpacity} ${redCut}/>
-    <text x="190" y="170" font-family="sans-serif" font-size="13" font-weight="bold" fill="${layer.colorHex}" text-anchor="middle">${baseLabel}</text>
-    <text x="190" y="195" font-family="sans-serif" font-size="10" fill="#64748B" text-anchor="middle">Offset 3.0mm (Fundo Sólido Rígido)</text>
+    <text x="397" y="${bY + bH / 2}" font-family="sans-serif" font-size="13" font-weight="bold" fill="${layer.colorHex}" text-anchor="middle">${baseLabel}</text>
+    <text x="397" y="${bY + bH / 2 + 22}" font-family="sans-serif" font-size="10" fill="#64748B" text-anchor="middle">Offset 3.0mm (Fundo Sólido Rígido para Palitos)</text>
 
     <!-- Guias Traseiras para Palitos Acrílicos Transparentes -->
-    <rect x="130" y="300" width="14" height="80" fill="none" stroke="#3B82F6" stroke-width="1.2" stroke-dasharray="3,3"/>
-    <rect x="240" y="300" width="14" height="80" fill="none" stroke="#3B82F6" stroke-width="1.2" stroke-dasharray="3,3"/>
-    <text x="192" y="355" font-family="sans-serif" font-size="9" fill="#3B82F6" text-anchor="middle">Guias dos Palitos Acrílicos</text>
+    <rect x="${bX + bW * 0.3}" y="${bY + bH - 35}" width="14" height="85" fill="none" stroke="#3B82F6" stroke-width="1.2" stroke-dasharray="3,3"/>
+    <rect x="${bX + bW * 0.7 - 14}" y="${bY + bH - 35}" width="14" height="85" fill="none" stroke="#3B82F6" stroke-width="1.2" stroke-dasharray="3,3"/>
+    <text x="397" y="${bY + bH + 25}" font-family="sans-serif" font-size="9" fill="#3B82F6" text-anchor="middle">Guias dos Palitos Acrílicos 15cm</text>
   </g>
 
-  <!-- Guias de Encaixe Auxiliar / Peças de Reforço Traseiro -->
-  <g transform="translate(170, 560)">
-    <rect x="40" y="20" width="140" height="40" rx="8" ${fillWithOpacity} ${redCut}/>
-    <rect x="200" y="20" width="140" height="40" rx="8" ${fillWithOpacity} ${redCut}/>
-    <text x="110" y="45" font-family="sans-serif" font-size="10" font-weight="bold" fill="#64748B" text-anchor="middle">Trava Estrutural 1</text>
-    <text x="270" y="45" font-family="sans-serif" font-size="10" font-weight="bold" fill="#64748B" text-anchor="middle">Trava Estrutural 2</text>
-  </g>
-</svg>`;
-      }
-
-      // ─────────────────────────────────────────────────────────────────────────────
-      // 3. DESTAQUE DO NOME SOLDADO, IDADE & LETRAS PERSONALIZADAS (LAMICOTE / GLITTER)
-      // ─────────────────────────────────────────────────────────────────────────────
-      else if (isNameLayer) {
-        sheetTitle = `Folha ${sheetNum}: Destaque Nome "${nameOnly}" & Idade (${layer.paperType})`;
-        piecesCount = 4;
-        estimatedCutSeconds = 45;
-
-        svgContent = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 794 1123" width="100%" height="100%">
-  <rect x="30" y="30" width="734" height="1063" fill="none" stroke="#CBD5E1" stroke-width="1" stroke-dasharray="4,4"/>
-  <text x="45" y="60" font-family="sans-serif" font-size="14" font-weight="bold" fill="#B45309">FOLHA NOBRE: NOME "${nameOnly.toUpperCase()}" & IDADE (${layer.paperType.toUpperCase()})</text>
-  <text x="45" y="80" font-family="sans-serif" font-size="11" fill="#92400E">Corte Nobre | Lâmina: ${layer.silhouetteSettings.blade} | Força: ${layer.silhouetteSettings.force} | Vel: ${layer.silhouetteSettings.speed} (2 Passadas)</text>
-
-  <!-- 1. Nome Principal Soldado com Borda de Deslocamento 2mm -->
-  <g transform="translate(80, 130)">
-    <!-- Contorno Externo Soldado -->
-    <rect x="20" y="20" width="580" height="180" rx="28" ${fillWithOpacity} ${redCut}/>
-    <text x="310" y="115" font-family="Brush Script MT, cursive, Georgia, serif" font-size="54" font-weight="bold" fill="${layer.colorHex}" stroke="#FF0000" stroke-width="1.2" text-anchor="middle">
-      ${nameOnly}
-    </text>
-    <text x="310" y="165" font-family="sans-serif" font-size="16" font-weight="bold" fill="#78350F" text-anchor="middle">
-      ${cleanName.includes('-') ? cleanName.split('-')[1].trim() : `${ageOnly} anos`}
-    </text>
-  </g>
-
-  <!-- 2. Tag da Idade e Medalhão Escalopado -->
-  <g transform="translate(80, 360)">
-    <!-- Roseta / Escalope da Idade -->
-    <g transform="translate(40, 20)">
-      <circle cx="70" cy="70" r="65" ${fillWithOpacity} ${redCut}/>
-      <circle cx="70" cy="70" r="50" ${redCut}/>
-      <text x="70" y="88" font-family="Impact, Arial Black, sans-serif" font-size="52" font-weight="bold" fill="${layer.colorHex}" stroke="#FF0000" stroke-width="1.5" text-anchor="middle">
-        ${ageOnly}
-      </text>
-      <text x="70" y="155" font-family="sans-serif" font-size="10" font-weight="bold" fill="#92400E" text-anchor="middle">Medalhão Idade 3D</text>
-    </g>
-
-    <!-- Estrelas Nobres Metálicas / Coroas de Acabamento -->
-    <g transform="translate(240, 20)">
-      <polygon points="50,10 63,38 93,42 71,63 76,93 50,78 24,93 29,63 7,42 37,38" ${fillWithOpacity} ${redCut}/>
-      <text x="50" y="115" font-family="sans-serif" font-size="9" fill="#92400E" text-anchor="middle">Aplique Nobre #1</text>
-    </g>
-
-    <g transform="translate(370, 20)">
-      <polygon points="50,10 63,38 93,42 71,63 76,93 50,78 24,93 29,63 7,42 37,38" ${fillWithOpacity} ${redCut}/>
-      <text x="50" y="115" font-family="sans-serif" font-size="9" fill="#92400E" text-anchor="middle">Aplique Nobre #2</text>
-    </g>
-
-    <g transform="translate(500, 20)">
-      <!-- Coroa / Laço Nobre -->
-      <path d="M 20 70 L 30 30 L 50 50 L 70 20 L 90 50 L 110 30 L 120 70 Z" ${fillWithOpacity} ${redCut}/>
-      <text x="70" y="95" font-family="sans-serif" font-size="9" fill="#92400E" text-anchor="middle">Coroa Destaque</text>
-    </g>
+  <!-- Peças de Reforço Traseiro / Travas -->
+  <g transform="translate(170, 780)">
+    <rect x="40" y="20" width="160" height="40" rx="8" ${fillWithOpacity} ${redCut}/>
+    <rect x="240" y="20" width="160" height="40" rx="8" ${fillWithOpacity} ${redCut}/>
+    <text x="120" y="45" font-family="sans-serif" font-size="10" font-weight="bold" fill="#64748B" text-anchor="middle">Trava Estrutural 1</text>
+    <text x="320" y="45" font-family="sans-serif" font-size="10" font-weight="bold" fill="#64748B" text-anchor="middle">Trava Estrutural 2</text>
   </g>
 </svg>`;
       }
 
       // ─────────────────────────────────────────────────────────────────────────────
-      // 4. MOLDURAS, ESCALOPES, VISORES & BORDAS 3D INTERMEDIÁRIAS
-      // ─────────────────────────────────────────────────────────────────────────────
-      else if (isFrameLayer) {
-        sheetTitle = `Folha ${sheetNum}: Molduras & Escalopes 3D (${layer.paperType})`;
-        piecesCount = 3;
-        estimatedCutSeconds = 42;
-
-        svgContent = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 794 1123" width="100%" height="100%">
-  <rect x="30" y="30" width="734" height="1063" fill="none" stroke="#CBD5E1" stroke-width="1" stroke-dasharray="4,4"/>
-  <text x="45" y="60" font-family="sans-serif" font-size="14" font-weight="bold" fill="#334155">FOLHA ${sheetNum}: MOLDURAS & ESCALOPES — ${layer.paperType.toUpperCase()}</text>
-  <text x="45" y="80" font-family="sans-serif" font-size="11" fill="#64748B">Camada de Elevação Intermediária | Deslocamento 2.0mm</text>
-
-  <!-- Moldura Frontal Escalopada com Janela Central Recortada -->
-  <g transform="translate(100, 130)">
-    <!-- Borda Externa Escalopada -->
-    <rect x="20" y="20" width="340" height="260" rx="30" ${fillWithOpacity} ${redCut}/>
-    <!-- Janela Central Vazada para Efeito 3D -->
-    <rect x="50" y="50" width="280" height="200" rx="18" ${redCut}/>
-    <text x="190" y="155" font-family="sans-serif" font-size="13" font-weight="bold" fill="${layer.colorHex}" text-anchor="middle">MOLDURA PRINCIPAL VAZADA</text>
-    <text x="190" y="175" font-family="sans-serif" font-size="10" fill="#64748B" text-anchor="middle">Janela Vazada (Efeito Camadas)</text>
-  </g>
-
-  <!-- Moldura Oval / Segundo Nível de Escalope -->
-  <g transform="translate(480, 130)">
-    <ellipse cx="110" cy="150" rx="100" ry="130" ${fillWithOpacity} ${redCut}/>
-    <ellipse cx="110" cy="150" rx="75" ry="105" ${redCut}/>
-    <text x="110" y="155" font-family="sans-serif" font-size="11" font-weight="bold" fill="#64748B" text-anchor="middle">Medalhão Oval</text>
-  </g>
-
-  <!-- Faixas Flutuantes / Banners 3D com Vincos de Dobra -->
-  <g transform="translate(100, 440)">
-    <path d="M 20 60 L 60 30 L 60 50 L 480 50 L 480 30 L 520 60 L 480 90 L 480 70 L 60 70 L 60 90 Z" ${fillWithOpacity} ${redCut}/>
-    <line x1="120" y1="50" x2="120" y2="70" ${scoreDash}/>
-    <line x1="420" y1="50" x2="420" y2="70" ${scoreDash}/>
-    <text x="270" y="64" font-family="sans-serif" font-size="12" font-weight="bold" fill="${layer.colorHex}" text-anchor="middle">FAIXA FLUTUANTE 3D DOBRÁVEL</text>
-  </g>
-</svg>`;
-      }
-
-      // ─────────────────────────────────────────────────────────────────────────────
-      // 5. VISOR DE ACETATO CRISTAL & ANEL DE VEDAÇÃO EM EVA (SHAKER)
-      // ─────────────────────────────────────────────────────────────────────────────
-      else if (isShakerLayer) {
-        sheetTitle = `Folha ${sheetNum}: Visor de Acetato & Anel EVA Shaker`;
-        piecesCount = 2;
-        estimatedCutSeconds = 60;
-
-        svgContent = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 794 1123" width="100%" height="100%">
-  <rect x="30" y="30" width="734" height="1063" fill="none" stroke="#CBD5E1" stroke-width="1" stroke-dasharray="4,4"/>
-  <text x="45" y="60" font-family="sans-serif" font-size="14" font-weight="bold" fill="#0284C7">FOLHA SHAKER: VISOR ACETATO CRISTAL & ANEL EVA 2mm</text>
-  <text x="45" y="80" font-family="sans-serif" font-size="11" fill="#64748B">Lâmina de Corte Profundo (EVA) | Lâmina: 10 | Força: 33 | 2 Passadas</text>
-
-  <!-- 1. Visor em Acetato Cristal 20 micras -->
-  <g transform="translate(130, 130)">
-    <circle cx="150" cy="150" r="130" fill="#F0F9FF" fill-opacity="0.6" stroke="#0284C7" stroke-width="2"/>
-    <text x="150" y="145" font-family="sans-serif" font-size="14" font-weight="bold" fill="#0284C7" text-anchor="middle">VISOR EM ACETATO</text>
-    <text x="150" y="170" font-family="sans-serif" font-size="11" fill="#64748B" text-anchor="middle">20 micras transparente</text>
-  </g>
-
-  <!-- 2. Anel de Contenção em EVA 2mm (Câmara Estanque para Lantejoulas) -->
-  <g transform="translate(130, 460)">
-    <circle cx="150" cy="150" r="130" fill="#FEF3C7" fill-opacity="0.4" ${redCut}/>
-    <circle cx="150" cy="150" r="105" ${redCut}/>
-    <text x="150" y="145" font-family="sans-serif" font-size="13" font-weight="bold" fill="#D97706" text-anchor="middle">ANEL DE CONTENÇÃO EVA (2mm)</text>
-    <text x="150" y="170" font-family="sans-serif" font-size="10" fill="#64748B" text-anchor="middle">Câmara para Miçangas e Lantejoulas</text>
-  </g>
-</svg>`;
-      }
-
-      // ─────────────────────────────────────────────────────────────────────────────
-      // 6. PRINT & CUT COM MARCAS DE REGISTRO SILHOUETTE
+      // 3. PRINT & CUT COM A IMAGEM REAL E CONTORNO ÓPTICO SILHOUETTE
       // ─────────────────────────────────────────────────────────────────────────────
       else if (isPrintCutLayer) {
-        sheetTitle = `Folha ${sheetNum}: Print & Cut Ilustrações (${theme})`;
-        piecesCount = 5;
-        estimatedCutSeconds = 55;
+        sheetTitle = `Folha ${sheetNum}: Print & Cut Ilustração Fiel (${theme})`;
+        piecesCount = 4;
+        estimatedCutSeconds = 50;
+
+        const bX = imageTrace?.bounds.x ?? 140;
+        const bY = imageTrace?.bounds.y ?? 140;
+        const bW = imageTrace?.bounds.width ?? 480;
+        const bH = imageTrace?.bounds.height ?? 480;
+        const cutLine = imageTrace?.outerPath || `M ${bX + 30} ${bY} L ${bX + bW - 30} ${bY} Q ${bX + bW} ${bY} ${bX + bW} ${bY + 30} L ${bX + bW} ${bY + bH - 30} Q ${bX + bW} ${bY + bH} ${bX + bW - 30} ${bY + bH} L ${bX + 30} ${bY + bH} Q ${bX} ${bY + bH} ${bX} ${bY + bH - 30} L ${bX} ${bY + 30} Q ${bX} ${bY} ${bX + 30} ${bY} Z`;
 
         svgContent = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 794 1123" width="100%" height="100%">
-  <!-- MARCAS DE REGISTRO ÓTICAS SILHOUETTE -->
-  <rect x="50" y="50" width="20" height="20" fill="#000000"/>
-  <path d="M 724 50 L 744 50 L 744 70" fill="none" stroke="#000000" stroke-width="4"/>
-  <path d="M 50 1053 L 50 1073 L 70 1073" fill="none" stroke="#000000" stroke-width="4"/>
+  <!-- MARCAS DE REGISTRO ÓTICAS SILHOUETTE (PORTRAIT / CAMEO) -->
+  <rect x="50" y="50" width="22" height="22" fill="#000000"/>
+  <path d="M 720 50 L 744 50 L 744 74" fill="none" stroke="#000000" stroke-width="4.5"/>
+  <path d="M 50 1049 L 50 1073 L 74 1073" fill="none" stroke="#000000" stroke-width="4.5"/>
 
-  <text x="90" y="66" font-family="sans-serif" font-size="13" font-weight="bold" fill="#334155">PRINT & CUT: ELEMENTOS ILUSTRADOS DO TEMA "${theme.toUpperCase()}"</text>
-  <text x="90" y="84" font-family="sans-serif" font-size="10" fill="#64748B">Papel Fotográfico Matte 180g | Sangria 1.5mm | Ativar Sensor Óptico na Plotter</text>
+  <text x="90" y="66" font-family="sans-serif" font-size="13" font-weight="bold" fill="#334155">PRINT & CUT: CONTORNO FIEL DA IMAGEM — ${theme.toUpperCase()}</text>
+  <text x="90" y="84" font-family="sans-serif" font-size="10" fill="#64748B">Papel Fotográfico Matte 180g | Sangria 1.5mm | Linha de Corte Vermelha (#FF0000)</text>
 
-  <!-- Personagem / Ilustração Principal -->
-  <g transform="translate(120, 140)">
-    <rect x="20" y="20" width="250" height="250" rx="35" ${fillWithOpacity}/>
-    <rect x="15" y="15" width="260" height="260" rx="40" ${redCut}/>
-    <text x="145" y="135" font-family="sans-serif" font-size="18" font-weight="bold" fill="#1E293B" text-anchor="middle">${theme}</text>
-    <text x="145" y="165" font-family="sans-serif" font-size="12" fill="#64748B" text-anchor="middle">Aplique Central 3D</text>
-  </g>
-
-  <!-- Tags e Personagens Secundários -->
-  <g transform="translate(430, 140)">
-    <circle cx="110" cy="110" r="85" ${fillWithOpacity}/>
-    <circle cx="110" cy="110" r="80" ${redCut}/>
-    <text x="110" y="115" font-family="sans-serif" font-size="12" font-weight="bold" fill="#334155" text-anchor="middle">Tag Temática 3D</text>
+  <!-- Imagem Original Rastreata + Linha de Corte Vermelha de Alta Fidelidade -->
+  <g>
+    ${imageBase64 ? `<image href="${imageBase64}" x="${bX}" y="${bY}" width="${bW}" height="${bH}" preserveAspectRatio="xMidYMid meet"/>` : `<rect x="${bX}" y="${bY}" width="${bW}" height="${bH}" rx="30" ${fillWithOpacity}/>`}
+    <path d="${cutLine}" stroke="#FF0000" stroke-width="2" fill="none"/>
+    <text x="397" y="${bY + bH + 30}" font-family="sans-serif" font-size="12" font-weight="bold" fill="#1E293B" text-anchor="middle">Contorno de Corte Fiel à Imagem Real</text>
   </g>
 </svg>`;
       }
