@@ -4,9 +4,17 @@
  */
 
 import { useRouteError, isRouteErrorResponse, Link } from 'react-router';
+import { useEffect } from 'react';
+import { captureException } from '../../lib/sentry';
 
 export function ErrorBoundary() {
   const error = useRouteError();
+
+  useEffect(() => {
+    if (error && !isRouteErrorResponse(error)) {
+      captureException(error, { source: 'ReactRouterErrorBoundary' });
+    }
+  }, [error]);
 
   if (isRouteErrorResponse(error)) {
     if (error.status === 404) {

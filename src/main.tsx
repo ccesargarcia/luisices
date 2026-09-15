@@ -1,7 +1,10 @@
-
 import { createRoot } from "react-dom/client";
 import App from "./app/App";
 import "./styles/index.css";
+import { initSentry } from "./lib/sentry";
+
+// Inicializa monitoramento de erros e performance do Sentry
+initSentry();
 
 // Desregistra proativamente qualquer Service Worker legado e limpa CacheStorage do navegador
 if (typeof window !== 'undefined') {
