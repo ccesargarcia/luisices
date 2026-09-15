@@ -72,7 +72,7 @@ jobs:
           firebase use luisices-dev --project luisices-dev
           firebase functions:secrets:set RESEND_API_KEY --project luisices-dev --data-file "$HOME/resend_api_key.txt" || true
           firebase functions:secrets:set EVOLUTION_API_KEY --project luisices-dev --data-file "$HOME/evolution_api_key.txt" || true
-          firebase deploy --only firestore:rules,storage:rules --project luisices-dev
+          firebase deploy --only firestore:rules,storage --project luisices-dev
           firebase deploy --only functions --project luisices-dev --force --debug
 
       - name: Deploy Firebase Functions & Rules (Production)
@@ -93,5 +93,5 @@ jobs:
           firebase use papelaria-dashboard --project papelaria-dashboard
           firebase functions:secrets:set RESEND_API_KEY --project papelaria-dashboard --data-file "$HOME/resend_api_key.txt" || true
           firebase functions:secrets:set EVOLUTION_API_KEY --project papelaria-dashboard --data-file "$HOME/evolution_api_key.txt" || true
-          firebase deploy --only firestore:rules,storage:rules --project papelaria-dashboard
+          firebase deploy --only firestore:rules,storage --project papelaria-dashboard
           firebase deploy --only functions --project papelaria-dashboard --force --debug
