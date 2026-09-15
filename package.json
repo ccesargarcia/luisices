@@ -123,8 +123,6 @@
     }
   },
   "overrides": {
-    "@types/react": "^18.3.18",
-    "@types/react-dom": "^18.3.5",
     "postcss": ">=8.5.23",
     "fast-xml-parser": ">=5.5.6"
   },
