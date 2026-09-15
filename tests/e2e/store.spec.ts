@@ -218,10 +218,12 @@ test.describe('Gestão da Loja (Backoffice Administrativo)', () => {
     // 3. Abrir modal de criação e validar campos
     await newProductBtn.click();
     const dialog = page.locator('[role="dialog"]').first();
-    await expect(dialog).toBeVisible({ timeout: 5000 });
-
-    await expect(dialog.getByLabel(/Nome do produto/i).or(dialog.locator('#product-name, input[placeholder*="Nome"]'))).toBeVisible({ timeout: 5000 });
-    await expect(dialog.getByLabel(/Preço/i).or(dialog.locator('input[placeholder*="0,00"]'))).toBeVisible({ timeout: 5000 });
+    await expect(
+      dialog.locator('#sp-name, input[placeholder*="Caderneta"], input[placeholder*="Nome comercial"]')
+    ).toBeVisible({ timeout: 5000 });
+    await expect(
+      dialog.locator('#sp-price, input[placeholder="0,00"]')
+    ).toBeVisible({ timeout: 5000 });
 
     // Fechar modal
     const cancelBtn = dialog.getByRole('button', { name: /Cancelar/i }).first();
@@ -240,7 +242,7 @@ test.describe('Gestão da Loja (Backoffice Administrativo)', () => {
     await expect(heading).toBeVisible({ timeout: 10000 });
 
     // 2. Validar campo de busca de pedidos
-    const searchInput = page.locator('input[placeholder*="Buscar pedido" i], input[placeholder*="Buscar por código" i]').first();
+    const searchInput = page.locator('input[placeholder*="LJ-"], input[placeholder*="Buscar"]').first();
     await expect(searchInput).toBeVisible({ timeout: 5000 });
 
     // 3. Validar filtros de status
