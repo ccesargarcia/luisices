@@ -48,7 +48,7 @@ jobs:
           MESSAGING_SENDER_ID: ${{ secrets.DEV_VITE_FIREBASE_MESSAGING_SENDER_ID }}
           APP_ID: ${{ secrets.DEV_VITE_FIREBASE_APP_ID }}
           MEASUREMENT_ID: ${{ secrets.DEV_VITE_FIREBASE_MEASUREMENT_ID }}
-          STORAGE_CDN_URL: ${{ secrets.DEV_VITE_STORAGE_CDN_URL || secrets.VITE_STORAGE_CDN_URL || 'https://cdn-dev.luisices.com.br' }}
+          STORAGE_CDN_URL: ${{ secrets.DEV_VITE_STORAGE_CDN_URL || 'https://cdn-dev.luisices.com.br' }}
           SENTRY_DSN: ${{ secrets.DEV_VITE_SENTRY_DSN || secrets.VITE_SENTRY_DSN }}
         run: |
           printf 'VITE_FIREBASE_API_KEY=%s\n' "$API_KEY" >> .env.local
