@@ -72,6 +72,8 @@ import { Label } from '../components/ui/label';
 import { Textarea } from '../components/ui/textarea';
 import { Badge } from '../components/ui/badge';
 import { Slider } from '../components/ui/slider';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
+import { Switch } from '../components/ui/switch';
 import {
   Dialog,
   DialogContent,
@@ -86,26 +88,38 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
 const PRODUCT_TYPES = [
-  'Topo de Bolo 3D',
-  'Topo Shaker Luxo',
-  'Caixa Milk 3D',
-  'Caixa Pirâmide',
-  'Letra 3D Personalizada',
-  'Marcador de Página Luxo',
-  'Kit Festa Mesversário',
+  'Caixa Milk 3D Luxo',
+  'Topo de Bolo Shaker Interativo',
+  'Caixa Pirâmide com Visor',
+  'Lembrancinha Porta-Bis Duplo',
+  'Convite Pop-up de Alto Padrão',
+  'Kit Scrap Festa Completo (5 itens)',
+  'Tags & Apliques em Camadas 3D',
+  'Sacolinha Personalizada com Alça de Cetim',
+  'Caixa Sushi com Alça',
+  'Cofrinho Personalizado com Esfera Acrílica',
 ];
 
 const COLOR_PALETTES = [
-  'Candy Colors / Pastéis',
-  'Dourado & Luxo',
-  'Boho Chic',
-  'Tons Terrosos & Rústico',
-  'Azul Marinho & Prata',
-  'Rosa & Floral Delicado',
+  'Tons Pastéis & Candy Colors',
+  'Dourado & Rosa Bebê Luxo',
+  'Azul Marinho, Prata & Glitter',
+  'Earthy Boho / Tons Terrosos',
+  'Floral Romântico & Rose Gold',
   'Cores Vivas / Neon',
 ];
 
 export function AiProductGenerator() {
+  const { isAdmin, loading: authLoading } = useAuth();
+
+  if (authLoading) {
+    return null;
+  }
+
+  if (!isAdmin) {
+    return <Navigate to="/" replace />;
+  }
+
   // Parâmetros de formulário
   const [productType, setProductType] = useState(PRODUCT_TYPES[0]);
   const [theme, setTheme] = useState('');

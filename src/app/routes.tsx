@@ -181,7 +181,7 @@ export const router = isCatalogSubdomain
       },
       {
         path: 'estudio-ia',
-        element: <Lazy><PermissionRoute check={p => p.products?.view || p.store || true} allowUserRole><AiProductGenerator /></PermissionRoute></Lazy>,
+        element: <Lazy><ProtectedRoute adminOnly><AiProductGenerator /></ProtectedRoute></Lazy>,
       },
       {
         path: 'criador-ia',
