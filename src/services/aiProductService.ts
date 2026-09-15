@@ -76,6 +76,32 @@ export interface ImageTraceResult {
   pointCount: number;
 }
 
+export interface CommercialPaperMatch {
+  layerOrder: number;
+  layerName: string;
+  detectedColorHex: string;
+  detectedColorName: string;
+  commercialBrand: string;
+  commercialPaperName: string;
+  finishType: 'Fosco' | 'Metálico Espelhado' | 'Glitter' | 'Kraft Rústico' | 'Translúcido' | 'Texturizado';
+  recommendedGramature: string;
+  usageRole: string;
+  estimatedCostPerSheet: number;
+}
+
+export interface CostingBreakdown {
+  materialsCost: number;
+  laborMinutes: number;
+  hourlyRate: number;
+  laborCost: number;
+  overheadCost: number;
+  totalProductionCost: number;
+  profitMarginPercent: number;
+  suggestedPrice: number;
+  netProfit: number;
+  whatsappProposal: string;
+}
+
 export interface AiProductBlueprint {
   productTitle: string;
   category: string;
@@ -93,8 +119,10 @@ export interface AiProductBlueprint {
   generatedImageUrl?: string;
   imageTrace?: ImageTraceResult;
   realisticPrompts: RealisticPrompts;
-  cutSheets: CutSheet[];
+  cutSheets?: CutSheet[];
   assemblySteps: AssemblyStep[];
+  costing?: CostingBreakdown;
+  commercialPapers?: CommercialPaperMatch[];
 }
 
 export interface AcervoItem {
@@ -1025,7 +1053,186 @@ Retorne estritamente um JSON com este schema:
   }
 
   /**
-   * Inspeção multimodal reversa por imagem: lê a foto/render e gera a decomposição física completa
+   * Mapeia as camadas detectadas para papéis comerciais reais do mercado brasileiro
+   * (Fedrigoni Colorplus, Lamicote Luxo, Offset Suzano, Kraft Klabin, Acetato Cristal)
+   * e calcula o Orçamento de Produção + Mensagem formatada para WhatsApp
+   */
+  calculateCostingAndCommercialPapers(
+    blueprint: {
+      productTitle?: string;
+      category?: string;
+      theme?: string;
+      targetAgeAndName?: string;
+      layers?: LayerSpec[];
+      papersShoppingList?: PaperShoppingItem[];
+      toolsAndAccessories?: string[];
+      estimatedAssemblyMinutes?: number;
+      suggestedLeadTimeDays?: number;
+      recommendedPrice?: number;
+    },
+    hourlyRate = 25.0,
+    profitMarginPercent = 50.0
+  ): { costing: CostingBreakdown; commercialPapers: CommercialPaperMatch[] } {
+    const layers = blueprint.layers || [];
+
+    // Mapeamento de Papéis Comerciais Brasileiros
+    const commercialPapers: CommercialPaperMatch[] = layers.map((layer, idx) => {
+      const hex = (layer.colorHex || '#CBD5E1').toUpperCase();
+      const colorLower = (layer.colorName || '').toLowerCase();
+      const nameLower = (layer.name || '').toLowerCase();
+
+      let brand = 'Fedrigoni Colorplus';
+      let paperName = layer.paperType || 'Colorplus 180g';
+      let finishType: CommercialPaperMatch['finishType'] = 'Fosco';
+      let gramature = '180g';
+      let cost = 1.60;
+      let usageRole = 'Aplique 3D Relevo';
+
+      if (idx === 0 || nameLower.includes('base') || nameLower.includes('estrutural') || nameLower.includes('fundo')) {
+        usageRole = 'Base Estrutural de Fundo';
+        gramature = '180g / 240g';
+      } else if (nameLower.includes('moldura') || nameLower.includes('escalope')) {
+        usageRole = 'Moldura de Elevação';
+      } else if (nameLower.includes('nome') || nameLower.includes('idade') || nameLower.includes('destaque') || idx === layers.length - 1) {
+        usageRole = 'Nome Nobre / Destaque';
+      }
+
+      // Detecção de papéis nobres
+      if (colorLower.includes('dourado') || colorLower.includes('ouro') || hex === '#D4AF37' || hex === '#FFD700' || nameLower.includes('lamicote') || nameLower.includes('dourado')) {
+        brand = 'Lamicote Premium Luxo';
+        paperName = 'Lamicote Dourado Espelhado 250g';
+        finishType = 'Metálico Espelhado';
+        gramature = '250g';
+        cost = 4.50;
+      } else if (colorLower.includes('prata') || colorLower.includes('silver') || hex === '#C0C0C0' || nameLower.includes('prata')) {
+        brand = 'Lamicote Premium Luxo';
+        paperName = 'Lamicote Prata Espelhado 250g';
+        finishType = 'Metálico Espelhado';
+        gramature = '250g';
+        cost = 4.50;
+      } else if (colorLower.includes('glitter') || nameLower.includes('glitter')) {
+        brand = 'Paper Glitter Luxo';
+        paperName = 'Papel Glitter 250g Ultra Brilho';
+        finishType = 'Glitter';
+        gramature = '250g';
+        cost = 5.00;
+      } else if (nameLower.includes('acetato') || nameLower.includes('visor') || nameLower.includes('shaker')) {
+        brand = 'Acetato Cristal Transparente';
+        paperName = 'Acetato Cristal 20 micras';
+        finishType = 'Translúcido';
+        gramature = '20 micras';
+        cost = 2.50;
+      } else if (colorLower.includes('kraft') || nameLower.includes('kraft') || hex === '#8D6E63' || hex === '#A1887F') {
+        brand = 'Klabin Kraft Puro';
+        paperName = 'Papel Kraft Rústico 240g';
+        finishType = 'Kraft Rústico';
+        gramature = '240g';
+        cost = 1.20;
+      } else if (colorLower.includes('rosa') || hex.includes('F472B6') || hex.includes('E8B4B8')) {
+        brand = 'Fedrigoni Colorplus';
+        paperName = 'Colorplus Rosa Chá 180g (ou Fidji)';
+        finishType = 'Fosco';
+        gramature = '180g';
+        cost = 1.60;
+      } else if (colorLower.includes('azul') || hex.includes('60A5FA') || hex.includes('0284C7')) {
+        brand = 'Fedrigoni Colorplus';
+        paperName = colorLower.includes('marinho') || colorLower.includes('escuro') ? 'Colorplus Toronto 180g' : 'Colorplus Porto Seguro 180g';
+        finishType = 'Fosco';
+        gramature = '180g';
+        cost = 1.60;
+      } else if (colorLower.includes('verde') || hex.includes('4ADE80') || hex.includes('16A34A')) {
+        brand = 'Fedrigoni Colorplus';
+        paperName = 'Colorplus Tahiti 180g (ou Brasil)';
+        finishType = 'Fosco';
+        gramature = '180g';
+        cost = 1.60;
+      } else if (colorLower.includes('amarelo') || hex.includes('FACC15') || hex.includes('FEF08A')) {
+        brand = 'Fedrigoni Colorplus';
+        paperName = 'Colorplus Rio de Janeiro 180g';
+        finishType = 'Fosco';
+        gramature = '180g';
+        cost = 1.60;
+      } else if (colorLower.includes('lilás') || colorLower.includes('roxo') || hex.includes('A855F7') || hex.includes('C084FC')) {
+        brand = 'Fedrigoni Colorplus';
+        paperName = 'Colorplus Verona 180g (ou Lavanda)';
+        finishType = 'Fosco';
+        gramature = '180g';
+        cost = 1.60;
+      } else if (colorLower.includes('branco') || hex === '#FFFFFF' || hex === '#F8FAFC') {
+        brand = 'Suzano Report / Offset';
+        paperName = 'Papel Offset Branco Puro 180g / 240g';
+        finishType = 'Fosco';
+        gramature = '180g / 240g';
+        cost = 0.80;
+      }
+
+      return {
+        layerOrder: layer.order || idx + 1,
+        layerName: layer.name,
+        detectedColorHex: hex,
+        detectedColorName: layer.colorName || 'Cor Detectada',
+        commercialBrand: brand,
+        commercialPaperName: paperName,
+        finishType,
+        recommendedGramature: gramature,
+        usageRole,
+        estimatedCostPerSheet: cost,
+      };
+    });
+
+    // Custo de Materiais
+    const papersCostTotal = commercialPapers.reduce((sum, p) => sum + p.estimatedCostPerSheet, 0);
+    const consumablesCost = 3.50; // Fita banana, cola, palito acrílico / embalagem
+    const materialsCost = Math.round((papersCostTotal + consumablesCost) * 100) / 100;
+
+    // Custo de Mão de Obra
+    const assemblyMinutes = blueprint.estimatedAssemblyMinutes || 25;
+    const laborCost = Math.round(((assemblyMinutes / 60) * hourlyRate) * 100) / 100;
+
+    // Custos Indiretos (lâmina, energia, desgaste)
+    const overheadCost = 2.50;
+
+    // Custo Total de Produção
+    const totalProductionCost = Math.round((materialsCost + laborCost + overheadCost) * 100) / 100;
+
+    // Preço Sugerido com Margem
+    const marginMultiplier = 1 / Math.max(0.1, (1 - profitMarginPercent / 100));
+    let calculatedSuggestedPrice = Math.round(totalProductionCost * marginMultiplier);
+    if (blueprint.recommendedPrice && blueprint.recommendedPrice > calculatedSuggestedPrice) {
+      calculatedSuggestedPrice = blueprint.recommendedPrice;
+    }
+    const finalPrice = Math.max(calculatedSuggestedPrice, 35.0);
+    const netProfit = Math.round((finalPrice - totalProductionCost) * 100) / 100;
+
+    // Gerar Proposta Formatada para WhatsApp
+    const papersNamesList = Array.from(new Set(commercialPapers.map((p) => p.commercialPaperName))).slice(0, 3).join(', ');
+    const leadDays = blueprint.suggestedLeadTimeDays || 5;
+    const prodTitle = blueprint.productTitle || 'Topo de Bolo 3D Personalizado';
+    const clientTarget = blueprint.targetAgeAndName || 'Personalizado';
+    const themeName = blueprint.theme || 'Personalizado';
+
+    const whatsappProposal = `Olá! Tudo bem? 💕✨\n\nFizemos a análise do modelo que você nos enviou no tema *${themeName}*:\n\n🎂 *${prodTitle}*\n✨ *Personalização:* ${clientTarget}\n\n📐 *Detalhes da Peça:*\n• Feito em camadas tridimensionais (Efeito 3D com relevo em fita banana)\n• Papéis nobres especiais (${papersNamesList})\n• Acabamento de alta gramatura e palito acrílico transparente\n\n⏱ *Prazo de Produção:* ${leadDays} dias úteis\n💰 *Valor:* *R$ ${finalPrice.toFixed(2).replace('.', ',')}*\n\nPodemos confirmar o seu pedido para garantir a data na nossa agenda? Ficaremos muito felizes em produzir para você! 🥰🎉`;
+
+    return {
+      costing: {
+        materialsCost,
+        laborMinutes: assemblyMinutes,
+        hourlyRate,
+        laborCost,
+        overheadCost,
+        totalProductionCost,
+        profitMarginPercent,
+        suggestedPrice: finalPrice,
+        netProfit,
+        whatsappProposal,
+      },
+      commercialPapers,
+    };
+  }
+
+  /**
+   * Inspeção multimodal reversa por imagem: lê a foto/render e gera a decomposição física completa,
+   * cálculo de orçamento instantâneo e mapeamento de papéis comerciais
    */
   async reverseEngineerBlueprintFromImage(params: ReverseEngineerImageParams): Promise<AiProductBlueprint> {
     const apiKey = this.getApiKey(params.geminiApiKey);
@@ -1034,20 +1241,9 @@ Retorne estritamente um JSON com este schema:
 
     return traceAIChat('reverse-engineer-image', `vision_${Date.now()}`, async () => {
       params.onProgress?.({
-        stage: 'Rastreamento Óptico & Vetorização',
-        message: 'Executando rastreamento de contornos da imagem (Auto-Trace Silhouette)...',
-        progressPercent: 10,
-        logType: 'info',
-        timestamp: new Date().toLocaleTimeString(),
-      });
-
-      // Executar auto-trace vetorial da imagem em paralelo
-      const imageTrace = await this.traceImageContoursAsync(params.imageBase64, { offsetMm: 3.0 });
-
-      params.onProgress?.({
-        stage: 'Upload e Análise Multimodal',
-        message: 'Enviando imagem para inspeção visual profunda...',
-        progressPercent: 25,
+        stage: 'Inspeção Visual da Imagem',
+        message: 'Enviando imagem para análise e identificação de camadas físicas e tema...',
+        progressPercent: 20,
         logType: 'info',
         timestamp: new Date().toLocaleTimeString(),
       });
@@ -1055,8 +1251,8 @@ Retorne estritamente um JSON com este schema:
       if (!apiKey) {
         params.onProgress?.({
           stage: 'Motor Adaptativo Local',
-          message: 'Chave Gemini não configurada. Ativando engenharia reversa adaptativa local com base nos contornos rastreados...',
-          progressPercent: 75,
+          message: 'Chave Gemini não configurada. Ativando engenharia reversa adaptativa local...',
+          progressPercent: 70,
           logType: 'info',
           timestamp: new Date().toLocaleTimeString(),
         });
@@ -1071,21 +1267,14 @@ Retorne estritamente um JSON com este schema:
           customInstructions: params.userNotes || 'Engenharia reversa visual por imagem.',
         });
         fallback.generatedImageUrl = params.imageBase64;
-        fallback.imageTrace = imageTrace;
 
-        const technicals = this.generateCutSheetsAndAssembly(
-          fallback.productTitle,
-          fallback.category,
-          fallback.theme,
-          fallback.targetAgeAndName,
-          fallback.layers,
-          false,
-          fallback.layers[0]?.colorName || 'Colorido',
-          imageTrace,
-          params.imageBase64
-        );
-        fallback.cutSheets = technicals.cutSheets;
-        fallback.assemblySteps = technicals.assemblySteps;
+        params.onProgress?.({
+          stage: 'Concluído com Sucesso',
+          message: `Ficha técnica e orçamento gerados para "${fallback.productTitle}"!`,
+          progressPercent: 100,
+          logType: 'success',
+          timestamp: new Date().toLocaleTimeString(),
+        });
 
         return fallback;
       }
@@ -1095,7 +1284,7 @@ Retorne estritamente um JSON com este schema:
 
       const visionSystemPrompt = `
 Você é uma Engenheira Especialista em Papelaria Personalizada de Luxo e Projetista de Corte para Silhouette Studio, Cricut Design Space e Brother ScanNCut.
-Sua missão é inspecionar minuciosamente a IMAGEM enviada (foto de produto real de papelaria de festa ou render hiper-realista gerado por IA) e realizar a ENGENHARIA REVERSA FÍSICA COMPLETA para produção e corte.
+Sua missão é inspecionar minuciosamente a IMAGEM enviada (foto de produto real de papelaria de festa ou render hiper-realista gerado por IA) e realizar a ENGENHARIA REVERSA FÍSICA COMPLETA para precificação e produção.
 
 INSTRUÇÕES DE INSPEÇÃO VISUAL OBRIGATÓRIAS:
 1. IDENTIFICAÇÃO DO PRODUTO & TEMA:
@@ -1179,9 +1368,21 @@ INSTRUÇÕES DE INSPEÇÃO VISUAL OBRIGATÓRIAS:
 
         const parsed = JSON.parse(rawText) as AiProductBlueprint;
         parsed.generatedImageUrl = params.imageBase64;
-        parsed.imageTrace = imageTrace;
 
-        // Gerar as pranchas de corte em SVG e os passos de montagem com base na anatomia detectada e contorno fiel
+        params.onProgress?.({
+          stage: 'Orçamento & Mapeamento de Papéis',
+          message: 'Calculando custos de materiais, tempo de montagem e gerando proposta comercial...',
+          progressPercent: 80,
+          logType: 'info',
+          timestamp: new Date().toLocaleTimeString(),
+        });
+
+        // Calcular Orçamento Instantâneo e Mapear Papéis Comerciais
+        const { costing, commercialPapers } = this.calculateCostingAndCommercialPapers(parsed);
+        parsed.costing = costing;
+        parsed.commercialPapers = commercialPapers;
+
+        // Gerar passos de montagem física
         const isShaker = (parsed.category || '').toLowerCase().includes('shaker') || (parsed.productTitle || '').toLowerCase().includes('shaker');
         const technicals = this.generateCutSheetsAndAssembly(
           parsed.productTitle || 'Produto de Papelaria Personalizada',
@@ -1190,20 +1391,24 @@ INSTRUÇÕES DE INSPEÇÃO VISUAL OBRIGATÓRIAS:
           parsed.targetAgeAndName || 'Personalizado',
           parsed.layers || [],
           isShaker,
-          parsed.layers?.[0]?.colorName || 'Colorido',
-          imageTrace,
-          params.imageBase64
+          parsed.layers?.[0]?.colorName || 'Colorido'
         );
-
-        parsed.cutSheets = technicals.cutSheets;
         parsed.assemblySteps = technicals.assemblySteps;
+
+        params.onProgress?.({
+          stage: 'Concluído com Sucesso',
+          message: `Ficha técnica, orçamento e proposta comercial gerados para "${parsed.productTitle}"!`,
+          progressPercent: 100,
+          logType: 'success',
+          timestamp: new Date().toLocaleTimeString(),
+        });
 
         return parsed;
       } catch (e) {
         console.warn('[AiProductService] Google Gemini com alta demanda, ativando gerador estrutural adaptativo:', e);
         params.onProgress?.({
           stage: 'Motor Adaptativo Local',
-          message: 'Google Gemini sob alta demanda temporária (503). Gerando decomposição de camadas, materiais e arquivos SVG de corte localmente...',
+          message: 'Google Gemini sob alta demanda temporária (503). Gerando decomposição de camadas e orçamento localmente...',
           progressPercent: 90,
           logType: 'info',
           timestamp: new Date().toLocaleTimeString(),
@@ -1227,25 +1432,10 @@ INSTRUÇÕES DE INSPEÇÃO VISUAL OBRIGATÓRIAS:
           customInstructions: params.userNotes || 'Projeto físico gerado por engenharia reversa.',
         });
         fb.generatedImageUrl = params.imageBase64;
-        fb.imageTrace = imageTrace;
-
-        const technicals = this.generateCutSheetsAndAssembly(
-          fb.productTitle,
-          fb.category,
-          fb.theme,
-          fb.targetAgeAndName,
-          fb.layers,
-          false,
-          fb.layers[0]?.colorName || 'Colorido',
-          imageTrace,
-          params.imageBase64
-        );
-        fb.cutSheets = technicals.cutSheets;
-        fb.assemblySteps = technicals.assemblySteps;
 
         params.onProgress?.({
           stage: 'Concluído com Sucesso',
-          message: `Pranchas de corte em SVG fiéis à imagem geradas com sucesso para "${fb.productTitle}"!`,
+          message: `Orçamento instantâneo e ficha técnica gerados com sucesso para "${fb.productTitle}"!`,
           progressPercent: 100,
           logType: 'success',
           timestamp: new Date().toLocaleTimeString(),
@@ -1942,7 +2132,7 @@ INSTRUÇÕES DE INSPEÇÃO VISUAL OBRIGATÓRIAS:
       partyTableScenePrompt: `Editorial lifestyle photography of an elegant luxury birthday dessert table for a child celebration. Theme: "${themeName}". Centerpiece is a gorgeous pastel decorated cake topped with an artisanal 3D layered paper cake topper featuring "${target}" in shiny gold foil. Surrounding table is styled with gourmet brigadeiro sweets in luxury paper wrappers, matching party favors, soft pastel balloon garland in the background, soft natural bokeh light.`
     };
 
-    // Gerar folhas técnicas de corte e passos de montagem física
+    // Gerar folhas técnicas e passos de montagem física
     const { cutSheets, assemblySteps } = this.generateCutSheetsAndAssembly(
       `${params.productType} Luxo 3D - Tema ${themeName}`,
       params.productType,
@@ -1953,13 +2143,25 @@ INSTRUÇÕES DE INSPEÇÃO VISUAL OBRIGATÓRIAS:
       params.colorPalette
     );
 
+    const fallbackPrice = isShaker ? 55.0 : isCakeTopper ? 42.0 : 38.0;
+    const { costing, commercialPapers } = this.calculateCostingAndCommercialPapers({
+      productTitle: `${params.productType} Luxo 3D - Tema ${themeName}`,
+      category: isCakeTopper ? 'Topos de Bolo' : 'Papelaria Criativa',
+      theme: themeName,
+      targetAgeAndName: target,
+      layers,
+      estimatedAssemblyMinutes: isShaker ? 35 : 20,
+      suggestedLeadTimeDays: 5,
+      recommendedPrice: fallbackPrice,
+    });
+
     return {
       productTitle: `${params.productType} Luxo 3D - Tema ${themeName}`,
       category: isCakeTopper ? 'Topos de Bolo' : 'Papelaria Criativa',
       description: `Projeto exclusivo e sofisticado de ${params.productType} no tema ${themeName}. Desenvolvido em camadas tridimensionais (Layering 3D) com acabamento nobre em ${pGold.name} e papéis de alta gramatura, garantindo firmeza, cores vivas e efeito volumétrico deslumbrante na mesa da festa.`,
       targetAgeAndName: target,
       theme: themeName,
-      recommendedPrice: isShaker ? 55.0 : isCakeTopper ? 42.0 : 38.0,
+      recommendedPrice: fallbackPrice,
       suggestedLeadTimeDays: 5,
       layers,
       papersShoppingList: [
@@ -1981,6 +2183,8 @@ INSTRUÇÕES DE INSPEÇÃO VISUAL OBRIGATÓRIAS:
       realisticPrompts,
       cutSheets,
       assemblySteps,
+      costing,
+      commercialPapers,
     };
   }
 }

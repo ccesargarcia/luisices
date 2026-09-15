@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Sparkles,
   Layers,
@@ -41,6 +41,13 @@ import {
   Minimize2,
   Maximize2,
   Box,
+  MessageCircle,
+  Share2,
+  Calculator,
+  ShoppingCart,
+  DollarSign,
+  CheckCheck,
+  CheckSquare,
 } from 'lucide-react';
 import {
   aiProductService,
@@ -52,6 +59,8 @@ import {
   AssemblyStep,
   AcervoItem,
   DEFAULT_ATELIER_ACERVO,
+  CommercialPaperMatch,
+  CostingBreakdown,
 } from '../../services/aiProductService';
 import { firebaseProductService } from '../../services/firebaseProductService';
 import { firebaseStoreProductService } from '../../services/firebaseStoreProductService';
@@ -110,13 +119,11 @@ export function AiProductGenerator() {
   const [blueprint, setBlueprint] = useState<AiProductBlueprint | null>(null);
   const [selectedLayerIndex, setSelectedLayerIndex] = useState<number | null>(null);
 
-  // Estado das Pranchas de Corte e Base de Corte
-  const [selectedCutSheetIndex, setSelectedCutSheetIndex] = useState<number>(0);
-  const [showCutMatGrid, setShowCutMatGrid] = useState<boolean>(true);
-  const [cutMatViewMode, setCutMatViewMode] = useState<'sheet' | 'stacked3d'>('sheet');
-  const [traceThreshold, setTraceThreshold] = useState<number>(30);
-  const [traceOffsetMm, setTraceOffsetMm] = useState<number>(3.0);
-  const [isTracing, setIsTracing] = useState<boolean>(false);
+  // Precificação e Orçamento Instantâneo
+  const [customProfitMargin, setCustomProfitMargin] = useState<number>(50);
+  const [customHourlyRate, setCustomHourlyRate] = useState<number>(25);
+  const [copiedProposal, setCopiedProposal] = useState<boolean>(false);
+  const [stockChecks, setStockChecks] = useState<Record<number, boolean>>({});
 
   // Estado do Estúdio de Prompts Realistas
   const [activePromptTab, setActivePromptTab] = useState<
@@ -189,30 +196,6 @@ export function AiProductGenerator() {
 
   // Salvar no catálogo
   const [savingProduct, setSavingProduct] = useState(false);
-
-  // Baixar arquivo SVG individual de corte para Silhouette Studio / Cricut
-  const handleDownloadCutSheetSvg = (sheet: CutSheet) => {
-    const blob = new Blob([sheet.svgContent], { type: 'image/svg+xml;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    const safeTitle = sheet.sheetTitle.replace(/[^a-zA-Z0-9_-]/g, '_');
-    a.download = `${safeTitle}.svg`;
-    a.click();
-    URL.revokeObjectURL(url);
-    toast.success(`SVG "${sheet.sheetTitle}" pronto para Silhouette Studio / Cricut!`);
-  };
-
-  // Baixar todos os arquivos SVG de corte do projeto
-  const handleDownloadAllCutSheets = () => {
-    if (!blueprint || !blueprint.cutSheets || blueprint.cutSheets.length === 0) return;
-    blueprint.cutSheets.forEach((sheet, idx) => {
-      setTimeout(() => {
-        handleDownloadCutSheetSvg(sheet);
-      }, idx * 300);
-    });
-    toast.success(`Baixando ${blueprint.cutSheets.length} pranchas de corte em SVG!`);
-  };
 
   // Carregar um Exemplo Pré-Configurado do Acervo
   const handleLoadPreset = (preset: CuratedPreset) => {
@@ -444,48 +427,38 @@ export function AiProductGenerator() {
     }
   };
 
-  // Recalcular rastreamento óptico e contorno de corte fiel da imagem
-  const handleRecalculateTrace = async (newOffset?: number, newThreshold?: number) => {
-    if (!blueprint || !blueprint.generatedImageUrl) {
-      toast.warning('Nenhuma imagem anexada para rastreamento.');
-      return;
-    }
-    const offset = newOffset !== undefined ? newOffset : traceOffsetMm;
-    const threshold = newThreshold !== undefined ? newThreshold : traceThreshold;
+  // Cálculo dinâmico de Orçamento e Mapeamento de Papéis Comerciais
+  const costingCalculation = useMemo(() => {
+    if (!blueprint) return null;
+    return aiProductService.calculateCostingAndCommercialPapers(
+      blueprint,
+      customHourlyRate,
+      customProfitMargin
+    );
+  }, [blueprint, customHourlyRate, customProfitMargin]);
 
-    setIsTracing(true);
-    try {
-      const traced = await aiProductService.traceImageContoursAsync(blueprint.generatedImageUrl, {
-        offsetMm: offset,
-        threshold,
-      });
+  // Copiar proposta formatada para WhatsApp
+  const handleCopyProposal = () => {
+    if (!costingCalculation?.costing) return;
+    navigator.clipboard.writeText(costingCalculation.costing.whatsappProposal);
+    setCopiedProposal(true);
+    toast.success('💬 Proposta para WhatsApp copiada com sucesso!');
+    setTimeout(() => setCopiedProposal(false), 2500);
+  };
 
-      const isShaker = (blueprint.category || '').toLowerCase().includes('shaker');
-      const technicals = aiProductService.generateCutSheetsAndAssembly(
-        blueprint.productTitle,
-        blueprint.category,
-        blueprint.theme,
-        blueprint.targetAgeAndName,
-        blueprint.layers,
-        isShaker,
-        blueprint.layers[0]?.colorName || 'Colorido',
-        traced,
-        blueprint.generatedImageUrl
-      );
+  // Enviar proposta diretamente para o WhatsApp Web / App
+  const handleSendWhatsApp = () => {
+    if (!costingCalculation?.costing) return;
+    const url = `https://wa.me/?text=${encodeURIComponent(costingCalculation.costing.whatsappProposal)}`;
+    window.open(url, '_blank');
+  };
 
-      setBlueprint({
-        ...blueprint,
-        imageTrace: traced,
-        cutSheets: technicals.cutSheets,
-        assemblySteps: technicals.assemblySteps,
-      });
-      toast.success(`✨ Contorno fiel recalculado com offset de ${offset}mm!`);
-    } catch (err) {
-      console.error('Erro ao recalcular rastreamento:', err);
-      toast.error('Não foi possível recalcular o contorno da imagem.');
-    } finally {
-      setIsTracing(false);
-    }
+  // Alternar status de estoque de um papel comercial
+  const handleToggleStock = (layerOrder: number) => {
+    setStockChecks((prev) => ({
+      ...prev,
+      [layerOrder]: !prev[layerOrder],
+    }));
   };
 
   // Gerar projeto com IA
@@ -687,9 +660,9 @@ export function AiProductGenerator() {
         headStyles: { fillColor: [130, 85, 87] },
       });
 
-      // Seção: Pranchas de Corte em Plotter
+      // Seção: Mapeamento de Papéis Comerciais (Fedrigoni / Lamicote / Kraft)
       currentY = (doc as any).lastAutoTable.finalY || 170;
-      if (blueprint.cutSheets && blueprint.cutSheets.length > 0) {
+      if (costingCalculation?.commercialPapers && costingCalculation.commercialPapers.length > 0) {
         if (currentY > 230) {
           doc.addPage();
           currentY = 20;
@@ -699,22 +672,22 @@ export function AiProductGenerator() {
 
         doc.setFontSize(12);
         doc.setTextColor(34, 26, 26);
-        doc.text('Pranchas de Corte (Silhouette / Cricut / SVG):', 14, currentY);
+        doc.text('Mapeamento de Papéis Comerciais & Acabamento:', 14, currentY);
 
-        const sheetsData = blueprint.cutSheets.map((s) => [
-          s.sheetTitle.split(':')[0] || `Folha ${s.sheetIndex}`,
-          s.paperType,
-          `${s.piecesCount} peças`,
-          `Lâm: ${s.cutBladeSettings.blade} / Força: ${s.cutBladeSettings.force}`,
-          `~${s.estimatedCutSeconds}s`,
+        const commercialData = costingCalculation.commercialPapers.map((p) => [
+          `Camada ${p.layerOrder}`,
+          p.commercialPaperName,
+          p.finishType,
+          p.usageRole,
+          `~${formatCurrency(p.estimatedCostPerSheet)}/fl`,
         ]);
 
         autoTable(doc, {
           startY: currentY + 4,
-          head: [['Prancha', 'Papel & Cor', 'Qtd. Peças', 'Calibração', 'Tempo de Corte']],
-          body: sheetsData,
+          head: [['Camada', 'Papel Comercial / Linha', 'Acabamento', 'Finalidade', 'Custo Folha']],
+          body: commercialData,
           theme: 'striped',
-          headStyles: { fillColor: [70, 80, 95] },
+          headStyles: { fillColor: [80, 50, 90] },
         });
 
         currentY = (doc as any).lastAutoTable.finalY || 200;
@@ -1918,352 +1891,293 @@ export function AiProductGenerator() {
                 </Card>
               </div>
 
-              {/* Seção: Matriz de Corte & Arquivos SVG para Silhouette / Cricut */}
-              {blueprint.cutSheets && blueprint.cutSheets.length > 0 && (
-                <Card className="shadow-sm border-primary/30 overflow-hidden">
-                  <CardHeader className="border-b bg-muted/30 pb-3.5">
+              {/* Módulo 1: Orçamento Instantâneo por Imagem & Proposta para WhatsApp */}
+              {costingCalculation?.costing && (
+                <Card className="shadow-sm border-emerald-500/30 overflow-hidden">
+                  <CardHeader className="border-b bg-emerald-500/5 pb-3.5">
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                       <div className="flex items-center gap-2.5">
-                        <div className="p-2 rounded-xl bg-primary text-primary-foreground shadow-xs">
-                          <Scissors className="size-4" />
+                        <div className="p-2 rounded-xl bg-emerald-600 text-white shadow-xs">
+                          <Calculator className="size-4" />
                         </div>
                         <div>
                           <div className="flex items-center gap-2">
-                            <CardTitle className="text-base font-bold">
-                              Matriz de Corte & Pranchas para Plotter
+                            <CardTitle className="text-base font-bold text-foreground">
+                              Orçamento Instantâneo & Precificação de Venda
                             </CardTitle>
-                            <Badge className="bg-primary/20 text-primary border-0 text-[10px] font-semibold">
-                              {blueprint.cutSheets.length} Folhas A4
+                            <Badge className="bg-emerald-600/20 text-emerald-700 dark:text-emerald-300 border-0 text-[10px] font-bold">
+                              Margem {customProfitMargin}%
                             </Badge>
                           </div>
                           <CardDescription className="text-xs">
-                            Pranchas de corte separadas por folha e cor com linhas vermelhas padrão (#FF0000) e calibração de lâmina
+                            Cálculo de custos de produção, mão de obra e proposta comercial formatada para o cliente
                           </CardDescription>
                         </div>
                       </div>
 
-                      <div className="flex flex-wrap items-center gap-2">
-                        {/* Seletor de Modo: Pranchas vs Visão 3D */}
-                        <div className="flex items-center gap-1 bg-muted/60 p-0.5 rounded-lg border">
-                          <Button
-                            variant={cutMatViewMode === 'sheet' ? 'default' : 'ghost'}
-                            size="sm"
-                            onClick={() => setCutMatViewMode('sheet')}
-                            className="text-xs h-7 gap-1 px-2.5"
-                          >
-                            <Scissors className="size-3" />
-                            Por Prancha
-                          </Button>
-                          <Button
-                            variant={cutMatViewMode === 'stacked3d' ? 'default' : 'ghost'}
-                            size="sm"
-                            onClick={() => setCutMatViewMode('stacked3d')}
-                            className="text-xs h-7 gap-1 px-2.5"
-                          >
-                            <Box className="size-3" />
-                            Montagem 3D
-                          </Button>
+                      <div className="flex items-center gap-2">
+                        <Badge variant="outline" className="text-sm font-bold border-emerald-500/30 text-emerald-700 dark:text-emerald-300 px-3 py-1 bg-emerald-50 dark:bg-emerald-950/40">
+                          Sugerido: {formatCurrency(costingCalculation.costing.suggestedPrice)}
+                        </Badge>
+                      </div>
+                    </div>
+                  </CardHeader>
+
+                  <CardContent className="p-4 space-y-5">
+                    {/* Grade de Composição de Custos */}
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                      <div className="p-3 rounded-xl border bg-card/60 space-y-1">
+                        <span className="text-[10px] text-muted-foreground font-medium flex items-center gap-1">
+                          <ShoppingBag className="size-3 text-muted-foreground" /> Materiais & Papéis
+                        </span>
+                        <p className="text-base font-bold text-foreground">
+                          {formatCurrency(costingCalculation.costing.materialsCost)}
+                        </p>
+                        <span className="text-[9px] text-muted-foreground block">
+                          Papéis nobres + fita/cola
+                        </span>
+                      </div>
+
+                      <div className="p-3 rounded-xl border bg-card/60 space-y-1">
+                        <span className="text-[10px] text-muted-foreground font-medium flex items-center gap-1">
+                          <Clock className="size-3 text-muted-foreground" /> Mão de Obra
+                        </span>
+                        <p className="text-base font-bold text-foreground">
+                          {formatCurrency(costingCalculation.costing.laborCost)}
+                        </p>
+                        <span className="text-[9px] text-muted-foreground block">
+                          ~{costingCalculation.costing.laborMinutes}min a {formatCurrency(customHourlyRate)}/h
+                        </span>
+                      </div>
+
+                      <div className="p-3 rounded-xl border bg-card/60 space-y-1">
+                        <span className="text-[10px] text-muted-foreground font-medium flex items-center gap-1">
+                          <Coins className="size-3 text-muted-foreground" /> Custos Indiretos
+                        </span>
+                        <p className="text-base font-bold text-foreground">
+                          {formatCurrency(costingCalculation.costing.overheadCost)}
+                        </p>
+                        <span className="text-[9px] text-muted-foreground block">
+                          Energia, desgaste e lâmina
+                        </span>
+                      </div>
+
+                      <div className="p-3 rounded-xl border bg-muted/40 space-y-1 border-primary/20">
+                        <span className="text-[10px] text-foreground font-semibold flex items-center gap-1">
+                          <Calculator className="size-3 text-primary" /> Custo de Produção
+                        </span>
+                        <p className="text-base font-bold text-primary">
+                          {formatCurrency(costingCalculation.costing.totalProductionCost)}
+                        </p>
+                        <span className="text-[9px] text-muted-foreground block">
+                          Custo total antes da margem
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Controles de Margem e Lucro Líquido */}
+                    <div className="p-4 rounded-xl bg-muted/20 border border-muted-foreground/10 space-y-3">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-center">
+                        <div className="space-y-2">
+                          <div className="flex justify-between items-center text-xs">
+                            <span className="font-semibold text-foreground">
+                              Margem de Lucro Desejada:
+                            </span>
+                            <span className="font-mono font-bold text-emerald-600 dark:text-emerald-400">
+                              {customProfitMargin}%
+                            </span>
+                          </div>
+                          <Slider
+                            value={[customProfitMargin]}
+                            min={25}
+                            max={75}
+                            step={5}
+                            onValueChange={(vals) => setCustomProfitMargin(vals[0])}
+                          />
                         </div>
+
+                        <div className="flex items-center justify-between p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
+                          <div>
+                            <span className="text-[10px] text-muted-foreground font-medium block">
+                              Lucro Líquido Estimado
+                            </span>
+                            <span className="text-lg font-bold text-emerald-700 dark:text-emerald-300">
+                              +{formatCurrency(costingCalculation.costing.netProfit)}
+                            </span>
+                          </div>
+                          <div className="text-right">
+                            <span className="text-[10px] text-muted-foreground font-medium block">
+                              Preço Final de Venda
+                            </span>
+                            <span className="text-lg font-bold text-foreground">
+                              {formatCurrency(costingCalculation.costing.suggestedPrice)}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Proposta Comercial Pronta para WhatsApp */}
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <Label className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                          <MessageCircle className="size-4 text-emerald-600" />
+                          Mensagem Pronta para WhatsApp da Cliente
+                        </Label>
+                        <span className="text-[11px] text-muted-foreground">
+                          Copie ou envie com 1 clique
+                        </span>
+                      </div>
+
+                      <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-900 border text-xs text-foreground font-sans whitespace-pre-line leading-relaxed shadow-inner">
+                        {costingCalculation.costing.whatsappProposal}
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-2 pt-1">
+                        <Button
+                          onClick={handleCopyProposal}
+                          className={`flex-1 gap-2 font-semibold shadow-xs ${
+                            copiedProposal
+                              ? 'bg-emerald-700 text-white'
+                              : 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                          }`}
+                        >
+                          {copiedProposal ? (
+                            <CheckCheck className="size-4" />
+                          ) : (
+                            <Copy className="size-4" />
+                          )}
+                          {copiedProposal ? 'Proposta Copiada!' : 'Copiar Mensagem para WhatsApp'}
+                        </Button>
 
                         <Button
                           variant="outline"
-                          size="sm"
-                          onClick={() => setShowCutMatGrid(!showCutMatGrid)}
-                          className="text-xs h-8 gap-1.5"
+                          onClick={handleSendWhatsApp}
+                          className="gap-2 text-xs border-emerald-500/40 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 text-emerald-700 dark:text-emerald-300"
                         >
-                          <Grid className="size-3.5" />
-                          {showCutMatGrid ? 'Ocultar Grade' : 'Exibir Grade'}
+                          <Share2 className="size-3.5" />
+                          Abrir no WhatsApp
                         </Button>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
 
-                        <Button
-                          size="sm"
-                          onClick={handleDownloadAllCutSheets}
-                          className="text-xs h-8 gap-1.5 font-semibold shadow-xs"
-                        >
-                          <Download className="size-3.5" />
-                          Baixar Todas (.SVG)
-                        </Button>
+              {/* Módulo 2: Mapeador de Papéis Comerciais & Separação de Estoque (BOM) */}
+              {costingCalculation?.commercialPapers && costingCalculation.commercialPapers.length > 0 && (
+                <Card className="shadow-sm border-primary/30">
+                  <CardHeader className="pb-3 border-b bg-muted/20">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div className="flex items-center gap-2.5">
+                        <div className="p-2 rounded-xl bg-purple-500/10 text-purple-600 shadow-xs">
+                          <Palette className="size-4" />
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <CardTitle className="text-base font-bold">
+                              Mapeamento de Papéis Comerciais & Separação (BOM)
+                            </CardTitle>
+                            <Badge className="bg-purple-500/10 text-purple-700 dark:text-purple-300 border-0 text-[10px] font-semibold">
+                              {costingCalculation.commercialPapers.length} Camadas Físicas
+                            </Badge>
+                          </div>
+                          <CardDescription className="text-xs">
+                            Mapeamento real para marcas Fedrigoni Colorplus, Lamicote, Suzano Offset e Kraft Klabin
+                          </CardDescription>
+                        </div>
                       </div>
                     </div>
                   </CardHeader>
 
                   <CardContent className="p-4 space-y-4">
-                    {/* Seletor de Folhas / Pranchas (apenas no modo sheet) */}
-                    {cutMatViewMode === 'sheet' && (
-                      <div className="flex flex-wrap gap-2 p-1.5 bg-muted/40 rounded-xl border">
-                        {blueprint.cutSheets.map((sheet, index) => {
-                          const isSelected = selectedCutSheetIndex === index;
-                          return (
-                            <button
-                              key={sheet.sheetIndex}
-                              type="button"
-                              onClick={() => setSelectedCutSheetIndex(index)}
-                              className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs transition-all ${
-                                isSelected
-                                  ? 'bg-background text-foreground shadow-xs font-semibold border-primary/40 border'
-                                  : 'text-muted-foreground hover:text-foreground hover:bg-background/50 border border-transparent'
-                              }`}
-                            >
+                    {/* Tabela de Papéis Comerciais Mapeados */}
+                    <div className="space-y-2.5">
+                      {costingCalculation.commercialPapers.map((paper) => {
+                        const inStock = stockChecks[paper.layerOrder] ?? false;
+                        return (
+                          <div
+                            key={paper.layerOrder}
+                            className="p-3 rounded-xl border bg-card hover:bg-muted/20 transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs"
+                          >
+                            <div className="flex items-center gap-3">
                               <div
-                                className="size-3.5 rounded-full border border-black/20 shrink-0"
-                                style={{ backgroundColor: sheet.colorHex }}
-                              />
-                              <span>{sheet.sheetTitle.split(':')[0]}</span>
-                              <Badge
-                                variant="secondary"
-                                className="text-[9px] px-1 py-0 h-4 bg-muted font-normal"
+                                className="size-7 rounded-full border border-black/20 shrink-0 shadow-xs flex items-center justify-center text-[10px] font-bold text-white drop-shadow-xs"
+                                style={{ backgroundColor: paper.detectedColorHex }}
                               >
-                                Lâm {sheet.cutBladeSettings.blade}
-                              </Badge>
-                            </button>
-                          );
-                        })}
+                                {paper.layerOrder}
+                              </div>
+
+                              <div className="space-y-0.5">
+                                <div className="flex items-center gap-2">
+                                  <span className="font-bold text-foreground">
+                                    {paper.commercialPaperName}
+                                  </span>
+                                  <Badge
+                                    variant="outline"
+                                    className={`text-[9px] px-1.5 py-0 ${
+                                      paper.finishType === 'Metálico Espelhado'
+                                        ? 'border-yellow-500 text-yellow-700 bg-yellow-50 dark:bg-yellow-950/30'
+                                        : paper.finishType === 'Glitter'
+                                        ? 'border-purple-500 text-purple-700 bg-purple-50 dark:bg-purple-950/30'
+                                        : paper.finishType === 'Kraft Rústico'
+                                        ? 'border-amber-700 text-amber-800 bg-amber-50 dark:bg-amber-950/30'
+                                        : 'border-muted-foreground/30 text-muted-foreground'
+                                    }`}
+                                  >
+                                    {paper.finishType}
+                                  </Badge>
+                                </div>
+
+                                <p className="text-[11px] text-muted-foreground">
+                                  <strong>Finalidade:</strong> {paper.usageRole} • <strong>Linha:</strong> {paper.commercialBrand} ({paper.recommendedGramature})
+                                </p>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-2.5 shrink-0 self-end sm:self-center">
+                              <span className="font-mono text-[11px] text-muted-foreground">
+                                ~{formatCurrency(paper.estimatedCostPerSheet)}/fl
+                              </span>
+
+                              <Button
+                                size="sm"
+                                variant={inStock ? 'default' : 'outline'}
+                                onClick={() => handleToggleStock(paper.layerOrder)}
+                                className={`h-7 text-xs gap-1.5 px-2.5 ${
+                                  inStock
+                                    ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                                    : 'text-muted-foreground hover:text-foreground'
+                                }`}
+                              >
+                                {inStock ? (
+                                  <Check className="size-3" />
+                                ) : (
+                                  <CheckSquare className="size-3" />
+                                )}
+                                {inStock ? 'Em Estoque' : 'Separar'}
+                              </Button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {/* Lista de Aviamentos & Consumíveis */}
+                    {blueprint.toolsAndAccessories && blueprint.toolsAndAccessories.length > 0 && (
+                      <div className="p-3 rounded-xl bg-muted/30 border space-y-2">
+                        <span className="font-semibold text-xs text-foreground block flex items-center gap-1.5">
+                          <ShoppingBag className="size-3.5 text-primary" /> Aviamentos & Insumos de Montagem:
+                        </span>
+                        <div className="flex flex-wrap gap-1.5">
+                          {blueprint.toolsAndAccessories.map((tool, idx) => (
+                            <Badge key={idx} variant="secondary" className="text-xs font-normal bg-background">
+                              • {tool}
+                            </Badge>
+                          ))}
+                        </div>
                       </div>
                     )}
-
-                    {/* Visualizador da Folha Selecionada e Base de Corte */}
-                    {(() => {
-                      const currentSheet = blueprint.cutSheets[selectedCutSheetIndex] || blueprint.cutSheets[0];
-                      if (!currentSheet) return null;
-
-                      return (
-                        <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 pt-1">
-                          {/* Simulador da Base de Corte Silhouette (A4 Mat / 210x297mm) */}
-                          <div className="lg:col-span-7 flex flex-col items-center">
-                            <div className="w-full flex items-center justify-between pb-2 text-xs">
-                              <span className="font-semibold text-foreground flex items-center gap-1.5">
-                                <Eye className="size-3.5 text-primary" />
-                                {cutMatViewMode === 'sheet'
-                                  ? 'Base de Corte Portrait / Cameo (A4 - 210 × 297 mm)'
-                                  : 'Simulação de Montagem 3D Sobreposta (Fita Banana 2mm)'}
-                              </span>
-                              {cutMatViewMode === 'sheet' && (
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() => handleDownloadCutSheetSvg(currentSheet)}
-                                  className="h-7 text-xs gap-1 text-primary border-primary/30 hover:bg-primary/5"
-                                >
-                                  <Download className="size-3" />
-                                  Baixar SVG desta Folha
-                                </Button>
-                              )}
-                            </div>
-
-                            {/* Canvas da Base de Corte */}
-                            <div
-                              className={`relative w-full aspect-[210/297] max-w-[420px] rounded-xl border-2 border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-md overflow-hidden flex flex-col justify-between transition-all ${
-                                showCutMatGrid
-                                  ? 'bg-[radial-gradient(#cbd5e1_1px,transparent_1px)] dark:bg-[radial-gradient(#334155_1px,transparent_1px)] [background-size:16px_16px]'
-                                  : ''
-                              }`}
-                            >
-                              {/* Réguas Superior e Lateral da Base de Corte */}
-                              <div className="absolute top-0 left-0 right-0 h-5 bg-slate-100 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between px-2 text-[8px] font-mono text-slate-500 select-none z-10">
-                                <span>0</span>
-                                <span>5cm</span>
-                                <span>10cm</span>
-                                <span>15cm</span>
-                                <span>20cm</span>
-                              </div>
-
-                              {/* Conteúdo Vetorial SVG Renderizado */}
-                              {cutMatViewMode === 'sheet' ? (
-                                <div
-                                  className="w-full h-full pt-5 flex items-center justify-center p-2"
-                                  dangerouslySetInnerHTML={{ __html: currentSheet.svgContent }}
-                                />
-                              ) : (
-                                <div className="w-full h-full pt-6 flex flex-col items-center justify-center p-4 relative overflow-hidden">
-                                  <div className="relative w-full h-[85%] flex items-center justify-center">
-                                    {blueprint.layers.map((layer, idx) => {
-                                      const depth = (blueprint.layers.length - idx) * 12;
-                                      const shadow = (idx + 1) * 6;
-                                      return (
-                                        <div
-                                          key={idx}
-                                          className="absolute w-[80%] h-[70%] rounded-2xl border-2 flex flex-col items-center justify-between p-3 transition-all duration-300"
-                                          style={{
-                                            transform: `translateY(-${depth}px) scale(${0.9 + idx * 0.02})`,
-                                            backgroundColor: `${layer.colorHex}25`,
-                                            borderColor: layer.colorHex,
-                                            boxShadow: `0px ${shadow}px ${shadow * 2}px rgba(0,0,0,0.15)`,
-                                            zIndex: idx + 1,
-                                          }}
-                                        >
-                                          <div className="w-full flex items-center justify-between text-[10px] font-bold">
-                                            <span
-                                              className="px-2 py-0.5 rounded shadow-xs bg-background/90"
-                                              style={{ color: layer.colorHex }}
-                                            >
-                                              Camada {idx + 1}: {layer.name.split('(')[0]}
-                                            </span>
-                                            <span className="text-muted-foreground font-mono">
-                                              +{idx * 2}mm
-                                            </span>
-                                          </div>
-                                          <div className="text-center text-[10px] text-muted-foreground font-medium">
-                                            {layer.paperType}
-                                          </div>
-                                          <div className="text-[9px] text-muted-foreground/80 italic">
-                                            Fita Banana 2mm
-                                          </div>
-                                        </div>
-                                      );
-                                    })}
-                                  </div>
-                                  <p className="text-[10px] text-muted-foreground text-center pt-2">
-                                    Visualização explodida das {blueprint.layers.length} camadas sobrepostas com relevo
-                                  </p>
-                                </div>
-                              )}
-
-                              {/* Rodapé da Base de Corte */}
-                              <div className="h-5 bg-slate-100 dark:bg-slate-800 border-t border-slate-200 dark:border-slate-700 flex items-center justify-between px-3 text-[8px] text-slate-500 select-none">
-                                <span className="flex items-center gap-1">
-                                  <span className="size-2 rounded-full bg-red-500 inline-block" /> Linha de Corte Lâmina (#FF0000)
-                                </span>
-                                <span>Escala 1:1 (96 DPI)</span>
-                              </div>
-                            </div>
-                          </div>
-
-                          {/* Painel de Especificações Técnicas da Prancha */}
-                          <div className="lg:col-span-5 space-y-3 flex flex-col justify-between">
-                            <div className="space-y-3">
-                              <div className="p-3.5 rounded-xl border bg-card space-y-2">
-                                <div className="flex items-center justify-between">
-                                  <Badge className="text-xs bg-primary text-primary-foreground font-semibold">
-                                    {currentSheet.sheetTitle.split(':')[0]}
-                                  </Badge>
-                                  <Badge variant="outline" className="text-xs font-mono">
-                                    ~{currentSheet.estimatedCutSeconds}s corte
-                                  </Badge>
-                                </div>
-
-                                <h4 className="font-bold text-sm text-foreground">
-                                  {currentSheet.sheetTitle.split(':')[1] || currentSheet.sheetTitle}
-                                </h4>
-
-                                <p className="text-xs text-muted-foreground">
-                                  <strong>Papel Recomendado:</strong> {currentSheet.paperType} ({currentSheet.colorName})
-                                </p>
-                              </div>
-
-                              {/* Parâmetros de Calibração da Lâmina */}
-                              <div className="grid grid-cols-2 gap-2">
-                                <div className="p-2.5 rounded-lg border bg-muted/40 text-center">
-                                  <span className="text-[10px] text-muted-foreground block font-medium">Lâmina</span>
-                                  <span className="text-base font-bold text-foreground">
-                                    {currentSheet.cutBladeSettings.blade}
-                                  </span>
-                                </div>
-
-                                <div className="p-2.5 rounded-lg border bg-muted/40 text-center">
-                                  <span className="text-[10px] text-muted-foreground block font-medium">Força / Pressão</span>
-                                  <span className="text-base font-bold text-foreground">
-                                    {currentSheet.cutBladeSettings.force}
-                                  </span>
-                                </div>
-
-                                <div className="p-2.5 rounded-lg border bg-muted/40 text-center">
-                                  <span className="text-[10px] text-muted-foreground block font-medium">Velocidade</span>
-                                  <span className="text-base font-bold text-foreground">
-                                    {currentSheet.cutBladeSettings.speed}
-                                  </span>
-                                </div>
-
-                                <div className="p-2.5 rounded-lg border bg-muted/40 text-center">
-                                  <span className="text-[10px] text-muted-foreground block font-medium">Passadas</span>
-                                  <span className="text-base font-bold text-foreground">
-                                    {currentSheet.cutBladeSettings.passes}x
-                                  </span>
-                                </div>
-                              </div>
-
-                              {/* Instrução Específica para esta Folha */}
-                              <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-xs text-amber-900 dark:text-amber-200 space-y-1">
-                                <span className="font-semibold block flex items-center gap-1">
-                                  <AlertCircle className="size-3.5" /> Dica de Corte & Encaixe:
-                                </span>
-                                <p className="leading-relaxed text-[11px]">
-                                  {currentSheet.assemblyInstructions}
-                                </p>
-                              </div>
-
-                              {/* Controles de Rastreio Óptico Fiel (Auto-Trace) quando houver imagem base */}
-                              {blueprint.generatedImageUrl && (
-                                <div className="p-3 rounded-xl bg-purple-500/10 border border-purple-500/20 text-xs space-y-2.5">
-                                  <div className="flex items-center justify-between">
-                                    <span className="font-bold flex items-center gap-1.5 text-purple-900 dark:text-purple-200">
-                                      <Sparkles className="size-3.5 text-purple-600" /> Rastreio Óptico Fiel (Auto-Trace)
-                                    </span>
-                                    {blueprint.imageTrace && (
-                                      <Badge variant="outline" className="text-[10px] bg-purple-100 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border-purple-300">
-                                        {blueprint.imageTrace.pointCount} nós
-                                      </Badge>
-                                    )}
-                                  </div>
-
-                                  <div className="space-y-1.5">
-                                    <div className="flex justify-between text-[11px] text-muted-foreground">
-                                      <span>Deslocamento Base (Offset):</span>
-                                      <span className="font-mono font-bold text-foreground">+{traceOffsetMm.toFixed(1)}mm</span>
-                                    </div>
-                                    <Slider
-                                      value={[traceOffsetMm]}
-                                      min={0.5}
-                                      max={6.0}
-                                      step={0.5}
-                                      onValueChange={(vals) => setTraceOffsetMm(vals[0])}
-                                    />
-                                  </div>
-
-                                  <div className="space-y-1.5">
-                                    <div className="flex justify-between text-[11px] text-muted-foreground">
-                                      <span>Sensibilidade de Fundo:</span>
-                                      <span className="font-mono font-bold text-foreground">{traceThreshold}</span>
-                                    </div>
-                                    <Slider
-                                      value={[traceThreshold]}
-                                      min={10}
-                                      max={80}
-                                      step={5}
-                                      onValueChange={(vals) => setTraceThreshold(vals[0])}
-                                    />
-                                  </div>
-
-                                  <Button
-                                    type="button"
-                                    size="sm"
-                                    variant="outline"
-                                    onClick={() => handleRecalculateTrace()}
-                                    disabled={isTracing}
-                                    className="w-full text-xs gap-1.5 h-8 border-purple-300 hover:bg-purple-100/50 dark:hover:bg-purple-950/40 text-purple-900 dark:text-purple-200 font-semibold"
-                                  >
-                                    {isTracing ? (
-                                      <Loader2 className="size-3.5 animate-spin" />
-                                    ) : (
-                                      <RefreshCw className="size-3.5" />
-                                    )}
-                                    {isTracing ? 'Vetorizando Imagem...' : 'Recalcular Contorno Fiel'}
-                                  </Button>
-                                </div>
-                              )}
-                            </div>
-
-                            {/* Botão de Download Direto do SVG */}
-                            <Button
-                              onClick={() => handleDownloadCutSheetSvg(currentSheet)}
-                              className="w-full gap-2 font-semibold shadow-xs"
-                            >
-                              <Download className="size-4" />
-                              Baixar SVG ({currentSheet.sheetTitle.split(':')[0]})
-                            </Button>
-                          </div>
-                        </div>
-                      );
-                    })()}
                   </CardContent>
                 </Card>
               )}
