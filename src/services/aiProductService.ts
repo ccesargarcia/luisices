@@ -66,7 +66,97 @@ export interface GenerateProductParams {
   plotter: 'portrait3' | 'cameo4' | 'cricut' | 'manual';
   customInstructions?: string;
   geminiApiKey?: string;
+  tunedModelId?: string;
+  trainingExamples?: AiProductBlueprint[];
 }
+
+export interface CuratedPreset {
+  id: string;
+  title: string;
+  productType: string;
+  theme: string;
+  targetNameAndAge: string;
+  colorPalette: string;
+  complexity: 'iniciante' | 'avançado';
+  plotter: 'portrait3' | 'cameo4' | 'cricut' | 'manual';
+  customInstructions: string;
+  badge: string;
+}
+
+export const CURATED_PRESETS: CuratedPreset[] = [
+  {
+    id: 'topo-jardim',
+    title: 'Topo 3D Jardim Encantado',
+    productType: 'Topo de Bolo 3D',
+    theme: 'Jardim Encantado',
+    targetNameAndAge: 'Helena - 3 anos',
+    colorPalette: 'Candy Colors / Pastéis',
+    complexity: 'avançado',
+    plotter: 'portrait3',
+    customInstructions: 'Borboletas vazadas em lamicote dourado com flores em camadas de papel Colorplus Rosa Chá e Verde Menta.',
+    badge: 'Mais Vendido',
+  },
+  {
+    id: 'shaker-astronauta',
+    title: 'Topo Shaker Astronauta no Espaço',
+    productType: 'Topo Shaker Luxo',
+    theme: 'Astronauta no Espaço',
+    targetNameAndAge: 'Theo - 1 ano',
+    colorPalette: 'Azul Marinho & Prata',
+    complexity: 'avançado',
+    plotter: 'cameo4',
+    customInstructions: 'Visor shaker em acetato com estrelas prateadas e lantejoulas holográficas, planetas com relevo 3D.',
+    badge: 'Luxo Shaker',
+  },
+  {
+    id: 'caixa-safari',
+    title: 'Caixa Milk Safari Baby Luxo',
+    productType: 'Caixa Milk 3D',
+    theme: 'Safari Baby',
+    targetNameAndAge: 'Arthur - 2 anos',
+    colorPalette: 'Tons Terrosos & Rústico',
+    complexity: 'iniciante',
+    plotter: 'portrait3',
+    customInstructions: 'Camadas em papel Kraft 240g com apliques de leãozinho e folhagens em Colorplus Santiago e Havana.',
+    badge: 'Lembrancinha',
+  },
+  {
+    id: 'letra-circo',
+    title: 'Letra 3D Circo Rosa Vintage',
+    productType: 'Letra 3D Personalizada',
+    theme: 'Circo Rosa',
+    targetNameAndAge: 'Valentina - 5 anos',
+    colorPalette: 'Rosa & Floral Delicado',
+    complexity: 'avançado',
+    plotter: 'portrait3',
+    customInstructions: 'Letra estrutural em Offset 240g com arabescos dourados em Lamicote e flores de papel no topo.',
+    badge: 'Destaque Mesa',
+  },
+  {
+    id: 'marcador-borboleta',
+    title: 'Marcador de Página Borboleta Ouro',
+    productType: 'Marcador de Página Luxo',
+    theme: 'Borboletas Clássicas',
+    targetNameAndAge: 'Lembrança Especial',
+    colorPalette: 'Dourado & Luxo',
+    complexity: 'iniciante',
+    plotter: 'portrait3',
+    customInstructions: 'Corte rendado fino em Lamicote Dourado 250g com base em Colorplus Marfim e fita de cetim.',
+    badge: 'Fácil Produção',
+  },
+  {
+    id: 'topo-dino',
+    title: 'Topo 3D Dino Baby Cute',
+    productType: 'Topo de Bolo 3D',
+    theme: 'Dino Baby',
+    targetNameAndAge: 'Gael - 4 anos',
+    colorPalette: 'Candy Colors / Pastéis',
+    complexity: 'avançado',
+    plotter: 'portrait3',
+    customInstructions: 'Dinossauros fofos em camadas sobrepostas com folhas tropicais e nome em Lamicote Ouro.',
+    badge: 'Popular',
+  },
+];
 
 const SYSTEM_PROMPT = `
 Você é o Engenheiro Chefe de Produção e Designer Mestre em Papelaria Personalizada para Ateliês Artesanais de Alto Padrão no Brasil, além de Especialista Sênior em Engenharia de Prompts para IAs Generativas de Imagem (Midjourney v6, Ideogram 2.0, DALL-E 3 e Flux.1).
@@ -117,12 +207,56 @@ export class AiProductService {
     return import.meta.env.VITE_GEMINI_API_KEY || '';
   }
 
+  private getTunedModelId(customModel?: string): string {
+    if (customModel && customModel.trim()) return customModel.trim();
+    if (typeof window !== 'undefined') {
+      const stored = localStorage.getItem('luisices_gemini_tuned_model_id');
+      if (stored && stored.trim()) return stored.trim();
+    }
+    return '';
+  }
+
+  /**
+   * Exporta os acertos/projetos aprovados da artesã no formato JSONL para Fine-Tuning no Google AI Studio
+   */
+  exportTrainingDatasetAsJsonl(blueprints: AiProductBlueprint[]): string {
+    const lines = blueprints.map((bp) => {
+      const inputPrompt = `Projete um produto de papelaria personalizada: Tipo: ${bp.category}, Tema: ${bp.theme}, Personalização: ${bp.targetAgeAndName}`;
+      const outputJson = JSON.stringify(bp);
+      return JSON.stringify({
+        messages: [
+          { role: 'user', content: inputPrompt },
+          { role: 'model', content: outputJson },
+        ],
+      });
+    });
+    return lines.join('\n');
+  }
+
   /**
    * Gera o projeto físico completo de um produto de papelaria personalizada
    */
   async generateProductBlueprint(params: GenerateProductParams): Promise<AiProductBlueprint> {
     const apiKey = this.getApiKey(params.geminiApiKey);
+    const tunedModel = this.getTunedModelId(params.tunedModelId);
     const conversationId = `prod_gen_${Date.now()}`;
+
+    // Montar Few-Shot Context se houver histórico de acertos do ateliê
+    let fewShotContext = '';
+    const trainingList = params.trainingExamples && params.trainingExamples.length > 0
+      ? params.trainingExamples
+      : this.getSavedAtelierSuccesses();
+
+    if (trainingList.length > 0) {
+      fewShotContext = `\n\nMEMÓRIA DE ACERTOS DO ATELIÊ (EXEMPLOS REAIS APROVADOS PELA ARTESÃ):\nUse os seguintes exemplos aprovados anteriormente como referência de alta qualidade de camadas, preços e prompts:\n`;
+      trainingList.slice(0, 3).forEach((ex, i) => {
+        fewShotContext += `--- Exemplo Aprovado ${i + 1} (${ex.productTitle}) ---\n`;
+        fewShotContext += `Tema: ${ex.theme} | Personalização: ${ex.targetAgeAndName} | Preço: R$ ${ex.recommendedPrice}\n`;
+        fewShotContext += `Camadas: ${ex.layers.map(l => `${l.name} (${l.paperType})`).join(' -> ')}\n`;
+        fewShotContext += `Prompt Ideogram: ${ex.realisticPrompts?.ideogramPrompt || ''}\n`;
+        fewShotContext += `Prompt Midjourney: ${ex.realisticPrompts?.midjourneyPrompt || ''}\n\n`;
+      });
+    }
 
     return traceAgentRun('PaperCraftProductDesigner', conversationId, async () => {
       if (!apiKey) {
@@ -139,6 +273,7 @@ Projete um produto de papelaria personalizada e gere prompts ultra-realistas par
 - Complexidade: ${params.complexity}
 - Máquina de Corte / Plotter: ${params.plotter}
 ${params.customInstructions ? `- Instruções Adicionais da Artesã: ${params.customInstructions}` : ''}
+${fewShotContext}
 
 Retorne estritamente um JSON com este schema:
 {
@@ -181,8 +316,10 @@ Retorne estritamente um JSON com este schema:
 `;
 
       try {
-        const responseText = await traceAIChat('gemini-2.5-flash', conversationId, async () => {
-          const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
+        const modelName = tunedModel || 'gemini-2.5-flash';
+        const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
+
+        const responseText = await traceAIChat(modelName, conversationId, async () => {
           const response = await fetch(endpoint, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -227,6 +364,35 @@ Retorne estritamente um JSON com este schema:
       }
     });
   }
+
+  /**
+   * Obtém os acertos salvos pela artesã no armazenamento local
+   */
+  getSavedAtelierSuccesses(): AiProductBlueprint[] {
+    if (typeof window === 'undefined') return [];
+    try {
+      const saved = localStorage.getItem('luisices_atelier_training_examples');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * Salva um projeto como acerto de referência para treinar a IA
+   */
+  saveAtelierSuccess(blueprint: AiProductBlueprint): void {
+    if (typeof window === 'undefined') return;
+    try {
+      const existing = this.getSavedAtelierSuccesses();
+      const filtered = existing.filter((b) => b.productTitle !== blueprint.productTitle);
+      const updated = [blueprint, ...filtered].slice(0, 10); // Manter até os 10 melhores acertos
+      localStorage.setItem('luisices_atelier_training_examples', JSON.stringify(updated));
+    } catch (e) {
+      console.warn('Erro ao salvar acerto:', e);
+    }
+  }
+
 
   /**
    * Gerador inteligente local baseado em regras reais de papelaria brasileira e prompt engineering

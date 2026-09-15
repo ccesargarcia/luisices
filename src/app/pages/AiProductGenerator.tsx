@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Sparkles,
   Layers,
@@ -26,11 +26,19 @@ import {
   Plus,
   RefreshCw,
   Sparkle,
+  Brain,
+  Star,
+  BookmarkCheck,
+  Trash2,
+  FileDown,
+  BookOpen,
 } from 'lucide-react';
 import {
   aiProductService,
   AiProductBlueprint,
   GenerateProductParams,
+  CURATED_PRESETS,
+  CuratedPreset,
 } from '../../services/aiProductService';
 import { firebaseProductService } from '../../services/firebaseProductService';
 import { firebaseStoreProductService } from '../../services/firebaseStoreProductService';
@@ -96,18 +104,53 @@ export function AiProductGenerator() {
   const [customImageUrl, setCustomImageUrl] = useState('');
   const [isAttachingImage, setIsAttachingImage] = useState(false);
 
-  // Configuração da chave de API
+  // Memória de Treinamento com Acertos do Ateliê
+  const [savedSuccesses, setSavedSuccesses] = useState<AiProductBlueprint[]>(() => {
+    return aiProductService.getSavedAtelierSuccesses();
+  });
+  const [isMemoryDialogOpen, setIsMemoryDialogOpen] = useState(false);
+
+  // Configuração da chave de API e Modelo Tuned
   const [isApiKeyDialogOpen, setIsApiKeyDialogOpen] = useState(false);
   const [apiKeyInput, setApiKeyInput] = useState(() => {
     return typeof window !== 'undefined'
       ? localStorage.getItem('luisices_gemini_api_key') || ''
       : '';
   });
+  const [tunedModelInput, setTunedModelInput] = useState(() => {
+    return typeof window !== 'undefined'
+      ? localStorage.getItem('luisices_gemini_tuned_model_id') || ''
+      : '';
+  });
 
   // Salvar no catálogo
   const [savingProduct, setSavingProduct] = useState(false);
 
-  // Gerar projeto
+  // Carregar um Exemplo Pré-Configurado / Acerto da Galeria
+  const handleLoadPreset = (preset: CuratedPreset) => {
+    setProductType(preset.productType);
+    setTheme(preset.theme);
+    setTargetNameAndAge(preset.targetNameAndAge);
+    setColorPalette(preset.colorPalette);
+    setComplexity(preset.complexity);
+    setPlotter(preset.plotter);
+    setCustomInstructions(preset.customInstructions);
+
+    // Gerar imediatamente o projeto para visualização rápida
+    toast.info(`Exemplo "${preset.title}" carregado! Calculando ficha técnica...`);
+    const fallback = aiProductService.generateSmartFallback({
+      productType: preset.productType,
+      theme: preset.theme,
+      targetNameAndAge: preset.targetNameAndAge,
+      colorPalette: preset.colorPalette,
+      complexity: preset.complexity,
+      plotter: preset.plotter,
+      customInstructions: preset.customInstructions,
+    });
+    setBlueprint(fallback);
+  };
+
+  // Gerar projeto com IA
   const handleGenerate = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!theme.trim()) {
@@ -129,6 +172,8 @@ export function AiProductGenerator() {
         plotter,
         customInstructions: customInstructions.trim(),
         geminiApiKey: apiKeyInput,
+        tunedModelId: tunedModelInput,
+        trainingExamples: savedSuccesses,
       });
 
       setBlueprint(result);
@@ -139,6 +184,42 @@ export function AiProductGenerator() {
     } finally {
       setLoading(false);
     }
+  };
+
+  // Salvar projeto atual como Acerto do Ateliê (Treinamento In-Context)
+  const handleSaveAsSuccess = () => {
+    if (!blueprint) return;
+    aiProductService.saveAtelierSuccess(blueprint);
+    const updated = aiProductService.getSavedAtelierSuccesses();
+    setSavedSuccesses(updated);
+    toast.success('⭐ Salvo como Acerto do Ateliê! A IA usará este modelo como referência.');
+  };
+
+  // Remover acerto da memória
+  const handleRemoveSuccess = (title: string) => {
+    if (typeof window === 'undefined') return;
+    const updated = savedSuccesses.filter((s) => s.productTitle !== title);
+    localStorage.setItem('luisices_atelier_training_examples', JSON.stringify(updated));
+    setSavedSuccesses(updated);
+    toast.success('Exemplo removido da memória da IA.');
+  };
+
+  // Exportar Dataset em JSONL para Fine-Tuning no Google AI Studio
+  const handleDownloadDatasetJsonl = () => {
+    if (savedSuccesses.length === 0) {
+      toast.warning('Nenhum acerto salvo ainda. Salve ao menos um projeto para exportar o dataset.');
+      return;
+    }
+
+    const jsonlContent = aiProductService.exportTrainingDatasetAsJsonl(savedSuccesses);
+    const blob = new Blob([jsonlContent], { type: 'application/jsonl' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `dataset_treinamento_papelaria_${Date.now()}.jsonl`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast.success('Dataset JSONL exportado para Fine-Tuning no Google AI Studio!');
   };
 
   // Copiar prompt com feedback
@@ -161,14 +242,16 @@ export function AiProductGenerator() {
     toast.success('Imagem anexada com sucesso à ficha técnica!');
   };
 
-  // Salvar API Key
+  // Salvar API Key e Modelo Tuned
   const handleSaveApiKey = () => {
     if (typeof window !== 'undefined') {
       localStorage.setItem('luisices_gemini_api_key', apiKeyInput.trim());
+      localStorage.setItem('luisices_gemini_tuned_model_id', tunedModelInput.trim());
     }
     setIsApiKeyDialogOpen(false);
-    toast.success('Chave da API Gemini salva com sucesso!');
+    toast.success('Configurações de IA salvas com sucesso!');
   };
+
 
   // Salvar como Produto no Catálogo Interno e na Lojinha
   const handleSaveToCatalog = async () => {
@@ -335,7 +418,17 @@ export function AiProductGenerator() {
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setIsMemoryDialogOpen(true)}
+            className="text-xs flex items-center gap-1.5 border-amber-500/40 text-amber-900 dark:text-amber-200 bg-amber-50/60 dark:bg-amber-950/20 hover:bg-amber-100/80"
+          >
+            <Brain className="size-3.5 text-amber-600" />
+            Memória da IA ({savedSuccesses.length} acertos)
+          </Button>
+
           <Button
             variant="outline"
             size="sm"
@@ -349,8 +442,46 @@ export function AiProductGenerator() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* Painel Esquerdo: Formulário de Entrada */}
-        <div className="lg:col-span-4 space-y-6">
+        {/* Painel Esquerdo: Galeria de Exemplos e Formulário */}
+        <div className="lg:col-span-4 space-y-5">
+          {/* Galeria de Exemplos e Acertos Rápidos */}
+          <Card className="shadow-xs border-primary/20 bg-muted/20">
+            <CardHeader className="p-3 pb-2">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-xs font-bold flex items-center gap-1.5">
+                  <BookOpen className="size-3.5 text-primary" />
+                  Exemplos de Prompts & Acertos
+                </CardTitle>
+                <span className="text-[10px] text-muted-foreground">1-Clique</span>
+              </div>
+            </CardHeader>
+            <CardContent className="p-3 pt-0">
+              <div className="grid grid-cols-2 gap-2">
+                {CURATED_PRESETS.map((preset) => (
+                  <button
+                    key={preset.id}
+                    type="button"
+                    onClick={() => handleLoadPreset(preset)}
+                    className="text-left p-2 rounded-lg border bg-card hover:border-primary hover:shadow-xs transition-all flex flex-col justify-between group"
+                  >
+                    <div className="flex items-center justify-between w-full pb-1">
+                      <Badge variant="outline" className="text-[9px] px-1 py-0 h-4 border-primary/30 text-primary">
+                        {preset.badge}
+                      </Badge>
+                      <Sparkles className="size-3 text-muted-foreground group-hover:text-primary transition-colors" />
+                    </div>
+                    <span className="text-[11px] font-semibold text-foreground line-clamp-1">
+                      {preset.title}
+                    </span>
+                    <span className="text-[10px] text-muted-foreground line-clamp-1">
+                      {preset.theme}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+
           <Card className="shadow-sm border-primary/20">
             <CardHeader className="pb-4">
               <CardTitle className="text-base flex items-center gap-2">
@@ -502,8 +633,8 @@ export function AiProductGenerator() {
               <div className="max-w-md space-y-1.5">
                 <h3 className="font-semibold text-base">Nenhum projeto gerado ainda</h3>
                 <p className="text-xs text-muted-foreground leading-relaxed">
-                  Preencha o tema e as características no painel à esquerda para a IA calcular o
-                  esquema de camadas 3D, parâmetros de lâmina Silhouette e lista de compras de papéis.
+                  Escolha um exemplo acima ou preencha o tema no formulário para a IA calcular o
+                  esquema de camadas 3D, parâmetros de lâmina Silhouette e prompts fotográficos.
                 </p>
               </div>
             </Card>
@@ -515,7 +646,7 @@ export function AiProductGenerator() {
               <div className="space-y-1.5">
                 <h3 className="font-semibold text-base">Engenharia do Projeto em Andamento</h3>
                 <p className="text-xs text-muted-foreground">
-                  Dimensionando deslocamentos de letras, calibrando força da lâmina e calculando consumo de folhas A4...
+                  Consultando acertos do ateliê, calibrando força da lâmina e calculando consumo de folhas A4...
                 </p>
               </div>
             </Card>
@@ -546,14 +677,24 @@ export function AiProductGenerator() {
                     <div className="flex flex-wrap sm:flex-col gap-2 shrink-0">
                       <Button
                         size="sm"
+                        onClick={handleSaveAsSuccess}
+                        className="text-xs gap-1.5 w-full bg-amber-500 hover:bg-amber-600 text-white font-semibold"
+                      >
+                        <Star className="size-3.5 fill-white" />
+                        Treinar IA com Este Acerto
+                      </Button>
+
+                      <Button
+                        size="sm"
+                        variant="outline"
                         onClick={handleSaveToCatalog}
                         disabled={savingProduct}
-                        className="text-xs gap-1.5 w-full bg-primary hover:bg-primary/90"
+                        className="text-xs gap-1.5 w-full"
                       >
                         {savingProduct ? (
                           <Loader2 className="size-3.5 animate-spin" />
                         ) : (
-                          <PackagePlus className="size-3.5" />
+                          <PackagePlus className="size-3.5 text-primary" />
                         )}
                         Salvar no Catálogo
                       </Button>
@@ -581,6 +722,7 @@ export function AiProductGenerator() {
                   </div>
                 </CardHeader>
               </Card>
+
 
               {/* Central de Prompts para IAs de Imagem (Ideogram, Midjourney, DALL-E, Flux) */}
               <Card className="shadow-sm border-primary/40 overflow-hidden bg-gradient-to-b from-card to-muted/20">
@@ -1168,24 +1310,107 @@ export function AiProductGenerator() {
         </div>
       </div>
 
-      {/* Diálogo de Configuração da Chave da API Gemini */}
+      {/* Diálogo de Memória e Treinamento com Acertos do Ateliê */}
+      <Dialog open={isMemoryDialogOpen} onOpenChange={setIsMemoryDialogOpen}>
+        <DialogContent className="sm:max-w-xl">
+          <DialogHeader>
+            <DialogTitle className="text-base flex items-center gap-2">
+              <Brain className="size-4 text-amber-600" />
+              Memória da IA — Acertos Salvos do Ateliê
+            </DialogTitle>
+            <DialogDescription className="text-xs">
+              Estes são os projetos aprovados que a IA usa como referência (Few-Shot Training) para
+              reproduzir exatamente seu padrão de qualidade e estilo.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3 py-2 max-h-96 overflow-y-auto">
+            {savedSuccesses.length === 0 ? (
+              <div className="text-center p-8 rounded-xl border border-dashed text-muted-foreground space-y-2">
+                <Brain className="size-8 mx-auto text-muted-foreground/50" />
+                <p className="text-xs font-semibold">Nenhum acerto salvo na memória ainda</p>
+                <p className="text-[11px]">
+                  Ao gerar um projeto que você goste, clique em <strong>"⭐ Treinar IA com Este Acerto"</strong> para ensinar seu estilo à IA.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {savedSuccesses.map((item, idx) => (
+                  <div
+                    key={idx}
+                    className="p-3 rounded-xl border bg-muted/30 flex items-start justify-between gap-3 text-xs"
+                  >
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <Badge className="bg-amber-500 text-white text-[10px]">
+                          Acerto #{idx + 1}
+                        </Badge>
+                        <span className="font-semibold text-foreground">
+                          {item.productTitle}
+                        </span>
+                      </div>
+                      <p className="text-muted-foreground text-[11px]">
+                        Tema: <strong>{item.theme}</strong> | Personalização: <strong>{item.targetAgeAndName}</strong> | Preço: <strong>{formatCurrency(item.recommendedPrice)}</strong>
+                      </p>
+                      <p className="text-muted-foreground text-[10px] line-clamp-1 italic">
+                        Camadas: {item.layers.map((l) => l.name).join(' → ')}
+                      </p>
+                    </div>
+
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleRemoveSuccess(item.productTitle)}
+                      className="text-muted-foreground hover:text-destructive h-7 w-7 p-0 shrink-0"
+                    >
+                      <Trash2 className="size-3.5" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <DialogFooter className="flex flex-col sm:flex-row items-center justify-between gap-2 border-t pt-3">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleDownloadDatasetJsonl}
+              disabled={savedSuccesses.length === 0}
+              className="text-xs gap-1.5 w-full sm:w-auto text-primary border-primary/30 hover:bg-primary/5"
+            >
+              <FileDown className="size-3.5" />
+              Baixar Dataset JSONL (AI Studio)
+            </Button>
+
+            <Button
+              size="sm"
+              onClick={() => setIsMemoryDialogOpen(false)}
+              className="text-xs w-full sm:w-auto"
+            >
+              Concluir
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Diálogo de Configuração da Chave da API Gemini e Modelo Tuned */}
       <Dialog open={isApiKeyDialogOpen} onOpenChange={setIsApiKeyDialogOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="text-base flex items-center gap-2">
               <Settings className="size-4 text-primary" />
-              Configurar Chave da API Gemini
+              Configurar Inteligência Artificial (Gemini)
             </DialogTitle>
             <DialogDescription className="text-xs">
-              Insira sua chave gratuita do Google AI Studio para desbloquear a geração ilimitada de
-              projetos.
+              Configure sua chave gratuita do Google AI Studio e personalize seu modelo de IA.
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-3 py-2">
             <div className="space-y-1.5">
               <Label htmlFor="gemini-key-input" className="text-xs font-semibold">
-                Google AI Studio API Key
+                Google AI Studio API Key *
               </Label>
               <Input
                 id="gemini-key-input"
@@ -1197,21 +1422,41 @@ export function AiProductGenerator() {
               />
             </div>
 
+            <div className="space-y-1.5">
+              <Label htmlFor="gemini-tuned-input" className="text-xs font-semibold flex items-center justify-between">
+                <span>ID do Modelo Tuned (Opcional)</span>
+                <Badge variant="outline" className="text-[9px]">Avançado</Badge>
+              </Label>
+              <Input
+                id="gemini-tuned-input"
+                placeholder="Ex: tunedModels/luisices-papercraft-v1"
+                value={tunedModelInput}
+                onChange={(e) => setTunedModelInput(e.target.value)}
+                className="text-xs font-mono"
+              />
+              <p className="text-[10px] text-muted-foreground">
+                Se você fez fine-tuning no Google AI Studio, cole o ID do modelo aqui. Caso contrário, deixe em branco para usar o Gemini 2.5 Flash.
+              </p>
+            </div>
+
             <div className="p-3 rounded-xl bg-muted/60 text-[11px] text-muted-foreground space-y-1.5">
               <p>
-                <strong>Onde conseguir a chave?</strong>
+                <strong>💡 Como funciona o treinamento com seus acertos?</strong>
               </p>
               <p>
-                Acesse o{' '}
+                1. <strong>Treinamento Dinâmico (Automático):</strong> Ao marcar seus projetos como <em>"Acerto"</em>, a IA aprende imediatamente seu estilo nas próximas gerações via Few-Shot Learning.
+              </p>
+              <p>
+                2. <strong>Fine-Tuning no Google AI Studio:</strong> Você pode clicar em <em>"Baixar Dataset JSONL"</em> no menu de memória e importar seus dados no{' '}
                 <a
-                  href="https://aistudio.google.com/app/apikey"
+                  href="https://aistudio.google.com/app/tuned_models"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-primary underline font-medium inline-flex items-center gap-0.5"
                 >
                   Google AI Studio <ExternalLink className="size-3" />
                 </a>{' '}
-                e crie sua chave gratuita em segundos.
+                para treinar seu próprio modelo exclusivo de ateliê.
               </p>
             </div>
           </div>
@@ -1226,7 +1471,7 @@ export function AiProductGenerator() {
               Cancelar
             </Button>
             <Button size="sm" onClick={handleSaveApiKey} className="text-xs">
-              Salvar Chave
+              Salvar Configurações
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1235,3 +1480,4 @@ export function AiProductGenerator() {
   );
 }
 export default AiProductGenerator;
+
