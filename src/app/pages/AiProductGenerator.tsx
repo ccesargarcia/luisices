@@ -50,6 +50,8 @@ import {
   CheckSquare,
   Calendar,
 } from 'lucide-react';
+import { Navigate } from 'react-router';
+import { useAuth } from '../../contexts/AuthContext';
 import {
   aiProductService,
   AiProductBlueprint,
