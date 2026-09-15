@@ -476,8 +476,8 @@ export class AiProductService {
     onProgress?: (event: AiProgressEvent) => void
   ): Promise<string> {
     const candidateModels = preferredModel
-      ? [preferredModel, 'gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-3.6-flash', 'gemini-2.5-flash']
-      : ['gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-3.6-flash', 'gemini-2.5-flash'];
+      ? [preferredModel, 'gemini-flash-latest', 'gemini-3.5-flash', 'gemini-pro-latest', 'gemini-2.5-flash-lite']
+      : ['gemini-flash-latest', 'gemini-3.5-flash', 'gemini-pro-latest', 'gemini-2.5-flash-lite'];
 
     let lastError: any = null;
 
@@ -730,7 +730,7 @@ Retorne estritamente um JSON com este schema:
           });
         }
 
-        const responseText = await traceAIChat(tunedModel || 'gemini-3.6-flash', conversationId, async () => {
+        const responseText = await traceAIChat(tunedModel || 'gemini-flash-latest', conversationId, async () => {
           return this.callGeminiWithCandidateModels(apiKey, tunedModel, {
             contents: [{ role: 'user', parts }],
             systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
