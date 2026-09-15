@@ -32,6 +32,7 @@ import { collection, onSnapshot, doc, getDoc } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { BannerCarousel, CatalogBannerItem } from '../components/catalog/BannerCarousel';
 import { firebaseCatalogOrderService } from '../../services/firebaseCatalogOrderService';
+import { toCdnUrl } from '../utils/cdnUtils';
 
 export interface CatalogProduct {
   id: string;
@@ -259,15 +260,15 @@ export function PublicCatalog() {
             instagram: s.instagramUrl ? s.instagramUrl.replace(/^https?:\/\/(www\.)?instagram\.com\//, '').replace(/\/$/, '') : '',
             instagramColab: s.instagramColabUrl ? s.instagramColabUrl.replace(/^https?:\/\/(www\.)?instagram\.com\//, '').replace(/\/$/, '') : '',
             website: s.websiteUrl || '',
-            logo: s.catalogLogo || '',
-            banner: s.catalogBanner || '',
+            logo: toCdnUrl(s.catalogLogo) || '',
+            banner: toCdnUrl(s.catalogBanner) || '',
             banners: Array.isArray(s.catalogBanners) && s.catalogBanners.length > 0
-              ? (s.catalogBanners as CatalogBannerItem[])
-              : (s.catalogBanner ? [{ id: 'b-default', imageUrl: s.catalogBanner }] : []),
+              ? s.catalogBanners.map((b: CatalogBannerItem) => ({ ...b, imageUrl: toCdnUrl(b.imageUrl) }))
+              : (s.catalogBanner ? [{ id: 'b-default', imageUrl: toCdnUrl(s.catalogBanner) }] : []),
             bannerInterval: Number(s.catalogBannerInterval) || prev.bannerInterval || 5,
             bannerAutoPlay: s.catalogBannerAutoPlay !== undefined ? Boolean(s.catalogBannerAutoPlay) : true,
             bannerFixed: s.catalogBannerFixed !== undefined ? Boolean(s.catalogBannerFixed) : false,
-            headerBackground: s.catalogHeaderBackground || '',
+            headerBackground: toCdnUrl(s.catalogHeaderBackground) || '',
             headerBgColor: s.catalogHeaderBgColor || '',
             headerTextColor: s.catalogHeaderTextColor || 'dark',
             headerLogoPosition: s.catalogHeaderLogoPosition || 'left',
@@ -318,6 +319,7 @@ export function PublicCatalog() {
             const leadTimeDays = rawLead !== undefined && rawLead !== null && !isNaN(Number(rawLead))
               ? Math.max(0, Number(rawLead))
               : 5;
+            const rawImg = data.imageUrl || data.photoUrl || (data.images && data.images[0]);
             storeList.push({
               id: d.id,
               name: data.name,
@@ -325,7 +327,7 @@ export function PublicCatalog() {
               price: Number(data.price ?? data.unitPrice) || 0,
               description: data.description || 'Produto artesanal confeccionado com carinho sob encomenda.',
               leadTimeDays,
-              imageUrl: data.imageUrl || data.photoUrl || (data.images && data.images[0]) || 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?auto=format&fit=crop&w=800&q=80',
+              imageUrl: toCdnUrl(rawImg) || 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?auto=format&fit=crop&w=800&q=80',
               badge: data.badge || undefined,
               isCustomizable: data.isCustomizable ?? true,
               order: data.order !== undefined ? Number(data.order) : undefined,

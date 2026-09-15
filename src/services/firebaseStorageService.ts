@@ -15,6 +15,7 @@ import {
 import { auth, storage } from '../lib/firebase';
 import type { OrderAttachment } from '../app/types';
 import { optimizeImageToWebP } from '../app/utils/imageOptimizer';
+import { toCdnUrl } from '../app/utils/cdnUtils';
 
 export class FirebaseStorageService {
   /**
@@ -35,7 +36,7 @@ export class FirebaseStorageService {
       contentType: optimizedFile.type,
       customMetadata: { uploadedAt: new Date().toISOString() },
     });
-    return getDownloadURL(storageRef);
+    return toCdnUrl(await getDownloadURL(storageRef));
   }
 
   /**
@@ -56,7 +57,7 @@ export class FirebaseStorageService {
       contentType: optimizedFile.type,
       customMetadata: { uploadedAt: new Date().toISOString() },
     });
-    return getDownloadURL(storageRef);
+    return toCdnUrl(await getDownloadURL(storageRef));
   }
 
   /**
@@ -81,7 +82,7 @@ export class FirebaseStorageService {
         userId: currentUid,
       },
     });
-    return getDownloadURL(storageRef);
+    return toCdnUrl(await getDownloadURL(storageRef));
   }
 
   /**
@@ -144,7 +145,7 @@ export class FirebaseStorageService {
 
     // Obter URL pública
     const downloadURL = await getDownloadURL(storageRef);
-    return downloadURL;
+    return toCdnUrl(downloadURL);
   }
 
   /**
@@ -168,7 +169,7 @@ export class FirebaseStorageService {
       contentType: optimizedFile.type,
       customMetadata: { uploadedAt: new Date().toISOString() },
     });
-    return getDownloadURL(storageRef);
+    return toCdnUrl(await getDownloadURL(storageRef));
   }
 
   /**
@@ -234,7 +235,8 @@ export class FirebaseStorageService {
     };
 
     await uploadBytes(storageRef, fileToUpload, metadata);
-    const url = await getDownloadURL(storageRef);
+    const rawUrl = await getDownloadURL(storageRef);
+    const url = toCdnUrl(rawUrl);
 
     // Gerar e fazer upload da thumbnail para imagens
     let thumbnailUrl: string | undefined;
@@ -244,7 +246,7 @@ export class FirebaseStorageService {
         const thumbPath = `users/${userId}/orders/${orderId}/thumbnails/${timestamp}_thumb_${safeName.replace(/\.[^.]+$/, '')}.webp`;
         const thumbRef = ref(storage, thumbPath);
         await uploadBytes(thumbRef, thumbBlob, { contentType: 'image/webp' });
-        thumbnailUrl = await getDownloadURL(thumbRef);
+        thumbnailUrl = toCdnUrl(await getDownloadURL(thumbRef));
       }
     }
 
@@ -272,10 +274,29 @@ export class FirebaseStorageService {
    */
   private extractPathFromUrl(url: string): string | null {
     try {
-      const match = url.match(/\/o\/(.+?)\?/);
+      // 1. URL padrão do Firebase Storage: /o/<path>?...
+      const match = url.match(/\/o\/(.+?)(\?|$)/);
       if (match && match[1]) {
         return decodeURIComponent(match[1]);
       }
+
+      // 2. URL com domínio CDN configurado
+      const cdnBase = import.meta.env.VITE_STORAGE_CDN_URL;
+      if (cdnBase && url.startsWith(cdnBase)) {
+        const pathWithQuery = url.slice(cdnBase.length).replace(/^\/+/, '');
+        const cleanPath = pathWithQuery.split('?')[0];
+        return decodeURIComponent(cleanPath);
+      }
+
+      // 3. Fallback genérico para URLs CDN (extrai pathname)
+      if (url.startsWith('http://') || url.startsWith('https://')) {
+        const parsed = new URL(url);
+        const pathname = parsed.pathname.replace(/^\/+/, '');
+        if (pathname) {
+          return decodeURIComponent(pathname);
+        }
+      }
+
       return null;
     } catch {
       return null;
