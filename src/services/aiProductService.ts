@@ -809,51 +809,49 @@ Retorne estritamente um JSON com este schema:
       const mimeType = params.mimeType || (params.imageBase64.startsWith('data:image/png') ? 'image/png' : 'image/jpeg');
 
       const visionSystemPrompt = `
-Você é uma Engenheira de Papelaria Personalizada de Luxo e Especialista em Silhouette Studio, Cricut e Scanncut.
-Sua missão é analisar visualmente a IMAGEM enviada (que pode ser uma foto de produto real ou uma imagem hiper-realista gerada por IA) e realizar a ENGENHARIA REVERSA COMPLETA para produção física de corte e montagem.
+Você é uma Engenheira Especialista em Papelaria Personalizada de Luxo e Projetista de Corte para Silhouette Studio, Cricut Design Space e Brother ScanNCut.
+Sua missão é inspecionar minuciosamente a IMAGEM enviada (foto de produto real de papelaria de festa ou render hiper-realista gerado por IA) e realizar a ENGENHARIA REVERSA FÍSICA COMPLETA para produção e corte.
 
 INSTRUÇÕES DE INSPEÇÃO VISUAL OBRIGATÓRIAS:
-1. IDENTIFICAÇÃO DO PRODUTO:
-   - Identifique a categoria exata: "Topo de Bolo 3D", "Topo Shaker Luxo", "Caixa Milk 3D", "Caixa Pirâmide", "Letra 3D Personalizada", "Marcador de Página Luxo", etc.
-   - Identifique o tema visual predominante (ex: "Astronauta", "Jardim Encantado", "Safari Baby", "Circo Rosa", "Sereia", "Dino Baby", "Princesas", etc.).
-   - Faça OCR e leitura visual minuciosa de qualquer nome, idade ou texto escrito na peça. Se não houver nome legível, sugira um exemplo harmonioso (ex: "Helena 3 anos").
+1. IDENTIFICAÇÃO DO PRODUTO & TEMA:
+   - Identifique a categoria exata (ex: "Topo de Bolo 3D", "Topo Shaker Luxo", "Caixa Milk 3D", "Caixa Pirâmide", "Letra 3D Personalizada", "Marcador de Página Luxo", etc.).
+   - Identifique o tema visual predominante (ex: "Astronauta", "Jardim Encantado", "Safari Baby", "Circo Rosa", "Sereia", "Dino Baby", "Princesas / Realeza", "Balão de Ar Quente", "Gamer", etc.).
+   - OCR Minucioso: Extraia exatamente qualquer nome, idade ou texto visível na imagem. Se não houver texto legível, sugira um nome harmonioso com idade (ex: "Helena - 3 anos").
 
-2. DECOMPOSIÇÃO EM CAMADAS FÍSICAS (De baixo para cima):
-   - Camada 1: Base de Fundo / Estrutura rígida (papel recomendado, gramatura 180g a 240g, cor hex exata e nome do papel).
-   - Camadas Intermediárias: Molduras com offset de 2.0mm, elementos temáticos elevados com fita banana de 2mm.
-   - Camadas Especiais (se visível): Visor transparente de acetato cristal, anel de contenção em EVA 2mm (se shaker), pedrarias ou lantejoulas.
-   - Camada Superior / Destaque: Letras do nome, apliques em Lamicote metálico (Dourado, Prata, Rose Gold) ou Glitter com relevo.
+2. DECOMPOSIÇÃO REAL EM CAMADAS FÍSICAS (De baixo para cima, cada camada separada por folha de papel):
+   - Crie de 3 a 6 camadas físicas reais correspondendo aos elementos visuais vistos na imagem:
+     * Camada 1: Base de Fundo / Silhueta Estrutural Rígida (Papel Colorplus 180g-240g ou Kraft com a cor predominante do fundo).
+     * Camada 2: Molduras, Escalopes ou Fundo Intermediário com deslocamento (offset de 2.0mm a 3.0mm).
+     * Camadas 3 e 4: Elementos Temáticos 3D elevados com fita banana (personagens, borboletas, flores, foguetes, leõezinhos, balões).
+     * Camadas Especiais (se houver): Visor de acetato transparente e anel de vedação em EVA 2mm (se shaker).
+     * Camada Nobre / Superior: Nome em destaque cursivo soldado, idade em Lamicote (Dourado, Rose Gold, Prata) ou Glitter 250g.
 
-3. LISTA DE MATERIAIS & CORES:
-   - Extraia as cores exatas da imagem e mapeie para tipos de papéis comerciais (Colorplus, Lamicote, Kraft, Acetato, EVA).
-   - Sugira lista de compras precisa (quantidades de folhas A4, espessuras de fita banana, palitos ou fitas).
-
-4. RETORNE ESTRITAMENTE UM JSON com este schema:
+3. RETORNE ESTRITAMENTE UM JSON no formato:
 {
   "productTitle": "Título comercial descritivo e luxuoso",
   "category": "Topos de Bolo" | "Lembrancinhas" | "Papelaria Criativa" | "Kits Festa",
-  "description": "Descrição detalhada do produto inspecionado na imagem",
-  "targetAgeAndName": "Nome e Idade extraídos da imagem ou sugeridos",
+  "description": "Descrição técnica e visual detalhada da peça inspecionada",
+  "targetAgeAndName": "Nome e Idade extraídos ou sugeridos",
   "theme": "Tema detectado na imagem",
   "recommendedPrice": 45.00,
   "suggestedLeadTimeDays": 5,
   "layers": [
     {
       "order": 1,
-      "name": "Nome da camada",
+      "name": "Nome descritivo exato da camada (ex: Base Estrutural com Offset, Moldura Escalopada Floral, Apliques de Borboletas 3D, Nome Nobre Lamicote Dourado)",
       "paperType": "Ex: Colorplus Rosa Chá 180g",
       "colorHex": "#E8B4B8",
       "colorName": "Rosa Chá",
-      "cutDifficulty": "fácil" | "médio" | "difícil",
+      "cutDifficulty": "fácil" | "médio" | "delicado",
       "offsetMm": 2.5,
       "silhouetteSettings": { "blade": 3, "force": 30, "speed": 5, "passes": 1 },
-      "assemblyTip": "Dica de montagem e colagem"
+      "assemblyTip": "Instrução precisa de colagem e elevação 3D"
     }
   ],
   "papersShoppingList": [
     { "name": "Nome do papel", "gramature": "180g", "sheetsNeeded": 1 }
   ],
-  "toolsAndAccessories": ["Fita banana 2mm", "Cola de silicone líquida"],
+  "toolsAndAccessories": ["Fita banana 2mm", "Cola de silicone líquida", "Palitos acrílicos 15cm"],
   "estimatedAssemblyMinutes": 25,
   "silhouetteTips": "Dicas de corte na plotter ${plotter}",
   "suggestedImagePrompt": "Prompt descritivo em inglês da imagem",
@@ -957,7 +955,7 @@ INSTRUÇÕES DE INSPEÇÃO VISUAL OBRIGATÓRIAS:
 
 
   /**
-   * Gera pranchas de corte em vetor SVG 100% personalizadas de acordo com o Tipo de Produto, Tema e Nome/Idade
+   * Gera pranchas de corte em vetor SVG 100% personalizadas e dinâmicas para CADA camada física identificada
    */
   generateCutSheetsAndAssembly(
     productTitle: string,
@@ -978,8 +976,6 @@ INSTRUÇÕES DE INSPEÇÃO VISUAL OBRIGATÓRIAS:
     const isMilkBox = normType.includes('milk') || (normType.includes('caixa') && !normType.includes('pirâmide') && !normType.includes('cone'));
     const isPyramidBox = normType.includes('pirâmide') || normType.includes('cone');
     const is3dLetter = normType.includes('letra');
-    const isBookmark = normType.includes('marcador');
-    const isCakeTopper = normType.includes('topo') && !isMilkBox && !is3dLetter;
 
     // Detectar tema para elementos visuais específicos
     const isGarden = normTheme.includes('jardim') || normTheme.includes('borbolet') || normTheme.includes('flor') || normTheme.includes('fada');
@@ -989,267 +985,407 @@ INSTRUÇÕES DE INSPEÇÃO VISUAL OBRIGATÓRIAS:
     const isDino = normTheme.includes('dino') || normTheme.includes('dinossauro') || normTheme.includes('jurássic');
     const isMermaid = normTheme.includes('sereia') || normTheme.includes('mar') || normTheme.includes('ariel') || normTheme.includes('fundo do mar');
     const isPrincess = normTheme.includes('princesa') || normTheme.includes('realeza') || normTheme.includes('castelo') || normTheme.includes('coroa');
+    const isBear = normTheme.includes('urso') || normTheme.includes('ursinho') || normTheme.includes('balão') || normTheme.includes('balao');
+    const isGamer = normTheme.includes('game') || normTheme.includes('gamer') || normTheme.includes('videogame') || normTheme.includes('mario');
+    const isHero = normTheme.includes('heroi') || normTheme.includes('herói') || normTheme.includes('vingador') || normTheme.includes('spider') || normTheme.includes('batman');
 
     const redCut = 'stroke="#FF0000" stroke-width="1.5" fill="none"';
     const scoreDash = 'stroke="#0000FF" stroke-width="1.2" stroke-dasharray="6,4" fill="none"';
 
-    const cutSheets: CutSheet[] = layers.map((layer, index) => {
+    // Se layers estiver vazio, fornecer estrutura padrão de 4 camadas ricas
+    const effectiveLayers = layers.length > 0 ? layers : [
+      {
+        order: 1,
+        name: `Base Estrutural Silhueta do Tema (${theme})`,
+        paperType: 'Colorplus 180g',
+        colorHex: '#CBD5E1',
+        colorName: 'Cinza / Branco',
+        cutDifficulty: 'fácil' as const,
+        offsetMm: 3.0,
+        silhouetteSettings: { blade: 3, force: 30, speed: 5, passes: 1 },
+        assemblyTip: 'Base de sustentação principal colada nos palitos acrílicos.',
+      },
+      {
+        order: 2,
+        name: `Moldura & Escalopes 3D`,
+        paperType: 'Colorplus 180g',
+        colorHex: '#F472B6',
+        colorName: 'Rosa / Destaque',
+        cutDifficulty: 'médio' as const,
+        offsetMm: 2.0,
+        silhouetteSettings: { blade: 3, force: 30, speed: 5, passes: 1 },
+        assemblyTip: 'Fixar sobre a base com fita banana de 2mm.',
+      },
+      {
+        order: 3,
+        name: `Elementos Temáticos 3D (${theme})`,
+        paperType: 'Colorplus 180g',
+        colorHex: '#60A5FA',
+        colorName: 'Azul / Colorido',
+        cutDifficulty: 'delicado' as const,
+        offsetMm: 1.5,
+        silhouetteSettings: { blade: 3, force: 28, speed: 4, passes: 1 },
+        assemblyTip: 'Montar as peças temáticas em camadas de relevo.',
+      },
+      {
+        order: 4,
+        name: `Destaque Nome "${nameOnly}" & Idade`,
+        paperType: 'Lamicote Dourado 250g',
+        colorHex: '#EAB308',
+        colorName: 'Dourado Metálico',
+        cutDifficulty: 'médio' as const,
+        offsetMm: 2.0,
+        silhouetteSettings: { blade: 4, force: 33, speed: 3, passes: 2 },
+        assemblyTip: 'Colar com fita banana no topo da composição.',
+      },
+    ];
+
+    const cutSheets: CutSheet[] = effectiveLayers.map((layer, index) => {
       const sheetNum = index + 1;
       let sheetTitle = `Folha ${sheetNum}: ${layer.name}`;
       let piecesCount = 3;
-      let estimatedCutSeconds = 40 + index * 10;
+      let estimatedCutSeconds = 35 + index * 10;
+      const fillWithOpacity = `fill="${layer.colorHex}" fill-opacity="0.22"`;
+
+      const layerNameLower = layer.name.toLowerCase();
+      const paperLower = layer.paperType.toLowerCase();
+
+      // Classificar dinamicamente o propósito desta camada
+      const isBase = layerNameLower.includes('base') || layerNameLower.includes('fundo') || layerNameLower.includes('estrutur') || (index === 0 && !isMilkBox && !is3dLetter);
+      const isNameLayer = layerNameLower.includes('nome') || layerNameLower.includes('idade') || layerNameLower.includes('letra') || layerNameLower.includes('lamicote') || paperLower.includes('lamicote') || paperLower.includes('glitter');
+      const isFrameLayer = layerNameLower.includes('moldura') || layerNameLower.includes('escalope') || layerNameLower.includes('borda') || layerNameLower.includes('visor') || layerNameLower.includes('arco');
+      const isShakerLayer = (isShaker && paperLower.includes('acetato')) || layerNameLower.includes('shaker') || layerNameLower.includes('anel') || paperLower.includes('eva');
+      const isPrintCutLayer = paperLower.includes('fotogr') || layerNameLower.includes('print') || layerNameLower.includes('ilustra');
+
       let svgContent = '';
-      const fillWithOpacity = `fill="${layer.colorHex}" fill-opacity="0.18"`;
 
       // ─────────────────────────────────────────────────────────────────────────────
-      // CASO 1: CAIXA MILK 3D (GABARITO PLANIFICADO REAL COM VINGOS E APLIQUES)
+      // 1. GABARITO DE CAIXA MILK 3D (QUANDO O PRODUTO FOR UMA CAIXA)
       // ─────────────────────────────────────────────────────────────────────────────
-      if (isMilkBox) {
-        if (index === 0) {
-          sheetTitle = `Folha 1: Molde Planificado Caixa Milk (${layer.paperType})`;
-          piecesCount = 1;
-          estimatedCutSeconds = 55;
-          svgContent = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 794 1123" width="100%" height="100%">
+      if (isMilkBox && index === 0) {
+        sheetTitle = `Folha 1: Molde Planificado Caixa Milk (${layer.paperType})`;
+        piecesCount = 1;
+        estimatedCutSeconds = 55;
+        svgContent = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 794 1123" width="100%" height="100%">
   <!-- GABARITO ESTRUTURAL CAIXA MILK (A4 210x297mm) -->
-  <rect x="30" y="30" width="734" height="1063" fill="none" stroke="#E2E8F0" stroke-width="1" stroke-dasharray="4,4"/>
-  <text x="45" y="60" font-family="sans-serif" font-size="14" font-weight="bold" fill="#64748B">FOLHA 1: MOLDE PLANIFICADO CAIXA MILK — ${layer.paperType}</text>
-  <text x="45" y="80" font-family="sans-serif" font-size="11" fill="#94A3B8">Vermelho (#FF0000) = Corte | Azul Pontilhado (#0000FF) = Vincos de Dobra</text>
+  <rect x="30" y="30" width="734" height="1063" fill="none" stroke="#CBD5E1" stroke-width="1" stroke-dasharray="4,4"/>
+  <text x="45" y="60" font-family="sans-serif" font-size="14" font-weight="bold" fill="#334155">FOLHA 1: MOLDE PLANIFICADO CAIXA MILK — ${layer.paperType.toUpperCase()}</text>
+  <text x="45" y="80" font-family="sans-serif" font-size="11" fill="#64748B">Linha Vermelha (#FF0000) = Corte | Azul Tracejado (#0000FF) = Vincos de Dobra</text>
 
-  <!-- Molde Completo da Caixa Milk com 4 Faces + Aba de Colagem + Fundo + Topo Triangular -->
   <g transform="translate(65, 120)">
     <!-- Contorno Externo de Corte -->
-    <path d="M 30 140 
-             L 30 20 L 50 20 L 50 140 
-             L 190 140 L 190 20 L 210 20 L 210 140 
-             L 350 140 L 350 20 L 370 20 L 370 140 
-             L 510 140 L 510 20 L 530 20 L 530 140 
-             L 670 140 L 670 600 
-             L 530 600 L 530 720 L 390 720 L 390 600 
-             L 250 600 L 250 720 L 110 720 L 110 600 
-             L 0 600 L 0 160 L 30 140 Z" ${fillWithOpacity} ${redCut}/>
-
-    <!-- Linhas de Vinco Horizontais (Fechamento Superior e Fundo) -->
+    <path d="M 30 140 L 30 20 L 50 20 L 50 140 L 190 140 L 190 20 L 210 20 L 210 140 L 350 140 L 350 20 L 370 20 L 370 140 L 510 140 L 510 20 L 530 20 L 530 140 L 670 140 L 670 600 L 530 600 L 530 720 L 390 720 L 390 600 L 250 600 L 250 720 L 110 720 L 110 600 L 0 600 L 0 160 L 30 140 Z" ${fillWithOpacity} ${redCut}/>
+    <!-- Linhas de Vinco Horizontais -->
     <line x1="30" y1="140" x2="670" y2="140" ${scoreDash}/>
     <line x1="30" y1="260" x2="670" y2="260" ${scoreDash}/>
     <line x1="30" y1="600" x2="670" y2="600" ${scoreDash}/>
-
-    <!-- Linhas de Vinco Verticais entre as 4 faces -->
+    <!-- Linhas de Vinco Verticais -->
     <line x1="30" y1="140" x2="30" y2="600" ${scoreDash}/>
     <line x1="190" y1="140" x2="190" y2="600" ${scoreDash}/>
     <line x1="350" y1="140" x2="350" y2="600" ${scoreDash}/>
     <line x1="510" y1="140" x2="510" y2="600" ${scoreDash}/>
-
-    <!-- Vincos Diagonais para Fechamento Piramidal Superior (Laterais da Caixa Milk) -->
-    <!-- Lateral 1 (Face 2) -->
+    <!-- Vincos Diagonais Fechamento Triangular Superior -->
     <line x1="190" y1="260" x2="270" y2="140" ${scoreDash}/>
     <line x1="350" y1="260" x2="270" y2="140" ${scoreDash}/>
     <line x1="270" y1="140" x2="270" y2="20" ${scoreDash}/>
-
-    <!-- Lateral 2 (Face 4) -->
     <line x1="510" y1="260" x2="590" y2="140" ${scoreDash}/>
     <line x1="670" y1="260" x2="590" y2="140" ${scoreDash}/>
     <line x1="590" y1="140" x2="590" y2="20" ${scoreDash}/>
-
-    <!-- Furos para Passador de Laço de Cetim (Frente e Verso) -->
+    <!-- Furos para Fita de Cetim -->
     <circle cx="110" cy="80" r="5" fill="#FFFFFF" ${redCut}/>
     <circle cx="430" cy="80" r="5" fill="#FFFFFF" ${redCut}/>
-
-    <!-- Rótulos Técnicos das Faces -->
-    <text x="15" y="380" font-family="sans-serif" font-size="9" fill="#64748B" transform="rotate(-90 15,380)" text-anchor="middle">Aba Colagem 12mm</text>
-    <text x="110" y="420" font-family="sans-serif" font-size="13" font-weight="bold" fill="#334155" text-anchor="middle">FRENTE</text>
-    <text x="270" y="420" font-family="sans-serif" font-size="13" font-weight="bold" fill="#64748B" text-anchor="middle">LATERAL DIR.</text>
-    <text x="430" y="420" font-family="sans-serif" font-size="13" font-weight="bold" fill="#334155" text-anchor="middle">VERSO</text>
-    <text x="590" y="420" font-family="sans-serif" font-size="13" font-weight="bold" fill="#64748B" text-anchor="middle">LATERAL ESQ.</text>
-    
-    <text x="350" y="670" font-family="sans-serif" font-size="11" fill="#64748B" text-anchor="middle">Abas de Encaixe e Fundo Automático</text>
+    <text x="110" y="420" font-family="sans-serif" font-size="13" font-weight="bold" fill="#1E293B" text-anchor="middle">FRENTE</text>
+    <text x="270" y="420" font-family="sans-serif" font-size="13" font-weight="bold" fill="#64748B" text-anchor="middle">LATERAL 1</text>
+    <text x="430" y="420" font-family="sans-serif" font-size="13" font-weight="bold" fill="#1E293B" text-anchor="middle">VERSO</text>
+    <text x="590" y="420" font-family="sans-serif" font-size="13" font-weight="bold" fill="#64748B" text-anchor="middle">LATERAL 2</text>
   </g>
 </svg>`;
-        } else if (index === 1) {
-          sheetTitle = `Folha 2: Molduras e Visores Frontais da Caixa (${layer.paperType})`;
-          piecesCount = 4;
-          estimatedCutSeconds = 45;
-          svgContent = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 794 1123" width="100%" height="100%">
-  <!-- MOLDURAS E ESCALOPES PARA AS FACES DA CAIXA MILK -->
-  <rect x="30" y="30" width="734" height="1063" fill="none" stroke="#E2E8F0" stroke-width="1" stroke-dasharray="4,4"/>
-  <text x="45" y="60" font-family="sans-serif" font-size="14" font-weight="bold" fill="#64748B">FOLHA 2: MOLDURAS & CAMADAS 3D — ${layer.paperType}</text>
-
-  <!-- Moldura Escalope Frontal (140x190mm) -->
-  <g transform="translate(100, 120)">
-    <rect x="20" y="20" width="240" height="300" rx="20" ${fillWithOpacity} ${redCut}/>
-    <rect x="40" y="40" width="200" height="260" rx="14" ${redCut}/>
-    <text x="140" y="170" font-family="sans-serif" font-size="13" font-weight="bold" fill="${layer.colorHex}" text-anchor="middle">MOLDURA FRONTAL 3D</text>
-    <text x="140" y="195" font-family="sans-serif" font-size="10" fill="#64748B" text-anchor="middle">Fixar com fita banana 2mm</text>
-  </g>
-
-  <!-- Moldura Lateral 1 -->
-  <g transform="translate(420, 120)">
-    <rect x="20" y="20" width="220" height="280" rx="15" ${fillWithOpacity} ${redCut}/>
-    <text x="130" y="160" font-family="sans-serif" font-size="11" font-weight="bold" fill="#64748B" text-anchor="middle">Aplique Lateral 1</text>
-  </g>
-
-  <!-- Laço 3D Estrutural de Papel para o Topo -->
-  <g transform="translate(100, 480)">
-    <path d="M 60 50 C 20 20 20 80 60 50 C 100 20 100 80 60 50 Z" ${fillWithOpacity} ${redCut}/>
-    <rect x="140" y="30" width="160" height="40" rx="10" ${fillWithOpacity} ${redCut}/>
-    <line x1="220" y1="30" x2="220" y2="70" ${scoreDash}/>
-    <text x="220" y="100" font-family="sans-serif" font-size="10" fill="#64748B" text-anchor="middle">Alças do Laço 3D de Papel</text>
-  </g>
-</svg>`;
-        }
       }
 
       // ─────────────────────────────────────────────────────────────────────────────
-      // CASO 2: LETRA 3D PERSONALIZADA (FACE DA LETRA + LATERAIS PLANIFICADAS COM ABAS)
+      // 2. BASE ESTRUTURAL TRASEIRA COM OFFSET E GUIAS DE PALITO ACRÍLICO
       // ─────────────────────────────────────────────────────────────────────────────
-      else if (is3dLetter) {
-        if (index === 0) {
-          sheetTitle = `Folha 1: Faces Frontal e Traseira da Letra "${firstLetter}" (${layer.paperType})`;
-          piecesCount = 2;
-          estimatedCutSeconds = 45;
-          svgContent = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 794 1123" width="100%" height="100%">
-  <!-- FACES DA LETRA 3D -->
-  <rect x="30" y="30" width="734" height="1063" fill="none" stroke="#E2E8F0" stroke-width="1" stroke-dasharray="4,4"/>
-  <text x="45" y="60" font-family="sans-serif" font-size="14" font-weight="bold" fill="#64748B">FOLHA 1: FACES DA LETRA 3D "${firstLetter}" — ${layer.paperType}</text>
+      else if (isBase) {
+        sheetTitle = `Folha ${sheetNum}: Base Estrutural Traseira (${layer.paperType})`;
+        piecesCount = 2;
+        estimatedCutSeconds = 40;
 
-  <!-- Face Frontal da Letra Personalizada -->
-  <g transform="translate(100, 130)">
-    <!-- Letra Frontal em Linha de Corte Vermelha -->
-    <text x="140" y="260" font-family="Impact, Arial Black, sans-serif" font-size="280" font-weight="bold" ${fillWithOpacity} stroke="#FF0000" stroke-width="2" text-anchor="middle">
-      ${firstLetter}
-    </text>
-    <text x="140" y="300" font-family="sans-serif" font-size="12" font-weight="bold" fill="${layer.colorHex}" text-anchor="middle">FACE FRONTAL</text>
+        let baseSilhouettePath = 'M 50 160 C 20 160 0 130 0 95 C 0 50 40 10 90 10 C 130 10 165 35 180 70 C 200 40 240 20 285 20 C 340 20 385 60 385 115 C 410 115 430 135 430 160 C 430 185 410 205 385 205 C 385 250 345 285 295 285 C 265 285 235 270 215 245 C 195 275 155 295 110 295 C 50 295 10 250 10 195 C 10 180 18 168 50 160 Z';
+        let baseLabel = `Base Estrutural Offset — ${theme}`;
+
+        if (isPrincess) {
+          baseSilhouettePath = 'M 40 280 L 40 120 L 90 120 L 90 60 L 140 100 L 190 40 L 240 100 L 290 60 L 290 120 L 340 120 L 340 280 Z';
+          baseLabel = 'Base Estrutural Castelo / Coroa Real';
+        } else if (isSpace) {
+          baseSilhouettePath = 'M 200 20 L 260 140 L 320 220 L 360 300 L 280 280 L 200 360 L 120 280 L 40 300 L 80 220 L 140 140 Z';
+          baseLabel = 'Base Foguete & Galáxia';
+        } else if (isSafari) {
+          baseSilhouettePath = 'M 60 140 C 20 100 20 40 80 20 C 140 0 220 10 280 40 C 340 10 420 40 400 120 C 420 180 380 260 320 280 C 260 300 180 290 120 270 C 40 260 20 180 60 140 Z';
+          baseLabel = 'Base Selva & Folhagens Safari';
+        } else if (isDino) {
+          baseSilhouettePath = 'M 80 240 L 40 180 L 80 120 L 160 80 L 240 40 L 340 60 L 420 120 L 400 200 L 320 260 L 220 280 L 140 270 Z';
+          baseLabel = 'Base Dinossauro & Vulcão';
+        } else if (isMermaid) {
+          baseSilhouettePath = 'M 190 20 C 260 60 280 160 250 240 C 300 220 360 250 380 310 C 320 320 260 300 220 260 C 180 320 110 330 60 290 C 80 230 140 200 160 150 C 140 80 160 40 190 20 Z';
+          baseLabel = 'Base Cauda de Sereia & Concha';
+        } else if (isBear) {
+          baseSilhouettePath = 'M 190 30 C 280 30 350 100 350 190 C 350 250 300 300 260 350 L 120 350 C 80 300 30 250 30 190 C 30 100 100 30 190 30 Z';
+          baseLabel = 'Base Balão de Ar Quente & Ursinho';
+        } else if (isGamer) {
+          baseSilhouettePath = 'M 60 100 C 40 100 20 130 20 180 L 40 300 C 50 330 80 330 100 300 L 140 240 L 240 240 L 280 300 C 300 330 330 330 340 300 L 360 180 C 360 130 340 100 320 100 Z';
+          baseLabel = 'Base Joystick Gamer 3D';
+        }
+
+        svgContent = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 794 1123" width="100%" height="100%">
+  <rect x="30" y="30" width="734" height="1063" fill="none" stroke="#CBD5E1" stroke-width="1" stroke-dasharray="4,4"/>
+  <text x="45" y="60" font-family="sans-serif" font-size="14" font-weight="bold" fill="#334155">FOLHA ${sheetNum}: BASE ESTRUTURAL — ${theme.toUpperCase()}</text>
+  <text x="45" y="80" font-family="sans-serif" font-size="11" fill="#64748B">Papel: ${layer.paperType} | Lâmina: ${layer.silhouetteSettings.blade} | Força: ${layer.silhouetteSettings.force} | Vel: ${layer.silhouetteSettings.speed}</text>
+
+  <!-- Silhueta Sólida de Sustentação 3D -->
+  <g transform="translate(170, 130)">
+    <path d="${baseSilhouettePath}" ${fillWithOpacity} ${redCut}/>
+    <text x="190" y="170" font-family="sans-serif" font-size="13" font-weight="bold" fill="${layer.colorHex}" text-anchor="middle">${baseLabel}</text>
+    <text x="190" y="195" font-family="sans-serif" font-size="10" fill="#64748B" text-anchor="middle">Offset 3.0mm (Fundo Sólido Rígido)</text>
+
+    <!-- Guias Traseiras para Palitos Acrílicos Transparentes -->
+    <rect x="130" y="300" width="14" height="80" fill="none" stroke="#3B82F6" stroke-width="1.2" stroke-dasharray="3,3"/>
+    <rect x="240" y="300" width="14" height="80" fill="none" stroke="#3B82F6" stroke-width="1.2" stroke-dasharray="3,3"/>
+    <text x="192" y="355" font-family="sans-serif" font-size="9" fill="#3B82F6" text-anchor="middle">Guias dos Palitos Acrílicos</text>
   </g>
 
-  <!-- Face Traseira da Letra -->
-  <g transform="translate(420, 130)">
-    <text x="140" y="260" font-family="Impact, Arial Black, sans-serif" font-size="280" font-weight="bold" fill="#F8FAFC" stroke="#FF0000" stroke-width="2" text-anchor="middle">
-      ${firstLetter}
-    </text>
-    <text x="140" y="300" font-family="sans-serif" font-size="12" font-weight="bold" fill="#64748B" text-anchor="middle">FACE TRASEIRA</text>
+  <!-- Guias de Encaixe Auxiliar / Peças de Reforço Traseiro -->
+  <g transform="translate(170, 560)">
+    <rect x="40" y="20" width="140" height="40" rx="8" ${fillWithOpacity} ${redCut}/>
+    <rect x="200" y="20" width="140" height="40" rx="8" ${fillWithOpacity} ${redCut}/>
+    <text x="110" y="45" font-family="sans-serif" font-size="10" font-weight="bold" fill="#64748B" text-anchor="middle">Trava Estrutural 1</text>
+    <text x="270" y="45" font-family="sans-serif" font-size="10" font-weight="bold" fill="#64748B" text-anchor="middle">Trava Estrutural 2</text>
   </g>
 </svg>`;
-        } else if (index === 1) {
-          sheetTitle = `Folha 2: Laterais com Abas Serrilhadas da Letra (${layer.paperType})`;
-          piecesCount = 3;
-          estimatedCutSeconds = 60;
-          svgContent = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 794 1123" width="100%" height="100%">
-  <!-- LATERAIS E ABAS DE COLAGEM DA LETRA 3D -->
-  <rect x="30" y="30" width="734" height="1063" fill="none" stroke="#E2E8F0" stroke-width="1" stroke-dasharray="4,4"/>
-  <text x="45" y="60" font-family="sans-serif" font-size="14" font-weight="bold" fill="#64748B">FOLHA 2: LATERAIS COM ABAS DENTADAS (PROFUNDIDADE 3.5cm)</text>
+      }
 
-  <!-- Tira Lateral 1 com Dentes de Colagem -->
+      // ─────────────────────────────────────────────────────────────────────────────
+      // 3. DESTAQUE DO NOME SOLDADO, IDADE & LETRAS PERSONALIZADAS (LAMICOTE / GLITTER)
+      // ─────────────────────────────────────────────────────────────────────────────
+      else if (isNameLayer) {
+        sheetTitle = `Folha ${sheetNum}: Destaque Nome "${nameOnly}" & Idade (${layer.paperType})`;
+        piecesCount = 4;
+        estimatedCutSeconds = 45;
+
+        svgContent = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 794 1123" width="100%" height="100%">
+  <rect x="30" y="30" width="734" height="1063" fill="none" stroke="#CBD5E1" stroke-width="1" stroke-dasharray="4,4"/>
+  <text x="45" y="60" font-family="sans-serif" font-size="14" font-weight="bold" fill="#B45309">FOLHA NOBRE: NOME "${nameOnly.toUpperCase()}" & IDADE (${layer.paperType.toUpperCase()})</text>
+  <text x="45" y="80" font-family="sans-serif" font-size="11" fill="#92400E">Corte Nobre | Lâmina: ${layer.silhouetteSettings.blade} | Força: ${layer.silhouetteSettings.force} | Vel: ${layer.silhouetteSettings.speed} (2 Passadas)</text>
+
+  <!-- 1. Nome Principal Soldado com Borda de Deslocamento 2mm -->
   <g transform="translate(80, 130)">
-    <!-- Borda Serrilhada Superior (Abas) -->
-    <path d="M 0 30 L 10 10 L 20 30 L 30 10 L 40 30 L 50 10 L 60 30 L 70 10 L 80 30 L 90 10 L 100 30 L 110 10 L 120 30 L 130 10 L 140 30 L 150 10 L 160 30 L 170 10 L 180 30 L 190 10 L 200 30 L 210 10 L 220 30 L 230 10 L 240 30 L 250 10 L 260 30 L 270 10 L 280 30 L 290 10 L 300 30 L 310 10 L 320 30 L 330 10 L 340 30 L 350 10 L 360 30 L 370 10 L 380 30 L 390 10 L 400 30 L 410 10 L 420 30 L 430 10 L 440 30 L 450 10 L 460 30 L 470 10 L 480 30 L 490 10 L 500 30 L 510 10 L 520 30 L 530 10 L 540 30 L 550 10 L 560 30 L 570 10 L 580 30 L 590 10 L 600 30
-             L 600 130
-             L 590 150 L 580 130 L 570 150 L 560 130 L 550 150 L 540 130 L 530 150 L 520 130 L 510 150 L 500 130 L 490 150 L 480 130 L 470 150 L 460 130 L 450 150 L 440 130 L 430 150 L 420 130 L 410 150 L 400 130 L 390 150 L 380 130 L 370 150 L 360 130 L 350 150 L 340 130 L 330 150 L 320 130 L 310 150 L 300 130 L 290 150 L 280 130 L 270 150 L 260 130 L 250 150 L 240 130 L 230 150 L 220 130 L 210 150 L 200 130 L 190 150 L 180 130 L 170 150 L 160 130 L 150 150 L 140 130 L 130 150 L 120 130 L 110 150 L 100 130 L 90 150 L 80 130 L 70 150 L 60 130 L 50 150 L 40 130 L 30 150 L 20 130 L 10 150 L 0 130 Z" ${fillWithOpacity} ${redCut}/>
-    <!-- Linhas de Dobra Pontilhada das Abas -->
-    <line x1="0" y1="30" x2="600" y2="30" ${scoreDash}/>
-    <line x1="0" y1="130" x2="600" y2="130" ${scoreDash}/>
-    <text x="300" y="85" font-family="sans-serif" font-size="12" font-weight="bold" fill="#334155" text-anchor="middle">Tira Lateral de Fechamento #1 (3.5cm)</text>
+    <!-- Contorno Externo Soldado -->
+    <rect x="20" y="20" width="580" height="180" rx="28" ${fillWithOpacity} ${redCut}/>
+    <text x="310" y="115" font-family="Brush Script MT, cursive, Georgia, serif" font-size="54" font-weight="bold" fill="${layer.colorHex}" stroke="#FF0000" stroke-width="1.2" text-anchor="middle">
+      ${nameOnly}
+    </text>
+    <text x="310" y="165" font-family="sans-serif" font-size="16" font-weight="bold" fill="#78350F" text-anchor="middle">
+      ${cleanName.includes('-') ? cleanName.split('-')[1].trim() : `${ageOnly} anos`}
+    </text>
   </g>
 
-  <!-- Tira Lateral 2 -->
-  <g transform="translate(80, 340)">
-    <path d="M 0 30 L 10 10 L 20 30 L 30 10 L 40 30 L 50 10 L 60 30 L 70 10 L 80 30 L 90 10 L 100 30 L 110 10 L 120 30 L 130 10 L 140 30 L 150 10 L 160 30 L 170 10 L 180 30 L 190 10 L 200 30 L 210 10 L 220 30 L 230 10 L 240 30 L 250 10 L 260 30 L 270 10 L 280 30 L 290 10 L 300 30 L 310 10 L 320 30 L 330 10 L 340 30 L 350 10 L 360 30 L 370 10 L 380 30 L 390 10 L 400 30 L 410 10 L 420 30 L 430 10 L 440 30 L 450 10 L 460 30 L 470 10 L 480 30 L 490 10 L 500 30 L 510 10 L 520 30 L 530 10 L 540 30 L 550 10 L 560 30 L 570 10 L 580 30 L 590 10 L 600 30
-             L 600 130
-             L 590 150 L 580 130 L 570 150 L 560 130 L 550 150 L 540 130 L 530 150 L 520 130 L 510 150 L 500 130 L 490 150 L 480 130 L 470 150 L 460 130 L 450 150 L 440 130 L 430 150 L 420 130 L 410 150 L 400 130 L 390 150 L 380 130 L 370 150 L 360 130 L 350 150 L 340 130 L 330 150 L 320 130 L 310 150 L 300 130 L 290 150 L 280 130 L 270 150 L 260 130 L 250 150 L 240 130 L 230 150 L 220 130 L 210 150 L 200 130 L 190 150 L 180 130 L 170 150 L 160 130 L 150 150 L 140 130 L 130 150 L 120 130 L 110 150 L 100 130 L 90 150 L 80 130 L 70 150 L 60 130 L 50 150 L 40 130 L 30 150 L 20 130 L 10 150 L 0 130 Z" ${fillWithOpacity} ${redCut}/>
-    <line x1="0" y1="30" x2="600" y2="30" ${scoreDash}/>
-    <line x1="0" y1="130" x2="600" y2="130" ${scoreDash}/>
-    <text x="300" y="85" font-family="sans-serif" font-size="12" font-weight="bold" fill="#334155" text-anchor="middle">Tira Lateral de Fechamento #2 (3.5cm)</text>
+  <!-- 2. Tag da Idade e Medalhão Escalopado -->
+  <g transform="translate(80, 360)">
+    <!-- Roseta / Escalope da Idade -->
+    <g transform="translate(40, 20)">
+      <circle cx="70" cy="70" r="65" ${fillWithOpacity} ${redCut}/>
+      <circle cx="70" cy="70" r="50" ${redCut}/>
+      <text x="70" y="88" font-family="Impact, Arial Black, sans-serif" font-size="52" font-weight="bold" fill="${layer.colorHex}" stroke="#FF0000" stroke-width="1.5" text-anchor="middle">
+        ${ageOnly}
+      </text>
+      <text x="70" y="155" font-family="sans-serif" font-size="10" font-weight="bold" fill="#92400E" text-anchor="middle">Medalhão Idade 3D</text>
+    </g>
+
+    <!-- Estrelas Nobres Metálicas / Coroas de Acabamento -->
+    <g transform="translate(240, 20)">
+      <polygon points="50,10 63,38 93,42 71,63 76,93 50,78 24,93 29,63 7,42 37,38" ${fillWithOpacity} ${redCut}/>
+      <text x="50" y="115" font-family="sans-serif" font-size="9" fill="#92400E" text-anchor="middle">Aplique Nobre #1</text>
+    </g>
+
+    <g transform="translate(370, 20)">
+      <polygon points="50,10 63,38 93,42 71,63 76,93 50,78 24,93 29,63 7,42 37,38" ${fillWithOpacity} ${redCut}/>
+      <text x="50" y="115" font-family="sans-serif" font-size="9" fill="#92400E" text-anchor="middle">Aplique Nobre #2</text>
+    </g>
+
+    <g transform="translate(500, 20)">
+      <!-- Coroa / Laço Nobre -->
+      <path d="M 20 70 L 30 30 L 50 50 L 70 20 L 90 50 L 110 30 L 120 70 Z" ${fillWithOpacity} ${redCut}/>
+      <text x="70" y="95" font-family="sans-serif" font-size="9" fill="#92400E" text-anchor="middle">Coroa Destaque</text>
+    </g>
   </g>
 </svg>`;
-        }
       }
 
       // ─────────────────────────────────────────────────────────────────────────────
-      // CASO 3: TOPO DE BOLO 3D & OUTROS PRODUTOS (COM ELEMENTOS VETORIAIS POR TEMA)
+      // 4. MOLDURAS, ESCALOPES, VISORES & BORDAS 3D INTERMEDIÁRIAS
       // ─────────────────────────────────────────────────────────────────────────────
-      if (!svgContent) {
-        if (index === 0) {
-          // Folha 1: Base Estrutural com Silhueta Temática do Produto
-          sheetTitle = `Folha 1: Base Estrutural Traseira (${layer.paperType})`;
-          piecesCount = 2;
-          estimatedCutSeconds = 40;
+      else if (isFrameLayer) {
+        sheetTitle = `Folha ${sheetNum}: Molduras & Escalopes 3D (${layer.paperType})`;
+        piecesCount = 3;
+        estimatedCutSeconds = 42;
 
-          let themePath = 'M 50 160 C 20 160 0 130 0 95 C 0 50 40 10 90 10 C 130 10 165 35 180 70 C 200 40 240 20 285 20 C 340 20 385 60 385 115 C 410 115 430 135 430 160 C 430 185 410 205 385 205 C 385 250 345 285 295 285 C 265 285 235 270 215 245 C 195 275 155 295 110 295 C 50 295 10 250 10 195 C 10 180 18 168 50 160 Z';
-          let themeLabel = 'Base de Sustentação 3D';
+        svgContent = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 794 1123" width="100%" height="100%">
+  <rect x="30" y="30" width="734" height="1063" fill="none" stroke="#CBD5E1" stroke-width="1" stroke-dasharray="4,4"/>
+  <text x="45" y="60" font-family="sans-serif" font-size="14" font-weight="bold" fill="#334155">FOLHA ${sheetNum}: MOLDURAS & ESCALOPES — ${layer.paperType.toUpperCase()}</text>
+  <text x="45" y="80" font-family="sans-serif" font-size="11" fill="#64748B">Camada de Elevação Intermediária | Deslocamento 2.0mm</text>
 
-          if (isSpace) {
-            themePath = 'M 200 20 L 260 140 L 320 220 L 360 300 L 280 280 L 200 360 L 120 280 L 40 300 L 80 220 L 140 140 Z';
-            themeLabel = 'Base Foguete e Galáxia';
-          } else if (isSafari) {
-            themePath = 'M 60 140 C 20 100 20 40 80 20 C 140 0 220 10 280 40 C 340 10 420 40 400 120 C 420 180 380 260 320 280 C 260 300 180 290 120 270 C 40 260 20 180 60 140 Z';
-            themeLabel = 'Base Selva e Folhagens';
-          } else if (isDino) {
-            themePath = 'M 80 240 L 40 180 L 80 120 L 160 80 L 240 40 L 340 60 L 420 120 L 400 200 L 320 260 L 220 280 L 140 270 Z';
-            themeLabel = 'Base Dinossauro e Vulcão';
-          }
+  <!-- Moldura Frontal Escalopada com Janela Central Recortada -->
+  <g transform="translate(100, 130)">
+    <!-- Borda Externa Escalopada -->
+    <rect x="20" y="20" width="340" height="260" rx="30" ${fillWithOpacity} ${redCut}/>
+    <!-- Janela Central Vazada para Efeito 3D -->
+    <rect x="50" y="50" width="280" height="200" rx="18" ${redCut}/>
+    <text x="190" y="155" font-family="sans-serif" font-size="13" font-weight="bold" fill="${layer.colorHex}" text-anchor="middle">MOLDURA PRINCIPAL VAZADA</text>
+    <text x="190" y="175" font-family="sans-serif" font-size="10" fill="#64748B" text-anchor="middle">Janela Vazada (Efeito Camadas)</text>
+  </g>
 
-          svgContent = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 794 1123" width="100%" height="100%">
-  <rect x="30" y="30" width="734" height="1063" fill="none" stroke="#E2E8F0" stroke-width="1" stroke-dasharray="4,4"/>
-  <text x="45" y="60" font-family="sans-serif" font-size="14" font-weight="bold" fill="#64748B">FOLHA 1: BASE ESTRUTURAL — ${theme.toUpperCase()}</text>
-  <text x="45" y="80" font-family="sans-serif" font-size="11" fill="#94A3B8">Silhouette Portrait / Cameo | Lâmina: ${layer.silhouetteSettings.blade} | Força: ${layer.silhouetteSettings.force} | Vel: ${layer.silhouetteSettings.speed}</text>
+  <!-- Moldura Oval / Segundo Nível de Escalope -->
+  <g transform="translate(480, 130)">
+    <ellipse cx="110" cy="150" rx="100" ry="130" ${fillWithOpacity} ${redCut}/>
+    <ellipse cx="110" cy="150" rx="75" ry="105" ${redCut}/>
+    <text x="110" y="155" font-family="sans-serif" font-size="11" font-weight="bold" fill="#64748B" text-anchor="middle">Medalhão Oval</text>
+  </g>
 
-  <!-- Silhueta da Base do Tema -->
-  <g transform="translate(140, 140)">
-    <path d="${themePath}" ${fillWithOpacity} ${redCut}/>
-    <text x="210" y="160" font-family="sans-serif" font-size="14" font-weight="bold" fill="${layer.colorHex}" text-anchor="middle">${themeLabel}</text>
-    <text x="210" y="185" font-family="sans-serif" font-size="11" fill="#64748B" text-anchor="middle">Offset 3.0mm (Fundo Sólido)</text>
-
-    <!-- Guias de Encaixe de Palito Acrílico -->
-    <rect x="150" y="290" width="12" height="70" fill="none" stroke="#3B82F6" stroke-width="1.2" stroke-dasharray="3,3"/>
-    <rect x="270" y="290" width="12" height="70" fill="none" stroke="#3B82F6" stroke-width="1.2" stroke-dasharray="3,3"/>
-    <text x="210" y="345" font-family="sans-serif" font-size="9" fill="#3B82F6" text-anchor="middle">Encaixe Palitos Acrílicos</text>
+  <!-- Faixas Flutuantes / Banners 3D com Vincos de Dobra -->
+  <g transform="translate(100, 440)">
+    <path d="M 20 60 L 60 30 L 60 50 L 480 50 L 480 30 L 520 60 L 480 90 L 480 70 L 60 70 L 60 90 Z" ${fillWithOpacity} ${redCut}/>
+    <line x1="120" y1="50" x2="120" y2="70" ${scoreDash}/>
+    <line x1="420" y1="50" x2="420" y2="70" ${scoreDash}/>
+    <text x="270" y="64" font-family="sans-serif" font-size="12" font-weight="bold" fill="${layer.colorHex}" text-anchor="middle">FAIXA FLUTUANTE 3D DOBRÁVEL</text>
   </g>
 </svg>`;
-        } else if (index === 1) {
-          // Folha 2: Elementos Temáticos Específicos do Tema Escolhido
-          sheetTitle = `Folha 2: Elementos Temáticos & Molduras (${layer.paperType})`;
-          piecesCount = 4;
-          estimatedCutSeconds = 50;
+      }
 
-          if (isSpace) {
-            // ELEMENTOS DO ESPAÇO: FOGUETE EM CAMADAS + PLANETA COM ANEL
-            svgContent = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 794 1123" width="100%" height="100%">
-  <rect x="30" y="30" width="734" height="1063" fill="none" stroke="#E2E8F0" stroke-width="1" stroke-dasharray="4,4"/>
-  <text x="45" y="60" font-family="sans-serif" font-size="14" font-weight="bold" fill="#0284C7">FOLHA ESPAÇO: FOGUETE 3D & PLANETAS — ${layer.paperType}</text>
+      // ─────────────────────────────────────────────────────────────────────────────
+      // 5. VISOR DE ACETATO CRISTAL & ANEL DE VEDAÇÃO EM EVA (SHAKER)
+      // ─────────────────────────────────────────────────────────────────────────────
+      else if (isShakerLayer) {
+        sheetTitle = `Folha ${sheetNum}: Visor de Acetato & Anel EVA Shaker`;
+        piecesCount = 2;
+        estimatedCutSeconds = 60;
+
+        svgContent = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 794 1123" width="100%" height="100%">
+  <rect x="30" y="30" width="734" height="1063" fill="none" stroke="#CBD5E1" stroke-width="1" stroke-dasharray="4,4"/>
+  <text x="45" y="60" font-family="sans-serif" font-size="14" font-weight="bold" fill="#0284C7">FOLHA SHAKER: VISOR ACETATO CRISTAL & ANEL EVA 2mm</text>
+  <text x="45" y="80" font-family="sans-serif" font-size="11" fill="#64748B">Lâmina de Corte Profundo (EVA) | Lâmina: 10 | Força: 33 | 2 Passadas</text>
+
+  <!-- 1. Visor em Acetato Cristal 20 micras -->
+  <g transform="translate(130, 130)">
+    <circle cx="150" cy="150" r="130" fill="#F0F9FF" fill-opacity="0.6" stroke="#0284C7" stroke-width="2"/>
+    <text x="150" y="145" font-family="sans-serif" font-size="14" font-weight="bold" fill="#0284C7" text-anchor="middle">VISOR EM ACETATO</text>
+    <text x="150" y="170" font-family="sans-serif" font-size="11" fill="#64748B" text-anchor="middle">20 micras transparente</text>
+  </g>
+
+  <!-- 2. Anel de Contenção em EVA 2mm (Câmara Estanque para Lantejoulas) -->
+  <g transform="translate(130, 460)">
+    <circle cx="150" cy="150" r="130" fill="#FEF3C7" fill-opacity="0.4" ${redCut}/>
+    <circle cx="150" cy="150" r="105" ${redCut}/>
+    <text x="150" y="145" font-family="sans-serif" font-size="13" font-weight="bold" fill="#D97706" text-anchor="middle">ANEL DE CONTENÇÃO EVA (2mm)</text>
+    <text x="150" y="170" font-family="sans-serif" font-size="10" fill="#64748B" text-anchor="middle">Câmara para Miçangas e Lantejoulas</text>
+  </g>
+</svg>`;
+      }
+
+      // ─────────────────────────────────────────────────────────────────────────────
+      // 6. PRINT & CUT COM MARCAS DE REGISTRO SILHOUETTE
+      // ─────────────────────────────────────────────────────────────────────────────
+      else if (isPrintCutLayer) {
+        sheetTitle = `Folha ${sheetNum}: Print & Cut Ilustrações (${theme})`;
+        piecesCount = 5;
+        estimatedCutSeconds = 55;
+
+        svgContent = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 794 1123" width="100%" height="100%">
+  <!-- MARCAS DE REGISTRO ÓTICAS SILHOUETTE -->
+  <rect x="50" y="50" width="20" height="20" fill="#000000"/>
+  <path d="M 724 50 L 744 50 L 744 70" fill="none" stroke="#000000" stroke-width="4"/>
+  <path d="M 50 1053 L 50 1073 L 70 1073" fill="none" stroke="#000000" stroke-width="4"/>
+
+  <text x="90" y="66" font-family="sans-serif" font-size="13" font-weight="bold" fill="#334155">PRINT & CUT: ELEMENTOS ILUSTRADOS DO TEMA "${theme.toUpperCase()}"</text>
+  <text x="90" y="84" font-family="sans-serif" font-size="10" fill="#64748B">Papel Fotográfico Matte 180g | Sangria 1.5mm | Ativar Sensor Óptico na Plotter</text>
+
+  <!-- Personagem / Ilustração Principal -->
+  <g transform="translate(120, 140)">
+    <rect x="20" y="20" width="250" height="250" rx="35" ${fillWithOpacity}/>
+    <rect x="15" y="15" width="260" height="260" rx="40" ${redCut}/>
+    <text x="145" y="135" font-family="sans-serif" font-size="18" font-weight="bold" fill="#1E293B" text-anchor="middle">${theme}</text>
+    <text x="145" y="165" font-family="sans-serif" font-size="12" fill="#64748B" text-anchor="middle">Aplique Central 3D</text>
+  </g>
+
+  <!-- Tags e Personagens Secundários -->
+  <g transform="translate(430, 140)">
+    <circle cx="110" cy="110" r="85" ${fillWithOpacity}/>
+    <circle cx="110" cy="110" r="80" ${redCut}/>
+    <text x="110" y="115" font-family="sans-serif" font-size="12" font-weight="bold" fill="#334155" text-anchor="middle">Tag Temática 3D</text>
+  </g>
+</svg>`;
+      }
+
+      // ─────────────────────────────────────────────────────────────────────────────
+      // 7. ELEMENTOS TEMÁTICOS 3D VETORIZADOS ESPECÍFICOS POR TEMA
+      // ─────────────────────────────────────────────────────────────────────────────
+      else {
+        sheetTitle = `Folha ${sheetNum}: Elementos Temáticos 3D (${theme})`;
+        piecesCount = 4;
+        estimatedCutSeconds = 48;
+
+        if (isPrincess) {
+          // ELEMENTOS REALEZA: COROA REAL VAZADA + CASTELO + ARABESCOS
+          svgContent = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 794 1123" width="100%" height="100%">
+  <rect x="30" y="30" width="734" height="1063" fill="none" stroke="#CBD5E1" stroke-width="1" stroke-dasharray="4,4"/>
+  <text x="45" y="60" font-family="sans-serif" font-size="14" font-weight="bold" fill="#B45309">FOLHA REALEZA: COROA REAL 3D & CASTELO — ${layer.paperType.toUpperCase()}</text>
+
+  <!-- Coroa Imperial com Pedrarias Vazadas -->
+  <g transform="translate(100, 130)">
+    <path d="M 30 180 L 50 60 L 100 120 L 150 30 L 200 120 L 250 60 L 270 180 Z" ${fillWithOpacity} ${redCut}/>
+    <circle cx="150" cy="30" r="10" fill="#FEF08A" ${redCut}/>
+    <circle cx="50" cy="60" r="7" fill="#FEF08A" ${redCut}/>
+    <circle cx="250" cy="60" r="7" fill="#FEF08A" ${redCut}/>
+    <text x="150" y="215" font-family="sans-serif" font-size="12" font-weight="bold" fill="#B45309" text-anchor="middle">Coroa Real 3D</text>
+  </g>
+
+  <!-- Castelo e Ameias em Camadas -->
+  <g transform="translate(430, 130)">
+    <path d="M 30 180 L 30 80 L 60 50 L 90 80 L 130 80 L 150 40 L 170 80 L 210 80 L 240 50 L 270 80 L 270 180 Z" ${fillWithOpacity} ${redCut}/>
+    <text x="150" y="215" font-family="sans-serif" font-size="12" font-weight="bold" fill="#64748B" text-anchor="middle">Torres do Castelo</text>
+  </g>
+</svg>`;
+        } else if (isSpace) {
+          // ELEMENTOS ESPAÇO: FOGUETE DESMONTADO + PLANETA SATURNO COM ANEL
+          svgContent = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 794 1123" width="100%" height="100%">
+  <rect x="30" y="30" width="734" height="1063" fill="none" stroke="#CBD5E1" stroke-width="1" stroke-dasharray="4,4"/>
+  <text x="45" y="60" font-family="sans-serif" font-size="14" font-weight="bold" fill="#0284C7">FOLHA ESPAÇO: FOGUETE 3D & PLANETAS — ${layer.paperType.toUpperCase()}</text>
 
   <!-- Foguete Desmontado em Peças -->
   <g transform="translate(100, 130)">
-    <!-- Corpo Principal Foguete -->
     <path d="M 90 20 C 130 80 140 180 140 240 L 40 240 C 40 180 50 80 90 20 Z" ${fillWithOpacity} ${redCut}/>
-    <!-- Bico da Ogiva -->
     <path d="M 90 20 C 110 50 115 80 115 90 L 65 90 C 65 80 70 50 90 20 Z" fill="#EF4444" ${redCut}/>
-    <!-- Janela Dupla -->
     <circle cx="90" cy="130" r="24" fill="#FFFFFF" ${redCut}/>
     <circle cx="90" cy="130" r="16" fill="#38BDF8" ${redCut}/>
-    <!-- Chamas Turbina 3D -->
     <path d="M 60 240 L 90 320 L 120 240 L 105 260 L 90 240 L 75 260 Z" fill="#F59E0B" ${redCut}/>
     <text x="90" y="345" font-family="sans-serif" font-size="11" font-weight="bold" fill="#0284C7" text-anchor="middle">Foguete 3D Desmontado</text>
   </g>
 
-  <!-- Planeta Saturno com Anel Orbital -->
+  <!-- Saturno com Anel -->
   <g transform="translate(420, 130)">
     <circle cx="120" cy="120" r="70" ${fillWithOpacity} ${redCut}/>
     <ellipse cx="120" cy="120" rx="110" ry="30" fill="none" stroke="#F59E0B" stroke-width="2"/>
-    <text x="120" y="215" font-family="sans-serif" font-size="11" font-weight="bold" fill="#D97706" text-anchor="middle">Planeta Saturno com Anel</text>
+    <text x="120" y="215" font-family="sans-serif" font-size="11" font-weight="bold" fill="#D97706" text-anchor="middle">Planeta Saturno</text>
   </g>
 </svg>`;
-          } else if (isSafari) {
-            // ELEMENTOS DO SAFARI: LEÃOZINHO 3D + COSTELA DE ADÃO
-            svgContent = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 794 1123" width="100%" height="100%">
-  <rect x="30" y="30" width="734" height="1063" fill="none" stroke="#E2E8F0" stroke-width="1" stroke-dasharray="4,4"/>
-  <text x="45" y="60" font-family="sans-serif" font-size="14" font-weight="bold" fill="#854D0E">FOLHA SAFARI: LEÃOZINHO 3D & COSTELA DE ADÃO — ${layer.paperType}</text>
+        } else if (isSafari) {
+          // ELEMENTOS SAFARI: LEÃOZINHO 3D + COSTELA DE ADÃO
+          svgContent = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 794 1123" width="100%" height="100%">
+  <rect x="30" y="30" width="734" height="1063" fill="none" stroke="#CBD5E1" stroke-width="1" stroke-dasharray="4,4"/>
+  <text x="45" y="60" font-family="sans-serif" font-size="14" font-weight="bold" fill="#854D0E">FOLHA SAFARI: LEÃOZINHO 3D & COSTELA DE ADÃO — ${layer.paperType.toUpperCase()}</text>
 
   <!-- Juba e Rosto do Leãozinho -->
   <g transform="translate(100, 130)">
-    <!-- Juba Recortada -->
     <path d="M 120 20 L 145 50 L 180 35 L 185 70 L 220 75 L 205 110 L 230 135 L 205 160 L 220 195 L 185 200 L 180 235 L 145 220 L 120 250 L 95 220 L 60 235 L 55 200 L 20 195 L 35 160 L 10 135 L 35 110 L 20 75 L 55 70 L 60 35 L 95 50 Z" ${fillWithOpacity} ${redCut}/>
-    <!-- Rosto do Leão -->
     <circle cx="120" cy="135" r="55" fill="#FEF08A" ${redCut}/>
-    <ellipse cx="120" cy="150" rx="25" ry="18" fill="#FFFFFF" ${redCut}/>
-    <polygon points="113,142 127,142 120,150" fill="#78350F"/>
     <text x="120" y="275" font-family="sans-serif" font-size="11" font-weight="bold" fill="#854D0E" text-anchor="middle">Aplique Leãozinho 3D</text>
   </g>
 
@@ -1260,34 +1396,73 @@ INSTRUÇÕES DE INSPEÇÃO VISUAL OBRIGATÓRIAS:
     <text x="100" y="275" font-family="sans-serif" font-size="11" font-weight="bold" fill="#15803D" text-anchor="middle">Costela-de-Adão Tropical</text>
   </g>
 </svg>`;
-          } else if (isDino) {
-            // ELEMENTOS DO DINOSSAURO: T-REX 3D + PEGADAS
-            svgContent = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 794 1123" width="100%" height="100%">
-  <rect x="30" y="30" width="734" height="1063" fill="none" stroke="#E2E8F0" stroke-width="1" stroke-dasharray="4,4"/>
-  <text x="45" y="60" font-family="sans-serif" font-size="14" font-weight="bold" fill="#15803D">FOLHA DINO: T-REX 3D & PEGADAS — ${layer.paperType}</text>
+        } else if (isDino) {
+          // ELEMENTOS DINO: T-REX + ESPINHOS + PEGADA
+          svgContent = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 794 1123" width="100%" height="100%">
+  <rect x="30" y="30" width="734" height="1063" fill="none" stroke="#CBD5E1" stroke-width="1" stroke-dasharray="4,4"/>
+  <text x="45" y="60" font-family="sans-serif" font-size="14" font-weight="bold" fill="#15803D">FOLHA DINO: T-REX 3D & PEGADAS — ${layer.paperType.toUpperCase()}</text>
 
-  <!-- Corpo Dinossauro Cute -->
+  <!-- Dinossauro Cute -->
   <g transform="translate(100, 130)">
     <path d="M 160 50 C 220 50 240 100 210 140 L 180 140 C 190 190 170 250 110 260 L 90 300 L 60 300 L 75 250 C 30 250 10 200 10 160 C 50 180 90 150 90 110 L 90 90 Z" ${fillWithOpacity} ${redCut}/>
-    <!-- Espinhos Dorsais -->
     <polygon points="120,40 135,15 150,40" fill="#F59E0B" ${redCut}/>
     <polygon points="90,65 105,40 120,65" fill="#F59E0B" ${redCut}/>
-    <polygon points="65,95 80,70 95,95" fill="#F59E0B" ${redCut}/>
     <text x="120" y="335" font-family="sans-serif" font-size="11" font-weight="bold" fill="#15803D" text-anchor="middle">Corpo do Dino Cute 3D</text>
   </g>
 
-  <!-- Pegadas e Ovos Dino -->
+  <!-- Pegada Dino -->
   <g transform="translate(420, 130)">
-    <!-- Pegada 3 Dedos -->
     <path d="M 80 40 L 100 10 L 120 40 L 140 20 L 145 60 L 170 50 L 155 85 C 150 115 110 120 85 100 C 65 80 60 55 80 40 Z" ${fillWithOpacity} ${redCut}/>
     <text x="110" y="145" font-family="sans-serif" font-size="10" font-weight="bold" fill="#15803D" text-anchor="middle">Pegada Dino</text>
   </g>
 </svg>`;
-          } else {
-            // JARDIM / BORBOLETAS / FLORAL / PADRÃO
-            svgContent = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 794 1123" width="100%" height="100%">
-  <rect x="30" y="30" width="734" height="1063" fill="none" stroke="#E2E8F0" stroke-width="1" stroke-dasharray="4,4"/>
-  <text x="45" y="60" font-family="sans-serif" font-size="14" font-weight="bold" fill="#64748B">FOLHA JARDIM: BORBOLETAS DUPLAS & FLORES 3D — ${layer.paperType}</text>
+        } else if (isMermaid) {
+          // ELEMENTOS SEREIA: CAUDA COM ESCAMAS + CONCHA
+          svgContent = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 794 1123" width="100%" height="100%">
+  <rect x="30" y="30" width="734" height="1063" fill="none" stroke="#CBD5E1" stroke-width="1" stroke-dasharray="4,4"/>
+  <text x="45" y="60" font-family="sans-serif" font-size="14" font-weight="bold" fill="#0891B2">FOLHA SEREIA: CAUDA DE SEREIA & CONCHA — ${layer.paperType.toUpperCase()}</text>
+
+  <!-- Cauda de Sereia -->
+  <g transform="translate(100, 130)">
+    <path d="M 120 20 C 160 80 180 160 140 240 C 180 260 220 240 240 280 C 180 290 140 260 120 250 C 100 260 60 290 0 280 C 20 240 60 260 100 240 C 60 160 80 80 120 20 Z" ${fillWithOpacity} ${redCut}/>
+    <text x="120" y="325" font-family="sans-serif" font-size="11" font-weight="bold" fill="#0891B2" text-anchor="middle">Cauda de Sereia 3D</text>
+  </g>
+
+  <!-- Concha Perolada -->
+  <g transform="translate(420, 130)">
+    <path d="M 40 160 C 20 100 60 40 120 40 C 180 40 220 100 200 160 C 180 190 60 190 40 160 Z" ${fillWithOpacity} ${redCut}/>
+    <line x1="120" y1="40" x2="120" y2="180" ${scoreDash}/>
+    <line x1="80" y1="50" x2="110" y2="180" ${scoreDash}/>
+    <line x1="160" y1="50" x2="130" y2="180" ${scoreDash}/>
+    <text x="120" y="215" font-family="sans-serif" font-size="11" font-weight="bold" fill="#0891B2" text-anchor="middle">Concha Bivalve</text>
+  </g>
+</svg>`;
+        } else if (isBear) {
+          // ELEMENTOS BALÃO E URSINHO
+          svgContent = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 794 1123" width="100%" height="100%">
+  <rect x="30" y="30" width="734" height="1063" fill="none" stroke="#CBD5E1" stroke-width="1" stroke-dasharray="4,4"/>
+  <text x="45" y="60" font-family="sans-serif" font-size="14" font-weight="bold" fill="#0284C7">FOLHA BALÃO: BALÃO DE AR QUENTE 3D & NUVENS — ${layer.paperType.toUpperCase()}</text>
+
+  <!-- Balão de Ar Quente -->
+  <g transform="translate(100, 130)">
+    <path d="M 120 20 C 180 20 220 60 220 120 C 220 180 180 220 150 250 L 90 250 C 60 220 20 180 20 120 C 20 60 60 20 120 20 Z" ${fillWithOpacity} ${redCut}/>
+    <rect x="85" y="270" width="70" height="50" rx="6" ${fillWithOpacity} ${redCut}/>
+    <line x1="95" y1="250" x2="95" y2="270" ${redCut}/>
+    <line x1="145" y1="250" x2="145" y2="270" ${redCut}/>
+    <text x="120" y="355" font-family="sans-serif" font-size="11" font-weight="bold" fill="#0284C7" text-anchor="middle">Balão de Ar Quente 3D</text>
+  </g>
+
+  <!-- Nuvens em Camadas -->
+  <g transform="translate(420, 130)">
+    <path d="M 40 100 C 20 100 10 80 25 65 C 15 45 35 30 55 35 C 70 15 100 15 115 35 C 135 30 155 45 145 65 C 160 80 150 100 130 100 Z" ${fillWithOpacity} ${redCut}/>
+    <text x="90" y="135" font-family="sans-serif" font-size="10" font-weight="bold" fill="#64748B" text-anchor="middle">Nuvem Fofa 3D</text>
+  </g>
+</svg>`;
+        } else {
+          // JARDIM / BORBOLETAS DUPLAS & FLORES 3D
+          svgContent = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 794 1123" width="100%" height="100%">
+  <rect x="30" y="30" width="734" height="1063" fill="none" stroke="#CBD5E1" stroke-width="1" stroke-dasharray="4,4"/>
+  <text x="45" y="60" font-family="sans-serif" font-size="14" font-weight="bold" fill="#DB2777">FOLHA JARDIM: BORBOLETAS DUPLAS & FLORES 3D — ${layer.paperType.toUpperCase()}</text>
 
   <!-- Borboleta Rendada Asa Dupla -->
   <g transform="translate(100, 130)">
@@ -1301,106 +1476,6 @@ INSTRUÇÕES DE INSPEÇÃO VISUAL OBRIGATÓRIAS:
     <path d="M 80 20 C 100 40 120 40 140 20 C 140 50 160 70 180 80 C 150 90 140 110 140 140 C 120 120 100 120 80 140 C 80 110 60 90 30 80 C 60 70 80 50 80 20 Z" ${fillWithOpacity} ${redCut}/>
     <circle cx="105" cy="80" r="18" fill="#FDE047" ${redCut}/>
     <text x="105" y="170" font-family="sans-serif" font-size="10" font-weight="bold" fill="#D97706" text-anchor="middle">Flor 3D 3 Camadas</text>
-  </g>
-</svg>`;
-          }
-        } else if (isShaker && layer.paperType.toLowerCase().includes('acetato')) {
-          // Folha Shaker: Visor de Acetato + Anel de Vedação em EVA
-          sheetTitle = `Folha 3: Visor de Acetato & Espuma de Contenção Shaker`;
-          piecesCount = 2;
-          estimatedCutSeconds = 60;
-          svgContent = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 794 1123" width="100%" height="100%">
-  <rect x="30" y="30" width="734" height="1063" fill="none" stroke="#E2E8F0" stroke-width="1" stroke-dasharray="4,4"/>
-  <text x="45" y="60" font-family="sans-serif" font-size="14" font-weight="bold" fill="#0284C7">FOLHA SHAKER: VISOR ACETATO & ANEL EVA (20 micras)</text>
-  <text x="45" y="80" font-family="sans-serif" font-size="11" fill="#64748B">Lâmina de Corte Profundo | Lâmina: 10 | Força: 33 | Vel: 2 | 2 Passadas</text>
-
-  <!-- Visor de Acetato Cristal -->
-  <g transform="translate(140, 130)">
-    <circle cx="160" cy="160" r="140" fill="#F0F9FF" fill-opacity="0.5" stroke="#0284C7" stroke-width="2"/>
-    <text x="160" y="155" font-family="sans-serif" font-size="14" font-weight="bold" fill="#0284C7" text-anchor="middle">VISOR EM ACETATO</text>
-    <text x="160" y="175" font-family="sans-serif" font-size="11" fill="#64748B" text-anchor="middle">20 micras transparente</text>
-  </g>
-
-  <!-- Anel de Vedação em EVA 2mm -->
-  <g transform="translate(140, 480)">
-    <circle cx="160" cy="160" r="140" fill="#FEF3C7" fill-opacity="0.4" ${redCut}/>
-    <circle cx="160" cy="160" r="120" ${redCut}/>
-    <text x="160" y="155" font-family="sans-serif" font-size="13" font-weight="bold" fill="#D97706" text-anchor="middle">ANEL DE CONTENÇÃO (EVA 2mm)</text>
-  </g>
-</svg>`;
-        } else if (layer.paperType.toLowerCase().includes('fotográfico') || layer.name.toLowerCase().includes('ilustra')) {
-          // Folha Print & Cut com Marcas de Registro Reais da Silhouette
-          sheetTitle = `Folha ${sheetNum}: Print & Cut Ilustrações (${theme})`;
-          piecesCount = 5;
-          estimatedCutSeconds = 60;
-          svgContent = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 794 1123" width="100%" height="100%">
-  <!-- MARCAS DE REGISTRO SILHOUETTE (PORTRAIT / CAMEO) -->
-  <rect x="50" y="50" width="20" height="20" fill="#000000"/>
-  <path d="M 724 50 L 744 50 L 744 70" fill="none" stroke="#000000" stroke-width="4"/>
-  <path d="M 50 1053 L 50 1073 L 70 1073" fill="none" stroke="#000000" stroke-width="4"/>
-
-  <text x="90" y="66" font-family="sans-serif" font-size="13" font-weight="bold" fill="#64748B">PRINT & CUT: ELEMENTOS DO TEMA "${theme.toUpperCase()}"</text>
-  <text x="90" y="84" font-family="sans-serif" font-size="10" fill="#94A3B8">Papel Fotográfico Matte 180g | Sangria 1.5mm | Ativar Leitura Óptica</text>
-
-  <!-- Ilustração 1 Principal do Tema -->
-  <g transform="translate(120, 140)">
-    <rect x="20" y="20" width="240" height="240" rx="30" fill="${layer.colorHex}" fill-opacity="0.3"/>
-    <rect x="15" y="15" width="250" height="250" rx="35" ${redCut}/>
-    <text x="140" y="130" font-family="sans-serif" font-size="20" font-weight="bold" fill="#1E293B" text-anchor="middle">${theme}</text>
-    <text x="140" y="160" font-family="sans-serif" font-size="12" fill="#64748B" text-anchor="middle">Aplique Principal 3D</text>
-  </g>
-
-  <!-- Tags e Apliques Menores -->
-  <g transform="translate(420, 140)">
-    <circle cx="100" cy="100" r="75" fill="${layer.colorHex}" fill-opacity="0.25"/>
-    <circle cx="100" cy="100" r="70" ${redCut}/>
-    <text x="100" y="105" font-family="sans-serif" font-size="12" font-weight="bold" fill="#334155" text-anchor="middle">Tag Personalizada</text>
-  </g>
-</svg>`;
-        } else {
-          // Folha de Destaque: Nome e Idade em Lamicote Ouro 250g
-          sheetTitle = `Folha ${sheetNum}: Destaque Nome "${nameOnly}" & Idade (${layer.paperType})`;
-          piecesCount = 3;
-          estimatedCutSeconds = 45;
-          svgContent = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 794 1123" width="100%" height="100%">
-  <rect x="30" y="30" width="734" height="1063" fill="none" stroke="#E2E8F0" stroke-width="1" stroke-dasharray="4,4"/>
-  <text x="45" y="60" font-family="sans-serif" font-size="14" font-weight="bold" fill="#B45309">FOLHA NOBRE: NOME "${nameOnly.toUpperCase()}" & IDADE (${layer.paperType})</text>
-  <text x="45" y="80" font-family="sans-serif" font-size="11" fill="#92400E">Lâmina: ${layer.silhouetteSettings.blade} | Força: ${layer.silhouetteSettings.force} | Vel: ${layer.silhouetteSettings.speed} (2 passadas)</text>
-
-  <!-- Nome Cursivo Soldado com Deslocamento de 2.0mm -->
-  <g transform="translate(90, 140)">
-    <!-- Contorno de Deslocamento / Solda de Letras -->
-    <rect x="20" y="20" width="560" height="180" rx="25" fill="#FEF3C7" fill-opacity="0.7" ${redCut}/>
-    
-    <text x="300" y="115" font-family="Brush Script MT, cursive, Georgia, serif" font-size="56" font-weight="bold" fill="#D97706" text-anchor="middle">
-      ${nameOnly}
-    </text>
-    <text x="300" y="165" font-family="sans-serif" font-size="18" font-weight="bold" fill="#B45309" text-anchor="middle">
-      ${cleanName.includes('-') ? cleanName.split('-')[1].trim() : `${ageOnly} anos`}
-    </text>
-  </g>
-
-  <!-- Tag da Idade e Brasão Temático -->
-  <g transform="translate(90, 380)">
-    <!-- Tag da Idade em Círculo com Escalope -->
-    <g transform="translate(60, 20)">
-      <circle cx="60" cy="60" r="55" fill="#FEF3C7" ${redCut}/>
-      <text x="60" y="75" font-family="Impact, Arial Black, sans-serif" font-size="44" font-weight="bold" fill="#D97706" text-anchor="middle">
-        ${ageOnly}
-      </text>
-      <text x="60" y="135" font-family="sans-serif" font-size="10" font-weight="bold" fill="#92400E" text-anchor="middle">Tag Idade 3D</text>
-    </g>
-
-    <!-- Estrelas / Ramos de Acabamento -->
-    <g transform="translate(240, 20)">
-      <polygon points="50,10 63,38 93,42 71,63 76,93 50,78 24,93 29,63 7,42 37,38" fill="#FDE68A" ${redCut}/>
-      <text x="50" y="115" font-family="sans-serif" font-size="9" fill="#92400E" text-anchor="middle">Estrela Nobre 1</text>
-    </g>
-
-    <g transform="translate(400, 20)">
-      <polygon points="50,10 63,38 93,42 71,63 76,93 50,78 24,93 29,63 7,42 37,38" fill="#FDE68A" ${redCut}/>
-      <text x="50" y="115" font-family="sans-serif" font-size="9" fill="#92400E" text-anchor="middle">Estrela Nobre 2</text>
-    </g>
   </g>
 </svg>`;
         }

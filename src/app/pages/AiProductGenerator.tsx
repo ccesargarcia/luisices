@@ -40,6 +40,7 @@ import {
   Radio,
   Minimize2,
   Maximize2,
+  Box,
 } from 'lucide-react';
 import {
   aiProductService,
@@ -111,6 +112,7 @@ export function AiProductGenerator() {
   // Estado das Pranchas de Corte e Base de Corte
   const [selectedCutSheetIndex, setSelectedCutSheetIndex] = useState<number>(0);
   const [showCutMatGrid, setShowCutMatGrid] = useState<boolean>(true);
+  const [cutMatViewMode, setCutMatViewMode] = useState<'sheet' | 'stacked3d'>('sheet');
 
   // Estado do Estúdio de Prompts Realistas
   const [activePromptTab, setActivePromptTab] = useState<
@@ -1738,9 +1740,10 @@ export function AiProductGenerator() {
                       return (
                         <div
                           key={layer.order}
-                          onClick={() =>
-                            setSelectedLayerIndex(isSelected ? null : index)
-                          }
+                          onClick={() => {
+                            setSelectedLayerIndex(isSelected ? null : index);
+                            setSelectedCutSheetIndex(index);
+                          }}
                           className={`p-3 rounded-xl border text-xs transition-all cursor-pointer ${
                             isSelected
                               ? 'bg-primary/5 border-primary shadow-xs'
@@ -1891,7 +1894,29 @@ export function AiProductGenerator() {
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
+                        {/* Seletor de Modo: Pranchas vs Visão 3D */}
+                        <div className="flex items-center gap-1 bg-muted/60 p-0.5 rounded-lg border">
+                          <Button
+                            variant={cutMatViewMode === 'sheet' ? 'default' : 'ghost'}
+                            size="sm"
+                            onClick={() => setCutMatViewMode('sheet')}
+                            className="text-xs h-7 gap-1 px-2.5"
+                          >
+                            <Scissors className="size-3" />
+                            Por Prancha
+                          </Button>
+                          <Button
+                            variant={cutMatViewMode === 'stacked3d' ? 'default' : 'ghost'}
+                            size="sm"
+                            onClick={() => setCutMatViewMode('stacked3d')}
+                            className="text-xs h-7 gap-1 px-2.5"
+                          >
+                            <Box className="size-3" />
+                            Montagem 3D
+                          </Button>
+                        </div>
+
                         <Button
                           variant="outline"
                           size="sm"
@@ -1899,7 +1924,7 @@ export function AiProductGenerator() {
                           className="text-xs h-8 gap-1.5"
                         >
                           <Grid className="size-3.5" />
-                          {showCutMatGrid ? 'Ocultar Grade 1cm' : 'Exibir Grade 1cm'}
+                          {showCutMatGrid ? 'Ocultar Grade' : 'Exibir Grade'}
                         </Button>
 
                         <Button
@@ -1908,43 +1933,45 @@ export function AiProductGenerator() {
                           className="text-xs h-8 gap-1.5 font-semibold shadow-xs"
                         >
                           <Download className="size-3.5" />
-                          Baixar Todas as Folhas (.SVG)
+                          Baixar Todas (.SVG)
                         </Button>
                       </div>
                     </div>
                   </CardHeader>
 
                   <CardContent className="p-4 space-y-4">
-                    {/* Seletor de Folhas / Pranchas */}
-                    <div className="flex flex-wrap gap-2 p-1.5 bg-muted/40 rounded-xl border">
-                      {blueprint.cutSheets.map((sheet, index) => {
-                        const isSelected = selectedCutSheetIndex === index;
-                        return (
-                          <button
-                            key={sheet.sheetIndex}
-                            type="button"
-                            onClick={() => setSelectedCutSheetIndex(index)}
-                            className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs transition-all ${
-                              isSelected
-                                ? 'bg-background text-foreground shadow-xs font-semibold border-primary/40 border'
-                                : 'text-muted-foreground hover:text-foreground hover:bg-background/50 border border-transparent'
-                            }`}
-                          >
-                            <div
-                              className="size-3.5 rounded-full border border-black/20 shrink-0"
-                              style={{ backgroundColor: sheet.colorHex }}
-                            />
-                            <span>{sheet.sheetTitle.split(':')[0]}</span>
-                            <Badge
-                              variant="secondary"
-                              className="text-[9px] px-1 py-0 h-4 bg-muted font-normal"
+                    {/* Seletor de Folhas / Pranchas (apenas no modo sheet) */}
+                    {cutMatViewMode === 'sheet' && (
+                      <div className="flex flex-wrap gap-2 p-1.5 bg-muted/40 rounded-xl border">
+                        {blueprint.cutSheets.map((sheet, index) => {
+                          const isSelected = selectedCutSheetIndex === index;
+                          return (
+                            <button
+                              key={sheet.sheetIndex}
+                              type="button"
+                              onClick={() => setSelectedCutSheetIndex(index)}
+                              className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs transition-all ${
+                                isSelected
+                                  ? 'bg-background text-foreground shadow-xs font-semibold border-primary/40 border'
+                                  : 'text-muted-foreground hover:text-foreground hover:bg-background/50 border border-transparent'
+                              }`}
                             >
-                              Lâm {sheet.cutBladeSettings.blade}
-                            </Badge>
-                          </button>
-                        );
-                      })}
-                    </div>
+                              <div
+                                className="size-3.5 rounded-full border border-black/20 shrink-0"
+                                style={{ backgroundColor: sheet.colorHex }}
+                              />
+                              <span>{sheet.sheetTitle.split(':')[0]}</span>
+                              <Badge
+                                variant="secondary"
+                                className="text-[9px] px-1 py-0 h-4 bg-muted font-normal"
+                              >
+                                Lâm {sheet.cutBladeSettings.blade}
+                              </Badge>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
 
                     {/* Visualizador da Folha Selecionada e Base de Corte */}
                     {(() => {
@@ -1958,17 +1985,21 @@ export function AiProductGenerator() {
                             <div className="w-full flex items-center justify-between pb-2 text-xs">
                               <span className="font-semibold text-foreground flex items-center gap-1.5">
                                 <Eye className="size-3.5 text-primary" />
-                                Base de Corte Portrait / Cameo (A4 - 210 × 297 mm)
+                                {cutMatViewMode === 'sheet'
+                                  ? 'Base de Corte Portrait / Cameo (A4 - 210 × 297 mm)'
+                                  : 'Simulação de Montagem 3D Sobreposta (Fita Banana 2mm)'}
                               </span>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => handleDownloadCutSheetSvg(currentSheet)}
-                                className="h-7 text-xs gap-1 text-primary border-primary/30 hover:bg-primary/5"
-                              >
-                                <Download className="size-3" />
-                                Baixar SVG desta Folha
-                              </Button>
+                              {cutMatViewMode === 'sheet' && (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => handleDownloadCutSheetSvg(currentSheet)}
+                                  className="h-7 text-xs gap-1 text-primary border-primary/30 hover:bg-primary/5"
+                                >
+                                  <Download className="size-3" />
+                                  Baixar SVG desta Folha
+                                </Button>
+                              )}
                             </div>
 
                             {/* Canvas da Base de Corte */}
@@ -1989,10 +2020,55 @@ export function AiProductGenerator() {
                               </div>
 
                               {/* Conteúdo Vetorial SVG Renderizado */}
-                              <div
-                                className="w-full h-full pt-5 flex items-center justify-center p-2"
-                                dangerouslySetInnerHTML={{ __html: currentSheet.svgContent }}
-                              />
+                              {cutMatViewMode === 'sheet' ? (
+                                <div
+                                  className="w-full h-full pt-5 flex items-center justify-center p-2"
+                                  dangerouslySetInnerHTML={{ __html: currentSheet.svgContent }}
+                                />
+                              ) : (
+                                <div className="w-full h-full pt-6 flex flex-col items-center justify-center p-4 relative overflow-hidden">
+                                  <div className="relative w-full h-[85%] flex items-center justify-center">
+                                    {blueprint.layers.map((layer, idx) => {
+                                      const depth = (blueprint.layers.length - idx) * 12;
+                                      const shadow = (idx + 1) * 6;
+                                      return (
+                                        <div
+                                          key={idx}
+                                          className="absolute w-[80%] h-[70%] rounded-2xl border-2 flex flex-col items-center justify-between p-3 transition-all duration-300"
+                                          style={{
+                                            transform: `translateY(-${depth}px) scale(${0.9 + idx * 0.02})`,
+                                            backgroundColor: `${layer.colorHex}25`,
+                                            borderColor: layer.colorHex,
+                                            boxShadow: `0px ${shadow}px ${shadow * 2}px rgba(0,0,0,0.15)`,
+                                            zIndex: idx + 1,
+                                          }}
+                                        >
+                                          <div className="w-full flex items-center justify-between text-[10px] font-bold">
+                                            <span
+                                              className="px-2 py-0.5 rounded shadow-xs bg-background/90"
+                                              style={{ color: layer.colorHex }}
+                                            >
+                                              Camada {idx + 1}: {layer.name.split('(')[0]}
+                                            </span>
+                                            <span className="text-muted-foreground font-mono">
+                                              +{idx * 2}mm
+                                            </span>
+                                          </div>
+                                          <div className="text-center text-[10px] text-muted-foreground font-medium">
+                                            {layer.paperType}
+                                          </div>
+                                          <div className="text-[9px] text-muted-foreground/80 italic">
+                                            Fita Banana 2mm
+                                          </div>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                  <p className="text-[10px] text-muted-foreground text-center pt-2">
+                                    Visualização explodida das {blueprint.layers.length} camadas sobrepostas com relevo
+                                  </p>
+                                </div>
+                              )}
 
                               {/* Rodapé da Base de Corte */}
                               <div className="h-5 bg-slate-100 dark:bg-slate-800 border-t border-slate-200 dark:border-slate-700 flex items-center justify-between px-3 text-[8px] text-slate-500 select-none">
