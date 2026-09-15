@@ -65,4 +65,99 @@ export function captureException(error: unknown, context?: Record<string, any>) 
   }
 }
 
+/**
+ * Inicia o rastreamento de execução de um Agente de IA (gen_ai.invoke_agent)
+ * Compatível com o painel Sentry AI Agents & Conversations
+ */
+export function traceAgentRun<T>(
+  agentName: string,
+  conversationId: string,
+  fn: () => Promise<T> | T,
+  attributes?: Record<string, any>
+): Promise<T> | T {
+  // Limpa o ID da conversa para garantir formato seguro (sem barras)
+  const cleanConvId = conversationId.replace(/[\/\\]/g, '_');
+  return Sentry.startSpan(
+    {
+      name: `invoke_agent ${agentName}`,
+      op: 'gen_ai.invoke_agent',
+      attributes: {
+        'gen_ai.agent.name': agentName,
+        'gen_ai.conversation.id': cleanConvId,
+        ...attributes,
+      },
+    },
+    () => fn()
+  );
+}
+
+/**
+ * Inicia o rastreamento de uma chamada LLM / Chat de IA (gen_ai.chat)
+ * Permite registrar modelos, tokens e histórico de conversas no Sentry Explore > Conversations
+ */
+export function traceAIChat<T>(
+  model: string,
+  conversationId: string,
+  fn: (span?: any) => Promise<T> | T,
+  options?: {
+    inputMessages?: Array<{ role: string; content: string; reasoning?: string }>;
+    systemInstruction?: string;
+  }
+): Promise<T> | T {
+  const cleanConvId = conversationId.replace(/[\/\\]/g, '_');
+  const spanAttributes: Record<string, any> = {
+    'gen_ai.request.model': model,
+    'gen_ai.conversation.id': cleanConvId,
+  };
+
+  if (options?.systemInstruction) {
+    spanAttributes['gen_ai.system_instructions'] = options.systemInstruction;
+  }
+
+  if (options?.inputMessages) {
+    spanAttributes['gen_ai.input.messages'] = JSON.stringify(
+      options.inputMessages.map((m) => ({
+        role: m.role,
+        parts: m.reasoning
+          ? [
+              { type: 'reasoning', content: m.reasoning },
+              { type: 'text', content: m.content },
+            ]
+          : [{ type: 'text', content: m.content }],
+      }))
+    );
+  }
+
+  return Sentry.startSpan(
+    {
+      name: `chat ${model}`,
+      op: 'gen_ai.chat',
+      attributes: spanAttributes,
+    },
+    (span) => fn(span)
+  );
+}
+
+/**
+ * Inicia o rastreamento de execução de uma Tool / Ferramenta de Agente (gen_ai.execute_tool)
+ */
+export function traceAITool<T>(
+  toolName: string,
+  fn: () => Promise<T> | T,
+  attributes?: Record<string, any>
+): Promise<T> | T {
+  return Sentry.startSpan(
+    {
+      name: `execute_tool ${toolName}`,
+      op: 'gen_ai.execute_tool',
+      attributes: {
+        'gen_ai.tool.name': toolName,
+        ...attributes,
+      },
+    },
+    () => fn()
+  );
+}
+
 export { Sentry };
+
