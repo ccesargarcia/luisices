@@ -2,6 +2,7 @@
  * Firebase Storage Service
  *
  * Serviço para upload e gerenciamento de arquivos no Firebase Storage
+ * com otimização automática para formato WebP e compressão inteligente client-side.
  */
 
 import {
@@ -13,58 +14,68 @@ import {
 } from 'firebase/storage';
 import { auth, storage } from '../lib/firebase';
 import type { OrderAttachment } from '../app/types';
+import { optimizeImageToWebP } from '../app/utils/imageOptimizer';
 
 export class FirebaseStorageService {
   /**
-   * Upload de foto de cliente
+   * Upload de foto de cliente (otimizada em WebP)
    */
   async uploadCustomerPhoto(file: File, userId: string, customerId: string): Promise<string> {
     if (!file.type.startsWith('image/')) throw new Error('Arquivo deve ser uma imagem');
-    if (file.size > 5 * 1024 * 1024) throw new Error('Imagem muito grande. Máximo: 5MB');
+
+    // Otimiza para WebP com resolução máxima de 1200px (excelente para avatares e fichas de cliente)
+    const optimizedFile = await optimizeImageToWebP(file, { maxDimension: 1200, quality: 0.85 });
+    if (optimizedFile.size > 5 * 1024 * 1024) throw new Error('Imagem muito grande. Máximo: 5MB');
 
     const timestamp = Date.now();
-    const ext = file.name.split('.').pop();
+    const ext = optimizedFile.name.split('.').pop() || 'webp';
     const fileName = `customer_${customerId}_${timestamp}.${ext}`;
     const storageRef = ref(storage, `users/${userId}/customers/${fileName}`);
-    await uploadBytes(storageRef, file, {
-      contentType: file.type,
+    await uploadBytes(storageRef, optimizedFile, {
+      contentType: optimizedFile.type,
       customMetadata: { uploadedAt: new Date().toISOString() },
     });
     return getDownloadURL(storageRef);
   }
 
   /**
-   * Upload de foto de produto
+   * Upload de foto de produto (otimizada em WebP)
    */
   async uploadProductPhoto(file: File, userId: string, productId: string): Promise<string> {
     if (!file.type.startsWith('image/')) throw new Error('Arquivo deve ser uma imagem');
-    if (file.size > 5 * 1024 * 1024) throw new Error('Imagem muito grande. Máximo: 5MB');
+
+    // Otimiza para WebP em resolução Full HD (1920px) para alta fidelidade e rápida renderização
+    const optimizedFile = await optimizeImageToWebP(file, { maxDimension: 1920, quality: 0.85 });
+    if (optimizedFile.size > 5 * 1024 * 1024) throw new Error('Imagem muito grande. Máximo: 5MB');
 
     const timestamp = Date.now();
-    const ext = file.name.split('.').pop();
+    const ext = optimizedFile.name.split('.').pop() || 'webp';
     const fileName = `product_${productId}_${timestamp}.${ext}`;
     const storageRef = ref(storage, `users/${userId}/products/${fileName}`);
-    await uploadBytes(storageRef, file, {
-      contentType: file.type,
+    await uploadBytes(storageRef, optimizedFile, {
+      contentType: optimizedFile.type,
       customMetadata: { uploadedAt: new Date().toISOString() },
     });
     return getDownloadURL(storageRef);
   }
 
   /**
-   * Upload de foto de produto da vitrine da lojinha pública
+   * Upload de foto de produto da vitrine da lojinha pública (otimizada em WebP)
    */
   async uploadStoreProductPhoto(file: File, productId: string): Promise<string> {
     if (!file.type.startsWith('image/')) throw new Error('Arquivo deve ser uma imagem');
-    if (file.size > 5 * 1024 * 1024) throw new Error('Imagem muito grande. Máximo: 5MB');
+
+    // Otimiza para WebP garantindo carregamento instantâneo para clientes no mobile
+    const optimizedFile = await optimizeImageToWebP(file, { maxDimension: 1920, quality: 0.85 });
+    if (optimizedFile.size > 5 * 1024 * 1024) throw new Error('Imagem muito grande. Máximo: 5MB');
 
     const timestamp = Date.now();
-    const ext = file.name.split('.').pop() || 'jpg';
+    const ext = optimizedFile.name.split('.').pop() || 'webp';
     const fileName = `store_product_${productId}_${timestamp}.${ext}`;
     const storageRef = ref(storage, `store/products/${fileName}`);
     const currentUid = auth.currentUser?.uid || '';
-    await uploadBytes(storageRef, file, {
-      contentType: file.type,
+    await uploadBytes(storageRef, optimizedFile, {
+      contentType: optimizedFile.type,
       customMetadata: {
         uploadedAt: new Date().toISOString(),
         userId: currentUid,
@@ -74,10 +85,10 @@ export class FirebaseStorageService {
   }
 
   /**
-   * Upload de imagem com redimensionamento automático
+   * Upload de imagem com redimensionamento automático e conversão WebP
    * @param file - Arquivo de imagem
    * @param userId - ID do usuário
-   * @param folder - Pasta de destino (avatar, logo, banner)
+   * @param folder - Pasta de destino (avatar, logo, banner, etc.)
    * @returns URL pública da imagem
    */
   async uploadImage(
@@ -85,20 +96,33 @@ export class FirebaseStorageService {
     userId: string,
     folder: 'avatar' | 'logo' | 'banner' | 'catalog-logo' | 'catalog-banner' | 'catalog-header'
   ): Promise<string> {
-    const allowedImageTypes = ['image/jpeg', 'image/png', 'image/webp'];
+    const allowedImageTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/svg+xml'];
     if (!allowedImageTypes.includes(file.type)) {
       throw new Error('Formato não suportado. Envie uma imagem JPG, PNG ou WebP.');
     }
 
+    // Definir resolução máxima ideal dependendo do tipo de imagem
+    const maxDimension =
+      folder === 'banner' || folder === 'catalog-banner' || folder === 'catalog-header'
+        ? 2560
+        : folder === 'avatar' || folder === 'logo' || folder === 'catalog-logo'
+        ? 1000
+        : 1920;
+
+    const optimizedFile = await optimizeImageToWebP(file, {
+      maxDimension,
+      quality: 0.88,
+    });
+
     // Validar tamanho (máximo 5MB)
     const maxSize = 5 * 1024 * 1024; // 5MB
-    if (file.size > maxSize) {
+    if (optimizedFile.size > maxSize) {
       throw new Error('Imagem muito grande. Máximo: 5MB');
     }
 
     // Criar referência única
     const timestamp = Date.now();
-    const extension = file.name.split('.').pop();
+    const extension = optimizedFile.name.split('.').pop() || 'webp';
     const fileName = `${folder}_${timestamp}.${extension}`;
     const storagePath = folder.startsWith('catalog-')
       ? `store/${folder}/${fileName}`
@@ -108,7 +132,7 @@ export class FirebaseStorageService {
     // Metadata
     const currentUid = auth.currentUser?.uid || userId;
     const metadata: UploadMetadata = {
-      contentType: file.type,
+      contentType: optimizedFile.type,
       customMetadata: {
         uploadedAt: new Date().toISOString(),
         userId: currentUid,
@@ -116,7 +140,7 @@ export class FirebaseStorageService {
     };
 
     // Upload
-    await uploadBytes(storageRef, file, metadata);
+    await uploadBytes(storageRef, optimizedFile, metadata);
 
     // Obter URL pública
     const downloadURL = await getDownloadURL(storageRef);
@@ -124,27 +148,31 @@ export class FirebaseStorageService {
   }
 
   /**
-   * Upload de imagem da galeria de artes (máx 15MB)
+   * Upload de imagem da galeria de artes (otimizada em WebP, máx 2048px)
    */
   async uploadGalleryImage(file: File, userId: string, itemId: string): Promise<string> {
     const allowedImageTypes = ['image/jpeg', 'image/png', 'image/webp'];
     if (!allowedImageTypes.includes(file.type)) {
       throw new Error('Formato não suportado. Envie uma imagem JPG, PNG ou WebP.');
     }
-    if (file.size > 15 * 1024 * 1024) throw new Error('Imagem muito grande. Máximo: 15MB');
+
+    // Otimiza galeria para WebP 2048px com alta qualidade para zoom de artes
+    const optimizedFile = await optimizeImageToWebP(file, { maxDimension: 2048, quality: 0.88 });
+    if (optimizedFile.size > 15 * 1024 * 1024) throw new Error('Imagem muito grande. Máximo: 15MB');
+
     const timestamp = Date.now();
-    const ext = file.name.split('.').pop();
+    const ext = optimizedFile.name.split('.').pop() || 'webp';
     const fileName = `gallery_${itemId}_${timestamp}.${ext}`;
     const storageRef = ref(storage, `users/${userId}/gallery/${fileName}`);
-    await uploadBytes(storageRef, file, {
-      contentType: file.type,
+    await uploadBytes(storageRef, optimizedFile, {
+      contentType: optimizedFile.type,
       customMetadata: { uploadedAt: new Date().toISOString() },
     });
     return getDownloadURL(storageRef);
   }
 
   /**
-   * Gerar thumbnail de imagem via Canvas (máx 300px no lado maior)
+   * Gerar thumbnail de imagem via Canvas (máx 300px no lado maior em WebP)
    */
   private generateThumbnail(file: File, maxPx = 300): Promise<Blob | null> {
     return new Promise(resolve => {
@@ -168,7 +196,7 @@ export class FirebaseStorageService {
   }
 
   /**
-   * Upload de anexo de pedido (imagem ou PDF, máx 100MB)
+   * Upload de anexo de pedido (imagem convertida para WebP ou PDF original, máx 100MB)
    * @param file - Arquivo a enviar
    * @param userId - ID do usuário
    * @param orderId - ID do pedido
@@ -179,33 +207,39 @@ export class FirebaseStorageService {
     userId: string,
     orderId: string
   ): Promise<OrderAttachment> {
+    const isPdf = file.type === 'application/pdf';
+    
+    // Se for imagem, otimiza para WebP antes de salvar
+    const fileToUpload = isPdf
+      ? file
+      : await optimizeImageToWebP(file, { maxDimension: 2048, quality: 0.85 });
+
     const maxSize = 100 * 1024 * 1024; // 100MB
-    if (file.size > maxSize) {
+    if (fileToUpload.size > maxSize) {
       throw new Error('Arquivo muito grande. Máximo: 100MB');
     }
 
     const timestamp = Date.now();
-    const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+    const safeName = fileToUpload.name.replace(/[^a-zA-Z0-9._-]/g, '_');
     const fileName = `${timestamp}_${safeName}`;
     const storagePath = `users/${userId}/orders/${orderId}/${fileName}`;
     const storageRef = ref(storage, storagePath);
 
     const metadata: UploadMetadata = {
-      contentType: file.type,
+      contentType: fileToUpload.type,
       customMetadata: {
         originalName: file.name,
         uploadedAt: new Date().toISOString(),
       },
     };
 
-    await uploadBytes(storageRef, file, metadata);
+    await uploadBytes(storageRef, fileToUpload, metadata);
     const url = await getDownloadURL(storageRef);
 
     // Gerar e fazer upload da thumbnail para imagens
     let thumbnailUrl: string | undefined;
-    const isPdf = file.type === 'application/pdf';
     if (!isPdf) {
-      const thumbBlob = await this.generateThumbnail(file);
+      const thumbBlob = await this.generateThumbnail(fileToUpload);
       if (thumbBlob) {
         const thumbPath = `users/${userId}/orders/${orderId}/thumbnails/${timestamp}_thumb_${safeName.replace(/\.[^.]+$/, '')}.webp`;
         const thumbRef = ref(storage, thumbPath);
@@ -223,7 +257,6 @@ export class FirebaseStorageService {
    */
   async deleteImage(imageUrl: string): Promise<void> {
     try {
-      // Extrair path do storage da URL
       const path = this.extractPathFromUrl(imageUrl);
       if (!path) return;
 
@@ -231,7 +264,6 @@ export class FirebaseStorageService {
       await deleteObject(storageRef);
     } catch (error) {
       console.error('Erro ao deletar imagem:', error);
-      // Não lançar erro - imagem pode já ter sido deletada
     }
   }
 
