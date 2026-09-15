@@ -112,7 +112,7 @@ jobs:
 
           # Deploy de Regras do Firestore, Storage e Cloud Functions no projeto de produção
           echo "🚀 Realizando deploy de Firestore Rules e Storage Rules (Produção)..."
-          firebase deploy --only firestore:rules,storage:rules --project papelaria-dashboard
+          firebase deploy --only firestore:rules,storage --project papelaria-dashboard
 
           echo "🚀 Realizando deploy de Cloud Functions (Produção)..."
           firebase deploy --only functions --project papelaria-dashboard --force
