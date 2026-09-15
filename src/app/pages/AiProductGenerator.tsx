@@ -149,6 +149,7 @@ export function AiProductGenerator() {
         unitPrice: blueprint.recommendedPrice,
         category: blueprint.category,
         description: blueprint.description,
+        photoUrl: blueprint.generatedImageUrl,
         isPublic: true,
         leadTimeDays: blueprint.suggestedLeadTimeDays,
         isCustomizable: true,
@@ -160,6 +161,7 @@ export function AiProductGenerator() {
         category: blueprint.category,
         price: blueprint.recommendedPrice,
         description: blueprint.description,
+        imageUrl: blueprint.generatedImageUrl,
         leadTimeDays: blueprint.suggestedLeadTimeDays,
         isCustomizable: true,
         active: true,
@@ -542,10 +544,54 @@ export function AiProductGenerator() {
                 </CardHeader>
               </Card>
 
-              {/* Visualização de Mockup 3D Interativo e Raio-X de Camadas */}
+              {/* Visualização de Mockup Fotográfico Realista e Simulador 3D */}
               <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
+                {/* Mockup Fotográfico do Produto */}
+                {blueprint.generatedImageUrl && (
+                  <div className="md:col-span-6">
+                    <Card className="h-full shadow-sm overflow-hidden flex flex-col justify-between">
+                      <CardHeader className="pb-2">
+                        <div className="flex items-center justify-between">
+                          <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                            <Sparkles className="size-4 text-primary" />
+                            Mockup Visual Fotográfico
+                          </CardTitle>
+                          <a
+                            href={blueprint.generatedImageUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            download={`Mockup_${blueprint.productTitle.replace(/\s+/g, '_')}.jpg`}
+                            className="inline-flex items-center gap-1 text-[11px] text-primary hover:underline font-medium"
+                          >
+                            <Download className="size-3" />
+                            Baixar Imagem
+                          </a>
+                        </div>
+                        <CardDescription className="text-xs">
+                          Conceito realista renderizado para vitrine e aprovação da cliente
+                        </CardDescription>
+                      </CardHeader>
+                      <CardContent className="p-4 flex flex-col items-center justify-center flex-1">
+                        <div className="relative w-full aspect-square max-w-[320px] rounded-2xl overflow-hidden shadow-md border bg-muted/30 group">
+                          <img
+                            src={blueprint.generatedImageUrl}
+                            alt={blueprint.productTitle}
+                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                            loading="lazy"
+                          />
+                          <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end p-3">
+                            <span className="text-xs text-white font-medium truncate">
+                              {blueprint.productTitle}
+                            </span>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </div>
+                )}
+
                 {/* Visualizador 3D das Camadas Sobrepostas */}
-                <div className="md:col-span-5">
+                <div className={blueprint.generatedImageUrl ? 'md:col-span-6' : 'md:col-span-5'}>
                   <Card className="h-full shadow-sm">
                     <CardHeader className="pb-2">
                       <CardTitle className="text-sm font-semibold flex items-center gap-2">
@@ -602,87 +648,87 @@ export function AiProductGenerator() {
                     </CardContent>
                   </Card>
                 </div>
-
-                {/* Raio-X Detalhado das Camadas */}
-                <div className="md:col-span-7">
-                  <Card className="h-full shadow-sm">
-                    <CardHeader className="pb-2">
-                      <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                        <Scissors className="size-4 text-primary" />
-                        Raio-X de Camadas de Corte
-                      </CardTitle>
-                      <CardDescription className="text-xs">
-                        Ordem de corte, tipos de papel e parâmetros de lâmina
-                      </CardDescription>
-                    </CardHeader>
-                    <CardContent className="space-y-3 pt-2">
-                      {blueprint.layers.map((layer, index) => {
-                        const isSelected = selectedLayerIndex === index;
-                        return (
-                          <div
-                            key={layer.order}
-                            onClick={() =>
-                              setSelectedLayerIndex(isSelected ? null : index)
-                            }
-                            className={`p-3 rounded-xl border text-xs transition-all cursor-pointer ${
-                              isSelected
-                                ? 'bg-primary/5 border-primary shadow-xs'
-                                : 'bg-card hover:bg-muted/40'
-                            }`}
-                          >
-                            <div className="flex items-start justify-between gap-2 pb-1.5">
-                              <div className="flex items-center gap-2">
-                                <div
-                                  className="size-4 rounded-full border border-black/10 shrink-0"
-                                  style={{ backgroundColor: layer.colorHex }}
-                                />
-                                <span className="font-semibold text-foreground">
-                                  {layer.name}
-                                </span>
-                              </div>
-                              <Badge
-                                variant={
-                                  layer.cutDifficulty === 'fácil'
-                                    ? 'secondary'
-                                    : layer.cutDifficulty === 'delicado'
-                                    ? 'destructive'
-                                    : 'outline'
-                                }
-                                className="text-[10px] px-1.5 py-0"
-                              >
-                                {layer.cutDifficulty}
-                              </Badge>
-                            </div>
-
-                            <p className="text-muted-foreground text-[11px] pb-1">
-                              <strong>Papel:</strong> {layer.paperType}
-                            </p>
-
-                            <div className="flex flex-wrap gap-2 pt-1 text-[10px]">
-                              <span className="px-2 py-0.5 rounded bg-muted font-medium text-foreground">
-                                ✂️ Lâmina: <strong>{layer.silhouetteSettings.blade}</strong>
-                              </span>
-                              <span className="px-2 py-0.5 rounded bg-muted font-medium text-foreground">
-                                ⚡ Força: <strong>{layer.silhouetteSettings.force}</strong>
-                              </span>
-                              <span className="px-2 py-0.5 rounded bg-muted font-medium text-foreground">
-                                🏃 Vel: <strong>{layer.silhouetteSettings.speed}</strong>
-                              </span>
-                              <span className="px-2 py-0.5 rounded bg-muted font-medium text-foreground">
-                                🔁 Passadas: <strong>{layer.silhouetteSettings.passes}x</strong>
-                              </span>
-                            </div>
-
-                            <p className="text-[11px] text-muted-foreground/90 italic pt-1.5">
-                              💡 <strong>Montagem:</strong> {layer.assemblyTip}
-                            </p>
-                          </div>
-                        );
-                      })}
-                    </CardContent>
-                  </Card>
-                </div>
               </div>
+
+              {/* Raio-X Detalhado das Camadas */}
+              <Card className="shadow-sm">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                    <Scissors className="size-4 text-primary" />
+                    Raio-X de Camadas de Corte (Silhouette & Lâmina)
+                  </CardTitle>
+                  <CardDescription className="text-xs">
+                    Ordem de corte, tipos de papel comercial e calibração de lâmina
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-3 pt-2">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {blueprint.layers.map((layer, index) => {
+                      const isSelected = selectedLayerIndex === index;
+                      return (
+                        <div
+                          key={layer.order}
+                          onClick={() =>
+                            setSelectedLayerIndex(isSelected ? null : index)
+                          }
+                          className={`p-3 rounded-xl border text-xs transition-all cursor-pointer ${
+                            isSelected
+                              ? 'bg-primary/5 border-primary shadow-xs'
+                              : 'bg-card hover:bg-muted/40'
+                          }`}
+                        >
+                          <div className="flex items-start justify-between gap-2 pb-1.5">
+                            <div className="flex items-center gap-2">
+                              <div
+                                className="size-4 rounded-full border border-black/10 shrink-0"
+                                style={{ backgroundColor: layer.colorHex }}
+                              />
+                              <span className="font-semibold text-foreground">
+                                {layer.name}
+                              </span>
+                            </div>
+                            <Badge
+                              variant={
+                                layer.cutDifficulty === 'fácil'
+                                  ? 'secondary'
+                                  : layer.cutDifficulty === 'delicado'
+                                  ? 'destructive'
+                                  : 'outline'
+                              }
+                              className="text-[10px] px-1.5 py-0"
+                            >
+                              {layer.cutDifficulty}
+                            </Badge>
+                          </div>
+
+                          <p className="text-muted-foreground text-[11px] pb-1">
+                            <strong>Papel:</strong> {layer.paperType}
+                          </p>
+
+                          <div className="flex flex-wrap gap-1.5 pt-1 text-[10px]">
+                            <span className="px-2 py-0.5 rounded bg-muted font-medium text-foreground">
+                              ✂️ Lâmina: <strong>{layer.silhouetteSettings.blade}</strong>
+                            </span>
+                            <span className="px-2 py-0.5 rounded bg-muted font-medium text-foreground">
+                              ⚡ Força: <strong>{layer.silhouetteSettings.force}</strong>
+                            </span>
+                            <span className="px-2 py-0.5 rounded bg-muted font-medium text-foreground">
+                              🏃 Vel: <strong>{layer.silhouetteSettings.speed}</strong>
+                            </span>
+                            <span className="px-2 py-0.5 rounded bg-muted font-medium text-foreground">
+                              🔁 Passadas: <strong>{layer.silhouetteSettings.passes}x</strong>
+                            </span>
+                          </div>
+
+                          <p className="text-[11px] text-muted-foreground/90 italic pt-1.5">
+                            💡 <strong>Montagem:</strong> {layer.assemblyTip}
+                          </p>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </CardContent>
+              </Card>
 
               {/* Ficha Técnica: Lista de Compras de Papéis e Dicas Silhouette */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

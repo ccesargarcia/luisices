@@ -44,6 +44,7 @@ export interface AiProductBlueprint {
   estimatedAssemblyMinutes: number;
   silhouetteTips: string;
   suggestedImagePrompt: string;
+  generatedImageUrl?: string;
 }
 
 export interface GenerateProductParams {
@@ -189,12 +190,76 @@ Retorne estritamente um JSON com este schema:
         }
 
         const parsed = JSON.parse(responseText) as AiProductBlueprint;
+
+        // Gerar imagem fotográfica do mockup do produto
+        try {
+          parsed.generatedImageUrl = await this.generateProductImage(
+            parsed.suggestedImagePrompt || parsed.productTitle,
+            apiKey
+          );
+        } catch (imgErr) {
+          console.warn('[AiProductService] Erro ao gerar imagem do produto:', imgErr);
+        }
+
         return parsed;
       } catch (err) {
         console.error('[AiProductService] Falha na chamada da API Gemini, usando gerador físico inteligente:', err);
-        return this.generateSmartFallback(params);
+        const fallback = this.generateSmartFallback(params);
+        try {
+          fallback.generatedImageUrl = await this.generateProductImage(
+            fallback.suggestedImagePrompt || fallback.productTitle,
+            apiKey
+          );
+        } catch {}
+        return fallback;
       }
     });
+  }
+
+  /**
+   * Gera a imagem visual/fotográfica realista do produto
+   */
+  async generateProductImage(prompt: string, apiKey?: string): Promise<string> {
+    const key = this.getApiKey(apiKey);
+    if (key) {
+      try {
+        const imagenEndpoint = `https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-002:predict?key=${key}`;
+        const response = await fetch(imagenEndpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            instances: [
+              {
+                prompt: `${prompt}, professional commercial studio product photograph, soft warm lighting, sharp focus on paper layers and textures, high resolution`,
+              },
+            ],
+            parameters: {
+              sampleCount: 1,
+              aspectRatio: '1:1',
+              outputMimeType: 'image/jpeg',
+            },
+          }),
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          const base64Bytes = data.predictions?.[0]?.bytesBase64Encoded;
+          if (base64Bytes) {
+            return `data:image/jpeg;base64,${base64Bytes}`;
+          }
+        }
+      } catch (err) {
+        console.warn('[AiProductService] Imagen 3 indisponível, gerando via renderizador estúdio:', err);
+      }
+    }
+
+    // Fallback de alta resolução fotográfica para renderização instantânea
+    const safePrompt = encodeURIComponent(
+      `commercial studio photo of handcrafted paper craft cake topper 3D layered with gold cardstock, theme ${prompt}, depth of field, pastel background, realistic texture`
+    );
+    return `https://image.pollinations.ai/prompt/${safePrompt}?width=800&height=800&nologo=true&seed=${Math.floor(
+      Math.random() * 100000
+    )}`;
   }
 
   /**
