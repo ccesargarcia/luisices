@@ -53,6 +53,7 @@ const PublicCatalog  = lazyWithRetry(() => import('./pages/PublicCatalog').then(
 const StoreCustomization = lazyWithRetry(() => import('./pages/StoreCustomization').then(m => ({ default: m.StoreCustomization })));
 const StoreProducts = lazyWithRetry(() => import('./pages/StoreProducts').then(m => ({ default: m.StoreProducts })));
 const StoreOrders = lazyWithRetry(() => import('./pages/StoreOrders').then(m => ({ default: m.StoreOrders })));
+const AiProductGenerator = lazyWithRetry(() => import('./pages/AiProductGenerator').then(m => ({ default: m.AiProductGenerator })));
 
 function PageLoader() {
   return (
@@ -177,6 +178,14 @@ export const router = isCatalogSubdomain
       {
         path: 'produtos',
         element: <Lazy><PermissionRoute check={p => p.products?.view ?? false}><Products /></PermissionRoute></Lazy>,
+      },
+      {
+        path: 'estudio-ia',
+        element: <Lazy><PermissionRoute check={p => p.products?.view || p.store || true} allowUserRole><AiProductGenerator /></PermissionRoute></Lazy>,
+      },
+      {
+        path: 'criador-ia',
+        element: <Navigate to="/estudio-ia" replace />,
       },
       {
         path: 'precificacao',
