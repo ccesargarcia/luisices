@@ -194,6 +194,15 @@ export interface GenerateProductParams {
   referenceImageBase64?: string;
 }
 
+export interface ReverseEngineerImageParams {
+  imageBase64: string;
+  mimeType?: string;
+  userNotes?: string;
+  geminiApiKey?: string;
+  plotter?: 'portrait3' | 'cameo4' | 'cricut' | 'manual';
+  tunedModelId?: string;
+}
+
 export interface CuratedPreset {
   id: string;
   title: string;
@@ -608,6 +617,172 @@ Retorne estritamente um JSON com este schema:
       } catch (err) {
         console.error('[AiProductService] Falha na chamada da API Gemini, usando gerador físico inteligente:', err);
         return this.generateSmartFallback(params);
+      }
+    });
+  }
+
+  /**
+   * Realiza Engenharia Reversa Visual Multimodal a partir de uma imagem
+   * (lendo a foto gerada por IA ou foto real e gerando camadas, papéis, paleta e pranchas de corte em SVG)
+   */
+  async reverseEngineerBlueprintFromImage(params: ReverseEngineerImageParams): Promise<AiProductBlueprint> {
+    const apiKey = this.getApiKey(params.geminiApiKey);
+    const tunedModel = this.getTunedModelId(params.tunedModelId);
+    const conversationId = `vision_reverse_${Date.now()}`;
+    const plotter = params.plotter || 'portrait3';
+
+    return traceAgentRun('PaperCraftVisionReverseEngineer', conversationId, async () => {
+      if (!apiKey) {
+        console.warn('[AiProductService] Chave Gemini não configurada para análise de imagem. Usando gerador adaptativo.');
+        const fallback = this.generateSmartFallback({
+          productType: 'Topo de Bolo 3D',
+          theme: params.userNotes || 'Jardim Encantado',
+          targetNameAndAge: 'Personalizado',
+          colorPalette: 'Candy Colors / Pastéis',
+          complexity: 'avançado',
+          plotter,
+          customInstructions: params.userNotes || 'Projeto derivado de análise de imagem.',
+        });
+        if (params.imageBase64) {
+          fallback.generatedImageUrl = params.imageBase64;
+        }
+        return fallback;
+      }
+
+      const cleanBase64 = params.imageBase64.replace(/^data:image\/\w+;base64,/, '');
+      const mimeType = params.mimeType || (params.imageBase64.startsWith('data:image/png') ? 'image/png' : 'image/jpeg');
+
+      const visionSystemPrompt = `
+Você é uma Engenheira de Papelaria Personalizada de Luxo e Especialista em Silhouette Studio, Cricut e Scanncut.
+Sua missão é analisar visualmente a IMAGEM enviada (que pode ser uma foto de produto real ou uma imagem hiper-realista gerada por IA) e realizar a ENGENHARIA REVERSA COMPLETA para produção física de corte e montagem.
+
+INSTRUÇÕES DE INSPEÇÃO VISUAL OBRIGATÓRIAS:
+1. IDENTIFICAÇÃO DO PRODUTO:
+   - Identifique a categoria exata: "Topo de Bolo 3D", "Topo Shaker Luxo", "Caixa Milk 3D", "Caixa Pirâmide", "Letra 3D Personalizada", "Marcador de Página Luxo", etc.
+   - Identifique o tema visual predominante (ex: "Astronauta", "Jardim Encantado", "Safari Baby", "Circo Rosa", "Sereia", "Dino Baby", "Princesas", etc.).
+   - Faça OCR e leitura visual minuciosa de qualquer nome, idade ou texto escrito na peça. Se não houver nome legível, sugira um exemplo harmonioso (ex: "Helena 3 anos").
+
+2. DECOMPOSIÇÃO EM CAMADAS FÍSICAS (De baixo para cima):
+   - Camada 1: Base de Fundo / Estrutura rígida (papel recomendado, gramatura 180g a 240g, cor hex exata e nome do papel).
+   - Camadas Intermediárias: Molduras com offset de 2.0mm, elementos temáticos elevados com fita banana de 2mm.
+   - Camadas Especiais (se visível): Visor transparente de acetato cristal, anel de contenção em EVA 2mm (se shaker), pedrarias ou lantejoulas.
+   - Camada Superior / Destaque: Letras do nome, apliques em Lamicote metálico (Dourado, Prata, Rose Gold) ou Glitter com relevo.
+
+3. LISTA DE MATERIAIS & CORES:
+   - Extraia as cores exatas da imagem e mapeie para tipos de papéis comerciais (Colorplus, Lamicote, Kraft, Acetato, EVA).
+   - Sugira lista de compras precisa (quantidades de folhas A4, espessuras de fita banana, palitos ou fitas).
+
+4. RETORNE ESTRITAMENTE UM JSON com este schema:
+{
+  "productTitle": "Título comercial descritivo e luxuoso",
+  "category": "Topos de Bolo" | "Lembrancinhas" | "Papelaria Criativa" | "Kits Festa",
+  "description": "Descrição detalhada do produto inspecionado na imagem",
+  "targetAgeAndName": "Nome e Idade extraídos da imagem ou sugeridos",
+  "theme": "Tema detectado na imagem",
+  "recommendedPrice": 45.00,
+  "suggestedLeadTimeDays": 5,
+  "layers": [
+    {
+      "order": 1,
+      "name": "Nome da camada",
+      "paperType": "Ex: Colorplus Rosa Chá 180g",
+      "colorHex": "#E8B4B8",
+      "colorName": "Rosa Chá",
+      "cutDifficulty": "fácil" | "médio" | "difícil",
+      "offsetMm": 2.5,
+      "silhouetteSettings": { "blade": 3, "force": 30, "speed": 5, "passes": 1 },
+      "assemblyTip": "Dica de montagem e colagem"
+    }
+  ],
+  "papersShoppingList": [
+    { "name": "Nome do papel", "gramature": "180g", "sheetsNeeded": 1 }
+  ],
+  "toolsAndAccessories": ["Fita banana 2mm", "Cola de silicone líquida"],
+  "estimatedAssemblyMinutes": 25,
+  "silhouetteTips": "Dicas de corte na plotter ${plotter}",
+  "suggestedImagePrompt": "Prompt descritivo em inglês da imagem",
+  "realisticPrompts": {
+    "geminiImagenPrompt": "...",
+    "bananaTape3dPrompt": "...",
+    "ideogramPrompt": "...",
+    "midjourneyPrompt": "...",
+    "dallePrompt": "...",
+    "fluxPrompt": "...",
+    "macroLayersPrompt": "...",
+    "partyTableScenePrompt": "..."
+  }
+}
+`;
+
+      const parts: any[] = [
+        {
+          inlineData: {
+            mimeType,
+            data: cleanBase64,
+          },
+        },
+        {
+          text: `Analise cuidadosamente esta imagem de produto de papelaria personalizada e decomponha todas as suas camadas físicas, tema, nome e corte.${params.userNotes ? `\nObservações extras da artesã: ${params.userNotes}` : ''}`,
+        },
+      ];
+
+      const modelName = tunedModel || 'gemini-2.5-flash';
+      const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
+
+      try {
+        const response = await fetch(endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ role: 'user', parts }],
+            systemInstruction: { parts: [{ text: visionSystemPrompt }] },
+            generationConfig: {
+              responseMimeType: 'application/json',
+              temperature: 0.3,
+            },
+          }),
+        });
+
+        if (!response.ok) {
+          const errData = await response.json().catch(() => ({}));
+          throw new Error(errData.error?.message || `Erro HTTP ${response.status} na API Vision do Gemini`);
+        }
+
+        const data = await response.json();
+        const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+        if (!rawText) throw new Error('A IA não retornou dados visuais da imagem.');
+
+        const parsed = JSON.parse(rawText) as AiProductBlueprint;
+        parsed.generatedImageUrl = params.imageBase64;
+
+        // Gerar as pranchas de corte em SVG e os passos de montagem com base na anatomia detectada
+        const isShaker = (parsed.category || '').toLowerCase().includes('shaker') || (parsed.productTitle || '').toLowerCase().includes('shaker');
+        const technicals = this.generateCutSheetsAndAssembly(
+          parsed.productTitle || 'Produto de Papelaria Personalizada',
+          parsed.category || 'Topo de Bolo 3D',
+          parsed.theme || 'Personalizado',
+          parsed.targetAgeAndName || 'Personalizado',
+          parsed.layers || [],
+          isShaker,
+          parsed.layers?.[0]?.colorName || 'Colorido'
+        );
+
+        parsed.cutSheets = technicals.cutSheets;
+        parsed.assemblySteps = technicals.assemblySteps;
+
+        return parsed;
+      } catch (e) {
+        console.error('[AiProductService] Falha na leitura multimodal da imagem, usando fallback:', e);
+        const fb = this.generateSmartFallback({
+          productType: 'Topo de Bolo 3D',
+          theme: params.userNotes || 'Personalizado',
+          targetNameAndAge: 'Personalizado',
+          colorPalette: 'Candy Colors / Pastéis',
+          complexity: 'avançado',
+          plotter,
+        });
+        fb.generatedImageUrl = params.imageBase64;
+        return fb;
       }
     });
   }

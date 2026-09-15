@@ -142,6 +142,12 @@ export function AiProductGenerator() {
       : '';
   });
 
+  // Engenharia Reversa Visual por Imagem (Leitor de Imagem Multimodal)
+  const [isReverseEngineerDialogOpen, setIsReverseEngineerDialogOpen] = useState(false);
+  const [reverseImagePreview, setReverseImagePreview] = useState('');
+  const [reverseUserNotes, setReverseUserNotes] = useState('');
+  const [analyzingImage, setAnalyzingImage] = useState(false);
+
   // Salvar no catálogo
   const [savingProduct, setSavingProduct] = useState(false);
 
@@ -283,6 +289,53 @@ export function AiProductGenerator() {
     a.click();
     URL.revokeObjectURL(url);
     toast.success('Dataset do Acervo exportado para Fine-Tuning no Google AI Studio!');
+  };
+
+  // Carregar arquivo local de imagem para Engenharia Reversa Visual
+  const handleReverseImageFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const base64 = reader.result as string;
+      setReverseImagePreview(base64);
+      toast.success('Imagem carregada! Clique em "Analisar com IA" para gerar as camadas e matriz de corte.');
+    };
+    reader.readAsDataURL(file);
+  };
+
+  // Executar Engenharia Reversa Visual Multimodal
+  const handleRunReverseEngineer = async () => {
+    if (!reverseImagePreview) {
+      toast.warning('Por favor, carregue ou cole uma imagem para a IA inspecionar.');
+      return;
+    }
+
+    setAnalyzingImage(true);
+    try {
+      const result = await aiProductService.reverseEngineerBlueprintFromImage({
+        imageBase64: reverseImagePreview,
+        userNotes: reverseUserNotes.trim(),
+        geminiApiKey: apiKeyInput,
+        plotter,
+        tunedModelId: tunedModelInput,
+      });
+
+      setBlueprint(result);
+      if (result.category) setProductType(result.category);
+      if (result.theme) setTheme(result.theme);
+      if (result.targetAgeAndName) setTargetNameAndAge(result.targetAgeAndName);
+      if (result.layers && result.layers[0]?.colorName) setColorPalette(result.layers[0].colorName);
+
+      setIsReverseEngineerDialogOpen(false);
+      toast.success('🎉 Imagem inspecionada! Camadas, matriz de corte e materiais gerados com sucesso.');
+    } catch (err: any) {
+      console.error('Erro na engenharia reversa visual por imagem:', err);
+      toast.error('Erro ao inspecionar a imagem. Verifique a chave da API Gemini.');
+    } finally {
+      setAnalyzingImage(false);
+    }
   };
 
   // Gerar projeto com IA
@@ -574,6 +627,15 @@ export function AiProductGenerator() {
 
         <div className="flex flex-wrap items-center gap-2">
           <Button
+            size="sm"
+            onClick={() => setIsReverseEngineerDialogOpen(true)}
+            className="text-xs flex items-center gap-1.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white font-semibold shadow-xs"
+          >
+            <Camera className="size-3.5" />
+            📸 Ler Imagem & Criar Base de Corte
+          </Button>
+
+          <Button
             variant="outline"
             size="sm"
             onClick={() => setIsAcervoDialogOpen(true)}
@@ -598,6 +660,29 @@ export function AiProductGenerator() {
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         {/* Painel Esquerdo: Galeria de Exemplos e Formulário */}
         <div className="lg:col-span-4 space-y-5">
+          {/* Card de Ação Rápida: Engenharia Reversa por Imagem */}
+          <div className="p-3.5 rounded-xl border border-purple-200 dark:border-purple-800 bg-gradient-to-br from-purple-50 via-indigo-50/40 to-background dark:from-purple-950/30 dark:via-indigo-950/20 dark:to-card flex items-center justify-between gap-3 shadow-xs">
+            <div className="space-y-1">
+              <div className="flex items-center gap-1.5">
+                <Badge className="bg-purple-600 text-white text-[9px] px-1.5 py-0">NOVO</Badge>
+                <span className="text-xs font-bold text-purple-950 dark:text-purple-200 flex items-center gap-1">
+                  <Camera className="size-3.5 text-purple-600 dark:text-purple-400" />
+                  Tem uma foto ou imagem?
+                </span>
+              </div>
+              <p className="text-[11px] text-purple-900/80 dark:text-purple-300/80 leading-snug">
+                Envie o render gerado ou foto e a IA lê as camadas visíveis, materiais e cria a matriz de corte em SVG!
+              </p>
+            </div>
+            <Button
+              size="sm"
+              onClick={() => setIsReverseEngineerDialogOpen(true)}
+              className="text-xs font-semibold shrink-0 bg-purple-600 hover:bg-purple-700 text-white shadow-xs"
+            >
+              Ler Imagem
+            </Button>
+          </div>
+
           {/* Galeria de Exemplos Rápidos do Acervo */}
           <Card className="shadow-xs border-primary/20 bg-muted/20">
             <CardHeader className="p-3 pb-2">
@@ -1223,6 +1308,27 @@ export function AiProductGenerator() {
                           >
                             + Luz Natural Suave
                           </button>
+                        </div>
+
+                        {/* Banner: Inserir imagem gerada na outra IA para extrair corte */}
+                        <div className="mt-3 p-3 rounded-xl border border-purple-200 dark:border-purple-800 bg-purple-50/60 dark:bg-purple-950/20 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5">
+                          <div className="space-y-0.5">
+                            <span className="text-xs font-bold text-purple-950 dark:text-purple-200 flex items-center gap-1.5">
+                              <Camera className="size-3.5 text-purple-600 dark:text-purple-400" />
+                              Já gerou a imagem no Midjourney / Ideogram / Gemini?
+                            </span>
+                            <p className="text-[11px] text-purple-800/80 dark:text-purple-300/80 leading-snug">
+                              Envie o resultado gerado e a IA fará a <strong>Engenharia Reversa Visual</strong> das camadas para gerar os arquivos SVG de corte da Silhouette/Cricut!
+                            </p>
+                          </div>
+                          <Button
+                            size="sm"
+                            onClick={() => setIsReverseEngineerDialogOpen(true)}
+                            className="text-xs font-semibold bg-purple-600 hover:bg-purple-700 text-white shrink-0 shadow-xs"
+                          >
+                            <Camera className="size-3.5 mr-1" />
+                            Ler Imagem e Gerar Corte
+                          </Button>
                         </div>
                       </div>
                     );
@@ -2200,6 +2306,201 @@ export function AiProductGenerator() {
             </Button>
             <Button size="sm" onClick={handleSaveApiKey} className="text-xs">
               Salvar Configurações
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Diálogo de Engenharia Reversa Visual por Imagem (Leitor de Imagem Multimodal) */}
+      <Dialog open={isReverseEngineerDialogOpen} onOpenChange={setIsReverseEngineerDialogOpen}>
+        <DialogContent className="sm:max-w-xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-base flex items-center gap-2 text-purple-950 dark:text-purple-200">
+              <div className="p-1.5 rounded-lg bg-purple-600 text-white shadow-xs">
+                <Camera className="size-4" />
+              </div>
+              Engenharia Reversa Visual por Imagem (IA Multimodal)
+            </DialogTitle>
+            <DialogDescription className="text-xs leading-relaxed">
+              Suba uma foto de um produto real ou uma imagem gerada por qualquer IA (Midjourney, Ideogram, Imagen 3, Gemini Nano Banana).
+              Nossa IA inspecionará a peça, detectará camadas, papéis, tema, nome/idade e criará a <strong>Matriz de Corte Vetorial (SVG)</strong> pronta para corte na sua plotter!
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            {/* Área de Seleção / Upload de Imagem */}
+            <div className="space-y-2">
+              <Label className="text-xs font-semibold">Foto do Produto ou Imagem Gerada *</Label>
+
+              {!reverseImagePreview ? (
+                <div className="border-2 border-dashed border-purple-300 dark:border-purple-800 rounded-xl p-6 text-center bg-purple-50/40 dark:bg-purple-950/20 hover:bg-purple-50/70 transition-colors">
+                  <Camera className="size-10 mx-auto text-purple-600 mb-2" />
+                  <p className="text-xs font-bold text-foreground">Arraste ou clique para selecionar a imagem</p>
+                  <p className="text-[11px] text-muted-foreground mt-0.5">PNG, JPG, WEBP (Mockup de IA ou Foto Real do Ateliê)</p>
+
+                  <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
+                    <label className="cursor-pointer">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="default"
+                        className="text-xs bg-purple-600 hover:bg-purple-700 text-white font-semibold pointer-events-none"
+                      >
+                        <Plus className="size-3.5 mr-1" />
+                        Escolher Arquivo do Computador
+                      </Button>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={handleReverseImageFileUpload}
+                        className="hidden"
+                      />
+                    </label>
+
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        if (acervoList.length > 0) {
+                          setReverseImagePreview(acervoList[0].imageUrl);
+                          toast.info(`Imagem "${acervoList[0].title}" carregada do Acervo!`);
+                        } else {
+                          toast.warning('Nenhum item no acervo.');
+                        }
+                      }}
+                      className="text-xs border-purple-300 text-purple-700 dark:text-purple-300 hover:bg-purple-50"
+                    >
+                      <ImageIcon className="size-3.5 mr-1" />
+                      Usar do Acervo
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <div className="relative aspect-video w-full rounded-xl overflow-hidden border border-purple-200 bg-muted/40 group shadow-xs">
+                    <img
+                      src={reverseImagePreview}
+                      alt="Pré-visualização para análise visual"
+                      className="w-full h-full object-contain bg-black/5"
+                    />
+                    <div className="absolute top-2 right-2 flex gap-1.5">
+                      <label className="cursor-pointer">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="secondary"
+                          className="text-[11px] h-7 bg-background/90 backdrop-blur-xs shadow-xs pointer-events-none"
+                        >
+                          <RefreshCw className="size-3 mr-1" />
+                          Trocar
+                        </Button>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={handleReverseImageFileUpload}
+                          className="hidden"
+                        />
+                      </label>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="destructive"
+                        onClick={() => setReverseImagePreview('')}
+                        className="text-[11px] h-7 px-2"
+                      >
+                        <Trash2 className="size-3" />
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Inserir por URL alternativa */}
+            <div className="space-y-1">
+              <Label htmlFor="reverse-url-input" className="text-[11px] font-medium text-muted-foreground">
+                Ou cole a URL direta de uma imagem:
+              </Label>
+              <div className="flex gap-2">
+                <Input
+                  id="reverse-url-input"
+                  placeholder="https://exemplo.com/foto-topo.jpg"
+                  value={reverseImagePreview.startsWith('http') ? reverseImagePreview : ''}
+                  onChange={(e) => setReverseImagePreview(e.target.value)}
+                  className="text-xs"
+                />
+                {reverseImagePreview.startsWith('http') && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setReverseImagePreview('')}
+                    className="text-xs shrink-0"
+                  >
+                    Limpar
+                  </Button>
+                )}
+              </div>
+            </div>
+
+            {/* Observações Opcionais da Artesã */}
+            <div className="space-y-1.5">
+              <Label htmlFor="reverse-user-notes" className="text-xs font-semibold">
+                Observações / Personalização Específica (Opcional)
+              </Label>
+              <Textarea
+                id="reverse-user-notes"
+                placeholder="Ex: Quero que monte como Topo Shaker com o nome 'Arthur 2 anos', usando acetato e lamicote dourado..."
+                value={reverseUserNotes}
+                onChange={(e) => setReverseUserNotes(e.target.value)}
+                rows={2}
+                className="text-xs resize-none"
+              />
+            </div>
+
+            {/* Dica Informativa */}
+            <div className="p-3 rounded-xl bg-purple-50 dark:bg-purple-950/40 border border-purple-200 dark:border-purple-800 text-[11px] text-purple-900 dark:text-purple-200 space-y-1">
+              <p className="font-semibold flex items-center gap-1">
+                <Sparkles className="size-3.5 text-purple-600" />
+                Como funciona a leitura multimodal:
+              </p>
+              <ul className="list-disc list-inside space-y-0.5 text-purple-800/90 dark:text-purple-300/90 text-[10px]">
+                <li><strong>Visão Computacional:</strong> Decompõe a imagem em camadas (fundo, moldura, apliques 3D, shaker, nome).</li>
+                <li><strong>Vetorização de Corte:</strong> Gera pranchas SVG calibradas com linhas de corte (<span className="text-red-600 font-bold">vermelho</span>) e vinco (<span className="text-blue-600 font-bold">azul</span>).</li>
+                <li><strong>Lista de Materiais:</strong> Mapeia as cores da imagem para papéis Colorplus e Lamicote comerciais.</li>
+              </ul>
+            </div>
+          </div>
+
+          <DialogFooter className="gap-2 sm:gap-0 border-t pt-3">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setIsReverseEngineerDialogOpen(false)}
+              disabled={analyzingImage}
+              className="text-xs"
+            >
+              Cancelar
+            </Button>
+
+            <Button
+              size="sm"
+              onClick={handleRunReverseEngineer}
+              disabled={!reverseImagePreview || analyzingImage}
+              className="text-xs bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white font-semibold gap-1.5 shadow-sm"
+            >
+              {analyzingImage ? (
+                <>
+                  <Loader2 className="size-3.5 animate-spin" />
+                  Inspecionando Camadas & Gerando Corte...
+                </>
+              ) : (
+                <>
+                  <Sparkles className="size-3.5" />
+                  🔍 Inspecionar e Criar Matriz de Corte
+                </>
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>
