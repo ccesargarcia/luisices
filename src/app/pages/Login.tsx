@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router';
 import { useAuth } from '../../contexts/AuthContext';
 import { trackLogin } from '../../services/analyticsService';
@@ -14,8 +14,15 @@ export function Login() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const { login } = useAuth();
+  const { login, isAuthenticated, loading: authLoading, userProfile } = useAuth();
   const navigate = useNavigate();
+
+  // Se o usuário já estiver autenticado e ativo e tentar acessar /login, redireciona para o dashboard com replace
+  useEffect(() => {
+    if (!authLoading && isAuthenticated && userProfile && userProfile.active !== false) {
+      navigate('/', { replace: true });
+    }
+  }, [isAuthenticated, authLoading, userProfile, navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -25,7 +32,7 @@ export function Login() {
     try {
       await login(email, password);
       trackLogin('email');
-      navigate('/');
+      navigate('/', { replace: true });
     } catch (err: any) {
       console.error('Erro ao fazer login:', err);
 

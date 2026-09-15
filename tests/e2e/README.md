@@ -15,7 +15,8 @@ tests/e2e/
 ├── customers.spec.ts      # 👥 CRUD de clientes
 ├── products.spec.ts       # 🎨 CRUD de produtos
 ├── quotes.spec.ts         # 📝 CRUD de orçamentos
-└── orders.spec.ts         # 📦 CRUD de pedidos (agenda semanal)
+├── orders.spec.ts         # 📦 CRUD de pedidos (agenda semanal)
+└── security.spec.ts       # 🛡️ Testes de segurança, RBAC e isolamento de dados
 ```
 
 ---
@@ -58,6 +59,7 @@ npm run test:products     # Apenas produtos
 npm run test:quotes       # Apenas orçamentos
 npm run test:orders       # Apenas pedidos
 npm run test:navigation   # Apenas navegação
+npm run test:security     # Apenas testes de segurança e RBAC
 
 # Interface visual (modo debug)
 npm run test:e2e:ui
@@ -68,6 +70,15 @@ npm run test:debug
 # Ver relatório do último teste
 npm run test:report
 ```
+
+### 🌐 Execução no GitHub Actions (CI):
+
+O workflow de CI ([.github/workflows/test-actions.yml](../../.github/workflows/test-actions.yml)) suporta execução parametrizada:
+
+* **Suíte Completa (Padrão)**: Qualquer commit regular sem tags executa todos os testes E2E em paralelo (`npm run test:e2e`).
+* **Tag `[test:security]`**: Executa exclusivamente a suíte de segurança e regras do Firestore/Storage (`tests/e2e/security.spec.ts`).
+* **Tag `[test:critical]`**: Executa os fluxos críticos de pedidos, permissões RBAC e segurança.
+* **Manual (Workflow Dispatch)**: É possível disparar qualquer grupo de testes pelo menu dropdown na interface do GitHub Actions.
 
 ---
 
@@ -478,4 +489,4 @@ Os smoke tests rodam **automaticamente** no GitHub Actions quando você faz push
 
 ---
 
-**Última atualização:** 6 de março de 2026
+**Última atualização:** 11 de setembro de 2026 (Atualizações de segurança, HSTS, PWA Cache e suíte completa E2E)

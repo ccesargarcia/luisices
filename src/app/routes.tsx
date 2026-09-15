@@ -5,22 +5,54 @@ import { ProtectedRoute } from './components/ProtectedRoute';
 import { PermissionRoute } from './components/PermissionRoute';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { Loader2 } from 'lucide-react';
+import { Register } from './pages/Register';
+import { Login } from './pages/Login';
+import { ResetPassword } from './pages/ResetPassword';
+import { AuthAction } from './pages/AuthAction';
 
-// Páginas carregadas sob demanda — o bundle inicial fica menor
-const Dashboard      = lazy(() => import('./pages/Dashboard').then(m => ({ default: m.Dashboard })));
-const WeeklyCalendar = lazy(() => import('./pages/WeeklyCalendar').then(m => ({ default: m.WeeklyCalendar })));
-const Customers      = lazy(() => import('./pages/Customers').then(m => ({ default: m.Customers })));
-const Reports        = lazy(() => import('./pages/Reports').then(m => ({ default: m.Reports })));
-const Settings       = lazy(() => import('./pages/Settings').then(m => ({ default: m.Settings })));
-const Quotes         = lazy(() => import('./pages/Quotes').then(m => ({ default: m.Quotes })));
-const Products       = lazy(() => import('./pages/Products').then(m => ({ default: m.Products })));
-const Gallery        = lazy(() => import('./pages/Gallery').then(m => ({ default: m.Gallery })));
-const Exchanges      = lazy(() => import('./pages/Exchanges').then(m => ({ default: m.Exchanges })));
-const Users          = lazy(() => import('./pages/Users').then(m => ({ default: m.Users })));
-const FixNegativeValues = lazy(() => import('./pages/FixNegativeValues').then(m => ({ default: m.default })));
-const Login          = lazy(() => import('./pages/Login').then(m => ({ default: m.Login })));
-const ResetPassword  = lazy(() => import('./pages/ResetPassword').then(m => ({ default: m.ResetPassword })));
-const AuthAction     = lazy(() => import('./pages/AuthAction').then(m => ({ default: m.AuthAction })));
+/**
+ * Carregador lazy resiliente a falhas temporárias de rede.
+ * Tenta novamente em memória se o primeiro import falhar (sem recarregar a janela).
+ * Se persistir, repassa o erro para o ErrorBoundary exibir a mensagem amigável com botão de atualização.
+ */
+function lazyWithRetry<T extends React.ComponentType<any>>(
+  factory: () => Promise<{ default: T }>
+) {
+  return lazy(async () => {
+    try {
+      return await factory();
+    } catch (firstError) {
+      console.warn('[lazyWithRetry] Falha no primeiro carregamento do chunk, tentando novamente...', firstError);
+      await new Promise((resolve) => setTimeout(resolve, 800));
+      try {
+        return await factory();
+      } catch (secondError) {
+        console.error('[lazyWithRetry] Falha persistente ao carregar componente:', secondError);
+        throw secondError;
+      }
+    }
+  });
+}
+
+// Páginas carregadas sob demanda com retry automático
+const Dashboard      = lazyWithRetry(() => import('./pages/Dashboard').then(m => ({ default: m.Dashboard })));
+const WeeklyCalendar = lazyWithRetry(() => import('./pages/WeeklyCalendar').then(m => ({ default: m.WeeklyCalendar })));
+const Customers      = lazyWithRetry(() => import('./pages/Customers').then(m => ({ default: m.Customers })));
+const Reports        = lazyWithRetry(() => import('./pages/Reports').then(m => ({ default: m.Reports })));
+const Settings       = lazyWithRetry(() => import('./pages/Settings').then(m => ({ default: m.Settings })));
+const Quotes         = lazyWithRetry(() => import('./pages/Quotes').then(m => ({ default: m.Quotes })));
+const Products       = lazyWithRetry(() => import('./pages/Products').then(m => ({ default: m.Products })));
+const Gallery        = lazyWithRetry(() => import('./pages/Gallery').then(m => ({ default: m.Gallery })));
+const Exchanges      = lazyWithRetry(() => import('./pages/Exchanges').then(m => ({ default: m.Exchanges })));
+const Users          = lazyWithRetry(() => import('./pages/Users').then(m => ({ default: m.Users })));
+const HelpCenter     = lazyWithRetry(() => import('./pages/HelpCenter').then(m => ({ default: m.HelpCenter })));
+const Emails         = lazyWithRetry(() => import('./pages/Emails').then(m => ({ default: m.Emails })));
+const Pricing        = lazyWithRetry(() => import('./pages/Pricing').then(m => ({ default: m.Pricing })));
+const FixNegativeValues = lazyWithRetry(() => import('./pages/FixNegativeValues').then(m => ({ default: m.default })));
+const PublicCatalog  = lazyWithRetry(() => import('./pages/PublicCatalog').then(m => ({ default: m.PublicCatalog })));
+const StoreCustomization = lazyWithRetry(() => import('./pages/StoreCustomization').then(m => ({ default: m.StoreCustomization })));
+const StoreProducts = lazyWithRetry(() => import('./pages/StoreProducts').then(m => ({ default: m.StoreProducts })));
+const StoreOrders = lazyWithRetry(() => import('./pages/StoreOrders').then(m => ({ default: m.StoreOrders })));
 
 function PageLoader() {
   return (
@@ -39,34 +71,84 @@ function Lazy({ children }: { children: React.ReactNode }) {
 // Em produção (GitHub Pages): '/luisices/' ou o nome do seu repositório
 const basename = import.meta.env.BASE_URL || '/';
 
-export const router = createBrowserRouter([
-  {
-    path: '/login',
-    element: <Lazy><Login /></Lazy>,
-    errorElement: <ErrorBoundary />,
-  },
-  {
-    path: '/registrar',
-    element: <Navigate to="/login" replace />,
-  },
-  {
-    path: '/recuperar-senha',
-    element: <Lazy><ResetPassword /></Lazy>,
-    errorElement: <ErrorBoundary />,
-  },
-  {
-    path: '/action',
-    element: <Lazy><AuthAction /></Lazy>,
-    errorElement: <ErrorBoundary />,
-  },
-  {
-    path: '/',
-    element: (
-      <ProtectedRoute>
-        <Layout />
-      </ProtectedRoute>
-    ),
-    errorElement: <ErrorBoundary />,
+// Detecção de subdomínio de catálogo/loja (ex: loja.dev.luisices.com.br, catalogo.dev.luisices.com.br, etc.)
+// Também aceita parâmetro ?view=loja ou ?view=catalog para testes locais ou de desenvolvimento
+const isCatalogSubdomain = typeof window !== 'undefined' && (() => {
+  const host = window.location.hostname.toLowerCase();
+  const view = (new URLSearchParams(window.location.search).get('view') || '').toLowerCase();
+  return (
+    host.startsWith('loja.') ||
+    host.startsWith('lojinha.') ||
+    host.startsWith('catalogo.') ||
+    host.startsWith('catalog.') ||
+    ['loja', 'lojinha', 'catalog', 'catalogo'].includes(view)
+  );
+})();
+
+export const router = isCatalogSubdomain
+  ? createBrowserRouter([
+      {
+        path: '/',
+        element: <Lazy><PublicCatalog /></Lazy>,
+        errorElement: <ErrorBoundary />,
+      },
+      {
+        path: '/login',
+        element: <Navigate to="/" replace />,
+      },
+      {
+        path: '*',
+        element: <Lazy><PublicCatalog /></Lazy>,
+        errorElement: <ErrorBoundary />,
+      },
+    ], { basename })
+  : createBrowserRouter([
+      {
+        path: '/login',
+        element: <Login />,
+        errorElement: <ErrorBoundary />,
+      },
+      {
+        path: '/registrar',
+        element: <Register />,
+        errorElement: <ErrorBoundary />,
+      },
+      {
+        path: '/recuperar-senha',
+        element: <ResetPassword />,
+        errorElement: <ErrorBoundary />,
+      },
+      {
+        path: '/action',
+        element: <AuthAction />,
+        errorElement: <ErrorBoundary />,
+      },
+      {
+        path: '/loja',
+        element: <Lazy><PublicCatalog /></Lazy>,
+        errorElement: <ErrorBoundary />,
+      },
+      {
+        path: '/lojinha',
+        element: <Navigate to="/loja" replace />,
+      },
+      {
+        path: '/catalogo',
+        element: <Lazy><PublicCatalog /></Lazy>,
+        errorElement: <ErrorBoundary />,
+      },
+      {
+        path: '/catalog',
+        element: <Navigate to="/loja" replace />,
+      },
+      {
+        path: '/',
+        element: (
+          <ProtectedRoute>
+            <Layout />
+          </ProtectedRoute>
+        ),
+        errorElement: <ErrorBoundary />,
     children: [
       {
         index: true,
@@ -86,7 +168,7 @@ export const router = createBrowserRouter([
       },
       {
         path: 'relatorios',
-        element: <Lazy><PermissionRoute check={p => p.reports}><Reports /></PermissionRoute></Lazy>,
+        element: <Lazy><PermissionRoute check={p => p.reports} allowUserRole><Reports /></PermissionRoute></Lazy>,
       },
       {
         path: 'orcamentos',
@@ -97,16 +179,40 @@ export const router = createBrowserRouter([
         element: <Lazy><PermissionRoute check={p => p.products?.view ?? false}><Products /></PermissionRoute></Lazy>,
       },
       {
+        path: 'precificacao',
+        element: <Lazy><PermissionRoute check={p => p.pricing ?? false} allowUserRole><Pricing /></PermissionRoute></Lazy>,
+      },
+      {
         path: 'galeria',
         element: <Lazy><PermissionRoute check={p => p.gallery?.view ?? false}><Gallery /></PermissionRoute></Lazy>,
       },
       {
         path: 'permutas',
-        element: <Lazy><PermissionRoute check={p => p.exchanges}><Exchanges /></PermissionRoute></Lazy>,
+        element: <Lazy><PermissionRoute check={p => p.exchanges} allowUserRole><Exchanges /></PermissionRoute></Lazy>,
       },
       {
         path: 'configuracoes',
         element: <Lazy><PermissionRoute check={p => p.settings}><Settings /></PermissionRoute></Lazy>,
+      },
+      {
+        path: 'personalizar-lojinha',
+        element: <Lazy><PermissionRoute check={p => p.store ?? false} allowUserRole><StoreCustomization /></PermissionRoute></Lazy>,
+      },
+      {
+        path: 'produtos-lojinha',
+        element: <Lazy><PermissionRoute check={p => p.storeProducts?.view ?? p.store ?? false} allowUserRole><StoreProducts /></PermissionRoute></Lazy>,
+      },
+      {
+        path: 'pedidos-lojinha',
+        element: <Lazy><PermissionRoute check={p => Boolean(p.store || p.storeProducts?.view || p.orders?.view)} allowUserRole><StoreOrders /></PermissionRoute></Lazy>,
+      },
+      {
+        path: 'lojinha/pedidos',
+        element: <Navigate to="/pedidos-lojinha" replace />,
+      },
+      {
+        path: 'lojinha/produtos',
+        element: <Navigate to="/produtos-lojinha" replace />,
       },
       {
         path: 'settings',  // Alias em inglês
@@ -117,8 +223,16 @@ export const router = createBrowserRouter([
         element: <Lazy><PermissionRoute check={p => p.users?.view ?? false}><Users /></PermissionRoute></Lazy>,
       },
       {
+        path: 'emails',
+        element: <Lazy><PermissionRoute check={p => p.emails ?? false}><Emails /></PermissionRoute></Lazy>,
+      },
+      {
+        path: 'ajuda',
+        element: <Lazy><HelpCenter /></Lazy>,
+      },
+      {
         path: 'corrigir-valores',
-        element: <Lazy><ProtectedRoute><FixNegativeValues /></ProtectedRoute></Lazy>,
+        element: <Lazy><ProtectedRoute adminOnly><FixNegativeValues /></ProtectedRoute></Lazy>,
       },
     ],
   },

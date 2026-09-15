@@ -1,11 +1,53 @@
 import { Order } from '../types';
 
 /**
- * Formatar número de telefone para WhatsApp (remover caracteres especiais)
+ * Normaliza número de telefone brasileiro para envio ao WhatsApp (E.164 sem o sinal de +).
+ * Garante que números com DDD (10 ou 11 dígitos) recebam o DDI 55 do Brasil,
+ * e não duplica caso o usuário já tenha digitado 55.
+ */
+export function normalizePhoneForWhatsApp(phone: string): string {
+  const digits = phone.replace(/\D/g, '');
+  if (!digits) return '';
+
+  // Se já tem 12 ou 13 dígitos e começa com 55 (55 + DDD + 8 ou 9 dígitos)
+  if (digits.startsWith('55') && (digits.length === 12 || digits.length === 13)) {
+    return digits;
+  }
+
+  // Se tem 10 ou 11 dígitos (DDD + 8 ou 9 dígitos), adiciona o DDI 55 do Brasil
+  if (digits.length === 10 || digits.length === 11) {
+    return `55${digits}`;
+  }
+
+  // Caso genérico: se não tiver 55, adiciona
+  return digits.startsWith('55') ? digits : `55${digits}`;
+}
+
+/**
+ * Formata um número de telefone para exibição visual amigável: (11) 99999-9999 ou (11) 9999-9999.
+ */
+export function formatPhoneForDisplay(phone?: string | null): string {
+  if (!phone) return '';
+  let digits = phone.replace(/\D/g, '');
+  if (!digits) return '';
+
+  // Se tiver 12 ou 13 dígitos e começar com 55, remove o DDI para exibir o padrão nacional limpo
+  if (digits.startsWith('55') && (digits.length === 12 || digits.length === 13)) {
+    digits = digits.slice(2);
+  }
+
+  const limited = digits.slice(0, 11);
+  if (limited.length <= 2) return limited;
+  if (limited.length <= 6) return `(${limited.slice(0, 2)}) ${limited.slice(2)}`;
+  if (limited.length <= 10) return `(${limited.slice(0, 2)}) ${limited.slice(2, 6)}-${limited.slice(6)}`;
+  return `(${limited.slice(0, 2)}) ${limited.slice(2, 7)}-${limited.slice(7, 11)}`;
+}
+
+/**
+ * Formatar número de telefone para WhatsApp (remover caracteres especiais e garantir DDI)
  */
 export function formatPhoneForWhatsApp(phone: string): string {
-  // Remove tudo que não é número
-  return phone.replace(/\D/g, '');
+  return normalizePhoneForWhatsApp(phone);
 }
 
 /**
@@ -117,8 +159,8 @@ export function openWhatsApp(phone: string, message: string): void {
   // WhatsApp Web ou App dependendo do dispositivo
   const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
   const whatsappUrl = isMobile
-    ? `whatsapp://send?phone=55${formattedPhone}&text=${encodedMessage}`
-    : `https://web.whatsapp.com/send?phone=55${formattedPhone}&text=${encodedMessage}`;
+    ? `whatsapp://send?phone=${formattedPhone}&text=${encodedMessage}`
+    : `https://web.whatsapp.com/send?phone=${formattedPhone}&text=${encodedMessage}`;
 
   window.open(whatsappUrl, '_blank');
 }

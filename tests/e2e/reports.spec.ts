@@ -1,23 +1,13 @@
 import { test, expect } from '@playwright/test';
+import { ensureAuthenticated } from './utils/auth.util';
 
 /**
  * Testes da página de Relatórios
  */
 
-const TEST_USER = {
-  email: process.env.TEST_USER_EMAIL || 'teste@exemplo.com',
-  password: process.env.TEST_USER_PASSWORD || 'senha123',
-};
-
 test.beforeEach(async ({ page }) => {
   test.setTimeout(60000);
-  await page.goto('/');
-  await page.fill('input[type="email"]', TEST_USER.email);
-  await page.fill('input[type="password"]', TEST_USER.password);
-  await page.click('button[type="submit"]');
-
-  // Verificar que o dashboard está carregado (em vez de confiar na URL)
-  await expect(page.getByRole('heading', { name: /Bom dia|Boa tarde|Boa noite/i })).toBeVisible({ timeout: 30000 });
+  await ensureAuthenticated(page);
 
   await page.goto('/relatorios');
   await expect(page.locator('main').first()).toBeVisible({ timeout: 10000 });
@@ -51,16 +41,8 @@ test.describe('Relatórios', () => {
     await page.waitForTimeout(2000);
 
     // Verificar métricas de pedidos
-    const concluidos = page.getByText('Pedidos Concluídos');
-    const cancelados = page.getByText('Cancelados');
-
-    if (await concluidos.isVisible({ timeout: 5000 })) {
-      await expect(concluidos).toBeVisible();
-    }
-
-    if (await cancelados.isVisible({ timeout: 3000 })) {
-      await expect(cancelados).toBeVisible();
-    }
+    await expect(page.getByText(/concluído/i).first()).toBeVisible({ timeout: 5000 });
+    await expect(page.getByText(/cancelado/i).first()).toBeVisible({ timeout: 5000 });
   });
 
   test('deve ter botão de exportar CSV', async ({ page }) => {

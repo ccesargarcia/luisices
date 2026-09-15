@@ -2,7 +2,7 @@
  * Firebase User Management Service
  *
  * Gerencia criação e perfis de usuários.
- * Usa a REST API do Firebase Auth para criar usuários sem deslogar o admin.
+ * Usa Cloud Functions para operações sensíveis (createUser, deleteUser) com validação de admin no servidor.
  */
 
 import {
@@ -12,18 +12,33 @@ import {
   getDoc,
   setDoc,
   updateDoc,
+  deleteDoc,
   query,
   orderBy,
 } from 'firebase/firestore';
-import { db } from '../lib/firebase';
-import { UserProfile, UserRole, Permission, ADMIN_PERMISSIONS, DEFAULT_USER_PERMISSIONS } from '../app/types';
+import { httpsCallable } from 'firebase/functions';
+import { auth, db, functions } from '../lib/firebase';
+import { UserProfile, UserRole, Permission, ADMIN_PERMISSIONS, DEFAULT_USER_PERMISSIONS, EMPLOYEE_PERMISSIONS } from '../app/types';
 
 const USERS_COLLECTION = 'userProfiles';
 
 export class FirebaseUserService {
+  async sendAdminPasswordReset(email: string): Promise<void> {
+    const callable = httpsCallable(functions, 'sendAdminPasswordReset');
+    await callable({ email });
+  }
+
+  async createUserInvitation(email: string, whatsappPhone?: string): Promise<{ expiresAt: string }> {
+    const callable = httpsCallable<{ email: string; whatsappPhone?: string }, { success: boolean; expiresAt: string }>(
+      functions,
+      'createUserInvitation',
+    );
+    const result = await callable({ email, whatsappPhone });
+    return result.data;
+  }
   /**
-   * Cria um novo usuário via Firebase Auth REST API (sem deslogar o admin atual),
-   * depois salva o UserProfile no Firestore.
+   * Cria um novo usuário via Cloud Function segura (com validação de admin no servidor),
+   * depois retorna o UserProfile criado.
    */
   async createUser(
     email: string,
@@ -33,56 +48,32 @@ export class FirebaseUserService {
     permissions: Permission,
     createdBy: string,
   ): Promise<UserProfile> {
-    const apiKey = import.meta.env.VITE_FIREBASE_API_KEY;
-    const res = await fetch(
-      `https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=${apiKey}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password, displayName, returnSecureToken: false }),
-      },
-    );
+    const callable = httpsCallable<
+      { email: string; password: string; displayName: string; role: string; permissions: Permission; createdBy: string },
+      { success: boolean; uid: string; profile: UserProfile }
+    >(functions, 'createUser');
 
-    if (!res.ok) {
-      const err = await res.json();
-      const msg = err?.error?.message || 'Erro ao criar usuário';
-      throw new Error(msg);
-    }
-
-    const data = await res.json();
-    const uid: string = data.localId;
-
-    const profile: UserProfile = {
-      uid,
-      email,
-      displayName,
-      role,
-      permissions,
-      active: true,
-      createdAt: new Date().toISOString(),
-      createdBy,
-    };
-
-    await setDoc(doc(db, USERS_COLLECTION, uid), profile);
-    return profile;
+    const result = await callable({ email, password, displayName, role, permissions, createdBy });
+    return result.data.profile;
   }
 
   /**
    * Busca o perfil de um usuário no Firestore.
-   * Se não existir, cria um perfil padrão de admin (primeiro usuário do sistema).
+   * Se não existir, inicializa automaticamente com perfil padrão de usuário ('user') e DEFAULT_USER_PERMISSIONS.
    */
   async getUserProfile(uid: string, email?: string, displayName?: string): Promise<UserProfile | null> {
     const snap = await getDoc(doc(db, USERS_COLLECTION, uid));
     if (snap.exists()) return snap.data() as UserProfile;
 
-    // Cria perfil admin automaticamente ao primeiro acesso
-    if (email) {
+    // Se o usuário está autenticado mas ainda não tem perfil salvo no Firestore,
+    // inicializa automaticamente com perfil de usuário comum e permissões padrão.
+    if (email && auth.currentUser) {
       const profile: UserProfile = {
         uid,
         email,
-        displayName: displayName || email,
-        role: 'admin',
-        permissions: ADMIN_PERMISSIONS,
+        displayName: displayName || email.split('@')[0],
+        role: 'user',
+        permissions: { ...DEFAULT_USER_PERMISSIONS },
         active: true,
         createdAt: new Date().toISOString(),
         createdBy: uid,
@@ -118,10 +109,25 @@ export class FirebaseUserService {
   }
 
   /**
+   * Remove permanentemente um usuário (Firebase Auth + Firestore).
+   */
+  async deleteUser(uid: string): Promise<void> {
+    try {
+      const callable = httpsCallable<{ uid: string }, { success: boolean }>(functions, 'deleteUser');
+      await callable({ uid });
+    } catch (err) {
+      console.warn('[firebaseUserService.deleteUser] Callable failed, deleting directly from Firestore:', err);
+      await deleteDoc(doc(db, USERS_COLLECTION, uid));
+    }
+  }
+
+  /**
    * Retorna permissões padrão por role.
    */
   getDefaultPermissions(role: UserRole): Permission {
-    return role === 'admin' ? { ...ADMIN_PERMISSIONS } : { ...DEFAULT_USER_PERMISSIONS };
+    if (role === 'admin') return { ...ADMIN_PERMISSIONS };
+    if (role === 'funcionario') return { ...EMPLOYEE_PERMISSIONS };
+    return { ...DEFAULT_USER_PERMISSIONS };
   }
 }
 

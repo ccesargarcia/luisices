@@ -1,5 +1,5 @@
-import { useMemo, useState, useEffect } from 'react';
-import { Order, OrderStatus } from '../types';
+import { useMemo, useState, useEffect, Fragment } from 'react';
+import { Order, OrderStatus, UserProfile } from '../types';
 import { OrderCard } from '../components/OrderCard';
 import { OrderDetailsDialog } from '../components/OrderDetailsDialog';
 import { NewOrderDialog } from '../components/NewOrderDialog';
@@ -8,7 +8,9 @@ import { OverdueOrders } from '../components/OverdueOrders';
 import { DashboardCardSkeleton, OrderCardSkeleton } from '../components/SkeletonLoaders';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
+import { cn } from '../components/ui/utils';
 import { Input } from '../components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
 import {
@@ -25,14 +27,20 @@ import {
   Calendar,
   Target,
   Repeat2,
-  Download
+  Download,
+  Trash2,
+  Users,
+  UserCheck,
 } from 'lucide-react';
+import { AdminTeamFilter } from '../components/AdminTeamFilter';
 import { getTextColor } from '../utils/tagColors';
 import { useFirebaseOrders } from '../../hooks/useFirebaseOrders';
 import { firebaseOrderService } from '../../services/firebaseOrderService';
+import { firebaseUserService } from '../../services/firebaseUserService';
 import { firebaseCustomerService } from '../../services/firebaseCustomerService';
 import { useAuth } from '../../contexts/AuthContext';
 import { useUserSettings } from '../../hooks/useUserSettings';
+import { useSalesLedger } from '../../hooks/useSalesLedger';
 import { DEFAULT_DASHBOARD_CARDS } from '../utils/dashboardCards';
 import { parseLocalDate } from '../utils/date';
 import { formatCurrency } from '../utils/currency';
@@ -40,6 +48,24 @@ import { exportOrdersToExcel } from '../utils/exportData';
 import { toast } from 'sonner';
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts';
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from '../components/ui/chart';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '../components/ui/dialog';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '../components/ui/alert-dialog';
 
 const statusChartConfig = {
   value: { label: 'Pedidos' },
@@ -69,19 +95,57 @@ function getGreeting() {
 }
 
 export function Dashboard() {
-  const { user } = useAuth();
-  const { orders, loading, error } = useFirebaseOrders();
+  const { user, userProfile, hasPermission } = useAuth();
+  const {
+    orders,
+    loading,
+    error,
+    isFilterActive,
+    selectedFilterLabel,
+    clearUserFilter,
+    teamMembers,
+    selectedUserIds,
+  } = useFirebaseOrders();
   const { settings } = useUserSettings();
+  const { stats: ledgerStats } = useSalesLedger({ teamUserIds: selectedUserIds });
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
+  const [isBulkOrderDeleteOpen, setIsBulkOrderDeleteOpen] = useState(false);
+  const [bulkOrderDeleting, setBulkOrderDeleting] = useState(false);
+  const [isBulkAssignOpen, setIsBulkAssignOpen] = useState(false);
+  const [bulkAssignTargetUid, setBulkAssignTargetUid] = useState<string>('__none__');
+  const [bulkAssigning, setBulkAssigning] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [showExchangeOnly, setShowExchangeOnly] = useState(false);
+  const [creatorProfiles, setCreatorProfiles] = useState<UserProfile[]>([]);
+
+  useEffect(() => {
+    if (userProfile?.role !== 'admin' && userProfile?.role !== 'funcionario') {
+      setCreatorProfiles([]);
+      return;
+    }
+    firebaseUserService.listUsers().then(setCreatorProfiles).catch(() => setCreatorProfiles([]));
+  }, [userProfile?.role]);
+
+  const currentMonthName = useMemo(() => {
+    const name = new Intl.DateTimeFormat('pt-BR', { month: 'long' }).format(new Date());
+    return name.charAt(0).toUpperCase() + name.slice(1);
+  }, []);
 
   const visibleCards = settings?.dashboardCards ?? DEFAULT_DASHBOARD_CARDS;
   const showCard = (id: string) => visibleCards.includes(id);
   const handleOrderClick = (order: Order) => {
-    setSelectedOrder(order);
+    const creatorName = (order.createdByName && order.createdByName !== 'Usuário proprietário')
+      ? order.createdByName
+      : creatorProfiles.find(profile => profile.uid === order.userId)?.displayName
+        || (order.userId === user?.uid ? user.displayName || user.email || 'Você' : undefined)
+        || (order.createdByName !== 'Usuário proprietário' ? order.createdByName : undefined);
+
+    setSelectedOrder({
+      ...order,
+      createdByName: creatorName,
+    });
     setDetailsOpen(true);
   };
 
@@ -101,11 +165,14 @@ export function Dashboard() {
     try {
       const order = orders.find(o => o.id === orderId);
       await firebaseOrderService.deleteOrder(orderId);
-      if (order?.customerId && order.price) {
+      // Preserva histórico se já gerou receita/foi concluído;
+      // apenas decrementa do cliente se era um rascunho pendente nunca pago
+      if (order?.customerId && order.price && order.status === 'pending' && (!order.payment || order.payment.status === 'pending')) {
         await firebaseCustomerService.decrementCustomerStats(order.customerId, order.price).catch(() => {});
       }
       setDetailsOpen(false);
       setSelectedOrder(null);
+      toast.success('Pedido removido!');
     } catch (err) {
       console.error('Erro ao deletar pedido:', err);
       toast.error('Erro ao deletar pedido');
@@ -119,10 +186,13 @@ export function Dashboard() {
     const completed = orders.filter(o => o.status === 'completed').length;
     const cancelled = orders.filter(o => o.status === 'cancelled').length;
 
-    // Métricas financeiras
-    const totalRevenue = orders
+    // Métricas financeiras consolidadas (preserva vendas mesmo de pedidos arquivados/removidos do quadro)
+    const fallbackRevenue = orders
       .filter(o => o.status === 'completed')
       .reduce((sum, o) => sum + o.price, 0);
+    const totalRevenue = ledgerStats.completedRevenue > 0
+      ? ledgerStats.completedRevenue
+      : fallbackRevenue;
 
     // Pagamentos
     const paidOrders = orders.filter(o => o.payment?.status === 'paid').length;
@@ -134,7 +204,9 @@ export function Dashboard() {
       !o.payment || o.payment.status === 'pending' || o.payment.status === 'partial'
     ).length;
 
-    const totalPaid = orders.reduce((sum, o) => sum + (o.payment?.paidAmount || 0), 0);
+    const totalPaid = ledgerStats.totalPaid > 0
+      ? ledgerStats.totalPaid
+      : orders.reduce((sum, o) => sum + (o.payment?.paidAmount || 0), 0);
 
     // "A Receber": total do que ainda não foi pago em pedidos ativos
     const totalPending = activeOrders
@@ -149,8 +221,15 @@ export function Dashboard() {
       .filter(o => o.status === 'pending' || o.status === 'in-progress')
       .reduce((sum, o) => sum + o.price, 0);
 
-    // Ticket médio
-    const averageOrderValue = total > 0 ? orders.reduce((sum, o) => sum + o.price, 0) / total : 0;
+    // Ticket médio: DESCARTA CANCELADOS!
+    const validOrders = orders.filter(o => o.status !== 'cancelled');
+    const fallbackAverageOrderValue = validOrders.length > 0
+      ? validOrders.reduce((sum, o) => sum + o.price, 0) / validOrders.length
+      : 0;
+
+    const averageOrderValue = ledgerStats.averageTicket > 0
+      ? ledgerStats.averageTicket
+      : fallbackAverageOrderValue;
 
     // Produtos mais vendidos
     const productCounts = new Map<string, { count: number; revenue: number }>();
@@ -265,7 +344,7 @@ export function Dashboard() {
     }
 
     return filtered;
-  }, [orders, searchQuery, selectedTags, showExchangeOnly, user]);
+  }, [orders, searchQuery, selectedTags, showExchangeOnly]);
 
   // Obter todas as tags únicas
   const allTags = useMemo(() => {
@@ -286,6 +365,147 @@ export function Dashboard() {
     setSelectedTags(prev =>
       prev.includes(tagName) ? prev.filter(t => t !== tagName) : [...prev, tagName]
     );
+  };
+
+  const toggleOrderSelection = (orderId: string, selected: boolean) => {
+    setSelectedOrderIds(prev => {
+      if (selected) {
+        return prev.includes(orderId) ? prev : [...prev, orderId];
+      }
+      return prev.filter(id => id !== orderId);
+    });
+  };
+
+  // Paginação e controle por aba
+  const [activeTab, setActiveTab] = useState<'all' | 'pending' | 'in-progress' | 'completed'>('all');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState<number | 'all'>(() => {
+    try {
+      const saved = localStorage.getItem('dashboard_orders_page_size');
+      if (saved === 'all') return 'all';
+      if (saved === '6') return 6;
+      if (saved === '12') return 12;
+      if (saved === '24') return 24;
+    } catch {}
+    return 12;
+  });
+
+  const tabOrdersMap = useMemo(() => ({
+    all: filteredOrders,
+    pending: filteredOrders.filter((o) => o.status === 'pending'),
+    'in-progress': filteredOrders.filter((o) => o.status === 'in-progress'),
+    completed: filteredOrders.filter((o) => o.status === 'completed'),
+  }), [filteredOrders]);
+
+  const activeTabOrders = tabOrdersMap[activeTab];
+  const totalTabOrders = activeTabOrders.length;
+  const effectivePageSize = typeof pageSize === 'number' ? pageSize : 12;
+  const totalPages = pageSize === 'all' ? 1 : Math.max(1, Math.ceil(totalTabOrders / effectivePageSize));
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, selectedTags, showExchangeOnly, activeTab, pageSize]);
+
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [totalPages, currentPage]);
+
+  const pagedOrders = useMemo(() => {
+    if (pageSize === 'all') return activeTabOrders;
+    const start = (currentPage - 1) * effectivePageSize;
+    return activeTabOrders.slice(start, start + effectivePageSize);
+  }, [activeTabOrders, currentPage, pageSize, effectivePageSize]);
+
+  const startItem = totalTabOrders === 0 ? 0 : (pageSize === 'all' ? 1 : (currentPage - 1) * effectivePageSize + 1);
+  const endItem = pageSize === 'all' ? totalTabOrders : Math.min(currentPage * effectivePageSize, totalTabOrders);
+
+  const handlePageSizeChange = (newSize: number | 'all') => {
+    setPageSize(newSize);
+    setCurrentPage(1);
+    try {
+      localStorage.setItem('dashboard_orders_page_size', String(newSize));
+    } catch {}
+  };
+
+  const handlePageChange = (newPage: number) => {
+    setCurrentPage(newPage);
+    const element = document.getElementById('dashboard-orders-section');
+    if (element) {
+      const rect = element.getBoundingClientRect();
+      if (rect.top < 0) {
+        element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    }
+  };
+
+  const allFilteredOrdersSelected =
+    activeTabOrders.length > 0 &&
+    activeTabOrders.every(order => selectedOrderIds.includes(order.id));
+
+  const toggleSelectAllVisibleOrders = () => {
+    if (allFilteredOrdersSelected) {
+      setSelectedOrderIds(prev => prev.filter(id => !activeTabOrders.some(order => order.id === id)));
+      return;
+    }
+
+    setSelectedOrderIds(prev => {
+      const next = new Set(prev);
+      activeTabOrders.forEach(order => next.add(order.id));
+      return [...next];
+    });
+  };
+
+  const handleBulkDeleteOrders = async () => {
+    if (selectedOrderIds.length === 0) return;
+
+    setBulkOrderDeleting(true);
+    try {
+      const ordersToDelete = orders.filter((order) => selectedOrderIds.includes(order.id));
+
+      await Promise.all(
+        ordersToDelete.map(async (order) => {
+          await firebaseOrderService.deleteOrder(order.id);
+          if (order.customerId && order.price && order.status === 'pending' && (!order.payment || order.payment.status === 'pending')) {
+            await firebaseCustomerService.decrementCustomerStats(order.customerId, order.price).catch(() => {});
+          }
+        }),
+      );
+
+      toast.success(`${ordersToDelete.length} pedido${ordersToDelete.length === 1 ? '' : 's'} excluído${ordersToDelete.length === 1 ? '' : 's'}`);
+      setSelectedOrderIds([]);
+      setIsBulkOrderDeleteOpen(false);
+    } catch (err) {
+      console.error('Erro ao excluir pedidos em massa:', err);
+      toast.error('Erro ao excluir pedidos selecionados');
+    } finally {
+      setBulkOrderDeleting(false);
+    }
+  };
+
+  const handleBulkAssignOrders = async () => {
+    if (selectedOrderIds.length === 0 || userProfile?.role !== 'admin') return;
+
+    const targetMember = bulkAssignTargetUid !== '__none__'
+      ? teamMembers.find((m) => m.uid === bulkAssignTargetUid) || null
+      : null;
+
+    setBulkAssigning(true);
+    try {
+      await firebaseOrderService.assignOrdersBulk(selectedOrderIds, targetMember);
+      const targetName = targetMember ? targetMember.displayName : 'Sem responsável';
+      toast.success(
+        `${selectedOrderIds.length} pedido${selectedOrderIds.length === 1 ? '' : 's'} atribuído${selectedOrderIds.length === 1 ? '' : 's'} para ${targetName}`
+      );
+      setSelectedOrderIds([]);
+      setIsBulkAssignOpen(false);
+    } catch (err: any) {
+      console.error('Erro ao atribuir pedidos em lote:', err);
+      toast.error(err?.message || 'Erro ao atribuir pedidos');
+    } finally {
+      setBulkAssigning(false);
+    }
   };
 
   if (loading) {
@@ -347,7 +567,26 @@ export function Dashboard() {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      {isFilterActive && (
+        <div className="flex items-center justify-between gap-3 rounded-lg border border-primary/30 bg-primary/5 px-4 py-3 text-sm text-primary shadow-xs">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <Users className="size-4 shrink-0" />
+            <span className="truncate">
+              Visualizando dados de: <strong>{selectedFilterLabel}</strong> ({orders.length} pedidos encontrados)
+            </span>
+          </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={clearUserFilter}
+            className="h-7 text-xs text-primary hover:bg-primary/10 shrink-0 font-medium"
+          >
+            Visualizar tudo
+          </Button>
+        </div>
+      )}
+
+      <div data-kpi-grid data-count={firstGridCount} className={`grid gap-4 lg:gap-6 ${firstGridClass}`}>
         {showCard('total') && (
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
@@ -357,7 +596,7 @@ export function Dashboard() {
           <CardContent>
             <div className="text-2xl font-bold">{stats.total}</div>
             <p className="text-xs text-muted-foreground mt-1">
-              {stats.completed} concluídos
+              {stats.completed} concluído{stats.completed !== 1 ? 's' : ''} no quadro
             </p>
           </CardContent>
         </Card>
@@ -366,13 +605,15 @@ export function Dashboard() {
         {showCard('revenue') && (
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Receita Total</CardTitle>
+            <CardTitle className="text-sm font-medium">Receita ({currentMonthName})</CardTitle>
             <DollarSign className="size-4 text-green-600" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{formatCurrency(stats.totalRevenue)}</div>
             <p className="text-xs text-muted-foreground mt-1">
-              {stats.completed} pedido{stats.completed !== 1 ? 's' : ''} concluído{stats.completed !== 1 ? 's' : ''}
+              {ledgerStats.completedCount > 0
+                ? `${ledgerStats.completedCount} pedido${ledgerStats.completedCount !== 1 ? 's' : ''} concluído${ledgerStats.completedCount !== 1 ? 's' : ''} em ${currentMonthName.toLowerCase()}`
+                : `${stats.completed} pedido${stats.completed !== 1 ? 's' : ''} concluído${stats.completed !== 1 ? 's' : ''}`}
             </p>
           </CardContent>
         </Card>
@@ -396,13 +637,13 @@ export function Dashboard() {
         {showCard('avgTicket') && (
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Ticket Médio</CardTitle>
+            <CardTitle className="text-sm font-medium">Ticket Médio ({currentMonthName})</CardTitle>
             <Target className="size-4 text-purple-600" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{formatCurrency(stats.averageOrderValue)}</div>
             <p className="text-xs text-muted-foreground mt-1">
-              Em {stats.total} pedidos
+              Média por venda em {currentMonthName.toLowerCase()}
             </p>
           </CardContent>
         </Card>
@@ -420,7 +661,7 @@ export function Dashboard() {
           <CardContent>
             <div className="text-2xl font-bold">{stats.inProgress}</div>
             <p className="text-xs text-muted-foreground mt-1">
-              {stats.pending} aguardando
+              {stats.pending} aguardando início
             </p>
           </CardContent>
         </Card>
@@ -435,7 +676,7 @@ export function Dashboard() {
           <CardContent>
             <div className="text-2xl font-bold">{formatCurrency(stats.totalPending)}</div>
             <p className="text-xs text-muted-foreground mt-1">
-              {stats.pendingPayments} {stats.pendingPayments === 1 ? 'pedido sem pagamento completo' : 'pedidos sem pagamento completo'}
+              {stats.pendingPayments} {stats.pendingPayments === 1 ? 'pedido ativo pendente' : 'pedidos ativos pendentes'}
             </p>
           </CardContent>
         </Card>
@@ -444,13 +685,13 @@ export function Dashboard() {
         {showCard('received') && (
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Já Recebido</CardTitle>
+            <CardTitle className="text-sm font-medium">Recebido ({currentMonthName})</CardTitle>
             <TrendingUp className="size-4 text-green-600" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{formatCurrency(stats.totalPaid)}</div>
             <p className="text-xs text-muted-foreground mt-1">
-              {stats.paidOrders} pagos · {stats.partialOrders} parciais
+              Pagamentos em {currentMonthName.toLowerCase()}
             </p>
           </CardContent>
         </Card>
@@ -552,14 +793,21 @@ export function Dashboard() {
       {/* Pedidos Atrasados */}
       {showCard('overdue') && <OverdueOrders orders={orders} onOrderClick={handleOrderClick} />}
 
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
-        <Input
-          placeholder="Buscar por cliente, produto ou telefone..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          className="pl-10"
-        />
+      <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+          <Input
+            placeholder="Buscar por cliente, produto ou telefone..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="pl-10"
+          />
+        </div>
+        {userProfile?.role === 'admin' && (
+          <div className="shrink-0">
+            <AdminTeamFilter variant="inline" />
+          </div>
+        )}
       </div>
 
       {(allTags.length > 0 || true) && (
@@ -593,11 +841,11 @@ export function Dashboard() {
               Permuta / Parceria
               {showExchangeOnly && <X className="size-3 ml-0.5" />}
             </Badge>
-            {(selectedTags.length > 0 || showExchangeOnly) && (
+            {(selectedTags.length > 0 || showExchangeOnly || isFilterActive) && (
               <Badge
                 variant="secondary"
-                className="cursor-pointer"
-                onClick={() => { setSelectedTags([]); setShowExchangeOnly(false); }}
+                className="cursor-pointer hover:bg-muted"
+                onClick={() => { setSelectedTags([]); setShowExchangeOnly(false); clearUserFilter(); }}
               >
                 Limpar filtros
               </Badge>
@@ -606,93 +854,278 @@ export function Dashboard() {
         </div>
       )}
 
-      <Tabs defaultValue="all" className="space-y-4">
-        <TabsList className="flex flex-wrap h-auto gap-1 p-1">
-          <TabsTrigger value="all" className="flex-1 sm:flex-none">Todos ({filteredOrders.length})</TabsTrigger>
-          <TabsTrigger value="pending" className="flex-1 sm:flex-none">
-            Pendentes ({filteredOrders.filter(o => o.status === 'pending').length})
-          </TabsTrigger>
-          <TabsTrigger value="in-progress" className="flex-1 sm:flex-none">
-            Em Produção ({filteredOrders.filter(o => o.status === 'in-progress').length})
-          </TabsTrigger>
-          <TabsTrigger value="completed" className="flex-1 sm:flex-none">
-            Concluídos ({filteredOrders.filter(o => o.status === 'completed').length})
-          </TabsTrigger>
-        </TabsList>
+      {(selectedOrderIds.length > 0 || filteredOrders.length > 0) && (
+        <div className="glass-chip flex flex-col gap-3 rounded-lg p-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-2 flex-wrap">
+            <p className="text-sm text-primary">
+              {selectedOrderIds.length} selecionado{selectedOrderIds.length === 1 ? '' : 's'}
+            </p>
+            <Button variant="outline" size="sm" onClick={toggleSelectAllVisibleOrders}>
+              {allFilteredOrdersSelected ? 'Desmarcar todos' : 'Selecionar todos'}
+            </Button>
+          </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            {selectedOrderIds.length > 0 && userProfile?.role === 'admin' && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1.5 h-9 text-xs sm:text-sm font-medium"
+                onClick={() => {
+                  setBulkAssignTargetUid('__none__');
+                  setIsBulkAssignOpen(true);
+                }}
+              >
+                <UserCheck className="size-4 text-primary shrink-0" />
+                <span>Atribuir ({selectedOrderIds.length})</span>
+              </Button>
+            )}
+            {selectedOrderIds.length > 0 && (
+              <Button variant="ghost" size="sm" className="h-9 text-xs sm:text-sm" onClick={() => setSelectedOrderIds([])}>
+                Limpar
+              </Button>
+            )}
+            {selectedOrderIds.length > 0 && (hasPermission(p => p.orders?.delete ?? false) || userProfile?.role === 'user') && (
+              <Button
+                variant="destructive"
+                size="sm"
+                className="gap-2 h-9 text-xs sm:text-sm"
+                onClick={() => setIsBulkOrderDeleteOpen(true)}
+                disabled={bulkOrderDeleting}
+              >
+                <Trash2 className="size-4 shrink-0" />
+                Excluir selecionados
+              </Button>
+            )}
+          </div>
+        </div>
+      )}
 
-        <TabsContent value="all" className="space-y-4">
-          {filteredOrders.length === 0 ? (
-            <EmptyState
-              message="Nenhum pedido encontrado"
-              hint={searchQuery || selectedTags.length > 0 || showExchangeOnly ? 'Tente ajustar os filtros.' : 'Crie seu primeiro pedido clicando em "Novo Pedido".'}
-            />
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {filteredOrders.map(order => (
-                <OrderCard
-                  key={order.id}
-                  order={order}
-                  onClick={() => handleOrderClick(order)}
-                />
-              ))}
-            </div>
-          )}
-        </TabsContent>
+      <div id="dashboard-orders-section" className="space-y-4">
+        <Tabs
+          value={activeTab}
+          onValueChange={(val) => {
+            setActiveTab(val as any);
+            setCurrentPage(1);
+          }}
+          className="space-y-4"
+        >
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <TabsList className="flex flex-wrap h-auto gap-1 p-1">
+              <TabsTrigger value="all" className="flex-1 sm:flex-none">
+                Todos ({tabOrdersMap.all.length})
+              </TabsTrigger>
+              <TabsTrigger value="pending" className="flex-1 sm:flex-none">
+                Pendentes ({tabOrdersMap.pending.length})
+              </TabsTrigger>
+              <TabsTrigger value="in-progress" className="flex-1 sm:flex-none">
+                Em Produção ({tabOrdersMap['in-progress'].length})
+              </TabsTrigger>
+              <TabsTrigger value="completed" className="flex-1 sm:flex-none">
+                Concluídos ({tabOrdersMap.completed.length})
+              </TabsTrigger>
+            </TabsList>
 
-        <TabsContent value="pending" className="space-y-4">
-          {filteredOrders.filter(o => o.status === 'pending').length === 0 ? (
-            <EmptyState message="Nenhum pedido pendente" hint="Pedidos aguardando início aparecem aqui." />
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {filteredOrders
-                .filter(o => o.status === 'pending')
-                .map(order => (
+            {/* Seletor de itens por página */}
+            {(filteredOrders.length > 6 || pageSize !== 12) && (
+              <div className="flex items-center gap-1.5 self-end sm:self-auto text-xs text-muted-foreground">
+                <span>Exibir:</span>
+                <div className="inline-flex items-center rounded-lg border border-border/60 bg-muted/40 p-0.5">
+                  {([6, 12, 24, 'all'] as const).map((size) => (
+                    <button
+                      key={size}
+                      type="button"
+                      onClick={() => handlePageSizeChange(size)}
+                      className={cn(
+                        'px-2.5 py-1 rounded-md transition-all font-medium',
+                        pageSize === size
+                          ? 'bg-background text-foreground shadow-xs'
+                          : 'text-muted-foreground hover:text-foreground'
+                      )}
+                    >
+                      {size === 'all' ? 'Todos' : size}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          <TabsContent value="all" className="space-y-4">
+            {tabOrdersMap.all.length === 0 ? (
+              <EmptyState
+                message="Nenhum pedido encontrado"
+                hint={searchQuery || selectedTags.length > 0 || showExchangeOnly ? 'Ajuste os filtros para realizar uma nova busca.' : 'Crie seu primeiro pedido selecionando “Novo Pedido”.'}
+              />
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {pagedOrders.map(order => (
                   <OrderCard
                     key={order.id}
                     order={order}
                     onClick={() => handleOrderClick(order)}
                   />
                 ))}
-            </div>
-          )}
-        </TabsContent>
+              </div>
+            )}
+          </TabsContent>
 
-        <TabsContent value="in-progress" className="space-y-4">
-          {filteredOrders.filter(o => o.status === 'in-progress').length === 0 ? (
-            <EmptyState message="Nenhum pedido em produção" hint="Pedidos em andamento aparecem aqui." />
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {filteredOrders
-                .filter(o => o.status === 'in-progress')
-                .map(order => (
+          <TabsContent value="pending" className="space-y-4">
+            {tabOrdersMap.pending.length === 0 ? (
+              <EmptyState message="Nenhum pedido pendente" hint="Pedidos aguardando início aparecem aqui." />
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {pagedOrders.map(order => (
                   <OrderCard
                     key={order.id}
                     order={order}
                     onClick={() => handleOrderClick(order)}
                   />
                 ))}
-            </div>
-          )}
-        </TabsContent>
+              </div>
+            )}
+          </TabsContent>
 
-        <TabsContent value="completed" className="space-y-4">
-          {filteredOrders.filter(o => o.status === 'completed').length === 0 ? (
-            <EmptyState message="Nenhum pedido concluído" hint="Pedidos entregues aparecem aqui." />
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {filteredOrders
-                .filter(o => o.status === 'completed')
-                .map(order => (
+          <TabsContent value="in-progress" className="space-y-4">
+            {tabOrdersMap['in-progress'].length === 0 ? (
+              <EmptyState message="Nenhum pedido em produção" hint="Pedidos em andamento aparecem aqui." />
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {pagedOrders.map(order => (
                   <OrderCard
                     key={order.id}
                     order={order}
                     onClick={() => handleOrderClick(order)}
                   />
                 ))}
+              </div>
+            )}
+          </TabsContent>
+
+          <TabsContent value="completed" className="space-y-4">
+            {tabOrdersMap.completed.length === 0 ? (
+              <EmptyState message="Nenhum pedido concluído" hint="Pedidos entregues aparecem aqui." />
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {pagedOrders.map(order => (
+                  <OrderCard
+                    key={order.id}
+                    order={order}
+                    isSelected={selectedOrderIds.includes(order.id)}
+                    onToggleSelect={toggleOrderSelection}
+                    onClick={() => handleOrderClick(order)}
+                  />
+                ))}
+              </div>
+            )}
+          </TabsContent>
+
+          {/* Controles de Paginação */}
+          {pageSize !== 'all' && totalPages > 1 && totalTabOrders > 0 && (
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-4 border-t border-border/50">
+              <p className="text-xs sm:text-sm text-muted-foreground">
+                Mostrando {startItem}–{endItem} de {totalTabOrders} pedido{totalTabOrders !== 1 ? 's' : ''} — Página{' '}
+                <strong className="text-foreground">{currentPage}</strong> de <strong>{totalPages}</strong>
+              </p>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handlePageChange(Math.max(1, currentPage - 1))}
+                  disabled={currentPage === 1}
+                >
+                  Anterior
+                </Button>
+                <div className="flex items-center gap-1">
+                  {Array.from({ length: totalPages }, (_, i) => i + 1)
+                    .filter((page) => {
+                      if (totalPages <= 5) return true;
+                      return page === 1 || page === totalPages || Math.abs(page - currentPage) <= 1;
+                    })
+                    .map((page, index, array) => {
+                      const prevPage = array[index - 1];
+                      const hasGap = prevPage && page - prevPage > 1;
+                      return (
+                        <Fragment key={page}>
+                          {hasGap && <span className="px-1 text-xs text-muted-foreground">…</span>}
+                          <Button
+                            variant={currentPage === page ? 'default' : 'outline'}
+                            size="sm"
+                            className="size-8 p-0 text-xs"
+                            onClick={() => handlePageChange(page)}
+                          >
+                            {page}
+                          </Button>
+                        </Fragment>
+                      );
+                    })}
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handlePageChange(Math.min(totalPages, currentPage + 1))}
+                  disabled={currentPage === totalPages}
+                >
+                  Próxima
+                </Button>
+              </div>
             </div>
           )}
-        </TabsContent>
-      </Tabs>
+        </Tabs>
+      </div>
+
+      {/* Diálogo de Atribuição em Lote */}
+      <Dialog open={isBulkAssignOpen} onOpenChange={setIsBulkAssignOpen}>
+        <DialogContent className="w-[calc(100%-1.5rem)] sm:max-w-md max-h-[85dvh] overflow-y-auto p-4 sm:p-6">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-base sm:text-lg">
+              <Users className="size-5 text-primary" />
+              Atribuir Pedidos em Lote
+            </DialogTitle>
+            <DialogDescription className="text-xs sm:text-sm text-muted-foreground mt-1">
+              Defina o responsável pela execução dos <strong className="text-foreground">{selectedOrderIds.length}</strong> pedidos selecionados.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="py-3 space-y-2">
+            <label className="text-xs sm:text-sm font-medium">Membro da equipe responsável</label>
+            <Select
+              value={bulkAssignTargetUid}
+              onValueChange={setBulkAssignTargetUid}
+            >
+              <SelectTrigger className="h-11 sm:h-10 text-base sm:text-sm">
+                <SelectValue placeholder="Selecione um responsável" />
+              </SelectTrigger>
+              <SelectContent className="max-h-56">
+                <SelectItem value="__none__">Sem responsável (Remover atribuição)</SelectItem>
+                {teamMembers.map((member) => (
+                  <SelectItem key={member.uid} value={member.uid}>
+                    {member.displayName} {member.role === 'funcionario' ? '(Equipe)' : member.role === 'admin' ? '(Admin)' : ''}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <DialogFooter className="flex-col-reverse sm:flex-row gap-2 sm:gap-0 pt-2">
+            <Button
+              variant="outline"
+              onClick={() => setIsBulkAssignOpen(false)}
+              disabled={bulkAssigning}
+              className="w-full sm:w-auto h-10 text-sm"
+            >
+              Cancelar
+            </Button>
+            <Button
+              onClick={handleBulkAssignOrders}
+              disabled={bulkAssigning}
+              className="w-full sm:w-auto h-10 text-sm gap-2"
+            >
+              {bulkAssigning && <Loader2 className="size-4 animate-spin" />}
+              Salvar Atribuição
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <OrderDetailsDialog
         order={selectedOrder}

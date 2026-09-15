@@ -1,5 +1,5 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from './ui/dialog';
+import { useState, useEffect, useMemo } from 'react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from './ui/dialog';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
@@ -17,6 +17,7 @@ import { firebaseProductService } from '../../services/firebaseProductService';
 import { firebaseGalleryService } from '../../services/firebaseGalleryService';
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
 import { useAuth } from '../../contexts/AuthContext';
+import { useOrders } from '../../contexts/OrdersContext';
 import { useUserSettingsContext } from '../../contexts/UserSettingsContext';
 import { toast } from 'sonner';
 import { SafeImg } from './SafeMedia';
@@ -29,13 +30,15 @@ interface ProductItem {
 }
 
 export function NewOrderDialog() {
-  const { user, hasPermission } = useAuth();
+  const { user, userProfile, hasPermission } = useAuth();
+  const { teamMembers } = useOrders();
   const { settings } = useUserSettingsContext();
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [selectedCustomer, setSelectedCustomer] = useState<string>('');
   const [isNewCustomer, setIsNewCustomer] = useState(false);
+  const [assignedTo, setAssignedTo] = useState<string>('__none__');
 
   const [formData, setFormData] = useState({
     customerName: '',
@@ -76,6 +79,43 @@ export function NewOrderDialog() {
 
   const formatCurrency = (v: number) =>
     new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
+
+  const resetForm = () => {
+    localAttachments.forEach(attachment => {
+      if (attachment.url.startsWith('blob:')) URL.revokeObjectURL(attachment.url);
+    });
+    setSelectedCustomer('');
+    setIsNewCustomer(false);
+    setAssignedTo('__none__');
+    setFormData({
+      customerName: '',
+      customerPhone: '',
+      customerEmail: '',
+      deliveryDate: '',
+      notes: '',
+      status: 'pending',
+      paymentStatus: 'pending',
+      paymentMethod: '',
+      paidAmount: '',
+      isExchange: false,
+      exchangeNotes: '',
+      cardColor: '',
+    });
+    setProducts([{ name: '', quantity: '1', unitPrice: '' }]);
+    setTags([]);
+    setPendingFiles([]);
+    setLocalAttachments([]);
+    setGalleryBrowserOpen(false);
+    setSelectedGalleryIds([]);
+    setGalleryBrowserSearch('');
+    setCatalogSearch('');
+    setCatalogOpenIdx(null);
+  };
+
+  // Every opening starts a clean order draft, including after Cancel/close.
+  useEffect(() => {
+    if (open) resetForm();
+  }, [open]);
 
   // Pré-preencher datas e método de pagamento com os padrões configurados
   useEffect(() => {
@@ -195,6 +235,10 @@ export function NewOrderDialog() {
         .join(', ');
       const totalQuantity = products.reduce((sum, p) => sum + (parseInt(p.quantity) || 0), 0);
 
+      const selectedMember = userProfile?.role === 'admin' && assignedTo !== '__none__'
+        ? teamMembers.find(m => m.uid === assignedTo)
+        : null;
+
       // Criar pedido
       const createdOrder = await firebaseOrderService.createOrder({
         customerName: formData.customerName,
@@ -207,6 +251,10 @@ export function NewOrderDialog() {
         notes: formData.notes || undefined,
         tags: tags.length > 0 ? tags : undefined,
         customerId,
+        assignedTo: selectedMember?.uid || undefined,
+        assignedToName: selectedMember?.displayName || undefined,
+        assignedAt: selectedMember ? new Date().toISOString() : undefined,
+        assignedBy: selectedMember ? (user?.displayName || user?.email || 'Admin') : undefined,
         cardColor: formData.cardColor || undefined,
         isExchange: formData.isExchange || undefined,
         exchangeNotes: formData.exchangeNotes || undefined,
@@ -313,6 +361,7 @@ export function NewOrderDialog() {
       setTags([]);
       setSelectedCustomer('');
       setIsNewCustomer(false);
+      setAssignedTo('__none__');
       localAttachments.forEach(a => URL.revokeObjectURL(a.url));
       setPendingFiles([]);
       setPendingGallery([]);
@@ -343,7 +392,7 @@ export function NewOrderDialog() {
       <DialogContent className="w-full max-w-full sm:max-w-2xl max-h-[90dvh] min-h-[70dvh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Adicionar Novo Pedido</DialogTitle>
-          <div className="sr-only">Formulário para criar um novo pedido</div>
+          <DialogDescription className="sr-only">Formulário para criar um novo pedido</DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
           {/* Seleção de Cliente */}
@@ -542,14 +591,14 @@ export function NewOrderDialog() {
             )}
           </div>
 
-          <div className="grid grid-cols-1 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="status">Status *</Label>
               <Select
                 value={formData.status}
                 onValueChange={(value: OrderStatus) => setFormData({ ...formData, status: value })}
               >
-                <SelectTrigger id="status">
+                <SelectTrigger id="status" className="h-10 text-base sm:text-sm">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -560,6 +609,28 @@ export function NewOrderDialog() {
                 </SelectContent>
               </Select>
             </div>
+
+            {userProfile?.role === 'admin' && (
+              <div className="space-y-2">
+                <Label htmlFor="assignedTo">Responsável pela Produção</Label>
+                <Select
+                  value={assignedTo}
+                  onValueChange={setAssignedTo}
+                >
+                  <SelectTrigger id="assignedTo" className="h-10 text-base sm:text-sm">
+                    <SelectValue placeholder="Sem responsável" />
+                  </SelectTrigger>
+                  <SelectContent className="max-h-60">
+                    <SelectItem value="__none__">Sem responsável (Pendente)</SelectItem>
+                    {teamMembers.map((member) => (
+                      <SelectItem key={member.uid} value={member.uid}>
+                        {member.displayName} {member.role === 'funcionario' ? '(Equipe)' : member.role === 'admin' ? '(Admin)' : ''}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
           </div>
 
           <div className="space-y-2">

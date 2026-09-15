@@ -7,6 +7,7 @@ import {
   Permission,
   ADMIN_PERMISSIONS,
   DEFAULT_USER_PERMISSIONS,
+  EMPLOYEE_PERMISSIONS,
   ModulePermission,
 } from '../types';
 import { Button } from '../components/ui/button';
@@ -22,6 +23,16 @@ import {
   DialogTitle,
   DialogFooter,
 } from '../components/ui/dialog';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '../components/ui/alert-dialog';
 import {
   Select,
   SelectContent,
@@ -50,6 +61,9 @@ import {
   Loader2,
   RefreshCw,
   AlertCircle,
+  MailPlus,
+  KeyRound,
+  Trash2,
 } from 'lucide-react';
 
 // ─── Permission matrix helpers ───────────────────────────────────────────────
@@ -61,20 +75,34 @@ interface ModuleConfig {
 }
 
 const MODULES: ModuleConfig[] = [
-  { key: 'dashboard',  label: 'Dashboard',  type: 'boolean' },
-  { key: 'orders',     label: 'Pedidos',    type: 'crud' },
-  { key: 'customers',  label: 'Clientes',   type: 'crud' },
-  { key: 'products',   label: 'Produtos',   type: 'crud' },
-  { key: 'quotes',     label: 'Orçamentos', type: 'crud' },
-  { key: 'gallery',    label: 'Galeria',    type: 'gallery' },
-  { key: 'exchanges',  label: 'Permutas',   type: 'boolean' },
-  { key: 'reports',    label: 'Relatórios', type: 'boolean' },
-  { key: 'settings',   label: 'Configurações', type: 'boolean' },
-  { key: 'users',      label: 'Usuários',   type: 'crud' },
+  { key: 'dashboard',     label: 'Dashboard',                          type: 'boolean' },
+  { key: 'orders',        label: 'Pedidos',                            type: 'crud' },
+  { key: 'customers',     label: 'Clientes',                           type: 'crud' },
+  { key: 'products',      label: 'Produtos do Ateliê (Internos)',      type: 'crud' },
+  { key: 'storeProducts', label: 'Lojinha Online - Produtos da Vitrine', type: 'crud' },
+  { key: 'store',         label: 'Lojinha Online - Aparência & Banners', type: 'boolean' },
+  { key: 'quotes',        label: 'Orçamentos',                         type: 'crud' },
+  { key: 'gallery',       label: 'Galeria',                            type: 'gallery' },
+  { key: 'exchanges',     label: 'Permutas',                           type: 'boolean' },
+  { key: 'reports',       label: 'Relatórios',                         type: 'boolean' },
+  { key: 'settings',      label: 'Configurações',                      type: 'boolean' },
+  { key: 'users',         label: 'Usuários',                           type: 'crud' },
+  { key: 'emails',        label: 'Central de E-mails',                 type: 'boolean' },
+  { key: 'pricing',       label: 'Precificação & Custos',              type: 'boolean' },
 ];
 
 function deepClonePermission(p: Permission): Permission {
-  return JSON.parse(JSON.stringify(p));
+  const clone: Permission = JSON.parse(JSON.stringify(p || {}));
+  if (!clone.storeProducts) {
+    clone.storeProducts = { view: false, create: false, edit: false, delete: false };
+  }
+  return clone;
+}
+
+function formatUserDate(value?: string) {
+  if (!value) return 'Nunca';
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? 'Indisponível' : date.toLocaleString('pt-BR');
 }
 
 // ─── Permission Matrix Component ─────────────────────────────────────────────
@@ -93,6 +121,9 @@ function PermissionMatrix({ permissions, onChange }: PermissionMatrixProps) {
 
   function toggleCrudField(key: keyof Permission, field: keyof ModulePermission) {
     const next = deepClonePermission(permissions);
+    if (!next[key]) {
+      (next as any)[key] = { view: false, create: false, edit: false, delete: false };
+    }
     const mod = next[key] as ModulePermission;
     mod[field] = !mod[field];
     onChange(next);
@@ -105,7 +136,7 @@ function PermissionMatrix({ permissions, onChange }: PermissionMatrixProps) {
   }
 
   return (
-    <div className="space-y-3 max-h-[40vh] overflow-y-auto pr-1">
+    <div className="space-y-3 max-h-[35dvh] overflow-y-auto pr-1 sm:max-h-[40vh]">
       {MODULES.map(({ key, label, type }) => (
         <div key={key} className="border rounded-md p-3 space-y-2">
           <p className="text-sm font-semibold">{label}</p>
@@ -127,7 +158,7 @@ function PermissionMatrix({ permissions, onChange }: PermissionMatrixProps) {
                 <div key={field} className="flex items-center gap-1.5">
                   <Checkbox
                     id={`perm-${key}-${field}`}
-                    checked={(permissions[key] as ModulePermission)[field]}
+                    checked={Boolean((permissions[key] as ModulePermission)?.[field])}
                     onCheckedChange={() => toggleCrudField(key, field)}
                   />
                   <Label htmlFor={`perm-${key}-${field}`} className="text-xs font-normal capitalize">
@@ -196,7 +227,13 @@ function UserFormDialog({ open, editingUser, currentUserUid, onClose, onSaved }:
 
   function applyPreset(r: UserRole) {
     setRole(r);
-    setPermissions(r === 'admin' ? deepClonePermission(ADMIN_PERMISSIONS) : deepClonePermission(DEFAULT_USER_PERMISSIONS));
+    setPermissions(
+      r === 'admin'
+        ? deepClonePermission(ADMIN_PERMISSIONS)
+        : r === 'funcionario'
+          ? deepClonePermission(EMPLOYEE_PERMISSIONS)
+          : deepClonePermission(DEFAULT_USER_PERMISSIONS),
+    );
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -217,7 +254,7 @@ function UserFormDialog({ open, editingUser, currentUserUid, onClose, onSaved }:
           role,
           permissions,
         });
-        toast.success('Usuário atualizado. O usuário precisa fazer logout/login para aplicar as mudanças.');
+        toast.success('Usuário atualizado com sucesso. As alterações já estão ativas em tempo real.');
       } else {
         await firebaseUserService.createUser(email.trim(), password, displayName.trim(), role, permissions, currentUserUid);
         toast.success('Usuário criado com sucesso');
@@ -234,7 +271,7 @@ function UserFormDialog({ open, editingUser, currentUserUid, onClose, onSaved }:
 
   return (
     <Dialog open={open} onOpenChange={v => { if (!v) onClose(); }}>
-      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+      <DialogContent className="w-[calc(100vw-1rem)] max-w-[calc(100vw-1rem)] max-h-[calc(100dvh-1rem)] overflow-y-auto p-4 sm:w-full sm:max-w-lg sm:max-h-[90dvh] sm:p-6">
         <DialogHeader>
           <DialogTitle>{isEdit ? 'Editar usuário' : 'Novo usuário'}</DialogTitle>
         </DialogHeader>
@@ -242,9 +279,9 @@ function UserFormDialog({ open, editingUser, currentUserUid, onClose, onSaved }:
         <form onSubmit={handleSubmit} className="space-y-4">
           {/* Name */}
           <div className="space-y-1.5">
-            <Label htmlFor="uf-name">Nome</Label>
+            <Label htmlFor="user-name">Nome</Label>
             <Input
-              id="uf-name"
+              id="user-name"
               value={displayName}
               onChange={e => setDisplayName(e.target.value)}
               placeholder="Nome completo"
@@ -254,9 +291,9 @@ function UserFormDialog({ open, editingUser, currentUserUid, onClose, onSaved }:
 
           {/* Email */}
           <div className="space-y-1.5">
-            <Label htmlFor="uf-email">E-mail</Label>
+            <Label htmlFor="user-email">E-mail</Label>
             <Input
-              id="uf-email"
+              id="user-email"
               type="email"
               value={email}
               onChange={e => setEmail(e.target.value)}
@@ -269,9 +306,9 @@ function UserFormDialog({ open, editingUser, currentUserUid, onClose, onSaved }:
           {/* Password (create only) */}
           {!isEdit && (
             <div className="space-y-1.5">
-              <Label htmlFor="uf-pass">Senha</Label>
+              <Label htmlFor="user-password">Senha</Label>
               <Input
-                id="uf-pass"
+                id="user-password"
                 type="password"
                 value={password}
                 onChange={e => setPassword(e.target.value)}
@@ -292,17 +329,21 @@ function UserFormDialog({ open, editingUser, currentUserUid, onClose, onSaved }:
               <SelectContent>
                 <SelectItem value="admin">Admin — acesso total</SelectItem>
                 <SelectItem value="user">Usuário — acesso restrito</SelectItem>
+                <SelectItem value="funcionario">Funcionário — operação</SelectItem>
               </SelectContent>
             </Select>
           </div>
 
           {/* Shortcut preset buttons */}
-          <div className="flex gap-2">
-            <Button type="button" size="sm" variant="outline" onClick={() => applyPreset('admin')}>
+          <div className="flex flex-wrap gap-2">
+            <Button type="button" size="sm" variant="outline" className="min-w-0 whitespace-normal text-left" onClick={() => applyPreset('admin')}>
               <ShieldCheck className="size-3.5 mr-1" /> Preset Admin
             </Button>
-            <Button type="button" size="sm" variant="outline" onClick={() => applyPreset('user')}>
+            <Button type="button" size="sm" variant="outline" className="min-w-0 whitespace-normal text-left" onClick={() => applyPreset('user')}>
               <User className="size-3.5 mr-1" /> Preset Usuário
+            </Button>
+            <Button type="button" size="sm" variant="outline" className="min-w-0 whitespace-normal text-left" onClick={() => applyPreset('funcionario')}>
+              <User className="size-3.5 mr-1" /> Preset Funcionário
             </Button>
           </div>
 
@@ -310,7 +351,7 @@ function UserFormDialog({ open, editingUser, currentUserUid, onClose, onSaved }:
 
           {/* Permission Matrix */}
           <div className="space-y-2">
-            <p className="text-sm font-semibold">Permissões granulares</p>
+            <p className="text-sm font-semibold">Permissões de acesso</p>
             <PermissionMatrix permissions={permissions} onChange={setPermissions} />
           </div>
 
@@ -337,6 +378,13 @@ export function Users() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<UserProfile | null>(null);
   const [togglingUid, setTogglingUid] = useState<string | null>(null);
+  const [inviteOpen, setInviteOpen] = useState(false);
+  const [inviteEmail, setInviteEmail] = useState('');
+  const [inviteWhatsapp, setInviteWhatsapp] = useState('');
+  const [inviting, setInviting] = useState(false);
+  const [resettingUid, setResettingUid] = useState<string | null>(null);
+  const [deleteUserTarget, setDeleteUserTarget] = useState<UserProfile | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const fetchUsers = useCallback(async () => {
     setLoading(true);
@@ -379,6 +427,55 @@ export function Users() {
     setDialogOpen(true);
   }
 
+  async function sendPasswordReset(u: UserProfile) {
+    setResettingUid(u.uid);
+    try {
+      await firebaseUserService.sendAdminPasswordReset(u.email);
+      toast.success(`Link de redefinição enviado para ${u.email}`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Não foi possível enviar o link de redefinição');
+    } finally {
+      setResettingUid(null);
+    }
+  }
+
+  async function sendInvitation(event: React.FormEvent) {
+    event.preventDefault();
+    if (!inviteEmail.trim()) return;
+    setInviting(true);
+    try {
+      const result = await firebaseUserService.createUserInvitation(inviteEmail.trim(), inviteWhatsapp.trim() || undefined);
+      const expiresAt = new Date(result.expiresAt).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
+      toast.success(`Convite enviado. Válido até ${expiresAt}.`);
+      setInviteEmail('');
+      setInviteWhatsapp('');
+      setInviteOpen(false);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Não foi possível enviar o convite');
+    } finally {
+      setInviting(false);
+    }
+  }
+
+  async function confirmDeleteUser() {
+    if (!deleteUserTarget) return;
+    if (deleteUserTarget.uid === currentUser?.uid) {
+      toast.error('Você não pode excluir sua própria conta');
+      return;
+    }
+    setDeleting(true);
+    try {
+      await firebaseUserService.deleteUser(deleteUserTarget.uid);
+      setUsers(prev => prev.filter(u => u.uid !== deleteUserTarget.uid));
+      toast.success(`Usuário ${deleteUserTarget.displayName || deleteUserTarget.email} excluído.`);
+      setDeleteUserTarget(null);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Não foi possível excluir o usuário');
+    } finally {
+      setDeleting(false);
+    }
+  }
+
   const totalActive   = users.filter(u => u.active).length;
   const totalAdmins   = users.filter(u => u.role === 'admin').length;
   const totalInactive = users.filter(u => !u.active).length;
@@ -394,19 +491,23 @@ export function Users() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between gap-3 flex-wrap">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-border/60 pb-6">
         <div>
-          <h1 className="text-2xl font-bold">Usuários</h1>
-          <p className="text-muted-foreground text-sm">Gerencie quem tem acesso ao sistema</p>
+          <h1 className="text-3xl sm:text-4xl font-bold tracking-tight">Usuários</h1>
+          <p className="text-muted-foreground mt-1 text-sm sm:text-base">Gerencie quem tem acesso ao sistema</p>
         </div>
-        <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={fetchUsers}>
-            <RefreshCw className="size-4 mr-1" />
-            Atualizar
+        <div className="flex w-full sm:w-auto flex-wrap items-center gap-2">
+          <Button variant="outline" size="sm" onClick={fetchUsers} className="gap-1.5" title="Atualizar lista">
+            <RefreshCw className="size-4" />
+            <span className="hidden sm:inline">Atualizar</span>
           </Button>
-          <Button size="sm" onClick={openCreate}>
-            <UserPlus className="size-4 mr-1" />
-            Novo usuário
+          <Button size="sm" variant="outline" onClick={() => setInviteOpen(true)} className="gap-1.5 flex-1 sm:flex-none">
+            <MailPlus className="size-4" />
+            <span>Enviar convite</span>
+          </Button>
+          <Button size="sm" onClick={openCreate} className="gap-1.5 flex-1 sm:flex-none">
+            <UserPlus className="size-4" />
+            <span>Novo usuário</span>
           </Button>
         </div>
       </div>
@@ -496,6 +597,10 @@ export function Users() {
                         <Badge className="bg-yellow-500/20 text-yellow-700 border-yellow-300 hover:bg-yellow-500/30">
                           <ShieldCheck className="size-3 mr-1" /> Admin
                         </Badge>
+                      ) : u.role === 'funcionario' ? (
+                        <Badge className="bg-blue-500/15 text-blue-700 border-blue-300">
+                          <User className="size-3 mr-1" /> Funcionário
+                        </Badge>
                       ) : (
                         <Badge variant="secondary">
                           <User className="size-3 mr-1" /> Usuário
@@ -516,9 +621,21 @@ export function Users() {
                       </div>
                     </TableCell>
                     <TableCell className="text-right">
-                      <Button size="icon" variant="ghost" onClick={() => openEdit(u)} className="size-8">
-                        <Pencil className="size-3.5" />
-                      </Button>
+                      <div className="flex items-center justify-end gap-1">
+                        <Button size="icon" variant="ghost" onClick={() => openEdit(u)} className="size-8" aria-label={`Editar ${u.displayName}`} title="Editar usuário">
+                          <Pencil className="size-3.5" />
+                        </Button>
+                        {u.uid !== currentUser?.uid && (
+                          <>
+                            <Button size="icon" variant="ghost" onClick={() => sendPasswordReset(u)} disabled={resettingUid === u.uid} className="size-8" title="Enviar redefinição de senha" aria-label={`Enviar redefinição de senha para ${u.displayName}`}>
+                              {resettingUid === u.uid ? <Loader2 className="size-3.5 animate-spin" /> : <KeyRound className="size-3.5" />}
+                            </Button>
+                            <Button size="icon" variant="ghost" onClick={() => setDeleteUserTarget(u)} className="size-8 text-destructive hover:text-destructive hover:bg-destructive/10" title="Excluir usuário" aria-label={`Excluir ${u.displayName}`}>
+                              <Trash2 className="size-3.5" />
+                            </Button>
+                          </>
+                        )}
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -544,14 +661,30 @@ export function Users() {
                       </p>
                       <p className="text-xs text-muted-foreground truncate">{u.email}</p>
                     </div>
-                    <Button size="icon" variant="ghost" onClick={() => openEdit(u)} className="size-8 flex-shrink-0">
-                      <Pencil className="size-3.5" />
-                    </Button>
+                    <div className="flex shrink-0 gap-0.5">
+                      <Button size="icon" variant="ghost" onClick={() => openEdit(u)} className="size-8" aria-label={`Editar ${u.displayName}`} title="Editar usuário">
+                        <Pencil className="size-3.5" />
+                      </Button>
+                      {u.uid !== currentUser?.uid && (
+                        <>
+                          <Button size="icon" variant="ghost" onClick={() => sendPasswordReset(u)} disabled={resettingUid === u.uid} className="size-8" title="Enviar redefinição de senha" aria-label={`Enviar redefinição de senha para ${u.displayName}`}>
+                            {resettingUid === u.uid ? <Loader2 className="size-3.5 animate-spin" /> : <KeyRound className="size-3.5" />}
+                          </Button>
+                          <Button size="icon" variant="ghost" onClick={() => setDeleteUserTarget(u)} className="size-8 text-destructive hover:text-destructive hover:bg-destructive/10" title="Excluir usuário" aria-label={`Excluir ${u.displayName}`}>
+                            <Trash2 className="size-3.5" />
+                          </Button>
+                        </>
+                      )}
+                    </div>
                   </div>
                   <div className="flex items-center justify-between">
                     {u.role === 'admin' ? (
                       <Badge className="bg-yellow-500/20 text-yellow-700 border-yellow-300">
                         <ShieldCheck className="size-3 mr-1" /> Admin
+                      </Badge>
+                    ) : u.role === 'funcionario' ? (
+                      <Badge className="bg-blue-500/15 text-blue-700 border-blue-300">
+                        <User className="size-3 mr-1" /> Funcionário
                       </Badge>
                     ) : (
                       <Badge variant="secondary">
@@ -569,6 +702,10 @@ export function Users() {
                       </span>
                     </div>
                   </div>
+                  <div className="border-t pt-2 text-xs text-muted-foreground space-y-1">
+                    <p>Criado em: <span className="text-foreground">{formatUserDate(u.createdAt)}</span></p>
+                    <p>Último reset solicitado: <span className="text-foreground">{formatUserDate(u.lastPasswordResetRequestedAt)}</span></p>
+                  </div>
                 </CardContent>
               </Card>
             ))}
@@ -584,6 +721,54 @@ export function Users() {
         onClose={() => setDialogOpen(false)}
         onSaved={fetchUsers}
       />
+
+      <Dialog open={inviteOpen} onOpenChange={setInviteOpen}>
+        <DialogContent className="w-[calc(100%-1rem)] max-w-md">
+          <DialogHeader>
+            <DialogTitle>Enviar convite</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={sendInvitation} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="invite-email">E-mail da pessoa convidada</Label>
+              <Input id="invite-email" type="email" value={inviteEmail} onChange={(event) => setInviteEmail(event.target.value)} placeholder="pessoa@empresa.com" required />
+              <Label htmlFor="invite-whatsapp">WhatsApp (opcional)</Label>
+              <Input id="invite-whatsapp" type="tel" value={inviteWhatsapp} onChange={(event) => setInviteWhatsapp(event.target.value)} placeholder="5511999999999" />
+              <p className="text-xs text-muted-foreground">O convite expira em 48 horas. O acesso só é concluído após a confirmação do e-mail.</p>
+            </div>
+            <DialogFooter className="flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+              <Button type="button" variant="outline" onClick={() => setInviteOpen(false)} disabled={inviting}>Cancelar</Button>
+              <Button type="submit" disabled={inviting} className="w-full sm:w-auto">
+                {inviting ? <><Loader2 className="size-4 mr-2 animate-spin" /> Enviando...</> : <><MailPlus className="size-4 mr-2" /> Enviar convite</>}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Confirmation Dialog for Deleting User */}
+      <AlertDialog open={Boolean(deleteUserTarget)} onOpenChange={(open) => { if (!open) setDeleteUserTarget(null); }}>
+        <AlertDialogContent className="w-[calc(100%-1rem)] max-w-md">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir usuário</AlertDialogTitle>
+            <AlertDialogDescription>
+              Tem certeza que deseja remover o usuário <strong>{deleteUserTarget?.displayName || deleteUserTarget?.email}</strong>? Esta ação excluirá a conta de acesso e não poderá ser desfeita.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <AlertDialogCancel disabled={deleting}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault();
+                confirmDeleteUser();
+              }}
+              disabled={deleting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deleting ? <><Loader2 className="size-4 mr-2 animate-spin" /> Excluindo...</> : 'Excluir definitivamente'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

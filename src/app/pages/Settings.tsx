@@ -17,6 +17,17 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Checkbox } from '../components/ui/checkbox';
 import { LayoutDashboard } from 'lucide-react';
 import { Badge } from '../components/ui/badge';
+import { AvatarLogoSection } from '../components/settings/AvatarLogoSection';
+import { BusinessInfoSection, type BusinessInfo } from '../components/settings/BusinessInfoSection';
+import { OperationsSection } from '../components/settings/OperationsSection';
+import { AppearanceSection } from '../components/settings/AppearanceSection';
+import { DashboardPrefsSection } from '../components/settings/DashboardPrefsSection';
+import { NavigationOrderSection, DEFAULT_NAV_ORDER } from '../components/settings/NavigationOrderSection';
+import { CardDensitySection } from '../components/settings/CardDensitySection';
+import { WhatsAppTemplateSection } from '../components/settings/WhatsAppTemplateSection';
+import { PermissionsSection } from '../components/settings/PermissionsSection';
+import { CatalogSettingsSection, type CatalogCustomizationSettings } from '../components/settings/CatalogSettingsSection';
+import { DangerZoneSection } from '../components/settings/DangerZoneSection';
 
 export function Settings() {
   const { user, userProfile, isAdmin } = useAuth();
@@ -76,6 +87,24 @@ export function Settings() {
     whatsappPhone: settings?.whatsappPhone || '',
   });
 
+  const [catalogSettings, setCatalogSettings] = useState<CatalogCustomizationSettings>({
+    catalogWhatsappPhone: settings?.catalogWhatsappPhone || '',
+    catalogBadge: settings?.catalogBadge || '',
+    catalogStatusText: settings?.catalogStatusText || '',
+    catalogHeroTitle: settings?.catalogHeroTitle || '',
+    catalogHeroDescription: settings?.catalogHeroDescription || '',
+    catalogAnnouncement: settings?.catalogAnnouncement || '',
+    catalogWhatsappGreeting: settings?.catalogWhatsappGreeting || '',
+    catalogWhatsappCustomizationLabel: settings?.catalogWhatsappCustomizationLabel || '',
+    catalogWhatsappFooter: settings?.catalogWhatsappFooter || '',
+    catalogFooterText: settings?.catalogFooterText || '',
+    catalogFooterLocation: settings?.catalogFooterLocation || '',
+    catalogFooterBusinessHours: settings?.catalogFooterBusinessHours || '',
+    catalogFooterCopyright: settings?.catalogFooterCopyright || '',
+    catalogFooterNotice: settings?.catalogFooterNotice || '',
+  });
+  const [savingCatalogSettings, setSavingCatalogSettings] = useState(false);
+
   // Atualizar business info quando settings carregar
   useEffect(() => {
     if (settings) {
@@ -104,6 +133,22 @@ export function Settings() {
       setDefaultDeliveryDays(settings.defaultDeliveryDays ?? 0);
       setDefaultPaymentMethod(settings.defaultPaymentMethod ?? '');
       setCustomColorHex(settings.customColorHex ?? '#7c3aed');
+      setCatalogSettings({
+        catalogWhatsappPhone: settings.catalogWhatsappPhone || '',
+        catalogBadge: settings.catalogBadge || '',
+        catalogStatusText: settings.catalogStatusText || '',
+        catalogHeroTitle: settings.catalogHeroTitle || '',
+        catalogHeroDescription: settings.catalogHeroDescription || '',
+        catalogAnnouncement: settings.catalogAnnouncement || '',
+        catalogWhatsappGreeting: settings.catalogWhatsappGreeting || '',
+        catalogWhatsappCustomizationLabel: settings.catalogWhatsappCustomizationLabel || '',
+        catalogWhatsappFooter: settings.catalogWhatsappFooter || '',
+        catalogFooterText: settings.catalogFooterText || '',
+        catalogFooterLocation: settings.catalogFooterLocation || '',
+        catalogFooterBusinessHours: settings.catalogFooterBusinessHours || '',
+        catalogFooterCopyright: settings.catalogFooterCopyright || '',
+        catalogFooterNotice: settings.catalogFooterNotice || '',
+      });
     }
   }, [settings]);
 
@@ -125,7 +170,7 @@ export function Settings() {
       toast.success(`${type === 'avatar' ? 'Avatar' : type === 'logo' ? 'Logo' : 'Banner'} atualizado com sucesso!`);
     } catch (error) {
       console.error('Erro no upload:', error);
-      toast.error(error instanceof Error ? error.message : 'Erro ao fazer upload');
+      toast.error(error instanceof Error ? error.message : 'Erro ao fazer upload da imagem');
     } finally {
       setUploading(null);
     }
@@ -165,6 +210,19 @@ export function Settings() {
       toast.error(error instanceof Error ? error.message : 'Erro ao atualizar informações');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleCatalogSettingsSave = async () => {
+    setSavingCatalogSettings(true);
+    try {
+      await updateSettings(catalogSettings);
+      toast.success('Personalizações da lojinha pública salvas com sucesso!');
+    } catch (error) {
+      console.error('Erro ao salvar personalizações da loja:', error);
+      toast.error('Erro ao salvar personalizações da lojinha');
+    } finally {
+      setSavingCatalogSettings(false);
     }
   };
 
@@ -551,6 +609,14 @@ export function Settings() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Catálogo Online & Lojinha Pública */}
+      <CatalogSettingsSection
+        settings={catalogSettings}
+        onChange={setCatalogSettings}
+        onSave={handleCatalogSettingsSave}
+        saving={savingCatalogSettings}
+      />
 
       {/* Preferências do Dashboard */}
       <Card>

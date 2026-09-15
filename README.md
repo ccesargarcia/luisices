@@ -9,6 +9,9 @@ Sistema completo de gerenciamento para papelaria personalizada com controle de p
 ### 📦 Pedidos
 - Cadastro completo com cliente, produto, valor, data de entrega e status
 - **Workflow de produção** em 7 etapas (Design → Aprovação → Impressão → Corte → Montagem → Qualidade → Embalagem)
+- **Atribuição para equipe**: delegação de pedidos para funcionários responsáveis (`assignedTo`)
+- **Ações em lote**: atribuição rápida de múltiplos pedidos a um colaborador
+- **Filtro de equipe**: administradores filtram visão por colaborador responsável
 - Controle de pagamento com múltiplos métodos (PIX, dinheiro, cartão, transferência)
 - **Trocas/Parcerias**: pedidos sem cobrança monetária com itens de permuta
 - Anexos (fotos e PDFs) com thumbnails automáticos
@@ -35,7 +38,7 @@ Sistema completo de gerenciamento para papelaria personalizada com controle de p
 ### 📊 Trocas/Parcerias
 - Gestão de pedidos em permuta
 - Controle de itens recebidos e valores estimados
-- Relatórios específicos de trocas
+- Relatórios específicos de trocas (com acesso escopado para usuário comum)
 
 ### 🎨 Galeria de Artes
 - Upload e organização de trabalhos realizados
@@ -46,19 +49,46 @@ Sistema completo de gerenciamento para papelaria personalizada com controle de p
 ### 📅 Agenda Semanal
 - Visualização de entregas nos próximos 7 dias
 - Filtros por status e resumo semanal
-- Destaque do dia atual
+- Destaque do dia atual e correção de fuso horário
 
 ### 📈 Dashboard & Relatórios
 - **KPIs em tempo real**: receita, ticket médio, pedidos em aberto
 - Alertas de entregas e pedidos em atraso
 - Gráficos de faturamento e análises por período
 - Top produtos e top clientes
+- Relatórios individuais para usuários comuns (escopados estritamente ao seu próprio faturamento)
 
-### 👤 Sistema de Permissões
-- **Roles**: Admin e User
+### 👤 Sistema de Permissões (RBAC)
+- **3 Papéis no sistema**:
+  - **Admin**: controle total, gerenciamento de equipe/usuários, delegação de pedidos e métricas globais
+  - **Funcionário**: execução da produção, acompanhamento de pedidos atribuídos ou próprios e atualização de etapas
+  - **User**: gestão de clientes, produtos, orçamentos e pedidos próprios (com exclusão de pedidos criados por ele e relatórios individuais)
 - **Permissões granulares** por módulo (view, create, edit, delete)
-- Gerenciamento de usuários (admin only)
-- Controle de acesso em toda aplicação
+- **Revogação em tempo real**: alterações de papel, permissão ou status são aplicadas imediatamente na sessão via Firestore listeners sem necessidade de novo login
+- Gerenciamento de equipe e usuários (admin only)
+
+### 🛍️ Lojinha Online & Catálogo Público (`/catalogo`)
+- **Catálogo público para clientes**: vitrine digital responsiva e rápida para compartilhamento no Instagram, WhatsApp ou link na bio, permitindo pedidos sem necessidade de login
+- **Separação de Catálogos**: módulo dedicado para **Produtos da Lojinha** (`/produtos-lojinha`), separando a coleção pública (`storeProducts`) dos produtos internos do ateliê (`products`)
+- **Submenu Lojinha Online**: menu expansível na barra lateral com acesso aos *Produtos da Lojinha* e à *Personalização da Lojinha*
+- **Persistência de visualização**: alternância entre modos Galeria (Cards) e Lista detalhada com preferência salva localmente e visual responsivo sem barras de rolagem desnecessárias
+- **Banners rotativos e vitrine**: suporte a múltiplos banners estilo propaganda com carrossel automático, intervalo personalizável e opção de banner fixo
+- **Sacola de encomendas e WhatsApp**: cálculo de subtotal dinâmico, campo de personalização por item (ex: nome, tema), notas do cliente e geração de mensagem pronta para envio no WhatsApp
+- **Tema claro padrão com isolamento total**: o catálogo público inicia obrigatoriamente no tema claro como padrão em todas as sessões; o alternador do catálogo não afeta e não sobrescreve o tema do painel administrativo
+- **Permissões específicas (RBAC)**: controle granular no perfil de usuários para gerenciar a vitrine online e personalizar a loja
+
+### 📧 Central de E-mails (`/emails`)
+- **Envio de e-mails transacionais** via Resend com seleção de remetente, composição e preview em tempo real (exclusivo para admins)
+- **Controle de cota diária** com barra de progresso sincronizada em tempo real via Cloud Function e fallback local no Firestore
+- **Recebimento de e-mails** via webhook HTTP com validação de assinatura Svix e proteção contra replay attacks
+- **Rate limiting** no backend: máximo de 50 disparos por hora por administrador
+- Alternância automática de remetentes e domínios entre ambiente dev (`dev.luisices.com.br`) e produção (`luisices.com.br`)
+
+### 💡 Central de Ajuda & Guia Operacional (`/ajuda`)
+- Guia operacional interativo com passo a passo para cada fluxo do sistema
+- FAQ com soluções para dúvidas frequentes do dia a dia
+- Catálogo de atalhos de teclado rápidos para navegação
+- Atalho direto para suporte via WhatsApp e e-mail
 
 ### ⚙️ Configurações
 - Personalização visual: logo, banner, avatar
@@ -67,7 +97,12 @@ Sistema completo de gerenciamento para papelaria personalizada com controle de p
 - Configuração de cards do dashboard
 
 ### 🔐 Autenticação & Segurança
-- Login, registro e recuperação de senha via Firebase Auth
+- Login, cadastro por convite e recuperação de senha via Firebase Auth
+- Administradores podem convidar, editar, desativar, excluir e solicitar reset de outros usuários
+- Convites expiram em 48 horas e armazenam somente o hash do token
+- O e-mail do convite fica bloqueado no cadastro e deve ser o mesmo endereço convidado
+- E-mails são enviados pelo Resend; WhatsApp é opcional e usa a Evolution API no backend
+- O Firebase Auth não expõe histórico de senhas; a aplicação não armazena senhas
 - **Firestore Security Rules** com isolamento por usuário
 - Proteção contra XSS com componentes sanitizados
 
@@ -125,7 +160,16 @@ Acesse: http://localhost:5173
 
 ---
 
-## 🚀 Deploy (GitHub Pages)
+## 🚀 Deploy
+
+### Ambientes
+
+| Ambiente | Branch | URL | Destino |
+|---|---|---|---|
+| Desenvolvimento | `develop` | https://dev.luisices.com.br | Firebase Hosting `luisices-dev` |
+| Produção | `main` | https://luisices.com.br | GitHub Pages |
+
+O deploy padrão de `develop` executa os testes E2E antes de publicar. O marcador `[skip tests]` deve ser usado somente quando solicitado. O deploy das Functions é separado e manual.
 
 O projeto está configurado para deploy automático via **GitHub Actions**.
 
@@ -161,6 +205,19 @@ O GitHub Actions irá:
 3. Site disponível em ~3-5 minutos
 
 **URL de produção**: `https://<seu-usuario>.github.io/<repo>/` ou domínio customizado
+
+### Deploy manual das Functions
+
+No GitHub Actions, abra **Deploy Firebase Functions (Manual)** e selecione `develop`. Esse workflow instala as dependências em `functions/` e publica somente no projeto `luisices-dev`.
+
+Secrets adicionais:
+
+```text
+RESEND_API_KEY
+EVOLUTION_API_KEY
+```
+
+A Evolution API usa a instância `homeassistant` em `https://wa.luisices.com.br`. A chave nunca deve ser colocada no código ou no frontend.
 
 ### Firestore Rules (Importante!)
 
@@ -211,7 +268,7 @@ Para evitar uso indevido da sua API key:
 
 ### Firestore Security Rules
 
-O projeto usa regras que garantem isolamento total de dados por usuário:
+O projeto usa regras granulares que garantem isolamento de dados por usuário, acesso global para administradores e leitura/edição para funcionários aos pedidos que lhes forem atribuídos:
 
 ```javascript
 rules_version = '2';
@@ -221,13 +278,31 @@ service cloud.firestore {
       return request.auth != null && request.auth.uid == userId;
     }
 
-    match /orders/{orderId} {
-      allow read, write: if isOwner(resource.data.userId);
+    function isAdmin() {
+      return request.auth != null
+        && exists(/databases/$(database)/documents/userProfiles/$(request.auth.uid))
+        && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.role == 'admin';
     }
-    // ... outras coleções seguem o mesmo padrão
+
+    function isAssignedEmployee(assignedTo) {
+      return assignedTo == request.auth.uid && isActiveEmployee();
+    }
+
+    match /orders/{orderId} {
+      allow read: if isOwner(resource.data.userId) || isAdmin() || isAssignedEmployee(resource.data.assignedTo);
+      allow create: if isOwner(request.resource.data.userId);
+      allow update: if isOwner(resource.data.userId) || isAdmin() || isAssignedEmployeeEditor(resource.data.assignedTo);
+      allow delete: if isOwner(resource.data.userId) || isAdmin() || isAssignedEmployeeDeleter(resource.data.assignedTo);
+    }
+    // ... outras coleções (customers, products, quotes, gallery, exchanges)
   }
 }
 ```
+
+> **⚠️ Importante:** Ao publicar novas versões ou ambientes, execute o deploy das regras do Firestore:
+> ```bash
+> firebase deploy --only firestore:rules
+> ```
 
 Veja o arquivo `firestore.rules` para detalhes completos.
 
@@ -235,7 +310,7 @@ Veja o arquivo `firestore.rules` para detalhes completos.
 
 ## 🛠️ Desenvolvimento
 
-### Scripts Disponíveis
+### Scripts NPM Disponíveis
 
 ```bash
 # Desenvolvimento (com hot reload)
@@ -250,6 +325,16 @@ npm run preview
 # Linting
 npm run lint
 ```
+
+### Scripts Utilitários (`scripts/`)
+
+Ferramentas Node.js para suporte, manutenção e testes:
+
+- `node scripts/make-admin.mjs <email>`: Promove uma conta existente diretamente ao papel de Administrador (`admin`) no Firestore.
+- `node scripts/create-test-user.mjs`: Cria ou atualiza usuário de teste para execução dos testes automatizados (Playwright).
+- `node scripts/create-random-customers.mjs`: Popula a base com clientes e endereços realistas para testes de carga e staging.
+- `node scripts/optimize-login-bg.mjs`: Processa a imagem bruta de fundo (`assets/login-bg.png`) e gera variantes ultra-otimizadas (`.avif`, `.webp`, `.png`) em `public/images/`.
+- `node scripts/fix-negative-values.mjs`: Varre e corrige valores numéricos negativos legados no banco de dados.
 
 ### Estrutura do Projeto
 
@@ -278,3 +363,37 @@ Este projeto é privado e de uso exclusivo.
 ## 🙏 Créditos
 
 Desenvolvido com React, TypeScript, Firebase e shadcn/ui.
+
+## 💰 Custos e limites
+
+Em baixo volume, parte do sistema pode permanecer nas franquias gratuitas. O deploy de Cloud Functions normalmente exige o plano Blaze, e os valores variam conforme região, plano e volume.
+
+- **Firebase Auth:** usuários ativos e métodos de autenticação conforme o plano.
+- **Firestore:** leituras, escritas, listeners, consultas e armazenamento acima das cotas.
+- **Storage:** espaço armazenado, operações e downloads.
+- **Hosting/GitHub Pages:** tráfego, armazenamento, minutos de Actions e artefatos conforme as cotas.
+- **Cloud Functions:** invocações, CPU, memória, tempo e rede; Functions v2 também usa Cloud Build, Artifact Registry e Cloud Run.
+- **Resend:** quantidade de e-mails enviados conforme o plano.
+- **Evolution API/WhatsApp:** hospedagem, manutenção da instância e eventuais tarifas do provedor WhatsApp.
+- **ViaCEP:** serviço externo sem SLA assumido pelo projeto.
+
+Consulte os painéis de Billing do Google Cloud/Firebase, Resend e do provedor da Evolution API. Arquivos grandes, listeners em tempo real e muitos e-mails podem aumentar o consumo.
+
+## Markdown para agentes
+
+O site mantém HTML como resposta padrão para navegadores. Para entregar Markdown quando um agente enviar `Accept: text/markdown`, o domínio `luisices.com.br` deve estar atrás do Cloudflare com **Markdown for Agents** habilitado.
+
+No Cloudflare Dashboard:
+
+1. Abra a zona `luisices.com.br`.
+2. Acesse **AI Crawl Control**.
+3. Ative **Markdown for Agents** para a zona ou crie uma Configuration Rule para o domínio.
+4. Mantenha o `Vary: Accept` configurado no origin para separar cache HTML e Markdown.
+
+Teste após o deploy:
+
+```bash
+curl -i https://luisices.com.br/login -H 'Accept: text/markdown'
+```
+
+A resposta esperada deve conter `Content-Type: text/markdown; charset=utf-8` e `Vary: Accept`. Sem Cloudflare Markdown for Agents habilitado, um Firebase Hosting estático não consegue mudar o corpo apenas com base no header `Accept`.

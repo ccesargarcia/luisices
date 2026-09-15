@@ -88,6 +88,11 @@ export interface Order {
   tags?: Tag[];
   payment?: Payment;
   userId: string;
+  createdByName?: string;
+  assignedTo?: string;
+  assignedToName?: string;
+  assignedAt?: string;
+  assignedBy?: string;
   productionWorkflow?: ProductionWorkflow;
   attachments?: OrderAttachment[];
   orderNumber?: string;
@@ -128,6 +133,13 @@ export interface Product {
   photoUrl?: string;
   createdAt: string;
   updatedAt?: string;
+  recipeId?: string;
+  unitCost?: number;
+  profitMargin?: number;
+  isPublic?: boolean;          // Exibir no catálogo online público
+  leadTimeDays?: number;      // Prazo de confecção em dias úteis
+  badge?: string;             // Selo de destaque (ex: "Mais Vendido", "Lançamento")
+  isCustomizable?: boolean;   // Permite personalização com nome
 }
 
 export interface Quote {
@@ -240,7 +252,7 @@ export interface GalleryItem {
 
 // ─── User Management ─────────────────────────────────────────────────────────
 
-export type UserRole = 'admin' | 'user';
+export type UserRole = 'admin' | 'user' | 'funcionario';
 
 export interface ModulePermission {
   view: boolean;
@@ -260,6 +272,146 @@ export interface Permission {
   exchanges: boolean;
   settings: boolean;
   users: ModulePermission;
+  emails?: boolean;
+  pricing?: boolean;
+  store?: boolean;
+  storeProducts?: ModulePermission;
+}
+
+export interface StoreProduct {
+  id: string;
+  name: string;
+  price: number;
+  category: string;
+  description: string;
+  imageUrl?: string;
+  leadTimeDays: number;
+  badge?: string;
+  isCustomizable: boolean;
+  active: boolean;
+  order?: number;
+  internalProductId?: string;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export type CatalogOrderStatus = 'received' | 'in_contact' | 'converted' | 'cancelled';
+
+export interface CatalogOrderItem {
+  productId: string;
+  productName: string;
+  price: number;
+  quantity: number;
+  customName?: string;
+  leadTimeDays: number;
+  imageUrl?: string;
+}
+
+export interface CatalogOrder {
+  id: string;
+  orderCode: string;
+  customerNotes?: string;
+  items: CatalogOrderItem[];
+  totalItems: number;
+  subtotal: number;
+  status: CatalogOrderStatus;
+  createdAt: string;
+  updatedAt?: string;
+  convertedOrderId?: string;
+}
+
+// ─── Pricing & Costs (Papelaria Personalizada) ────────────────────────────────
+
+export type SupplyUnit = 'folha' | 'metro' | 'cm' | 'unidade' | 'ml' | 'g' | 'pacote';
+
+export type SupplyCategory =
+  | 'papeis'
+  | 'fitas_aviamentos'
+  | 'impressao_tintas'
+  | 'embalagens'
+  | 'adesivos_colas'
+  | 'outros';
+
+export interface SupplyItem {
+  id: string;
+  userId: string;
+  name: string;
+  category: SupplyCategory;
+  purchasePrice: number;       // Preço de compra do pacote/rolo (ex: R$ 35,00)
+  packageQuantity: number;     // Quantidade no pacote/rolo (ex: 100)
+  unit: SupplyUnit;            // Unidade fracionada (ex: 'folha', 'metro')
+  unitCost: number;            // Custo unitário = purchasePrice / packageQuantity
+  supplier?: string | null;    // Loja/fornecedor
+  notes?: string | null;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export interface RecipeItem {
+  supplyId?: string | null;    // ID do insumo se veio do catálogo
+  name: string;
+  category?: SupplyCategory | null;
+  unit: SupplyUnit;
+  unitCost: number;            // Custo por unidade fracionada
+  quantityUsed: number;        // Quantidade consumida por unidade do produto
+  totalCost: number;           // unitCost * quantityUsed
+  isCustomItem?: boolean;      // Item avulso sem cadastro prévio
+}
+
+export interface MonthlyFixedExpenses {
+  rent?: number;               // Aluguel
+  electricity?: number;        // Energia
+  internet?: number;           // Internet
+  meiTax?: number;             // DAS MEI
+  softwareSubscriptions?: number; // Softwares (Canva, Silhouette, etc.)
+  otherFixedExpenses?: number;    // Outros
+}
+
+export interface StudioPricingSettings {
+  userId: string;
+  desiredSalary: number;       // Pró-labore mensal desejado (ex: R$ 3000)
+  workingDaysPerMonth: number; // Dias trabalhados/mês (ex: 20)
+  workingHoursPerDay: number;  // Horas/dia (ex: 6)
+  monthlyFixedExpenses: MonthlyFixedExpenses;
+  defaultWasteMarginPercent: number;    // Perda padrão (ex: 10%)
+  defaultPaymentFeePercent: number;     // Taxa de cartão padrão (ex: 4.5%)
+  defaultProfitMarginPercent: number;  // Margem de lucro padrão (ex: 50%)
+  updatedAt?: string;
+}
+
+export interface BatchTier {
+  quantity: number;
+  scaleDiscountPercent: number;
+  unitCost: number;
+  unitPrice: number;
+  totalPrice: number;
+  totalProfit: number;
+}
+
+export interface ProductPricingRecipe {
+  id: string;
+  userId: string;
+  productId?: string | null;          // Vinculado a um Product existente
+  productName: string;
+  category?: string | null;
+  items: RecipeItem[];
+  materialsCost: number;
+  wasteMarginPercent: number;
+  materialsCostWithWaste: number;
+  laborMode: 'time' | 'proportional';
+  productionTimeMinutes?: number;
+  hourlyRateApplied: number;
+  proportionalPercent?: number;
+  laborCost: number;
+  fixedCostsShare: number;
+  totalUnitCost: number;
+  paymentFeePercent: number;
+  profitMarginPercent: number;
+  suggestedUnitPrice: number;
+  manualUnitPrice?: number | null;
+  batchTiers?: BatchTier[];
+  createdAt: string;
+  updatedAt?: string;
 }
 
 export interface UserProfile {
@@ -271,6 +423,8 @@ export interface UserProfile {
   active: boolean;
   createdAt: string;
   createdBy: string;
+  lastPasswordResetRequestedAt?: string;
+  whatsappPhone?: string;
 }
 
 export const ADMIN_PERMISSIONS: Permission = {
@@ -284,19 +438,44 @@ export const ADMIN_PERMISSIONS: Permission = {
   exchanges: true,
   settings:  true,
   users:     { view: true, create: true, edit: true, delete: true },
+  emails:    true,
+  pricing:   true,
+  store:     true,
+  storeProducts: { view: true, create: true, edit: true, delete: true },
 };
 
 export const DEFAULT_USER_PERMISSIONS: Permission = {
   dashboard: true,
-  orders:    { view: true, create: true, edit: true, delete: false },
-  customers: { view: true, create: true, edit: true, delete: false },
+  orders:    { view: true, create: true, edit: true, delete: true },
+  customers: { view: true, create: true, edit: true, delete: true },
+  products:  { view: true, create: true, edit: true, delete: true },
+  quotes:    { view: true, create: true, edit: true, delete: true },
+  gallery:   { view: true, create: true, delete: true },
+  reports:   true,
+  exchanges: true,
+  settings:  true,
+  users:     { view: false, create: false, edit: false, delete: false },
+  emails:    false,
+  pricing:   true,
+  store:     true,
+  storeProducts: { view: true, create: true, edit: true, delete: false },
+};
+
+export const EMPLOYEE_PERMISSIONS: Permission = {
+  dashboard: true,
+  orders:    { view: true, create: false, edit: true, delete: false },
+  customers: { view: true, create: false, edit: false, delete: false },
   products:  { view: true, create: false, edit: false, delete: false },
-  quotes:    { view: true, create: true, edit: true, delete: false },
+  quotes:    { view: true, create: false, edit: false, delete: false },
   gallery:   { view: true, create: true, delete: false },
   reports:   false,
   exchanges: false,
   settings:  false,
   users:     { view: false, create: false, edit: false, delete: false },
+  emails:    false,
+  pricing:   false,
+  store:     false,
+  storeProducts: { view: false, create: false, edit: false, delete: false },
 };
 
 // Tipos para sistema de compartilhamento de dados
@@ -314,3 +493,112 @@ export interface SharedAccess {
   expiresAt?: string; // Opcional - data de expiração do compartilhamento
   active: boolean; // Permite desativar sem deletar
 }
+
+// ─── Central de E-mails Resend ────────────────────────────────────────────────
+
+export interface EmailAttachment {
+  id: string;
+  filename: string;
+  contentType: string;
+  contentDisposition?: string | null;
+  contentId?: string | null;
+  size?: number;
+  downloadUrl?: string;
+}
+
+export interface ReceivedEmail {
+  id: string;
+  resendId: string;
+  from: string;
+  to: string[];
+  cc?: string[];
+  bcc?: string[];
+  subject: string;
+  html?: string;
+  text?: string;
+  attachments?: EmailAttachment[];
+  raw?: {
+    download_url?: string;
+    expires_at?: string;
+  } | null;
+  read: boolean;
+  starred: boolean;
+  archived?: boolean;
+  receivedAt: string;
+  createdAt?: any;
+}
+
+export interface SentEmail {
+  id: string;
+  resendId?: string;
+  from: string;
+  to: string[];
+  cc?: string[];
+  bcc?: string[];
+  subject: string;
+  html?: string;
+  text?: string;
+  status: 'sent' | 'failed' | 'pending';
+  senderUid: string;
+  senderEmail: string;
+  sentAt: string;
+  createdAt?: any;
+}
+
+export interface SendEmailPayload {
+  to: string[];
+  subject: string;
+  html?: string;
+  text?: string;
+  from?: string;
+  replyTo?: string;
+  cc?: string[];
+  bcc?: string[];
+}
+
+export interface EmailUsage {
+  daily: {
+    used: number;
+    limit: number | null;
+    sent: number;
+    received: number;
+    resetsAt?: string | null;
+  };
+  monthly: {
+    used: number;
+    limit: number | null;
+    sent: number;
+    received: number;
+    resetsAt?: string | null;
+  };
+  source?: 'resend_api' | 'firestore_fallback' | 'default';
+}
+
+// Histórico Financeiro de Vendas (Sales Ledger)
+export interface SaleRecord {
+  id: string; // id único, mapeado para o orderId para evitar duplicações
+  orderId: string;
+  orderNumber?: string;
+  userId: string; // Dono da conta / criador do pedido
+  assignedTo?: string; // UID do funcionário atribuído
+  assignedToName?: string;
+  customerId?: string | null;
+  customerName: string;
+  customerPhone?: string | null;
+  productName: string;
+  quantity: number;
+  amount: number; // Valor monetário total
+  paymentStatus: PaymentStatus;
+  paidAmount: number;
+  paymentMethod?: PaymentMethod | null;
+  date: string; // ISO string para ordenação e filtro por período
+  deliveryDate?: string;
+  status: OrderStatus; // 'completed' | 'in-progress' | 'pending' | 'cancelled'
+  isDeletedFromOrders?: boolean; // Se o pedido foi removido da visão operacional
+  notes?: string | null;
+  tags?: Tag[] | null;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export type LedgerPeriod = 'today' | 'yesterday' | 'week' | 'month' | 'quarter' | 'year' | 'all' | 'custom';

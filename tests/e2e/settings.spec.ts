@@ -1,23 +1,13 @@
 import { test, expect } from '@playwright/test';
+import { ensureAuthenticated } from './utils/auth.util';
 
 /**
  * Testes da página de Configurações
  */
 
-const TEST_USER = {
-  email: process.env.TEST_USER_EMAIL || 'teste@exemplo.com',
-  password: process.env.TEST_USER_PASSWORD || 'senha123',
-};
-
 test.beforeEach(async ({ page }) => {
   test.setTimeout(60000);
-  await page.goto('/');
-  await page.fill('input[type="email"]', TEST_USER.email);
-  await page.fill('input[type="password"]', TEST_USER.password);
-  await page.click('button[type="submit"]');
-
-  // Verificar que o dashboard está carregado (em vez de confiar na URL)
-  await expect(page.getByRole('heading', { name: /Bom dia|Boa tarde|Boa noite/i })).toBeVisible({ timeout: 30000 });
+  await ensureAuthenticated(page);
 
   await page.goto('/configuracoes');
   await expect(page.locator('main h1').first()).toContainText(/Configurações/i, { timeout: 10000 });

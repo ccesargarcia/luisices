@@ -1,4 +1,4 @@
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from './ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from './ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from './ui/alert-dialog';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
@@ -6,22 +6,19 @@ import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Textarea } from './ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
-import { Order, OrderStatus, ProductionStep, PaymentStatus, PaymentMethod, Tag, ExchangeItem, GalleryItem } from '../types';
-import { Calendar, DollarSign, Package, Phone, User, FileText, Clock, Tag as TagIcon, Trash2, Edit, Save, X, Plus, Copy, Paperclip, Upload, ExternalLink, ImageIcon, Repeat2, Images, ZoomIn, Download } from 'lucide-react';
+import { Order, OrderStatus, PaymentStatus, PaymentMethod, Tag, ExchangeItem, GalleryItem, UserProfile } from '../types';
+import { Trash2, Edit, Copy, Download } from 'lucide-react';
 import { exportOrderPDF } from '../utils/exportPdf';
 import { formatDate } from '../utils/date';
 import { formatCurrency } from '../utils/currency';
 import { useUserSettings } from '../../hooks/useUserSettings';
-import { getTextColor } from '../utils/tagColors';
-import { useState, useMemo, useEffect, useRef } from 'react';
-import { ProductionWorkflowComponent } from './ProductionWorkflow';
+import { useState, useMemo, useEffect } from 'react';
 import { firebaseOrderService } from '../../services/firebaseOrderService';
+import { firebaseUserService } from '../../services/firebaseUserService';
 import { firebaseStorageService } from '../../services/firebaseStorageService';
 import { firebaseGalleryService } from '../../services/firebaseGalleryService';
 import { useAuth } from '../../contexts/AuthContext';
-import { TagInput } from './TagInput';
-import { Switch } from './ui/switch';
-import { SafeImg, SafeAnchor } from './SafeMedia';
+import { useOrders } from '../../contexts/OrdersContext';
 import { toast } from 'sonner';
 
 interface ProductItem {
@@ -53,8 +50,9 @@ const statusLabels = {
 };
 
 export function OrderDetailsDialog({ order, open, onOpenChange, onUpdateStatus, onDeleteOrder }: OrderDetailsDialogProps) {
-  const { user, hasPermission } = useAuth();
+  const { user, userProfile, hasPermission } = useAuth();
   const { settings } = useUserSettings();
+  const { teamMembers } = useOrders();
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isDuplicating, setIsDuplicating] = useState(false);
@@ -62,13 +60,9 @@ export function OrderDetailsDialog({ order, open, onOpenChange, onUpdateStatus, 
   const [localAttachments, setLocalAttachments] = useState<import('../types').OrderAttachment[]>([]);
   const [customerGallery, setCustomerGallery] = useState<GalleryItem[]>([]);
   const [galleryLoading, setGalleryLoading] = useState(false);
-  const [galleryLightbox, setGalleryLightbox] = useState<GalleryItem | null>(null);
-  const [galleryUploadOpen, setGalleryUploadOpen] = useState(false);
-  const [galleryUploadFile, setGalleryUploadFile] = useState<File | null>(null);
-  const [galleryUploadPreview, setGalleryUploadPreview] = useState<string | null>(null);
-  const [galleryUploadTitle, setGalleryUploadTitle] = useState('');
-  const [galleryUploadSaving, setGalleryUploadSaving] = useState(false);
-  const galleryInputRef = useRef<HTMLInputElement>(null);
+  const [employees, setEmployees] = useState<UserProfile[]>([]);
+  const [assigning, setAssigning] = useState(false);
+
   const [editProducts, setEditProducts] = useState<ProductItem[]>([{ name: '', quantity: '1', unitPrice: '' }]);
   const [editTags, setEditTags] = useState<Tag[]>([]);
   const [editExchangeItems, setEditExchangeItems] = useState<ProductItem[]>([{ name: '', quantity: '1', unitPrice: '' }]);
@@ -101,6 +95,98 @@ export function OrderDetailsDialog({ order, open, onOpenChange, onUpdateStatus, 
   useEffect(() => {
     setIsEditing(false);
   }, [order?.id]);
+
+  const [allUsers, setAllUsers] = useState<UserProfile[]>([]);
+  const [singleCreatorName, setSingleCreatorName] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!open || (userProfile?.role !== 'admin' && userProfile?.role !== 'funcionario')) return;
+    firebaseUserService.listUsers()
+      .then(users => {
+        setAllUsers(users);
+        setEmployees(users.filter(candidate => candidate.role === 'funcionario' && candidate.active));
+      })
+      .catch(() => {
+        setAllUsers([]);
+        setEmployees([]);
+      });
+  }, [open, userProfile?.role]);
+
+  // Fallback dedicado para buscar o criador direto caso o pedido ainda não tenha o nome resolvido
+  useEffect(() => {
+    if (!open || !order?.userId) {
+      setSingleCreatorName(null);
+      return;
+    }
+
+    if (order.createdByName && order.createdByName !== 'Usuário proprietário') {
+      setSingleCreatorName(order.createdByName);
+      return;
+    }
+
+    if (order.userId === user?.uid) {
+      setSingleCreatorName(user.displayName || user.email || 'Você');
+      return;
+    }
+
+    const inTeam = teamMembers?.find(m => m.uid === order.userId);
+    if (inTeam?.displayName) {
+      setSingleCreatorName(inTeam.displayName);
+      return;
+    }
+
+    const inAll = allUsers.find(u => u.uid === order.userId);
+    if (inAll?.displayName || inAll?.email) {
+      setSingleCreatorName(inAll.displayName || inAll.email || null);
+      return;
+    }
+
+    let active = true;
+    firebaseUserService.getUserProfile(order.userId)
+      .then(profile => {
+        if (active && profile) {
+          setSingleCreatorName(profile.displayName || profile.email || null);
+        }
+      })
+      .catch(() => {});
+
+    return () => {
+      active = false;
+    };
+  }, [open, order?.id, order?.userId, order?.createdByName, user, teamMembers, allUsers]);
+
+  const displayCreatedByName = useMemo(() => {
+    if (singleCreatorName && singleCreatorName !== 'Usuário proprietário') {
+      return singleCreatorName;
+    }
+    if (order?.createdByName && order.createdByName !== 'Usuário proprietário') {
+      return order.createdByName;
+    }
+    if (order?.userId) {
+      if (order.userId === user?.uid) {
+        return user.displayName || user.email || 'Você';
+      }
+      const inTeam = teamMembers?.find(m => m.uid === order.userId);
+      if (inTeam?.displayName) {
+        return inTeam.displayName;
+      }
+      const found = allUsers.find(u => u.uid === order.userId);
+      if (found?.displayName || found?.email) {
+        return found.displayName || found.email;
+      }
+    }
+    return (order?.createdByName && order.createdByName !== 'Usuário proprietário')
+      ? order.createdByName
+      : undefined;
+  }, [order?.createdByName, order?.userId, user, allUsers, singleCreatorName, teamMembers]);
+
+  const effectiveOrder = useMemo(() => {
+    if (!order) return null;
+    return {
+      ...order,
+      createdByName: displayCreatedByName,
+    };
+  }, [order, displayCreatedByName]);
 
   // Sincronizar anexos quando o pedido mudar (ex: listener Firestore)
   useEffect(() => {
@@ -207,6 +293,21 @@ export function OrderDetailsDialog({ order, open, onOpenChange, onUpdateStatus, 
     resetEditData();
   };
 
+  const handleAssign = async (value: string) => {
+    if (!order || userProfile?.role !== 'admin') return;
+    const employee = employees.find(candidate => candidate.uid === value) || null;
+    setAssigning(true);
+    try {
+      await firebaseOrderService.assignOrder(order.id, employee);
+      toast.success(employee ? `Pedido atribuído a ${employee.displayName}` : 'Atribuição removida');
+    } catch (error) {
+      console.error('Erro ao atribuir pedido:', error);
+      toast.error('Não foi possível atualizar o responsável');
+    } finally {
+      setAssigning(false);
+    }
+  };
+
   const handleSaveEdit = async () => {
     setIsSaving(true);
     try {
@@ -260,16 +361,6 @@ export function OrderDetailsDialog({ order, open, onOpenChange, onUpdateStatus, 
       toast.error('Erro ao atualizar pedido');
     } finally {
       setIsSaving(false);
-    }
-  };
-
-  const handleUpdateWorkflowStep = async (step: ProductionStep, completed: boolean) => {
-    try {
-      await firebaseOrderService.updateProductionStep(order.id, step, completed);
-      // O hook vai atualizar automaticamente
-    } catch (error) {
-      console.error('Erro ao atualizar workflow:', error);
-      toast.error('Erro ao atualizar etapa do workflow');
     }
   };
 
@@ -350,7 +441,7 @@ export function OrderDetailsDialog({ order, open, onOpenChange, onUpdateStatus, 
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="w-full max-w-full sm:max-w-2xl max-h-[90dvh] overflow-y-auto">
+      <DialogContent className="w-[calc(100vw-1.5rem)] sm:w-full sm:max-w-2xl max-h-[90dvh] overflow-y-auto">
         <DialogHeader>
           <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2">
             <DialogTitle className="text-base sm:text-lg">
@@ -362,7 +453,7 @@ export function OrderDetailsDialog({ order, open, onOpenChange, onUpdateStatus, 
                   <Button
                     size="sm"
                     variant="outline"
-                    onClick={() => exportOrderPDF(order, settings?.businessName)}
+                    onClick={() => exportOrderPDF(effectiveOrder || order, settings?.businessName)}
                     className="gap-2"
                   >
                     <Download className="size-4" />
@@ -398,263 +489,78 @@ export function OrderDetailsDialog({ order, open, onOpenChange, onUpdateStatus, 
               </Badge>
             </div>
           </div>
-          <div className="sr-only">Informações detalhadas do pedido</div>
+          <DialogDescription className="sr-only">
+            {isEditing ? 'Formulário para edição dos dados do pedido' : 'Informações detalhadas do pedido'}
+          </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-6">
           {isEditing ? (
             /* Modo de Edição */
-            <div className="space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="customerName">Nome do Cliente *</Label>
-                  <Input
-                    id="customerName"
-                    value={editData.customerName}
-                    onChange={(e) => setEditData({ ...editData, customerName: e.target.value })}
-                    required
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="customerPhone">Telefone *</Label>
-                  <Input
-                    id="customerPhone"
-                    value={editData.customerPhone}
-                    onChange={(e) => setEditData({ ...editData, customerPhone: e.target.value })}
-                    required
-                  />
-                </div>
-              </div>
+            <OrderEditForm
+              editData={editData}
+              onEditDataChange={setEditData}
+              editProducts={editProducts}
+              onEditProductsChange={setEditProducts}
+              editExchangeItems={editExchangeItems}
+              onEditExchangeItemsChange={setEditExchangeItems}
+              editTags={editTags}
+              onEditTagsChange={setEditTags}
+              totalPrice={totalPrice}
+              originalPrice={order.price}
+              formatCurrency={formatCurrencyEdit}
+              onCancel={handleCancelEdit}
+              onSave={handleSaveEdit}
+              isSaving={isSaving}
+            />
+          ) : (
+            /* Modo de Visualização */
+            <>
+              <OrderInfoView order={effectiveOrder || order} />
 
-              {/* Produtos */}
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <Label>Produtos *</Label>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className="gap-1 h-7 text-xs"
-                    onClick={() => setEditProducts(prev => [...prev, { name: '', quantity: '1', unitPrice: '' }])}
-                  >
-                    <Plus className="size-3" /> Adicionar item
-                  </Button>
-                </div>
-                <div className="overflow-x-auto">
-                <div className="min-w-[280px]">
-                <div className="grid grid-cols-[1fr_48px_84px_32px] gap-2 px-1">
-                  <span className="text-xs text-muted-foreground">Produto</span>
-                  <span className="text-xs text-muted-foreground text-center">Qtd</span>
-                  <span className="text-xs text-muted-foreground text-right">Valor unit.</span>
-                  <span />
-                </div>
-                <div className="space-y-2">
-                  {editProducts.map((item, idx) => {
-                    const sub = (parseFloat(item.quantity) || 0) * (parseFloat(item.unitPrice) || 0);
-                    return (
-                      <div key={idx} className="space-y-0.5">
-                        <div className="grid grid-cols-[1fr_48px_84px_32px] gap-2 items-center">
-                          <Input
-                            placeholder={`Produto ${idx + 1}`}
-                            value={item.name}
-                            onChange={e => setEditProducts(prev => prev.map((p, i) => i === idx ? { ...p, name: e.target.value } : p))}
-                            required={idx === 0}
-                          />
-                          <Input
-                            type="number"
-                            min="1"
-                            value={item.quantity}
-                            onChange={e => setEditProducts(prev => prev.map((p, i) => i === idx ? { ...p, quantity: e.target.value } : p))}
-                            className="text-center px-1"
-                          />
-                          <Input
-                            type="number"
-                            min="0"
-                            step="0.01"
-                            placeholder="0,00"
-                            value={item.unitPrice}
-                            onChange={e => setEditProducts(prev => prev.map((p, i) => i === idx ? { ...p, unitPrice: e.target.value } : p))}
-                            className="text-right px-2"
-                          />
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon"
-                            className="size-9 text-muted-foreground hover:text-destructive"
-                            onClick={() => setEditProducts(prev => prev.filter((_, i) => i !== idx))}
-                            disabled={editProducts.length === 1}
-                          >
-                            <Trash2 className="size-4" />
-                          </Button>
-                        </div>
-                        {sub > 0 && (
-                          <p className="text-xs text-muted-foreground text-right pr-10">
-                            subtotal: {formatCurrencyEdit(sub)}
-                          </p>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-                {totalPrice > 0 && (
-                  <div className="flex justify-end border-t pt-2">
-                    <span className="text-sm font-semibold">Total: {formatCurrencyEdit(totalPrice)}</span>
-                  </div>
-                )}
-                </div>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="deliveryDate">Data de Entrega *</Label>
-                  <Input
-                    id="deliveryDate"
-                    type="date"
-                    value={editData.deliveryDate}
-                    onChange={(e) => setEditData({ ...editData, deliveryDate: e.target.value })}
-                    required
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="editStatus">Status *</Label>
+              <div className="rounded-lg border p-4 space-y-2">
+                <label className="text-sm font-medium">Responsável pela execução</label>
+                {userProfile?.role === 'admin' ? (
                   <Select
-                    value={editData.status}
-                    onValueChange={(value: OrderStatus) => setEditData({ ...editData, status: value })}
+                    value={order.assignedTo || '__none__'}
+                    onValueChange={value => handleAssign(value === '__none__' ? '' : value)}
+                    disabled={assigning}
                   >
-                    <SelectTrigger id="editStatus">
-                      <SelectValue />
+                    <SelectTrigger>
+                      <SelectValue placeholder="Sem responsável" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="pending">Pendente</SelectItem>
-                      <SelectItem value="in-progress">Em Produção</SelectItem>
-                      <SelectItem value="completed">Concluído</SelectItem>
-                      <SelectItem value="cancelled">Cancelado</SelectItem>
+                      <SelectItem value="__none__">Sem responsável</SelectItem>
+                      {employees.map(employee => (
+                        <SelectItem key={employee.uid} value={employee.uid}>{employee.displayName}</SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
-                </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground">{order.assignedToName || 'Sem responsável atribuído'}</p>
+                )}
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="notes">Observações</Label>
-                <Textarea
-                  id="notes"
-                  value={editData.notes}
-                  onChange={(e) => setEditData({ ...editData, notes: e.target.value })}
-                  rows={3}
-                  placeholder="Observações sobre o pedido..."
-                />
-              </div>
+              {/* Artes do Cliente */}
+              <OrderGallerySection
+                customerName={order.customerName}
+                customerId={order.customerId}
+                orderId={order.id}
+                userId={user?.uid}
+                gallery={customerGallery}
+                loading={galleryLoading}
+                canCreate={hasPermission(p => p.gallery?.create ?? false)}
+                onGalleryUpdated={setCustomerGallery}
+              />
 
-              {/* Permuta / Parceria */}
-              <div className="flex items-center justify-between rounded-lg border px-3 py-2.5">
-                <div className="flex items-center gap-2">
-                  <Repeat2 className="size-4 text-muted-foreground" />
-                  <div>
-                    <p className="text-sm font-medium">Permuta / Parceria</p>
-                    <p className="text-xs text-muted-foreground">Sem cobrança monetária</p>
-                  </div>
-                </div>
-                <Switch
-                  checked={editData.isExchange}
-                  onCheckedChange={v => setEditData({ ...editData, isExchange: v })}
-                />
-              </div>
-              {editData.isExchange && (
-                <div className="space-y-3 rounded-lg border border-purple-200 bg-purple-50/50 dark:bg-purple-950/10 dark:border-purple-800 p-3">
-                  {/* Itens da permuta */}
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <p className="text-sm font-medium text-purple-800 dark:text-purple-300">O que você recebe em troca</p>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        className="gap-1 h-7 text-xs"
-                        onClick={() => setEditExchangeItems(prev => [...prev, { name: '', quantity: '1', unitPrice: '' }])}
-                      >
-                        <Plus className="size-3" /> Adicionar item
-                      </Button>
-                    </div>
-                    <div className="overflow-x-auto">
-                    <div className="min-w-[280px]">
-                    <div className="grid grid-cols-[1fr_48px_84px_32px] gap-2 px-1">
-                      <span className="text-xs text-muted-foreground">Item recebido</span>
-                      <span className="text-xs text-muted-foreground text-center">Qtd</span>
-                      <span className="text-xs text-muted-foreground text-right">Valor est.</span>
-                      <span />
-                    </div>
-                    <div className="space-y-2">
-                      {editExchangeItems.map((item, idx) => {
-                        const sub = (parseFloat(item.quantity) || 0) * (parseFloat(item.unitPrice) || 0);
-                        return (
-                          <div key={idx} className="space-y-0.5">
-                            <div className="grid grid-cols-[1fr_48px_84px_32px] gap-2 items-center">
-                              <Input
-                                placeholder={`Item ${idx + 1}`}
-                                value={item.name}
-                                onChange={e => setEditExchangeItems(prev => prev.map((p, i) => i === idx ? { ...p, name: e.target.value } : p))}
-                              />
-                              <Input
-                                type="number"
-                                min="1"
-                                value={item.quantity}
-                                onChange={e => setEditExchangeItems(prev => prev.map((p, i) => i === idx ? { ...p, quantity: e.target.value } : p))}
-                                className="text-center px-1"
-                              />
-                              <Input
-                                type="number"
-                                min="0"
-                                step="0.01"
-                                placeholder="0,00"
-                                value={item.unitPrice}
-                                onChange={e => setEditExchangeItems(prev => prev.map((p, i) => i === idx ? { ...p, unitPrice: e.target.value } : p))}
-                                className="text-right px-2"
-                              />
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="icon"
-                                className="size-9 text-muted-foreground hover:text-destructive"
-                                onClick={() => setEditExchangeItems(prev => prev.filter((_, i) => i !== idx))}
-                                disabled={editExchangeItems.length === 1}
-                              >
-                                <Trash2 className="size-4" />
-                              </Button>
-                            </div>
-                            {sub > 0 && (
-                              <p className="text-xs text-muted-foreground text-right pr-10">
-                                subtotal: {formatCurrencyEdit(sub)}
-                              </p>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                    {(() => {
-                      const total = editExchangeItems.reduce((s, p) => s + (parseFloat(p.quantity)||0)*(parseFloat(p.unitPrice)||0), 0);
-                      return total > 0 ? (
-                        <div className="flex justify-end border-t border-purple-200 pt-2">
-                          <span className="text-sm font-semibold text-purple-800 dark:text-purple-300">Valor estimado: {formatCurrencyEdit(total)}</span>
-                        </div>
-                      ) : null;
-                    })()}
-                  </div>
-                  </div>
-                  </div>
-                  {/* Observações livres */}
-                  <div className="space-y-1.5">
-                    <Label htmlFor="editExchangeNotes" className="text-sm text-purple-800 dark:text-purple-300">Observações da permuta</Label>
-                    <Textarea
-                      id="editExchangeNotes"
-                      value={editData.exchangeNotes}
-                      onChange={e => setEditData({ ...editData, exchangeNotes: e.target.value })}
-                      placeholder="Ex: artes para redes sociais em troca de impressões..."
-                      rows={2}
-                    />
-                  </div>
-                </div>
-              )}
+              {/* Anexos */}
+              <OrderAttachmentsSection
+                attachments={localAttachments}
+                canEdit={hasPermission(p => p.orders?.edit ?? false)}
+                isUploading={isUploadingAttachment}
+                onUploadAttachment={handleUploadAttachment}
+                onRemoveAttachment={handleRemoveAttachment}
+              />
 
               <div className="space-y-2">
                 <Label>Tags</Label>
@@ -665,30 +571,40 @@ export function OrderDetailsDialog({ order, open, onOpenChange, onUpdateStatus, 
                 />
               </div>
 
-              {/* Cor do card */}
-              <div className="space-y-2">
-                <Label>Cor do card</Label>
-                <div className="flex flex-wrap gap-2 items-center">
-                  <button
-                    type="button"
-                    onClick={() => setEditData({ ...editData, cardColor: '' })}
-                    className={`size-7 rounded-full border-2 flex items-center justify-center text-xs transition-all ${
-                      !editData.cardColor ? 'border-foreground scale-110' : 'border-muted-foreground/40 hover:border-muted-foreground'
-                    }`}
-                  >
-                    ✕
-                  </button>
-                  {['#ef4444','#f97316','#eab308','#22c55e','#06b6d4','#3b82f6','#8b5cf6','#ec4899','#a855f7','#14b8a6'].map(color => (
-                    <button
-                      key={color}
-                      type="button"
-                      onClick={() => setEditData({ ...editData, cardColor: editData.cardColor === color ? '' : color })}
-                      className={`size-7 rounded-full border-2 transition-all ${
-                        editData.cardColor === color ? 'border-foreground scale-110' : 'border-transparent hover:scale-105'
-                      }`}
-                      style={{ backgroundColor: color }}
-                    />
-                  ))}
+              <div className="flex justify-between items-center pt-4">
+                {onDeleteOrder && (hasPermission(p => p.orders?.delete ?? false) || order.userId === user?.uid) && (
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button variant="outline" className="gap-2">
+                        <Trash2 className="size-4" />
+                        Excluir Pedido
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Excluir pedido?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          Esta ação não pode ser desfeita. O pedido{' '}
+                          <strong>{order.orderNumber || '#' + order.id}</strong> será
+                          removido permanentemente.
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                        <AlertDialogAction
+                          className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                          onClick={() => onDeleteOrder(order.id)}
+                        >
+                          Excluir
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+                )}
+                <div className="flex gap-2 ml-auto">
+                  <Button variant="outline" onClick={() => onOpenChange(false)}>
+                    Fechar
+                  </Button>
                 </div>
               </div>
 

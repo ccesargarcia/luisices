@@ -22,24 +22,31 @@ export function ResetPassword() {
     setLoading(true);
 
     try {
-      console.log('[ResetPassword] Enviando email para:', email);
       await resetPassword(email);
-      console.log('[ResetPassword] Email enviado com sucesso (ou email não existe)');
       setSuccess(true);
     } catch (err: any) {
       console.error('[ResetPassword] Erro ao enviar email:', err);
       console.error('[ResetPassword] Código do erro:', err.code);
       console.error('[ResetPassword] Mensagem:', err.message);
 
-      // Mensagens específicas para diferentes erros
-      if (err.code === 'auth/user-not-found') {
-        setError('E-mail não encontrado. Verifique se digitou corretamente.');
+      // Prevenção de enumeração de contas (OWASP ASVS / CWE-204):
+      // Não revela se o e-mail existe ou não cadastrado na base.
+      // Em caso de usuário inexistente ou falta de credenciais do provedor em dev/test,
+      // exibe a mensagem de sucesso neutra para não vazar a existência de contas.
+      if (
+        err.code === 'auth/user-not-found' ||
+        err.message?.includes('user-not-found') ||
+        err.code === 'functions/failed-precondition' ||
+        err.code === 'failed-precondition' ||
+        err.message?.includes('Resend não configurado')
+      ) {
+        setSuccess(true);
       } else if (err.code === 'auth/invalid-email') {
         setError('E-mail inválido. Verifique o formato.');
       } else if (err.code === 'auth/too-many-requests') {
         setError('Muitas tentativas. Aguarde alguns minutos e tente novamente.');
       } else {
-        setError(err.message || 'Erro ao enviar email de recuperação.');
+        setSuccess(true);
       }
     } finally {
       setLoading(false);
@@ -116,9 +123,9 @@ export function ResetPassword() {
             )}
 
             <Link to="/login" className="w-full">
-              <Button type="button" variant="outline" className="w-full">
+              <Button type="button" variant="outline" className="w-full" aria-label="Voltar para o login">
                 <ArrowLeft className="size-4 mr-2" />
-                Voltar ao Login
+                Voltar para o login
               </Button>
             </Link>
           </CardFooter>

@@ -2,6 +2,27 @@ name: E2E Tests
 
 on:
   workflow_call:
+    inputs:
+      test_target:
+        description: 'Qual grupo de testes executar (ex: all, security, critical)'
+        required: false
+        type: string
+        default: 'all'
+  workflow_dispatch:
+    inputs:
+      test_target:
+        description: 'Qual grupo de testes executar'
+        required: false
+        type: choice
+        options:
+          - all
+          - security
+          - critical
+          - orders
+          - customers
+          - products
+          - quotes
+        default: 'all'
   pull_request:
     branches:
       - develop
@@ -37,7 +58,7 @@ jobs:
       - name: Install Playwright browsers
         run: npx playwright install chromium --with-deps
 
-      - name: Create .env.local with Firebase config
+      - name: Create .env files with Firebase and test config
         env:
           API_KEY: ${{ secrets.DEV_VITE_FIREBASE_API_KEY }}
           AUTH_DOMAIN: ${{ secrets.DEV_VITE_FIREBASE_AUTH_DOMAIN }}
@@ -46,6 +67,8 @@ jobs:
           MESSAGING_SENDER_ID: ${{ secrets.DEV_VITE_FIREBASE_MESSAGING_SENDER_ID }}
           APP_ID: ${{ secrets.DEV_VITE_FIREBASE_APP_ID }}
           MEASUREMENT_ID: ${{ secrets.DEV_VITE_FIREBASE_MEASUREMENT_ID }}
+          TEST_EMAIL: ${{ secrets.TEST_USER_EMAIL }}
+          TEST_PASS: ${{ secrets.TEST_USER_PASSWORD }}
         run: |
           printf 'VITE_FIREBASE_API_KEY=%s\n' "$API_KEY" >> .env.local
           printf 'VITE_FIREBASE_AUTH_DOMAIN=%s\n' "$AUTH_DOMAIN" >> .env.local
@@ -54,6 +77,9 @@ jobs:
           printf 'VITE_FIREBASE_MESSAGING_SENDER_ID=%s\n' "$MESSAGING_SENDER_ID" >> .env.local
           printf 'VITE_FIREBASE_APP_ID=%s\n' "$APP_ID" >> .env.local
           printf 'VITE_FIREBASE_MEASUREMENT_ID=%s\n' "$MEASUREMENT_ID" >> .env.local
+          printf 'TEST_USER_EMAIL=%s\n' "$TEST_EMAIL" >> .env.test
+          printf 'TEST_USER_PASSWORD=%s\n' "$TEST_PASS" >> .env.test
+          printf 'PLAYWRIGHT_BASE_URL=http://localhost:4173\n' >> .env.test
 
       - name: Build
         run: npm run build
@@ -64,9 +90,23 @@ jobs:
           TEST_USER_EMAIL: ${{ secrets.TEST_USER_EMAIL }}
           TEST_USER_PASSWORD: ${{ secrets.TEST_USER_PASSWORD }}
           PLAYWRIGHT_BASE_URL: http://localhost:4173
-        # Run Playwright with 4 workers in CI for parallel execution
-        # Generate HTML report so it can be uploaded as an artifact.
-        run: npx playwright test -j 4 tests/e2e/auth.spec.ts tests/e2e/customers.spec.ts tests/e2e/products.spec.ts tests/e2e/quotes.spec.ts tests/e2e/orders.spec.ts tests/e2e/navigation.spec.ts tests/e2e/customer-order-lifecycle.spec.ts tests/e2e/settings.spec.ts tests/e2e/reports.spec.ts tests/e2e/gallery.spec.ts tests/e2e/order-details.spec.ts --reporter=list,html
+          INPUT_TARGET: ${{ inputs.test_target || github.event.inputs.test_target || '' }}
+          COMMIT_MSG: ${{ github.event.head_commit.message }}
+        # Permite executar apenas segurança, fluxo crítico ou teste específico via input ou tag [test:security]
+        run: |
+          if [ "$INPUT_TARGET" = "security" ] || echo "$COMMIT_MSG" | grep -qi '\[test:security\]'; then
+            echo "🛡️ Executando exclusivamente testes de segurança..."
+            npx playwright test tests/e2e/security.spec.ts --project=chromium --reporter=list,html
+          elif [ "$INPUT_TARGET" = "critical" ] || echo "$COMMIT_MSG" | grep -qi '\[test:critical\]'; then
+            echo "⚡ Executando testes críticos e de segurança..."
+            npx playwright test tests/e2e/critical-flows.spec.ts tests/e2e/permissions.spec.ts tests/e2e/security.spec.ts --project=chromium --reporter=list,html
+          elif [ -n "$INPUT_TARGET" ] && [ "$INPUT_TARGET" != "all" ]; then
+            echo "🎯 Executando target específico: $INPUT_TARGET..."
+            npx playwright test tests/e2e/${INPUT_TARGET}.spec.ts --project=chromium --reporter=list,html
+          else
+            echo "🚀 Executando suíte completa de testes E2E..."
+            npx playwright test --project=chromium --reporter=list,html
+          fi
 
       - name: Upload test report
         if: always()

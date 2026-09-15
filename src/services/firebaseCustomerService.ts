@@ -1,4 +1,4 @@
-import { collection, addDoc, getDocs, getDoc, doc, updateDoc, deleteDoc, query, where, orderBy, increment } from 'firebase/firestore';
+import { collection, addDoc, getDocs, getDoc, doc, updateDoc, deleteDoc, query, where, orderBy, increment, runTransaction } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { Customer } from '../app/types';
 
@@ -63,15 +63,12 @@ export const firebaseCustomerService = {
    * Buscar cliente por ID
    */
   async getCustomerById(customerId: string): Promise<Customer | null> {
-    const customerRef = doc(db, 'customers', customerId);
-    const customerDoc = await getDocs(query(collection(db, 'customers'), where('__name__', '==', customerId)));
+    const customerSnap = await getDoc(doc(db, 'customers', customerId));
+    if (!customerSnap.exists()) return null;
 
-    if (customerDoc.empty) return null;
-
-    const data = customerDoc.docs[0].data();
     return {
-      id: customerDoc.docs[0].id,
-      ...data,
+      id: customerSnap.id,
+      ...customerSnap.data(),
     } as Customer;
   },
 
@@ -114,26 +111,26 @@ export const firebaseCustomerService = {
   },
 
   /**
-   * Decrementar estatísticas do cliente (ao deletar pedido)
+   * Decrementar estatísticas do cliente (ao deletar pedido) de forma atômica
    */
   async decrementCustomerStats(customerId: string, orderValue: number = 0): Promise<void> {
     const customerRef = doc(db, 'customers', customerId);
 
-    // Buscar dados atuais do cliente para evitar valores negativos
-    const customerSnap = await getDoc(customerRef);
-    if (!customerSnap.exists()) return;
+    await runTransaction(db, async (transaction) => {
+      const customerSnap = await transaction.get(customerRef);
+      if (!customerSnap.exists()) return;
 
-    const currentData = customerSnap.data() as Customer;
-    const currentOrders = currentData.totalOrders || 0;
-    const currentSpent = currentData.totalSpent || 0;
+      const currentData = customerSnap.data() as Customer;
+      const currentOrders = currentData.totalOrders || 0;
+      const currentSpent = currentData.totalSpent || 0;
 
-    // Calcular novos valores, garantindo que nunca fiquem negativos
-    const newTotalOrders = Math.max(0, currentOrders - 1);
-    const newTotalSpent = Math.max(0, currentSpent - orderValue);
+      const newTotalOrders = Math.max(0, currentOrders - 1);
+      const newTotalSpent = Math.max(0, currentSpent - orderValue);
 
-    await updateDoc(customerRef, {
-      totalOrders: newTotalOrders,
-      totalSpent: newTotalSpent,
+      transaction.update(customerRef, {
+        totalOrders: newTotalOrders,
+        totalSpent: newTotalSpent,
+      });
     });
   },
 

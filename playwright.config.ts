@@ -1,11 +1,10 @@
 import { defineConfig, devices } from '@playwright/test';
 import dotenv from 'dotenv';
 
-// Carregar variáveis de ambiente do .env.test APENAS localmente
-// No CI, as credenciais vêm das GitHub Secrets (process.env)
-if (!process.env.CI) {
-  dotenv.config({ path: '.env.test' });
-}
+// Carregar variáveis de ambiente do .env.local e .env.test (se existirem)
+dotenv.config({ path: '.env.local' });
+dotenv.config({ path: '.env.test' });
+
 
 /**
  * Configuração de Testes E2E com Playwright
@@ -17,7 +16,7 @@ export default defineConfig({
   testDir: './tests/e2e',
 
   /* Timeout máximo por teste */
-  timeout: 30 * 1000,
+  timeout: process.env.CI ? 60 * 1000 : 30 * 1000,
 
   /* Configuração de expectativas */
   expect: {
@@ -62,9 +61,23 @@ export default defineConfig({
 
   /* Configurar projetos para diferentes navegadores */
   projects: [
+    { name: 'setup', testMatch: /.*\.setup\.ts/ },
     {
       name: 'chromium',
-      use: { ...devices['Desktop Chrome'] },
+      use: { 
+        ...devices['Desktop Chrome'],
+        storageState: 'playwright/.auth/user.json',
+      },
+      dependencies: ['setup'],
+    },
+    {
+      name: 'mobile-chromium',
+      testMatch: /responsive\.spec\.ts/,
+      use: {
+        ...devices['Pixel 5'],
+        storageState: 'playwright/.auth/user.json',
+      },
+      dependencies: ['setup'],
     },
 
     // Descomente para testar em outros navegadores

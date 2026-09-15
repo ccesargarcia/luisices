@@ -26,6 +26,8 @@ Credenciais do projeto Firebase de desenvolvimento:
 | `VITE_FIREBASE_APP_ID_DEV` | App ID (dev) | Firebase Console > Project Settings > General |
 | `VITE_FIREBASE_MEASUREMENT_ID_DEV` | Measurement ID (dev) | Firebase Console > Project Settings > General |
 | `FIREBASE_SERVICE_ACCOUNT_DEV` | Service Account JSON (dev) | Firebase Console > Project Settings > Service Accounts |
+| `RESEND_API_KEY` | Chave para envio de e-mail pelas Functions | Painel do Resend |
+| `EVOLUTION_API_KEY` | Chave para envio opcional via WhatsApp | Configuração da Evolution API |
 
 ### **Firebase - Produção (Main)**
 

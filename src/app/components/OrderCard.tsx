@@ -65,7 +65,8 @@ export function OrderCard({ order, onClick }: OrderCardProps) {
 
   return (
     <Card
-      className="hover:shadow-md transition-all cursor-pointer overflow-hidden"
+      data-testid="order-card"
+      className="glass-panel cursor-pointer overflow-hidden relative transition-all hover:-translate-y-0.5 hover:border-primary/40"
       onClick={onClick}
       style={order.cardColor ? {
         backgroundColor: hexToRgba(order.cardColor, 0.18),

@@ -7,44 +7,144 @@ service cloud.firestore {
       return request.auth != null && request.auth.uid == userId;
     }
 
+    function isAdmin() {
+      return request.auth != null
+        && exists(/databases/$(database)/documents/userProfiles/$(request.auth.uid))
+        && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    function isActiveEmployee() {
+      return request.auth != null
+        && exists(/databases/$(database)/documents/userProfiles/$(request.auth.uid))
+        && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.role == 'funcionario'
+        && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.active == true;
+    }
+
+    function isAssignedEmployee(assignedTo) {
+      return assignedTo == request.auth.uid && isActiveEmployee();
+    }
+
+    function isAssignedEmployeeEditor(assignedTo) {
+      return isAssignedEmployee(assignedTo)
+        && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.permissions.orders.edit == true;
+    }
+
+    function isAssignedEmployeeDeleter(assignedTo) {
+      return isAssignedEmployee(assignedTo)
+        && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.permissions.orders.delete == true;
+    }
+
     // Regras para pedidos (orders)
     match /orders/{orderId} {
-      allow read: if isOwner(resource.data.userId);
+      allow read: if isOwner(resource.data.userId)
+        || isAdmin()
+        || isAssignedEmployee(resource.data.assignedTo);
       allow create: if isOwner(request.resource.data.userId);
-      allow update, delete: if isOwner(resource.data.userId);
+      allow update: if isOwner(resource.data.userId)
+        || isAdmin()
+        || (
+          isAssignedEmployeeEditor(resource.data.assignedTo)
+          && request.resource.data.userId == resource.data.userId
+          && request.resource.data.assignedTo == resource.data.assignedTo
+        );
+      allow delete: if isOwner(resource.data.userId)
+        || isAdmin()
+        || isAssignedEmployeeDeleter(resource.data.assignedTo);
+    }
+
+    // Regras para histórico financeiro de vendas (salesLedger)
+    match /salesLedger/{saleId} {
+      allow read: if isOwner(resource.data.userId)
+        || isAdmin()
+        || isAssignedEmployee(resource.data.assignedTo);
+      allow create, update: if isOwner(request.resource.data.userId)
+        || isAdmin()
+        || (
+          isAssignedEmployeeEditor(resource.data.assignedTo)
+          && request.resource.data.userId == resource.data.userId
+        );
+      allow delete: if isOwner(resource.data.userId)
+        || isAdmin();
     }
 
     // Regras para clientes (customers)
     match /customers/{customerId} {
-      allow read: if isOwner(resource.data.userId);
-      allow create: if isOwner(request.resource.data.userId);
-      allow update, delete: if isOwner(resource.data.userId);
+      allow read: if isOwner(resource.data.userId)
+        || isAdmin()
+        || (isActiveEmployee() && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.permissions.customers.view == true);
+      allow create: if isOwner(request.resource.data.userId) || isAdmin();
+      allow update: if isOwner(resource.data.userId)
+        || isAdmin()
+        || (isActiveEmployee() && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.permissions.customers.edit == true);
+      allow delete: if isOwner(resource.data.userId)
+        || isAdmin()
+        || (isActiveEmployee() && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.permissions.customers.delete == true);
     }
 
     // Regras para orçamentos (quotes)
     match /quotes/{quoteId} {
-      allow read: if isOwner(resource.data.userId);
-      allow create: if isOwner(request.resource.data.userId);
-      allow update, delete: if isOwner(resource.data.userId);
+      allow read: if isOwner(resource.data.userId)
+        || isAdmin()
+        || (isActiveEmployee() && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.permissions.quotes.view == true);
+      allow create: if isOwner(request.resource.data.userId) || isAdmin();
+      allow update: if isOwner(resource.data.userId)
+        || isAdmin()
+        || (isActiveEmployee() && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.permissions.quotes.edit == true);
+      allow delete: if isOwner(resource.data.userId)
+        || isAdmin()
+        || (isActiveEmployee() && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.permissions.quotes.delete == true);
     }
 
     // Regras para produtos (products)
     match /products/{productId} {
-      allow read: if isOwner(resource.data.userId);
-      allow create: if isOwner(request.resource.data.userId);
-      allow update, delete: if isOwner(resource.data.userId);
+      allow read: if resource.data.isPublic == true
+        || isOwner(resource.data.userId)
+        || isAdmin()
+        || (isActiveEmployee() && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.permissions.products.view == true);
+      allow create: if isOwner(request.resource.data.userId) || isAdmin();
+      allow update: if isOwner(resource.data.userId)
+        || isAdmin()
+        || (isActiveEmployee() && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.permissions.products.edit == true);
+      allow delete: if isOwner(resource.data.userId)
+        || isAdmin()
+        || (isActiveEmployee() && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.permissions.products.delete == true);
     }
 
     // Regras para galeria de artes (gallery)
     match /gallery/{itemId} {
-      allow read: if isOwner(resource.data.userId);
-      allow create: if isOwner(request.resource.data.userId);
-      allow update, delete: if isOwner(resource.data.userId);
+      allow read: if isOwner(resource.data.userId)
+        || isAdmin()
+        || (isActiveEmployee() && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.permissions.gallery.view == true);
+      allow create: if isOwner(request.resource.data.userId)
+        || isAdmin()
+        || (isActiveEmployee() && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.permissions.gallery.create == true);
+      allow update, delete: if isOwner(resource.data.userId)
+        || isAdmin()
+        || (isActiveEmployee() && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.permissions.gallery.delete == true);
     }
 
     // Regras para configurações de usuário (users)
     match /users/{userId}/{document=**} {
       allow read, write: if isOwner(userId);
+    }
+
+    // Regras para insumos e matérias-primas (supplies)
+    match /supplies/{supplyId} {
+      allow read: if isOwner(resource.data.userId) || isAdmin();
+      allow create: if isOwner(request.resource.data.userId) || isAdmin();
+      allow update, delete: if isOwner(resource.data.userId) || isAdmin();
+    }
+
+    // Regras para fichas técnicas de precificação (pricingRecipes)
+    match /pricingRecipes/{recipeId} {
+      allow read: if isOwner(resource.data.userId) || isAdmin();
+      allow create: if isOwner(request.resource.data.userId) || isAdmin();
+      allow update, delete: if isOwner(resource.data.userId) || isAdmin();
+    }
+
+    // Regras para configurações do ateliê (pricingSettings)
+    match /pricingSettings/{userId} {
+      allow read, write: if isOwner(userId) || isAdmin();
     }
 
     // Perfis de usuário do sistema de permissões
@@ -56,8 +156,8 @@ service cloud.firestore {
           && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.role == 'admin';
       }
 
-      // Leitura: usuário lê apenas o próprio perfil; admin lê todos
-      allow read: if request.auth != null && (request.auth.uid == uid || isAdmin());
+      // Leitura: usuário lê apenas o próprio perfil; admin e funcionários ativos leem todos para colaboração na equipe
+      allow read: if request.auth != null && (request.auth.uid == uid || isAdmin() || isActiveEmployee());
 
       // Criação: usuário cria o próprio perfil (primeiro acesso automático), ou admin cria para outro
       allow create: if request.auth != null && (request.auth.uid == uid || isAdmin());
@@ -76,6 +176,113 @@ service cloud.firestore {
 
       // Deleção: somente admins
       allow delete: if isAdmin();
+    }
+
+    // Regras para Central de E-mails Resend (estritamente restrito a administradores)
+    match /receivedEmails/{emailId} {
+      allow read, write: if isAdmin();
+    }
+
+    match /sentEmails/{emailId} {
+      allow read, write: if isAdmin();
+    }
+
+    // Regras para configurações públicas da loja / catálogo online
+    match /storeSettings/{docId} {
+      allow read: if true;
+      // Escrita restrita a administradores ou usuários ativos com permissão explícita de loja ou role user
+      allow write: if request.auth != null && (
+        isAdmin()
+        || (exists(/databases/$(database)/documents/userProfiles/$(request.auth.uid))
+            && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.active == true
+            && (
+              get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.role == 'user'
+              || get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.permissions.store == true
+            ))
+      );
+    }
+
+    // Regras para produtos da vitrine da lojinha pública online (storeProducts)
+    match /storeProducts/{productId} {
+      // Leitura pública irrestrita para catálogo online (/catalogo)
+      allow read: if true;
+
+      // Criação permitida para administradores, role user ou usuários ativos com permissão de loja
+      allow create: if request.auth != null && (
+        isAdmin()
+        || (exists(/databases/$(database)/documents/userProfiles/$(request.auth.uid))
+            && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.active == true
+            && (
+              get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.role == 'user'
+              || get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.permissions.storeProducts.create == true
+              || get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.permissions.store == true
+            ))
+      );
+
+      // Atualização permitida para administradores, role user, donos do produto ou usuários com permissão
+      allow update: if request.auth != null && (
+        isAdmin()
+        || (exists(/databases/$(database)/documents/userProfiles/$(request.auth.uid))
+            && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.active == true
+            && (
+              get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.role == 'user'
+              || isOwner(resource.data.userId)
+              || get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.permissions.storeProducts.edit == true
+              || get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.permissions.store == true
+            ))
+      );
+
+      // Exclusão permitida para administradores, role user, donos do produto ou usuários ativos com permissão de exclusão
+      allow delete: if request.auth != null && (
+        isAdmin()
+        || (exists(/databases/$(database)/documents/userProfiles/$(request.auth.uid))
+            && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.active == true
+            && (
+              get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.role == 'user'
+              || isOwner(resource.data.userId)
+              || get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.permissions.storeProducts.delete == true
+            ))
+      );
+    }
+
+    // Regras para histórico de pedidos da Lojinha Pública (catalogOrders)
+    match /catalogOrders/{orderId} {
+      // Criação aberta para visitantes da vitrine online (/catalogo) com validação de payload
+      allow create: if request.resource.data.keys().hasAll(['orderCode', 'items', 'totalItems', 'subtotal', 'status'])
+        && request.resource.data.orderCode is string
+        && request.resource.data.orderCode.size() <= 50
+        && request.resource.data.items is list
+        && request.resource.data.items.size() <= 100
+        && request.resource.data.totalItems is number
+        && request.resource.data.totalItems >= 1
+        && request.resource.data.totalItems <= 1000
+        && request.resource.data.subtotal is number
+        && request.resource.data.subtotal >= 0
+        && request.resource.data.status in ['received', 'converted', 'cancelled']
+        && (!('customerNotes' in request.resource.data) || (request.resource.data.customerNotes is string && request.resource.data.customerNotes.size() <= 2000));
+
+      // Leitura permitida para administradores, role user ou membros autorizados
+      allow read: if request.auth != null && (
+        isAdmin()
+        || (exists(/databases/$(database)/documents/userProfiles/$(request.auth.uid))
+            && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.active == true
+            && (
+              get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.role == 'user'
+              || get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.permissions.store == true
+              || get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.permissions.orders.view == true
+            ))
+      );
+
+      // Atualização e exclusão restritas a administradores ou gestores da loja
+      allow update, delete: if request.auth != null && (
+        isAdmin()
+        || (exists(/databases/$(database)/documents/userProfiles/$(request.auth.uid))
+            && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.active == true
+            && (
+              get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.role == 'user'
+              || get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.permissions.store == true
+            ))
+      );
     }
   }
 }

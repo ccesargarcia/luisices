@@ -11,7 +11,7 @@ import {
   deleteObject,
   UploadMetadata,
 } from 'firebase/storage';
-import { storage } from '../lib/firebase';
+import { auth, storage } from '../lib/firebase';
 import type { OrderAttachment } from '../app/types';
 
 export class FirebaseStorageService {
@@ -52,6 +52,28 @@ export class FirebaseStorageService {
   }
 
   /**
+   * Upload de foto de produto da vitrine da lojinha pública
+   */
+  async uploadStoreProductPhoto(file: File, productId: string): Promise<string> {
+    if (!file.type.startsWith('image/')) throw new Error('Arquivo deve ser uma imagem');
+    if (file.size > 5 * 1024 * 1024) throw new Error('Imagem muito grande. Máximo: 5MB');
+
+    const timestamp = Date.now();
+    const ext = file.name.split('.').pop() || 'jpg';
+    const fileName = `store_product_${productId}_${timestamp}.${ext}`;
+    const storageRef = ref(storage, `store/products/${fileName}`);
+    const currentUid = auth.currentUser?.uid || '';
+    await uploadBytes(storageRef, file, {
+      contentType: file.type,
+      customMetadata: {
+        uploadedAt: new Date().toISOString(),
+        userId: currentUid,
+      },
+    });
+    return getDownloadURL(storageRef);
+  }
+
+  /**
    * Upload de imagem com redimensionamento automático
    * @param file - Arquivo de imagem
    * @param userId - ID do usuário
@@ -61,7 +83,7 @@ export class FirebaseStorageService {
   async uploadImage(
     file: File,
     userId: string,
-    folder: 'avatar' | 'logo' | 'banner'
+    folder: 'avatar' | 'logo' | 'banner' | 'catalog-logo' | 'catalog-banner' | 'catalog-header'
   ): Promise<string> {
     // Validar tipo de arquivo
     if (!file.type.startsWith('image/')) {
@@ -78,14 +100,18 @@ export class FirebaseStorageService {
     const timestamp = Date.now();
     const extension = file.name.split('.').pop();
     const fileName = `${folder}_${timestamp}.${extension}`;
-    const storagePath = `users/${userId}/${folder}/${fileName}`;
+    const storagePath = folder.startsWith('catalog-')
+      ? `store/${folder}/${fileName}`
+      : `users/${userId}/${folder}/${fileName}`;
     const storageRef = ref(storage, storagePath);
 
     // Metadata
+    const currentUid = auth.currentUser?.uid || userId;
     const metadata: UploadMetadata = {
       contentType: file.type,
       customMetadata: {
         uploadedAt: new Date().toISOString(),
+        userId: currentUid,
       },
     };
 

@@ -7,10 +7,11 @@ Este diretório contém os workflows de CI/CD para deploy automático do projeto
 ```
 .github/
 ├── workflows/
-│   ├── deploy.yml        # Deploy para PRODUÇÃO (branch: main)
-│   └── deploy-dev.yml    # Deploy para DEV + Testes E2E (branch: develop)
-├── SECRETS_QUICKSTART.md # Guia rápido de configuração de secrets
-└── SETUP_SECRETS.md      # Documentação completa das secrets
+│   ├── deploy.yml                    # Produção (main → GitHub Pages)
+│   ├── deploy-dev.yml                # DEV (develop → Firebase Hosting)
+│   ├── deploy-functions-manual.yml   # Functions (manual, develop)
+│   └── test-actions.yml              # Testes E2E reutilizáveis
+└── SETUP_SECRETS.md                  # Documentação de secrets
 ```
 
 ---
@@ -23,8 +24,8 @@ Este diretório contém os workflows de CI/CD para deploy automático do projeto
 **URL:** https://dev.luisices.com.br
 
 **Fluxo:**
-1. ✅ Build da aplicação
-2. ✅ **Testes E2E (Smoke)** com Playwright
+1. ✅ **Testes E2E** com Playwright
+2. ✅ Build da aplicação
 3. ✅ Deploy no Firebase Hosting (DEV)
 4. ✅ Upload dos resultados dos testes
 
@@ -66,7 +67,7 @@ Este diretório contém os workflows de CI/CD para deploy automático do projeto
 | `PLAYWRIGHT_BASE_URL_DEV` | DEV | URL do ambiente de testes |
 | `FIREBASE_SERVICE_ACCOUNT_DEV` | DEV | Service Account JSON (dev) |
 
-**👉 Veja o guia completo:** [SECRETS_QUICKSTART.md](./SECRETS_QUICKSTART.md)
+**👉 Veja o guia completo:** [SETUP_SECRETS.md](./SETUP_SECRETS.md)
 
 ---
 
@@ -78,7 +79,7 @@ Os testes E2E rodam **apenas no workflow de DEV** antes do deploy.
 
 1. Workflow cria arquivo `.env.test` com secrets
 2. Instala Playwright e browsers
-3. Executa testes smoke (`npm run test:smoke`)
+3. Executa os testes definidos em `test-actions.yml`
 4. Se os testes **passarem** → Deploy acontece
 5. Se os testes **falharem** → Deploy é **bloqueado**
 
@@ -93,8 +94,8 @@ Os testes E2E rodam **apenas no workflow de DEV** antes do deploy.
 
 **Localmente:**
 ```bash
-npm run test:smoke        # Roda testes
-npm run test:report       # Abre relatório
+npm run test:ci            # Roda os testes usados no CI
+npm run test:report        # Abre relatório
 ```
 
 ---
@@ -189,11 +190,10 @@ PLAYWRIGHT_BASE_URL=https://dev.luisices.com.br npm run test:smoke
 
 ## 📚 Documentação Adicional
 
-- [Configurar Secrets (Guia Rápido)](./SECRETS_QUICKSTART.md)
 - [Configurar Secrets (Documentação Completa)](./SETUP_SECRETS.md)
 - [Playwright CI/CD](https://playwright.dev/docs/ci)
 - [Firebase Hosting + GitHub Actions](https://firebase.google.com/docs/hosting/github-integration)
 
 ---
 
-**Última atualização:** 6 de março de 2026
+**Última atualização:** 4 de setembro de 2026

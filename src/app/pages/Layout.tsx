@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router';
-import { LayoutDashboard, Calendar, Users, Package2, LogOut, Settings as SettingsIcon, BarChart3, FileText, ShoppingBag, Images, AtSign, Globe, Phone, Mail, MapPin, MessageCircle, ArrowLeftRight, UserCog, Info } from 'lucide-react';
+import { LayoutDashboard, Calendar, Users, Package2, Package, LogOut, Settings as SettingsIcon, BarChart3, FileText, ShoppingBag, Images, AtSign, Globe, Phone, Mail, MapPin, MessageCircle, ArrowLeftRight, UserCog, Info, PanelLeftClose, PanelLeftOpen, MoreHorizontal, HelpCircle, Coins, ExternalLink, Store, Palette, ChevronDown, ChevronRight, ClipboardList } from 'lucide-react';
 import { cn } from '../components/ui/utils';
 import { useAuth } from '../../contexts/AuthContext';
 import { useUserSettings } from '../../hooks/useUserSettings';
 import { applyColorTheme } from '../utils/colorThemes';
+import { normalizePhoneForWhatsApp } from '../utils/whatsapp';
 import { trackPageView } from '../../services/analyticsService';
 import { Button } from '../components/ui/button';
 import {
@@ -18,6 +19,7 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from '../components/ui/avatar';
 import { ThemeToggle } from '../../components/ThemeToggle';
 import { NotificationBell } from '../components/NotificationBell';
+import { AdminTeamFilter } from '../components/AdminTeamFilter';
 import { Badge } from '../components/ui/badge';
 import {
   Dialog,
@@ -61,32 +63,108 @@ export function Layout() {
     return user.displayName[0].toUpperCase();
   };
 
+  const [storeSubmenuOpen, setStoreSubmenuOpen] = useState(true);
+
+  // Auto-expandir submenu da lojinha se estiver em uma rota da lojinha
+  useEffect(() => {
+    if (
+      location.pathname.startsWith('/produtos-lojinha') ||
+      location.pathname.startsWith('/personalizar-lojinha') ||
+      location.pathname.startsWith('/pedidos-lojinha')
+    ) {
+      setStoreSubmenuOpen(true);
+    }
+  }, [location.pathname]);
+
   const allNavItems = [
     { name: 'Dashboard',       href: '/',           icon: LayoutDashboard, check: (p: any) => p.dashboard },
     { name: 'Agenda Semanal', href: '/agenda',      icon: Calendar,        check: (p: any) => p.orders?.view },
     { name: 'Clientes',       href: '/clientes',    icon: Users,           check: (p: any) => p.customers?.view },
-    { name: 'Relatórios',     href: '/relatorios',  icon: BarChart3,       check: (p: any) => p.reports },
+    { name: 'Relatórios',     href: '/relatorios',  icon: BarChart3,       check: (p: any) => p.reports, allowUserRole: true },
     { name: 'Orçamentos',     href: '/orcamentos',  icon: FileText,        check: (p: any) => p.quotes?.view },
-    { name: 'Produtos',       href: '/produtos',    icon: ShoppingBag,     check: (p: any) => p.products?.view },
+    { name: 'Produtos do Ateliê', href: '/produtos', icon: Package,        check: (p: any) => p.products?.view },
+    { name: 'Precificação',   href: '/precificacao',icon: Coins,           check: (p: any) => p.pricing ?? false, allowUserRole: true },
     { name: 'Galeria',        href: '/galeria',     icon: Images,          check: (p: any) => p.gallery?.view },
-    { name: 'Permutas',       href: '/permutas',    icon: ArrowLeftRight,  check: (p: any) => p.exchanges },
+    { name: 'Permutas',       href: '/permutas',    icon: ArrowLeftRight,  check: (p: any) => p.exchanges, allowUserRole: true },
+    {
+      name: 'Lojinha Online',
+      icon: Store,
+      check: (p: any) => Boolean(p.store || p.storeProducts?.view),
+      allowUserRole: true,
+      children: [
+        {
+          name: 'Pedidos Recebidos',
+          href: '/pedidos-lojinha',
+          icon: ClipboardList,
+          check: (p: any) => Boolean(p.store || p.storeProducts?.view || p.orders?.view),
+          allowUserRole: true,
+        },
+        {
+          name: 'Produtos da Lojinha',
+          href: '/produtos-lojinha',
+          icon: ShoppingBag,
+          check: (p: any) => Boolean(p.storeProducts?.view ?? p.store ?? false),
+          allowUserRole: true,
+        },
+        {
+          name: 'Aparência & Vitrine',
+          href: '/personalizar-lojinha',
+          icon: Palette,
+          check: (p: any) => Boolean(p.store ?? false),
+          allowUserRole: true,
+        },
+      ],
+    },
+    { name: 'E-mails',        href: '/emails',      icon: Mail,            check: (p: any) => p.emails ?? false },
     { name: 'Usuários',       href: '/usuarios',    icon: UserCog,         check: (p: any) => p.users?.view },
   ];
 
   const navigation = useMemo(() => {
     if (!userProfile) return [];
-    return allNavItems.filter(item => hasPermission(item.check));
+    return allNavItems
+      .map(item => {
+        if (item.children) {
+          const allowedChildren = item.children.filter(child => {
+            if (child.allowUserRole && (userProfile.role === 'user' || userProfile.role === 'admin')) return true;
+            return hasPermission(child.check);
+          });
+          if (allowedChildren.length === 0) return null;
+          return { ...item, children: allowedChildren };
+        }
+        if ((item as any).allowUserRole && (userProfile.role === 'user' || userProfile.role === 'admin')) return item;
+        if (hasPermission(item.check)) return item;
+        return null;
+      })
+      .filter(Boolean) as any[];
   }, [userProfile, hasPermission]);
 
   const orderedNav = useMemo(() => {
     const order = settings?.navOrder;
     if (!order || order.length === 0) return navigation;
     return [...navigation].sort((a, b) => {
-      const ai = order.indexOf(a.href);
-      const bi = order.indexOf(b.href);
+      const aKey = a.href || a.name;
+      const bKey = b.href || b.name;
+      const ai = order.indexOf(aKey);
+      const bi = order.indexOf(bKey);
       return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
     });
-  }, [settings?.navOrder]);
+  }, [settings?.navOrder, navigation]);
+
+  const flatNavForMobile = useMemo(() => {
+    const list: { name: string; href: string; icon: any }[] = [];
+    navigation.forEach(item => {
+      if (item.children) {
+        item.children.forEach((c: any) => list.push(c));
+      } else if (item.href) {
+        list.push(item);
+      }
+    });
+    return list;
+  }, [navigation]);
+
+  const mobilePrimaryNav = flatNavForMobile.slice(0, 4);
+  const mobileMoreNav = flatNavForMobile.slice(4);
+  const canAccessSettings = userProfile?.role === 'user' || hasPermission((p) => p.settings);
 
   const businessName = settings?.businessName || 'Papelaria Personalizada';
   const hasLogo = !!settings?.logo;
@@ -95,9 +173,189 @@ export function Layout() {
   const [aboutOpen, setAboutOpen] = useState(false);
 
   return (
-    <div className="min-h-screen bg-background overflow-x-hidden flex flex-col">
-      <header className="border-b bg-card">
-        <div className="container mx-auto px-4 py-3">
+    <div className="min-h-[100dvh] w-full max-w-full overflow-x-clip bg-transparent flex flex-col">
+      <aside className={cn(
+        'hidden md:flex fixed inset-y-0 left-0 z-40 flex-col border-r border-white/40 bg-sidebar/70 py-4 shadow-[0_8px_32px_rgb(123_84_85_/_8%)] backdrop-blur-2xl transition-[width] duration-300',
+        sidebarCollapsed ? 'w-20' : 'w-72',
+      )}>
+        <div className={cn('mb-4 flex items-center px-5', sidebarCollapsed ? 'justify-center' : 'gap-3')}>
+          {hasLogo ? (
+            <img src={settings.logo} alt={businessName} className={cn('h-10 w-10 shrink-0 rounded-full border border-white/40 object-contain shadow-sm', sidebarCollapsed && 'h-9 w-9')} />
+          ) : (
+            <div className={cn('flex size-10 shrink-0 items-center justify-center rounded-full border border-white/40 bg-primary text-primary-foreground shadow-sm', sidebarCollapsed && 'size-9')}>
+              <Package2 className="size-5" />
+            </div>
+          )}
+          <div className={cn('min-w-0 overflow-hidden transition-opacity duration-200', sidebarCollapsed ? 'w-0 opacity-0' : 'opacity-100')}>
+            <h2 className="truncate text-base font-bold tracking-tight text-primary leading-tight">{businessName}</h2>
+            <p className="truncate text-xs text-muted-foreground">{settings?.businessTagline || 'Sistema de Gestão'}</p>
+          </div>
+        </div>
+        <nav className="flex flex-1 flex-col gap-0.5 overflow-y-auto pr-1 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+          {orderedNav.map((item) => {
+            // Caso 1: Item com submenu (Lojinha Online)
+            if (item.children && item.children.length > 0) {
+              const isChildActive = item.children.some((c: any) => location.pathname === c.href);
+
+              if (sidebarCollapsed) {
+                return (
+                  <DropdownMenu key={item.name}>
+                    <DropdownMenuTrigger asChild>
+                      <button
+                        type="button"
+                        title={item.name}
+                        className={cn(
+                          'flex items-center justify-center border-l-4 py-2.5 text-sm font-medium transition-colors w-full cursor-pointer',
+                          isChildActive
+                            ? 'border-primary bg-primary/10 text-primary'
+                            : 'border-transparent text-muted-foreground hover:border-primary/30 hover:bg-primary/5 hover:text-foreground'
+                        )}
+                      >
+                        <item.icon className="size-5 shrink-0" />
+                      </button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent side="right" align="start" className="w-48 ml-2">
+                      <DropdownMenuLabel className="text-xs text-muted-foreground font-bold uppercase tracking-wider">
+                        {item.name}
+                      </DropdownMenuLabel>
+                      <DropdownMenuSeparator />
+                      {item.children.map((child: any) => {
+                        const isSubActive = location.pathname === child.href;
+                        return (
+                          <DropdownMenuItem key={child.href} asChild>
+                            <Link
+                              to={child.href}
+                              className={cn(
+                                'flex items-center gap-2 cursor-pointer text-xs',
+                                isSubActive && 'font-bold text-primary bg-primary/10'
+                              )}
+                            >
+                              <child.icon className="size-4" />
+                              <span>{child.name}</span>
+                            </Link>
+                          </DropdownMenuItem>
+                        );
+                      })}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                );
+              }
+
+              return (
+                <div key={item.name} className="flex flex-col">
+                  <button
+                    type="button"
+                    onClick={() => setStoreSubmenuOpen(prev => !prev)}
+                    className={cn(
+                      'flex items-center justify-between border-l-4 px-5 py-2 text-xs sm:text-sm font-medium transition-colors cursor-pointer w-full text-left',
+                      isChildActive
+                        ? 'border-primary/60 text-primary font-semibold'
+                        : 'border-transparent text-muted-foreground hover:border-primary/30 hover:bg-primary/5 hover:text-foreground'
+                    )}
+                  >
+                    <div className="flex items-center gap-3.5 min-w-0">
+                      <item.icon className="size-5 shrink-0" />
+                      <span className="truncate">{item.name}</span>
+                    </div>
+                    <ChevronDown
+                      size={14}
+                      className={cn('transition-transform duration-200 shrink-0 text-muted-foreground', storeSubmenuOpen ? 'rotate-180 text-primary' : '')}
+                    />
+                  </button>
+
+                  {storeSubmenuOpen && (
+                    <div className="flex flex-col pl-9 pr-3 space-y-0.5 py-0.5">
+                      {item.children.map((child: any) => {
+                        const isSubActive = location.pathname === child.href;
+                        return (
+                          <Link
+                            key={child.href}
+                            to={child.href}
+                            className={cn(
+                              'flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all',
+                              isSubActive
+                                ? 'bg-primary text-primary-foreground font-bold shadow-xs'
+                                : 'text-muted-foreground hover:bg-primary/10 hover:text-foreground'
+                            )}
+                          >
+                            <child.icon className="size-3.5 shrink-0" />
+                            <span className="truncate">{child.name}</span>
+                          </Link>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
+            }
+
+            // Caso 2: Item normal de navegação
+            const isActive = location.pathname === item.href;
+            return (
+              <Link
+                key={item.href}
+                to={item.href}
+                title={sidebarCollapsed ? item.name : undefined}
+                className={cn(
+                  'flex items-center border-l-4 px-5 py-2 text-xs sm:text-sm font-medium transition-colors',
+                  sidebarCollapsed ? 'justify-center' : 'gap-3.5',
+                  isActive
+                    ? 'border-primary bg-primary/10 text-primary'
+                    : 'border-transparent text-muted-foreground hover:border-primary/30 hover:bg-primary/5 hover:text-foreground',
+                )}
+              >
+                <item.icon className="size-5 shrink-0" />
+                <span className={cn('truncate transition-opacity duration-200', sidebarCollapsed ? 'hidden' : 'inline')}>{item.name}</span>
+              </Link>
+            );
+          })}
+        </nav>
+        {canAccessSettings && <Link
+          to="/configuracoes"
+          title={sidebarCollapsed ? 'Configurações' : undefined}
+          className={cn(
+            'mx-4 flex items-center rounded-lg px-3 py-1.5 text-xs sm:text-sm font-medium transition-colors',
+            location.pathname === '/configuracoes'
+              ? 'bg-primary/10 text-primary font-semibold'
+              : 'text-muted-foreground hover:bg-primary/5 hover:text-foreground',
+            sidebarCollapsed ? 'justify-center' : 'gap-3.5',
+          )}
+        >
+          <SettingsIcon className="size-4.5 shrink-0" />
+          <span className={sidebarCollapsed ? 'hidden' : 'inline'}>Configurações</span>
+        </Link>}
+        <Link
+          to="/ajuda"
+          title={sidebarCollapsed ? 'Central de Ajuda' : undefined}
+          className={cn(
+            'mx-4 flex items-center rounded-lg px-3 py-1.5 text-xs sm:text-sm font-medium transition-colors',
+            location.pathname === '/ajuda'
+              ? 'bg-primary/10 text-primary font-semibold'
+              : 'text-muted-foreground hover:bg-primary/5 hover:text-foreground',
+            sidebarCollapsed ? 'justify-center' : 'gap-3.5',
+          )}
+        >
+          <HelpCircle className="size-4.5 shrink-0" />
+          <span className={sidebarCollapsed ? 'hidden' : 'inline'}>Central de Ajuda</span>
+        </Link>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          onClick={toggleSidebar}
+          title={sidebarCollapsed ? 'Expandir menu' : 'Recolher menu'}
+          aria-label={sidebarCollapsed ? 'Expandir menu' : 'Recolher menu'}
+          className="mx-auto mt-1 text-muted-foreground hover:text-primary"
+        >
+          {sidebarCollapsed ? <PanelLeftOpen className="size-5" /> : <PanelLeftClose className="size-5" />}
+        </Button>
+      </aside>
+
+      <header className={cn(
+        'min-w-0 border-b border-white/40 bg-card/85 backdrop-blur-2xl transition-[margin,width] duration-300',
+        sidebarCollapsed ? 'md:ml-20 md:w-[calc(100%-5rem)]' : 'md:ml-72 md:w-[calc(100%-18rem)]',
+      )}>
+        <div className="w-full px-4 py-3">
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-2 min-w-0">
               {hasLogo ? (
@@ -150,9 +408,31 @@ export function Layout() {
               </div>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5 sm:gap-2">
+              <a
+                href="/catalogo"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium border border-primary/20 text-primary bg-primary/5 hover:bg-primary/10 transition-colors"
+                title="Abrir Catálogo Online público em nova aba"
+              >
+                <Globe className="size-3.5" />
+                <span>Catálogo</span>
+                <ExternalLink className="size-3 opacity-60" />
+              </a>
+              <AdminTeamFilter variant="header" />
               <NotificationBell />
               <ThemeToggle />
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => navigate('/ajuda')}
+                className="relative size-9 rounded-full text-muted-foreground hover:text-foreground"
+                title="Central de Ajuda & Guia de Uso"
+                aria-label="Central de Ajuda"
+              >
+                <HelpCircle className="size-4" />
+              </Button>
               <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" className="relative size-10 rounded-full">
@@ -172,9 +452,29 @@ export function Layout() {
                   </div>
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={() => navigate('/configuracoes')} className="cursor-pointer">
+                <DropdownMenuItem asChild>
+                  <a
+                    href="/catalogo"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="cursor-pointer flex items-center"
+                  >
+                    <Globe className="size-4 mr-2" />
+                    Ver Catálogo Online
+                    <ExternalLink className="size-3 ml-auto opacity-50" />
+                  </a>
+                </DropdownMenuItem>
+                {canAccessSettings && <DropdownMenuItem onClick={() => navigate('/personalizar-lojinha')} className="cursor-pointer">
+                  <Store className="size-4 mr-2" />
+                  Personalizar Lojinha
+                </DropdownMenuItem>}
+                {canAccessSettings && <DropdownMenuItem onClick={() => navigate('/configuracoes')} className="cursor-pointer">
                   <SettingsIcon className="size-4 mr-2" />
                   Configurações
+                </DropdownMenuItem>}
+                <DropdownMenuItem onClick={() => navigate('/ajuda')} className="cursor-pointer">
+                  <HelpCircle className="size-4 mr-2" />
+                  Central de Ajuda
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => setAboutOpen(true)} className="cursor-pointer">
                   <Info className="size-4 mr-2" />
@@ -191,32 +491,10 @@ export function Layout() {
         </div>
       </header>
 
-      <nav className="border-b bg-card sticky top-0 z-10 hidden sm:block">
-        <div className="container mx-auto px-2 sm:px-4">
-          <div className="flex overflow-x-auto scrollbar-none">
-            {orderedNav.map((item) => {
-              const isActive = location.pathname === item.href;
-              return (
-                <Link
-                  key={item.href}
-                  to={item.href}
-                  className={cn(
-                    'flex items-center gap-2 px-3 sm:px-4 py-3 text-sm font-medium border-b-2 transition-colors',
-                    isActive
-                      ? 'border-primary text-primary'
-                      : 'border-transparent text-muted-foreground hover:text-foreground hover:border-muted-foreground/30'
-                  )}
-                >
-                  <item.icon className="size-4 flex-shrink-0" />
-                  <span className="hidden sm:inline">{item.name}</span>
-                </Link>
-              );
-            })}
-          </div>
-        </div>
-      </nav>
-
-      <main className="container mx-auto px-3 sm:px-4 py-4 sm:py-8 flex-1 pb-24 sm:pb-8">
+      <main className={cn(
+        'min-w-0 w-full flex-1 px-3 py-4 pb-24 transition-[margin,width] duration-300 sm:px-4 sm:py-8 sm:pb-8',
+        sidebarCollapsed ? 'md:ml-20 md:w-[calc(100%-5rem)]' : 'md:ml-72 md:w-[calc(100%-18rem)]',
+      )}>
         <Outlet />
       </main>
 
@@ -280,7 +558,7 @@ export function Layout() {
                 )}
                 {settings?.whatsappPhone && (
                   <a
-                    href={`https://wa.me/${settings.whatsappPhone.replace(/\D/g, '')}`}
+                    href={`https://wa.me/${normalizePhoneForWhatsApp(settings.whatsappPhone)}`}
                     target="_blank"
                     rel="noopener noreferrer"
                     title="WhatsApp"
@@ -371,8 +649,8 @@ export function Layout() {
       </footer>
 
       {/* Navegação inferior — somente mobile */}
-      <nav className="sm:hidden fixed bottom-0 inset-x-0 z-50 bg-card border-t flex">
-        {orderedNav.map((item) => {
+      <nav className="fixed inset-x-0 bottom-0 z-50 flex border-t border-white/40 bg-card/90 pb-[env(safe-area-inset-bottom)] backdrop-blur-2xl sm:hidden">
+        {mobilePrimaryNav.map((item) => {
           const isActive = location.pathname === item.href;
           return (
             <Link
@@ -390,6 +668,44 @@ export function Layout() {
             </Link>
           );
         })}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              aria-label="Mais opções"
+              className={cn(
+                'flex min-w-0 flex-1 flex-col items-center justify-center gap-0.5 py-2 text-[10px] font-medium text-muted-foreground transition-colors hover:text-foreground',
+                mobileMoreNav.some((item) => location.pathname === item.href) && 'text-primary',
+              )}
+            >
+              <MoreHorizontal className="size-5 shrink-0" />
+              <span className="truncate px-0.5 leading-tight">Mais</span>
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" side="top" sideOffset={8} className="mb-2 w-52">
+            {mobileMoreNav.map((item) => (
+              <DropdownMenuItem key={item.href} asChild>
+                <Link to={item.href} className="flex cursor-pointer items-center gap-2">
+                  <item.icon className="size-4" />
+                  {item.name}
+                </Link>
+              </DropdownMenuItem>
+            ))}
+            <DropdownMenuSeparator />
+            <DropdownMenuItem asChild>
+              <Link to="/ajuda" className="flex cursor-pointer items-center gap-2">
+                <HelpCircle className="size-4" />
+                Central de Ajuda
+              </Link>
+            </DropdownMenuItem>
+            {canAccessSettings && <DropdownMenuItem asChild>
+              <Link to="/configuracoes" className="flex cursor-pointer items-center gap-2">
+                <SettingsIcon className="size-4" />
+                Configurações
+              </Link>
+            </DropdownMenuItem>}
+          </DropdownMenuContent>
+        </DropdownMenu>
       </nav>
     </div>
   );

@@ -11,12 +11,12 @@ interface ProtectedRouteProps {
 export function ProtectedRoute({ children, adminOnly = false }: ProtectedRouteProps) {
   const { isAuthenticated, loading, isAdmin, userProfile } = useAuth();
 
-  if (loading) {
+  if (loading || (isAuthenticated && !userProfile)) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
           <Loader2 className="size-12 animate-spin text-primary mx-auto mb-4" />
-          <p className="text-muted-foreground">Carregando...</p>
+          <p className="text-muted-foreground">Carregando permissões...</p>
         </div>
       </div>
     );
@@ -32,7 +32,7 @@ export function ProtectedRoute({ children, adminOnly = false }: ProtectedRoutePr
   }
 
   if (adminOnly && !isAdmin) {
-    return <Navigate to="/" replace />;
+    return <Navigate to="/dashboard" replace />;
   }
 
   return <>{children}</>;

@@ -5,8 +5,12 @@
  */
 
 import { initializeApp } from 'firebase/app';
-import { getAuth } from 'firebase/auth';
-import { getFirestore, enableIndexedDbPersistence } from 'firebase/firestore';
+import { browserLocalPersistence, getAuth, setPersistence } from 'firebase/auth';
+import {
+  initializeFirestore,
+  persistentLocalCache,
+  persistentMultipleTabManager,
+} from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 import { getFunctions } from 'firebase/functions';
 import { getAnalytics, isSupported, Analytics } from 'firebase/analytics';
@@ -25,9 +29,19 @@ const firebaseConfig = {
 // Inicializar Firebase
 const app = initializeApp(firebaseConfig);
 
+// Inicializar Firestore com cache persistente multi-aba moderno
+export const db = initializeFirestore(app, {
+  localCache: persistentLocalCache({
+    tabManager: persistentMultipleTabManager(),
+  }),
+  ignoreUndefinedProperties: true,
+});
+
 // Serviços exportados
 export const auth = getAuth(app);
-export const db = getFirestore(app);
+setPersistence(auth, browserLocalPersistence).catch(error => {
+  console.warn('[Firebase] Não foi possível ativar persistência local:', error);
+});
 export const storage = getStorage(app);
 export const functions = getFunctions(app);
 
@@ -53,6 +67,20 @@ if (typeof window !== 'undefined') {
       console.log('[Firebase] Analytics inicializado');
     }
   });
+
+  // Expor referências apenas em desenvolvimento ou testes locais para diagnósticos e testes E2E
+  const isLocalOrDev = import.meta.env.DEV ||
+    ['localhost', '127.0.0.1', '0.0.0.0'].includes(window.location.hostname);
+
+  if (isLocalOrDev) {
+    (window as any).__firebaseConfig = {
+      projectId: firebaseConfig.projectId,
+      apiKey: firebaseConfig.apiKey,
+      storageBucket: firebaseConfig.storageBucket,
+    };
+    (window as any).__firebaseAuth = auth;
+    (window as any).__firebaseDb = db;
+  }
 }
 
 export { analytics };

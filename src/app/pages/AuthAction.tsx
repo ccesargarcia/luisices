@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
-import { confirmPasswordReset, verifyPasswordResetCode } from 'firebase/auth';
+import { applyActionCode, confirmPasswordReset, verifyPasswordResetCode } from 'firebase/auth';
 import { auth } from '../../lib/firebase';
+import { httpsCallable } from 'firebase/functions';
+import { functions } from '../../lib/firebase';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
@@ -19,6 +21,7 @@ export function AuthAction() {
 
   const mode = searchParams.get('mode');
   const oobCode = searchParams.get('oobCode');
+  const inviteToken = searchParams.get('invite');
 
   const [email, setEmail] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -29,21 +32,34 @@ export function AuthAction() {
   const [verifying, setVerifying] = useState(true);
 
   useEffect(() => {
-    console.log('[AuthAction] mode:', mode);
-    console.log('[AuthAction] oobCode:', oobCode);
-    console.log('[AuthAction] Full URL:', window.location.href);
-
-    if (!oobCode || mode !== 'resetPassword') {
+    if (!oobCode || (mode !== 'resetPassword' && mode !== 'verifyEmail')) {
       setError('Link inválido ou expirado.');
       setVerifying(false);
       return;
     }
 
+    if (mode === 'verifyEmail') {
+      applyActionCode(auth, oobCode)
+        .then(async () => {
+          await auth.currentUser?.reload();
+          await auth.currentUser?.getIdToken(true);
+          if (inviteToken) {
+            const completeInvitation = httpsCallable(functions, 'completeUserInvitation');
+            await completeInvitation({ token: inviteToken });
+          }
+          setSuccess(true);
+          setVerifying(false);
+        })
+        .catch((err) => {
+          setError(err.code === 'auth/expired-action-code' ? 'Este link expirou. Solicite um novo convite.' : 'Não foi possível confirmar este e-mail.');
+          setVerifying(false);
+        });
+      return;
+    }
+
     // Verificar se o código é válido e obter o email
-    console.log('[AuthAction] Verificando código...');
     verifyPasswordResetCode(auth, oobCode)
       .then((emailAddress) => {
-        console.log('[AuthAction] Código válido! Email:', emailAddress);
         setEmail(emailAddress);
         setVerifying(false);
       })
@@ -60,7 +76,7 @@ export function AuthAction() {
         }
         setVerifying(false);
       });
-  }, [oobCode, mode]);
+  }, [oobCode, mode, inviteToken]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

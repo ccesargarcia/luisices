@@ -1,10 +1,13 @@
 // @refresh reset
 import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
 import { User } from 'firebase/auth';
+import { doc, onSnapshot } from 'firebase/firestore';
+import { db } from '../lib/firebase';
 import { firebaseAuthService } from '../services/firebaseAuthService';
 import { firebaseUserService } from '../services/firebaseUserService';
-import { UserProfile } from '../app/types';
+import { UserProfile, ADMIN_PERMISSIONS, DEFAULT_USER_PERMISSIONS, EMPLOYEE_PERMISSIONS } from '../app/types';
 import { setUserAnalytics } from '../services/analyticsService';
+import { toast } from 'sonner';
 
 interface AuthContextType {
   user: User | null;
@@ -41,23 +44,105 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    const unsubscribe = firebaseAuthService.onAuthChange(async (u) => {
+    let profileUnsub: (() => void) | null = null;
+
+    const authUnsubscribe = firebaseAuthService.onAuthChange(async (u) => {
+      if (profileUnsub) {
+        profileUnsub();
+        profileUnsub = null;
+      }
+
       setLoading(true);
       setUser(u);
+
       if (u) {
-        try {
-          await loadProfile(u);
-        } catch (err) {
-          console.error('Erro ao carregar perfil do usuário:', err);
-          setUserProfile(null);
-        }
+        // Assina atualizações em tempo real do perfil do usuário diretamente
+        profileUnsub = onSnapshot(
+          doc(db, 'userProfiles', u.uid),
+          async (snap) => {
+            if (!snap.exists()) {
+              // Se o documento ainda não existir no primeiro acesso, inicializa via getUserProfile
+              try {
+                const created = await firebaseUserService.getUserProfile(
+                  u.uid,
+                  u.email ?? undefined,
+                  u.displayName ?? undefined,
+                );
+                if (created) {
+                  setUserProfile(created);
+                }
+              } catch (initErr) {
+                console.warn('Erro ao inicializar perfil de usuário:', initErr);
+              }
+              setLoading(false);
+              return;
+            }
+
+            const data = snap.data() as UserProfile;
+
+            // Se o administrador desativar a conta, efetua logout imediatamente
+            if (!data.active) {
+              toast.error('Sua conta foi desativada pelo administrador.');
+              firebaseAuthService.logout().catch(() => {});
+              setUserProfile(null);
+              setLoading(false);
+              return;
+            }
+
+            const fallbackPermissions = data.role === 'admin'
+              ? ADMIN_PERMISSIONS
+              : data.role === 'funcionario'
+                ? EMPLOYEE_PERMISSIONS
+                : DEFAULT_USER_PERMISSIONS;
+
+            // Para usuários padrão ('user'), usa DEFAULT_USER_PERMISSIONS como base e respeita permissões do Firestore
+            const permissions = data.role === 'admin'
+              ? ADMIN_PERMISSIONS
+              : data.role === 'user'
+                ? {
+                    ...DEFAULT_USER_PERMISSIONS,
+                    ...(data.permissions || {}),
+                    reports: data.permissions?.reports ?? DEFAULT_USER_PERMISSIONS.reports,
+                    exchanges: data.permissions?.exchanges ?? DEFAULT_USER_PERMISSIONS.exchanges,
+                    settings: data.permissions?.settings ?? DEFAULT_USER_PERMISSIONS.settings,
+                    store: data.permissions?.store ?? DEFAULT_USER_PERMISSIONS.store,
+                    orders: {
+                      ...DEFAULT_USER_PERMISSIONS.orders,
+                      ...(data.permissions?.orders || {}),
+                      delete: data.permissions?.orders?.delete ?? DEFAULT_USER_PERMISSIONS.orders.delete,
+                    },
+                  }
+                : {
+                    ...fallbackPermissions,
+                    ...(data.permissions || {}),
+                    store: data.permissions?.store ?? false,
+                  };
+
+            const profile: UserProfile = {
+              ...data,
+              permissions,
+            };
+
+            setUserProfile(profile);
+            setUserAnalytics(u.uid, profile.role);
+            setLoading(false);
+          },
+          (err) => {
+            console.error('Erro ao escutar perfil do usuário em tempo real:', err);
+            setLoading(false);
+          }
+        );
       } else {
         setUserProfile(null);
+        setLoading(false);
       }
-      setLoading(false);
     });
-    return () => unsubscribe();
-  }, [loadProfile]);
+
+    return () => {
+      if (profileUnsub) profileUnsub();
+      authUnsubscribe();
+    };
+  }, []);
 
   const login = async (email: string, password: string) => {
     const user = await firebaseAuthService.login(email, password);
@@ -92,17 +177,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const hasPermission = useCallback(
     (check: (p: UserProfile['permissions']) => boolean): boolean => {
       if (!userProfile || !userProfile.active) {
-        console.log('[hasPermission] Sem perfil ou usuário inativo:', { userProfile });
         return false;
       }
-      const result = check(userProfile.permissions);
-      console.log('[hasPermission] Verificação:', {
-        role: userProfile.role,
-        email: userProfile.email,
-        permissions: userProfile.permissions,
-        result
-      });
-      return result;
+      if (userProfile.role === 'admin') {
+        return true;
+      }
+      return check(userProfile.permissions);
     },
     [userProfile],
   );

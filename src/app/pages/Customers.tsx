@@ -38,40 +38,20 @@ import {
 } from 'lucide-react';
 import { firebaseStorageService } from '../../services/firebaseStorageService';
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-  DialogFooter,
-} from '../components/ui/dialog';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '../components/ui/alert-dialog';
-import { Label } from '../components/ui/label';
-import { Textarea } from '../components/ui/textarea';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
-import { firebaseCustomerService } from '../../services/firebaseCustomerService';
-import { firebaseOrderService } from '../../services/firebaseOrderService';
-import { firebaseGalleryService } from '../../services/firebaseGalleryService';
-import { useAuth } from '../../contexts/AuthContext';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
-import { Skeleton } from '../components/ui/skeleton';
-import { TagInput } from '../components/TagInput';
+  SingleCustomerDeleteDialog,
+  BulkCustomerDeleteDialog,
+} from '../components/customers/CustomerDeleteDialogs';
+import { CustomerStatsCards } from '../components/customers/CustomerStatsCards';
+import { useSalesLedger } from '../../hooks/useSalesLedger';
 import { toast } from 'sonner';
 
 const PAGE_SIZE = 12;
 
 export function Customers() {
   const { user, hasPermission } = useAuth();
+  const { allOrders } = useOrders();
+  const { allTimeStats } = useSalesLedger();
+
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -159,30 +139,26 @@ export function Customers() {
     return unsub;
   }, [user]);
 
-  // Filtrar clientes
-  const [openOrdersMap, setOpenOrdersMap] = useState<Record<string, number>>({});
+  // Mapa de pedidos em aberto e total de pedidos por cliente a partir de OrdersContext
+  const openOrdersMap = useMemo(() => {
+    const map: Record<string, number> = {};
+    allOrders.forEach((o) => {
+      if (o.customerId && o.status !== 'completed' && o.status !== 'cancelled') {
+        map[o.customerId] = (map[o.customerId] || 0) + 1;
+      }
+    });
+    return map;
+  }, [allOrders]);
 
-  // Atualiza o mapa de pedidos em aberto para todos os clientes
-  useEffect(() => {
-    let cancelled = false;
-    async function fetchOpenOrders() {
-      if (!customers.length) return;
-      const map: Record<string, number> = {};
-      await Promise.all(
-        customers.map(async (c) => {
-          try {
-            const count = await firebaseOrderService.getActiveOrdersByCustomer(c.id);
-            map[c.id] = count;
-          } catch {
-            map[c.id] = 0;
-          }
-        })
-      );
-      if (!cancelled) setOpenOrdersMap(map);
-    }
-    fetchOpenOrders();
-    return () => { cancelled = true; };
-  }, [customers]);
+  const totalOrdersMap = useMemo(() => {
+    const map: Record<string, number> = {};
+    allOrders.forEach((o) => {
+      if (o.customerId) {
+        map[o.customerId] = (map[o.customerId] || 0) + 1;
+      }
+    });
+    return map;
+  }, [allOrders]);
 
   const filteredCustomers = useMemo(() => {
     let list = customers;
@@ -207,15 +183,46 @@ export function Customers() {
     currentPage * PAGE_SIZE
   );
 
-  // Estatísticas
+  const allFilteredCustomersSelected =
+    filteredCustomers.length > 0 &&
+    filteredCustomers.every((customer) => selectedCustomerIds.includes(customer.id));
+
+  const toggleSelectAllFilteredCustomers = () => {
+    if (allFilteredCustomersSelected) {
+      setSelectedCustomerIds((prev) =>
+        prev.filter((id) => !filteredCustomers.some((customer) => customer.id === id)),
+      );
+      return;
+    }
+
+    setSelectedCustomerIds((prev) => {
+      const next = new Set(prev);
+      filteredCustomers.forEach((customer) => next.add(customer.id));
+      return [...next];
+    });
+  };
+
+  // Estatísticas monetárias e da carteira de clientes
   const stats = useMemo(() => {
     const total = customers.length;
-    const totalRevenue = customers.reduce((sum, c) => sum + (c.totalSpent || 0), 0);
-    const totalOrders = customers.reduce((sum, c) => sum + (c.totalOrders || 0), 0);
-    const averagePerCustomer = total > 0 ? totalRevenue / total : 0;
+    // Histórico de faturamento e ticket médio consolidados do ledger (preserva valores mesmo se clientes forem excluídos)
+    const ledgerRevenue = allTimeStats.totalAllTimeRevenue || allTimeStats.totalAllTimeAmount;
+    const ledgerOrders = allTimeStats.totalAllTimeCount;
+
+    const totalRevenue = ledgerRevenue > 0
+      ? ledgerRevenue
+      : customers.reduce((sum, c) => sum + (c.totalSpent || 0), 0);
+
+    const totalOrders = ledgerOrders > 0
+      ? ledgerOrders
+      : customers.reduce((sum, c) => sum + (c.totalOrders || 0), 0);
+
+    const averagePerCustomer = totalOrders > 0
+      ? totalRevenue / totalOrders
+      : (total > 0 ? totalRevenue / total : 0);
 
     return { total, totalRevenue, totalOrders, averagePerCustomer };
-  }, [customers]);
+  }, [customers, allTimeStats]);
 
   // Top clientes
   const topCustomers = useMemo(() => {

@@ -31,7 +31,7 @@ export const registerSchema = z.object({
     .toLowerCase(),
   password: z
     .string()
-    .min(6, 'A senha deve ter pelo menos 6 caracteres')
+    .min(8, 'A senha deve ter pelo menos 8 caracteres')
     .max(100, 'Senha muito longa'),
   confirmPassword: z.string(),
 }).refine((data) => data.password === data.confirmPassword, {

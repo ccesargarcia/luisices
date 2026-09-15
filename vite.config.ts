@@ -1,29 +1,10 @@
-
 import { defineConfig } from 'vite'
 import path from 'path'
 import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
-import { createHtmlPlugin } from 'vite-plugin-html'
 
-export default defineConfig(({ command, mode }) => {
-  // New Relic snippets
-  const newRelicDev = `<script type="text/javascript">
-;window.NREUM||(NREUM={});NREUM.init={distributed_tracing:{enabled:true},performance:{capture_measures:true},browser_consent_mode:{enabled:false},privacy:{cookies_enabled:true},ajax:{deny_list:[\"bam.nr-data.net\"],capture_payloads:'none'}};
-
-;NREUM.loader_config={accountID:\"512515\",trustKey:\"512515\",agentID:\"1589200633\",licenseKey:\"d0981b3d54\",applicationID:\"1589200633\"};
-;NREUM.info={beacon:\"bam.nr-data.net\",errorBeacon:\"bam.nr-data.net\",licenseKey:\"d0981b3d54\",applicationID:\"1589200633\",sa:1};
-;/*! For license information please see nr-loader-spa-1.310.1.min.js.LICENSE.txt */
-(...)</script>`;
-
-  const newRelicProd = `<script type="text/javascript">
-;window.NREUM||(NREUM={});NREUM.init={distributed_tracing:{enabled:true},performance:{capture_measures:true},browser_consent_mode:{enabled:false},privacy:{cookies_enabled:true},ajax:{deny_list:[\"bam.nr-data.net\"],capture_payloads:'none'}};
-
-;NREUM.loader_config={accountID:\"512515\",trustKey:\"512515\",agentID:\"1589200643\",licenseKey:\"d0981b3d54\",applicationID:\"1589200643\"};
-;NREUM.info={beacon:\"bam.nr-data.net\",errorBeacon:\"bam.nr-data.net\",licenseKey:\"d0981b3d54\",applicationID:\"1589200643\",sa:1};
-;/*! For license information please see nr-loader-spa-1.310.1.min.js.LICENSE.txt */
-(...)</script>`;
-
+export default defineConfig(() => {
   return {
     define: {
       __APP_VERSION__: JSON.stringify(process.env.npm_package_version),
@@ -31,22 +12,8 @@ export default defineConfig(({ command, mode }) => {
     plugins: [
       react(),
       tailwindcss(),
-      createHtmlPlugin({
-      inject: {
-        data: {
-          newrelic: mode === 'production' ? newRelicProd : newRelicDev,
-        },
-        tags: [
-          {
-            injectTo: 'head',
-            tag: 'raw',
-            children: mode === 'production' ? newRelicProd : newRelicDev,
-          },
-        ],
-      },
-    }),
     VitePWA({
-      registerType: 'autoUpdate',
+      selfDestroying: true,
       includeAssets: ['favicon.ico', 'icon-192.png', 'icon-512.png'],
       manifest: {
         name: 'Luisices - Papelaria Personalizada',
@@ -68,22 +35,6 @@ export default defineConfig(({ command, mode }) => {
           },
         ],
       },
-      workbox: {
-        globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2}'],
-        runtimeCaching: [
-          {
-            urlPattern: /^https:\/\/firebasestorage\.googleapis\.com\/.*/i,
-            handler: 'CacheFirst',
-            options: {
-              cacheName: 'firebase-images-cache',
-              expiration: {
-                maxEntries: 100,
-                maxAgeSeconds: 60 * 60 * 24 * 30, // 30 dias
-              },
-            },
-          },
-        ],
-      },
     }),
   ],
     resolve: {
@@ -102,6 +53,9 @@ export default defineConfig(({ command, mode }) => {
     // Copiar 404.html para dist/ durante o build
     publicDir: 'public',
     build: {
+      target: 'es2022',
+      cssCodeSplit: true,
+      minify: 'esbuild',
       rollupOptions: {
         input: {
           main: path.resolve(__dirname, 'index.html'),

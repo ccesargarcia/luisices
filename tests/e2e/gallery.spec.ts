@@ -1,24 +1,16 @@
 import { test, expect } from '@playwright/test';
+import { ensureAuthenticated } from './utils/auth.util';
 
 /**
  * Testes da Galeria de Artes
  */
 
-const TEST_USER = {
-  email: process.env.TEST_USER_EMAIL || 'teste@exemplo.com',
-  password: process.env.TEST_USER_PASSWORD || 'senha123',
-};
-
 test.describe('Galeria', () => {
   test('deve carregar galeria e interagir com elementos', async ({ page }) => {
     test.setTimeout(60000);
 
-    // Login
-    await page.goto('/');
-    await page.fill('input[type="email"]', TEST_USER.email);
-    await page.fill('input[type="password"]', TEST_USER.password);
-    await page.click('button[type="submit"]');
-    await page.waitForURL('**/dashboard', { timeout: 15000 });
+    // Autenticar
+    await ensureAuthenticated(page);
 
     // Navegar para galeria
     await page.goto('/galeria');

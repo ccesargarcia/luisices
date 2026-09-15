@@ -2,7 +2,7 @@
 @import './tailwind.css';
 @import './theme.css';
 
-/* Safe Area Support for Mobile */
+/* Safe Area Support for Mobile & PWA */
 @supports (padding: env(safe-area-inset-bottom)) {
   .pb-safe {
     padding-bottom: calc(1rem + env(safe-area-inset-bottom));
@@ -12,10 +12,27 @@
   }
 }
 
-/* Better scrolling on mobile */
+/* Smooth touch scrolling */
 body {
   -webkit-overflow-scrolling: touch;
-  overscroll-behavior-y: contain;
+}
+
+/* Remove tap highlight on mobile */
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* 
+ * iOS Safari Auto-Zoom Fix:
+ * On iOS, focusing any form input/select/textarea with font-size < 16px triggers an automatic zoom-in,
+ * breaking the layout. This rule guarantees at least 16px font size on screens <= 768px.
+ */
+@media screen and (max-width: 768px) {
+  input:not([type="checkbox"]):not([type="radio"]),
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
 }
 
 /* Login background image */
@@ -39,4 +56,13 @@ body {
       url('/images/login-bg-800.png') type('image/png') 1x
     );
   }
+}
+
+/* Ocultar barras de rolagem indesejadas mantendo navegação */
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
+.scrollbar-none {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
 }
