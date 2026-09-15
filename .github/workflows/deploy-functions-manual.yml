@@ -11,14 +11,6 @@ on:
         options:
           - dev
           - prod
-  push:
-    branches:
-      - develop
-      - main
-    paths:
-      - 'functions/**'
-      - 'firestore.rules'
-      - 'storage.rules'
 
 permissions:
   contents: read
