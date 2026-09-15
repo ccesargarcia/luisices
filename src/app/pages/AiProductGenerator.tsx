@@ -48,6 +48,7 @@ import {
   DollarSign,
   CheckCheck,
   CheckSquare,
+  Calendar,
 } from 'lucide-react';
 import {
   aiProductService,
@@ -1003,18 +1004,27 @@ export function AiProductGenerator() {
                   </div>
                 </div>
 
-                {/* Instruções Adicionais */}
-                <div className="space-y-1.5">
-                  <Label htmlFor="input-instructions" className="text-xs font-semibold">
-                    Instruções Especiais (Opcional)
-                  </Label>
+                {/* Briefing Livre & Especificações Personalizadas do Projeto (Campo Livre) */}
+                <div className="space-y-1.5 p-3 rounded-xl bg-muted/40 border border-primary/20">
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="input-instructions" className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                      <Sparkles className="size-3.5 text-primary" />
+                      Briefing Livre & Especificações do Pedido
+                    </Label>
+                    <Badge variant="outline" className="text-[9px] px-1.5 py-0 border-primary/40 text-primary font-semibold">
+                      Campo Livre
+                    </Badge>
+                  </div>
+                  <p className="text-[10px] text-muted-foreground leading-tight">
+                    Escreva livremente qualquer instrução ou detalhe específico: acabamentos nobres (lamicote, glitter), flores em camadas, visor shaker com acetato, laços de cetim, medidas ou restrições de montagem.
+                  </p>
                   <Textarea
                     id="input-instructions"
-                    placeholder="Ex: Quero detalhes em acetato transparente e flores vazadas no fundo..."
+                    placeholder="Ex: Quero um topo shaker com visor em acetato 20 micras, anel em EVA 2mm com micro-pérolas e lantejoulas douradas. Na base, quero 4 camadas de borboletas 3D vazadas em Colorplus Rosa Chá e o nome em Lamicote Ouro 250g..."
                     value={customInstructions}
                     onChange={(e) => setCustomInstructions(e.target.value)}
-                    rows={2}
-                    className="text-xs resize-none"
+                    rows={4}
+                    className="text-xs resize-y bg-background font-sans leading-relaxed"
                   />
                 </div>
 
@@ -1167,27 +1177,78 @@ export function AiProductGenerator() {
 
           {blueprint && (
             <div className="space-y-6">
-              {/* Card Principal do Produto com Ações Rápidas */}
-              <Card className="shadow-sm border-primary/30">
+              {/* Card Principal do Produto com Imagem & Ações Rápidas */}
+              <Card className="shadow-sm border-primary/30 overflow-hidden">
                 <CardHeader className="pb-4">
-                  <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2">
-                        <Badge variant="secondary" className="text-xs">
+                  <div className="flex flex-col lg:flex-row items-start justify-between gap-5">
+                    {/* Imagem de Referência / Render do Modelo se presente */}
+                    {blueprint.generatedImageUrl && (
+                      <div className="relative group shrink-0 w-full lg:w-48 aspect-square rounded-2xl overflow-hidden border-2 border-primary/25 bg-muted/40 shadow-sm flex items-center justify-center">
+                        <img
+                          src={blueprint.generatedImageUrl}
+                          alt={blueprint.productTitle}
+                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                        />
+                        <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent flex flex-col justify-between p-2.5">
+                          <Badge className="self-start text-[9px] bg-black/60 backdrop-blur-xs text-white border-0">
+                            📸 Foto / Modelo
+                          </Badge>
+                          <a
+                            href={blueprint.generatedImageUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="self-end p-1.5 rounded-lg bg-black/60 hover:bg-black/80 text-white transition-colors"
+                            title="Ver imagem original em tamanho real"
+                          >
+                            <ExternalLink className="size-3.5" />
+                          </a>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Informações Textuais do Projeto */}
+                    <div className="space-y-2 flex-1 min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Badge variant="secondary" className="text-xs font-semibold">
                           {blueprint.category}
                         </Badge>
-                        <Badge className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs">
+                        <Badge variant="outline" className="text-xs font-semibold text-primary border-primary/30">
+                          {blueprint.theme}
+                        </Badge>
+                        <Badge className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold">
                           Preço Sugerido: {formatCurrency(blueprint.recommendedPrice)}
                         </Badge>
+                        {blueprint.targetAgeAndName && (
+                          <Badge variant="outline" className="text-xs text-muted-foreground font-normal">
+                            🎂 {blueprint.targetAgeAndName}
+                          </Badge>
+                        )}
                       </div>
-                      <CardTitle className="text-xl font-bold">{blueprint.productTitle}</CardTitle>
-                      <CardDescription className="text-xs leading-relaxed pt-1">
+
+                      <CardTitle className="text-xl font-bold leading-tight text-foreground">
+                        {blueprint.productTitle}
+                      </CardTitle>
+
+                      <CardDescription className="text-xs leading-relaxed text-muted-foreground">
                         {blueprint.description}
                       </CardDescription>
+
+                      {/* Chips Rápidos de Produção */}
+                      <div className="flex flex-wrap gap-2 pt-1 text-[11px] text-muted-foreground">
+                        <span className="flex items-center gap-1 bg-muted/50 px-2.5 py-1 rounded-lg border">
+                          <Layers className="size-3.5 text-primary" /> {blueprint.layers.length} Camadas 3D
+                        </span>
+                        <span className="flex items-center gap-1 bg-muted/50 px-2.5 py-1 rounded-lg border">
+                          <Clock className="size-3.5 text-muted-foreground" /> ~{blueprint.estimatedAssemblyMinutes || 25}min montagem
+                        </span>
+                        <span className="flex items-center gap-1 bg-muted/50 px-2.5 py-1 rounded-lg border">
+                          <Calendar className="size-3.5 text-muted-foreground" /> {blueprint.suggestedLeadTimeDays || 5} dias úteis
+                        </span>
+                      </div>
                     </div>
 
                     {/* Botões de Ação */}
-                    <div className="flex flex-wrap sm:flex-col gap-2 shrink-0">
+                    <div className="flex flex-wrap sm:flex-col gap-2 shrink-0 w-full sm:w-44">
                       <Button
                         size="sm"
                         onClick={handleSaveToAcervo}
@@ -1226,7 +1287,7 @@ export function AiProductGenerator() {
                         variant="outline"
                         size="sm"
                         onClick={handleShareWhatsApp}
-                        className="text-xs gap-1.5 w-full text-emerald-700 border-emerald-300 hover:bg-emerald-50 dark:text-emerald-300"
+                        className="text-xs gap-1.5 w-full text-emerald-700 border-emerald-300 hover:bg-emerald-50 dark:text-emerald-300 font-medium"
                       >
                         <Send className="size-3.5" />
                         WhatsApp
@@ -2794,18 +2855,27 @@ export function AiProductGenerator() {
               </div>
             </div>
 
-            {/* Observações Opcionais da Artesã */}
-            <div className="space-y-1.5">
-              <Label htmlFor="reverse-user-notes" className="text-xs font-semibold">
-                Observações / Personalização Específica (Opcional)
-              </Label>
+            {/* Briefing Livre & Observações do Pedido da Imagem */}
+            <div className="space-y-1.5 p-3 rounded-xl bg-muted/40 border border-primary/20">
+              <div className="flex items-center justify-between">
+                <Label htmlFor="reverse-user-notes" className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                  <Sparkles className="size-3.5 text-primary" />
+                  Briefing Livre & Observações da Imagem
+                </Label>
+                <Badge variant="outline" className="text-[9px] px-1.5 py-0 border-primary/40 text-primary font-semibold">
+                  Campo Livre
+                </Badge>
+              </div>
+              <p className="text-[10px] text-muted-foreground leading-tight">
+                Escreva qualquer instrução adicional: o nome/idade exatos para colocar, alterações de cores, troca de tema mantendo a estrutura, ou acabamentos específicos.
+              </p>
               <Textarea
                 id="reverse-user-notes"
-                placeholder="Ex: Quero que monte como Topo Shaker com o nome 'Arthur 2 anos', usando acetato e lamicote dourado..."
+                placeholder="Ex: Quero manter esta mesma estrutura de camadas da foto, mas mudar para o tema Safari Rosa no nome 'Maitê - 1 ano', usando acetato no shaker e lamicote rose gold..."
                 value={reverseUserNotes}
                 onChange={(e) => setReverseUserNotes(e.target.value)}
-                rows={2}
-                className="text-xs resize-none"
+                rows={3}
+                className="text-xs resize-y bg-background font-sans leading-relaxed"
               />
             </div>
 
