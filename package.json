@@ -31,6 +31,7 @@
     "create:customers": "node scripts/create-random-customers.mjs",
     "optimize:images": "node scripts/optimize-login-bg.mjs",
     "test:security": "playwright test tests/e2e/security.spec.ts",
+    "test:store": "playwright test tests/e2e/store.spec.ts",
     "test:critical": "playwright test tests/e2e/critical-flows.spec.ts tests/e2e/permissions.spec.ts tests/e2e/security.spec.ts"
   },
   "dependencies": {
