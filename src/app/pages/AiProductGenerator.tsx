@@ -147,6 +147,9 @@ export function AiProductGenerator() {
   const [reverseImagePreview, setReverseImagePreview] = useState('');
   const [reverseUserNotes, setReverseUserNotes] = useState('');
   const [analyzingImage, setAnalyzingImage] = useState(false);
+  const [isDraggingImage, setIsDraggingImage] = useState(false);
+  const reverseFileInputRef = React.useRef<HTMLInputElement>(null);
+  const acervoFileInputRef = React.useRef<HTMLInputElement>(null);
 
   // Salvar no catálogo
   const [savingProduct, setSavingProduct] = useState(false);
@@ -296,13 +299,54 @@ export function AiProductGenerator() {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    if (!file.type.startsWith('image/')) {
+      toast.error('Por favor, selecione um arquivo de imagem válido (PNG, JPG, WEBP).');
+      return;
+    }
+
     const reader = new FileReader();
     reader.onload = () => {
       const base64 = reader.result as string;
       setReverseImagePreview(base64);
-      toast.success('Imagem carregada! Clique em "Analisar com IA" para gerar as camadas e matriz de corte.');
+      toast.success('Imagem carregada! Clique em "Inspecionar e Criar Matriz de Corte".');
+    };
+    reader.onerror = () => {
+      toast.error('Erro ao ler o arquivo de imagem.');
     };
     reader.readAsDataURL(file);
+    // Reset para permitir selecionar o mesmo arquivo novamente
+    e.target.value = '';
+  };
+
+  // Drag and Drop para Engenharia Reversa
+  const handleReverseImageDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDraggingImage(false);
+    const file = e.dataTransfer.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      toast.error('Por favor, solte um arquivo de imagem válido.');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const base64 = reader.result as string;
+      setReverseImagePreview(base64);
+      toast.success('Imagem solta com sucesso!');
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleReverseImageDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDraggingImage(true);
+  };
+
+  const handleReverseImageDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDraggingImage(false);
   };
 
   // Executar Engenharia Reversa Visual Multimodal
@@ -2028,16 +2072,23 @@ export function AiProductGenerator() {
                         onChange={(e) => setNewAcervoImageUrl(e.target.value)}
                         className="h-8 text-xs bg-background"
                       />
-                      <label className="inline-flex items-center justify-center px-2.5 h-8 rounded-md border bg-background text-xs font-medium cursor-pointer hover:bg-muted shrink-0 shadow-xs">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => acervoFileInputRef.current?.click()}
+                        className="h-8 px-2.5 text-xs font-medium shrink-0 shadow-xs"
+                      >
                         <Camera className="size-3.5 mr-1 text-primary" />
                         Arquivo
-                        <input
-                          type="file"
-                          accept="image/*"
-                          onChange={handleImageFileUpload}
-                          className="hidden"
-                        />
-                      </label>
+                      </Button>
+                      <input
+                        ref={acervoFileInputRef}
+                        type="file"
+                        accept="image/*"
+                        onChange={handleImageFileUpload}
+                        className="hidden"
+                      />
                     </div>
                   </div>
                 </div>
@@ -2333,48 +2384,72 @@ export function AiProductGenerator() {
               <Label className="text-xs font-semibold">Foto do Produto ou Imagem Gerada *</Label>
 
               {!reverseImagePreview ? (
-                <div className="border-2 border-dashed border-purple-300 dark:border-purple-800 rounded-xl p-6 text-center bg-purple-50/40 dark:bg-purple-950/20 hover:bg-purple-50/70 transition-colors">
-                  <Camera className="size-10 mx-auto text-purple-600 mb-2" />
-                  <p className="text-xs font-bold text-foreground">Arraste ou clique para selecionar a imagem</p>
-                  <p className="text-[11px] text-muted-foreground mt-0.5">PNG, JPG, WEBP (Mockup de IA ou Foto Real do Ateliê)</p>
+                <div>
+                  <div
+                    onDragOver={handleReverseImageDragOver}
+                    onDragLeave={handleReverseImageDragLeave}
+                    onDrop={handleReverseImageDrop}
+                    onClick={(e) => {
+                      if ((e.target as HTMLElement).closest('button')) return;
+                      reverseFileInputRef.current?.click();
+                    }}
+                    className={`border-2 border-dashed rounded-xl p-6 text-center transition-all cursor-pointer ${
+                      isDraggingImage
+                        ? 'border-purple-600 bg-purple-100/60 dark:bg-purple-900/40 ring-2 ring-purple-400 scale-[1.01]'
+                        : 'border-purple-300 dark:border-purple-800 bg-purple-50/40 dark:bg-purple-950/20 hover:bg-purple-50/70 hover:border-purple-400'
+                    }`}
+                  >
+                    <Camera className="size-10 mx-auto text-purple-600 mb-2" />
+                    <p className="text-xs font-bold text-foreground">
+                      {isDraggingImage ? 'Solte a imagem aqui!' : 'Arraste ou clique para selecionar a imagem'}
+                    </p>
+                    <p className="text-[11px] text-muted-foreground mt-0.5">
+                      PNG, JPG, WEBP (Mockup gerado por IA ou Foto Real do Ateliê)
+                    </p>
 
-                  <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
-                    <label className="cursor-pointer">
+                    <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
                       <Button
                         type="button"
                         size="sm"
                         variant="default"
-                        className="text-xs bg-purple-600 hover:bg-purple-700 text-white font-semibold pointer-events-none"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          reverseFileInputRef.current?.click();
+                        }}
+                        className="text-xs bg-purple-600 hover:bg-purple-700 text-white font-semibold shadow-xs"
                       >
                         <Plus className="size-3.5 mr-1" />
                         Escolher Arquivo do Computador
                       </Button>
-                      <input
-                        type="file"
-                        accept="image/*"
-                        onChange={handleReverseImageFileUpload}
-                        className="hidden"
-                      />
-                    </label>
 
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        if (acervoList.length > 0) {
-                          setReverseImagePreview(acervoList[0].imageUrl);
-                          toast.info(`Imagem "${acervoList[0].title}" carregada do Acervo!`);
-                        } else {
-                          toast.warning('Nenhum item no acervo.');
-                        }
-                      }}
-                      className="text-xs border-purple-300 text-purple-700 dark:text-purple-300 hover:bg-purple-50"
-                    >
-                      <ImageIcon className="size-3.5 mr-1" />
-                      Usar do Acervo
-                    </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (acervoList.length > 0) {
+                            setReverseImagePreview(acervoList[0].imageUrl);
+                            toast.info(`Imagem "${acervoList[0].title}" carregada do Acervo!`);
+                          } else {
+                            toast.warning('Nenhum item no acervo.');
+                          }
+                        }}
+                        className="text-xs border-purple-300 text-purple-700 dark:text-purple-300 hover:bg-purple-50"
+                      >
+                        <ImageIcon className="size-3.5 mr-1" />
+                        Usar do Acervo
+                      </Button>
+                    </div>
                   </div>
+
+                  <input
+                    ref={reverseFileInputRef}
+                    type="file"
+                    accept="image/*"
+                    onChange={handleReverseImageFileUpload}
+                    className="hidden"
+                  />
                 </div>
               ) : (
                 <div className="space-y-2">
@@ -2385,23 +2460,16 @@ export function AiProductGenerator() {
                       className="w-full h-full object-contain bg-black/5"
                     />
                     <div className="absolute top-2 right-2 flex gap-1.5">
-                      <label className="cursor-pointer">
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="secondary"
-                          className="text-[11px] h-7 bg-background/90 backdrop-blur-xs shadow-xs pointer-events-none"
-                        >
-                          <RefreshCw className="size-3 mr-1" />
-                          Trocar
-                        </Button>
-                        <input
-                          type="file"
-                          accept="image/*"
-                          onChange={handleReverseImageFileUpload}
-                          className="hidden"
-                        />
-                      </label>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => reverseFileInputRef.current?.click()}
+                        className="text-[11px] h-7 bg-background/90 backdrop-blur-xs shadow-xs"
+                      >
+                        <RefreshCw className="size-3 mr-1" />
+                        Trocar
+                      </Button>
                       <Button
                         type="button"
                         size="sm"
@@ -2413,6 +2481,14 @@ export function AiProductGenerator() {
                       </Button>
                     </div>
                   </div>
+
+                  <input
+                    ref={reverseFileInputRef}
+                    type="file"
+                    accept="image/*"
+                    onChange={handleReverseImageFileUpload}
+                    className="hidden"
+                  />
                 </div>
               )}
             </div>
