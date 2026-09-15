@@ -82,6 +82,12 @@ export default defineConfig(() => {
               case 'dompurify':
                 return 'vendor-security';
 
+              // Sentry Observability
+              case '@sentry/react':
+              case '@sentry/core':
+              case '@sentry/browser':
+                return 'vendor-sentry';
+
               default:
                 return;
             }
