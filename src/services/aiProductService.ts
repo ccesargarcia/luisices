@@ -30,6 +30,15 @@ export interface PaperShoppingItem {
   sheetsNeeded: number;
 }
 
+export interface RealisticPrompts {
+  ideogramPrompt: string;
+  midjourneyPrompt: string;
+  dallePrompt: string;
+  fluxPrompt: string;
+  macroLayersPrompt: string;
+  partyTableScenePrompt: string;
+}
+
 export interface AiProductBlueprint {
   productTitle: string;
   category: string;
@@ -45,6 +54,7 @@ export interface AiProductBlueprint {
   silhouetteTips: string;
   suggestedImagePrompt: string;
   generatedImageUrl?: string;
+  realisticPrompts: RealisticPrompts;
 }
 
 export interface GenerateProductParams {
@@ -59,23 +69,24 @@ export interface GenerateProductParams {
 }
 
 const SYSTEM_PROMPT = `
-Você é o Engenheiro Chefe de Produção e Designer Mestre em Papelaria Personalizada para Ateliês Artesanais de Alto Padrão no Brasil.
-Seu objetivo é projetar produtos de papelaria (Topos de Bolo 3D, Topos Shaker, Caixas Milk, Caixas Pirâmide, Letras 3D, etc.) com FOCO ABSOLUTO EM VIABILIDADE FÍSICA E CORTE REAL EM PLOTTER (especialmente Silhouette Portrait 3, Cameo 4 e Cricut).
+Você é o Engenheiro Chefe de Produção e Designer Mestre em Papelaria Personalizada para Ateliês Artesanais de Alto Padrão no Brasil, além de Especialista Sênior em Engenharia de Prompts para IAs Generativas de Imagem (Midjourney v6, Ideogram 2.0, DALL-E 3 e Flux.1).
+
+Seu objetivo é projetar produtos de papelaria (Topos de Bolo 3D, Topos Shaker, Caixas Milk, Caixas Pirâmide, Letras 3D, etc.) com FOCO ABSOLUTO EM VIABILIDADE FÍSICA E CORTE REAL EM PLOTTER (Silhouette Portrait 3, Cameo 4, Cricut) E GERAR PROMPTS FOTOGRÁFICOS HIPER-REALISTAS PARA IAs DE IMAGEM.
 
 REGRAS RÍGIDAS DE DOMÍNIO FÍSICO DA PAPELARIA BRASILEIRA:
 1. CAMADAS 3D REAIS (LAYERING):
-   - Separar o produto em 3 a 5 camadas físicas sobrepostas com fita banana (espuma EVA/dupla face 3D).
+   - Separar o produto em 3 a 5 camadas físicas sobrepostas com fita banana (espuma EVA/dupla face 3D de 2mm).
    - Camada 1: Base de sustentação / silhueta inteira sólida (Colorplus 180g ou Kraft 240g).
    - Camadas intermediárias: Molduras e elementos temáticos vazados.
    - Camada de destaque: Nome e idade com deslocamento (offset mínimo de 1.5mm a 2.5mm) para que as letras cursivas fiquem perfeitamente soldadas e não rasguem.
-   - Se for Topo Shaker: incluir camada de contenção em EVA + acetato transparente + aplique frontal.
+   - Se for Topo Shaker: incluir camada de contenção em EVA + acetato transparente + aplique frontal com miçangas/lantejoulas.
 
 2. PAPÉIS COMERCIAIS EXISTENTES NO MERCADO BRASILEIRO:
-   - Colorplus 180g (ex: Rosa Chá, Los Angeles, Porto Seguro, Marfim, Pequim, etc.)
-   - Lamicote / Metalizado 250g (Dourado, Prata, Rose Gold)
+   - Colorplus 180g (Rosa Chá, Los Angeles, Porto Seguro, Marfim, Pequim, Santiago, etc.)
+   - Lamicote / Metalizado 250g (Dourado Espelhado, Prata, Rose Gold)
    - Papel Fotográfico Matte / Glossy 180g (para apliques impressos em Print & Cut)
    - Papel Offset 180g / 240g fosco
-   - Papel Glitter 220g-250g
+   - Papel Perolado / Glitter 220g-250g
    - Acetato Transparente 20 ou 30 micras
 
 3. CALIBRAÇÃO REAL DE LÂMINA PARA SILHOUETTE:
@@ -85,9 +96,13 @@ REGRAS RÍGIDAS DE DOMÍNIO FÍSICO DA PAPELARIA BRASILEIRA:
    - Papel Fotográfico 180g: Lâmina 3, Força 26-28, Velocidade 6, 1 Passada.
    - Acetato: Lâmina 10 / Lâmina de Corte Profundo, Força 33, Velocidade 2, 2-3 Passadas.
 
-4. PRECIFICAÇÃO E TEMPO:
-   - Calcular preço de venda justo no mercado artesanal brasileiro (BRL R$).
-   - Estimar consumo real de folhas (tamanho A4 para Portrait 3).
+4. ENGENHARIA DE PROMPTS ULTRA-REALISTAS PARA IAs DE IMAGEM (INGLÊS):
+   - ideogramPrompt: Otimizado para o Ideogram 2.0, que é a melhor IA para renderizar textos e tipografia. Coloque o nome da criança e idade EXATAMENTE ENTRE ASPAS (ex: typography script text "Helena 3 anos" in shiny gold metallic foil lamicote paper), descrevendo os elementos de papel recortados, fita banana 3D, bolo minimalista de pasta americana ao fundo, estúdio com iluminação difusa.
+   - midjourneyPrompt: Otimizado para Midjourney v6 com parâmetros fotográficos de estúdio comercial (f/2.8 macro lens, soft shadows, studio lighting, depth of field, handcrafted paper textures, acrylic clear sticks, --v 6.0 --style raw --ar 1:1).
+   - dallePrompt: Prompt detalhado para DALL-E 3 / ChatGPT Plus focado em fotografia de catálogo de luxo de artesanato em papel.
+   - fluxPrompt: Otimizado para Flux.1 / Leonardo AI focando em detalhes macro das camadas de papel e cortes precisos de plotter.
+   - macroLayersPrompt: Close-up macro mostrando o relevo e espaçamento real da fita banana entre os papéis Colorplus e Lamicote.
+   - partyTableScenePrompt: Fotografia ampla da mesa principal da festa infantil, bolo decorado com o topo, docinhos e balões no mesmo tema.
 
 Retorne SEMPRE um JSON válido e estrito de acordo com o formato solicitado.
 `;
@@ -116,7 +131,7 @@ export class AiProductService {
       }
 
       const promptUser = `
-Projete um produto de papelaria personalizada com as seguintes especificações:
+Projete um produto de papelaria personalizada e gere prompts ultra-realistas para IAs de imagem:
 - Tipo de Produto: ${params.productType}
 - Tema da Festa: ${params.theme}
 - Nome e Idade: ${params.targetNameAndAge || 'Personalizado'}
@@ -153,7 +168,15 @@ Retorne estritamente um JSON com este schema:
   "toolsAndAccessories": ["Fita banana de 2mm", "Palitos transparentes de acrílico", "Cola pano / Silicone líquida"],
   "estimatedAssemblyMinutes": 25,
   "silhouetteTips": "Dicas especiais para corte na ${params.plotter} sem rasgar",
-  "suggestedImagePrompt": "A high-end realistic studio photo of a layered 3D handcrafted paper cake topper on a pastel cake, theme ${params.theme}, depth of field, paper textures, studio lighting"
+  "suggestedImagePrompt": "A high-end realistic studio photo of a layered 3D handcrafted paper cake topper on a pastel cake, theme ${params.theme}, depth of field, paper textures, studio lighting",
+  "realisticPrompts": {
+    "ideogramPrompt": "Professional commercial product photography of a handcrafted luxury layered paper cake topper featuring the exact text \\"${params.targetNameAndAge || 'Personalizado'}\\" in shiny gold metallic foil cardstock...",
+    "midjourneyPrompt": "Commercial studio product photography of a luxury handcrafted 3D layered paper cake topper, theme ${params.theme}... --v 6.0 --style raw --ar 1:1",
+    "dallePrompt": "Commercial product photograph of a luxury 3D papercraft cake topper on a clean white cake...",
+    "fluxPrompt": "Macro studio photograph of layered cardstock papercraft with gold foil accents...",
+    "macroLayersPrompt": "Extreme macro close-up of layered cardstock paper with 2mm foam tape elevation...",
+    "partyTableScenePrompt": "Wide commercial shot of an elegant birthday party dessert table with a pastel cake topped with a handcrafted paper cake topper..."
+  }
 }
 `;
 
@@ -191,80 +214,22 @@ Retorne estritamente um JSON com este schema:
 
         const parsed = JSON.parse(responseText) as AiProductBlueprint;
 
-        // Gerar imagem fotográfica do mockup do produto
-        try {
-          parsed.generatedImageUrl = await this.generateProductImage(
-            parsed.suggestedImagePrompt || parsed.productTitle,
-            apiKey
-          );
-        } catch (imgErr) {
-          console.warn('[AiProductService] Erro ao gerar imagem do produto:', imgErr);
+        // Se por ventura realisticPrompts não vier completo, mesclar com fallback
+        if (!parsed.realisticPrompts || !parsed.realisticPrompts.ideogramPrompt) {
+          const fb = this.generateSmartFallback(params);
+          parsed.realisticPrompts = fb.realisticPrompts;
         }
 
         return parsed;
       } catch (err) {
         console.error('[AiProductService] Falha na chamada da API Gemini, usando gerador físico inteligente:', err);
-        const fallback = this.generateSmartFallback(params);
-        try {
-          fallback.generatedImageUrl = await this.generateProductImage(
-            fallback.suggestedImagePrompt || fallback.productTitle,
-            apiKey
-          );
-        } catch {}
-        return fallback;
+        return this.generateSmartFallback(params);
       }
     });
   }
 
   /**
-   * Gera a imagem visual/fotográfica realista do produto
-   */
-  async generateProductImage(prompt: string, apiKey?: string): Promise<string> {
-    const key = this.getApiKey(apiKey);
-    if (key) {
-      try {
-        const imagenEndpoint = `https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-002:predict?key=${key}`;
-        const response = await fetch(imagenEndpoint, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            instances: [
-              {
-                prompt: `${prompt}, professional commercial studio product photograph, soft warm lighting, sharp focus on paper layers and textures, high resolution`,
-              },
-            ],
-            parameters: {
-              sampleCount: 1,
-              aspectRatio: '1:1',
-              outputMimeType: 'image/jpeg',
-            },
-          }),
-        });
-
-        if (response.ok) {
-          const data = await response.json();
-          const base64Bytes = data.predictions?.[0]?.bytesBase64Encoded;
-          if (base64Bytes) {
-            return `data:image/jpeg;base64,${base64Bytes}`;
-          }
-        }
-      } catch (err) {
-        console.warn('[AiProductService] Imagen 3 indisponível, gerando via renderizador estúdio:', err);
-      }
-    }
-
-    // Fallback de alta resolução fotográfica para renderização instantânea
-    const safePrompt = encodeURIComponent(
-      `commercial studio photo of handcrafted paper craft cake topper 3D layered with gold cardstock, theme ${prompt}, depth of field, pastel background, realistic texture`
-    );
-    return `https://image.pollinations.ai/prompt/${safePrompt}?width=800&height=800&nologo=true&seed=${Math.floor(
-      Math.random() * 100000
-    )}`;
-  }
-
-  /**
-   * Gerador inteligente local baseado em regras reais de papelaria brasileira
-   * (Garante funcionamento perfeito mesmo sem chave de API ou se houver falha de rede)
+   * Gerador inteligente local baseado em regras reais de papelaria brasileira e prompt engineering
    */
   generateSmartFallback(params: GenerateProductParams): AiProductBlueprint {
     const isShaker = params.productType.toLowerCase().includes('shaker');
@@ -296,6 +261,38 @@ Retorne estritamente um JSON com este schema:
           { hex: '#CCD5AE', name: 'Verde Oliva', paper: 'Colorplus Santiago 180g' },
           { hex: '#FAEDCD', name: 'Areia Natural', paper: 'Colorplus Marfim 180g' },
           { hex: '#E07A5F', name: 'Terracota', paper: 'Colorplus Roma 180g' },
+        ],
+      },
+      'Tons Terrosos & Rústico': {
+        colors: [
+          { hex: '#8C5843', name: 'Marrom Canela', paper: 'Colorplus Havana 180g' },
+          { hex: '#D4A373', name: 'Kraft Rústico', paper: 'Papel Kraft 240g' },
+          { hex: '#E6CCB2', name: 'Nude Areia', paper: 'Colorplus Marfim 180g' },
+          { hex: '#D4AF37', name: 'Ouro Velho', paper: 'Lamicote Dourado 250g' },
+        ],
+      },
+      'Azul Marinho & Prata': {
+        colors: [
+          { hex: '#1E3A8A', name: 'Azul Marinho', paper: 'Colorplus Toronto 180g' },
+          { hex: '#93C5FD', name: 'Azul Claro', paper: 'Colorplus Porto Seguro 180g' },
+          { hex: '#FFFFFF', name: 'Branco Neve', paper: 'Papel Offset 240g' },
+          { hex: '#C0C0C0', name: 'Prata Espelhado', paper: 'Lamicote Prata 250g' },
+        ],
+      },
+      'Rosa & Floral Delicado': {
+        colors: [
+          { hex: '#F472B6', name: 'Rosa Chiclete', paper: 'Colorplus Verona 180g' },
+          { hex: '#FBCFE8', name: 'Rosa Bebê', paper: 'Colorplus Rosa Chá 180g' },
+          { hex: '#FFFFFF', name: 'Branco Neve', paper: 'Papel Offset 240g' },
+          { hex: '#D4AF37', name: 'Dourado Luxo', paper: 'Lamicote Ouro 250g' },
+        ],
+      },
+      'Cores Vivas / Neon': {
+        colors: [
+          { hex: '#EF4444', name: 'Vermelho Vivo', paper: 'Colorplus Pequim 180g' },
+          { hex: '#3B82F6', name: 'Azul Royal', paper: 'Colorplus Grécia 180g' },
+          { hex: '#EAB308', name: 'Amarelo Ouro', paper: 'Colorplus Rio de Janeiro 180g' },
+          { hex: '#D4AF37', name: 'Dourado', paper: 'Lamicote Dourado 250g' },
         ],
       },
     };
@@ -367,6 +364,16 @@ Retorne estritamente um JSON com este schema:
       assemblyTip: 'Soldar todas as letras cursivas antes de aplicar o deslocamento de 2mm para não cortar letras soltas.',
     });
 
+    // Prompts Ultra-Realistas personalizados
+    const realisticPrompts: RealisticPrompts = {
+      ideogramPrompt: `Professional commercial product photography of a handcrafted luxury layered paper ${params.productType.toLowerCase()} featuring the exact text "${target}" in elegant script cursive made of shiny gold metallic foil lamicote cardstock with a 2mm crisp offset outline. Theme: "${themeName}" with intricate 3D layered papercut elements (${p1.name} and ${p2.name} Color Plus 180g cardstock), visible 3D foam tape elevation between layers, mounted on clear transparent acrylic sticks on a minimalist pastel frosted cake, soft diffused studio light, clean white background, macro photography, sharp focus, 8k resolution, ultra-realistic papercraft.`,
+      midjourneyPrompt: `Commercial studio product photography of a luxury handcrafted 3D layered paper ${params.productType.toLowerCase()}, theme "${themeName}", child cake topper with shimmering gold foil cardstock text "${target}", matte pastel paper layers, realistic paper grain textures and physical depth with shadow casting from 2mm double-sided foam tape, standing on top of a soft pastel cake, shallow depth of field, warm diffused commercial studio lighting, macro photography, f/2.8, Hasselblad H6D-100c --v 6.0 --style raw --ar 1:1`,
+      dallePrompt: `A high-end commercial catalog photograph of a luxury 3D layered papercraft ${params.productType.toLowerCase()} for a birthday cake. Theme: "${themeName}". Features cutout letters displaying "${target}" crafted from reflective mirror gold cardstock elevated with 3D foam tape over soft ${p1.name} and ${p2.name} matte colored cardstock layers. Sharp physical edges, clean laser/plotter cut silhouette, soft shadows, warm studio lighting on a neutral tabletop.`,
+      fluxPrompt: `Hyper-detailed macro studio photo of an artisanal 3D layered paper ${params.productType.toLowerCase()}, theme "${themeName}", customized with "${target}" in metallic gold paper, delicate layered floral and thematic cutouts, physical papercraft texture, visible layer separation, crisp cutlines, soft warm studio lighting, 8k resolution.`,
+      macroLayersPrompt: `Extreme macro close-up detail shot of a handcrafted 3D paper cake topper showing the depth between overlapping layers. Shimmering gold mirror lamicote cardstock with embossed script text "${target}", separated by 2mm high-density foam adhesive tape from the background pastel cardstock, revealing real paper fiber texture, crisp die-cut edges, and natural studio drop shadows.`,
+      partyTableScenePrompt: `Editorial lifestyle photography of an elegant luxury birthday dessert table for a child celebration. Theme: "${themeName}". Centerpiece is a gorgeous pastel decorated cake topped with an artisanal 3D layered paper cake topper featuring "${target}" in shiny gold foil. Surrounding table is styled with gourmet brigadeiro sweets in luxury paper wrappers, matching party favors, soft pastel balloon garland in the background, soft natural bokeh light.`
+    };
+
     return {
       productTitle: `${params.productType} Luxo 3D - Tema ${themeName}`,
       category: isCakeTopper ? 'Topos de Bolo' : 'Papelaria Criativa',
@@ -391,7 +398,8 @@ Retorne estritamente um JSON com este schema:
       ],
       estimatedAssemblyMinutes: isShaker ? 35 : 20,
       silhouetteTips: `Para a ${params.plotter === 'portrait3' ? 'Portrait 3' : 'Cameo 4'}, use base de corte limpa com aderência média e sempre faça o corte de teste para o ${pGold.paper}.`,
-      suggestedImagePrompt: `A high-end realistic studio photo of a layered 3D handcrafted paper ${params.productType} on a pastel cake, theme ${themeName}, with gold metallic accents, depth of field, paper textures, studio lighting`,
+      suggestedImagePrompt: realisticPrompts.midjourneyPrompt,
+      realisticPrompts,
     };
   }
 }

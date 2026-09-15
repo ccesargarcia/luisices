@@ -21,6 +21,11 @@ import {
   PackagePlus,
   Loader2,
   ExternalLink,
+  Camera,
+  Image as ImageIcon,
+  Plus,
+  RefreshCw,
+  Sparkle,
 } from 'lucide-react';
 import {
   aiProductService,
@@ -83,6 +88,14 @@ export function AiProductGenerator() {
   const [blueprint, setBlueprint] = useState<AiProductBlueprint | null>(null);
   const [selectedLayerIndex, setSelectedLayerIndex] = useState<number | null>(null);
 
+  // Estado do Estúdio de Prompts Realistas
+  const [activePromptTab, setActivePromptTab] = useState<
+    'ideogram' | 'midjourney' | 'dalle' | 'flux' | 'scene' | 'macro'
+  >('ideogram');
+  const [copiedPromptKey, setCopiedPromptKey] = useState<string | null>(null);
+  const [customImageUrl, setCustomImageUrl] = useState('');
+  const [isAttachingImage, setIsAttachingImage] = useState(false);
+
   // Configuração da chave de API
   const [isApiKeyDialogOpen, setIsApiKeyDialogOpen] = useState(false);
   const [apiKeyInput, setApiKeyInput] = useState(() => {
@@ -119,13 +132,33 @@ export function AiProductGenerator() {
       });
 
       setBlueprint(result);
-      toast.success('Projeto gerado com sucesso! Camadas e ficha técnica prontas.');
+      toast.success('Projeto gerado com sucesso! Camadas, corte e prompts prontos.');
     } catch (err: any) {
       console.error('Erro ao gerar projeto com IA:', err);
       toast.error('Não foi possível gerar o projeto. Usando modelo físico de segurança.');
     } finally {
       setLoading(false);
     }
+  };
+
+  // Copiar prompt com feedback
+  const handleCopyPrompt = (text: string, key: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedPromptKey(key);
+    toast.success('Prompt copiado! Cole na ferramenta de imagem.');
+    setTimeout(() => setCopiedPromptKey(null), 2500);
+  };
+
+  // Anexar imagem gerada manualmente
+  const handleAttachCustomImage = () => {
+    if (!blueprint || !customImageUrl.trim()) return;
+    setBlueprint({
+      ...blueprint,
+      generatedImageUrl: customImageUrl.trim(),
+    });
+    setIsAttachingImage(false);
+    setCustomImageUrl('');
+    toast.success('Imagem anexada com sucesso à ficha técnica!');
   };
 
   // Salvar API Key
@@ -200,7 +233,11 @@ export function AiProductGenerator() {
       doc.setFontSize(10);
       doc.setTextColor(100, 100, 100);
       doc.text(`Tema: ${blueprint.theme} | Personalização: ${blueprint.targetAgeAndName}`, 14, 42);
-      doc.text(`Preço Sugerido: ${formatCurrency(blueprint.recommendedPrice)} | Tempo Estimado: ${blueprint.estimatedAssemblyMinutes} min`, 14, 48);
+      doc.text(
+        `Preço Sugerido: ${formatCurrency(blueprint.recommendedPrice)} | Tempo Estimado: ${blueprint.estimatedAssemblyMinutes} min`,
+        14,
+        48
+      );
 
       // Tabela de Camadas de Corte (Silhouette Settings)
       const layersData = blueprint.layers.map((l) => [
@@ -278,6 +315,7 @@ export function AiProductGenerator() {
     const encoded = encodeURIComponent(text);
     window.open(`https://api.whatsapp.com/send?text=${encoded}`, '_blank');
   };
+
 
   return (
     <div className="space-y-6 pb-12">
@@ -544,34 +582,344 @@ export function AiProductGenerator() {
                 </CardHeader>
               </Card>
 
-              {/* Visualização de Mockup Fotográfico Realista e Simulador 3D */}
-              <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
-                {/* Mockup Fotográfico do Produto */}
-                {blueprint.generatedImageUrl && (
-                  <div className="md:col-span-6">
-                    <Card className="h-full shadow-sm overflow-hidden flex flex-col justify-between">
-                      <CardHeader className="pb-2">
-                        <div className="flex items-center justify-between">
-                          <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                            <Sparkles className="size-4 text-primary" />
-                            Mockup Visual Fotográfico
+              {/* Central de Prompts para IAs de Imagem (Ideogram, Midjourney, DALL-E, Flux) */}
+              <Card className="shadow-sm border-primary/40 overflow-hidden bg-gradient-to-b from-card to-muted/20">
+                <CardHeader className="border-b bg-muted/40 pb-3.5">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <div className="flex items-center gap-2.5">
+                      <div className="p-2 rounded-xl bg-primary text-primary-foreground shadow-xs">
+                        <Camera className="size-4" />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <CardTitle className="text-base font-bold">
+                            Estúdio de Prompts para IAs de Imagem
                           </CardTitle>
-                          <a
-                            href={blueprint.generatedImageUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            download={`Mockup_${blueprint.productTitle.replace(/\s+/g, '_')}.jpg`}
-                            className="inline-flex items-center gap-1 text-[11px] text-primary hover:underline font-medium"
-                          >
-                            <Download className="size-3" />
-                            Baixar Imagem
-                          </a>
+                          <Badge className="bg-primary/20 text-primary hover:bg-primary/30 border-0 text-[10px] font-semibold">
+                            Ultra-Realismo
+                          </Badge>
                         </div>
                         <CardDescription className="text-xs">
-                          Conceito realista renderizado para vitrine e aprovação da cliente
+                          Prompts em inglês calibrados para gerar mockups fotográficos perfeitos sem distorções
                         </CardDescription>
-                      </CardHeader>
-                      <CardContent className="p-4 flex flex-col items-center justify-center flex-1">
+                      </div>
+                    </div>
+                  </div>
+                </CardHeader>
+
+                <CardContent className="space-y-4 pt-4">
+                  {/* Seletor de Plataforma de IA */}
+                  <div className="flex flex-wrap gap-1.5 p-1 bg-muted/60 rounded-xl border">
+                    <button
+                      type="button"
+                      onClick={() => setActivePromptTab('ideogram')}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                        activePromptTab === 'ideogram'
+                          ? 'bg-background text-foreground shadow-xs font-semibold'
+                          : 'text-muted-foreground hover:text-foreground'
+                      }`}
+                    >
+                      <Sparkles className="size-3.5 text-amber-500" />
+                      Ideogram 2.0 (Nomes/Texto)
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setActivePromptTab('midjourney')}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                        activePromptTab === 'midjourney'
+                          ? 'bg-background text-foreground shadow-xs font-semibold'
+                          : 'text-muted-foreground hover:text-foreground'
+                      }`}
+                    >
+                      <Camera className="size-3.5 text-blue-500" />
+                      Midjourney v6 (Hiper-realismo)
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setActivePromptTab('dalle')}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                        activePromptTab === 'dalle'
+                          ? 'bg-background text-foreground shadow-xs font-semibold'
+                          : 'text-muted-foreground hover:text-foreground'
+                      }`}
+                    >
+                      <Wand2 className="size-3.5 text-emerald-500" />
+                      ChatGPT / DALL-E 3
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setActivePromptTab('flux')}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                        activePromptTab === 'flux'
+                          ? 'bg-background text-foreground shadow-xs font-semibold'
+                          : 'text-muted-foreground hover:text-foreground'
+                      }`}
+                    >
+                      <Layers className="size-3.5 text-purple-500" />
+                      Flux.1 / Leonardo AI
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setActivePromptTab('scene')}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                        activePromptTab === 'scene'
+                          ? 'bg-background text-foreground shadow-xs font-semibold'
+                          : 'text-muted-foreground hover:text-foreground'
+                      }`}
+                    >
+                      <ShoppingBag className="size-3.5 text-pink-500" />
+                      Mesa da Festa Completa
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setActivePromptTab('macro')}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                        activePromptTab === 'macro'
+                          ? 'bg-background text-foreground shadow-xs font-semibold'
+                          : 'text-muted-foreground hover:text-foreground'
+                      }`}
+                    >
+                      <Scissors className="size-3.5 text-orange-500" />
+                      Macro Camadas & 3D
+                    </button>
+                  </div>
+
+                  {/* Conteúdo do Prompt Ativo */}
+                  {(() => {
+                    let promptText = '';
+                    let title = '';
+                    let description = '';
+                    let externalLink = '';
+                    let externalLabel = '';
+
+                    switch (activePromptTab) {
+                      case 'ideogram':
+                        promptText = blueprint.realisticPrompts?.ideogramPrompt || blueprint.suggestedImagePrompt;
+                        title = 'Ideogram 2.0 — Renderização Exata de Nomes e Idades';
+                        description =
+                          'O Ideogram é a melhor IA para tipografia. Ele escreve exatamente o nome da criança e idade sem erros ortográficos e renderiza o lamicote dourado espelhado com perfeição.';
+                        externalLink = 'https://ideogram.ai';
+                        externalLabel = 'Abrir Ideogram.ai';
+                        break;
+                      case 'midjourney':
+                        promptText = blueprint.realisticPrompts?.midjourneyPrompt || blueprint.suggestedImagePrompt;
+                        title = 'Midjourney v6 — Hiper-realismo Fotográfico de Estúdio';
+                        description =
+                          'Formatação técnica com lentes macro f/2.8, iluminação comercial suave e textura real de papel Colorplus e fita banana 3D. Inclui parâmetros --v 6.0 --style raw.';
+                        externalLink = 'https://www.midjourney.com';
+                        externalLabel = 'Abrir Midjourney';
+                        break;
+                      case 'dalle':
+                        promptText = blueprint.realisticPrompts?.dallePrompt || blueprint.suggestedImagePrompt;
+                        title = 'ChatGPT / DALL-E 3 — Foto de Produto para Catálogo e Vitrine';
+                        description =
+                          'Prompt descritivo focado em iluminação comercial suave e apresentação impecável do produto sobre um bolo decorado para catálogo da loja.';
+                        externalLink = 'https://chatgpt.com';
+                        externalLabel = 'Abrir ChatGPT';
+                        break;
+                      case 'flux':
+                        promptText = blueprint.realisticPrompts?.fluxPrompt || blueprint.suggestedImagePrompt;
+                        title = 'Flux.1 / Leonardo AI — Detalhe de Relevo e Linhas de Plotter';
+                        description =
+                          'Calibrado para realçar a precisão dos cortes de lâmina da Silhouette e a tridimensionalidade das camadas com fita banana.';
+                        externalLink = 'https://leonardo.ai';
+                        externalLabel = 'Abrir Leonardo AI';
+                        break;
+                      case 'scene':
+                        promptText = blueprint.realisticPrompts?.partyTableScenePrompt || blueprint.suggestedImagePrompt;
+                        title = 'Cenário Completo — Mesa de Festa e Decoração do Tema';
+                        description =
+                          'Fotografia ampla estilo editorial mostrando o bolo principal decorado com o topo, docinhos finos e balões integrados.';
+                        externalLink = 'https://ideogram.ai';
+                        externalLabel = 'Gerar Cenário no Ideogram';
+                        break;
+                      case 'macro':
+                        promptText = blueprint.realisticPrompts?.macroLayersPrompt || blueprint.suggestedImagePrompt;
+                        title = 'Macro Close-Up — Relevo Físico e Acabamento dos Papéis';
+                        description =
+                          'Close-up extremo evidenciando a distância de 2mm da fita banana, o brilho do lamicote e a gramatura dos papéis.';
+                        externalLink = 'https://www.midjourney.com';
+                        externalLabel = 'Gerar Macro no Midjourney';
+                        break;
+                    }
+
+                    return (
+                      <div className="space-y-3">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                          <div>
+                            <h4 className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                              {title}
+                            </h4>
+                            <p className="text-[11px] text-muted-foreground">{description}</p>
+                          </div>
+
+                          <div className="flex items-center gap-2 shrink-0">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleCopyPrompt(promptText, activePromptTab)}
+                              className="text-xs gap-1.5 h-8 bg-background hover:bg-muted font-medium"
+                            >
+                              {copiedPromptKey === activePromptTab ? (
+                                <>
+                                  <Check className="size-3.5 text-emerald-600" />
+                                  <span className="text-emerald-600 font-semibold">Copiado!</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Copy className="size-3.5" />
+                                  Copiar Prompt
+                                </>
+                              )}
+                            </Button>
+
+                            <a
+                              href={externalLink}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold bg-primary text-primary-foreground hover:bg-primary/90 h-8 shadow-xs"
+                            >
+                              <ExternalLink className="size-3.5" />
+                              {externalLabel}
+                            </a>
+                          </div>
+                        </div>
+
+                        {/* Caixa de Texto do Prompt com Estilo de Código */}
+                        <div className="relative group">
+                          <pre className="p-3.5 rounded-xl bg-muted/70 dark:bg-muted/40 border text-xs font-mono whitespace-pre-wrap break-words text-foreground/90 leading-relaxed max-h-48 overflow-y-auto select-all">
+                            {promptText}
+                          </pre>
+                        </div>
+
+                        {/* Chips Modificadores Rápidos */}
+                        <div className="pt-1 flex flex-wrap items-center gap-1.5">
+                          <span className="text-[10px] font-semibold text-muted-foreground flex items-center gap-1">
+                            <Sparkle className="size-3" /> Modificadores Rápidos:
+                          </span>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const modified = `${promptText}, isolated on clean seamless pure white studio background`;
+                              handleCopyPrompt(modified, `${activePromptTab}_white_bg`);
+                            }}
+                            className="text-[10px] px-2 py-0.5 rounded-full bg-background border hover:bg-muted text-foreground/80 transition-colors"
+                          >
+                            + Fundo Branco Estúdio
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const modified = `${promptText}, placed on top of a minimalist white fondant cake with pastel sprinkles`;
+                              handleCopyPrompt(modified, `${activePromptTab}_fondant_cake`);
+                            }}
+                            className="text-[10px] px-2 py-0.5 rounded-full bg-background border hover:bg-muted text-foreground/80 transition-colors"
+                          >
+                            + Em cima do Bolo
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const modified = `${promptText}, with 3D handmade paper flowers and glitter accents`;
+                              handleCopyPrompt(modified, `${activePromptTab}_flowers`);
+                            }}
+                            className="text-[10px] px-2 py-0.5 rounded-full bg-background border hover:bg-muted text-foreground/80 transition-colors"
+                          >
+                            + Flores & Glitter 3D
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const modified = `${promptText}, soft warm natural morning window lighting, cinematic photography`;
+                              handleCopyPrompt(modified, `${activePromptTab}_morning_light`);
+                            }}
+                            className="text-[10px] px-2 py-0.5 rounded-full bg-background border hover:bg-muted text-foreground/80 transition-colors"
+                          >
+                            + Luz Natural Suave
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </CardContent>
+              </Card>
+
+              {/* Visualização de Mockup / Anexo de Imagem e Simulador 3D */}
+              <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
+                {/* Mockup do Produto ou Painel de Anexar Imagem */}
+                <div className="md:col-span-6">
+                  <Card className="h-full shadow-sm overflow-hidden flex flex-col justify-between">
+                    <CardHeader className="pb-2">
+                      <div className="flex items-center justify-between">
+                        <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                          <ImageIcon className="size-4 text-primary" />
+                          Mockup Visual do Produto
+                        </CardTitle>
+
+                        <div className="flex items-center gap-2">
+                          {blueprint.generatedImageUrl && (
+                            <a
+                              href={blueprint.generatedImageUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              download={`Mockup_${blueprint.productTitle.replace(/\s+/g, '_')}.jpg`}
+                              className="inline-flex items-center gap-1 text-[11px] text-primary hover:underline font-medium"
+                            >
+                              <Download className="size-3" />
+                              Baixar
+                            </a>
+                          )}
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setIsAttachingImage(!isAttachingImage)}
+                            className="text-[11px] h-7 px-2 text-muted-foreground hover:text-foreground"
+                          >
+                            <Plus className="size-3 mr-1" />
+                            {blueprint.generatedImageUrl ? 'Trocar Imagem' : 'Anexar Imagem Gerada'}
+                          </Button>
+                        </div>
+                      </div>
+                      <CardDescription className="text-xs">
+                        {blueprint.generatedImageUrl
+                          ? 'Conceito visual para vitrine da lojinha e catálogo'
+                          : 'Gere a imagem no Ideogram/Midjourney e anexe a URL ou foto aqui'}
+                      </CardDescription>
+                    </CardHeader>
+
+                    <CardContent className="p-4 flex flex-col items-center justify-center flex-1 space-y-3">
+                      {isAttachingImage && (
+                        <div className="w-full p-3 rounded-xl bg-muted/60 border space-y-2 text-xs">
+                          <Label className="text-[11px] font-semibold">URL da Imagem Gerada (ou link do Ideogram/Discord)</Label>
+                          <div className="flex gap-2">
+                            <Input
+                              placeholder="https://..."
+                              value={customImageUrl}
+                              onChange={(e) => setCustomImageUrl(e.target.value)}
+                              className="h-8 text-xs"
+                            />
+                            <Button
+                              size="sm"
+                              onClick={handleAttachCustomImage}
+                              disabled={!customImageUrl.trim()}
+                              className="h-8 text-xs shrink-0"
+                            >
+                              Salvar
+                            </Button>
+                          </div>
+                        </div>
+                      )}
+
+                      {blueprint.generatedImageUrl ? (
                         <div className="relative w-full aspect-square max-w-[320px] rounded-2xl overflow-hidden shadow-md border bg-muted/30 group">
                           <img
                             src={blueprint.generatedImageUrl}
@@ -585,13 +933,32 @@ export function AiProductGenerator() {
                             </span>
                           </div>
                         </div>
-                      </CardContent>
-                    </Card>
-                  </div>
-                )}
+                      ) : (
+                        <div className="w-full aspect-square max-w-[320px] rounded-2xl border-2 border-dashed flex flex-col items-center justify-center p-6 text-center space-y-2 bg-muted/20">
+                          <div className="p-3 rounded-full bg-primary/10 text-primary">
+                            <Camera className="size-6" />
+                          </div>
+                          <p className="text-xs font-semibold">Nenhuma imagem anexada</p>
+                          <p className="text-[11px] text-muted-foreground max-w-[220px]">
+                            Copie o prompt do <strong>Ideogram</strong> ou <strong>Midjourney</strong> acima para gerar um mockup perfeito.
+                          </p>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => setIsAttachingImage(true)}
+                            className="text-xs h-8 gap-1.5"
+                          >
+                            <Plus className="size-3.5" />
+                            Anexar Link da Imagem
+                          </Button>
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                </div>
 
                 {/* Visualizador 3D das Camadas Sobrepostas */}
-                <div className={blueprint.generatedImageUrl ? 'md:col-span-6' : 'md:col-span-5'}>
+                <div className="md:col-span-6">
                   <Card className="h-full shadow-sm">
                     <CardHeader className="pb-2">
                       <CardTitle className="text-sm font-semibold flex items-center gap-2">
@@ -690,10 +1057,10 @@ export function AiProductGenerator() {
                             <Badge
                               variant={
                                 layer.cutDifficulty === 'fácil'
-                                  ? 'secondary'
-                                  : layer.cutDifficulty === 'delicado'
-                                  ? 'destructive'
-                                  : 'outline'
+                                   ? 'secondary'
+                                   : layer.cutDifficulty === 'delicado'
+                                   ? 'destructive'
+                                   : 'outline'
                               }
                               className="text-[10px] px-1.5 py-0"
                             >
