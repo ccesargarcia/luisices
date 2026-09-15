@@ -456,6 +456,48 @@ export class AiProductService {
   }
 
   /**
+   * Executa chamada à API Gemini com fallback automático entre modelos suportados
+   */
+  private async callGeminiWithCandidateModels(
+    apiKey: string,
+    preferredModel: string | undefined,
+    bodyPayload: any
+  ): Promise<string> {
+    const candidateModels = preferredModel
+      ? [preferredModel, 'gemini-3.6-flash', 'gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-2.5-flash']
+      : ['gemini-3.6-flash', 'gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-2.5-flash'];
+
+    let lastError: any = null;
+
+    for (const model of candidateModels) {
+      try {
+        const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+        const response = await fetch(endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(bodyPayload),
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+          if (text) return text;
+        } else {
+          const errData = await response.json().catch(() => ({}));
+          const errMsg = errData.error?.message || `HTTP ${response.status}`;
+          lastError = new Error(errMsg);
+          console.warn(`[AiProductService] Modelo ${model} retornou: ${errMsg}. Tentando próximo modelo...`);
+        }
+      } catch (err: any) {
+        lastError = err;
+        console.warn(`[AiProductService] Erro na requisição ao modelo ${model}:`, err);
+      }
+    }
+
+    throw lastError || new Error('Não foi possível obter resposta de nenhum modelo Gemini.');
+  }
+
+  /**
    * Gera o projeto físico completo utilizando o Acervo de Imagens do Ateliê como referência multimodal
    */
   async generateProductBlueprint(params: GenerateProductParams): Promise<AiProductBlueprint> {
@@ -540,9 +582,6 @@ Retorne estritamente um JSON com este schema:
 `;
 
       try {
-        const modelName = tunedModel || 'gemini-2.5-flash';
-        const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
-
         const parts: any[] = [{ text: promptUser }];
 
         // Se uma imagem em base64 foi enviada (multimodal vision analysis)
@@ -556,27 +595,15 @@ Retorne estritamente um JSON com este schema:
           });
         }
 
-        const responseText = await traceAIChat(modelName, conversationId, async () => {
-          const response = await fetch(endpoint, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              contents: [{ role: 'user', parts }],
-              systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
-              generationConfig: {
-                responseMimeType: 'application/json',
-                temperature: 0.7,
-              },
-            }),
+        const responseText = await traceAIChat(tunedModel || 'gemini-3.6-flash', conversationId, async () => {
+          return this.callGeminiWithCandidateModels(apiKey, tunedModel, {
+            contents: [{ role: 'user', parts }],
+            systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
+            generationConfig: {
+              responseMimeType: 'application/json',
+              temperature: 0.7,
+            },
           });
-
-          if (!response.ok) {
-            const errData = await response.json().catch(() => ({}));
-            throw new Error(errData.error?.message || `Erro HTTP ${response.status} na API Gemini`);
-          }
-
-          const data = await response.json();
-          return data.candidates?.[0]?.content?.parts?.[0]?.text || '';
         }, {
           systemInstruction: SYSTEM_PROMPT,
           inputMessages: [{ role: 'user', content: promptUser }],
@@ -726,30 +753,16 @@ INSTRUÇÕES DE INSPEÇÃO VISUAL OBRIGATÓRIAS:
         },
       ];
 
-      const modelName = tunedModel || 'gemini-2.5-flash';
-      const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
-
       try {
-        const response = await fetch(endpoint, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [{ role: 'user', parts }],
-            systemInstruction: { parts: [{ text: visionSystemPrompt }] },
-            generationConfig: {
-              responseMimeType: 'application/json',
-              temperature: 0.3,
-            },
-          }),
+        const rawText = await this.callGeminiWithCandidateModels(apiKey, tunedModel, {
+          contents: [{ role: 'user', parts }],
+          systemInstruction: { parts: [{ text: visionSystemPrompt }] },
+          generationConfig: {
+            responseMimeType: 'application/json',
+            temperature: 0.3,
+          },
         });
 
-        if (!response.ok) {
-          const errData = await response.json().catch(() => ({}));
-          throw new Error(errData.error?.message || `Erro HTTP ${response.status} na API Vision do Gemini`);
-        }
-
-        const data = await response.json();
-        const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
         if (!rawText) throw new Error('A IA não retornou dados visuais da imagem.');
 
         const parsed = JSON.parse(rawText) as AiProductBlueprint;
