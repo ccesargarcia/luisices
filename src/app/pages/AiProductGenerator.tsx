@@ -32,6 +32,9 @@ import {
   Trash2,
   FileDown,
   BookOpen,
+  Eye,
+  Grid,
+  CheckCircle2,
 } from 'lucide-react';
 import {
   aiProductService,
@@ -39,6 +42,8 @@ import {
   GenerateProductParams,
   CURATED_PRESETS,
   CuratedPreset,
+  CutSheet,
+  AssemblyStep,
 } from '../../services/aiProductService';
 import { firebaseProductService } from '../../services/firebaseProductService';
 import { firebaseStoreProductService } from '../../services/firebaseStoreProductService';
@@ -96,6 +101,10 @@ export function AiProductGenerator() {
   const [blueprint, setBlueprint] = useState<AiProductBlueprint | null>(null);
   const [selectedLayerIndex, setSelectedLayerIndex] = useState<number | null>(null);
 
+  // Estado das Pranchas de Corte e Base de Corte
+  const [selectedCutSheetIndex, setSelectedCutSheetIndex] = useState<number>(0);
+  const [showCutMatGrid, setShowCutMatGrid] = useState<boolean>(true);
+
   // Estado do Estúdio de Prompts Realistas
   const [activePromptTab, setActivePromptTab] = useState<
     'gemini' | 'banana' | 'ideogram' | 'midjourney' | 'dalle' | 'flux' | 'scene' | 'macro'
@@ -125,6 +134,30 @@ export function AiProductGenerator() {
 
   // Salvar no catálogo
   const [savingProduct, setSavingProduct] = useState(false);
+
+  // Baixar arquivo SVG individual de corte para Silhouette Studio / Cricut
+  const handleDownloadCutSheetSvg = (sheet: CutSheet) => {
+    const blob = new Blob([sheet.svgContent], { type: 'image/svg+xml;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    const safeTitle = sheet.sheetTitle.replace(/[^a-zA-Z0-9_-]/g, '_');
+    a.download = `${safeTitle}.svg`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast.success(`SVG "${sheet.sheetTitle}" pronto para Silhouette Studio / Cricut!`);
+  };
+
+  // Baixar todos os arquivos SVG de corte do projeto
+  const handleDownloadAllCutSheets = () => {
+    if (!blueprint || !blueprint.cutSheets || blueprint.cutSheets.length === 0) return;
+    blueprint.cutSheets.forEach((sheet, idx) => {
+      setTimeout(() => {
+        handleDownloadCutSheetSvg(sheet);
+      }, idx * 300);
+    });
+    toast.success(`Baixando ${blueprint.cutSheets.length} pranchas de corte em SVG!`);
+  };
 
   // Carregar um Exemplo Pré-Configurado / Acerto da Galeria
   const handleLoadPreset = (preset: CuratedPreset) => {
@@ -294,7 +327,7 @@ export function AiProductGenerator() {
     }
   };
 
-  // Exportar Ficha Técnica em PDF
+  // Exportar Ficha Técnica em PDF Completa com Pranchas de Corte e Gabarito de Montagem
   const handleExportPDF = () => {
     if (!blueprint) return;
 
@@ -340,10 +373,10 @@ export function AiProductGenerator() {
       });
 
       // Tabela de Lista de Compras de Folhas
-      const finalY = (doc as any).lastAutoTable.finalY || 120;
+      let currentY = (doc as any).lastAutoTable.finalY || 120;
       doc.setFontSize(12);
       doc.setTextColor(34, 26, 26);
-      doc.text('Lista de Materiais e Consumo de Papéis (Folhas A4):', 14, finalY + 12);
+      doc.text('Lista de Materiais e Consumo de Papéis (Folhas A4):', 14, currentY + 10);
 
       const papersData = blueprint.papersShoppingList.map((p) => [
         p.name,
@@ -352,24 +385,78 @@ export function AiProductGenerator() {
       ]);
 
       autoTable(doc, {
-        startY: finalY + 16,
+        startY: currentY + 14,
         head: [['Tipo de Papel', 'Gramatura', 'Qtd. Folhas']],
         body: papersData,
         theme: 'grid',
         headStyles: { fillColor: [130, 85, 87] },
       });
 
-      // Dicas de Montagem
-      const notesY = (doc as any).lastAutoTable.finalY || 180;
-      doc.setFontSize(11);
-      doc.text('Instruções de Montagem e Silhouette:', 14, notesY + 10);
-      doc.setFontSize(9);
-      doc.setTextColor(80, 80, 80);
-      const splitTips = doc.splitTextToSize(blueprint.silhouetteTips, 180);
-      doc.text(splitTips, 14, notesY + 16);
+      // Seção: Pranchas de Corte em Plotter
+      currentY = (doc as any).lastAutoTable.finalY || 170;
+      if (blueprint.cutSheets && blueprint.cutSheets.length > 0) {
+        if (currentY > 230) {
+          doc.addPage();
+          currentY = 20;
+        } else {
+          currentY += 10;
+        }
+
+        doc.setFontSize(12);
+        doc.setTextColor(34, 26, 26);
+        doc.text('Pranchas de Corte (Silhouette / Cricut / SVG):', 14, currentY);
+
+        const sheetsData = blueprint.cutSheets.map((s) => [
+          s.sheetTitle.split(':')[0] || `Folha ${s.sheetIndex}`,
+          s.paperType,
+          `${s.piecesCount} peças`,
+          `Lâm: ${s.cutBladeSettings.blade} / Força: ${s.cutBladeSettings.force}`,
+          `~${s.estimatedCutSeconds}s`,
+        ]);
+
+        autoTable(doc, {
+          startY: currentY + 4,
+          head: [['Prancha', 'Papel & Cor', 'Qtd. Peças', 'Calibração', 'Tempo de Corte']],
+          body: sheetsData,
+          theme: 'striped',
+          headStyles: { fillColor: [70, 80, 95] },
+        });
+
+        currentY = (doc as any).lastAutoTable.finalY || 200;
+      }
+
+      // Seção: Passo a Passo Físico de Montagem
+      if (blueprint.assemblySteps && blueprint.assemblySteps.length > 0) {
+        if (currentY > 210) {
+          doc.addPage();
+          currentY = 20;
+        } else {
+          currentY += 10;
+        }
+
+        doc.setFontSize(12);
+        doc.setTextColor(34, 26, 26);
+        doc.text('Gabarito de Montagem em Camadas (Passo a Passo Físico):', 14, currentY);
+
+        const stepsData = blueprint.assemblySteps.map((step) => [
+          `Passo ${step.stepNumber}`,
+          step.actionTitle,
+          step.adhesiveType,
+          step.description,
+        ]);
+
+        autoTable(doc, {
+          startY: currentY + 4,
+          head: [['Passo', 'Ação', 'Tipo de Fixação / Adesivo', 'Instruções Detalhadas']],
+          body: stepsData,
+          theme: 'grid',
+          headStyles: { fillColor: [97, 61, 62] },
+          styles: { fontSize: 8 },
+        });
+      }
 
       doc.save(`Ficha_Tecnica_${blueprint.productTitle.replace(/\s+/g, '_')}.pdf`);
-      toast.success('Ficha Técnica exportada em PDF!');
+      toast.success('Ficha Técnica Completa exportada em PDF!');
     } catch (err) {
       console.error('Erro ao gerar PDF:', err);
       toast.error('Erro ao exportar PDF.');
@@ -1355,6 +1442,296 @@ export function AiProductGenerator() {
                   </CardContent>
                 </Card>
               </div>
+
+              {/* Seção: Matriz de Corte & Arquivos SVG para Silhouette / Cricut */}
+              {blueprint.cutSheets && blueprint.cutSheets.length > 0 && (
+                <Card className="shadow-sm border-primary/30 overflow-hidden">
+                  <CardHeader className="border-b bg-muted/30 pb-3.5">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div className="flex items-center gap-2.5">
+                        <div className="p-2 rounded-xl bg-primary text-primary-foreground shadow-xs">
+                          <Scissors className="size-4" />
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <CardTitle className="text-base font-bold">
+                              Matriz de Corte & Pranchas para Plotter
+                            </CardTitle>
+                            <Badge className="bg-primary/20 text-primary border-0 text-[10px] font-semibold">
+                              {blueprint.cutSheets.length} Folhas A4
+                            </Badge>
+                          </div>
+                          <CardDescription className="text-xs">
+                            Pranchas de corte separadas por folha e cor com linhas vermelhas padrão (#FF0000) e calibração de lâmina
+                          </CardDescription>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setShowCutMatGrid(!showCutMatGrid)}
+                          className="text-xs h-8 gap-1.5"
+                        >
+                          <Grid className="size-3.5" />
+                          {showCutMatGrid ? 'Ocultar Grade 1cm' : 'Exibir Grade 1cm'}
+                        </Button>
+
+                        <Button
+                          size="sm"
+                          onClick={handleDownloadAllCutSheets}
+                          className="text-xs h-8 gap-1.5 font-semibold shadow-xs"
+                        >
+                          <Download className="size-3.5" />
+                          Baixar Todas as Folhas (.SVG)
+                        </Button>
+                      </div>
+                    </div>
+                  </CardHeader>
+
+                  <CardContent className="p-4 space-y-4">
+                    {/* Seletor de Folhas / Pranchas */}
+                    <div className="flex flex-wrap gap-2 p-1.5 bg-muted/40 rounded-xl border">
+                      {blueprint.cutSheets.map((sheet, index) => {
+                        const isSelected = selectedCutSheetIndex === index;
+                        return (
+                          <button
+                            key={sheet.sheetIndex}
+                            type="button"
+                            onClick={() => setSelectedCutSheetIndex(index)}
+                            className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs transition-all ${
+                              isSelected
+                                ? 'bg-background text-foreground shadow-xs font-semibold border-primary/40 border'
+                                : 'text-muted-foreground hover:text-foreground hover:bg-background/50 border border-transparent'
+                            }`}
+                          >
+                            <div
+                              className="size-3.5 rounded-full border border-black/20 shrink-0"
+                              style={{ backgroundColor: sheet.colorHex }}
+                            />
+                            <span>{sheet.sheetTitle.split(':')[0]}</span>
+                            <Badge
+                              variant="secondary"
+                              className="text-[9px] px-1 py-0 h-4 bg-muted font-normal"
+                            >
+                              Lâm {sheet.cutBladeSettings.blade}
+                            </Badge>
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    {/* Visualizador da Folha Selecionada e Base de Corte */}
+                    {(() => {
+                      const currentSheet = blueprint.cutSheets[selectedCutSheetIndex] || blueprint.cutSheets[0];
+                      if (!currentSheet) return null;
+
+                      return (
+                        <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 pt-1">
+                          {/* Simulador da Base de Corte Silhouette (A4 Mat / 210x297mm) */}
+                          <div className="lg:col-span-7 flex flex-col items-center">
+                            <div className="w-full flex items-center justify-between pb-2 text-xs">
+                              <span className="font-semibold text-foreground flex items-center gap-1.5">
+                                <Eye className="size-3.5 text-primary" />
+                                Base de Corte Portrait / Cameo (A4 - 210 × 297 mm)
+                              </span>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => handleDownloadCutSheetSvg(currentSheet)}
+                                className="h-7 text-xs gap-1 text-primary border-primary/30 hover:bg-primary/5"
+                              >
+                                <Download className="size-3" />
+                                Baixar SVG desta Folha
+                              </Button>
+                            </div>
+
+                            {/* Canvas da Base de Corte */}
+                            <div
+                              className={`relative w-full aspect-[210/297] max-w-[420px] rounded-xl border-2 border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-md overflow-hidden flex flex-col justify-between transition-all ${
+                                showCutMatGrid
+                                  ? 'bg-[radial-gradient(#cbd5e1_1px,transparent_1px)] dark:bg-[radial-gradient(#334155_1px,transparent_1px)] [background-size:16px_16px]'
+                                  : ''
+                              }`}
+                            >
+                              {/* Réguas Superior e Lateral da Base de Corte */}
+                              <div className="absolute top-0 left-0 right-0 h-5 bg-slate-100 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between px-2 text-[8px] font-mono text-slate-500 select-none z-10">
+                                <span>0</span>
+                                <span>5cm</span>
+                                <span>10cm</span>
+                                <span>15cm</span>
+                                <span>20cm</span>
+                              </div>
+
+                              {/* Conteúdo Vetorial SVG Renderizado */}
+                              <div
+                                className="w-full h-full pt-5 flex items-center justify-center p-2"
+                                dangerouslySetInnerHTML={{ __html: currentSheet.svgContent }}
+                              />
+
+                              {/* Rodapé da Base de Corte */}
+                              <div className="h-5 bg-slate-100 dark:bg-slate-800 border-t border-slate-200 dark:border-slate-700 flex items-center justify-between px-3 text-[8px] text-slate-500 select-none">
+                                <span className="flex items-center gap-1">
+                                  <span className="size-2 rounded-full bg-red-500 inline-block" /> Linha de Corte Lâmina (#FF0000)
+                                </span>
+                                <span>Escala 1:1 (96 DPI)</span>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Painel de Especificações Técnicas da Prancha */}
+                          <div className="lg:col-span-5 space-y-3 flex flex-col justify-between">
+                            <div className="space-y-3">
+                              <div className="p-3.5 rounded-xl border bg-card space-y-2">
+                                <div className="flex items-center justify-between">
+                                  <Badge className="text-xs bg-primary text-primary-foreground font-semibold">
+                                    {currentSheet.sheetTitle.split(':')[0]}
+                                  </Badge>
+                                  <Badge variant="outline" className="text-xs font-mono">
+                                    ~{currentSheet.estimatedCutSeconds}s corte
+                                  </Badge>
+                                </div>
+
+                                <h4 className="font-bold text-sm text-foreground">
+                                  {currentSheet.sheetTitle.split(':')[1] || currentSheet.sheetTitle}
+                                </h4>
+
+                                <p className="text-xs text-muted-foreground">
+                                  <strong>Papel Recomendado:</strong> {currentSheet.paperType} ({currentSheet.colorName})
+                                </p>
+                              </div>
+
+                              {/* Parâmetros de Calibração da Lâmina */}
+                              <div className="grid grid-cols-2 gap-2">
+                                <div className="p-2.5 rounded-lg border bg-muted/40 text-center">
+                                  <span className="text-[10px] text-muted-foreground block font-medium">Lâmina</span>
+                                  <span className="text-base font-bold text-foreground">
+                                    {currentSheet.cutBladeSettings.blade}
+                                  </span>
+                                </div>
+
+                                <div className="p-2.5 rounded-lg border bg-muted/40 text-center">
+                                  <span className="text-[10px] text-muted-foreground block font-medium">Força / Pressão</span>
+                                  <span className="text-base font-bold text-foreground">
+                                    {currentSheet.cutBladeSettings.force}
+                                  </span>
+                                </div>
+
+                                <div className="p-2.5 rounded-lg border bg-muted/40 text-center">
+                                  <span className="text-[10px] text-muted-foreground block font-medium">Velocidade</span>
+                                  <span className="text-base font-bold text-foreground">
+                                    {currentSheet.cutBladeSettings.speed}
+                                  </span>
+                                </div>
+
+                                <div className="p-2.5 rounded-lg border bg-muted/40 text-center">
+                                  <span className="text-[10px] text-muted-foreground block font-medium">Passadas</span>
+                                  <span className="text-base font-bold text-foreground">
+                                    {currentSheet.cutBladeSettings.passes}x
+                                  </span>
+                                </div>
+                              </div>
+
+                              {/* Instrução Específica para esta Folha */}
+                              <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-xs text-amber-900 dark:text-amber-200 space-y-1">
+                                <span className="font-semibold block flex items-center gap-1">
+                                  <AlertCircle className="size-3.5" /> Dica de Corte & Encaixe:
+                                </span>
+                                <p className="leading-relaxed text-[11px]">
+                                  {currentSheet.assemblyInstructions}
+                                </p>
+                              </div>
+                            </div>
+
+                            {/* Botão de Download Direto do SVG */}
+                            <Button
+                              onClick={() => handleDownloadCutSheetSvg(currentSheet)}
+                              className="w-full gap-2 font-semibold shadow-xs"
+                            >
+                              <Download className="size-4" />
+                              Baixar SVG ({currentSheet.sheetTitle.split(':')[0]})
+                            </Button>
+                          </div>
+                        </div>
+                      );
+                    })()}
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Seção: Gabarito de Montagem em Camadas (Passo a Passo Físico) */}
+              {blueprint.assemblySteps && blueprint.assemblySteps.length > 0 && (
+                <Card className="shadow-sm border-primary/30">
+                  <CardHeader className="pb-3 border-b bg-muted/20">
+                    <div className="flex items-center gap-2.5">
+                      <div className="p-2 rounded-xl bg-amber-500/10 text-amber-600">
+                        <Layers className="size-4" />
+                      </div>
+                      <div>
+                        <CardTitle className="text-base font-bold">
+                          Gabarito de Montagem em Camadas (Passo a Passo Físico)
+                        </CardTitle>
+                        <CardDescription className="text-xs">
+                          Ordem exata de colagem e elevação com fita banana e tipos de adesivos
+                        </CardDescription>
+                      </div>
+                    </div>
+                  </CardHeader>
+
+                  <CardContent className="p-4 space-y-3">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      {blueprint.assemblySteps.map((step) => (
+                        <div
+                          key={step.stepNumber}
+                          className="p-3.5 rounded-xl border bg-card hover:bg-muted/20 transition-all space-y-2 text-xs"
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-2">
+                              <span className="size-6 rounded-full bg-primary text-primary-foreground font-bold flex items-center justify-center text-xs shrink-0">
+                                {step.stepNumber}
+                              </span>
+                              <span className="font-bold text-foreground">
+                                {step.actionTitle}
+                              </span>
+                            </div>
+
+                            <Badge
+                              variant="outline"
+                              className={`text-[10px] shrink-0 font-medium ${
+                                step.adhesiveType === 'Fita Banana 2mm'
+                                  ? 'border-yellow-500 text-yellow-700 bg-yellow-50 dark:bg-yellow-950/30 dark:text-yellow-300'
+                                  : step.adhesiveType === 'Cola Quente'
+                                  ? 'border-red-500 text-red-700 bg-red-50 dark:bg-red-950/30 dark:text-red-300'
+                                  : 'border-blue-500 text-blue-700 bg-blue-50 dark:bg-blue-950/30 dark:text-blue-300'
+                              }`}
+                            >
+                              {step.adhesiveType}
+                            </Badge>
+                          </div>
+
+                          <p className="text-muted-foreground text-[11px] leading-relaxed">
+                            {step.description}
+                          </p>
+
+                          {step.componentsInvolved && step.componentsInvolved.length > 0 && (
+                            <div className="pt-1 flex flex-wrap gap-1">
+                              {step.componentsInvolved.map((comp, cIdx) => (
+                                <span
+                                  key={cIdx}
+                                  className="text-[10px] px-2 py-0.5 rounded bg-muted text-muted-foreground font-medium"
+                                >
+                                  {comp}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
             </div>
           )}
         </div>

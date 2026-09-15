@@ -41,6 +41,34 @@ export interface RealisticPrompts {
   partyTableScenePrompt: string;
 }
 
+export interface CutSheet {
+  sheetIndex: number;
+  sheetTitle: string;
+  paperType: string;
+  colorName: string;
+  colorHex: string;
+  paperFormat: 'A4' | 'A3' | 'Letter';
+  cutBladeSettings: {
+    blade: number;
+    force: number;
+    speed: number;
+    passes: number;
+  };
+  cutDifficulty: 'fácil' | 'médio' | 'delicado';
+  estimatedCutSeconds: number;
+  piecesCount: number;
+  svgContent: string;
+  assemblyInstructions: string;
+}
+
+export interface AssemblyStep {
+  stepNumber: number;
+  actionTitle: string;
+  description: string;
+  adhesiveType: 'Fita Banana 2mm' | 'Cola de Silicone Líquida' | 'Cola Quente' | 'Fita Dupla Face Fina';
+  componentsInvolved: string[];
+}
+
 export interface AiProductBlueprint {
   productTitle: string;
   category: string;
@@ -57,6 +85,8 @@ export interface AiProductBlueprint {
   suggestedImagePrompt: string;
   generatedImageUrl?: string;
   realisticPrompts: RealisticPrompts;
+  cutSheets: CutSheet[];
+  assemblySteps: AssemblyStep[];
 }
 
 export interface GenerateProductParams {
@@ -366,6 +396,22 @@ Retorne estritamente um JSON com este schema:
           };
         }
 
+        // Garantir que as pranchas de corte e passos de montagem estejam presentes
+        if (!parsed.cutSheets || parsed.cutSheets.length === 0 || !parsed.assemblySteps || parsed.assemblySteps.length === 0) {
+          const isShaker = params.productType.toLowerCase().includes('shaker');
+          const technicals = this.generateCutSheetsAndAssembly(
+            parsed.productTitle || `${params.productType} Luxo 3D`,
+            params.productType,
+            parsed.theme || params.theme,
+            parsed.targetAgeAndName || params.targetNameAndAge,
+            parsed.layers || [],
+            isShaker,
+            params.colorPalette
+          );
+          parsed.cutSheets = technicals.cutSheets;
+          parsed.assemblySteps = technicals.assemblySteps;
+        }
+
         return parsed;
       } catch (err) {
         console.error('[AiProductService] Falha na chamada da API Gemini, usando gerador físico inteligente:', err);
@@ -402,6 +448,324 @@ Retorne estritamente um JSON com este schema:
     }
   }
 
+
+  /**
+   * Gera pranchas de corte em vetor SVG realistas para Silhouette/Cricut e guia de montagem
+   */
+  generateCutSheetsAndAssembly(
+    productTitle: string,
+    productType: string,
+    theme: string,
+    targetNameAndAge: string,
+    layers: LayerSpec[],
+    isShaker: boolean,
+    colorPalette: string
+  ): { cutSheets: CutSheet[]; assemblySteps: AssemblyStep[] } {
+    const isBox = productType.toLowerCase().includes('caixa');
+    const isCakeTopper = productType.toLowerCase().includes('topo');
+    const cleanName = targetNameAndAge || 'Helena 3 anos';
+
+    // Gerar folhas de corte baseadas nas camadas do projeto
+    const cutSheets: CutSheet[] = layers.map((layer, index) => {
+      const sheetNum = index + 1;
+      let sheetTitle = `Folha ${sheetNum}: ${layer.name}`;
+      let piecesCount = 2 + (index % 3);
+      let estimatedCutSeconds = 35 + index * 15;
+      let svgContent = '';
+
+      // Configuração padrão de corte Silhouette: linhas vermelhas (#FF0000) 1.5px
+      const redCut = 'stroke="#FF0000" stroke-width="1.5" fill="none"';
+      const fillWithOpacity = `fill="${layer.colorHex}" fill-opacity="0.18"`;
+      const scoreDash = 'stroke="#0000FF" stroke-width="1.2" stroke-dasharray="6,4" fill="none"';
+
+      if (index === 0) {
+        // Folha 1: Base Estrutural / Fundo de Sustentação
+        sheetTitle = `Folha 1: Base Estrutural Traseira (${layer.paperType})`;
+        piecesCount = 2;
+        estimatedCutSeconds = 40;
+        svgContent = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 794 1123" width="100%" height="100%">
+  <!-- Folha A4 (210x297mm @ 96DPI) - Base Estrutural -->
+  <defs>
+    <filter id="shadow" x="-5%" y="-5%" width="110%" height="110%">
+      <feDropShadow dx="2" dy="3" stdDeviation="3" flood-opacity="0.15"/>
+    </filter>
+  </defs>
+  
+  <!-- Guia de Margens Folha A4 -->
+  <rect x="30" y="30" width="734" height="1063" fill="none" stroke="#E2E8F0" stroke-width="1" stroke-dasharray="4,4"/>
+  <text x="45" y="60" font-family="sans-serif" font-size="14" font-weight="bold" fill="#64748B">FOLHA 1: BASE ESTRUTURAL — ${layer.paperType}</text>
+  <text x="45" y="80" font-family="sans-serif" font-size="11" fill="#94A3B8">Silhouette Portrait / Cameo | Lâmina: ${layer.silhouetteSettings.blade} | Força: ${layer.silhouetteSettings.force} | Vel: ${layer.silhouetteSettings.speed}</text>
+
+  <!-- Peça Principal: Silhueta de Fundo / Base de Sustentação com Deslocamento -->
+  <g transform="translate(120, 140)">
+    <path d="M 50 160 C 20 160 0 130 0 95 C 0 50 40 10 90 10 C 130 10 165 35 180 70 C 200 40 240 20 285 20 C 340 20 385 60 385 115 C 410 115 430 135 430 160 C 430 185 410 205 385 205 C 385 250 345 285 295 285 C 265 285 235 270 215 245 C 195 275 155 295 110 295 C 50 295 10 250 10 195 C 10 180 18 168 50 160 Z" 
+          ${fillWithOpacity} ${redCut} filter="url(#shadow)"/>
+    <text x="215" y="150" font-family="sans-serif" font-size="14" font-weight="bold" fill="${layer.colorHex}" text-anchor="middle">BASE ESTRUTURAL</text>
+    <text x="215" y="172" font-family="sans-serif" font-size="11" fill="#64748B" text-anchor="middle">Offset 3.0mm (Sustentação)</text>
+    
+    <!-- Guias de Encaixe de Palito Acrílico Traseiro -->
+    <rect x="150" y="270" width="12" height="70" fill="none" stroke="#3B82F6" stroke-width="1.2" stroke-dasharray="3,3"/>
+    <rect x="270" y="270" width="12" height="70" fill="none" stroke="#3B82F6" stroke-width="1.2" stroke-dasharray="3,3"/>
+    <text x="215" y="325" font-family="sans-serif" font-size="9" fill="#3B82F6" text-anchor="middle">Encaixe Palitos Acrílicos</text>
+  </g>
+
+  <!-- Suportes e Travas Traseiras 3D -->
+  <g transform="translate(120, 560)">
+    <rect x="40" y="20" width="140" height="40" rx="6" ${fillWithOpacity} ${redCut}/>
+    <text x="110" y="45" font-family="sans-serif" font-size="10" font-weight="bold" fill="#64748B" text-anchor="middle">Trava Reforço 1</text>
+
+    <rect x="240" y="20" width="140" height="40" rx="6" ${fillWithOpacity} ${redCut}/>
+    <text x="310" y="45" font-family="sans-serif" font-size="10" font-weight="bold" fill="#64748B" text-anchor="middle">Trava Reforço 2</text>
+  </g>
+</svg>`;
+      } else if (index === 1) {
+        // Folha 2: Molduras Vazadas & Silhuetas Temáticas
+        sheetTitle = `Folha 2: Moldura e Silhueta Vazada (${layer.paperType})`;
+        piecesCount = 4;
+        estimatedCutSeconds = 55;
+        svgContent = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 794 1123" width="100%" height="100%">
+  <!-- Folha A4 - Moldura e Elementos Vazados -->
+  <rect x="30" y="30" width="734" height="1063" fill="none" stroke="#E2E8F0" stroke-width="1" stroke-dasharray="4,4"/>
+  <text x="45" y="60" font-family="sans-serif" font-size="14" font-weight="bold" fill="#64748B">FOLHA 2: MOLDURA E ELEMENTOS VAZADOS — ${layer.paperType}</text>
+  <text x="45" y="80" font-family="sans-serif" font-size="11" fill="#94A3B8">Silhouette Portrait / Cameo | Lâmina: ${layer.silhouetteSettings.blade} | Força: ${layer.silhouetteSettings.force} | Vel: ${layer.silhouetteSettings.speed}</text>
+
+  <!-- Moldura Central Vazada (Escalope / Oval Temático) -->
+  <g transform="translate(140, 130)">
+    <!-- Contorno Externo -->
+    <path d="M 70 140 C 40 140 20 115 20 85 C 20 45 55 15 95 15 C 130 15 160 35 175 65 C 190 40 225 25 265 25 C 310 25 350 60 350 105 C 370 105 385 120 385 140 C 385 160 370 175 350 175 C 350 215 315 245 270 245 C 245 245 220 230 205 210 C 190 235 155 255 115 255 C 65 255 30 215 30 170 C 30 155 40 145 70 140 Z" 
+          ${fillWithOpacity} ${redCut}/>
+    
+    <!-- Vazado Interno (Janela de Visualização) -->
+    <ellipse cx="205" cy="135" rx="130" ry="85" ${redCut}/>
+    <text x="205" y="140" font-family="sans-serif" font-size="12" font-weight="bold" fill="${layer.colorHex}" text-anchor="middle">MOLDURA VAZADA 3D</text>
+  </g>
+
+  <!-- Folhagens / Borboletas / Estrelas 3D de Composição -->
+  <g transform="translate(100, 470)">
+    <!-- Flor/Folha 1 -->
+    <path d="M 60 10 C 80 40 90 70 60 100 C 30 70 40 40 60 10 Z" ${fillWithOpacity} ${redCut}/>
+    <line x1="60" y1="20" x2="60" y2="90" ${scoreDash}/>
+
+    <!-- Flor/Folha 2 -->
+    <path d="M 160 10 C 180 40 190 70 160 100 C 130 70 140 40 160 10 Z" ${fillWithOpacity} ${redCut}/>
+    <line x1="160" y1="20" x2="160" y2="90" ${scoreDash}/>
+
+    <!-- Borboleta Vazada Dupla -->
+    <g transform="translate(260, 10)">
+      <path d="M 70 45 C 50 15 20 20 20 45 C 20 65 50 70 68 55 C 50 75 40 100 60 100 C 75 100 80 80 72 58 C 74 58 76 58 78 58 C 70 80 75 100 90 100 C 110 100 100 75 82 55 C 100 70 130 65 130 45 C 130 20 100 15 80 45 Z" ${fillWithOpacity} ${redCut}/>
+      <line x1="75" y1="25" x2="75" y2="85" ${scoreDash}/>
+      <text x="75" y="120" font-family="sans-serif" font-size="9" fill="#64748B" text-anchor="middle">Borboleta Asa Dupla</text>
+    </g>
+  </g>
+</svg>`;
+      } else if (isShaker && layer.paperType.toLowerCase().includes('acetato')) {
+        // Folha 3: Contenção Shaker (Acetato Cristal + Anel de EVA)
+        sheetTitle = `Folha 3: Visor de Acetato & Espuma de Contenção Shaker`;
+        piecesCount = 3;
+        estimatedCutSeconds = 60;
+        svgContent = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 794 1123" width="100%" height="100%">
+  <!-- Folha A4 - Visor Shaker e Anel de Vedação -->
+  <rect x="30" y="30" width="734" height="1063" fill="none" stroke="#E2E8F0" stroke-width="1" stroke-dasharray="4,4"/>
+  <text x="45" y="60" font-family="sans-serif" font-size="14" font-weight="bold" fill="#0284C7">FOLHA SHAKER: VISOR ACETATO & VEDAÇÃO EVA</text>
+  <text x="45" y="80" font-family="sans-serif" font-size="11" fill="#64748B">Lâmina de Corte Profundo | Lâmina: 10 | Força: 33 | Vel: 2 | 2 Passadas</text>
+
+  <!-- Visor Frontal em Acetato Cristal -->
+  <g transform="translate(140, 130)">
+    <circle cx="160" cy="160" r="140" fill="#F0F9FF" fill-opacity="0.5" stroke="#0284C7" stroke-width="2"/>
+    <text x="160" y="155" font-family="sans-serif" font-size="14" font-weight="bold" fill="#0284C7" text-anchor="middle">VISOR EM ACETATO</text>
+    <text x="160" y="175" font-family="sans-serif" font-size="11" fill="#64748B" text-anchor="middle">20 micras transparente</text>
+  </g>
+
+  <!-- Anel de Vedação em EVA 2mm (Para reter lantejoulas/pérolas) -->
+  <g transform="translate(140, 480)">
+    <circle cx="160" cy="160" r="140" fill="#FEF3C7" fill-opacity="0.4" ${redCut}/>
+    <circle cx="160" cy="160" r="120" ${redCut}/>
+    <text x="160" y="155" font-family="sans-serif" font-size="13" font-weight="bold" fill="#D97706" text-anchor="middle">ANEL DE CONTENÇÃO (EVA 2mm)</text>
+    <text x="160" y="175" font-family="sans-serif" font-size="10" fill="#64748B" text-anchor="middle">Espessura do anel: 20mm</text>
+  </g>
+</svg>`;
+      } else if (layer.paperType.toLowerCase().includes('fotográfico') || layer.name.toLowerCase().includes('ilustra')) {
+        // Folha Print & Cut com Marcas de Registro Reais da Silhouette
+        sheetTitle = `Folha ${sheetNum}: Print & Cut Ilustrações (${layer.paperType})`;
+        piecesCount = 6;
+        estimatedCutSeconds = 65;
+        svgContent = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 794 1123" width="100%" height="100%">
+  <!-- Folha A4 Print & Cut com Marcas de Registro Silhouette -->
+  <!-- Marca de Registro Superior Esquerda (Quadrado Preto Sólido) -->
+  <rect x="50" y="50" width="20" height="20" fill="#000000"/>
+  <!-- Marca de Registro Superior Direita (Canto em L) -->
+  <path d="M 724 50 L 744 50 L 744 70" fill="none" stroke="#000000" stroke-width="4"/>
+  <!-- Marca de Registro Inferior Esquerda (Canto em L) -->
+  <path d="M 50 1053 L 50 1073 L 70 1073" fill="none" stroke="#000000" stroke-width="4"/>
+
+  <!-- Título e Instruções -->
+  <text x="90" y="66" font-family="sans-serif" font-size="13" font-weight="bold" fill="#64748B">PRINT & CUT: ELEMENTOS DO TEMA "${theme.toUpperCase()}"</text>
+  <text x="90" y="84" font-family="sans-serif" font-size="10" fill="#94A3B8">Imprimir em Papel Fotográfico Matte 180g | Ativar Leitura Óptica no Silhouette Studio</text>
+
+  <!-- Personagem/Elemento Temático Central 1 -->
+  <g transform="translate(120, 140)">
+    <!-- Sangria Impressa Colorida -->
+    <rect x="20" y="20" width="220" height="240" rx="30" fill="${layer.colorHex}" fill-opacity="0.3"/>
+    <!-- Ilustração Conceitual Vetorial do Tema -->
+    <circle cx="130" cy="110" r="60" fill="${layer.colorHex}" fill-opacity="0.8"/>
+    <polygon points="130,40 150,90 200,90 160,125 175,175 130,145 85,175 100,125 60,90 110,90" fill="#FBBF24"/>
+    <text x="130" y="210" font-family="sans-serif" font-size="14" font-weight="bold" fill="#1E293B" text-anchor="middle">${theme}</text>
+    <!-- Linha Vermelha de Corte da Silhouette ao redor da ilustração -->
+    <rect x="15" y="15" width="230" height="250" rx="35" ${redCut}/>
+  </g>
+
+  <!-- Apliques Secundários 3D (Estrelas, Flores e Brasões) -->
+  <g transform="translate(420, 140)">
+    <!-- Aplique 2 -->
+    <g transform="translate(0, 0)">
+      <circle cx="90" cy="90" r="70" fill="${layer.colorHex}" fill-opacity="0.25"/>
+      <circle cx="90" cy="90" r="65" ${redCut}/>
+      <text x="90" y="95" font-family="sans-serif" font-size="11" font-weight="bold" fill="#334155" text-anchor="middle">Aplique 3D #1</text>
+    </g>
+
+    <!-- Aplique 3 -->
+    <g transform="translate(0, 170)">
+      <circle cx="90" cy="70" r="60" fill="${layer.colorHex}" fill-opacity="0.25"/>
+      <circle cx="90" cy="70" r="55" ${redCut}/>
+      <text x="90" y="75" font-family="sans-serif" font-size="11" font-weight="bold" fill="#334155" text-anchor="middle">Aplique 3D #2</text>
+    </g>
+  </g>
+
+  <!-- Elementos Complementares Inferiores -->
+  <g transform="translate(120, 460)">
+    <rect x="20" y="20" width="500" height="180" rx="20" fill="${layer.colorHex}" fill-opacity="0.15"/>
+    <rect x="15" y="15" width="510" height="190" rx="25" ${redCut}/>
+    <text x="270" y="100" font-family="sans-serif" font-size="14" font-weight="bold" fill="#334155" text-anchor="middle">Faixa Temática / Tag de Bolo</text>
+    <text x="270" y="125" font-family="sans-serif" font-size="11" fill="#64748B" text-anchor="middle">Com marcas de sangria de 1.5mm para corte perfeito</text>
+  </g>
+</svg>`;
+      } else {
+        // Folha Nobre: Destaque Nome em Lamicote Dourado / Offset
+        sheetTitle = `Folha ${sheetNum}: Destaque Nome e Idade (${layer.paperType})`;
+        piecesCount = 3;
+        estimatedCutSeconds = 45;
+        svgContent = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 794 1123" width="100%" height="100%">
+  <!-- Folha A4 - Lamicote Dourado / Nome em Camadas -->
+  <rect x="30" y="30" width="734" height="1063" fill="none" stroke="#E2E8F0" stroke-width="1" stroke-dasharray="4,4"/>
+  <text x="45" y="60" font-family="sans-serif" font-size="14" font-weight="bold" fill="#B45309">FOLHA LAMICOTE NOBRE: NOME & IDADE — ${layer.paperType}</text>
+  <text x="45" y="80" font-family="sans-serif" font-size="11" fill="#92400E">Lâmina: ${layer.silhouetteSettings.blade} | Força: ${layer.silhouetteSettings.force} | Vel: ${layer.silhouetteSettings.speed} (${layer.silhouetteSettings.passes} passadas com Lamicote)</text>
+
+  <!-- Camada de Letras Soldadas com Efeito Espelhado Dourado -->
+  <g transform="translate(90, 140)">
+    <!-- Sombra/Contorno de Solda -->
+    <rect x="20" y="20" width="560" height="180" rx="25" fill="#FEF3C7" fill-opacity="0.6" ${redCut}/>
+    
+    <!-- Texto do Nome Soldado em Curva/Vetor -->
+    <text x="300" y="115" font-family="Brush Script MT, cursive, sans-serif" font-size="52" font-weight="bold" fill="#D97706" text-anchor="middle">
+      ${cleanName.split('-')[0].trim()}
+    </text>
+    <text x="300" y="165" font-family="sans-serif" font-size="20" font-weight="bold" fill="#B45309" text-anchor="middle">
+      ${cleanName.split('-')[1]?.trim() || theme}
+    </text>
+    
+    <text x="300" y="195" font-family="sans-serif" font-size="10" fill="#92400E" text-anchor="middle">
+      * Letras 100% soldadas com deslocamento (offset) de 2.0mm
+    </text>
+  </g>
+
+  <!-- Elementos de Acabamento Dourado (Estrelas / Coroas / Arabescos) -->
+  <g transform="translate(90, 400)">
+    <g transform="translate(40, 20)">
+      <polygon points="50,10 63,38 93,42 71,63 76,93 50,78 24,93 29,63 7,42 37,38" fill="#FDE68A" ${redCut}/>
+      <text x="50" y="115" font-family="sans-serif" font-size="9" fill="#92400E" text-anchor="middle">Estrela Dourada 1</text>
+    </g>
+
+    <g transform="translate(230, 20)">
+      <polygon points="50,10 63,38 93,42 71,63 76,93 50,78 24,93 29,63 7,42 37,38" fill="#FDE68A" ${redCut}/>
+      <text x="50" y="115" font-family="sans-serif" font-size="9" fill="#92400E" text-anchor="middle">Estrela Dourada 2</text>
+    </g>
+
+    <g transform="translate(420, 20)">
+      <!-- Número da Idade em Destaque -->
+      <circle cx="50" cy="50" r="45" fill="#FEF3C7" ${redCut}/>
+      <text x="50" y="60" font-family="sans-serif" font-size="32" font-weight="bold" fill="#D97706" text-anchor="middle">
+        ${cleanName.match(/\d+/)?.[0] || '★'}
+      </text>
+      <text x="50" y="115" font-family="sans-serif" font-size="9" fill="#92400E" text-anchor="middle">Tag Idade 3D</text>
+    </g>
+  </g>
+</svg>`;
+      }
+
+      return {
+        sheetIndex: sheetNum,
+        sheetTitle,
+        paperType: layer.paperType,
+        colorName: layer.colorName,
+        colorHex: layer.colorHex,
+        paperFormat: 'A4',
+        cutBladeSettings: layer.silhouetteSettings,
+        cutDifficulty: layer.cutDifficulty,
+        estimatedCutSeconds,
+        piecesCount,
+        svgContent,
+        assemblyInstructions: layer.assemblyTip,
+      };
+    });
+
+    // Gerar passos físicos estruturados de montagem
+    const assemblySteps: AssemblyStep[] = [
+      {
+        stepNumber: 1,
+        actionTitle: 'Fixação da Estrutura e Palitos Traseiros',
+        description:
+          'Destaque a Folha 1 (Base Estrutural). Cole os palitos acrílicos transparentes no verso com cola quente ou fita dupla face de alta fixação, alinhando pelas guias de encaixe.',
+        adhesiveType: 'Cola Quente',
+        componentsInvolved: ['Base Estrutural (Folha 1)', 'Palitos Acrílicos Transparentes de 15cm'],
+      },
+      {
+        stepNumber: 2,
+        actionTitle: 'Primeira Elevação 3D (Moldura do Tema)',
+        description:
+          'Aplique pedaços de fita banana de 2mm no verso da Moldura Vazada (Folha 2) e fixe centralizada sobre a Base Estrutural, garantindo que o efeito de profundidade fique uniforme.',
+        adhesiveType: 'Fita Banana 2mm',
+        componentsInvolved: ['Moldura Vazada (Folha 2)', 'Base Estrutural (Folha 1)'],
+      },
+      ...(isShaker
+        ? [
+            {
+              stepNumber: 3,
+              actionTitle: 'Selagem do Visor Shaker (Acetato + EVA)',
+              description:
+                'Cole o anel de contenção em EVA 2mm sobre a base. Deposite as lantejoulas e micro-pérolas no centro. Feche hermeticamente com o visor de acetato cristal e cola de silicone líquida para não vazar.',
+              adhesiveType: 'Cola de Silicone Líquida' as const,
+              componentsInvolved: ['Visor de Acetato Cristal', 'Anel de Contenção EVA 2mm', 'Lantejoulas/Pérolas'],
+            },
+          ]
+        : []),
+      {
+        stepNumber: isShaker ? 4 : 3,
+        actionTitle: 'Sobreposição dos Elementos Print & Cut',
+        description:
+          'Destaque os elementos temáticos impressos em Matte 180g. Aplique fita banana 3D nos pontos estratégicos e posicione sobre a moldura, criando níveis escalonados de relevo.',
+        adhesiveType: 'Fita Banana 2mm',
+        componentsInvolved: ['Apliques Print & Cut Temáticos', 'Moldura do Tema'],
+      },
+      {
+        stepNumber: isShaker ? 5 : 4,
+        actionTitle: 'Aplicação Nobre do Nome em Lamicote Ouro',
+        description:
+          `Cole as letras soldadas em Lamicote Dourado 250g sobre o offset com cola de silicone líquida (camada fina para não marcar o papel espelhado). Finalize fixando o nome no topo do conjunto com fita banana.`,
+        adhesiveType: 'Cola de Silicone Líquida',
+        componentsInvolved: [`Nome "${cleanName}" em Lamicote`, 'Offset de Fundo', 'Apliques de Estrelas Douradas'],
+      },
+      {
+        stepNumber: isShaker ? 6 : 5,
+        actionTitle: 'Acabamento Final e Inspeção de Qualidade',
+        description:
+          'Verifique a firmeza do conjunto contra a luz, remova eventuais fios de cola quente e embale em saco celofane com suporte de papel cartão para envio impecável à cliente.',
+        adhesiveType: 'Fita Dupla Face Fina',
+        componentsInvolved: ['Produto Completo Montado', 'Embalagem de Proteção'],
+      },
+    ];
+
+    return { cutSheets, assemblySteps };
+  }
 
   /**
    * Gerador inteligente local baseado em regras reais de papelaria brasileira e prompt engineering
@@ -551,6 +915,17 @@ Retorne estritamente um JSON com este schema:
       partyTableScenePrompt: `Editorial lifestyle photography of an elegant luxury birthday dessert table for a child celebration. Theme: "${themeName}". Centerpiece is a gorgeous pastel decorated cake topped with an artisanal 3D layered paper cake topper featuring "${target}" in shiny gold foil. Surrounding table is styled with gourmet brigadeiro sweets in luxury paper wrappers, matching party favors, soft pastel balloon garland in the background, soft natural bokeh light.`
     };
 
+    // Gerar folhas técnicas de corte e passos de montagem física
+    const { cutSheets, assemblySteps } = this.generateCutSheetsAndAssembly(
+      `${params.productType} Luxo 3D - Tema ${themeName}`,
+      params.productType,
+      themeName,
+      target,
+      layers,
+      isShaker,
+      params.colorPalette
+    );
+
     return {
       productTitle: `${params.productType} Luxo 3D - Tema ${themeName}`,
       category: isCakeTopper ? 'Topos de Bolo' : 'Papelaria Criativa',
@@ -577,8 +952,11 @@ Retorne estritamente um JSON com este schema:
       silhouetteTips: `Para a ${params.plotter === 'portrait3' ? 'Portrait 3' : 'Cameo 4'}, use base de corte limpa com aderência média e sempre faça o corte de teste para o ${pGold.paper}.`,
       suggestedImagePrompt: realisticPrompts.geminiImagenPrompt,
       realisticPrompts,
+      cutSheets,
+      assemblySteps,
     };
   }
 }
 
 export const aiProductService = new AiProductService();
+
