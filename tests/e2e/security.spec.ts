@@ -24,6 +24,9 @@ test.describe('Segurança - Controle de Acesso e Rotas Privadas', () => {
     { name: 'Permutas', path: '/permutas' },
     { name: 'Configurações', path: '/configuracoes' },
     { name: 'Usuários', path: '/usuarios' },
+    { name: 'Produtos da Loja', path: '/produtos-lojinha' },
+    { name: 'Pedidos da Loja', path: '/pedidos-lojinha' },
+    { name: 'Personalizar Loja', path: '/personalizar-lojinha' },
   ];
 
   for (const { name, path } of protectedRoutes) {
