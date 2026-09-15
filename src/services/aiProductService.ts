@@ -786,109 +786,6 @@ Retorne estritamente um JSON com este schema:
   }
 
   /**
-   * Realiza Engenharia Reversa Visual Multimodal a partir de uma imagem
-   * (lendo a foto gerada por IA ou foto real e gerando camadas, papéis, paleta e pranchas de corte em SVG)
-   */
-  async reverseEngineerBlueprintFromImage(params: ReverseEngineerImageParams): Promise<AiProductBlueprint> {
-    const apiKey = this.getApiKey(params.geminiApiKey);
-    const tunedModel = this.getTunedModelId(params.tunedModelId);
-    const conversationId = `vision_reverse_${Date.now()}`;
-    const plotter = params.plotter || 'portrait3';
-
-    return traceAgentRun('PaperCraftVisionReverseEngineer', conversationId, async () => {
-      if (!apiKey) {
-        console.warn('[AiProductService] Chave Gemini não configurada para análise de imagem. Usando gerador adaptativo.');
-        const fallback = this.generateSmartFallback({
-          productType: 'Topo de Bolo 3D',
-          theme: params.userNotes || 'Jardim Encantado',
-          targetNameAndAge: 'Personalizado',
-          colorPalette: 'Candy Colors / Pastéis',
-          complexity: 'avançado',
-          plotter,
-          customInstructions: params.userNotes || 'Projeto derivado de análise de imagem.',
-        });
-        if (params.imageBase64) {
-          fallback.generatedImageUrl = params.imageBase64;
-        }
-        return fallback;
-      }
-
-      const cleanBase64 = params.imageBase64.replace(/^data:image\/\w+;base64,/, '');
-      const mimeType = params.mimeType || (params.imageBase64.startsWith('data:image/png') ? 'image/png' : 'image/jpeg');
-
-      const visionSystemPrompt = `
-Você é uma Engenheira Especialista em Papelaria Personalizada de Luxo e Projetista de Corte para Silhouette Studio, Cricut Design Space e Brother ScanNCut.
-Sua missão é inspecionar minuciosamente a IMAGEM enviada (foto de produto real de papelaria de festa ou render hiper-realista gerado por IA) e realizar a ENGENHARIA REVERSA FÍSICA COMPLETA para produção e corte.
-
-INSTRUÇÕES DE INSPEÇÃO VISUAL OBRIGATÓRIAS:
-1. IDENTIFICAÇÃO DO PRODUTO & TEMA:
-   - Identifique a categoria exata (ex: "Topo de Bolo 3D", "Topo Shaker Luxo", "Caixa Milk 3D", "Caixa Pirâmide", "Letra 3D Personalizada", "Marcador de Página Luxo", etc.).
-   - Identifique o tema visual predominante (ex: "Astronauta", "Jardim Encantado", "Safari Baby", "Circo Rosa", "Sereia", "Dino Baby", "Princesas / Realeza", "Balão de Ar Quente", "Gamer", etc.).
-   - OCR Minucioso: Extraia exatamente qualquer nome, idade ou texto visível na imagem. Se não houver texto legível, sugira um nome harmonioso com idade (ex: "Helena - 3 anos").
-
-2. DECOMPOSIÇÃO REAL EM CAMADAS FÍSICAS (De baixo para cima, cada camada separada por folha de papel):
-   - Crie de 3 a 6 camadas físicas reais correspondendo aos elementos visuais vistos na imagem:
-     * Camada 1: Base de Fundo / Silhueta Estrutural Rígida (Papel Colorplus 180g-240g ou Kraft com a cor predominante do fundo).
-     * Camada 2: Molduras, Escalopes ou Fundo Intermediário com deslocamento (offset de 2.0mm a 3.0mm).
-     * Camadas 3 e 4: Elementos Temáticos 3D elevados com fita banana (personagens, borboletas, flores, foguetes, leõezinhos, balões).
-     * Camadas Especiais (se houver): Visor de acetato transparente e anel de vedação em EVA 2mm (se shaker).
-     * Camada Nobre / Superior: Nome em destaque cursivo soldado, idade em Lamicote (Dourado, Rose Gold, Prata) ou Glitter 250g.
-
-3. RETORNE ESTRITAMENTE UM JSON no formato:
-{
-  "productTitle": "Título comercial descritivo e luxuoso",
-  "category": "Topos de Bolo" | "Lembrancinhas" | "Papelaria Criativa" | "Kits Festa",
-  "description": "Descrição técnica e visual detalhada da peça inspecionada",
-  "targetAgeAndName": "Nome e Idade extraídos ou sugeridos",
-  "theme": "Tema detectado na imagem",
-  "recommendedPrice": 45.00,
-  "suggestedLeadTimeDays": 5,
-  "layers": [
-    {
-      "order": 1,
-      "name": "Nome descritivo exato da camada (ex: Base Estrutural com Offset, Moldura Escalopada Floral, Apliques de Borboletas 3D, Nome Nobre Lamicote Dourado)",
-      "paperType": "Ex: Colorplus Rosa Chá 180g",
-      "colorHex": "#E8B4B8",
-      "colorName": "Rosa Chá",
-      "cutDifficulty": "fácil" | "médio" | "delicado",
-      "offsetMm": 2.5,
-      "silhouetteSettings": { "blade": 3, "force": 30, "speed": 5, "passes": 1 },
-      "assemblyTip": "Instrução precisa de colagem e elevação 3D"
-    }
-  ],
-  "papersShoppingList": [
-    { "name": "Nome do papel", "gramature": "180g", "sheetsNeeded": 1 }
-  ],
-  "toolsAndAccessories": ["Fita banana 2mm", "Cola de silicone líquida", "Palitos acrílicos 15cm"],
-  "estimatedAssemblyMinutes": 25,
-  "silhouetteTips": "Dicas de corte na plotter ${plotter}",
-  "suggestedImagePrompt": "Prompt descritivo em inglês da imagem",
-  "realisticPrompts": {
-    "geminiImagenPrompt": "...",
-    "bananaTape3dPrompt": "...",
-    "ideogramPrompt": "...",
-    "midjourneyPrompt": "...",
-    "dallePrompt": "...",
-    "fluxPrompt": "...",
-    "macroLayersPrompt": "...",
-    "partyTableScenePrompt": "..."
-  }
-}
-`;
-
-      const parts: any[] = [
-        {
-          inlineData: {
-            mimeType,
-            data: cleanBase64,
-          },
-        },
-        {
-          text: `Analise cuidadosamente esta imagem de produto de papelaria personalizada e decomponha todas as suas camadas físicas, tema, nome e corte.${params.userNotes ? `\nObservações extras da artesã: ${params.userNotes}` : ''}`,
-        },
-      ];
-
-  /**
    * Rastreamento vetorial real da imagem (Auto-Trace Silhouette / Marching Squares)
    * Extrai o contorno exato da silhueta do produto a partir dos pixels da imagem
    */
@@ -1130,18 +1027,10 @@ INSTRUÇÕES DE INSPEÇÃO VISUAL OBRIGATÓRIAS:
   /**
    * Inspeção multimodal reversa por imagem: lê a foto/render e gera a decomposição física completa
    */
-  async reverseEngineerBlueprintFromImage(params: {
-    imageBase64: string;
-    userNotes?: string;
-    geminiApiKey?: string;
-    plotter?: string;
-    mimeType?: string;
-    tunedModelId?: string;
-    onProgress?: (event: AiProgressEvent) => void;
-  }): Promise<AiProductBlueprint> {
-    const apiKey = params.geminiApiKey || this.getApiKey();
-    const tunedModel = params.tunedModelId || this.getTunedModel();
-    const plotter = params.plotter || this.getDefaultPlotter();
+  async reverseEngineerBlueprintFromImage(params: ReverseEngineerImageParams): Promise<AiProductBlueprint> {
+    const apiKey = this.getApiKey(params.geminiApiKey);
+    const tunedModel = this.getTunedModelId(params.tunedModelId);
+    const plotter = params.plotter || 'portrait3';
 
     return traceAIChat('reverse-engineer-image', `vision_${Date.now()}`, async () => {
       params.onProgress?.({
