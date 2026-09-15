@@ -840,6 +840,44 @@ exports.resendReceivingWebhook = onRequest({ cors: true, secrets: [RESEND_API_KE
       return res.status(400).json({ error: 'Payload sem email_id' });
     }
 
+    // Validação de Destinatários Permitidos (Allowlist de Caixas Postais Autorizadas)
+    const allowedMailboxPrefixes = [
+      'caio',
+      'amanda',
+      'suporte',
+      'noreply',
+      'contato',
+      'atendimento',
+    ];
+
+    const checkAllowedRecipient = (recipients) => {
+      if (!Array.isArray(recipients) || recipients.length === 0) return true; // Se não houver lista, não descarta prematuramente
+      return recipients.some((r) => {
+        if (typeof r !== 'string') return false;
+        const match = r.match(/<([^>]+)>/) || [null, r];
+        const cleanEmail = (match[1] || r).trim().toLowerCase();
+        const [mailbox, domain] = cleanEmail.split('@');
+        if (!mailbox || !domain) return false;
+
+        const isLuisicesDomain =
+          domain === 'luisices.com.br' ||
+          domain === 'dev.luisices.com.br' ||
+          domain.endsWith('.luisices.com.br');
+
+        return isLuisicesDomain && allowedMailboxPrefixes.includes(mailbox);
+      });
+    };
+
+    const initialRecipients = Array.isArray(eventData.to) ? eventData.to : [eventData.to].filter(Boolean);
+    if (initialRecipients.length > 0 && !checkAllowedRecipient(initialRecipients)) {
+      console.log(`[resendReceivingWebhook] E-mail para destinatário não autorizado ignorado e descartado: ${initialRecipients.join(', ')}`);
+      return res.status(200).json({
+        status: 'discarded',
+        reason: 'recipient_not_allowed',
+        recipients: initialRecipients,
+      });
+    }
+
     // Buscar o conteúdo completo (HTML, texto, anexos) via Resend API
     let fullEmail = null;
     const apiKey = RESEND_API_KEY.value();
