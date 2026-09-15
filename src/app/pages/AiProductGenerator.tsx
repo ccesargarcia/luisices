@@ -35,6 +35,11 @@ import {
   Eye,
   Grid,
   CheckCircle2,
+  Terminal,
+  Activity,
+  Radio,
+  Minimize2,
+  Maximize2,
 } from 'lucide-react';
 import {
   aiProductService,
@@ -150,6 +155,31 @@ export function AiProductGenerator() {
   const [isDraggingImage, setIsDraggingImage] = useState(false);
   const reverseFileInputRef = React.useRef<HTMLInputElement>(null);
   const acervoFileInputRef = React.useRef<HTMLInputElement>(null);
+
+  // Terminal e Output em Tempo Real (Live Stream & Logs)
+  const [enableLiveOutput, setEnableLiveOutput] = useState(true);
+  const [liveStreamingText, setLiveStreamingText] = useState('');
+  const [liveProgressPercent, setLiveProgressPercent] = useState(0);
+  const [liveCurrentStage, setLiveCurrentStage] = useState('');
+  const [liveCurrentMessage, setLiveCurrentMessage] = useState('');
+  const [isTerminalExpanded, setIsTerminalExpanded] = useState(true);
+  const [liveLogs, setLiveLogs] = useState<
+    Array<{
+      id: string;
+      timestamp: string;
+      stage: string;
+      message: string;
+      logType: 'info' | 'stream' | 'success' | 'warn' | 'error';
+    }>
+  >([]);
+  const terminalLogRef = React.useRef<HTMLDivElement>(null);
+
+  // Auto-scroll do terminal ao receber logs ou streaming
+  useEffect(() => {
+    if (terminalLogRef.current) {
+      terminalLogRef.current.scrollTop = terminalLogRef.current.scrollHeight;
+    }
+  }, [liveLogs, liveStreamingText]);
 
   // Salvar no catálogo
   const [savingProduct, setSavingProduct] = useState(false);
@@ -357,6 +387,12 @@ export function AiProductGenerator() {
     }
 
     setAnalyzingImage(true);
+    setLiveStreamingText('');
+    setLiveLogs([]);
+    setLiveProgressPercent(15);
+    setLiveCurrentStage('Iniciando');
+    setLiveCurrentMessage('Preparando imagem para envio à IA Multimodal...');
+
     try {
       const result = await aiProductService.reverseEngineerBlueprintFromImage({
         imageBase64: reverseImagePreview,
@@ -364,6 +400,26 @@ export function AiProductGenerator() {
         geminiApiKey: apiKeyInput,
         plotter,
         tunedModelId: tunedModelInput,
+        onProgress: (event) => {
+          setLiveCurrentStage(event.stage);
+          setLiveCurrentMessage(event.message);
+          setLiveProgressPercent(event.progressPercent);
+          if (event.rawChunk) {
+            setLiveStreamingText((prev) => prev + event.rawChunk);
+          }
+          if (event.logType !== 'stream') {
+            setLiveLogs((prev) => [
+              ...prev,
+              {
+                id: `${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
+                timestamp: event.timestamp,
+                stage: event.stage,
+                message: event.message,
+                logType: event.logType,
+              },
+            ]);
+          }
+        },
       });
 
       setBlueprint(result);
@@ -393,6 +449,11 @@ export function AiProductGenerator() {
     setLoading(true);
     setBlueprint(null);
     setSelectedLayerIndex(null);
+    setLiveStreamingText('');
+    setLiveLogs([]);
+    setLiveProgressPercent(15);
+    setLiveCurrentStage('Iniciando');
+    setLiveCurrentMessage('Montando parâmetros e consultando o acervo do ateliê...');
 
     try {
       const result = await aiProductService.generateProductBlueprint({
@@ -407,6 +468,26 @@ export function AiProductGenerator() {
         tunedModelId: tunedModelInput,
         referenceAcervoItem: activeAcervoRef || undefined,
         referenceImageUrl: activeAcervoRef?.imageUrl,
+        onProgress: (event) => {
+          setLiveCurrentStage(event.stage);
+          setLiveCurrentMessage(event.message);
+          setLiveProgressPercent(event.progressPercent);
+          if (event.rawChunk) {
+            setLiveStreamingText((prev) => prev + event.rawChunk);
+          }
+          if (event.logType !== 'stream') {
+            setLiveLogs((prev) => [
+              ...prev,
+              {
+                id: `${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
+                timestamp: event.timestamp,
+                stage: event.stage,
+                message: event.message,
+                logType: event.logType,
+              },
+            ]);
+          }
+        },
       });
 
       setBlueprint(result);
@@ -954,15 +1035,110 @@ export function AiProductGenerator() {
             </Card>
           )}
 
-          {loading && (
-            <Card className="p-16 text-center flex flex-col items-center justify-center space-y-4 animate-pulse">
-              <Loader2 className="size-10 text-primary animate-spin" />
-              <div className="space-y-1.5">
-                <h3 className="font-semibold text-base">Engenharia do Projeto em Andamento</h3>
-                <p className="text-xs text-muted-foreground">
-                  Consultando acertos do ateliê, calibrando força da lâmina e calculando consumo de folhas A4...
-                </p>
-              </div>
+          {/* Terminal / Console de Execução da IA em Tempo Real */}
+          {(loading || liveLogs.length > 0 || liveStreamingText.length > 0) && (
+            <Card className="border-purple-300 dark:border-purple-800 shadow-md bg-slate-950 text-slate-100 overflow-hidden font-mono">
+              <CardHeader className="p-3 bg-slate-900 border-b border-slate-800 flex flex-row items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className={`size-2.5 rounded-full ${loading ? 'bg-emerald-400 animate-ping' : 'bg-emerald-500'}`} />
+                  <CardTitle className="text-xs font-bold text-slate-200 flex items-center gap-1.5 font-mono">
+                    <Terminal className="size-3.5 text-purple-400" />
+                    Console de Execução da IA em Tempo Real
+                  </CardTitle>
+                  <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-purple-500/40 text-purple-300 bg-purple-950/40">
+                    {liveProgressPercent}%
+                  </Badge>
+                </div>
+
+                <div className="flex items-center gap-1.5">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setLiveLogs([]);
+                      setLiveStreamingText('');
+                    }}
+                    className="h-6 px-2 text-[10px] text-slate-400 hover:text-slate-200 hover:bg-slate-800"
+                  >
+                    Limpar
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setIsTerminalExpanded(!isTerminalExpanded)}
+                    className="size-6 p-0 text-slate-400 hover:text-slate-200 hover:bg-slate-800"
+                  >
+                    {isTerminalExpanded ? <Minimize2 className="size-3" /> : <Maximize2 className="size-3" />}
+                  </Button>
+                </div>
+              </CardHeader>
+
+              {isTerminalExpanded && (
+                <CardContent className="p-3 space-y-3">
+                  {/* Barra de Progresso com Etapa Atual */}
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between text-[11px]">
+                      <span className="text-purple-300 font-semibold flex items-center gap-1">
+                        <Activity className="size-3 animate-pulse text-purple-400" />
+                        {liveCurrentStage || (loading ? 'Processando IA...' : 'Concluído')}
+                      </span>
+                      <span className="text-slate-400 text-[10px] truncate max-w-xs">{liveCurrentMessage}</span>
+                    </div>
+
+                    <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-gradient-to-r from-purple-500 via-indigo-500 to-emerald-400 transition-all duration-300 rounded-full"
+                        style={{ width: `${Math.max(5, liveProgressPercent)}%` }}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Timeline dos Logs */}
+                  {liveLogs.length > 0 && (
+                    <div className="space-y-1 max-h-32 overflow-y-auto pr-1 text-[11px] text-slate-300 scrollbar-thin">
+                      {liveLogs.map((log) => (
+                        <div key={log.id} className="flex items-start gap-1.5 leading-relaxed">
+                          <span className="text-slate-500 shrink-0 text-[10px]">[{log.timestamp}]</span>
+                          <span
+                            className={
+                              log.logType === 'success'
+                                ? 'text-emerald-400 font-semibold'
+                                : log.logType === 'warn'
+                                ? 'text-amber-400'
+                                : log.logType === 'error'
+                                ? 'text-red-400'
+                                : 'text-slate-300'
+                            }
+                          >
+                            {log.message}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Streaming de Texto / Tokens da IA em Tempo Real */}
+                  {liveStreamingText && (
+                    <div className="space-y-1">
+                      <div className="flex items-center justify-between text-[10px] text-slate-400">
+                        <span className="flex items-center gap-1 text-purple-300 font-semibold">
+                          <Radio className="size-3 animate-pulse text-emerald-400" />
+                          Transmissão de Tokens da IA (Ao Vivo):
+                        </span>
+                        <span>{liveStreamingText.length} caracteres</span>
+                      </div>
+                      <pre
+                        ref={terminalLogRef}
+                        className="p-2.5 rounded-lg bg-slate-900 border border-slate-800 text-[11px] font-mono text-emerald-300/90 whitespace-pre-wrap break-words max-h-48 overflow-y-auto leading-relaxed select-all"
+                      >
+                        {liveStreamingText}
+                      </pre>
+                    </div>
+                  )}
+                </CardContent>
+              )}
             </Card>
           )}
 
@@ -2534,6 +2710,78 @@ export function AiProductGenerator() {
                 className="text-xs resize-none"
               />
             </div>
+
+            {/* Terminal em Tempo Real dentro do Modal durante Análise */}
+            {(analyzingImage || (isReverseEngineerDialogOpen && (liveLogs.length > 0 || liveStreamingText.length > 0))) && (
+              <div className="rounded-xl border border-purple-800/80 bg-slate-950 text-slate-100 p-3 space-y-2.5 font-mono shadow-inner">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className="size-2 rounded-full bg-emerald-400 animate-ping" />
+                    <span className="text-xs font-bold text-slate-200 flex items-center gap-1.5">
+                      <Terminal className="size-3.5 text-purple-400" />
+                      Análise Multimodal em Tempo Real
+                    </span>
+                  </div>
+                  <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-purple-500/40 text-purple-300 bg-purple-950/40">
+                    {liveProgressPercent}%
+                  </Badge>
+                </div>
+
+                {/* Barra de Progresso */}
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between text-[10px]">
+                    <span className="text-purple-300 font-medium truncate flex items-center gap-1">
+                      <Activity className="size-3 animate-pulse text-purple-400" />
+                      {liveCurrentStage || 'Inspecionando Imagem...'}
+                    </span>
+                    <span className="text-slate-400 truncate max-w-[200px]">{liveCurrentMessage}</span>
+                  </div>
+                  <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-gradient-to-r from-purple-500 via-indigo-500 to-emerald-400 transition-all duration-300 rounded-full"
+                      style={{ width: `${Math.max(5, liveProgressPercent)}%` }}
+                    />
+                  </div>
+                </div>
+
+                {/* Logs Recentes */}
+                {liveLogs.length > 0 && (
+                  <div className="space-y-0.5 max-h-24 overflow-y-auto pr-1 text-[10px] text-slate-300 scrollbar-thin">
+                    {liveLogs.slice(-5).map((log) => (
+                      <div key={log.id} className="flex items-start gap-1.5">
+                        <span className="text-slate-500 shrink-0">[{log.timestamp}]</span>
+                        <span
+                          className={
+                            log.logType === 'success'
+                              ? 'text-emerald-400 font-semibold'
+                              : log.logType === 'warn'
+                              ? 'text-amber-400'
+                              : log.logType === 'error'
+                              ? 'text-red-400'
+                              : 'text-slate-300'
+                          }
+                        >
+                          {log.message}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Streaming de Texto em Tempo Real */}
+                {liveStreamingText && (
+                  <div className="space-y-1">
+                    <span className="text-[10px] text-purple-300 flex items-center gap-1">
+                      <Radio className="size-2.5 animate-pulse text-emerald-400" />
+                      Stream de Tokens da IA (Ao Vivo):
+                    </span>
+                    <pre className="p-2 rounded bg-slate-900 border border-slate-800 text-[10px] font-mono text-emerald-300/90 whitespace-pre-wrap break-words max-h-28 overflow-y-auto leading-relaxed select-all">
+                      {liveStreamingText}
+                    </pre>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Dica Informativa */}
             <div className="p-3 rounded-xl bg-purple-50 dark:bg-purple-950/40 border border-purple-200 dark:border-purple-800 text-[11px] text-purple-900 dark:text-purple-200 space-y-1">

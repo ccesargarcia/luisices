@@ -178,6 +178,15 @@ export const DEFAULT_ATELIER_ACERVO: AcervoItem[] = [
   },
 ];
 
+export interface AiProgressEvent {
+  stage: string;
+  message: string;
+  progressPercent: number; // 0 a 100
+  logType: 'info' | 'stream' | 'success' | 'warn' | 'error';
+  timestamp: string;
+  rawChunk?: string;
+}
+
 export interface GenerateProductParams {
   productType: string;
   theme: string;
@@ -192,6 +201,7 @@ export interface GenerateProductParams {
   referenceAcervoItem?: AcervoItem;
   referenceImageUrl?: string;
   referenceImageBase64?: string;
+  onProgress?: (event: AiProgressEvent) => void;
 }
 
 export interface ReverseEngineerImageParams {
@@ -201,6 +211,7 @@ export interface ReverseEngineerImageParams {
   geminiApiKey?: string;
   plotter?: 'portrait3' | 'cameo4' | 'cricut' | 'manual';
   tunedModelId?: string;
+  onProgress?: (event: AiProgressEvent) => void;
 }
 
 export interface CuratedPreset {
@@ -456,41 +467,165 @@ export class AiProductService {
   }
 
   /**
-   * Executa chamada à API Gemini com fallback automático entre modelos suportados
+   * Executa chamada à API Gemini com suporte a Streaming em Tempo Real (SSE) e fallback entre modelos
    */
   private async callGeminiWithCandidateModels(
     apiKey: string,
     preferredModel: string | undefined,
-    bodyPayload: any
+    bodyPayload: any,
+    onProgress?: (event: AiProgressEvent) => void
   ): Promise<string> {
     const candidateModels = preferredModel
-      ? [preferredModel, 'gemini-3.6-flash', 'gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-2.5-flash']
-      : ['gemini-3.6-flash', 'gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-2.5-flash'];
+      ? [preferredModel, 'gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-3.6-flash', 'gemini-2.5-flash']
+      : ['gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-3.6-flash', 'gemini-2.5-flash'];
 
     let lastError: any = null;
 
-    for (const model of candidateModels) {
+    for (let i = 0; i < candidateModels.length; i++) {
+      const model = candidateModels[i];
+      onProgress?.({
+        stage: 'Conectando à IA',
+        message: `Iniciando conexão com o modelo Google Gemini (${model})...`,
+        progressPercent: 20 + i * 5,
+        logType: 'info',
+        timestamp: new Date().toLocaleTimeString(),
+      });
+
       try {
-        const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
-        const response = await fetch(endpoint, {
+        // 1. Tentar Streaming em Tempo Real (Server-Sent Events)
+        const streamEndpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent?alt=sse&key=${apiKey}`;
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 35000);
+
+        try {
+          const response = await fetch(streamEndpoint, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(bodyPayload),
+            signal: controller.signal,
+          });
+
+          clearTimeout(timeoutId);
+
+          if (response.ok && response.body) {
+            onProgress?.({
+              stage: 'Processando IA em Tempo Real',
+              message: `Conectado ao modelo ${model}! Recebendo dados ao vivo...`,
+              progressPercent: 35,
+              logType: 'info',
+              timestamp: new Date().toLocaleTimeString(),
+            });
+
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            let accumulatedText = '';
+            let buffer = '';
+
+            while (true) {
+              const { value, done } = await reader.read();
+              if (done) break;
+              const chunkStr = decoder.decode(value, { stream: true });
+              buffer += chunkStr;
+
+              const lines = buffer.split('\n');
+              buffer = lines.pop() || '';
+
+              for (const line of lines) {
+                const trimmed = line.trim();
+                if (trimmed.startsWith('data: ')) {
+                  const dataStr = trimmed.slice(6).trim();
+                  if (dataStr === '[DONE]') continue;
+                  try {
+                    const parsedJson = JSON.parse(dataStr);
+                    const partText = parsedJson.candidates?.[0]?.content?.parts?.[0]?.text;
+                    if (partText) {
+                      accumulatedText += partText;
+                      onProgress?.({
+                        stage: 'Transmissão em Tempo Real',
+                        message: `Recebendo tokens da IA (${accumulatedText.length} caracteres recebidos)...`,
+                        progressPercent: Math.min(92, 35 + Math.floor(accumulatedText.length / 30)),
+                        logType: 'stream',
+                        timestamp: new Date().toLocaleTimeString(),
+                        rawChunk: partText,
+                      });
+                    }
+                  } catch {}
+                }
+              }
+            }
+
+            if (accumulatedText.trim().length > 0) {
+              onProgress?.({
+                stage: 'Processamento Concluído',
+                message: `Resposta completa gerada com sucesso (${accumulatedText.length} caracteres).`,
+                progressPercent: 95,
+                logType: 'success',
+                timestamp: new Date().toLocaleTimeString(),
+              });
+              return accumulatedText;
+            }
+          }
+        } catch (streamErr: any) {
+          console.warn(`[AiProductService] Streaming não suportado ou instável no modelo ${model}:`, streamErr);
+        }
+
+        // 2. Fallback para requisição síncrona
+        onProgress?.({
+          stage: 'Aguardando Resposta',
+          message: `Requisitando resposta do modelo ${model}...`,
+          progressPercent: 40 + i * 10,
+          logType: 'info',
+          timestamp: new Date().toLocaleTimeString(),
+        });
+
+        const syncEndpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+        const syncController = new AbortController();
+        const syncTimeoutId = setTimeout(() => syncController.abort(), 35000);
+
+        const syncResponse = await fetch(syncEndpoint, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(bodyPayload),
+          signal: syncController.signal,
         });
 
-        if (response.ok) {
-          const data = await response.json();
+        clearTimeout(syncTimeoutId);
+
+        if (syncResponse.ok) {
+          const data = await syncResponse.json();
           const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-          if (text) return text;
+          if (text) {
+            onProgress?.({
+              stage: 'Resposta Recebida',
+              message: `Resposta obtida com sucesso do modelo ${model}.`,
+              progressPercent: 95,
+              logType: 'success',
+              timestamp: new Date().toLocaleTimeString(),
+              rawChunk: text,
+            });
+            return text;
+          }
         } else {
-          const errData = await response.json().catch(() => ({}));
-          const errMsg = errData.error?.message || `HTTP ${response.status}`;
+          const errData = await syncResponse.json().catch(() => ({}));
+          const errMsg = errData.error?.message || `HTTP ${syncResponse.status}`;
           lastError = new Error(errMsg);
-          console.warn(`[AiProductService] Modelo ${model} retornou: ${errMsg}. Tentando próximo modelo...`);
+          onProgress?.({
+            stage: 'Aviso de Compatibilidade',
+            message: `Modelo ${model} retornou: ${errMsg}. Tentando próximo modelo...`,
+            progressPercent: 25 + i * 10,
+            logType: 'warn',
+            timestamp: new Date().toLocaleTimeString(),
+          });
         }
       } catch (err: any) {
         lastError = err;
-        console.warn(`[AiProductService] Erro na requisição ao modelo ${model}:`, err);
+        onProgress?.({
+          stage: 'Falha na Conexão',
+          message: `Erro ao contatar modelo ${model}: ${err.message || err}. Alternando...`,
+          progressPercent: 25 + i * 10,
+          logType: 'warn',
+          timestamp: new Date().toLocaleTimeString(),
+        });
       }
     }
 
@@ -603,7 +738,7 @@ Retorne estritamente um JSON com este schema:
               responseMimeType: 'application/json',
               temperature: 0.7,
             },
-          });
+          }, params.onProgress);
         }, {
           systemInstruction: SYSTEM_PROMPT,
           inputMessages: [{ role: 'user', content: promptUser }],
@@ -761,7 +896,7 @@ INSTRUÇÕES DE INSPEÇÃO VISUAL OBRIGATÓRIAS:
             responseMimeType: 'application/json',
             temperature: 0.3,
           },
-        });
+        }, params.onProgress);
 
         if (!rawText) throw new Error('A IA não retornou dados visuais da imagem.');
 
