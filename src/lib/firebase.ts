@@ -14,6 +14,7 @@ import {
 import { getStorage } from 'firebase/storage';
 import { getFunctions } from 'firebase/functions';
 import { getAnalytics, isSupported, Analytics } from 'firebase/analytics';
+import { getPerformance, FirebasePerformance, trace as firebaseTrace } from 'firebase/performance';
 
 // Configuração do Firebase - valores vêm do .env.local
 const firebaseConfig = {
@@ -45,8 +46,10 @@ setPersistence(auth, browserLocalPersistence).catch(error => {
 export const storage = getStorage(app);
 export const functions = getFunctions(app);
 
-// Analytics (apenas em produção/browser)
+// Analytics & Performance (apenas em browser)
 let analytics: Analytics | null = null;
+let perf: FirebasePerformance | null = null;
+
 if (typeof window !== 'undefined') {
   isSupported().then(yes => {
     if (yes) {
@@ -54,6 +57,13 @@ if (typeof window !== 'undefined') {
       console.log('[Firebase] Analytics inicializado');
     }
   });
+
+  try {
+    perf = getPerformance(app);
+    console.log('[Firebase] Performance Monitoring inicializado');
+  } catch (error) {
+    console.warn('[Firebase] Performance Monitoring não disponível:', error);
+  }
 
   // Expor referências apenas em desenvolvimento ou testes locais para diagnósticos e testes E2E
   const isLocalOrDev = import.meta.env.DEV ||
@@ -70,5 +80,17 @@ if (typeof window !== 'undefined') {
   }
 }
 
-export { analytics };
+/**
+ * Utilitário para iniciar e finalizar traces de performance customizados
+ */
+export function createTrace(traceName: string) {
+  if (!perf) return null;
+  try {
+    return firebaseTrace(perf, traceName);
+  } catch {
+    return null;
+  }
+}
+
+export { analytics, perf, firebaseTrace as trace };
 export default app;
