@@ -44,6 +44,8 @@ import {
   CuratedPreset,
   CutSheet,
   AssemblyStep,
+  AcervoItem,
+  DEFAULT_ATELIER_ACERVO,
 } from '../../services/aiProductService';
 import { firebaseProductService } from '../../services/firebaseProductService';
 import { firebaseStoreProductService } from '../../services/firebaseStoreProductService';
@@ -113,11 +115,19 @@ export function AiProductGenerator() {
   const [customImageUrl, setCustomImageUrl] = useState('');
   const [isAttachingImage, setIsAttachingImage] = useState(false);
 
-  // Memória de Treinamento com Acertos do Ateliê
-  const [savedSuccesses, setSavedSuccesses] = useState<AiProductBlueprint[]>(() => {
-    return aiProductService.getSavedAtelierSuccesses();
+  // Acervo de Imagens do Ateliê (Portfólio de Produtos Reais & Referências Visuais)
+  const [acervoList, setAcervoList] = useState<AcervoItem[]>(() => {
+    return aiProductService.getAtelierAcervo();
   });
-  const [isMemoryDialogOpen, setIsMemoryDialogOpen] = useState(false);
+  const [activeAcervoRef, setActiveAcervoRef] = useState<AcervoItem | null>(null);
+  const [isAcervoDialogOpen, setIsAcervoDialogOpen] = useState(false);
+  const [acervoSearchTerm, setAcervoSearchTerm] = useState('');
+  const [isAddingToAcervo, setIsAddingToAcervo] = useState(false);
+  const [newAcervoTitle, setNewAcervoTitle] = useState('');
+  const [newAcervoTheme, setNewAcervoTheme] = useState('');
+  const [newAcervoCategory, setNewAcervoCategory] = useState(PRODUCT_TYPES[0]);
+  const [newAcervoImageUrl, setNewAcervoImageUrl] = useState('');
+  const [newAcervoDescription, setNewAcervoDescription] = useState('');
 
   // Configuração da chave de API e Modelo Tuned
   const [isApiKeyDialogOpen, setIsApiKeyDialogOpen] = useState(false);
@@ -159,7 +169,7 @@ export function AiProductGenerator() {
     toast.success(`Baixando ${blueprint.cutSheets.length} pranchas de corte em SVG!`);
   };
 
-  // Carregar um Exemplo Pré-Configurado / Acerto da Galeria
+  // Carregar um Exemplo Pré-Configurado do Acervo
   const handleLoadPreset = (preset: CuratedPreset) => {
     setProductType(preset.productType);
     setTheme(preset.theme);
@@ -169,7 +179,6 @@ export function AiProductGenerator() {
     setPlotter(preset.plotter);
     setCustomInstructions(preset.customInstructions);
 
-    // Gerar imediatamente o projeto para visualização rápida
     toast.info(`Exemplo "${preset.title}" carregado! Calculando ficha técnica...`);
     const fallback = aiProductService.generateSmartFallback({
       productType: preset.productType,
@@ -181,6 +190,99 @@ export function AiProductGenerator() {
       customInstructions: preset.customInstructions,
     });
     setBlueprint(fallback);
+  };
+
+  // Selecionar um item do Acervo de Imagens como Referência para a IA
+  const handleSelectAcervoReference = (item: AcervoItem) => {
+    setActiveAcervoRef(item);
+    setProductType(item.category || productType);
+    if (item.theme) setTheme(item.theme);
+    if (item.colorPalette) setColorPalette(item.colorPalette);
+    if (item.complexity) setComplexity(item.complexity);
+    if (item.targetNameAndAge) setTargetNameAndAge(item.targetNameAndAge);
+    setIsAcervoDialogOpen(false);
+    toast.success(`🖼️ Referência "${item.title}" selecionada! A IA usará este padrão visual.`);
+  };
+
+  // Limpar referência do Acervo
+  const handleClearAcervoReference = () => {
+    setActiveAcervoRef(null);
+    toast.info('Referência do Acervo removida.');
+  };
+
+  // Salvar projeto atual no Acervo de Imagens do Ateliê
+  const handleSaveToAcervo = () => {
+    if (!blueprint) return;
+    const saved = aiProductService.saveBlueprintToAcervo(blueprint, blueprint.generatedImageUrl);
+    setAcervoList(aiProductService.getAtelierAcervo());
+    toast.success(`🖼️ "${saved.title}" salvo no seu Acervo de Imagens do Ateliê!`);
+  };
+
+  // Adicionar manualmente uma imagem ao Acervo
+  const handleAddNewAcervoItem = () => {
+    if (!newAcervoTitle.trim() || !newAcervoImageUrl.trim()) {
+      toast.warning('Informe ao menos o título e a URL da foto do acervo.');
+      return;
+    }
+
+    aiProductService.saveItemToAcervo({
+      title: newAcervoTitle.trim(),
+      category: newAcervoCategory,
+      theme: newAcervoTheme.trim() || 'Personalizado',
+      imageUrl: newAcervoImageUrl.trim(),
+      description: newAcervoDescription.trim(),
+      tags: ['acervo-manual', newAcervoCategory.toLowerCase()],
+    });
+
+    setAcervoList(aiProductService.getAtelierAcervo());
+    setNewAcervoTitle('');
+    setNewAcervoTheme('');
+    setNewAcervoImageUrl('');
+    setNewAcervoDescription('');
+    setIsAddingToAcervo(false);
+    toast.success('Imagem adicionada ao seu Acervo de Imagens!');
+  };
+
+  // Upload de arquivo local para o Acervo via Base64
+  const handleImageFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const base64 = reader.result as string;
+      setNewAcervoImageUrl(base64);
+      toast.success('Foto carregada! Preencha os detalhes e clique em Salvar.');
+    };
+    reader.readAsDataURL(file);
+  };
+
+  // Remover item do Acervo
+  const handleRemoveAcervoItem = (id: string) => {
+    aiProductService.removeItemFromAcervo(id);
+    setAcervoList(aiProductService.getAtelierAcervo());
+    if (activeAcervoRef?.id === id) {
+      setActiveAcervoRef(null);
+    }
+    toast.success('Item removido do seu Acervo de Imagens.');
+  };
+
+  // Exportar Dataset em JSONL para Fine-Tuning no Google AI Studio
+  const handleDownloadDatasetJsonl = () => {
+    if (acervoList.length === 0) {
+      toast.warning('Nenhum item no acervo ainda.');
+      return;
+    }
+
+    const jsonlContent = aiProductService.exportAcervoDatasetAsJsonl(acervoList);
+    const blob = new Blob([jsonlContent], { type: 'application/jsonl' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `dataset_acervo_papelaria_${Date.now()}.jsonl`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast.success('Dataset do Acervo exportado para Fine-Tuning no Google AI Studio!');
   };
 
   // Gerar projeto com IA
@@ -206,53 +308,18 @@ export function AiProductGenerator() {
         customInstructions: customInstructions.trim(),
         geminiApiKey: apiKeyInput,
         tunedModelId: tunedModelInput,
-        trainingExamples: savedSuccesses,
+        referenceAcervoItem: activeAcervoRef || undefined,
+        referenceImageUrl: activeAcervoRef?.imageUrl,
       });
 
       setBlueprint(result);
-      toast.success('Projeto gerado com sucesso! Camadas, corte e prompts prontos.');
+      toast.success('Projeto gerado com sucesso! Camadas, corte e prompts calibrados.');
     } catch (err: any) {
       console.error('Erro ao gerar projeto com IA:', err);
       toast.error('Não foi possível gerar o projeto. Usando modelo físico de segurança.');
     } finally {
       setLoading(false);
     }
-  };
-
-  // Salvar projeto atual como Acerto do Ateliê (Treinamento In-Context)
-  const handleSaveAsSuccess = () => {
-    if (!blueprint) return;
-    aiProductService.saveAtelierSuccess(blueprint);
-    const updated = aiProductService.getSavedAtelierSuccesses();
-    setSavedSuccesses(updated);
-    toast.success('⭐ Salvo como Acerto do Ateliê! A IA usará este modelo como referência.');
-  };
-
-  // Remover acerto da memória
-  const handleRemoveSuccess = (title: string) => {
-    if (typeof window === 'undefined') return;
-    const updated = savedSuccesses.filter((s) => s.productTitle !== title);
-    localStorage.setItem('luisices_atelier_training_examples', JSON.stringify(updated));
-    setSavedSuccesses(updated);
-    toast.success('Exemplo removido da memória da IA.');
-  };
-
-  // Exportar Dataset em JSONL para Fine-Tuning no Google AI Studio
-  const handleDownloadDatasetJsonl = () => {
-    if (savedSuccesses.length === 0) {
-      toast.warning('Nenhum acerto salvo ainda. Salve ao menos um projeto para exportar o dataset.');
-      return;
-    }
-
-    const jsonlContent = aiProductService.exportTrainingDatasetAsJsonl(savedSuccesses);
-    const blob = new Blob([jsonlContent], { type: 'application/jsonl' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `dataset_treinamento_papelaria_${Date.now()}.jsonl`;
-    a.click();
-    URL.revokeObjectURL(url);
-    toast.success('Dataset JSONL exportado para Fine-Tuning no Google AI Studio!');
   };
 
   // Copiar prompt com feedback
@@ -509,11 +576,11 @@ export function AiProductGenerator() {
           <Button
             variant="outline"
             size="sm"
-            onClick={() => setIsMemoryDialogOpen(true)}
-            className="text-xs flex items-center gap-1.5 border-amber-500/40 text-amber-900 dark:text-amber-200 bg-amber-50/60 dark:bg-amber-950/20 hover:bg-amber-100/80"
+            onClick={() => setIsAcervoDialogOpen(true)}
+            className="text-xs flex items-center gap-1.5 border-primary/30 text-foreground bg-primary/5 hover:bg-primary/10 shadow-xs"
           >
-            <Brain className="size-3.5 text-amber-600" />
-            Memória da IA ({savedSuccesses.length} acertos)
+            <ImageIcon className="size-3.5 text-primary" />
+            Acervo de Imagens ({acervoList.length} itens)
           </Button>
 
           <Button
@@ -531,13 +598,13 @@ export function AiProductGenerator() {
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         {/* Painel Esquerdo: Galeria de Exemplos e Formulário */}
         <div className="lg:col-span-4 space-y-5">
-          {/* Galeria de Exemplos e Acertos Rápidos */}
+          {/* Galeria de Exemplos Rápidos do Acervo */}
           <Card className="shadow-xs border-primary/20 bg-muted/20">
             <CardHeader className="p-3 pb-2">
               <div className="flex items-center justify-between">
                 <CardTitle className="text-xs font-bold flex items-center gap-1.5">
                   <BookOpen className="size-3.5 text-primary" />
-                  Exemplos de Prompts & Acertos
+                  Modelos Prontos do Acervo
                 </CardTitle>
                 <span className="text-[10px] text-muted-foreground">1-Clique</span>
               </div>
@@ -581,6 +648,37 @@ export function AiProductGenerator() {
             </CardHeader>
 
             <CardContent>
+              {/* Banner de Referência Ativa do Acervo de Imagens */}
+              {activeAcervoRef && (
+                <div className="mb-4 p-2.5 rounded-xl bg-primary/10 border border-primary/25 flex items-center justify-between gap-2.5">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <img
+                      src={activeAcervoRef.imageUrl}
+                      alt={activeAcervoRef.title}
+                      className="size-10 rounded-lg object-cover border shrink-0 shadow-xs"
+                    />
+                    <div className="min-w-0">
+                      <span className="text-[10px] font-bold text-primary flex items-center gap-1">
+                        <Sparkles className="size-3" /> Referência Visual do Acervo Ativa
+                      </span>
+                      <p className="text-xs font-semibold text-foreground truncate">
+                        {activeAcervoRef.title}
+                      </p>
+                      <p className="text-[10px] text-muted-foreground truncate">
+                        Tema: {activeAcervoRef.theme}
+                      </p>
+                    </div>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleClearAcervoReference}
+                    className="h-7 px-2 text-[10px] text-muted-foreground hover:text-destructive shrink-0 font-medium"
+                  >
+                    ✕ Limpar
+                  </Button>
+                </div>
+              )}
               <form onSubmit={handleGenerate} className="space-y-4">
                 {/* Tipo de Produto */}
                 <div className="space-y-1.5">
@@ -764,11 +862,11 @@ export function AiProductGenerator() {
                     <div className="flex flex-wrap sm:flex-col gap-2 shrink-0">
                       <Button
                         size="sm"
-                        onClick={handleSaveAsSuccess}
-                        className="text-xs gap-1.5 w-full bg-amber-500 hover:bg-amber-600 text-white font-semibold"
+                        onClick={handleSaveToAcervo}
+                        className="text-xs gap-1.5 w-full bg-primary hover:bg-primary/90 text-primary-foreground font-semibold shadow-xs"
                       >
-                        <Star className="size-3.5 fill-white" />
-                        Treinar IA com Este Acerto
+                        <ImageIcon className="size-3.5" />
+                        Salvar no Meu Acervo
                       </Button>
 
                       <Button
@@ -1737,65 +1835,268 @@ export function AiProductGenerator() {
         </div>
       </div>
 
-      {/* Diálogo de Memória e Treinamento com Acertos do Ateliê */}
-      <Dialog open={isMemoryDialogOpen} onOpenChange={setIsMemoryDialogOpen}>
-        <DialogContent className="sm:max-w-xl">
-          <DialogHeader>
-            <DialogTitle className="text-base flex items-center gap-2">
-              <Brain className="size-4 text-amber-600" />
-              Memória da IA — Acertos Salvos do Ateliê
-            </DialogTitle>
-            <DialogDescription className="text-xs">
-              Estes são os projetos aprovados que a IA usa como referência (Few-Shot Training) para
-              reproduzir exatamente seu padrão de qualidade e estilo.
-            </DialogDescription>
+      {/* Diálogo do Acervo de Imagens do Ateliê */}
+      <Dialog open={isAcervoDialogOpen} onOpenChange={setIsAcervoDialogOpen}>
+        <DialogContent className="sm:max-w-3xl max-h-[90vh] flex flex-col">
+          <DialogHeader className="pb-2 border-b">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="p-2 rounded-xl bg-primary/10 text-primary">
+                  <ImageIcon className="size-5" />
+                </div>
+                <div>
+                  <DialogTitle className="text-base font-bold flex items-center gap-2">
+                    Acervo de Imagens do Ateliê ({acervoList.length} itens)
+                  </DialogTitle>
+                  <DialogDescription className="text-xs">
+                    Seu portfólio de fotos reais e criações anteriores que alimentam a IA com o estilo visual do seu ateliê.
+                  </DialogDescription>
+                </div>
+              </div>
+
+              <Button
+                size="sm"
+                onClick={() => setIsAddingToAcervo(!isAddingToAcervo)}
+                className="text-xs gap-1.5 h-8 font-semibold shadow-xs"
+              >
+                <Plus className="size-3.5" />
+                {isAddingToAcervo ? 'Ver Acervo' : 'Adicionar Foto ao Acervo'}
+              </Button>
+            </div>
           </DialogHeader>
 
-          <div className="space-y-3 py-2 max-h-96 overflow-y-auto">
-            {savedSuccesses.length === 0 ? (
-              <div className="text-center p-8 rounded-xl border border-dashed text-muted-foreground space-y-2">
-                <Brain className="size-8 mx-auto text-muted-foreground/50" />
-                <p className="text-xs font-semibold">Nenhum acerto salvo na memória ainda</p>
-                <p className="text-[11px]">
-                  Ao gerar um projeto que você goste, clique em <strong>"⭐ Treinar IA com Este Acerto"</strong> para ensinar seu estilo à IA.
-                </p>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {savedSuccesses.map((item, idx) => (
-                  <div
-                    key={idx}
-                    className="p-3 rounded-xl border bg-muted/30 flex items-start justify-between gap-3 text-xs"
-                  >
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2">
-                        <Badge className="bg-amber-500 text-white text-[10px]">
-                          Acerto #{idx + 1}
-                        </Badge>
-                        <span className="font-semibold text-foreground">
-                          {item.productTitle}
-                        </span>
-                      </div>
-                      <p className="text-muted-foreground text-[11px]">
-                        Tema: <strong>{item.theme}</strong> | Personalização: <strong>{item.targetAgeAndName}</strong> | Preço: <strong>{formatCurrency(item.recommendedPrice)}</strong>
-                      </p>
-                      <p className="text-muted-foreground text-[10px] line-clamp-1 italic">
-                        Camadas: {item.layers.map((l) => l.name).join(' → ')}
-                      </p>
-                    </div>
+          <div className="flex-1 overflow-y-auto py-3 space-y-4 pr-1">
+            {/* Formulário de Adicionar Nova Foto ao Acervo */}
+            {isAddingToAcervo && (
+              <Card className="border-primary/40 bg-primary/5 p-4 space-y-3">
+                <div className="flex items-center justify-between pb-1 border-b border-primary/20">
+                  <span className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                    <Plus className="size-3.5 text-primary" />
+                    Nova Foto / Criação para o Acervo
+                  </span>
+                  <span className="text-[10px] text-muted-foreground">Alimenta a IA com seu padrão visual</span>
+                </div>
 
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleRemoveSuccess(item.productTitle)}
-                      className="text-muted-foreground hover:text-destructive h-7 w-7 p-0 shrink-0"
-                    >
-                      <Trash2 className="size-3.5" />
-                    </Button>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <Label className="text-[11px] font-semibold">Título do Produto / Peça *</Label>
+                    <Input
+                      placeholder="Ex: Topo Safari Baby 2024"
+                      value={newAcervoTitle}
+                      onChange={(e) => setNewAcervoTitle(e.target.value)}
+                      className="h-8 text-xs bg-background"
+                    />
                   </div>
-                ))}
-              </div>
+
+                  <div className="space-y-1">
+                    <Label className="text-[11px] font-semibold">Tema da Peça *</Label>
+                    <Input
+                      placeholder="Ex: Safari Baby, Jardim, Circo Rosa"
+                      value={newAcervoTheme}
+                      onChange={(e) => setNewAcervoTheme(e.target.value)}
+                      className="h-8 text-xs bg-background"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <Label className="text-[11px] font-semibold">Categoria</Label>
+                    <select
+                      value={newAcervoCategory}
+                      onChange={(e) => setNewAcervoCategory(e.target.value)}
+                      className="w-full h-8 rounded-md border border-input bg-background px-2 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
+                    >
+                      {PRODUCT_TYPES.map((t) => (
+                        <option key={t} value={t}>
+                          {t}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="space-y-1">
+                    <Label className="text-[11px] font-semibold">URL da Imagem ou Arquivo *</Label>
+                    <div className="flex gap-2">
+                      <Input
+                        placeholder="https://..."
+                        value={newAcervoImageUrl}
+                        onChange={(e) => setNewAcervoImageUrl(e.target.value)}
+                        className="h-8 text-xs bg-background"
+                      />
+                      <label className="inline-flex items-center justify-center px-2.5 h-8 rounded-md border bg-background text-xs font-medium cursor-pointer hover:bg-muted shrink-0 shadow-xs">
+                        <Camera className="size-3.5 mr-1 text-primary" />
+                        Arquivo
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={handleImageFileUpload}
+                          className="hidden"
+                        />
+                      </label>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <Label className="text-[11px] font-semibold">Detalhes das Camadas / Papéis Utilizados (Opcional)</Label>
+                  <Textarea
+                    placeholder="Ex: Camadas em Colorplus Kraft 240g e Santiago com fita banana 2mm e lamicote ouro..."
+                    value={newAcervoDescription}
+                    onChange={(e) => setNewAcervoDescription(e.target.value)}
+                    rows={2}
+                    className="text-xs bg-background resize-none"
+                  />
+                </div>
+
+                {newAcervoImageUrl && (
+                  <div className="flex items-center gap-3 p-2 rounded-lg bg-background border">
+                    <img
+                      src={newAcervoImageUrl}
+                      alt="Pré-visualização"
+                      className="size-12 rounded object-cover border"
+                    />
+                    <div className="text-[11px]">
+                      <span className="font-semibold text-emerald-600 flex items-center gap-1">
+                        <CheckCircle2 className="size-3" /> Foto Carregada
+                      </span>
+                      <span className="text-muted-foreground line-clamp-1">{newAcervoTitle || 'Sem título'}</span>
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex justify-end gap-2 pt-1">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setIsAddingToAcervo(false)}
+                    className="text-xs h-8"
+                  >
+                    Cancelar
+                  </Button>
+                  <Button
+                    size="sm"
+                    onClick={handleAddNewAcervoItem}
+                    className="text-xs h-8 font-semibold shadow-xs"
+                  >
+                    Salvar no Acervo
+                  </Button>
+                </div>
+              </Card>
             )}
+
+            {/* Barra de Busca e Filtro do Acervo */}
+            <div className="flex items-center gap-2">
+              <Input
+                placeholder="Buscar no acervo por tema, nome ou categoria..."
+                value={acervoSearchTerm}
+                onChange={(e) => setAcervoSearchTerm(e.target.value)}
+                className="h-8 text-xs bg-muted/30"
+              />
+            </div>
+
+            {/* Galeria de Fotos do Acervo */}
+            {(() => {
+              const filtered = acervoList.filter(
+                (item) =>
+                  item.title.toLowerCase().includes(acervoSearchTerm.toLowerCase()) ||
+                  item.theme.toLowerCase().includes(acervoSearchTerm.toLowerCase()) ||
+                  item.category.toLowerCase().includes(acervoSearchTerm.toLowerCase()) ||
+                  (item.tags && item.tags.some((t) => t.toLowerCase().includes(acervoSearchTerm.toLowerCase())))
+              );
+
+              if (filtered.length === 0) {
+                return (
+                  <div className="text-center p-8 rounded-xl border border-dashed text-muted-foreground space-y-2">
+                    <ImageIcon className="size-8 mx-auto text-muted-foreground/50" />
+                    <p className="text-xs font-semibold">Nenhuma imagem encontrada no acervo</p>
+                    <p className="text-[11px]">
+                      Clique em <strong>"+ Adicionar Foto ao Acervo"</strong> acima para cadastrar criações do seu ateliê.
+                    </p>
+                  </div>
+                );
+              }
+
+              return (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {filtered.map((item) => {
+                    const isSelectedAsRef = activeAcervoRef?.id === item.id;
+
+                    return (
+                      <div
+                        key={item.id}
+                        className={`rounded-xl border overflow-hidden transition-all flex flex-col justify-between group ${
+                          isSelectedAsRef
+                            ? 'ring-2 ring-primary border-primary bg-primary/5 shadow-sm'
+                            : 'bg-card hover:shadow-xs hover:border-primary/40'
+                        }`}
+                      >
+                        {/* Imagem do Acervo */}
+                        <div className="relative aspect-video w-full bg-muted/40 overflow-hidden">
+                          <img
+                            src={item.imageUrl}
+                            alt={item.title}
+                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                            loading="lazy"
+                          />
+                          <div className="absolute top-2 right-2 flex gap-1">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleRemoveAcervoItem(item.id)}
+                              className="size-6 p-0 rounded-full bg-black/50 text-white hover:bg-destructive hover:text-white"
+                            >
+                              <Trash2 className="size-3" />
+                            </Button>
+                          </div>
+                          <div className="absolute bottom-2 left-2">
+                            <Badge className="bg-black/60 backdrop-blur-xs text-white text-[9px] px-1.5 py-0 border-0">
+                              {item.category}
+                            </Badge>
+                          </div>
+                        </div>
+
+                        {/* Conteúdo do Card */}
+                        <div className="p-3 space-y-2 flex-1 flex flex-col justify-between">
+                          <div className="space-y-1">
+                            <h4 className="font-semibold text-xs text-foreground line-clamp-1">
+                              {item.title}
+                            </h4>
+                            <p className="text-[11px] text-muted-foreground">
+                              Tema: <strong>{item.theme}</strong>
+                            </p>
+                            {item.description && (
+                              <p className="text-[10px] text-muted-foreground/90 line-clamp-2 leading-relaxed">
+                                {item.description}
+                              </p>
+                            )}
+                          </div>
+
+                          <div className="pt-2 border-t flex items-center justify-between gap-2">
+                            <Button
+                              size="sm"
+                              variant={isSelectedAsRef ? 'default' : 'outline'}
+                              onClick={() => handleSelectAcervoReference(item)}
+                              className="text-xs h-7 w-full font-semibold gap-1"
+                            >
+                              {isSelectedAsRef ? (
+                                <>
+                                  <Check className="size-3" />
+                                  Referência Ativa
+                                </>
+                              ) : (
+                                <>
+                                  <Sparkles className="size-3 text-amber-500" />
+                                  Usar como Referência
+                                </>
+                              )}
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })()}
           </div>
 
           <DialogFooter className="flex flex-col sm:flex-row items-center justify-between gap-2 border-t pt-3">
@@ -1803,16 +2104,16 @@ export function AiProductGenerator() {
               variant="outline"
               size="sm"
               onClick={handleDownloadDatasetJsonl}
-              disabled={savedSuccesses.length === 0}
+              disabled={acervoList.length === 0}
               className="text-xs gap-1.5 w-full sm:w-auto text-primary border-primary/30 hover:bg-primary/5"
             >
               <FileDown className="size-3.5" />
-              Baixar Dataset JSONL (AI Studio)
+              Baixar Dataset do Acervo (.JSONL)
             </Button>
 
             <Button
               size="sm"
-              onClick={() => setIsMemoryDialogOpen(false)}
+              onClick={() => setIsAcervoDialogOpen(false)}
               className="text-xs w-full sm:w-auto"
             >
               Concluir
@@ -1830,7 +2131,7 @@ export function AiProductGenerator() {
               Configurar Inteligência Artificial (Gemini)
             </DialogTitle>
             <DialogDescription className="text-xs">
-              Configure sua chave gratuita do Google AI Studio e personalize seu modelo de IA.
+              Configure sua chave gratuita do Google AI Studio e personalize seu modelo de IA com base no seu Acervo.
             </DialogDescription>
           </DialogHeader>
 
@@ -1862,19 +2163,19 @@ export function AiProductGenerator() {
                 className="text-xs font-mono"
               />
               <p className="text-[10px] text-muted-foreground">
-                Se você fez fine-tuning no Google AI Studio, cole o ID do modelo aqui. Caso contrário, deixe em branco para usar o Gemini 2.5 Flash.
+                Se você treinou um modelo exclusivo com seu Acervo no Google AI Studio, cole o ID aqui.
               </p>
             </div>
 
             <div className="p-3 rounded-xl bg-muted/60 text-[11px] text-muted-foreground space-y-1.5">
               <p>
-                <strong>💡 Como funciona o treinamento com seus acertos?</strong>
+                <strong>💡 Como a IA aprende com o seu Acervo de Imagens?</strong>
               </p>
               <p>
-                1. <strong>Treinamento Dinâmico (Automático):</strong> Ao marcar seus projetos como <em>"Acerto"</em>, a IA aprende imediatamente seu estilo nas próximas gerações via Few-Shot Learning.
+                1. <strong>Contexto Visual e Multimodal:</strong> Ao escolher uma foto do seu <em>Acervo</em> como referência, a IA analisa a paleta de cores, o estilo das camadas e o tipo de papel para reproduzir a mesma harmonia visual.
               </p>
               <p>
-                2. <strong>Fine-Tuning no Google AI Studio:</strong> Você pode clicar em <em>"Baixar Dataset JSONL"</em> no menu de memória e importar seus dados no{' '}
+                2. <strong>Fine-Tuning no Google AI Studio:</strong> Clique em <em>"Baixar Dataset do Acervo"</em> na tela do Acervo e importe o arquivo <code>.jsonl</code> no{' '}
                 <a
                   href="https://aistudio.google.com/app/tuned_models"
                   target="_blank"
@@ -1883,7 +2184,7 @@ export function AiProductGenerator() {
                 >
                   Google AI Studio <ExternalLink className="size-3" />
                 </a>{' '}
-                para treinar seu próprio modelo exclusivo de ateliê.
+                para treinar a IA exclusivamente com o histórico do seu ateliê.
               </p>
             </div>
           </div>

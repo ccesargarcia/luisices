@@ -89,6 +89,95 @@ export interface AiProductBlueprint {
   assemblySteps: AssemblyStep[];
 }
 
+export interface AcervoItem {
+  id: string;
+  title: string;
+  category: string;
+  theme: string;
+  imageUrl: string;
+  description?: string;
+  paperTypes?: string[];
+  colorPalette?: string;
+  targetNameAndAge?: string;
+  complexity?: 'iniciante' | 'avançado';
+  blueprint?: AiProductBlueprint;
+  createdAt: string;
+  tags?: string[];
+}
+
+export const DEFAULT_ATELIER_ACERVO: AcervoItem[] = [
+  {
+    id: 'acervo-jardim-3d',
+    title: 'Topo 3D Jardim Encantado com Borboletas Ouro',
+    category: 'Topos de Bolo 3D',
+    theme: 'Jardim Encantado',
+    imageUrl: 'https://images.unsplash.com/photo-1535141192574-5d4897c13136?auto=format&fit=crop&w=600&q=80',
+    description: 'Camadas sobrepostas em Colorplus Rosa Chá, Verde Tahiti e Lamicote Dourado 250g com borboletas vazadas e fita banana 2mm.',
+    paperTypes: ['Colorplus Rosa Chá 180g', 'Colorplus Tahiti 180g', 'Lamicote Dourado 250g'],
+    colorPalette: 'Candy Colors / Pastéis',
+    targetNameAndAge: 'Helena - 3 anos',
+    complexity: 'avançado',
+    createdAt: '2026-01-10T10:00:00.000Z',
+    tags: ['topo de bolo', 'jardim encantado', 'borboleta', 'lamicote'],
+  },
+  {
+    id: 'acervo-shaker-astronauta',
+    title: 'Topo Shaker Luxo Astronauta no Espaço',
+    category: 'Topo Shaker Luxo',
+    theme: 'Astronauta no Espaço',
+    imageUrl: 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=600&q=80',
+    description: 'Visor transparente em acetato 20 micras com lantejoulas holográficas, anel de contenção em EVA e camadas em Colorplus Toronto e Prata.',
+    paperTypes: ['Colorplus Toronto 180g', 'Colorplus Porto Seguro 180g', 'Lamicote Prata 250g', 'Acetato Cristal 20 micras'],
+    colorPalette: 'Azul Marinho & Prata',
+    targetNameAndAge: 'Theo - 1 ano',
+    complexity: 'avançado',
+    createdAt: '2026-01-15T14:30:00.000Z',
+    tags: ['shaker', 'astronauta', 'espaço', 'acetato'],
+  },
+  {
+    id: 'acervo-caixa-safari',
+    title: 'Caixa Milk 3D Safari Baby Rústico',
+    category: 'Caixa Milk 3D',
+    theme: 'Safari Baby',
+    imageUrl: 'https://images.unsplash.com/photo-1530595467537-0b5996c41f2d?auto=format&fit=crop&w=600&q=80',
+    description: 'Caixa estrutural em Kraft 240g com apliques em relevo 3D de leãozinho, folhagens verdes e laço rústico em fio de juta.',
+    paperTypes: ['Papel Kraft 240g', 'Colorplus Santiago 180g', 'Colorplus Havana 180g'],
+    colorPalette: 'Tons Terrosos & Rústico',
+    targetNameAndAge: 'Arthur - 2 anos',
+    complexity: 'iniciante',
+    createdAt: '2026-02-01T09:15:00.000Z',
+    tags: ['caixa milk', 'safari', 'kraft', 'lembrancinha'],
+  },
+  {
+    id: 'acervo-letra-circo',
+    title: 'Letra 3D Circo Rosa Vintage com Flores',
+    category: 'Letra 3D Personalizada',
+    theme: 'Circo Rosa',
+    imageUrl: 'https://images.unsplash.com/photo-1513151233558-d860c5398176?auto=format&fit=crop&w=600&q=80',
+    description: 'Letra 3D estrutural em Offset 240g com detalhes arabescos em Lamicote Ouro e arranjo de mini flores de papel no topo.',
+    paperTypes: ['Papel Offset 240g', 'Colorplus Rosa Chá 180g', 'Lamicote Dourado 250g'],
+    colorPalette: 'Rosa & Floral Delicado',
+    targetNameAndAge: 'Valentina - 5 anos',
+    complexity: 'avançado',
+    createdAt: '2026-02-12T16:45:00.000Z',
+    tags: ['letra 3d', 'circo rosa', 'vintage', 'mesa principal'],
+  },
+  {
+    id: 'acervo-dino-cute',
+    title: 'Topo 3D Dino Baby Cute em Camadas',
+    category: 'Topos de Bolo 3D',
+    theme: 'Dino Baby',
+    imageUrl: 'https://images.unsplash.com/photo-1563245372-f21724e3856d?auto=format&fit=crop&w=600&q=80',
+    description: 'Dinossauros fofos estilizados com 4 níveis de fita banana, folhagens tropicais e nome em Lamicote Ouro espelhado.',
+    paperTypes: ['Colorplus Tahiti 180g', 'Colorplus Roma 180g', 'Lamicote Dourado 250g'],
+    colorPalette: 'Candy Colors / Pastéis',
+    targetNameAndAge: 'Gael - 4 anos',
+    complexity: 'avançado',
+    createdAt: '2026-02-20T11:20:00.000Z',
+    tags: ['dino baby', 'topo de bolo', 'infantil'],
+  },
+];
+
 export interface GenerateProductParams {
   productType: string;
   theme: string;
@@ -100,6 +189,9 @@ export interface GenerateProductParams {
   geminiApiKey?: string;
   tunedModelId?: string;
   trainingExamples?: AiProductBlueprint[];
+  referenceAcervoItem?: AcervoItem;
+  referenceImageUrl?: string;
+  referenceImageBase64?: string;
 }
 
 export interface CuratedPreset {
@@ -193,7 +285,7 @@ export const CURATED_PRESETS: CuratedPreset[] = [
 const SYSTEM_PROMPT = `
 Você é o Engenheiro Chefe de Produção e Designer Mestre em Papelaria Personalizada para Ateliês Artesanais de Alto Padrão no Brasil, além de Especialista Sênior em Engenharia de Prompts para IAs Generativas de Imagem (Midjourney v6, Ideogram 2.0, DALL-E 3 e Flux.1).
 
-Seu objetivo é projetar produtos de papelaria (Topos de Bolo 3D, Topos Shaker, Caixas Milk, Caixas Pirâmide, Letras 3D, etc.) com FOCO ABSOLUTO EM VIABILIDADE FÍSICA E CORTE REAL EM PLOTTER (Silhouette Portrait 3, Cameo 4, Cricut) E GERAR PROMPTS FOTOGRÁFICOS HIPER-REALISTAS PARA IAs DE IMAGEM.
+Seu objetivo é projetar produtos de papelaria (Topos de Bolo 3D, Topos Shaker, Caixas Milk, Caixas Pirâmide, Letras 3D, etc.) com FOCO ABSOLUTO EM VIABILIDADE FÍSICA E CORTE REAL EM PLOTTER (Silhouette Portrait 3, Cameo 4, Cricut) E GERAR PROMPTS FOTOGRÁFICOS HIPER-REALISTAS PARA IAs DE IMAGEM, BASEANDO-SE NO ACERVO DE IMAGENS E ESTILO REAL DO ATELIÊ.
 
 REGRAS RÍGIDAS DE DOMÍNIO FÍSICO DA PAPELARIA BRASILEIRA:
 1. CAMADAS 3D REAIS (LAYERING):
@@ -251,12 +343,85 @@ export class AiProductService {
   }
 
   /**
-   * Exporta os acertos/projetos aprovados da artesã no formato JSONL para Fine-Tuning no Google AI Studio
+   * Obtém os itens do Acervo de Imagens do Ateliê (com suporte a referências salvas e biblioteca padrão)
    */
-  exportTrainingDatasetAsJsonl(blueprints: AiProductBlueprint[]): string {
-    const lines = blueprints.map((bp) => {
-      const inputPrompt = `Projete um produto de papelaria personalizada: Tipo: ${bp.category}, Tema: ${bp.theme}, Personalização: ${bp.targetAgeAndName}`;
-      const outputJson = JSON.stringify(bp);
+  getAtelierAcervo(): AcervoItem[] {
+    if (typeof window === 'undefined') return DEFAULT_ATELIER_ACERVO;
+    try {
+      const stored = localStorage.getItem('luisices_atelier_acervo_items');
+      if (!stored) {
+        // Inicializar com o acervo padrão de alta qualidade do ateliê
+        localStorage.setItem('luisices_atelier_acervo_items', JSON.stringify(DEFAULT_ATELIER_ACERVO));
+        return DEFAULT_ATELIER_ACERVO;
+      }
+      return JSON.parse(stored);
+    } catch {
+      return DEFAULT_ATELIER_ACERVO;
+    }
+  }
+
+  /**
+   * Salva uma nova imagem/produto no Acervo de Imagens do Ateliê
+   */
+  saveItemToAcervo(itemData: Omit<AcervoItem, 'id' | 'createdAt'>): AcervoItem {
+    const current = this.getAtelierAcervo();
+    const newItem: AcervoItem = {
+      ...itemData,
+      id: `acervo_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+      createdAt: new Date().toISOString(),
+    };
+    const updated = [newItem, ...current];
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('luisices_atelier_acervo_items', JSON.stringify(updated));
+    }
+    return newItem;
+  }
+
+  /**
+   * Remove um item do Acervo de Imagens
+   */
+  removeItemFromAcervo(id: string): void {
+    const current = this.getAtelierAcervo();
+    const updated = current.filter((item) => item.id !== id);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('luisices_atelier_acervo_items', JSON.stringify(updated));
+    }
+  }
+
+  /**
+   * Salva um blueprint gerado diretamente no Acervo do Ateliê
+   */
+  saveBlueprintToAcervo(blueprint: AiProductBlueprint, customImage?: string): AcervoItem {
+    return this.saveItemToAcervo({
+      title: blueprint.productTitle,
+      category: blueprint.category,
+      theme: blueprint.theme,
+      imageUrl: customImage || blueprint.generatedImageUrl || 'https://images.unsplash.com/photo-1535141192574-5d4897c13136?auto=format&fit=crop&w=600&q=80',
+      description: blueprint.description,
+      paperTypes: blueprint.papersShoppingList.map((p) => `${p.name} ${p.gramature}`),
+      targetNameAndAge: blueprint.targetAgeAndName,
+      blueprint,
+      tags: [blueprint.category.toLowerCase(), blueprint.theme.toLowerCase(), 'acervo-ia'],
+    });
+  }
+
+  /**
+   * Exporta todo o Acervo de Imagens do Ateliê em formato JSONL para Fine-Tuning no Google AI Studio
+   */
+  exportAcervoDatasetAsJsonl(acervo?: AcervoItem[]): string {
+    const list = acervo && acervo.length > 0 ? acervo : this.getAtelierAcervo();
+    const lines = list.map((item) => {
+      const inputPrompt = `Projete um produto de papelaria personalizada baseado no Acervo do Ateliê: Tipo: ${item.category}, Tema: ${item.theme}, Personalização: ${item.targetNameAndAge || 'Personalizado'}, Estilo Visual de Referência: ${item.title}`;
+      const outputJson = item.blueprint
+        ? JSON.stringify(item.blueprint)
+        : JSON.stringify({
+            productTitle: item.title,
+            category: item.category,
+            theme: item.theme,
+            description: item.description,
+            papersShoppingList: item.paperTypes?.map((p) => ({ name: p, gramature: '180g', sheetsNeeded: 1 })) || [],
+          });
+
       return JSON.stringify({
         messages: [
           { role: 'user', content: inputPrompt },
@@ -267,28 +432,42 @@ export class AiProductService {
     return lines.join('\n');
   }
 
+  // Compatibilidade com métodos anteriores
+  getSavedAtelierSuccesses(): AiProductBlueprint[] {
+    const acervo = this.getAtelierAcervo();
+    return acervo.filter((a) => a.blueprint).map((a) => a.blueprint!);
+  }
+
+  saveAtelierSuccess(blueprint: AiProductBlueprint): void {
+    this.saveBlueprintToAcervo(blueprint);
+  }
+
+  exportTrainingDatasetAsJsonl(blueprints: AiProductBlueprint[]): string {
+    return this.exportAcervoDatasetAsJsonl();
+  }
+
   /**
-   * Gera o projeto físico completo de um produto de papelaria personalizada
+   * Gera o projeto físico completo utilizando o Acervo de Imagens do Ateliê como referência multimodal
    */
   async generateProductBlueprint(params: GenerateProductParams): Promise<AiProductBlueprint> {
     const apiKey = this.getApiKey(params.geminiApiKey);
     const tunedModel = this.getTunedModelId(params.tunedModelId);
     const conversationId = `prod_gen_${Date.now()}`;
 
-    // Montar Few-Shot Context se houver histórico de acertos do ateliê
-    let fewShotContext = '';
-    const trainingList = params.trainingExamples && params.trainingExamples.length > 0
-      ? params.trainingExamples
-      : this.getSavedAtelierSuccesses();
+    // Montar Contexto do Acervo de Imagens do Ateliê
+    let acervoContext = '';
+    const acervoList = this.getAtelierAcervo();
 
-    if (trainingList.length > 0) {
-      fewShotContext = `\n\nMEMÓRIA DE ACERTOS DO ATELIÊ (EXEMPLOS REAIS APROVADOS PELA ARTESÃ):\nUse os seguintes exemplos aprovados anteriormente como referência de alta qualidade de camadas, preços e prompts:\n`;
-      trainingList.slice(0, 3).forEach((ex, i) => {
-        fewShotContext += `--- Exemplo Aprovado ${i + 1} (${ex.productTitle}) ---\n`;
-        fewShotContext += `Tema: ${ex.theme} | Personalização: ${ex.targetAgeAndName} | Preço: R$ ${ex.recommendedPrice}\n`;
-        fewShotContext += `Camadas: ${ex.layers.map(l => `${l.name} (${l.paperType})`).join(' -> ')}\n`;
-        fewShotContext += `Prompt Ideogram: ${ex.realisticPrompts?.ideogramPrompt || ''}\n`;
-        fewShotContext += `Prompt Midjourney: ${ex.realisticPrompts?.midjourneyPrompt || ''}\n\n`;
+    if (params.referenceAcervoItem) {
+      const ref = params.referenceAcervoItem;
+      acervoContext += `\n\nREFERÊNCIA DIRETA ESCOLHIDA DO ACERVO DO ATELIÊ:\n- Item: "${ref.title}" (Tema: ${ref.theme}, Categoria: ${ref.category})\n- Descrição/Materiais do Acervo: ${ref.description || ''}\n- Papéis Usados no Acervo: ${(ref.paperTypes || []).join(', ')}\n- Foto de Referência: ${ref.imageUrl}\n* REPRODUZA RIGOROSAMENTE A LINGUAGEM VISUAL, A HARMONIA DE CORES E O PADRÃO DE CAMADAS DESTE ITEM DO SEU ACERVO.*\n`;
+    } else if (acervoList.length > 0) {
+      acervoContext = `\n\nACERVO DE IMAGENS E PROJETOS DO ATELIÊ (REFERÊNCIAS DE ESTILO REAL):\nUse o catálogo de criações anteriores do ateliê abaixo como diretriz de estilo, camadas e acabamentos:\n`;
+      acervoList.slice(0, 4).forEach((ac, i) => {
+        acervoContext += `--- Acervo Item ${i + 1}: ${ac.title} ---\n`;
+        acervoContext += `Tema: ${ac.theme} | Categoria: ${ac.category} | Foto: ${ac.imageUrl}\n`;
+        if (ac.description) acervoContext += `Detalhes: ${ac.description}\n`;
+        if (ac.paperTypes) acervoContext += `Papéis: ${ac.paperTypes.join(', ')}\n\n`;
       });
     }
 
@@ -299,7 +478,7 @@ export class AiProductService {
       }
 
       const promptUser = `
-Projete um produto de papelaria personalizada e gere prompts ultra-realistas para IAs de imagem:
+Projete um produto de papelaria personalizada e gere prompts ultra-realistas para IAs de imagem, alinhado ao Acervo do Ateliê:
 - Tipo de Produto: ${params.productType}
 - Tema da Festa: ${params.theme}
 - Nome e Idade: ${params.targetNameAndAge || 'Personalizado'}
@@ -307,13 +486,13 @@ Projete um produto de papelaria personalizada e gere prompts ultra-realistas par
 - Complexidade: ${params.complexity}
 - Máquina de Corte / Plotter: ${params.plotter}
 ${params.customInstructions ? `- Instruções Adicionais da Artesã: ${params.customInstructions}` : ''}
-${fewShotContext}
+${acervoContext}
 
 Retorne estritamente um JSON com este schema:
 {
   "productTitle": "Título comercial atraente para o catálogo",
   "category": "Topos de Bolo" | "Lembrancinhas" | "Papelaria Criativa" | "Kits Festa",
-  "description": "Descrição comercial encantadora e detalhada destacando camadas 3D e acabamentos",
+  "description": "Descrição comercial encantadora e detalhada destacando camadas 3D e acabamentos inspirados no acervo",
   "targetAgeAndName": "${params.targetNameAndAge || 'Personalizado'}",
   "theme": "${params.theme}",
   "recommendedPrice": 45.00,
@@ -355,12 +534,25 @@ Retorne estritamente um JSON com este schema:
         const modelName = tunedModel || 'gemini-2.5-flash';
         const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
 
+        const parts: any[] = [{ text: promptUser }];
+
+        // Se uma imagem em base64 foi enviada (multimodal vision analysis)
+        if (params.referenceImageBase64) {
+          const cleanBase64 = params.referenceImageBase64.replace(/^data:image\/\w+;base64,/, '');
+          parts.unshift({
+            inlineData: {
+              mimeType: 'image/jpeg',
+              data: cleanBase64,
+            },
+          });
+        }
+
         const responseText = await traceAIChat(modelName, conversationId, async () => {
           const response = await fetch(endpoint, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              contents: [{ role: 'user', parts: [{ text: promptUser }] }],
+              contents: [{ role: 'user', parts }],
               systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
               generationConfig: {
                 responseMimeType: 'application/json',
@@ -418,34 +610,6 @@ Retorne estritamente um JSON com este schema:
         return this.generateSmartFallback(params);
       }
     });
-  }
-
-  /**
-   * Obtém os acertos salvos pela artesã no armazenamento local
-   */
-  getSavedAtelierSuccesses(): AiProductBlueprint[] {
-    if (typeof window === 'undefined') return [];
-    try {
-      const saved = localStorage.getItem('luisices_atelier_training_examples');
-      return saved ? JSON.parse(saved) : [];
-    } catch {
-      return [];
-    }
-  }
-
-  /**
-   * Salva um projeto como acerto de referência para treinar a IA
-   */
-  saveAtelierSuccess(blueprint: AiProductBlueprint): void {
-    if (typeof window === 'undefined') return;
-    try {
-      const existing = this.getSavedAtelierSuccesses();
-      const filtered = existing.filter((b) => b.productTitle !== blueprint.productTitle);
-      const updated = [blueprint, ...filtered].slice(0, 10); // Manter até os 10 melhores acertos
-      localStorage.setItem('luisices_atelier_training_examples', JSON.stringify(updated));
-    } catch (e) {
-      console.warn('Erro ao salvar acerto:', e);
-    }
   }
 
 
