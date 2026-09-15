@@ -192,7 +192,7 @@ export const router = isCatalogSubdomain
       },
       {
         path: 'configuracoes',
-        element: <Lazy><PermissionRoute check={p => p.settings}><Settings /></PermissionRoute></Lazy>,
+        element: <Lazy><PermissionRoute check={p => p.settings} allowUserRole><Settings /></PermissionRoute></Lazy>,
       },
       {
         path: 'personalizar-lojinha',

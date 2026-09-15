@@ -45,19 +45,6 @@ setPersistence(auth, browserLocalPersistence).catch(error => {
 export const storage = getStorage(app);
 export const functions = getFunctions(app);
 
-// Habilitar offline persistence do Firestore
-if (typeof window !== 'undefined') {
-  enableIndexedDbPersistence(db).catch((err) => {
-    if (err.code === 'failed-precondition') {
-      console.warn('[Firebase] Offline persistence não habilitado: múltiplas abas abertas');
-    } else if (err.code === 'unimplemented') {
-      console.warn('[Firebase] Offline persistence não suportado neste navegador');
-    } else {
-      console.error('[Firebase] Erro ao habilitar offline persistence:', err);
-    }
-  });
-}
-
 // Analytics (apenas em produção/browser)
 let analytics: Analytics | null = null;
 if (typeof window !== 'undefined') {

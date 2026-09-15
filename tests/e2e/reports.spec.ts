@@ -21,36 +21,24 @@ test.describe('Relatórios', () => {
   });
 
   test('deve alterar período dos relatórios', async ({ page }) => {
-    await page.waitForTimeout(2000);
-
     // Clicar em diferentes períodos
-    const monthBtn = page.getByRole('button', { name: /Último Mês/i }).first();
-    if (await monthBtn.isVisible({ timeout: 3000 })) {
-      await monthBtn.click();
-      await page.waitForTimeout(1000);
-    }
+    const monthBtn = page.getByRole('button', { name: 'Mês', exact: true });
+    await expect(monthBtn).toBeVisible({ timeout: 5000 });
+    await monthBtn.click();
 
-    const weekBtn = page.getByRole('button', { name: /Última Semana/i }).first();
-    if (await weekBtn.isVisible({ timeout: 3000 })) {
-      await weekBtn.click();
-      await page.waitForTimeout(1000);
-    }
+    const weekBtn = page.getByRole('button', { name: 'Semana', exact: true });
+    await expect(weekBtn).toBeVisible({ timeout: 5000 });
+    await weekBtn.click();
   });
 
   test('deve exibir métricas de pedidos', async ({ page }) => {
-    await page.waitForTimeout(2000);
-
     // Verificar métricas de pedidos
     await expect(page.getByText(/concluído/i).first()).toBeVisible({ timeout: 5000 });
     await expect(page.getByText(/cancelado/i).first()).toBeVisible({ timeout: 5000 });
   });
 
   test('deve ter botão de exportar CSV', async ({ page }) => {
-    await page.waitForTimeout(2000);
-
     const downloadBtn = page.getByRole('button', { name: /Download|Exportar|CSV/i }).first();
-    if (await downloadBtn.isVisible({ timeout: 3000 })) {
-      await expect(downloadBtn).toBeVisible();
-    }
+    await expect(downloadBtn).toBeVisible({ timeout: 5000 });
   });
 });

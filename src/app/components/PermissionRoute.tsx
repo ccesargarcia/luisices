@@ -6,6 +6,7 @@ import { ShieldAlert, Loader2 } from 'lucide-react';
 interface PermissionRouteProps {
   children: ReactNode;
   check: (permissions: UserProfile['permissions']) => boolean;
+  allowUserRole?: boolean;
 }
 
 /**

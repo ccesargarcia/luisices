@@ -171,6 +171,17 @@ export function Layout() {
   const isDevEnvironment = import.meta.env.VITE_FIREBASE_PROJECT_ID?.endsWith('-dev') ?? false;
   const appVersion = __APP_VERSION__ || '0.0.0';
   const [aboutOpen, setAboutOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    return window.localStorage.getItem('luisices-sidebar-collapsed') === 'true';
+  });
+
+  const toggleSidebar = () => {
+    setSidebarCollapsed((collapsed) => {
+      const next = !collapsed;
+      window.localStorage.setItem('luisices-sidebar-collapsed', String(next));
+      return next;
+    });
+  };
 
   return (
     <div className="min-h-[100dvh] w-full max-w-full overflow-x-clip bg-transparent flex flex-col">
@@ -498,8 +509,11 @@ export function Layout() {
         <Outlet />
       </main>
 
-      <footer className="border-t bg-card mt-auto">
-        <div className="container mx-auto px-4 py-6">
+      <footer className={cn(
+        'mt-auto min-w-0 border-t border-white/40 bg-card/85 backdrop-blur-2xl transition-[margin,width] duration-300',
+        sidebarCollapsed ? 'md:ml-20 md:w-[calc(100%-5rem)]' : 'md:ml-72 md:w-[calc(100%-18rem)]',
+      )}>
+        <div className="w-full px-4 py-6">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             {/* Identidade */}
             <div className="flex items-center gap-3 min-w-0">

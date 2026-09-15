@@ -207,9 +207,8 @@ test.describe('Pedidos - CRUD', () => {
     await searchInput.fill('Pedido Inexistente XYZ123');
 
     // Nenhum resultado esperado
-    const noResults = page.getByText(/Nenhum pedido/i);
-    const count = await noResults.count();
-    expect(count).toBeGreaterThanOrEqual(0);
+    const noResults = page.getByText('Nenhum pedido encontrado', { exact: true });
+    await expect(noResults).toBeVisible({ timeout: 5000 });
   });
 
   test('deve abrir detalhes de um pedido', async ({ page }) => {
@@ -260,16 +259,12 @@ test.describe('Pedidos - CRUD', () => {
     await expect(page.locator('main h1').first()).toContainText(/Agenda/i, { timeout: 10000 });
 
     // Verificar botões de navegação de semana
-    const nextBtn = page.getByRole('button', { name: /Próxima|→|›/i }).first();
-    if (await nextBtn.isVisible({ timeout: 2000 })) {
-      await nextBtn.click();
-      await page.waitForTimeout(500);
-    }
+    const nextBtn = page.getByRole('button', { name: 'Próxima semana' });
+    await expect(nextBtn).toBeVisible({ timeout: 5000 });
+    await nextBtn.click();
 
-    const prevBtn = page.getByRole('button', { name: /Anterior|←|‹/i }).first();
-    if (await prevBtn.isVisible({ timeout: 2000 })) {
-      await prevBtn.click();
-      await page.waitForTimeout(500);
-    }
+    const prevBtn = page.getByRole('button', { name: 'Semana anterior' });
+    await expect(prevBtn).toBeVisible({ timeout: 5000 });
+    await prevBtn.click();
   });
 });

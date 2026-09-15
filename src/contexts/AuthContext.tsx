@@ -17,6 +17,7 @@ interface AuthContextType {
   isAdmin: boolean;
   hasPermission: (check: (p: UserProfile['permissions']) => boolean) => boolean;
   login: (email: string, password: string) => Promise<void>;
+  register: (email: string, password: string, displayName?: string) => Promise<void>;
   logout: () => Promise<void>;
   resetPassword: (email: string) => Promise<void>;
   refreshUserProfile: () => Promise<void>;
@@ -161,6 +162,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const register = async (email: string, password: string, displayName?: string) => {
+    await firebaseAuthService.register(email, password, displayName);
+  };
+
   const logout = async () => {
     await firebaseAuthService.logout();
     setUserProfile(null);
@@ -197,6 +202,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         isAdmin: userProfile?.role === 'admin',
         hasPermission,
         login,
+        register,
         logout,
         resetPassword,
         refreshUserProfile,

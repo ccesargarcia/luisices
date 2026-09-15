@@ -28,6 +28,8 @@ export const firebaseCustomerService = {
     // Adicionar campos opcionais apenas se tiverem valor
     if (customerData.email) cleanData.email = customerData.email;
     if (customerData.street) cleanData.street = customerData.street;
+    if (customerData.number) cleanData.number = customerData.number;
+    if (customerData.complement) cleanData.complement = customerData.complement;
     if (customerData.city) cleanData.city = customerData.city;
     if (customerData.state) cleanData.state = customerData.state;
     if (customerData.zipCode) cleanData.zipCode = customerData.zipCode;

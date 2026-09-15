@@ -1,7 +1,7 @@
 
-  import { createRoot } from "react-dom/client";
-  import App from "./app/App.tsx";
-  import "./styles/index.css";
+import { createRoot } from "react-dom/client";
+import App from "./app/App";
+import "./styles/index.css";
 
 // Desregistra proativamente qualquer Service Worker legado e limpa CacheStorage do navegador
 if (typeof window !== 'undefined') {
