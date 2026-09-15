@@ -3,6 +3,7 @@
 Sistema completo de gerenciamento para papelaria personalizada com controle de pedidos, orçamentos, clientes, produtos, galeria de trabalhos, **permissões granulares** e relatórios — tudo em tempo real via Firebase.
 
 Para consultar a visão completa do produto, regras e fluxos de negócio, veja [docs/FUNCIONALIDADES.md](docs/FUNCIONALIDADES.md).
+Para detalhes sobre a stack técnica, todas as dependências e a arquitetura de CDN com Cloudflare, consulte [docs/DEPENDENCIAS_E_ARQUITETURA.md](docs/DEPENDENCIAS_E_ARQUITETURA.md).
 
 ---
 
