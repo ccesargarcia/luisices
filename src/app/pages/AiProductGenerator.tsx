@@ -98,8 +98,8 @@ export function AiProductGenerator() {
 
   // Estado do Estúdio de Prompts Realistas
   const [activePromptTab, setActivePromptTab] = useState<
-    'ideogram' | 'midjourney' | 'dalle' | 'flux' | 'scene' | 'macro'
-  >('ideogram');
+    'gemini' | 'banana' | 'ideogram' | 'midjourney' | 'dalle' | 'flux' | 'scene' | 'macro'
+  >('gemini');
   const [copiedPromptKey, setCopiedPromptKey] = useState<string | null>(null);
   const [customImageUrl, setCustomImageUrl] = useState('');
   const [isAttachingImage, setIsAttachingImage] = useState(false);
@@ -754,6 +754,32 @@ export function AiProductGenerator() {
                   <div className="flex flex-wrap gap-1.5 p-1 bg-muted/60 rounded-xl border">
                     <button
                       type="button"
+                      onClick={() => setActivePromptTab('gemini')}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                        activePromptTab === 'gemini'
+                          ? 'bg-background text-foreground shadow-xs font-semibold'
+                          : 'text-muted-foreground hover:text-foreground'
+                      }`}
+                    >
+                      <Sparkles className="size-3.5 text-amber-500" />
+                      Gemini / Imagen 3 (AI Studio)
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setActivePromptTab('banana')}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                        activePromptTab === 'banana'
+                          ? 'bg-background text-foreground shadow-xs font-semibold'
+                          : 'text-muted-foreground hover:text-foreground'
+                      }`}
+                    >
+                      <Layers className="size-3.5 text-yellow-600" />
+                      3D Fita Banana (Nano Banana)
+                    </button>
+
+                    <button
+                      type="button"
                       onClick={() => setActivePromptTab('ideogram')}
                       className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
                         activePromptTab === 'ideogram'
@@ -761,7 +787,7 @@ export function AiProductGenerator() {
                           : 'text-muted-foreground hover:text-foreground'
                       }`}
                     >
-                      <Sparkles className="size-3.5 text-amber-500" />
+                      <Sparkle className="size-3.5 text-indigo-500" />
                       Ideogram 2.0 (Nomes/Texto)
                     </button>
 
@@ -800,7 +826,7 @@ export function AiProductGenerator() {
                           : 'text-muted-foreground hover:text-foreground'
                       }`}
                     >
-                      <Layers className="size-3.5 text-purple-500" />
+                      <Scissors className="size-3.5 text-purple-500" />
                       Flux.1 / Leonardo AI
                     </button>
 
@@ -826,8 +852,8 @@ export function AiProductGenerator() {
                           : 'text-muted-foreground hover:text-foreground'
                       }`}
                     >
-                      <Scissors className="size-3.5 text-orange-500" />
-                      Macro Camadas & 3D
+                      <Layers className="size-3.5 text-orange-500" />
+                      Macro Close-Up
                     </button>
                   </div>
 
@@ -840,8 +866,27 @@ export function AiProductGenerator() {
                     let externalLabel = '';
 
                     switch (activePromptTab) {
+                      case 'gemini':
+                        promptText =
+                          blueprint.realisticPrompts?.geminiImagenPrompt || blueprint.suggestedImagePrompt;
+                        title = 'Google Gemini / Imagen 3 — Google AI Studio';
+                        description =
+                          'Calibrado especificamente para o motor Gemini 2.5 Flash / Imagen 3 do Google AI Studio com foco em fidelidade de corte, camadas 3D e iluminação comercial suave.';
+                        externalLink = 'https://aistudio.google.com';
+                        externalLabel = 'Abrir Google AI Studio';
+                        break;
+                      case 'banana':
+                        promptText =
+                          blueprint.realisticPrompts?.bananaTape3dPrompt || blueprint.suggestedImagePrompt;
+                        title = 'Efeito 3D com Fita Banana (Nano Banana) — Construção Volumétrica & Espuma EVA';
+                        description =
+                          'Destaca explicitamente a elevação milimétrica da fita banana entre as camadas de papéis Colorplus e Lamicote, com sombras físicas reais e palitos acrílicos transparentes.';
+                        externalLink = 'https://ideogram.ai';
+                        externalLabel = 'Testar no Ideogram / Gemini';
+                        break;
                       case 'ideogram':
-                        promptText = blueprint.realisticPrompts?.ideogramPrompt || blueprint.suggestedImagePrompt;
+                        promptText =
+                          blueprint.realisticPrompts?.ideogramPrompt || blueprint.suggestedImagePrompt;
                         title = 'Ideogram 2.0 — Renderização Exata de Nomes e Idades';
                         description =
                           'O Ideogram é a melhor IA para tipografia. Ele escreve exatamente o nome da criança e idade sem erros ortográficos e renderiza o lamicote dourado espelhado com perfeição.';
@@ -849,7 +894,8 @@ export function AiProductGenerator() {
                         externalLabel = 'Abrir Ideogram.ai';
                         break;
                       case 'midjourney':
-                        promptText = blueprint.realisticPrompts?.midjourneyPrompt || blueprint.suggestedImagePrompt;
+                        promptText =
+                          blueprint.realisticPrompts?.midjourneyPrompt || blueprint.suggestedImagePrompt;
                         title = 'Midjourney v6 — Hiper-realismo Fotográfico de Estúdio';
                         description =
                           'Formatação técnica com lentes macro f/2.8, iluminação comercial suave e textura real de papel Colorplus e fita banana 3D. Inclui parâmetros --v 6.0 --style raw.';
@@ -857,7 +903,8 @@ export function AiProductGenerator() {
                         externalLabel = 'Abrir Midjourney';
                         break;
                       case 'dalle':
-                        promptText = blueprint.realisticPrompts?.dallePrompt || blueprint.suggestedImagePrompt;
+                        promptText =
+                          blueprint.realisticPrompts?.dallePrompt || blueprint.suggestedImagePrompt;
                         title = 'ChatGPT / DALL-E 3 — Foto de Produto para Catálogo e Vitrine';
                         description =
                           'Prompt descritivo focado em iluminação comercial suave e apresentação impecável do produto sobre um bolo decorado para catálogo da loja.';
@@ -865,7 +912,8 @@ export function AiProductGenerator() {
                         externalLabel = 'Abrir ChatGPT';
                         break;
                       case 'flux':
-                        promptText = blueprint.realisticPrompts?.fluxPrompt || blueprint.suggestedImagePrompt;
+                        promptText =
+                          blueprint.realisticPrompts?.fluxPrompt || blueprint.suggestedImagePrompt;
                         title = 'Flux.1 / Leonardo AI — Detalhe de Relevo e Linhas de Plotter';
                         description =
                           'Calibrado para realçar a precisão dos cortes de lâmina da Silhouette e a tridimensionalidade das camadas com fita banana.';
@@ -873,7 +921,8 @@ export function AiProductGenerator() {
                         externalLabel = 'Abrir Leonardo AI';
                         break;
                       case 'scene':
-                        promptText = blueprint.realisticPrompts?.partyTableScenePrompt || blueprint.suggestedImagePrompt;
+                        promptText =
+                          blueprint.realisticPrompts?.partyTableScenePrompt || blueprint.suggestedImagePrompt;
                         title = 'Cenário Completo — Mesa de Festa e Decoração do Tema';
                         description =
                           'Fotografia ampla estilo editorial mostrando o bolo principal decorado com o topo, docinhos finos e balões integrados.';
@@ -881,7 +930,8 @@ export function AiProductGenerator() {
                         externalLabel = 'Gerar Cenário no Ideogram';
                         break;
                       case 'macro':
-                        promptText = blueprint.realisticPrompts?.macroLayersPrompt || blueprint.suggestedImagePrompt;
+                        promptText =
+                          blueprint.realisticPrompts?.macroLayersPrompt || blueprint.suggestedImagePrompt;
                         title = 'Macro Close-Up — Relevo Físico e Acabamento dos Papéis';
                         description =
                           'Close-up extremo evidenciando a distância de 2mm da fita banana, o brilho do lamicote e a gramatura dos papéis.';
