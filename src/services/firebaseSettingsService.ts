@@ -4,7 +4,7 @@
  * Serviço para gerenciar configurações e personalização do usuário
  */
 
-import { doc, getDoc, setDoc, updateDoc, deleteField } from 'firebase/firestore';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 
 export interface CatalogBannerItem {
@@ -115,9 +115,14 @@ export class FirebaseSettingsService {
 
     if (docSnap.exists()) {
       const data = docSnap.data();
+      const rawDate = data.updatedAt;
+      const updatedAt = typeof rawDate?.toDate === 'function' 
+        ? rawDate.toDate() 
+        : (rawDate ? new Date(rawDate) : new Date());
+
       return {
         ...data,
-        updatedAt: data.updatedAt?.toDate() || new Date(),
+        updatedAt,
       } as UserSettings;
     }
 
@@ -133,25 +138,12 @@ export class FirebaseSettingsService {
   ): Promise<void> {
     const docRef = doc(db, 'users', userId, 'settings', 'profile');
 
-    // Verificar se documento existe
-    const docSnap = await getDoc(docRef);
-
     const cleanSettings: Record<string, any> = { ...settings };
-    if (settings.catalogWhatsappPhone === '' || settings.catalogWhatsappPhone === null) {
-      cleanSettings.catalogWhatsappPhone = deleteField();
-    }
-    if (settings.catalogLogo === '' || settings.catalogLogo === null) {
-      cleanSettings.catalogLogo = deleteField();
-    }
-    if (settings.catalogHeaderBackground === '' || settings.catalogHeaderBackground === null) {
-      cleanSettings.catalogHeaderBackground = deleteField();
-    }
-    if (settings.catalogBanner === '' || settings.catalogBanner === null) {
-      cleanSettings.catalogBanner = deleteField();
-    }
-    if (settings.catalogBanners !== undefined && settings.catalogBanners.length === 0) {
-      cleanSettings.catalogBanners = deleteField();
-    }
+    if (settings.catalogWhatsappPhone === '' || settings.catalogWhatsappPhone === null) cleanSettings.catalogWhatsappPhone = null;
+    if (settings.catalogLogo === '' || settings.catalogLogo === null) cleanSettings.catalogLogo = null;
+    if (settings.catalogHeaderBackground === '' || settings.catalogHeaderBackground === null) cleanSettings.catalogHeaderBackground = null;
+    if (settings.catalogBanner === '' || settings.catalogBanner === null) cleanSettings.catalogBanner = null;
+    if (settings.catalogBanners !== undefined && settings.catalogBanners.length === 0) cleanSettings.catalogBanners = null;
 
     const data = {
       ...cleanSettings,
@@ -159,11 +151,7 @@ export class FirebaseSettingsService {
       updatedAt: new Date(),
     };
 
-    if (docSnap.exists()) {
-      await updateDoc(docRef, data);
-    } else {
-      await setDoc(docRef, data, { merge: true });
-    }
+    await setDoc(docRef, data, { merge: true });
 
     // Sincronizar dados públicos da loja para o catálogo online público.
     // IMPORTANTE: apenas campos exclusivos da lojinha (catalog*) são sincronizados para storeSettings/public.
@@ -190,8 +178,8 @@ export class FirebaseSettingsService {
           publicData.catalogWhatsappPhone = settings.catalogWhatsappPhone;
           publicData.whatsappPhone = settings.catalogWhatsappPhone;
         } else {
-          publicData.catalogWhatsappPhone = deleteField();
-          publicData.whatsappPhone = deleteField();
+          publicData.catalogWhatsappPhone = null;
+          publicData.whatsappPhone = null;
         }
       }
       
@@ -200,8 +188,8 @@ export class FirebaseSettingsService {
         if (settings.catalogLogo && settings.catalogLogo.trim() !== '') {
           publicData.catalogLogo = settings.catalogLogo;
         } else {
-          publicData.catalogLogo = deleteField();
-          publicData.logo = deleteField(); // Limpa resquício de logo legado no catálogo público
+          publicData.catalogLogo = null;
+          publicData.logo = null; // Limpa resquício de logo legado no catálogo público
         }
       }
 
@@ -210,7 +198,7 @@ export class FirebaseSettingsService {
         if (settings.catalogBanner && settings.catalogBanner.trim() !== '') {
           publicData.catalogBanner = settings.catalogBanner;
         } else {
-          publicData.catalogBanner = deleteField();
+          publicData.catalogBanner = null;
         }
       }
 
@@ -222,7 +210,7 @@ export class FirebaseSettingsService {
       if (settings.catalogHeaderBackground !== undefined) {
         publicData.catalogHeaderBackground = settings.catalogHeaderBackground && settings.catalogHeaderBackground.trim() !== ''
           ? settings.catalogHeaderBackground
-          : deleteField();
+          : null;
       }
       if (settings.catalogHeaderBgColor !== undefined) publicData.catalogHeaderBgColor = settings.catalogHeaderBgColor;
       if (settings.catalogHeaderTextColor !== undefined) publicData.catalogHeaderTextColor = settings.catalogHeaderTextColor;
@@ -232,7 +220,7 @@ export class FirebaseSettingsService {
 
       // Banners Rotativos (Carrossel / Propaganda)
       if (settings.catalogBanners !== undefined) {
-        publicData.catalogBanners = settings.catalogBanners.length > 0 ? settings.catalogBanners : deleteField();
+        publicData.catalogBanners = settings.catalogBanners.length > 0 ? settings.catalogBanners : null;
       }
       if (settings.catalogBannerInterval !== undefined) {
         publicData.catalogBannerInterval = settings.catalogBannerInterval;
@@ -278,7 +266,7 @@ export class FirebaseSettingsService {
     await setDoc(
       docRef,
       {
-        avatar: avatarUrl === null ? deleteField() : avatarUrl,
+        avatar: avatarUrl === null ? null : avatarUrl,
         userId,
         updatedAt: new Date(),
       },
@@ -294,7 +282,7 @@ export class FirebaseSettingsService {
     await setDoc(
       docRef,
       {
-        logo: logoUrl === null ? deleteField() : logoUrl,
+        logo: logoUrl === null ? null : logoUrl,
         userId,
         updatedAt: new Date(),
       },
@@ -312,7 +300,7 @@ export class FirebaseSettingsService {
     await setDoc(
       docRef,
       {
-        catalogLogo: isRemove ? deleteField() : catalogLogoUrl,
+        catalogLogo: isRemove ? null : catalogLogoUrl,
         userId,
         updatedAt: new Date(),
       },
@@ -323,8 +311,8 @@ export class FirebaseSettingsService {
       await setDoc(
         doc(db, 'storeSettings', 'public'),
         {
-          catalogLogo: isRemove ? deleteField() : catalogLogoUrl,
-          ...(isRemove ? { logo: deleteField() } : {}),
+          catalogLogo: isRemove ? null : catalogLogoUrl,
+          ...(isRemove ? { logo: null } : {}),
           updatedAt: new Date(),
         },
         { merge: true }
@@ -344,7 +332,7 @@ export class FirebaseSettingsService {
     await setDoc(
       docRef,
       {
-        catalogBanner: isRemove ? deleteField() : catalogBannerUrl,
+        catalogBanner: isRemove ? null : catalogBannerUrl,
         userId,
         updatedAt: new Date(),
       },
@@ -355,7 +343,7 @@ export class FirebaseSettingsService {
       await setDoc(
         doc(db, 'storeSettings', 'public'),
         {
-          catalogBanner: isRemove ? deleteField() : catalogBannerUrl,
+          catalogBanner: isRemove ? null : catalogBannerUrl,
           updatedAt: new Date(),
         },
         { merge: true }
@@ -375,7 +363,7 @@ export class FirebaseSettingsService {
     await setDoc(
       docRef,
       {
-        catalogHeaderBackground: isRemove ? deleteField() : backgroundUrl,
+        catalogHeaderBackground: isRemove ? null : backgroundUrl,
         userId,
         updatedAt: new Date(),
       },
@@ -386,7 +374,7 @@ export class FirebaseSettingsService {
       await setDoc(
         doc(db, 'storeSettings', 'public'),
         {
-          catalogHeaderBackground: isRemove ? deleteField() : backgroundUrl,
+          catalogHeaderBackground: isRemove ? null : backgroundUrl,
           updatedAt: new Date(),
         },
         { merge: true }
@@ -404,7 +392,7 @@ export class FirebaseSettingsService {
     await setDoc(
       docRef,
       {
-        banner: bannerUrl === null ? deleteField() : bannerUrl,
+        banner: bannerUrl === null ? null : bannerUrl,
         userId,
         updatedAt: new Date(),
       },

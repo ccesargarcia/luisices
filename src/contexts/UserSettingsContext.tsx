@@ -12,6 +12,11 @@ import { UserSettings } from '../services/firebaseSettingsService';
 import { toCdnUrl } from '../app/utils/cdnUtils';
 
 function formatUserSettings(data: any): UserSettings {
+  const rawDate = data.updatedAt;
+  const updatedAt = typeof rawDate?.toDate === 'function' 
+    ? rawDate.toDate() 
+    : (rawDate ? new Date(rawDate) : new Date());
+
   return {
     ...data,
     avatar: data.avatar ? toCdnUrl(data.avatar) : undefined,
@@ -23,7 +28,7 @@ function formatUserSettings(data: any): UserSettings {
     catalogBanners: Array.isArray(data.catalogBanners)
       ? data.catalogBanners.map((b: any) => ({ ...b, imageUrl: toCdnUrl(b.imageUrl) }))
       : undefined,
-    updatedAt: data.updatedAt?.toDate() || new Date(),
+    updatedAt,
   } as UserSettings;
 }
 

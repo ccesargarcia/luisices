@@ -157,7 +157,7 @@ Para garantir **branding com domínio próprio**, **alta velocidade (Edge Cachin
 
 ```javascript
 /**
- * Cloudflare Worker: Multi-Environment CDN para Firebase Storage
+ * Cloudflare Worker: Multi-Environment High-Performance Storage CDN
  */
 const BUCKETS = {
   prod: "papelaria-dashboard.firebasestorage.app",
@@ -166,32 +166,36 @@ const BUCKETS = {
 
 export default {
   async fetch(request, env, ctx) {
-    const url = new URL(request.url);
-
     // 1. Suporte a CORS Preflight
     if (request.method === "OPTIONS") {
       return new Response(null, {
+        status: 204,
         headers: {
           "Access-Control-Allow-Origin": "*",
           "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
           "Access-Control-Allow-Headers": "*",
+          "Access-Control-Max-Age": "86400",
         },
       });
+    }
+
+    if (request.method !== "GET" && request.method !== "HEAD") {
+      return new Response("Method Not Allowed", { status: 405 });
+    }
+
+    const url = new URL(request.url);
+
+    // Health check
+    if (url.pathname === "/" || url.pathname === "") {
+      return new Response("CDN Storage Online", { status: 200 });
     }
 
     // 2. Identificação do ambiente
     const isDev = url.hostname.includes("dev");
     const targetBucket = env.FIREBASE_BUCKET || (isDev ? BUCKETS.dev : BUCKETS.prod);
 
-    if (url.pathname === "/" || url.pathname === "") {
-      return new Response(
-        `CDN Storage Online [Ambiente: ${isDev ? "DEV" : "PROD"}]`,
-        { status: 200 }
-      );
-    }
-
-    // 3. Extrair e codificar o caminho do arquivo
-    const rawPath = url.pathname.replace(/^\/+/, "");
+    // 3. Extrair e codificar o caminho do arquivo com segurança
+    const rawPath = decodeURIComponent(url.pathname.replace(/^\/+/, ""));
     const encodedPath = encodeURIComponent(rawPath);
 
     // 4. Força alt=media para retornar bytes da imagem e repassa token
@@ -200,19 +204,30 @@ export default {
 
     const targetUrl = `https://firebasestorage.googleapis.com/v0/b/${targetBucket}/o/${encodedPath}?${searchParams.toString()}`;
 
-    // 5. Busca a imagem no Firebase Storage
+    // TTL de Cache no Edge: 1 ano em prod, 5 min em dev
+    const cacheTtlSeconds = isDev ? 300 : 31536000;
+
+    // 5. Busca com instrução explícita de Edge Caching na Cloudflare
     const originResponse = await fetch(targetUrl, {
-      method: "GET",
+      method: request.method,
       headers: {
-        "Accept": "*/*",
+        "Accept": request.headers.get("Accept") || "*/*",
         "User-Agent": "Cloudflare-Storage-CDN",
+      },
+      cf: {
+        cacheEverything: true,
+        cacheTtl: cacheTtlSeconds,
+        cacheTtlByStatus: {
+          "200-299": cacheTtlSeconds,
+          "404": 30,
+          "500-599": 0,
+        },
       },
     });
 
     if (!originResponse.ok) {
       return new Response(originResponse.body, {
         status: originResponse.status,
-        statusText: originResponse.statusText,
         headers: {
           "Access-Control-Allow-Origin": "*",
           "Content-Type": originResponse.headers.get("Content-Type") || "text/plain",
@@ -220,13 +235,16 @@ export default {
       });
     }
 
-    // 6. Retorna a imagem com CORS e Cache da Cloudflare
+    // 6. Retorna a imagem com CORS e Cache Headers
     const headers = new Headers(originResponse.headers);
     headers.set("Access-Control-Allow-Origin", "*");
     headers.set(
       "Cache-Control",
-      isDev ? "public, max-age=300" : "public, max-age=31536000, immutable"
+      isDev
+        ? "public, max-age=300, stale-while-revalidate=60"
+        : "public, max-age=31536000, immutable"
     );
+    headers.set("X-Content-Type-Options", "nosniff");
     headers.delete("set-cookie");
 
     return new Response(originResponse.body, {
