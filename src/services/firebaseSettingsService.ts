@@ -162,7 +162,7 @@ export class FirebaseSettingsService {
     if (docSnap.exists()) {
       await updateDoc(docRef, data);
     } else {
-      await setDoc(docRef, data);
+      await setDoc(docRef, data, { merge: true });
     }
 
     // Sincronizar dados públicos da loja para o catálogo online público.
