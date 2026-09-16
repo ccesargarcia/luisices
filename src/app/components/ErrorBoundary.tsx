@@ -83,13 +83,19 @@ export function ErrorBoundary() {
     );
   }
 
-  const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido';
+  const errorMessage = error instanceof Error ? error.message : String(error || 'Erro desconhecido');
+  const lowerMsg = errorMessage.toLowerCase();
+
   const isChunkError =
-    errorMessage.includes('dynamically imported module') ||
-    errorMessage.includes('Failed to fetch') ||
-    errorMessage.includes('Loading chunk') ||
-    errorMessage.includes('Importing a module script failed') ||
-    errorMessage.includes('error loading dynamically imported module');
+    lowerMsg.includes('dynamically imported module') ||
+    lowerMsg.includes('failed to fetch') ||
+    lowerMsg.includes('loading chunk') ||
+    lowerMsg.includes('importing a module script failed') ||
+    lowerMsg.includes('error loading dynamically imported module') ||
+    lowerMsg.includes('cannot read properties of undefined') ||
+    lowerMsg.includes('unexpected token') ||
+    lowerMsg.includes('is not a valid javascript mime type') ||
+    lowerMsg.includes('módulo') && lowerMsg.includes('indefinido');
 
   const handleReload = async () => {
     try {
@@ -101,6 +107,7 @@ export function ErrorBoundary() {
         const registrations = await navigator.serviceWorker.getRegistrations();
         await Promise.all(registrations.map((reg) => reg.unregister()));
       }
+      sessionStorage.removeItem('luisices_chunk_auto_reload_attempted');
     } catch {}
     window.location.reload();
   };
@@ -119,7 +126,7 @@ export function ErrorBoundary() {
       <h1>{isChunkError ? 'Nova versão disponível' : 'Algo deu errado'}</h1>
       <p style={{ color: '#666', marginBottom: '2rem' }}>
         {isChunkError
-          ? 'Uma nova versão do sistema foi publicada. Recarregue a página para aplicar as alterações.'
+          ? 'Uma nova versão do sistema foi publicada ou a conexão foi restabelecida. Clique abaixo para carregar a versão mais recente.'
           : 'Ocorreu um erro inesperado na aplicação.'}
       </p>
       <pre style={{
