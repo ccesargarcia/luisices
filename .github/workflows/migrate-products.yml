@@ -1,28 +1,28 @@
-name: Migrate Products (Dev to Prod)
+name: Migrate Catalog & Store Settings (Dev to Prod)
 
 on:
   workflow_dispatch:
     inputs:
       dry_run:
-        description: 'Modo Simulação (Dry Run - Não altera o banco)?'
-        required: true
-        type: boolean
-        default: true
-      migrate_store_products:
-        description: 'Migrar Produtos da Lojinha Pública (storeProducts)?'
+        description: 'Modo Simulação (Dry Run - Apenas exibe sem gravar)?'
         required: true
         type: boolean
         default: true
       migrate_store_settings:
-        description: 'Migrar Configurações da Lojinha (Logo, Banners, Cores)?'
-        required: false
+        description: 'Migrar Banners, Rodapé, Header e Cores (storeSettings/public)?'
+        required: true
         type: boolean
-        default: false
+        default: true
+      migrate_store_products:
+        description: 'Migrar Produtos da Vitrine da Lojinha (storeProducts)?'
+        required: true
+        type: boolean
+        default: true
       migrate_internal_products:
-        description: 'Migrar Catálogo Interno de Produtos (products)?'
-        required: false
+        description: 'Migrar Catálogo Geral de Produtos (products)?'
+        required: true
         type: boolean
-        default: false
+        default: true
 
 permissions:
   contents: read
@@ -50,8 +50,8 @@ jobs:
           FIREBASE_SERVICE_ACCOUNT_DEV: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_DEV }}
           FIREBASE_SERVICE_ACCOUNT_PROD: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_PROD || secrets.FIREBASE_SERVICE_ACCOUNT }}
           DRY_RUN: ${{ inputs.dry_run }}
-          MIGRATE_STORE_PRODUCTS: ${{ inputs.migrate_store_products }}
           MIGRATE_STORE_SETTINGS: ${{ inputs.migrate_store_settings }}
+          MIGRATE_STORE_PRODUCTS: ${{ inputs.migrate_store_products }}
           MIGRATE_INTERNAL_PRODUCTS: ${{ inputs.migrate_internal_products }}
         run: |
           if [ -z "$FIREBASE_SERVICE_ACCOUNT_DEV" ]; then
