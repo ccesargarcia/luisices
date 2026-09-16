@@ -1,0 +1,65 @@
+name: Migrate Products (Dev to Prod)
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Modo Simulação (Dry Run - Não altera o banco)?'
+        required: true
+        type: boolean
+        default: true
+      migrate_store_products:
+        description: 'Migrar Produtos da Lojinha Pública (storeProducts)?'
+        required: true
+        type: boolean
+        default: true
+      migrate_store_settings:
+        description: 'Migrar Configurações da Lojinha (Logo, Banners, Cores)?'
+        required: false
+        type: boolean
+        default: false
+      migrate_internal_products:
+        description: 'Migrar Catálogo Interno de Produtos (products)?'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm install --legacy-peer-deps
+
+      - name: Run Safe Migration Script
+        env:
+          FIREBASE_SERVICE_ACCOUNT_DEV: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_DEV }}
+          FIREBASE_SERVICE_ACCOUNT_PROD: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_PROD || secrets.FIREBASE_SERVICE_ACCOUNT }}
+          DRY_RUN: ${{ inputs.dry_run }}
+          MIGRATE_STORE_PRODUCTS: ${{ inputs.migrate_store_products }}
+          MIGRATE_STORE_SETTINGS: ${{ inputs.migrate_store_settings }}
+          MIGRATE_INTERNAL_PRODUCTS: ${{ inputs.migrate_internal_products }}
+        run: |
+          if [ -z "$FIREBASE_SERVICE_ACCOUNT_DEV" ]; then
+            echo "❌ ERRO: Secret FIREBASE_SERVICE_ACCOUNT_DEV não encontrado."
+            exit 1
+          fi
+          if [ -z "$FIREBASE_SERVICE_ACCOUNT_PROD" ]; then
+            echo "❌ ERRO: Secret FIREBASE_SERVICE_ACCOUNT_PROD não encontrado."
+            exit 1
+          fi
+          node scripts/migrate-products-dev-to-prod.mjs
