@@ -9,6 +9,7 @@ import {
   collection,
   doc,
   addDoc,
+  getDoc,
   getDocs,
   updateDoc,
   deleteDoc,
@@ -37,6 +38,10 @@ class FirebaseCatalogOrderService {
       createdAt: data.createdAt?.toDate?.()?.toISOString() ?? (typeof data.createdAt === 'string' ? data.createdAt : new Date().toISOString()),
       updatedAt: data.updatedAt?.toDate?.()?.toISOString() ?? (typeof data.updatedAt === 'string' ? data.updatedAt : undefined),
       convertedOrderId: data.convertedOrderId || undefined,
+      isPriceTampered: Boolean(data.isPriceTampered),
+      officialSubtotal: typeof data.officialSubtotal === 'number' ? data.officialSubtotal : undefined,
+      submittedSubtotal: typeof data.submittedSubtotal === 'number' ? data.submittedSubtotal : undefined,
+      priceWarning: data.priceWarning || undefined,
     };
   }
 
@@ -62,6 +67,54 @@ class FirebaseCatalogOrderService {
       return clean;
     });
 
+    // Auditoria e verificação de preços contra catálogo oficial (storeProducts)
+    let expectedSubtotal = 0;
+    let hasOfficialPrices = false;
+    let isPriceTampered = false;
+    let priceWarning: string | undefined = undefined;
+
+    try {
+      const productIds = Array.from(new Set(sanitizedItems.map((i) => i.productId).filter(Boolean)));
+      if (productIds.length > 0) {
+        const productPrices = new Map<string, number>();
+        await Promise.all(
+          productIds.map(async (pId) => {
+            try {
+              const pSnap = await getDoc(doc(db, 'storeProducts', pId));
+              if (pSnap.exists()) {
+                const pData = pSnap.data();
+                if (typeof pData.price === 'number') {
+                  productPrices.set(pId, pData.price);
+                }
+              }
+            } catch (err) {
+              console.warn('[createCatalogOrder] Erro ao buscar produto:', pId, err);
+            }
+          })
+        );
+
+        if (productPrices.size > 0) {
+          hasOfficialPrices = true;
+          sanitizedItems.forEach((item) => {
+            const officialPrice = productPrices.get(item.productId);
+            if (typeof officialPrice === 'number') {
+              expectedSubtotal += officialPrice * (item.quantity || 1);
+            } else {
+              expectedSubtotal += Number(item.price || 0) * (item.quantity || 1);
+            }
+          });
+
+          // Tolerância de 5 centavos para arredondamentos
+          if (Math.abs(Number(orderData.subtotal || 0) - expectedSubtotal) > 0.05) {
+            isPriceTampered = true;
+            priceWarning = `Divergência de preço detectada: valor submetido (R$ ${Number(orderData.subtotal || 0).toFixed(2)}) difere do catálogo oficial (R$ ${expectedSubtotal.toFixed(2)}).`;
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('[createCatalogOrder] Falha na auditoria de preço:', err);
+    }
+
     const docData: Record<string, any> = {
       orderCode: String(orderData.orderCode || `LJ-${Math.floor(1000 + Math.random() * 9000)}`),
       items: sanitizedItems,
@@ -70,6 +123,10 @@ class FirebaseCatalogOrderService {
       status: (orderData.status as CatalogOrderStatus) || 'received',
       createdAt: now,
       updatedAt: now,
+      isPriceTampered,
+      ...(hasOfficialPrices ? { officialSubtotal: expectedSubtotal } : {}),
+      submittedSubtotal: Number(orderData.subtotal || 0),
+      ...(priceWarning ? { priceWarning } : {}),
     };
 
     if (orderData.customerNotes && typeof orderData.customerNotes === 'string' && orderData.customerNotes.trim()) {
@@ -150,6 +207,16 @@ class FirebaseCatalogOrderService {
     customerPhone: string,
     deliveryDate: string
   ): Promise<Order> {
+    // Prevenção contra concorrência e clique duplo (double-click lock)
+    const docRef = doc(db, CATALOG_ORDERS_COLLECTION, catalogOrder.id);
+    const snap = await getDoc(docRef);
+    if (!snap.exists()) {
+      throw new Error('Pedido da lojinha não encontrado.');
+    }
+    if (snap.data()?.status === 'converted') {
+      throw new Error('Este pedido da lojinha já foi convertido em pedido de produção anteriormente.');
+    }
+
     // Monta a descrição resumida dos produtos
     const productNames = catalogOrder.items.map((i) => `${i.quantity}x ${i.productName}`).join(', ');
     const firstProductName = catalogOrder.items[0]?.productName || 'Pedido da Lojinha';
@@ -191,7 +258,6 @@ class FirebaseCatalogOrderService {
     });
 
     // Atualiza o pedido da lojinha para 'converted'
-    const docRef = doc(db, CATALOG_ORDERS_COLLECTION, catalogOrder.id);
     await updateDoc(docRef, {
       status: 'converted',
       convertedOrderId: newOrder.id,

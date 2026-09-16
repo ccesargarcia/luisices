@@ -103,6 +103,7 @@ export interface Order {
   exchangeItems?: ExchangeItem[]; // Itens recebidos na permuta
   cardColor?: string;      // Cor de destaque do card
   realCost?: number;       // Custo real da produção
+  version?: number;        // Versão para controle de concorrência
 }
 
 export interface ExchangeItem {
@@ -322,6 +323,10 @@ export interface CatalogOrder {
   createdAt: string;
   updatedAt?: string;
   convertedOrderId?: string;
+  isPriceTampered?: boolean;
+  officialSubtotal?: number;
+  submittedSubtotal?: number;
+  priceWarning?: string;
 }
 
 // ─── Pricing & Costs (Papelaria Personalizada) ────────────────────────────────

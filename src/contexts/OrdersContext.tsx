@@ -145,6 +145,7 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
           ? data.createdAt.toDate().toISOString()
           : data.createdAt,
         updatedAt: data.updatedAt,
+        version: typeof data.version === 'number' ? data.version : 1,
         tags: data.tags,
         payment: data.payment,
         createdByName: data.createdByName || (data.userId === user.uid
