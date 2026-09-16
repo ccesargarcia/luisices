@@ -1,17 +1,17 @@
 /**
- * Script de Migração Segura de Produtos e Configurações da Lojinha (Dev ➔ Prod)
+ * Script de Migração Segura de Produtos, Imagens e Configurações (Dev ➔ Prod)
  *
- * Utiliza o Firebase Admin SDK para ler de 'luisices-dev'
- * e copiar para 'papelaria-dashboard' com { merge: true }.
- *
- * Migra:
- * 1. Vitrine da Lojinha Pública (storeProducts)
- * 2. Catálogo Geral de Produtos (products)
- * 3. Configurações Completas da Lojinha (storeSettings/public: Banners, Rodapé, Header, Logo, Cores, WhatsApp)
+ * Utiliza o Firebase Admin SDK para:
+ * 1. Transferir os arquivos físicos de imagem do Firebase Storage de Dev para Produção.
+ * 2. Copiar as configurações da Lojinha (storeSettings/public: Banners, Rodapé, Header, Logo, Cores, WhatsApp).
+ * 3. Copiar os produtos da vitrine da Lojinha (storeProducts).
+ * 4. Copiar o catálogo geral de produtos (products).
+ * 5. Normalizar URLs (de cdn-dev / luisices-dev para cdn / papelaria-dashboard).
  */
 
 import { initializeApp, cert } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
+import { getStorage } from 'firebase-admin/storage';
 
 function parseServiceAccount(raw, name) {
   if (!raw) {
@@ -25,15 +25,17 @@ function parseServiceAccount(raw, name) {
 }
 
 const isDryRun = process.env.DRY_RUN === 'true';
-const migrateStoreProducts = process.env.MIGRATE_STORE_PRODUCTS !== 'false';
+const migrateStorageFiles = process.env.MIGRATE_STORAGE_FILES !== 'false';
 const migrateStoreSettings = process.env.MIGRATE_STORE_SETTINGS !== 'false';
+const migrateStoreProducts = process.env.MIGRATE_STORE_PRODUCTS !== 'false';
 const migrateInternalProducts = process.env.MIGRATE_INTERNAL_PRODUCTS !== 'false';
 
 console.log('====================================================');
-console.log('📦 MIGRAÇÃO DE CATÁLOGO & CONFIGURAÇÕES: DEV ➔ PROD');
+console.log('📦 MIGRAÇÃO COMPLETA FIREBASE: DEV ➔ PROD');
 console.log(`🔍 Modo: ${isDryRun ? '🟡 DRY RUN (Simulação - Apenas leitura sem salvar)' : '🟢 PRODUÇÃO REAL'}`);
-console.log(`🛍️ Migrar Produtos da Vitrine (storeProducts): ${migrateStoreProducts ? 'SIM' : 'NÃO'}`);
+console.log(`🖼️ Transferir Arquivos de Imagem do Storage: ${migrateStorageFiles ? 'SIM' : 'NÃO'}`);
 console.log(`🎨 Migrar Banners, Rodapé e Layout (storeSettings/public): ${migrateStoreSettings ? 'SIM' : 'NÃO'}`);
+console.log(`🛍️ Migrar Produtos da Vitrine (storeProducts): ${migrateStoreProducts ? 'SIM' : 'NÃO'}`);
 console.log(`📋 Migrar Catálogo Geral de Produtos (products): ${migrateInternalProducts ? 'SIM' : 'NÃO'}`);
 console.log('====================================================\n');
 
@@ -56,21 +58,114 @@ const prodApp = initializeApp(
 const devDb = getFirestore(devApp);
 const prodDb = getFirestore(prodApp);
 
+// Detectar buckets de Storage
+const devBucketName =
+  process.env.DEV_STORAGE_BUCKET || `${devSa.project_id || 'luisices-dev'}.firebasestorage.app`;
+const prodBucketName =
+  process.env.PROD_STORAGE_BUCKET || `${prodSa.project_id || 'papelaria-dashboard'}.firebasestorage.app`;
+
+const devStorage = getStorage(devApp);
+const prodStorage = getStorage(prodApp);
+
+const devBucket = devStorage.bucket(devBucketName);
+const prodBucket = prodStorage.bucket(prodBucketName);
+
+/**
+ * Normaliza URLs substituindo referências de Dev por Produção
+ */
+function normalizeUrlToProd(url) {
+  if (!url || typeof url !== 'string') return url;
+  return url
+    .replace(/cdn-dev\.luisices\.com\.br/g, 'cdn.luisices.com.br')
+    .replace(/luisices-dev\.firebasestorage\.app/g, 'papelaria-dashboard.firebasestorage.app')
+    .replace(/luisices-dev\.appspot\.com/g, 'papelaria-dashboard.firebasestorage.app');
+}
+
+function normalizeObjectUrls(obj) {
+  if (!obj || typeof obj !== 'object') return obj;
+  if (Array.isArray(obj)) return obj.map(normalizeObjectUrls);
+
+  const cleaned = {};
+  for (const [key, value] of Object.entries(obj)) {
+    if (typeof value === 'string' && (value.startsWith('http://') || value.startsWith('https://'))) {
+      cleaned[key] = normalizeUrlToProd(value);
+    } else if (typeof value === 'object' && value !== null) {
+      cleaned[key] = normalizeObjectUrls(value);
+    } else {
+      cleaned[key] = value;
+    }
+  }
+  return cleaned;
+}
+
 let totalMigrated = 0;
 
 try {
-  // ─── 2. Migrar Configurações Completas da Lojinha (Banners, Rodapé, Header) ─────
+  // ─── 2. Transferir Arquivos Binários do Firebase Storage (Imagens) ─────────────
+  if (migrateStorageFiles) {
+    console.log(`🖼️ [1/4] Transferindo arquivos do Storage de Dev (${devBucketName}) para Prod (${prodBucketName})...`);
+    try {
+      // Busca arquivos das pastas 'store/' e 'users/'
+      const [storeFiles] = await devBucket.getFiles({ prefix: 'store/' }).catch(() => [[]]);
+      const [userFiles] = await devBucket.getFiles({ prefix: 'users/' }).catch(() => [[]]);
+      const allFiles = [...storeFiles, ...userFiles];
+
+      if (allFiles.length === 0) {
+        console.log('ℹ️ Nenhum arquivo de imagem encontrado no bucket de Dev.');
+      } else {
+        console.log(`✔ Encontrados ${allFiles.length} arquivos de imagem em Dev:\n`);
+
+        for (let i = 0; i < allFiles.length; i++) {
+          const file = allFiles[i];
+          console.log(`  [${i + 1}/${allFiles.length}] Copiando: "${file.name}"...`);
+
+          if (!isDryRun) {
+            try {
+              const [buffer] = await file.download();
+              const [metadata] = await file.getMetadata().catch(() => [{}]);
+              const destFile = prodBucket.file(file.name);
+
+              await destFile.save(buffer, {
+                contentType: metadata.contentType || 'image/webp',
+                metadata: {
+                  ...metadata.metadata,
+                  migratedFrom: 'luisices-dev',
+                  migratedAt: new Date().toISOString(),
+                },
+              });
+            } catch (err) {
+              console.warn(`    ⚠️ Aviso ao copiar arquivo "${file.name}":`, err.message);
+            }
+          }
+        }
+
+        if (!isDryRun) {
+          console.log(`\n✅ Sucesso! ${allFiles.length} imagens transferidas para o Storage de Produção.`);
+        } else {
+          console.log(`\n🟡 [Simulação] ${allFiles.length} imagens listadas. Nenhuma transferida.`);
+        }
+      }
+    } catch (err) {
+      console.warn('⚠️ Não foi possível listar arquivos do Storage:', err.message);
+    }
+    console.log('');
+  }
+
+  // ─── 3. Migrar Configurações Completas da Lojinha (Banners, Rodapé, Header) ─────
   if (migrateStoreSettings) {
-    console.log('🎨 [1/3] Consultando storeSettings/public em Dev...');
+    console.log('🎨 [2/4] Consultando storeSettings/public em Dev...');
     const settingsDoc = await devDb.collection('storeSettings').doc('public').get();
 
     if (settingsDoc.exists) {
-      const data = settingsDoc.data();
+      const rawData = settingsDoc.data();
+      const data = normalizeObjectUrls(rawData);
+
       console.log('✔ Configurações da Lojinha encontradas em Dev:');
       console.log(`  • Nome da Loja: "${data.businessName || 'Não definido'}"`);
       console.log(`  • Slogan: "${data.businessTagline || 'Não definido'}"`);
       console.log(`  • WhatsApp: ${data.catalogWhatsappPhone || data.whatsappPhone || 'Não definido'}`);
       console.log(`  • Instagram: ${data.instagramUrl || 'Não definido'}`);
+      console.log(`  • Instagram Colab / Parceria: ${data.instagramColabUrl || 'Não definido'}`);
       console.log(`  • Banner Principal (Hero): ${data.catalogBanner ? 'Sim' : 'Não'}`);
       console.log(`  • Banners Rotativos (Carrossel): ${Array.isArray(data.catalogBanners) ? `${data.catalogBanners.length} banners` : 'Nenhum'}`);
       console.log(`  • Barra Superior (Header): ${data.catalogHeaderBackground ? 'Com imagem de fundo' : 'Cor sólida / Padrão'}`);
@@ -81,7 +176,7 @@ try {
 
       if (!isDryRun) {
         await prodDb.collection('storeSettings').doc('public').set(data, { merge: true });
-        console.log('✅ Configurações completas (Banners, Rodapé, Header) copiadas com sucesso para Produção!');
+        console.log('✅ Configurações completas (Banners, Rodapé, Header, URLs normalizadas) salvas em Produção!');
       } else {
         console.log('🟡 [Simulação] storeSettings/public NÃO foi gravado.');
       }
@@ -92,9 +187,9 @@ try {
     console.log('');
   }
 
-  // ─── 3. Migrar storeProducts (Produtos da Vitrine da Lojinha) ─────────────────
+  // ─── 4. Migrar storeProducts (Produtos da Vitrine da Lojinha) ─────────────────
   if (migrateStoreProducts) {
-    console.log('🛍️ [2/3] Consultando coleção storeProducts em Dev (luisices-dev)...');
+    console.log('🛍️ [3/4] Consultando coleção storeProducts em Dev (luisices-dev)...');
     const snap = await devDb.collection('storeProducts').get();
 
     if (snap.empty) {
@@ -105,8 +200,10 @@ try {
       const batch = prodDb.batch();
 
       snap.docs.forEach((doc, idx) => {
-        const data = doc.data();
-        console.log(`  [${idx + 1}/${snap.size}] ID: ${doc.id} | Nome: "${data.name || 'Sem nome'}" | Preço: R$ ${Number(data.price ?? 0).toFixed(2)} | Prazo: ${data.leadTimeDays || 5} dias | Ativo: ${data.active !== false}`);
+        const rawData = doc.data();
+        const data = normalizeObjectUrls(rawData);
+
+        console.log(`  [${idx + 1}/${snap.size}] ID: ${doc.id} | Nome: "${data.name || 'Sem nome'}" | Preço: R$ ${Number(data.price ?? 0).toFixed(2)} | Imagem: ${data.imageUrl ? 'Sim' : 'Não'}`);
 
         if (!isDryRun) {
           const targetRef = prodDb.collection('storeProducts').doc(doc.id);
@@ -125,9 +222,9 @@ try {
     console.log('');
   }
 
-  // ─── 4. Migrar products (Catálogo Geral do Ateliê) ───────────────────────────
+  // ─── 5. Migrar products (Catálogo Geral do Ateliê) ───────────────────────────
   if (migrateInternalProducts) {
-    console.log('📋 [3/3] Consultando coleção products (Catálogo Geral) em Dev...');
+    console.log('📋 [4/4] Consultando coleção products (Catálogo Geral) em Dev...');
     const internalSnap = await devDb.collection('products').get();
 
     if (internalSnap.empty) {
@@ -138,7 +235,9 @@ try {
       const batch = prodDb.batch();
 
       internalSnap.docs.forEach((doc, idx) => {
-        const data = doc.data();
+        const rawData = doc.data();
+        const data = normalizeObjectUrls(rawData);
+
         console.log(`  [${idx + 1}/${internalSnap.size}] ID: ${doc.id} | Nome: "${data.name || 'Sem nome'}" | Preço: R$ ${Number(data.unitPrice ?? data.price ?? 0).toFixed(2)} | Categoria: ${data.category || 'Geral'}`);
 
         if (!isDryRun) {
