@@ -91,7 +91,7 @@ export function BusinessInfoSection({
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Identidade e Dados do Ateliê</CardTitle>
+        <CardTitle>Informações do Negócio</CardTitle>
         <CardDescription>
           Informações exibidas no painel interno de administração, relatórios e documentos (desacopladas da lojinha online).
         </CardDescription>
