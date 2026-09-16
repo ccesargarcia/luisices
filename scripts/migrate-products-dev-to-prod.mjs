@@ -1,17 +1,19 @@
 /**
  * Script de Migração Segura de Produtos, Imagens e Configurações (Dev ➔ Prod)
  *
- * Utiliza o Firebase Admin SDK para:
- * 1. Transferir os arquivos físicos de imagem do Firebase Storage de Dev para Produção.
- * 2. Copiar as configurações da Lojinha (storeSettings/public: Banners, Rodapé, Header, Logo, Cores, WhatsApp).
- * 3. Copiar os produtos da vitrine da Lojinha (storeProducts).
- * 4. Copiar o catálogo geral de produtos (products).
- * 5. Normalizar URLs (de cdn-dev / luisices-dev para cdn / papelaria-dashboard).
+ * Utiliza o Firebase Admin SDK e Sharp para:
+ * 1. Otimizar e comprimir automaticamente todas as imagens para formato WebP ultra-leve.
+ * 2. Transferir os arquivos físicos de imagem do Firebase Storage de Dev para Produção.
+ * 3. Copiar as configurações da Lojinha (storeSettings/public: Banners, Rodapé, Header, Logo, Cores, WhatsApp).
+ * 4. Copiar os produtos da vitrine da Lojinha (storeProducts).
+ * 5. Copiar o catálogo geral de produtos (products).
+ * 6. Normalizar URLs (de cdn-dev / luisices-dev para cdn / papelaria-dashboard).
  */
 
 import { initializeApp, cert } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
 import { getStorage } from 'firebase-admin/storage';
+import sharp from 'sharp';
 
 function parseServiceAccount(raw, name) {
   if (!raw) {
@@ -25,6 +27,7 @@ function parseServiceAccount(raw, name) {
 }
 
 const isDryRun = process.env.DRY_RUN === 'true';
+const optimizeImages = process.env.OPTIMIZE_IMAGES !== 'false';
 const migrateStorageFiles = process.env.MIGRATE_STORAGE_FILES !== 'false';
 const migrateStoreSettings = process.env.MIGRATE_STORE_SETTINGS !== 'false';
 const migrateStoreProducts = process.env.MIGRATE_STORE_PRODUCTS !== 'false';
@@ -33,6 +36,7 @@ const migrateInternalProducts = process.env.MIGRATE_INTERNAL_PRODUCTS !== 'false
 console.log('====================================================');
 console.log('📦 MIGRAÇÃO COMPLETA FIREBASE: DEV ➔ PROD');
 console.log(`🔍 Modo: ${isDryRun ? '🟡 DRY RUN (Simulação - Apenas leitura sem salvar)' : '🟢 PRODUÇÃO REAL'}`);
+console.log(`⚡ Otimização de Imagens (Conversão WebP via Sharp): ${optimizeImages ? 'SIM (Automática)' : 'NÃO'}`);
 console.log(`🖼️ Transferir Arquivos de Imagem do Storage: ${migrateStorageFiles ? 'SIM' : 'NÃO'}`);
 console.log(`🎨 Migrar Banners, Rodapé e Layout (storeSettings/public): ${migrateStoreSettings ? 'SIM' : 'NÃO'}`);
 console.log(`🛍️ Migrar Produtos da Vitrine (storeProducts): ${migrateStoreProducts ? 'SIM' : 'NÃO'}`);
@@ -101,9 +105,9 @@ function normalizeObjectUrls(obj) {
 let totalMigrated = 0;
 
 try {
-  // ─── 2. Transferir Arquivos Binários do Firebase Storage (Imagens) ─────────────
+  // ─── 2. Transferir e Otimizar Arquivos Binários do Storage em WebP ─────────────
   if (migrateStorageFiles) {
-    console.log(`🖼️ [1/4] Transferindo arquivos do Storage de Dev (${devBucketName}) para Prod (${prodBucketName})...`);
+    console.log(`🖼️ [1/4] Transferindo e otimizando imagens de Dev (${devBucketName}) para Prod (${prodBucketName})...`);
     try {
       // Busca arquivos das pastas 'store/' e 'users/'
       const [storeFiles] = await devBucket.getFiles({ prefix: 'store/' }).catch(() => [[]]);
@@ -117,7 +121,7 @@ try {
 
         for (let i = 0; i < allFiles.length; i++) {
           const file = allFiles[i];
-          console.log(`  [${i + 1}/${allFiles.length}] Copiando: "${file.name}"...`);
+          console.log(`  [${i + 1}/${allFiles.length}] Processando: "${file.name}"...`);
 
           if (!isDryRun) {
             try {
@@ -125,11 +129,37 @@ try {
               const [metadata] = await file.getMetadata().catch(() => [{}]);
               const destFile = prodBucket.file(file.name);
 
-              await destFile.save(buffer, {
-                contentType: metadata.contentType || 'image/webp',
+              let finalBuffer = buffer;
+              let finalContentType = metadata.contentType || 'image/webp';
+
+              // Otimização automática em WebP via Sharp para imagens
+              if (optimizeImages && (file.name.match(/\.(jpe?g|png|webp|avif)$/i) || metadata.contentType?.startsWith('image/'))) {
+                try {
+                  const origSizeKb = (buffer.length / 1024).toFixed(1);
+                  finalBuffer = await sharp(buffer)
+                    .resize({
+                      width: 2560,
+                      height: 2560,
+                      fit: 'inside',
+                      withoutEnlargement: true,
+                    })
+                    .webp({ quality: 86, effort: 4 })
+                    .toBuffer();
+                  finalContentType = 'image/webp';
+                  const optSizeKb = (finalBuffer.length / 1024).toFixed(1);
+                  const savedPercent = Math.round((1 - finalBuffer.length / buffer.length) * 100);
+                  console.log(`    ⚡ Otimizado em WebP: ${origSizeKb} KB ➔ ${optSizeKb} KB (${savedPercent >= 0 ? `-${savedPercent}% economia` : 'mantido'})`);
+                } catch (sharpErr) {
+                  console.warn(`    ⚠️ Aviso ao comprimir com Sharp: ${sharpErr.message}. Mantendo arquivo original.`);
+                }
+              }
+
+              await destFile.save(finalBuffer, {
+                contentType: finalContentType,
                 metadata: {
                   ...metadata.metadata,
                   migratedFrom: 'luisices-dev',
+                  optimizedWith: 'sharp-webp',
                   migratedAt: new Date().toISOString(),
                 },
               });
@@ -140,7 +170,7 @@ try {
         }
 
         if (!isDryRun) {
-          console.log(`\n✅ Sucesso! ${allFiles.length} imagens transferidas para o Storage de Produção.`);
+          console.log(`\n✅ Sucesso! ${allFiles.length} imagens processadas, otimizadas em WebP e salvas em Produção.`);
         } else {
           console.log(`\n🟡 [Simulação] ${allFiles.length} imagens listadas. Nenhuma transferida.`);
         }
