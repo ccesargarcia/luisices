@@ -66,6 +66,8 @@ export interface UserSettings {
   deliveryAlertDays?: number;    // Dias antes do prazo para mostrar alerta (padrão 3)
 
   // Customizações do Catálogo Online Público (Lojinha)
+  catalogStoreName?: string;                 // Nome exclusivo da lojinha pública online (desacoplado do businessName do painel)
+  catalogStoreTagline?: string;              // Slogan/Subtítulo exclusivo da lojinha pública online (desacoplado do painel)
   catalogWhatsappPhone?: string;             // WhatsApp exclusivo de recebimento de pedidos da Lojinha (segregado do ateliê)
   catalogLogo?: string;                      // Logo exclusivo da lojinha pública online (independente do painel)
   catalogBanner?: string;                    // Banner de capa exclusivo da lojinha pública online (formato LinkedIn / 4:1)
@@ -162,11 +164,18 @@ export class FirebaseSettingsService {
 
       // Somente sincroniza dados de identidade/contato quando o save vem da tela da Lojinha
       // (StoreCustomization), identificado pela presença de ao menos um campo catalog*.
-      // Saves do painel de Configurações (Settings) NÃO atualizam esses campos na loja pública.
-      const hasCatalogFields = Object.keys(settings).some((key) => key.startsWith('catalog'));
+      // Sincroniza nome e identidade exclusivos da lojinha pública online
+      if (settings.catalogStoreName !== undefined) {
+        publicData.catalogStoreName = settings.catalogStoreName;
+        publicData.name = settings.catalogStoreName;
+        publicData.businessName = settings.catalogStoreName;
+      }
+      if (settings.catalogStoreTagline !== undefined) {
+        publicData.catalogStoreTagline = settings.catalogStoreTagline;
+        publicData.tagline = settings.catalogStoreTagline;
+        publicData.businessTagline = settings.catalogStoreTagline;
+      }
       if (hasCatalogFields) {
-        if (settings.businessName !== undefined) publicData.businessName = settings.businessName;
-        if (settings.businessTagline !== undefined) publicData.businessTagline = settings.businessTagline;
         if (settings.instagramUrl !== undefined) publicData.instagramUrl = settings.instagramUrl;
         if (settings.instagramColabUrl !== undefined) publicData.instagramColabUrl = settings.instagramColabUrl;
         if (settings.websiteUrl !== undefined) publicData.websiteUrl = settings.websiteUrl;

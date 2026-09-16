@@ -89,8 +89,8 @@ export function PublicCatalog() {
     } catch {}
 
     return {
-      name: saved?.businessName || saved?.name || 'Luisices Papelaria Personalizada',
-      tagline: saved?.businessTagline !== undefined ? saved.businessTagline : (saved?.tagline || ''),
+      name: saved?.catalogStoreName || saved?.name || saved?.businessName || 'Luisices Papelaria Personalizada',
+      tagline: saved?.catalogStoreTagline !== undefined ? saved.catalogStoreTagline : (saved?.tagline || saved?.businessTagline || ''),
       whatsapp: saved?.catalogWhatsappPhone || saved?.whatsappPhone || saved?.businessPhone || saved?.whatsapp || '',
       instagram: saved?.instagramUrl
         ? saved.instagramUrl.replace(/^https?:\/\/(www\.)?instagram\.com\//, '').replace(/\/$/, '')
@@ -254,8 +254,8 @@ export function PublicCatalog() {
           } catch {}
 
           setBusinessInfo((prev: typeof businessInfo) => ({
-            name: s.businessName !== undefined && s.businessName !== '' ? s.businessName : prev.name,
-            tagline: s.businessTagline !== undefined ? s.businessTagline : '',
+            name: s.catalogStoreName || s.name || (s.businessName !== undefined && s.businessName !== '' ? s.businessName : prev.name),
+            tagline: s.catalogStoreTagline !== undefined ? s.catalogStoreTagline : (s.businessTagline !== undefined ? s.businessTagline : (s.tagline || '')),
             whatsapp: s.catalogWhatsappPhone || s.whatsappPhone || s.businessPhone || '',
             instagram: s.instagramUrl ? s.instagramUrl.replace(/^https?:\/\/(www\.)?instagram\.com\//, '').replace(/\/$/, '') : '',
             instagramColab: s.instagramColabUrl ? s.instagramColabUrl.replace(/^https?:\/\/(www\.)?instagram\.com\//, '').replace(/\/$/, '') : '',

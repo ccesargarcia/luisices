@@ -91,9 +91,9 @@ export function BusinessInfoSection({
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Informações do Negócio</CardTitle>
+        <CardTitle>Identidade e Dados do Ateliê</CardTitle>
         <CardDescription>
-          Dados da sua papelaria que aparecerão no dashboard
+          Informações exibidas no painel interno de administração, relatórios e documentos (desacopladas da lojinha online).
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">

@@ -6,6 +6,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useUserSettings } from '../../hooks/useUserSettings';
 import { applyColorTheme } from '../utils/colorThemes';
 import { normalizePhoneForWhatsApp } from '../utils/whatsapp';
+import { normalizeInstagramUrl, normalizeWebsiteUrl } from '../utils/urlUtils';
 import { trackPageView } from '../../services/analyticsService';
 import { Button } from '../components/ui/button';
 import {
@@ -394,32 +395,10 @@ export function Layout() {
                     </Badge>
                   )}
                 </div>
-                <div className="flex items-center gap-2">
+                <div>
                   <p className="text-xs text-muted-foreground hidden sm:block">
                     {settings?.businessTagline || 'Sistema de Gestão de Pedidos'}
                   </p>
-                  {settings?.instagramUrl && (
-                    <a
-                      href={settings.instagramUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      title="Instagram"
-                      className="text-muted-foreground hover:text-foreground hidden sm:inline-flex"
-                    >
-                      <AtSign className="size-3" />
-                    </a>
-                  )}
-                  {settings?.websiteUrl && (
-                    <a
-                      href={settings.websiteUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      title="Site"
-                      className="text-muted-foreground hover:text-foreground hidden sm:inline-flex"
-                    >
-                      <Globe className="size-3" />
-                    </a>
-                  )}
                 </div>
               </div>
             </div>
@@ -566,7 +545,7 @@ export function Layout() {
               <div className="flex items-center gap-2">
                 {settings?.instagramUrl && (
                   <a
-                    href={settings.instagramUrl}
+                    href={normalizeInstagramUrl(settings.instagramUrl)}
                     target="_blank"
                     rel="noopener noreferrer"
                     title="Instagram"
@@ -597,7 +576,7 @@ export function Layout() {
                 )}
                 {settings?.websiteUrl && (
                   <a
-                    href={settings.websiteUrl}
+                    href={normalizeWebsiteUrl(settings.websiteUrl)}
                     target="_blank"
                     rel="noopener noreferrer"
                     title="Site"
