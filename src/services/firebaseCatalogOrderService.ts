@@ -14,6 +14,8 @@ import {
   deleteDoc,
   onSnapshot,
   query,
+  orderBy,
+  limit,
   Timestamp,
 } from 'firebase/firestore';
 import { db } from '../lib/firebase';
@@ -81,8 +83,13 @@ class FirebaseCatalogOrderService {
   /**
    * Busca a lista de pedidos da lojinha sob demanda
    */
-  async getCatalogOrders(): Promise<CatalogOrder[]> {
-    const snap = await getDocs(collection(db, CATALOG_ORDERS_COLLECTION));
+  async getCatalogOrders(maxLimit = 100): Promise<CatalogOrder[]> {
+    const q = query(
+      collection(db, CATALOG_ORDERS_COLLECTION),
+      orderBy('createdAt', 'desc'),
+      limit(maxLimit)
+    );
+    const snap = await getDocs(q);
     return snap.docs
       .map((d) => this.mapDoc(d.id, d.data()))
       .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
@@ -95,7 +102,11 @@ class FirebaseCatalogOrderService {
     callback: (orders: CatalogOrder[]) => void,
     onError?: (error: any) => void
   ): () => void {
-    const q = query(collection(db, CATALOG_ORDERS_COLLECTION));
+    const q = query(
+      collection(db, CATALOG_ORDERS_COLLECTION),
+      orderBy('createdAt', 'desc'),
+      limit(100)
+    );
     return onSnapshot(
       q,
       (snap) => {
