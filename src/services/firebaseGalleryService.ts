@@ -19,10 +19,9 @@ import {
 import { ref, deleteObject } from 'firebase/storage';
 import { db, storage, auth } from '../lib/firebase';
 import type { GalleryItem } from '../app/types';
-import { firebaseStorageService } from './firebaseStorageService';
-import { toCdnUrl } from '../app/utils/cdnUtils';
+import { FirebaseStorageService } from './firebaseStorageService';
 
-const storageService = firebaseStorageService;
+const storageService = new FirebaseStorageService();
 
 export class FirebaseGalleryService {
   private collectionName = 'gallery';
@@ -146,7 +145,8 @@ export class FirebaseGalleryService {
 
   async deleteStorageFile(imageUrl: string): Promise<void> {
     try {
-      await storageService.deleteImage(imageUrl);
+      const storageRef = ref(storage, imageUrl);
+      await deleteObject(storageRef);
     } catch {
       // best-effort: file might already be deleted
     }
@@ -161,7 +161,7 @@ export class FirebaseGalleryService {
       userId: data.userId as string,
       title: data.title as string,
       description: (data.description as string) || undefined,
-      imageUrl: toCdnUrl(data.imageUrl as string),
+      imageUrl: data.imageUrl as string,
       customerId: (data.customerId as string) || undefined,
       customerName: (data.customerName as string) || undefined,
       orderId: (data.orderId as string) || undefined,
