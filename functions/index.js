@@ -24,6 +24,7 @@ const customEmailLimiter = new RateLimiterMemory({
 // Execute: firebase functions:secrets:set RESEND_API_KEY
 const RESEND_API_KEY = defineSecret('RESEND_API_KEY');
 const EVOLUTION_API_KEY = defineSecret('EVOLUTION_API_KEY');
+const RESEND_WEBHOOK_SECRET = defineSecret('RESEND_WEBHOOK_SECRET');
 
 const EVOLUTION_API_URL = 'https://wa.luisices.com.br';
 const EVOLUTION_INSTANCE = 'homeassistant';
@@ -753,7 +754,7 @@ exports.getEmailUsage = onCall({ cors: true, secrets: [RESEND_API_KEY] }, async 
  * URL: https://<regiao>-<projeto>.cloudfunctions.net/resendReceivingWebhook
  * Eventos selecionados: email.received
  */
-exports.resendReceivingWebhook = onRequest({ cors: true, secrets: [RESEND_API_KEY] }, async (req, res) => {
+exports.resendReceivingWebhook = onRequest({ cors: true, secrets: [RESEND_API_KEY, RESEND_WEBHOOK_SECRET] }, async (req, res) => {
   if (req.method === 'GET' || req.method === 'OPTIONS') {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'POST, GET, OPTIONS');
@@ -770,9 +771,12 @@ exports.resendReceivingWebhook = onRequest({ cors: true, secrets: [RESEND_API_KE
 
   try {
     // Validação de assinatura Svix
-    const webhookSecret = process.env.RESEND_WEBHOOK_SECRET;
-    if (webhookSecret) {
-      const svixId = req.headers['svix-id'];
+    const webhookSecret = RESEND_WEBHOOK_SECRET.value() || process.env.RESEND_WEBHOOK_SECRET;
+    if (!webhookSecret) {
+      console.error('[resendReceivingWebhook] ERRO: RESEND_WEBHOOK_SECRET não configurado no Cloud Functions Secrets.');
+      return res.status(500).json({ error: 'Configuração de segurança do webhook pendente no servidor' });
+    }
+    const svixId = req.headers['svix-id'];
       const svixTimestamp = req.headers['svix-timestamp'];
       const svixSignature = req.headers['svix-signature'];
 
@@ -820,9 +824,6 @@ exports.resendReceivingWebhook = onRequest({ cors: true, secrets: [RESEND_API_KE
         console.error('[resendReceivingWebhook] Falha na validação criptográfica:', err);
         return res.status(401).json({ error: 'Falha na validação de assinatura' });
       }
-    } else {
-      console.warn('[resendReceivingWebhook] AVISO: RESEND_WEBHOOK_SECRET não configurado. Para habilitar validação estrita de assinaturas Svix, configure o secret no Firebase.');
-    }
 
     const event = req.body;
     console.log('[resendReceivingWebhook] Recebido evento:', event?.type);

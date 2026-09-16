@@ -158,6 +158,7 @@ export class FirebaseOrderService {
         },
         startedAt: new Date().toISOString(),
       },
+      version: 1,
       createdAt: Timestamp.now(),
       deletedAt: null,
     });
@@ -222,6 +223,7 @@ export class FirebaseOrderService {
       cardColor: data.cardColor,
       userId: data.userId,
       updatedAt: data.updatedAt?.toDate ? data.updatedAt.toDate().toISOString() : data.updatedAt,
+      version: typeof data.version === 'number' ? data.version : 1,
     } as Order;
   }
 
@@ -369,8 +371,11 @@ export class FirebaseOrderService {
       throw new Error('Pedido não encontrado ou sem permissão');
     }
 
+    const currentVersion = typeof orderSnap.data().version === 'number' ? orderSnap.data().version : 1;
     await updateDoc(orderRef, {
       status,
+      version: currentVersion + 1,
+      updatedAt: new Date().toISOString(),
     });
 
     firebaseLedgerService.syncOrderStatus(orderId, status).catch(err => {
@@ -423,8 +428,10 @@ export class FirebaseOrderService {
     });
 
     if (Object.keys(cleanUpdates).length > 0) {
+      const currentVersion = typeof orderSnap.data().version === 'number' ? orderSnap.data().version : 1;
       await updateDoc(orderRef, {
         ...cleanUpdates,
+        version: currentVersion + 1,
         updatedAt: new Date().toISOString(),
       });
 

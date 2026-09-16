@@ -522,6 +522,11 @@ export function StoreOrders() {
                       #{order.orderCode}
                     </span>
                     {renderStatusBadge(order.status)}
+                    {order.isPriceTampered && (
+                      <Badge variant="destructive" className="bg-red-500 hover:bg-red-600 text-white gap-1 text-[11px] py-0.5 px-2 font-medium">
+                        <AlertCircle className="w-3 h-3" /> Preço Divergente
+                      </Badge>
+                    )}
                     <span className="text-[11px] sm:text-xs text-muted-foreground flex items-center gap-1">
                       <Clock className="w-3.5 h-3.5" />
                       {formatDate(order.createdAt)}
@@ -682,6 +687,22 @@ export function StoreOrders() {
               <DialogDescription>
                 Recebido em {formatDate(detailOrder.createdAt)} através da Lojinha Online
               </DialogDescription>
+              {detailOrder.isPriceTampered && (
+                <div className="mt-2 p-3 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900 rounded-lg text-xs text-red-700 dark:text-red-300 flex items-start gap-2.5">
+                  <AlertCircle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
+                  <div>
+                    <p className="font-semibold">Aviso de Segurança: Preço com Divergência</p>
+                    <p className="mt-0.5 text-red-600/90 dark:text-red-300/90">
+                      {detailOrder.priceWarning || "O subtotal submetido pelo navegador difere da soma dos preços oficiais cadastrados no catálogo."}
+                    </p>
+                    {typeof detailOrder.officialSubtotal === "number" && (
+                      <p className="mt-1 font-mono text-[11px]">
+                        Esperado pelo catálogo: <strong>{formatCurrency(detailOrder.officialSubtotal)}</strong> • Submetido: <strong>{formatCurrency(detailOrder.submittedSubtotal || detailOrder.subtotal)}</strong>
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
             </DialogHeader>
 
             <div className="space-y-4 py-2">

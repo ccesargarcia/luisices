@@ -8,7 +8,7 @@
  */
 
 import { createContext, useContext, useEffect, useState, useMemo, useCallback, ReactNode } from 'react';
-import { collection, query, where, orderBy, onSnapshot, QuerySnapshot, DocumentData } from 'firebase/firestore';
+import { collection, query, where, orderBy, onSnapshot, QuerySnapshot, DocumentData, limit } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { useAuth } from './AuthContext';
 import { Order, UserProfile } from '../app/types';
@@ -116,13 +116,15 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
       ? query(
           collection(db, 'orders'),
           where('deletedAt', '==', null),
-          orderBy('createdAt', 'desc')
+          orderBy('createdAt', 'desc'),
+          limit(200)
         )
       : query(
           collection(db, 'orders'),
           where('userId', '==', user.uid),
           where('deletedAt', '==', null),
-          orderBy('createdAt', 'desc')
+          orderBy('createdAt', 'desc'),
+          limit(200)
         );
 
     const mapSnapshot = (snapshot: QuerySnapshot<DocumentData>): Order[] => snapshot.docs.map(doc => {
@@ -143,6 +145,7 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
           ? data.createdAt.toDate().toISOString()
           : data.createdAt,
         updatedAt: data.updatedAt,
+        version: typeof data.version === 'number' ? data.version : 1,
         tags: data.tags,
         payment: data.payment,
         createdByName: data.createdByName || (data.userId === user.uid

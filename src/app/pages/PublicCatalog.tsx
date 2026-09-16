@@ -678,9 +678,9 @@ export function PublicCatalog() {
                   <Instagram className="size-5 text-[#E1306C]" />
                 </a>
               )}
-              {businessInfo.website && (
+              {sanitizedWebsiteUrl && (
                 <a
-                  href={businessInfo.website}
+                  href={sanitizedWebsiteUrl}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="p-2.5 rounded-xl bg-[#613d3e]/10 hover:bg-[#613d3e]/20 dark:bg-white/10 dark:hover:bg-white/20 transition-colors"
