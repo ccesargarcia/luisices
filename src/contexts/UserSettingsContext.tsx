@@ -9,23 +9,6 @@ import { doc, onSnapshot } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { useAuth } from './AuthContext';
 import { UserSettings } from '../services/firebaseSettingsService';
-import { toCdnUrl } from '../app/utils/cdnUtils';
-
-function formatUserSettings(data: any): UserSettings {
-  return {
-    ...data,
-    avatar: data.avatar ? toCdnUrl(data.avatar) : undefined,
-    logo: data.logo ? toCdnUrl(data.logo) : undefined,
-    banner: data.banner ? toCdnUrl(data.banner) : undefined,
-    catalogLogo: data.catalogLogo ? toCdnUrl(data.catalogLogo) : undefined,
-    catalogBanner: data.catalogBanner ? toCdnUrl(data.catalogBanner) : undefined,
-    catalogHeaderBackground: data.catalogHeaderBackground ? toCdnUrl(data.catalogHeaderBackground) : undefined,
-    catalogBanners: Array.isArray(data.catalogBanners)
-      ? data.catalogBanners.map((b: any) => ({ ...b, imageUrl: toCdnUrl(b.imageUrl) }))
-      : undefined,
-    updatedAt: data.updatedAt?.toDate() || new Date(),
-  } as UserSettings;
-}
 
 interface UserSettingsContextValue {
   settings: UserSettings | null;
@@ -55,7 +38,10 @@ export function UserSettingsProvider({ children }: { children: ReactNode }) {
       (snap) => {
         if (snap.exists()) {
           const data = snap.data();
-          setSettings(formatUserSettings(data));
+          setSettings({
+            ...data,
+            updatedAt: data.updatedAt?.toDate() || new Date(),
+          } as UserSettings);
         } else {
           setSettings(null);
         }

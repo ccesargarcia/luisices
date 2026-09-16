@@ -21,7 +21,6 @@ import {
 import { db, auth } from '../lib/firebase';
 import { Product } from '../app/types';
 import { firebaseStorageService } from './firebaseStorageService';
-import { toCdnUrl } from '../app/utils/cdnUtils';
 
 const PRODUCTS_COLLECTION = 'products';
 
@@ -40,7 +39,7 @@ class FirebaseProductService {
       unitPrice: data.unitPrice ?? 0,
       description: data.description || undefined,
       category: data.category || undefined,
-      photoUrl: toCdnUrl(data.photoUrl) || undefined,
+      photoUrl: data.photoUrl || undefined,
       createdAt: data.createdAt?.toDate?.()?.toISOString() ?? new Date().toISOString(),
       updatedAt: data.updatedAt?.toDate?.()?.toISOString() ?? undefined,
       recipeId: data.recipeId || undefined,

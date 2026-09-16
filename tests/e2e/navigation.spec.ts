@@ -17,7 +17,6 @@ test.describe('Navegação entre Páginas', () => {
     { name: 'Agenda', path: '/agenda' },
     { name: 'Clientes', path: '/clientes' },
     { name: 'Produtos', path: '/produtos' },
-    { name: 'Estúdio IA', path: '/estudio-ia' },
     { name: 'Orçamentos', path: '/orcamentos' },
     { name: 'Permutas', path: '/permutas' },
     { name: 'Relatórios', path: '/relatorios' },
