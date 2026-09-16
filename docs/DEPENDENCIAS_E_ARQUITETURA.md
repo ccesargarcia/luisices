@@ -283,3 +283,65 @@ VITE_STORAGE_CDN_URL=https://cdn-dev.luisices.com.br
 * **[`src/services/firebaseStorageService.ts`](file:///home/ubuntu/luisices/src/services/firebaseStorageService.ts):** Otimiza imagens para WebP client-side e grava URLs limpas da CDN no Firestore.
 * **[`src/contexts/UserSettingsContext.tsx`](file:///home/ubuntu/luisices/src/contexts/UserSettingsContext.tsx):** Aplica URLs da CDN para logos, avatares e banners.
 * **[`src/app/pages/PublicCatalog.tsx`](file:///home/ubuntu/luisices/src/app/pages/PublicCatalog.tsx):** Garante que o catálogo público sirva fotos e banners direto pela CDN.
+
+---
+
+## 📊 6. Gestão de Índices Compostos do Firestore (`firestore.indexes.json`)
+
+No Cloud Firestore, consultas simples (em um único campo) utilizam índices automáticos. No entanto, **consultas compostas** exigem índices manuais definidos no projeto.
+
+### ❓ Quando é necessário criar um novo índice?
+Um índice composto é obrigatório sempre que uma query fizer:
+1. **Filtro em um campo + Ordenação em outro campo diferente**:
+   * *Exemplo:* `where('userId', '==', user.uid)` + `orderBy('createdAt', 'desc')`
+2. **Múltiplos filtros com ordenação**:
+   * *Exemplo:* `where('userId', '==', ...)` + `where('deletedAt', '==', null)` + `orderBy('createdAt', 'desc')`
+3. **Filtro `in` ou `array-contains` combinado com ordenação**:
+   * *Exemplo:* `where('status', 'in', ['pending', 'in-progress'])` + `orderBy('createdAt', 'desc')`
+
+---
+
+### 📝 Passo a Passo para Adicionar Novos Índices
+
+#### Passo 1: Adicionar a definição em [`firestore.indexes.json`](file:///home/ubuntu/luisices/firestore.indexes.json)
+Abra o arquivo [`firestore.indexes.json`](file:///home/ubuntu/luisices/firestore.indexes.json) na raiz do projeto e adicione a nova regra dentro do array `"indexes"`:
+
+```json
+{
+  "collectionGroup": "nome_da_colecao",
+  "queryScope": "COLLECTION",
+  "fields": [
+    { "fieldPath": "campo_filtro_1", "order": "ASCENDING" },
+    { "fieldPath": "campo_filtro_2", "order": "ASCENDING" },
+    { "fieldPath": "campo_ordenacao", "order": "DESCENDING" }
+  ]
+}
+```
+
+> **Regra de Ordenação dos Campos:**
+> - Primeiro liste todos os campos de **igualdade (`==`)** com `"order": "ASCENDING"`.
+> - Por último liste o campo de **ordenação (`orderBy`)** com `"order": "ASCENDING"` ou `"DESCENDING"`.
+
+#### Passo 2: Commitar as alterações no Git
+```bash
+git add firestore.indexes.json
+git commit -m "feat(firestore): add index for collection_name [skip tests]"
+git push origin develop
+```
+
+#### Passo 3: Aplicar no Firebase via GitHub Actions (1 Clique)
+Não é necessário ter o Firebase CLI configurado localmente:
+1. Vá na aba **Actions** do repositório no GitHub.
+2. Selecione o workflow **`Deploy Firestore Indexes`**.
+3. Clique em **`Run workflow`**, escolha o ambiente desejado (**`prod`** ou **`dev`**) e confirme.
+
+#### Passo 4 (Alternativo): Deploy via Firebase CLI Local
+Se tiver o Firebase CLI autenticado:
+```bash
+# Para Produção:
+firebase deploy --only firestore:indexes --project papelaria-dashboard
+
+# Para Desenvolvimento:
+firebase deploy --only firestore:indexes --project luisices-dev
+```
+
