@@ -86,8 +86,7 @@ import {
 } from '../components/ui/dialog';
 import { formatCurrency } from '../utils/currency';
 import { toast } from 'sonner';
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
+// jsPDF and autoTable loaded dynamically on export to reduce bundle size
 
 const PRODUCT_TYPES = [
   'Caixa Milk 3D Luxo',
@@ -613,10 +612,14 @@ export function AiProductGenerator() {
   };
 
   // Exportar Ficha Técnica em PDF Completa com Pranchas de Corte e Gabarito de Montagem
-  const handleExportPDF = () => {
+  const handleExportPDF = async () => {
     if (!blueprint) return;
 
     try {
+      const [{ default: jsPDF }, { default: autoTable }] = await Promise.all([
+        import('jspdf'),
+        import('jspdf-autotable'),
+      ]);
       const doc = new jsPDF();
 
       // Cabeçalho
