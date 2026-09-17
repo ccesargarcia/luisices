@@ -7,6 +7,7 @@ import { StoreProduct, Product } from '../types';
 import { firebaseStoreProductService } from '../../services/firebaseStoreProductService';
 import { firebaseProductService } from '../../services/firebaseProductService';
 import { useAuth } from '../../contexts/AuthContext';
+import { useUserSettings } from '../../hooks/useUserSettings';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -593,6 +594,9 @@ export function StoreProducts() {
     } catch {}
   };
 
+  const { settings, toggleStorePublished } = useUserSettings();
+  const storePublished = settings?.storePublished !== undefined ? Boolean(settings.storePublished) : true;
+  const [togglingStore, setTogglingStore] = useState(false);
   const [formOpen, setFormOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [bulkOpen, setBulkOpen] = useState(false);
@@ -735,9 +739,42 @@ export function StoreProducts() {
             <Store className="size-7 text-primary" />
             Produtos da Lojinha & Vitrine Online
           </h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Gestão do catálogo público e vitrine online para pedidos e encomendas personalizadas via WhatsApp.
-          </p>
+          <div className="flex flex-wrap items-center gap-2.5 mt-1.5">
+            <p className="text-sm text-muted-foreground">
+              Gestão do catálogo público e vitrine online para pedidos e encomendas personalizadas via WhatsApp.
+            </p>
+            <button
+              type="button"
+              disabled={togglingStore}
+              onClick={async () => {
+                setTogglingStore(true);
+                try {
+                  await toggleStorePublished(!storePublished);
+                  if (!storePublished) {
+                    toast.success("🟢 Loja publicada com sucesso! A vitrine está online.");
+                  } else {
+                    toast.warning("🔴 Loja despublicada! A vitrine está em modo manutenção.");
+                  }
+                } catch (err) {
+                  toast.error("Erro ao alternar status da loja.");
+                } finally {
+                  setTogglingStore(false);
+                }
+              }}
+              className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold border transition-all cursor-pointer ${
+                storePublished
+                  ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/20"
+                  : "bg-red-500/10 text-red-700 dark:text-red-400 border-red-500/30 hover:bg-red-500/20"
+              }`}
+              title="Clique para alternar o status da vitrine"
+            >
+              <span className={`size-1.5 rounded-full ${storePublished ? "bg-emerald-500 animate-pulse" : "bg-red-500"}`} />
+              <span>{storePublished ? "Loja Online" : "Loja Fora do Ar"}</span>
+              <span className="text-[10px] opacity-75 underline">
+                ({togglingStore ? "Salvando..." : storePublished ? "Pausar Loja" : "Publicar"})
+              </span>
+            </button>
+          </div>
         </div>
 
         <div className="grid grid-cols-2 sm:flex sm:items-center gap-2 w-full sm:w-auto">
@@ -921,9 +958,9 @@ export function StoreProducts() {
         </div>
       </div>
 
-      {/* Barra de Ações em Massa - Fixo no rodapé no mobile (Floating Bottom Bar), estático no desktop */}
+      {/* Barra de Ações em Massa - Fixo com folga segura acima do rodapé fixo no mobile, estático no desktop */}
       {selectedProductIds.length > 0 && (canDelete || canEdit) && (
-        <div className="fixed bottom-4 inset-x-3 sm:static sm:inset-x-auto z-40 p-2.5 sm:p-3 rounded-2xl bg-card/95 backdrop-blur-md sm:bg-card border border-primary/25 sm:border-border shadow-2xl sm:shadow-2xs flex flex-wrap items-center justify-between gap-2 transition-all animate-in fade-in slide-in-from-bottom-3 duration-200">
+        <div className="fixed bottom-[calc(4.5rem+env(safe-area-inset-bottom,0px))] sm:bottom-auto inset-x-3 sm:static sm:inset-x-auto z-[45] sm:z-auto sm:my-3 p-2.5 sm:p-3 rounded-2xl bg-card/95 backdrop-blur-md sm:bg-card border border-primary/25 sm:border-border shadow-2xl sm:shadow-2xs flex flex-wrap items-center justify-between gap-2 transition-all animate-in fade-in slide-in-from-bottom-3 duration-200">
           <div className="flex items-center gap-2">
             <Button
               type="button"

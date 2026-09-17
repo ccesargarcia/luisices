@@ -134,6 +134,39 @@ export class FirebaseSettingsService {
   /**
    * Atualizar configurações do usuário
    */
+    /**
+   * Alternar publicação da loja (publicada / despublicada)
+   * Atualiza imediatamente em users/{userId}/settings/profile e storeSettings/public.
+   */
+  async toggleStorePublished(
+    userId: string,
+    storePublished: boolean,
+    storeUnpublishMessage?: string
+  ): Promise<void> {
+    const docRef = doc(db, 'users', userId, 'settings', 'profile');
+    const updatePayload: Record<string, any> = {
+      storePublished,
+      updatedAt: new Date(),
+    };
+    if (storeUnpublishMessage !== undefined) {
+      updatePayload.storeUnpublishMessage = storeUnpublishMessage;
+    }
+    await setDoc(docRef, updatePayload, { merge: true });
+
+    try {
+      const publicPayload: Record<string, any> = {
+        storePublished,
+        updatedAt: new Date(),
+      };
+      if (storeUnpublishMessage !== undefined) {
+        publicPayload.storeUnpublishMessage = storeUnpublishMessage;
+      }
+      await setDoc(doc(db, 'storeSettings', 'public'), publicPayload, { merge: true });
+    } catch (e) {
+      console.warn('Erro ao sincronizar storePublished na storeSettings pública:', e);
+    }
+  }
+
   async updateSettings(
     userId: string,
     settings: Partial<Omit<UserSettings, 'userId' | 'updatedAt'>>
@@ -164,6 +197,7 @@ export class FirebaseSettingsService {
 
       // Somente sincroniza dados de identidade/contato quando o save vem da tela da Lojinha
       // (StoreCustomization), identificado pela presença de ao menos um campo catalog*.
+      const hasCatalogFields = Object.keys(settings).some((key) => key.startsWith('catalog'));
       // Sincroniza nome e identidade exclusivos da lojinha pública online
       if (settings.catalogStoreName !== undefined) {
         publicData.catalogStoreName = settings.catalogStoreName;

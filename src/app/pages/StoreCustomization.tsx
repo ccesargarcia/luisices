@@ -172,6 +172,7 @@ export function StoreCustomization() {
     removeCatalogBanner,
     uploadCatalogHeaderBackground,
     removeCatalogHeaderBackground,
+    toggleStorePublished,
   } = useUserSettings();
   const [saving, setSaving] = useState(false);
   const [uploadingLogo, setUploadingLogo] = useState(false);
@@ -218,7 +219,43 @@ export function StoreCustomization() {
   const [dataLoaded, setDataLoaded] = useState(false);
 
   // Estado de publicação e feature flags
-  const [storePublished, setStorePublished] = useState<boolean>(true);
+  const [storePublished, setStorePublished] = useState<boolean>(() => {
+    try {
+      const cached = localStorage.getItem("luisices_public_store_settings");
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (parsed.storePublished !== undefined) return Boolean(parsed.storePublished);
+      }
+    } catch {}
+    return true;
+  });
+  const [togglingPublished, setTogglingPublished] = useState(false);
+
+  const handleTogglePublished = async (newPublished: boolean) => {
+    setTogglingPublished(true);
+    setStorePublished(newPublished);
+    try {
+      await toggleStorePublished(newPublished, storeUnpublishMessage);
+      try {
+        const cached = localStorage.getItem("luisices_public_store_settings");
+        const parsed = cached ? JSON.parse(cached) : {};
+        parsed.storePublished = newPublished;
+        parsed.storeUnpublishMessage = storeUnpublishMessage;
+        localStorage.setItem("luisices_public_store_settings", JSON.stringify(parsed));
+      } catch {}
+      if (newPublished) {
+        toast.success("🟢 Loja publicada com sucesso! A vitrine está online.");
+      } else {
+        toast.warning("🔴 Loja despublicada! A vitrine está em modo manutenção.");
+      }
+    } catch (err) {
+      console.error("Erro ao alternar publicação da loja:", err);
+      setStorePublished(!newPublished);
+      toast.error("Erro ao atualizar status de publicação da loja.");
+    } finally {
+      setTogglingPublished(false);
+    }
+  };
   const [storeUnpublishMessage, setStoreUnpublishMessage] = useState<string>('');
   const [featureFlags, setFeatureFlags] = useState<Record<string, boolean>>({
     enableOnlineOrders: true,
@@ -792,6 +829,25 @@ export function StoreCustomization() {
           <p className="text-sm text-muted-foreground mt-1.5 max-w-2xl">
             Configure todos os textos, mensagens de pedido, faixa de aviso e rodapé da sua vitrine pública online.
           </p>
+          <div className="flex items-center gap-2 mt-2">
+            <button
+              type="button"
+              onClick={() => handleTogglePublished(!storePublished)}
+              disabled={togglingPublished}
+              className={`inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold border transition-all cursor-pointer ${
+                storePublished
+                  ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/20"
+                  : "bg-red-500/10 text-red-700 dark:text-red-400 border-red-500/30 hover:bg-red-500/20"
+              }`}
+              title="Clique para alternar o status da vitrine"
+            >
+              <span className={`size-2 rounded-full ${storePublished ? "bg-emerald-500 animate-pulse" : "bg-red-500"}`} />
+              <span>{storePublished ? "Loja Publicada (Online)" : "Loja Despublicada (Manutenção)"}</span>
+              <span className="text-[10px] opacity-75 underline ml-1">
+                {togglingPublished ? "Salvando..." : storePublished ? "Despublicar Loja" : "Publicar Loja"}
+              </span>
+            </button>
+          </div>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
@@ -2072,7 +2128,8 @@ export function StoreCustomization() {
                         <Switch
                           id="store-published-toggle"
                           checked={storePublished}
-                          onCheckedChange={(checked) => setStorePublished(checked)}
+                          disabled={togglingPublished}
+                          onCheckedChange={(checked) => handleTogglePublished(checked)}
                         />
                         <div>
                           <Label htmlFor="store-published-toggle" className="text-sm font-bold cursor-pointer">
