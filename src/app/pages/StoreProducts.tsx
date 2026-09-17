@@ -964,102 +964,118 @@ export function StoreProducts() {
         </div>
       </div>
 
-      {/* Barra Flutuante de Ações em Massa - Dock Elegante Centralizado */}
+      {/* Barra de Ações em Massa - Totalmente Adaptativa (Excelente em Retrato/Mobile e Paisagem/Desktop) */}
       {selectedProductIds.length > 0 && (canDelete || canEdit) && (
-        <aside aria-label="Ações em massa para produtos selecionados" className="fixed bottom-5 sm:bottom-6 left-1/2 -translate-x-1/2 z-[55] w-[94%] max-w-xl p-2 sm:p-2.5 rounded-2xl bg-card/95 dark:bg-stone-900/95 backdrop-blur-xl border border-primary/30 dark:border-white/15 shadow-2xl flex items-center justify-between gap-2 transition-all animate-in fade-in slide-in-from-bottom-4 duration-300">
-          <div className="flex items-center gap-2">
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={selectAllFiltered}
-              className="h-8 px-2.5 text-xs font-semibold gap-1.5 cursor-pointer"
-            >
-              {selectedProductIds.length === filteredProducts.length && filteredProducts.length > 0 ? (
-                <>
-                  <CheckSquare size={15} className="text-primary stroke-[2.5]" />
-                  <span className="hidden sm:inline">Desmarcar Todos</span>
-                  <span className="sm:hidden">Desmarcar</span>
-                </>
-              ) : (
-                <>
-                  <Square size={15} className="text-muted-foreground" />
-                  <span>Todos ({filteredProducts.length})</span>
-                </>
-              )}
-            </Button>
-
-            <Badge variant="secondary" className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-primary/15 text-primary border-primary/20">
-              {selectedProductIds.length} selecionado{selectedProductIds.length > 1 ? 's' : ''}
-            </Badge>
-          </div>
-
-          <div className="flex items-center gap-1.5 sm:gap-2 ml-auto">
-            {canEdit && (
-              <>
+        <aside
+          aria-label="Ações em massa para produtos selecionados"
+          className="fixed bottom-[calc(4.5rem+env(safe-area-inset-bottom,0px))] inset-x-2.5 sm:inset-x-auto sm:left-1/2 sm:-translate-x-1/2 sm:bottom-6 sm:w-auto sm:max-w-2xl z-[55] p-2.5 sm:p-2 sm:px-3 rounded-2xl bg-card/95 dark:bg-stone-900/95 backdrop-blur-xl border border-primary/30 dark:border-white/15 shadow-2xl transition-all animate-in fade-in slide-in-from-bottom-4 duration-300"
+        >
+          <div className="flex flex-col sm:flex-row sm:items-center sm:gap-3 gap-2">
+            {/* Topo / Linha de seleção no mobile (ou lado esquerdo no desktop) */}
+            <div className="flex items-center justify-between sm:justify-start gap-2">
+              <div className="flex items-center gap-1.5">
                 <Button
                   type="button"
-                  variant="outline"
+                  variant="ghost"
                   size="sm"
-                  disabled={isBulkStatusUpdating}
-                  onClick={() => handleBulkToggleActive(false)}
-                  className="h-8 px-2.5 text-xs font-semibold gap-1.5 border-amber-500/30 text-amber-600 dark:text-amber-400 hover:bg-amber-500/10 cursor-pointer shadow-2xs"
-                  title="Pausar publicações na vitrine"
+                  onClick={selectAllFiltered}
+                  className="h-8 px-2 text-xs font-semibold gap-1.5 cursor-pointer hover:bg-primary/10"
                 >
-                  {isBulkStatusUpdating ? (
-                    <Loader2 size={13} className="animate-spin" />
+                  {selectedProductIds.length === filteredProducts.length && filteredProducts.length > 0 ? (
+                    <>
+                      <CheckSquare size={15} className="text-primary stroke-[2.5]" />
+                      <span>Desmarcar todos</span>
+                    </>
                   ) : (
-                    <EyeOff size={13} />
+                    <>
+                      <Square size={15} className="text-muted-foreground" />
+                      <span>Todos ({filteredProducts.length})</span>
+                    </>
                   )}
-                  <span>Pausar</span>
                 </Button>
+                <Badge variant="secondary" className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-primary/15 text-primary border-primary/20 shrink-0">
+                  {selectedProductIds.length} selecionado{selectedProductIds.length > 1 ? 's' : ''}
+                </Badge>
+              </div>
 
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  disabled={isBulkStatusUpdating}
-                  onClick={() => handleBulkToggleActive(true)}
-                  className="h-8 px-2.5 text-xs font-semibold gap-1.5 border-emerald-500/30 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10 cursor-pointer shadow-2xs"
-                  title="Ativar publicações na vitrine"
-                >
-                  {isBulkStatusUpdating ? (
-                    <Loader2 size={13} className="animate-spin" />
-                  ) : (
-                    <Eye size={13} />
-                  )}
-                  <span>Ativar</span>
-                </Button>
-              </>
-            )}
-
-            {canDelete && (
+              {/* Botão Cancelar visível no topo no mobile */}
               <Button
                 type="button"
+                variant="ghost"
                 size="sm"
-                onClick={() => setBulkDeleteOpen(true)}
-                className="h-8 px-2.5 text-xs font-bold gap-1.5 bg-red-600 hover:bg-red-700 text-white cursor-pointer shadow-xs"
-                title="Remover publicações selecionadas da vitrine"
+                onClick={clearSelection}
+                className="h-8 px-2 text-xs text-muted-foreground hover:text-foreground cursor-pointer sm:hidden flex items-center gap-1"
+                title="Cancelar seleção"
               >
-                <Trash2 size={13} />
-                <span>Excluir</span>
+                <X size={15} />
+                <span className="text-[11px]">Cancelar</span>
               </Button>
-            )}
+            </div>
 
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={clearSelection}
-              className="h-8 px-2 text-xs text-muted-foreground hover:text-foreground cursor-pointer"
-              title="Cancelar seleção"
-            >
-              <X size={14} />
-            </Button>
+            {/* Linha de ações no mobile (distribuída com flex-1 em largura total) / inline no desktop */}
+            <div className="flex items-center gap-1.5 sm:gap-2 w-full sm:w-auto">
+              {canEdit && (
+                <>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={isBulkStatusUpdating}
+                    onClick={() => handleBulkToggleActive(false)}
+                    className="flex-1 sm:flex-initial h-8.5 sm:h-8 px-2 sm:px-2.5 text-xs font-semibold gap-1.5 border-amber-500/30 text-amber-600 dark:text-amber-400 hover:bg-amber-500/10 cursor-pointer shadow-2xs"
+                    title="Pausar publicações na vitrine"
+                  >
+                    {isBulkStatusUpdating ? (
+                      <Loader2 size={13} className="animate-spin shrink-0" />
+                    ) : (
+                      <EyeOff size={13} className="shrink-0" />
+                    )}
+                    <span>Pausar</span>
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={isBulkStatusUpdating}
+                    onClick={() => handleBulkToggleActive(true)}
+                    className="flex-1 sm:flex-initial h-8.5 sm:h-8 px-2 sm:px-2.5 text-xs font-semibold gap-1.5 border-emerald-500/30 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10 cursor-pointer shadow-2xs"
+                    title="Ativar publicações na vitrine"
+                  >
+                    {isBulkStatusUpdating ? (
+                      <Loader2 size={13} className="animate-spin shrink-0" />
+                    ) : (
+                      <Eye size={13} className="shrink-0" />
+                    )}
+                    <span>Ativar</span>
+                  </Button>
+                </>
+              )}
+              {canDelete && (
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={() => setBulkDeleteOpen(true)}
+                  className="flex-1 sm:flex-initial h-8.5 sm:h-8 px-3 sm:px-2.5 text-xs font-bold gap-1.5 bg-red-600 hover:bg-red-700 active:bg-red-800 text-white cursor-pointer shadow-xs shrink-0"
+                  title="Remover publicações selecionadas da vitrine"
+                >
+                  <Trash2 size={14} className="shrink-0" />
+                  <span>Excluir</span>
+                </Button>
+              )}
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={clearSelection}
+                className="hidden sm:inline-flex h-8 px-2 text-xs text-muted-foreground hover:text-foreground cursor-pointer"
+                title="Cancelar seleção"
+              >
+                <X size={14} />
+              </Button>
+            </div>
           </div>
         </aside>
       )}
-
       {/* Barra Informativa com Botão de Selecionar Todos quando nenhum selecionado */}
       {filteredProducts.length > 0 && selectedProductIds.length === 0 && (canDelete || canEdit) && (
         <div className="flex items-center justify-between text-xs text-muted-foreground px-1 -mt-2">
