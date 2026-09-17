@@ -14,6 +14,7 @@ import {
   CheckCircle2,
   AlertCircle,
   FileImage,
+  Plus,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { firebaseStoreProductService } from '../../../services/firebaseStoreProductService';
@@ -137,7 +138,7 @@ export function BulkStoreProductsDialog({
     }));
 
     setItems(prev => [...prev, ...newItems]);
-    toast.success(`${validFiles.length} foto(s) adicionada(s) à lista!`);
+    toast.success(`${validFiles.length} foto(s) adicionada(s)!`);
   }
 
   function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
@@ -161,6 +162,15 @@ export function BulkStoreProductsDialog({
       if (item) URL.revokeObjectURL(item.previewUrl);
       return prev.filter(it => it.id !== id);
     });
+  }
+
+  function clearAllItems() {
+    if (items.length === 0) return;
+    if (window.confirm('Tem certeza que deseja remover todas as fotos da lista de importação?')) {
+      items.forEach(it => URL.revokeObjectURL(it.previewUrl));
+      setItems([]);
+      toast.info('Lista limpa com sucesso.');
+    }
   }
 
   function updateItem(id: string, patch: Partial<BulkItemState>) {
@@ -201,7 +211,7 @@ export function BulkStoreProductsDialog({
     // Validações básicas antes de iniciar
     const invalidItems = items.filter(it => !it.name.trim() || priceInputToFloat(it.price) <= 0);
     if (invalidItems.length > 0) {
-      toast.error(`Existem ${invalidItems.length} item(ns) com nome ou preço de venda não preenchidos.`);
+      toast.error(`Existem ${invalidItems.length} item(ns) com nome ou preço não preenchidos.`);
       return;
     }
 
@@ -266,135 +276,161 @@ export function BulkStoreProductsDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="max-w-4xl w-[95vw] h-[90vh] flex flex-col p-0 gap-0 overflow-hidden bg-background">
-        {/* Header Fixo */}
-        <DialogHeader className="p-4 sm:p-6 border-b border-border bg-card/60 shrink-0">
-          <div className="flex items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <div className="size-10 rounded-2xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
-                <Images className="size-5" />
+      <DialogContent className="max-w-4xl w-[96vw] sm:w-[92vw] h-[92vh] sm:h-[88vh] flex flex-col p-0 gap-0 overflow-hidden bg-background rounded-2xl sm:rounded-3xl border shadow-xl">
+        {/* Header Fixo Mobile-First */}
+        <DialogHeader className="p-3.5 sm:p-5 border-b border-border bg-card/90 shrink-0 space-y-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            {/* Título & Badge */}
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="size-9 sm:size-10 rounded-xl sm:rounded-2xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
+                <Images className="size-4 sm:size-5" />
               </div>
-              <div>
-                <DialogTitle className="text-lg sm:text-xl font-bold flex items-center gap-2">
-                  Adicionar Fotos em Massa na Vitrine
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <DialogTitle className="text-base sm:text-lg font-bold truncate">
+                    Adicionar Fotos em Massa
+                  </DialogTitle>
                   {items.length > 0 && (
-                    <Badge variant="secondary" className="text-xs px-2 py-0.5 rounded-full font-semibold">
-                      {items.length} {items.length === 1 ? 'produto detectado' : 'produtos detectados'}
+                    <Badge variant="secondary" className="text-[11px] px-2 py-0.5 rounded-full font-bold bg-primary/15 text-primary border-primary/20 shrink-0">
+                      {items.length} {items.length === 1 ? 'foto' : 'fotos'}
                     </Badge>
                   )}
-                </DialogTitle>
-                <DialogDescription className="text-xs text-muted-foreground mt-0.5">
-                  Selecione várias fotos de uma vez. O modal gera os campos de cada produto automaticamente.
+                </div>
+                <DialogDescription className="text-[11px] sm:text-xs text-muted-foreground truncate">
+                  Cada foto gera automaticamente um card de produto para você revisar e precificar.
                 </DialogDescription>
               </div>
             </div>
 
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={isProcessing}
-              className="gap-1.5 shrink-0 text-xs font-semibold cursor-pointer"
-            >
-              <Upload size={14} className="text-primary" />
-              <span>{items.length === 0 ? 'Selecionar Fotos' : '+ Mais Fotos'}</span>
-            </Button>
-            <input
-              ref={fileInputRef}
-              type="file"
-              multiple
-              accept="image/jpeg,image/png,image/webp"
-              className="hidden"
-              onChange={handleFileSelect}
-            />
+            {/* Ações Rápidas do Header */}
+            <div className="flex items-center gap-2 w-full sm:w-auto">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isProcessing}
+                className="flex-1 sm:flex-initial h-9 sm:h-8 gap-1.5 text-xs font-bold border-primary/40 text-primary hover:bg-primary/10 active:scale-95 transition-all cursor-pointer shadow-2xs"
+              >
+                <Plus size={15} className="shrink-0 stroke-[2.5]" />
+                <span>{items.length === 0 ? 'Escolher Fotos' : 'Mais Fotos'}</span>
+              </Button>
+
+              {items.length > 0 && !isProcessing && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={clearAllItems}
+                  className="h-9 sm:h-8 px-2.5 text-xs text-muted-foreground hover:text-red-500 hover:bg-red-500/10 cursor-pointer"
+                  title="Limpar todas as fotos"
+                >
+                  <Trash2 size={14} className="mr-1" />
+                  <span className="hidden sm:inline">Limpar Lista</span>
+                </Button>
+              )}
+
+              <input
+                ref={fileInputRef}
+                type="file"
+                multiple
+                accept="image/jpeg,image/png,image/webp"
+                className="hidden"
+                onChange={handleFileSelect}
+              />
+            </div>
           </div>
 
           {/* Barra de Replicar em Lote (Aparece quando há 2 ou mais fotos) */}
           {items.length >= 2 && !isProcessing && (
-            <div className="mt-4 pt-4 border-t border-border/60 flex flex-wrap items-center gap-2 text-xs bg-muted/30 p-2.5 rounded-xl">
-              <span className="font-semibold text-foreground flex items-center gap-1.5 text-xs mr-1">
-                <Sparkles size={13} className="text-primary" />
-                Preenchimento Rápido em Lote:
-              </span>
-
-              {/* Preço Comum */}
-              <div className="flex items-center gap-1">
-                <Input
-                  placeholder="R$ Preço"
-                  value={batchPrice}
-                  onChange={(e) => setBatchPrice(parsePriceInput(e.target.value))}
-                  className="h-7 w-24 text-xs font-medium bg-background"
-                />
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={applyBatchPrice}
-                  className="h-7 px-2 text-xs text-primary hover:text-primary cursor-pointer"
-                  title="Aplicar este preço em todos os itens"
-                >
-                  <Copy size={12} className="mr-1" />
-                  Aplicar
-                </Button>
+            <div className="pt-2.5 border-t border-border/60 bg-muted/40 p-2.5 rounded-xl flex flex-col gap-2">
+              <div className="flex items-center gap-1.5 text-[11px] font-bold text-foreground">
+                <Sparkles size={12} className="text-primary" />
+                <span>Replicar em Lote para Todos:</span>
               </div>
 
-              {/* Categoria Comum */}
-              <div className="flex items-center gap-1">
-                <Input
-                  placeholder="Categoria"
-                  value={batchCategory}
-                  onChange={(e) => setBatchCategory(e.target.value)}
-                  className="h-7 w-28 text-xs bg-background"
-                  list="bulk-existing-categories"
-                />
-                <datalist id="bulk-existing-categories">
-                  {existingCategories.map(cat => (
-                    <option key={cat} value={cat} />
-                  ))}
-                </datalist>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={applyBatchCategory}
-                  className="h-7 px-2 text-xs text-primary hover:text-primary cursor-pointer"
-                  title="Aplicar esta categoria em todos os itens"
-                >
-                  <Copy size={12} className="mr-1" />
-                  Aplicar
-                </Button>
-              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                {/* Preço Comum */}
+                <div className="flex items-center gap-1 bg-background p-1 rounded-lg border border-border">
+                  <span className="text-[11px] font-bold text-muted-foreground pl-1.5">R$</span>
+                  <Input
+                    placeholder="0,00"
+                    value={batchPrice}
+                    onChange={(e) => setBatchPrice(parsePriceInput(e.target.value))}
+                    className="h-7 text-xs font-bold border-0 focus-visible:ring-0 shadow-none px-1"
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={applyBatchPrice}
+                    className="h-7 px-2 text-[11px] font-bold text-primary hover:text-primary hover:bg-primary/10 shrink-0 cursor-pointer"
+                    title="Aplicar este preço em todas as fotos"
+                  >
+                    <Copy size={11} className="mr-1" />
+                    Aplicar
+                  </Button>
+                </div>
 
-              {/* Prazo Comum */}
-              <div className="flex items-center gap-1">
-                <Input
-                  type="number"
-                  min="0"
-                  placeholder="Dias"
-                  value={batchLeadTime}
-                  onChange={(e) => setBatchLeadTime(e.target.value)}
-                  className="h-7 w-16 text-xs bg-background"
-                />
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={applyBatchLeadTime}
-                  className="h-7 px-2 text-xs text-primary hover:text-primary cursor-pointer"
-                  title="Aplicar este prazo em todos os itens"
-                >
-                  <Copy size={12} className="mr-1" />
-                  Aplicar
-                </Button>
+                {/* Categoria Comum */}
+                <div className="flex items-center gap-1 bg-background p-1 rounded-lg border border-border">
+                  <Input
+                    placeholder="Categoria..."
+                    value={batchCategory}
+                    onChange={(e) => setBatchCategory(e.target.value)}
+                    className="h-7 text-xs border-0 focus-visible:ring-0 shadow-none px-1.5"
+                    list="bulk-existing-categories"
+                  />
+                  <datalist id="bulk-existing-categories">
+                    {existingCategories.map(cat => (
+                      <option key={cat} value={cat} />
+                    ))}
+                  </datalist>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={applyBatchCategory}
+                    className="h-7 px-2 text-[11px] font-bold text-primary hover:text-primary hover:bg-primary/10 shrink-0 cursor-pointer"
+                    title="Aplicar esta categoria em todas as fotos"
+                  >
+                    <Copy size={11} className="mr-1" />
+                    Aplicar
+                  </Button>
+                </div>
+
+                {/* Prazo Comum */}
+                <div className="flex items-center gap-1 bg-background p-1 rounded-lg border border-border">
+                  <span className="text-[11px] text-muted-foreground pl-1.5">Prazo:</span>
+                  <Input
+                    type="number"
+                    min="0"
+                    placeholder="Dias"
+                    value={batchLeadTime}
+                    onChange={(e) => setBatchLeadTime(e.target.value)}
+                    className="h-7 text-xs border-0 focus-visible:ring-0 shadow-none px-1 text-center"
+                  />
+                  <span className="text-[11px] text-muted-foreground pr-1">dias</span>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={applyBatchLeadTime}
+                    className="h-7 px-2 text-[11px] font-bold text-primary hover:text-primary hover:bg-primary/10 shrink-0 cursor-pointer"
+                    title="Aplicar este prazo em todas as fotos"
+                  >
+                    <Copy size={11} className="mr-1" />
+                    Aplicar
+                  </Button>
+                </div>
               </div>
             </div>
           )}
         </DialogHeader>
 
-        {/* Área Central Rolável com os Cards Dinâmicos */}
+        {/* Área Central Rolável com os Cards Dinâmicos (Mobile First) */}
         <div
-          className={`flex-1 overflow-y-auto p-4 sm:p-6 space-y-4 transition-colors ${
+          className={`flex-1 overflow-y-auto p-3 sm:p-5 space-y-3 transition-colors ${
             isDragging ? 'bg-primary/5 border-2 border-dashed border-primary' : ''
           }`}
           onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
@@ -404,28 +440,28 @@ export function BulkStoreProductsDialog({
           {items.length === 0 ? (
             <div
               onClick={() => fileInputRef.current?.click()}
-              className="h-full min-h-[320px] flex flex-col items-center justify-center text-center border-2 border-dashed border-border rounded-2xl p-8 hover:border-primary/50 transition-colors cursor-pointer bg-card/30"
+              className="h-full min-h-[260px] flex flex-col items-center justify-center text-center border-2 border-dashed border-border rounded-2xl p-6 sm:p-8 hover:border-primary/50 transition-colors cursor-pointer bg-card/30"
             >
-              <div className="size-16 rounded-full bg-primary/10 text-primary flex items-center justify-center mb-4 shadow-xs">
-                <Upload className="size-8" />
+              <div className="size-14 sm:size-16 rounded-full bg-primary/10 text-primary flex items-center justify-center mb-3.5 shadow-2xs">
+                <Upload className="size-6 sm:size-8" />
               </div>
-              <h3 className="text-base font-bold text-foreground">
-                Arraste suas fotos aqui ou clique para selecionar
+              <h3 className="text-sm sm:text-base font-bold text-foreground">
+                Toque aqui para escolher as fotos
               </h3>
-              <p className="text-xs text-muted-foreground max-w-sm mt-1.5 leading-relaxed">
-                Você pode enviar 5, 10, 20 ou mais fotos simultâneas. O sistema expandirá automaticamente os campos de cada produto para você revisar e precificar.
+              <p className="text-xs text-muted-foreground max-w-sm mt-1 leading-relaxed">
+                Você pode selecionar dezenas de fotos direto do celular ou computador. As informações serão preenchidas com o nome das fotos para você agilizar o cadastro.
               </p>
-              <div className="flex items-center gap-2 mt-4 text-[11px] text-muted-foreground bg-muted/60 px-3 py-1.5 rounded-full">
-                <FileImage size={13} />
-                <span>Formatos aceitos: JPG, PNG, WebP (até 8MB cada)</span>
+              <div className="flex items-center gap-1.5 mt-3.5 text-[11px] text-muted-foreground bg-muted/60 px-3 py-1 rounded-full">
+                <FileImage size={12} />
+                <span>Formatos: JPG, PNG, WebP (até 8MB cada)</span>
               </div>
             </div>
           ) : (
-            <div className="grid grid-cols-1 gap-3.5">
+            <div className="grid grid-cols-1 gap-3">
               {items.map((item, index) => (
                 <div
                   key={item.id}
-                  className={`p-3.5 sm:p-4 rounded-2xl border transition-all ${
+                  className={`p-3 sm:p-4 rounded-xl sm:rounded-2xl border transition-all ${
                     item.status === 'success'
                       ? 'bg-emerald-500/5 border-emerald-500/30'
                       : item.status === 'error'
@@ -435,38 +471,62 @@ export function BulkStoreProductsDialog({
                       : 'bg-card border-border hover:border-border/80'
                   }`}
                 >
-                  <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3.5">
-                    {/* Miniatura da Foto com Badge de Ordem */}
-                    <div className="relative size-18 sm:size-20 rounded-xl overflow-hidden bg-muted shrink-0 border border-border/80 shadow-2xs group">
-                      <img
-                        src={item.previewUrl}
-                        alt={item.name}
-                        className="w-full h-full object-cover"
-                      />
-                      <span className="absolute top-1 left-1 size-5 rounded-md bg-black/70 text-white text-[10px] font-bold flex items-center justify-center">
-                        {index + 1}
-                      </span>
+                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+                    {/* Linha Superior Mobile: Foto + Título/Numeração + Botão de Excluir */}
+                    <div className="flex items-center gap-3">
+                      {/* Miniatura da Foto com Badge de Ordem */}
+                      <div className="relative size-16 sm:size-18 rounded-xl overflow-hidden bg-muted shrink-0 border border-border/80 shadow-2xs">
+                        <img
+                          src={item.previewUrl}
+                          alt={item.name}
+                          className="w-full h-full object-cover"
+                        />
+                        <span className="absolute top-1 left-1 size-5 rounded-md bg-black/75 text-white text-[10px] font-bold flex items-center justify-center">
+                          {index + 1}
+                        </span>
 
-                      {/* Status Overlay */}
-                      {item.status === 'uploading' && (
-                        <div className="absolute inset-0 bg-black/60 flex items-center justify-center text-white">
-                          <Loader2 className="size-5 animate-spin text-primary" />
-                        </div>
-                      )}
-                      {item.status === 'success' && (
-                        <div className="absolute inset-0 bg-emerald-600/80 flex items-center justify-center text-white">
-                          <CheckCircle2 className="size-6" />
-                        </div>
-                      )}
-                      {item.status === 'error' && (
-                        <div className="absolute inset-0 bg-red-600/80 flex items-center justify-center text-white">
-                          <AlertCircle className="size-6" />
-                        </div>
+                        {/* Status Overlay */}
+                        {item.status === 'uploading' && (
+                          <div className="absolute inset-0 bg-black/60 flex items-center justify-center text-white">
+                            <Loader2 className="size-5 animate-spin text-primary" />
+                          </div>
+                        )}
+                        {item.status === 'success' && (
+                          <div className="absolute inset-0 bg-emerald-600/80 flex items-center justify-center text-white">
+                            <CheckCircle2 className="size-5" />
+                          </div>
+                        )}
+                        {item.status === 'error' && (
+                          <div className="absolute inset-0 bg-red-600/80 flex items-center justify-center text-white">
+                            <AlertCircle className="size-5" />
+                          </div>
+                        )}
+                      </div>
+
+                      {/* No mobile, exibe o nome resumido e o botão de lixeira no topo */}
+                      <div className="flex-1 sm:hidden min-w-0">
+                        <p className="text-xs font-bold text-foreground truncate">{item.name || 'Sem nome'}</p>
+                        <p className="text-[11px] text-muted-foreground">
+                          {item.price ? `R$ ${item.price}` : 'Preço pendente'}
+                        </p>
+                      </div>
+
+                      {!isProcessing && item.status !== 'success' && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => removeItem(item.id)}
+                          className="size-8 sm:hidden text-muted-foreground hover:text-red-500 hover:bg-red-500/10 rounded-lg shrink-0 cursor-pointer"
+                          title="Remover foto"
+                        >
+                          <Trash2 size={15} />
+                        </Button>
                       )}
                     </div>
 
-                    {/* Campos do Produto */}
-                    <div className="flex-1 grid grid-cols-1 sm:grid-cols-12 gap-2.5 w-full">
+                    {/* Campos do Produto (Grid Responsivo) */}
+                    <div className="flex-1 grid grid-cols-1 sm:grid-cols-12 gap-2 w-full">
                       {/* Nome do Produto */}
                       <div className="sm:col-span-5 space-y-1">
                         <Label className="text-[11px] font-semibold text-muted-foreground">
@@ -481,21 +541,39 @@ export function BulkStoreProductsDialog({
                         />
                       </div>
 
-                      {/* Preço (R$) */}
-                      <div className="sm:col-span-3 space-y-1">
-                        <Label className="text-[11px] font-semibold text-muted-foreground">
-                          Preço de Venda (R$) *
-                        </Label>
-                        <div className="relative">
-                          <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[11px] text-muted-foreground font-semibold">
-                            R$
-                          </span>
+                      {/* Preço e Prazo lado a lado no mobile */}
+                      <div className="grid grid-cols-2 sm:contents gap-2">
+                        {/* Preço (R$) */}
+                        <div className="sm:col-span-3 space-y-1">
+                          <Label className="text-[11px] font-semibold text-muted-foreground">
+                            Preço (R$) *
+                          </Label>
+                          <div className="relative">
+                            <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[11px] text-muted-foreground font-semibold">
+                              R$
+                            </span>
+                            <Input
+                              value={item.price}
+                              disabled={isProcessing || item.status === 'success'}
+                              onChange={(e) => updateItem(item.id, { price: parsePriceInput(e.target.value) })}
+                              placeholder="0,00"
+                              className="h-8 text-xs font-bold pl-7"
+                            />
+                          </div>
+                        </div>
+
+                        {/* Prazo (Dias) */}
+                        <div className="sm:col-span-2 space-y-1">
+                          <Label className="text-[11px] font-semibold text-muted-foreground">
+                            Prazo (dias)
+                          </Label>
                           <Input
-                            value={item.price}
+                            type="number"
+                            min="0"
+                            value={item.leadTimeDays}
                             disabled={isProcessing || item.status === 'success'}
-                            onChange={(e) => updateItem(item.id, { price: parsePriceInput(e.target.value) })}
-                            placeholder="0,00"
-                            className="h-8 text-xs font-bold pl-7"
+                            onChange={(e) => updateItem(item.id, { leadTimeDays: e.target.value })}
+                            className="h-8 text-xs text-center"
                           />
                         </div>
                       </div>
@@ -514,32 +592,17 @@ export function BulkStoreProductsDialog({
                           list="bulk-existing-categories"
                         />
                       </div>
-
-                      {/* Prazo (Dias) */}
-                      <div className="sm:col-span-2 space-y-1">
-                        <Label className="text-[11px] font-semibold text-muted-foreground">
-                          Prazo (dias)
-                        </Label>
-                        <Input
-                          type="number"
-                          min="0"
-                          value={item.leadTimeDays}
-                          disabled={isProcessing || item.status === 'success'}
-                          onChange={(e) => updateItem(item.id, { leadTimeDays: e.target.value })}
-                          className="h-8 text-xs text-center"
-                        />
-                      </div>
                     </div>
 
-                    {/* Botão de Remover Item */}
+                    {/* Botão de Remover Item (No desktop fica na extrema direita) */}
                     {!isProcessing && item.status !== 'success' && (
                       <Button
                         type="button"
                         variant="ghost"
                         size="icon"
                         onClick={() => removeItem(item.id)}
-                        className="size-8 text-muted-foreground hover:text-red-500 hover:bg-red-500/10 rounded-xl shrink-0 cursor-pointer"
-                        title="Remover este item"
+                        className="hidden sm:inline-flex size-8 text-muted-foreground hover:text-red-500 hover:bg-red-500/10 rounded-xl shrink-0 cursor-pointer"
+                        title="Remover foto"
                       >
                         <Trash2 size={14} />
                       </Button>
@@ -558,9 +621,9 @@ export function BulkStoreProductsDialog({
           )}
         </div>
 
-        {/* Footer com Progresso e Publicação */}
-        <DialogFooter className="p-4 sm:p-5 border-t border-border bg-card/60 shrink-0 flex flex-col sm:flex-row items-center justify-between gap-3">
-          <div className="text-xs text-muted-foreground flex items-center gap-2">
+        {/* Footer com Progresso e Publicação (Mobile First) */}
+        <DialogFooter className="p-3 sm:p-4 border-t border-border bg-card/90 shrink-0 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5">
+          <div className="text-xs text-muted-foreground flex items-center justify-center sm:justify-start gap-2">
             {isProcessing ? (
               <div className="flex items-center gap-2">
                 <Loader2 size={14} className="animate-spin text-primary" />
@@ -570,21 +633,21 @@ export function BulkStoreProductsDialog({
               </div>
             ) : items.length > 0 ? (
               <span>
-                {items.length} {items.length === 1 ? 'item pronto' : 'itens prontos'} para publicação na lojinha.
+                <strong>{items.length}</strong> {items.length === 1 ? 'produto pronto' : 'produtos prontos'} para publicação.
               </span>
             ) : (
-              <span>Nenhuma foto selecionada ainda.</span>
+              <span>Nenhuma foto na fila de envio.</span>
             )}
           </div>
 
-          <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+          <div className="flex items-center gap-2 w-full sm:w-auto">
             <Button
               type="button"
               variant="outline"
               size="sm"
               disabled={isProcessing}
               onClick={() => handleOpenChange(false)}
-              className="text-xs"
+              className="flex-1 sm:flex-initial h-9 sm:h-8 text-xs"
             >
               Cancelar
             </Button>
@@ -593,7 +656,7 @@ export function BulkStoreProductsDialog({
               size="sm"
               disabled={isProcessing || items.length === 0}
               onClick={handlePublishAll}
-              className="text-xs font-bold gap-1.5 shadow-xs cursor-pointer min-w-[140px]"
+              className="flex-1 sm:flex-initial h-9 sm:h-8 text-xs font-bold gap-1.5 shadow-xs cursor-pointer min-w-[130px]"
             >
               {isProcessing ? (
                 <>
@@ -603,7 +666,7 @@ export function BulkStoreProductsDialog({
               ) : (
                 <>
                   <Upload size={13} />
-                  <span>Publicar Todos ({items.length})</span>
+                  <span>Publicar ({items.length})</span>
                 </>
               )}
             </Button>
