@@ -1,3 +1,4 @@
+import { BulkStoreProductsDialog } from '../components/store/BulkStoreProductsDialog';
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { Link } from 'react-router';
 import { formatCurrency } from '../utils/currency';
@@ -25,6 +26,7 @@ import {
 } from '../components/ui/alert-dialog';
 import {
   Plus,
+  Images,
   Pencil,
   Trash2,
   Search,
@@ -590,6 +592,7 @@ export function StoreProducts() {
 
   const [formOpen, setFormOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
+  const [bulkOpen, setBulkOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<StoreProduct | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<StoreProduct | null>(null);
 
@@ -714,6 +717,15 @@ export function StoreProducts() {
                 <span>Importar do Ateliê</span>
               </Button>
 
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setBulkOpen(true)}
+                className="gap-1.5 text-xs font-semibold"
+              >
+                <Images size={14} className="text-primary" />
+                <span>Adicionar em Massa (Fotos)</span>
+              </Button>
               <Button
                 size="sm"
                 onClick={() => {
@@ -1096,6 +1108,12 @@ export function StoreProducts() {
         existingCategories={categories}
       />
 
+      {/* Modal de Importação em Massa por Fotos */}
+      <BulkStoreProductsDialog
+        open={bulkOpen}
+        onOpenChange={setBulkOpen}
+        existingCategories={categories}
+      />
       {/* Modal de Importação do Ateliê */}
       <ImportFromAtelierDialog
         open={importOpen}
