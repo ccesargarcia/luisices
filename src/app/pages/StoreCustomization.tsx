@@ -871,17 +871,7 @@ export function StoreCustomization() {
             <span>{showTemplates ? 'Ocultar Modelos' : 'Modelos & Inspirações'}</span>
           </Button>
 
-          <a
-            href="/catalogo?return=/personalizar-lojinha"
-            target="_blank"
-            rel="noopener noreferrer"
-            onClick={() => {
-              try {
-                localStorage.setItem("luisices_last_admin_route", "/personalizar-lojinha");
-                sessionStorage.setItem("luisices_last_admin_route", "/personalizar-lojinha");
-              } catch {}
-            }}
-          >
+          <a href="/catalogo" target="_blank" rel="noopener noreferrer">
             <Button variant="outline" className="gap-2 border-primary/30 text-primary hover:bg-primary/5">
               <Globe className="size-4" />
               <span className="hidden sm:inline">Ver Lojinha Online</span>

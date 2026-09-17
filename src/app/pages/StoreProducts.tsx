@@ -779,15 +779,9 @@ export function StoreProducts() {
 
         <div className="grid grid-cols-2 sm:flex sm:items-center gap-2 w-full sm:w-auto">
           <a
-            href="/catalogo?return=/produtos-lojinha"
+            href="/catalogo"
             target="_blank"
             rel="noopener noreferrer"
-            onClick={() => {
-              try {
-                localStorage.setItem("luisices_last_admin_route", "/produtos-lojinha");
-                sessionStorage.setItem("luisices_last_admin_route", "/produtos-lojinha");
-              } catch {}
-            }}
             className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold bg-muted hover:bg-muted/80 text-foreground border border-border transition-colors shadow-2xs cursor-pointer h-9"
           >
             <Globe size={14} className="text-primary shrink-0" />

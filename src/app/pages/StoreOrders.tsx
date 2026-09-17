@@ -319,7 +319,7 @@ export function StoreOrders() {
             </Link>
           </Button>
           <a
-            href="/catalogo?return=/pedidos-lojinha"
+            href="/catalogo"
             target="_blank"
             rel="noopener noreferrer"
             className="inline-flex items-center justify-center gap-1.5 px-3 h-8.5 rounded-md text-xs font-semibold bg-[#613d3e] hover:bg-[#4a2e2f] text-white shadow-xs transition-all shrink-0 cursor-pointer"
@@ -494,7 +494,7 @@ export function StoreOrders() {
             </Button>
           ) : (
             <a
-              href="/catalogo?return=/pedidos-lojinha"
+              href="/catalogo"
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-bold bg-[#613d3e] hover:bg-[#4a2e2f] text-white shadow-sm transition-all cursor-pointer"
