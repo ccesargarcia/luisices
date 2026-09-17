@@ -17,6 +17,7 @@ import {
   query,
   orderBy,
   Timestamp,
+  writeBatch,
 } from 'firebase/firestore';
 import { auth, db } from '../lib/firebase';
 import { StoreProduct, Product } from '../app/types';
@@ -137,6 +138,40 @@ class FirebaseStoreProductService {
       active,
       updatedAt: Timestamp.now(),
     });
+  }
+
+  async bulkToggleActive(ids: string[], active: boolean): Promise<void> {
+    if (!ids || ids.length === 0) return;
+    const chunks: string[][] = [];
+    for (let i = 0; i < ids.length; i += 400) {
+      chunks.push(ids.slice(i, i + 400));
+    }
+    const now = Timestamp.now();
+    for (const chunk of chunks) {
+      const batch = writeBatch(db);
+      for (const id of chunk) {
+        batch.update(doc(db, STORE_PRODUCTS_COLLECTION, id), {
+          active,
+          updatedAt: now,
+        });
+      }
+      await batch.commit();
+    }
+  }
+
+  async bulkDeleteStoreProducts(ids: string[]): Promise<void> {
+    if (!ids || ids.length === 0) return;
+    const chunks: string[][] = [];
+    for (let i = 0; i < ids.length; i += 400) {
+      chunks.push(ids.slice(i, i + 400));
+    }
+    for (const chunk of chunks) {
+      const batch = writeBatch(db);
+      for (const id of chunk) {
+        batch.delete(doc(db, STORE_PRODUCTS_COLLECTION, id));
+      }
+      await batch.commit();
+    }
   }
 
   async deleteStoreProduct(id: string): Promise<void> {

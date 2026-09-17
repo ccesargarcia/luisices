@@ -598,6 +598,7 @@ export function StoreProducts() {
   const [bulkOpen, setBulkOpen] = useState(false);
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
   const [selectedProductIds, setSelectedProductIds] = useState<string[]>([]);
+  const [isBulkStatusUpdating, setIsBulkStatusUpdating] = useState(false);
   const [editingProduct, setEditingProduct] = useState<StoreProduct | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<StoreProduct | null>(null);
   const toggleSelectProduct = (id: string) => {
@@ -693,9 +694,32 @@ export function StoreProducts() {
     const nextState = !p.active;
     try {
       await firebaseStoreProductService.toggleStoreProductActive(p.id, nextState);
-      toast.success(nextState ? `"${p.name}" ativado na vitrine!` : `"${p.name}" pausado na vitrine.`);
+      toast.success(nextState ? `"${p.name}" publicado na vitrine!` : `"${p.name}" pausado na vitrine.`);
     } catch {
-      toast.error('Erro ao alternar status do produto');
+      toast.error('Erro ao alternar status da publicação');
+    }
+  }
+
+  async function handleBulkToggleActive(active: boolean) {
+    if (selectedProductIds.length === 0) return;
+    if (!canEdit) {
+      toast.error('Você não tem permissão para alterar produtos da vitrine.');
+      return;
+    }
+    setIsBulkStatusUpdating(true);
+    try {
+      await firebaseStoreProductService.bulkToggleActive(selectedProductIds, active);
+      toast.success(
+        active
+          ? `${selectedProductIds.length} ${selectedProductIds.length === 1 ? 'publicação ativada' : 'publicações ativadas'} no catálogo.`
+          : `${selectedProductIds.length} ${selectedProductIds.length === 1 ? 'publicação pausada' : 'publicações pausadas'} no catálogo.`
+      );
+      setSelectedProductIds([]);
+    } catch (err) {
+      console.error('Erro na alteração em lote de status:', err);
+      toast.error('Ocorreu um erro ao atualizar o status das publicações selecionadas.');
+    } finally {
+      setIsBulkStatusUpdating(false);
     }
   }
 
@@ -709,10 +733,10 @@ export function StoreProducts() {
         <div>
           <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-foreground flex items-center gap-2.5">
             <Store className="size-7 text-primary" />
-            Produtos da Lojinha Online
+            Produtos da Lojinha & Vitrine Online
           </h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Gerencie exclusivamente os itens que ficam visíveis na vitrine pública para seus clientes encomendarem pelo WhatsApp.
+            Gestão do catálogo público e vitrine online para pedidos e encomendas personalizadas via WhatsApp.
           </p>
         </div>
 
@@ -746,7 +770,7 @@ export function StoreProducts() {
                 className="gap-1.5 text-xs font-semibold h-9 text-primary border-primary/30 hover:bg-primary/5"
               >
                 <Images size={14} className="text-primary shrink-0" />
-                <span className="truncate">Fotos em Massa</span>
+                <span className="truncate">Fotos em Lote</span>
               </Button>
               <Button
                 size="sm"
@@ -788,7 +812,7 @@ export function StoreProducts() {
               <Store className="size-5" />
             </div>
             <div>
-              <p className="text-[11px] text-muted-foreground font-medium uppercase tracking-wider">Total na Vitrine</p>
+              <p className="text-[11px] text-muted-foreground font-medium uppercase tracking-wider">Total Cadastrado</p>
               <p className="text-xl font-black text-foreground">{storeProducts.length}</p>
             </div>
           </CardContent>
@@ -800,7 +824,7 @@ export function StoreProducts() {
               <Eye className="size-5" />
             </div>
             <div>
-              <p className="text-[11px] text-muted-foreground font-medium uppercase tracking-wider">Ativos no Catálogo</p>
+              <p className="text-[11px] text-muted-foreground font-medium uppercase tracking-wider">Publicados no Ar</p>
               <p className="text-xl font-black text-emerald-600 dark:text-emerald-400">{activeCount}</p>
             </div>
           </CardContent>
@@ -812,7 +836,7 @@ export function StoreProducts() {
               <EyeOff className="size-5" />
             </div>
             <div>
-              <p className="text-[11px] text-muted-foreground font-medium uppercase tracking-wider">Pausados</p>
+              <p className="text-[11px] text-muted-foreground font-medium uppercase tracking-wider">Publicações Pausadas</p>
               <p className="text-xl font-black text-amber-600 dark:text-amber-400">{pausedCount}</p>
             </div>
           </CardContent>
@@ -824,7 +848,7 @@ export function StoreProducts() {
               <Tag className="size-5" />
             </div>
             <div>
-              <p className="text-[11px] text-muted-foreground font-medium uppercase tracking-wider">Categorias</p>
+              <p className="text-[11px] text-muted-foreground font-medium uppercase tracking-wider">Categorias Ativas</p>
               <p className="text-xl font-black text-foreground">{categories.length}</p>
             </div>
           </CardContent>
@@ -836,11 +860,21 @@ export function StoreProducts() {
         <div className="w-full sm:flex-1 relative min-w-0">
           <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
           <Input
-            placeholder="Buscar por nome, categoria ou descrição..."
+            placeholder="Buscar por nome do produto, categoria ou descrição..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="pl-9 h-9 text-xs"
+            className="pl-9 pr-8 h-9 text-xs"
           />
+          {search && (
+            <button
+              type="button"
+              onClick={() => setSearch('')}
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-muted-foreground hover:text-foreground rounded-md cursor-pointer"
+              title="Limpar busca"
+            >
+              <X size={13} />
+            </button>
+          )}
         </div>
 
         <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
@@ -863,7 +897,7 @@ export function StoreProducts() {
             className="h-9 px-2.5 rounded-lg bg-background border border-border text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary cursor-pointer flex-1 sm:flex-none min-w-[110px] max-w-full"
           >
             <option value="todos">Todos os Status</option>
-            <option value="ativos">Apenas Ativos</option>
+            <option value="ativos">Apenas Publicados</option>
             <option value="pausados">Apenas Pausados</option>
           </select>
 
@@ -871,22 +905,25 @@ export function StoreProducts() {
           <div className="flex items-center bg-muted/60 p-0.5 rounded-lg border border-border shrink-0 ml-auto sm:ml-0">
             <button
               onClick={() => handleSetViewMode('grid')}
-              className={`p-1.5 rounded-md transition-colors ${viewMode === 'grid' ? 'bg-background shadow-xs text-foreground font-semibold' : 'text-muted-foreground hover:text-foreground'}`}
+              className={`p-1.5 rounded-md transition-colors cursor-pointer ${viewMode === 'grid' ? 'bg-background shadow-xs text-foreground font-semibold' : 'text-muted-foreground hover:text-foreground'}`}
               title="Visualização em galeria (grade)"
             >
               <LayoutGrid size={15} />
             </button>
             <button
               onClick={() => handleSetViewMode('list')}
-              className={`p-1.5 rounded-md transition-colors ${viewMode === 'list' ? 'bg-background shadow-xs text-foreground font-semibold' : 'text-muted-foreground hover:text-foreground'}`}
+              className={`p-1.5 rounded-md transition-colors cursor-pointer ${viewMode === 'list' ? 'bg-background shadow-xs text-foreground font-semibold' : 'text-muted-foreground hover:text-foreground'}`}
               title="Visualização em lista"
             >
               <LayoutList size={15} />
             </button>
           </div>
-      {/* Barra Flutuante / Fixa de Ações em Massa (Apagar / Selecionar) */}
-      {filteredProducts.length > 0 && (canDelete || canEdit) && (
-        <div className="flex flex-wrap items-center justify-between gap-2.5 p-3 rounded-2xl bg-card border border-border/80 shadow-2xs">
+        </div>
+      </div>
+
+      {/* Barra de Ações em Massa - Fixo no rodapé no mobile (Floating Bottom Bar), estático no desktop */}
+      {selectedProductIds.length > 0 && (canDelete || canEdit) && (
+        <div className="fixed bottom-4 inset-x-3 sm:static sm:inset-x-auto z-40 p-2.5 sm:p-3 rounded-2xl bg-card/95 backdrop-blur-md sm:bg-card border border-primary/25 sm:border-border shadow-2xl sm:shadow-2xs flex flex-wrap items-center justify-between gap-2 transition-all animate-in fade-in slide-in-from-bottom-3 duration-200">
           <div className="flex items-center gap-2">
             <Button
               type="button"
@@ -897,51 +934,105 @@ export function StoreProducts() {
             >
               {selectedProductIds.length === filteredProducts.length && filteredProducts.length > 0 ? (
                 <>
-                  <CheckSquare size={15} className="text-primary" />
-                  <span>Desmarcar Todos</span>
+                  <CheckSquare size={15} className="text-primary stroke-[2.5]" />
+                  <span className="hidden sm:inline">Desmarcar Todos</span>
+                  <span className="sm:hidden">Desmarcar</span>
                 </>
               ) : (
                 <>
                   <Square size={15} className="text-muted-foreground" />
-                  <span>Selecionar Todos ({filteredProducts.length})</span>
+                  <span>Todos ({filteredProducts.length})</span>
                 </>
               )}
             </Button>
 
-            {selectedProductIds.length > 0 && (
-              <Badge variant="secondary" className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-primary/10 text-primary border-primary/20">
-                {selectedProductIds.length} selecionado{selectedProductIds.length > 1 ? 's' : ''}
-              </Badge>
-            )}
+            <Badge variant="secondary" className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-primary/15 text-primary border-primary/20">
+              {selectedProductIds.length} selecionado{selectedProductIds.length > 1 ? 's' : ''}
+            </Badge>
           </div>
 
-          {selectedProductIds.length > 0 && canDelete && (
-            <div className="flex items-center gap-2 ml-auto">
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={clearSelection}
-                className="h-8 px-2 text-xs text-muted-foreground hover:text-foreground"
-              >
-                Limpar
-              </Button>
+          <div className="flex items-center gap-1.5 sm:gap-2 ml-auto">
+            {canEdit && (
+              <>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={isBulkStatusUpdating}
+                  onClick={() => handleBulkToggleActive(false)}
+                  className="h-8 px-2.5 text-xs font-semibold gap-1.5 border-amber-500/30 text-amber-600 dark:text-amber-400 hover:bg-amber-500/10 cursor-pointer shadow-2xs"
+                  title="Pausar publicações na vitrine"
+                >
+                  {isBulkStatusUpdating ? (
+                    <Loader2 size={13} className="animate-spin" />
+                  ) : (
+                    <EyeOff size={13} />
+                  )}
+                  <span>Pausar</span>
+                </Button>
+
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={isBulkStatusUpdating}
+                  onClick={() => handleBulkToggleActive(true)}
+                  className="h-8 px-2.5 text-xs font-semibold gap-1.5 border-emerald-500/30 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10 cursor-pointer shadow-2xs"
+                  title="Ativar publicações na vitrine"
+                >
+                  {isBulkStatusUpdating ? (
+                    <Loader2 size={13} className="animate-spin" />
+                  ) : (
+                    <Eye size={13} />
+                  )}
+                  <span>Ativar</span>
+                </Button>
+              </>
+            )}
+
+            {canDelete && (
               <Button
                 type="button"
                 size="sm"
                 onClick={() => setBulkDeleteOpen(true)}
-                className="h-8 text-xs font-bold gap-1.5 bg-red-600 hover:bg-red-700 text-white cursor-pointer shadow-xs"
+                className="h-8 px-2.5 text-xs font-bold gap-1.5 bg-red-600 hover:bg-red-700 text-white cursor-pointer shadow-xs"
+                title="Remover publicações selecionadas da vitrine"
               >
                 <Trash2 size={13} />
-                <span>Apagar em Massa ({selectedProductIds.length})</span>
+                <span>Excluir</span>
               </Button>
-            </div>
-          )}
+            )}
+
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={clearSelection}
+              className="h-8 px-2 text-xs text-muted-foreground hover:text-foreground cursor-pointer"
+              title="Cancelar seleção"
+            >
+              <X size={14} />
+            </Button>
+          </div>
         </div>
       )}
 
+      {/* Barra Informativa com Botão de Selecionar Todos quando nenhum selecionado */}
+      {filteredProducts.length > 0 && selectedProductIds.length === 0 && (canDelete || canEdit) && (
+        <div className="flex items-center justify-between text-xs text-muted-foreground px-1 -mt-2">
+          <span>
+            Exibindo <strong>{filteredProducts.length}</strong> {filteredProducts.length === 1 ? 'produto' : 'produtos'}
+          </span>
+          <button
+            type="button"
+            onClick={selectAllFiltered}
+            className="text-[11px] font-semibold text-primary hover:underline flex items-center gap-1.5 cursor-pointer py-1 px-2 rounded-lg hover:bg-muted/50"
+          >
+            <Square size={13} />
+            <span>Selecionar todos ({filteredProducts.length})</span>
+          </button>
         </div>
-      </div>
+      )}
 
       {/* Grade / Lista de Produtos */}
       {loading ? (
@@ -981,7 +1072,11 @@ export function StoreProducts() {
             <Card
               key={prod.id}
               className={`overflow-hidden transition-all duration-200 hover:shadow-md flex flex-col ${
-                !prod.active ? 'opacity-65 border-dashed bg-muted/20' : 'bg-card'
+                selectedProductIds.includes(prod.id)
+                  ? 'ring-2 ring-primary/70 border-primary shadow-md bg-primary/[0.02]'
+                  : !prod.active
+                  ? 'opacity-70 border-dashed bg-muted/20'
+                  : 'bg-card'
               }`}
             >
               {/* Imagem do Produto */}
@@ -994,12 +1089,12 @@ export function StoreProducts() {
                       e.stopPropagation();
                       toggleSelectProduct(prod.id);
                     }}
-                    className={`absolute top-2 left-2 z-10 size-7 rounded-lg flex items-center justify-center transition-all cursor-pointer shadow-md ${
+                    className={`absolute top-2 left-2 z-20 size-8 rounded-xl flex items-center justify-center transition-all cursor-pointer shadow-md ${
                       selectedProductIds.includes(prod.id)
-                        ? 'bg-primary text-primary-foreground scale-105 ring-2 ring-white/80'
-                        : 'bg-black/50 text-white/80 hover:bg-black/75 hover:scale-105'
+                        ? 'bg-primary text-primary-foreground scale-105 ring-2 ring-white/90 dark:ring-black/90'
+                        : 'bg-black/60 text-white hover:bg-black/80 hover:scale-105'
                     }`}
-                    title={selectedProductIds.includes(prod.id) ? 'Desmarcar' : 'Selecionar para apagar'}
+                    title={selectedProductIds.includes(prod.id) ? 'Desmarcar produto' : 'Selecionar para ações em lote'}
                   >
                     {selectedProductIds.includes(prod.id) ? (
                       <CheckSquare size={16} className="stroke-[2.5]" />
@@ -1026,7 +1121,7 @@ export function StoreProducts() {
 
                 {/* Switch de Ativação Rápida */}
                 <div className="absolute top-2 right-2 flex items-center gap-1.5 bg-black/60 backdrop-blur-xs px-2 py-1 rounded-full text-white">
-                  <span className="text-[10px] font-semibold">{prod.active ? 'No ar' : 'Pausado'}</span>
+                  <span className="text-[10px] font-semibold">{prod.active ? 'Publicado' : 'Pausado'}</span>
                   <Switch
                     checked={prod.active}
                     onCheckedChange={() => handleToggleActive(prod)}
@@ -1115,7 +1210,11 @@ export function StoreProducts() {
           {filteredProducts.map((prod) => (
             <div
               key={prod.id}
-              className="p-3 sm:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4 hover:bg-muted/30 transition-colors"
+              className={`p-3 sm:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4 transition-colors ${
+                selectedProductIds.includes(prod.id)
+                  ? 'bg-primary/5 ring-1 ring-inset ring-primary/40'
+                  : 'hover:bg-muted/30'
+              }`}
             >
               {/* Foto + Dados principais */}
               <div className="flex items-center gap-2.5 sm:gap-3 min-w-0 flex-1">
@@ -1123,10 +1222,10 @@ export function StoreProducts() {
                   <button
                     type="button"
                     onClick={() => toggleSelectProduct(prod.id)}
-                    className={`size-7 rounded-lg flex items-center justify-center transition-all cursor-pointer shrink-0 ${
+                    className={`size-8 rounded-xl flex items-center justify-center transition-all cursor-pointer shrink-0 ${
                       selectedProductIds.includes(prod.id)
-                        ? 'bg-primary text-primary-foreground'
-                        : 'text-muted-foreground hover:text-foreground hover:bg-muted'
+                        ? 'bg-primary text-primary-foreground shadow-2xs'
+                        : 'text-muted-foreground hover:text-foreground hover:bg-muted/80'
                     }`}
                     title={selectedProductIds.includes(prod.id) ? 'Desmarcar' : 'Selecionar'}
                   >
@@ -1175,7 +1274,7 @@ export function StoreProducts() {
 
                 <div className="flex items-center gap-1.5">
                   <span className="text-xs text-muted-foreground">
-                    {prod.active ? 'No ar' : 'Pausado'}
+                    {prod.active ? 'Publicado' : 'Pausado'}
                   </span>
                   <Switch
                     checked={prod.active}

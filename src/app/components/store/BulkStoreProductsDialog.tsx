@@ -166,11 +166,9 @@ export function BulkStoreProductsDialog({
 
   function clearAllItems() {
     if (items.length === 0) return;
-    if (window.confirm('Tem certeza que deseja remover todas as fotos da lista de importação?')) {
-      items.forEach(it => URL.revokeObjectURL(it.previewUrl));
-      setItems([]);
-      toast.info('Lista limpa com sucesso.');
-    }
+    items.forEach(it => URL.revokeObjectURL(it.previewUrl));
+    setItems([]);
+    toast.info('Lista de fotos redefinida.');
   }
 
   function updateItem(id: string, patch: Partial<BulkItemState>) {
@@ -288,7 +286,7 @@ export function BulkStoreProductsDialog({
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2 flex-wrap">
                   <DialogTitle className="text-base sm:text-lg font-bold truncate">
-                    Adicionar Fotos em Massa
+                    Publicação em Lote via Fotografias
                   </DialogTitle>
                   {items.length > 0 && (
                     <Badge variant="secondary" className="text-[11px] px-2 py-0.5 rounded-full font-bold bg-primary/15 text-primary border-primary/20 shrink-0">
@@ -297,7 +295,7 @@ export function BulkStoreProductsDialog({
                   )}
                 </div>
                 <DialogDescription className="text-[11px] sm:text-xs text-muted-foreground truncate">
-                  Cada foto gera automaticamente um card de produto para você revisar e precificar.
+                  Adicione fotografias para gerar e cadastrar produtos no catálogo online de forma simultânea.
                 </DialogDescription>
               </div>
             </div>
@@ -346,7 +344,7 @@ export function BulkStoreProductsDialog({
             <div className="pt-2.5 border-t border-border/60 bg-muted/40 p-2.5 rounded-xl flex flex-col gap-2">
               <div className="flex items-center gap-1.5 text-[11px] font-bold text-foreground">
                 <Sparkles size={12} className="text-primary" />
-                <span>Replicar em Lote para Todos:</span>
+                <span>Preenchimento Automático em Lote:</span>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
@@ -446,10 +444,10 @@ export function BulkStoreProductsDialog({
                 <Upload className="size-6 sm:size-8" />
               </div>
               <h3 className="text-sm sm:text-base font-bold text-foreground">
-                Toque aqui para escolher as fotos
+                Toque para selecionar as fotografias
               </h3>
               <p className="text-xs text-muted-foreground max-w-sm mt-1 leading-relaxed">
-                Você pode selecionar dezenas de fotos direto do celular ou computador. As informações serão preenchidas com o nome das fotos para você agilizar o cadastro.
+                Selecione imagens diretamente da galeria do celular ou do computador para gerar produtos e configurar preços e categorias.
               </p>
               <div className="flex items-center gap-1.5 mt-3.5 text-[11px] text-muted-foreground bg-muted/60 px-3 py-1 rounded-full">
                 <FileImage size={12} />

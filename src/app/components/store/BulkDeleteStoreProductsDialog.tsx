@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import {
   AlertDialog,
-  AlertDialogAction,
   AlertDialogCancel,
   AlertDialogContent,
   AlertDialogDescription,
@@ -10,7 +9,7 @@ import {
   AlertDialogTitle,
 } from '../ui/alert-dialog';
 import { Button } from '../ui/button';
-import { Loader2, Trash2, AlertTriangle } from 'lucide-react';
+import { Loader2, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { firebaseStoreProductService } from '../../../services/firebaseStoreProductService';
 import { StoreProduct } from '../../types';
@@ -38,49 +37,53 @@ export function BulkDeleteStoreProductsDialog({
     if (selectedIds.length === 0) return;
 
     setIsDeleting(true);
-    let successCount = 0;
-    let failCount = 0;
-
-    for (const id of selectedIds) {
+    try {
+      await firebaseStoreProductService.bulkDeleteStoreProducts(selectedIds);
+      toast.success(
+        selectedIds.length === 1
+          ? 'Produto removido da vitrine com sucesso.'
+          : `${selectedIds.length} produtos removidos da vitrine com sucesso.`
+      );
+      onSuccess();
+      onOpenChange(false);
+    } catch (err) {
+      console.error('Erro na exclusão em lote:', err);
+      // Fallback unitário se batch falhar
       try {
-        await firebaseStoreProductService.deleteStoreProduct(id);
-        successCount++;
-      } catch (err) {
-        console.error(`Erro ao deletar produto ${id}:`, err);
-        failCount++;
+        let ok = 0;
+        for (const id of selectedIds) {
+          await firebaseStoreProductService.deleteStoreProduct(id);
+          ok++;
+        }
+        toast.success(`${ok} produto(s) removido(s) da vitrine.`);
+        onSuccess();
+        onOpenChange(false);
+      } catch (fallbackErr) {
+        toast.error('Ocorreu um erro ao processar a exclusão dos itens.');
       }
+    } finally {
+      setIsDeleting(false);
     }
-
-    setIsDeleting(false);
-
-    if (failCount === 0) {
-      toast.success(`${successCount} produto(s) removido(s) da vitrine com sucesso!`);
-    } else {
-      toast.warning(`${successCount} produto(s) removido(s), ${failCount} falharam.`);
-    }
-
-    onSuccess();
-    onOpenChange(false);
   }
 
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
-      <AlertDialogContent className="w-[94vw] sm:max-w-md rounded-2xl p-5 bg-background border shadow-xl">
-        <AlertDialogHeader className="space-y-2">
+      <AlertDialogContent className="w-[95vw] sm:max-w-md rounded-2xl p-4 sm:p-6 bg-background border shadow-xl">
+        <AlertDialogHeader className="space-y-2.5 text-left">
           <div className="size-11 rounded-2xl bg-red-500/10 text-red-600 flex items-center justify-center shrink-0">
             <Trash2 className="size-5" />
           </div>
           <AlertDialogTitle className="text-base sm:text-lg font-bold text-foreground">
-            Excluir {selectedIds.length} {selectedIds.length === 1 ? 'produto selecionado' : 'produtos selecionados'}?
+            Remover {selectedIds.length} {selectedIds.length === 1 ? 'item' : 'itens'} da vitrine online?
           </AlertDialogTitle>
           <AlertDialogDescription className="text-xs text-muted-foreground leading-relaxed">
-            Esta ação removerá permanentemente os itens da vitrine da lojinha pública online. Suas fotos e links no catálogo deixarão de existir. Pedidos anteriores feitos no WhatsApp não serão alterados.
+            Esta operação desvinculará e removerá permanentemente os itens selecionados do catálogo público. Suas fotos e páginas de divulgação deixarão de estar acessíveis aos clientes.
           </AlertDialogDescription>
 
-          {/* Mini prévia dos itens selecionados */}
+          {/* Prévia dos itens selecionados */}
           {selectedProducts.length > 0 && (
             <div className="max-h-36 overflow-y-auto mt-2 p-2 bg-muted/40 rounded-xl divide-y divide-border/60 text-xs">
-              {selectedProducts.slice(0, 5).map((p) => (
+              {selectedProducts.slice(0, 6).map((p) => (
                 <div key={p.id} className="py-1.5 flex items-center gap-2">
                   {p.imageUrl ? (
                     <img src={p.imageUrl} alt={p.name} className="size-6 rounded-md object-cover shrink-0" />
@@ -92,9 +95,9 @@ export function BulkDeleteStoreProductsDialog({
                   <span className="truncate font-medium text-foreground">{p.name}</span>
                 </div>
               ))}
-              {selectedProducts.length > 5 && (
+              {selectedProducts.length > 6 && (
                 <p className="pt-1.5 text-[11px] text-muted-foreground text-center font-medium">
-                  + outros {selectedProducts.length - 5} produtos
+                  + outros {selectedProducts.length - 6} produtos selecionados
                 </p>
               )}
             </div>
@@ -104,7 +107,7 @@ export function BulkDeleteStoreProductsDialog({
         <AlertDialogFooter className="mt-4 flex-col sm:flex-row gap-2">
           <AlertDialogCancel
             disabled={isDeleting}
-            className="w-full sm:w-auto h-9 text-xs"
+            className="w-full sm:w-auto h-9 text-xs font-semibold"
           >
             Cancelar
           </AlertDialogCancel>
@@ -117,12 +120,12 @@ export function BulkDeleteStoreProductsDialog({
             {isDeleting ? (
               <>
                 <Loader2 size={13} className="animate-spin" />
-                <span>Excluindo ({selectedIds.length})...</span>
+                <span>Excluindo...</span>
               </>
             ) : (
               <>
                 <Trash2 size={13} />
-                <span>Sim, Excluir Todos</span>
+                <span>Confirmar Exclusão ({selectedIds.length})</span>
               </>
             )}
           </Button>
