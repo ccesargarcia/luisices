@@ -1,6 +1,6 @@
 # 📚 Documentação de Dependências e Arquitetura do Projeto
 
-Este documento detalha **todas as dependências**, serviços externos, arquitetura de infraestrutura e a integração da **Cloudflare CDN** com o **Firebase Storage**.
+Este documento detalha **todas as dependências**, serviços externos, arquitetura de infraestrutura, coleções do Firestore e a integração da **Cloudflare CDN** com o **Firebase Storage**.
 
 ---
 
@@ -12,6 +12,8 @@ flowchart TD
         UI["React 18 + Vite + TypeScript"]
         Tailwind["Tailwind CSS v4 + Radix UI"]
         CDNUtil["cdnUtils.ts (toCdnUrl)"]
+        LazyRetry["lazyWithRetry (Resiliência Quádrupla)"]
+        Shield["Firebase Shield (Auto-Cura IndexedDB)"]
     end
 
     subgraph CDN ["☁️ Cloudflare Edge (CDN)"]
@@ -26,14 +28,14 @@ flowchart TD
         Firestore["Cloud Firestore (DB)"]
         FStorageDev["Bucket: luisices-dev.firebasestorage.app"]
         FStorageProd["Bucket: papelaria-dashboard.firebasestorage.app"]
-        FFunctions["Cloud Functions (Node 20)"]
+        FFunctions["Cloud Functions v2 (Node 20)"]
     end
 
     subgraph ThirdParty ["🌐 Serviços Externos"]
         Sentry["Sentry (Monitoramento de Erros)"]
-        Resend["Resend (Disparo de E-mails)"]
+        Resend["Resend (Disparo e Webhooks de E-mails)"]
         ViaCEP["ViaCEP (Consulta de Endereço)"]
-        WhatsApp["WhatsApp Web / API (Mensagens)"]
+        WhatsApp["Evolution API (Mensagens WhatsApp)"]
     end
 
     UI --> FAuth
@@ -96,9 +98,9 @@ flowchart TD
 | Dependência | Versão | Finalidade |
 | :--- | :--- | :--- |
 | `recharts` | `2.15.2` | Gráficos e dashboards analíticos interativos |
-| `jspdf` | `^4.2.1` | Geração de PDFs client-side para pedidos e orçamentos |
+| `jspdf` | `^4.2.1` | Geração de PDFs client-side (*Dynamic Import sob demanda*) |
 | `jspdf-autotable` | `^5.0.7` | Criação de tabelas formatadas em relatórios PDF |
-| `xlsx` | `^0.18.5` | Exportação de planilhas Excel dos relatórios financeiros |
+| `xlsx` | `^0.18.5` | Exportação de planilhas Excel (*Dynamic Import sob demanda*) |
 | `date-fns` | `3.6.0` | Manipulação e formatação de datas |
 
 #### Animação, Drag & Drop e Carrossel
@@ -114,7 +116,7 @@ flowchart TD
 #### Backend Client & Observabilidade
 | Dependência | Versão | Finalidade |
 | :--- | :--- | :--- |
-| `firebase` | `^12.9.0` | SDK Client (Auth, Firestore, Storage, Analytics, Performance) |
+| `firebase` | `^12.9.0` | SDK Client (Auth, Firestore com Persistent Cache, Storage, Analytics, Performance) |
 | `@sentry/react` | `^8.55.0` | Monitoramento e rastreamento de exceções em tempo real |
 | `workbox-window` | `^7.4.0` | Suporte a Service Worker e recursos PWA offline |
 
@@ -136,212 +138,64 @@ flowchart TD
 | Dependência | Versão | Finalidade |
 | :--- | :--- | :--- |
 | `firebase-admin` | `^12.0.0` | Acesso privilegiado ao Firestore e Auth no backend |
-| `firebase-functions` | `^4.5.0` | Triggers e endpoints HTTP / callable functions |
-| `resend` | `^6.9.3` | Envio transacional de e-mails de notificações |
+| `firebase-functions` | `^4.5.0` | Triggers e endpoints HTTP / callable functions v2 |
+| `resend` | `^6.9.3` | Envio e recebimento de e-mails transacionais |
 | `rate-limiter-flexible` | `^9.1.1` | Proteção contra abuso e limitação de taxa (Rate Limit) |
 
 ---
 
-## ☁️ 3. Arquitetura de CDN de Imagens (Cloudflare Worker)
+## 🗄️ 3. Mapeamento de Coleções do Cloud Firestore
 
-Para garantir **branding com domínio próprio**, **alta velocidade (Edge Caching)** e **segurança**, as imagens do Firebase Storage são servidas via Cloudflare Worker.
+| Coleção | Caminho | Finalidade | Regra de Acesso |
+|---|---|---|---|
+| **Pedidos do Ateliê** | `/orders/{orderId}` | Pedidos de produção internos | Isolado por `userId` + permissão de equipe (`assignedTo`) |
+| **Clientes** | `/customers/{customerId}` | Base de clientes do ateliê | Isolado por `userId` |
+| **Produtos Internos** | `/products/{productId}` | Catálogo de insumos e peças internas | Isolado por `userId` |
+| **Orçamentos** | `/quotes/{quoteId}` | Propostas comerciais enviadas | Isolado por `userId` |
+| **Galeria** | `/gallery/{imageId}` | Fotos de trabalhos realizados | Isolado por `userId` |
+| **Trocas / Permutas** | `/exchanges/{exchangeId}` | Registros de permutas e parcerias | Isolado por `userId` |
+| **Perfis de Usuários** | `/userProfiles/{uid}` | Papéis (`admin`, `funcionario`, `user`) e permissões | Leitura autenticada; escrita restrita a Admin |
+| **Produtos da Lojinha** | `/storeProducts/{id}` | Vitrine de produtos do catálogo online | Leitura pública; escrita restrita a usuários com permissão |
+| **Pedidos da Lojinha** | `/catalogOrders/{id}` | Pedidos recebidos via vitrine pública | Criação pública; gestão por usuários autorizados |
+| **Configurações da Loja** | `/storeSettings/public` | Banners, WhatsApp de vendas e tema da lojinha | Leitura pública; edição exclusiva por Admin |
+| **Configurações de Usuário** | `/users/{uid}/settings/profile` | Preferências de UI, tema e dados do ateliê | Acesso restrito ao próprio usuário |
+| **Histórico de E-mails** | `/sentEmails/{id}` | Registro de e-mails disparados via Resend | Leitura restrita a Admin |
+| **Convites** | `/invitations/{hashToken}` | Tokens SHA-256 de convite para cadastro | Validação e criação controlada |
 
-### 🌐 Domínios e Subdomínios
+---
+
+## 🛡️ 4. Resiliência de Aplicação e Auto-Cura
+
+1. **Carregador de Rotas Quádruplo (`lazyWithRetry` em `routes.tsx`)**:
+   - Suporte a named e default exports.
+   - Retry de 800ms contra oscilações de rede.
+   - Auto-recuperação com limpeza de caches e reload inteligente para prevenir erro de módulos dinâmicos desatualizados após deploys.
+   - Fallback gracioso com Error Boundary.
+
+2. **Escudo Global do Firestore (`recoverFirestorePersistence` em `firebase.ts`)**:
+   - Interceptação de asserções assíncronas do Firestore (como o erro `b815` em abas concorrentes).
+   - Auto-recuperação suave do IndexedDB (`terminate` + `clearIndexedDbPersistence`) sem derrubar a interface React.
+
+3. **Performance com Dynamic Imports (`exportData.ts` e `exportPdf.ts`)**:
+   - `xlsx` e `jspdf` carregadas sob demanda apenas quando o usuário solicita exportação, aliviando o carregamento inicial da página.
+
+---
+
+## ☁️ 5. Arquitetura de CDN de Imagens (Cloudflare Worker)
+
+As imagens do Firebase Storage são servidas via Cloudflare Worker no Edge.
 
 | Ambiente | Domínio da CDN | Bucket de Origem (Firebase) |
 | :--- | :--- | :--- |
 | **Produção** | `https://cdn.luisices.com.br` | `papelaria-dashboard.firebasestorage.app` |
 | **Desenvolvimento** | `https://cdn-dev.luisices.com.br` | `luisices-dev.firebasestorage.app` |
 
-### 🛠️ Código do Cloudflare Worker
-
-```javascript
-/**
- * Cloudflare Worker: Multi-Environment High-Performance Storage CDN
- */
-const BUCKETS = {
-  prod: "papelaria-dashboard.firebasestorage.app",
-  dev: "luisices-dev.firebasestorage.app",
-};
-
-export default {
-  async fetch(request, env, ctx) {
-    // 1. Suporte a CORS Preflight
-    if (request.method === "OPTIONS") {
-      return new Response(null, {
-        status: 204,
-        headers: {
-          "Access-Control-Allow-Origin": "*",
-          "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
-          "Access-Control-Allow-Headers": "*",
-          "Access-Control-Max-Age": "86400",
-        },
-      });
-    }
-
-    if (request.method !== "GET" && request.method !== "HEAD") {
-      return new Response("Method Not Allowed", { status: 405 });
-    }
-
-    const url = new URL(request.url);
-
-    // Health check
-    if (url.pathname === "/" || url.pathname === "") {
-      return new Response("CDN Storage Online", { status: 200 });
-    }
-
-    // 2. Identificação do ambiente
-    const isDev = url.hostname.includes("dev");
-    const targetBucket = env.FIREBASE_BUCKET || (isDev ? BUCKETS.dev : BUCKETS.prod);
-
-    // 3. Extrair e codificar o caminho do arquivo com segurança
-    const rawPath = decodeURIComponent(url.pathname.replace(/^\/+/, ""));
-    const encodedPath = encodeURIComponent(rawPath);
-
-    // 4. Força alt=media para retornar bytes da imagem e repassa token
-    const searchParams = new URLSearchParams(url.search);
-    searchParams.set("alt", "media");
-
-    const targetUrl = `https://firebasestorage.googleapis.com/v0/b/${targetBucket}/o/${encodedPath}?${searchParams.toString()}`;
-
-    // TTL de Cache no Edge: 1 ano em prod, 5 min em dev
-    const cacheTtlSeconds = isDev ? 300 : 31536000;
-
-    // 5. Busca com instrução explícita de Edge Caching na Cloudflare
-    const originResponse = await fetch(targetUrl, {
-      method: request.method,
-      headers: {
-        "Accept": request.headers.get("Accept") || "*/*",
-        "User-Agent": "Cloudflare-Storage-CDN",
-      },
-      cf: {
-        cacheEverything: true,
-        cacheTtl: cacheTtlSeconds,
-        cacheTtlByStatus: {
-          "200-299": cacheTtlSeconds,
-          "404": 30,
-          "500-599": 0,
-        },
-      },
-    });
-
-    if (!originResponse.ok) {
-      return new Response(originResponse.body, {
-        status: originResponse.status,
-        headers: {
-          "Access-Control-Allow-Origin": "*",
-          "Content-Type": originResponse.headers.get("Content-Type") || "text/plain",
-        },
-      });
-    }
-
-    // 6. Retorna a imagem com CORS e Cache Headers
-    const headers = new Headers(originResponse.headers);
-    headers.set("Access-Control-Allow-Origin", "*");
-    headers.set(
-      "Cache-Control",
-      isDev
-        ? "public, max-age=300, stale-while-revalidate=60"
-        : "public, max-age=31536000, immutable"
-    );
-    headers.set("X-Content-Type-Options", "nosniff");
-    headers.delete("set-cookie");
-
-    return new Response(originResponse.body, {
-      status: 200,
-      headers,
-    });
-  },
-};
-```
-
----
-
-## 🔒 4. Variáveis de Ambiente e Segredos (CI/CD)
-
-### 💻 Ambiente Local (`.env.local`)
-```env
-# Aponta para a CDN de Desenvolvimento
-VITE_STORAGE_CDN_URL=https://cdn-dev.luisices.com.br
-```
-
-### 🔐 GitHub Actions Secrets (`Settings > Secrets and variables > Actions`)
-
-| Secret | Finalidade | Ambiente |
-| :--- | :--- | :--- |
-| `VITE_STORAGE_CDN_URL` | `https://cdn.luisices.com.br` | Produção (`main`) |
-| `DEV_VITE_STORAGE_CDN_URL` | `https://cdn-dev.luisices.com.br` | Desenvolvimento (`develop`) |
-| `VITE_FIREBASE_*` | Credenciais do Firebase de Produção | Produção |
-| `DEV_VITE_FIREBASE_*` | Credenciais do Firebase de Desenvolvimento | Desenvolvimento |
-| `FIREBASE_SERVICE_ACCOUNT_DEV` | Service Account JSON para deploy no Firebase Hosting | Desenvolvimento |
-
----
-
-## 🧩 5. Utilitários no Código
-
-* **[`src/app/utils/cdnUtils.ts`](file:///home/ubuntu/luisices/src/app/utils/cdnUtils.ts):** Função `toCdnUrl(url)` que intercepta links do Firebase Storage e converte para a CDN configurada sem exigir migração no banco de dados.
-* **[`src/services/firebaseStorageService.ts`](file:///home/ubuntu/luisices/src/services/firebaseStorageService.ts):** Otimiza imagens para WebP client-side e grava URLs limpas da CDN no Firestore.
-* **[`src/contexts/UserSettingsContext.tsx`](file:///home/ubuntu/luisices/src/contexts/UserSettingsContext.tsx):** Aplica URLs da CDN para logos, avatares e banners.
-* **[`src/app/pages/PublicCatalog.tsx`](file:///home/ubuntu/luisices/src/app/pages/PublicCatalog.tsx):** Garante que o catálogo público sirva fotos e banners direto pela CDN.
-
 ---
 
 ## 📊 6. Gestão de Índices Compostos do Firestore (`firestore.indexes.json`)
 
-No Cloud Firestore, consultas simples (em um único campo) utilizam índices automáticos. No entanto, **consultas compostas** exigem índices manuais definidos no projeto.
+Consultas compostas (filtros múltiplos combinados com ordenação) requerem índices manuais definidos no projeto.
 
-### ❓ Quando é necessário criar um novo índice?
-Um índice composto é obrigatório sempre que uma query fizer:
-1. **Filtro em um campo + Ordenação em outro campo diferente**:
-   * *Exemplo:* `where('userId', '==', user.uid)` + `orderBy('createdAt', 'desc')`
-2. **Múltiplos filtros com ordenação**:
-   * *Exemplo:* `where('userId', '==', ...)` + `where('deletedAt', '==', null)` + `orderBy('createdAt', 'desc')`
-3. **Filtro `in` ou `array-contains` combinado com ordenação**:
-   * *Exemplo:* `where('status', 'in', ['pending', 'in-progress'])` + `orderBy('createdAt', 'desc')`
-
----
-
-### 📝 Passo a Passo para Adicionar Novos Índices
-
-#### Passo 1: Adicionar a definição em [`firestore.indexes.json`](file:///home/ubuntu/luisices/firestore.indexes.json)
-Abra o arquivo [`firestore.indexes.json`](file:///home/ubuntu/luisices/firestore.indexes.json) na raiz do projeto e adicione a nova regra dentro do array `"indexes"`:
-
-```json
-{
-  "collectionGroup": "nome_da_colecao",
-  "queryScope": "COLLECTION",
-  "fields": [
-    { "fieldPath": "campo_filtro_1", "order": "ASCENDING" },
-    { "fieldPath": "campo_filtro_2", "order": "ASCENDING" },
-    { "fieldPath": "campo_ordenacao", "order": "DESCENDING" }
-  ]
-}
-```
-
-> **Regra de Ordenação dos Campos:**
-> - Primeiro liste todos os campos de **igualdade (`==`)** com `"order": "ASCENDING"`.
-> - Por último liste o campo de **ordenação (`orderBy`)** com `"order": "ASCENDING"` ou `"DESCENDING"`.
-
-#### Passo 2: Commitar as alterações no Git
-```bash
-git add firestore.indexes.json
-git commit -m "feat(firestore): add index for collection_name [skip tests]"
-git push origin develop
-```
-
-#### Passo 3: Aplicar no Firebase via GitHub Actions (1 Clique)
-Não é necessário ter o Firebase CLI configurado localmente:
-1. Vá na aba **Actions** do repositório no GitHub.
-2. Selecione o workflow **`Deploy Firestore Indexes`**.
-3. Clique em **`Run workflow`**, escolha o ambiente desejado (**`prod`** ou **`dev`**) e confirme.
-
-#### Passo 4 (Alternativo): Deploy via Firebase CLI Local
-Se tiver o Firebase CLI autenticado:
-```bash
-# Para Produção:
-firebase deploy --only firestore:indexes --project papelaria-dashboard
-
-# Para Desenvolvimento:
-firebase deploy --only firestore:indexes --project luisices-dev
-```
-
+### Deploy de Índices
+* **Via GitHub Actions (Recomendado)**: Workflow `Deploy Firestore Indexes` na aba Actions.
+* **Via CLI**: `firebase deploy --only firestore:indexes --project papelaria-dashboard`.
