@@ -1,10 +1,17 @@
-import { jsPDF } from 'jspdf';
-import autoTable from 'jspdf-autotable';
+/**
+ * PDF Export Utilities
+ *
+ * Funções para exportar Orçamentos e Pedidos em PDF com layout profissional.
+ * Otimizado com carregamento dinâmico (lazy import) de jsPDF e jspdf-autotable
+ * para reduzir o bundle de componentes e diálogos iniciais.
+ */
+
 import { Quote, Order } from '../types';
 
 function formatCurrency(v: number) {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
 }
+
 function formatDate(iso: string) {
   if (!iso) return '-';
   const [y, m, d] = iso.split('T')[0].split('-');
@@ -35,7 +42,8 @@ const PAYMENT_METHOD_LABELS: Record<string, string> = {
 };
 
 // ─── shared header ────────────────────────────────────────────────────────────
-function drawHeader(doc: jsPDF, title: string, number: string, statusLabel: string, businessName: string) {
+
+function drawHeader(doc: any, title: string, number: string, statusLabel: string, businessName: string) {
   const pageW = doc.internal.pageSize.getWidth();
 
   // top bar
@@ -52,13 +60,14 @@ function drawHeader(doc: jsPDF, title: string, number: string, statusLabel: stri
   doc.setFontSize(9);
   doc.setFont('helvetica', 'normal');
   doc.text(`${title}  ·  ${number}  ·  ${statusLabel}`, pageW - 10, 11, { align: 'right' });
-
   doc.setTextColor(30, 30, 40);
+
   return 26; // y position after header
 }
 
 // ─── row helper ───────────────────────────────────────────────────────────────
-function row(doc: jsPDF, label: string, value: string, yLeft: number, xLeft = 10, xRight = 55) {
+
+function row(doc: any, label: string, value: string, yLeft: number, xLeft = 10, xRight = 55) {
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(8);
   doc.setTextColor(120, 120, 130);
@@ -69,20 +78,30 @@ function row(doc: jsPDF, label: string, value: string, yLeft: number, xLeft = 10
 }
 
 // ─── Quote PDF ────────────────────────────────────────────────────────────────
-export function exportQuotePDF(quote: Quote, businessName?: string) {
+
+export async function exportQuotePDF(quote: Quote, businessName?: string) {
+  const [{ jsPDF }, { default: autoTable }] = await Promise.all([
+    import('jspdf'),
+    import('jspdf-autotable'),
+  ]);
+
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
   const pageW = doc.internal.pageSize.getWidth();
   let y = drawHeader(doc, 'Orçamento', quote.quoteNumber, STATUS_LABELS_QUOTE[quote.status] ?? quote.status, businessName ?? 'Empresa');
 
-  // ── Client info ──
+  // ── Client & quote info ──
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(9);
   doc.setTextColor(30, 30, 40);
-  doc.text('CLIENTE', 10, y);
+  doc.text('INFORMAÇÕES DO CLIENTE', 10, y);
   y += 5;
 
-  row(doc, 'Nome:', quote.customerName, y); y += 5;
-  row(doc, 'Telefone:', quote.customerPhone, y); y += 5;
+  row(doc, 'Cliente:', quote.customerName, y); y += 5;
+  if (quote.customerPhone) { row(doc, 'Telefone:', quote.customerPhone, y); y += 5; }
+  if (quote.customerEmail) { row(doc, 'Email:', quote.customerEmail, y); y += 5; }
+  if (quote.customerAddress) { row(doc, 'Endereço:', quote.customerAddress, y); y += 5; }
+  row(doc, 'Orçamento:', quote.quoteNumber, y); y += 5;
+  row(doc, 'Criado em:', formatDate(quote.createdAt), y); y += 5;
   if (quote.deliveryDate) { row(doc, 'Entrega:', formatDate(quote.deliveryDate), y); y += 5; }
   if (quote.validUntil)   { row(doc, 'Válido até:', formatDate(quote.validUntil), y); y += 5; }
   if (quote.paymentCondition) { row(doc, 'Pagamento:', quote.paymentCondition, y); y += 5; }
@@ -116,7 +135,6 @@ export function exportQuotePDF(quote: Quote, businessName?: string) {
 
   // Discount + total block
   const summaryX = pageW - 10;
-
   if (quote.discount != null && quote.discount > 0) {
     const discountAmt = quote.discountType === 'percent'
       ? rawTotal * (quote.discount / 100)
@@ -184,7 +202,13 @@ export function exportQuotePDF(quote: Quote, businessName?: string) {
 }
 
 // ─── Order PDF ────────────────────────────────────────────────────────────────
-export function exportOrderPDF(order: Order, businessName?: string) {
+
+export async function exportOrderPDF(order: Order, businessName?: string) {
+  const [{ jsPDF }, { default: autoTable }] = await Promise.all([
+    import('jspdf'),
+    import('jspdf-autotable'),
+  ]);
+
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
   const pageW = doc.internal.pageSize.getWidth();
   const docNum = order.orderNumber ?? `#${order.id.slice(0, 6)}`;
@@ -238,7 +262,6 @@ export function exportOrderPDF(order: Order, businessName?: string) {
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(9);
     doc.text('PAGAMENTO', 10, y); y += 5;
-
     const payStatus = order.payment.status === 'paid' ? 'Pago' : order.payment.status === 'partial' ? 'Parcial' : 'Pendente';
     row(doc, 'Status:', payStatus, y); y += 5;
     if (order.payment.method) {
