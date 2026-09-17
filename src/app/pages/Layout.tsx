@@ -66,6 +66,27 @@ export function Layout() {
 
   const [storeSubmenuOpen, setStoreSubmenuOpen] = useState(true);
 
+  // Lembrar a última tela acessada no sistema administrativo para retorno inteligente
+  useEffect(() => {
+    const p = location.pathname;
+    if (
+      p &&
+      p !== "/" &&
+      !p.startsWith("/login") &&
+      !p.startsWith("/registrar") &&
+      !p.startsWith("/recuperar-senha") &&
+      !p.startsWith("/action") &&
+      !p.startsWith("/catalogo") &&
+      !p.startsWith("/loja") &&
+      !p.startsWith("/catalog") &&
+      !p.startsWith("/lojinha")
+    ) {
+      try {
+        localStorage.setItem("luisices_last_admin_route", p + location.search);
+      } catch {}
+    }
+  }, [location.pathname, location.search]);
+
   // Auto-expandir submenu da lojinha se estiver em uma rota da lojinha
   useEffect(() => {
     if (
@@ -408,6 +429,11 @@ export function Layout() {
                 href="/catalogo"
                 target="_blank"
                 rel="noopener noreferrer"
+                onClick={() => {
+                  try {
+                    localStorage.setItem("luisices_last_admin_route", location.pathname + location.search);
+                  } catch {}
+                }}
                 className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium border border-primary/20 text-primary bg-primary/5 hover:bg-primary/10 transition-colors"
                 title="Abrir Catálogo Online público em nova aba"
               >
@@ -452,6 +478,11 @@ export function Layout() {
                     href="/catalogo"
                     target="_blank"
                     rel="noopener noreferrer"
+                    onClick={() => {
+                      try {
+                        localStorage.setItem("luisices_last_admin_route", location.pathname + location.search);
+                      } catch {}
+                    }}
                     className="cursor-pointer flex items-center"
                   >
                     <Globe className="size-4 mr-2" />

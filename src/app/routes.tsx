@@ -129,6 +129,32 @@ const StoreProducts      = lazyWithRetry(() => import('./pages/StoreProducts'), 
 const StoreOrders        = lazyWithRetry(() => import('./pages/StoreOrders'), 'StoreOrders');
 const AiProductGenerator = lazyWithRetry(() => import('./pages/AiProductGenerator'), 'AiProductGenerator');
 
+function RootRedirect() {
+  const target = typeof window !== "undefined" ? (() => {
+    try {
+      const saved = localStorage.getItem("luisices_last_admin_route");
+      if (
+        saved &&
+        saved !== "/" &&
+        saved !== "/dashboard" &&
+        !saved.startsWith("/login") &&
+        !saved.startsWith("/registrar") &&
+        !saved.startsWith("/recuperar-senha") &&
+        !saved.startsWith("/action") &&
+        !saved.startsWith("/catalogo") &&
+        !saved.startsWith("/loja") &&
+        !saved.startsWith("/catalog") &&
+        !saved.startsWith("/lojinha")
+      ) {
+        return saved;
+      }
+    } catch {}
+    return "/dashboard";
+  })() : "/dashboard";
+
+  return <Navigate to={target} replace />;
+}
+
 function PageLoader() {
   return (
     <div className="flex items-center justify-center h-96">
@@ -227,7 +253,7 @@ export const router = isCatalogSubdomain
     children: [
       {
         index: true,
-        element: <Navigate to="/dashboard" replace />,
+        element: <RootRedirect />,
       },
       {
         path: 'dashboard',

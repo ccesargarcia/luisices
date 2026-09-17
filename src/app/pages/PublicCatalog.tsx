@@ -1,4 +1,6 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
+import { Link } from 'react-router';
+import { useAuth } from '../../contexts/AuthContext';
 import { 
   Search, 
   ShoppingBag, 
@@ -18,7 +20,8 @@ import {
   Eye, 
   MapPin, 
   Globe, 
-  ArrowUpDown, 
+  ArrowUpDown,
+  ArrowLeft, 
   ShieldCheck, 
   Truck,
   Sparkle,
@@ -56,6 +59,26 @@ export interface CartItem {
 }
 
 export function PublicCatalog() {
+  const { user } = useAuth();
+  const lastAdminRoute = typeof window !== "undefined"
+    ? (() => {
+        try {
+          const saved = localStorage.getItem("luisices_last_admin_route");
+          if (
+            saved &&
+            saved !== "/" &&
+            !saved.startsWith("/login") &&
+            !saved.startsWith("/catalogo") &&
+            !saved.startsWith("/loja") &&
+            !saved.startsWith("/catalog") &&
+            !saved.startsWith("/lojinha")
+          ) {
+            return saved;
+          }
+        } catch {}
+        return "/personalizar-lojinha";
+      })()
+    : "/personalizar-lojinha";
   // Controle de tema: recupera preferência salva no localStorage para persistir entre recarregamentos
   const [isDarkMode, setIsDarkMode] = useState<boolean>(() => {
     try {
@@ -605,6 +628,19 @@ export function PublicCatalog() {
   if (!storePublished) {
     return (
       <div className={isDarkMode ? 'dark' : ''}>
+      {/* Botão flutuante de retorno ao sistema para administradores autenticados */}
+      {user && (
+        <div className="fixed top-3.5 left-3.5 z-[70] flex items-center gap-2 animate-in fade-in slide-in-from-top-2 duration-300">
+          <Link
+            to={lastAdminRoute}
+            className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-background/90 hover:bg-background text-foreground border border-border shadow-lg backdrop-blur-md text-xs font-semibold hover:scale-105 active:scale-95 transition-all"
+            title="Voltar para o sistema administrativo"
+          >
+            <ArrowLeft className="size-3.5 text-primary" />
+            <span>Voltar ao Sistema</span>
+          </Link>
+        </div>
+      )}
         <div
           className={`min-h-[100dvh] flex flex-col items-center justify-center text-[#221a1a] dark:text-[#e8e0e3] transition-colors duration-500 font-sans
           bg-[#fff8f7] dark:bg-[#161214]
@@ -630,6 +666,18 @@ export function PublicCatalog() {
               />
             )}
 
+            {/* Botão de retorno ao painel administrativo para usuários logados */}
+            {user && (
+              <div className="mb-2">
+                <Link
+                  to={lastAdminRoute}
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white/90 dark:bg-black/70 hover:bg-white dark:hover:bg-black text-[#221a1a] dark:text-[#e8e0e3] border border-[#613d3e]/20 text-xs font-semibold shadow-sm hover:shadow transition-all"
+                >
+                  <ArrowLeft className="size-3.5 text-primary" />
+                  <span>Voltar ao Sistema ({lastAdminRoute === "/personalizar-lojinha" ? "Personalizar Lojinha" : "Última Tela"})</span>
+                </Link>
+              </div>
+            )}
             {/* Ícone de manutenção */}
             <div className="p-4 rounded-2xl bg-amber-500/10 dark:bg-amber-500/20 border border-amber-500/20">
               <ShieldAlert className="size-10 sm:size-12 text-amber-600 dark:text-amber-400" />
