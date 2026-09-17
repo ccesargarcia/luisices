@@ -1,3 +1,4 @@
+import { BulkDeleteStoreProductsDialog } from '../components/store/BulkDeleteStoreProductsDialog';
 import { BulkStoreProductsDialog } from '../components/store/BulkStoreProductsDialog';
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { Link } from 'react-router';
@@ -45,6 +46,8 @@ import {
   EyeOff,
   PackagePlus,
   CheckCircle2,
+  CheckSquare,
+  Square,
   Tag,
   ShoppingBag,
   AlertTriangle,
@@ -593,8 +596,28 @@ export function StoreProducts() {
   const [formOpen, setFormOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [bulkOpen, setBulkOpen] = useState(false);
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
+  const [selectedProductIds, setSelectedProductIds] = useState<string[]>([]);
   const [editingProduct, setEditingProduct] = useState<StoreProduct | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<StoreProduct | null>(null);
+  const toggleSelectProduct = (id: string) => {
+    setSelectedProductIds((prev) =>
+      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
+    );
+  };
+
+  const selectAllFiltered = () => {
+    if (selectedProductIds.length === filteredProducts.length && filteredProducts.length > 0) {
+      setSelectedProductIds([]);
+    } else {
+      setSelectedProductIds(filteredProducts.map((p) => p.id));
+    }
+  };
+
+  const clearSelection = () => {
+    setSelectedProductIds([]);
+  };
+
 
   // Permissões
   const canCreate = userProfile?.role === 'admin' || userProfile?.permissions?.storeProducts?.create || userProfile?.permissions?.store;
@@ -693,16 +716,16 @@ export function StoreProducts() {
           </p>
         </div>
 
-        <div className="flex items-center gap-2 flex-wrap">
+        <div className="grid grid-cols-2 sm:flex sm:items-center gap-2 w-full sm:w-auto">
           <a
             href="/catalogo"
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold bg-muted hover:bg-muted/80 text-foreground border border-border transition-colors shadow-2xs cursor-pointer"
+            className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold bg-muted hover:bg-muted/80 text-foreground border border-border transition-colors shadow-2xs cursor-pointer h-9"
           >
-            <Globe size={14} className="text-primary" />
-            <span>Ver Lojinha Online</span>
-            <ExternalLink size={12} className="opacity-60" />
+            <Globe size={14} className="text-primary shrink-0" />
+            <span className="truncate">Ver Lojinha</span>
+            <ExternalLink size={11} className="opacity-60 shrink-0" />
           </a>
 
           {canCreate && (
@@ -711,20 +734,19 @@ export function StoreProducts() {
                 variant="outline"
                 size="sm"
                 onClick={() => setImportOpen(true)}
-                className="gap-1.5 text-xs font-semibold"
+                className="gap-1.5 text-xs font-semibold h-9"
               >
-                <PackagePlus size={14} className="text-primary" />
-                <span>Importar do Ateliê</span>
+                <PackagePlus size={14} className="text-primary shrink-0" />
+                <span className="truncate">Importar Ateliê</span>
               </Button>
-
               <Button
                 variant="outline"
                 size="sm"
                 onClick={() => setBulkOpen(true)}
-                className="gap-1.5 text-xs font-semibold"
+                className="gap-1.5 text-xs font-semibold h-9 text-primary border-primary/30 hover:bg-primary/5"
               >
-                <Images size={14} className="text-primary" />
-                <span>Adicionar em Massa (Fotos)</span>
+                <Images size={14} className="text-primary shrink-0" />
+                <span className="truncate">Fotos em Massa</span>
               </Button>
               <Button
                 size="sm"
@@ -732,10 +754,10 @@ export function StoreProducts() {
                   setEditingProduct(null);
                   setFormOpen(true);
                 }}
-                className="gap-1.5 text-xs font-bold shadow-xs"
+                className="gap-1.5 text-xs font-bold shadow-xs h-9 bg-primary text-primary-foreground"
               >
-                <Plus size={14} />
-                <span>Novo Produto da Lojinha</span>
+                <Plus size={15} className="shrink-0 stroke-[2.5]" />
+                <span className="truncate">Novo Produto</span>
               </Button>
             </>
           )}
@@ -862,6 +884,62 @@ export function StoreProducts() {
               <LayoutList size={15} />
             </button>
           </div>
+      {/* Barra Flutuante / Fixa de Ações em Massa (Apagar / Selecionar) */}
+      {filteredProducts.length > 0 && (canDelete || canEdit) && (
+        <div className="flex flex-wrap items-center justify-between gap-2.5 p-3 rounded-2xl bg-card border border-border/80 shadow-2xs">
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={selectAllFiltered}
+              className="h-8 px-2.5 text-xs font-semibold gap-1.5 cursor-pointer"
+            >
+              {selectedProductIds.length === filteredProducts.length && filteredProducts.length > 0 ? (
+                <>
+                  <CheckSquare size={15} className="text-primary" />
+                  <span>Desmarcar Todos</span>
+                </>
+              ) : (
+                <>
+                  <Square size={15} className="text-muted-foreground" />
+                  <span>Selecionar Todos ({filteredProducts.length})</span>
+                </>
+              )}
+            </Button>
+
+            {selectedProductIds.length > 0 && (
+              <Badge variant="secondary" className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-primary/10 text-primary border-primary/20">
+                {selectedProductIds.length} selecionado{selectedProductIds.length > 1 ? 's' : ''}
+              </Badge>
+            )}
+          </div>
+
+          {selectedProductIds.length > 0 && canDelete && (
+            <div className="flex items-center gap-2 ml-auto">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={clearSelection}
+                className="h-8 px-2 text-xs text-muted-foreground hover:text-foreground"
+              >
+                Limpar
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                onClick={() => setBulkDeleteOpen(true)}
+                className="h-8 text-xs font-bold gap-1.5 bg-red-600 hover:bg-red-700 text-white cursor-pointer shadow-xs"
+              >
+                <Trash2 size={13} />
+                <span>Apagar em Massa ({selectedProductIds.length})</span>
+              </Button>
+            </div>
+          )}
+        </div>
+      )}
+
         </div>
       </div>
 
@@ -907,7 +985,29 @@ export function StoreProducts() {
               }`}
             >
               {/* Imagem do Produto */}
-              <div className="relative aspect-square w-full bg-muted overflow-hidden">
+              <div className="relative aspect-square w-full bg-muted overflow-hidden group">
+                {/* Checkbox de Seleção em Massa */}
+                {(canDelete || canEdit) && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      toggleSelectProduct(prod.id);
+                    }}
+                    className={`absolute top-2 left-2 z-10 size-7 rounded-lg flex items-center justify-center transition-all cursor-pointer shadow-md ${
+                      selectedProductIds.includes(prod.id)
+                        ? 'bg-primary text-primary-foreground scale-105 ring-2 ring-white/80'
+                        : 'bg-black/50 text-white/80 hover:bg-black/75 hover:scale-105'
+                    }`}
+                    title={selectedProductIds.includes(prod.id) ? 'Desmarcar' : 'Selecionar para apagar'}
+                  >
+                    {selectedProductIds.includes(prod.id) ? (
+                      <CheckSquare size={16} className="stroke-[2.5]" />
+                    ) : (
+                      <Square size={16} />
+                    )}
+                  </button>
+                )}
                 {prod.imageUrl ? (
                   <img src={prod.imageUrl} alt={prod.name} className="w-full h-full object-cover" />
                 ) : (
@@ -919,7 +1019,7 @@ export function StoreProducts() {
 
                 {/* Selo de Destaque */}
                 {prod.badge && (
-                  <span className="absolute top-2 left-2 px-2 py-0.5 rounded-md text-[10px] font-bold bg-[#613d3e] text-white shadow-xs">
+                  <span className="absolute bottom-2 left-2 px-2 py-0.5 rounded-md text-[10px] font-bold bg-[#613d3e] text-white shadow-xs z-10">
                     {prod.badge}
                   </span>
                 )}
@@ -1018,7 +1118,25 @@ export function StoreProducts() {
               className="p-3 sm:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4 hover:bg-muted/30 transition-colors"
             >
               {/* Foto + Dados principais */}
-              <div className="flex items-center gap-3 min-w-0 flex-1">
+              <div className="flex items-center gap-2.5 sm:gap-3 min-w-0 flex-1">
+                {(canDelete || canEdit) && (
+                  <button
+                    type="button"
+                    onClick={() => toggleSelectProduct(prod.id)}
+                    className={`size-7 rounded-lg flex items-center justify-center transition-all cursor-pointer shrink-0 ${
+                      selectedProductIds.includes(prod.id)
+                        ? 'bg-primary text-primary-foreground'
+                        : 'text-muted-foreground hover:text-foreground hover:bg-muted'
+                    }`}
+                    title={selectedProductIds.includes(prod.id) ? 'Desmarcar' : 'Selecionar'}
+                  >
+                    {selectedProductIds.includes(prod.id) ? (
+                      <CheckSquare size={16} className="stroke-[2.5]" />
+                    ) : (
+                      <Square size={16} />
+                    )}
+                  </button>
+                )}
                 {prod.imageUrl ? (
                   <img src={prod.imageUrl} alt={prod.name} className="size-12 sm:size-14 rounded-xl object-cover shrink-0" />
                 ) : (
@@ -1106,6 +1224,15 @@ export function StoreProducts() {
         onOpenChange={setFormOpen}
         editing={editingProduct}
         existingCategories={categories}
+      />
+
+      {/* Modal de Exclusão em Massa */}
+      <BulkDeleteStoreProductsDialog
+        open={bulkDeleteOpen}
+        onOpenChange={setBulkDeleteOpen}
+        selectedIds={selectedProductIds}
+        products={storeProducts}
+        onSuccess={() => setSelectedProductIds([])}
       />
 
       {/* Modal de Importação em Massa por Fotos */}
