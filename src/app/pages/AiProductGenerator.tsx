@@ -612,7 +612,7 @@ export function AiProductGenerator() {
   };
 
   // Exportar Ficha Técnica em PDF Completa com Pranchas de Corte e Gabarito de Montagem
-  const handleExportPDF = () => {
+  const handleExportPDF = async () => {
     if (!blueprint) return;
 
     try {
