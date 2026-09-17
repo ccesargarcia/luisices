@@ -84,7 +84,6 @@ export function Layout() {
     { name: 'Relatórios',     href: '/relatorios',  icon: BarChart3,       check: (p: any) => p.reports, allowUserRole: true },
     { name: 'Orçamentos',     href: '/orcamentos',  icon: FileText,        check: (p: any) => p.quotes?.view },
     { name: 'Produtos do Ateliê', href: '/produtos', icon: Package,        check: (p: any) => p.products?.view },
-    { name: 'Estúdio IA',     href: '/estudio-ia',  icon: Sparkles,       adminOnly: true, check: () => false },
     { name: 'Precificação',   href: '/precificacao',icon: Coins,           check: (p: any) => p.pricing ?? false, allowUserRole: true },
     { name: 'Galeria',        href: '/galeria',     icon: Images,          check: (p: any) => p.gallery?.view },
     { name: 'Permutas',       href: '/permutas',    icon: ArrowLeftRight,  check: (p: any) => p.exchanges, allowUserRole: true },
