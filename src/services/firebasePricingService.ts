@@ -278,12 +278,20 @@ class FirebasePricingService {
       where('userId', '==', userId)
     );
 
-    return onSnapshot(q, (snap) => {
-      const supplies = snap.docs
-        .map((d) => this.mapSupplyDoc(d.id, d.data()))
-        .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
-      callback(supplies);
-    });
+    return onSnapshot(
+      q,
+      (snap) => {
+        const supplies = snap.docs
+          .map((d) => this.mapSupplyDoc(d.id, d.data()))
+          .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+        callback(supplies);
+      },
+      (err) => {
+        console.warn('Erro na sincronização de insumos:', err);
+        // Fallback para getDocs estático para garantir dados na tela
+        this.getSupplies().then(callback).catch(() => {});
+      }
+    );
   }
 
   async getSupplies(): Promise<SupplyItem[]> {
@@ -411,12 +419,20 @@ class FirebasePricingService {
       where('userId', '==', userId)
     );
 
-    return onSnapshot(q, (snap) => {
-      const recipes = snap.docs
-        .map((d) => this.mapRecipeDoc(d.id, d.data()))
-        .sort((a, b) => a.productName.localeCompare(b.productName, 'pt-BR'));
-      callback(recipes);
-    });
+    return onSnapshot(
+      q,
+      (snap) => {
+        const recipes = snap.docs
+          .map((d) => this.mapRecipeDoc(d.id, d.data()))
+          .sort((a, b) => a.productName.localeCompare(b.productName, 'pt-BR'));
+        callback(recipes);
+      },
+      (err) => {
+        console.warn('Erro na sincronização de receitas:', err);
+        // Fallback para getDocs estático para garantir dados na tela
+        this.getRecipes().then(callback).catch(() => {});
+      }
+    );
   }
 
   async getRecipes(): Promise<ProductPricingRecipe[]> {

@@ -103,12 +103,19 @@ class FirebaseProductService {
       collection(db, PRODUCTS_COLLECTION),
       where('userId', '==', userId)
     );
-    return onSnapshot(q, (snap) => {
-      const products = snap.docs
-        .map((d) => this.mapDoc(d.id, d.data()))
-        .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
-      callback(products);
-    });
+    return onSnapshot(
+      q,
+      (snap) => {
+        const products = snap.docs
+          .map((d) => this.mapDoc(d.id, d.data()))
+          .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+        callback(products);
+      },
+      (err) => {
+        console.warn('Erro na sincronização de produtos:', err);
+        this.getProducts().then(callback).catch(() => {});
+      }
+    );
   }
 
   async updateProduct(id: string, changes: Partial<Product>): Promise<void> {

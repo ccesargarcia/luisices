@@ -2,6 +2,7 @@
  * Firebase Configuration
  *
  * Setup do Firebase SDK para o projeto de papelaria personalizada
+ * Inclui auto-cura contra asserções internas de colisão de abas do Firestore (ex: erro b815).
  */
 
 import { initializeApp } from 'firebase/app';
@@ -10,6 +11,9 @@ import {
   initializeFirestore,
   persistentLocalCache,
   persistentMultipleTabManager,
+  terminate,
+  clearIndexedDbPersistence,
+  Firestore,
 } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 import { getFunctions } from 'firebase/functions';
@@ -31,18 +35,42 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 
 // Inicializar Firestore com cache persistente multi-aba moderno
-export const db = initializeFirestore(app, {
+export const db: Firestore = initializeFirestore(app, {
   localCache: persistentLocalCache({
     tabManager: persistentMultipleTabManager(),
   }),
   ignoreUndefinedProperties: true,
 });
 
+/**
+ * Auto-Cura de Persistência do Firestore
+ * Se o SDK sofrer descompasso ou corrupção de targetId entre abas (ex: asserção b815),
+ * limpa com segurança o cache IndexedDB sem afetar as credenciais ou dados na nuvem.
+ */
+let isRecoveringPersistence = false;
+export async function recoverFirestorePersistence(): Promise<void> {
+  if (isRecoveringPersistence || typeof window === 'undefined') return;
+  isRecoveringPersistence = true;
+
+  try {
+    console.warn('[Firebase] Iniciando auto-cura do cache IndexedDB do Firestore...');
+    await terminate(db);
+    await clearIndexedDbPersistence(db);
+    console.info('[Firebase] Cache IndexedDB resetado com sucesso.');
+  } catch (err) {
+    console.warn('[Firebase] Não foi possível limpar IndexedDB no momento (outra aba ativa):', err);
+  } finally {
+    isRecoveringPersistence = false;
+  }
+}
+
 // Serviços exportados
 export const auth = getAuth(app);
+
 setPersistence(auth, browserLocalPersistence).catch(error => {
   console.warn('[Firebase] Não foi possível ativar persistência local:', error);
 });
+
 export const storage = getStorage(app);
 export const functions = getFunctions(app);
 
