@@ -1464,7 +1464,7 @@ export function AiProductGenerator() {
                           blueprint.realisticPrompts?.geminiImagenPrompt || blueprint.suggestedImagePrompt;
                         title = 'Google Gemini / Imagen 3 — Google AI Studio';
                         description =
-                          'Calibrado especificamente para o motor Gemini 2.5 Flash / Imagen 3 do Google AI Studio com foco em fidelidade de corte, camadas 3D e iluminação comercial suave.';
+                          'Calibrado especificamente para o motor Gemini 3.6 Flash / Imagen 3 do Google AI Studio com foco em fidelidade de corte, camadas 3D e iluminação comercial suave.';
                         externalLink = 'https://aistudio.google.com';
                         externalLabel = 'Abrir Google AI Studio';
                         break;
