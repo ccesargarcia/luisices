@@ -479,7 +479,7 @@ export function Products() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <a href="/catalogo" target="_blank" rel="noopener noreferrer">
+          <a href="/catalogo?return=/produtos" target="_blank" rel="noopener noreferrer" onClick={() => { try { localStorage.setItem("luisices_last_admin_route", "/produtos"); sessionStorage.setItem("luisices_last_admin_route", "/produtos"); } catch {} }}>
             <Button variant="outline" className="gap-2 border-primary/30 text-primary hover:bg-primary/5">
               <Globe className="size-4" />
               <span className="hidden sm:inline">Ver Catálogo Online</span>

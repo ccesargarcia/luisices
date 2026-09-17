@@ -85,7 +85,7 @@ export function CatalogSettingsSection({
                 <span>Abrir Painel Dedicado</span>
               </Button>
             </Link>
-            <a href="/catalogo" target="_blank" rel="noopener noreferrer">
+            <a href="/catalogo?return=/configuracoes" target="_blank" rel="noopener noreferrer" onClick={() => { try { localStorage.setItem("luisices_last_admin_route", "/configuracoes"); sessionStorage.setItem("luisices_last_admin_route", "/configuracoes"); } catch {} }}>
               <Button variant="outline" size="sm" className="gap-2 border-primary/30 text-primary hover:bg-primary/5">
                 <Globe className="size-4" />
                 <span>Ver Catálogo</span>

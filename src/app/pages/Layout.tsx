@@ -426,12 +426,13 @@ export function Layout() {
 
             <div className="flex items-center gap-1.5 sm:gap-2">
               <a
-                href="/catalogo"
+                href={`/catalogo?return=${encodeURIComponent(location.pathname + location.search)}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 onClick={() => {
                   try {
                     localStorage.setItem("luisices_last_admin_route", location.pathname + location.search);
+                    sessionStorage.setItem("luisices_last_admin_route", location.pathname + location.search);
                   } catch {}
                 }}
                 className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium border border-primary/20 text-primary bg-primary/5 hover:bg-primary/10 transition-colors"
@@ -475,12 +476,13 @@ export function Layout() {
                 <DropdownMenuSeparator />
                 <DropdownMenuItem asChild>
                   <a
-                    href="/catalogo"
+                    href={`/catalogo?return=${encodeURIComponent(location.pathname + location.search)}`}
                     target="_blank"
                     rel="noopener noreferrer"
                     onClick={() => {
                       try {
                         localStorage.setItem("luisices_last_admin_route", location.pathname + location.search);
+                        sessionStorage.setItem("luisices_last_admin_route", location.pathname + location.search);
                       } catch {}
                     }}
                     className="cursor-pointer flex items-center"

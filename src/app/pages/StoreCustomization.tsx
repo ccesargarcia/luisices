@@ -872,12 +872,13 @@ export function StoreCustomization() {
           </Button>
 
           <a
-            href="/catalogo"
+            href="/catalogo?return=/personalizar-lojinha"
             target="_blank"
             rel="noopener noreferrer"
             onClick={() => {
               try {
                 localStorage.setItem("luisices_last_admin_route", "/personalizar-lojinha");
+                sessionStorage.setItem("luisices_last_admin_route", "/personalizar-lojinha");
               } catch {}
             }}
           >

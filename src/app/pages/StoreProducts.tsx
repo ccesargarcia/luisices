@@ -779,9 +779,15 @@ export function StoreProducts() {
 
         <div className="grid grid-cols-2 sm:flex sm:items-center gap-2 w-full sm:w-auto">
           <a
-            href="/catalogo"
+            href="/catalogo?return=/produtos-lojinha"
             target="_blank"
             rel="noopener noreferrer"
+            onClick={() => {
+              try {
+                localStorage.setItem("luisices_last_admin_route", "/produtos-lojinha");
+                sessionStorage.setItem("luisices_last_admin_route", "/produtos-lojinha");
+              } catch {}
+            }}
             className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold bg-muted hover:bg-muted/80 text-foreground border border-border transition-colors shadow-2xs cursor-pointer h-9"
           >
             <Globe size={14} className="text-primary shrink-0" />
@@ -958,9 +964,9 @@ export function StoreProducts() {
         </div>
       </div>
 
-      {/* Barra de Ações em Massa - Fixo com folga segura acima do rodapé fixo no mobile, estático no desktop */}
+      {/* Barra Flutuante de Ações em Massa - Dock Elegante Centralizado */}
       {selectedProductIds.length > 0 && (canDelete || canEdit) && (
-        <div className="fixed bottom-[calc(4.5rem+env(safe-area-inset-bottom,0px))] sm:bottom-auto inset-x-3 sm:static sm:inset-x-auto z-[45] sm:z-auto sm:my-3 p-2.5 sm:p-3 rounded-2xl bg-card/95 backdrop-blur-md sm:bg-card border border-primary/25 sm:border-border shadow-2xl sm:shadow-2xs flex flex-wrap items-center justify-between gap-2 transition-all animate-in fade-in slide-in-from-bottom-3 duration-200">
+        <aside aria-label="Ações em massa para produtos selecionados" className="fixed bottom-5 sm:bottom-6 left-1/2 -translate-x-1/2 z-[55] w-[94%] max-w-xl p-2 sm:p-2.5 rounded-2xl bg-card/95 dark:bg-stone-900/95 backdrop-blur-xl border border-primary/30 dark:border-white/15 shadow-2xl flex items-center justify-between gap-2 transition-all animate-in fade-in slide-in-from-bottom-4 duration-300">
           <div className="flex items-center gap-2">
             <Button
               type="button"
@@ -1051,7 +1057,7 @@ export function StoreProducts() {
               <X size={14} />
             </Button>
           </div>
-        </div>
+        </aside>
       )}
 
       {/* Barra Informativa com Botão de Selecionar Todos quando nenhum selecionado */}

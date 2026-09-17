@@ -60,25 +60,47 @@ export interface CartItem {
 
 export function PublicCatalog() {
   const { user } = useAuth();
-  const lastAdminRoute = typeof window !== "undefined"
-    ? (() => {
-        try {
-          const saved = localStorage.getItem("luisices_last_admin_route");
-          if (
-            saved &&
-            saved !== "/" &&
-            !saved.startsWith("/login") &&
-            !saved.startsWith("/catalogo") &&
-            !saved.startsWith("/loja") &&
-            !saved.startsWith("/catalog") &&
-            !saved.startsWith("/lojinha")
-          ) {
-            return saved;
-          }
-        } catch {}
-        return "/personalizar-lojinha";
-      })()
-    : "/personalizar-lojinha";
+
+  // Obter rota de retorno para o sistema administrativo de forma resiliente
+  const getReturnRoute = useCallback(() => {
+    try {
+      const searchParams = new URLSearchParams(window.location.search);
+      const returnParam = searchParams.get("return");
+      if (returnParam && returnParam.startsWith("/") && !returnParam.startsWith("/catalogo") && !returnParam.startsWith("/loja")) {
+        return returnParam;
+      }
+      const sessionSaved = sessionStorage.getItem("luisices_last_admin_route");
+      if (sessionSaved && sessionSaved.startsWith("/") && !sessionSaved.startsWith("/catalogo") && !sessionSaved.startsWith("/loja")) {
+        return sessionSaved;
+      }
+      const localSaved = localStorage.getItem("luisices_last_admin_route");
+      if (localSaved && localSaved.startsWith("/") && !localSaved.startsWith("/catalogo") && !localSaved.startsWith("/loja")) {
+        return localSaved;
+      }
+    } catch {}
+    return "/personalizar-lojinha";
+  }, []);
+
+  const handleReturnToAdmin = useCallback(() => {
+    const targetRoute = getReturnRoute();
+    const isSubdomain = typeof window !== "undefined" && (
+      window.location.hostname.startsWith("loja.") ||
+      window.location.hostname.startsWith("lojinha.") ||
+      window.location.hostname.startsWith("catalogo.") ||
+      window.location.hostname.startsWith("catalog.")
+    );
+
+    if (isSubdomain) {
+      const mainHost = window.location.hostname
+        .replace(/^loja\./, "")
+        .replace(/^lojinha\./, "")
+        .replace(/^catalogo\./, "")
+        .replace(/^catalog\./, "");
+      window.location.href = `${window.location.protocol}//${mainHost}${targetRoute}`;
+    } else {
+      window.location.href = targetRoute;
+    }
+  }, [getReturnRoute]);
   // Controle de tema: recupera preferência salva no localStorage para persistir entre recarregamentos
   const [isDarkMode, setIsDarkMode] = useState<boolean>(() => {
     try {
@@ -628,18 +650,28 @@ export function PublicCatalog() {
   if (!storePublished) {
     return (
       <div className={isDarkMode ? 'dark' : ''}>
-      {/* Botão flutuante de retorno ao sistema para administradores autenticados */}
+      {/* Dock Superior Elegante de Gestão (visível apenas para administradores logados) */}
       {user && (
-        <div className="fixed top-3.5 left-3.5 z-[70] flex items-center gap-2 animate-in fade-in slide-in-from-top-2 duration-300">
-          <Link
-            to={lastAdminRoute}
-            className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-background/90 hover:bg-background text-foreground border border-border shadow-lg backdrop-blur-md text-xs font-semibold hover:scale-105 active:scale-95 transition-all"
-            title="Voltar para o sistema administrativo"
+        <aside aria-label="Painel de administração da loja" className="fixed top-3 left-1/2 -translate-x-1/2 z-[100] flex items-center gap-2 p-1.5 pl-3.5 pr-2 rounded-full bg-stone-900/90 dark:bg-black/90 text-white border border-white/15 shadow-2xl backdrop-blur-md animate-in fade-in slide-in-from-top-3 duration-300">
+          <div className="flex items-center gap-2 pr-1">
+            <span className="relative flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+            </span>
+            <span className="text-[11px] font-medium text-stone-300 hidden sm:inline">
+              Modo de Gestão
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={handleReturnToAdmin}
+            className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/15 hover:bg-white/25 active:bg-white/35 text-white text-xs font-semibold cursor-pointer transition-all hover:scale-[1.02] active:scale-[0.98]"
+            title="Voltar para o painel administrativo"
           >
             <ArrowLeft className="size-3.5 text-primary" />
             <span>Voltar ao Sistema</span>
-          </Link>
-        </div>
+          </button>
+        </aside>
       )}
         <div
           className={`min-h-[100dvh] flex flex-col items-center justify-center text-[#221a1a] dark:text-[#e8e0e3] transition-colors duration-500 font-sans
@@ -668,14 +700,15 @@ export function PublicCatalog() {
 
             {/* Botão de retorno ao painel administrativo para usuários logados */}
             {user && (
-              <div className="mb-2">
-                <Link
-                  to={lastAdminRoute}
-                  className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white/90 dark:bg-black/70 hover:bg-white dark:hover:bg-black text-[#221a1a] dark:text-[#e8e0e3] border border-[#613d3e]/20 text-xs font-semibold shadow-sm hover:shadow transition-all"
+              <div className="pt-1">
+                <button
+                  type="button"
+                  onClick={handleReturnToAdmin}
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-white/80 dark:bg-white/10 hover:bg-white dark:hover:bg-white/20 text-[#221a1a] dark:text-[#e8e0e3] border border-[#613d3e]/20 dark:border-white/15 text-xs font-semibold shadow-sm hover:shadow transition-all cursor-pointer"
                 >
                   <ArrowLeft className="size-3.5 text-primary" />
-                  <span>Voltar ao Sistema ({lastAdminRoute === "/personalizar-lojinha" ? "Personalizar Lojinha" : "Última Tela"})</span>
-                </Link>
+                  <span>Voltar ao Sistema Administrativo</span>
+                </button>
               </div>
             )}
             {/* Ícone de manutenção */}
@@ -751,6 +784,29 @@ export function PublicCatalog() {
 
   return (
     <div className={isDarkMode ? 'dark' : ''}>
+      {/* Dock Superior Elegante de Gestão (visível apenas para administradores logados) */}
+      {user && (
+        <aside aria-label="Painel de administração da loja" className="fixed top-3 left-1/2 -translate-x-1/2 z-[100] flex items-center gap-2 p-1.5 pl-3.5 pr-2 rounded-full bg-stone-900/90 dark:bg-black/90 text-white border border-white/15 shadow-2xl backdrop-blur-md animate-in fade-in slide-in-from-top-3 duration-300">
+          <div className="flex items-center gap-2 pr-1">
+            <span className="relative flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+            </span>
+            <span className="text-[11px] font-medium text-stone-300 hidden sm:inline">
+              Modo de Gestão
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={handleReturnToAdmin}
+            className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/15 hover:bg-white/25 active:bg-white/35 text-white text-xs font-semibold cursor-pointer transition-all hover:scale-[1.02] active:scale-[0.98]"
+            title="Voltar para o painel administrativo"
+          >
+            <ArrowLeft className="size-3.5 text-primary" />
+            <span>Voltar ao Sistema</span>
+          </button>
+        </aside>
+      )}
       {/* 
         Container Principal com Iluminação Atmosférica Radial (Glassmorphism & Depth)
       */}

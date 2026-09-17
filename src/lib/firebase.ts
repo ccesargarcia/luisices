@@ -10,7 +10,7 @@ import { browserLocalPersistence, getAuth, setPersistence } from 'firebase/auth'
 import {
   initializeFirestore,
   persistentLocalCache,
-  persistentMultipleTabManager,
+  persistentSingleTabManager,
   terminate,
   clearIndexedDbPersistence,
   Firestore,
@@ -37,7 +37,7 @@ const app = initializeApp(firebaseConfig);
 // Inicializar Firestore com cache persistente multi-aba moderno
 export const db: Firestore = initializeFirestore(app, {
   localCache: persistentLocalCache({
-    tabManager: persistentMultipleTabManager(),
+    tabManager: persistentSingleTabManager(),
   }),
   ignoreUndefinedProperties: true,
 });
