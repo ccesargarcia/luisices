@@ -512,8 +512,8 @@ export class AiProductService {
     onProgress?: (event: AiProgressEvent) => void
   ): Promise<string> {
     const candidateModels = preferredModel
-      ? [preferredModel, 'gemini-3.5-flash', 'gemini-3.5-flash-lite', 'gemini-flash-latest']
-      : ['gemini-3.5-flash', 'gemini-3.5-flash-lite', 'gemini-flash-latest'];
+      ? [preferredModel, 'gemini-3.6-flash', 'gemini-flash-latest']
+      : ['gemini-3.6-flash', 'gemini-flash-latest'];
 
     let lastError: any = null;
 
