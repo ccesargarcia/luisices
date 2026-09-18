@@ -281,6 +281,7 @@ export interface Permission {
   pricing?: boolean;
   store?: boolean;
   storeProducts?: ModulePermission;
+  whatsapp?: boolean;
 }
 
 export interface StoreProduct {
@@ -451,6 +452,7 @@ export const ADMIN_PERMISSIONS: Permission = {
   pricing:   true,
   store:     true,
   storeProducts: { view: true, create: true, edit: true, delete: true },
+  whatsapp:  true,
 };
 
 export const DEFAULT_USER_PERMISSIONS: Permission = {
@@ -468,6 +470,7 @@ export const DEFAULT_USER_PERMISSIONS: Permission = {
   pricing:   true,
   store:     true,
   storeProducts: { view: true, create: true, edit: true, delete: false },
+  whatsapp:  true,
 };
 
 export const EMPLOYEE_PERMISSIONS: Permission = {
@@ -485,6 +488,7 @@ export const EMPLOYEE_PERMISSIONS: Permission = {
   pricing:   false,
   store:     false,
   storeProducts: { view: false, create: false, edit: false, delete: false },
+  whatsapp:  true,
 };
 
 // Tipos para sistema de compartilhamento de dados
@@ -654,4 +658,37 @@ export interface AiChatMessage {
   orderDraft?: AiOrderDraft | null;
   whatsappDraft?: AiWhatsAppDraft | null;
   pricingEstimate?: AiPricingEstimate | null;
+}
+
+// ─── Central de Atendimento WhatsApp (Evolution API) ──────────────────────────
+export interface WhatsAppMessage {
+  id: string;
+  chatId: string; // Número normalizado (ex: 5511999999999)
+  phone: string;
+  customerName?: string;
+  customerId?: string;
+  sender: 'me' | 'customer';
+  text: string;
+  status: 'pending' | 'sent' | 'delivered' | 'read' | 'failed' | 'received';
+  timestamp: string;
+  evolutionMessageId?: string;
+  mediaUrl?: string;
+  mediaType?: 'image' | 'video' | 'document' | 'audio';
+  sentByUid?: string;
+  createdAt?: any;
+}
+
+export interface WhatsAppConversation {
+  id: string; // phone normalizado
+  phone: string;
+  customerName: string;
+  customerId?: string | null;
+  photoUrl?: string | null;
+  lastMessageText: string;
+  lastMessageTimestamp: string;
+  lastMessageSender: 'me' | 'customer';
+  unreadCount: number;
+  orderCount?: number;
+  lastOrderSummary?: string;
+  updatedAt?: any;
 }

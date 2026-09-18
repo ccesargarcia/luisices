@@ -18,9 +18,12 @@ on:
         type: choice
         options:
           - 'all'
-          - 'aiAgentChat,sendWhatsAppDirectMessage,syncOrderToAiView,syncAllOrdersToAiView'
+          - 'aiAgentChat,sendWhatsAppDirectMessage,getWhatsAppInstanceStatus,evolutionWhatsAppWebhook,syncOrderToAiView,syncAllOrdersToAiView'
+          - 'sendWhatsAppDirectMessage,getWhatsAppInstanceStatus,evolutionWhatsAppWebhook'
           - 'aiAgentChat,sendWhatsAppDirectMessage'
           - 'sendWhatsAppDirectMessage'
+          - 'getWhatsAppInstanceStatus'
+          - 'evolutionWhatsAppWebhook'
           - 'aiAgentChat'
           - 'syncOrderToAiView'
           - 'syncAllOrdersToAiView'

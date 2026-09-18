@@ -1264,6 +1264,23 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
           }
         },
         {
+          name: 'query_customers',
+          description: 'Consulta a base de clientes cadastrados no sistema Luisices (por nome, telefone, e-mail ou cidade) para obter número de WhatsApp, histórico de compras e dados cadastrais.',
+          parameters: {
+            type: 'OBJECT',
+            properties: {
+              searchTerm: {
+                type: 'STRING',
+                description: 'Nome, telefone, e-mail ou cidade do cliente para busca'
+              },
+              limit: {
+                type: 'INTEGER',
+                description: 'Quantidade máxima de clientes a retornar (máximo 20)'
+              }
+            }
+          }
+        },
+        {
           name: 'extract_order_draft',
           description: 'Extrai dados estruturados de um novo pedido a partir de uma mensagem ou conversa para pré-preenchimento.',
           parameters: {
@@ -1380,6 +1397,77 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
       pendingPaymentCount: pendingPaymentOrders.length,
       pendingPaymentTotal,
     };
+  };
+
+  // Helper para consultar a base de clientes cadastrados
+  const executeQueryCustomers = async (args = {}) => {
+    try {
+      const snap = await admin.firestore().collection('customers').limit(100).get();
+      let customers = snap.docs.map(d => ({
+        id: d.id,
+        name: d.data().name || '',
+        phone: d.data().phone || '',
+        email: d.data().email || '',
+        city: d.data().city || '',
+        state: d.data().state || '',
+        status: d.data().status || 'active',
+        totalOrders: d.data().totalOrders || 0,
+        totalSpent: d.data().totalSpent || 0,
+        createdAt: d.data().createdAt || '',
+      }));
+
+      if (args.searchTerm && typeof args.searchTerm === 'string') {
+        const term = args.searchTerm.toLowerCase().trim();
+        customers = customers.filter(c =>
+          (c.name && c.name.toLowerCase().includes(term)) ||
+          (c.phone && c.phone.includes(term)) ||
+          (c.email && c.email.toLowerCase().includes(term)) ||
+          (c.city && c.city.toLowerCase().includes(term))
+        );
+      }
+
+      const maxLimit = Math.min(Math.max(Number(args.limit) || 10, 1), 30);
+      return customers.slice(0, maxLimit);
+    } catch (err) {
+      console.error('[executeQueryCustomers] Erro:', err);
+      return [];
+    }
+  };
+
+  // Helper para auto-capturar telefone do cliente a partir do nome se não estiver informado
+  const resolveCustomerPhone = async (customerName, existingPhone) => {
+    if (existingPhone && typeof existingPhone === 'string' && existingPhone.trim()) {
+      return existingPhone.trim();
+    }
+    if (!customerName || typeof customerName !== 'string' || !customerName.trim()) {
+      return null;
+    }
+
+    try {
+      const term = customerName.toLowerCase().trim();
+      // 1. Busca na coleção customers
+      const custSnap = await admin.firestore().collection('customers').limit(100).get();
+      for (const doc of custSnap.docs) {
+        const data = doc.data();
+        const docName = String(data.name || '').toLowerCase().trim();
+        if (docName && (docName.includes(term) || term.includes(docName))) {
+          if (data.phone) return data.phone;
+        }
+      }
+
+      // 2. Busca na coleção orders
+      const orderSnap = await admin.firestore().collection('orders').limit(100).get();
+      for (const doc of orderSnap.docs) {
+        const data = doc.data();
+        const ordName = String(data.customerName || '').toLowerCase().trim();
+        if (ordName && (ordName.includes(term) || term.includes(ordName))) {
+          if (data.customerPhone) return data.customerPhone;
+        }
+      }
+    } catch (err) {
+      console.warn('[resolveCustomerPhone] Erro ao buscar telefone automático:', err);
+    }
+    return null;
   };
 
   // Helper para cálculo de estimativa de precificação com guardrails de margem mínima
@@ -1531,11 +1619,27 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
       const { name, args } = functionCallPart.functionCall;
 
       if (name === 'extract_order_draft') {
+        if (!args.customerPhone && args.customerName) {
+          args.customerPhone = await resolveCustomerPhone(args.customerName, null);
+        }
         extractedDraft = args;
         finalAnswer = `Identifiquei os dados do pedido para **${args.customerName || 'o cliente'}**! Você pode conferir os detalhes e carregar diretamente no formulário de pedido abaixo.`;
       } else if (name === 'generate_whatsapp_message') {
+        if (!args.recipientPhone && args.recipientName) {
+          args.recipientPhone = await resolveCustomerPhone(args.recipientName, null);
+        }
         extractedWhatsApp = args;
-        finalAnswer = `Gerei o rascunho da mensagem para **${args.recipientName || 'o cliente'}**. Você pode copiar o texto ou abrir diretamente no WhatsApp abaixo:`;
+        finalAnswer = `Gerei o rascunho da mensagem para **${args.recipientName || 'o cliente'}**${args.recipientPhone ? ` (${args.recipientPhone})` : ''}. Você pode revisar o texto e enviar diretamente para o WhatsApp abaixo:`;
+      } else if (name === 'query_customers') {
+        const queryResults = await executeQueryCustomers(args);
+        if (queryResults.length === 0) {
+          finalAnswer = 'Não encontrei nenhum cliente cadastrado correspondente aos termos pesquisados.';
+        } else {
+          const list = queryResults.map(c =>
+            `• **${c.name}**\n  📱 Telefone: ${c.phone || 'Não informado'} | ✉️ E-mail: ${c.email || 'Não informado'} | 🏙️ Cidade: ${c.city || 'N/D'}`
+          ).join('\n\n');
+          finalAnswer = `Encontrei **${queryResults.length} cliente(s) cadastrado(s)** no sistema:\n\n${list}`;
+        }
       } else if (name === 'calculate_pricing_estimate') {
         extractedPricing = executePricingEstimate(args);
         const formattedUnit = Number(extractedPricing.suggestedUnitPrice).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -1661,7 +1765,7 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
 });
 
 /**
- * Dispara uma mensagem WhatsApp diretamente para o cliente via Evolution API.
+ * Dispara uma mensagem WhatsApp diretamente para o cliente via Evolution API e armazena na base do chat.
  * Uso restrito a membros autorizados da equipe (admin ou funcionário ativo).
  */
 exports.sendWhatsAppDirectMessage = onCall({ secrets: [EVOLUTION_API_KEY] }, async (request) => {
@@ -1669,7 +1773,7 @@ exports.sendWhatsAppDirectMessage = onCall({ secrets: [EVOLUTION_API_KEY] }, asy
     throw new functions.https.HttpsError('permission-denied', 'Acesso restrito a membros autorizados da equipe.');
   }
 
-  const { phone, text } = request.data || {};
+  const { phone, text, customerName, customerId } = request.data || {};
   if (!phone || typeof phone !== 'string' || !phone.trim()) {
     throw new functions.https.HttpsError('invalid-argument', 'Telefone do destinatário é obrigatório.');
   }
@@ -1708,6 +1812,36 @@ exports.sendWhatsAppDirectMessage = onCall({ secrets: [EVOLUTION_API_KEY] }, asy
     }
 
     const resData = await response.json().catch(() => ({}));
+    const messageId = resData?.key?.id || `msg_${Date.now()}`;
+    const nowIso = new Date().toISOString();
+
+    // 1. Salva a mensagem no histórico de mensagens do WhatsApp
+    await admin.firestore().collection('whatsapp_messages').add({
+      chatId: cleanNumber,
+      phone: cleanNumber,
+      customerName: customerName || null,
+      customerId: customerId || null,
+      sender: 'me',
+      text: text.trim(),
+      status: 'sent',
+      timestamp: nowIso,
+      evolutionMessageId: messageId,
+      sentByUid: request.auth.uid,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    // 2. Atualiza a conversa na listagem de chats
+    await admin.firestore().collection('whatsapp_chats').doc(cleanNumber).set({
+      id: cleanNumber,
+      phone: cleanNumber,
+      customerName: customerName || cleanNumber,
+      customerId: customerId || null,
+      lastMessageText: text.trim(),
+      lastMessageTimestamp: nowIso,
+      lastMessageSender: 'me',
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    }, { merge: true });
+
     console.log('[sendWhatsAppDirectMessage] Mensagem enviada com sucesso para:', cleanNumber);
     return {
       success: true,
@@ -1718,6 +1852,150 @@ exports.sendWhatsAppDirectMessage = onCall({ secrets: [EVOLUTION_API_KEY] }, asy
     if (error instanceof functions.https.HttpsError) throw error;
     console.error('[sendWhatsAppDirectMessage] Falha ao enviar mensagem:', error);
     throw new functions.https.HttpsError('internal', error.message || 'Erro ao conectar com a Evolution API.');
+  }
+});
+
+/**
+ * Consulta o status da conexão da instância da Evolution API (open, connecting, close).
+ */
+exports.getWhatsAppInstanceStatus = onCall({ secrets: [EVOLUTION_API_KEY] }, async (request) => {
+  if (!(await isAuthorizedEmployeeOrAdmin(request))) {
+    throw new functions.https.HttpsError('permission-denied', 'Acesso restrito a membros autorizados da equipe.');
+  }
+
+  const rawKey = (typeof EVOLUTION_API_KEY.value === 'function' ? EVOLUTION_API_KEY.value() : process.env.EVOLUTION_API_KEY) || '';
+  if (!rawKey) {
+    return {
+      connected: false,
+      state: 'missing_key',
+      instance: EVOLUTION_INSTANCE,
+      message: 'Chave EVOLUTION_API_KEY não configurada.',
+    };
+  }
+
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 6000);
+
+    const response = await fetch(
+      `${EVOLUTION_API_URL}/instance/connectionState/${encodeURIComponent(EVOLUTION_INSTANCE)}`,
+      {
+        method: 'GET',
+        headers: { apikey: rawKey },
+        signal: controller.signal,
+      }
+    );
+    clearTimeout(timeout);
+
+    if (response.ok) {
+      const data = await response.json().catch(() => ({}));
+      const state = data?.instance?.state || data?.state || 'unknown';
+      return {
+        connected: state === 'open',
+        state,
+        instance: EVOLUTION_INSTANCE,
+        serverUrl: EVOLUTION_API_URL,
+      };
+    }
+
+    return {
+      connected: false,
+      state: 'error',
+      status: response.status,
+      instance: EVOLUTION_INSTANCE,
+    };
+  } catch (err) {
+    return {
+      connected: false,
+      state: 'unreachable',
+      error: err.message,
+      instance: EVOLUTION_INSTANCE,
+    };
+  }
+});
+
+/**
+ * Webhook para receber mensagens recebidas (MESSAGES_UPSERT) da Evolution API.
+ */
+exports.evolutionWhatsAppWebhook = onRequest(async (req, res) => {
+  if (req.method !== 'POST') {
+    res.status(405).send('Method Not Allowed');
+    return;
+  }
+
+  try {
+    const event = req.body?.event;
+    const data = req.body?.data;
+
+    if (event === 'messages.upsert' || event === 'MESSAGES_UPSERT') {
+      const msg = data?.message || data;
+      const key = data?.key || msg?.key;
+      const fromMe = Boolean(key?.fromMe);
+      const remoteJid = key?.remoteJid || '';
+
+      if (remoteJid && !remoteJid.includes('@g.us') && !remoteJid.includes('status@broadcast')) {
+        const cleanPhone = remoteJid.replace(/\D/g, '');
+        const messageText =
+          msg?.conversation ||
+          msg?.extendedTextMessage?.text ||
+          msg?.imageMessage?.caption ||
+          msg?.videoMessage?.caption ||
+          msg?.documentMessage?.caption ||
+          (msg?.imageMessage ? '📷 [Foto]' : msg?.audioMessage ? '🎵 [Áudio]' : msg?.documentMessage ? '📄 [Documento]' : '');
+
+        if (cleanPhone && messageText) {
+          const nowIso = new Date().toISOString();
+
+          // Tenta localizar o nome do cliente na base customers
+          let customerName = cleanPhone;
+          let customerId = null;
+          try {
+            const custSnap = await admin.firestore().collection('customers').limit(100).get();
+            for (const d of custSnap.docs) {
+              const cData = d.data();
+              const cPhone = String(cData.phone || '').replace(/\D/g, '');
+              if (cPhone && (cleanPhone.endsWith(cPhone) || cPhone.endsWith(cleanPhone))) {
+                customerName = cData.name || customerName;
+                customerId = d.id;
+                break;
+              }
+            }
+          } catch (e) {
+            console.warn('[evolutionWhatsAppWebhook] Erro ao buscar cliente:', e);
+          }
+
+          await admin.firestore().collection('whatsapp_messages').add({
+            chatId: cleanPhone,
+            phone: cleanPhone,
+            customerName,
+            customerId,
+            sender: fromMe ? 'me' : 'customer',
+            text: messageText,
+            status: fromMe ? 'sent' : 'received',
+            timestamp: nowIso,
+            evolutionMessageId: key?.id || `inc_${Date.now()}`,
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          });
+
+          await admin.firestore().collection('whatsapp_chats').doc(cleanPhone).set({
+            id: cleanPhone,
+            phone: cleanPhone,
+            customerName,
+            customerId,
+            lastMessageText: messageText,
+            lastMessageTimestamp: nowIso,
+            lastMessageSender: fromMe ? 'me' : 'customer',
+            unreadCount: fromMe ? 0 : admin.firestore.FieldValue.increment(1),
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          }, { merge: true });
+        }
+      }
+    }
+
+    res.status(200).json({ received: true });
+  } catch (error) {
+    console.error('[evolutionWhatsAppWebhook] Erro ao processar webhook:', error);
+    res.status(500).json({ error: error.message });
   }
 });
 

@@ -127,6 +127,7 @@ const PublicCatalog      = lazyWithRetry(() => import('./pages/PublicCatalog'), 
 const StoreCustomization = lazyWithRetry(() => import('./pages/StoreCustomization'), 'StoreCustomization');
 const StoreProducts      = lazyWithRetry(() => import('./pages/StoreProducts'), 'StoreProducts');
 const StoreOrders        = lazyWithRetry(() => import('./pages/StoreOrders'), 'StoreOrders');
+const WhatsAppChat       = lazyWithRetry(() => import('./pages/WhatsAppChat'), 'WhatsAppChat');
 
 function PageLoader() {
   return (
@@ -239,6 +240,14 @@ export const router = isCatalogSubdomain
       {
         path: 'clientes',
         element: <Lazy><PermissionRoute check={p => p.customers?.view ?? false}><Customers /></PermissionRoute></Lazy>,
+      },
+      {
+        path: 'whatsapp',
+        element: <Lazy><PermissionRoute check={p => p.whatsapp ?? p.customers?.view ?? false} allowUserRole><WhatsAppChat /></PermissionRoute></Lazy>,
+      },
+      {
+        path: 'chat-whatsapp',
+        element: <Navigate to="/whatsapp" replace />,
       },
       {
         path: 'relatorios',

@@ -24,6 +24,7 @@ import {
   Calculator,
 } from 'lucide-react';
 import { firebaseAiAgentService } from '../../services/firebaseAiAgentService';
+import { useFirebaseCustomers } from '../../hooks/useFirebaseCustomers';
 import { AiChatMessage, AiOrderDraft, AiWhatsAppDraft, AiPricingEstimate } from '../types';
 import { toast } from 'sonner';
 import { formatCurrency } from '../utils/currency';
@@ -56,6 +57,7 @@ interface WhatsAppComposerProps {
 }
 
 function WhatsAppComposer({ draft, onSendVariantRequest, disabled }: WhatsAppComposerProps) {
+  const { customers } = useFirebaseCustomers();
   const [phone, setPhone] = useState(draft.recipientPhone || '');
   const [recipientName, setRecipientName] = useState(draft.recipientName || '');
   const [message, setMessage] = useState(draft.messageText || '');
@@ -65,10 +67,20 @@ function WhatsAppComposer({ draft, onSendVariantRequest, disabled }: WhatsAppCom
 
   useEffect(() => {
     setMessage(draft.messageText || '');
-    if (draft.recipientPhone) setPhone(draft.recipientPhone);
+    let resolvedPhone = draft.recipientPhone || '';
+    if (!resolvedPhone && draft.recipientName && customers.length > 0) {
+      const term = draft.recipientName.toLowerCase().trim();
+      const matched = customers.find(
+        (c) => c.name && (c.name.toLowerCase().includes(term) || term.includes(c.name.toLowerCase()))
+      );
+      if (matched && matched.phone) {
+        resolvedPhone = matched.phone;
+      }
+    }
+    setPhone(resolvedPhone);
     if (draft.recipientName) setRecipientName(draft.recipientName);
     setSentSuccess(false);
-  }, [draft]);
+  }, [draft, customers]);
 
   const handleCopy = async () => {
     try {
