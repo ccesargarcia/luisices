@@ -27,14 +27,31 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
   DialogTrigger,
 } from '../components/ui/dialog';
+import { AiCopilotSheet } from '../components/AiCopilotSheet';
+import { NewOrderDialog } from '../components/NewOrderDialog';
+import { AiOrderDraft } from '../types';
 
 export function Layout() {
   const location = useLocation();
   const navigate = useNavigate();
   const { user, logout, isAdmin, userProfile, hasPermission } = useAuth();
   const { settings } = useUserSettings();
+
+  const [aiCopilotOpen, setAiCopilotOpen] = useState(false);
+  const [aiOrderDraft, setAiOrderDraft] = useState<AiOrderDraft | null>(null);
+  const [aiNewOrderModalOpen, setAiNewOrderModalOpen] = useState(false);
+
+  const handleApplyAiOrderDraft = (draft: AiOrderDraft) => {
+    setAiOrderDraft(draft);
+    setAiNewOrderModalOpen(true);
+  };
 
   // Apply color theme CSS vars whenever settings change
   useEffect(() => {
@@ -403,6 +420,16 @@ export function Layout() {
             </div>
 
             <div className="flex items-center gap-1.5 sm:gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setAiCopilotOpen(true)}
+                className="gap-1.5 h-8 sm:h-9 text-xs sm:text-sm font-medium border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400 hover:bg-amber-500/20 transition-colors shadow-xs"
+                title="Abrir Copiloto de IA Interno"
+              >
+                <Sparkles className="size-3.5 sm:size-4 text-amber-500" />
+                <span className="hidden md:inline">Copiloto</span>
+              </Button>
               <a
                 href="/catalogo"
                 target="_blank"
@@ -704,6 +731,19 @@ export function Layout() {
           </DropdownMenuContent>
         </DropdownMenu>
       </nav>
+
+      {/* Copiloto de IA Interno & Modal de Novo Pedido Preenchido */}
+      <AiCopilotSheet
+        open={aiCopilotOpen}
+        onOpenChange={setAiCopilotOpen}
+        onApplyOrderDraft={handleApplyAiOrderDraft}
+      />
+      <NewOrderDialog
+        open={aiNewOrderModalOpen}
+        onOpenChange={setAiNewOrderModalOpen}
+        initialDraft={aiOrderDraft}
+        hideTrigger={true}
+      />
     </div>
   );
 }

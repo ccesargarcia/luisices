@@ -611,3 +611,24 @@ export interface SaleRecord {
 }
 
 export type LedgerPeriod = 'today' | 'yesterday' | 'week' | 'month' | 'quarter' | 'year' | 'all' | 'custom';
+
+// Tipos para o Copiloto de IA Interno
+export interface AiOrderDraft {
+  customerName: string;
+  customerPhone?: string;
+  productName: string;
+  quantity?: number;
+  unitPrice?: number;
+  totalPrice?: number;
+  deliveryDate?: string;
+  notes?: string;
+  paymentMethod?: PaymentMethod;
+}
+
+export interface AiChatMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  text: string;
+  timestamp: string;
+  orderDraft?: AiOrderDraft | null;
+}

@@ -1,5 +1,6 @@
 const functions = require('firebase-functions');
 const { onCall, onRequest } = require('firebase-functions/v2/https');
+const { onDocumentWritten } = require('firebase-functions/v2/firestore');
 const { defineSecret } = require('firebase-functions/params');
 const admin = require('firebase-admin');
 const { Resend } = require('resend');
@@ -20,11 +21,17 @@ const customEmailLimiter = new RateLimiterMemory({
   duration: 3600, // 1 hora em segundos
 });
 
-// Configurar Resend API Key usando o novo sistema de params
-// Execute: firebase functions:secrets:set RESEND_API_KEY
+// Rate limiter para o Agente de IA interno: 60 requisições por minuto por usuário
+const aiAgentLimiter = new RateLimiterMemory({
+  points: 60,
+  duration: 60,
+});
+
+// Configurar secrets usando o sistema de params
 const RESEND_API_KEY = defineSecret('RESEND_API_KEY');
 const EVOLUTION_API_KEY = defineSecret('EVOLUTION_API_KEY');
 const RESEND_WEBHOOK_SECRET = defineSecret('RESEND_WEBHOOK_SECRET');
+const GEMINI_API_KEY = defineSecret('GEMINI_API_KEY');
 
 const EVOLUTION_API_URL = 'https://wa.luisices.com.br';
 const EVOLUTION_INSTANCE = 'homeassistant';
@@ -938,5 +945,332 @@ exports.resendReceivingWebhook = onRequest({ cors: true, secrets: [RESEND_API_KE
     return res.status(500).json({ error: 'Erro interno ao processar webhook de recebimento' });
   }
 });
+
+/**
+ * Helper para validar se o usuário é administrador ou funcionário ativo
+ */
+const isAuthorizedEmployeeOrAdmin = async (request) => {
+  if (!request.auth) return false;
+  const profile = await admin.firestore().doc(`userProfiles/${request.auth.uid}`).get();
+  if (!profile.exists) return false;
+  const data = profile.data();
+  return (data.role === 'admin' || data.role === 'funcionario') && data.active !== false;
+};
+
+/**
+ * Converte um documento operacional de 'orders' em formato sanitizado e otimizado para IA
+ */
+const buildAiOrderDoc = (orderId, data) => {
+  const productSummary = data.productName || 'Não especificado';
+  const quantity = Number(data.quantity) || 1;
+  const totalPrice = Number(data.price) || 0;
+  const status = data.status || 'pending';
+  const paymentStatus = data.payment?.status || 'pending';
+  const paymentMethod = data.payment?.method || null;
+  const deliveryDate = data.deliveryDate || null;
+  const customerName = data.customerName || 'Cliente sem nome';
+  const customerPhone = data.customerPhone || '';
+  const notes = data.notes || '';
+  const orderNumber = data.orderNumber || `#${orderId}`;
+  const isExchange = Boolean(data.isExchange);
+
+  return {
+    orderId,
+    orderNumber,
+    customerName,
+    customerPhone,
+    productSummary,
+    quantity,
+    totalPrice,
+    status,
+    paymentStatus,
+    paymentMethod,
+    deliveryDate,
+    notes,
+    isExchange,
+    createdAt: data.createdAt || new Date().toISOString(),
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  };
+};
+
+/**
+ * Trigger de sincronização para a base somente-leitura da IA (ai_orders_view).
+ * Sempre que um pedido for criado, atualizado ou excluído, projeta uma visão
+ * sanitizada e otimizada para consultas do Agente.
+ */
+exports.syncOrderToAiView = onDocumentWritten('orders/{orderId}', async (event) => {
+  const orderId = event.params.orderId;
+  const targetRef = admin.firestore().collection('ai_orders_view').doc(orderId);
+
+  // Se o pedido foi excluído
+  if (!event.data.after || !event.data.after.exists) {
+    await targetRef.delete().catch((err) => {
+      console.warn(`[syncOrderToAiView] Erro ao remover view do pedido ${orderId}:`, err);
+    });
+    console.log(`[syncOrderToAiView] Pedido ${orderId} removido da ai_orders_view.`);
+    return;
+  }
+
+  const data = event.data.after.data() || {};
+  const aiDoc = buildAiOrderDoc(orderId, data);
+
+  await targetRef.set(aiDoc, { merge: true });
+  console.log(`[syncOrderToAiView] Pedido ${orderId} sincronizado na ai_orders_view.`);
+});
+
+/**
+ * Sincroniza em lote todos os pedidos existentes para a base somente-leitura.
+ * Uso restrito a administradores.
+ */
+exports.syncAllOrdersToAiView = onCall(async (request) => {
+  if (!(await isAdminRequest(request))) {
+    throw new functions.https.HttpsError('permission-denied', 'Apenas administradores podem executar a sincronização em lote.');
+  }
+
+  const snapshot = await admin.firestore().collection('orders').get();
+  if (snapshot.empty) {
+    return { success: true, count: 0, message: 'Nenhum pedido para sincronizar.' };
+  }
+
+  const db = admin.firestore();
+  let batch = db.batch();
+  let batchCount = 0;
+  let totalCount = 0;
+
+  for (const doc of snapshot.docs) {
+    const data = doc.data();
+    const aiDoc = buildAiOrderDoc(doc.id, data);
+    const targetRef = db.collection('ai_orders_view').doc(doc.id);
+    batch.set(targetRef, aiDoc, { merge: true });
+    batchCount++;
+    totalCount++;
+
+    if (batchCount >= 450) {
+      await batch.commit();
+      batch = db.batch();
+      batchCount = 0;
+    }
+  }
+
+  if (batchCount > 0) {
+    await batch.commit();
+  }
+
+  return { success: true, count: totalCount, message: `${totalCount} pedidos sincronizados com sucesso na ai_orders_view.` };
+});
+
+/**
+ * Endpoint Callable Seguro do Copiloto de IA Interno
+ */
+exports.aiAgentChat = onCall({ secrets: [GEMINI_API_KEY] }, async (request) => {
+  if (!(await isAuthorizedEmployeeOrAdmin(request))) {
+    throw new functions.https.HttpsError('permission-denied', 'Acesso restrito a membros autorizados da equipe.');
+  }
+
+  try {
+    await aiAgentLimiter.consume(request.auth.uid);
+  } catch {
+    throw new functions.https.HttpsError('resource-exhausted', 'Muitas requisições. Aguarde um momento antes de enviar nova mensagem.');
+  }
+
+  const { message, history = [] } = request.data || {};
+  if (!message || typeof message !== 'string' || !message.trim()) {
+    throw new functions.https.HttpsError('invalid-argument', 'Mensagem é obrigatória.');
+  }
+
+  const apiKey = GEMINI_API_KEY.value() || process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    throw new functions.https.HttpsError('failed-precondition', 'Chave de API do Gemini não configurada.');
+  }
+
+  const systemInstruction = `Você é o Copiloto Interno da Luisices (confecção/gráfica especializada em camisetas e brindes personalizados).
+Seu papel é auxiliar a equipe administrativa e operacional com consultas sobre pedidos e extração rápida de novos pedidos a partir de textos ou mensagens de WhatsApp.
+Suas diretrizes:
+1. Sempre responda em Português do Brasil (pt-BR) de forma amigável, clara e objetiva.
+2. Quando o usuário perguntar sobre pedidos, status, entregas, valores a receber ou clientes, utilize a ferramenta 'query_orders_view' para consultar a base somente-leitura e responder com precisão.
+3. Quando o usuário colar um texto de cliente, mensagem de WhatsApp ou solicitar cadastro de pedido, utilize a ferramenta 'extract_order_draft' para estruturar os dados do pedido.
+4. Nunca invente dados que não estejam na base ou na mensagem do usuário.
+5. Seja conciso e use bullet points para facilitar a leitura.`;
+
+  const toolsDeclaration = [
+    {
+      function_declarations: [
+        {
+          name: 'query_orders_view',
+          description: 'Consulta a base somente-leitura de pedidos (ai_orders_view) para obter status, prazos, clientes e valores.',
+          parameters: {
+            type: 'OBJECT',
+            properties: {
+              status: {
+                type: 'STRING',
+                enum: ['pending', 'in-progress', 'completed', 'cancelled', 'all'],
+                description: 'Filtro por status do pedido (pending, in-progress, completed, cancelled ou all)'
+              },
+              paymentStatus: {
+                type: 'STRING',
+                enum: ['pending', 'partial', 'paid', 'all'],
+                description: 'Filtro por status de pagamento'
+              },
+              searchTerm: {
+                type: 'STRING',
+                description: 'Termo de busca para nome do cliente, produto ou telefone'
+              },
+              limit: {
+                type: 'INTEGER',
+                description: 'Quantidade máxima de registros a retornar (máximo 30)'
+              }
+            }
+          }
+        },
+        {
+          name: 'extract_order_draft',
+          description: 'Extrai dados estruturados de um novo pedido a partir de uma mensagem ou conversa para pré-preenchimento.',
+          parameters: {
+            type: 'OBJECT',
+            properties: {
+              customerName: { type: 'STRING', description: 'Nome do cliente' },
+              customerPhone: { type: 'STRING', description: 'Telefone de contato' },
+              productName: { type: 'STRING', description: 'Nome e especificações do produto (ex: Camiseta Algodão Silk)' },
+              quantity: { type: 'INTEGER', description: 'Quantidade de peças' },
+              totalPrice: { type: 'NUMBER', description: 'Valor total do pedido em reais' },
+              deliveryDate: { type: 'STRING', description: 'Data de entrega estimada no formato YYYY-MM-DD' },
+              notes: { type: 'STRING', description: 'Observações, estampas ou detalhes' },
+              paymentMethod: { type: 'STRING', enum: ['pix', 'cash', 'credit', 'debit', 'other'] }
+            },
+            required: ['customerName', 'productName']
+          }
+        }
+      ]
+    }
+  ];
+
+  // Helper para consultar a base somente leitura do Firestore
+  const executeQueryOrdersView = async (args = {}) => {
+    let query = admin.firestore().collection('ai_orders_view');
+    if (args.status && args.status !== 'all') {
+      query = query.where('status', '==', args.status);
+    }
+    if (args.paymentStatus && args.paymentStatus !== 'all') {
+      query = query.where('paymentStatus', '==', args.paymentStatus);
+    }
+    const maxLimit = Math.min(Math.max(Number(args.limit) || 20, 1), 30);
+    const snap = await query.limit(maxLimit).get();
+
+    let docs = snap.docs.map(d => d.data());
+    if (args.searchTerm && typeof args.searchTerm === 'string') {
+      const term = args.searchTerm.toLowerCase().trim();
+      docs = docs.filter(d =>
+        (d.customerName && d.customerName.toLowerCase().includes(term)) ||
+        (d.productSummary && d.productSummary.toLowerCase().includes(term)) ||
+        (d.customerPhone && d.customerPhone.includes(term))
+      );
+    }
+    return docs;
+  };
+
+  // Monta histórico de mensagens
+  const contents = [];
+  if (Array.isArray(history)) {
+    for (const item of history.slice(-6)) {
+      if (item.role && item.text) {
+        contents.push({
+          role: item.role === 'user' ? 'user' : 'model',
+          parts: [{ text: item.text }]
+        });
+      }
+    }
+  }
+  contents.push({
+    role: 'user',
+    parts: [{ text: message }]
+  });
+
+  const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+
+  try {
+    const geminiPayload = {
+      system_instruction: { parts: [{ text: systemInstruction }] },
+      contents,
+      tools: toolsDeclaration,
+      generationConfig: { temperature: 0.2 }
+    };
+
+    const firstResp = await fetch(apiUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(geminiPayload)
+    });
+
+    if (!firstResp.ok) {
+      const errText = await firstResp.text();
+      console.error('[aiAgentChat] Erro na API Gemini:', firstResp.status, errText);
+      throw new functions.https.HttpsError('internal', 'Falha ao processar solicitação com o modelo de IA.');
+    }
+
+    const firstResult = await firstResp.json();
+    const candidate = firstResult?.candidates?.[0];
+    const parts = candidate?.content?.parts || [];
+    const functionCallPart = parts.find(p => p.functionCall);
+
+    let finalAnswer = '';
+    let extractedDraft = null;
+
+    if (functionCallPart) {
+      const { name, args } = functionCallPart.functionCall;
+
+      if (name === 'extract_order_draft') {
+        extractedDraft = args;
+        finalAnswer = `Identifiquei os dados do pedido para **${args.customerName || 'o cliente'}**! Você pode conferir os detalhes e carregar diretamente no formulário de pedido abaixo.`;
+      } else if (name === 'query_orders_view') {
+        const queryResults = await executeQueryOrdersView(args);
+        
+        // Segunda chamada para o Gemini formular a resposta final com os dados consultados
+        const followUpContents = [
+          ...contents,
+          { role: 'model', parts: [{ functionCall: functionCallPart.functionCall }] },
+          {
+            role: 'user',
+            parts: [{
+              functionResponse: {
+                name: 'query_orders_view',
+                response: { results: queryResults, totalFound: queryResults.length }
+              }
+            }]
+          }
+        ];
+
+        const followUpResp = await fetch(apiUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            system_instruction: { parts: [{ text: systemInstruction }] },
+            contents: followUpContents,
+            generationConfig: { temperature: 0.2 }
+          })
+        });
+
+        if (followUpResp.ok) {
+          const followUpResult = await followUpResp.json();
+          finalAnswer = followUpResult?.candidates?.[0]?.content?.parts?.[0]?.text || 'Consulta realizada com sucesso.';
+        } else {
+          finalAnswer = `Encontrei ${queryResults.length} pedido(s) correspondente(s) na base.`;
+        }
+      }
+    } else {
+      finalAnswer = parts.map(p => p.text).filter(Boolean).join('\n') || 'Como posso ajudar você hoje?';
+    }
+
+    return {
+      success: true,
+      reply: finalAnswer,
+      orderDraft: extractedDraft,
+    };
+  } catch (error) {
+    if (error instanceof functions.https.HttpsError) throw error;
+    console.error('[aiAgentChat] Erro inesperado:', error);
+    throw new functions.https.HttpsError('internal', 'Erro ao executar o copiloto de IA.');
+  }
+});
+
 
 
