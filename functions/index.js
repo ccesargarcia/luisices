@@ -992,24 +992,39 @@ const buildAiOrderDoc = (orderId, data = {}) => {
   const status = isDeleted ? 'deleted' : (data.status || 'pending');
   const paymentStatus = data.payment?.status || data.paymentStatus || 'pending';
   const paymentMethod = data.payment?.method || data.paymentMethod || null;
+
+  // Cálculo financeiro preciso alinhado com Reports.tsx
+  const paidAmount = data.payment?.paidAmount !== undefined
+    ? Number(data.payment.paidAmount)
+    : (paymentStatus === 'paid' ? totalPrice : 0);
+  const remainingAmount = data.payment?.remainingAmount !== undefined
+    ? Number(data.payment.remainingAmount)
+    : (paymentStatus === 'paid' ? 0 : Math.max(0, totalPrice - paidAmount));
+
   const deliveryDate = data.deliveryDate || null;
   const customerName = data.customerName || data.customer?.name || 'Cliente sem nome';
   const customerPhone = data.customerPhone || data.customer?.phone || '';
+  const customerId = data.customerId || data.customer?.id || null;
   const notes = data.notes || '';
   const orderNumber = data.orderNumber || `#${orderId}`;
   const isExchange = Boolean(data.isExchange);
   const cancellationReason = data.cancellationReason || data.cancelReason || null;
+  const userId = data.userId || data.createdBy || null;
+  const createdBy = data.createdBy || data.userId || null;
 
   return {
     orderId,
-    userId: data.userId || data.createdBy || null,
-    createdBy: data.createdBy || data.userId || null,
+    userId,
+    createdBy,
+    customerId,
     orderNumber,
     customerName,
     customerPhone,
     productSummary,
     quantity,
     totalPrice,
+    paidAmount,
+    remainingAmount,
     status,
     paymentStatus,
     paymentMethod,
@@ -1178,12 +1193,14 @@ exports.aiAgentChat = onCall({ secrets: [GEMINI_API_KEY] }, async (request) => {
   const systemInstruction = `Você é o Copiloto Interno da Luisices (confecção/gráfica especializada em camisetas, brindes e personalizados).
 Seu papel é atuar como o assistente e guia inteligente da equipe administrativa e operacional.
 
-Você possui 5 responsabilidades principais com ferramentas especializadas:
-1. CONSULTA DE DADOS & AUDITORIA ('query_orders_view'): Consultar prazos, pedidos pendentes, concluídos, cancelados ou excluídos da base.
-2. BRIEFING OPERACIONAL DIÁRIO ('daily_briefing'): Raio-X diário de produção, pedidos urgentes/atrasados, entregas de hoje e pendências financeiras.
-3. GERADOR DE MENSAGENS WHATSAPP ('generate_whatsapp_message'): Gerar rascunhos de mensagens para o WhatsApp do cliente (cobrança amigável de sinal/restante, status de produção, aviso de retirada pronta, confirmação de pedido ou orçamento).
-4. CALCULADORA DE PRECIFICAÇÃO & ORÇAMENTOS ('calculate_pricing_estimate'): Calcular custos aproximados, margem de lucro e preço de venda sugerido para personalizações (camisetas, canecas, ecobags, etc.).
-5. EXTRAÇÃO DE PEDIDOS ('extract_order_draft'): Estruturar pedidos a partir de conversas e mensagens de clientes (WhatsApp/áudio).
+Você possui 6 responsabilidades principais com ferramentas especializadas:
+1. CONSULTA DE DADOS & AUDITORIA ('query_orders_view'): Consultar status de pedidos, prazos de entrega, pedidos pendentes, concluídos, cancelados ou excluídos da base.
+2. RESUMO FINANCEIRO & MÉTRICAS ('get_financial_summary'): Consultar faturamento realizado, total efetivamente recebido, valores pendentes a receber, volume total emitido, ticket médio e taxa de conclusão por período ('today', 'week', 'month', 'year', 'all'). SEMPRE acione esta ferramenta para qualquer pergunta sobre faturamento, receita, saldo a receber, ticket médio, métricas financeiras ou movimentação monetária.
+3. BRIEFING OPERACIONAL DIÁRIO ('daily_briefing'): Raio-X diário de produção, pedidos urgentes/atrasados, entregas de hoje e pendências financeiras imediatas.
+4. CONSULTA DE CLIENTES ('query_customers'): Buscar clientes cadastrados por nome, telefone, e-mail ou cidade para histórico e contato.
+5. GERADOR DE MENSAGENS WHATSAPP ('generate_whatsapp_message'): Gerar rascunhos de mensagens para o WhatsApp do cliente (cobrança amigável de sinal/restante, status de produção, aviso de retirada pronta, confirmação de pedido ou orçamento).
+6. CALCULADORA DE PRECIFICAÇÃO & ORÇAMENTOS ('calculate_pricing_estimate'): Calcular custos aproximados, margem de lucro e preço de venda sugerido para personalizações (camisetas, canecas, ecobags, etc.).
+7. EXTRAÇÃO DE PEDIDOS ('extract_order_draft'): Estruturar pedidos a partir de conversas e mensagens de clientes (WhatsApp/áudio).
 
 ---
 🛡️ GUARDRAILS CRÍTICOS DE SEGURANÇA E CONFORMIDADE:
@@ -1241,6 +1258,20 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
               limit: {
                 type: 'INTEGER',
                 description: 'Quantidade máxima de registros a retornar (máximo 30)'
+              }
+            }
+          }
+        },
+        {
+          name: 'get_financial_summary',
+          description: 'Consulta o resumo financeiro exato (faturamento realizado de concluídos, total a receber/pendente, volume total emitido, ticket médio e contagem de pedidos) para um período específico (today, week, month, year, all). Os cálculos seguem estritamente as regras oficiais dos Relatórios.',
+          parameters: {
+            type: 'OBJECT',
+            properties: {
+              period: {
+                type: 'STRING',
+                enum: ['today', 'week', 'month', 'year', 'all'],
+                description: 'Período para análise financeira: today (hoje), week (últimos 7 dias), month (mês atual/30 dias), year (ano atual), all (todo o histórico)'
               }
             }
           }
@@ -1329,77 +1360,89 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
     }
   ];
 
-  // Helper para consultar a base somente leitura do Firestore com merge em tempo real e isolamento por usuário
+  // Helper central de busca e blindagem estrita de pedidos
+  const fetchScopedOrders = async () => {
+    let docs = [];
+    if (isAdmin) {
+      const [viewSnap, prodSnap] = await Promise.all([
+        admin.firestore().collection('ai_orders_view').get(),
+        admin.firestore().collection('orders').limit(200).get(),
+      ]);
+      const map = new Map();
+      viewSnap.docs.forEach((d) => map.set(d.id, d.data()));
+      prodSnap.docs.forEach((d) => {
+        if (!map.has(d.id)) {
+          map.set(d.id, buildAiOrderDoc(d.id, d.data()));
+        }
+      });
+      docs = Array.from(map.values());
+    } else {
+      const [viewUserSnap, viewCreatedSnap, prodUserSnap, prodCreatedSnap] = await Promise.all([
+        admin.firestore().collection('ai_orders_view').where('userId', '==', callerUid).get(),
+        admin.firestore().collection('ai_orders_view').where('createdBy', '==', callerUid).get(),
+        admin.firestore().collection('orders').where('userId', '==', callerUid).limit(200).get(),
+        admin.firestore().collection('orders').where('createdBy', '==', callerUid).limit(200).get(),
+      ]);
+      const map = new Map();
+      viewUserSnap.docs.forEach((d) => map.set(d.id, d.data()));
+      viewCreatedSnap.docs.forEach((d) => map.set(d.id, d.data()));
+      prodUserSnap.docs.forEach((d) => {
+        if (!map.has(d.id)) {
+          map.set(d.id, buildAiOrderDoc(d.id, d.data()));
+        }
+      });
+      prodCreatedSnap.docs.forEach((d) => {
+        if (!map.has(d.id)) {
+          map.set(d.id, buildAiOrderDoc(d.id, d.data()));
+        }
+      });
+      // BLINDAGEM INFALÍVEL: Filtra exclusivamente pedidos pertencentes a callerUid
+      docs = Array.from(map.values()).filter((d) => {
+        const uid = String(callerUid);
+        return d.userId === uid || d.createdBy === uid;
+      });
+    }
+    return docs;
+  };
+
+  // Helper para consultar a base de pedidos com filtros e isolamento
   const executeQueryOrdersView = async (args = {}) => {
-    // 1. Busca os documentos da visão da IA
-    let snap;
-    if (isAdmin) {
-      snap = await admin.firestore().collection('ai_orders_view').get();
-    } else {
-      snap = await admin.firestore().collection('ai_orders_view').where('userId', '==', callerUid).get();
-    }
-    let docs = snap.docs.map(d => d.data());
+    let docs = await fetchScopedOrders();
 
-    // 2. Busca os pedidos recentes diretamente de 'orders' para garantir que pedidos recém-criados nunca falhem
-    let prodSnap;
-    if (isAdmin) {
-      prodSnap = await admin.firestore().collection('orders').limit(100).get();
-    } else {
-      prodSnap = await admin.firestore().collection('orders').where('userId', '==', callerUid).limit(100).get();
-    }
-    const prodDocs = prodSnap.docs.map(d => buildAiOrderDoc(d.id, d.data()));
-
-    const viewMap = new Map();
-    // Prioriza dados de ai_orders_view (para preservar pedidos arquivados/excluídos)
-    for (const d of docs) {
-      viewMap.set(d.orderId, d);
-    }
-    // Mescla qualquer pedido novo que ainda esteja em trânsito de sincronização
-    for (const p of prodDocs) {
-      if (!viewMap.has(p.orderId)) {
-        viewMap.set(p.orderId, p);
-      }
-    }
-    docs = Array.from(viewMap.values());
-
-    // Guardrail: Se não for admin, garante estritamente que só vê seus pedidos
-    if (!isAdmin) {
-      docs = docs.filter(d => d.userId === callerUid || d.createdBy === callerUid);
-    }
-
-    // 3. Ordena os pedidos do mais recente para o mais antigo
+    // 1. Ordena os pedidos do mais recente para o mais antigo
     docs.sort((a, b) => {
       const dateA = new Date(a.createdAt || 0).getTime();
       const dateB = new Date(b.createdAt || 0).getTime();
       return dateB - dateA;
     });
 
-    // 4. Aplica filtros de status com precisão
+    // 2. Aplica filtros de status com precisão
     if (args.status && args.status !== 'all') {
       if (args.status === 'deleted') {
-        docs = docs.filter(d => d.isDeleted || d.status === 'deleted');
+        docs = docs.filter((d) => d.isDeleted || d.status === 'deleted');
       } else {
-        docs = docs.filter(d => d.status === args.status && !d.isDeleted);
+        docs = docs.filter((d) => d.status === args.status && !d.isDeleted);
       }
     } else if (!args.status || (args.status !== 'deleted' && args.status !== 'all')) {
       // Por padrão, oculta pedidos excluídos caso não seja solicitado
-      docs = docs.filter(d => !d.isDeleted && d.status !== 'deleted');
+      docs = docs.filter((d) => !d.isDeleted && d.status !== 'deleted');
     }
 
-    // 5. Filtro de status de pagamento
+    // 3. Filtro de status de pagamento
     if (args.paymentStatus && args.paymentStatus !== 'all') {
-      docs = docs.filter(d => d.paymentStatus === args.paymentStatus);
+      docs = docs.filter((d) => d.paymentStatus === args.paymentStatus);
     }
 
-    // 6. Busca por termos no cliente, produto, telefone, número do pedido ou observações
+    // 4. Busca por termos no cliente, produto, telefone, número do pedido ou observações
     if (args.searchTerm && typeof args.searchTerm === 'string') {
       const term = args.searchTerm.toLowerCase().trim();
-      docs = docs.filter(d =>
-        (d.customerName && d.customerName.toLowerCase().includes(term)) ||
-        (d.productSummary && d.productSummary.toLowerCase().includes(term)) ||
-        (d.customerPhone && d.customerPhone.includes(term)) ||
-        (d.orderNumber && d.orderNumber.toLowerCase().includes(term)) ||
-        (d.notes && d.notes.toLowerCase().includes(term))
+      docs = docs.filter(
+        (d) =>
+          (d.customerName && d.customerName.toLowerCase().includes(term)) ||
+          (d.productSummary && d.productSummary.toLowerCase().includes(term)) ||
+          (d.customerPhone && d.customerPhone.includes(term)) ||
+          (d.orderNumber && d.orderNumber.toLowerCase().includes(term)) ||
+          (d.notes && d.notes.toLowerCase().includes(term))
       );
     }
 
@@ -1407,42 +1450,106 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
     return docs.slice(0, maxLimit);
   };
 
-  // Helper para gerar o Daily Briefing com isolamento por usuário
+  // Helper para cálculo financeiro exato alinhado com Reports.tsx
+  const executeFinancialSummary = async (args = {}) => {
+    const rawOrders = await fetchScopedOrders();
+    const now = new Date();
+    const period = args.period || 'month';
+
+    let startDate = new Date(2000, 0, 1);
+    let endDate = new Date(2100, 0, 1);
+
+    if (period === 'today') {
+      startDate = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 0, 0));
+      endDate = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 23, 59, 59));
+    } else if (period === 'week') {
+      startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+      endDate = now;
+    } else if (period === 'month') {
+      startDate = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1, 0, 0, 0));
+      endDate = now;
+    } else if (period === 'year') {
+      startDate = new Date(Date.UTC(now.getUTCFullYear(), 0, 1, 0, 0, 0));
+      endDate = now;
+    }
+
+    const filtered = rawOrders.filter((o) => {
+      if (o.isDeleted) return false;
+      if (period === 'all') return true;
+      const orderDate = new Date(o.createdAt || o.deliveryDate || now);
+      return orderDate >= startDate && orderDate <= endDate;
+    });
+
+    const validOrders = filtered.filter((o) => o.status !== 'cancelled');
+    const completedOrders = filtered.filter((o) => o.status === 'completed');
+    const inProgressOrders = filtered.filter((o) => o.status === 'in-progress');
+    const pendingOrders = filtered.filter((o) => o.status === 'pending');
+    const cancelledOrders = filtered.filter((o) => o.status === 'cancelled');
+
+    // Faturamento Realizado: soma apenas de pedidos Concluídos
+    const realizedRevenue = completedOrders.reduce((sum, o) => sum + (Number(o.totalPrice) || 0), 0);
+
+    // Volume Total Emitido: soma de todos os pedidos válidos (não cancelados)
+    const grossIssuedVolume = validOrders.reduce((sum, o) => sum + (Number(o.totalPrice) || 0), 0);
+
+    // Total já recebido (sinais e pagamentos integrais)
+    const totalReceived = validOrders.reduce((sum, o) => sum + (Number(o.paidAmount) || 0), 0);
+
+    // Saldo pendente a receber (remainingAmount real)
+    const pendingReceivables = validOrders
+      .filter((o) => o.paymentStatus !== 'paid')
+      .reduce((sum, o) => sum + (Number(o.remainingAmount !== undefined ? o.remainingAmount : o.totalPrice) || 0), 0);
+
+    // Ticket Médio
+    const averageTicket =
+      completedOrders.length > 0
+        ? realizedRevenue / completedOrders.length
+        : validOrders.length > 0
+        ? grossIssuedVolume / validOrders.length
+        : 0;
+
+    const conversionRate = validOrders.length > 0 ? (completedOrders.length / validOrders.length) * 100 : 0;
+
+    return {
+      period,
+      faturamentoRealizado: Number(realizedRevenue.toFixed(2)),
+      volumeTotalEmitido: Number(grossIssuedVolume.toFixed(2)),
+      totalRecebido: Number(totalReceived.toFixed(2)),
+      totalPendenteReceber: Number(pendingReceivables.toFixed(2)),
+      ticketMedio: Number(averageTicket.toFixed(2)),
+      taxaConversao: Number(conversionRate.toFixed(1)),
+      pedidosConcluidos: completedOrders.length,
+      pedidosEmProducao: inProgressOrders.length,
+      pedidosPendentes: pendingOrders.length,
+      pedidosCancelados: cancelledOrders.length,
+      totalPedidosValidos: validOrders.length,
+    };
+  };
+
+  // Helper para gerar o Daily Briefing com isolamento por usuário e cálculo financeiro alinhado
   const executeDailyBriefing = async () => {
-    let snap;
-    if (isAdmin) {
-      snap = await admin.firestore().collection('ai_orders_view').limit(100).get();
-    } else {
-      snap = await admin.firestore().collection('ai_orders_view').where('userId', '==', callerUid).limit(100).get();
-    }
-    let orders = snap.docs.map(d => d.data()).filter(o => !o.isDeleted);
-
-    // Se ai_orders_view vazia, busca em orders
-    if (orders.length === 0) {
-      let prodSnap;
-      if (isAdmin) {
-        prodSnap = await admin.firestore().collection('orders').limit(100).get();
-      } else {
-        prodSnap = await admin.firestore().collection('orders').where('userId', '==', callerUid).limit(100).get();
-      }
-      orders = prodSnap.docs.map(d => buildAiOrderDoc(d.id, d.data()));
-    }
-
-    // Guardrail: Se não for admin, isola estritamente os pedidos do usuário
-    if (!isAdmin) {
-      orders = orders.filter(o => o.userId === callerUid || o.createdBy === callerUid);
-    }
-
+    const orders = (await fetchScopedOrders()).filter((o) => !o.isDeleted);
     const todayDate = new Date().toISOString().split('T')[0];
 
-    const delayedOrders = orders.filter(o =>
-      o.deliveryDate && o.deliveryDate < todayDate && o.status !== 'completed' && o.status !== 'cancelled'
+    const delayedOrders = orders.filter(
+      (o) =>
+        o.deliveryDate &&
+        o.deliveryDate < todayDate &&
+        o.status !== 'completed' &&
+        o.status !== 'cancelled'
     );
-    const todayDeliveries = orders.filter(o => o.deliveryDate === todayDate && o.status !== 'cancelled');
-    const inProgressOrders = orders.filter(o => o.status === 'in-progress');
-    const pendingPaymentOrders = orders.filter(o => o.paymentStatus !== 'paid' && o.status !== 'cancelled');
+    const todayDeliveries = orders.filter((o) => o.deliveryDate === todayDate && o.status !== 'cancelled');
+    const inProgressOrders = orders.filter((o) => o.status === 'in-progress');
+    const completedOrders = orders.filter((o) => o.status === 'completed');
+    const validOrders = orders.filter((o) => o.status !== 'cancelled');
 
-    const pendingPaymentTotal = pendingPaymentOrders.reduce((acc, curr) => acc + (Number(curr.totalPrice) || 0), 0);
+    const pendingPaymentOrders = validOrders.filter((o) => o.paymentStatus !== 'paid');
+    const pendingPaymentTotal = pendingPaymentOrders.reduce(
+      (acc, curr) => acc + (Number(curr.remainingAmount !== undefined ? curr.remainingAmount : curr.totalPrice) || 0),
+      0
+    );
+    const realizedRevenue = completedOrders.reduce((acc, curr) => acc + (Number(curr.totalPrice) || 0), 0);
+    const totalReceived = validOrders.reduce((acc, curr) => acc + (Number(curr.paidAmount) || 0), 0);
 
     return {
       todayDate,
@@ -1451,22 +1558,35 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
       todayDeliveriesCount: todayDeliveries.length,
       todayDeliveries: todayDeliveries.slice(0, 5),
       inProgressCount: inProgressOrders.length,
+      completedCount: completedOrders.length,
+      realizedRevenue,
+      totalReceived,
       pendingPaymentCount: pendingPaymentOrders.length,
       pendingPaymentTotal,
     };
   };
 
-  // Helper para consultar a base de clientes cadastrados com isolamento por usuário
+  // Helper para consultar a base de clientes cadastrados com isolamento estrito
   const executeQueryCustomers = async (args = {}) => {
     try {
       let snap;
       if (isAdmin) {
-        snap = await admin.firestore().collection('customers').limit(100).get();
+        snap = await admin.firestore().collection('customers').limit(150).get();
       } else {
-        snap = await admin.firestore().collection('customers').where('userId', '==', callerUid).limit(100).get();
+        const [userSnap, createdSnap] = await Promise.all([
+          admin.firestore().collection('customers').where('userId', '==', callerUid).limit(150).get(),
+          admin.firestore().collection('customers').where('createdBy', '==', callerUid).limit(150).get(),
+        ]);
+        const map = new Map();
+        userSnap.docs.forEach((d) => map.set(d.id, d));
+        createdSnap.docs.forEach((d) => map.set(d.id, d));
+        snap = { docs: Array.from(map.values()) };
       }
-      let customers = snap.docs.map(d => ({
+
+      let customers = snap.docs.map((d) => ({
         id: d.id,
+        userId: d.data().userId || d.data().createdBy || null,
+        createdBy: d.data().createdBy || d.data().userId || null,
         name: d.data().name || '',
         phone: d.data().phone || '',
         email: d.data().email || '',
@@ -1478,13 +1598,20 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
         createdAt: d.data().createdAt || '',
       }));
 
+      // Blindagem estrita de clientes para não-admins
+      if (!isAdmin) {
+        const uid = String(callerUid);
+        customers = customers.filter((c) => c.userId === uid || c.createdBy === uid);
+      }
+
       if (args.searchTerm && typeof args.searchTerm === 'string') {
         const term = args.searchTerm.toLowerCase().trim();
-        customers = customers.filter(c =>
-          (c.name && c.name.toLowerCase().includes(term)) ||
-          (c.phone && c.phone.includes(term)) ||
-          (c.email && c.email.toLowerCase().includes(term)) ||
-          (c.city && c.city.toLowerCase().includes(term))
+        customers = customers.filter(
+          (c) =>
+            (c.name && c.name.toLowerCase().includes(term)) ||
+            (c.phone && c.phone.includes(term)) ||
+            (c.email && c.email.toLowerCase().includes(term)) ||
+            (c.city && c.city.toLowerCase().includes(term))
         );
       }
 
@@ -1507,33 +1634,21 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
 
     try {
       const term = customerName.toLowerCase().trim();
-      // 1. Busca na coleção customers
-      let custSnap;
-      if (isAdmin) {
-        custSnap = await admin.firestore().collection('customers').limit(100).get();
-      } else {
-        custSnap = await admin.firestore().collection('customers').where('userId', '==', callerUid).limit(100).get();
-      }
-      for (const doc of custSnap.docs) {
-        const data = doc.data();
-        const docName = String(data.name || '').toLowerCase().trim();
+      // 1. Busca nos clientes isolados
+      const customers = await executeQueryCustomers({ searchTerm: term, limit: 10 });
+      for (const c of customers) {
+        const docName = String(c.name || '').toLowerCase().trim();
         if (docName && (docName.includes(term) || term.includes(docName))) {
-          if (data.phone) return data.phone;
+          if (c.phone) return c.phone;
         }
       }
 
-      // 2. Busca na coleção orders
-      let orderSnap;
-      if (isAdmin) {
-        orderSnap = await admin.firestore().collection('orders').limit(100).get();
-      } else {
-        orderSnap = await admin.firestore().collection('orders').where('userId', '==', callerUid).limit(100).get();
-      }
-      for (const doc of orderSnap.docs) {
-        const data = doc.data();
-        const ordName = String(data.customerName || '').toLowerCase().trim();
+      // 2. Busca nos pedidos isolados
+      const orders = await fetchScopedOrders();
+      for (const o of orders) {
+        const ordName = String(o.customerName || '').toLowerCase().trim();
         if (ordName && (ordName.includes(term) || term.includes(ordName))) {
-          if (data.customerPhone) return data.customerPhone;
+          if (o.customerPhone) return o.customerPhone;
         }
       }
     } catch (err) {
@@ -1747,6 +1862,39 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
         briefingText += `💰 **Valores Pendentes a Receber:** ${formattedPending} (${briefing.pendingPaymentCount} pedidos com pagamento pendente)\n`;
 
         finalAnswer = briefingText;
+      } else if (name === 'get_financial_summary') {
+        const finSummary = await executeFinancialSummary(args.period || 'month');
+        const periodLabels = {
+          today: 'Hoje',
+          week: 'Últimos 7 dias',
+          month: 'Mês Atual / 30 dias',
+          year: 'Ano Atual',
+          all: 'Todo o Histórico',
+        };
+        const periodLabel = periodLabels[finSummary.period] || finSummary.period;
+        const fmtFaturamento = Number(finSummary.faturamentoRealizado || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+        const fmtRecebido = Number(finSummary.totalRecebido || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+        const fmtPendente = Number(finSummary.totalPendenteReceber || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+        const fmtVolume = Number(finSummary.volumeTotalEmitido || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+        const fmtTicket = Number(finSummary.ticketMedio || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
+        let report = `💰 **Resumo Financeiro e Movimentação (${periodLabel}):**\n\n`;
+        report += `• **Faturamento Realizado (Concluídos):** ${fmtFaturamento} (${finSummary.pedidosConcluidos} pedidos)\n`;
+        report += `• **Total Efetivamente Recebido:** ${fmtRecebido}\n`;
+        report += `• **Valores a Receber (Pendente):** ${fmtPendente}\n`;
+        report += `• **Volume Total Emitido:** ${fmtVolume} (${finSummary.totalPedidosValidos} pedidos ativos)\n`;
+        report += `• **Ticket Médio:** ${fmtTicket}\n`;
+        if (finSummary.taxaConversao !== undefined) {
+          report += `• **Taxa de Conclusão:** ${finSummary.taxaConversao}%\n`;
+        }
+        report += `\n📦 **Status dos Pedidos no Período:**\n`;
+        report += `  - Concluídos: ${finSummary.pedidosConcluidos}\n`;
+        report += `  - Em Produção: ${finSummary.pedidosEmProducao}\n`;
+        report += `  - Pendentes: ${finSummary.pedidosPendentes}\n`;
+        if (finSummary.pedidosCancelados > 0) {
+          report += `  - Cancelados: ${finSummary.pedidosCancelados}\n`;
+        }
+        finalAnswer = report;
       } else if (name === 'query_orders_view') {
         const queryResults = await executeQueryOrdersView(args);
         
