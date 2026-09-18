@@ -1655,6 +1655,15 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
           const data = await resp.json();
           // Memoiza o modelo bem-sucedido para que todas as próximas chamadas sejam diretas nele
           preferredWorkingModel = model;
+
+          // Registra consumo exato por requisição HTTP para a API Gemini
+          admin.firestore().collection('ai_usage_logs').add({
+            userId: callerUid,
+            model: model,
+            timestamp: new Date().toISOString(),
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          }).catch((err) => console.warn('[aiAgentChat] Erro ao gravar ai_usage_logs:', err));
+
           return { data, modelUsed: model };
         }
 
@@ -1812,16 +1821,6 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
     } else {
       finalAnswer = cleanAiOutput(parts.map(p => p.text).filter(Boolean).join('\n')) || 'Como posso ajudar você hoje?';
     }
-
-    // Registra consumo de IA para monitoramento de quota
-    admin.firestore().collection('ai_usage_logs').add({
-      userId: callerUid,
-      model: preferredWorkingModel || 'gemini-2.0-flash',
-      promptLength: cleanMessage.length,
-      responseLength: finalAnswer.length,
-      timestamp: new Date().toISOString(),
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
-    }).catch((err) => console.warn('[aiAgentChat] Erro ao gravar ai_usage_logs:', err));
 
     // Salva no cache de respostas rápidas
     aiResponseCache.set(cacheKey, {
