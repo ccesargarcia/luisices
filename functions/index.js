@@ -956,23 +956,33 @@ const isAuthorizedEmployeeOrAdmin = async (request) => {
   return (data.role === 'admin' || data.role === 'funcionario') && data.active !== false;
 };
 
-/**
- * Converte um documento operacional de 'orders' em formato sanitizado e otimizado para IA
- */
+const parseFirestoreDate = (val) => {
+  if (!val) return new Date().toISOString();
+  if (typeof val === 'string') return val;
+  if (val && typeof val.toDate === 'function') return val.toDate().toISOString();
+  if (val && val._seconds) return new Date(val._seconds * 1000).toISOString();
+  if (val && val.seconds) return new Date(val.seconds * 1000).toISOString();
+  try {
+    return new Date(val).toISOString();
+  } catch {
+    return new Date().toISOString();
+  }
+};
+
 /**
  * Converte um documento operacional de 'orders' em formato sanitizado e otimizado para IA
  */
 const buildAiOrderDoc = (orderId, data = {}) => {
-  const productSummary = data.productName || 'Não especificado';
-  const quantity = Number(data.quantity) || 1;
-  const totalPrice = Number(data.price) || 0;
+  const productSummary = data.productName || data.items?.[0]?.name || data.items?.[0]?.productName || 'Não especificado';
+  const quantity = Number(data.quantity) || Number(data.items?.[0]?.quantity) || 1;
+  const totalPrice = Number(data.price) || Number(data.totalPrice) || Number(data.total) || 0;
   const isDeleted = Boolean(data.isDeleted) || data.status === 'deleted';
   const status = isDeleted ? 'deleted' : (data.status || 'pending');
-  const paymentStatus = data.payment?.status || 'pending';
-  const paymentMethod = data.payment?.method || null;
+  const paymentStatus = data.payment?.status || data.paymentStatus || 'pending';
+  const paymentMethod = data.payment?.method || data.paymentMethod || null;
   const deliveryDate = data.deliveryDate || null;
-  const customerName = data.customerName || 'Cliente sem nome';
-  const customerPhone = data.customerPhone || '';
+  const customerName = data.customerName || data.customer?.name || 'Cliente sem nome';
+  const customerPhone = data.customerPhone || data.customer?.phone || '';
   const notes = data.notes || '';
   const orderNumber = data.orderNumber || `#${orderId}`;
   const isExchange = Boolean(data.isExchange);
@@ -994,8 +1004,8 @@ const buildAiOrderDoc = (orderId, data = {}) => {
     isExchange,
     isDeleted,
     cancellationReason,
-    createdAt: data.createdAt || new Date().toISOString(),
-    deletedAt: data.deletedAt || (isDeleted ? new Date().toISOString() : null),
+    createdAt: parseFirestoreDate(data.createdAt),
+    deletedAt: data.deletedAt ? parseFirestoreDate(data.deletedAt) : (isDeleted ? new Date().toISOString() : null),
     updatedAt: admin.firestore.FieldValue.serverTimestamp(),
   };
 };
@@ -1275,56 +1285,67 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
     }
   ];
 
-  // Helper para consultar a base somente leitura do Firestore
+  // Helper para consultar a base somente leitura do Firestore com merge em tempo real
   const executeQueryOrdersView = async (args = {}) => {
-    let query = admin.firestore().collection('ai_orders_view');
-    
-    if (args.status && args.status !== 'all') {
-      if (args.status === 'deleted') {
-        query = query.where('isDeleted', '==', true);
-      } else {
-        query = query.where('status', '==', args.status);
-      }
-    }
-    if (args.paymentStatus && args.paymentStatus !== 'all') {
-      query = query.where('paymentStatus', '==', args.paymentStatus);
-    }
-    
-    const maxLimit = Math.min(Math.max(Number(args.limit) || 20, 1), 30);
-    const snap = await query.limit(maxLimit).get();
-
+    // 1. Busca os documentos da visão da IA
+    const snap = await admin.firestore().collection('ai_orders_view').get();
     let docs = snap.docs.map(d => d.data());
 
-    // Fallback: se buscou excluídos e a query por isDeleted não achou, tenta por status=='deleted'
-    if (args.status === 'deleted' && docs.length === 0) {
-      const altSnap = await admin.firestore().collection('ai_orders_view').where('status', '==', 'deleted').limit(maxLimit).get();
-      docs = altSnap.docs.map(d => d.data());
-    }
+    // 2. Busca os pedidos recentes diretamente de 'orders' para garantir que pedidos recém-criados nunca falhem
+    const prodSnap = await admin.firestore().collection('orders').limit(100).get();
+    const prodDocs = prodSnap.docs.map(d => buildAiOrderDoc(d.id, d.data()));
 
-    // Se a ai_orders_view ainda não foi populada, busca fallback em orders
-    if (docs.length === 0 && args.status !== 'deleted') {
-      let prodQuery = admin.firestore().collection('orders');
-      if (args.status && args.status !== 'all') {
-        prodQuery = prodQuery.where('status', '==', args.status);
+    const viewMap = new Map();
+    // Prioriza dados de ai_orders_view (para preservar pedidos arquivados/excluídos)
+    for (const d of docs) {
+      viewMap.set(d.orderId, d);
+    }
+    // Mescla qualquer pedido novo que ainda esteja em trânsito de sincronização
+    for (const p of prodDocs) {
+      if (!viewMap.has(p.orderId)) {
+        viewMap.set(p.orderId, p);
       }
-      const prodSnap = await prodQuery.limit(maxLimit).get();
-      docs = prodSnap.docs.map(d => buildAiOrderDoc(d.id, d.data()));
     }
+    docs = Array.from(viewMap.values());
 
-    // Se o usuário não pediu especificamente por excluídos e nem 'all', filtra excluídos por padrão
-    if (!args.status || (args.status !== 'deleted' && args.status !== 'all')) {
+    // 3. Ordena os pedidos do mais recente para o mais antigo
+    docs.sort((a, b) => {
+      const dateA = new Date(a.createdAt || 0).getTime();
+      const dateB = new Date(b.createdAt || 0).getTime();
+      return dateB - dateA;
+    });
+
+    // 4. Aplica filtros de status com precisão
+    if (args.status && args.status !== 'all') {
+      if (args.status === 'deleted') {
+        docs = docs.filter(d => d.isDeleted || d.status === 'deleted');
+      } else {
+        docs = docs.filter(d => d.status === args.status && !d.isDeleted);
+      }
+    } else if (!args.status || (args.status !== 'deleted' && args.status !== 'all')) {
+      // Por padrão, oculta pedidos excluídos caso não seja solicitado
       docs = docs.filter(d => !d.isDeleted && d.status !== 'deleted');
     }
 
+    // 5. Filtro de status de pagamento
+    if (args.paymentStatus && args.paymentStatus !== 'all') {
+      docs = docs.filter(d => d.paymentStatus === args.paymentStatus);
+    }
+
+    // 6. Busca por termos no cliente, produto, telefone, número do pedido ou observações
     if (args.searchTerm && typeof args.searchTerm === 'string') {
       const term = args.searchTerm.toLowerCase().trim();
       docs = docs.filter(d =>
         (d.customerName && d.customerName.toLowerCase().includes(term)) ||
         (d.productSummary && d.productSummary.toLowerCase().includes(term)) ||
-        (d.customerPhone && d.customerPhone.includes(term))
+        (d.customerPhone && d.customerPhone.includes(term)) ||
+        (d.orderNumber && d.orderNumber.toLowerCase().includes(term)) ||
+        (d.notes && d.notes.toLowerCase().includes(term))
       );
     }
-    return docs;
+
+    const maxLimit = Math.min(Math.max(Number(args.limit) || 30, 1), 50);
+    return docs.slice(0, maxLimit);
   };
 
   // Helper para gerar o Daily Briefing
