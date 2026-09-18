@@ -373,7 +373,7 @@ export function WhatsAppChat() {
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h1 className="text-base sm:text-lg font-bold text-foreground">Central WhatsApp</h1>
+              <h1 className="text-base sm:text-lg font-bold text-foreground">Central de Atendimento</h1>
               <Badge
                 variant="outline"
                 className={`text-[10px] gap-1 font-semibold ${
@@ -387,11 +387,11 @@ export function WhatsAppChat() {
                     instanceStatus?.connected ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'
                   }`}
                 />
-                {instanceStatus?.connected ? 'EVOLUTION API CONECTADA' : 'EVOLUTION API'}
+                {instanceStatus?.connected ? 'WHATSAPP CONECTADO' : 'EVOLUTION API'}
               </Badge>
             </div>
             <p className="text-xs text-muted-foreground hidden sm:block">
-              Envio direto via Evolution API, histórico em tempo real e modelos rápidos
+              Atendimento ao cliente via WhatsApp (Evolution API), histórico em tempo real e modelos rápidos
             </p>
           </div>
         </div>

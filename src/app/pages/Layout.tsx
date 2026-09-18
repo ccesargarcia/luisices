@@ -33,6 +33,8 @@ import { AiCopilotSheet } from '../components/AiCopilotSheet';
 import { NewOrderDialog } from '../components/NewOrderDialog';
 import { AiOrderDraft } from '../types';
 
+import { firebaseWhatsAppService } from '../../services/firebaseWhatsAppService';
+
 export function Layout() {
   const location = useLocation();
   const navigate = useNavigate();
@@ -42,6 +44,16 @@ export function Layout() {
   const [aiCopilotOpen, setAiCopilotOpen] = useState(false);
   const [aiOrderDraft, setAiOrderDraft] = useState<AiOrderDraft | null>(null);
   const [aiNewOrderModalOpen, setAiNewOrderModalOpen] = useState(false);
+  const [unreadWhatsAppCount, setUnreadWhatsAppCount] = useState(0);
+
+  // Escuta contagem de mensagens não lidas do WhatsApp em tempo real
+  useEffect(() => {
+    const unsubscribe = firebaseWhatsAppService.subscribeConversations((chats) => {
+      const totalUnread = chats.reduce((acc, c) => acc + (c.unreadCount || 0), 0);
+      setUnreadWhatsAppCount(totalUnread);
+    });
+    return () => unsubscribe();
+  }, []);
 
   const handleApplyAiOrderDraft = (draft: AiOrderDraft) => {
     setAiOrderDraft(draft);
@@ -93,7 +105,7 @@ export function Layout() {
     { name: 'Dashboard',       href: '/',           icon: LayoutDashboard, check: (p: any) => p.dashboard },
     { name: 'Agenda Semanal', href: '/agenda',      icon: Calendar,        check: (p: any) => p.orders?.view },
     { name: 'Clientes',       href: '/clientes',    icon: Users,           check: (p: any) => p.customers?.view },
-    { name: 'WhatsApp',       href: '/whatsapp',    icon: MessageSquare,   check: (p: any) => p.whatsapp ?? p.customers?.view ?? false, allowUserRole: true },
+    { name: 'Atendimento',    href: '/whatsapp',    icon: MessageSquare,   badge: unreadWhatsAppCount, check: (p: any) => p.whatsapp ?? p.customers?.view ?? false, allowUserRole: true },
     { name: 'Relatórios',     href: '/relatorios',  icon: BarChart3,       check: (p: any) => p.reports, allowUserRole: true },
     { name: 'Orçamentos',     href: '/orcamentos',  icon: FileText,        check: (p: any) => p.quotes?.view },
     { name: 'Produtos do Ateliê', href: '/produtos', icon: Package,        check: (p: any) => p.products?.view },
@@ -320,21 +332,37 @@ export function Layout() {
 
             // Caso 2: Item normal de navegação
             const isActive = location.pathname === item.href;
+            const badgeCount = item.badge ?? 0;
             return (
               <Link
                 key={item.href}
                 to={item.href}
-                title={sidebarCollapsed ? item.name : undefined}
+                title={sidebarCollapsed ? (badgeCount > 0 ? `${item.name} (${badgeCount} não lidas)` : item.name) : undefined}
                 className={cn(
-                  'flex items-center border-l-4 px-5 py-2 text-xs sm:text-sm font-medium transition-colors',
-                  sidebarCollapsed ? 'justify-center' : 'gap-3.5',
+                  'relative flex items-center border-l-4 px-5 py-2 text-xs sm:text-sm font-medium transition-colors',
+                  sidebarCollapsed ? 'justify-center' : 'justify-between',
                   isActive
                     ? 'border-primary bg-primary/10 text-primary'
                     : 'border-transparent text-muted-foreground hover:border-primary/30 hover:bg-primary/5 hover:text-foreground',
                 )}
               >
-                <item.icon className="size-5 shrink-0" />
-                <span className={cn('truncate transition-opacity duration-200', sidebarCollapsed ? 'hidden' : 'inline')}>{item.name}</span>
+                <div className="flex items-center gap-3.5 min-w-0">
+                  <div className="relative flex items-center justify-center">
+                    <item.icon className="size-5 shrink-0" />
+                    {sidebarCollapsed && badgeCount > 0 && (
+                      <span className="absolute -top-1 -right-1 size-2.5 rounded-full bg-emerald-600 ring-2 ring-background animate-pulse" />
+                    )}
+                  </div>
+                  <span className={cn('truncate transition-opacity duration-200', sidebarCollapsed ? 'hidden' : 'inline')}>
+                    {item.name}
+                  </span>
+                </div>
+
+                {!sidebarCollapsed && badgeCount > 0 && (
+                  <Badge className="bg-emerald-600 hover:bg-emerald-600 text-white text-[10px] h-4.5 px-1.5 font-bold rounded-full animate-pulse shadow-xs shrink-0 ml-1">
+                    {badgeCount > 99 ? '99+' : badgeCount}
+                  </Badge>
+                )}
               </Link>
             );
           })}
@@ -670,18 +698,24 @@ export function Layout() {
 
       {/* Navegação inferior — somente mobile */}
       <nav className="fixed inset-x-0 bottom-0 z-50 flex border-t border-white/40 bg-card/90 pb-[env(safe-area-inset-bottom)] backdrop-blur-2xl sm:hidden">
-        {mobilePrimaryNav.map((item) => {
+        {mobilePrimaryNav.map((item: any) => {
           const isActive = location.pathname === item.href;
+          const badgeCount = item.badge ?? 0;
           return (
             <Link
               key={item.href}
               to={item.href}
               className={cn(
-                'flex flex-1 flex-col items-center justify-center gap-0.5 py-2 text-[10px] font-medium transition-colors min-w-0',
+                'relative flex flex-1 flex-col items-center justify-center gap-0.5 py-2 text-[10px] font-medium transition-colors min-w-0',
                 isActive ? 'text-primary' : 'text-muted-foreground hover:text-foreground'
               )}
             >
-              <item.icon className="size-5 shrink-0" />
+              <div className="relative flex items-center justify-center">
+                <item.icon className="size-5 shrink-0" />
+                {badgeCount > 0 && (
+                  <span className="absolute -top-1 -right-1 size-2 rounded-full bg-emerald-600 ring-2 ring-card animate-pulse" />
+                )}
+              </div>
               <span className="truncate w-full text-center px-0.5 leading-tight">
                 {item.name.split(' ')[0]}
               </span>
@@ -694,23 +728,38 @@ export function Layout() {
               type="button"
               aria-label="Mais opções"
               className={cn(
-                'flex min-w-0 flex-1 flex-col items-center justify-center gap-0.5 py-2 text-[10px] font-medium text-muted-foreground transition-colors hover:text-foreground',
+                'relative flex min-w-0 flex-1 flex-col items-center justify-center gap-0.5 py-2 text-[10px] font-medium text-muted-foreground transition-colors hover:text-foreground',
                 mobileMoreNav.some((item) => location.pathname === item.href) && 'text-primary',
               )}
             >
-              <MoreHorizontal className="size-5 shrink-0" />
+              <div className="relative flex items-center justify-center">
+                <MoreHorizontal className="size-5 shrink-0" />
+                {mobileMoreNav.some((item: any) => (item.badge ?? 0) > 0) && (
+                  <span className="absolute -top-1 -right-1 size-2 rounded-full bg-emerald-600 ring-2 ring-card animate-pulse" />
+                )}
+              </div>
               <span className="truncate px-0.5 leading-tight">Mais</span>
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" side="top" sideOffset={8} className="mb-2 w-52">
-            {mobileMoreNav.map((item) => (
-              <DropdownMenuItem key={item.href} asChild>
-                <Link to={item.href} className="flex cursor-pointer items-center gap-2">
-                  <item.icon className="size-4" />
-                  {item.name}
-                </Link>
-              </DropdownMenuItem>
-            ))}
+            {mobileMoreNav.map((item: any) => {
+              const badgeCount = item.badge ?? 0;
+              return (
+                <DropdownMenuItem key={item.href} asChild>
+                  <Link to={item.href} className="flex cursor-pointer items-center justify-between w-full">
+                    <div className="flex items-center gap-2">
+                      <item.icon className="size-4" />
+                      <span>{item.name}</span>
+                    </div>
+                    {badgeCount > 0 && (
+                      <Badge className="bg-emerald-600 text-white text-[10px] h-4 px-1 font-bold">
+                        {badgeCount}
+                      </Badge>
+                    )}
+                  </Link>
+                </DropdownMenuItem>
+              );
+            })}
             <DropdownMenuSeparator />
             <DropdownMenuItem asChild>
               <Link to="/ajuda" className="flex cursor-pointer items-center gap-2">
