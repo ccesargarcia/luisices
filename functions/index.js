@@ -1292,15 +1292,54 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
     parts: [{ text: cleanMessage }]
   });
 
-  // Lista de modelos otimizada: apenas as versões mais modernas e rápidas do Gemini (2.0 / 2.5)
-  const candidateModels = [
-    process.env.GEMINI_MODEL,
-    preferredWorkingModel,
-    'gemini-2.0-flash',
-    'gemini-2.5-flash',
-    'gemini-2.0-flash-lite',
-    'gemini-2.5-pro',
-  ].filter((item, index, self) => Boolean(item) && self.indexOf(item) === index);
+  // Obtém dinamicamente os modelos suportados pela API key, priorizando versões Flash e mais modernas
+  const getCandidateModels = async () => {
+    if (cachedCandidateModels && cachedCandidateModels.length > 0 && Date.now() - cachedModelsTimestamp < 3600000) {
+      return cachedCandidateModels;
+    }
+
+    try {
+      const listResp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`);
+      if (listResp.ok) {
+        const listData = await listResp.json();
+        const available = (listData.models || [])
+          .filter(m => Array.isArray(m.supportedGenerationMethods) && m.supportedGenerationMethods.includes('generateContent'))
+          .map(m => m.name.replace(/^models\//, ''));
+
+        if (available.length > 0) {
+          // Prioriza modelos 'flash' rápidos, depois pro/preview
+          const flashModels = available.filter(m => m.includes('flash'));
+          const otherModels = available.filter(m => !m.includes('flash'));
+
+          cachedCandidateModels = [
+            process.env.GEMINI_MODEL,
+            preferredWorkingModel,
+            ...flashModels,
+            ...otherModels,
+            'gemini-3.1-pro-preview',
+            'gemini-3.0-flash',
+            'gemini-2.0-flash',
+          ].filter((item, index, self) => Boolean(item) && self.indexOf(item) === index);
+
+          cachedModelsTimestamp = Date.now();
+          console.log('[aiAgentChat] Modelos disponíveis detectados dinamicamente:', cachedCandidateModels);
+          return cachedCandidateModels;
+        }
+      }
+    } catch (err) {
+      console.warn('[aiAgentChat] Falha ao consultar endpoint de modelos:', err);
+    }
+
+    return [
+      process.env.GEMINI_MODEL,
+      preferredWorkingModel,
+      'gemini-3.1-pro-preview',
+      'gemini-3.0-flash',
+      'gemini-2.0-flash',
+    ].filter((item, index, self) => Boolean(item) && self.indexOf(item) === index);
+  };
+
+  const candidateModels = await getCandidateModels();
 
   const callGeminiWithFallback = async (payload) => {
     let lastError = null;
