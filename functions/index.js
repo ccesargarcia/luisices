@@ -1011,11 +1011,17 @@ const buildAiOrderDoc = (orderId, data = {}) => {
   const cancellationReason = data.cancellationReason || data.cancelReason || null;
   const userId = data.userId || data.createdBy || null;
   const createdBy = data.createdBy || data.userId || null;
+  const createdByName = data.createdByName || null;
+  const assignedTo = data.assignedTo || null;
+  const assignedToName = data.assignedToName || null;
 
   return {
     orderId,
     userId,
     createdBy,
+    createdByName,
+    assignedTo,
+    assignedToName,
     customerId,
     orderNumber,
     customerName,
@@ -1123,6 +1129,18 @@ let cachedModelsTimestamp = 0;
 
 // Cache global em memória para respostas rápidas (TTL de 3 minutos)
 const aiResponseCache = new Map();
+
+/**
+ * Normaliza strings para comparações insensíveis a maiúsculas e acentos
+ */
+const normalizeString = (str) => {
+  if (!str || typeof str !== 'string') return '';
+  return str
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim();
+};
 
 /**
  * Sanitiza o texto gerado pela IA para remover pensamentos/raciocínios internos vazados
@@ -1437,41 +1455,130 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
     return docs;
   };
 
-  // Helper para resolver colaborador/usuário por nome, email ou UID
-  const resolveTargetUser = async (identifier) => {
-    if (!identifier || typeof identifier !== 'string' || !identifier.trim()) return null;
-    const term = identifier.trim().toLowerCase();
+  // Helper para obter diretório consolidado de todos os colaboradores do sistema
+  const getAllKnownTeamMembers = async () => {
+    const memberMap = new Map();
 
+    // 1. userProfiles
     try {
       const snap = await admin.firestore().collection('userProfiles').get();
-      const profiles = snap.docs.map((d) => ({ uid: d.id, ...d.data() }));
-
-      // Busca exata por UID
-      let found = profiles.find((p) => p.uid.toLowerCase() === term);
-      if (found) return found;
-
-      // Busca por e-mail
-      found = profiles.find((p) => (p.email || '').toLowerCase() === term);
-      if (found) return found;
-
-      // Busca exata por displayName
-      found = profiles.find((p) => (p.displayName || '').toLowerCase() === term);
-      if (found) return found;
-
-      // Busca parcial por displayName
-      found = profiles.find(
-        (p) =>
-          (p.displayName && p.displayName.toLowerCase().includes(term)) ||
-          term.includes((p.displayName || '').toLowerCase())
-      );
-      if (found) return found;
-
-      // Busca parcial por email
-      found = profiles.find((p) => p.email && p.email.toLowerCase().includes(term));
-      if (found) return found;
+      snap.docs.forEach((d) => {
+        const data = d.data() || {};
+        const uid = d.id;
+        const displayName = data.displayName || (data.email ? data.email.split('@')[0] : 'Usuário');
+        const email = data.email || '';
+        const role = data.role || 'user';
+        const active = data.active !== false;
+        memberMap.set(uid, {
+          uid,
+          displayName,
+          email,
+          role,
+          active,
+          names: [displayName, email ? email.split('@')[0] : ''].filter(Boolean),
+        });
+      });
     } catch (err) {
-      console.warn('[resolveTargetUser] Erro ao buscar perfil de usuário:', err);
+      console.warn('[getAllKnownTeamMembers] Erro ao ler userProfiles:', err);
     }
+
+    // 2. Firebase Auth (garante contas criadas que ainda não têm doc em userProfiles)
+    try {
+      const authList = await admin.auth().listUsers(100);
+      authList.users.forEach((u) => {
+        if (!memberMap.has(u.uid)) {
+          const displayName = u.displayName || (u.email ? u.email.split('@')[0] : 'Usuário');
+          const email = u.email || '';
+          memberMap.set(u.uid, {
+            uid: u.uid,
+            displayName,
+            email,
+            role: 'user',
+            active: !u.disabled,
+            names: [displayName, email ? email.split('@')[0] : ''].filter(Boolean),
+          });
+        }
+      });
+    } catch (err) {
+      console.warn('[getAllKnownTeamMembers] Erro ao listar Auth users:', err);
+    }
+
+    // 3. Orders (coleta criadores e responsáveis atribuídos)
+    try {
+      const ordersSnap = await admin.firestore().collection('orders').limit(300).get();
+      ordersSnap.docs.forEach((d) => {
+        const data = d.data() || {};
+        if (data.userId && !memberMap.has(data.userId)) {
+          const name = data.createdByName || 'Colaborador';
+          memberMap.set(data.userId, {
+            uid: data.userId,
+            displayName: name,
+            email: '',
+            role: 'user',
+            active: true,
+            names: [name],
+          });
+        }
+        if (data.assignedTo && !memberMap.has(data.assignedTo)) {
+          const name = data.assignedToName || 'Colaborador';
+          memberMap.set(data.assignedTo, {
+            uid: data.assignedTo,
+            displayName: name,
+            email: '',
+            role: 'funcionario',
+            active: true,
+            names: [name],
+          });
+        }
+      });
+    } catch (err) {
+      console.warn('[getAllKnownTeamMembers] Erro ao ler orders para membros:', err);
+    }
+
+    return Array.from(memberMap.values());
+  };
+
+  // Helper para resolver colaborador/usuário por nome, email ou UID com tolerância e normalização
+  const resolveTargetUser = async (identifier) => {
+    if (!identifier || typeof identifier !== 'string' || !identifier.trim()) return null;
+    const clean = normalizeString(identifier);
+    const members = await getAllKnownTeamMembers();
+
+    // 1. Busca exata por UID
+    let match = members.find((m) => normalizeString(m.uid) === clean);
+    if (match) return match;
+
+    // 2. Busca exata por email
+    match = members.find((m) => m.email && normalizeString(m.email) === clean);
+    if (match) return match;
+
+    // 3. Busca exata por displayName
+    match = members.find((m) => normalizeString(m.displayName) === clean);
+    if (match) return match;
+
+    // 4. Busca por primeiro nome (ex: "amanda" em "Amanda Silva")
+    match = members.find((m) => {
+      const firstName = normalizeString(m.displayName).split(' ')[0];
+      return firstName === clean;
+    });
+    if (match) return match;
+
+    // 5. Busca por inclusão mútua
+    match = members.find((m) => {
+      const d = normalizeString(m.displayName);
+      const e = normalizeString(m.email);
+      return (d && (d.includes(clean) || clean.includes(d))) || (e && e.includes(clean));
+    });
+    if (match) return match;
+
+    // 6. Busca nos nomes/aliases
+    match = members.find((m) =>
+      m.names && m.names.some((n) => {
+        const norm = normalizeString(n);
+        return norm.includes(clean) || clean.includes(norm);
+      })
+    );
+    if (match) return match;
 
     return null;
   };
@@ -1485,11 +1592,28 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
       };
     }
 
+    const members = await getAllKnownTeamMembers();
+
+    if (!args.userIdentifier || args.userIdentifier.toLowerCase() === 'todos' || args.userIdentifier.toLowerCase() === 'listar') {
+      return {
+        authorized: true,
+        isList: true,
+        members: members.map((m) => ({
+          name: m.displayName,
+          email: m.email,
+          role: m.role === 'admin' ? 'Administrador' : m.role === 'funcionario' ? 'Funcionário' : 'Usuário',
+          uid: m.uid,
+        })),
+      };
+    }
+
     const targetUser = await resolveTargetUser(args.userIdentifier);
     if (!targetUser) {
       return {
         authorized: true,
         found: false,
+        userIdentifier: args.userIdentifier,
+        availableMembers: members.map((m) => m.displayName || m.email).filter(Boolean),
         message: `Não foi encontrado nenhum usuário ou colaborador no sistema correspondente a "${args.userIdentifier}".`,
       };
     }
@@ -1497,11 +1621,16 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
     const targetUid = String(targetUser.uid);
     const targetName = targetUser.displayName || targetUser.email || 'Usuário';
     const targetRole = targetUser.role === 'admin' ? 'Administrador' : targetUser.role === 'funcionario' ? 'Funcionário' : 'Usuário';
+    const normalizedTargetName = normalizeString(targetName);
 
-    // 1. Busca todos os pedidos do usuário
+    // 1. Busca todos os pedidos do usuário em ambas as fontes (orders + ai_orders_view)
     const allOrders = await fetchScopedOrders();
     const userOrders = allOrders.filter((o) => {
-      return (o.userId === targetUid || o.createdBy === targetUid) && !o.isDeleted;
+      if (o.isDeleted) return false;
+      const matchUid = o.userId === targetUid || o.createdBy === targetUid || o.assignedTo === targetUid;
+      const matchCreator = o.createdByName && normalizeString(o.createdByName).includes(normalizedTargetName);
+      const matchAssignee = o.assignedToName && normalizeString(o.assignedToName).includes(normalizedTargetName);
+      return matchUid || matchCreator || matchAssignee;
     });
 
     // 2. Busca todos os clientes do usuário
@@ -1509,7 +1638,9 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
     const userCustomers = allCustSnap.docs
       .map((d) => ({ id: d.id, ...d.data() }))
       .filter((c) => {
-        return c.userId === targetUid || c.createdBy === targetUid;
+        const matchUid = c.userId === targetUid || c.createdBy === targetUid;
+        const matchCreator = c.createdByName && normalizeString(c.createdByName).includes(normalizedTargetName);
+        return matchUid || matchCreator;
       });
 
     // 3. Métricas dos pedidos
@@ -2046,8 +2177,19 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
         const summary = await executeUserSummary(args);
         if (!summary.authorized) {
           finalAnswer = `🔒 **Acesso Restrito:**\n\nA consulta de auditoria, pedidos e clientes de outros membros da equipe é permitida **exclusivamente para administradores** do sistema.`;
+        } else if (summary.isList) {
+          let listText = `👥 **Colaboradores e Usuários no Sistema:**\n\n`;
+          summary.members.forEach((m) => {
+            listText += `• **${m.name}** (${m.email || 'Sem e-mail'})\n  Cargo: ${m.role} | ID: \`${m.uid}\`\n\n`;
+          });
+          listText += `Você pode perguntar detalhes de qualquer um: *"Quantos pedidos e clientes tem a ${summary.members[0]?.name || 'Amanda'}?"*`;
+          finalAnswer = listText;
         } else if (!summary.found) {
-          finalAnswer = `🔍 **Usuário não encontrado:**\n\nNão encontrei nenhum usuário ou colaborador no sistema correspondente a **"${args.userIdentifier}"**. Verifique se o nome ou e-mail estão digitados corretamente.`;
+          let notFoundText = `🔍 **Colaborador não localizado:**\n\nNão encontrei nenhum registro no sistema correspondente a **"${args.userIdentifier}"**.\n\n`;
+          if (summary.availableMembers && summary.availableMembers.length > 0) {
+            notFoundText += `👥 **Membros da equipe encontrados:**\n${summary.availableMembers.map((n) => `• ${n}`).join('\n')}\n\nTente perguntar com um dos nomes acima!`;
+          }
+          finalAnswer = notFoundText;
         } else {
           const u = summary.user;
           const m = summary.metrics;
