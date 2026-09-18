@@ -1,6 +1,5 @@
 const functions = require('firebase-functions');
 const { onCall, onRequest } = require('firebase-functions/v2/https');
-const { onDocumentWritten } = require('firebase-functions/v2/firestore');
 const { defineSecret } = require('firebase-functions/params');
 const admin = require('firebase-admin');
 const { Resend } = require('resend');
@@ -997,26 +996,29 @@ const buildAiOrderDoc = (orderId, data) => {
  * Trigger de sincronização para a base somente-leitura da IA (ai_orders_view).
  * Sempre que um pedido for criado, atualizado ou excluído, projeta uma visão
  * sanitizada e otimizada para consultas do Agente.
+ * Usa trigger nativo de 1ª geração para compatibilidade total de permissões IAM.
  */
-exports.syncOrderToAiView = onDocumentWritten('orders/{orderId}', async (event) => {
-  const orderId = event.params.orderId;
-  const targetRef = admin.firestore().collection('ai_orders_view').doc(orderId);
+exports.syncOrderToAiView = functions.firestore
+  .document('orders/{orderId}')
+  .onWrite(async (change, context) => {
+    const orderId = context.params.orderId;
+    const targetRef = admin.firestore().collection('ai_orders_view').doc(orderId);
 
-  // Se o pedido foi excluído
-  if (!event.data.after || !event.data.after.exists) {
-    await targetRef.delete().catch((err) => {
-      console.warn(`[syncOrderToAiView] Erro ao remover view do pedido ${orderId}:`, err);
-    });
-    console.log(`[syncOrderToAiView] Pedido ${orderId} removido da ai_orders_view.`);
-    return;
-  }
+    // Se o pedido foi excluído
+    if (!change.after || !change.after.exists) {
+      await targetRef.delete().catch((err) => {
+        console.warn(`[syncOrderToAiView] Erro ao remover view do pedido ${orderId}:`, err);
+      });
+      console.log(`[syncOrderToAiView] Pedido ${orderId} removido da ai_orders_view.`);
+      return;
+    }
 
-  const data = event.data.after.data() || {};
-  const aiDoc = buildAiOrderDoc(orderId, data);
+    const data = change.after.data() || {};
+    const aiDoc = buildAiOrderDoc(orderId, data);
 
-  await targetRef.set(aiDoc, { merge: true });
-  console.log(`[syncOrderToAiView] Pedido ${orderId} sincronizado na ai_orders_view.`);
-});
+    await targetRef.set(aiDoc, { merge: true });
+    console.log(`[syncOrderToAiView] Pedido ${orderId} sincronizado na ai_orders_view.`);
+  });
 
 /**
  * Sincroniza em lote todos os pedidos existentes para a base somente-leitura.
