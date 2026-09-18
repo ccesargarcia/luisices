@@ -11,11 +11,21 @@ on:
         options:
           - dev
           - prod
-      functions:
-        description: 'Funções específicas (ex: aiAgentChat ou deixe "all" para todas)'
-        required: false
+      functions_target:
+        description: 'Selecione o grupo ou função para deploy'
+        required: true
         default: 'all'
-        type: string
+        type: choice
+        options:
+          - 'all'
+          - 'aiAgentChat,syncOrderToAiView,syncAllOrdersToAiView'
+          - 'aiAgentChat'
+          - 'syncOrderToAiView'
+          - 'syncAllOrdersToAiView'
+          - 'sendAdminPasswordReset,sendPasswordResetEmail'
+          - 'createUserInvitation,validateUserInvitation,completeUserInvitation'
+          - 'createUser,deleteUser'
+          - 'sendCustomEmail,getEmailUsage,resendReceivingWebhook'
       deploy_rules_and_indexes:
         description: 'Publicar Firestore Rules e Indexes?'
         required: false
@@ -86,8 +96,8 @@ jobs:
             firebase deploy --only firestore:rules,firestore:indexes --project luisices-dev
           fi
 
-          # Determina quais funções publicar (todas ou específicas)
-          INPUT_FN="${{ inputs.functions }}"
+          # Determina quais funções publicar via seleção
+          INPUT_FN="${{ inputs.functions_target }}"
           if [ -z "$INPUT_FN" ] || [ "$INPUT_FN" = "all" ]; then
             DEPLOY_TARGET="functions"
           else
@@ -138,8 +148,8 @@ jobs:
             firebase deploy --only firestore:rules,firestore:indexes,storage --project papelaria-dashboard
           fi
 
-          # Determina quais funções publicar (todas ou específicas)
-          INPUT_FN="${{ inputs.functions }}"
+          # Determina quais funções publicar via seleção
+          INPUT_FN="${{ inputs.functions_target }}"
           if [ -z "$INPUT_FN" ] || [ "$INPUT_FN" = "all" ]; then
             DEPLOY_TARGET="functions"
           else
