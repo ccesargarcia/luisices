@@ -82,7 +82,7 @@ const QUICK_TEMPLATES = [
 ];
 
 export function WhatsAppChat() {
-  const { user } = useAuth();
+  const { user, isAdmin } = useAuth();
   const { customers, loading: customersLoading } = useFirebaseCustomers();
   const { orders } = useOrders();
 
@@ -208,8 +208,38 @@ export function WhatsAppChat() {
   const mergedConversations = useMemo(() => {
     const map = new Map<string, WhatsAppConversation>();
 
+    // Conjuntos de identificadores de clientes pertencentes ao usuário (quando não admin)
+    const allowedPhones = new Set<string>();
+    const allowedCustomerIds = new Set<string>();
+
+    for (const cust of customers) {
+      const cleanPhone = normalizePhoneForWhatsApp(cust.phone);
+      if (cleanPhone) allowedPhones.add(cleanPhone);
+      if (cust.id) allowedCustomerIds.add(cust.id);
+    }
+
+    for (const ord of orders) {
+      const cleanPhone = normalizePhoneForWhatsApp(ord.customerPhone);
+      if (cleanPhone) allowedPhones.add(cleanPhone);
+      if (ord.customerId) allowedCustomerIds.add(ord.customerId);
+    }
+
     // Adiciona conversas existentes
     for (const chat of conversations) {
+      const chatPhone = normalizePhoneForWhatsApp(chat.phone) || chat.phone;
+
+      // Guardrail: Se não for administrador, filtra apenas conversas associadas aos clientes do usuário ou iniciadas por ele
+      if (!isAdmin) {
+        const isBelongingCustomer =
+          (chat.customerId && allowedCustomerIds.has(chat.customerId)) ||
+          allowedPhones.has(chatPhone);
+        const isSelfChat =
+          (chat as any).userId === user?.uid || (chat as any).sentByUid === user?.uid;
+        if (!isBelongingCustomer && !isSelfChat) {
+          continue;
+        }
+      }
+
       map.set(chat.phone, { ...chat });
     }
 

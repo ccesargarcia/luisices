@@ -105,7 +105,7 @@ export function Layout() {
     { name: 'Dashboard',       href: '/',           icon: LayoutDashboard, check: (p: any) => p.dashboard },
     { name: 'Agenda Semanal', href: '/agenda',      icon: Calendar,        check: (p: any) => p.orders?.view },
     { name: 'Clientes',       href: '/clientes',    icon: Users,           check: (p: any) => p.customers?.view },
-    { name: 'Atendimento',    href: '/whatsapp',    icon: MessageSquare,   badge: unreadWhatsAppCount, check: (p: any) => p.whatsapp ?? p.customers?.view ?? false, allowUserRole: true },
+    { name: 'Atendimento',    href: '/whatsapp',    icon: MessageSquare,   badge: unreadWhatsAppCount, check: (p: any) => p.whatsapp ?? false, allowUserRole: true },
     { name: 'Relatórios',     href: '/relatorios',  icon: BarChart3,       check: (p: any) => p.reports, allowUserRole: true },
     { name: 'Orçamentos',     href: '/orcamentos',  icon: FileText,        check: (p: any) => p.quotes?.view },
     { name: 'Produtos do Ateliê', href: '/produtos', icon: Package,        check: (p: any) => p.products?.view },
@@ -195,6 +195,7 @@ export function Layout() {
   const mobilePrimaryNav = flatNavForMobile.slice(0, 4);
   const mobileMoreNav = flatNavForMobile.slice(4);
   const canAccessSettings = userProfile?.role === 'user' || hasPermission((p) => p.settings);
+  const canAccessAiCopilot = isAdmin || userProfile?.role === 'user' || hasPermission((p) => p.aiCopilot ?? false);
 
   const businessName = settings?.businessName || 'Papelaria Personalizada';
   const hasLogo = !!settings?.logo;
@@ -444,16 +445,18 @@ export function Layout() {
             </div>
 
             <div className="flex items-center gap-1.5 sm:gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setAiCopilotOpen(true)}
-                className="gap-1.5 h-8 sm:h-9 text-xs sm:text-sm font-medium border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400 hover:bg-amber-500/20 transition-colors shadow-xs"
-                title="Abrir Copiloto de IA Interno"
-              >
-                <Sparkles className="size-3.5 sm:size-4 text-amber-500" />
-                <span className="hidden md:inline">Copiloto</span>
-              </Button>
+              {canAccessAiCopilot && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setAiCopilotOpen(true)}
+                  className="gap-1.5 h-8 sm:h-9 text-xs sm:text-sm font-medium border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400 hover:bg-amber-500/20 transition-colors shadow-xs"
+                  title="Abrir Copiloto de IA Interno"
+                >
+                  <Sparkles className="size-3.5 sm:size-4 text-amber-500" />
+                  <span className="hidden md:inline">Copiloto</span>
+                </Button>
+              )}
               <a
                 href="/catalogo"
                 target="_blank"

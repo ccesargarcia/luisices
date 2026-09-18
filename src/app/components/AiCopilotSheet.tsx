@@ -22,7 +22,10 @@ import {
   ExternalLink,
   Check,
   Calculator,
+  ShieldAlert,
+  Lock,
 } from 'lucide-react';
+import { useAuth } from '../../contexts/AuthContext';
 import { firebaseAiAgentService } from '../../services/firebaseAiAgentService';
 import { useFirebaseCustomers } from '../../hooks/useFirebaseCustomers';
 import { AiChatMessage, AiOrderDraft, AiWhatsAppDraft, AiPricingEstimate } from '../types';
@@ -57,6 +60,8 @@ interface WhatsAppComposerProps {
 }
 
 function WhatsAppComposer({ draft, onSendVariantRequest, disabled }: WhatsAppComposerProps) {
+  const { userProfile, hasPermission, isAdmin } = useAuth();
+  const canUseWhatsApp = isAdmin || userProfile?.role === 'user' || hasPermission((p) => p.whatsapp ?? false);
   const { customers } = useFirebaseCustomers();
   const [phone, setPhone] = useState(draft.recipientPhone || '');
   const [recipientName, setRecipientName] = useState(draft.recipientName || '');
@@ -94,6 +99,10 @@ function WhatsAppComposer({ draft, onSendVariantRequest, disabled }: WhatsAppCom
   };
 
   const handleSendViaWhatsAppApi = async () => {
+    if (!canUseWhatsApp) {
+      toast.error('Seu usuário não possui permissão para disparar mensagens no módulo de Atendimento.');
+      return;
+    }
     if (!phone.trim()) {
       toast.error('Por favor, informe o número de WhatsApp do destinatário.');
       return;
@@ -147,6 +156,13 @@ function WhatsAppComposer({ draft, onSendVariantRequest, disabled }: WhatsAppCom
           WHATSAPP INTEGRADO
         </Badge>
       </div>
+
+      {!canUseWhatsApp && (
+        <div className="p-2.5 bg-amber-500/10 border border-amber-500/30 rounded-lg text-xs font-medium text-amber-700 dark:text-amber-400 flex items-center gap-2">
+          <Lock className="size-4 shrink-0 text-amber-600 dark:text-amber-400" />
+          <span>Envio direto bloqueado: seu usuário não possui permissão no módulo de Atendimento. Você pode copiar o texto abaixo.</span>
+        </div>
+      )}
 
       {sentSuccess && (
         <div className="p-2.5 bg-emerald-500/15 border border-emerald-500/40 rounded-lg text-xs font-semibold text-emerald-800 dark:text-emerald-300 flex items-center gap-2">
@@ -226,7 +242,8 @@ function WhatsAppComposer({ draft, onSendVariantRequest, disabled }: WhatsAppCom
           size="sm"
           className="flex-1 gap-1.5 text-xs sm:text-sm h-10 sm:h-9 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold shadow-xs"
           onClick={handleSendViaWhatsAppApi}
-          disabled={sendingViaApi || !message.trim()}
+          disabled={sendingViaApi || !message.trim() || !canUseWhatsApp}
+          title={!canUseWhatsApp ? 'Você não possui permissão para envio de mensagens no módulo de Atendimento' : undefined}
         >
           {sendingViaApi ? (
             <Loader2 className="size-4 animate-spin" />

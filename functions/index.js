@@ -956,6 +956,16 @@ const isAuthorizedEmployeeOrAdmin = async (request) => {
   return (data.role === 'admin' || data.role === 'funcionario') && data.active !== false;
 };
 
+const isAuthorizedForWhatsApp = async (request) => {
+  if (!request.auth) return false;
+  const profile = await admin.firestore().doc(`userProfiles/${request.auth.uid}`).get();
+  if (!profile.exists) return false;
+  const data = profile.data();
+  if (data.active === false) return false;
+  if (data.role === 'admin') return true;
+  return data.role === 'funcionario' && data.permissions?.whatsapp === true;
+};
+
 const parseFirestoreDate = (val) => {
   if (!val) return new Date().toISOString();
   if (typeof val === 'string') return val;
@@ -990,6 +1000,8 @@ const buildAiOrderDoc = (orderId, data = {}) => {
 
   return {
     orderId,
+    userId: data.userId || data.createdBy || null,
+    createdBy: data.createdBy || data.userId || null,
     orderNumber,
     customerName,
     customerPhone,
@@ -1125,13 +1137,23 @@ exports.aiAgentChat = onCall({ secrets: [GEMINI_API_KEY] }, async (request) => {
     throw new functions.https.HttpsError('resource-exhausted', 'Muitas requisições. Aguarde um momento antes de enviar nova mensagem.');
   }
 
+  const callerUid = request.auth.uid;
+  const callerProfileDoc = await admin.firestore().doc(`userProfiles/${callerUid}`).get();
+  const callerProfile = callerProfileDoc.exists ? callerProfileDoc.data() : {};
+  const isAdmin = callerProfile.role === 'admin';
+
+  // Guardrail de Permissão do Copiloto de IA:
+  if (!isAdmin && callerProfile.role === 'funcionario' && callerProfile.permissions?.aiCopilot === false) {
+    throw new functions.https.HttpsError('permission-denied', 'Seu perfil de usuário não possui permissão para acessar o Copiloto de IA.');
+  }
+
   const { message, history = [] } = request.data || {};
   if (!message || typeof message !== 'string' || !message.trim()) {
     throw new functions.https.HttpsError('invalid-argument', 'Mensagem é obrigatória.');
   }
 
   const cleanMessage = message.trim();
-  const cacheKey = cleanMessage.toLowerCase();
+  const cacheKey = `${callerUid}_${cleanMessage.toLowerCase()}`;
 
   // Se for uma pergunta comum sem histórico e estiver no cache recente, responde instantaneamente
   if ((!history || history.length === 0) && aiResponseCache.has(cacheKey)) {
@@ -1302,14 +1324,24 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
     }
   ];
 
-  // Helper para consultar a base somente leitura do Firestore com merge em tempo real
+  // Helper para consultar a base somente leitura do Firestore com merge em tempo real e isolamento por usuário
   const executeQueryOrdersView = async (args = {}) => {
     // 1. Busca os documentos da visão da IA
-    const snap = await admin.firestore().collection('ai_orders_view').get();
+    let snap;
+    if (isAdmin) {
+      snap = await admin.firestore().collection('ai_orders_view').get();
+    } else {
+      snap = await admin.firestore().collection('ai_orders_view').where('userId', '==', callerUid).get();
+    }
     let docs = snap.docs.map(d => d.data());
 
     // 2. Busca os pedidos recentes diretamente de 'orders' para garantir que pedidos recém-criados nunca falhem
-    const prodSnap = await admin.firestore().collection('orders').limit(100).get();
+    let prodSnap;
+    if (isAdmin) {
+      prodSnap = await admin.firestore().collection('orders').limit(100).get();
+    } else {
+      prodSnap = await admin.firestore().collection('orders').where('userId', '==', callerUid).limit(100).get();
+    }
     const prodDocs = prodSnap.docs.map(d => buildAiOrderDoc(d.id, d.data()));
 
     const viewMap = new Map();
@@ -1324,6 +1356,11 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
       }
     }
     docs = Array.from(viewMap.values());
+
+    // Guardrail: Se não for admin, garante estritamente que só vê seus pedidos
+    if (!isAdmin) {
+      docs = docs.filter(d => d.userId === callerUid || d.createdBy === callerUid);
+    }
 
     // 3. Ordena os pedidos do mais recente para o mais antigo
     docs.sort((a, b) => {
@@ -1365,15 +1402,30 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
     return docs.slice(0, maxLimit);
   };
 
-  // Helper para gerar o Daily Briefing
+  // Helper para gerar o Daily Briefing com isolamento por usuário
   const executeDailyBriefing = async () => {
-    const snap = await admin.firestore().collection('ai_orders_view').limit(100).get();
+    let snap;
+    if (isAdmin) {
+      snap = await admin.firestore().collection('ai_orders_view').limit(100).get();
+    } else {
+      snap = await admin.firestore().collection('ai_orders_view').where('userId', '==', callerUid).limit(100).get();
+    }
     let orders = snap.docs.map(d => d.data()).filter(o => !o.isDeleted);
 
     // Se ai_orders_view vazia, busca em orders
     if (orders.length === 0) {
-      const prodSnap = await admin.firestore().collection('orders').limit(100).get();
+      let prodSnap;
+      if (isAdmin) {
+        prodSnap = await admin.firestore().collection('orders').limit(100).get();
+      } else {
+        prodSnap = await admin.firestore().collection('orders').where('userId', '==', callerUid).limit(100).get();
+      }
       orders = prodSnap.docs.map(d => buildAiOrderDoc(d.id, d.data()));
+    }
+
+    // Guardrail: Se não for admin, isola estritamente os pedidos do usuário
+    if (!isAdmin) {
+      orders = orders.filter(o => o.userId === callerUid || o.createdBy === callerUid);
     }
 
     const todayDate = new Date().toISOString().split('T')[0];
@@ -1399,10 +1451,15 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
     };
   };
 
-  // Helper para consultar a base de clientes cadastrados
+  // Helper para consultar a base de clientes cadastrados com isolamento por usuário
   const executeQueryCustomers = async (args = {}) => {
     try {
-      const snap = await admin.firestore().collection('customers').limit(100).get();
+      let snap;
+      if (isAdmin) {
+        snap = await admin.firestore().collection('customers').limit(100).get();
+      } else {
+        snap = await admin.firestore().collection('customers').where('userId', '==', callerUid).limit(100).get();
+      }
       let customers = snap.docs.map(d => ({
         id: d.id,
         name: d.data().name || '',
@@ -1446,7 +1503,12 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
     try {
       const term = customerName.toLowerCase().trim();
       // 1. Busca na coleção customers
-      const custSnap = await admin.firestore().collection('customers').limit(100).get();
+      let custSnap;
+      if (isAdmin) {
+        custSnap = await admin.firestore().collection('customers').limit(100).get();
+      } else {
+        custSnap = await admin.firestore().collection('customers').where('userId', '==', callerUid).limit(100).get();
+      }
       for (const doc of custSnap.docs) {
         const data = doc.data();
         const docName = String(data.name || '').toLowerCase().trim();
@@ -1456,7 +1518,12 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
       }
 
       // 2. Busca na coleção orders
-      const orderSnap = await admin.firestore().collection('orders').limit(100).get();
+      let orderSnap;
+      if (isAdmin) {
+        orderSnap = await admin.firestore().collection('orders').limit(100).get();
+      } else {
+        orderSnap = await admin.firestore().collection('orders').where('userId', '==', callerUid).limit(100).get();
+      }
       for (const doc of orderSnap.docs) {
         const data = doc.data();
         const ordName = String(data.customerName || '').toLowerCase().trim();
@@ -1769,8 +1836,8 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
  * Uso restrito a membros autorizados da equipe (admin ou funcionário ativo).
  */
 exports.sendWhatsAppDirectMessage = onCall({ secrets: [EVOLUTION_API_KEY] }, async (request) => {
-  if (!(await isAuthorizedEmployeeOrAdmin(request))) {
-    throw new functions.https.HttpsError('permission-denied', 'Acesso restrito a membros autorizados da equipe.');
+  if (!(await isAuthorizedForWhatsApp(request))) {
+    throw new functions.https.HttpsError('permission-denied', 'Sem permissão para utilizar o módulo de Atendimento (WhatsApp).');
   }
 
   const { phone, text, customerName, customerId } = request.data || {};
@@ -1827,6 +1894,7 @@ exports.sendWhatsAppDirectMessage = onCall({ secrets: [EVOLUTION_API_KEY] }, asy
       timestamp: nowIso,
       evolutionMessageId: messageId,
       sentByUid: request.auth.uid,
+      userId: request.auth.uid,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
     });
 
@@ -1839,6 +1907,7 @@ exports.sendWhatsAppDirectMessage = onCall({ secrets: [EVOLUTION_API_KEY] }, asy
       lastMessageText: text.trim(),
       lastMessageTimestamp: nowIso,
       lastMessageSender: 'me',
+      userId: request.auth.uid,
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
     }, { merge: true });
 
@@ -1860,8 +1929,8 @@ exports.sendWhatsAppDirectMessage = onCall({ secrets: [EVOLUTION_API_KEY] }, asy
  * Uso restrito a membros autorizados da equipe (admin ou funcionário ativo).
  */
 exports.deleteWhatsAppMessage = onCall({ secrets: [EVOLUTION_API_KEY] }, async (request) => {
-  if (!(await isAuthorizedEmployeeOrAdmin(request))) {
-    throw new functions.https.HttpsError('permission-denied', 'Acesso restrito a membros autorizados da equipe.');
+  if (!(await isAuthorizedForWhatsApp(request))) {
+    throw new functions.https.HttpsError('permission-denied', 'Sem permissão para utilizar o módulo de Atendimento (WhatsApp).');
   }
 
   const { messageDocId, phone, evolutionMessageId } = request.data || {};
@@ -1961,8 +2030,8 @@ exports.deleteWhatsAppMessage = onCall({ secrets: [EVOLUTION_API_KEY] }, async (
  * Uso restrito a membros autorizados da equipe (admin ou funcionário ativo).
  */
 exports.syncWhatsAppChatMessages = onCall({ secrets: [EVOLUTION_API_KEY] }, async (request) => {
-  if (!(await isAuthorizedEmployeeOrAdmin(request))) {
-    throw new functions.https.HttpsError('permission-denied', 'Acesso restrito a membros autorizados da equipe.');
+  if (!(await isAuthorizedForWhatsApp(request))) {
+    throw new functions.https.HttpsError('permission-denied', 'Sem permissão para utilizar o módulo de Atendimento (WhatsApp).');
   }
 
   const { phone } = request.data || {};
@@ -2102,8 +2171,8 @@ exports.syncWhatsAppChatMessages = onCall({ secrets: [EVOLUTION_API_KEY] }, asyn
  * Consulta o status da conexão da instância com o WhatsApp (open, connecting, close).
  */
 exports.getWhatsAppInstanceStatus = onCall({ secrets: [EVOLUTION_API_KEY] }, async (request) => {
-  if (!(await isAuthorizedEmployeeOrAdmin(request))) {
-    throw new functions.https.HttpsError('permission-denied', 'Acesso restrito a membros autorizados da equipe.');
+  if (!(await isAuthorizedForWhatsApp(request))) {
+    throw new functions.https.HttpsError('permission-denied', 'Sem permissão para utilizar o módulo de Atendimento (WhatsApp).');
   }
 
   const rawKey = (typeof EVOLUTION_API_KEY.value === 'function' ? EVOLUTION_API_KEY.value() : process.env.EVOLUTION_API_KEY) || '';

@@ -282,6 +282,7 @@ export interface Permission {
   store?: boolean;
   storeProducts?: ModulePermission;
   whatsapp?: boolean;
+  aiCopilot?: boolean;
 }
 
 export interface StoreProduct {
@@ -453,6 +454,7 @@ export const ADMIN_PERMISSIONS: Permission = {
   store:     true,
   storeProducts: { view: true, create: true, edit: true, delete: true },
   whatsapp:  true,
+  aiCopilot: true,
 };
 
 export const DEFAULT_USER_PERMISSIONS: Permission = {
@@ -471,6 +473,7 @@ export const DEFAULT_USER_PERMISSIONS: Permission = {
   store:     true,
   storeProducts: { view: true, create: true, edit: true, delete: false },
   whatsapp:  true,
+  aiCopilot: true,
 };
 
 export const EMPLOYEE_PERMISSIONS: Permission = {
@@ -488,7 +491,8 @@ export const EMPLOYEE_PERMISSIONS: Permission = {
   pricing:   false,
   store:     false,
   storeProducts: { view: false, create: false, edit: false, delete: false },
-  whatsapp:  true,
+  whatsapp:  false,
+  aiCopilot: false,
 };
 
 // Tipos para sistema de compartilhamento de dados

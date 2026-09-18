@@ -78,6 +78,8 @@ const MODULES: ModuleConfig[] = [
   { key: 'dashboard',     label: 'Dashboard',                          type: 'boolean' },
   { key: 'orders',        label: 'Pedidos',                            type: 'crud' },
   { key: 'customers',     label: 'Clientes',                           type: 'crud' },
+  { key: 'whatsapp',      label: 'Atendimento (WhatsApp)',             type: 'boolean' },
+  { key: 'aiCopilot',     label: 'Copiloto de IA',                     type: 'boolean' },
   { key: 'products',      label: 'Produtos do Ateliê (Internos)',      type: 'crud' },
   { key: 'storeProducts', label: 'Lojinha Online - Produtos da Vitrine', type: 'crud' },
   { key: 'store',         label: 'Lojinha Online - Aparência & Banners', type: 'boolean' },
