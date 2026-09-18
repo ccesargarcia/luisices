@@ -1848,7 +1848,7 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
 
 /**
  * Consulta a cota e o consumo em tempo real da API Gemini / Copiloto de IA.
- * Disponível para administradores ou usuários autorizados.
+ * Uso estritamente restrito a administradores.
  */
 exports.getAiUsage = onCall({ cors: true }, async (request) => {
   if (!request.auth) {
@@ -1857,12 +1857,9 @@ exports.getAiUsage = onCall({ cors: true }, async (request) => {
 
   const profile = await admin.firestore().doc(`userProfiles/${request.auth.uid}`).get();
   const profileData = profile.exists ? profile.data() : null;
-  const isAuthorized =
-    profileData?.role === 'admin' ||
-    profileData?.role === 'user' ||
-    profileData?.permissions?.aiCopilot === true;
-  if (!isAuthorized) {
-    throw new functions.https.HttpsError('permission-denied', 'Sem permissão para consultar uso de IA.');
+  const isAdmin = profileData?.role === 'admin' && profileData?.active !== false;
+  if (!isAdmin) {
+    throw new functions.https.HttpsError('permission-denied', 'Acesso restrito a administradores.');
   }
 
   const now = new Date();

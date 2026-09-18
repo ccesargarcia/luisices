@@ -455,8 +455,8 @@ export function Settings() {
       {/* Minhas Permissões */}
       <PermissionsSection userProfile={userProfile} isAdmin={isAdmin} />
 
-      {/* Cota e Monitoramento de IA (Gemini) */}
-      <AiSettingsSection isAdmin={isAdmin} />
+      {/* Cota e Monitoramento de IA (Gemini) - Apenas Admin */}
+      {isAdmin && <AiSettingsSection isAdmin={isAdmin} />}
 
       {/* Zona de Perigo */}
       <DangerZoneSection onReset={handleReset} />

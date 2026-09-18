@@ -289,6 +289,7 @@ export function AiCopilotSheet({ open, onOpenChange, onApplyOrderDraft }: AiCopi
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const fetchQuota = async () => {
+    if (!isAdmin) return;
     try {
       const data = await firebaseAiAgentService.getAiUsage();
       setQuota(data);
@@ -304,9 +305,11 @@ export function AiCopilotSheet({ open, onOpenChange, onApplyOrderDraft }: AiCopi
   useEffect(() => {
     if (open) {
       setTimeout(scrollToBottom, 150);
-      fetchQuota();
+      if (isAdmin) {
+        fetchQuota();
+      }
     }
-  }, [open, messages]);
+  }, [open, messages, isAdmin]);
 
   const handleSend = async (textToSend?: string) => {
     const messageText = (textToSend || input).trim();
@@ -341,7 +344,9 @@ export function AiCopilotSheet({ open, onOpenChange, onApplyOrderDraft }: AiCopi
       };
 
       setMessages(prev => [...prev, assistantMsg]);
-      fetchQuota();
+      if (isAdmin) {
+        fetchQuota();
+      }
     } catch (err: any) {
       console.error('[AiCopilot] Erro ao enviar mensagem:', err);
       toast.error(err.message || 'Erro ao comunicar com o Copiloto de IA.');

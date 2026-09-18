@@ -13,11 +13,14 @@ interface AiSettingsSectionProps {
 }
 
 export function AiSettingsSection({ isAdmin }: AiSettingsSectionProps) {
+  if (!isAdmin) return null;
+
   const [usage, setUsage] = useState<AiUsageData | null>(null);
   const [loading, setLoading] = useState(true);
   const [syncingOrders, setSyncingOrders] = useState(false);
 
   const fetchUsage = async () => {
+    if (!isAdmin) return;
     setLoading(true);
     try {
       const data = await firebaseAiAgentService.getAiUsage();
@@ -53,8 +56,10 @@ export function AiSettingsSection({ isAdmin }: AiSettingsSectionProps) {
   };
 
   useEffect(() => {
-    fetchUsage();
-  }, []);
+    if (isAdmin) {
+      fetchUsage();
+    }
+  }, [isAdmin]);
 
   const handleSyncOrders = async () => {
     if (!isAdmin || syncingOrders) return;
