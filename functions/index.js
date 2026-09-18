@@ -1845,18 +1845,261 @@ exports.sendWhatsAppDirectMessage = onCall({ secrets: [EVOLUTION_API_KEY] }, asy
     console.log('[sendWhatsAppDirectMessage] Mensagem enviada com sucesso para:', cleanNumber);
     return {
       success: true,
-      message: 'Mensagem enviada com sucesso via Evolution API!',
+      message: 'Mensagem enviada com sucesso para o WhatsApp!',
       data: resData,
     };
   } catch (error) {
     if (error instanceof functions.https.HttpsError) throw error;
     console.error('[sendWhatsAppDirectMessage] Falha ao enviar mensagem:', error);
-    throw new functions.https.HttpsError('internal', error.message || 'Erro ao conectar com a Evolution API.');
+    throw new functions.https.HttpsError('internal', error.message || 'Erro ao conectar com a API do WhatsApp.');
   }
 });
 
 /**
- * Consulta o status da conexão da instância da Evolution API (open, connecting, close).
+ * Exclui uma mensagem do WhatsApp (para todos) e remove da base do Firestore.
+ * Uso restrito a membros autorizados da equipe (admin ou funcionário ativo).
+ */
+exports.deleteWhatsAppMessage = onCall({ secrets: [EVOLUTION_API_KEY] }, async (request) => {
+  if (!(await isAuthorizedEmployeeOrAdmin(request))) {
+    throw new functions.https.HttpsError('permission-denied', 'Acesso restrito a membros autorizados da equipe.');
+  }
+
+  const { messageDocId, phone, evolutionMessageId } = request.data || {};
+  if (!messageDocId && !evolutionMessageId) {
+    throw new functions.https.HttpsError('invalid-argument', 'Identificador da mensagem é obrigatório.');
+  }
+
+  const rawKey = (typeof EVOLUTION_API_KEY.value === 'function' ? EVOLUTION_API_KEY.value() : process.env.EVOLUTION_API_KEY) || '';
+  const cleanNumber = phone ? normalizeWhatsAppNumber(phone) : '';
+
+  // 1. Tenta apagar na API do WhatsApp (para todos) caso tenhamos o evolutionMessageId
+  if (rawKey && evolutionMessageId && cleanNumber) {
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 8000);
+      const remoteJid = cleanNumber.includes('@') ? cleanNumber : `${cleanNumber}@s.whatsapp.net`;
+
+      const response = await fetch(
+        `${EVOLUTION_API_URL}/chat/deleteMessageForEveryone/${encodeURIComponent(EVOLUTION_INSTANCE)}`,
+        {
+          method: 'DELETE',
+          headers: {
+            apikey: rawKey,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            id: evolutionMessageId,
+            remoteJid,
+            fromMe: true,
+          }),
+          signal: controller.signal,
+        }
+      );
+      clearTimeout(timeout);
+
+      if (!response.ok) {
+        console.warn(`[deleteWhatsAppMessage] Aviso ao apagar na API (${response.status}):`, await response.text().catch(() => ''));
+      }
+    } catch (err) {
+      console.warn('[deleteWhatsAppMessage] Falha de rede ao tentar apagar na API do WhatsApp:', err.message);
+    }
+  }
+
+  // 2. Remove da coleção whatsapp_messages no Firestore
+  try {
+    if (messageDocId) {
+      await admin.firestore().collection('whatsapp_messages').doc(messageDocId).delete();
+    }
+    if (evolutionMessageId) {
+      const snap = await admin.firestore().collection('whatsapp_messages').where('evolutionMessageId', '==', evolutionMessageId).get();
+      for (const d of snap.docs) {
+        await d.ref.delete();
+      }
+    }
+  } catch (err) {
+    console.error('[deleteWhatsAppMessage] Erro ao deletar documento no Firestore:', err);
+  }
+
+  // 3. Atualiza o último snippet da conversa no whatsapp_chats
+  if (cleanNumber) {
+    try {
+      const lastMsgSnap = await admin.firestore()
+        .collection('whatsapp_messages')
+        .where('chatId', '==', cleanNumber)
+        .orderBy('timestamp', 'desc')
+        .limit(1)
+        .get();
+
+      if (!lastMsgSnap.empty) {
+        const lastMsg = lastMsgSnap.docs[0].data();
+        await admin.firestore().collection('whatsapp_chats').doc(cleanNumber).set({
+          lastMessageText: lastMsg.text || '',
+          lastMessageTimestamp: lastMsg.timestamp || new Date().toISOString(),
+          lastMessageSender: lastMsg.sender || 'me',
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        }, { merge: true });
+      } else {
+        await admin.firestore().collection('whatsapp_chats').doc(cleanNumber).set({
+          lastMessageText: '',
+          lastMessageTimestamp: null,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        }, { merge: true });
+      }
+    } catch (err) {
+      console.warn('[deleteWhatsAppMessage] Erro ao atualizar resumo do chat:', err);
+    }
+  }
+
+  return {
+    success: true,
+    message: 'Mensagem apagada com sucesso!',
+  };
+});
+
+/**
+ * Sincroniza mensagens recentes de um chat diretamente da API do WhatsApp para o Firestore.
+ * Uso restrito a membros autorizados da equipe (admin ou funcionário ativo).
+ */
+exports.syncWhatsAppChatMessages = onCall({ secrets: [EVOLUTION_API_KEY] }, async (request) => {
+  if (!(await isAuthorizedEmployeeOrAdmin(request))) {
+    throw new functions.https.HttpsError('permission-denied', 'Acesso restrito a membros autorizados da equipe.');
+  }
+
+  const { phone } = request.data || {};
+  if (!phone || typeof phone !== 'string' || !phone.trim()) {
+    throw new functions.https.HttpsError('invalid-argument', 'Telefone do contato é obrigatório.');
+  }
+
+  const rawKey = (typeof EVOLUTION_API_KEY.value === 'function' ? EVOLUTION_API_KEY.value() : process.env.EVOLUTION_API_KEY) || '';
+  if (!rawKey) {
+    throw new functions.https.HttpsError('failed-precondition', 'Chave EVOLUTION_API_KEY não configurada no Firebase Secret Manager.');
+  }
+
+  const cleanPhone = normalizeWhatsAppNumber(phone);
+  const remoteJid = cleanPhone.includes('@') ? cleanPhone : `${cleanPhone}@s.whatsapp.net`;
+
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 12000);
+
+    const response = await fetch(
+      `${EVOLUTION_API_URL}/chat/findMessages/${encodeURIComponent(EVOLUTION_INSTANCE)}`,
+      {
+        method: 'POST',
+        headers: {
+          apikey: rawKey,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          where: {
+            key: {
+              remoteJid,
+            },
+          },
+          limit: 50,
+        }),
+        signal: controller.signal,
+      }
+    );
+    clearTimeout(timeout);
+
+    if (!response.ok) {
+      const errText = await response.text().catch(() => '');
+      console.warn(`[syncWhatsAppChatMessages] Erro ao consultar mensagens (${response.status}):`, errText);
+      return { success: false, message: `Não foi possível sincronizar histórico (${response.status}).` };
+    }
+
+    const data = await response.json().catch(() => []);
+    const messagesList = Array.isArray(data) ? data : data?.messages?.records || data?.records || [];
+
+    // Tenta localizar cliente correspondente
+    let customerName = cleanPhone;
+    let customerId = null;
+    try {
+      const custSnap = await admin.firestore().collection('customers').limit(100).get();
+      for (const d of custSnap.docs) {
+        const cData = d.data();
+        const cPhone = String(cData.phone || '').replace(/\D/g, '');
+        if (cPhone && (cleanPhone.endsWith(cPhone) || cPhone.endsWith(cleanPhone))) {
+          customerName = cData.name || customerName;
+          customerId = d.id;
+          break;
+        }
+      }
+    } catch (e) {
+      console.warn('[syncWhatsAppChatMessages] Erro ao buscar cliente:', e);
+    }
+
+    let syncedCount = 0;
+    let latestMessageText = '';
+    let latestTimestamp = '';
+    let latestSender = 'me';
+
+    for (const item of messagesList) {
+      const key = item?.key;
+      const msg = item?.message;
+      if (!key?.id) continue;
+
+      const fromMe = Boolean(key?.fromMe);
+      const text =
+        msg?.conversation ||
+        msg?.extendedTextMessage?.text ||
+        msg?.imageMessage?.caption ||
+        msg?.videoMessage?.caption ||
+        msg?.documentMessage?.caption ||
+        (msg?.imageMessage ? '📷 [Foto]' : msg?.audioMessage ? '🎵 [Áudio]' : msg?.documentMessage ? '📄 [Documento]' : '');
+
+      if (!text) continue;
+
+      const epochSec = item.messageTimestamp || key.messageTimestamp;
+      const tsIso = epochSec ? new Date(Number(epochSec) * 1000).toISOString() : new Date().toISOString();
+
+      const msgDocId = `wa_${key.id}`;
+      await admin.firestore().collection('whatsapp_messages').doc(msgDocId).set({
+        chatId: cleanPhone,
+        phone: cleanPhone,
+        customerName,
+        customerId,
+        sender: fromMe ? 'me' : 'customer',
+        text,
+        status: fromMe ? 'sent' : 'received',
+        timestamp: tsIso,
+        evolutionMessageId: key.id,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      }, { merge: true });
+
+      syncedCount++;
+      latestMessageText = text;
+      latestTimestamp = tsIso;
+      latestSender = fromMe ? 'me' : 'customer';
+    }
+
+    if (syncedCount > 0 && latestMessageText) {
+      await admin.firestore().collection('whatsapp_chats').doc(cleanPhone).set({
+        id: cleanPhone,
+        phone: cleanPhone,
+        customerName,
+        customerId,
+        lastMessageText: latestMessageText,
+        lastMessageTimestamp: latestTimestamp,
+        lastMessageSender: latestSender,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      }, { merge: true });
+    }
+
+    return {
+      success: true,
+      count: syncedCount,
+      message: `${syncedCount} mensagem(ns) sincronizada(s) com sucesso!`,
+    };
+  } catch (err) {
+    console.error('[syncWhatsAppChatMessages] Erro:', err);
+    throw new functions.https.HttpsError('internal', err.message || 'Erro ao sincronizar mensagens.');
+  }
+});
+
+/**
+ * Consulta o status da conexão da instância com o WhatsApp (open, connecting, close).
  */
 exports.getWhatsAppInstanceStatus = onCall({ secrets: [EVOLUTION_API_KEY] }, async (request) => {
   if (!(await isAuthorizedEmployeeOrAdmin(request))) {
@@ -1869,7 +2112,7 @@ exports.getWhatsAppInstanceStatus = onCall({ secrets: [EVOLUTION_API_KEY] }, asy
       connected: false,
       state: 'missing_key',
       instance: EVOLUTION_INSTANCE,
-      message: 'Chave EVOLUTION_API_KEY não configurada.',
+      message: 'Chave de integração não configurada.',
     };
   }
 
@@ -1915,7 +2158,7 @@ exports.getWhatsAppInstanceStatus = onCall({ secrets: [EVOLUTION_API_KEY] }, asy
 });
 
 /**
- * Webhook para receber mensagens recebidas (MESSAGES_UPSERT) da Evolution API.
+ * Webhook para receber mensagens recebidas (MESSAGES_UPSERT) da API do WhatsApp em tempo real.
  */
 exports.evolutionWhatsAppWebhook = onRequest(async (req, res) => {
   if (req.method !== 'POST') {
@@ -1964,18 +2207,34 @@ exports.evolutionWhatsAppWebhook = onRequest(async (req, res) => {
             console.warn('[evolutionWhatsAppWebhook] Erro ao buscar cliente:', e);
           }
 
-          await admin.firestore().collection('whatsapp_messages').add({
-            chatId: cleanPhone,
-            phone: cleanPhone,
-            customerName,
-            customerId,
-            sender: fromMe ? 'me' : 'customer',
-            text: messageText,
-            status: fromMe ? 'sent' : 'received',
-            timestamp: nowIso,
-            evolutionMessageId: key?.id || `inc_${Date.now()}`,
-            createdAt: admin.firestore.FieldValue.serverTimestamp(),
-          });
+          const msgDocId = key?.id ? `wa_${key.id}` : null;
+          if (msgDocId) {
+            await admin.firestore().collection('whatsapp_messages').doc(msgDocId).set({
+              chatId: cleanPhone,
+              phone: cleanPhone,
+              customerName,
+              customerId,
+              sender: fromMe ? 'me' : 'customer',
+              text: messageText,
+              status: fromMe ? 'sent' : 'received',
+              timestamp: nowIso,
+              evolutionMessageId: key?.id || `inc_${Date.now()}`,
+              createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            }, { merge: true });
+          } else {
+            await admin.firestore().collection('whatsapp_messages').add({
+              chatId: cleanPhone,
+              phone: cleanPhone,
+              customerName,
+              customerId,
+              sender: fromMe ? 'me' : 'customer',
+              text: messageText,
+              status: fromMe ? 'sent' : 'received',
+              timestamp: nowIso,
+              evolutionMessageId: `inc_${Date.now()}`,
+              createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            });
+          }
 
           await admin.firestore().collection('whatsapp_chats').doc(cleanPhone).set({
             id: cleanPhone,

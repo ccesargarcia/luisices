@@ -39,6 +39,7 @@ import {
   Store,
   ChevronRight,
   Filter,
+  Trash2,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -105,9 +106,14 @@ export function WhatsAppChat() {
   const [customPhone, setCustomPhone] = useState('');
   const [customName, setCustomName] = useState('');
 
-  // Status da Instância Evolution API
+  // Status da Conexão WhatsApp
   const [instanceStatus, setInstanceStatus] = useState<WhatsAppStatusResult | null>(null);
   const [checkingStatus, setCheckingStatus] = useState(false);
+
+  // Sincronização e Exclusão de Mensagens
+  const [syncingMessages, setSyncingMessages] = useState(false);
+  const [messageToDelete, setMessageToDelete] = useState<WhatsAppMessage | null>(null);
+  const [deletingMessage, setDeletingMessage] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -116,7 +122,7 @@ export function WhatsAppChat() {
     messagesEndRef.current?.scrollIntoView({ behavior });
   };
 
-  // Verifica status da Evolution API
+  // Verifica status da conexão com o WhatsApp
   const checkStatus = async () => {
     setCheckingStatus(true);
     try {
@@ -296,9 +302,48 @@ export function WhatsAppChat() {
       setTimeout(() => scrollToBottom('smooth'), 150);
     } catch (err: any) {
       console.error('[WhatsAppChat] Erro ao enviar mensagem:', err);
-      toast.error(err.message || 'Erro ao enviar mensagem via Evolution API.');
+      toast.error(err.message || 'Erro ao enviar mensagem para o WhatsApp.');
     } finally {
       setSending(false);
+    }
+  };
+
+  // Exclusão de mensagem
+  const handleDeleteMessage = async () => {
+    if (!messageToDelete || !selectedPhone || deletingMessage) return;
+    setDeletingMessage(true);
+    try {
+      const res = await firebaseWhatsAppService.deleteMessage(
+        selectedPhone,
+        messageToDelete.id,
+        messageToDelete.evolutionMessageId
+      );
+      toast.success(res.message || 'Mensagem apagada com sucesso!');
+      setMessageToDelete(null);
+    } catch (err: any) {
+      console.error('[WhatsAppChat] Erro ao apagar mensagem:', err);
+      toast.error(err.message || 'Erro ao apagar mensagem.');
+    } finally {
+      setDeletingMessage(false);
+    }
+  };
+
+  // Sincronização direta de mensagens
+  const handleSyncMessages = async () => {
+    if (!selectedPhone || syncingMessages) return;
+    setSyncingMessages(true);
+    try {
+      const res = await firebaseWhatsAppService.syncMessages(selectedPhone);
+      if (res.success) {
+        toast.success(res.message || `${res.count || 0} mensagem(ns) sincronizada(s)!`);
+      } else {
+        toast.info(res.message || 'Nenhuma nova mensagem para sincronizar.');
+      }
+    } catch (err: any) {
+      console.error('[WhatsAppChat] Erro ao sincronizar mensagens:', err);
+      toast.error(err.message || 'Erro ao sincronizar mensagens com o WhatsApp.');
+    } finally {
+      setSyncingMessages(false);
     }
   };
 
@@ -387,11 +432,11 @@ export function WhatsAppChat() {
                     instanceStatus?.connected ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'
                   }`}
                 />
-                {instanceStatus?.connected ? 'WHATSAPP CONECTADO' : 'EVOLUTION API'}
+                {instanceStatus?.connected ? 'WHATSAPP CONECTADO' : 'WHATSAPP INTEGRADO'}
               </Badge>
             </div>
             <p className="text-xs text-muted-foreground hidden sm:block">
-              Atendimento ao cliente via WhatsApp (Evolution API), histórico em tempo real e modelos rápidos
+              Atendimento ao cliente via WhatsApp, histórico em tempo real e modelos rápidos
             </p>
           </div>
         </div>
@@ -617,6 +662,20 @@ export function WhatsAppChat() {
                     variant="outline"
                     size="sm"
                     className="h-8 text-xs gap-1.5"
+                    onClick={handleSyncMessages}
+                    disabled={syncingMessages}
+                    title="Sincronizar mensagens recentes do WhatsApp"
+                  >
+                    <RefreshCw className={`size-3.5 ${syncingMessages ? 'animate-spin' : ''}`} />
+                    <span className="hidden sm:inline">
+                      {syncingMessages ? 'Sincronizando...' : 'Sincronizar'}
+                    </span>
+                  </Button>
+
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-8 text-xs gap-1.5"
                     onClick={handleOpenWhatsAppWeb}
                     title="Abrir no WhatsApp Web"
                   >
@@ -648,15 +707,27 @@ export function WhatsAppChat() {
                     return (
                       <div
                         key={msg.id}
-                        className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}
+                        className={`group relative flex flex-col ${isMe ? 'items-end' : 'items-start'}`}
                       >
                         <div
-                          className={`max-w-[85%] sm:max-w-[75%] rounded-2xl px-3.5 py-2.5 text-xs sm:text-sm whitespace-pre-wrap leading-relaxed shadow-xs ${
+                          className={`relative max-w-[85%] sm:max-w-[75%] rounded-2xl px-3.5 py-2.5 text-xs sm:text-sm whitespace-pre-wrap leading-relaxed shadow-xs ${
                             isMe
                               ? 'bg-emerald-600 text-white rounded-tr-none'
                               : 'bg-card text-foreground border rounded-tl-none'
                           }`}
                         >
+                          {/* Botão de excluir mensagem (visível ao passar o mouse) */}
+                          <button
+                            type="button"
+                            onClick={() => setMessageToDelete(msg)}
+                            title="Apagar mensagem para todos"
+                            className={`absolute -top-2 ${
+                              isMe ? '-left-2 text-emerald-700 bg-background/90 shadow-xs' : '-right-2 text-muted-foreground bg-background/90 shadow-xs'
+                            } opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded-full border hover:text-destructive hover:bg-destructive/10`}
+                          >
+                            <Trash2 className="size-3" />
+                          </button>
+
                           <div>{msg.text}</div>
                           <div
                             className={`flex items-center justify-end gap-1 mt-1 text-[10px] ${
@@ -764,7 +835,7 @@ export function WhatsAppChat() {
                   Selecione ou inicie uma conversa no WhatsApp
                 </h3>
                 <p className="text-xs text-muted-foreground leading-relaxed">
-                  Interaja diretamente com os clientes através da Evolution API integrada ao Luisices.
+                  Interaja diretamente com os clientes através do WhatsApp integrado ao Luisices.
                   Envie avisos de produção, cobranças amigáveis e consulte o histórico em tempo real.
                 </p>
               </div>
@@ -874,6 +945,58 @@ export function WhatsAppChat() {
                 Abrir Chat com este Número
               </Button>
             </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal Confirmar Exclusão de Mensagem */}
+      <Dialog
+        open={Boolean(messageToDelete)}
+        onOpenChange={(open) => {
+          if (!open && !deletingMessage) setMessageToDelete(null);
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-base font-bold flex items-center gap-2 text-destructive">
+              <Trash2 className="size-5" />
+              Apagar mensagem?
+            </DialogTitle>
+            <DialogDescription className="text-xs text-muted-foreground">
+              Esta ação apagará a mensagem para todos no WhatsApp e removerá do histórico de atendimento no sistema.
+            </DialogDescription>
+          </DialogHeader>
+
+          {messageToDelete && (
+            <div className="p-3 bg-muted/50 border rounded-lg text-xs text-foreground whitespace-pre-wrap max-h-32 overflow-y-auto">
+              {messageToDelete.text}
+            </div>
+          )}
+
+          <div className="flex items-center justify-end gap-2 pt-2">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={deletingMessage}
+              onClick={() => setMessageToDelete(null)}
+              className="h-8 text-xs"
+            >
+              Cancelar
+            </Button>
+            <Button
+              variant="destructive"
+              size="sm"
+              disabled={deletingMessage}
+              onClick={handleDeleteMessage}
+              className="h-8 text-xs gap-1.5 font-semibold"
+            >
+              {deletingMessage ? (
+                <Loader2 className="size-3.5 animate-spin" />
+              ) : (
+                <Trash2 className="size-3.5" />
+              )}
+              <span>{deletingMessage ? 'Apagando...' : 'Apagar para Todos'}</span>
+            </Button>
           </div>
         </DialogContent>
       </Dialog>

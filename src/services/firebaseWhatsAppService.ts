@@ -15,7 +15,7 @@ export interface WhatsAppStatusResult {
 
 export const firebaseWhatsAppService = {
   /**
-   * Envia mensagem via Evolution API e armazena no Firestore.
+   * Envia mensagem para o WhatsApp e armazena no Firestore.
    */
   async sendMessage(
     phone: string,
@@ -42,6 +42,56 @@ export const firebaseWhatsAppService = {
     return {
       success: result.data.success,
       message: result.data.message || 'Mensagem enviada com sucesso!',
+    };
+  },
+
+  /**
+   * Apaga uma mensagem do WhatsApp (para todos) e remove do Firestore.
+   */
+  async deleteMessage(
+    phone: string,
+    messageDocId?: string,
+    evolutionMessageId?: string
+  ): Promise<{ success: boolean; message?: string }> {
+    const cleanPhone = normalizePhoneForWhatsApp(phone);
+    if (!cleanPhone) throw new Error('Número de WhatsApp inválido.');
+    if (!messageDocId && !evolutionMessageId) throw new Error('Identificador da mensagem não informado.');
+
+    const deleteCallable = httpsCallable<
+      { phone: string; messageDocId?: string; evolutionMessageId?: string },
+      { success: boolean; message: string }
+    >(functions, 'deleteWhatsAppMessage');
+
+    const result = await deleteCallable({
+      phone: cleanPhone,
+      messageDocId,
+      evolutionMessageId,
+    });
+
+    return {
+      success: result.data.success,
+      message: result.data.message || 'Mensagem apagada com sucesso!',
+    };
+  },
+
+  /**
+   * Sincroniza o histórico recente de mensagens de um contato.
+   */
+  async syncMessages(phone: string): Promise<{ success: boolean; count?: number; message?: string }> {
+    const cleanPhone = normalizePhoneForWhatsApp(phone);
+    if (!cleanPhone) throw new Error('Número de WhatsApp inválido.');
+
+    const syncCallable = httpsCallable<
+      { phone: string },
+      { success: boolean; count: number; message: string }
+    >(functions, 'syncWhatsAppChatMessages');
+
+    const result = await syncCallable({ phone: cleanPhone });
+
+    return {
+      success: result.data.success,
+      count: result.data.count,
+      message: result.data.message || 'Mensagens sincronizadas!',
     };
   },
 
@@ -149,7 +199,7 @@ export const firebaseWhatsAppService = {
   },
 
   /**
-   * Consulta o status da conexão da instância com a Evolution API.
+   * Consulta o status da conexão da instância com o WhatsApp.
    */
   async getInstanceStatus(): Promise<WhatsAppStatusResult> {
     try {

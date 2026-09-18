@@ -18,10 +18,12 @@ on:
         type: choice
         options:
           - 'all'
-          - 'aiAgentChat,sendWhatsAppDirectMessage,getWhatsAppInstanceStatus,evolutionWhatsAppWebhook,syncOrderToAiView,syncAllOrdersToAiView'
-          - 'sendWhatsAppDirectMessage,getWhatsAppInstanceStatus,evolutionWhatsAppWebhook'
+          - 'aiAgentChat,sendWhatsAppDirectMessage,deleteWhatsAppMessage,syncWhatsAppChatMessages,getWhatsAppInstanceStatus,evolutionWhatsAppWebhook,syncOrderToAiView,syncAllOrdersToAiView'
+          - 'sendWhatsAppDirectMessage,deleteWhatsAppMessage,syncWhatsAppChatMessages,getWhatsAppInstanceStatus,evolutionWhatsAppWebhook'
           - 'aiAgentChat,sendWhatsAppDirectMessage'
           - 'sendWhatsAppDirectMessage'
+          - 'deleteWhatsAppMessage'
+          - 'syncWhatsAppChatMessages'
           - 'getWhatsAppInstanceStatus'
           - 'evolutionWhatsAppWebhook'
           - 'aiAgentChat'

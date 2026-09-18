@@ -41,7 +41,7 @@ export class FirebaseAiAgentService {
   }
 
   /**
-   * Dispara uma mensagem WhatsApp diretamente para o cliente via Evolution API
+   * Dispara uma mensagem WhatsApp diretamente para o cliente
    */
   async sendWhatsAppDirectMessage(
     phone: string,

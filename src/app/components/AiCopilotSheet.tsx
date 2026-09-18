@@ -93,7 +93,7 @@ function WhatsAppComposer({ draft, onSendVariantRequest, disabled }: WhatsAppCom
     }
   };
 
-  const handleSendViaEvolutionApi = async () => {
+  const handleSendViaWhatsAppApi = async () => {
     if (!phone.trim()) {
       toast.error('Por favor, informe o número de WhatsApp do destinatário.');
       return;
@@ -107,10 +107,10 @@ function WhatsAppComposer({ draft, onSendVariantRequest, disabled }: WhatsAppCom
     try {
       const res = await firebaseAiAgentService.sendWhatsAppDirectMessage(phone, message);
       setSentSuccess(true);
-      toast.success(res.message || 'Mensagem enviada com sucesso via Evolution API!');
+      toast.success(res.message || 'Mensagem enviada com sucesso para o WhatsApp!');
     } catch (err: any) {
-      console.error('[WhatsAppComposer] Erro ao disparar via Evolution API:', err);
-      toast.error(err.message || 'Erro ao enviar via Evolution API. Você pode usar a opção de abrir no WhatsApp.');
+      console.error('[WhatsAppComposer] Erro ao disparar mensagem:', err);
+      toast.error(err.message || 'Erro ao enviar para o WhatsApp. Você pode usar a opção de abrir no WhatsApp Web.');
     } finally {
       setSendingViaApi(false);
     }
@@ -144,14 +144,14 @@ function WhatsAppComposer({ draft, onSendVariantRequest, disabled }: WhatsAppCom
           Central WhatsApp (Disparo Direto & Revisão)
         </span>
         <Badge variant="outline" className="text-[10px] bg-emerald-500/10 text-emerald-600 border-emerald-500/30 font-semibold">
-          EVOLUTION API
+          WHATSAPP INTEGRADO
         </Badge>
       </div>
 
       {sentSuccess && (
         <div className="p-2.5 bg-emerald-500/15 border border-emerald-500/40 rounded-lg text-xs font-semibold text-emerald-800 dark:text-emerald-300 flex items-center gap-2">
           <Check className="size-4 text-emerald-600 shrink-0" />
-          <span>Mensagem disparada com sucesso para o WhatsApp via Evolution API!</span>
+          <span>Mensagem disparada com sucesso para o WhatsApp!</span>
         </div>
       )}
 
@@ -225,7 +225,7 @@ function WhatsAppComposer({ draft, onSendVariantRequest, disabled }: WhatsAppCom
         <Button
           size="sm"
           className="flex-1 gap-1.5 text-xs sm:text-sm h-10 sm:h-9 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold shadow-xs"
-          onClick={handleSendViaEvolutionApi}
+          onClick={handleSendViaWhatsAppApi}
           disabled={sendingViaApi || !message.trim()}
         >
           {sendingViaApi ? (

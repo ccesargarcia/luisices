@@ -660,7 +660,7 @@ export interface AiChatMessage {
   pricingEstimate?: AiPricingEstimate | null;
 }
 
-// ─── Central de Atendimento WhatsApp (Evolution API) ──────────────────────────
+// ─── Central de Atendimento WhatsApp ──────────────────────────────────────────
 export interface WhatsAppMessage {
   id: string;
   chatId: string; // Número normalizado (ex: 5511999999999)
