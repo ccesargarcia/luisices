@@ -1348,19 +1348,42 @@ DIRETRIZES DE RESPOSTA:
           const followUpParts = followUpCandidate?.content?.parts || [];
           const textResponse = followUpParts.map(p => p.text).filter(Boolean).join('\n');
 
-          if (textResponse && textResponse.trim().length > 15) {
-            finalAnswer = textResponse;
-          } else if (queryResults.length === 0) {
-            finalAnswer = 'Não encontrei nenhum pedido correspondente aos critérios consultados.';
+          const statusMap = {
+            pending: 'Pendente',
+            'in-progress': 'Em Produção',
+            completed: 'Concluído',
+            cancelled: 'Cancelado',
+          };
+
+          if (queryResults.length === 0) {
+            finalAnswer = textResponse && textResponse.length > 20
+              ? textResponse
+              : 'Não encontrei nenhum pedido correspondente aos critérios consultados.';
           } else {
-            const list = queryResults.map(o => `• **${o.orderNumber || o.orderId}** - ${o.customerName}: ${o.productSummary} (${o.quantity} un) - R$ ${o.totalPrice} [Status: ${o.status}]`).join('\n');
-            finalAnswer = `Encontrei **${queryResults.length} pedido(s)**:\n\n${list}`;
+            const isGeneric =
+              !textResponse ||
+              textResponse.length < 50 ||
+              textResponse.toLowerCase().includes('consulta realizada') ||
+              textResponse.toLowerCase().includes('com sucesso');
+
+            if (isGeneric) {
+              const list = queryResults.map(o => {
+                const formattedPrice = Number(o.totalPrice || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+                const st = statusMap[o.status] || o.status;
+                const paySt = o.paymentStatus === 'paid' ? 'Pago' : o.paymentStatus === 'partial' ? 'Parcial' : 'Pendente';
+                return `• **${o.orderNumber || '#' + o.orderId}** — **${o.customerName}**\n  📦 ${o.productSummary} (${o.quantity} un) | 💰 ${formattedPrice} | 🏷️ ${st} (${paySt})`;
+              }).join('\n\n');
+
+              finalAnswer = `Encontrei **${queryResults.length} pedido(s)** cadastrado(s):\n\n${list}`;
+            } else {
+              finalAnswer = textResponse;
+            }
           }
         } catch {
           if (queryResults.length === 0) {
             finalAnswer = 'Não encontrei nenhum pedido correspondente na base.';
           } else {
-            const list = queryResults.map(o => `• **${o.orderNumber || o.orderId}** - ${o.customerName}: ${o.productSummary} (${o.quantity} un) - R$ ${o.totalPrice} [Status: ${o.status}]`).join('\n');
+            const list = queryResults.map(o => `• **${o.orderNumber || '#' + o.orderId}** — ${o.customerName}: ${o.productSummary} (${o.quantity} un) - R$ ${o.totalPrice}`).join('\n');
             finalAnswer = `Encontrei **${queryResults.length} pedido(s)**:\n\n${list}`;
           }
         }
