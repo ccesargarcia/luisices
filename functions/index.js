@@ -1061,6 +1061,29 @@ exports.syncAllOrdersToAiView = onCall(async (request) => {
   return { success: true, count: totalCount, message: `${totalCount} pedidos sincronizados com sucesso na ai_orders_view.` };
 });
 
+// Cache global em memória para os modelos disponíveis (evita chamadas redundantes)
+let cachedCandidateModels = null;
+let cachedModelsTimestamp = 0;
+
+// Cache global em memória para respostas rápidas (TTL de 3 minutos)
+const aiResponseCache = new Map();
+
+/**
+ * Sanitiza o texto gerado pela IA para remover pensamentos/raciocínios internos vazados
+ */
+const cleanAiOutput = (text) => {
+  if (!text || typeof text !== 'string') return '';
+  let cleaned = text;
+
+  // Remove blocos de tag <thought>...</thought> ou <reasoning>...</reasoning>
+  cleaned = cleaned.replace(/<(thought|reasoning|think)>[\s\S]*?<\/\1>/gi, '');
+
+  // Remove preâmbulos típicos de auto-raciocínio em inglês gerados por modelos "Thinking"
+  cleaned = cleaned.replace(/^(The user wants to|I need to iterate|Looking at the orders|I have already called|I will present this|Based on the query|Let's check the orders)[\s\S]*?(?=(O pedido|Encontrei|Aqui est|Segue|Não encontrei|\n\n[A-ZÀ-Ú]))/i, '');
+
+  return cleaned.trim();
+};
+
 /**
  * Endpoint Callable Seguro do Copiloto de IA Interno
  */
@@ -1080,6 +1103,18 @@ exports.aiAgentChat = onCall({ secrets: [GEMINI_API_KEY] }, async (request) => {
     throw new functions.https.HttpsError('invalid-argument', 'Mensagem é obrigatória.');
   }
 
+  const cleanMessage = message.trim();
+  const cacheKey = cleanMessage.toLowerCase();
+
+  // Se for uma pergunta comum sem histórico e estiver no cache recente, responde instantaneamente
+  if ((!history || history.length === 0) && aiResponseCache.has(cacheKey)) {
+    const cached = aiResponseCache.get(cacheKey);
+    if (Date.now() - cached.timestamp < 180000) { // 3 minutos
+      console.log('[aiAgentChat] Resposta retornada via cache em memória (instantânea).');
+      return { success: true, reply: cached.reply, orderDraft: cached.orderDraft };
+    }
+  }
+
   const rawKey = (typeof GEMINI_API_KEY.value === 'function' ? GEMINI_API_KEY.value() : process.env.GEMINI_API_KEY) || '';
   const apiKey = String(rawKey).trim();
   if (!apiKey) {
@@ -1095,10 +1130,16 @@ Você possui 3 responsabilidades principais:
 3. GUIA E SUPORTE OPERACIONAL: Tirar dúvidas sobre como usar qualquer funcionalidade do sistema Luisices com passos claros e objetivos.
 
 ---
-BASE DE CONHECIMENTO DO SISTEMA LUISICES:
+REGRAS CRÍTICAS DE RESPOSTA:
+- NUNCA inclua seu raciocínio interno, scratchpad, notas ou pensamentos em inglês no texto de resposta.
+- Responda DIRETA e EXCLUSIVAMENTE em Português do Brasil (pt-BR) ao usuário final.
+- Sempre responda de forma simpática, clara e estruturada com tópicos e negrito.
+- Quando consultar 'query_orders_view', analise os dados e apresente a resposta formatada (ex: se o usuário perguntou o de maior valor, indique claramente qual é o pedido, o cliente, o valor e o status).
 
+---
+BASE DE CONHECIMENTO DO SISTEMA LUISICES:
 • LOJINHA ONLINE & CATÁLOGO:
-- Produtos da Lojinha (/produtos-lojinha): Onde você cadastra e publica itens para a vitrine pública da loja. Para publicar, acesse o menu Lojinha Online > Produtos da Lojinha, clique em 'Novo Produto', preencha nome, fotos, descrição, variações (tamanho/cor) e valor, e marque como 'Ativo'.
+- Produtos da Lojinha (/produtos-lojinha): Para publicar, acesse o menu Lojinha Online > Produtos da Lojinha, clique em 'Novo Produto', preencha nome, fotos, descrição, variações (tamanho/cor) e valor, e marque como 'Ativo'.
 - Vitrine Pública (/loja ou /catalogo): O link público onde os clientes visualizam os produtos, montam o carrinho e enviam o pedido direto para o WhatsApp do ateliê.
 - Pedidos da Lojinha (/pedidos-lojinha): Lista os pedidos recebidos através da vitrine pública. Você pode aceitar o pedido e convertê-lo em um pedido operacional de produção com 1 clique.
 - Aparência & Vitrine (/personalizar-lojinha): Personaliza o banner, cores de destaque, logo e informações de contato da lojinha pública.
@@ -1109,7 +1150,7 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
 - Ações no Pedido: Ao abrir o pedido, você pode exportar PDF, duplicar pedido, delegar para um membro da equipe (assignedTo), anexar comprovantes/arquivos e registrar pagamentos (Pix, Dinheiro, Cartão).
 
 • PRECIFICAÇÃO INTELIGENTE (/precificacao):
-- Fórmulas de Custos: Permite cadastrar matérias-primas (tecidos, tintas, embalagens), mão de obra por tempo ou proporção, margem de desperdício, taxa de pagamento e margem de lucro desejada para obter o preço de venda sugerido.
+- Fórmulas de Custos: Permite cadastrar matérias-primas, mão de obra por tempo ou proporção, margem de desperdício, taxa de pagamento e margem de lucro desejada para obter o preço de venda sugerido.
 
 • ORÇAMENTOS (/orcamentos):
 - Criação de cotações para clientes com data de validade. Ao ser aprovado pelo cliente, pode ser transformado em pedido com 1 clique.
@@ -1117,14 +1158,7 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
 • CLIENTES (/clientes), GALERIA (/galeria) E PERMUTAS (/permutas):
 - Clientes: Cadastro completo com endereço automático via CEP, histórico de compras e fotos vinculadas.
 - Galeria: Banco de artes, matrizes e estampas vinculadas aos clientes para reutilização em novos pedidos.
-- Permutas: Controle de parcerias e permutas com influenciadores/parceiros sem transação monetária.
-
----
-DIRETRIZES DE RESPOSTA:
-- Sempre responda em Português do Brasil (pt-BR) de forma simpática, clara e estruturada com bullet points.
-- Se a dúvida for operacional (ex: "como publicar na lojinha?"), forneça o passo a passo direto e indique o menu correspondente.
-- Se a dúvida for sobre dados do ateliê (ex: "pedidos de hoje"), consulte a ferramenta 'query_orders_view'.
-- Se o usuário colar um pedido informal de WhatsApp, acione 'extract_order_draft'.`;
+- Permutas: Controle de parcerias e permutas com influenciadores/parceiros sem transação monetária.`;
 
   const toolsDeclaration = [
     {
@@ -1227,11 +1261,15 @@ DIRETRIZES DE RESPOSTA:
   }
   contents.push({
     role: 'user',
-    parts: [{ text: message }]
+    parts: [{ text: cleanMessage }]
   });
 
-  // Busca a lista de modelos suportados pela chave dinamicamente
-  const getDynamicModels = async () => {
+  // Reutiliza cache de modelos para evitar chamadas de rede desnecessárias (1h TTL)
+  const getCandidateModels = async () => {
+    if (cachedCandidateModels && Date.now() - cachedModelsTimestamp < 3600000) {
+      return cachedCandidateModels;
+    }
+
     try {
       const listResp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`);
       if (listResp.ok) {
@@ -1240,32 +1278,33 @@ DIRETRIZES DE RESPOSTA:
           .filter(m => Array.isArray(m.supportedGenerationMethods) && m.supportedGenerationMethods.includes('generateContent'))
           .map(m => m.name.replace(/^models\//, ''));
         if (available.length > 0) {
-          console.log('[aiAgentChat] Modelos retornados pela API para esta chave:', available);
-          return available;
+          cachedCandidateModels = [
+            process.env.GEMINI_MODEL,
+            ...available,
+            'gemini-1.5-flash-latest',
+            'gemini-1.5-flash',
+            'gemini-2.0-flash',
+          ].filter((item, index, self) => Boolean(item) && self.indexOf(item) === index);
+          cachedModelsTimestamp = Date.now();
+          return cachedCandidateModels;
         }
-      } else {
-        const err = await listResp.text();
-        console.warn('[aiAgentChat] Não foi possível listar modelos automaticamente:', listResp.status, err);
       }
     } catch (err) {
       console.warn('[aiAgentChat] Erro ao consultar lista de modelos:', err);
     }
-    return [];
+
+    cachedCandidateModels = [
+      process.env.GEMINI_MODEL,
+      'gemini-1.5-flash-latest',
+      'gemini-1.5-flash',
+      'gemini-2.0-flash',
+      'gemini-pro',
+    ].filter((item, index, self) => Boolean(item) && self.indexOf(item) === index);
+    cachedModelsTimestamp = Date.now();
+    return cachedCandidateModels;
   };
 
-  const dynamicModels = await getDynamicModels();
-  const candidateModels = [
-    process.env.GEMINI_MODEL,
-    ...dynamicModels,
-    'gemini-1.5-flash-latest',
-    'gemini-1.5-flash-001',
-    'gemini-1.5-flash-002',
-    'gemini-1.5-flash',
-    'gemini-2.0-flash',
-    'gemini-2.0-flash-lite',
-    'gemini-2.5-flash',
-    'gemini-pro',
-  ].filter((item, index, self) => Boolean(item) && self.indexOf(item) === index);
+  const candidateModels = await getCandidateModels();
 
   const callGeminiWithFallback = async (payload) => {
     let lastError = null;
@@ -1329,8 +1368,8 @@ DIRETRIZES DE RESPOSTA:
               functionResponse: {
                 name: 'query_orders_view',
                 response: {
-                  summary: `Encontrados ${queryResults.length} pedidos.`,
-                  orders: queryResults.slice(0, 15),
+                  summary: `Foram encontrados ${queryResults.length} pedidos.`,
+                  orders: queryResults.slice(0, 20),
                 }
               }
             }]
@@ -1346,7 +1385,7 @@ DIRETRIZES DE RESPOSTA:
           });
           const followUpCandidate = followUpResult?.candidates?.[0];
           const followUpParts = followUpCandidate?.content?.parts || [];
-          const textResponse = followUpParts.map(p => p.text).filter(Boolean).join('\n');
+          const textResponse = cleanAiOutput(followUpParts.map(p => p.text).filter(Boolean).join('\n'));
 
           const statusMap = {
             pending: 'Pendente',
@@ -1362,9 +1401,8 @@ DIRETRIZES DE RESPOSTA:
           } else {
             const isGeneric =
               !textResponse ||
-              textResponse.length < 50 ||
-              textResponse.toLowerCase().includes('consulta realizada') ||
-              textResponse.toLowerCase().includes('com sucesso');
+              textResponse.length < 40 ||
+              textResponse.toLowerCase().includes('consulta realizada');
 
             if (isGeneric) {
               const list = queryResults.map(o => {
@@ -1389,8 +1427,15 @@ DIRETRIZES DE RESPOSTA:
         }
       }
     } else {
-      finalAnswer = parts.map(p => p.text).filter(Boolean).join('\n') || 'Como posso ajudar você hoje?';
+      finalAnswer = cleanAiOutput(parts.map(p => p.text).filter(Boolean).join('\n')) || 'Como posso ajudar você hoje?';
     }
+
+    // Salva no cache de respostas rápidas
+    aiResponseCache.set(cacheKey, {
+      reply: finalAnswer,
+      orderDraft: extractedDraft,
+      timestamp: Date.now(),
+    });
 
     return {
       success: true,
