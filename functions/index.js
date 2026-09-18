@@ -1185,7 +1185,39 @@ Suas diretrizes:
     parts: [{ text: message }]
   });
 
-  const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+  const candidateModels = [
+    process.env.GEMINI_MODEL,
+    'gemini-1.5-flash',
+    'gemini-2.0-flash',
+    'gemini-1.5-pro',
+  ].filter(Boolean);
+
+  const callGeminiWithFallback = async (payload) => {
+    let lastError = null;
+    for (const model of candidateModels) {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+      try {
+        const resp = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+
+        if (resp.ok) {
+          const data = await resp.json();
+          return { data, modelUsed: model };
+        }
+
+        const errText = await resp.text();
+        console.warn(`[aiAgentChat] Modelo ${model} retornou status ${resp.status}:`, errText);
+        lastError = new Error(`Status ${resp.status}: ${errText}`);
+      } catch (err) {
+        console.warn(`[aiAgentChat] Falha de conexão com modelo ${model}:`, err);
+        lastError = err;
+      }
+    }
+    throw lastError || new Error('Nenhum modelo Gemini disponível respondeu com sucesso.');
+  };
 
   try {
     const geminiPayload = {
@@ -1195,19 +1227,7 @@ Suas diretrizes:
       generationConfig: { temperature: 0.2 }
     };
 
-    const firstResp = await fetch(apiUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(geminiPayload)
-    });
-
-    if (!firstResp.ok) {
-      const errText = await firstResp.text();
-      console.error('[aiAgentChat] Erro na API Gemini:', firstResp.status, errText);
-      throw new functions.https.HttpsError('internal', 'Falha ao processar solicitação com o modelo de IA.');
-    }
-
-    const firstResult = await firstResp.json();
+    const { data: firstResult } = await callGeminiWithFallback(geminiPayload);
     const candidate = firstResult?.candidates?.[0];
     const parts = candidate?.content?.parts || [];
     const functionCallPart = parts.find(p => p.functionCall);
@@ -1239,20 +1259,14 @@ Suas diretrizes:
           }
         ];
 
-        const followUpResp = await fetch(apiUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
+        try {
+          const { data: followUpResult } = await callGeminiWithFallback({
             system_instruction: { parts: [{ text: systemInstruction }] },
             contents: followUpContents,
             generationConfig: { temperature: 0.2 }
-          })
-        });
-
-        if (followUpResp.ok) {
-          const followUpResult = await followUpResp.json();
+          });
           finalAnswer = followUpResult?.candidates?.[0]?.content?.parts?.[0]?.text || 'Consulta realizada com sucesso.';
-        } else {
+        } catch {
           finalAnswer = `Encontrei ${queryResults.length} pedido(s) correspondente(s) na base.`;
         }
       }
@@ -1268,7 +1282,7 @@ Suas diretrizes:
   } catch (error) {
     if (error instanceof functions.https.HttpsError) throw error;
     console.error('[aiAgentChat] Erro inesperado:', error);
-    throw new functions.https.HttpsError('internal', 'Erro ao executar o copiloto de IA.');
+    throw new functions.https.HttpsError('internal', error.message || 'Erro ao executar o copiloto de IA.');
   }
 });
 
