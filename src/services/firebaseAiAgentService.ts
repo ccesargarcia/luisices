@@ -39,6 +39,22 @@ export class FirebaseAiAgentService {
     const result = await callable();
     return result.data;
   }
+
+  /**
+   * Dispara uma mensagem WhatsApp diretamente para o cliente via Evolution API
+   */
+  async sendWhatsAppDirectMessage(
+    phone: string,
+    text: string
+  ): Promise<{ success: boolean; message: string }> {
+    const callable = httpsCallable<
+      { phone: string; text: string },
+      { success: boolean; message: string }
+    >(functions, 'sendWhatsAppDirectMessage');
+
+    const result = await callable({ phone, text });
+    return result.data;
+  }
 }
 
 export const firebaseAiAgentService = new FirebaseAiAgentService();

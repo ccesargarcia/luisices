@@ -1639,5 +1639,66 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
   }
 });
 
+/**
+ * Dispara uma mensagem WhatsApp diretamente para o cliente via Evolution API.
+ * Uso restrito a membros autorizados da equipe (admin ou funcionário ativo).
+ */
+exports.sendWhatsAppDirectMessage = onCall({ secrets: [EVOLUTION_API_KEY] }, async (request) => {
+  if (!(await isAuthorizedEmployeeOrAdmin(request))) {
+    throw new functions.https.HttpsError('permission-denied', 'Acesso restrito a membros autorizados da equipe.');
+  }
+
+  const { phone, text } = request.data || {};
+  if (!phone || typeof phone !== 'string' || !phone.trim()) {
+    throw new functions.https.HttpsError('invalid-argument', 'Telefone do destinatário é obrigatório.');
+  }
+  if (!text || typeof text !== 'string' || !text.trim()) {
+    throw new functions.https.HttpsError('invalid-argument', 'Texto da mensagem é obrigatório.');
+  }
+
+  const rawKey = (typeof EVOLUTION_API_KEY.value === 'function' ? EVOLUTION_API_KEY.value() : process.env.EVOLUTION_API_KEY) || '';
+  if (!rawKey) {
+    throw new functions.https.HttpsError('failed-precondition', 'Chave EVOLUTION_API_KEY não configurada no Firebase Secret Manager.');
+  }
+
+  try {
+    const cleanNumber = normalizeWhatsAppNumber(phone);
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000);
+
+    const response = await fetch(
+      `${EVOLUTION_API_URL}/message/sendText/${encodeURIComponent(EVOLUTION_INSTANCE)}`,
+      {
+        method: 'POST',
+        headers: {
+          apikey: rawKey,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ number: cleanNumber, text: text.trim() }),
+        signal: controller.signal,
+      }
+    );
+    clearTimeout(timeout);
+
+    if (!response.ok) {
+      const errBody = await response.text();
+      console.error('[sendWhatsAppDirectMessage] Evolution API erro:', response.status, errBody);
+      throw new functions.https.HttpsError('internal', `Evolution API retornou erro ${response.status}: ${errBody}`);
+    }
+
+    const resData = await response.json().catch(() => ({}));
+    console.log('[sendWhatsAppDirectMessage] Mensagem enviada com sucesso para:', cleanNumber);
+    return {
+      success: true,
+      message: 'Mensagem enviada com sucesso via Evolution API!',
+      data: resData,
+    };
+  } catch (error) {
+    if (error instanceof functions.https.HttpsError) throw error;
+    console.error('[sendWhatsAppDirectMessage] Falha ao enviar mensagem:', error);
+    throw new functions.https.HttpsError('internal', error.message || 'Erro ao conectar com a Evolution API.');
+  }
+});
+
 
 

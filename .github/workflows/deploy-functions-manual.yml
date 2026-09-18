@@ -18,7 +18,9 @@ on:
         type: choice
         options:
           - 'all'
-          - 'aiAgentChat,syncOrderToAiView,syncAllOrdersToAiView'
+          - 'aiAgentChat,sendWhatsAppDirectMessage,syncOrderToAiView,syncAllOrdersToAiView'
+          - 'aiAgentChat,sendWhatsAppDirectMessage'
+          - 'sendWhatsAppDirectMessage'
           - 'aiAgentChat'
           - 'syncOrderToAiView'
           - 'syncAllOrdersToAiView'

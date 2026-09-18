@@ -60,11 +60,14 @@ function WhatsAppComposer({ draft, onSendVariantRequest, disabled }: WhatsAppCom
   const [recipientName, setRecipientName] = useState(draft.recipientName || '');
   const [message, setMessage] = useState(draft.messageText || '');
   const [copied, setCopied] = useState(false);
+  const [sendingViaApi, setSendingViaApi] = useState(false);
+  const [sentSuccess, setSentSuccess] = useState(false);
 
   useEffect(() => {
     setMessage(draft.messageText || '');
     if (draft.recipientPhone) setPhone(draft.recipientPhone);
     if (draft.recipientName) setRecipientName(draft.recipientName);
+    setSentSuccess(false);
   }, [draft]);
 
   const handleCopy = async () => {
@@ -78,7 +81,30 @@ function WhatsAppComposer({ draft, onSendVariantRequest, disabled }: WhatsAppCom
     }
   };
 
-  const handleSendToWhatsApp = () => {
+  const handleSendViaEvolutionApi = async () => {
+    if (!phone.trim()) {
+      toast.error('Por favor, informe o número de WhatsApp do destinatário.');
+      return;
+    }
+    if (!message.trim()) {
+      toast.error('A mensagem não pode estar vazia.');
+      return;
+    }
+
+    setSendingViaApi(true);
+    try {
+      const res = await firebaseAiAgentService.sendWhatsAppDirectMessage(phone, message);
+      setSentSuccess(true);
+      toast.success(res.message || 'Mensagem enviada com sucesso via Evolution API!');
+    } catch (err: any) {
+      console.error('[WhatsAppComposer] Erro ao disparar via Evolution API:', err);
+      toast.error(err.message || 'Erro ao enviar via Evolution API. Você pode usar a opção de abrir no WhatsApp.');
+    } finally {
+      setSendingViaApi(false);
+    }
+  };
+
+  const handleSendToWhatsAppWeb = () => {
     const cleanDigits = phone.replace(/\D/g, '');
     let formattedPhone = cleanDigits;
     if (cleanDigits.length === 10 || cleanDigits.length === 11) {
@@ -99,28 +125,35 @@ function WhatsAppComposer({ draft, onSendVariantRequest, disabled }: WhatsAppCom
   ];
 
   return (
-    <div className="mt-3 p-3 bg-emerald-500/5 border border-emerald-500/30 rounded-xl space-y-2.5 text-foreground">
-      <div className="flex items-center justify-between border-b border-emerald-500/20 pb-1.5">
+    <div className="mt-3 p-3.5 bg-emerald-500/5 border border-emerald-500/30 rounded-xl space-y-3 text-foreground shadow-xs">
+      <div className="flex items-center justify-between border-b border-emerald-500/20 pb-2">
         <span className="text-xs font-semibold text-emerald-700 dark:text-emerald-400 flex items-center gap-1.5">
-          <MessageSquare className="size-3.5" />
-          Central WhatsApp (Revisar & Enviar)
+          <MessageSquare className="size-4" />
+          Central WhatsApp (Disparo Direto & Revisão)
         </span>
-        <Badge variant="outline" className="text-[10px] bg-emerald-500/10 text-emerald-600 border-emerald-500/30">
-          {draft.type ? draft.type.toUpperCase() : 'WHATSAPP'}
+        <Badge variant="outline" className="text-[10px] bg-emerald-500/10 text-emerald-600 border-emerald-500/30 font-semibold">
+          EVOLUTION API
         </Badge>
       </div>
 
+      {sentSuccess && (
+        <div className="p-2.5 bg-emerald-500/15 border border-emerald-500/40 rounded-lg text-xs font-semibold text-emerald-800 dark:text-emerald-300 flex items-center gap-2">
+          <Check className="size-4 text-emerald-600 shrink-0" />
+          <span>Mensagem disparada com sucesso para o WhatsApp via Evolution API!</span>
+        </div>
+      )}
+
       {/* Seletor rápido de tipos de mensagem */}
       <div className="space-y-1">
-        <span className="text-[10px] font-medium text-muted-foreground">Trocar formato da mensagem:</span>
+        <span className="text-[10px] font-medium text-muted-foreground">Trocar formato da mensagem com 1 clique:</span>
         <div className="flex flex-wrap gap-1">
           {VARIANTS.map((v) => (
             <button
               key={v.type}
               type="button"
               onClick={() => onSendVariantRequest(`${v.prompt} para ${recipientName || 'o cliente'}`)}
-              disabled={disabled}
-              className={`text-[11px] px-2 py-0.5 rounded-md border transition-colors ${
+              disabled={disabled || sendingViaApi}
+              className={`text-[11px] px-2 py-1 rounded-md border transition-colors ${
                 draft.type === v.type
                   ? 'bg-emerald-600 text-white border-emerald-600 font-medium'
                   : 'bg-background hover:bg-emerald-500/10 text-foreground border-border'
@@ -133,25 +166,27 @@ function WhatsAppComposer({ draft, onSendVariantRequest, disabled }: WhatsAppCom
       </div>
 
       {/* Campos de contato */}
-      <div className="grid grid-cols-2 gap-2 text-xs">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
         <div>
           <label className="text-[10px] text-muted-foreground block mb-0.5 font-medium">Nome do Cliente:</label>
           <Input
             value={recipientName}
             onChange={(e) => setRecipientName(e.target.value)}
             placeholder="Nome do cliente"
-            className="h-7 text-xs bg-background"
+            disabled={sendingViaApi}
+            className="h-8 text-xs bg-background"
           />
         </div>
         <div>
-          <label className="text-[10px] text-muted-foreground block mb-0.5 font-medium">WhatsApp (DDD+Número):</label>
+          <label className="text-[10px] text-muted-foreground block mb-0.5 font-medium">WhatsApp do Destinatário:</label>
           <div className="relative">
-            <Phone className="size-3 absolute left-2 top-2 text-muted-foreground" />
+            <Phone className="size-3.5 absolute left-2.5 top-2.5 text-muted-foreground" />
             <Input
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
-              placeholder="(11) 99999-9999"
-              className="h-7 text-xs pl-6 bg-background"
+              placeholder="Ex: 11999998888"
+              disabled={sendingViaApi}
+              className="h-8 text-xs pl-8 bg-background"
             />
           </div>
         </div>
@@ -160,37 +195,56 @@ function WhatsAppComposer({ draft, onSendVariantRequest, disabled }: WhatsAppCom
       {/* Editor do Texto da Mensagem */}
       <div className="space-y-1">
         <div className="flex items-center justify-between">
-          <label className="text-[10px] text-muted-foreground font-medium">Texto da Mensagem (Editável):</label>
-          <span className="text-[10px] text-muted-foreground">{message.length} caracteres</span>
+          <label className="text-[10px] text-muted-foreground font-medium">Texto da Mensagem (Revise e edite livremente):</label>
+          <span className="text-[10px] text-muted-foreground font-mono">{message.length} caracteres</span>
         </div>
         <Textarea
           value={message}
           onChange={(e) => setMessage(e.target.value)}
           rows={5}
+          disabled={sendingViaApi}
           placeholder="Digite ou ajuste a mensagem..."
           className="text-xs bg-background font-mono leading-relaxed"
         />
       </div>
 
       {/* Botões de Ação */}
-      <div className="flex items-center gap-2 pt-0.5">
+      <div className="flex flex-col sm:flex-row items-stretch gap-2 pt-1">
         <Button
           size="sm"
-          variant="outline"
-          className="flex-1 gap-1.5 text-xs h-8"
-          onClick={handleCopy}
+          className="flex-1 gap-1.5 text-xs h-9 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold shadow-xs"
+          onClick={handleSendViaEvolutionApi}
+          disabled={sendingViaApi || !message.trim()}
         >
-          {copied ? <Check className="size-3.5 text-emerald-600" /> : <Copy className="size-3.5" />}
-          <span>{copied ? 'Copiado!' : 'Copiar Texto'}</span>
+          {sendingViaApi ? (
+            <Loader2 className="size-3.5 animate-spin" />
+          ) : (
+            <Send className="size-3.5" />
+          )}
+          <span>{sendingViaApi ? 'Disparando...' : '🚀 Enviar via Evolution API'}</span>
         </Button>
-        <Button
-          size="sm"
-          className="flex-1 gap-1.5 text-xs h-8 bg-emerald-600 hover:bg-emerald-700 text-white font-medium shadow-xs"
-          onClick={handleSendToWhatsApp}
-        >
-          <ExternalLink className="size-3.5" />
-          <span>Enviar no WhatsApp</span>
-        </Button>
+
+        <div className="flex items-center gap-1.5 shrink-0">
+          <Button
+            size="sm"
+            variant="outline"
+            className="gap-1 text-xs h-9"
+            onClick={handleSendToWhatsAppWeb}
+            title="Abrir no WhatsApp Web/App como alternativa"
+          >
+            <ExternalLink className="size-3.5" />
+            <span className="hidden sm:inline">WhatsApp Web</span>
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="gap-1 text-xs h-9 px-2.5"
+            onClick={handleCopy}
+            title="Copiar texto"
+          >
+            {copied ? <Check className="size-3.5 text-emerald-600" /> : <Copy className="size-3.5" />}
+          </Button>
+        </div>
       </div>
     </div>
   );
