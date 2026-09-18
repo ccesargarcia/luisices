@@ -1080,9 +1080,10 @@ exports.aiAgentChat = onCall({ secrets: [GEMINI_API_KEY] }, async (request) => {
     throw new functions.https.HttpsError('invalid-argument', 'Mensagem é obrigatória.');
   }
 
-  const apiKey = GEMINI_API_KEY.value() || process.env.GEMINI_API_KEY;
+  const rawKey = (typeof GEMINI_API_KEY.value === 'function' ? GEMINI_API_KEY.value() : process.env.GEMINI_API_KEY) || '';
+  const apiKey = String(rawKey).trim();
   if (!apiKey) {
-    throw new functions.https.HttpsError('failed-precondition', 'Chave de API do Gemini não configurada.');
+    throw new functions.https.HttpsError('failed-precondition', 'Chave GEMINI_API_KEY não configurada no Firebase Secret Manager. Cadastre o secret no GitHub ou no Firebase.');
   }
 
   const systemInstruction = `Você é o Copiloto Interno da Luisices (confecção/gráfica especializada em camisetas, brindes e personalizados).
