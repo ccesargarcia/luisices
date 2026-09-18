@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from './ui/sheet';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
+import { Textarea } from './ui/textarea';
 import { Badge } from './ui/badge';
 import {
   Sparkles,
@@ -21,8 +22,6 @@ import {
   ExternalLink,
   Check,
   Calculator,
-  AlertTriangle,
-  TrendingUp,
 } from 'lucide-react';
 import { firebaseAiAgentService } from '../../services/firebaseAiAgentService';
 import { AiChatMessage, AiOrderDraft, AiWhatsAppDraft, AiPricingEstimate } from '../types';
@@ -38,7 +37,7 @@ interface AiCopilotSheetProps {
 const INITIAL_MESSAGE: AiChatMessage = {
   id: 'init-1',
   role: 'assistant',
-  text: 'Olá! Sou o Copiloto Interno da Luisices. 👕✨\n\nEstou equipado com ferramentas de **Consulta & Auditoria**, **Briefing do Dia**, **Gerador de Mensagens WhatsApp**, **Calculadora de Orçamentos** e **Extração de Pedidos** com guardrails de segurança e proteção de margem.',
+  text: 'Olá! Sou o Copiloto Interno da Luisices. 👕✨\n\nEstou equipado com **Consulta de Pedidos**, **Raio-X Diário**, **Central WhatsApp Integrada**, **Calculadora de Orçamentos** e **Extração de Pedidos** com guardrails de segurança e revisão humana obrigatória.',
   timestamp: new Date().toISOString(),
 };
 
@@ -50,12 +49,158 @@ const SUGGESTIONS = [
   '🗑️ Quais pedidos foram cancelados ou excluídos?',
 ];
 
+interface WhatsAppComposerProps {
+  draft: AiWhatsAppDraft;
+  onSendVariantRequest: (promptText: string) => void;
+  disabled?: boolean;
+}
+
+function WhatsAppComposer({ draft, onSendVariantRequest, disabled }: WhatsAppComposerProps) {
+  const [phone, setPhone] = useState(draft.recipientPhone || '');
+  const [recipientName, setRecipientName] = useState(draft.recipientName || '');
+  const [message, setMessage] = useState(draft.messageText || '');
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    setMessage(draft.messageText || '');
+    if (draft.recipientPhone) setPhone(draft.recipientPhone);
+    if (draft.recipientName) setRecipientName(draft.recipientName);
+  }, [draft]);
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(message);
+      setCopied(true);
+      toast.success('Mensagem copiada para a área de transferência!');
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      toast.error('Erro ao copiar texto.');
+    }
+  };
+
+  const handleSendToWhatsApp = () => {
+    const cleanDigits = phone.replace(/\D/g, '');
+    let formattedPhone = cleanDigits;
+    if (cleanDigits.length === 10 || cleanDigits.length === 11) {
+      formattedPhone = `55${cleanDigits}`;
+    }
+    const encodedText = encodeURIComponent(message);
+    const url = formattedPhone
+      ? `https://wa.me/${formattedPhone}?text=${encodedText}`
+      : `https://wa.me/?text=${encodedText}`;
+    window.open(url, '_blank', 'noopener,noreferrer');
+  };
+
+  const VARIANTS = [
+    { type: 'cobranca', label: '💰 Cobrança', prompt: 'Gerar mensagem de cobrança amigável para este pedido' },
+    { type: 'status_producao', label: '🔄 Produção', prompt: 'Gerar mensagem avisando que o pedido entrou em produção' },
+    { type: 'pronto_retirada', label: '📦 Retirada', prompt: 'Gerar mensagem avisando que o pedido está pronto para retirada' },
+    { type: 'confirmacao_pedido', label: '🧾 Confirmação', prompt: 'Gerar mensagem de confirmação do pedido recebido' },
+  ];
+
+  return (
+    <div className="mt-3 p-3 bg-emerald-500/5 border border-emerald-500/30 rounded-xl space-y-2.5 text-foreground">
+      <div className="flex items-center justify-between border-b border-emerald-500/20 pb-1.5">
+        <span className="text-xs font-semibold text-emerald-700 dark:text-emerald-400 flex items-center gap-1.5">
+          <MessageSquare className="size-3.5" />
+          Central WhatsApp (Revisar & Enviar)
+        </span>
+        <Badge variant="outline" className="text-[10px] bg-emerald-500/10 text-emerald-600 border-emerald-500/30">
+          {draft.type ? draft.type.toUpperCase() : 'WHATSAPP'}
+        </Badge>
+      </div>
+
+      {/* Seletor rápido de tipos de mensagem */}
+      <div className="space-y-1">
+        <span className="text-[10px] font-medium text-muted-foreground">Trocar formato da mensagem:</span>
+        <div className="flex flex-wrap gap-1">
+          {VARIANTS.map((v) => (
+            <button
+              key={v.type}
+              type="button"
+              onClick={() => onSendVariantRequest(`${v.prompt} para ${recipientName || 'o cliente'}`)}
+              disabled={disabled}
+              className={`text-[11px] px-2 py-0.5 rounded-md border transition-colors ${
+                draft.type === v.type
+                  ? 'bg-emerald-600 text-white border-emerald-600 font-medium'
+                  : 'bg-background hover:bg-emerald-500/10 text-foreground border-border'
+              }`}
+            >
+              {v.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Campos de contato */}
+      <div className="grid grid-cols-2 gap-2 text-xs">
+        <div>
+          <label className="text-[10px] text-muted-foreground block mb-0.5 font-medium">Nome do Cliente:</label>
+          <Input
+            value={recipientName}
+            onChange={(e) => setRecipientName(e.target.value)}
+            placeholder="Nome do cliente"
+            className="h-7 text-xs bg-background"
+          />
+        </div>
+        <div>
+          <label className="text-[10px] text-muted-foreground block mb-0.5 font-medium">WhatsApp (DDD+Número):</label>
+          <div className="relative">
+            <Phone className="size-3 absolute left-2 top-2 text-muted-foreground" />
+            <Input
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              placeholder="(11) 99999-9999"
+              className="h-7 text-xs pl-6 bg-background"
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* Editor do Texto da Mensagem */}
+      <div className="space-y-1">
+        <div className="flex items-center justify-between">
+          <label className="text-[10px] text-muted-foreground font-medium">Texto da Mensagem (Editável):</label>
+          <span className="text-[10px] text-muted-foreground">{message.length} caracteres</span>
+        </div>
+        <Textarea
+          value={message}
+          onChange={(e) => setMessage(e.target.value)}
+          rows={5}
+          placeholder="Digite ou ajuste a mensagem..."
+          className="text-xs bg-background font-mono leading-relaxed"
+        />
+      </div>
+
+      {/* Botões de Ação */}
+      <div className="flex items-center gap-2 pt-0.5">
+        <Button
+          size="sm"
+          variant="outline"
+          className="flex-1 gap-1.5 text-xs h-8"
+          onClick={handleCopy}
+        >
+          {copied ? <Check className="size-3.5 text-emerald-600" /> : <Copy className="size-3.5" />}
+          <span>{copied ? 'Copiado!' : 'Copiar Texto'}</span>
+        </Button>
+        <Button
+          size="sm"
+          className="flex-1 gap-1.5 text-xs h-8 bg-emerald-600 hover:bg-emerald-700 text-white font-medium shadow-xs"
+          onClick={handleSendToWhatsApp}
+        >
+          <ExternalLink className="size-3.5" />
+          <span>Enviar no WhatsApp</span>
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 export function AiCopilotSheet({ open, onOpenChange, onApplyOrderDraft }: AiCopilotSheetProps) {
   const [messages, setMessages] = useState<AiChatMessage[]>([INITIAL_MESSAGE]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
-  const [copiedId, setCopiedId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
@@ -141,25 +286,6 @@ export function AiCopilotSheet({ open, onOpenChange, onApplyOrderDraft }: AiCopi
     }
   };
 
-  const handleCopyText = async (text: string, id: string) => {
-    try {
-      await navigator.clipboard.writeText(text);
-      setCopiedId(id);
-      toast.success('Texto copiado para a área de transferência!');
-      setTimeout(() => setCopiedId(null), 2500);
-    } catch {
-      toast.error('Não foi possível copiar o texto.');
-    }
-  };
-
-  const handleOpenWhatsApp = (phone?: string, text?: string) => {
-    const cleanPhone = (phone || '').replace(/\D/g, '');
-    const formattedPhone = cleanPhone.length === 10 || cleanPhone.length === 11 ? `55${cleanPhone}` : cleanPhone;
-    const encodedText = encodeURIComponent(text || '');
-    const url = formattedPhone ? `https://wa.me/${formattedPhone}?text=${encodedText}` : `https://wa.me/?text=${encodedText}`;
-    window.open(url, '_blank', 'noopener,noreferrer');
-  };
-
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
@@ -238,50 +364,13 @@ export function AiCopilotSheet({ open, onOpenChange, onApplyOrderDraft }: AiCopi
               >
                 <div>{msg.text}</div>
 
-                {/* Card 1: Rascunho de Mensagem para WhatsApp */}
+                {/* Card 1: Central Interativa de WhatsApp com Edição e Envio */}
                 {msg.whatsappDraft && (
-                  <div className="mt-3 p-3 bg-emerald-500/5 border border-emerald-500/30 rounded-xl space-y-2 text-foreground">
-                    <div className="flex items-center justify-between border-b border-emerald-500/20 pb-1.5">
-                      <span className="text-xs font-semibold text-emerald-700 dark:text-emerald-400 flex items-center gap-1.5">
-                        <MessageSquare className="size-3.5" />
-                        Rascunho WhatsApp (Revisão Humana)
-                      </span>
-                      <Badge variant="outline" className="text-[10px] bg-emerald-500/10 text-emerald-600 border-emerald-500/30">
-                        {msg.whatsappDraft.type.toUpperCase()}
-                      </Badge>
-                    </div>
-
-                    {msg.whatsappDraft.recipientName && (
-                      <div className="text-xs text-muted-foreground">
-                        <span className="font-medium text-foreground">Destinatário:</span> {msg.whatsappDraft.recipientName}
-                        {msg.whatsappDraft.recipientPhone && ` (${msg.whatsappDraft.recipientPhone})`}
-                      </div>
-                    )}
-
-                    <div className="p-2.5 bg-background border rounded-lg text-xs font-mono text-foreground/90 whitespace-pre-wrap select-all">
-                      {msg.whatsappDraft.messageText}
-                    </div>
-
-                    <div className="flex items-center gap-2 pt-1">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="flex-1 gap-1 text-xs"
-                        onClick={() => handleCopyText(msg.whatsappDraft!.messageText, msg.id)}
-                      >
-                        {copiedId === msg.id ? <Check className="size-3.5 text-emerald-600" /> : <Copy className="size-3.5" />}
-                        <span>{copiedId === msg.id ? 'Copiado!' : 'Copiar Texto'}</span>
-                      </Button>
-                      <Button
-                        size="sm"
-                        className="flex-1 gap-1 text-xs bg-emerald-600 hover:bg-emerald-700 text-white"
-                        onClick={() => handleOpenWhatsApp(msg.whatsappDraft!.recipientPhone, msg.whatsappDraft!.messageText)}
-                      >
-                        <ExternalLink className="size-3.5" />
-                        <span>Abrir WhatsApp</span>
-                      </Button>
-                    </div>
-                  </div>
+                  <WhatsAppComposer
+                    draft={msg.whatsappDraft}
+                    onSendVariantRequest={handleSend}
+                    disabled={loading}
+                  />
                 )}
 
                 {/* Card 2: Estimativa de Precificação & Margem */}
