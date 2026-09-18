@@ -1187,12 +1187,42 @@ Suas diretrizes:
     parts: [{ text: message }]
   });
 
+  // Busca a lista de modelos suportados pela chave dinamicamente
+  const getDynamicModels = async () => {
+    try {
+      const listResp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`);
+      if (listResp.ok) {
+        const listData = await listResp.json();
+        const available = (listData.models || [])
+          .filter(m => Array.isArray(m.supportedGenerationMethods) && m.supportedGenerationMethods.includes('generateContent'))
+          .map(m => m.name.replace(/^models\//, ''));
+        if (available.length > 0) {
+          console.log('[aiAgentChat] Modelos retornados pela API para esta chave:', available);
+          return available;
+        }
+      } else {
+        const err = await listResp.text();
+        console.warn('[aiAgentChat] Não foi possível listar modelos automaticamente:', listResp.status, err);
+      }
+    } catch (err) {
+      console.warn('[aiAgentChat] Erro ao consultar lista de modelos:', err);
+    }
+    return [];
+  };
+
+  const dynamicModels = await getDynamicModels();
   const candidateModels = [
     process.env.GEMINI_MODEL,
+    ...dynamicModels,
+    'gemini-1.5-flash-latest',
+    'gemini-1.5-flash-001',
+    'gemini-1.5-flash-002',
     'gemini-1.5-flash',
     'gemini-2.0-flash',
-    'gemini-1.5-pro',
-  ].filter(Boolean);
+    'gemini-2.0-flash-lite',
+    'gemini-2.5-flash',
+    'gemini-pro',
+  ].filter((item, index, self) => Boolean(item) && self.indexOf(item) === index);
 
   const callGeminiWithFallback = async (payload) => {
     let lastError = null;
@@ -1212,7 +1242,7 @@ Suas diretrizes:
 
         const errText = await resp.text();
         console.warn(`[aiAgentChat] Modelo ${model} retornou status ${resp.status}:`, errText);
-        lastError = new Error(`Status ${resp.status}: ${errText}`);
+        lastError = new Error(`Modelo ${model} (Status ${resp.status}): ${errText}`);
       } catch (err) {
         console.warn(`[aiAgentChat] Falha de conexão com modelo ${model}:`, err);
         lastError = err;
