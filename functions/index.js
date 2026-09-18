@@ -959,11 +959,15 @@ const isAuthorizedEmployeeOrAdmin = async (request) => {
 /**
  * Converte um documento operacional de 'orders' em formato sanitizado e otimizado para IA
  */
-const buildAiOrderDoc = (orderId, data) => {
+/**
+ * Converte um documento operacional de 'orders' em formato sanitizado e otimizado para IA
+ */
+const buildAiOrderDoc = (orderId, data = {}) => {
   const productSummary = data.productName || 'Não especificado';
   const quantity = Number(data.quantity) || 1;
   const totalPrice = Number(data.price) || 0;
-  const status = data.status || 'pending';
+  const isDeleted = Boolean(data.isDeleted);
+  const status = isDeleted ? 'deleted' : (data.status || 'pending');
   const paymentStatus = data.payment?.status || 'pending';
   const paymentMethod = data.payment?.method || null;
   const deliveryDate = data.deliveryDate || null;
@@ -972,6 +976,7 @@ const buildAiOrderDoc = (orderId, data) => {
   const notes = data.notes || '';
   const orderNumber = data.orderNumber || `#${orderId}`;
   const isExchange = Boolean(data.isExchange);
+  const cancellationReason = data.cancellationReason || data.cancelReason || null;
 
   return {
     orderId,
@@ -987,7 +992,10 @@ const buildAiOrderDoc = (orderId, data) => {
     deliveryDate,
     notes,
     isExchange,
+    isDeleted,
+    cancellationReason,
     createdAt: data.createdAt || new Date().toISOString(),
+    deletedAt: data.deletedAt || null,
     updatedAt: admin.firestore.FieldValue.serverTimestamp(),
   };
 };
@@ -996,7 +1004,8 @@ const buildAiOrderDoc = (orderId, data) => {
  * Trigger de sincronização para a base somente-leitura da IA (ai_orders_view).
  * Sempre que um pedido for criado, atualizado ou excluído, projeta uma visão
  * sanitizada e otimizada para consultas do Agente.
- * Usa trigger nativo de 1ª geração para compatibilidade total de permissões IAM.
+ * Se o pedido for excluído do painel operacional, a IA preserva o registro
+ * marcado como 'deleted' (Soft Archive) para auditoria e histórico.
  */
 exports.syncOrderToAiView = functions.firestore
   .document('orders/{orderId}')
@@ -1004,12 +1013,18 @@ exports.syncOrderToAiView = functions.firestore
     const orderId = context.params.orderId;
     const targetRef = admin.firestore().collection('ai_orders_view').doc(orderId);
 
-    // Se o pedido foi excluído
+    // Se o pedido foi excluído da coleção operacional, arquiva na visão da IA
     if (!change.after || !change.after.exists) {
-      await targetRef.delete().catch((err) => {
-        console.warn(`[syncOrderToAiView] Erro ao remover view do pedido ${orderId}:`, err);
+      const previousData = change.before ? change.before.data() : {};
+      const archivedDoc = buildAiOrderDoc(orderId, {
+        ...previousData,
+        isDeleted: true,
+        deletedAt: new Date().toISOString(),
       });
-      console.log(`[syncOrderToAiView] Pedido ${orderId} removido da ai_orders_view.`);
+      await targetRef.set(archivedDoc, { merge: true }).catch((err) => {
+        console.warn(`[syncOrderToAiView] Erro ao arquivar pedido excluído ${orderId}:`, err);
+      });
+      console.log(`[syncOrderToAiView] Pedido ${orderId} preservado como excluído na ai_orders_view para auditoria.`);
       return;
     }
 
@@ -1061,7 +1076,8 @@ exports.syncAllOrdersToAiView = onCall(async (request) => {
   return { success: true, count: totalCount, message: `${totalCount} pedidos sincronizados com sucesso na ai_orders_view.` };
 });
 
-// Cache global em memória para os modelos disponíveis (evita chamadas redundantes)
+// Modelo padrão ultra-rápido memoizado em memória para respostas sub-segundo
+let preferredWorkingModel = 'gemini-2.0-flash';
 let cachedCandidateModels = null;
 let cachedModelsTimestamp = 0;
 
@@ -1118,14 +1134,14 @@ exports.aiAgentChat = onCall({ secrets: [GEMINI_API_KEY] }, async (request) => {
   const rawKey = (typeof GEMINI_API_KEY.value === 'function' ? GEMINI_API_KEY.value() : process.env.GEMINI_API_KEY) || '';
   const apiKey = String(rawKey).trim();
   if (!apiKey) {
-    throw new functions.https.HttpsError('failed-precondition', 'Chave GEMINI_API_KEY não configurada no Firebase Secret Manager. Cadastre o secret no GitHub ou no Firebase.');
+    throw new functions.https.HttpsError('failed-precondition', 'Chave GEMINI_API_KEY não configurada no Firebase Secret Manager.');
   }
 
   const systemInstruction = `Você é o Copiloto Interno da Luisices (confecção/gráfica especializada em camisetas, brindes e personalizados).
 Seu papel é atuar como o assistente e guia inteligente da equipe administrativa e operacional.
 
 Você possui 3 responsabilidades principais:
-1. CONSULTA DE DADOS: Consultar prazos, pedidos pendentes, clientes, status e faturamento utilizando a ferramenta 'query_orders_view'.
+1. CONSULTA DE DADOS & AUDITORIA: Consultar prazos, pedidos pendentes, concluídos, cancelados ou excluídos da base utilizando a ferramenta 'query_orders_view'.
 2. EXTRAÇÃO DE PEDIDOS: Estruturar pedidos a partir de conversas e mensagens de clientes (WhatsApp/áudio) utilizando a ferramenta 'extract_order_draft'.
 3. GUIA E SUPORTE OPERACIONAL: Tirar dúvidas sobre como usar qualquer funcionalidade do sistema Luisices com passos claros e objetivos.
 
@@ -1133,46 +1149,47 @@ Você possui 3 responsabilidades principais:
 REGRAS CRÍTICAS DE RESPOSTA:
 - NUNCA inclua seu raciocínio interno, scratchpad, notas ou pensamentos em inglês no texto de resposta.
 - Responda DIRETA e EXCLUSIVAMENTE em Português do Brasil (pt-BR) ao usuário final.
-- Sempre responda de forma simpática, clara e estruturada com tópicos e negrito.
-- Quando consultar 'query_orders_view', analise os dados e apresente a resposta formatada (ex: se o usuário perguntou o de maior valor, indique claramente qual é o pedido, o cliente, o valor e o status).
+- Seja objetivo, simpático e formate com tópicos e valores em reais (R$).
+- Se o usuário perguntar sobre pedidos cancelados ou excluídos, utilize 'query_orders_view' com status='cancelled', status='deleted' ou status='all'.
+- Se o usuário perguntar o pedido de maior valor, o mais recente, ou totais, analise os dados retornados e responda diretamente com clareza.
 
 ---
 BASE DE CONHECIMENTO DO SISTEMA LUISICES:
 • LOJINHA ONLINE & CATÁLOGO:
-- Produtos da Lojinha (/produtos-lojinha): Para publicar, acesse o menu Lojinha Online > Produtos da Lojinha, clique em 'Novo Produto', preencha nome, fotos, descrição, variações (tamanho/cor) e valor, e marque como 'Ativo'.
-- Vitrine Pública (/loja ou /catalogo): O link público onde os clientes visualizam os produtos, montam o carrinho e enviam o pedido direto para o WhatsApp do ateliê.
-- Pedidos da Lojinha (/pedidos-lojinha): Lista os pedidos recebidos através da vitrine pública. Você pode aceitar o pedido e convertê-lo em um pedido operacional de produção com 1 clique.
-- Aparência & Vitrine (/personalizar-lojinha): Personaliza o banner, cores de destaque, logo e informações de contato da lojinha pública.
+- Produtos da Lojinha (/produtos-lojinha): Para publicar, acesse o menu Lojinha Online > Produtos da Lojinha, clique em 'Novo Produto', preencha nome, fotos, descrição, variações e valor, e marque como 'Ativo'.
+- Vitrine Pública (/loja ou /catalogo): Link público para os clientes montarem o carrinho e enviarem o pedido para o WhatsApp.
+- Pedidos da Lojinha (/pedidos-lojinha): Pedidos recebidos via vitrine pública, convertíveis em pedidos de produção com 1 clique.
+- Aparência & Vitrine (/personalizar-lojinha): Personaliza banner, cores, logo e contato da vitrine.
 
 • PEDIDOS DO ATELIÊ & WORKFLOW (/):
 - Novo Pedido: Botão 'Novo Pedido' no Dashboard ou via Copiloto IA.
 - Workflow em 7 Etapas: Design → Aprovação do Cliente → Impressão → Corte → Montagem → Controle de Qualidade → Embalagem/Entrega.
-- Ações no Pedido: Ao abrir o pedido, você pode exportar PDF, duplicar pedido, delegar para um membro da equipe (assignedTo), anexar comprovantes/arquivos e registrar pagamentos (Pix, Dinheiro, Cartão).
+- Histórico & Auditoria: Pedidos cancelados e excluídos ficam preservados na memória do Agente para fins de consulta e métricas.
 
 • PRECIFICAÇÃO INTELIGENTE (/precificacao):
-- Fórmulas de Custos: Permite cadastrar matérias-primas, mão de obra por tempo ou proporção, margem de desperdício, taxa de pagamento e margem de lucro desejada para obter o preço de venda sugerido.
+- Fórmulas de Custos: Cadastra matérias-primas, mão de obra, margem de desperdício, taxa de pagamento e margem de lucro.
 
 • ORÇAMENTOS (/orcamentos):
-- Criação de cotações para clientes com data de validade. Ao ser aprovado pelo cliente, pode ser transformado em pedido com 1 clique.
+- Criação de cotações com validade e conversão direta em pedido.
 
 • CLIENTES (/clientes), GALERIA (/galeria) E PERMUTAS (/permutas):
-- Clientes: Cadastro completo com endereço automático via CEP, histórico de compras e fotos vinculadas.
-- Galeria: Banco de artes, matrizes e estampas vinculadas aos clientes para reutilização em novos pedidos.
-- Permutas: Controle de parcerias e permutas com influenciadores/parceiros sem transação monetária.`;
+- Clientes: Cadastro completo com endereço automático via CEP e histórico.
+- Galeria: Banco de artes e estampas dos clientes para reutilização.
+- Permutas: Controle de parcerias com influenciadores.`;
 
   const toolsDeclaration = [
     {
       function_declarations: [
         {
           name: 'query_orders_view',
-          description: 'Consulta a base somente-leitura de pedidos (ai_orders_view) para obter status, prazos, clientes e valores.',
+          description: 'Consulta a base somente-leitura de pedidos (ai_orders_view) para obter status, prazos, clientes, valores, cancelamentos e exclusões auditadas.',
           parameters: {
             type: 'OBJECT',
             properties: {
               status: {
                 type: 'STRING',
-                enum: ['pending', 'in-progress', 'completed', 'cancelled', 'all'],
-                description: 'Filtro por status do pedido (pending, in-progress, completed, cancelled ou all)'
+                enum: ['pending', 'in-progress', 'completed', 'cancelled', 'deleted', 'all'],
+                description: 'Filtro por status do pedido: pending (pendente), in-progress (em produção), completed (concluído), cancelled (cancelado), deleted (excluído/arquivado) ou all (todos)'
               },
               paymentStatus: {
                 type: 'STRING',
@@ -1198,7 +1215,7 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
             properties: {
               customerName: { type: 'STRING', description: 'Nome do cliente' },
               customerPhone: { type: 'STRING', description: 'Telefone de contato' },
-              productName: { type: 'STRING', description: 'Nome e especificações do produto (ex: Camiseta Algodão Silk)' },
+              productName: { type: 'STRING', description: 'Nome e especificações do produto' },
               quantity: { type: 'INTEGER', description: 'Quantidade de peças' },
               totalPrice: { type: 'NUMBER', description: 'Valor total do pedido em reais' },
               deliveryDate: { type: 'STRING', description: 'Data de entrega estimada no formato YYYY-MM-DD' },
@@ -1212,28 +1229,39 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
     }
   ];
 
-  // Helper para consultar a base somente leitura do Firestore com fallback automático
+  // Helper para consultar a base somente leitura do Firestore
   const executeQueryOrdersView = async (args = {}) => {
     let query = admin.firestore().collection('ai_orders_view');
+    
     if (args.status && args.status !== 'all') {
-      query = query.where('status', '==', args.status);
+      if (args.status === 'deleted') {
+        query = query.where('isDeleted', '==', true);
+      } else {
+        query = query.where('status', '==', args.status);
+      }
     }
     if (args.paymentStatus && args.paymentStatus !== 'all') {
       query = query.where('paymentStatus', '==', args.paymentStatus);
     }
+    
     const maxLimit = Math.min(Math.max(Number(args.limit) || 20, 1), 30);
     const snap = await query.limit(maxLimit).get();
 
     let docs = snap.docs.map(d => d.data());
 
-    // Se a ai_orders_view ainda não foi populada, busca direto em orders
-    if (docs.length === 0) {
+    // Se a ai_orders_view ainda não foi populada, busca fallback em orders
+    if (docs.length === 0 && args.status !== 'deleted') {
       let prodQuery = admin.firestore().collection('orders');
       if (args.status && args.status !== 'all') {
         prodQuery = prodQuery.where('status', '==', args.status);
       }
       const prodSnap = await prodQuery.limit(maxLimit).get();
       docs = prodSnap.docs.map(d => buildAiOrderDoc(d.id, d.data()));
+    }
+
+    // Se o usuário não pediu especificamente por excluídos e nem 'all', filtra excluídos por padrão
+    if (!args.status || (args.status !== 'deleted' && args.status !== 'all')) {
+      docs = docs.filter(d => !d.isDeleted);
     }
 
     if (args.searchTerm && typeof args.searchTerm === 'string') {
@@ -1250,7 +1278,7 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
   // Monta histórico de mensagens
   const contents = [];
   if (Array.isArray(history)) {
-    for (const item of history.slice(-6)) {
+    for (const item of history.slice(-4)) {
       if (item.role && item.text) {
         contents.push({
           role: item.role === 'user' ? 'user' : 'model',
@@ -1264,47 +1292,15 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
     parts: [{ text: cleanMessage }]
   });
 
-  // Reutiliza cache de modelos para evitar chamadas de rede desnecessárias (1h TTL)
-  const getCandidateModels = async () => {
-    if (cachedCandidateModels && Date.now() - cachedModelsTimestamp < 3600000) {
-      return cachedCandidateModels;
-    }
-
-    try {
-      const listResp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`);
-      if (listResp.ok) {
-        const listData = await listResp.json();
-        const available = (listData.models || [])
-          .filter(m => Array.isArray(m.supportedGenerationMethods) && m.supportedGenerationMethods.includes('generateContent'))
-          .map(m => m.name.replace(/^models\//, ''));
-        if (available.length > 0) {
-          cachedCandidateModels = [
-            process.env.GEMINI_MODEL,
-            ...available,
-            'gemini-1.5-flash-latest',
-            'gemini-1.5-flash',
-            'gemini-2.0-flash',
-          ].filter((item, index, self) => Boolean(item) && self.indexOf(item) === index);
-          cachedModelsTimestamp = Date.now();
-          return cachedCandidateModels;
-        }
-      }
-    } catch (err) {
-      console.warn('[aiAgentChat] Erro ao consultar lista de modelos:', err);
-    }
-
-    cachedCandidateModels = [
-      process.env.GEMINI_MODEL,
-      'gemini-1.5-flash-latest',
-      'gemini-1.5-flash',
-      'gemini-2.0-flash',
-      'gemini-pro',
-    ].filter((item, index, self) => Boolean(item) && self.indexOf(item) === index);
-    cachedModelsTimestamp = Date.now();
-    return cachedCandidateModels;
-  };
-
-  const candidateModels = await getCandidateModels();
+  // Lista de modelos otimizada por velocidade e suporte a function calling
+  const candidateModels = [
+    process.env.GEMINI_MODEL,
+    preferredWorkingModel,
+    'gemini-2.0-flash',
+    'gemini-2.5-flash',
+    'gemini-1.5-flash',
+    'gemini-1.5-flash-latest',
+  ].filter((item, index, self) => Boolean(item) && self.indexOf(item) === index);
 
   const callGeminiWithFallback = async (payload) => {
     let lastError = null;
@@ -1319,6 +1315,8 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
 
         if (resp.ok) {
           const data = await resp.json();
+          // Memoiza o modelo bem-sucedido para que todas as próximas chamadas sejam diretas nele
+          preferredWorkingModel = model;
           return { data, modelUsed: model };
         }
 
@@ -1338,7 +1336,7 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
       system_instruction: { parts: [{ text: systemInstruction }] },
       contents,
       tools: toolsDeclaration,
-      generationConfig: { temperature: 0.2 }
+      generationConfig: { temperature: 0.1 }
     };
 
     const { data: firstResult } = await callGeminiWithFallback(geminiPayload);
@@ -1358,7 +1356,7 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
       } else if (name === 'query_orders_view') {
         const queryResults = await executeQueryOrdersView(args);
         
-        // Segunda chamada para o Gemini formular a resposta final detalhada com os dados consultados
+        // Segunda chamada enxuta para formulação rápida da resposta final
         const followUpContents = [
           ...contents,
           { role: 'model', parts: [{ functionCall: functionCallPart.functionCall }] },
@@ -1368,7 +1366,7 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
               functionResponse: {
                 name: 'query_orders_view',
                 response: {
-                  summary: `Foram encontrados ${queryResults.length} pedidos.`,
+                  summary: `Foram encontrados ${queryResults.length} registros.`,
                   orders: queryResults.slice(0, 20),
                 }
               }
@@ -1380,8 +1378,7 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
           const { data: followUpResult } = await callGeminiWithFallback({
             system_instruction: { parts: [{ text: systemInstruction }] },
             contents: followUpContents,
-            tools: toolsDeclaration,
-            generationConfig: { temperature: 0.2 }
+            generationConfig: { temperature: 0.1 }
           });
           const followUpCandidate = followUpResult?.candidates?.[0];
           const followUpParts = followUpCandidate?.content?.parts || [];
@@ -1392,6 +1389,7 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
             'in-progress': 'Em Produção',
             completed: 'Concluído',
             cancelled: 'Cancelado',
+            deleted: 'Excluído (Auditado)',
           };
 
           if (queryResults.length === 0) {
@@ -1407,12 +1405,12 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
             if (isGeneric) {
               const list = queryResults.map(o => {
                 const formattedPrice = Number(o.totalPrice || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-                const st = statusMap[o.status] || o.status;
+                const st = statusMap[o.status] || (o.isDeleted ? 'Excluído (Auditado)' : o.status);
                 const paySt = o.paymentStatus === 'paid' ? 'Pago' : o.paymentStatus === 'partial' ? 'Parcial' : 'Pendente';
                 return `• **${o.orderNumber || '#' + o.orderId}** — **${o.customerName}**\n  📦 ${o.productSummary} (${o.quantity} un) | 💰 ${formattedPrice} | 🏷️ ${st} (${paySt})`;
               }).join('\n\n');
 
-              finalAnswer = `Encontrei **${queryResults.length} pedido(s)** cadastrado(s):\n\n${list}`;
+              finalAnswer = `Encontrei **${queryResults.length} registro(s)**:\n\n${list}`;
             } else {
               finalAnswer = textResponse;
             }
@@ -1422,7 +1420,7 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
             finalAnswer = 'Não encontrei nenhum pedido correspondente na base.';
           } else {
             const list = queryResults.map(o => `• **${o.orderNumber || '#' + o.orderId}** — ${o.customerName}: ${o.productSummary} (${o.quantity} un) - R$ ${o.totalPrice}`).join('\n');
-            finalAnswer = `Encontrei **${queryResults.length} pedido(s)**:\n\n${list}`;
+            finalAnswer = `Encontrei **${queryResults.length} registro(s)**:\n\n${list}`;
           }
         }
       }
