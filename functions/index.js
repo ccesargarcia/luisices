@@ -1847,7 +1847,7 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
 });
 
 /**
- * Consulta a cota e o consumo em tempo real da API Gemini / Copiloto de IA.
+ * Consulta a cota e o consumo em tempo real de TODOS os modelos disponíveis da API Gemini.
  * Uso estritamente restrito a administradores.
  */
 exports.getAiUsage = onCall({ cors: true }, async (request) => {
@@ -1867,9 +1867,63 @@ exports.getAiUsage = onCall({ cors: true }, async (request) => {
   const startOfMonthUtc = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1, 0, 0, 0));
   const oneMinuteAgo = new Date(now.getTime() - 60 * 1000);
 
-  let dailyCount = 0;
-  let monthlyCount = 0;
-  let rpmCount = 0;
+  const MODEL_SPECS = [
+    {
+      id: 'gemini-2.0-flash',
+      aliases: ['gemini-2.0-flash', 'gemini-2.0-flash-exp', 'gemini-2.0-flash-001'],
+      name: 'Gemini 2.0 Flash',
+      description: 'Modelo de última geração ultra-rápido com suporte multimodal e tool calls integradas.',
+      category: 'Produção (Padrão)',
+      dailyLimit: 1500,
+      rpmLimit: 15,
+      tpmLimit: 1000000,
+      isDefault: true,
+    },
+    {
+      id: 'gemini-2.0-flash-lite',
+      aliases: ['gemini-2.0-flash-lite', 'gemini-2.0-flash-lite-preview-02-05', 'gemini-2.0-flash-lite-preview'],
+      name: 'Gemini 2.0 Flash-Lite',
+      description: 'Modelo ultra-leve e econômico para respostas instantâneas e alto throughput.',
+      category: 'Alta Eficiência / Lite',
+      dailyLimit: 1500,
+      rpmLimit: 30,
+      tpmLimit: 1000000,
+    },
+    {
+      id: 'gemini-1.5-flash',
+      aliases: ['gemini-1.5-flash', 'gemini-1.5-flash-latest', 'gemini-1.5-flash-002', 'gemini-1.5-flash-8b'],
+      name: 'Gemini 1.5 Flash',
+      description: 'Modelo comprovado e estável para briefings diários e consultas operacionais.',
+      category: 'Fallback Estável',
+      dailyLimit: 1500,
+      rpmLimit: 15,
+      tpmLimit: 1000000,
+    },
+    {
+      id: 'gemini-1.5-pro',
+      aliases: ['gemini-1.5-pro', 'gemini-1.5-pro-latest', 'gemini-1.5-pro-002'],
+      name: 'Gemini 1.5 Pro',
+      description: 'Modelo de raciocínio profundo para análises avançadas e grandes janelas de contexto.',
+      category: 'Raciocínio Avançado',
+      dailyLimit: 50,
+      rpmLimit: 2,
+      tpmLimit: 32000,
+    },
+    {
+      id: 'gemini-3.0-flash',
+      aliases: ['gemini-3.0-flash', 'gemini-3.1-pro-preview', 'gemini-3.0-flash-preview'],
+      name: 'Gemini 3.0 Flash (Preview)',
+      description: 'Próxima geração experimental com alta fidelidade lógica e estruturação.',
+      category: 'Experimental / Preview',
+      dailyLimit: 1500,
+      rpmLimit: 15,
+      tpmLimit: 1000000,
+    },
+  ];
+
+  let todayDocs = [];
+  let monthDocs = [];
+  let minuteDocs = [];
 
   try {
     const [todaySnap, monthSnap, minuteSnap] = await Promise.all([
@@ -1884,40 +1938,120 @@ exports.getAiUsage = onCall({ cors: true }, async (request) => {
         .get(),
     ]);
 
-    dailyCount = todaySnap.size;
-    monthlyCount = monthSnap.size;
-    rpmCount = minuteSnap.size;
+    todayDocs = todaySnap.docs.map(d => d.data());
+    monthDocs = monthSnap.docs.map(d => d.data());
+    minuteDocs = minuteSnap.docs.map(d => d.data());
   } catch (fsErr) {
     console.warn('[getAiUsage] Erro ao consultar ai_usage_logs no Firestore:', fsErr);
   }
 
+  const findSpecForDocModel = (docModel = '') => {
+    const m = String(docModel).toLowerCase().trim();
+    for (const spec of MODEL_SPECS) {
+      if (spec.id === m || spec.aliases.some(a => m === a || m.startsWith(a))) {
+        return spec.id;
+      }
+    }
+    return 'gemini-2.0-flash';
+  };
+
+  const modelStatsMap = new Map();
+  for (const spec of MODEL_SPECS) {
+    modelStatsMap.set(spec.id, {
+      daily: 0,
+      monthly: 0,
+      rpm: 0,
+    });
+  }
+
+  for (const doc of todayDocs) {
+    const matchedId = findSpecForDocModel(doc.model);
+    if (modelStatsMap.has(matchedId)) {
+      modelStatsMap.get(matchedId).daily += 1;
+    }
+  }
+
+  for (const doc of monthDocs) {
+    const matchedId = findSpecForDocModel(doc.model);
+    if (modelStatsMap.has(matchedId)) {
+      modelStatsMap.get(matchedId).monthly += 1;
+    }
+  }
+
+  for (const doc of minuteDocs) {
+    const matchedId = findSpecForDocModel(doc.model);
+    if (modelStatsMap.has(matchedId)) {
+      modelStatsMap.get(matchedId).rpm += 1;
+    }
+  }
+
+  const activeModelId = preferredWorkingModel || 'gemini-2.0-flash';
+
+  const models = MODEL_SPECS.map(spec => {
+    const stats = modelStatsMap.get(spec.id) || { daily: 0, monthly: 0, rpm: 0 };
+    const percentage = Math.min(100, Math.round((stats.daily / spec.dailyLimit) * 100));
+    return {
+      id: spec.id,
+      name: spec.name,
+      description: spec.description,
+      category: spec.category,
+      isDefault: Boolean(spec.isDefault),
+      isActive: spec.id === activeModelId,
+      daily: {
+        used: stats.daily,
+        limit: spec.dailyLimit,
+        percentage,
+      },
+      rpm: {
+        used: stats.rpm,
+        limit: spec.rpmLimit,
+      },
+      monthly: {
+        used: stats.monthly,
+      },
+      tpmLimit: spec.tpmLimit,
+    };
+  });
+
   const nextUtcMidnight = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1, 0, 0, 0));
   const nextUtcMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1, 0, 0, 0));
 
-  // Limites oficiais padrão do Google AI Studio - Gemini 2.0 Flash (Free Tier)
-  const DAILY_LIMIT = 1500;
-  const RPM_LIMIT = 15;
-  const MONTHLY_LIMIT = 45000;
+  const totalDailyUsed = todayDocs.length;
+  const totalMonthlyUsed = monthDocs.length;
+  const totalDailyLimit = 1500;
 
   return {
     success: true,
-    model: preferredWorkingModel || 'gemini-2.0-flash',
+    activeModel: activeModelId,
     provider: 'Google AI Studio / Gemini API',
+    resetsAt: nextUtcMidnight.toISOString(),
+    totalDaily: {
+      used: totalDailyUsed,
+      limit: totalDailyLimit,
+      percentage: Math.min(100, Math.round((totalDailyUsed / totalDailyLimit) * 100)),
+    },
+    totalMonthly: {
+      used: totalMonthlyUsed,
+      limit: 45000,
+      percentage: Math.min(100, Math.round((totalMonthlyUsed / 45000) * 100)),
+    },
+    models,
+    // Compatibilidade com interfaces legadas
     daily: {
-      used: dailyCount,
-      limit: DAILY_LIMIT,
-      percentage: Math.min(100, Math.round((dailyCount / DAILY_LIMIT) * 100)),
+      used: totalDailyUsed,
+      limit: totalDailyLimit,
+      percentage: Math.min(100, Math.round((totalDailyUsed / totalDailyLimit) * 100)),
       resetsAt: nextUtcMidnight.toISOString(),
     },
     rpm: {
-      used: rpmCount,
-      limit: RPM_LIMIT,
-      percentage: Math.min(100, Math.round((rpmCount / RPM_LIMIT) * 100)),
+      used: minuteDocs.length,
+      limit: 15,
+      percentage: Math.min(100, Math.round((minuteDocs.length / 15) * 100)),
     },
     monthly: {
-      used: monthlyCount,
-      limit: MONTHLY_LIMIT,
-      percentage: Math.min(100, Math.round((monthlyCount / MONTHLY_LIMIT) * 100)),
+      used: totalMonthlyUsed,
+      limit: 45000,
+      percentage: Math.min(100, Math.round((totalMonthlyUsed / 45000) * 100)),
       resetsAt: nextUtcMonth.toISOString(),
     },
   };

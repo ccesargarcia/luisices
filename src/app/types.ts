@@ -664,22 +664,56 @@ export interface AiChatMessage {
   pricingEstimate?: AiPricingEstimate | null;
 }
 
+export interface AiModelQuotaItem {
+  id: string;
+  name: string;
+  description: string;
+  category: string;
+  isDefault?: boolean;
+  isActive: boolean;
+  daily: {
+    used: number;
+    limit: number;
+    percentage: number;
+  };
+  rpm: {
+    used: number;
+    limit: number;
+  };
+  monthly: {
+    used: number;
+  };
+  tpmLimit?: number;
+}
+
 export interface AiUsageData {
   success: boolean;
-  model: string;
+  activeModel: string;
   provider: string;
-  daily: {
+  resetsAt: string;
+  totalDaily: {
+    used: number;
+    limit: number;
+    percentage: number;
+  };
+  totalMonthly: {
+    used: number;
+    limit: number;
+    percentage: number;
+  };
+  models: AiModelQuotaItem[];
+  daily?: {
     used: number;
     limit: number;
     percentage: number;
     resetsAt: string;
   };
-  rpm: {
+  rpm?: {
     used: number;
     limit: number;
     percentage: number;
   };
-  monthly: {
+  monthly?: {
     used: number;
     limit: number;
     percentage: number;
