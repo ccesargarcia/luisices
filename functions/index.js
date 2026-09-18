@@ -1292,14 +1292,14 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
     parts: [{ text: cleanMessage }]
   });
 
-  // Lista de modelos otimizada por velocidade e suporte a function calling
+  // Lista de modelos otimizada: apenas as versões mais modernas e rápidas do Gemini (2.0 / 2.5)
   const candidateModels = [
     process.env.GEMINI_MODEL,
     preferredWorkingModel,
     'gemini-2.0-flash',
     'gemini-2.5-flash',
-    'gemini-1.5-flash',
-    'gemini-1.5-flash-latest',
+    'gemini-2.0-flash-lite',
+    'gemini-2.5-pro',
   ].filter((item, index, self) => Boolean(item) && self.indexOf(item) === index);
 
   const callGeminiWithFallback = async (payload) => {
