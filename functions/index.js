@@ -1243,8 +1243,8 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
             properties: {
               status: {
                 type: 'STRING',
-                enum: ['pending', 'in-progress', 'completed', 'cancelled', 'deleted', 'all'],
-                description: 'Filtro por status do pedido: pending (pendente), in-progress (em produção), completed (concluído), cancelled (cancelado), deleted (excluído/arquivado) ou all (todos)'
+                enum: ['open', 'pending', 'in-progress', 'completed', 'cancelled', 'deleted', 'all'],
+                description: 'Filtro por status do pedido: open (em aberto: pendentes e em produção, não concluídos), pending (pendente), in-progress (em produção), completed (concluído), cancelled (cancelado), deleted (excluído/arquivado) ou all (todos)'
               },
               paymentStatus: {
                 type: 'STRING',
@@ -1420,6 +1420,9 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
     if (args.status && args.status !== 'all') {
       if (args.status === 'deleted') {
         docs = docs.filter((d) => d.isDeleted || d.status === 'deleted');
+      } else if (args.status === 'open') {
+        // Pedidos em aberto = pendentes ou em produção (não concluídos, não cancelados e não excluídos)
+        docs = docs.filter((d) => (d.status === 'pending' || d.status === 'in-progress') && !d.isDeleted);
       } else {
         docs = docs.filter((d) => d.status === args.status && !d.isDeleted);
       }
