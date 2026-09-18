@@ -1193,18 +1193,19 @@ exports.aiAgentChat = onCall({ secrets: [GEMINI_API_KEY] }, async (request) => {
   const systemInstruction = `Você é o Copiloto Interno da Luisices (confecção/gráfica especializada em camisetas, brindes e personalizados).
 Seu papel é atuar como o assistente e guia inteligente da equipe administrativa e operacional.
 
-Você possui 6 responsabilidades principais com ferramentas especializadas:
-1. CONSULTA DE DADOS & AUDITORIA ('query_orders_view'): Consultar status de pedidos, prazos de entrega, pedidos pendentes, concluídos, cancelados ou excluídos da base.
-2. RESUMO FINANCEIRO & MÉTRICAS ('get_financial_summary'): Consultar faturamento realizado, total efetivamente recebido, valores pendentes a receber, volume total emitido, ticket médio e taxa de conclusão por período ('today', 'week', 'month', 'year', 'all'). SEMPRE acione esta ferramenta para qualquer pergunta sobre faturamento, receita, saldo a receber, ticket médio, métricas financeiras ou movimentação monetária.
-3. BRIEFING OPERACIONAL DIÁRIO ('daily_briefing'): Raio-X diário de produção, pedidos urgentes/atrasados, entregas de hoje e pendências financeiras imediatas.
-4. CONSULTA DE CLIENTES ('query_customers'): Buscar clientes cadastrados por nome, telefone, e-mail ou cidade para histórico e contato.
-5. GERADOR DE MENSAGENS WHATSAPP ('generate_whatsapp_message'): Gerar rascunhos de mensagens para o WhatsApp do cliente (cobrança amigável de sinal/restante, status de produção, aviso de retirada pronta, confirmação de pedido ou orçamento).
-6. CALCULADORA DE PRECIFICAÇÃO & ORÇAMENTOS ('calculate_pricing_estimate'): Calcular custos aproximados, margem de lucro e preço de venda sugerido para personalizações (camisetas, canecas, ecobags, etc.).
-7. EXTRAÇÃO DE PEDIDOS ('extract_order_draft'): Estruturar pedidos a partir de conversas e mensagens de clientes (WhatsApp/áudio).
+Você possui responsabilidades principais com ferramentas especializadas:
+1. CONSULTA DE DADOS & AUDITORIA ('query_orders_view'): Consultar status de pedidos, prazos de entrega, pedidos em aberto ('open'), pendentes, concluídos, cancelados ou excluídos da base. Administradores podem filtrar por colaborador específico via 'userIdentifier'.
+2. AUDITORIA E MÉTRICAS DE USUÁRIOS/COLABORADORES ('get_user_summary'): Permitido EXCLUSIVAMENTE para administradores. Permite consultar quantos pedidos, quantos clientes cadastrados, faturamento gerado e ticket médio pertencem a um usuário/funcionário específico (ex: "Amanda", "Lucas", etc.). Se um usuário não-admin perguntar sobre outros membros, recuse cordialmente informando que a auditoria de equipe é restrita a administradores.
+3. RESUMO FINANCEIRO & MÉTRICAS ('get_financial_summary'): Consultar faturamento realizado, total efetivamente recebido, valores pendentes a receber, volume total emitido, ticket médio e taxa de conclusão por período ('today', 'week', 'month', 'year', 'all').
+4. BRIEFING OPERACIONAL DIÁRIO ('daily_briefing'): Raio-X diário de produção, pedidos urgentes/atrasados, entregas de hoje e pendências financeiras imediatas.
+5. CONSULTA DE CLIENTES ('query_customers'): Buscar clientes cadastrados por nome, telefone, e-mail ou cidade para histórico e contato. Administradores podem filtrar por colaborador específico via 'userIdentifier'.
+6. GERADOR DE MENSAGENS WHATSAPP ('generate_whatsapp_message'): Gerar rascunhos de mensagens para o WhatsApp do cliente (cobrança amigável de sinal/restante, status de produção, aviso de retirada pronta, confirmação de pedido ou orçamento).
+7. CALCULADORA DE PRECIFICAÇÃO & ORÇAMENTOS ('calculate_pricing_estimate'): Calcular custos aproximados, margem de lucro e preço de venda sugerido para personalizações (camisetas, canecas, ecobags, etc.).
+8. EXTRAÇÃO DE PEDIDOS ('extract_order_draft'): Estruturar pedidos a partir de conversas e mensagens de clientes (WhatsApp/áudio).
 
 ---
 🛡️ GUARDRAILS CRÍTICOS DE SEGURANÇA E CONFORMIDADE:
-- GUARDRAIL 1 (LGPD & SIGILO): NUNCA exponha dados sensíveis de outros clientes, custos confidenciais de fornecedores ou margens brutas em mensagens voltadas ao cliente final.
+- GUARDRAIL 1 (LGPD & SIGILO MULTIUSUÁRIO): Dados e métricas de outros colaboradores e clientes cadastrados por eles são SIGILOSOS e só podem ser auditados por Administradores. Usuários comuns e funcionários só enxergam seus próprios dados.
 - GUARDRAIL 2 (HUMAN-IN-THE-LOOP): Você gera rascunhos de mensagens e orçamentos para REVISÃO E APROVAÇÃO HUMANA do operador. Nunca afirme que disparou a mensagem sozinho.
 - GUARDRAIL 3 (PROTEÇÃO DE MARGEM FINANCEIRA): Nunca sugira preços que resultem em margem de lucro negativa ou prejuízo operacional (mantenha margem mínima de 30% a 50%).
 - GUARDRAIL 4 (CORTESIA E CDC NA COBRANÇA): Mensagens de cobrança devem ser 100% amigáveis, empáticas e profissionais, sem ameaças ou termos constrangedores.
@@ -1236,6 +1237,25 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
     {
       function_declarations: [
         {
+          name: 'get_user_summary',
+          description: 'Consulta o resumo de auditoria e métricas de um usuário/colaborador específico (quantidade de pedidos, clientes cadastrados, faturamento gerado e ticket médio) pelo nome, e-mail ou UID. ATENÇÃO: Esta ferramenta é de uso EXCLUSIVO DO ADMINISTRADOR.',
+          parameters: {
+            type: 'OBJECT',
+            properties: {
+              userIdentifier: {
+                type: 'STRING',
+                description: 'Nome, e-mail ou UID do usuário/funcionário da equipe a consultar (ex: Amanda, Lucas, amanda@email.com)'
+              },
+              period: {
+                type: 'STRING',
+                enum: ['today', 'week', 'month', 'year', 'all'],
+                description: 'Período para análise (padrão: all)'
+              }
+            },
+            required: ['userIdentifier']
+          }
+        },
+        {
           name: 'query_orders_view',
           description: 'Consulta a base somente-leitura de pedidos (ai_orders_view) para obter status, prazos, clientes, valores, cancelamentos e exclusões auditadas.',
           parameters: {
@@ -1250,6 +1270,10 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
                 type: 'STRING',
                 enum: ['pending', 'partial', 'paid', 'all'],
                 description: 'Filtro por status de pagamento'
+              },
+              userIdentifier: {
+                type: 'STRING',
+                description: 'Opcional (Apenas Admin): Nome, e-mail ou UID do colaborador para filtrar apenas os pedidos dele'
               },
               searchTerm: {
                 type: 'STRING',
@@ -1272,6 +1296,10 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
                 type: 'STRING',
                 enum: ['today', 'week', 'month', 'year', 'all'],
                 description: 'Período para análise financeira: today (hoje), week (últimos 7 dias), month (mês atual/30 dias), year (ano atual), all (todo o histórico)'
+              },
+              userIdentifier: {
+                type: 'STRING',
+                description: 'Opcional (Apenas Admin): Filtrar métricas financeiras de um colaborador específico por nome, e-mail ou UID'
               }
             }
           }
@@ -1330,6 +1358,10 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
               searchTerm: {
                 type: 'STRING',
                 description: 'Nome, telefone, e-mail ou cidade do cliente para busca'
+              },
+              userIdentifier: {
+                type: 'STRING',
+                description: 'Opcional (Apenas Admin): Nome, e-mail ou UID do colaborador para filtrar apenas os clientes cadastrados por ele'
               },
               limit: {
                 type: 'INTEGER',
@@ -1405,9 +1437,140 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
     return docs;
   };
 
+  // Helper para resolver colaborador/usuário por nome, email ou UID
+  const resolveTargetUser = async (identifier) => {
+    if (!identifier || typeof identifier !== 'string' || !identifier.trim()) return null;
+    const term = identifier.trim().toLowerCase();
+
+    try {
+      const snap = await admin.firestore().collection('userProfiles').get();
+      const profiles = snap.docs.map((d) => ({ uid: d.id, ...d.data() }));
+
+      // Busca exata por UID
+      let found = profiles.find((p) => p.uid.toLowerCase() === term);
+      if (found) return found;
+
+      // Busca por e-mail
+      found = profiles.find((p) => (p.email || '').toLowerCase() === term);
+      if (found) return found;
+
+      // Busca exata por displayName
+      found = profiles.find((p) => (p.displayName || '').toLowerCase() === term);
+      if (found) return found;
+
+      // Busca parcial por displayName
+      found = profiles.find(
+        (p) =>
+          (p.displayName && p.displayName.toLowerCase().includes(term)) ||
+          term.includes((p.displayName || '').toLowerCase())
+      );
+      if (found) return found;
+
+      // Busca parcial por email
+      found = profiles.find((p) => p.email && p.email.toLowerCase().includes(term));
+      if (found) return found;
+    } catch (err) {
+      console.warn('[resolveTargetUser] Erro ao buscar perfil de usuário:', err);
+    }
+
+    return null;
+  };
+
+  // Helper para auditoria e métricas de usuário/colaborador (EXCLUSIVO ADMIN)
+  const executeUserSummary = async (args = {}) => {
+    if (!isAdmin) {
+      return {
+        authorized: false,
+        message: 'Acesso restrito: A consulta de métricas e dados de outros colaboradores é permitida exclusivamente para administradores do sistema.',
+      };
+    }
+
+    const targetUser = await resolveTargetUser(args.userIdentifier);
+    if (!targetUser) {
+      return {
+        authorized: true,
+        found: false,
+        message: `Não foi encontrado nenhum usuário ou colaborador no sistema correspondente a "${args.userIdentifier}".`,
+      };
+    }
+
+    const targetUid = String(targetUser.uid);
+    const targetName = targetUser.displayName || targetUser.email || 'Usuário';
+    const targetRole = targetUser.role === 'admin' ? 'Administrador' : targetUser.role === 'funcionario' ? 'Funcionário' : 'Usuário';
+
+    // 1. Busca todos os pedidos do usuário
+    const allOrders = await fetchScopedOrders();
+    const userOrders = allOrders.filter((o) => {
+      return (o.userId === targetUid || o.createdBy === targetUid) && !o.isDeleted;
+    });
+
+    // 2. Busca todos os clientes do usuário
+    const allCustSnap = await admin.firestore().collection('customers').get();
+    const userCustomers = allCustSnap.docs
+      .map((d) => ({ id: d.id, ...d.data() }))
+      .filter((c) => {
+        return c.userId === targetUid || c.createdBy === targetUid;
+      });
+
+    // 3. Métricas dos pedidos
+    const completedOrders = userOrders.filter((o) => o.status === 'completed');
+    const inProgressOrders = userOrders.filter((o) => o.status === 'in-progress');
+    const pendingOrders = userOrders.filter((o) => o.status === 'pending');
+    const cancelledOrders = userOrders.filter((o) => o.status === 'cancelled');
+    const validOrders = userOrders.filter((o) => o.status !== 'cancelled');
+
+    const realizedRevenue = completedOrders.reduce((sum, o) => sum + (Number(o.totalPrice) || 0), 0);
+    const totalReceived = validOrders.reduce((sum, o) => sum + (Number(o.paidAmount) || 0), 0);
+    const pendingReceivables = validOrders
+      .filter((o) => o.paymentStatus !== 'paid')
+      .reduce((sum, o) => sum + (Number(o.remainingAmount !== undefined ? o.remainingAmount : o.totalPrice) || 0), 0);
+
+    const averageTicket =
+      completedOrders.length > 0
+        ? realizedRevenue / completedOrders.length
+        : validOrders.length > 0
+        ? validOrders.reduce((sum, o) => sum + (Number(o.totalPrice) || 0), 0) / validOrders.length
+        : 0;
+
+    return {
+      authorized: true,
+      found: true,
+      user: {
+        uid: targetUid,
+        name: targetName,
+        email: targetUser.email || '',
+        role: targetRole,
+        active: targetUser.active !== false,
+      },
+      metrics: {
+        totalCustomers: userCustomers.length,
+        recentCustomers: userCustomers.slice(0, 5).map((c) => c.name || 'Sem nome'),
+        totalOrders: userOrders.length,
+        totalValidOrders: validOrders.length,
+        completedOrders: completedOrders.length,
+        inProgressOrders: inProgressOrders.length,
+        pendingOrders: pendingOrders.length,
+        cancelledOrders: cancelledOrders.length,
+        realizedRevenue: Number(realizedRevenue.toFixed(2)),
+        totalReceived: Number(totalReceived.toFixed(2)),
+        pendingReceivables: Number(pendingReceivables.toFixed(2)),
+        averageTicket: Number(averageTicket.toFixed(2)),
+      },
+    };
+  };
+
   // Helper para consultar a base de pedidos com filtros e isolamento
   const executeQueryOrdersView = async (args = {}) => {
     let docs = await fetchScopedOrders();
+
+    // 0. Filtro por usuário específico (Apenas Admin)
+    if (isAdmin && args.userIdentifier) {
+      const targetUser = await resolveTargetUser(args.userIdentifier);
+      if (targetUser) {
+        const uid = String(targetUser.uid);
+        docs = docs.filter((d) => d.userId === uid || d.createdBy === uid);
+      }
+    }
 
     // 1. Ordena os pedidos do mais recente para o mais antigo
     docs.sort((a, b) => {
@@ -1455,7 +1618,15 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
 
   // Helper para cálculo financeiro exato alinhado com Reports.tsx
   const executeFinancialSummary = async (args = {}) => {
-    const rawOrders = await fetchScopedOrders();
+    let rawOrders = await fetchScopedOrders();
+    if (isAdmin && args.userIdentifier) {
+      const targetUser = await resolveTargetUser(args.userIdentifier);
+      if (targetUser) {
+        const uid = String(targetUser.uid);
+        rawOrders = rawOrders.filter((d) => d.userId === uid || d.createdBy === uid);
+      }
+    }
+
     const now = new Date();
     const period = args.period || 'month';
 
@@ -1605,6 +1776,12 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
       if (!isAdmin) {
         const uid = String(callerUid);
         customers = customers.filter((c) => c.userId === uid || c.createdBy === uid);
+      } else if (isAdmin && args.userIdentifier) {
+        const targetUser = await resolveTargetUser(args.userIdentifier);
+        if (targetUser) {
+          const uid = String(targetUser.uid);
+          customers = customers.filter((c) => c.userId === uid || c.createdBy === uid);
+        }
       }
 
       if (args.searchTerm && typeof args.searchTerm === 'string') {
@@ -1865,6 +2042,41 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
         briefingText += `💰 **Valores Pendentes a Receber:** ${formattedPending} (${briefing.pendingPaymentCount} pedidos com pagamento pendente)\n`;
 
         finalAnswer = briefingText;
+      } else if (name === 'get_user_summary') {
+        const summary = await executeUserSummary(args);
+        if (!summary.authorized) {
+          finalAnswer = `🔒 **Acesso Restrito:**\n\nA consulta de auditoria, pedidos e clientes de outros membros da equipe é permitida **exclusivamente para administradores** do sistema.`;
+        } else if (!summary.found) {
+          finalAnswer = `🔍 **Usuário não encontrado:**\n\nNão encontrei nenhum usuário ou colaborador no sistema correspondente a **"${args.userIdentifier}"**. Verifique se o nome ou e-mail estão digitados corretamente.`;
+        } else {
+          const u = summary.user;
+          const m = summary.metrics;
+          const fmtRealized = Number(m.realizedRevenue || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+          const fmtReceived = Number(m.totalReceived || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+          const fmtPending = Number(m.pendingReceivables || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+          const fmtTicket = Number(m.averageTicket || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
+          let report = `👤 **Raio-X do Colaborador:** **${u.name}**\n`;
+          report += `📧 E-mail: ${u.email || 'Não informado'} | Cargo: **${u.role}** | Status: ${u.active ? '🟢 Ativo' : '🔴 Inativo'}\n\n`;
+          report += `👥 **Clientes Cadastrados:** **${m.totalCustomers} cliente(s)**\n`;
+          if (m.recentCustomers && m.recentCustomers.length > 0) {
+            report += `  *(Exemplos: ${m.recentCustomers.join(', ')})*\n`;
+          }
+          report += `\n📦 **Total de Pedidos Vinculados:** **${m.totalOrders} pedido(s)** (${m.totalValidOrders} ativos)\n`;
+          report += `  • ✅ Concluídos: ${m.completedOrders}\n`;
+          report += `  • 🔄 Em Produção: ${m.inProgressOrders}\n`;
+          report += `  • ⏳ Pendentes: ${m.pendingOrders}\n`;
+          if (m.cancelledOrders > 0) {
+            report += `  • ❌ Cancelados: ${m.cancelledOrders}\n`;
+          }
+          report += `\n💰 **Desempenho Financeiro Gerado:**\n`;
+          report += `  • Faturamento Realizado (Concluídos): **${fmtRealized}**\n`;
+          report += `  • Total já Recebido: ${fmtReceived}\n`;
+          report += `  • Saldo Pendente a Receber: ${fmtPending}\n`;
+          report += `  • Ticket Médio: **${fmtTicket}**\n`;
+
+          finalAnswer = report;
+        }
       } else if (name === 'get_financial_summary') {
         const finSummary = await executeFinancialSummary(args.period || 'month');
         const periodLabels = {
