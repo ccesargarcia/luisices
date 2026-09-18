@@ -1,11 +1,13 @@
 import { httpsCallable } from 'firebase/functions';
 import { functions } from '../lib/firebase';
-import { AiOrderDraft } from '../app/types';
+import { AiOrderDraft, AiWhatsAppDraft, AiPricingEstimate } from '../app/types';
 
 export interface AiAgentChatResponse {
   success: boolean;
   reply: string;
   orderDraft?: AiOrderDraft | null;
+  whatsappDraft?: AiWhatsAppDraft | null;
+  pricingEstimate?: AiPricingEstimate | null;
 }
 
 export class FirebaseAiAgentService {

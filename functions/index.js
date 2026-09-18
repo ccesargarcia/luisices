@@ -1141,23 +1141,25 @@ exports.aiAgentChat = onCall({ secrets: [GEMINI_API_KEY] }, async (request) => {
   const systemInstruction = `Você é o Copiloto Interno da Luisices (confecção/gráfica especializada em camisetas, brindes e personalizados).
 Seu papel é atuar como o assistente e guia inteligente da equipe administrativa e operacional.
 
-Você possui 3 responsabilidades principais:
-1. CONSULTA DE DADOS & AUDITORIA: Consultar prazos, pedidos pendentes, concluídos, cancelados ou excluídos da base utilizando a ferramenta 'query_orders_view'.
-2. EXTRAÇÃO DE PEDIDOS: Estruturar pedidos a partir de conversas e mensagens de clientes (WhatsApp/áudio) utilizando a ferramenta 'extract_order_draft'.
-3. GUIA E SUPORTE OPERACIONAL: Tirar dúvidas sobre como usar qualquer funcionalidade do sistema Luisices com passos claros e objetivos.
+Você possui 5 responsabilidades principais com ferramentas especializadas:
+1. CONSULTA DE DADOS & AUDITORIA ('query_orders_view'): Consultar prazos, pedidos pendentes, concluídos, cancelados ou excluídos da base.
+2. BRIEFING OPERACIONAL DIÁRIO ('daily_briefing'): Raio-X diário de produção, pedidos urgentes/atrasados, entregas de hoje e pendências financeiras.
+3. GERADOR DE MENSAGENS WHATSAPP ('generate_whatsapp_message'): Gerar rascunhos de mensagens para o WhatsApp do cliente (cobrança amigável de sinal/restante, status de produção, aviso de retirada pronta, confirmação de pedido ou orçamento).
+4. CALCULADORA DE PRECIFICAÇÃO & ORÇAMENTOS ('calculate_pricing_estimate'): Calcular custos aproximados, margem de lucro e preço de venda sugerido para personalizações (camisetas, canecas, ecobags, etc.).
+5. EXTRAÇÃO DE PEDIDOS ('extract_order_draft'): Estruturar pedidos a partir de conversas e mensagens de clientes (WhatsApp/áudio).
 
 ---
-REGRAS CRÍTICAS DE RESPOSTA:
-- NUNCA inclua seu raciocínio interno, scratchpad, notas ou pensamentos em inglês no texto de resposta.
-- Responda DIRETA e EXCLUSIVAMENTE em Português do Brasil (pt-BR) ao usuário final.
-- Seja objetivo, simpático e formate com tópicos e valores em reais (R$).
-- Se o usuário perguntar sobre pedidos cancelados ou excluídos, utilize 'query_orders_view' com status='cancelled', status='deleted' ou status='all'.
-- Se o usuário perguntar o pedido de maior valor, o mais recente, ou totais, analise os dados retornados e responda diretamente com clareza.
+🛡️ GUARDRAILS CRÍTICOS DE SEGURANÇA E CONFORMIDADE:
+- GUARDRAIL 1 (LGPD & SIGILO): NUNCA exponha dados sensíveis de outros clientes, custos confidenciais de fornecedores ou margens brutas em mensagens voltadas ao cliente final.
+- GUARDRAIL 2 (HUMAN-IN-THE-LOOP): Você gera rascunhos de mensagens e orçamentos para REVISÃO E APROVAÇÃO HUMANA do operador. Nunca afirme que disparou a mensagem sozinho.
+- GUARDRAIL 3 (PROTEÇÃO DE MARGEM FINANCEIRA): Nunca sugira preços que resultem em margem de lucro negativa ou prejuízo operacional (mantenha margem mínima de 30% a 50%).
+- GUARDRAIL 4 (CORTESIA E CDC NA COBRANÇA): Mensagens de cobrança devem ser 100% amigáveis, empáticas e profissionais, sem ameaças ou termos constrangedores.
+- GUARDRAIL 5 (RESPOSTAS LIMPAS EM PT-BR): NUNCA inclua seu raciocínio interno, scratchpad, notas ou pensamentos em inglês no texto de resposta. Responda DIRETA e EXCLUSIVAMENTE em Português do Brasil (pt-BR).
 
 ---
 BASE DE CONHECIMENTO DO SISTEMA LUISICES:
 • LOJINHA ONLINE & CATÁLOGO:
-- Produtos da Lojinha (/produtos-lojinha): Para publicar, acesse o menu Lojinha Online > Produtos da Lojinha, clique em 'Novo Produto', preencha nome, fotos, descrição, variações e valor, e marque como 'Ativo'.
+- Produtos da Lojinha (/produtos-lojinha): Para publicar, acesse o menu Lojinha Online > Produtos da Lojinha, preencha nome, fotos, descrição, variações e valor, e marque como 'Ativo'.
 - Vitrine Pública (/loja ou /catalogo): Link público para os clientes montarem o carrinho e enviarem o pedido para o WhatsApp.
 - Pedidos da Lojinha (/pedidos-lojinha): Pedidos recebidos via vitrine pública, convertíveis em pedidos de produção com 1 clique.
 - Aparência & Vitrine (/personalizar-lojinha): Personaliza banner, cores, logo e contato da vitrine.
@@ -1167,11 +1169,9 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
 - Workflow em 7 Etapas: Design → Aprovação do Cliente → Impressão → Corte → Montagem → Controle de Qualidade → Embalagem/Entrega.
 - Histórico & Auditoria: Pedidos cancelados e excluídos ficam preservados na memória do Agente para fins de consulta e métricas.
 
-• PRECIFICAÇÃO INTELIGENTE (/precificacao):
-- Fórmulas de Custos: Cadastra matérias-primas, mão de obra, margem de desperdício, taxa de pagamento e margem de lucro.
-
-• ORÇAMENTOS (/orcamentos):
-- Criação de cotações com validade e conversão direta em pedido.
+• PRECIFICAÇÃO INTELIGENTE (/precificacao) & ORÇAMENTOS (/orcamentos):
+- Custos: Matérias-primas, mão de obra, margem de desperdício, taxa de pagamento e margem de lucro.
+- Orçamentos: Propostas comerciais com validade e conversão em pedido com 1 clique.
 
 • CLIENTES (/clientes), GALERIA (/galeria) E PERMUTAS (/permutas):
 - Clientes: Cadastro completo com endereço automático via CEP e histórico.
@@ -1206,6 +1206,51 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
                 description: 'Quantidade máxima de registros a retornar (máximo 30)'
               }
             }
+          }
+        },
+        {
+          name: 'daily_briefing',
+          description: 'Gera um briefing operacional completo do dia: pedidos atrasados ou com risco de atraso, entregas de hoje, pedidos em produção e valores pendentes a receber.',
+          parameters: {
+            type: 'OBJECT',
+            properties: {}
+          }
+        },
+        {
+          name: 'generate_whatsapp_message',
+          description: 'Gera um rascunho de mensagem formatada, amigável e profissional para envio pelo WhatsApp ao cliente (cobrança cordial, status de produção, aviso de retirada pronta, confirmação de pedido ou orçamento).',
+          parameters: {
+            type: 'OBJECT',
+            properties: {
+              type: {
+                type: 'STRING',
+                enum: ['cobranca', 'status_producao', 'pronto_retirada', 'confirmacao_pedido', 'orcamento', 'geral'],
+                description: 'Tipo de mensagem a ser enviada'
+              },
+              recipientName: { type: 'STRING', description: 'Nome do cliente destinatário' },
+              recipientPhone: { type: 'STRING', description: 'Telefone de contato do cliente (WhatsApp)' },
+              orderNumber: { type: 'STRING', description: 'Número de referência do pedido (ex: #2026-0109)' },
+              productName: { type: 'STRING', description: 'Produto ou serviço do pedido' },
+              amount: { type: 'NUMBER', description: 'Valor financeiro pendente ou total em reais' },
+              messageText: { type: 'STRING', description: 'O texto completo da mensagem formatada com quebras de linha e emojis adequados para o cliente' }
+            },
+            required: ['type', 'messageText']
+          }
+        },
+        {
+          name: 'calculate_pricing_estimate',
+          description: 'Calcula estimativa rápida de custos e preço de venda sugerido com proteção de margem de lucro mínima para produtos personalizados (camisetas, canecas, ecobags, brindes).',
+          parameters: {
+            type: 'OBJECT',
+            properties: {
+              productName: { type: 'STRING', description: 'Nome do produto personalizado (ex: Camiseta Algodão Silk 1 cor, Caneca Cerâmica Sublimada)' },
+              quantity: { type: 'INTEGER', description: 'Quantidade total de peças' },
+              unitCostRaw: { type: 'NUMBER', description: 'Custo estimado da matéria-prima base por unidade em reais' },
+              customizationCost: { type: 'NUMBER', description: 'Custo estimado de tinta, filme ou insumos de estamparia por peça em reais' },
+              laborTimeMinutes: { type: 'NUMBER', description: 'Tempo estimado de trabalho por peça em minutos' },
+              profitMarginPercent: { type: 'NUMBER', description: 'Margem de lucro desejada em % (mínimo 30%, padrão 45%)' }
+            },
+            required: ['productName', 'quantity']
           }
         },
         {
@@ -1282,6 +1327,73 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
     return docs;
   };
 
+  // Helper para gerar o Daily Briefing
+  const executeDailyBriefing = async () => {
+    const snap = await admin.firestore().collection('ai_orders_view').limit(100).get();
+    let orders = snap.docs.map(d => d.data()).filter(o => !o.isDeleted);
+
+    // Se ai_orders_view vazia, busca em orders
+    if (orders.length === 0) {
+      const prodSnap = await admin.firestore().collection('orders').limit(100).get();
+      orders = prodSnap.docs.map(d => buildAiOrderDoc(d.id, d.data()));
+    }
+
+    const todayDate = new Date().toISOString().split('T')[0];
+
+    const delayedOrders = orders.filter(o =>
+      o.deliveryDate && o.deliveryDate < todayDate && o.status !== 'completed' && o.status !== 'cancelled'
+    );
+    const todayDeliveries = orders.filter(o => o.deliveryDate === todayDate && o.status !== 'cancelled');
+    const inProgressOrders = orders.filter(o => o.status === 'in-progress');
+    const pendingPaymentOrders = orders.filter(o => o.paymentStatus !== 'paid' && o.status !== 'cancelled');
+
+    const pendingPaymentTotal = pendingPaymentOrders.reduce((acc, curr) => acc + (Number(curr.totalPrice) || 0), 0);
+
+    return {
+      todayDate,
+      delayedCount: delayedOrders.length,
+      delayedOrders: delayedOrders.slice(0, 5),
+      todayDeliveriesCount: todayDeliveries.length,
+      todayDeliveries: todayDeliveries.slice(0, 5),
+      inProgressCount: inProgressOrders.length,
+      pendingPaymentCount: pendingPaymentOrders.length,
+      pendingPaymentTotal,
+    };
+  };
+
+  // Helper para cálculo de estimativa de precificação com guardrails de margem mínima
+  const executePricingEstimate = (args) => {
+    const qty = Math.max(Number(args.quantity) || 1, 1);
+    const rawCost = Number(args.unitCostRaw) || 25; // Ex: custo médio de camiseta/caneca
+    const customCost = Number(args.customizationCost) || 6; // Insumos estamparia/filme
+    const laborMinutes = Number(args.laborTimeMinutes) || 10;
+    const laborCostPerMinute = 0.40; // R$ 24/hora de mão de obra
+    const laborCost = laborMinutes * laborCostPerMinute;
+
+    const unitBaseCost = rawCost + customCost + laborCost;
+    
+    // Guardrail: Margem de lucro mínima protegida de 30%
+    const requestedMargin = Number(args.profitMarginPercent) || 45;
+    const margin = Math.max(requestedMargin, 30);
+
+    const suggestedUnitPrice = Number((unitBaseCost / (1 - (margin / 100))).toFixed(2));
+    const suggestedTotalPrice = Number((suggestedUnitPrice * qty).toFixed(2));
+
+    return {
+      productName: args.productName || 'Personalizado',
+      quantity: qty,
+      unitCost: Number(unitBaseCost.toFixed(2)),
+      suggestedUnitPrice,
+      suggestedTotalPrice,
+      profitMarginPercent: margin,
+      breakdown: {
+        materials: Number(rawCost.toFixed(2)),
+        customization: Number(customCost.toFixed(2)),
+        labor: Number(laborCost.toFixed(2)),
+      }
+    };
+  };
+
   // Monta histórico de mensagens
   const contents = [];
   if (Array.isArray(history)) {
@@ -1314,7 +1426,6 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
           .map(m => m.name.replace(/^models\//, ''));
 
         if (available.length > 0) {
-          // Prioriza modelos 'flash' rápidos, depois pro/preview
           const flashModels = available.filter(m => m.includes('flash'));
           const otherModels = available.filter(m => !m.includes('flash'));
 
@@ -1392,6 +1503,8 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
 
     let finalAnswer = '';
     let extractedDraft = null;
+    let extractedWhatsApp = null;
+    let extractedPricing = null;
 
     if (functionCallPart) {
       const { name, args } = functionCallPart.functionCall;
@@ -1399,6 +1512,35 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
       if (name === 'extract_order_draft') {
         extractedDraft = args;
         finalAnswer = `Identifiquei os dados do pedido para **${args.customerName || 'o cliente'}**! Você pode conferir os detalhes e carregar diretamente no formulário de pedido abaixo.`;
+      } else if (name === 'generate_whatsapp_message') {
+        extractedWhatsApp = args;
+        finalAnswer = `Gerei o rascunho da mensagem para **${args.recipientName || 'o cliente'}**. Você pode copiar o texto ou abrir diretamente no WhatsApp abaixo:`;
+      } else if (name === 'calculate_pricing_estimate') {
+        extractedPricing = executePricingEstimate(args);
+        const formattedUnit = Number(extractedPricing.suggestedUnitPrice).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+        const formattedTotal = Number(extractedPricing.suggestedTotalPrice).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+        finalAnswer = `📊 **Estimativa de Precificação:**\n\n• **Produto:** ${extractedPricing.productName} (${extractedPricing.quantity} un)\n• **Custo Base Unitário:** R$ ${extractedPricing.unitCost.toFixed(2)}\n• **Preço Unitário Sugerido:** ${formattedUnit}\n• **Valor Total Sugerido:** ${formattedTotal} *(Margem protegida: ${extractedPricing.profitMarginPercent}%*)\n\nVocê pode gerar um orçamento oficial com esses valores a qualquer momento.`;
+      } else if (name === 'daily_briefing') {
+        const briefing = await executeDailyBriefing();
+        const formattedPending = Number(briefing.pendingPaymentTotal || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
+        let briefingText = `📋 **Raio-X Operacional do Dia (${briefing.todayDate}):**\n\n`;
+        
+        if (briefing.delayedCount > 0) {
+          briefingText += `⚠️ **Atenção: ${briefing.delayedCount} pedido(s) com prazo vencido/urgente:**\n`;
+          briefing.delayedOrders.forEach(o => {
+            briefingText += `  • **${o.orderNumber || '#' + o.orderId}** — ${o.customerName} (${o.productSummary}) | Prazo: ${o.deliveryDate}\n`;
+          });
+          briefingText += '\n';
+        } else {
+          briefingText += `✅ **Nenhum pedido em atraso no momento!**\n\n`;
+        }
+
+        briefingText += `📦 **Entregas Agendadas para Hoje:** ${briefing.todayDeliveriesCount} pedido(s)\n`;
+        briefingText += `🔄 **Pedidos em Produção:** ${briefing.inProgressCount} pedido(s)\n`;
+        briefingText += `💰 **Valores Pendentes a Receber:** ${formattedPending} (${briefing.pendingPaymentCount} pedidos com pagamento pendente)\n`;
+
+        finalAnswer = briefingText;
       } else if (name === 'query_orders_view') {
         const queryResults = await executeQueryOrdersView(args);
         
@@ -1478,6 +1620,8 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
     aiResponseCache.set(cacheKey, {
       reply: finalAnswer,
       orderDraft: extractedDraft,
+      whatsappDraft: extractedWhatsApp,
+      pricingEstimate: extractedPricing,
       timestamp: Date.now(),
     });
 
@@ -1485,6 +1629,8 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
       success: true,
       reply: finalAnswer,
       orderDraft: extractedDraft,
+      whatsappDraft: extractedWhatsApp,
+      pricingEstimate: extractedPricing,
     };
   } catch (error) {
     if (error instanceof functions.https.HttpsError) throw error;

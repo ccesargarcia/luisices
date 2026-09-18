@@ -625,10 +625,33 @@ export interface AiOrderDraft {
   paymentMethod?: PaymentMethod;
 }
 
+export interface AiWhatsAppDraft {
+  recipientPhone?: string;
+  recipientName?: string;
+  messageText: string;
+  type: 'cobranca' | 'status_producao' | 'pronto_retirada' | 'orcamento' | 'confirmacao_pedido' | 'geral';
+}
+
+export interface AiPricingEstimate {
+  productName: string;
+  quantity: number;
+  unitCost: number;
+  suggestedUnitPrice: number;
+  suggestedTotalPrice: number;
+  profitMarginPercent?: number;
+  breakdown?: {
+    materials?: number;
+    customization?: number;
+    labor?: number;
+  };
+}
+
 export interface AiChatMessage {
   id: string;
   role: 'user' | 'assistant';
   text: string;
   timestamp: string;
   orderDraft?: AiOrderDraft | null;
+  whatsappDraft?: AiWhatsAppDraft | null;
+  pricingEstimate?: AiPricingEstimate | null;
 }
