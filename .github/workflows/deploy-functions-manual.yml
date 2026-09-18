@@ -11,6 +11,16 @@ on:
         options:
           - dev
           - prod
+      functions:
+        description: 'Funções específicas (ex: aiAgentChat ou deixe "all" para todas)'
+        required: false
+        default: 'all'
+        type: string
+      deploy_rules_and_indexes:
+        description: 'Publicar Firestore Rules e Indexes?'
+        required: false
+        default: true
+        type: boolean
 
 permissions:
   contents: read
@@ -69,8 +79,34 @@ jobs:
           if [ -n "$GEMINI_API_KEY" ]; then
             firebase functions:secrets:set GEMINI_API_KEY --project luisices-dev --data-file "$HOME/gemini_api_key.txt" || true
           fi
-          firebase deploy --only firestore:rules,firestore:indexes --project luisices-dev
-          firebase deploy --only functions --project luisices-dev --force --debug
+
+          # Determina se deve publicar regras e índices
+          if [ "${{ inputs.deploy_rules_and_indexes }}" != "false" ]; then
+            echo "📄 Publicando regras e índices do Firestore..."
+            firebase deploy --only firestore:rules,firestore:indexes --project luisices-dev
+          fi
+
+          # Determina quais funções publicar (todas ou específicas)
+          INPUT_FN="${{ inputs.functions }}"
+          if [ -z "$INPUT_FN" ] || [ "$INPUT_FN" = "all" ]; then
+            DEPLOY_TARGET="functions"
+          else
+            TARGETS=$(echo "$INPUT_FN" | tr ',' ' ' | tr -s ' ')
+            DEPLOY_TARGET=""
+            for fn in $TARGETS; do
+              fn_clean=$(echo "$fn" | sed 's/^functions://')
+              if [ -n "$fn_clean" ]; then
+                if [ -z "$DEPLOY_TARGET" ]; then
+                  DEPLOY_TARGET="functions:$fn_clean"
+                else
+                  DEPLOY_TARGET="$DEPLOY_TARGET,functions:$fn_clean"
+                fi
+              fi
+            done
+          fi
+
+          echo "🚀 Realizando deploy de: $DEPLOY_TARGET"
+          firebase deploy --only "$DEPLOY_TARGET" --project luisices-dev --force
 
       - name: Deploy Firebase Functions & Rules (Production)
         if: steps.env.outputs.target == 'prod'
@@ -95,5 +131,31 @@ jobs:
           if [ -n "$GEMINI_API_KEY" ]; then
             firebase functions:secrets:set GEMINI_API_KEY --project papelaria-dashboard --data-file "$HOME/gemini_api_key.txt" || true
           fi
-          firebase deploy --only firestore:rules,firestore:indexes,storage --project papelaria-dashboard
-          firebase deploy --only functions --project papelaria-dashboard --force --debug
+
+          # Determina se deve publicar regras e índices
+          if [ "${{ inputs.deploy_rules_and_indexes }}" != "false" ]; then
+            echo "📄 Publicando regras, índices e storage..."
+            firebase deploy --only firestore:rules,firestore:indexes,storage --project papelaria-dashboard
+          fi
+
+          # Determina quais funções publicar (todas ou específicas)
+          INPUT_FN="${{ inputs.functions }}"
+          if [ -z "$INPUT_FN" ] || [ "$INPUT_FN" = "all" ]; then
+            DEPLOY_TARGET="functions"
+          else
+            TARGETS=$(echo "$INPUT_FN" | tr ',' ' ' | tr -s ' ')
+            DEPLOY_TARGET=""
+            for fn in $TARGETS; do
+              fn_clean=$(echo "$fn" | sed 's/^functions://')
+              if [ -n "$fn_clean" ]; then
+                if [ -z "$DEPLOY_TARGET" ]; then
+                  DEPLOY_TARGET="functions:$fn_clean"
+                else
+                  DEPLOY_TARGET="$DEPLOY_TARGET,functions:$fn_clean"
+                fi
+              fi
+            done
+          fi
+
+          echo "🚀 Realizando deploy de: $DEPLOY_TARGET"
+          firebase deploy --only "$DEPLOY_TARGET" --project papelaria-dashboard --force
