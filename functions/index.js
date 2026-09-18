@@ -1178,7 +1178,7 @@ DIRETRIZES DE RESPOSTA:
     }
   ];
 
-  // Helper para consultar a base somente leitura do Firestore
+  // Helper para consultar a base somente leitura do Firestore com fallback automático
   const executeQueryOrdersView = async (args = {}) => {
     let query = admin.firestore().collection('ai_orders_view');
     if (args.status && args.status !== 'all') {
@@ -1191,6 +1191,17 @@ DIRETRIZES DE RESPOSTA:
     const snap = await query.limit(maxLimit).get();
 
     let docs = snap.docs.map(d => d.data());
+
+    // Se a ai_orders_view ainda não foi populada, busca direto em orders
+    if (docs.length === 0) {
+      let prodQuery = admin.firestore().collection('orders');
+      if (args.status && args.status !== 'all') {
+        prodQuery = prodQuery.where('status', '==', args.status);
+      }
+      const prodSnap = await prodQuery.limit(maxLimit).get();
+      docs = prodSnap.docs.map(d => buildAiOrderDoc(d.id, d.data()));
+    }
+
     if (args.searchTerm && typeof args.searchTerm === 'string') {
       const term = args.searchTerm.toLowerCase().trim();
       docs = docs.filter(d =>
@@ -1308,16 +1319,19 @@ DIRETRIZES DE RESPOSTA:
       } else if (name === 'query_orders_view') {
         const queryResults = await executeQueryOrdersView(args);
         
-        // Segunda chamada para o Gemini formular a resposta final com os dados consultados
+        // Segunda chamada para o Gemini formular a resposta final detalhada com os dados consultados
         const followUpContents = [
           ...contents,
           { role: 'model', parts: [{ functionCall: functionCallPart.functionCall }] },
           {
-            role: 'user',
+            role: 'function',
             parts: [{
               functionResponse: {
                 name: 'query_orders_view',
-                response: { results: queryResults, totalFound: queryResults.length }
+                response: {
+                  summary: `Encontrados ${queryResults.length} pedidos.`,
+                  orders: queryResults.slice(0, 15),
+                }
               }
             }]
           }
@@ -1327,11 +1341,28 @@ DIRETRIZES DE RESPOSTA:
           const { data: followUpResult } = await callGeminiWithFallback({
             system_instruction: { parts: [{ text: systemInstruction }] },
             contents: followUpContents,
+            tools: toolsDeclaration,
             generationConfig: { temperature: 0.2 }
           });
-          finalAnswer = followUpResult?.candidates?.[0]?.content?.parts?.[0]?.text || 'Consulta realizada com sucesso.';
+          const followUpCandidate = followUpResult?.candidates?.[0];
+          const followUpParts = followUpCandidate?.content?.parts || [];
+          const textResponse = followUpParts.map(p => p.text).filter(Boolean).join('\n');
+
+          if (textResponse && textResponse.trim().length > 15) {
+            finalAnswer = textResponse;
+          } else if (queryResults.length === 0) {
+            finalAnswer = 'Não encontrei nenhum pedido correspondente aos critérios consultados.';
+          } else {
+            const list = queryResults.map(o => `• **${o.orderNumber || o.orderId}** - ${o.customerName}: ${o.productSummary} (${o.quantity} un) - R$ ${o.totalPrice} [Status: ${o.status}]`).join('\n');
+            finalAnswer = `Encontrei **${queryResults.length} pedido(s)**:\n\n${list}`;
+          }
         } catch {
-          finalAnswer = `Encontrei ${queryResults.length} pedido(s) correspondente(s) na base.`;
+          if (queryResults.length === 0) {
+            finalAnswer = 'Não encontrei nenhum pedido correspondente na base.';
+          } else {
+            const list = queryResults.map(o => `• **${o.orderNumber || o.orderId}** - ${o.customerName}: ${o.productSummary} (${o.quantity} un) - R$ ${o.totalPrice} [Status: ${o.status}]`).join('\n');
+            finalAnswer = `Encontrei **${queryResults.length} pedido(s)**:\n\n${list}`;
+          }
         }
       }
     } else {
