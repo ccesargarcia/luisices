@@ -27,11 +27,6 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
   DialogTrigger,
 } from '../components/ui/dialog';
 import { AiCopilotSheet } from '../components/AiCopilotSheet';
