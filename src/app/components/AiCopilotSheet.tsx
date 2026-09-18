@@ -280,11 +280,22 @@ function WhatsAppComposer({ draft, onSendVariantRequest, disabled }: WhatsAppCom
 }
 
 export function AiCopilotSheet({ open, onOpenChange, onApplyOrderDraft }: AiCopilotSheetProps) {
+  const { user, isAdmin } = useAuth();
   const [messages, setMessages] = useState<AiChatMessage[]>([INITIAL_MESSAGE]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [quota, setQuota] = useState<import('../types').AiUsageData | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  const fetchQuota = async () => {
+    try {
+      const data = await firebaseAiAgentService.getAiUsage();
+      setQuota(data);
+    } catch {
+      // Ignora erro
+    }
+  };
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -293,6 +304,7 @@ export function AiCopilotSheet({ open, onOpenChange, onApplyOrderDraft }: AiCopi
   useEffect(() => {
     if (open) {
       setTimeout(scrollToBottom, 150);
+      fetchQuota();
     }
   }, [open, messages]);
 
@@ -329,6 +341,7 @@ export function AiCopilotSheet({ open, onOpenChange, onApplyOrderDraft }: AiCopi
       };
 
       setMessages(prev => [...prev, assistantMsg]);
+      fetchQuota();
     } catch (err: any) {
       console.error('[AiCopilot] Erro ao enviar mensagem:', err);
       toast.error(err.message || 'Erro ao comunicar com o Copiloto de IA.');
@@ -388,6 +401,15 @@ export function AiCopilotSheet({ open, onOpenChange, onApplyOrderDraft }: AiCopi
                   <Badge variant="outline" className="text-[9px] sm:text-[10px] px-1.5 py-0 bg-amber-500/10 text-amber-600 border-amber-500/30">
                     IA SEGURA
                   </Badge>
+                  {isAdmin && quota?.daily && (
+                    <Badge
+                      variant="outline"
+                      className="text-[9px] sm:text-[10px] px-1.5 py-0 bg-muted/60 text-muted-foreground border-border gap-1 font-mono"
+                      title={`Cota Gemini: ${quota.daily.used}/${quota.daily.limit} requisições hoje (${quota.daily.percentage}%)`}
+                    >
+                      ⚡ {quota.daily.used}/{quota.daily.limit} req
+                    </Badge>
+                  )}
                 </SheetTitle>
                 <SheetDescription className="text-[11px] sm:text-xs text-muted-foreground truncate">
                   Consultas, Briefings, WhatsApp & Precificação

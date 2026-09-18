@@ -664,6 +664,29 @@ export interface AiChatMessage {
   pricingEstimate?: AiPricingEstimate | null;
 }
 
+export interface AiUsageData {
+  success: boolean;
+  model: string;
+  provider: string;
+  daily: {
+    used: number;
+    limit: number;
+    percentage: number;
+    resetsAt: string;
+  };
+  rpm: {
+    used: number;
+    limit: number;
+    percentage: number;
+  };
+  monthly: {
+    used: number;
+    limit: number;
+    percentage: number;
+    resetsAt: string;
+  };
+}
+
 // ─── Central de Atendimento WhatsApp ──────────────────────────────────────────
 export interface WhatsAppMessage {
   id: string;

@@ -1813,6 +1813,16 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
       finalAnswer = cleanAiOutput(parts.map(p => p.text).filter(Boolean).join('\n')) || 'Como posso ajudar você hoje?';
     }
 
+    // Registra consumo de IA para monitoramento de quota
+    admin.firestore().collection('ai_usage_logs').add({
+      userId: callerUid,
+      model: preferredWorkingModel || 'gemini-2.0-flash',
+      promptLength: cleanMessage.length,
+      responseLength: finalAnswer.length,
+      timestamp: new Date().toISOString(),
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    }).catch((err) => console.warn('[aiAgentChat] Erro ao gravar ai_usage_logs:', err));
+
     // Salva no cache de respostas rápidas
     aiResponseCache.set(cacheKey, {
       reply: finalAnswer,
@@ -1834,6 +1844,86 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
     console.error('[aiAgentChat] Erro inesperado:', error);
     throw new functions.https.HttpsError('internal', error.message || 'Erro ao executar o copiloto de IA.');
   }
+});
+
+/**
+ * Consulta a cota e o consumo em tempo real da API Gemini / Copiloto de IA.
+ * Disponível para administradores ou usuários autorizados.
+ */
+exports.getAiUsage = onCall({ cors: true }, async (request) => {
+  if (!request.auth) {
+    throw new functions.https.HttpsError('unauthenticated', 'Usuário não autenticado.');
+  }
+
+  const profile = await admin.firestore().doc(`userProfiles/${request.auth.uid}`).get();
+  const profileData = profile.exists ? profile.data() : null;
+  const isAuthorized =
+    profileData?.role === 'admin' ||
+    profileData?.role === 'user' ||
+    profileData?.permissions?.aiCopilot === true;
+  if (!isAuthorized) {
+    throw new functions.https.HttpsError('permission-denied', 'Sem permissão para consultar uso de IA.');
+  }
+
+  const now = new Date();
+  const startOfTodayUtc = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 0, 0));
+  const startOfMonthUtc = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1, 0, 0, 0));
+  const oneMinuteAgo = new Date(now.getTime() - 60 * 1000);
+
+  let dailyCount = 0;
+  let monthlyCount = 0;
+  let rpmCount = 0;
+
+  try {
+    const [todaySnap, monthSnap, minuteSnap] = await Promise.all([
+      admin.firestore().collection('ai_usage_logs')
+        .where('timestamp', '>=', startOfTodayUtc.toISOString())
+        .get(),
+      admin.firestore().collection('ai_usage_logs')
+        .where('timestamp', '>=', startOfMonthUtc.toISOString())
+        .get(),
+      admin.firestore().collection('ai_usage_logs')
+        .where('timestamp', '>=', oneMinuteAgo.toISOString())
+        .get(),
+    ]);
+
+    dailyCount = todaySnap.size;
+    monthlyCount = monthSnap.size;
+    rpmCount = minuteSnap.size;
+  } catch (fsErr) {
+    console.warn('[getAiUsage] Erro ao consultar ai_usage_logs no Firestore:', fsErr);
+  }
+
+  const nextUtcMidnight = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1, 0, 0, 0));
+  const nextUtcMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1, 0, 0, 0));
+
+  // Limites oficiais padrão do Google AI Studio - Gemini 2.0 Flash (Free Tier)
+  const DAILY_LIMIT = 1500;
+  const RPM_LIMIT = 15;
+  const MONTHLY_LIMIT = 45000;
+
+  return {
+    success: true,
+    model: preferredWorkingModel || 'gemini-2.0-flash',
+    provider: 'Google AI Studio / Gemini API',
+    daily: {
+      used: dailyCount,
+      limit: DAILY_LIMIT,
+      percentage: Math.min(100, Math.round((dailyCount / DAILY_LIMIT) * 100)),
+      resetsAt: nextUtcMidnight.toISOString(),
+    },
+    rpm: {
+      used: rpmCount,
+      limit: RPM_LIMIT,
+      percentage: Math.min(100, Math.round((rpmCount / RPM_LIMIT) * 100)),
+    },
+    monthly: {
+      used: monthlyCount,
+      limit: MONTHLY_LIMIT,
+      percentage: Math.min(100, Math.round((monthlyCount / MONTHLY_LIMIT) * 100)),
+      resetsAt: nextUtcMonth.toISOString(),
+    },
+  };
 });
 
 /**

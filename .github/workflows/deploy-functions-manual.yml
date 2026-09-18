@@ -18,7 +18,9 @@ on:
         type: choice
         options:
           - 'all'
-          - 'aiAgentChat,sendWhatsAppDirectMessage,deleteWhatsAppMessage,syncWhatsAppChatMessages,getWhatsAppInstanceStatus,evolutionWhatsAppWebhook,syncOrderToAiView,syncAllOrdersToAiView'
+          - 'aiAgentChat,getAiUsage,sendWhatsAppDirectMessage,deleteWhatsAppMessage,syncWhatsAppChatMessages,getWhatsAppInstanceStatus,evolutionWhatsAppWebhook,syncOrderToAiView,syncAllOrdersToAiView'
+          - 'aiAgentChat,getAiUsage'
+          - 'getAiUsage'
           - 'sendWhatsAppDirectMessage,deleteWhatsAppMessage,syncWhatsAppChatMessages,getWhatsAppInstanceStatus,evolutionWhatsAppWebhook'
           - 'aiAgentChat,sendWhatsAppDirectMessage'
           - 'sendWhatsAppDirectMessage'

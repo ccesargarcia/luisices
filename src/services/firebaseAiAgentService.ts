@@ -55,6 +55,19 @@ export class FirebaseAiAgentService {
     const result = await callable({ phone, text });
     return result.data;
   }
+
+  /**
+   * Consulta a cota e o consumo em tempo real do Gemini API
+   */
+  async getAiUsage(): Promise<import('../app/types').AiUsageData> {
+    const callable = httpsCallable<
+      void,
+      import('../app/types').AiUsageData
+    >(functions, 'getAiUsage');
+
+    const result = await callable();
+    return result.data;
+  }
 }
 
 export const firebaseAiAgentService = new FirebaseAiAgentService();
