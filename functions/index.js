@@ -951,18 +951,20 @@ exports.resendReceivingWebhook = onRequest({ cors: true, secrets: [RESEND_API_KE
 const isAuthorizedEmployeeOrAdmin = async (request) => {
   if (!request.auth) return false;
   const profile = await admin.firestore().doc(`userProfiles/${request.auth.uid}`).get();
-  if (!profile.exists) return false;
+  if (!profile.exists) return true;
   const data = profile.data();
-  return (data.role === 'admin' || data.role === 'funcionario') && data.active !== false;
+  if (data.active === false) return false;
+  return data.role === 'admin' || data.role === 'user' || data.role === 'funcionario';
 };
 
 const isAuthorizedForWhatsApp = async (request) => {
   if (!request.auth) return false;
   const profile = await admin.firestore().doc(`userProfiles/${request.auth.uid}`).get();
-  if (!profile.exists) return false;
+  if (!profile.exists) return true;
   const data = profile.data();
   if (data.active === false) return false;
   if (data.role === 'admin') return true;
+  if (data.role === 'user') return data.permissions?.whatsapp !== false;
   return data.role === 'funcionario' && data.permissions?.whatsapp === true;
 };
 
@@ -1139,11 +1141,14 @@ exports.aiAgentChat = onCall({ secrets: [GEMINI_API_KEY] }, async (request) => {
 
   const callerUid = request.auth.uid;
   const callerProfileDoc = await admin.firestore().doc(`userProfiles/${callerUid}`).get();
-  const callerProfile = callerProfileDoc.exists ? callerProfileDoc.data() : {};
+  const callerProfile = callerProfileDoc.exists ? callerProfileDoc.data() : { role: 'user', active: true };
   const isAdmin = callerProfile.role === 'admin';
 
   // Guardrail de Permissão do Copiloto de IA:
-  if (!isAdmin && callerProfile.role === 'funcionario' && callerProfile.permissions?.aiCopilot === false) {
+  if (callerProfile.role === 'funcionario' && callerProfile.permissions?.aiCopilot !== true) {
+    throw new functions.https.HttpsError('permission-denied', 'Seu perfil de funcionário não possui permissão para acessar o Copiloto de IA.');
+  }
+  if (callerProfile.role === 'user' && callerProfile.permissions?.aiCopilot === false) {
     throw new functions.https.HttpsError('permission-denied', 'Seu perfil de usuário não possui permissão para acessar o Copiloto de IA.');
   }
 
