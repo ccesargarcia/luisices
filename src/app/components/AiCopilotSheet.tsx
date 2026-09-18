@@ -221,7 +221,7 @@ function WhatsAppComposer({ draft, onSendVariantRequest, disabled }: WhatsAppCom
           ) : (
             <Send className="size-3.5" />
           )}
-          <span>{sendingViaApi ? 'Disparando...' : '🚀 Enviar via Evolution API'}</span>
+          <span>{sendingViaApi ? 'Enviando...' : 'Enviar para o WhatsApp diretamente'}</span>
         </Button>
 
         <div className="flex items-center gap-1.5 shrink-0">
@@ -563,26 +563,33 @@ export function AiCopilotSheet({ open, onOpenChange, onApplyOrderDraft }: AiCopi
               e.preventDefault();
               handleSend();
             }}
-            className="flex items-center gap-2"
+            className="flex items-end gap-2"
           >
-            <Input
+            <Textarea
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder="Pergunte sobre pedidos, briefing, WhatsApp ou cálculo..."
-              className="text-xs sm:text-sm bg-background"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  handleSend();
+                }
+              }}
+              rows={1}
+              placeholder="Digite sua dúvida ou cole mensagem... (Enter envia)"
+              className="text-xs sm:text-sm bg-background min-h-[38px] max-h-24 resize-none py-2 leading-tight"
               disabled={loading}
             />
             <Button
               type="submit"
               size="icon"
               disabled={!input.trim() || loading}
-              className="shrink-0"
+              className="shrink-0 h-[38px] w-[38px]"
             >
               {loading ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}
             </Button>
           </form>
           <p className="text-[10px] text-center text-muted-foreground mt-1.5">
-            🛡️ Guardrails ativos: Proteção de margem, LGPD e revisão humana obrigatória.
+            💡 Pressione <kbd className="px-1 py-0.5 text-[9px] bg-muted border rounded font-mono">Enter</kbd> para enviar ou <kbd className="px-1 py-0.5 text-[9px] bg-muted border rounded font-mono">Shift+Enter</kbd> para nova linha.
           </p>
         </div>
       </SheetContent>
