@@ -966,7 +966,7 @@ const buildAiOrderDoc = (orderId, data = {}) => {
   const productSummary = data.productName || 'Não especificado';
   const quantity = Number(data.quantity) || 1;
   const totalPrice = Number(data.price) || 0;
-  const isDeleted = Boolean(data.isDeleted);
+  const isDeleted = Boolean(data.isDeleted) || data.status === 'deleted';
   const status = isDeleted ? 'deleted' : (data.status || 'pending');
   const paymentStatus = data.payment?.status || 'pending';
   const paymentMethod = data.payment?.method || null;
@@ -995,7 +995,7 @@ const buildAiOrderDoc = (orderId, data = {}) => {
     isDeleted,
     cancellationReason,
     createdAt: data.createdAt || new Date().toISOString(),
-    deletedAt: data.deletedAt || null,
+    deletedAt: data.deletedAt || (isDeleted ? new Date().toISOString() : null),
     updatedAt: admin.firestore.FieldValue.serverTimestamp(),
   };
 };
@@ -1019,6 +1019,7 @@ exports.syncOrderToAiView = functions.firestore
       const archivedDoc = buildAiOrderDoc(orderId, {
         ...previousData,
         isDeleted: true,
+        status: 'deleted',
         deletedAt: new Date().toISOString(),
       });
       await targetRef.set(archivedDoc, { merge: true }).catch((err) => {
@@ -1249,6 +1250,12 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
 
     let docs = snap.docs.map(d => d.data());
 
+    // Fallback: se buscou excluídos e a query por isDeleted não achou, tenta por status=='deleted'
+    if (args.status === 'deleted' && docs.length === 0) {
+      const altSnap = await admin.firestore().collection('ai_orders_view').where('status', '==', 'deleted').limit(maxLimit).get();
+      docs = altSnap.docs.map(d => d.data());
+    }
+
     // Se a ai_orders_view ainda não foi populada, busca fallback em orders
     if (docs.length === 0 && args.status !== 'deleted') {
       let prodQuery = admin.firestore().collection('orders');
@@ -1261,7 +1268,7 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
 
     // Se o usuário não pediu especificamente por excluídos e nem 'all', filtra excluídos por padrão
     if (!args.status || (args.status !== 'deleted' && args.status !== 'all')) {
-      docs = docs.filter(d => !d.isDeleted);
+      docs = docs.filter(d => !d.isDeleted && d.status !== 'deleted');
     }
 
     if (args.searchTerm && typeof args.searchTerm === 'string') {
