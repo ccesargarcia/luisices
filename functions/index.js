@@ -2146,8 +2146,8 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
       // Limite de segurança de payload (~15MB em base64)
       if (base64.length < 15 * 1024 * 1024) {
         userParts.push({
-          inline_data: {
-            mime_type: effectiveMime,
+          inlineData: {
+            mimeType: effectiveMime,
             data: base64
           }
         });
@@ -2855,15 +2855,43 @@ Responda ESTRITAMENTE em formato JSON com as seguintes propriedades (sem markdow
   "suggestedTags": ["tag1", "tag2", "tag3", "tag4", "tag5"]
 }`;
 
-  const candidateModels = [
-    preferredWorkingModel,
-    'gemini-2.0-flash',
-    'gemini-2.0-flash-lite',
-    'gemini-1.5-flash',
-  ].filter(Boolean);
+  const getVisionModels = async () => {
+    try {
+      const listResp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`);
+      if (listResp.ok) {
+        const listData = await listResp.json();
+        const available = (listData.models || [])
+          .filter(m => Array.isArray(m.supportedGenerationMethods) && m.supportedGenerationMethods.includes('generateContent'))
+          .map(m => m.name.replace(/^models\//, ''));
 
+        if (available.length > 0) {
+          const flashModels = available.filter(m => m.includes('flash'));
+          const otherModels = available.filter(m => !m.includes('flash'));
+          return [
+            process.env.GEMINI_MODEL,
+            preferredWorkingModel,
+            ...flashModels,
+            ...otherModels,
+            'gemini-2.0-flash',
+            'gemini-1.5-flash',
+          ].filter((item, index, self) => Boolean(item) && self.indexOf(item) === index);
+        }
+      }
+    } catch (err) {
+      console.warn('[enrichGalleryItemWithAi] Falha ao consultar endpoint de modelos:', err);
+    }
+    return [
+      process.env.GEMINI_MODEL,
+      preferredWorkingModel,
+      'gemini-2.0-flash',
+      'gemini-1.5-flash',
+    ].filter((item, index, self) => Boolean(item) && self.indexOf(item) === index);
+  };
+
+  const candidateModels = await getVisionModels();
   let parsedAiResult = null;
   let usedModel = 'gemini-2.0-flash';
+  let lastError = null;
 
   for (const model of candidateModels) {
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
@@ -2876,8 +2904,8 @@ Responda ESTRITAMENTE em formato JSON com as seguintes propriedades (sem markdow
             role: 'user',
             parts: [
               {
-                inline_data: {
-                  mime_type: mimeType,
+                inlineData: {
+                  mimeType,
                   data: base64Image
                 }
               },
@@ -2886,36 +2914,42 @@ Responda ESTRITAMENTE em formato JSON com as seguintes propriedades (sem markdow
           }],
           generationConfig: {
             temperature: 0.2,
-            responseMimeType: 'application/json'
           }
         })
       });
 
-      if (resp.ok) {
-        const data = await resp.json();
-        const textResp = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (textResp) {
-          try {
-            parsedAiResult = JSON.parse(textResp);
+      if (!resp.ok) {
+        const errText = await resp.text();
+        console.warn(`[enrichGalleryItemWithAi] Modelo ${model} falhou (Status ${resp.status}):`, errText);
+        lastError = new Error(`Modelo ${model} (Status ${resp.status}): ${errText}`);
+        continue;
+      }
+
+      const data = await resp.json();
+      const textResp = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (textResp) {
+        try {
+          parsedAiResult = JSON.parse(textResp);
+          usedModel = model;
+          break;
+        } catch {
+          const jsonMatch = textResp.match(/\{[\s\S]*\}/);
+          if (jsonMatch) {
+            parsedAiResult = JSON.parse(jsonMatch[0]);
             usedModel = model;
             break;
-          } catch {
-            const jsonMatch = textResp.match(/\{[\s\S]*\}/);
-            if (jsonMatch) {
-              parsedAiResult = JSON.parse(jsonMatch[0]);
-              usedModel = model;
-              break;
-            }
           }
         }
       }
     } catch (err) {
       console.warn(`[enrichGalleryItemWithAi] Erro com modelo ${model}:`, err);
+      lastError = err;
     }
   }
 
   if (!parsedAiResult) {
-    throw new functions.https.HttpsError('internal', 'Falha ao processar visão computacional com o Gemini.');
+    console.error('[enrichGalleryItemWithAi] Todos os modelos falharam. Detalhes:', lastError);
+    throw new functions.https.HttpsError('internal', lastError?.message || 'Falha ao processar visão computacional com o Gemini.');
   }
 
   // Registra log de uso da IA
