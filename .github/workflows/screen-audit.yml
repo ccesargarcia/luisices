@@ -1,47 +1,29 @@
-name: E2E Tests
+name: Auditoria Completa de Telas & Layout (Manual)
 
 on:
-  workflow_call:
-    inputs:
-      test_target:
-        description: 'Qual grupo de testes executar (ex: all, security, critical)'
-        required: false
-        type: string
-        default: 'all'
   workflow_dispatch:
     inputs:
-      test_target:
-        description: 'Qual grupo de testes executar'
-        required: false
+      viewport_mode:
+        description: 'Modo de auditoria'
+        required: true
         type: choice
         options:
-          - all
-          - security
-          - critical
-          - orders
-          - customers
-          - products
-          - quotes
-          - store
-          - audit
-          - screen-audit
-        default: 'all'
-  pull_request:
-    branches:
-      - develop
-      - main
+          - 'Completo (Desktop + Mobile + Modais)'
+          - 'Apenas Mobile e Modais'
+        default: 'Completo (Desktop + Mobile + Modais)'
 
 permissions:
   contents: read
 
 concurrency:
-  group: "e2e-tests-${{ github.ref }}"
-  cancel-in-progress: true
+  group: "screen-audit-manual"
+  cancel-in-progress: false
 
 jobs:
-  e2e-tests:
+  screen-audit:
+    name: Varredura de Telas e Caça a Bugs Visuais
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
@@ -61,10 +43,10 @@ jobs:
       - name: Run Unit Tests (Vitest)
         run: npm run test:unit
 
-      - name: Install Playwright browsers
+      - name: Install Playwright Browsers
         run: npx playwright install chromium --with-deps
 
-      - name: Create .env files with Firebase and test config
+      - name: Create .env files with DEV secrets
         env:
           API_KEY: ${{ secrets.DEV_VITE_FIREBASE_API_KEY }}
           AUTH_DOMAIN: ${{ secrets.DEV_VITE_FIREBASE_AUTH_DOMAIN }}
@@ -73,6 +55,8 @@ jobs:
           MESSAGING_SENDER_ID: ${{ secrets.DEV_VITE_FIREBASE_MESSAGING_SENDER_ID }}
           APP_ID: ${{ secrets.DEV_VITE_FIREBASE_APP_ID }}
           MEASUREMENT_ID: ${{ secrets.DEV_VITE_FIREBASE_MEASUREMENT_ID }}
+          STORAGE_CDN_URL: ${{ secrets.DEV_VITE_STORAGE_CDN_URL || 'https://cdn-dev.luisices.com.br' }}
+          SENTRY_DSN: ${{ secrets.DEV_VITE_SENTRY_DSN || secrets.VITE_SENTRY_DSN }}
           TEST_EMAIL: ${{ secrets.TEST_USER_EMAIL }}
           TEST_PASS: ${{ secrets.TEST_USER_PASSWORD }}
         run: |
@@ -83,6 +67,8 @@ jobs:
           printf 'VITE_FIREBASE_MESSAGING_SENDER_ID=%s\n' "$MESSAGING_SENDER_ID" >> .env.local
           printf 'VITE_FIREBASE_APP_ID=%s\n' "$APP_ID" >> .env.local
           printf 'VITE_FIREBASE_MEASUREMENT_ID=%s\n' "$MEASUREMENT_ID" >> .env.local
+          printf 'VITE_STORAGE_CDN_URL=%s\n' "$STORAGE_CDN_URL" >> .env.local
+          printf 'VITE_SENTRY_DSN=%s\n' "$SENTRY_DSN" >> .env.local
           printf 'TEST_USER_EMAIL=%s\n' "$TEST_EMAIL" >> .env.test
           printf 'TEST_USER_PASSWORD=%s\n' "$TEST_PASS" >> .env.test
           printf 'PLAYWRIGHT_BASE_URL=http://localhost:4173\n' >> .env.test
@@ -90,42 +76,33 @@ jobs:
       - name: Build
         run: npm run build
 
-      - name: Run E2E tests
+      - name: Run Screen Audit Tests
         env:
           CI: true
           TEST_USER_EMAIL: ${{ secrets.TEST_USER_EMAIL }}
           TEST_USER_PASSWORD: ${{ secrets.TEST_USER_PASSWORD }}
           PLAYWRIGHT_BASE_URL: http://localhost:4173
-          INPUT_TARGET: ${{ inputs.test_target || github.event.inputs.test_target || '' }}
-          COMMIT_MSG: ${{ github.event.head_commit.message }}
-        # Permite executar apenas segurança, fluxo crítico ou teste específico via input ou tag [test:security]
         run: |
-          if [ "$INPUT_TARGET" = "security" ] || echo "$COMMIT_MSG" | grep -qi '\[test:security\]'; then
-            echo "🛡️ Executando exclusivamente testes de segurança..."
-            npx playwright test tests/e2e/security.spec.ts --project=chromium --reporter=list,html
-          elif [ "$INPUT_TARGET" = "critical" ] || echo "$COMMIT_MSG" | grep -qi '\[test:critical\]'; then
-            echo "⚡ Executando testes críticos e de segurança..."
-            npx playwright test tests/e2e/critical-flows.spec.ts tests/e2e/permissions.spec.ts tests/e2e/security.spec.ts --project=chromium --reporter=list,html
-          elif [ -n "$INPUT_TARGET" ] && [ "$INPUT_TARGET" != "all" ]; then
-            echo "🎯 Executando target específico: $INPUT_TARGET..."
-            npx playwright test tests/e2e/${INPUT_TARGET}.spec.ts --project=chromium --reporter=list,html
+          if [ "${{ github.event.inputs.viewport_mode }}" = "Apenas Mobile e Modais" ]; then
+            echo "📱 Executando auditoria focada em Mobile e Modais..."
+            npx playwright test tests/e2e/screen-audit.spec.ts -g "\[Mobile\]|Modal" --project=chromium --reporter=list,html
           else
-            echo "🚀 Executando suíte completa de testes E2E..."
-            npx playwright test --project=chromium --reporter=list,html
+            echo "🖥️📱 Executando auditoria completa de telas (Desktop + Mobile + Modais)..."
+            npx playwright test tests/e2e/screen-audit.spec.ts --project=chromium --reporter=list,html
           fi
 
-      - name: Upload test report
+      - name: Upload Test Report
         if: always()
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v4
         with:
-          name: playwright-report
+          name: screen-audit-report
           path: playwright-report/
-          retention-days: 14
+          retention-days: 30
 
-      - name: Upload test videos & traces
+      - name: Upload Test Videos & Traces
         if: always()
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v4
         with:
-          name: test-results
+          name: screen-audit-results
           path: test-results/
           retention-days: 14

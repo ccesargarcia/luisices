@@ -24,6 +24,10 @@ on:
           - calendar
           - users
           - help
+          - audit
+          - store
+          - whatsapp
+          - responsive
         default: 'security'
 
 permissions:
