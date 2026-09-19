@@ -105,7 +105,7 @@ export function Layout() {
     { name: 'Dashboard',       href: '/',           icon: LayoutDashboard, check: (p: any) => p.dashboard },
     { name: 'Agenda Semanal', href: '/agenda',      icon: Calendar,        check: (p: any) => p.orders?.view },
     { name: 'Clientes',       href: '/clientes',    icon: Users,           check: (p: any) => p.customers?.view },
-    { name: 'Atendimento',    href: '/whatsapp',    icon: MessageSquare,   badge: unreadWhatsAppCount, check: (p: any) => p.whatsapp ?? false, allowUserRole: true },
+    { name: 'Atendimento',    href: '/whatsapp',    icon: MessageSquare,   badge: unreadWhatsAppCount, check: (p: any) => Boolean(p?.whatsapp) },
     { name: 'Relatórios',     href: '/relatorios',  icon: BarChart3,       check: (p: any) => p.reports, allowUserRole: true },
     { name: 'Orçamentos',     href: '/orcamentos',  icon: FileText,        check: (p: any) => p.quotes?.view },
     { name: 'Produtos do Ateliê', href: '/produtos', icon: Package,        check: (p: any) => p.products?.view },
@@ -195,7 +195,7 @@ export function Layout() {
   const mobilePrimaryNav = flatNavForMobile.slice(0, 4);
   const mobileMoreNav = flatNavForMobile.slice(4);
   const canAccessSettings = userProfile?.role === 'user' || hasPermission((p) => p.settings);
-  const canAccessAiCopilot = isAdmin || userProfile?.role === 'user' || hasPermission((p) => p.aiCopilot ?? false);
+  const canAccessAiCopilot = isAdmin || hasPermission((p) => Boolean(p?.aiCopilot));
 
   const businessName = settings?.businessName || 'Papelaria Personalizada';
   const hasLogo = !!settings?.logo;
@@ -781,11 +781,13 @@ export function Layout() {
       </nav>
 
       {/* Copiloto de IA Interno & Modal de Novo Pedido Preenchido */}
-      <AiCopilotSheet
-        open={aiCopilotOpen}
-        onOpenChange={setAiCopilotOpen}
-        onApplyOrderDraft={handleApplyAiOrderDraft}
-      />
+      {canAccessAiCopilot && (
+        <AiCopilotSheet
+          open={aiCopilotOpen}
+          onOpenChange={setAiCopilotOpen}
+          onApplyOrderDraft={handleApplyAiOrderDraft}
+        />
+      )}
       <NewOrderDialog
         open={aiNewOrderModalOpen}
         onOpenChange={setAiNewOrderModalOpen}

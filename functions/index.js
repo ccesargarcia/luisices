@@ -2788,6 +2788,16 @@ exports.enrichGalleryItemWithAi = onCall({ secrets: [GEMINI_API_KEY] }, async (r
   const callerProfile = callerProfileDoc.exists ? callerProfileDoc.data() : { role: 'user', active: true };
   const isAdmin = callerProfile.role === 'admin';
 
+  // Guardrail de Permissão de Recursos de IA:
+  if (!isAdmin) {
+    if (callerProfile.role === 'funcionario' && callerProfile.permissions?.aiCopilot !== true) {
+      throw new functions.https.HttpsError('permission-denied', 'Seu perfil de funcionário não possui permissão para utilizar recursos de IA.');
+    }
+    if (callerProfile.role === 'user' && callerProfile.permissions?.aiCopilot === false) {
+      throw new functions.https.HttpsError('permission-denied', 'Seu perfil de usuário não possui permissão para utilizar recursos de IA.');
+    }
+  }
+
   const { itemId } = request.data || {};
   if (!itemId || typeof itemId !== 'string') {
     throw new functions.https.HttpsError('invalid-argument', 'ID da arte é obrigatório.');

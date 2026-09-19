@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { GalleryItem } from '../../types';
 import { Skeleton } from '../ui/skeleton';
 import { ImageOff, User, ZoomIn, Sparkles } from 'lucide-react';
+import { useAuth } from '../../../contexts/AuthContext';
 import { cn } from '../ui/utils';
 
 interface GalleryCardProps {
@@ -10,6 +11,8 @@ interface GalleryCardProps {
 }
 
 export function GalleryCard({ item, onClick }: GalleryCardProps) {
+  const { hasPermission, isAdmin } = useAuth();
+  const canUseAi = isAdmin || hasPermission((p) => Boolean(p?.aiCopilot));
   const [loaded, setLoaded] = useState(false);
   const [imageError, setImageError] = useState(false);
   return (
@@ -44,7 +47,7 @@ export function GalleryCard({ item, onClick }: GalleryCardProps) {
         <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center">
           <ZoomIn className="size-7 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
         </div>
-        {item.aiDescription && (
+        {canUseAi && item.aiDescription && (
           <div className="absolute top-1.5 right-1.5 bg-black/60 backdrop-blur-xs text-amber-300 text-[10px] font-semibold px-1.5 py-0.5 rounded flex items-center gap-1 shadow-xs pointer-events-none">
             <Sparkles className="size-2.5 text-amber-400" />
             <span>IA</span>

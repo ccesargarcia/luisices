@@ -243,7 +243,7 @@ export const router = isCatalogSubdomain
       },
       {
         path: 'whatsapp',
-        element: <Lazy><PermissionRoute check={p => p.whatsapp ?? false} allowUserRole><WhatsAppChat /></PermissionRoute></Lazy>,
+        element: <Lazy><PermissionRoute check={p => p.whatsapp ?? false}><WhatsAppChat /></PermissionRoute></Lazy>,
       },
       {
         path: 'chat-whatsapp',

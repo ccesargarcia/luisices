@@ -22,6 +22,7 @@ import {
 import { TagInput } from '../TagInput';
 import { Upload, X, Sparkles } from 'lucide-react';
 import { firebaseGalleryService } from '../../../services/firebaseGalleryService';
+import { useAuth } from '../../../contexts/AuthContext';
 import { cn } from '../ui/utils';
 import { toast } from 'sonner';
 
@@ -42,6 +43,8 @@ export function GalleryUploadDialog({
   userId,
   initialCustomerId,
 }: GalleryUploadDialogProps) {
+  const { hasPermission, isAdmin } = useAuth();
+  const canUseAi = isAdmin || hasPermission((p) => Boolean(p?.aiCopilot));
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const [title, setTitle] = useState('');
@@ -117,7 +120,7 @@ export function GalleryUploadDialog({
       });
 
       let finalItem = item;
-      if (autoEnrich) {
+      if (canUseAi && autoEnrich) {
         try {
           const aiRes = await firebaseGalleryService.enrichItemWithAi(item.id);
           finalItem = {
@@ -277,19 +280,21 @@ export function GalleryUploadDialog({
           </div>
 
           {/* AI Auto-Catalog Option */}
-          <div className="flex items-center gap-2.5 p-3 rounded-lg border bg-amber-500/5 border-amber-500/20">
-            <input
-              type="checkbox"
-              id="ai-auto-catalog"
-              checked={autoEnrich}
-              onChange={(e) => setAutoEnrich(e.target.checked)}
-              className="size-4 text-amber-600 rounded cursor-pointer accent-amber-500 shrink-0"
-            />
-            <Label htmlFor="ai-auto-catalog" className="text-xs font-medium cursor-pointer flex items-center gap-1.5 text-foreground select-none leading-snug">
-              <Sparkles className="size-3.5 text-amber-500 shrink-0" />
-              Catalogar e analisar automaticamente com IA ✨
-            </Label>
-          </div>
+          {canUseAi && (
+            <div className="flex items-center gap-2.5 p-3 rounded-lg border bg-amber-500/5 border-amber-500/20">
+              <input
+                type="checkbox"
+                id="ai-auto-catalog"
+                checked={autoEnrich}
+                onChange={(e) => setAutoEnrich(e.target.checked)}
+                className="size-4 text-amber-600 rounded cursor-pointer accent-amber-500 shrink-0"
+              />
+              <Label htmlFor="ai-auto-catalog" className="text-xs font-medium cursor-pointer flex items-center gap-1.5 text-foreground select-none leading-snug">
+                <Sparkles className="size-3.5 text-amber-500 shrink-0" />
+                Catalogar e analisar automaticamente com IA ✨
+              </Label>
+            </div>
+          )}
         </DialogBody>
 
         <DialogFooter className="px-4 sm:px-6 py-3 border-t bg-card/60">

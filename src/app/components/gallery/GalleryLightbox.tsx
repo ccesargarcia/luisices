@@ -29,6 +29,7 @@ import {
   Loader2,
 } from 'lucide-react';
 import { firebaseGalleryService } from '../../../services/firebaseGalleryService';
+import { useAuth } from '../../../contexts/AuthContext';
 import { toast } from 'sonner';
 
 function formatDate(iso: string) {
@@ -59,6 +60,8 @@ export function GalleryLightbox({
   const [idx, setIdx] = useState(initialIndex);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [analyzingAi, setAnalyzingAi] = useState(false);
+  const { hasPermission, isAdmin } = useAuth();
+  const canUseAi = isAdmin || hasPermission((p) => Boolean(p?.aiCopilot));
   const item = items[idx];
 
   const handleEnrichAi = async () => {
@@ -204,7 +207,7 @@ export function GalleryLightbox({
               )}
 
               {/* Análise Inteligente de Visão IA */}
-              {item.aiDescription && (
+              {canUseAi && item.aiDescription && (
                 <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-lg space-y-2">
                   <div className="flex items-center gap-1.5 text-xs font-semibold text-amber-700 dark:text-amber-400">
                     <Sparkles className="size-3.5 shrink-0" />
@@ -243,25 +246,27 @@ export function GalleryLightbox({
                 </div>
               )}
 
-              <Button
-                variant={item.aiDescription ? "outline" : "default"}
-                size="sm"
-                className="w-full gap-1.5 text-xs font-medium cursor-pointer"
-                onClick={handleEnrichAi}
-                disabled={analyzingAi}
-              >
-                {analyzingAi ? (
-                  <>
-                    <Loader2 className="size-3.5 animate-spin" />
-                    <span>Analisando foto com IA...</span>
-                  </>
-                ) : (
-                  <>
-                    <Sparkles className="size-3.5 text-amber-500" />
-                    <span>{item.aiDescription ? 'Reanalisar com IA' : 'Catalogar com IA ✨'}</span>
-                  </>
-                )}
-              </Button>
+              {canUseAi && (
+                <Button
+                  variant={item.aiDescription ? "outline" : "default"}
+                  size="sm"
+                  className="w-full gap-1.5 text-xs font-medium cursor-pointer"
+                  onClick={handleEnrichAi}
+                  disabled={analyzingAi}
+                >
+                  {analyzingAi ? (
+                    <>
+                      <Loader2 className="size-3.5 animate-spin" />
+                      <span>Analisando foto com IA...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="size-3.5 text-amber-500" />
+                      <span>{item.aiDescription ? 'Reanalisar com IA' : 'Catalogar com IA ✨'}</span>
+                    </>
+                  )}
+                </Button>
+              )}
 
               <div className="pt-1 flex items-center justify-between text-xs text-muted-foreground">
                 <span>{formatDate(item.createdAt)}</span>

@@ -107,6 +107,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                     exchanges: data.permissions?.exchanges ?? DEFAULT_USER_PERMISSIONS.exchanges,
                     settings: data.permissions?.settings ?? DEFAULT_USER_PERMISSIONS.settings,
                     store: data.permissions?.store ?? DEFAULT_USER_PERMISSIONS.store,
+                    whatsapp: data.permissions?.whatsapp ?? DEFAULT_USER_PERMISSIONS.whatsapp ?? false,
+                    aiCopilot: data.permissions?.aiCopilot ?? DEFAULT_USER_PERMISSIONS.aiCopilot ?? false,
                     orders: {
                       ...DEFAULT_USER_PERMISSIONS.orders,
                       ...(data.permissions?.orders || {}),
@@ -117,6 +119,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                     ...fallbackPermissions,
                     ...(data.permissions || {}),
                     store: data.permissions?.store ?? false,
+                    whatsapp: data.permissions?.whatsapp ?? false,
+                    aiCopilot: data.permissions?.aiCopilot ?? false,
                   };
 
             const profile: UserProfile = {
