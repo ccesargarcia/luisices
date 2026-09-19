@@ -21,6 +21,10 @@ test.describe('Navegação entre Páginas', () => {
     { name: 'Permutas', path: '/permutas' },
     { name: 'Relatórios', path: '/relatorios' },
     { name: 'Galeria', path: '/galeria' },
+    { name: 'WhatsApp', path: '/whatsapp' },
+    { name: 'Produtos Loja', path: '/produtos-lojinha' },
+    { name: 'Pedidos Loja', path: '/pedidos-lojinha' },
+    { name: 'Precificação', path: '/precificacao' },
     { name: 'Configurações', path: '/configuracoes' },
     { name: 'Ajuda', path: '/ajuda' },
   ];

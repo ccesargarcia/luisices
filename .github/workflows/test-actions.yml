@@ -23,6 +23,8 @@ on:
           - products
           - quotes
           - store
+          - audit
+          - screen-audit
         default: 'all'
   pull_request:
     branches:
@@ -40,6 +42,10 @@ jobs:
   e2e-tests:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
@@ -55,6 +61,9 @@ jobs:
 
       - name: Install dependencies
         run: npm install --legacy-peer-deps
+
+      - name: Run Unit Tests (Vitest)
+        run: npm run test:unit
 
       - name: Install Playwright browsers
         run: npx playwright install chromium --with-deps
@@ -98,22 +107,22 @@ jobs:
           if [ "$INPUT_TARGET" = "security" ] || echo "$COMMIT_MSG" | grep -qi '\[test:security\]'; then
             echo "🛡️ Executando exclusivamente testes de segurança..."
             npx playwright test tests/e2e/security.spec.ts --project=chromium --reporter=list,html
-          elif [ "$INPUT_TARGET" = "critical" ] || echo "$COMMIT_MSG" | grep -qi '\[test:critical\]'; then
+          elif [ "$INPUT_TARGET" = "critical" ] || echo "$COMMIT_MSG" | grep -qiE '\[test:critical\]|\[fast\]|\[test:fast\]'; then
             echo "⚡ Executando testes críticos e de segurança..."
             npx playwright test tests/e2e/critical-flows.spec.ts tests/e2e/permissions.spec.ts tests/e2e/security.spec.ts --project=chromium --reporter=list,html
           elif [ -n "$INPUT_TARGET" ] && [ "$INPUT_TARGET" != "all" ]; then
             echo "🎯 Executando target específico: $INPUT_TARGET..."
             npx playwright test tests/e2e/${INPUT_TARGET}.spec.ts --project=chromium --reporter=list,html
           else
-            echo "🚀 Executando suíte completa de testes E2E..."
-            npx playwright test --project=chromium --reporter=list,html
+            echo "🚀 Executando suíte completa de testes E2E (Máquina ${{ matrix.shard }} de 2)..."
+            npx playwright test --shard=${{ matrix.shard }}/2 --project=chromium --reporter=list,html
           fi
 
       - name: Upload test report
         if: always()
         uses: actions/upload-artifact@v5
         with:
-          name: playwright-report
+          name: playwright-report-shard-${{ matrix.shard }}
           path: playwright-report/
           retention-days: 14
 
@@ -121,6 +130,6 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v5
         with:
-          name: test-results
+          name: test-results-shard-${{ matrix.shard }}
           path: test-results/
           retention-days: 14

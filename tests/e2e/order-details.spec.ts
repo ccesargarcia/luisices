@@ -46,6 +46,22 @@ async function closeAnyOpenDialog(page: Page) {
   await expect(dialog).not.toBeVisible({ timeout: 3000 }).catch(() => {});
 }
 
+async function findOrderCard(page: Page, customer: string, product: string) {
+  const searchInput = page.getByPlaceholder(/Buscar por cliente, produto ou telefone/i);
+  if (await searchInput.isVisible().catch(() => false)) {
+    await searchInput.fill(customer);
+    await page.waitForTimeout(400);
+  }
+
+  return page
+    .getByTestId('order-card')
+    .filter({ hasText: customer })
+    .or(page.locator('.cursor-pointer').filter({ hasText: customer }))
+    .or(page.getByTestId('order-card').filter({ hasText: product }))
+    .or(page.locator('.cursor-pointer').filter({ hasText: product }))
+    .first();
+}
+
 test.beforeEach(async ({ page }) => {
   test.setTimeout(60000);
   await ensureAuthenticated(page);
@@ -54,6 +70,15 @@ test.beforeEach(async ({ page }) => {
     await page.waitForLoadState('domcontentloaded');
   }
   await closeAnyOpenDialog(page);
+
+  const searchInput = page.getByPlaceholder(/Buscar por cliente, produto ou telefone/i);
+  if (await searchInput.isVisible().catch(() => false)) {
+    const val = await searchInput.inputValue().catch(() => '');
+    if (val) {
+      await searchInput.clear().catch(() => {});
+      await page.waitForTimeout(300);
+    }
+  }
 });
 
 const timestamp = Date.now();
@@ -95,13 +120,11 @@ test.describe.serial('Detalhes do Pedido', () => {
     const priceInput = dialog.getByPlaceholder('0,00').first();
     await priceInput.fill('120');
 
-    // Preencher data de entrega
-    const dateInput = dialog.locator('#deliveryDate');
-    if (!(await dateInput.inputValue())) {
-      const futureDate = new Date();
-      futureDate.setDate(futureDate.getDate() + 7);
-      await dateInput.fill(futureDate.toISOString().split('T')[0]);
-    }
+    // Preencher data de entrega garantida
+    const futureDate = new Date();
+    futureDate.setDate(futureDate.getDate() + 7);
+    const dateStr = futureDate.toISOString().split('T')[0];
+    await dialog.locator('#deliveryDate').fill(dateStr);
 
     // Salvar
     await dialog.locator('button[type="submit"]').click();
@@ -109,14 +132,8 @@ test.describe.serial('Detalhes do Pedido', () => {
       await closeAnyOpenDialog(page);
     });
 
-    // 2. Localizar o card do pedido e clicar
-    const orderCard = page
-      .getByTestId('order-card')
-      .filter({ hasText: testOrderData.customer })
-      .or(page.locator('.cursor-pointer').filter({ hasText: testOrderData.customer }))
-      .or(page.getByTestId('order-card').filter({ hasText: testOrderData.product }))
-      .or(page.locator('.cursor-pointer').filter({ hasText: testOrderData.product }))
-      .first();
+    // 2. Localizar o card do pedido via busca no dashboard e clicar
+    const orderCard = await findOrderCard(page, testOrderData.customer, testOrderData.product);
     await expect(orderCard).toBeVisible({ timeout: 15000 });
     await orderCard.click();
 
@@ -134,13 +151,7 @@ test.describe.serial('Detalhes do Pedido', () => {
   test('deve exibir informações de pagamento', async ({ page }) => {
     await closeAnyOpenDialog(page);
 
-    const orderCard = page
-      .getByTestId('order-card')
-      .filter({ hasText: testOrderData.customer })
-      .or(page.locator('.cursor-pointer').filter({ hasText: testOrderData.customer }))
-      .or(page.getByTestId('order-card').filter({ hasText: testOrderData.product }))
-      .or(page.locator('.cursor-pointer').filter({ hasText: testOrderData.product }))
-      .first();
+    const orderCard = await findOrderCard(page, testOrderData.customer, testOrderData.product);
     await expect(orderCard).toBeVisible({ timeout: 15000 });
     await orderCard.click();
 
@@ -157,13 +168,7 @@ test.describe.serial('Detalhes do Pedido', () => {
   test('deve entrar em modo de edição e excluir pedido', async ({ page }) => {
     await closeAnyOpenDialog(page);
 
-    const orderCard = page
-      .getByTestId('order-card')
-      .filter({ hasText: testOrderData.customer })
-      .or(page.locator('.cursor-pointer').filter({ hasText: testOrderData.customer }))
-      .or(page.getByTestId('order-card').filter({ hasText: testOrderData.product }))
-      .or(page.locator('.cursor-pointer').filter({ hasText: testOrderData.product }))
-      .first();
+    const orderCard = await findOrderCard(page, testOrderData.customer, testOrderData.product);
     await expect(orderCard).toBeVisible({ timeout: 15000 });
     await orderCard.click();
 

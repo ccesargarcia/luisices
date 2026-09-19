@@ -53,4 +53,27 @@ test.describe('Central de Ajuda', () => {
     // Validar itens de perguntas
     await expect(page.getByText(/Como instalar/i).first()).toBeVisible({ timeout: 5000 });
   });
+
+  test('deve encontrar guia de Upload em Lote e FAQs recentes na busca', async ({ page }) => {
+    await page.goto('/ajuda');
+    await page.waitForLoadState('domcontentloaded');
+
+    // 1. Buscar guia de Publicação em Lote
+    const searchInput = page
+      .getByPlaceholder(/Buscar tópicos, dúvidas ou funcionalidades|O que você precisa aprender/i)
+      .first();
+    await searchInput.fill('Publicação em Lote');
+    await page.waitForTimeout(300);
+
+    // Deve exibir o card do guia ou step de publicação em lote
+    await expect(page.getByText(/Publicação em Lote via Fotos|Lojinha Online/i).first()).toBeVisible({ timeout: 5000 });
+
+    // 2. Ir para FAQ e checar pergunta sobre fotos e Copiloto de IA
+    const faqTab = page.getByRole('tab', { name: /Perguntas Frequentes/i }).first();
+    await faqTab.click();
+
+    await expect(
+      page.getByText(/publicação em lote de produtos por fotos|Copiloto IA/i).first()
+    ).toBeVisible({ timeout: 5000 });
+  });
 });

@@ -68,7 +68,7 @@ export function BulkDeleteStoreProductsDialog({
 
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
-      <AlertDialogContent className="w-[95vw] sm:max-w-md rounded-2xl p-4 sm:p-6 bg-background border shadow-xl">
+      <AlertDialogContent className="w-[95vw] sm:max-w-md max-h-[85dvh] overflow-y-auto rounded-2xl p-4 sm:p-6 pb-[calc(1.5rem+env(safe-area-inset-bottom,0px))] sm:pb-6 bg-background border shadow-xl">
         <AlertDialogHeader className="space-y-2.5 text-left">
           <div className="size-11 rounded-2xl bg-red-500/10 text-red-600 flex items-center justify-center shrink-0">
             <Trash2 className="size-5" />
@@ -82,7 +82,7 @@ export function BulkDeleteStoreProductsDialog({
 
           {/* Prévia dos itens selecionados */}
           {selectedProducts.length > 0 && (
-            <div className="max-h-36 overflow-y-auto mt-2 p-2 bg-muted/40 rounded-xl divide-y divide-border/60 text-xs">
+            <div className="max-h-28 sm:max-h-36 overflow-y-auto mt-2 p-2 bg-muted/40 rounded-xl divide-y divide-border/60 text-xs">
               {selectedProducts.slice(0, 6).map((p) => (
                 <div key={p.id} className="py-1.5 flex items-center gap-2">
                   {p.imageUrl ? (
@@ -104,31 +104,31 @@ export function BulkDeleteStoreProductsDialog({
           )}
         </AlertDialogHeader>
 
-        <AlertDialogFooter className="mt-4 flex-col sm:flex-row gap-2">
-          <AlertDialogCancel
-            disabled={isDeleting}
-            className="w-full sm:w-auto h-9 text-xs font-semibold"
-          >
-            Cancelar
-          </AlertDialogCancel>
+        <AlertDialogFooter className="mt-4 flex flex-col gap-2.5 sm:flex-row-reverse sm:gap-2">
           <Button
             type="button"
             disabled={isDeleting}
             onClick={handleConfirmDelete}
-            className="w-full sm:w-auto h-9 text-xs font-bold bg-red-600 hover:bg-red-700 text-white gap-1.5 cursor-pointer shadow-xs"
+            className="w-full sm:w-auto h-10 sm:h-9 text-xs font-bold bg-red-600 hover:bg-red-700 text-white gap-1.5 cursor-pointer shadow-xs active:scale-[0.98] transition-transform"
           >
             {isDeleting ? (
               <>
-                <Loader2 size={13} className="animate-spin" />
+                <Loader2 size={14} className="animate-spin" />
                 <span>Excluindo...</span>
               </>
             ) : (
               <>
-                <Trash2 size={13} />
+                <Trash2 size={14} />
                 <span>Confirmar Exclusão ({selectedIds.length})</span>
               </>
             )}
           </Button>
+          <AlertDialogCancel
+            disabled={isDeleting}
+            className="w-full sm:w-auto h-10 sm:h-9 text-xs font-semibold mt-0"
+          >
+            Cancelar
+          </AlertDialogCancel>
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>

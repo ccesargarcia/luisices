@@ -233,6 +233,36 @@ test.describe('Gestão da Loja (Backoffice Administrativo)', () => {
     }
   });
 
+  test('deve abrir modal de publicação em lote via fotos e alternar categoria dinâmica', async ({ page }) => {
+    await page.goto('/produtos-lojinha');
+    await page.waitForLoadState('domcontentloaded');
+
+    // 1. Clicar no botão Fotos em Lote
+    const bulkBtn = page.getByRole('button', { name: /Fotos em Lote/i }).first();
+    await expect(bulkBtn).toBeVisible({ timeout: 10000 });
+    await bulkBtn.click();
+
+    // 2. Validar que o diálogo abriu com o título correto
+    const dialog = page.locator('[role="dialog"]').first();
+    await expect(dialog).toBeVisible({ timeout: 5000 });
+    await expect(dialog.getByText(/Publicação em Lote via Fotografias/i)).toBeVisible({ timeout: 5000 });
+
+    // 3. Validar área de upload e formatos suportados no estado inicial
+    await expect(dialog.getByText(/Toque para selecionar as fotografias|Formatos: JPG, PNG, WebP/i).first()).toBeVisible({ timeout: 5000 });
+
+    // 4. Testar o botão Escolher Fotos
+    await expect(dialog.getByRole('button', { name: /Escolher Fotos/i })).toBeVisible({ timeout: 5000 });
+
+    // 5. Fechar diálogo
+    const closeBtn = dialog.locator('button[aria-label="Close"]').or(
+      dialog.locator('button:has(.lucide-x)')
+    ).first();
+    if (await closeBtn.isVisible()) {
+      await closeBtn.click();
+      await expect(dialog).not.toBeVisible({ timeout: 5000 });
+    }
+  });
+
   test('deve carregar tela de Pedidos da Lojinha com filtros de status e busca', async ({ page }) => {
     await page.goto('/pedidos-lojinha');
     await page.waitForLoadState('domcontentloaded');

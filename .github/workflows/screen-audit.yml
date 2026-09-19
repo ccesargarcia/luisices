@@ -1,46 +1,29 @@
-name: Playwright Tests
+name: Auditoria Completa de Telas & Layout (Manual)
 
 on:
   workflow_dispatch:
     inputs:
-      test_target:
-        description: 'Qual grupo de testes executar'
+      viewport_mode:
+        description: 'Modo de auditoria'
         required: true
         type: choice
         options:
-          - security
-          - e2e
-          - critical
-          - customers
-          - orders
-          - products
-          - quotes
-          - lifecycle
-          - navigation
-          - settings
-          - reports
-          - gallery
-          - exchanges
-          - calendar
-          - users
-          - help
-          - audit
-          - store
-          - whatsapp
-          - responsive
-        default: 'security'
+          - 'Completo (Desktop + Mobile + Modais)'
+          - 'Apenas Mobile e Modais'
+        default: 'Completo (Desktop + Mobile + Modais)'
 
 permissions:
   contents: read
 
 concurrency:
-  group: "playwright-tests"
+  group: "screen-audit-manual"
   cancel-in-progress: false
 
 jobs:
-  test:
+  screen-audit:
+    name: Varredura de Telas e Caça a Bugs Visuais
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 20
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
@@ -58,10 +41,15 @@ jobs:
         run: npm install --legacy-peer-deps
 
       - name: Run Unit Tests (Vitest)
-        run: npm run test:unit
+        run: |
+          if grep -q '"test:unit"' package.json; then
+            npm run test:unit
+          else
+            echo "Aviso: Script test:unit não encontrado nesta branch. Pulando..."
+          fi
 
       - name: Install Playwright Browsers
-        run: npx playwright install --with-deps chromium
+        run: npx playwright install chromium --with-deps
 
       - name: Create .env files with DEV secrets
         env:
@@ -72,10 +60,11 @@ jobs:
           MESSAGING_SENDER_ID: ${{ secrets.DEV_VITE_FIREBASE_MESSAGING_SENDER_ID }}
           APP_ID: ${{ secrets.DEV_VITE_FIREBASE_APP_ID }}
           MEASUREMENT_ID: ${{ secrets.DEV_VITE_FIREBASE_MEASUREMENT_ID }}
+          STORAGE_CDN_URL: ${{ secrets.DEV_VITE_STORAGE_CDN_URL || 'https://cdn-dev.luisices.com.br' }}
+          SENTRY_DSN: ${{ secrets.DEV_VITE_SENTRY_DSN || secrets.VITE_SENTRY_DSN }}
           TEST_EMAIL: ${{ secrets.TEST_USER_EMAIL }}
           TEST_PASS: ${{ secrets.TEST_USER_PASSWORD }}
         run: |
-          # Criar .env.local
           printf 'VITE_FIREBASE_API_KEY=%s\n' "$API_KEY" >> .env.local
           printf 'VITE_FIREBASE_AUTH_DOMAIN=%s\n' "$AUTH_DOMAIN" >> .env.local
           printf 'VITE_FIREBASE_PROJECT_ID=%s\n' "$PROJECT_ID" >> .env.local
@@ -83,26 +72,42 @@ jobs:
           printf 'VITE_FIREBASE_MESSAGING_SENDER_ID=%s\n' "$MESSAGING_SENDER_ID" >> .env.local
           printf 'VITE_FIREBASE_APP_ID=%s\n' "$APP_ID" >> .env.local
           printf 'VITE_FIREBASE_MEASUREMENT_ID=%s\n' "$MEASUREMENT_ID" >> .env.local
-          
-          # Criar .env.test
+          printf 'VITE_STORAGE_CDN_URL=%s\n' "$STORAGE_CDN_URL" >> .env.local
+          printf 'VITE_SENTRY_DSN=%s\n' "$SENTRY_DSN" >> .env.local
           printf 'TEST_USER_EMAIL=%s\n' "$TEST_EMAIL" >> .env.test
           printf 'TEST_USER_PASSWORD=%s\n' "$TEST_PASS" >> .env.test
           printf 'PLAYWRIGHT_BASE_URL=http://localhost:4173\n' >> .env.test
 
-      - name: Build (dev)
+      - name: Build
         run: npm run build
 
-      - name: Run Playwright tests
+      - name: Run Screen Audit Tests
         env:
           CI: true
           TEST_USER_EMAIL: ${{ secrets.TEST_USER_EMAIL }}
           TEST_USER_PASSWORD: ${{ secrets.TEST_USER_PASSWORD }}
           PLAYWRIGHT_BASE_URL: http://localhost:4173
-        run: npm run test:${{ github.event.inputs.test_target || 'e2e' }}
+        run: |
+          if [ "${{ github.event.inputs.viewport_mode }}" = "Apenas Mobile e Modais" ]; then
+            echo "📱 Executando auditoria focada em Mobile e Modais..."
+            npx playwright test tests/e2e/screen-audit.spec.ts -g "\[Mobile\]|Modal" --project=chromium --reporter=list,html
+          else
+            echo "🖥️📱 Executando auditoria completa de telas (Desktop + Mobile + Modais)..."
+            npx playwright test tests/e2e/screen-audit.spec.ts --project=chromium --reporter=list,html
+          fi
 
-      - uses: actions/upload-artifact@v4
-        if: ${{ !cancelled() }}
+      - name: Upload Test Report
+        if: always()
+        uses: actions/upload-artifact@v4
         with:
-          name: playwright-report
+          name: screen-audit-report
           path: playwright-report/
           retention-days: 30
+
+      - name: Upload Test Videos & Traces
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: screen-audit-results
+          path: test-results/
+          retention-days: 14

@@ -18,6 +18,9 @@ setup('authenticate', async ({ page }) => {
       console.log(`[browser error] ${msg.text()}`);
     }
   });
+  page.on('pageerror', (err) => {
+    console.log(`[browser pageerror] ${err.message}`);
+  });
 
   await page.goto('/');
 

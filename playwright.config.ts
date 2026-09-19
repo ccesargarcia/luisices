@@ -30,14 +30,14 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
 
   /* Retry em CI */
-  retries: process.env.CI ? 2 : 0,
+  retries: process.env.CI ? 1 : 0,
 
-  /* Workers - número de testes paralelos */
-  workers: process.env.CI ? 1 : 2,
+  /* Workers - 2 workers paralelos para aproveitar os 2 vCPUs do GitHub Actions */
+  workers: process.env.CI ? 2 : 2,
 
   /* Reporter */
   reporter: [
-    ['html'],
+    ['html', { open: 'never' }],
     ['list']
   ],
 
@@ -52,8 +52,8 @@ export default defineConfig({
     /* Screenshot em falha */
     screenshot: 'only-on-failure',
 
-    /* Vídeo - sempre gravar */
-    video: 'on',
+    /* Vídeo - gravar APENAS se houver falha (economiza processamento pesado de encode de 150 vídeos) */
+    video: 'retain-on-failure',
 
     /* Desabilitar service workers para evitar cache */
     serviceWorkers: 'block',
