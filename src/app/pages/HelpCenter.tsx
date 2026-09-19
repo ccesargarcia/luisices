@@ -130,6 +130,14 @@ const MODULE_GUIDES: GuideSection[] = [
         desc: 'Os produtos da lojinha são independentes dos produtos internos do ateliê. Cadastre fotos vendedoras, preços promocionais e categorias com tags em "Produtos da Lojinha".',
       },
       {
+        title: 'Publicação em Lote via Fotos',
+        desc: 'Em "Produtos da Lojinha", clique em "Mais Fotos" ou "Publicação em Lote". Selecione múltiplas imagens de uma só vez direto da galeria do celular ou computador. O sistema formata os nomes automaticamente (ex: "caixa_milk_luxo.jpg" vira "Caixa Milk Luxo"), gera miniaturas e permite definir preços, prazos e categorias unitárias ou em massa.',
+      },
+      {
+        title: 'Criação Dinâmica de Categorias (+ Nova Categoria)',
+        desc: 'Tanto na barra superior de preenchimento em lote quanto no card de cada foto individual, selecione "+ Nova categoria" no seletor para digitar um nome livre na hora. Ao aplicar em lote, todas as fotos da fila herdam a nova categoria instantaneamente.',
+      },
+      {
         title: 'Publicação & Modo Manutenção (Toggle "Fora do Ar")',
         desc: 'Na tela "Personalizar Loja" > aba "Operação", você pode pausar a loja com 1 clique. Os visitantes visualizam uma página de manutenção com sua logo, mensagem personalizada e botão para falar no WhatsApp.',
       },
@@ -147,6 +155,8 @@ const MODULE_GUIDES: GuideSection[] = [
       },
     ],
     tips: [
+      'O envio em fotos aceita múltiplos arquivos JPG, PNG e WebP de até 8MB cada, com barra de progresso em tempo real e publicação direta no Firestore e Storage.',
+      'Você pode selecionar múltiplos produtos na tabela da lojinha para realizar exclusões em lote com confirmação de segurança.',
       'Acesse a vitrine pelo link direto /catalogo, por /loja ou pelo subdomínio direto loja.luisices.com.br (ou loja.dev.luisices.com.br em desenvolvimento).',
       'Você pode adicionar uma conta de Instagram de Parceria/Colab que é exibida elegantemente no cabeçalho e rodapé da lojinha.',
     ],
@@ -384,6 +394,18 @@ const FAQ_LIST = [
   {
     q: 'Como instalar o aplicativo na tela inicial do celular (Android e iOS)?',
     a: 'No iPhone (Safari): toque no botão Compartilhar (quadrado com seta) e escolha "Adicionar à Tela de Início". No Android (Chrome): toque nos três pontos no canto superior direito e selecione "Instalar aplicativo" ou "Adicionar à tela inicial".',
+  },
+  {
+    q: 'Como funciona a publicação em lote de produtos por fotos na lojinha?',
+    a: 'No menu "Produtos da Lojinha", clique no botão "Mais Fotos" (ou "Publicação em Lote"). Arraste ou selecione diversas fotos de produtos do seu celular ou computador. O sistema gera automaticamente os títulos dos produtos a partir dos nomes dos arquivos. Você pode usar a barra superior para aplicar preço, prazo e categoria a todas as fotos de uma só vez, ou ajustar cada produto individualmente antes de clicar em "Publicar".',
+  },
+  {
+    q: 'Como cadastrar uma nova categoria durante o envio em lote de fotos?',
+    a: 'Tanto na barra de lote rápida (no topo do modal) quanto no card de cada foto, abra o campo de seleção de Categoria e escolha a opção "+ Nova categoria". O campo se transformará em uma caixa de texto livre onde você digita o nome desejado. Clicando no ícone de "✕", você pode voltar à lista de categorias pré-existentes a qualquer momento.',
+  },
+  {
+    q: 'Como o Copiloto IA da Luisices pode me ajudar na operação do dia a dia?',
+    a: 'O Copiloto IA (disponível no menu superior ou lateral) atua como um assistente operacional inteligente. Ele consegue analisar o Raio-X do dia (pedidos em atraso e entregas de hoje), estimar custos e sugerir preços com margem protegida, buscar modelos e fotos no acervo da galeria por visão computacional, auditar métricas de desempenho de colaboradores (para administradores) e redigir mensagens gentis de cobrança e aviso para o WhatsApp do cliente.',
   },
 ];
 

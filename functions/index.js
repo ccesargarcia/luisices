@@ -1244,24 +1244,31 @@ Você possui responsabilidades principais com ferramentas especializadas:
 ---
 BASE DE CONHECIMENTO DO SISTEMA LUISICES:
 • LOJINHA ONLINE & CATÁLOGO:
-- Produtos da Lojinha (/produtos-lojinha): Para publicar, acesse o menu Lojinha Online > Produtos da Lojinha, preencha nome, fotos, descrição, variações e valor, e marque como 'Ativo'.
-- Vitrine Pública (/loja ou /catalogo): Link público para os clientes montarem o carrinho e enviarem o pedido para o WhatsApp.
+- Produtos da Lojinha (/produtos-lojinha): Para publicar produtos avulsos, acesse Lojinha Online > Produtos da Lojinha, preencha nome, fotos, descrição e valor.
+- Publicação em Lote via Fotos: No menu Produtos da Lojinha, o botão 'Mais Fotos' (ou 'Publicação em Lote') permite subir dezenas de fotos simultaneamente (JPG, PNG, WebP até 8MB). O sistema formata os nomes dos arquivos automaticamente em títulos comerciais limpos (ex: "caixa_milk_luxo.jpg" -> "Caixa Milk Luxo"), permite configurar preço, prazo e categoria em massa pela barra superior ou individualmente em cada card, suportando criação de novas categorias livres (+ Nova categoria) e publicação direta no catálogo e Storage.
+- Exclusão em Massa: Na tabela de produtos da lojinha, múltiplos itens podem ser selecionados para exclusão em lote com confirmação.
+- Vitrine Pública (/loja ou /catalogo): Link público para os clientes montarem o carrinho e enviarem o pedido para o WhatsApp (com suporte a modo manutenção e modo apenas vitrine).
 - Pedidos da Lojinha (/pedidos-lojinha): Pedidos recebidos via vitrine pública, convertíveis em pedidos de produção com 1 clique.
-- Aparência & Vitrine (/personalizar-lojinha): Personaliza banner, cores, logo e contato da vitrine.
+- Aparência & Vitrine (/personalizar-lojinha): Personaliza carrossel de banners rotativos (4:1), cores, logo e contato da vitrine.
 
-• PEDIDOS DO ATELIÊ & WORKFLOW (/):
+• PEDIDOS DO ATELIÊ, DELEGAÇÃO & WORKFLOW (/):
 - Novo Pedido: Botão 'Novo Pedido' no Dashboard ou via Copiloto IA.
+- Atribuição de Equipe & Gestão: Administradores contam com filtro de equipe ('Equipe: Todos' / AdminTeamFilter) no Dashboard e na Agenda Semanal para auditar ou delegar pedidos a colaboradores específicos. Funcionários visualizam com foco nos pedidos atribuídos a eles ou criados por eles.
 - Workflow em 7 Etapas: Design → Aprovação do Cliente → Impressão → Corte → Montagem → Controle de Qualidade → Embalagem/Entrega.
 - Histórico & Auditoria: Pedidos cancelados e excluídos ficam preservados na memória do Agente para fins de consulta e métricas.
 
+• COMUNICAÇÃO, WHATSAPP & WEBHOOKS:
+- Automação WhatsApp (Evolution API): Integrada com o Home Assistant em servidor próprio, operando com webhook em dual-forwarding (retransmissão simultânea e paralela para os ambientes de produção e dev).
+- Mensagens do Copiloto: Mensagens de cobrança amigável, atualização de status e aviso de retirada podem ser copiadas ou disparadas diretamente via Evolution API após revisão humana.
+
 • PRECIFICAÇÃO INTELIGENTE (/precificacao) & ORÇAMENTOS (/orcamentos):
-- Custos: Matérias-primas, mão de obra, margem de desperdício, taxa de pagamento e margem de lucro.
+- Custos: Matérias-primas, mão de obra, margem de desperdício, taxa de pagamento e margem de lucro protegida (mínimo 30%).
 - Orçamentos: Propostas comerciais com validade e conversão em pedido com 1 clique.
 
 • CLIENTES (/clientes), GALERIA (/galeria) E PERMUTAS (/permutas):
-- Clientes: Cadastro completo com endereço automático via CEP e histórico.
-- Galeria: Banco de artes e estampas dos clientes para reutilização.
-- Permutas: Controle de parcerias com influenciadores.`;
+- Clientes: Cadastro completo com endereço automático via CEP, histórico de pedidos e alerta de aniversário.
+- Galeria: Banco de artes e estampas dos clientes com catalogação automática por visão computacional via IA (enrichGalleryItemWithAi).
+- Permutas: Controle de parcerias com influenciadores e permutas sem cobrança financeira.`;
 
   const toolsDeclaration = [
     {
