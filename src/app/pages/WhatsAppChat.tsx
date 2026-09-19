@@ -44,6 +44,8 @@ import {
   ChevronRight,
   Filter,
   Trash2,
+  RotateCcw,
+  AlertCircle,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -99,6 +101,7 @@ export function WhatsAppChat() {
   } | null>(null);
 
   const [messages, setMessages] = useState<WhatsAppMessage[]>([]);
+  const [optimisticMessages, setOptimisticMessages] = useState<WhatsAppMessage[]>([]);
   const [inputText, setInputText] = useState('');
   const [sending, setSending] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -164,9 +167,11 @@ export function WhatsAppChat() {
   useEffect(() => {
     if (!selectedPhone) {
       setMessages([]);
+      setOptimisticMessages([]);
       return;
     }
 
+    setOptimisticMessages([]);
     const unsubscribe = firebaseWhatsAppService.subscribeMessages(selectedPhone, (msgs) => {
       setMessages(msgs);
       setTimeout(() => scrollToBottom('smooth'), 100);
@@ -324,10 +329,61 @@ export function WhatsAppChat() {
     return list;
   }, [conversations, customers, orders, filterMode, searchQuery]);
 
-  // Envio de mensagem
+  // Mensagens exibidas no chat: combina histórico do Firestore com mensagens otimistas locais
+  const displayedMessages = useMemo(() => {
+    if (optimisticMessages.length === 0) return messages;
+
+    const pending = optimisticMessages.filter((opt) => {
+      if (opt.status === 'failed') return true;
+      return !messages.some(
+        (m) =>
+          m.sender === 'me' &&
+          m.text === opt.text &&
+          Math.abs(new Date(m.timestamp).getTime() - new Date(opt.timestamp).getTime()) < 60000
+      );
+    });
+
+    return [...messages, ...pending].sort(
+      (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+    );
+  }, [messages, optimisticMessages]);
+
+  const handleRetryFailedMessage = (failedMsg: WhatsAppMessage) => {
+    setInputText(failedMsg.text);
+    setOptimisticMessages((prev) => prev.filter((m) => m.id !== failedMsg.id));
+    if (textareaRef.current) {
+      textareaRef.current.focus();
+    }
+    toast.info('Texto restaurado para reenvio.');
+  };
+
+  // Envio otimista de mensagem (sensação instantânea, limpa a caixa na hora e exibe o balão)
   const handleSendMessage = async (textToSend?: string) => {
     const text = (textToSend || inputText).trim();
-    if (!text || !selectedPhone || sending) return;
+    if (!text || !selectedPhone) return;
+
+    const tempId = `opt_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    const tempMsg: WhatsAppMessage = {
+      id: tempId,
+      chatId: selectedPhone,
+      phone: selectedPhone,
+      customerName: activeCustomer?.name,
+      customerId: activeCustomer?.customerId,
+      sender: 'me',
+      text,
+      status: 'pending',
+      timestamp: new Date().toISOString(),
+    };
+
+    // 1. Limpa o input IMEDIATAMENTE (0ms de latência)
+    setInputText('');
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+    }
+
+    // 2. Adiciona o balão imediatamente no chat com reloginho 🕒
+    setOptimisticMessages((prev) => [...prev, tempMsg]);
+    setTimeout(() => scrollToBottom('smooth'), 50);
 
     setSending(true);
     try {
@@ -337,15 +393,18 @@ export function WhatsAppChat() {
         activeCustomer?.name,
         activeCustomer?.customerId
       );
-      setInputText('');
-      if (textareaRef.current) {
-        textareaRef.current.style.height = 'auto';
-      }
-      toast.success('Mensagem enviada com sucesso!');
+      // Sucesso: remove da fila temporária após 1s para o Firestore ter refletido no snapshot
+      setTimeout(() => {
+        setOptimisticMessages((prev) => prev.filter((m) => m.id !== tempId));
+      }, 1000);
       setTimeout(() => scrollToBottom('smooth'), 150);
     } catch (err: any) {
       console.error('[WhatsAppChat] Erro ao enviar mensagem:', err);
       toast.error(err.message || 'Erro ao enviar mensagem para o WhatsApp.');
+      // Marca como falha para permitir recuperação ou reenvio
+      setOptimisticMessages((prev) =>
+        prev.map((m) => (m.id === tempId ? { ...m, status: 'failed' } : m))
+      );
     } finally {
       setSending(false);
     }
@@ -757,7 +816,7 @@ export function WhatsAppChat() {
 
               {/* Área de Mensagens */}
               <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-muted/10">
-                {messages.length === 0 ? (
+                {displayedMessages.length === 0 ? (
                   <div className="flex flex-col items-center justify-center h-full text-center text-muted-foreground p-6 space-y-3">
                     <div className="size-12 rounded-full bg-emerald-500/10 text-emerald-600 flex items-center justify-center">
                       <MessageSquare className="size-6" />
@@ -772,7 +831,7 @@ export function WhatsAppChat() {
                     </div>
                   </div>
                 ) : (
-                  messages.map((msg) => {
+                  displayedMessages.map((msg) => {
                     const isMe = msg.sender === 'me';
                     return (
                       <div
@@ -786,17 +845,22 @@ export function WhatsAppChat() {
                               : 'bg-card text-foreground border rounded-tl-none'
                           }`}
                         >
-                          {/* Botão de excluir mensagem (visível ao passar o mouse) */}
-                          <button
-                            type="button"
-                            onClick={() => setMessageToDelete(msg)}
-                            title="Apagar mensagem para todos"
-                            className={`absolute -top-2 ${
-                              isMe ? '-left-2 text-emerald-700 bg-background/90 shadow-xs' : '-right-2 text-muted-foreground bg-background/90 shadow-xs'
-                            } opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded-full border hover:text-destructive hover:bg-destructive/10`}
-                          >
-                            <Trash2 className="size-3" />
-                          </button>
+                          {/* Botão de excluir mensagem (visível em mobile/touch e no hover do desktop) */}
+                          {msg.status !== 'pending' && (
+                            <button
+                              type="button"
+                              onClick={() => setMessageToDelete(msg)}
+                              title="Apagar mensagem para todos"
+                              aria-label="Apagar mensagem"
+                              className={`absolute -top-2.5 ${
+                                isMe
+                                  ? '-left-2.5 text-emerald-700 dark:text-emerald-300 bg-background/95'
+                                  : '-right-2.5 text-muted-foreground bg-background/95'
+                              } opacity-75 sm:opacity-0 sm:group-hover:opacity-100 transition-all p-1 size-6 sm:size-5 rounded-full border shadow-xs flex items-center justify-center hover:text-destructive hover:bg-destructive/10 active:scale-90 cursor-pointer z-10`}
+                            >
+                              <Trash2 className="size-3 sm:size-2.5" />
+                            </button>
+                          )}
 
                           <div>{msg.text}</div>
                           <div
@@ -813,11 +877,23 @@ export function WhatsAppChat() {
                             {isMe && (
                               <span>
                                 {msg.status === 'read' ? (
-                                  <CheckCheck className="size-3 text-cyan-200" />
+                                  <span title="Lida"><CheckCheck className="size-3 text-cyan-200" /></span>
                                 ) : msg.status === 'delivered' ? (
-                                  <CheckCheck className="size-3" />
+                                  <span title="Entregue"><CheckCheck className="size-3 text-emerald-200" /></span>
+                                ) : msg.status === 'pending' ? (
+                                  <span title="Enviando para o WhatsApp..."><Clock className="size-3 text-emerald-200 animate-pulse" /></span>
+                                ) : msg.status === 'failed' ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRetryFailedMessage(msg)}
+                                    className="text-red-200 hover:text-white flex items-center gap-1 cursor-pointer bg-red-500/40 px-1 py-0.5 rounded text-[9px] font-semibold tracking-wide hover:bg-red-500/60 transition-colors"
+                                    title="Falha ao enviar. Toque para restaurar o texto."
+                                  >
+                                    <RotateCcw className="size-2.5" />
+                                    <span>Falha</span>
+                                  </button>
                                 ) : (
-                                  <Check className="size-3" />
+                                  <span title="Enviada"><Check className="size-3" /></span>
                                 )}
                               </span>
                             )}
@@ -841,7 +917,7 @@ export function WhatsAppChat() {
                     key={tmpl.id}
                     type="button"
                     onClick={() => handleApplyTemplate(tmpl)}
-                    className="text-[11px] px-2.5 py-1 rounded-md bg-background hover:bg-emerald-500/10 border text-foreground transition-colors shrink-0 font-medium"
+                    className="text-[11px] px-2.5 py-1 rounded-md bg-background hover:bg-emerald-500/10 border text-foreground transition-colors shrink-0 font-medium cursor-pointer"
                   >
                     {tmpl.label}
                   </button>
@@ -870,13 +946,12 @@ export function WhatsAppChat() {
                     rows={1}
                     placeholder="Digite uma mensagem para o cliente... (Enter envia)"
                     className="text-xs sm:text-sm bg-background min-h-[42px] max-h-32 resize-none py-2.5 leading-tight flex-1"
-                    disabled={sending}
                   />
 
                   <Button
                     type="submit"
-                    disabled={!inputText.trim() || sending}
-                    className="h-[42px] px-4 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold gap-1.5 shrink-0 shadow-xs"
+                    disabled={!inputText.trim()}
+                    className="h-[42px] px-4 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold gap-1.5 shrink-0 shadow-xs active:scale-95 cursor-pointer"
                   >
                     {sending ? (
                       <Loader2 className="size-4 animate-spin" />
@@ -884,7 +959,7 @@ export function WhatsAppChat() {
                       <Send className="size-4" />
                     )}
                     <span className="hidden sm:inline">
-                      {sending ? 'Enviando...' : 'Enviar para o WhatsApp'}
+                      {sending ? 'Enviando...' : 'Enviar'}
                     </span>
                   </Button>
                 </form>
