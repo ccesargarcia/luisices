@@ -856,9 +856,9 @@ export function WhatsAppChat() {
                                 isMe
                                   ? '-left-2.5 text-emerald-700 dark:text-emerald-300 bg-background/95'
                                   : '-right-2.5 text-muted-foreground bg-background/95'
-                              } opacity-75 sm:opacity-0 sm:group-hover:opacity-100 transition-all p-1 size-6 sm:size-5 rounded-full border shadow-xs flex items-center justify-center hover:text-destructive hover:bg-destructive/10 active:scale-90 cursor-pointer z-10`}
+                              } opacity-80 sm:opacity-0 sm:group-hover:opacity-100 transition-all size-7 sm:size-5.5 rounded-full border shadow-xs flex items-center justify-center hover:text-destructive hover:bg-destructive/10 active:scale-90 cursor-pointer z-10`}
                             >
-                              <Trash2 className="size-3 sm:size-2.5" />
+                              <Trash2 className="size-3.5 sm:size-3" />
                             </button>
                           )}
 
