@@ -25,7 +25,11 @@ import {
   ChevronRight,
   ZoomIn,
   User,
+  Sparkles,
+  Loader2,
 } from 'lucide-react';
+import { firebaseGalleryService } from '../../../services/firebaseGalleryService';
+import { toast } from 'sonner';
 
 function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString('pt-BR', {
@@ -42,6 +46,7 @@ interface GalleryLightboxProps {
   initialIndex: number;
   onClose: () => void;
   onDelete: (item: GalleryItem) => void;
+  onItemUpdated?: (item: GalleryItem) => void;
 }
 
 export function GalleryLightbox({
@@ -49,10 +54,44 @@ export function GalleryLightbox({
   initialIndex,
   onClose,
   onDelete,
+  onItemUpdated,
 }: GalleryLightboxProps) {
   const [idx, setIdx] = useState(initialIndex);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [analyzingAi, setAnalyzingAi] = useState(false);
   const item = items[idx];
+
+  const handleEnrichAi = async () => {
+    if (!item?.id || analyzingAi) return;
+    setAnalyzingAi(true);
+    try {
+      const res = await firebaseGalleryService.enrichItemWithAi(item.id);
+      toast.success('Arte catalogada e descrita com IA!');
+      const updated: GalleryItem = {
+        ...item,
+        aiDescription: res.aiDescription,
+        productType: res.productType,
+        colors: res.colors,
+        aiTags: res.suggestedTags,
+        tags: (item.tags && item.tags.length > 0)
+          ? item.tags
+          : (res.suggestedTags || []).map((t, i) => ({
+              id: `tag-${i}`,
+              name: t,
+              color: ['#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899'][i % 5],
+            })),
+        aiAnalyzedAt: new Date().toISOString(),
+      };
+      if (onItemUpdated) {
+        onItemUpdated(updated);
+      }
+    } catch (err: any) {
+      console.error('[handleEnrichAi] Erro:', err);
+      toast.error(err.message || 'Erro ao analisar com IA.');
+    } finally {
+      setAnalyzingAi(false);
+    }
+  };
 
   const prev = useCallback(() => setIdx((i) => Math.max(0, i - 1)), []);
   const next = useCallback(
@@ -139,15 +178,44 @@ export function GalleryLightbox({
 
             {/* Info panel */}
             <div className="md:w-64 px-4 py-4 space-y-3 overflow-y-auto border-l bg-card text-sm shrink-0">
+              {item.productType && (
+                <div>
+                  <Badge variant="outline" className="text-xs bg-muted/60 text-muted-foreground">
+                    {item.productType}
+                  </Badge>
+                </div>
+              )}
+
               {item.description && (
                 <p className="text-muted-foreground">{item.description}</p>
               )}
+
+              {/* Análise Inteligente de Visão IA */}
+              {item.aiDescription && (
+                <div className="p-2.5 bg-amber-500/10 border border-amber-500/20 rounded-lg space-y-1.5">
+                  <div className="flex items-center gap-1.5 text-xs font-semibold text-amber-700 dark:text-amber-400">
+                    <Sparkles className="size-3.5" />
+                    <span>Visão Computacional IA</span>
+                  </div>
+                  <p className="text-xs text-foreground/90 leading-relaxed">{item.aiDescription}</p>
+                  {item.colors && item.colors.length > 0 && (
+                    <div className="text-[11px] text-muted-foreground pt-1 flex items-center gap-1 flex-wrap">
+                      <span className="font-medium text-foreground/80">Cores:</span>
+                      {item.colors.map(c => (
+                        <span key={c} className="px-1.5 py-0.2 bg-background border rounded text-[10px]">{c}</span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
               {item.customerName && (
                 <div className="flex items-center gap-2">
                   <User className="size-4 text-muted-foreground shrink-0" />
                   <span className="font-medium truncate">{item.customerName}</span>
                 </div>
               )}
+
               {item.tags && item.tags.length > 0 && (
                 <div className="flex flex-wrap gap-1">
                   {item.tags.map((t) => (
@@ -161,6 +229,27 @@ export function GalleryLightbox({
                   ))}
                 </div>
               )}
+
+              <Button
+                variant={item.aiDescription ? "outline" : "default"}
+                size="sm"
+                className="w-full gap-1.5 text-xs font-medium"
+                onClick={handleEnrichAi}
+                disabled={analyzingAi}
+              >
+                {analyzingAi ? (
+                  <>
+                    <Loader2 className="size-3.5 animate-spin" />
+                    <span>Analisando foto com IA...</span>
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="size-3.5 text-amber-500" />
+                    <span>{item.aiDescription ? 'Reanalisar com IA' : 'Catalogar com IA ✨'}</span>
+                  </>
+                )}
+              </Button>
+
               <p className="text-xs text-muted-foreground">{formatDate(item.createdAt)}</p>
               <a href={item.imageUrl} target="_blank" rel="noopener noreferrer">
                 <Button variant="outline" size="sm" className="w-full gap-1">

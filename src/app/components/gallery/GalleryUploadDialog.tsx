@@ -19,7 +19,7 @@ import {
   SelectValue,
 } from '../ui/select';
 import { TagInput } from '../TagInput';
-import { Upload, X } from 'lucide-react';
+import { Upload, X, Sparkles } from 'lucide-react';
 import { firebaseGalleryService } from '../../../services/firebaseGalleryService';
 import { cn } from '../ui/utils';
 import { toast } from 'sonner';
@@ -47,6 +47,7 @@ export function GalleryUploadDialog({
   const [description, setDescription] = useState('');
   const [customerId, setCustomerId] = useState(initialCustomerId ?? '');
   const [tags, setTags] = useState<Tag[]>([]);
+  const [autoEnrich, setAutoEnrich] = useState(true);
   const [saving, setSaving] = useState(false);
   const [dragging, setDragging] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -59,6 +60,7 @@ export function GalleryUploadDialog({
     setDescription('');
     setCustomerId(initialCustomerId ?? '');
     setTags([]);
+    setAutoEnrich(true);
     setSaving(false);
     setDragging(false);
   };
@@ -112,8 +114,35 @@ export function GalleryUploadDialog({
         customerName: customer?.name,
         tags,
       });
-      toast.success('Arte adicionada à galeria');
-      onSaved(item);
+
+      let finalItem = item;
+      if (autoEnrich) {
+        try {
+          const aiRes = await firebaseGalleryService.enrichItemWithAi(item.id);
+          finalItem = {
+            ...item,
+            aiDescription: aiRes.aiDescription,
+            productType: aiRes.productType,
+            colors: aiRes.colors,
+            aiTags: aiRes.suggestedTags,
+            tags: (item.tags && item.tags.length > 0)
+              ? item.tags
+              : (aiRes.suggestedTags || []).map((t, idx) => ({
+                  id: `tag-${idx}`,
+                  name: t,
+                  color: ['#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899'][idx % 5],
+                })),
+            aiAnalyzedAt: new Date().toISOString(),
+          };
+          toast.success('Arte adicionada e catalogada com IA ✨');
+        } catch {
+          toast.success('Arte adicionada à galeria');
+        }
+      } else {
+        toast.success('Arte adicionada à galeria');
+      }
+
+      onSaved(finalItem);
       handleClose();
     } catch (err) {
       toast.error('Erro ao salvar arte');
@@ -244,6 +273,21 @@ export function GalleryUploadDialog({
           <div className="space-y-1">
             <Label>Tags</Label>
             <TagInput tags={tags} onChange={setTags} placeholder="Adicionar tag..." />
+          </div>
+
+          {/* AI Auto-Catalog Option */}
+          <div className="flex items-center gap-2 p-2.5 rounded-lg border bg-amber-500/5 border-amber-500/20">
+            <input
+              type="checkbox"
+              id="ai-auto-catalog"
+              checked={autoEnrich}
+              onChange={(e) => setAutoEnrich(e.target.checked)}
+              className="size-4 text-amber-600 rounded cursor-pointer accent-amber-500"
+            />
+            <Label htmlFor="ai-auto-catalog" className="text-xs font-medium cursor-pointer flex items-center gap-1.5 text-foreground select-none">
+              <Sparkles className="size-3.5 text-amber-500" />
+              Catalogar e analisar automaticamente com IA ✨
+            </Label>
           </div>
         </div>
 

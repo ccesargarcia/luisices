@@ -1185,16 +1185,17 @@ exports.aiAgentChat = onCall({ secrets: [GEMINI_API_KEY] }, async (request) => {
     throw new functions.https.HttpsError('permission-denied', 'Seu perfil de usuário não possui permissão para acessar o Copiloto de IA.');
   }
 
-  const { message, history = [] } = request.data || {};
+  const { message, history = [], image = null } = request.data || {};
   if (!message || typeof message !== 'string' || !message.trim()) {
     throw new functions.https.HttpsError('invalid-argument', 'Mensagem é obrigatória.');
   }
 
   const cleanMessage = message.trim();
+  const hasImage = Boolean(image && (image.base64 || image.imageUrl));
   const cacheKey = `${callerUid}_${cleanMessage.toLowerCase()}`;
 
-  // Se for uma pergunta comum sem histórico e estiver no cache recente, responde instantaneamente
-  if ((!history || history.length === 0) && aiResponseCache.has(cacheKey)) {
+  // Se for uma pergunta comum sem histórico, sem imagem e estiver no cache recente, responde instantaneamente
+  if ((!history || history.length === 0) && !hasImage && aiResponseCache.has(cacheKey)) {
     const cached = aiResponseCache.get(cacheKey);
     if (Date.now() - cached.timestamp < 180000) { // 3 minutos
       console.log('[aiAgentChat] Resposta retornada via cache em memória (instantânea).');
@@ -1220,14 +1221,16 @@ Você possui responsabilidades principais com ferramentas especializadas:
 6. GERADOR DE MENSAGENS WHATSAPP ('generate_whatsapp_message'): Gerar rascunhos de mensagens para o WhatsApp do cliente (cobrança amigável de sinal/restante, status de produção, aviso de retirada pronta, confirmação de pedido ou orçamento).
 7. CALCULADORA DE PRECIFICAÇÃO & ORÇAMENTOS ('calculate_pricing_estimate'): Calcular custos aproximados, margem de lucro e preço de venda sugerido para personalizações (camisetas, canecas, ecobags, etc.).
 8. EXTRAÇÃO DE PEDIDOS ('extract_order_draft'): Estruturar pedidos a partir de conversas e mensagens de clientes (WhatsApp/áudio).
+9. CONSULTA AO ACERVO DA GALERIA ('search_gallery_portfolio'): Consultar fotos, artes e produtos já produzidos para dar referências de modelos, técnicas, fotos reais e ideias de pedidos anteriores. Administradores podem auditar todo o acervo ou filtrar por colaborador via 'userIdentifier'. Usuários não-admin enxergam exclusivamente suas próprias artes cadastradas.
 
 ---
 🛡️ GUARDRAILS CRÍTICOS DE SEGURANÇA E CONFORMIDADE:
-- GUARDRAIL 1 (LGPD & SIGILO MULTIUSUÁRIO): Dados e métricas de outros colaboradores e clientes cadastrados por eles são SIGILOSOS e só podem ser auditados por Administradores. Usuários comuns e funcionários só enxergam seus próprios dados.
+- GUARDRAIL 1 (LGPD & SIGILO MULTIUSUÁRIO): Dados, pedidos, clientes e artes da galeria de outros colaboradores são SIGILOSOS e só podem ser auditados por Administradores. Usuários comuns e funcionários só enxergam seus próprios dados e criações.
 - GUARDRAIL 2 (HUMAN-IN-THE-LOOP): Você gera rascunhos de mensagens e orçamentos para REVISÃO E APROVAÇÃO HUMANA do operador. Nunca afirme que disparou a mensagem sozinho.
 - GUARDRAIL 3 (PROTEÇÃO DE MARGEM FINANCEIRA): Nunca sugira preços que resultem em margem de lucro negativa ou prejuízo operacional (mantenha margem mínima de 30% a 50%).
 - GUARDRAIL 4 (CORTESIA E CDC NA COBRANÇA): Mensagens de cobrança devem ser 100% amigáveis, empáticas e profissionais, sem ameaças ou termos constrangedores.
 - GUARDRAIL 5 (RESPOSTAS LIMPAS EM PT-BR): NUNCA inclua seu raciocínio interno, scratchpad, notas ou pensamentos em inglês no texto de resposta. Responda DIRETA e EXCLUSIVAMENTE em Português do Brasil (pt-BR).
+- GUARDRAIL 6 (MULTIMODALIDADE & VISÃO COMPUTACIONAL): Quando o usuário enviar uma imagem na conversa, examine detalhadamente os elementos visuais (produto, estampa, cores, técnicas como silk, sublimação, bordado, laser). Você pode pesquisar o acervo com 'search_gallery_portfolio' para encontrar produtos similares que a Luisices já produziu, estimar custos com 'calculate_pricing_estimate' ou extrair um pedido com 'extract_order_draft'.
 
 ---
 BASE DE CONHECIMENTO DO SISTEMA LUISICES:
@@ -1404,6 +1407,31 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
               paymentMethod: { type: 'STRING', enum: ['pix', 'cash', 'credit', 'debit', 'other'] }
             },
             required: ['customerName', 'productName']
+          }
+        },
+        {
+          name: 'search_gallery_portfolio',
+          description: 'Consulta o acervo de fotos, produtos e artes da Galeria do sistema (camisetas, brindes, canecas, bordados, personalizações anteriores). Permite buscar referências visuais por tema, produto, técnica, tags ou cliente. Usuários não-admin enxergam apenas suas próprias artes; administradores têm acesso geral e podem filtrar por colaborador.',
+          parameters: {
+            type: 'OBJECT',
+            properties: {
+              searchTerm: {
+                type: 'STRING',
+                description: 'Termo de busca para título, descrição, tema, cliente, técnica ou número de pedido'
+              },
+              tag: {
+                type: 'STRING',
+                description: 'Filtrar por tag ou categoria específica (ex: camisetas, canecas, brindes, bordado, silk)'
+              },
+              userIdentifier: {
+                type: 'STRING',
+                description: 'Opcional (Apenas Admin): Filtrar artes cadastradas por um colaborador específico por nome, e-mail ou UID'
+              },
+              limit: {
+                type: 'INTEGER',
+                description: 'Quantidade máxima de registros a retornar (padrão 10, máximo 20)'
+              }
+            }
           }
         }
       ]
@@ -1934,6 +1962,98 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
     }
   };
 
+  // Helper para consulta ao acervo de fotos e artes da Galeria com estrita blindagem por usuário
+  const executeSearchGalleryPortfolio = async (args = {}) => {
+    try {
+      let snap;
+      if (isAdmin) {
+        snap = await admin.firestore().collection('gallery').limit(150).get();
+      } else {
+        const [userSnap, createdSnap] = await Promise.all([
+          admin.firestore().collection('gallery').where('userId', '==', callerUid).limit(150).get(),
+          admin.firestore().collection('gallery').where('createdBy', '==', callerUid).limit(150).get(),
+        ]);
+        const map = new Map();
+        userSnap.docs.forEach((d) => map.set(d.id, d));
+        createdSnap.docs.forEach((d) => map.set(d.id, d));
+        snap = { docs: Array.from(map.values()) };
+      }
+
+      let items = snap.docs
+        .map((d) => ({ id: d.id, ...d.data() }))
+        .filter((item) => !item.deletedAt);
+
+      // GUARDRAIL ESTREITO: Usuário comum só vê suas próprias artes
+      if (!isAdmin) {
+        const uid = String(callerUid);
+        items = items.filter((item) => item.userId === uid || item.createdBy === uid);
+      } else if (isAdmin && args.userIdentifier) {
+        const targetUser = await resolveTargetUser(args.userIdentifier);
+        if (targetUser) {
+          const uid = String(targetUser.uid);
+          items = items.filter((item) => item.userId === uid || item.createdBy === uid);
+        }
+      }
+
+      // Filtro por tag
+      if (args.tag && typeof args.tag === 'string') {
+        const filterTag = normalizeString(args.tag);
+        items = items.filter((item) => {
+          if (Array.isArray(item.tags)) {
+            const hasTag = item.tags.some((t) => {
+              const tagText = typeof t === 'string' ? t : t.text || t.name || '';
+              return normalizeString(tagText).includes(filterTag);
+            });
+            if (hasTag) return true;
+          }
+          if (Array.isArray(item.aiTags)) {
+            const hasAiTag = item.aiTags.some((t) => normalizeString(t).includes(filterTag));
+            if (hasAiTag) return true;
+          }
+          return false;
+        });
+      }
+
+      // Filtro por termo de busca
+      if (args.searchTerm && typeof args.searchTerm === 'string') {
+        const term = normalizeString(args.searchTerm);
+        items = items.filter((item) => {
+          const title = normalizeString(item.title || '');
+          const desc = normalizeString(item.description || '');
+          const aiDesc = normalizeString(item.aiDescription || '');
+          const custName = normalizeString(item.customerName || '');
+          const ordNum = normalizeString(item.orderNumber || '');
+          const prodType = normalizeString(item.productType || '');
+          const tagsStr = Array.isArray(item.tags)
+            ? item.tags.map((t) => (typeof t === 'string' ? t : t.text || t.name || '')).join(' ')
+            : '';
+          const aiTagsStr = Array.isArray(item.aiTags) ? item.aiTags.join(' ') : '';
+          const colorsStr = Array.isArray(item.colors) ? item.colors.join(' ') : '';
+          const fullText = normalizeString(`${title} ${desc} ${aiDesc} ${custName} ${ordNum} ${prodType} ${tagsStr} ${aiTagsStr} ${colorsStr}`);
+          return fullText.includes(term);
+        });
+      }
+
+      const maxLimit = Math.min(Math.max(Number(args.limit) || 10, 1), 25);
+      return items.slice(0, maxLimit).map((item) => ({
+        id: item.id,
+        title: item.title,
+        description: item.description || item.aiDescription || '',
+        imageUrl: item.imageUrl,
+        customerName: item.customerName || null,
+        orderNumber: item.orderNumber || null,
+        tags: Array.isArray(item.tags)
+          ? item.tags.map((t) => (typeof t === 'string' ? t : t.text || t.name || ''))
+          : [],
+        aiTags: item.aiTags || [],
+        productType: item.productType || null,
+      }));
+    } catch (err) {
+      console.error('[executeSearchGalleryPortfolio] Erro:', err);
+      return [];
+    }
+  };
+
   // Helper para auto-capturar telefone do cliente a partir do nome se não estiver informado
   const resolveCustomerPhone = async (customerName, existingPhone) => {
     if (existingPhone && typeof existingPhone === 'string' && existingPhone.trim()) {
@@ -2013,9 +2133,32 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
       }
     }
   }
+  // Prepara as partes da mensagem atual do usuário com suporte a imagem multimodal
+  const userParts = [];
+  if (image && typeof image === 'object') {
+    let { base64, mimeType } = image;
+    if (base64 && typeof base64 === 'string') {
+      if (base64.includes(',')) {
+        base64 = base64.split(',')[1];
+      }
+      const allowedMimes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+      const effectiveMime = allowedMimes.includes(mimeType) ? mimeType : 'image/jpeg';
+      // Limite de segurança de payload (~15MB em base64)
+      if (base64.length < 15 * 1024 * 1024) {
+        userParts.push({
+          inline_data: {
+            mime_type: effectiveMime,
+            data: base64
+          }
+        });
+      }
+    }
+  }
+  userParts.push({ text: cleanMessage });
+
   contents.push({
     role: 'user',
-    parts: [{ text: cleanMessage }]
+    parts: userParts
   });
 
   // Obtém dinamicamente os modelos suportados pela API key, priorizando versões Flash e mais modernas
@@ -2121,6 +2264,7 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
     let extractedDraft = null;
     let extractedWhatsApp = null;
     let extractedPricing = null;
+    let extractedGalleryItems = null;
 
     if (functionCallPart) {
       const { name, args } = functionCallPart.functionCall;
@@ -2322,6 +2466,72 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
             finalAnswer = `Encontrei **${queryResults.length} registro(s)**:\n\n${list}`;
           }
         }
+      } else if (name === 'search_gallery_portfolio') {
+        const galleryResults = await executeSearchGalleryPortfolio(args);
+        extractedGalleryItems = galleryResults;
+
+        const followUpContents = [
+          ...contents,
+          { role: 'model', parts: [{ functionCall: functionCallPart.functionCall }] },
+          {
+            role: 'function',
+            parts: [{
+              functionResponse: {
+                name: 'search_gallery_portfolio',
+                response: {
+                  summary: `Foram encontradas ${galleryResults.length} artes/fotos na galeria.`,
+                  items: galleryResults.map((it) => ({
+                    title: it.title,
+                    description: it.description,
+                    productType: it.productType,
+                    tags: it.tags,
+                    aiTags: it.aiTags,
+                    imageUrl: it.imageUrl,
+                  })),
+                }
+              }
+            }]
+          }
+        ];
+
+        try {
+          const { data: followUpResult } = await callGeminiWithFallback({
+            system_instruction: { parts: [{ text: systemInstruction }] },
+            contents: followUpContents,
+            generationConfig: { temperature: 0.1 }
+          });
+          const followUpCandidate = followUpResult?.candidates?.[0];
+          const followUpParts = followUpCandidate?.content?.parts || [];
+          const textResponse = cleanAiOutput(followUpParts.map(p => p.text).filter(Boolean).join('\n'));
+
+          if (galleryResults.length === 0) {
+            finalAnswer = textResponse && textResponse.length > 20
+              ? textResponse
+              : 'Não encontrei nenhuma arte ou foto na galeria correspondente aos critérios consultados.';
+          } else {
+            const isGeneric =
+              !textResponse ||
+              textResponse.length < 30 ||
+              textResponse.toLowerCase().includes('consulta realizada');
+
+            if (isGeneric) {
+              const list = galleryResults.map(it => {
+                const tagList = [...(it.tags || []), ...(it.aiTags || [])].slice(0, 3).join(', ');
+                return `• **${it.title}**${it.productType ? ` (${it.productType})` : ''}\n  ${it.description ? it.description.slice(0, 120) : 'Sem descrição'}\n  🔗 [Ver Foto](${it.imageUrl})${tagList ? ` | 🏷️ ${tagList}` : ''}`;
+              }).join('\n\n');
+              finalAnswer = `Encontrei **${galleryResults.length} foto(s)/arte(s)** no acervo da galeria:\n\n${list}`;
+            } else {
+              finalAnswer = textResponse;
+            }
+          }
+        } catch {
+          if (galleryResults.length === 0) {
+            finalAnswer = 'Não encontrei nenhuma foto ou arte na galeria.';
+          } else {
+            const list = galleryResults.map(it => `• **${it.title}** - [Ver Foto](${it.imageUrl})`).join('\n');
+            finalAnswer = `Encontrei **${galleryResults.length} foto(s)/arte(s)** na galeria:\n\n${list}`;
+          }
+        }
       }
     } else {
       finalAnswer = cleanAiOutput(parts.map(p => p.text).filter(Boolean).join('\n')) || 'Como posso ajudar você hoje?';
@@ -2333,6 +2543,7 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
       orderDraft: extractedDraft,
       whatsappDraft: extractedWhatsApp,
       pricingEstimate: extractedPricing,
+      galleryItems: extractedGalleryItems,
       timestamp: Date.now(),
     });
 
@@ -2342,6 +2553,7 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
       orderDraft: extractedDraft,
       whatsappDraft: extractedWhatsApp,
       pricingEstimate: extractedPricing,
+      galleryItems: extractedGalleryItems,
     };
   } catch (error) {
     if (error instanceof functions.https.HttpsError) throw error;
@@ -2558,6 +2770,191 @@ exports.getAiUsage = onCall({ cors: true }, async (request) => {
       percentage: Math.min(100, Math.round((totalMonthlyUsed / 45000) * 100)),
       resetsAt: nextUtcMonth.toISOString(),
     },
+  };
+});
+
+/**
+ * Analisa e enriquece um item da Galeria com visão computacional (Gemini Vision).
+ * Extrai descrição rica, tags sugeridas, tipo de produto e cores para busca e catálogo inteligente.
+ * Guardrails estritos: usuário não-admin só pode enriquecer itens pertencentes a ele; admin tem acesso geral.
+ */
+exports.enrichGalleryItemWithAi = onCall({ secrets: [GEMINI_API_KEY] }, async (request) => {
+  if (!request.auth) {
+    throw new functions.https.HttpsError('unauthenticated', 'É necessário estar autenticado.');
+  }
+
+  const callerUid = request.auth.uid;
+  const callerProfileDoc = await admin.firestore().doc(`userProfiles/${callerUid}`).get();
+  const callerProfile = callerProfileDoc.exists ? callerProfileDoc.data() : { role: 'user', active: true };
+  const isAdmin = callerProfile.role === 'admin';
+
+  const { itemId } = request.data || {};
+  if (!itemId || typeof itemId !== 'string') {
+    throw new functions.https.HttpsError('invalid-argument', 'ID da arte é obrigatório.');
+  }
+
+  const itemRef = admin.firestore().doc(`gallery/${itemId}`);
+  const itemSnap = await itemRef.get();
+  if (!itemSnap.exists) {
+    throw new functions.https.HttpsError('not-found', 'Item da galeria não encontrado.');
+  }
+
+  const itemData = itemSnap.data();
+  if (itemData.deletedAt) {
+    throw new functions.https.HttpsError('failed-precondition', 'Este item da galeria foi excluído.');
+  }
+
+  // GUARDRAIL ESTREITO: Usuário comum só pode analisar suas próprias artes
+  if (!isAdmin) {
+    const isOwner = itemData.userId === callerUid || itemData.createdBy === callerUid;
+    if (!isOwner) {
+      throw new functions.https.HttpsError('permission-denied', 'Você não tem permissão para analisar esta arte da galeria.');
+    }
+  }
+
+  if (!itemData.imageUrl) {
+    throw new functions.https.HttpsError('invalid-argument', 'O item não possui imagem para análise.');
+  }
+
+  const rawKey = (typeof GEMINI_API_KEY.value === 'function' ? GEMINI_API_KEY.value() : process.env.GEMINI_API_KEY) || '';
+  const apiKey = String(rawKey).trim();
+  if (!apiKey) {
+    throw new functions.https.HttpsError('failed-precondition', 'Chave GEMINI_API_KEY não configurada no Firebase.');
+  }
+
+  // Baixa a imagem do Storage / CDN para base64
+  let base64Image = '';
+  let mimeType = 'image/jpeg';
+  try {
+    const imgResp = await fetch(itemData.imageUrl);
+    if (!imgResp.ok) {
+      throw new Error(`Falha ao baixar imagem (${imgResp.status})`);
+    }
+    const contentType = imgResp.headers.get('content-type');
+    if (contentType && contentType.startsWith('image/')) {
+      mimeType = contentType.split(';')[0];
+    }
+    const buffer = Buffer.from(await imgResp.arrayBuffer());
+    base64Image = buffer.toString('base64');
+  } catch (err) {
+    console.error('[enrichGalleryItemWithAi] Erro ao carregar imagem:', err);
+    throw new functions.https.HttpsError('internal', `Não foi possível carregar a imagem do item: ${err.message}`);
+  }
+
+  const visionPrompt = `Você é um especialista em catálogo de artigos personalizados, confecção têxtil, brindes corporativos e estamparia da empresa Luisices.
+Analise a imagem deste produto/arte que foi produzido pela empresa.
+Título atual informado: "${itemData.title || 'Sem título'}"
+Descrição atual: "${itemData.description || ''}"
+
+Responda ESTRITAMENTE em formato JSON com as seguintes propriedades (sem markdown, sem formatação extra, apenas o objeto JSON puro):
+{
+  "titleSuggested": "Título comercial conciso e descritivo para o produto",
+  "aiDescription": "Descrição comercial rica e técnica dos detalhes visuais do produto, acabamento, estilo, público e possíveis ocasiões (em 2 a 3 frases em pt-BR)",
+  "productType": "Tipo de produto (ex: Camiseta, Moletom, Caneca, Copo, Ecobag, Boné, Placa, Brinde, Almofada, Garrafa, etc.)",
+  "colors": ["Cor 1", "Cor 2"],
+  "suggestedTags": ["tag1", "tag2", "tag3", "tag4", "tag5"]
+}`;
+
+  const candidateModels = [
+    preferredWorkingModel,
+    'gemini-2.0-flash',
+    'gemini-2.0-flash-lite',
+    'gemini-1.5-flash',
+  ].filter(Boolean);
+
+  let parsedAiResult = null;
+  let usedModel = 'gemini-2.0-flash';
+
+  for (const model of candidateModels) {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+    try {
+      const resp = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{
+            role: 'user',
+            parts: [
+              {
+                inline_data: {
+                  mime_type: mimeType,
+                  data: base64Image
+                }
+              },
+              { text: visionPrompt }
+            ]
+          }],
+          generationConfig: {
+            temperature: 0.2,
+            responseMimeType: 'application/json'
+          }
+        })
+      });
+
+      if (resp.ok) {
+        const data = await resp.json();
+        const textResp = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (textResp) {
+          try {
+            parsedAiResult = JSON.parse(textResp);
+            usedModel = model;
+            break;
+          } catch {
+            const jsonMatch = textResp.match(/\{[\s\S]*\}/);
+            if (jsonMatch) {
+              parsedAiResult = JSON.parse(jsonMatch[0]);
+              usedModel = model;
+              break;
+            }
+          }
+        }
+      }
+    } catch (err) {
+      console.warn(`[enrichGalleryItemWithAi] Erro com modelo ${model}:`, err);
+    }
+  }
+
+  if (!parsedAiResult) {
+    throw new functions.https.HttpsError('internal', 'Falha ao processar visão computacional com o Gemini.');
+  }
+
+  // Registra log de uso da IA
+  admin.firestore().collection('ai_usage_logs').add({
+    userId: callerUid,
+    model: usedModel,
+    action: 'gallery_vision_enrichment',
+    itemId,
+    timestamp: new Date().toISOString(),
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+  }).catch((err) => console.warn('[enrichGalleryItemWithAi] Erro ao gravar ai_usage_logs:', err));
+
+  const updates = {
+    aiDescription: parsedAiResult.aiDescription || '',
+    aiTags: Array.isArray(parsedAiResult.suggestedTags) ? parsedAiResult.suggestedTags : [],
+    productType: parsedAiResult.productType || '',
+    colors: Array.isArray(parsedAiResult.colors) ? parsedAiResult.colors : [],
+    aiAnalyzedAt: admin.firestore.FieldValue.serverTimestamp(),
+  };
+
+  // Se o item não tem tags manuais, adiciona as tags sugeridas
+  if ((!itemData.tags || itemData.tags.length === 0) && updates.aiTags.length > 0) {
+    updates.tags = updates.aiTags.slice(0, 5).map((t, idx) => ({
+      name: t,
+      color: ['#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899'][idx % 5],
+    }));
+  }
+
+  await itemRef.update(updates);
+
+  return {
+    success: true,
+    itemId,
+    aiDescription: updates.aiDescription,
+    aiTags: updates.aiTags,
+    productType: updates.productType,
+    colors: updates.colors,
+    suggestedTags: updates.aiTags,
+    titleSuggested: parsedAiResult.titleSuggested || itemData.title,
   };
 });
 

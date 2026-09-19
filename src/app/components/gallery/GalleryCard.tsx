@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { GalleryItem } from '../../types';
 import { Skeleton } from '../ui/skeleton';
-import { ImageOff, User, ZoomIn } from 'lucide-react';
+import { ImageOff, User, ZoomIn, Sparkles } from 'lucide-react';
 import { cn } from '../ui/utils';
 
 interface GalleryCardProps {
@@ -44,6 +44,12 @@ export function GalleryCard({ item, onClick }: GalleryCardProps) {
         <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center">
           <ZoomIn className="size-7 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
         </div>
+        {item.aiDescription && (
+          <div className="absolute top-1.5 right-1.5 bg-black/60 backdrop-blur-xs text-amber-300 text-[10px] font-semibold px-1.5 py-0.5 rounded flex items-center gap-1 shadow-xs pointer-events-none">
+            <Sparkles className="size-2.5 text-amber-400" />
+            <span>IA</span>
+          </div>
+        )}
       </div>
       <div className="px-2.5 py-2 space-y-0.5">
         <p className="text-sm font-medium truncate">{item.title}</p>

@@ -17,7 +17,8 @@ import {
   Timestamp,
 } from 'firebase/firestore';
 import { ref, deleteObject } from 'firebase/storage';
-import { db, storage, auth } from '../lib/firebase';
+import { httpsCallable } from 'firebase/functions';
+import { db, storage, auth, functions } from '../lib/firebase';
 import type { GalleryItem } from '../app/types';
 import { firebaseStorageService } from './firebaseStorageService';
 import { toCdnUrl } from '../app/utils/cdnUtils';
@@ -152,10 +153,35 @@ export class FirebaseGalleryService {
     }
   }
 
+  // ─── AI Vision Enrichment ──────────────────────────────────────────────────
+
+  async enrichItemWithAi(itemId: string): Promise<{
+    success: boolean;
+    aiDescription: string;
+    productType?: string;
+    colors?: string[];
+    suggestedTags?: string[];
+  }> {
+    const callable = httpsCallable<
+      { itemId: string },
+      {
+        success: boolean;
+        aiDescription: string;
+        productType?: string;
+        colors?: string[];
+        suggestedTags?: string[];
+      }
+    >(functions, 'enrichGalleryItemWithAi');
+
+    const result = await callable({ itemId });
+    return result.data;
+  }
+
   // ─── Private ──────────────────────────────────────────────────────────────────
 
   private fromFirestore(id: string, data: Record<string, unknown>): GalleryItem {
     const ts = data.createdAt as Timestamp | null;
+    const aiTs = data.aiAnalyzedAt as Timestamp | null;
     return {
       id,
       userId: data.userId as string,
@@ -168,6 +194,11 @@ export class FirebaseGalleryService {
       orderNumber: (data.orderNumber as string) || undefined,
       tags: (data.tags as GalleryItem['tags']) ?? [],
       createdAt: ts ? ts.toDate().toISOString() : new Date().toISOString(),
+      aiDescription: (data.aiDescription as string) || undefined,
+      aiTags: (data.aiTags as string[]) || undefined,
+      productType: (data.productType as string) || undefined,
+      colors: (data.colors as string[]) || undefined,
+      aiAnalyzedAt: aiTs ? (typeof (aiTs as any).toDate === 'function' ? (aiTs as any).toDate().toISOString() : String(aiTs)) : (data.aiAnalyzedAt as string) || undefined,
     };
   }
 }

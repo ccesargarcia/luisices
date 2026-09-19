@@ -153,6 +153,7 @@ export interface Quote {
   customerName: string;
   customerPhone: string;
   customerEmail?: string;
+  customerAddress?: string;
   customerId?: string;
   items: QuoteItem[];       // Itens / produtos do orçamento
   totalPrice: number;       // Soma automática dos itens
@@ -253,6 +254,11 @@ export interface GalleryItem {
   orderNumber?: string;
   tags?: Tag[];
   createdAt: string;
+  aiDescription?: string;
+  aiTags?: string[];
+  productType?: string;
+  colors?: string[];
+  aiAnalyzedAt?: string;
 }
 
 // ─── User Management ─────────────────────────────────────────────────────────
@@ -659,9 +665,21 @@ export interface AiChatMessage {
   role: 'user' | 'assistant';
   text: string;
   timestamp: string;
+  imageUrl?: string;
   orderDraft?: AiOrderDraft | null;
   whatsappDraft?: AiWhatsAppDraft | null;
   pricingEstimate?: AiPricingEstimate | null;
+  galleryItems?: Array<{
+    id: string;
+    title: string;
+    description?: string;
+    imageUrl: string;
+    productType?: string;
+    customerName?: string;
+    orderNumber?: string;
+    tags?: string[];
+    aiTags?: string[];
+  }> | null;
 }
 
 export interface AiModelQuotaItem {

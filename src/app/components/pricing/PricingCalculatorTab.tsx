@@ -194,7 +194,7 @@ export function PricingCalculatorTab({
       proportionalPercent,
       paymentFeePercent,
       profitMarginPercent,
-      manualUnitPrice,
+      manualUnitPrice: manualUnitPrice ?? undefined,
       settings: studioSettings || undefined,
     });
   }, [

@@ -24,6 +24,10 @@ import {
   Calculator,
   ShieldAlert,
   Lock,
+  Paperclip,
+  Images,
+  ZoomIn,
+  X,
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { firebaseAiAgentService } from '../../services/firebaseAiAgentService';
@@ -41,16 +45,16 @@ interface AiCopilotSheetProps {
 const INITIAL_MESSAGE: AiChatMessage = {
   id: 'init-1',
   role: 'assistant',
-  text: 'Olá! Sou o Copiloto Interno da Luisices. 👕✨\n\nEstou equipado com **Consulta de Pedidos**, **Raio-X Diário**, **Central WhatsApp Integrada**, **Calculadora de Orçamentos** e **Extração de Pedidos** com guardrails de segurança e revisão humana obrigatória.',
+  text: 'Olá! Sou o Copiloto Interno da Luisices. 👕✨\n\nEstou equipado com **Consulta ao Acervo da Galeria**, **Análise de Fotos & Imagens**, **Consulta de Pedidos**, **Raio-X Diário**, **Central WhatsApp**, **Calculadora de Orçamentos** e **Extração de Pedidos** com guardrails de segurança e isolamento por usuário.',
   timestamp: new Date().toISOString(),
 };
 
 const SUGGESTIONS = [
+  '🖼️ Buscar fotos e modelos de camisetas na nossa galeria',
   '📋 Raio-X do Dia (Briefing de produção e prazos)',
-  '⚠️ Quais pedidos correm risco de atraso?',
   '💬 Gerar mensagem de cobrança amigável para cliente',
   '💰 Quanto cobrar por 30 camisetas pretas silk 1 cor?',
-  '🗑️ Quais pedidos foram cancelados ou excluídos?',
+  '⚠️ Quais pedidos correm risco de atraso?',
 ];
 
 interface WhatsAppComposerProps {
@@ -286,7 +290,14 @@ export function AiCopilotSheet({ open, onOpenChange, onApplyOrderDraft }: AiCopi
   const [loading, setLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [quota, setQuota] = useState<import('../types').AiUsageData | null>(null);
+  const [attachedImage, setAttachedImage] = useState<{
+    preview: string;
+    base64: string;
+    mimeType: string;
+    name: string;
+  } | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const fetchQuota = async () => {
     if (!isAdmin) return;
@@ -311,19 +322,64 @@ export function AiCopilotSheet({ open, onOpenChange, onApplyOrderDraft }: AiCopi
     }
   }, [open, messages, isAdmin]);
 
+  const handleImagePick = (file: File) => {
+    const validMimes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+    if (!validMimes.includes(file.type)) {
+      toast.error('Formato não suportado. Envie JPG, PNG ou WebP.');
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error('A imagem deve ter no máximo 10MB.');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = reader.result as string;
+      setAttachedImage({
+        preview: dataUrl,
+        base64: dataUrl,
+        mimeType: file.type,
+        name: file.name,
+      });
+      toast.success('Imagem anexada para análise visual');
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handlePaste = (e: React.ClipboardEvent) => {
+    const items = e.clipboardData?.items;
+    if (items) {
+      for (const item of items) {
+        if (item.type.startsWith('image/')) {
+          const file = item.getAsFile();
+          if (file) {
+            e.preventDefault();
+            handleImagePick(file);
+            break;
+          }
+        }
+      }
+    }
+  };
+
   const handleSend = async (textToSend?: string) => {
     const messageText = (textToSend || input).trim();
-    if (!messageText || loading) return;
+    if ((!messageText && !attachedImage) || loading) return;
+
+    const currentImage = attachedImage;
+    const finalMessageText = messageText || 'Analise esta imagem enviada, descreva as características do produto personalizado e busque referências na galeria.';
 
     const userMsg: AiChatMessage = {
       id: `user-${Date.now()}`,
       role: 'user',
-      text: messageText,
+      text: finalMessageText,
       timestamp: new Date().toISOString(),
+      imageUrl: currentImage?.preview,
     };
 
     setMessages(prev => [...prev, userMsg]);
     setInput('');
+    setAttachedImage(null);
     setLoading(true);
 
     try {
@@ -331,7 +387,11 @@ export function AiCopilotSheet({ open, onOpenChange, onApplyOrderDraft }: AiCopi
         .filter(m => m.id !== 'init-1')
         .map(m => ({ role: m.role, text: m.text }));
 
-      const response = await firebaseAiAgentService.sendMessage(messageText, history);
+      const imagePayload = currentImage
+        ? { base64: currentImage.base64, mimeType: currentImage.mimeType }
+        : null;
+
+      const response = await firebaseAiAgentService.sendMessage(finalMessageText, history, imagePayload);
 
       const assistantMsg: AiChatMessage = {
         id: `assistant-${Date.now()}`,
@@ -341,6 +401,7 @@ export function AiCopilotSheet({ open, onOpenChange, onApplyOrderDraft }: AiCopi
         orderDraft: response.orderDraft || null,
         whatsappDraft: response.whatsappDraft || null,
         pricingEstimate: response.pricingEstimate || null,
+        galleryItems: response.galleryItems || null,
       };
 
       setMessages(prev => [...prev, assistantMsg]);
@@ -449,7 +510,12 @@ export function AiCopilotSheet({ open, onOpenChange, onApplyOrderDraft }: AiCopi
         {/* Messages List */}
         <div className="flex-1 overflow-y-auto p-3 sm:p-4 space-y-3.5">
           {messages.map((msg) => {
-            const hasInteractiveCard = Boolean(msg.whatsappDraft || msg.pricingEstimate || msg.orderDraft);
+            const hasInteractiveCard = Boolean(
+              msg.whatsappDraft ||
+              msg.pricingEstimate ||
+              msg.orderDraft ||
+              (msg.galleryItems && msg.galleryItems.length > 0)
+            );
             return (
               <div
                 key={msg.id}
@@ -476,6 +542,17 @@ export function AiCopilotSheet({ open, onOpenChange, onApplyOrderDraft }: AiCopi
                         : 'max-w-[90%] sm:max-w-[85%] bg-muted/80 text-foreground border rounded-tl-none whitespace-pre-wrap space-y-3'
                   }`}
                 >
+                  {msg.imageUrl && (
+                    <div className="mb-2 rounded-lg overflow-hidden border border-primary-foreground/20 max-w-[220px]">
+                      <img
+                        src={msg.imageUrl}
+                        alt="Anexo enviado"
+                        className="w-full h-auto object-cover max-h-48 cursor-pointer hover:opacity-90"
+                        onClick={() => window.open(msg.imageUrl, '_blank')}
+                      />
+                    </div>
+                  )}
+
                   <div className="leading-relaxed">{msg.text}</div>
 
                   {/* Card 1: Central Interativa de WhatsApp com Edição e Envio */}
@@ -582,6 +659,47 @@ export function AiCopilotSheet({ open, onOpenChange, onApplyOrderDraft }: AiCopi
                       </Button>
                     </div>
                   )}
+
+                  {/* Card 4: Fotos da Galeria Encontradas */}
+                  {msg.galleryItems && msg.galleryItems.length > 0 && (
+                    <div className="mt-3 p-3 bg-card border rounded-xl shadow-xs space-y-2 text-foreground">
+                      <div className="flex items-center justify-between border-b pb-1.5">
+                        <span className="text-xs font-semibold text-primary flex items-center gap-1.5">
+                          <Images className="size-3.5" />
+                          Modelos da Galeria ({msg.galleryItems.length})
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2 pt-1">
+                        {msg.galleryItems.slice(0, 6).map((item) => (
+                          <div key={item.id} className="border rounded-lg overflow-hidden bg-background flex flex-col group text-left">
+                            <div className="aspect-square relative overflow-hidden bg-muted">
+                              <img
+                                src={item.imageUrl}
+                                alt={item.title}
+                                className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                              />
+                              <a
+                                href={item.imageUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center"
+                              >
+                                <ZoomIn className="size-5 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+                              </a>
+                            </div>
+                            <div className="p-1.5 space-y-0.5">
+                              <p className="text-[11px] font-medium truncate" title={item.title}>{item.title}</p>
+                              {item.productType && (
+                                <span className="text-[9px] px-1 py-0.5 bg-muted text-muted-foreground rounded inline-block truncate max-w-full">
+                                  {item.productType}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             );
@@ -619,6 +737,33 @@ export function AiCopilotSheet({ open, onOpenChange, onApplyOrderDraft }: AiCopi
 
         {/* Input Footer */}
         <div className="p-3 border-t bg-card/70 backdrop-blur-xs flex-shrink-0 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+          {/* Preview da Imagem Anexada */}
+          {attachedImage && (
+            <div className="mb-2 p-2 bg-background border rounded-lg flex items-center justify-between gap-2 shadow-xs">
+              <div className="flex items-center gap-2 min-w-0">
+                <img
+                  src={attachedImage.preview}
+                  alt="Prévia do anexo"
+                  className="size-11 object-cover rounded border shrink-0 bg-muted"
+                />
+                <div className="min-w-0">
+                  <span className="text-xs font-semibold truncate block text-foreground">{attachedImage.name}</span>
+                  <span className="text-[10px] text-amber-600 dark:text-amber-400 font-medium block">Pronta para análise multimodal com IA ✨</span>
+                </div>
+              </div>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="size-7 text-muted-foreground hover:text-destructive shrink-0"
+                onClick={() => setAttachedImage(null)}
+                title="Remover anexo"
+              >
+                <X className="size-4" />
+              </Button>
+            </div>
+          )}
+
           <form
             onSubmit={(e) => {
               e.preventDefault();
@@ -626,9 +771,33 @@ export function AiCopilotSheet({ open, onOpenChange, onApplyOrderDraft }: AiCopi
             }}
             className="flex items-end gap-2"
           >
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/jpeg,image/png,image/webp,image/gif"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) handleImagePick(f);
+                e.target.value = '';
+              }}
+            />
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              className="shrink-0 h-[40px] w-[40px] text-muted-foreground hover:text-foreground"
+              onClick={() => fileInputRef.current?.click()}
+              title="Anexar foto ou referência para a IA analisar"
+              disabled={loading}
+            >
+              <Paperclip className="size-4" />
+            </Button>
+
             <Textarea
               value={input}
               onChange={(e) => setInput(e.target.value)}
+              onPaste={handlePaste}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && !e.shiftKey) {
                   e.preventDefault();
@@ -636,21 +805,21 @@ export function AiCopilotSheet({ open, onOpenChange, onApplyOrderDraft }: AiCopi
                 }
               }}
               rows={1}
-              placeholder="Digite sua dúvida ou cole mensagem... (Enter envia)"
+              placeholder={attachedImage ? "Adicione instruções sobre a foto ou aperte Enter para analisar..." : "Digite sua dúvida, cole texto ou anexe/cole uma foto... (Enter envia)"}
               className="text-xs sm:text-sm bg-background min-h-[40px] max-h-24 resize-none py-2.5 leading-tight"
               disabled={loading}
             />
             <Button
               type="submit"
               size="icon"
-              disabled={!input.trim() || loading}
+              disabled={(!input.trim() && !attachedImage) || loading}
               className="shrink-0 h-[40px] w-[40px]"
             >
               {loading ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}
             </Button>
           </form>
           <p className="text-[10px] text-center text-muted-foreground mt-1.5 hidden sm:block">
-            💡 Pressione <kbd className="px-1 py-0.5 text-[9px] bg-muted border rounded font-mono">Enter</kbd> para enviar ou <kbd className="px-1 py-0.5 text-[9px] bg-muted border rounded font-mono">Shift+Enter</kbd> para nova linha.
+            💡 Pressione <kbd className="px-1 py-0.5 text-[9px] bg-muted border rounded font-mono">Enter</kbd> para enviar, <kbd className="px-1 py-0.5 text-[9px] bg-muted border rounded font-mono">Shift+Enter</kbd> para nova linha ou cole fotos com <kbd className="px-1 py-0.5 text-[9px] bg-muted border rounded font-mono">Ctrl+V</kbd>.
           </p>
         </div>
       </SheetContent>

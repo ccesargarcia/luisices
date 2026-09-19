@@ -50,14 +50,16 @@ export function CustomerHistoryDialog({
       return;
     }
 
+    const currentUserId = userId;
+    const currentCustomerId = customer.id;
     let isCancelled = false;
     setLoadingGallery(true);
 
     async function loadGallery() {
       try {
-        const galleryItems = await firebaseGalleryService.getItems(userId);
+        const galleryItems = await firebaseGalleryService.getItems(currentUserId);
         if (!isCancelled) {
-          setGallery(galleryItems.filter((g) => g.customerId === customer.id));
+          setGallery(galleryItems.filter((g) => g.customerId === currentCustomerId));
         }
       } catch (error) {
         console.error('Erro ao carregar histórico da galeria:', error);

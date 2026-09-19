@@ -8,22 +8,39 @@ export interface AiAgentChatResponse {
   orderDraft?: AiOrderDraft | null;
   whatsappDraft?: AiWhatsAppDraft | null;
   pricingEstimate?: AiPricingEstimate | null;
+  galleryItems?: Array<{
+    id: string;
+    title: string;
+    description?: string;
+    imageUrl: string;
+    productType?: string;
+    customerName?: string;
+    orderNumber?: string;
+    tags?: string[];
+    aiTags?: string[];
+  }> | null;
 }
 
 export class FirebaseAiAgentService {
   /**
    * Envia uma mensagem para o Copiloto de IA Interno (Cloud Function segura)
+   * Suporta texto e envio multimodal de imagem (base64)
    */
   async sendMessage(
     message: string,
-    history?: Array<{ role: 'user' | 'assistant'; text: string }>
+    history?: Array<{ role: 'user' | 'assistant'; text: string }>,
+    image?: { base64: string; mimeType: string } | null
   ): Promise<AiAgentChatResponse> {
     const callable = httpsCallable<
-      { message: string; history?: Array<{ role: 'user' | 'assistant'; text: string }> },
+      {
+        message: string;
+        history?: Array<{ role: 'user' | 'assistant'; text: string }>;
+        image?: { base64: string; mimeType: string } | null;
+      },
       AiAgentChatResponse
     >(functions, 'aiAgentChat');
 
-    const result = await callable({ message, history });
+    const result = await callable({ message, history, image });
     return result.data;
   }
 
