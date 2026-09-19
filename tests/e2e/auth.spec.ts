@@ -17,7 +17,7 @@ test.describe('Autenticação', () => {
     await page.goto('/');
 
     // Verifica se está na página de login
-    await expect(page.getByRole('heading', { name: /Bem-vindo|Login/i })).toBeVisible();
+    await expect(page.getByRole('heading', { name: /Luisices|Bem-vindo|Login/i })).toBeVisible();
 
     // Verifica se existem campos de login
     await expect(page.locator('input[type="email"]')).toBeVisible();
@@ -129,6 +129,39 @@ test.describe('Autenticação', () => {
     // 4. Deve exibir alerta informando necessidade de convite
     const alert = page.getByText(/Este cadastro só pode ser acessado por um convite válido/i).first();
     await expect(alert).toBeVisible({ timeout: 10000 });
+  });
+
+  test('deve alternar a visibilidade da senha via botão Eye/EyeOff na tela de login', async ({ page }) => {
+    await page.goto('/');
+
+    const passwordInput = page.locator('#password');
+    await expect(passwordInput).toBeVisible({ timeout: 5000 });
+    await expect(passwordInput).toHaveAttribute('type', 'password');
+
+    // Clicar no botão de alternar senha (Ver senha)
+    const toggleBtn = page.getByRole('button', { name: /Ver senha|Ocultar senha/i });
+    await expect(toggleBtn).toBeVisible({ timeout: 5000 });
+    await toggleBtn.click();
+
+    // Input deve se transformar em texto visível
+    await expect(passwordInput).toHaveAttribute('type', 'text');
+
+    // Clicar novamente para ocultar
+    await toggleBtn.click();
+    await expect(passwordInput).toHaveAttribute('type', 'password');
+  });
+
+  test('deve navegar para o catálogo online público a partir da tela de login', async ({ page }) => {
+    await page.goto('/');
+
+    // Link para o catálogo público
+    const catalogLink = page.getByRole('link', { name: /Acessar catálogo da lojinha/i });
+    await expect(catalogLink).toBeVisible({ timeout: 5000 });
+    await catalogLink.click();
+
+    // Deve redirecionar para a rota do catálogo/loja
+    await page.waitForURL(/\/(catalogo|loja)/, { timeout: 10000 });
+    expect(page.url()).toMatch(/\/(catalogo|loja)/);
   });
 });
 

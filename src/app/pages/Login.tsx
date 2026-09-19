@@ -70,7 +70,7 @@ export function Login() {
             </div>
             <div className="space-y-1">
               <CardTitle className="text-2xl font-bold tracking-tight text-foreground">
-                Luisices
+                Bem-vindo à Luisices
               </CardTitle>
               <CardDescription className="text-xs text-muted-foreground">
                 Gestão inteligente para papelaria personalizada
