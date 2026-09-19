@@ -191,8 +191,8 @@ try {
       const data = normalizeObjectUrls(rawData);
 
       console.log('✔ Configurações da Lojinha encontradas em Dev:');
-      console.log(`  • Nome da Loja: "${data.businessName || 'Não definido'}"`);
-      console.log(`  • Slogan: "${data.businessTagline || 'Não definido'}"`);
+      console.log(`  • Nome da Loja: "${data.catalogStoreName || data.name || data.businessName || 'Não definido'}"`);
+      console.log(`  • Slogan: "${data.catalogStoreTagline || data.tagline || data.businessTagline || 'Não definido'}"`);
       console.log(`  • WhatsApp: ${data.catalogWhatsappPhone || data.whatsappPhone || 'Não definido'}`);
       console.log(`  • Instagram: ${data.instagramUrl || 'Não definido'}`);
       console.log(`  • Instagram Colab / Parceria: ${data.instagramColabUrl || 'Não definido'}`);

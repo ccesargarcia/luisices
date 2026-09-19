@@ -66,6 +66,16 @@ export function PermissionsSection({ userProfile, isAdmin }: PermissionsSectionP
                     <Check className="size-3.5 text-green-600" /> Clientes
                   </div>
                 )}
+                {userProfile.permissions.whatsapp && (
+                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                    <Check className="size-3.5 text-green-600" /> Atendimento (WhatsApp)
+                  </div>
+                )}
+                {userProfile.permissions.aiCopilot && (
+                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                    <Check className="size-3.5 text-green-600" /> Copiloto de IA
+                  </div>
+                )}
                 {userProfile.permissions.products?.view && (
                   <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
                     <Check className="size-3.5 text-green-600" /> Produtos

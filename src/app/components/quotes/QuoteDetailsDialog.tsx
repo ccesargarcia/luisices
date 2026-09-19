@@ -15,6 +15,8 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
+  DialogBody,
   DialogFooter,
 } from '../ui/dialog';
 import {
@@ -237,8 +239,8 @@ export function QuoteDetailsDialog({
       </AlertDialog>
 
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="w-[calc(100vw-1.5rem)] sm:w-full sm:max-w-2xl max-h-[90dvh] overflow-y-auto">
-          <DialogHeader>
+        <DialogContent size="2xl" noPadding className="max-h-[90dvh] flex flex-col overflow-hidden">
+          <DialogHeader className="p-4 sm:p-6 pb-3 border-b border-border">
             <div className="flex items-center gap-3">
               <DialogTitle>{quote.quoteNumber}</DialogTitle>
               <span
@@ -249,9 +251,10 @@ export function QuoteDetailsDialog({
                 {STATUS_LABELS[quote.status]}
               </span>
             </div>
+            <DialogDescription className="sr-only">Visualização detalhada do orçamento</DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-5">
+          <DialogBody className="p-4 sm:p-6 space-y-5">
             {/* Cliente */}
             <div className="grid grid-cols-2 gap-3">
               <div className="flex items-center gap-2 text-sm">
@@ -420,9 +423,9 @@ export function QuoteDetailsDialog({
                 </AlertDescription>
               </Alert>
             )}
-          </div>
+          </DialogBody>
 
-          <DialogFooter className="mt-4 flex-wrap gap-2">
+          <DialogFooter className="p-4 sm:p-6 pt-3 border-t border-border flex-wrap gap-2">
             {hasPermission((p) => p.quotes?.delete ?? false) && (
               <Button
                 variant="outline"

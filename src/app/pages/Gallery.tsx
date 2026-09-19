@@ -448,6 +448,9 @@ export function Gallery() {
           initialIndex={lightboxIdx}
           onClose={() => setLightboxIdx(null)}
           onDelete={handleDelete}
+          onItemUpdated={(updated) => {
+            setItems(prev => prev.map(it => it.id === updated.id ? updated : it));
+          }}
         />
       )}
     </div>

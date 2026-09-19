@@ -13,6 +13,8 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
+  DialogBody,
   DialogFooter,
 } from '../ui/dialog';
 import { Button } from '../ui/button';
@@ -254,12 +256,13 @@ export function QuoteFormDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleOpen}>
-      <DialogContent className="max-h-[90dvh] min-w-0 max-w-2xl overflow-x-hidden overflow-y-auto">
-        <DialogHeader>
+      <DialogContent size="2xl" noPadding className="max-h-[90dvh] flex flex-col overflow-hidden">
+        <DialogHeader className="p-4 sm:p-6 pb-3 border-b border-border">
           <DialogTitle>{editing ? 'Editar Orçamento' : 'Novo Orçamento'}</DialogTitle>
+          <DialogDescription className="sr-only">Formulário de criação ou edição de orçamento</DialogDescription>
         </DialogHeader>
 
-        <div className="min-w-0 max-w-full space-y-5">
+        <DialogBody className="p-4 sm:p-6 space-y-5">
           {/* Cliente */}
           <div className="space-y-3">
             <Label htmlFor="q-customer">Cliente *</Label>
@@ -675,9 +678,9 @@ export function QuoteFormDialog({
               ))}
             </div>
           </div>
-        </div>
+        </DialogBody>
 
-        <DialogFooter className="mt-4 flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+        <DialogFooter className="p-4 sm:p-6 pt-3 border-t border-border flex-col-reverse gap-2 sm:flex-row sm:justify-end">
           <Button variant="outline" onClick={() => handleOpen(false)}>
             Cancelar
           </Button>

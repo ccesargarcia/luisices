@@ -50,14 +50,16 @@ export function CustomerHistoryDialog({
       return;
     }
 
+    const currentUserId = userId;
+    const currentCustomerId = customer.id;
     let isCancelled = false;
     setLoadingGallery(true);
 
     async function loadGallery() {
       try {
-        const galleryItems = await firebaseGalleryService.getItems(userId);
+        const galleryItems = await firebaseGalleryService.getItems(currentUserId);
         if (!isCancelled) {
-          setGallery(galleryItems.filter((g) => g.customerId === customer.id));
+          setGallery(galleryItems.filter((g) => g.customerId === currentCustomerId));
         }
       } catch (error) {
         console.error('Erro ao carregar histórico da galeria:', error);
@@ -93,7 +95,7 @@ export function CustomerHistoryDialog({
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="w-[calc(100vw-1.5rem)] sm:w-full sm:max-w-2xl max-h-[90dvh] flex flex-col overflow-hidden">
+        <DialogContent size="2xl" className="max-h-[90dvh] flex flex-col overflow-hidden">
           <DialogHeader>
             <DialogTitle>{customer?.name}</DialogTitle>
           </DialogHeader>
@@ -222,34 +224,43 @@ export function CustomerHistoryDialog({
       {/* Gallery Lightbox */}
       {lightboxItem && (
         <Dialog open onOpenChange={() => setLightboxItem(null)}>
-          <DialogContent className="w-[calc(100vw-1.5rem)] sm:w-full sm:max-w-2xl p-0 overflow-hidden">
-            <div className="flex items-center justify-between px-4 py-3 border-b">
+          <DialogContent size="2xl" noPadding className="max-h-[90dvh] flex flex-col overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-3 border-b bg-card shrink-0">
               <DialogTitle className="text-sm font-semibold truncate flex-1">
                 {lightboxItem.title}
               </DialogTitle>
-              <div className="flex gap-1 ml-2">
+              <div className="flex items-center gap-1 ml-2 shrink-0">
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="text-destructive hover:text-destructive"
+                  className="size-8 text-destructive hover:text-destructive hover:bg-destructive/10"
                   onClick={() => handleGalleryDelete(lightboxItem)}
+                  title="Excluir arte"
                 >
                   <Trash2 className="size-4" />
                 </Button>
-                <Button variant="ghost" size="icon" onClick={() => setLightboxItem(null)}>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="size-8 text-muted-foreground hover:text-foreground"
+                  onClick={() => setLightboxItem(null)}
+                  title="Fechar"
+                >
                   <X className="size-4" />
                 </Button>
               </div>
             </div>
-            <div className="bg-black/90 flex items-center justify-center min-h-48 max-h-[70vh]">
+            <div className="bg-black/95 flex-1 flex items-center justify-center p-2 min-h-56 max-h-[70dvh] overflow-hidden">
               <img
                 src={lightboxItem.imageUrl}
                 alt={lightboxItem.title}
-                className="max-w-full max-h-[70vh] object-contain"
+                className="max-w-full max-h-[70dvh] object-contain select-none"
               />
             </div>
             {lightboxItem.description && (
-              <p className="px-4 py-2 text-sm text-muted-foreground">{lightboxItem.description}</p>
+              <p className="px-4 py-2.5 text-xs sm:text-sm text-muted-foreground border-t bg-card shrink-0">
+                {lightboxItem.description}
+              </p>
             )}
           </DialogContent>
         </Dialog>

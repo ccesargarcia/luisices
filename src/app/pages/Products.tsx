@@ -11,6 +11,13 @@ import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Textarea } from '../components/ui/textarea';
 import { Badge } from '../components/ui/badge';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '../components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../components/ui/dialog';
 import {
   AlertDialog,
@@ -189,7 +196,7 @@ function ProductFormDialog({ open, onOpenChange, editing, existingCategories, us
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
+      <DialogContent size="md" className="max-h-[90dvh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{editing ? 'Editar Produto' : 'Novo Produto'}</DialogTitle>
         </DialogHeader>
@@ -278,25 +285,29 @@ function ProductFormDialog({ open, onOpenChange, editing, existingCategories, us
                   )}
                 </div>
               ) : (
-                <select
-                  id="p-category"
-                  value={form.category}
-                  onChange={(e) => {
-                    if (e.target.value === '__new__') {
+                <Select
+                  value={form.category || undefined}
+                  onValueChange={(val) => {
+                    if (val === '__new__') {
                       setIsCustomCategory(true);
                       setForm({ ...form, category: '' });
                     } else {
-                      setForm({ ...form, category: e.target.value });
+                      setForm({ ...form, category: val });
                     }
                   }}
-                  className="w-full h-9 px-3 rounded-lg border border-input bg-background text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary cursor-pointer"
                 >
-                  <option value="" disabled>Selecione uma categoria...</option>
-                  {existingCategories.map((c) => (
-                    <option key={c} value={c}>{c}</option>
-                  ))}
-                  <option value="__new__">➕ Cadastrar nova categoria...</option>
-                </select>
+                  <SelectTrigger id="p-category" className="w-full h-9 text-sm">
+                    <SelectValue placeholder="Selecione uma categoria..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {existingCategories.map((c) => (
+                      <SelectItem key={c} value={c}>{c}</SelectItem>
+                    ))}
+                    <SelectItem value="__new__" className="text-primary font-medium cursor-pointer">
+                      ➕ Cadastrar nova categoria...
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
               )}
             </div>
           </div>

@@ -12,6 +12,9 @@ async function closeAnyOpenDialog(page: Page) {
   const closeSelectors = [
     '[data-slot="dialog-close"]',
     'button[aria-label="Close"]',
+    'button[aria-label="Fechar"]',
+    'button:has(svg.lucide-x)',
+    'button:has-text("Close")',
     'button:has-text("Fechar")',
     'button:has-text("Cancelar")',
     'button:has-text("X")',
@@ -23,22 +26,24 @@ async function closeAnyOpenDialog(page: Page) {
     if (!(await closeBtn.isEnabled().catch(() => false))) continue;
 
     try {
-      await closeBtn.click({ timeout: 1000 });
+      await closeBtn.click({ timeout: 1000, force: true });
     } catch {
       continue;
     }
 
-    await page.waitForTimeout(250);
+    await page.waitForTimeout(200);
     if (!(await dialog.isVisible().catch(() => false))) return;
   }
 
   const overlay = page.locator('[data-slot="dialog-overlay"]').first();
   if (await overlay.isVisible().catch(() => false)) {
     await overlay.click({ force: true, timeout: 1000 }).catch(() => {});
+    await page.waitForTimeout(200);
+    if (!(await dialog.isVisible().catch(() => false))) return;
   }
 
-  await page.keyboard.press('Escape');
-  await expect(dialog).not.toBeVisible({ timeout: 5000 }).catch(() => {});
+  await page.keyboard.press('Escape').catch(() => {});
+  await expect(dialog).not.toBeVisible({ timeout: 3000 }).catch(() => {});
 }
 
 test.beforeEach(async ({ page }) => {

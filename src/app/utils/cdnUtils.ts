@@ -15,6 +15,15 @@ export function toCdnUrl(url?: string | null): string {
   const cdnBase = import.meta.env.VITE_STORAGE_CDN_URL;
   if (!cdnBase) return url;
 
+  // Se já for uma URL de CDN (produção ou dev), limpa parâmetros de busca (?alt=media&token=...)
+  if (
+    url.startsWith(cdnBase) ||
+    url.includes('cdn.luisices.com.br') ||
+    url.includes('cdn-dev.luisices.com.br')
+  ) {
+    return url.split('?')[0];
+  }
+
   // Se não for uma URL padrão do Firebase Storage, retorna inalterada
   if (!url.includes('firebasestorage.googleapis.com')) {
     return url;
@@ -26,10 +35,10 @@ export function toCdnUrl(url?: string | null): string {
     if (!match || !match[1]) return url;
 
     const rawPath = decodeURIComponent(match[1]);
-    const queryString = match[2] || '';
     const cleanBase = cdnBase.replace(/\/+$/, '');
 
-    return `${cleanBase}/${rawPath}${queryString}`;
+    // Retorna URL limpa no formato https://cdn.luisices.com.br/path/to/file.png
+    return `${cleanBase}/${rawPath}`;
   } catch {
     return url;
   }

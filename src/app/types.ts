@@ -103,6 +103,7 @@ export interface Order {
   exchangeItems?: ExchangeItem[]; // Itens recebidos na permuta
   cardColor?: string;      // Cor de destaque do card
   realCost?: number;       // Custo real da produção
+  version?: number;        // Versão para controle de concorrência
 }
 
 export interface ExchangeItem {
@@ -152,6 +153,7 @@ export interface Quote {
   customerName: string;
   customerPhone: string;
   customerEmail?: string;
+  customerAddress?: string;
   customerId?: string;
   items: QuoteItem[];       // Itens / produtos do orçamento
   totalPrice: number;       // Soma automática dos itens
@@ -252,6 +254,11 @@ export interface GalleryItem {
   orderNumber?: string;
   tags?: Tag[];
   createdAt: string;
+  aiDescription?: string;
+  aiTags?: string[];
+  productType?: string;
+  colors?: string[];
+  aiAnalyzedAt?: string;
 }
 
 // ─── User Management ─────────────────────────────────────────────────────────
@@ -280,6 +287,8 @@ export interface Permission {
   pricing?: boolean;
   store?: boolean;
   storeProducts?: ModulePermission;
+  whatsapp?: boolean;
+  aiCopilot?: boolean;
 }
 
 export interface StoreProduct {
@@ -322,6 +331,10 @@ export interface CatalogOrder {
   createdAt: string;
   updatedAt?: string;
   convertedOrderId?: string;
+  isPriceTampered?: boolean;
+  officialSubtotal?: number;
+  submittedSubtotal?: number;
+  priceWarning?: string;
 }
 
 // ─── Pricing & Costs (Papelaria Personalizada) ────────────────────────────────
@@ -446,6 +459,8 @@ export const ADMIN_PERMISSIONS: Permission = {
   pricing:   true,
   store:     true,
   storeProducts: { view: true, create: true, edit: true, delete: true },
+  whatsapp:  true,
+  aiCopilot: true,
 };
 
 export const DEFAULT_USER_PERMISSIONS: Permission = {
@@ -463,6 +478,8 @@ export const DEFAULT_USER_PERMISSIONS: Permission = {
   pricing:   true,
   store:     true,
   storeProducts: { view: true, create: true, edit: true, delete: false },
+  whatsapp:  true,
+  aiCopilot: true,
 };
 
 export const EMPLOYEE_PERMISSIONS: Permission = {
@@ -480,6 +497,8 @@ export const EMPLOYEE_PERMISSIONS: Permission = {
   pricing:   false,
   store:     false,
   storeProducts: { view: false, create: false, edit: false, delete: false },
+  whatsapp:  false,
+  aiCopilot: false,
 };
 
 // Tipos para sistema de compartilhamento de dados
@@ -606,3 +625,149 @@ export interface SaleRecord {
 }
 
 export type LedgerPeriod = 'today' | 'yesterday' | 'week' | 'month' | 'quarter' | 'year' | 'all' | 'custom';
+
+// Tipos para o Copiloto de IA Interno
+export interface AiOrderDraft {
+  customerName: string;
+  customerPhone?: string;
+  productName: string;
+  quantity?: number;
+  unitPrice?: number;
+  totalPrice?: number;
+  deliveryDate?: string;
+  notes?: string;
+  paymentMethod?: PaymentMethod;
+}
+
+export interface AiWhatsAppDraft {
+  recipientPhone?: string;
+  recipientName?: string;
+  messageText: string;
+  type: 'cobranca' | 'status_producao' | 'pronto_retirada' | 'orcamento' | 'confirmacao_pedido' | 'geral';
+}
+
+export interface AiPricingEstimate {
+  productName: string;
+  quantity: number;
+  unitCost: number;
+  suggestedUnitPrice: number;
+  suggestedTotalPrice: number;
+  profitMarginPercent?: number;
+  breakdown?: {
+    materials?: number;
+    customization?: number;
+    labor?: number;
+  };
+}
+
+export interface AiChatMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  text: string;
+  timestamp: string;
+  imageUrl?: string;
+  orderDraft?: AiOrderDraft | null;
+  whatsappDraft?: AiWhatsAppDraft | null;
+  pricingEstimate?: AiPricingEstimate | null;
+  galleryItems?: Array<{
+    id: string;
+    title: string;
+    description?: string;
+    imageUrl: string;
+    productType?: string;
+    customerName?: string;
+    orderNumber?: string;
+    tags?: string[];
+    aiTags?: string[];
+  }> | null;
+}
+
+export interface AiModelQuotaItem {
+  id: string;
+  name: string;
+  description: string;
+  category: string;
+  isDefault?: boolean;
+  isActive: boolean;
+  daily: {
+    used: number;
+    limit: number;
+    percentage: number;
+  };
+  rpm: {
+    used: number;
+    limit: number;
+  };
+  monthly: {
+    used: number;
+  };
+  tpmLimit?: number;
+}
+
+export interface AiUsageData {
+  success: boolean;
+  activeModel: string;
+  provider: string;
+  resetsAt: string;
+  totalDaily: {
+    used: number;
+    limit: number;
+    percentage: number;
+  };
+  totalMonthly: {
+    used: number;
+    limit: number;
+    percentage: number;
+  };
+  models: AiModelQuotaItem[];
+  daily?: {
+    used: number;
+    limit: number;
+    percentage: number;
+    resetsAt: string;
+  };
+  rpm?: {
+    used: number;
+    limit: number;
+    percentage: number;
+  };
+  monthly?: {
+    used: number;
+    limit: number;
+    percentage: number;
+    resetsAt: string;
+  };
+}
+
+// ─── Central de Atendimento WhatsApp ──────────────────────────────────────────
+export interface WhatsAppMessage {
+  id: string;
+  chatId: string; // Número normalizado (ex: 5511999999999)
+  phone: string;
+  customerName?: string;
+  customerId?: string;
+  sender: 'me' | 'customer';
+  text: string;
+  status: 'pending' | 'sent' | 'delivered' | 'read' | 'failed' | 'received';
+  timestamp: string;
+  evolutionMessageId?: string;
+  mediaUrl?: string;
+  mediaType?: 'image' | 'video' | 'document' | 'audio';
+  sentByUid?: string;
+  createdAt?: any;
+}
+
+export interface WhatsAppConversation {
+  id: string; // phone normalizado
+  phone: string;
+  customerName: string;
+  customerId?: string | null;
+  photoUrl?: string | null;
+  lastMessageText: string;
+  lastMessageTimestamp: string;
+  lastMessageSender: 'me' | 'customer';
+  unreadCount: number;
+  orderCount?: number;
+  lastOrderSummary?: string;
+  updatedAt?: any;
+}

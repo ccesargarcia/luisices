@@ -11,6 +11,37 @@ on:
         options:
           - dev
           - prod
+      functions_target:
+        description: 'Selecione o grupo ou função para deploy'
+        required: true
+        default: 'all'
+        type: choice
+        options:
+          - 'all'
+          - 'aiAgentChat,enrichGalleryItemWithAi,getAiUsage,sendWhatsAppDirectMessage,deleteWhatsAppMessage,syncWhatsAppChatMessages,getWhatsAppInstanceStatus,evolutionWhatsAppWebhook,syncOrderToAiView,syncAllOrdersToAiView'
+          - 'aiAgentChat,enrichGalleryItemWithAi,getAiUsage'
+          - 'aiAgentChat,enrichGalleryItemWithAi'
+          - 'enrichGalleryItemWithAi'
+          - 'aiAgentChat'
+          - 'getAiUsage'
+          - 'sendWhatsAppDirectMessage,deleteWhatsAppMessage,syncWhatsAppChatMessages,getWhatsAppInstanceStatus,evolutionWhatsAppWebhook'
+          - 'aiAgentChat,sendWhatsAppDirectMessage'
+          - 'sendWhatsAppDirectMessage'
+          - 'deleteWhatsAppMessage'
+          - 'syncWhatsAppChatMessages'
+          - 'getWhatsAppInstanceStatus'
+          - 'evolutionWhatsAppWebhook'
+          - 'syncOrderToAiView'
+          - 'syncAllOrdersToAiView'
+          - 'sendAdminPasswordReset,sendPasswordResetEmail'
+          - 'createUserInvitation,validateUserInvitation,completeUserInvitation'
+          - 'createUser,deleteUser'
+          - 'sendCustomEmail,getEmailUsage,resendReceivingWebhook'
+      deploy_rules_and_indexes:
+        description: 'Publicar Firestore Rules e Indexes?'
+        required: false
+        default: true
+        type: boolean
 
 permissions:
   contents: read
@@ -56,16 +87,47 @@ jobs:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_DEV }}
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
           EVOLUTION_API_KEY: ${{ secrets.EVOLUTION_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
           echo "$FIREBASE_SERVICE_ACCOUNT" > "$HOME/firebase-service-account.json"
           export GOOGLE_APPLICATION_CREDENTIALS="$HOME/firebase-service-account.json"
           echo "$RESEND_API_KEY" > "$HOME/resend_api_key.txt"
           echo "$EVOLUTION_API_KEY" > "$HOME/evolution_api_key.txt"
+          echo "$GEMINI_API_KEY" > "$HOME/gemini_api_key.txt"
           firebase use luisices-dev --project luisices-dev
           firebase functions:secrets:set RESEND_API_KEY --project luisices-dev --data-file "$HOME/resend_api_key.txt" || true
           firebase functions:secrets:set EVOLUTION_API_KEY --project luisices-dev --data-file "$HOME/evolution_api_key.txt" || true
-          firebase deploy --only firestore:rules,firestore:indexes --project luisices-dev
-          firebase deploy --only functions --project luisices-dev --force --debug
+          if [ -n "$GEMINI_API_KEY" ]; then
+            firebase functions:secrets:set GEMINI_API_KEY --project luisices-dev --data-file "$HOME/gemini_api_key.txt" || true
+          fi
+
+          # Determina se deve publicar regras e índices
+          if [ "${{ inputs.deploy_rules_and_indexes }}" != "false" ]; then
+            echo "📄 Publicando regras e índices do Firestore..."
+            firebase deploy --only firestore:rules,firestore:indexes --project luisices-dev
+          fi
+
+          # Determina quais funções publicar via seleção
+          INPUT_FN="${{ inputs.functions_target }}"
+          if [ -z "$INPUT_FN" ] || [ "$INPUT_FN" = "all" ]; then
+            DEPLOY_TARGET="functions"
+          else
+            TARGETS=$(echo "$INPUT_FN" | tr ',' ' ' | tr -s ' ')
+            DEPLOY_TARGET=""
+            for fn in $TARGETS; do
+              fn_clean=$(echo "$fn" | sed 's/^functions://')
+              if [ -n "$fn_clean" ]; then
+                if [ -z "$DEPLOY_TARGET" ]; then
+                  DEPLOY_TARGET="functions:$fn_clean"
+                else
+                  DEPLOY_TARGET="$DEPLOY_TARGET,functions:$fn_clean"
+                fi
+              fi
+            done
+          fi
+
+          echo "🚀 Realizando deploy de: $DEPLOY_TARGET"
+          firebase deploy --only "$DEPLOY_TARGET" --project luisices-dev --force
 
       - name: Deploy Firebase Functions & Rules (Production)
         if: steps.env.outputs.target == 'prod'
@@ -73,6 +135,7 @@ jobs:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_PROD || secrets.FIREBASE_SERVICE_ACCOUNT }}
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
           EVOLUTION_API_KEY: ${{ secrets.EVOLUTION_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
           if [ -z "$FIREBASE_SERVICE_ACCOUNT" ]; then
             echo "❌ ERRO: Secret FIREBASE_SERVICE_ACCOUNT_PROD não encontrado no GitHub."
@@ -82,8 +145,38 @@ jobs:
           export GOOGLE_APPLICATION_CREDENTIALS="$HOME/firebase-service-account.json"
           echo "$RESEND_API_KEY" > "$HOME/resend_api_key.txt"
           echo "$EVOLUTION_API_KEY" > "$HOME/evolution_api_key.txt"
+          echo "$GEMINI_API_KEY" > "$HOME/gemini_api_key.txt"
           firebase use papelaria-dashboard --project papelaria-dashboard
           firebase functions:secrets:set RESEND_API_KEY --project papelaria-dashboard --data-file "$HOME/resend_api_key.txt" || true
           firebase functions:secrets:set EVOLUTION_API_KEY --project papelaria-dashboard --data-file "$HOME/evolution_api_key.txt" || true
-          firebase deploy --only firestore:rules,firestore:indexes,storage --project papelaria-dashboard
-          firebase deploy --only functions --project papelaria-dashboard --force --debug
+          if [ -n "$GEMINI_API_KEY" ]; then
+            firebase functions:secrets:set GEMINI_API_KEY --project papelaria-dashboard --data-file "$HOME/gemini_api_key.txt" || true
+          fi
+
+          # Determina se deve publicar regras e índices
+          if [ "${{ inputs.deploy_rules_and_indexes }}" != "false" ]; then
+            echo "📄 Publicando regras, índices e storage..."
+            firebase deploy --only firestore:rules,firestore:indexes,storage --project papelaria-dashboard
+          fi
+
+          # Determina quais funções publicar via seleção
+          INPUT_FN="${{ inputs.functions_target }}"
+          if [ -z "$INPUT_FN" ] || [ "$INPUT_FN" = "all" ]; then
+            DEPLOY_TARGET="functions"
+          else
+            TARGETS=$(echo "$INPUT_FN" | tr ',' ' ' | tr -s ' ')
+            DEPLOY_TARGET=""
+            for fn in $TARGETS; do
+              fn_clean=$(echo "$fn" | sed 's/^functions://')
+              if [ -n "$fn_clean" ]; then
+                if [ -z "$DEPLOY_TARGET" ]; then
+                  DEPLOY_TARGET="functions:$fn_clean"
+                else
+                  DEPLOY_TARGET="$DEPLOY_TARGET,functions:$fn_clean"
+                fi
+              fi
+            done
+          fi
+
+          echo "🚀 Realizando deploy de: $DEPLOY_TARGET"
+          firebase deploy --only "$DEPLOY_TARGET" --project papelaria-dashboard --force

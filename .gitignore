@@ -69,3 +69,6 @@ playwright/.auth/
 
 # Firebase Admin SDK credentials
 *-firebase-adminsdk*.json
+serviceAccountKey.json
+*serviceAccountKey*.json
+*service-account*.json

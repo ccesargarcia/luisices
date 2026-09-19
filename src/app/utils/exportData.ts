@@ -2,16 +2,18 @@
  * Export Utilities
  *
  * Funções para exportar dados em diferentes formatos (Excel, CSV, JSON)
+ * Otimizado com carregamento dinâmico do SheetJS (xlsx) sob demanda
+ * para não pesar no carregamento inicial do aplicativo.
  */
 
-import * as XLSX from 'xlsx';
 import { Order, Customer, Quote } from '../types';
 import { formatCurrency } from './currency';
 import { formatDate } from './date';
 
-// ========== EXCEL EXPORT ==========
+// ========== EXCEL EXPORT (Dynamic Import) ==========
 
-export function exportOrdersToExcel(orders: Order[], filename = 'pedidos') {
+export async function exportOrdersToExcel(orders: Order[], filename = 'pedidos') {
+  const XLSX = await import('xlsx');
   const data = orders.map(order => ({
     'ID': order.id,
     'Cliente': order.customerName,
@@ -43,7 +45,8 @@ export function exportOrdersToExcel(orders: Order[], filename = 'pedidos') {
   XLSX.writeFile(workbook, `${filename}_${new Date().toISOString().split('T')[0]}.xlsx`);
 }
 
-export function exportCustomersToExcel(customers: Customer[], filename = 'clientes') {
+export async function exportCustomersToExcel(customers: Customer[], filename = 'clientes') {
+  const XLSX = await import('xlsx');
   const data = customers.map(customer => ({
     'ID': customer.id,
     'Nome': customer.name,
@@ -70,7 +73,8 @@ export function exportCustomersToExcel(customers: Customer[], filename = 'client
   XLSX.writeFile(workbook, `${filename}_${new Date().toISOString().split('T')[0]}.xlsx`);
 }
 
-export function exportQuotesToExcel(quotes: Quote[], filename = 'orcamentos') {
+export async function exportQuotesToExcel(quotes: Quote[], filename = 'orcamentos') {
+  const XLSX = await import('xlsx');
   const data = quotes.map(quote => ({
     'ID': quote.id,
     'Cliente': quote.customerName,
@@ -107,15 +111,12 @@ export function exportQuotesToExcel(quotes: Quote[], filename = 'orcamentos') {
 function sanitizeCSVValue(value: unknown): string {
   if (value == null) return '';
   let str = String(value);
-
   if (/^[=+\-@\t\r]/.test(str)) {
     str = `'${str}`;
   }
-
   if (str.includes(',') || str.includes('"') || str.includes('\n') || str.includes('\r')) {
     return `"${str.replace(/"/g, '""')}"`;
   }
-
   return str;
 }
 

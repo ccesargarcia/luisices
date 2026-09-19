@@ -13,6 +13,7 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogBody,
   DialogHeader,
   DialogTitle,
 } from '../components/ui/dialog';
@@ -1140,7 +1141,9 @@ export function Emails() {
         onOpenChange={(open) => !open && setSelectedReceivedEmailId(null)}
       >
         <DialogContent
-          className="max-w-3xl max-h-[85vh] flex flex-col p-0 overflow-hidden"
+          size="3xl"
+          noPadding
+          className="max-h-[85dvh] flex flex-col overflow-hidden"
           aria-describedby={undefined}
         >
           <DialogDescription className="sr-only">
@@ -1149,7 +1152,7 @@ export function Emails() {
           {selectedReceivedEmail && (
             <>
               {/* Modal Header */}
-              <div className="p-6 pb-4 border-b border-border/60 space-y-3">
+              <div className="p-4 sm:p-6 pb-4 border-b border-border/60 space-y-3">
                 <DialogTitle className="text-xl font-bold leading-tight">
                   {selectedReceivedEmail.subject || '(Sem assunto)'}
                 </DialogTitle>
@@ -1214,7 +1217,7 @@ export function Emails() {
               </div>
 
               {/* Modal Body */}
-              <div className="flex-1 overflow-y-auto p-6">
+              <DialogBody className="p-4 sm:p-6">
                 {selectedReceivedEmail.html ? (
                   <div className="w-full bg-white rounded-md border p-2">
                     <iframe
@@ -1262,7 +1265,7 @@ export function Emails() {
                     </div>
                   </div>
                 )}
-              </div>
+              </DialogBody>
             </>
           )}
         </DialogContent>
@@ -1274,7 +1277,9 @@ export function Emails() {
         onOpenChange={(open) => !open && setSelectedSentEmailId(null)}
       >
         <DialogContent
-          className="max-w-2xl max-h-[80vh] flex flex-col p-0 overflow-hidden"
+          size="2xl"
+          noPadding
+          className="max-h-[80dvh] flex flex-col overflow-hidden"
           aria-describedby={undefined}
         >
           <DialogDescription className="sr-only">
@@ -1282,7 +1287,7 @@ export function Emails() {
           </DialogDescription>
           {selectedSentEmail && (
             <>
-              <div className="p-6 pb-4 border-b border-border/60 space-y-3">
+              <div className="p-4 sm:p-6 pb-4 border-b border-border/60 space-y-3">
                 <div className="flex items-start justify-between gap-4">
                   <DialogTitle className="text-lg font-bold">
                     {selectedSentEmail.subject || '(Sem assunto)'}
@@ -1317,7 +1322,7 @@ export function Emails() {
                 </div>
               </div>
 
-              <div className="flex-1 overflow-y-auto p-6">
+              <DialogBody className="p-4 sm:p-6">
                 {selectedSentEmail.html ? (
                   <div className="w-full bg-white rounded-md border p-2">
                     <iframe
@@ -1332,7 +1337,7 @@ export function Emails() {
                     {selectedSentEmail.text}
                   </div>
                 )}
-              </div>
+              </DialogBody>
             </>
           )}
         </DialogContent>
@@ -1345,7 +1350,7 @@ export function Emails() {
           if (!open) setEmailToDelete(null);
         }}
       >
-        <AlertDialogContent className="w-[calc(100%-1rem)] max-w-md">
+        <AlertDialogContent className="sm:max-w-md">
           <AlertDialogHeader>
             <AlertDialogTitle>
               {emailToDelete?.type === 'received' ? 'Excluir e-mail' : 'Remover do histórico'}

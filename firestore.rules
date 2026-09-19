@@ -284,5 +284,29 @@ service cloud.firestore {
             ))
       );
     }
+
+    // Regras para Central de Atendimento WhatsApp (whatsapp_chats e whatsapp_messages)
+    function canAccessWhatsApp() {
+      return request.auth != null
+        && exists(/databases/$(database)/documents/userProfiles/$(request.auth.uid))
+        && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.active == true
+        && (
+          isAdmin()
+          || (get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.role == 'user'
+              && (!('permissions' in get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data)
+                  || !('whatsapp' in get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.permissions)
+                  || get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.permissions.whatsapp != false))
+          || (get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.role == 'funcionario'
+              && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.permissions.whatsapp == true)
+        );
+    }
+
+    match /whatsapp_chats/{chatId} {
+      allow read, write: if canAccessWhatsApp();
+    }
+
+    match /whatsapp_messages/{messageId} {
+      allow read, write: if canAccessWhatsApp();
+    }
   }
 }

@@ -52,6 +52,7 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogBody,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -1106,8 +1107,8 @@ export function Dashboard() {
 
       {/* Diálogo de Atribuição em Lote */}
       <Dialog open={isBulkAssignOpen} onOpenChange={setIsBulkAssignOpen}>
-        <DialogContent className="w-[calc(100%-1.5rem)] sm:max-w-md max-h-[85dvh] overflow-y-auto p-4 sm:p-6">
-          <DialogHeader>
+        <DialogContent size="md" noPadding className="max-h-[85dvh] flex flex-col overflow-hidden">
+          <DialogHeader className="p-4 sm:p-6 pb-3 border-b border-border">
             <DialogTitle className="flex items-center gap-2 text-base sm:text-lg">
               <Users className="size-5 text-primary" />
               Atribuir Pedidos em Lote
@@ -1117,27 +1118,29 @@ export function Dashboard() {
             </DialogDescription>
           </DialogHeader>
 
-          <div className="py-3 space-y-2">
-            <label className="text-xs sm:text-sm font-medium">Membro da equipe responsável</label>
-            <Select
-              value={bulkAssignTargetUid}
-              onValueChange={setBulkAssignTargetUid}
-            >
-              <SelectTrigger className="h-11 sm:h-10 text-base sm:text-sm">
-                <SelectValue placeholder="Selecione um responsável" />
-              </SelectTrigger>
-              <SelectContent className="max-h-56">
-                <SelectItem value="__none__">Sem responsável (Remover atribuição)</SelectItem>
-                {teamMembers.map((member) => (
-                  <SelectItem key={member.uid} value={member.uid}>
-                    {member.displayName} {member.role === 'funcionario' ? '(Equipe)' : member.role === 'admin' ? '(Admin)' : ''}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+          <DialogBody className="p-4 sm:p-6 space-y-3">
+            <div className="space-y-2">
+              <label className="text-xs sm:text-sm font-medium">Membro da equipe responsável</label>
+              <Select
+                value={bulkAssignTargetUid}
+                onValueChange={setBulkAssignTargetUid}
+              >
+                <SelectTrigger className="h-11 sm:h-10 text-base sm:text-sm">
+                  <SelectValue placeholder="Selecione um responsável" />
+                </SelectTrigger>
+                <SelectContent className="max-h-56">
+                  <SelectItem value="__none__">Sem responsável (Remover atribuição)</SelectItem>
+                  {teamMembers.map((member) => (
+                    <SelectItem key={member.uid} value={member.uid}>
+                      {member.displayName} {member.role === 'funcionario' ? '(Equipe)' : member.role === 'admin' ? '(Admin)' : ''}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </DialogBody>
 
-          <DialogFooter className="flex-col-reverse sm:flex-row gap-2 sm:gap-0 pt-2">
+          <DialogFooter className="p-4 sm:p-6 pt-3 border-t border-border flex-col-reverse sm:flex-row gap-2 sm:gap-0">
             <Button
               variant="outline"
               onClick={() => setIsBulkAssignOpen(false)}

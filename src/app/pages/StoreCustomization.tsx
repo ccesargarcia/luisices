@@ -9,7 +9,7 @@ import { Label } from '../components/ui/label';
 import { Textarea } from '../components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '../components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogBody, DialogFooter } from '../components/ui/dialog';
 import {
   Store,
   Globe,
@@ -68,7 +68,7 @@ export const STORE_TEMPLATES = [
       catalogStatusText: 'Atendimento WhatsApp ativo • Encomendas abertas',
       catalogAnnouncement: '✨ Encomendas abertas com envio carinhoso para todo o Brasil!',
       catalogHeroTitle: 'Catálogo & Vitrine Afetiva',
-      businessTagline: 'Papelaria artesanal feita à mão para momentos únicos',
+      catalogStoreTagline: 'Papelaria artesanal feita à mão para momentos únicos',
       catalogHeroDescription: 'Cadernos, planners, mimos e lembrancinhas personalizados com acabamento artesanal de alto padrão. Faça sua encomenda direta pelo WhatsApp!',
       catalogWhatsappGreeting: 'Olá! Gostaria de encomendar pelo catálogo do Ateliê:',
       catalogWhatsappCustomizationLabel: 'Nome para a personalização:',
@@ -90,7 +90,7 @@ export const STORE_TEMPLATES = [
       catalogStatusText: 'Atendimento com carinho para mamães',
       catalogAnnouncement: '🍼 Cadernetas de vacinação e kits de maternidade com acabamento protetor premium.',
       catalogHeroTitle: 'Coleção Maternidade & Primeiros Anos',
-      businessTagline: 'Lembranças e encadernações delicadas para a chegada do seu bebê',
+      catalogStoreTagline: 'Lembranças e encadernações delicadas para a chegada do seu bebê',
       catalogHeroDescription: 'Cadernetas de vacina personalizadas, livros de recordação, caixas cartonadas e lembrancinhas afetivas para momentos inesquecíveis.',
       catalogWhatsappGreeting: 'Olá! Gostaria de encomendar itens de maternidade pelo catálogo:',
       catalogWhatsappCustomizationLabel: 'Nome do bebê e tema escolhido:',
@@ -112,7 +112,7 @@ export const STORE_TEMPLATES = [
       catalogStatusText: 'Ateliê aberto para encomendas',
       catalogAnnouncement: '📓 Planners permanentes e blocos de anotações com capa dura e hot stamping.',
       catalogHeroTitle: 'Planners, Agendas & Papelaria Autoral',
-      businessTagline: 'Organização e encadernação artística em design clean e sofisticado',
+      catalogStoreTagline: 'Organização e encadernação artística em design clean e sofisticado',
       catalogHeroDescription: 'Peças pensadas para quem valoriza estética funcional, papéis nobres de alta gramatura e acabamento artístico refinado.',
       catalogWhatsappGreeting: 'Olá! Gostaria de encomendar pelo catálogo autoral:',
       catalogWhatsappCustomizationLabel: 'Nome ou iniciais na capa:',
@@ -134,7 +134,7 @@ export const STORE_TEMPLATES = [
       catalogStatusText: 'Agenda de festas e comemorações aberta',
       catalogAnnouncement: '🎉 Consulte nossos combos especiais "Pegue e Monte" para comemorações em casa!',
       catalogHeroTitle: 'Kits de Festa & Lembrancinhas Temáticas',
-      businessTagline: 'Papelaria criativa e personalizados que transformam qualquer comemoração',
+      catalogStoreTagline: 'Papelaria criativa e personalizados que transformam qualquer comemoração',
       catalogHeroDescription: 'Caixas milk, pirâmides, topos de bolo, adesivos e lembranças personalizadas para a festa dos sonhos.',
       catalogWhatsappGreeting: 'Olá! Quero solicitar um orçamento de festa pelo catálogo:',
       catalogWhatsappCustomizationLabel: 'Nome do aniversariante, idade e data do evento:',
@@ -172,6 +172,7 @@ export function StoreCustomization() {
     removeCatalogBanner,
     uploadCatalogHeaderBackground,
     removeCatalogHeaderBackground,
+    toggleStorePublished,
   } = useUserSettings();
   const [saving, setSaving] = useState(false);
   const [uploadingLogo, setUploadingLogo] = useState(false);
@@ -187,8 +188,8 @@ export function StoreCustomization() {
 
   // Estado dos campos do formulário
   const [formData, setFormData] = useState({
-    businessName: '',
-    businessTagline: '',
+    catalogStoreName: '',
+    catalogStoreTagline: '',
     catalogWhatsappPhone: '',
     instagramUrl: '',
     instagramColabUrl: '',
@@ -218,7 +219,43 @@ export function StoreCustomization() {
   const [dataLoaded, setDataLoaded] = useState(false);
 
   // Estado de publicação e feature flags
-  const [storePublished, setStorePublished] = useState<boolean>(true);
+  const [storePublished, setStorePublished] = useState<boolean>(() => {
+    try {
+      const cached = localStorage.getItem("luisices_public_store_settings");
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (parsed.storePublished !== undefined) return Boolean(parsed.storePublished);
+      }
+    } catch {}
+    return true;
+  });
+  const [togglingPublished, setTogglingPublished] = useState(false);
+
+  const handleTogglePublished = async (newPublished: boolean) => {
+    setTogglingPublished(true);
+    setStorePublished(newPublished);
+    try {
+      await toggleStorePublished(newPublished, storeUnpublishMessage);
+      try {
+        const cached = localStorage.getItem("luisices_public_store_settings");
+        const parsed = cached ? JSON.parse(cached) : {};
+        parsed.storePublished = newPublished;
+        parsed.storeUnpublishMessage = storeUnpublishMessage;
+        localStorage.setItem("luisices_public_store_settings", JSON.stringify(parsed));
+      } catch {}
+      if (newPublished) {
+        toast.success("🟢 Loja publicada com sucesso! A vitrine está online.");
+      } else {
+        toast.warning("🔴 Loja despublicada! A vitrine está em modo manutenção.");
+      }
+    } catch (err) {
+      console.error("Erro ao alternar publicação da loja:", err);
+      setStorePublished(!newPublished);
+      toast.error("Erro ao atualizar status de publicação da loja.");
+    } finally {
+      setTogglingPublished(false);
+    }
+  };
   const [storeUnpublishMessage, setStoreUnpublishMessage] = useState<string>('');
   const [featureFlags, setFeatureFlags] = useState<Record<string, boolean>>({
     enableOnlineOrders: true,
@@ -235,13 +272,13 @@ export function StoreCustomization() {
       let loadedLogo: string | null = settings?.catalogLogo || null;
       let loadedBanner: string | null = settings?.catalogBanner || null;
       let loadedHeaderBg: string | null = settings?.catalogHeaderBackground || null;
-      // Dados exclusivos da lojinha — sem fallback para o painel de Configurações.
-      // Os valores só vêm de storeSettings/public (gerenciado pela tela Personalizar Lojinha).
+      // Dados exclusivos da lojinha — totalmente desacoplados do painel interno.
       let data = {
-        businessName: '',
-        businessTagline: '',
+        catalogStoreName: settings?.catalogStoreName || '',
+        catalogStoreTagline: settings?.catalogStoreTagline || '',
         catalogWhatsappPhone: formatPhoneForDisplay(settings?.catalogWhatsappPhone || ''),
         instagramUrl: '',
+        instagramColabUrl: '',
         websiteUrl: '',
         catalogBadge: settings?.catalogBadge || '',
         catalogStatusText: settings?.catalogStatusText || '',
@@ -293,11 +330,11 @@ export function StoreCustomization() {
             loadedHeaderBg = null;
           }
 
-          // Merge exclusivo da lojinha — sem fallback para dados do painel de Configurações.
+          // Merge exclusivo da lojinha — totalmente desacoplado do painel interno.
           data = {
-            businessName: pub.businessName || '',
-            businessTagline: pub.businessTagline || '',
-            catalogWhatsappPhone: formatPhoneForDisplay(pub.catalogWhatsappPhone || ''),
+            catalogStoreName: pub.catalogStoreName || pub.name || pub.businessName || settings?.catalogStoreName || '',
+            catalogStoreTagline: pub.catalogStoreTagline !== undefined ? pub.catalogStoreTagline : (pub.tagline || pub.businessTagline || settings?.catalogStoreTagline || ''),
+            catalogWhatsappPhone: formatPhoneForDisplay(pub.catalogWhatsappPhone || pub.whatsappPhone || ''),
             instagramUrl: pub.instagramUrl || '',
             instagramColabUrl: pub.instagramColabUrl || '',
             websiteUrl: pub.websiteUrl || '',
@@ -679,6 +716,8 @@ export function StoreCustomization() {
     try {
       await updateSettings({
         ...formData,
+        catalogStoreName: formData.catalogStoreName,
+        catalogStoreTagline: formData.catalogStoreTagline,
         catalogLogo: currentCatalogLogo || '',
         catalogBanner: catalogBanners[0]?.imageUrl || currentCatalogBanner || '',
         catalogBanners,
@@ -699,8 +738,12 @@ export function StoreCustomization() {
       // Salva no cache do navegador para a lojinha atualizar instantaneamente
       try {
         const publicData = {
-          name: formData.businessName || 'Luisices Papelaria Personalizada',
-          tagline: formData.businessTagline,
+          catalogStoreName: formData.catalogStoreName,
+          name: formData.catalogStoreName || 'Luisices Papelaria Personalizada',
+          businessName: formData.catalogStoreName || 'Luisices Papelaria Personalizada',
+          catalogStoreTagline: formData.catalogStoreTagline,
+          tagline: formData.catalogStoreTagline,
+          businessTagline: formData.catalogStoreTagline,
           whatsapp: formData.catalogWhatsappPhone,
           catalogWhatsappPhone: formData.catalogWhatsappPhone,
           instagram: formData.instagramUrl ? formData.instagramUrl.replace(/^https?:\/\/(www\.)?instagram\.com\//, '').replace(/\/$/, '') : '',
@@ -786,6 +829,25 @@ export function StoreCustomization() {
           <p className="text-sm text-muted-foreground mt-1.5 max-w-2xl">
             Configure todos os textos, mensagens de pedido, faixa de aviso e rodapé da sua vitrine pública online.
           </p>
+          <div className="flex items-center gap-2 mt-2">
+            <button
+              type="button"
+              onClick={() => handleTogglePublished(!storePublished)}
+              disabled={togglingPublished}
+              className={`inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold border transition-all cursor-pointer ${
+                storePublished
+                  ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/20"
+                  : "bg-red-500/10 text-red-700 dark:text-red-400 border-red-500/30 hover:bg-red-500/20"
+              }`}
+              title="Clique para alternar o status da vitrine"
+            >
+              <span className={`size-2 rounded-full ${storePublished ? "bg-emerald-500 animate-pulse" : "bg-red-500"}`} />
+              <span>{storePublished ? "Loja Publicada (Online)" : "Loja Despublicada (Manutenção)"}</span>
+              <span className="text-[10px] opacity-75 underline ml-1">
+                {togglingPublished ? "Salvando..." : storePublished ? "Despublicar Loja" : "Publicar Loja"}
+              </span>
+            </button>
+          </div>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
@@ -882,7 +944,7 @@ export function StoreCustomization() {
                       {tmpl.description}
                     </p>
                     <div className="p-2 rounded-lg bg-muted/50 text-[10px] space-y-0.5 text-muted-foreground font-mono">
-                      <p className="truncate"><span className="font-semibold text-foreground">Slogan:</span> {tmpl.data.businessTagline}</p>
+                      <p className="truncate"><span className="font-semibold text-foreground">Slogan:</span> {tmpl.data.catalogStoreTagline}</p>
                       <p className="truncate"><span className="font-semibold text-foreground">Selo:</span> {tmpl.data.catalogBadge}</p>
                     </div>
                   </div>
@@ -1012,7 +1074,7 @@ export function StoreCustomization() {
                           autoPlay={catalogBannerAutoPlay}
                           aspectRatioClass="aspect-[4/1]"
                           roundedClass="rounded-2xl"
-                          storeName={formData.businessName || 'Ateliê'}
+                          storeName={formData.catalogStoreName || 'Ateliê'}
                         />
                       </div>
                     ) : (
@@ -1315,7 +1377,7 @@ export function StoreCustomization() {
                         </div>
                       ) : (
                         <span className={`text-xs font-bold ${formData.catalogHeaderTextColor === 'light' ? 'text-white' : 'text-stone-700'}`}>
-                          {formData.businessName || 'Luisices Papelaria'}
+                          {formData.catalogStoreName || 'Luisices Papelaria'}
                         </span>
                       )}
                     </div>
@@ -1727,8 +1789,8 @@ export function StoreCustomization() {
                       id="m-hero-tagline"
                       className="bg-background font-medium text-sm"
                       placeholder="Ex: Papelaria artesanal feita à mão para momentos únicos"
-                      value={formData.businessTagline}
-                      onChange={(e) => handleChange('businessTagline', e.target.value)}
+                      value={formData.catalogStoreTagline}
+                      onChange={(e) => handleChange('catalogStoreTagline', e.target.value)}
                     />
                     <p className="text-[11px] text-muted-foreground">
                       Este é o texto principal exibido com destaque central no banner da vitrine da lojinha.
@@ -1951,14 +2013,17 @@ export function StoreCustomization() {
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="space-y-1.5">
                       <Label htmlFor="m-biz-name" className="text-xs font-semibold">
-                        Nome da Loja / Ateliê
+                        Nome da Lojinha Online (Vitrine Pública)
                       </Label>
                       <Input
                         id="m-biz-name"
-                        placeholder="Ex: Luisices"
-                        value={formData.businessName}
-                        onChange={(e) => handleChange('businessName', e.target.value)}
+                        placeholder="Ex: Luisices Papelaria"
+                        value={formData.catalogStoreName}
+                        onChange={(e) => handleChange('catalogStoreName', e.target.value)}
                       />
+                      <p className="text-[11px] text-muted-foreground">
+                        Nome exibido exclusivamente na vitrine e catálogo público. Não altera o nome interno do ateliê/sistema.
+                      </p>
                     </div>
 
                     <div className="space-y-1.5">
@@ -1980,13 +2045,13 @@ export function StoreCustomization() {
 
                   <div className="space-y-1.5">
                     <Label htmlFor="m-biz-tag" className="text-xs font-semibold">
-                      Slogan da Loja
+                      Slogan da Lojinha Online
                     </Label>
                     <Input
                       id="m-biz-tag"
                       placeholder="Ex: Papelaria artesanal feita à mão para momentos únicos"
-                      value={formData.businessTagline}
-                      onChange={(e) => handleChange('businessTagline', e.target.value)}
+                      value={formData.catalogStoreTagline}
+                      onChange={(e) => handleChange('catalogStoreTagline', e.target.value)}
                     />
                   </div>
 
@@ -2063,7 +2128,8 @@ export function StoreCustomization() {
                         <Switch
                           id="store-published-toggle"
                           checked={storePublished}
-                          onCheckedChange={(checked) => setStorePublished(checked)}
+                          disabled={togglingPublished}
+                          onCheckedChange={(checked) => handleTogglePublished(checked)}
                         />
                         <div>
                           <Label htmlFor="store-published-toggle" className="text-sm font-bold cursor-pointer">
@@ -2239,7 +2305,7 @@ export function StoreCustomization() {
                   </div>
                 ) : (
                   <span className={`text-[11px] font-bold ${formData.catalogHeaderTextColor === 'light' ? 'text-white' : 'text-[#613d3e]'}`}>
-                    {formData.businessName || 'Luisices'}
+                    {formData.catalogStoreName || 'Luisices'}
                   </span>
                 )}
               </div>
@@ -2265,7 +2331,7 @@ export function StoreCustomization() {
                     autoPlay={catalogBannerAutoPlay}
                     aspectRatioClass="aspect-[3.5/1]"
                     roundedClass="rounded-xl"
-                    storeName={formData.businessName || 'Ateliê'}
+                    storeName={formData.catalogStoreName || 'Ateliê'}
                   />
                 </div>
               ) : currentCatalogBanner ? (
@@ -2292,10 +2358,10 @@ export function StoreCustomization() {
                     ) : null}
                     <div className="min-w-0 flex-1">
                       <p className="font-bold text-xs leading-tight text-[#221a1a] truncate">
-                        {formData.businessName || 'Luisices'}
+                        {formData.catalogStoreName || 'Luisices'}
                       </p>
                       <p className="font-semibold text-[10px] text-[#613d3e] leading-snug truncate">
-                        {formData.businessTagline || 'Papelaria artesanal feita à mão'}
+                        {formData.catalogStoreTagline || 'Papelaria artesanal feita à mão'}
                       </p>
                     </div>
                     <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-[#613d3e]/10 text-[#613d3e] font-semibold shrink-0">
@@ -2331,7 +2397,7 @@ export function StoreCustomization() {
                   />
                 ) : null}
                 <p className="font-bold text-[#613d3e] text-[11px]">
-                  {formData.businessName || 'Luisices'}
+                  {formData.catalogStoreName || 'Luisices'}
                 </p>
                 {formData.catalogFooterText && (
                   <p className="text-[9px] line-clamp-2 italic px-1">
@@ -2355,7 +2421,7 @@ export function StoreCustomization() {
                   </p>
                 )}
                 <p className="text-[8px] text-stone-400 pt-1">
-                  {formData.catalogFooterCopyright || `© ${new Date().getFullYear()} ${formData.businessName || 'Luisices'}`}
+                  {formData.catalogFooterCopyright || `© ${new Date().getFullYear()} ${formData.catalogStoreName || 'Luisices'}`}
                 </p>
               </div>
             </CardContent>
@@ -2365,7 +2431,7 @@ export function StoreCustomization() {
 
       {/* Modal de Ajuda & Guia Completo da Lojinha */}
       <Dialog open={showHelpModal} onOpenChange={setShowHelpModal}>
-        <DialogContent className="max-w-3xl max-h-[88vh] flex flex-col p-0 overflow-hidden">
+        <DialogContent size="3xl" noPadding className="max-h-[88dvh] flex flex-col overflow-hidden">
           <DialogHeader className="p-6 pb-4 border-b border-border/60 bg-muted/20">
             <div className="flex items-center gap-2.5">
               <div className="p-2 rounded-xl bg-primary/10 text-primary">
@@ -2382,7 +2448,7 @@ export function StoreCustomization() {
             </div>
           </DialogHeader>
 
-          <div className="flex-1 overflow-y-auto p-6 space-y-5 text-sm">
+          <DialogBody className="p-6 space-y-5 text-sm">
             {/* Seção 1: Publicação & Manutenção */}
             <div className="p-4 rounded-xl border border-border/70 bg-card space-y-2">
               <div className="flex items-center gap-2">
@@ -2496,13 +2562,13 @@ export function StoreCustomization() {
                 <li>Todas as rotas abrem a vitrine completa de forma responsiva no celular ou computador.</li>
               </ul>
             </div>
-          </div>
+          </DialogBody>
 
-          <div className="p-4 border-t border-border/60 bg-muted/20 flex justify-end">
+          <DialogFooter className="p-4 border-t border-border/60 bg-muted/20 flex justify-end">
             <Button type="button" onClick={() => setShowHelpModal(false)} className="px-6">
               Fechar Guia
             </Button>
-          </div>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

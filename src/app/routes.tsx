@@ -11,49 +11,123 @@ import { ResetPassword } from './pages/ResetPassword';
 import { AuthAction } from './pages/AuthAction';
 
 /**
- * Carregador lazy resiliente a falhas temporárias de rede.
- * Tenta novamente em memória se o primeiro import falhar (sem recarregar a janela).
- * Se persistir, repassa o erro para o ErrorBoundary exibir a mensagem amigável com botão de atualização.
+ * Carregador lazy resiliente a falhas de rede e descompasso de chunks pós-deploy.
+ *
+ * Mecanismo de Garantia Quádrupla:
+ * 1. Resolução segura de componente: suporte transparente a named export (`m[name]`) e default export (`m.default`).
+ * 2. Retry em memória (800ms) para oscilações temporárias de conexão.
+ * 3. Auto-recuperação (Auto-Reload Inteligente): caso o chunk tenha sido removido do servidor
+ *    por um deploy recente ou o script retorne inválido/indefinido, limpa cache/storage e recarrega
+ *    a página suavemente (com flag em sessionStorage para prevenção estrita de loops).
+ * 4. Fallback final amigável com ErrorBoundary para o usuário se o reload não resolver.
  */
+const CHUNK_RELOAD_KEY = 'luisices_chunk_auto_reload_attempted';
+
+function isChunkOrStaleDeployError(err: unknown): boolean {
+  if (!err) return false;
+  const msg = (err instanceof Error ? err.message : String(err)).toLowerCase();
+  return (
+    msg.includes('dynamically imported module') ||
+    msg.includes('failed to fetch') ||
+    msg.includes('loading chunk') ||
+    msg.includes('importing a module script failed') ||
+    msg.includes('error loading dynamically imported module') ||
+    msg.includes('cannot read properties of undefined') ||
+    msg.includes('unexpected token') ||
+    msg.includes('is not a valid javascript mime type')
+  );
+}
+
 function lazyWithRetry<T extends React.ComponentType<any>>(
-  factory: () => Promise<{ default: T }>
+  importer: () => Promise<any>,
+  componentName?: string
 ) {
   return lazy(async () => {
+    const resolveComponent = (m: any): { default: T } => {
+      if (!m) {
+        throw new Error(
+          `Falha de carregamento: módulo '${componentName || 'componente'}' é nulo ou indefinido`
+        );
+      }
+      const resolved = (componentName && m[componentName]) || m.default || m;
+      if (!resolved || (typeof resolved !== 'function' && typeof resolved !== 'object')) {
+        throw new Error(
+          `Componente '${componentName || 'default'}' não encontrado no módulo carregado`
+        );
+      }
+      return { default: resolved as T };
+    };
+
     try {
-      return await factory();
+      const module = await importer();
+      // Resetar flag de reload ao carregar com sucesso
+      if (typeof window !== 'undefined') {
+        sessionStorage.removeItem(CHUNK_RELOAD_KEY);
+      }
+      return resolveComponent(module);
     } catch (firstError) {
-      console.warn('[lazyWithRetry] Falha no primeiro carregamento do chunk, tentando novamente...', firstError);
+      console.warn('[lazyWithRetry] Falha na 1ª tentativa do chunk, retentando...', firstError);
       await new Promise((resolve) => setTimeout(resolve, 800));
+
       try {
-        return await factory();
+        const module = await importer();
+        if (typeof window !== 'undefined') {
+          sessionStorage.removeItem(CHUNK_RELOAD_KEY);
+        }
+        return resolveComponent(module);
       } catch (secondError) {
-        console.error('[lazyWithRetry] Falha persistente ao carregar componente:', secondError);
+        console.error('[lazyWithRetry] Falha na 2ª tentativa do chunk:', secondError);
+
+        // Se estiver no navegador e o erro for de descompasso de chunk/deploy, executa auto-recuperação
+        if (typeof window !== 'undefined' && isChunkOrStaleDeployError(secondError)) {
+          const hasReloaded = sessionStorage.getItem(CHUNK_RELOAD_KEY);
+          if (!hasReloaded) {
+            sessionStorage.setItem(CHUNK_RELOAD_KEY, 'true');
+            console.info('[lazyWithRetry] Detectada nova versão do sistema. Atualizando automaticamente...');
+
+            // Limpa Service Worker e Caches antes do reload para garantir versão fresca
+            try {
+              if ('caches' in window) {
+                const keys = await caches.keys();
+                await Promise.all(keys.map((k) => caches.delete(k)));
+              }
+            } catch {
+              // Ignore cache cleanup errors on reload
+            }
+
+            window.location.reload();
+            // Retorna promessa que não resolve enquanto a página descarrega
+            return new Promise<{ default: T }>(() => {});
+          }
+        }
+
+        // Se já houve auto-reload e mesmo assim falhou, repassa para o ErrorBoundary
         throw secondError;
       }
     }
   });
 }
 
-// Páginas carregadas sob demanda com retry automático
-const Dashboard      = lazyWithRetry(() => import('./pages/Dashboard').then(m => ({ default: m.Dashboard })));
-const WeeklyCalendar = lazyWithRetry(() => import('./pages/WeeklyCalendar').then(m => ({ default: m.WeeklyCalendar })));
-const Customers      = lazyWithRetry(() => import('./pages/Customers').then(m => ({ default: m.Customers })));
-const Reports        = lazyWithRetry(() => import('./pages/Reports').then(m => ({ default: m.Reports })));
-const Settings       = lazyWithRetry(() => import('./pages/Settings').then(m => ({ default: m.Settings })));
-const Quotes         = lazyWithRetry(() => import('./pages/Quotes').then(m => ({ default: m.Quotes })));
-const Products       = lazyWithRetry(() => import('./pages/Products').then(m => ({ default: m.Products })));
-const Gallery        = lazyWithRetry(() => import('./pages/Gallery').then(m => ({ default: m.Gallery })));
-const Exchanges      = lazyWithRetry(() => import('./pages/Exchanges').then(m => ({ default: m.Exchanges })));
-const Users          = lazyWithRetry(() => import('./pages/Users').then(m => ({ default: m.Users })));
-const HelpCenter     = lazyWithRetry(() => import('./pages/HelpCenter').then(m => ({ default: m.HelpCenter })));
-const Emails         = lazyWithRetry(() => import('./pages/Emails').then(m => ({ default: m.Emails })));
-const Pricing        = lazyWithRetry(() => import('./pages/Pricing').then(m => ({ default: m.Pricing })));
-const FixNegativeValues = lazyWithRetry(() => import('./pages/FixNegativeValues').then(m => ({ default: m.default })));
-const PublicCatalog  = lazyWithRetry(() => import('./pages/PublicCatalog').then(m => ({ default: m.PublicCatalog })));
-const StoreCustomization = lazyWithRetry(() => import('./pages/StoreCustomization').then(m => ({ default: m.StoreCustomization })));
-const StoreProducts = lazyWithRetry(() => import('./pages/StoreProducts').then(m => ({ default: m.StoreProducts })));
-const StoreOrders = lazyWithRetry(() => import('./pages/StoreOrders').then(m => ({ default: m.StoreOrders })));
-const AiProductGenerator = lazyWithRetry(() => import('./pages/AiProductGenerator').then(m => ({ default: m.AiProductGenerator })));
+// Páginas carregadas sob demanda com proteção e resolução segura (named ou default export)
+const Dashboard          = lazyWithRetry(() => import('./pages/Dashboard'), 'Dashboard');
+const WeeklyCalendar     = lazyWithRetry(() => import('./pages/WeeklyCalendar'), 'WeeklyCalendar');
+const Customers          = lazyWithRetry(() => import('./pages/Customers'), 'Customers');
+const Reports            = lazyWithRetry(() => import('./pages/Reports'), 'Reports');
+const Settings           = lazyWithRetry(() => import('./pages/Settings'), 'Settings');
+const Quotes             = lazyWithRetry(() => import('./pages/Quotes'), 'Quotes');
+const Products           = lazyWithRetry(() => import('./pages/Products'), 'Products');
+const Gallery            = lazyWithRetry(() => import('./pages/Gallery'), 'Gallery');
+const Exchanges          = lazyWithRetry(() => import('./pages/Exchanges'), 'Exchanges');
+const Users              = lazyWithRetry(() => import('./pages/Users'), 'Users');
+const HelpCenter         = lazyWithRetry(() => import('./pages/HelpCenter'), 'HelpCenter');
+const Emails             = lazyWithRetry(() => import('./pages/Emails'), 'Emails');
+const Pricing            = lazyWithRetry(() => import('./pages/Pricing'), 'Pricing');
+const FixNegativeValues  = lazyWithRetry(() => import('./pages/FixNegativeValues'));
+const PublicCatalog      = lazyWithRetry(() => import('./pages/PublicCatalog'), 'PublicCatalog');
+const StoreCustomization = lazyWithRetry(() => import('./pages/StoreCustomization'), 'StoreCustomization');
+const StoreProducts      = lazyWithRetry(() => import('./pages/StoreProducts'), 'StoreProducts');
+const StoreOrders        = lazyWithRetry(() => import('./pages/StoreOrders'), 'StoreOrders');
+const WhatsAppChat       = lazyWithRetry(() => import('./pages/WhatsAppChat'), 'WhatsAppChat');
 
 function PageLoader() {
   return (
@@ -168,8 +242,16 @@ export const router = isCatalogSubdomain
         element: <Lazy><PermissionRoute check={p => p.customers?.view ?? false}><Customers /></PermissionRoute></Lazy>,
       },
       {
+        path: 'whatsapp',
+        element: <Lazy><PermissionRoute check={p => p.whatsapp ?? false}><WhatsAppChat /></PermissionRoute></Lazy>,
+      },
+      {
+        path: 'chat-whatsapp',
+        element: <Navigate to="/whatsapp" replace />,
+      },
+      {
         path: 'relatorios',
-        element: <Lazy><PermissionRoute check={p => p.reports} allowUserRole><Reports /></PermissionRoute></Lazy>,
+        element: <Lazy><PermissionRoute check={p => Boolean(p?.reports)}><Reports /></PermissionRoute></Lazy>,
       },
       {
         path: 'orcamentos',
@@ -180,16 +262,8 @@ export const router = isCatalogSubdomain
         element: <Lazy><PermissionRoute check={p => p.products?.view ?? false}><Products /></PermissionRoute></Lazy>,
       },
       {
-        path: 'estudio-ia',
-        element: <Lazy><ProtectedRoute adminOnly><AiProductGenerator /></ProtectedRoute></Lazy>,
-      },
-      {
-        path: 'criador-ia',
-        element: <Navigate to="/estudio-ia" replace />,
-      },
-      {
         path: 'precificacao',
-        element: <Lazy><PermissionRoute check={p => p.pricing ?? false} allowUserRole><Pricing /></PermissionRoute></Lazy>,
+        element: <Lazy><PermissionRoute check={p => p.pricing ?? false}><Pricing /></PermissionRoute></Lazy>,
       },
       {
         path: 'galeria',
@@ -197,23 +271,23 @@ export const router = isCatalogSubdomain
       },
       {
         path: 'permutas',
-        element: <Lazy><PermissionRoute check={p => p.exchanges} allowUserRole><Exchanges /></PermissionRoute></Lazy>,
+        element: <Lazy><PermissionRoute check={p => Boolean(p?.exchanges)}><Exchanges /></PermissionRoute></Lazy>,
       },
       {
         path: 'configuracoes',
-        element: <Lazy><PermissionRoute check={p => p.settings} allowUserRole><Settings /></PermissionRoute></Lazy>,
+        element: <Lazy><PermissionRoute check={p => Boolean(p?.settings)}><Settings /></PermissionRoute></Lazy>,
       },
       {
         path: 'personalizar-lojinha',
-        element: <Lazy><PermissionRoute check={p => p.store ?? false} allowUserRole><StoreCustomization /></PermissionRoute></Lazy>,
+        element: <Lazy><PermissionRoute check={p => p.store ?? false}><StoreCustomization /></PermissionRoute></Lazy>,
       },
       {
         path: 'produtos-lojinha',
-        element: <Lazy><PermissionRoute check={p => p.storeProducts?.view ?? p.store ?? false} allowUserRole><StoreProducts /></PermissionRoute></Lazy>,
+        element: <Lazy><PermissionRoute check={p => p.storeProducts?.view ?? p.store ?? false}><StoreProducts /></PermissionRoute></Lazy>,
       },
       {
         path: 'pedidos-lojinha',
-        element: <Lazy><PermissionRoute check={p => Boolean(p.store || p.storeProducts?.view || p.orders?.view)} allowUserRole><StoreOrders /></PermissionRoute></Lazy>,
+        element: <Lazy><PermissionRoute check={p => Boolean(p.store || p.storeProducts?.view || p.orders?.view)}><StoreOrders /></PermissionRoute></Lazy>,
       },
       {
         path: 'lojinha/pedidos',

@@ -380,7 +380,7 @@ export function SuppliesTab({ supplies, loading, onRefresh }: SuppliesTabProps) 
 
       {/* Modal: Adicionar / Editar Insumo */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent size="md" className="max-h-[90dvh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
               {editingSupply ? 'Editar Insumo' : 'Novo Insumo / Matéria-Prima'}

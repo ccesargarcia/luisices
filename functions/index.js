@@ -20,10 +20,23 @@ const customEmailLimiter = new RateLimiterMemory({
   duration: 3600, // 1 hora em segundos
 });
 
-// Configurar Resend API Key usando o novo sistema de params
-// Execute: firebase functions:secrets:set RESEND_API_KEY
+// Rate limiter para o Agente de IA interno: 60 requisições por minuto por usuário
+const aiAgentLimiter = new RateLimiterMemory({
+  points: 60,
+  duration: 60,
+});
+
+// Rate limiter para análise de imagens e visão computacional: 20 requisições por minuto por usuário
+const galleryAiLimiter = new RateLimiterMemory({
+  points: 20,
+  duration: 60,
+});
+
+// Configurar secrets usando o sistema de params
 const RESEND_API_KEY = defineSecret('RESEND_API_KEY');
 const EVOLUTION_API_KEY = defineSecret('EVOLUTION_API_KEY');
+const RESEND_WEBHOOK_SECRET = defineSecret('RESEND_WEBHOOK_SECRET');
+const GEMINI_API_KEY = defineSecret('GEMINI_API_KEY');
 
 const EVOLUTION_API_URL = 'https://wa.luisices.com.br';
 const EVOLUTION_INSTANCE = 'homeassistant';
@@ -753,7 +766,7 @@ exports.getEmailUsage = onCall({ cors: true, secrets: [RESEND_API_KEY] }, async 
  * URL: https://<regiao>-<projeto>.cloudfunctions.net/resendReceivingWebhook
  * Eventos selecionados: email.received
  */
-exports.resendReceivingWebhook = onRequest({ cors: true, secrets: [RESEND_API_KEY] }, async (req, res) => {
+exports.resendReceivingWebhook = onRequest({ cors: true, secrets: [RESEND_API_KEY, RESEND_WEBHOOK_SECRET] }, async (req, res) => {
   if (req.method === 'GET' || req.method === 'OPTIONS') {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'POST, GET, OPTIONS');
@@ -770,9 +783,12 @@ exports.resendReceivingWebhook = onRequest({ cors: true, secrets: [RESEND_API_KE
 
   try {
     // Validação de assinatura Svix
-    const webhookSecret = process.env.RESEND_WEBHOOK_SECRET;
-    if (webhookSecret) {
-      const svixId = req.headers['svix-id'];
+    const webhookSecret = RESEND_WEBHOOK_SECRET.value() || process.env.RESEND_WEBHOOK_SECRET;
+    if (!webhookSecret) {
+      console.error('[resendReceivingWebhook] ERRO: RESEND_WEBHOOK_SECRET não configurado no Cloud Functions Secrets.');
+      return res.status(500).json({ error: 'Configuração de segurança do webhook pendente no servidor' });
+    }
+    const svixId = req.headers['svix-id'];
       const svixTimestamp = req.headers['svix-timestamp'];
       const svixSignature = req.headers['svix-signature'];
 
@@ -820,9 +836,6 @@ exports.resendReceivingWebhook = onRequest({ cors: true, secrets: [RESEND_API_KE
         console.error('[resendReceivingWebhook] Falha na validação criptográfica:', err);
         return res.status(401).json({ error: 'Falha na validação de assinatura' });
       }
-    } else {
-      console.warn('[resendReceivingWebhook] AVISO: RESEND_WEBHOOK_SECRET não configurado. Para habilitar validação estrita de assinaturas Svix, configure o secret no Firebase.');
-    }
 
     const event = req.body;
     console.log('[resendReceivingWebhook] Recebido evento:', event?.type);
@@ -937,5 +950,2572 @@ exports.resendReceivingWebhook = onRequest({ cors: true, secrets: [RESEND_API_KE
     return res.status(500).json({ error: 'Erro interno ao processar webhook de recebimento' });
   }
 });
+
+/**
+ * Helper para validar se o usuário é administrador ou funcionário ativo
+ */
+const isAuthorizedEmployeeOrAdmin = async (request) => {
+  if (!request.auth) return false;
+  const profile = await admin.firestore().doc(`userProfiles/${request.auth.uid}`).get();
+  if (!profile.exists) return true;
+  const data = profile.data();
+  if (data.active === false) return false;
+  return data.role === 'admin' || data.role === 'user' || data.role === 'funcionario';
+};
+
+const isAuthorizedForWhatsApp = async (request) => {
+  if (!request.auth) return false;
+  const profile = await admin.firestore().doc(`userProfiles/${request.auth.uid}`).get();
+  if (!profile.exists) return true;
+  const data = profile.data();
+  if (data.active === false) return false;
+  if (data.role === 'admin') return true;
+  if (data.role === 'user') return data.permissions?.whatsapp !== false;
+  return data.role === 'funcionario' && data.permissions?.whatsapp === true;
+};
+
+const parseFirestoreDate = (val) => {
+  if (!val) return new Date().toISOString();
+  if (typeof val === 'string') return val;
+  if (val && typeof val.toDate === 'function') return val.toDate().toISOString();
+  if (val && val._seconds) return new Date(val._seconds * 1000).toISOString();
+  if (val && val.seconds) return new Date(val.seconds * 1000).toISOString();
+  try {
+    return new Date(val).toISOString();
+  } catch {
+    return new Date().toISOString();
+  }
+};
+
+/**
+ * Converte um documento operacional de 'orders' em formato sanitizado e otimizado para IA
+ */
+const buildAiOrderDoc = (orderId, data = {}) => {
+  const productSummary = data.productName || data.items?.[0]?.name || data.items?.[0]?.productName || 'Não especificado';
+  const quantity = Number(data.quantity) || Number(data.items?.[0]?.quantity) || 1;
+  const totalPrice = Number(data.price) || Number(data.totalPrice) || Number(data.total) || 0;
+  const isDeleted = Boolean(data.isDeleted) || data.status === 'deleted';
+  const status = isDeleted ? 'deleted' : (data.status || 'pending');
+  const paymentStatus = data.payment?.status || data.paymentStatus || 'pending';
+  const paymentMethod = data.payment?.method || data.paymentMethod || null;
+
+  // Cálculo financeiro preciso alinhado com Reports.tsx
+  const paidAmount = data.payment?.paidAmount !== undefined
+    ? Number(data.payment.paidAmount)
+    : (paymentStatus === 'paid' ? totalPrice : 0);
+  const remainingAmount = data.payment?.remainingAmount !== undefined
+    ? Number(data.payment.remainingAmount)
+    : (paymentStatus === 'paid' ? 0 : Math.max(0, totalPrice - paidAmount));
+
+  const deliveryDate = data.deliveryDate || null;
+  const customerName = data.customerName || data.customer?.name || 'Cliente sem nome';
+  const customerPhone = data.customerPhone || data.customer?.phone || '';
+  const customerId = data.customerId || data.customer?.id || null;
+  const notes = data.notes || '';
+  const orderNumber = data.orderNumber || `#${orderId}`;
+  const isExchange = Boolean(data.isExchange);
+  const cancellationReason = data.cancellationReason || data.cancelReason || null;
+  const userId = data.userId || data.createdBy || null;
+  const createdBy = data.createdBy || data.userId || null;
+  const createdByName = data.createdByName || null;
+  const assignedTo = data.assignedTo || null;
+  const assignedToName = data.assignedToName || null;
+
+  return {
+    orderId,
+    userId,
+    createdBy,
+    createdByName,
+    assignedTo,
+    assignedToName,
+    customerId,
+    orderNumber,
+    customerName,
+    customerPhone,
+    productSummary,
+    quantity,
+    totalPrice,
+    paidAmount,
+    remainingAmount,
+    status,
+    paymentStatus,
+    paymentMethod,
+    deliveryDate,
+    notes,
+    isExchange,
+    isDeleted,
+    cancellationReason,
+    createdAt: parseFirestoreDate(data.createdAt),
+    deletedAt: data.deletedAt ? parseFirestoreDate(data.deletedAt) : (isDeleted ? new Date().toISOString() : null),
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  };
+};
+
+/**
+ * Trigger de sincronização para a base somente-leitura da IA (ai_orders_view).
+ * Sempre que um pedido for criado, atualizado ou excluído, projeta uma visão
+ * sanitizada e otimizada para consultas do Agente.
+ * Se o pedido for excluído do painel operacional, a IA preserva o registro
+ * marcado como 'deleted' (Soft Archive) para auditoria e histórico.
+ */
+exports.syncOrderToAiView = functions.firestore
+  .document('orders/{orderId}')
+  .onWrite(async (change, context) => {
+    const orderId = context.params.orderId;
+    const targetRef = admin.firestore().collection('ai_orders_view').doc(orderId);
+
+    // Se o pedido foi excluído da coleção operacional, arquiva na visão da IA
+    if (!change.after || !change.after.exists) {
+      const previousData = change.before ? change.before.data() : {};
+      const archivedDoc = buildAiOrderDoc(orderId, {
+        ...previousData,
+        isDeleted: true,
+        status: 'deleted',
+        deletedAt: new Date().toISOString(),
+      });
+      await targetRef.set(archivedDoc, { merge: true }).catch((err) => {
+        console.warn(`[syncOrderToAiView] Erro ao arquivar pedido excluído ${orderId}:`, err);
+      });
+      console.log(`[syncOrderToAiView] Pedido ${orderId} preservado como excluído na ai_orders_view para auditoria.`);
+      return;
+    }
+
+    const data = change.after.data() || {};
+    const aiDoc = buildAiOrderDoc(orderId, data);
+
+    await targetRef.set(aiDoc, { merge: true });
+    console.log(`[syncOrderToAiView] Pedido ${orderId} sincronizado na ai_orders_view.`);
+  });
+
+/**
+ * Sincroniza em lote todos os pedidos existentes para a base somente-leitura.
+ * Uso restrito a administradores.
+ */
+exports.syncAllOrdersToAiView = onCall(async (request) => {
+  if (!(await isAdminRequest(request))) {
+    throw new functions.https.HttpsError('permission-denied', 'Apenas administradores podem executar a sincronização em lote.');
+  }
+
+  const snapshot = await admin.firestore().collection('orders').get();
+  if (snapshot.empty) {
+    return { success: true, count: 0, message: 'Nenhum pedido para sincronizar.' };
+  }
+
+  const db = admin.firestore();
+  let batch = db.batch();
+  let batchCount = 0;
+  let totalCount = 0;
+
+  for (const doc of snapshot.docs) {
+    const data = doc.data();
+    const aiDoc = buildAiOrderDoc(doc.id, data);
+    const targetRef = db.collection('ai_orders_view').doc(doc.id);
+    batch.set(targetRef, aiDoc, { merge: true });
+    batchCount++;
+    totalCount++;
+
+    if (batchCount >= 450) {
+      await batch.commit();
+      batch = db.batch();
+      batchCount = 0;
+    }
+  }
+
+  if (batchCount > 0) {
+    await batch.commit();
+  }
+
+  return { success: true, count: totalCount, message: `${totalCount} pedidos sincronizados com sucesso na ai_orders_view.` };
+});
+
+// Modelo padrão ultra-rápido memoizado em memória para respostas sub-segundo
+let preferredWorkingModel = 'gemini-2.0-flash';
+let cachedCandidateModels = null;
+let cachedModelsTimestamp = 0;
+
+// Cache global em memória para respostas rápidas (TTL de 3 minutos)
+const aiResponseCache = new Map();
+
+/**
+ * Normaliza strings para comparações insensíveis a maiúsculas e acentos
+ */
+const normalizeString = (str) => {
+  if (!str || typeof str !== 'string') return '';
+  return str
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim();
+};
+
+/**
+ * Sanitiza o texto gerado pela IA para remover pensamentos/raciocínios internos vazados
+ */
+const cleanAiOutput = (text) => {
+  if (!text || typeof text !== 'string') return '';
+  let cleaned = text;
+
+  // Remove blocos de tag <thought>...</thought> ou <reasoning>...</reasoning>
+  cleaned = cleaned.replace(/<(thought|reasoning|think)>[\s\S]*?<\/\1>/gi, '');
+
+  // Remove preâmbulos típicos de auto-raciocínio em inglês gerados por modelos "Thinking"
+  cleaned = cleaned.replace(/^(The user wants to|I need to iterate|Looking at the orders|I have already called|I will present this|Based on the query|Let's check the orders)[\s\S]*?(?=(O pedido|Encontrei|Aqui est|Segue|Não encontrei|\n\n[A-ZÀ-Ú]))/i, '');
+
+  return cleaned.trim();
+};
+
+/**
+ * Endpoint Callable Seguro do Copiloto de IA Interno
+ */
+exports.aiAgentChat = onCall({ secrets: [GEMINI_API_KEY] }, async (request) => {
+  if (!(await isAuthorizedEmployeeOrAdmin(request))) {
+    throw new functions.https.HttpsError('permission-denied', 'Acesso restrito a membros autorizados da equipe.');
+  }
+
+  try {
+    await aiAgentLimiter.consume(request.auth.uid);
+  } catch {
+    throw new functions.https.HttpsError('resource-exhausted', 'Muitas requisições. Aguarde um momento antes de enviar nova mensagem.');
+  }
+
+  const callerUid = request.auth.uid;
+  const callerProfileDoc = await admin.firestore().doc(`userProfiles/${callerUid}`).get();
+  const callerProfile = callerProfileDoc.exists ? callerProfileDoc.data() : { role: 'user', active: true };
+  if (callerProfile.active === false) {
+    throw new functions.https.HttpsError('permission-denied', 'Conta de usuário desativada.');
+  }
+  const isAdmin = callerProfile.role === 'admin';
+
+  // Guardrail de Permissão do Copiloto de IA:
+  if (callerProfile.role === 'funcionario' && callerProfile.permissions?.aiCopilot !== true) {
+    throw new functions.https.HttpsError('permission-denied', 'Seu perfil de funcionário não possui permissão para acessar o Copiloto de IA.');
+  }
+  if (callerProfile.role === 'user' && callerProfile.permissions?.aiCopilot === false) {
+    throw new functions.https.HttpsError('permission-denied', 'Seu perfil de usuário não possui permissão para acessar o Copiloto de IA.');
+  }
+
+  const { message, history = [], image = null } = request.data || {};
+  if (!message || typeof message !== 'string' || !message.trim()) {
+    throw new functions.https.HttpsError('invalid-argument', 'Mensagem é obrigatória.');
+  }
+
+  const cleanMessage = message.trim();
+  const hasImage = Boolean(image && (image.base64 || image.imageUrl));
+  const cacheKey = `${callerUid}_${cleanMessage.toLowerCase()}`;
+
+  // Se for uma pergunta comum sem histórico, sem imagem e estiver no cache recente, responde instantaneamente
+  if ((!history || history.length === 0) && !hasImage && aiResponseCache.has(cacheKey)) {
+    const cached = aiResponseCache.get(cacheKey);
+    if (Date.now() - cached.timestamp < 180000) { // 3 minutos
+      console.log('[aiAgentChat] Resposta retornada via cache em memória (instantânea).');
+      return { success: true, reply: cached.reply, orderDraft: cached.orderDraft };
+    }
+  }
+
+  const rawKey = (typeof GEMINI_API_KEY.value === 'function' ? GEMINI_API_KEY.value() : process.env.GEMINI_API_KEY) || '';
+  const apiKey = String(rawKey).trim();
+  if (!apiKey) {
+    throw new functions.https.HttpsError('failed-precondition', 'Chave GEMINI_API_KEY não configurada no Firebase Secret Manager.');
+  }
+
+  const systemInstruction = `Você é o Copiloto Interno da Luisices (confecção/gráfica especializada em camisetas, brindes e personalizados).
+Seu papel é atuar como o assistente e guia inteligente da equipe administrativa e operacional.
+
+Você possui responsabilidades principais com ferramentas especializadas:
+1. CONSULTA DE DADOS & AUDITORIA ('query_orders_view'): Consultar status de pedidos, prazos de entrega, pedidos em aberto ('open'), pendentes, concluídos, cancelados ou excluídos da base. Administradores podem filtrar por colaborador específico via 'userIdentifier'.
+2. AUDITORIA E MÉTRICAS DE USUÁRIOS/COLABORADORES ('get_user_summary'): Permitido EXCLUSIVAMENTE para administradores. Permite consultar quantos pedidos, quantos clientes cadastrados, faturamento gerado e ticket médio pertencem a um usuário/funcionário específico (ex: "Amanda", "Lucas", etc.). Se um usuário não-admin perguntar sobre outros membros, recuse cordialmente informando que a auditoria de equipe é restrita a administradores.
+3. RESUMO FINANCEIRO & MÉTRICAS ('get_financial_summary'): Consultar faturamento realizado, total efetivamente recebido, valores pendentes a receber, volume total emitido, ticket médio e taxa de conclusão por período ('today', 'week', 'month', 'year', 'all').
+4. BRIEFING OPERACIONAL DIÁRIO ('daily_briefing'): Raio-X diário de produção, pedidos urgentes/atrasados, entregas de hoje e pendências financeiras imediatas.
+5. CONSULTA DE CLIENTES ('query_customers'): Buscar clientes cadastrados por nome, telefone, e-mail ou cidade para histórico e contato. Administradores podem filtrar por colaborador específico via 'userIdentifier'.
+6. GERADOR DE MENSAGENS WHATSAPP ('generate_whatsapp_message'): Gerar rascunhos de mensagens para o WhatsApp do cliente (cobrança amigável de sinal/restante, status de produção, aviso de retirada pronta, confirmação de pedido ou orçamento).
+7. CALCULADORA DE PRECIFICAÇÃO & ORÇAMENTOS ('calculate_pricing_estimate'): Calcular custos aproximados, margem de lucro e preço de venda sugerido para personalizações (camisetas, canecas, ecobags, etc.).
+8. EXTRAÇÃO DE PEDIDOS ('extract_order_draft'): Estruturar pedidos a partir de conversas e mensagens de clientes (WhatsApp/áudio).
+9. CONSULTA AO ACERVO DA GALERIA ('search_gallery_portfolio'): Consultar fotos, artes e produtos já produzidos para dar referências de modelos, técnicas, fotos reais e ideias de pedidos anteriores. Administradores podem auditar todo o acervo ou filtrar por colaborador via 'userIdentifier'. Usuários não-admin enxergam exclusivamente suas próprias artes cadastradas.
+
+---
+🛡️ GUARDRAILS CRÍTICOS DE SEGURANÇA E CONFORMIDADE:
+- GUARDRAIL 1 (LGPD & SIGILO MULTIUSUÁRIO): Dados, pedidos, clientes e artes da galeria de outros colaboradores são SIGILOSOS e só podem ser auditados por Administradores. Usuários comuns e funcionários só enxergam seus próprios dados e criações.
+- GUARDRAIL 2 (HUMAN-IN-THE-LOOP): Você gera rascunhos de mensagens e orçamentos para REVISÃO E APROVAÇÃO HUMANA do operador. Nunca afirme que disparou a mensagem sozinho.
+- GUARDRAIL 3 (PROTEÇÃO DE MARGEM FINANCEIRA): Nunca sugira preços que resultem em margem de lucro negativa ou prejuízo operacional (mantenha margem mínima de 30% a 50%).
+- GUARDRAIL 4 (CORTESIA E CDC NA COBRANÇA): Mensagens de cobrança devem ser 100% amigáveis, empáticas e profissionais, sem ameaças ou termos constrangedores.
+- GUARDRAIL 5 (RESPOSTAS LIMPAS EM PT-BR): NUNCA inclua seu raciocínio interno, scratchpad, notas ou pensamentos em inglês no texto de resposta. Responda DIRETA e EXCLUSIVAMENTE em Português do Brasil (pt-BR).
+- GUARDRAIL 6 (MULTIMODALIDADE & VISÃO COMPUTACIONAL): Quando o usuário enviar uma imagem na conversa, examine detalhadamente os elementos visuais (produto, estampa, cores, técnicas como silk, sublimação, bordado, laser). Você pode pesquisar o acervo com 'search_gallery_portfolio' para encontrar produtos similares que a Luisices já produziu, estimar custos com 'calculate_pricing_estimate' ou extrair um pedido com 'extract_order_draft'.
+
+---
+BASE DE CONHECIMENTO DO SISTEMA LUISICES:
+• LOJINHA ONLINE & CATÁLOGO:
+- Produtos da Lojinha (/produtos-lojinha): Para publicar, acesse o menu Lojinha Online > Produtos da Lojinha, preencha nome, fotos, descrição, variações e valor, e marque como 'Ativo'.
+- Vitrine Pública (/loja ou /catalogo): Link público para os clientes montarem o carrinho e enviarem o pedido para o WhatsApp.
+- Pedidos da Lojinha (/pedidos-lojinha): Pedidos recebidos via vitrine pública, convertíveis em pedidos de produção com 1 clique.
+- Aparência & Vitrine (/personalizar-lojinha): Personaliza banner, cores, logo e contato da vitrine.
+
+• PEDIDOS DO ATELIÊ & WORKFLOW (/):
+- Novo Pedido: Botão 'Novo Pedido' no Dashboard ou via Copiloto IA.
+- Workflow em 7 Etapas: Design → Aprovação do Cliente → Impressão → Corte → Montagem → Controle de Qualidade → Embalagem/Entrega.
+- Histórico & Auditoria: Pedidos cancelados e excluídos ficam preservados na memória do Agente para fins de consulta e métricas.
+
+• PRECIFICAÇÃO INTELIGENTE (/precificacao) & ORÇAMENTOS (/orcamentos):
+- Custos: Matérias-primas, mão de obra, margem de desperdício, taxa de pagamento e margem de lucro.
+- Orçamentos: Propostas comerciais com validade e conversão em pedido com 1 clique.
+
+• CLIENTES (/clientes), GALERIA (/galeria) E PERMUTAS (/permutas):
+- Clientes: Cadastro completo com endereço automático via CEP e histórico.
+- Galeria: Banco de artes e estampas dos clientes para reutilização.
+- Permutas: Controle de parcerias com influenciadores.`;
+
+  const toolsDeclaration = [
+    {
+      function_declarations: [
+        {
+          name: 'get_user_summary',
+          description: 'Consulta o resumo de auditoria e métricas de um usuário/colaborador específico (quantidade de pedidos, clientes cadastrados, faturamento gerado e ticket médio) pelo nome, e-mail ou UID. ATENÇÃO: Esta ferramenta é de uso EXCLUSIVO DO ADMINISTRADOR.',
+          parameters: {
+            type: 'OBJECT',
+            properties: {
+              userIdentifier: {
+                type: 'STRING',
+                description: 'Nome, e-mail ou UID do usuário/funcionário da equipe a consultar (ex: Amanda, Lucas, amanda@email.com)'
+              },
+              period: {
+                type: 'STRING',
+                enum: ['today', 'week', 'month', 'year', 'all'],
+                description: 'Período para análise (padrão: all)'
+              }
+            },
+            required: ['userIdentifier']
+          }
+        },
+        {
+          name: 'query_orders_view',
+          description: 'Consulta a base somente-leitura de pedidos (ai_orders_view) para obter status, prazos, clientes, valores, cancelamentos e exclusões auditadas.',
+          parameters: {
+            type: 'OBJECT',
+            properties: {
+              status: {
+                type: 'STRING',
+                enum: ['open', 'pending', 'in-progress', 'completed', 'cancelled', 'deleted', 'all'],
+                description: 'Filtro por status do pedido: open (em aberto: pendentes e em produção, não concluídos), pending (pendente), in-progress (em produção), completed (concluído), cancelled (cancelado), deleted (excluído/arquivado) ou all (todos)'
+              },
+              paymentStatus: {
+                type: 'STRING',
+                enum: ['pending', 'partial', 'paid', 'all'],
+                description: 'Filtro por status de pagamento'
+              },
+              userIdentifier: {
+                type: 'STRING',
+                description: 'Opcional (Apenas Admin): Nome, e-mail ou UID do colaborador para filtrar apenas os pedidos dele'
+              },
+              searchTerm: {
+                type: 'STRING',
+                description: 'Termo de busca para nome do cliente, produto ou telefone'
+              },
+              limit: {
+                type: 'INTEGER',
+                description: 'Quantidade máxima de registros a retornar (máximo 30)'
+              }
+            }
+          }
+        },
+        {
+          name: 'get_financial_summary',
+          description: 'Consulta o resumo financeiro exato (faturamento realizado de concluídos, total a receber/pendente, volume total emitido, ticket médio e contagem de pedidos) para um período específico (today, week, month, year, all). Os cálculos seguem estritamente as regras oficiais dos Relatórios.',
+          parameters: {
+            type: 'OBJECT',
+            properties: {
+              period: {
+                type: 'STRING',
+                enum: ['today', 'week', 'month', 'year', 'all'],
+                description: 'Período para análise financeira: today (hoje), week (últimos 7 dias), month (mês atual/30 dias), year (ano atual), all (todo o histórico)'
+              },
+              userIdentifier: {
+                type: 'STRING',
+                description: 'Opcional (Apenas Admin): Filtrar métricas financeiras de um colaborador específico por nome, e-mail ou UID'
+              }
+            }
+          }
+        },
+        {
+          name: 'daily_briefing',
+          description: 'Gera um briefing operacional completo do dia: pedidos atrasados ou com risco de atraso, entregas de hoje, pedidos em produção e valores pendentes a receber.',
+          parameters: {
+            type: 'OBJECT',
+            properties: {}
+          }
+        },
+        {
+          name: 'generate_whatsapp_message',
+          description: 'Gera um rascunho de mensagem formatada, amigável e profissional para envio pelo WhatsApp ao cliente (cobrança cordial, status de produção, aviso de retirada pronta, confirmação de pedido ou orçamento).',
+          parameters: {
+            type: 'OBJECT',
+            properties: {
+              type: {
+                type: 'STRING',
+                enum: ['cobranca', 'status_producao', 'pronto_retirada', 'confirmacao_pedido', 'orcamento', 'geral'],
+                description: 'Tipo de mensagem a ser enviada'
+              },
+              recipientName: { type: 'STRING', description: 'Nome do cliente destinatário' },
+              recipientPhone: { type: 'STRING', description: 'Telefone de contato do cliente (WhatsApp)' },
+              orderNumber: { type: 'STRING', description: 'Número de referência do pedido (ex: #2026-0109)' },
+              productName: { type: 'STRING', description: 'Produto ou serviço do pedido' },
+              amount: { type: 'NUMBER', description: 'Valor financeiro pendente ou total em reais' },
+              messageText: { type: 'STRING', description: 'O texto completo da mensagem formatada com quebras de linha e emojis adequados para o cliente' }
+            },
+            required: ['type', 'messageText']
+          }
+        },
+        {
+          name: 'calculate_pricing_estimate',
+          description: 'Calcula estimativa rápida de custos e preço de venda sugerido com proteção de margem de lucro mínima para produtos personalizados (camisetas, canecas, ecobags, brindes).',
+          parameters: {
+            type: 'OBJECT',
+            properties: {
+              productName: { type: 'STRING', description: 'Nome do produto personalizado (ex: Camiseta Algodão Silk 1 cor, Caneca Cerâmica Sublimada)' },
+              quantity: { type: 'INTEGER', description: 'Quantidade total de peças' },
+              unitCostRaw: { type: 'NUMBER', description: 'Custo estimado da matéria-prima base por unidade em reais' },
+              customizationCost: { type: 'NUMBER', description: 'Custo estimado de tinta, filme ou insumos de estamparia por peça em reais' },
+              laborTimeMinutes: { type: 'NUMBER', description: 'Tempo estimado de trabalho por peça em minutos' },
+              profitMarginPercent: { type: 'NUMBER', description: 'Margem de lucro desejada em % (mínimo 30%, padrão 45%)' }
+            },
+            required: ['productName', 'quantity']
+          }
+        },
+        {
+          name: 'query_customers',
+          description: 'Consulta a base de clientes cadastrados no sistema Luisices (por nome, telefone, e-mail ou cidade) para obter número de WhatsApp, histórico de compras e dados cadastrais.',
+          parameters: {
+            type: 'OBJECT',
+            properties: {
+              searchTerm: {
+                type: 'STRING',
+                description: 'Nome, telefone, e-mail ou cidade do cliente para busca'
+              },
+              userIdentifier: {
+                type: 'STRING',
+                description: 'Opcional (Apenas Admin): Nome, e-mail ou UID do colaborador para filtrar apenas os clientes cadastrados por ele'
+              },
+              limit: {
+                type: 'INTEGER',
+                description: 'Quantidade máxima de clientes a retornar (máximo 20)'
+              }
+            }
+          }
+        },
+        {
+          name: 'extract_order_draft',
+          description: 'Extrai dados estruturados de um novo pedido a partir de uma mensagem ou conversa para pré-preenchimento.',
+          parameters: {
+            type: 'OBJECT',
+            properties: {
+              customerName: { type: 'STRING', description: 'Nome do cliente' },
+              customerPhone: { type: 'STRING', description: 'Telefone de contato' },
+              productName: { type: 'STRING', description: 'Nome e especificações do produto' },
+              quantity: { type: 'INTEGER', description: 'Quantidade de peças' },
+              totalPrice: { type: 'NUMBER', description: 'Valor total do pedido em reais' },
+              deliveryDate: { type: 'STRING', description: 'Data de entrega estimada no formato YYYY-MM-DD' },
+              notes: { type: 'STRING', description: 'Observações, estampas ou detalhes' },
+              paymentMethod: { type: 'STRING', enum: ['pix', 'cash', 'credit', 'debit', 'other'] }
+            },
+            required: ['customerName', 'productName']
+          }
+        },
+        {
+          name: 'search_gallery_portfolio',
+          description: 'Consulta o acervo de fotos, produtos e artes da Galeria do sistema (camisetas, brindes, canecas, bordados, personalizações anteriores). Permite buscar referências visuais por tema, produto, técnica, tags ou cliente. Usuários não-admin enxergam apenas suas próprias artes; administradores têm acesso geral e podem filtrar por colaborador.',
+          parameters: {
+            type: 'OBJECT',
+            properties: {
+              searchTerm: {
+                type: 'STRING',
+                description: 'Termo de busca para título, descrição, tema, cliente, técnica ou número de pedido'
+              },
+              tag: {
+                type: 'STRING',
+                description: 'Filtrar por tag ou categoria específica (ex: camisetas, canecas, brindes, bordado, silk)'
+              },
+              userIdentifier: {
+                type: 'STRING',
+                description: 'Opcional (Apenas Admin): Filtrar artes cadastradas por um colaborador específico por nome, e-mail ou UID'
+              },
+              limit: {
+                type: 'INTEGER',
+                description: 'Quantidade máxima de registros a retornar (padrão 10, máximo 20)'
+              }
+            }
+          }
+        }
+      ]
+    }
+  ];
+
+  // Helper central de busca e blindagem estrita de pedidos
+  const fetchScopedOrders = async () => {
+    let docs = [];
+    if (isAdmin) {
+      const [viewSnap, prodSnap] = await Promise.all([
+        admin.firestore().collection('ai_orders_view').get(),
+        admin.firestore().collection('orders').limit(200).get(),
+      ]);
+      const map = new Map();
+      viewSnap.docs.forEach((d) => map.set(d.id, d.data()));
+      prodSnap.docs.forEach((d) => {
+        if (!map.has(d.id)) {
+          map.set(d.id, buildAiOrderDoc(d.id, d.data()));
+        }
+      });
+      docs = Array.from(map.values());
+    } else {
+      const [viewUserSnap, viewCreatedSnap, prodUserSnap, prodCreatedSnap] = await Promise.all([
+        admin.firestore().collection('ai_orders_view').where('userId', '==', callerUid).get(),
+        admin.firestore().collection('ai_orders_view').where('createdBy', '==', callerUid).get(),
+        admin.firestore().collection('orders').where('userId', '==', callerUid).limit(200).get(),
+        admin.firestore().collection('orders').where('createdBy', '==', callerUid).limit(200).get(),
+      ]);
+      const map = new Map();
+      viewUserSnap.docs.forEach((d) => map.set(d.id, d.data()));
+      viewCreatedSnap.docs.forEach((d) => map.set(d.id, d.data()));
+      prodUserSnap.docs.forEach((d) => {
+        if (!map.has(d.id)) {
+          map.set(d.id, buildAiOrderDoc(d.id, d.data()));
+        }
+      });
+      prodCreatedSnap.docs.forEach((d) => {
+        if (!map.has(d.id)) {
+          map.set(d.id, buildAiOrderDoc(d.id, d.data()));
+        }
+      });
+      // BLINDAGEM INFALÍVEL: Filtra exclusivamente pedidos pertencentes a callerUid
+      docs = Array.from(map.values()).filter((d) => {
+        const uid = String(callerUid);
+        return d.userId === uid || d.createdBy === uid;
+      });
+    }
+    return docs;
+  };
+
+  // Helper para obter diretório consolidado de todos os colaboradores do sistema
+  const getAllKnownTeamMembers = async () => {
+    const memberMap = new Map();
+
+    // 1. userProfiles
+    try {
+      const snap = await admin.firestore().collection('userProfiles').get();
+      snap.docs.forEach((d) => {
+        const data = d.data() || {};
+        const uid = d.id;
+        const displayName = data.displayName || (data.email ? data.email.split('@')[0] : 'Usuário');
+        const email = data.email || '';
+        const role = data.role || 'user';
+        const active = data.active !== false;
+        memberMap.set(uid, {
+          uid,
+          displayName,
+          email,
+          role,
+          active,
+          names: [displayName, email ? email.split('@')[0] : ''].filter(Boolean),
+        });
+      });
+    } catch (err) {
+      console.warn('[getAllKnownTeamMembers] Erro ao ler userProfiles:', err);
+    }
+
+    // 2. Firebase Auth (garante contas criadas que ainda não têm doc em userProfiles)
+    try {
+      const authList = await admin.auth().listUsers(100);
+      authList.users.forEach((u) => {
+        if (!memberMap.has(u.uid)) {
+          const displayName = u.displayName || (u.email ? u.email.split('@')[0] : 'Usuário');
+          const email = u.email || '';
+          memberMap.set(u.uid, {
+            uid: u.uid,
+            displayName,
+            email,
+            role: 'user',
+            active: !u.disabled,
+            names: [displayName, email ? email.split('@')[0] : ''].filter(Boolean),
+          });
+        }
+      });
+    } catch (err) {
+      console.warn('[getAllKnownTeamMembers] Erro ao listar Auth users:', err);
+    }
+
+    // 3. Orders (coleta criadores e responsáveis atribuídos)
+    try {
+      const ordersSnap = await admin.firestore().collection('orders').limit(300).get();
+      ordersSnap.docs.forEach((d) => {
+        const data = d.data() || {};
+        if (data.userId && !memberMap.has(data.userId)) {
+          const name = data.createdByName || 'Colaborador';
+          memberMap.set(data.userId, {
+            uid: data.userId,
+            displayName: name,
+            email: '',
+            role: 'user',
+            active: true,
+            names: [name],
+          });
+        }
+        if (data.assignedTo && !memberMap.has(data.assignedTo)) {
+          const name = data.assignedToName || 'Colaborador';
+          memberMap.set(data.assignedTo, {
+            uid: data.assignedTo,
+            displayName: name,
+            email: '',
+            role: 'funcionario',
+            active: true,
+            names: [name],
+          });
+        }
+      });
+    } catch (err) {
+      console.warn('[getAllKnownTeamMembers] Erro ao ler orders para membros:', err);
+    }
+
+    return Array.from(memberMap.values());
+  };
+
+  // Helper para resolver colaborador/usuário por nome, email ou UID com tolerância e normalização
+  const resolveTargetUser = async (identifier) => {
+    if (!identifier || typeof identifier !== 'string' || !identifier.trim()) return null;
+    const clean = normalizeString(identifier);
+    const members = await getAllKnownTeamMembers();
+
+    // 1. Busca exata por UID
+    let match = members.find((m) => normalizeString(m.uid) === clean);
+    if (match) return match;
+
+    // 2. Busca exata por email
+    match = members.find((m) => m.email && normalizeString(m.email) === clean);
+    if (match) return match;
+
+    // 3. Busca exata por displayName
+    match = members.find((m) => normalizeString(m.displayName) === clean);
+    if (match) return match;
+
+    // 4. Busca por primeiro nome (ex: "amanda" em "Amanda Silva")
+    match = members.find((m) => {
+      const firstName = normalizeString(m.displayName).split(' ')[0];
+      return firstName === clean;
+    });
+    if (match) return match;
+
+    // 5. Busca por inclusão mútua
+    match = members.find((m) => {
+      const d = normalizeString(m.displayName);
+      const e = normalizeString(m.email);
+      return (d && (d.includes(clean) || clean.includes(d))) || (e && e.includes(clean));
+    });
+    if (match) return match;
+
+    // 6. Busca nos nomes/aliases
+    match = members.find((m) =>
+      m.names && m.names.some((n) => {
+        const norm = normalizeString(n);
+        return norm.includes(clean) || clean.includes(norm);
+      })
+    );
+    if (match) return match;
+
+    return null;
+  };
+
+  // Helper para auditoria e métricas de usuário/colaborador (EXCLUSIVO ADMIN)
+  const executeUserSummary = async (args = {}) => {
+    if (!isAdmin) {
+      return {
+        authorized: false,
+        message: 'Acesso restrito: A consulta de métricas e dados de outros colaboradores é permitida exclusivamente para administradores do sistema.',
+      };
+    }
+
+    const members = await getAllKnownTeamMembers();
+
+    if (!args.userIdentifier || args.userIdentifier.toLowerCase() === 'todos' || args.userIdentifier.toLowerCase() === 'listar') {
+      return {
+        authorized: true,
+        isList: true,
+        members: members.map((m) => ({
+          name: m.displayName,
+          email: m.email,
+          role: m.role === 'admin' ? 'Administrador' : m.role === 'funcionario' ? 'Funcionário' : 'Usuário',
+          uid: m.uid,
+        })),
+      };
+    }
+
+    const targetUser = await resolveTargetUser(args.userIdentifier);
+    if (!targetUser) {
+      return {
+        authorized: true,
+        found: false,
+        userIdentifier: args.userIdentifier,
+        availableMembers: members.map((m) => m.displayName || m.email).filter(Boolean),
+        message: `Não foi encontrado nenhum usuário ou colaborador no sistema correspondente a "${args.userIdentifier}".`,
+      };
+    }
+
+    const targetUid = String(targetUser.uid);
+    const targetName = targetUser.displayName || targetUser.email || 'Usuário';
+    const targetRole = targetUser.role === 'admin' ? 'Administrador' : targetUser.role === 'funcionario' ? 'Funcionário' : 'Usuário';
+    const normalizedTargetName = normalizeString(targetName);
+
+    // 1. Busca todos os pedidos do usuário em ambas as fontes (orders + ai_orders_view)
+    const allOrders = await fetchScopedOrders();
+    const userOrders = allOrders.filter((o) => {
+      if (o.isDeleted) return false;
+      const matchUid = o.userId === targetUid || o.createdBy === targetUid || o.assignedTo === targetUid;
+      const matchCreator = o.createdByName && normalizeString(o.createdByName).includes(normalizedTargetName);
+      const matchAssignee = o.assignedToName && normalizeString(o.assignedToName).includes(normalizedTargetName);
+      return matchUid || matchCreator || matchAssignee;
+    });
+
+    // 2. Busca todos os clientes do usuário
+    const allCustSnap = await admin.firestore().collection('customers').get();
+    const userCustomers = allCustSnap.docs
+      .map((d) => ({ id: d.id, ...d.data() }))
+      .filter((c) => {
+        const matchUid = c.userId === targetUid || c.createdBy === targetUid;
+        const matchCreator = c.createdByName && normalizeString(c.createdByName).includes(normalizedTargetName);
+        return matchUid || matchCreator;
+      });
+
+    // 3. Métricas dos pedidos
+    const completedOrders = userOrders.filter((o) => o.status === 'completed');
+    const inProgressOrders = userOrders.filter((o) => o.status === 'in-progress');
+    const pendingOrders = userOrders.filter((o) => o.status === 'pending');
+    const cancelledOrders = userOrders.filter((o) => o.status === 'cancelled');
+    const validOrders = userOrders.filter((o) => o.status !== 'cancelled');
+
+    const realizedRevenue = completedOrders.reduce((sum, o) => sum + (Number(o.totalPrice) || 0), 0);
+    const totalReceived = validOrders.reduce((sum, o) => sum + (Number(o.paidAmount) || 0), 0);
+    const pendingReceivables = validOrders
+      .filter((o) => o.paymentStatus !== 'paid')
+      .reduce((sum, o) => sum + (Number(o.remainingAmount !== undefined ? o.remainingAmount : o.totalPrice) || 0), 0);
+
+    const averageTicket =
+      completedOrders.length > 0
+        ? realizedRevenue / completedOrders.length
+        : validOrders.length > 0
+        ? validOrders.reduce((sum, o) => sum + (Number(o.totalPrice) || 0), 0) / validOrders.length
+        : 0;
+
+    return {
+      authorized: true,
+      found: true,
+      user: {
+        uid: targetUid,
+        name: targetName,
+        email: targetUser.email || '',
+        role: targetRole,
+        active: targetUser.active !== false,
+      },
+      metrics: {
+        totalCustomers: userCustomers.length,
+        recentCustomers: userCustomers.slice(0, 5).map((c) => c.name || 'Sem nome'),
+        totalOrders: userOrders.length,
+        totalValidOrders: validOrders.length,
+        completedOrders: completedOrders.length,
+        inProgressOrders: inProgressOrders.length,
+        pendingOrders: pendingOrders.length,
+        cancelledOrders: cancelledOrders.length,
+        realizedRevenue: Number(realizedRevenue.toFixed(2)),
+        totalReceived: Number(totalReceived.toFixed(2)),
+        pendingReceivables: Number(pendingReceivables.toFixed(2)),
+        averageTicket: Number(averageTicket.toFixed(2)),
+      },
+    };
+  };
+
+  // Helper para consultar a base de pedidos com filtros e isolamento
+  const executeQueryOrdersView = async (args = {}) => {
+    let docs = await fetchScopedOrders();
+
+    // 0. Filtro por usuário específico (Apenas Admin)
+    if (isAdmin && args.userIdentifier) {
+      const targetUser = await resolveTargetUser(args.userIdentifier);
+      if (targetUser) {
+        const uid = String(targetUser.uid);
+        docs = docs.filter((d) => d.userId === uid || d.createdBy === uid);
+      }
+    }
+
+    // 1. Ordena os pedidos do mais recente para o mais antigo
+    docs.sort((a, b) => {
+      const dateA = new Date(a.createdAt || 0).getTime();
+      const dateB = new Date(b.createdAt || 0).getTime();
+      return dateB - dateA;
+    });
+
+    // 2. Aplica filtros de status com precisão
+    if (args.status && args.status !== 'all') {
+      if (args.status === 'deleted') {
+        docs = docs.filter((d) => d.isDeleted || d.status === 'deleted');
+      } else if (args.status === 'open') {
+        // Pedidos em aberto = pendentes ou em produção (não concluídos, não cancelados e não excluídos)
+        docs = docs.filter((d) => (d.status === 'pending' || d.status === 'in-progress') && !d.isDeleted);
+      } else {
+        docs = docs.filter((d) => d.status === args.status && !d.isDeleted);
+      }
+    } else if (!args.status || (args.status !== 'deleted' && args.status !== 'all')) {
+      // Por padrão, oculta pedidos excluídos caso não seja solicitado
+      docs = docs.filter((d) => !d.isDeleted && d.status !== 'deleted');
+    }
+
+    // 3. Filtro de status de pagamento
+    if (args.paymentStatus && args.paymentStatus !== 'all') {
+      docs = docs.filter((d) => d.paymentStatus === args.paymentStatus);
+    }
+
+    // 4. Busca por termos no cliente, produto, telefone, número do pedido ou observações
+    if (args.searchTerm && typeof args.searchTerm === 'string') {
+      const term = args.searchTerm.toLowerCase().trim();
+      docs = docs.filter(
+        (d) =>
+          (d.customerName && d.customerName.toLowerCase().includes(term)) ||
+          (d.productSummary && d.productSummary.toLowerCase().includes(term)) ||
+          (d.customerPhone && d.customerPhone.includes(term)) ||
+          (d.orderNumber && d.orderNumber.toLowerCase().includes(term)) ||
+          (d.notes && d.notes.toLowerCase().includes(term))
+      );
+    }
+
+    const maxLimit = Math.min(Math.max(Number(args.limit) || 30, 1), 50);
+    return docs.slice(0, maxLimit);
+  };
+
+  // Helper para cálculo financeiro exato alinhado com Reports.tsx
+  const executeFinancialSummary = async (args = {}) => {
+    let rawOrders = await fetchScopedOrders();
+    if (isAdmin && args.userIdentifier) {
+      const targetUser = await resolveTargetUser(args.userIdentifier);
+      if (targetUser) {
+        const uid = String(targetUser.uid);
+        rawOrders = rawOrders.filter((d) => d.userId === uid || d.createdBy === uid);
+      }
+    }
+
+    const now = new Date();
+    const period = args.period || 'month';
+
+    let startDate = new Date(2000, 0, 1);
+    let endDate = new Date(2100, 0, 1);
+
+    if (period === 'today') {
+      startDate = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 0, 0));
+      endDate = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 23, 59, 59));
+    } else if (period === 'week') {
+      startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+      endDate = now;
+    } else if (period === 'month') {
+      startDate = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1, 0, 0, 0));
+      endDate = now;
+    } else if (period === 'year') {
+      startDate = new Date(Date.UTC(now.getUTCFullYear(), 0, 1, 0, 0, 0));
+      endDate = now;
+    }
+
+    const filtered = rawOrders.filter((o) => {
+      if (o.isDeleted) return false;
+      if (period === 'all') return true;
+      const orderDate = new Date(o.createdAt || o.deliveryDate || now);
+      return orderDate >= startDate && orderDate <= endDate;
+    });
+
+    const validOrders = filtered.filter((o) => o.status !== 'cancelled');
+    const completedOrders = filtered.filter((o) => o.status === 'completed');
+    const inProgressOrders = filtered.filter((o) => o.status === 'in-progress');
+    const pendingOrders = filtered.filter((o) => o.status === 'pending');
+    const cancelledOrders = filtered.filter((o) => o.status === 'cancelled');
+
+    // Faturamento Realizado: soma apenas de pedidos Concluídos
+    const realizedRevenue = completedOrders.reduce((sum, o) => sum + (Number(o.totalPrice) || 0), 0);
+
+    // Volume Total Emitido: soma de todos os pedidos válidos (não cancelados)
+    const grossIssuedVolume = validOrders.reduce((sum, o) => sum + (Number(o.totalPrice) || 0), 0);
+
+    // Total já recebido (sinais e pagamentos integrais)
+    const totalReceived = validOrders.reduce((sum, o) => sum + (Number(o.paidAmount) || 0), 0);
+
+    // Saldo pendente a receber (remainingAmount real)
+    const pendingReceivables = validOrders
+      .filter((o) => o.paymentStatus !== 'paid')
+      .reduce((sum, o) => sum + (Number(o.remainingAmount !== undefined ? o.remainingAmount : o.totalPrice) || 0), 0);
+
+    // Ticket Médio
+    const averageTicket =
+      completedOrders.length > 0
+        ? realizedRevenue / completedOrders.length
+        : validOrders.length > 0
+        ? grossIssuedVolume / validOrders.length
+        : 0;
+
+    const conversionRate = validOrders.length > 0 ? (completedOrders.length / validOrders.length) * 100 : 0;
+
+    return {
+      period,
+      faturamentoRealizado: Number(realizedRevenue.toFixed(2)),
+      volumeTotalEmitido: Number(grossIssuedVolume.toFixed(2)),
+      totalRecebido: Number(totalReceived.toFixed(2)),
+      totalPendenteReceber: Number(pendingReceivables.toFixed(2)),
+      ticketMedio: Number(averageTicket.toFixed(2)),
+      taxaConversao: Number(conversionRate.toFixed(1)),
+      pedidosConcluidos: completedOrders.length,
+      pedidosEmProducao: inProgressOrders.length,
+      pedidosPendentes: pendingOrders.length,
+      pedidosCancelados: cancelledOrders.length,
+      totalPedidosValidos: validOrders.length,
+    };
+  };
+
+  // Helper para gerar o Daily Briefing com isolamento por usuário e cálculo financeiro alinhado
+  const executeDailyBriefing = async () => {
+    const orders = (await fetchScopedOrders()).filter((o) => !o.isDeleted);
+    const todayDate = new Date().toISOString().split('T')[0];
+
+    const delayedOrders = orders.filter(
+      (o) =>
+        o.deliveryDate &&
+        o.deliveryDate < todayDate &&
+        o.status !== 'completed' &&
+        o.status !== 'cancelled'
+    );
+    const todayDeliveries = orders.filter((o) => o.deliveryDate === todayDate && o.status !== 'cancelled');
+    const inProgressOrders = orders.filter((o) => o.status === 'in-progress');
+    const completedOrders = orders.filter((o) => o.status === 'completed');
+    const validOrders = orders.filter((o) => o.status !== 'cancelled');
+
+    const pendingPaymentOrders = validOrders.filter((o) => o.paymentStatus !== 'paid');
+    const pendingPaymentTotal = pendingPaymentOrders.reduce(
+      (acc, curr) => acc + (Number(curr.remainingAmount !== undefined ? curr.remainingAmount : curr.totalPrice) || 0),
+      0
+    );
+    const realizedRevenue = completedOrders.reduce((acc, curr) => acc + (Number(curr.totalPrice) || 0), 0);
+    const totalReceived = validOrders.reduce((acc, curr) => acc + (Number(curr.paidAmount) || 0), 0);
+
+    return {
+      todayDate,
+      delayedCount: delayedOrders.length,
+      delayedOrders: delayedOrders.slice(0, 5),
+      todayDeliveriesCount: todayDeliveries.length,
+      todayDeliveries: todayDeliveries.slice(0, 5),
+      inProgressCount: inProgressOrders.length,
+      completedCount: completedOrders.length,
+      realizedRevenue,
+      totalReceived,
+      pendingPaymentCount: pendingPaymentOrders.length,
+      pendingPaymentTotal,
+    };
+  };
+
+  // Helper para consultar a base de clientes cadastrados com isolamento estrito
+  const executeQueryCustomers = async (args = {}) => {
+    try {
+      let snap;
+      if (isAdmin) {
+        snap = await admin.firestore().collection('customers').limit(150).get();
+      } else {
+        const [userSnap, createdSnap] = await Promise.all([
+          admin.firestore().collection('customers').where('userId', '==', callerUid).limit(150).get(),
+          admin.firestore().collection('customers').where('createdBy', '==', callerUid).limit(150).get(),
+        ]);
+        const map = new Map();
+        userSnap.docs.forEach((d) => map.set(d.id, d));
+        createdSnap.docs.forEach((d) => map.set(d.id, d));
+        snap = { docs: Array.from(map.values()) };
+      }
+
+      let customers = snap.docs.map((d) => ({
+        id: d.id,
+        userId: d.data().userId || d.data().createdBy || null,
+        createdBy: d.data().createdBy || d.data().userId || null,
+        name: d.data().name || '',
+        phone: d.data().phone || '',
+        email: d.data().email || '',
+        city: d.data().city || '',
+        state: d.data().state || '',
+        status: d.data().status || 'active',
+        totalOrders: d.data().totalOrders || 0,
+        totalSpent: d.data().totalSpent || 0,
+        createdAt: d.data().createdAt || '',
+      }));
+
+      // Blindagem estrita de clientes para não-admins
+      if (!isAdmin) {
+        const uid = String(callerUid);
+        customers = customers.filter((c) => c.userId === uid || c.createdBy === uid);
+      } else if (isAdmin && args.userIdentifier) {
+        const targetUser = await resolveTargetUser(args.userIdentifier);
+        if (targetUser) {
+          const uid = String(targetUser.uid);
+          customers = customers.filter((c) => c.userId === uid || c.createdBy === uid);
+        }
+      }
+
+      if (args.searchTerm && typeof args.searchTerm === 'string') {
+        const term = args.searchTerm.toLowerCase().trim();
+        customers = customers.filter(
+          (c) =>
+            (c.name && c.name.toLowerCase().includes(term)) ||
+            (c.phone && c.phone.includes(term)) ||
+            (c.email && c.email.toLowerCase().includes(term)) ||
+            (c.city && c.city.toLowerCase().includes(term))
+        );
+      }
+
+      const maxLimit = Math.min(Math.max(Number(args.limit) || 10, 1), 30);
+      return customers.slice(0, maxLimit);
+    } catch (err) {
+      console.error('[executeQueryCustomers] Erro:', err);
+      return [];
+    }
+  };
+
+  // Helper para consulta ao acervo de fotos e artes da Galeria com estrita blindagem por usuário
+  const executeSearchGalleryPortfolio = async (args = {}) => {
+    try {
+      let snap;
+      if (isAdmin) {
+        snap = await admin.firestore().collection('gallery').limit(150).get();
+      } else {
+        const [userSnap, createdSnap] = await Promise.all([
+          admin.firestore().collection('gallery').where('userId', '==', callerUid).limit(150).get(),
+          admin.firestore().collection('gallery').where('createdBy', '==', callerUid).limit(150).get(),
+        ]);
+        const map = new Map();
+        userSnap.docs.forEach((d) => map.set(d.id, d));
+        createdSnap.docs.forEach((d) => map.set(d.id, d));
+        snap = { docs: Array.from(map.values()) };
+      }
+
+      let items = snap.docs
+        .map((d) => ({ id: d.id, ...d.data() }))
+        .filter((item) => !item.deletedAt);
+
+      // GUARDRAIL ESTREITO: Usuário comum só vê suas próprias artes
+      if (!isAdmin) {
+        const uid = String(callerUid);
+        items = items.filter((item) => item.userId === uid || item.createdBy === uid);
+      } else if (isAdmin && args.userIdentifier) {
+        const targetUser = await resolveTargetUser(args.userIdentifier);
+        if (targetUser) {
+          const uid = String(targetUser.uid);
+          items = items.filter((item) => item.userId === uid || item.createdBy === uid);
+        }
+      }
+
+      // Filtro por tag
+      if (args.tag && typeof args.tag === 'string') {
+        const filterTag = normalizeString(args.tag);
+        items = items.filter((item) => {
+          if (Array.isArray(item.tags)) {
+            const hasTag = item.tags.some((t) => {
+              const tagText = typeof t === 'string' ? t : t.text || t.name || '';
+              return normalizeString(tagText).includes(filterTag);
+            });
+            if (hasTag) return true;
+          }
+          if (Array.isArray(item.aiTags)) {
+            const hasAiTag = item.aiTags.some((t) => normalizeString(t).includes(filterTag));
+            if (hasAiTag) return true;
+          }
+          return false;
+        });
+      }
+
+      // Filtro por termo de busca
+      if (args.searchTerm && typeof args.searchTerm === 'string') {
+        const term = normalizeString(args.searchTerm);
+        items = items.filter((item) => {
+          const title = normalizeString(item.title || '');
+          const desc = normalizeString(item.description || '');
+          const aiDesc = normalizeString(item.aiDescription || '');
+          const custName = normalizeString(item.customerName || '');
+          const ordNum = normalizeString(item.orderNumber || '');
+          const prodType = normalizeString(item.productType || '');
+          const tagsStr = Array.isArray(item.tags)
+            ? item.tags.map((t) => (typeof t === 'string' ? t : t.text || t.name || '')).join(' ')
+            : '';
+          const aiTagsStr = Array.isArray(item.aiTags) ? item.aiTags.join(' ') : '';
+          const colorsStr = Array.isArray(item.colors) ? item.colors.join(' ') : '';
+          const fullText = normalizeString(`${title} ${desc} ${aiDesc} ${custName} ${ordNum} ${prodType} ${tagsStr} ${aiTagsStr} ${colorsStr}`);
+          return fullText.includes(term);
+        });
+      }
+
+      const maxLimit = Math.min(Math.max(Number(args.limit) || 10, 1), 25);
+      return items.slice(0, maxLimit).map((item) => ({
+        id: item.id,
+        title: item.title,
+        description: item.description || item.aiDescription || '',
+        imageUrl: item.imageUrl,
+        customerName: item.customerName || null,
+        orderNumber: item.orderNumber || null,
+        tags: Array.isArray(item.tags)
+          ? item.tags.map((t) => (typeof t === 'string' ? t : t.text || t.name || ''))
+          : [],
+        aiTags: item.aiTags || [],
+        productType: item.productType || null,
+      }));
+    } catch (err) {
+      console.error('[executeSearchGalleryPortfolio] Erro:', err);
+      return [];
+    }
+  };
+
+  // Helper para auto-capturar telefone do cliente a partir do nome se não estiver informado
+  const resolveCustomerPhone = async (customerName, existingPhone) => {
+    if (existingPhone && typeof existingPhone === 'string' && existingPhone.trim()) {
+      return existingPhone.trim();
+    }
+    if (!customerName || typeof customerName !== 'string' || !customerName.trim()) {
+      return null;
+    }
+
+    try {
+      const term = customerName.toLowerCase().trim();
+      // 1. Busca nos clientes isolados
+      const customers = await executeQueryCustomers({ searchTerm: term, limit: 10 });
+      for (const c of customers) {
+        const docName = String(c.name || '').toLowerCase().trim();
+        if (docName && (docName.includes(term) || term.includes(docName))) {
+          if (c.phone) return c.phone;
+        }
+      }
+
+      // 2. Busca nos pedidos isolados
+      const orders = await fetchScopedOrders();
+      for (const o of orders) {
+        const ordName = String(o.customerName || '').toLowerCase().trim();
+        if (ordName && (ordName.includes(term) || term.includes(ordName))) {
+          if (o.customerPhone) return o.customerPhone;
+        }
+      }
+    } catch (err) {
+      console.warn('[resolveCustomerPhone] Erro ao buscar telefone automático:', err);
+    }
+    return null;
+  };
+
+  // Helper para cálculo de estimativa de precificação com guardrails de margem mínima
+  const executePricingEstimate = (args) => {
+    const qty = Math.max(Number(args.quantity) || 1, 1);
+    const rawCost = Number(args.unitCostRaw) || 25; // Ex: custo médio de camiseta/caneca
+    const customCost = Number(args.customizationCost) || 6; // Insumos estamparia/filme
+    const laborMinutes = Number(args.laborTimeMinutes) || 10;
+    const laborCostPerMinute = 0.40; // R$ 24/hora de mão de obra
+    const laborCost = laborMinutes * laborCostPerMinute;
+
+    const unitBaseCost = rawCost + customCost + laborCost;
+    
+    // Guardrail: Margem de lucro mínima protegida de 30%
+    const requestedMargin = Number(args.profitMarginPercent) || 45;
+    const margin = Math.max(requestedMargin, 30);
+
+    const suggestedUnitPrice = Number((unitBaseCost / (1 - (margin / 100))).toFixed(2));
+    const suggestedTotalPrice = Number((suggestedUnitPrice * qty).toFixed(2));
+
+    return {
+      productName: args.productName || 'Personalizado',
+      quantity: qty,
+      unitCost: Number(unitBaseCost.toFixed(2)),
+      suggestedUnitPrice,
+      suggestedTotalPrice,
+      profitMarginPercent: margin,
+      breakdown: {
+        materials: Number(rawCost.toFixed(2)),
+        customization: Number(customCost.toFixed(2)),
+        labor: Number(laborCost.toFixed(2)),
+      }
+    };
+  };
+
+  // Monta histórico de mensagens
+  const contents = [];
+  if (Array.isArray(history)) {
+    for (const item of history.slice(-4)) {
+      if (item.role && item.text) {
+        contents.push({
+          role: item.role === 'user' ? 'user' : 'model',
+          parts: [{ text: item.text }]
+        });
+      }
+    }
+  }
+  // Prepara as partes da mensagem atual do usuário com suporte a imagem multimodal
+  const userParts = [];
+  if (image && typeof image === 'object') {
+    let { base64, mimeType } = image;
+    if (base64 && typeof base64 === 'string') {
+      if (base64.includes(',')) {
+        base64 = base64.split(',')[1];
+      }
+      const allowedMimes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+      const effectiveMime = allowedMimes.includes(mimeType) ? mimeType : 'image/jpeg';
+      // Limite de segurança de payload (~15MB em base64)
+      if (base64.length < 15 * 1024 * 1024) {
+        userParts.push({
+          inlineData: {
+            mimeType: effectiveMime,
+            data: base64
+          }
+        });
+      }
+    }
+  }
+  userParts.push({ text: cleanMessage });
+
+  contents.push({
+    role: 'user',
+    parts: userParts
+  });
+
+  // Obtém dinamicamente os modelos suportados pela API key, priorizando versões Flash e mais modernas
+  const getCandidateModels = async () => {
+    if (cachedCandidateModels && cachedCandidateModels.length > 0 && Date.now() - cachedModelsTimestamp < 3600000) {
+      return cachedCandidateModels;
+    }
+
+    try {
+      const listResp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`);
+      if (listResp.ok) {
+        const listData = await listResp.json();
+        const available = (listData.models || [])
+          .filter(m => Array.isArray(m.supportedGenerationMethods) && m.supportedGenerationMethods.includes('generateContent'))
+          .map(m => m.name.replace(/^models\//, ''));
+
+        if (available.length > 0) {
+          const flashModels = available.filter(m => m.includes('flash'));
+          const otherModels = available.filter(m => !m.includes('flash'));
+
+          cachedCandidateModels = [
+            process.env.GEMINI_MODEL,
+            preferredWorkingModel,
+            ...flashModels,
+            ...otherModels,
+            'gemini-3.1-pro-preview',
+            'gemini-3.0-flash',
+            'gemini-2.0-flash',
+          ].filter((item, index, self) => Boolean(item) && self.indexOf(item) === index);
+
+          cachedModelsTimestamp = Date.now();
+          console.log('[aiAgentChat] Modelos disponíveis detectados dinamicamente:', cachedCandidateModels);
+          return cachedCandidateModels;
+        }
+      }
+    } catch (err) {
+      console.warn('[aiAgentChat] Falha ao consultar endpoint de modelos:', err);
+    }
+
+    return [
+      process.env.GEMINI_MODEL,
+      preferredWorkingModel,
+      'gemini-3.1-pro-preview',
+      'gemini-3.0-flash',
+      'gemini-2.0-flash',
+    ].filter((item, index, self) => Boolean(item) && self.indexOf(item) === index);
+  };
+
+  const candidateModels = await getCandidateModels();
+
+  const callGeminiWithFallback = async (payload) => {
+    let lastError = null;
+    for (const model of candidateModels) {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+      try {
+        const resp = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+
+        if (resp.ok) {
+          const data = await resp.json();
+          // Memoiza o modelo bem-sucedido para que todas as próximas chamadas sejam diretas nele
+          preferredWorkingModel = model;
+
+          // Registra consumo exato por requisição HTTP para a API Gemini
+          admin.firestore().collection('ai_usage_logs').add({
+            userId: callerUid,
+            model: model,
+            timestamp: new Date().toISOString(),
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          }).catch((err) => console.warn('[aiAgentChat] Erro ao gravar ai_usage_logs:', err));
+
+          return { data, modelUsed: model };
+        }
+
+        const errText = await resp.text();
+        console.warn(`[aiAgentChat] Modelo ${model} retornou status ${resp.status}:`, errText);
+        lastError = new Error(`Modelo ${model} (Status ${resp.status}): ${errText}`);
+      } catch (err) {
+        console.warn(`[aiAgentChat] Falha de conexão com modelo ${model}:`, err);
+        lastError = err;
+      }
+    }
+    throw lastError || new Error('Nenhum modelo Gemini disponível respondeu com sucesso.');
+  };
+
+  try {
+    const geminiPayload = {
+      system_instruction: { parts: [{ text: systemInstruction }] },
+      contents,
+      tools: toolsDeclaration,
+      generationConfig: { temperature: 0.1 }
+    };
+
+    const { data: firstResult } = await callGeminiWithFallback(geminiPayload);
+    const candidate = firstResult?.candidates?.[0];
+    const parts = candidate?.content?.parts || [];
+    const functionCallPart = parts.find(p => p.functionCall);
+
+    let finalAnswer = '';
+    let extractedDraft = null;
+    let extractedWhatsApp = null;
+    let extractedPricing = null;
+    let extractedGalleryItems = null;
+
+    if (functionCallPart) {
+      const { name, args } = functionCallPart.functionCall;
+
+      if (name === 'extract_order_draft') {
+        if (!args.customerPhone && args.customerName) {
+          args.customerPhone = await resolveCustomerPhone(args.customerName, null);
+        }
+        extractedDraft = args;
+        finalAnswer = `Identifiquei os dados do pedido para **${args.customerName || 'o cliente'}**! Você pode conferir os detalhes e carregar diretamente no formulário de pedido abaixo.`;
+      } else if (name === 'generate_whatsapp_message') {
+        if (!args.recipientPhone && args.recipientName) {
+          args.recipientPhone = await resolveCustomerPhone(args.recipientName, null);
+        }
+        extractedWhatsApp = args;
+        finalAnswer = `Gerei o rascunho da mensagem para **${args.recipientName || 'o cliente'}**${args.recipientPhone ? ` (${args.recipientPhone})` : ''}. Você pode revisar o texto e enviar diretamente para o WhatsApp abaixo:`;
+      } else if (name === 'query_customers') {
+        const queryResults = await executeQueryCustomers(args);
+        if (queryResults.length === 0) {
+          finalAnswer = 'Não encontrei nenhum cliente cadastrado correspondente aos termos pesquisados.';
+        } else {
+          const list = queryResults.map(c =>
+            `• **${c.name}**\n  📱 Telefone: ${c.phone || 'Não informado'} | ✉️ E-mail: ${c.email || 'Não informado'} | 🏙️ Cidade: ${c.city || 'N/D'}`
+          ).join('\n\n');
+          finalAnswer = `Encontrei **${queryResults.length} cliente(s) cadastrado(s)** no sistema:\n\n${list}`;
+        }
+      } else if (name === 'calculate_pricing_estimate') {
+        extractedPricing = executePricingEstimate(args);
+        const formattedUnit = Number(extractedPricing.suggestedUnitPrice).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+        const formattedTotal = Number(extractedPricing.suggestedTotalPrice).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+        finalAnswer = `📊 **Estimativa de Precificação:**\n\n• **Produto:** ${extractedPricing.productName} (${extractedPricing.quantity} un)\n• **Custo Base Unitário:** R$ ${extractedPricing.unitCost.toFixed(2)}\n• **Preço Unitário Sugerido:** ${formattedUnit}\n• **Valor Total Sugerido:** ${formattedTotal} *(Margem protegida: ${extractedPricing.profitMarginPercent}%*)\n\nVocê pode gerar um orçamento oficial com esses valores a qualquer momento.`;
+      } else if (name === 'daily_briefing') {
+        const briefing = await executeDailyBriefing();
+        const formattedPending = Number(briefing.pendingPaymentTotal || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
+        let briefingText = `📋 **Raio-X Operacional do Dia (${briefing.todayDate}):**\n\n`;
+        
+        if (briefing.delayedCount > 0) {
+          briefingText += `⚠️ **Atenção: ${briefing.delayedCount} pedido(s) com prazo vencido/urgente:**\n`;
+          briefing.delayedOrders.forEach(o => {
+            briefingText += `  • **${o.orderNumber || '#' + o.orderId}** — ${o.customerName} (${o.productSummary}) | Prazo: ${o.deliveryDate}\n`;
+          });
+          briefingText += '\n';
+        } else {
+          briefingText += `✅ **Nenhum pedido em atraso no momento!**\n\n`;
+        }
+
+        briefingText += `📦 **Entregas Agendadas para Hoje:** ${briefing.todayDeliveriesCount} pedido(s)\n`;
+        briefingText += `🔄 **Pedidos em Produção:** ${briefing.inProgressCount} pedido(s)\n`;
+        briefingText += `💰 **Valores Pendentes a Receber:** ${formattedPending} (${briefing.pendingPaymentCount} pedidos com pagamento pendente)\n`;
+
+        finalAnswer = briefingText;
+      } else if (name === 'get_user_summary') {
+        const summary = await executeUserSummary(args);
+        if (!summary.authorized) {
+          finalAnswer = `🔒 **Acesso Restrito:**\n\nA consulta de auditoria, pedidos e clientes de outros membros da equipe é permitida **exclusivamente para administradores** do sistema.`;
+        } else if (summary.isList) {
+          let listText = `👥 **Colaboradores e Usuários no Sistema:**\n\n`;
+          summary.members.forEach((m) => {
+            listText += `• **${m.name}** (${m.email || 'Sem e-mail'})\n  Cargo: ${m.role} | ID: \`${m.uid}\`\n\n`;
+          });
+          listText += `Você pode perguntar detalhes de qualquer um: *"Quantos pedidos e clientes tem a ${summary.members[0]?.name || 'Amanda'}?"*`;
+          finalAnswer = listText;
+        } else if (!summary.found) {
+          let notFoundText = `🔍 **Colaborador não localizado:**\n\nNão encontrei nenhum registro no sistema correspondente a **"${args.userIdentifier}"**.\n\n`;
+          if (summary.availableMembers && summary.availableMembers.length > 0) {
+            notFoundText += `👥 **Membros da equipe encontrados:**\n${summary.availableMembers.map((n) => `• ${n}`).join('\n')}\n\nTente perguntar com um dos nomes acima!`;
+          }
+          finalAnswer = notFoundText;
+        } else {
+          const u = summary.user;
+          const m = summary.metrics;
+          const fmtRealized = Number(m.realizedRevenue || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+          const fmtReceived = Number(m.totalReceived || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+          const fmtPending = Number(m.pendingReceivables || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+          const fmtTicket = Number(m.averageTicket || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
+          let report = `👤 **Raio-X do Colaborador:** **${u.name}**\n`;
+          report += `📧 E-mail: ${u.email || 'Não informado'} | Cargo: **${u.role}** | Status: ${u.active ? '🟢 Ativo' : '🔴 Inativo'}\n\n`;
+          report += `👥 **Clientes Cadastrados:** **${m.totalCustomers} cliente(s)**\n`;
+          if (m.recentCustomers && m.recentCustomers.length > 0) {
+            report += `  *(Exemplos: ${m.recentCustomers.join(', ')})*\n`;
+          }
+          report += `\n📦 **Total de Pedidos Vinculados:** **${m.totalOrders} pedido(s)** (${m.totalValidOrders} ativos)\n`;
+          report += `  • ✅ Concluídos: ${m.completedOrders}\n`;
+          report += `  • 🔄 Em Produção: ${m.inProgressOrders}\n`;
+          report += `  • ⏳ Pendentes: ${m.pendingOrders}\n`;
+          if (m.cancelledOrders > 0) {
+            report += `  • ❌ Cancelados: ${m.cancelledOrders}\n`;
+          }
+          report += `\n💰 **Desempenho Financeiro Gerado:**\n`;
+          report += `  • Faturamento Realizado (Concluídos): **${fmtRealized}**\n`;
+          report += `  • Total já Recebido: ${fmtReceived}\n`;
+          report += `  • Saldo Pendente a Receber: ${fmtPending}\n`;
+          report += `  • Ticket Médio: **${fmtTicket}**\n`;
+
+          finalAnswer = report;
+        }
+      } else if (name === 'get_financial_summary') {
+        const finSummary = await executeFinancialSummary(args.period || 'month');
+        const periodLabels = {
+          today: 'Hoje',
+          week: 'Últimos 7 dias',
+          month: 'Mês Atual / 30 dias',
+          year: 'Ano Atual',
+          all: 'Todo o Histórico',
+        };
+        const periodLabel = periodLabels[finSummary.period] || finSummary.period;
+        const fmtFaturamento = Number(finSummary.faturamentoRealizado || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+        const fmtRecebido = Number(finSummary.totalRecebido || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+        const fmtPendente = Number(finSummary.totalPendenteReceber || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+        const fmtVolume = Number(finSummary.volumeTotalEmitido || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+        const fmtTicket = Number(finSummary.ticketMedio || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
+        let report = `💰 **Resumo Financeiro e Movimentação (${periodLabel}):**\n\n`;
+        report += `• **Faturamento Realizado (Concluídos):** ${fmtFaturamento} (${finSummary.pedidosConcluidos} pedidos)\n`;
+        report += `• **Total Efetivamente Recebido:** ${fmtRecebido}\n`;
+        report += `• **Valores a Receber (Pendente):** ${fmtPendente}\n`;
+        report += `• **Volume Total Emitido:** ${fmtVolume} (${finSummary.totalPedidosValidos} pedidos ativos)\n`;
+        report += `• **Ticket Médio:** ${fmtTicket}\n`;
+        if (finSummary.taxaConversao !== undefined) {
+          report += `• **Taxa de Conclusão:** ${finSummary.taxaConversao}%\n`;
+        }
+        report += `\n📦 **Status dos Pedidos no Período:**\n`;
+        report += `  - Concluídos: ${finSummary.pedidosConcluidos}\n`;
+        report += `  - Em Produção: ${finSummary.pedidosEmProducao}\n`;
+        report += `  - Pendentes: ${finSummary.pedidosPendentes}\n`;
+        if (finSummary.pedidosCancelados > 0) {
+          report += `  - Cancelados: ${finSummary.pedidosCancelados}\n`;
+        }
+        finalAnswer = report;
+      } else if (name === 'query_orders_view') {
+        const queryResults = await executeQueryOrdersView(args);
+        
+        // Segunda chamada enxuta para formulação rápida da resposta final
+        const followUpContents = [
+          ...contents,
+          { role: 'model', parts: [{ functionCall: functionCallPart.functionCall }] },
+          {
+            role: 'function',
+            parts: [{
+              functionResponse: {
+                name: 'query_orders_view',
+                response: {
+                  summary: `Foram encontrados ${queryResults.length} registros.`,
+                  orders: queryResults.slice(0, 20),
+                }
+              }
+            }]
+          }
+        ];
+
+        try {
+          const { data: followUpResult } = await callGeminiWithFallback({
+            system_instruction: { parts: [{ text: systemInstruction }] },
+            contents: followUpContents,
+            generationConfig: { temperature: 0.1 }
+          });
+          const followUpCandidate = followUpResult?.candidates?.[0];
+          const followUpParts = followUpCandidate?.content?.parts || [];
+          const textResponse = cleanAiOutput(followUpParts.map(p => p.text).filter(Boolean).join('\n'));
+
+          const statusMap = {
+            pending: 'Pendente',
+            'in-progress': 'Em Produção',
+            completed: 'Concluído',
+            cancelled: 'Cancelado',
+            deleted: 'Excluído (Auditado)',
+          };
+
+          if (queryResults.length === 0) {
+            finalAnswer = textResponse && textResponse.length > 20
+              ? textResponse
+              : 'Não encontrei nenhum pedido correspondente aos critérios consultados.';
+          } else {
+            const isGeneric =
+              !textResponse ||
+              textResponse.length < 40 ||
+              textResponse.toLowerCase().includes('consulta realizada');
+
+            if (isGeneric) {
+              const list = queryResults.map(o => {
+                const formattedPrice = Number(o.totalPrice || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+                const st = statusMap[o.status] || (o.isDeleted ? 'Excluído (Auditado)' : o.status);
+                const paySt = o.paymentStatus === 'paid' ? 'Pago' : o.paymentStatus === 'partial' ? 'Parcial' : 'Pendente';
+                return `• **${o.orderNumber || '#' + o.orderId}** — **${o.customerName}**\n  📦 ${o.productSummary} (${o.quantity} un) | 💰 ${formattedPrice} | 🏷️ ${st} (${paySt})`;
+              }).join('\n\n');
+
+              finalAnswer = `Encontrei **${queryResults.length} registro(s)**:\n\n${list}`;
+            } else {
+              finalAnswer = textResponse;
+            }
+          }
+        } catch {
+          if (queryResults.length === 0) {
+            finalAnswer = 'Não encontrei nenhum pedido correspondente na base.';
+          } else {
+            const list = queryResults.map(o => `• **${o.orderNumber || '#' + o.orderId}** — ${o.customerName}: ${o.productSummary} (${o.quantity} un) - R$ ${o.totalPrice}`).join('\n');
+            finalAnswer = `Encontrei **${queryResults.length} registro(s)**:\n\n${list}`;
+          }
+        }
+      } else if (name === 'search_gallery_portfolio') {
+        const galleryResults = await executeSearchGalleryPortfolio(args);
+        extractedGalleryItems = galleryResults;
+
+        const followUpContents = [
+          ...contents,
+          { role: 'model', parts: [{ functionCall: functionCallPart.functionCall }] },
+          {
+            role: 'function',
+            parts: [{
+              functionResponse: {
+                name: 'search_gallery_portfolio',
+                response: {
+                  summary: `Foram encontradas ${galleryResults.length} artes/fotos na galeria.`,
+                  items: galleryResults.map((it) => ({
+                    title: it.title,
+                    description: it.description,
+                    productType: it.productType,
+                    tags: it.tags,
+                    aiTags: it.aiTags,
+                    imageUrl: it.imageUrl,
+                  })),
+                }
+              }
+            }]
+          }
+        ];
+
+        try {
+          const { data: followUpResult } = await callGeminiWithFallback({
+            system_instruction: { parts: [{ text: systemInstruction }] },
+            contents: followUpContents,
+            generationConfig: { temperature: 0.1 }
+          });
+          const followUpCandidate = followUpResult?.candidates?.[0];
+          const followUpParts = followUpCandidate?.content?.parts || [];
+          const textResponse = cleanAiOutput(followUpParts.map(p => p.text).filter(Boolean).join('\n'));
+
+          if (galleryResults.length === 0) {
+            finalAnswer = textResponse && textResponse.length > 20
+              ? textResponse
+              : 'Não encontrei nenhuma arte ou foto na galeria correspondente aos critérios consultados.';
+          } else {
+            const isGeneric =
+              !textResponse ||
+              textResponse.length < 30 ||
+              textResponse.toLowerCase().includes('consulta realizada');
+
+            if (isGeneric) {
+              const list = galleryResults.map(it => {
+                const tagList = [...(it.tags || []), ...(it.aiTags || [])].slice(0, 3).join(', ');
+                return `• **${it.title}**${it.productType ? ` (${it.productType})` : ''}\n  ${it.description ? it.description.slice(0, 120) : 'Sem descrição'}\n  🔗 [Ver Foto](${it.imageUrl})${tagList ? ` | 🏷️ ${tagList}` : ''}`;
+              }).join('\n\n');
+              finalAnswer = `Encontrei **${galleryResults.length} foto(s)/arte(s)** no acervo da galeria:\n\n${list}`;
+            } else {
+              finalAnswer = textResponse;
+            }
+          }
+        } catch {
+          if (galleryResults.length === 0) {
+            finalAnswer = 'Não encontrei nenhuma foto ou arte na galeria.';
+          } else {
+            const list = galleryResults.map(it => `• **${it.title}** - [Ver Foto](${it.imageUrl})`).join('\n');
+            finalAnswer = `Encontrei **${galleryResults.length} foto(s)/arte(s)** na galeria:\n\n${list}`;
+          }
+        }
+      }
+    } else {
+      finalAnswer = cleanAiOutput(parts.map(p => p.text).filter(Boolean).join('\n')) || 'Como posso ajudar você hoje?';
+    }
+
+    // Salva no cache de respostas rápidas
+    aiResponseCache.set(cacheKey, {
+      reply: finalAnswer,
+      orderDraft: extractedDraft,
+      whatsappDraft: extractedWhatsApp,
+      pricingEstimate: extractedPricing,
+      galleryItems: extractedGalleryItems,
+      timestamp: Date.now(),
+    });
+
+    return {
+      success: true,
+      reply: finalAnswer,
+      orderDraft: extractedDraft,
+      whatsappDraft: extractedWhatsApp,
+      pricingEstimate: extractedPricing,
+      galleryItems: extractedGalleryItems,
+    };
+  } catch (error) {
+    if (error instanceof functions.https.HttpsError) throw error;
+    console.error('[aiAgentChat] Erro inesperado:', error);
+    throw new functions.https.HttpsError('internal', error.message || 'Erro ao executar o copiloto de IA.');
+  }
+});
+
+/**
+ * Consulta a cota e o consumo em tempo real de TODOS os modelos disponíveis da API Gemini.
+ * Uso estritamente restrito a administradores.
+ */
+exports.getAiUsage = onCall({ cors: true }, async (request) => {
+  if (!request.auth) {
+    throw new functions.https.HttpsError('unauthenticated', 'Usuário não autenticado.');
+  }
+
+  const profile = await admin.firestore().doc(`userProfiles/${request.auth.uid}`).get();
+  const profileData = profile.exists ? profile.data() : null;
+  const isAdmin = profileData?.role === 'admin' && profileData?.active !== false;
+  if (!isAdmin) {
+    throw new functions.https.HttpsError('permission-denied', 'Acesso restrito a administradores.');
+  }
+
+  const now = new Date();
+  const startOfTodayUtc = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 0, 0));
+  const startOfMonthUtc = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1, 0, 0, 0));
+  const oneMinuteAgo = new Date(now.getTime() - 60 * 1000);
+
+  const MODEL_SPECS = [
+    {
+      id: 'gemini-2.0-flash',
+      aliases: ['gemini-2.0-flash', 'gemini-2.0-flash-exp', 'gemini-2.0-flash-001'],
+      name: 'Gemini 2.0 Flash',
+      description: 'Modelo de última geração ultra-rápido com suporte multimodal e tool calls integradas.',
+      category: 'Produção (Padrão)',
+      dailyLimit: 1500,
+      rpmLimit: 15,
+      tpmLimit: 1000000,
+      isDefault: true,
+    },
+    {
+      id: 'gemini-2.0-flash-lite',
+      aliases: ['gemini-2.0-flash-lite', 'gemini-2.0-flash-lite-preview-02-05', 'gemini-2.0-flash-lite-preview'],
+      name: 'Gemini 2.0 Flash-Lite',
+      description: 'Modelo ultra-leve e econômico para respostas instantâneas e alto throughput.',
+      category: 'Alta Eficiência / Lite',
+      dailyLimit: 1500,
+      rpmLimit: 30,
+      tpmLimit: 1000000,
+    },
+    {
+      id: 'gemini-1.5-flash',
+      aliases: ['gemini-1.5-flash', 'gemini-1.5-flash-latest', 'gemini-1.5-flash-002', 'gemini-1.5-flash-8b'],
+      name: 'Gemini 1.5 Flash',
+      description: 'Modelo comprovado e estável para briefings diários e consultas operacionais.',
+      category: 'Fallback Estável',
+      dailyLimit: 1500,
+      rpmLimit: 15,
+      tpmLimit: 1000000,
+    },
+    {
+      id: 'gemini-1.5-pro',
+      aliases: ['gemini-1.5-pro', 'gemini-1.5-pro-latest', 'gemini-1.5-pro-002'],
+      name: 'Gemini 1.5 Pro',
+      description: 'Modelo de raciocínio profundo para análises avançadas e grandes janelas de contexto.',
+      category: 'Raciocínio Avançado',
+      dailyLimit: 50,
+      rpmLimit: 2,
+      tpmLimit: 32000,
+    },
+    {
+      id: 'gemini-3.0-flash',
+      aliases: ['gemini-3.0-flash', 'gemini-3.1-pro-preview', 'gemini-3.0-flash-preview'],
+      name: 'Gemini 3.0 Flash (Preview)',
+      description: 'Próxima geração experimental com alta fidelidade lógica e estruturação.',
+      category: 'Experimental / Preview',
+      dailyLimit: 1500,
+      rpmLimit: 15,
+      tpmLimit: 1000000,
+    },
+  ];
+
+  let todayDocs = [];
+  let monthDocs = [];
+  let minuteDocs = [];
+
+  try {
+    const [todaySnap, monthSnap, minuteSnap] = await Promise.all([
+      admin.firestore().collection('ai_usage_logs')
+        .where('timestamp', '>=', startOfTodayUtc.toISOString())
+        .get(),
+      admin.firestore().collection('ai_usage_logs')
+        .where('timestamp', '>=', startOfMonthUtc.toISOString())
+        .get(),
+      admin.firestore().collection('ai_usage_logs')
+        .where('timestamp', '>=', oneMinuteAgo.toISOString())
+        .get(),
+    ]);
+
+    todayDocs = todaySnap.docs.map(d => d.data());
+    monthDocs = monthSnap.docs.map(d => d.data());
+    minuteDocs = minuteSnap.docs.map(d => d.data());
+  } catch (fsErr) {
+    console.warn('[getAiUsage] Erro ao consultar ai_usage_logs no Firestore:', fsErr);
+  }
+
+  const findSpecForDocModel = (docModel = '') => {
+    const m = String(docModel).toLowerCase().trim();
+    for (const spec of MODEL_SPECS) {
+      if (spec.id === m || spec.aliases.some(a => m === a || m.startsWith(a))) {
+        return spec.id;
+      }
+    }
+    return 'gemini-2.0-flash';
+  };
+
+  const modelStatsMap = new Map();
+  for (const spec of MODEL_SPECS) {
+    modelStatsMap.set(spec.id, {
+      daily: 0,
+      monthly: 0,
+      rpm: 0,
+    });
+  }
+
+  for (const doc of todayDocs) {
+    const matchedId = findSpecForDocModel(doc.model);
+    if (modelStatsMap.has(matchedId)) {
+      modelStatsMap.get(matchedId).daily += 1;
+    }
+  }
+
+  for (const doc of monthDocs) {
+    const matchedId = findSpecForDocModel(doc.model);
+    if (modelStatsMap.has(matchedId)) {
+      modelStatsMap.get(matchedId).monthly += 1;
+    }
+  }
+
+  for (const doc of minuteDocs) {
+    const matchedId = findSpecForDocModel(doc.model);
+    if (modelStatsMap.has(matchedId)) {
+      modelStatsMap.get(matchedId).rpm += 1;
+    }
+  }
+
+  const activeModelId = preferredWorkingModel || 'gemini-2.0-flash';
+
+  const models = MODEL_SPECS.map(spec => {
+    const stats = modelStatsMap.get(spec.id) || { daily: 0, monthly: 0, rpm: 0 };
+    const percentage = Math.min(100, Math.round((stats.daily / spec.dailyLimit) * 100));
+    return {
+      id: spec.id,
+      name: spec.name,
+      description: spec.description,
+      category: spec.category,
+      isDefault: Boolean(spec.isDefault),
+      isActive: spec.id === activeModelId,
+      daily: {
+        used: stats.daily,
+        limit: spec.dailyLimit,
+        percentage,
+      },
+      rpm: {
+        used: stats.rpm,
+        limit: spec.rpmLimit,
+      },
+      monthly: {
+        used: stats.monthly,
+      },
+      tpmLimit: spec.tpmLimit,
+    };
+  });
+
+  const nextUtcMidnight = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1, 0, 0, 0));
+  const nextUtcMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1, 0, 0, 0));
+
+  const totalDailyUsed = todayDocs.length;
+  const totalMonthlyUsed = monthDocs.length;
+  const totalDailyLimit = 1500;
+
+  return {
+    success: true,
+    activeModel: activeModelId,
+    provider: 'Google AI Studio / Gemini API',
+    resetsAt: nextUtcMidnight.toISOString(),
+    totalDaily: {
+      used: totalDailyUsed,
+      limit: totalDailyLimit,
+      percentage: Math.min(100, Math.round((totalDailyUsed / totalDailyLimit) * 100)),
+    },
+    totalMonthly: {
+      used: totalMonthlyUsed,
+      limit: 45000,
+      percentage: Math.min(100, Math.round((totalMonthlyUsed / 45000) * 100)),
+    },
+    models,
+    // Compatibilidade com interfaces legadas
+    daily: {
+      used: totalDailyUsed,
+      limit: totalDailyLimit,
+      percentage: Math.min(100, Math.round((totalDailyUsed / totalDailyLimit) * 100)),
+      resetsAt: nextUtcMidnight.toISOString(),
+    },
+    rpm: {
+      used: minuteDocs.length,
+      limit: 15,
+      percentage: Math.min(100, Math.round((minuteDocs.length / 15) * 100)),
+    },
+    monthly: {
+      used: totalMonthlyUsed,
+      limit: 45000,
+      percentage: Math.min(100, Math.round((totalMonthlyUsed / 45000) * 100)),
+      resetsAt: nextUtcMonth.toISOString(),
+    },
+  };
+});
+
+/**
+ * Analisa e enriquece um item da Galeria com visão computacional (Gemini Vision).
+ * Extrai descrição rica, tags sugeridas, tipo de produto e cores para busca e catálogo inteligente.
+ * Guardrails estritos: usuário não-admin só pode enriquecer itens pertencentes a ele; admin tem acesso geral.
+ */
+exports.enrichGalleryItemWithAi = onCall({ secrets: [GEMINI_API_KEY] }, async (request) => {
+  if (!request.auth) {
+    throw new functions.https.HttpsError('unauthenticated', 'É necessário estar autenticado.');
+  }
+
+  const callerUid = request.auth.uid;
+
+  try {
+    await galleryAiLimiter.consume(callerUid);
+  } catch {
+    throw new functions.https.HttpsError('resource-exhausted', 'Muitas requisições de análise de imagem. Aguarde um momento.');
+  }
+
+  const callerProfileDoc = await admin.firestore().doc(`userProfiles/${callerUid}`).get();
+  const callerProfile = callerProfileDoc.exists ? callerProfileDoc.data() : { role: 'user', active: true };
+  if (callerProfile.active === false) {
+    throw new functions.https.HttpsError('permission-denied', 'Conta de usuário desativada.');
+  }
+  const isAdmin = callerProfile.role === 'admin';
+
+  // Guardrail de Permissão de Recursos de IA:
+  if (!isAdmin) {
+    if (callerProfile.role === 'funcionario' && callerProfile.permissions?.aiCopilot !== true) {
+      throw new functions.https.HttpsError('permission-denied', 'Seu perfil de funcionário não possui permissão para utilizar recursos de IA.');
+    }
+    if (callerProfile.role === 'user' && callerProfile.permissions?.aiCopilot === false) {
+      throw new functions.https.HttpsError('permission-denied', 'Seu perfil de usuário não possui permissão para utilizar recursos de IA.');
+    }
+  }
+
+  const { itemId } = request.data || {};
+  if (!itemId || typeof itemId !== 'string') {
+    throw new functions.https.HttpsError('invalid-argument', 'ID da arte é obrigatório.');
+  }
+
+  const itemRef = admin.firestore().doc(`gallery/${itemId}`);
+  const itemSnap = await itemRef.get();
+  if (!itemSnap.exists) {
+    throw new functions.https.HttpsError('not-found', 'Item da galeria não encontrado.');
+  }
+
+  const itemData = itemSnap.data();
+  if (itemData.deletedAt) {
+    throw new functions.https.HttpsError('failed-precondition', 'Este item da galeria foi excluído.');
+  }
+
+  // GUARDRAIL ESTREITO: Usuário comum só pode analisar suas próprias artes
+  if (!isAdmin) {
+    const isOwner = itemData.userId === callerUid || itemData.createdBy === callerUid;
+    if (!isOwner) {
+      throw new functions.https.HttpsError('permission-denied', 'Você não tem permissão para analisar esta arte da galeria.');
+    }
+  }
+
+  if (!itemData.imageUrl) {
+    throw new functions.https.HttpsError('invalid-argument', 'O item não possui imagem para análise.');
+  }
+
+  const rawKey = (typeof GEMINI_API_KEY.value === 'function' ? GEMINI_API_KEY.value() : process.env.GEMINI_API_KEY) || '';
+  const apiKey = String(rawKey).trim();
+  if (!apiKey) {
+    throw new functions.https.HttpsError('failed-precondition', 'Chave GEMINI_API_KEY não configurada no Firebase.');
+  }
+
+  // Baixa a imagem do Storage / CDN para base64
+  let base64Image = '';
+  let mimeType = 'image/jpeg';
+  try {
+    const imgResp = await fetch(itemData.imageUrl);
+    if (!imgResp.ok) {
+      throw new Error(`Falha ao baixar imagem (${imgResp.status})`);
+    }
+    const contentType = imgResp.headers.get('content-type');
+    if (contentType && contentType.startsWith('image/')) {
+      mimeType = contentType.split(';')[0];
+    }
+    const buffer = Buffer.from(await imgResp.arrayBuffer());
+    base64Image = buffer.toString('base64');
+  } catch (err) {
+    console.error('[enrichGalleryItemWithAi] Erro ao carregar imagem:', err);
+    throw new functions.https.HttpsError('internal', `Não foi possível carregar a imagem do item: ${err.message}`);
+  }
+
+  const visionPrompt = `Você é um especialista em catálogo de artigos personalizados, confecção têxtil, brindes corporativos e estamparia da empresa Luisices.
+Analise a imagem deste produto/arte que foi produzido pela empresa.
+Título atual informado: "${itemData.title || 'Sem título'}"
+Descrição atual: "${itemData.description || ''}"
+
+Responda ESTRITAMENTE em formato JSON com as seguintes propriedades (sem markdown, sem formatação extra, apenas o objeto JSON puro):
+{
+  "titleSuggested": "Título comercial conciso e descritivo para o produto",
+  "aiDescription": "Descrição comercial rica e técnica dos detalhes visuais do produto, acabamento, estilo, público e possíveis ocasiões (em 2 a 3 frases em pt-BR)",
+  "productType": "Tipo de produto (ex: Camiseta, Moletom, Caneca, Copo, Ecobag, Boné, Placa, Brinde, Almofada, Garrafa, etc.)",
+  "colors": ["Cor 1", "Cor 2"],
+  "suggestedTags": ["tag1", "tag2", "tag3", "tag4", "tag5"]
+}`;
+
+  const getVisionModels = async () => {
+    try {
+      const listResp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`);
+      if (listResp.ok) {
+        const listData = await listResp.json();
+        const available = (listData.models || [])
+          .filter(m => Array.isArray(m.supportedGenerationMethods) && m.supportedGenerationMethods.includes('generateContent'))
+          .map(m => m.name.replace(/^models\//, ''));
+
+        if (available.length > 0) {
+          const flashModels = available.filter(m => m.includes('flash'));
+          const otherModels = available.filter(m => !m.includes('flash'));
+          return [
+            process.env.GEMINI_MODEL,
+            preferredWorkingModel,
+            ...flashModels,
+            ...otherModels,
+            'gemini-2.0-flash',
+            'gemini-1.5-flash',
+          ].filter((item, index, self) => Boolean(item) && self.indexOf(item) === index);
+        }
+      }
+    } catch (err) {
+      console.warn('[enrichGalleryItemWithAi] Falha ao consultar endpoint de modelos:', err);
+    }
+    return [
+      process.env.GEMINI_MODEL,
+      preferredWorkingModel,
+      'gemini-2.0-flash',
+      'gemini-1.5-flash',
+    ].filter((item, index, self) => Boolean(item) && self.indexOf(item) === index);
+  };
+
+  const candidateModels = await getVisionModels();
+  let parsedAiResult = null;
+  let usedModel = 'gemini-2.0-flash';
+  let lastError = null;
+
+  for (const model of candidateModels) {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+    try {
+      const resp = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{
+            role: 'user',
+            parts: [
+              {
+                inlineData: {
+                  mimeType,
+                  data: base64Image
+                }
+              },
+              { text: visionPrompt }
+            ]
+          }],
+          generationConfig: {
+            temperature: 0.2,
+          }
+        })
+      });
+
+      if (!resp.ok) {
+        const errText = await resp.text();
+        console.warn(`[enrichGalleryItemWithAi] Modelo ${model} falhou (Status ${resp.status}):`, errText);
+        lastError = new Error(`Modelo ${model} (Status ${resp.status}): ${errText}`);
+        continue;
+      }
+
+      const data = await resp.json();
+      const textResp = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (textResp) {
+        try {
+          parsedAiResult = JSON.parse(textResp);
+          usedModel = model;
+          break;
+        } catch {
+          const jsonMatch = textResp.match(/\{[\s\S]*\}/);
+          if (jsonMatch) {
+            parsedAiResult = JSON.parse(jsonMatch[0]);
+            usedModel = model;
+            break;
+          }
+        }
+      }
+    } catch (err) {
+      console.warn(`[enrichGalleryItemWithAi] Erro com modelo ${model}:`, err);
+      lastError = err;
+    }
+  }
+
+  if (!parsedAiResult) {
+    console.error('[enrichGalleryItemWithAi] Todos os modelos falharam. Detalhes:', lastError);
+    throw new functions.https.HttpsError('internal', lastError?.message || 'Falha ao processar visão computacional com o Gemini.');
+  }
+
+  // Registra log de uso da IA
+  admin.firestore().collection('ai_usage_logs').add({
+    userId: callerUid,
+    model: usedModel,
+    action: 'gallery_vision_enrichment',
+    itemId,
+    timestamp: new Date().toISOString(),
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+  }).catch((err) => console.warn('[enrichGalleryItemWithAi] Erro ao gravar ai_usage_logs:', err));
+
+  const updates = {
+    aiDescription: parsedAiResult.aiDescription || '',
+    aiTags: Array.isArray(parsedAiResult.suggestedTags) ? parsedAiResult.suggestedTags : [],
+    productType: parsedAiResult.productType || '',
+    colors: Array.isArray(parsedAiResult.colors) ? parsedAiResult.colors : [],
+    aiAnalyzedAt: admin.firestore.FieldValue.serverTimestamp(),
+  };
+
+  // Se o item não tem tags manuais, adiciona as tags sugeridas
+  if ((!itemData.tags || itemData.tags.length === 0) && updates.aiTags.length > 0) {
+    updates.tags = updates.aiTags.slice(0, 5).map((t, idx) => ({
+      name: t,
+      color: ['#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899'][idx % 5],
+    }));
+  }
+
+  await itemRef.update(updates);
+
+  return {
+    success: true,
+    itemId,
+    aiDescription: updates.aiDescription,
+    aiTags: updates.aiTags,
+    productType: updates.productType,
+    colors: updates.colors,
+    suggestedTags: updates.aiTags,
+    titleSuggested: parsedAiResult.titleSuggested || itemData.title,
+  };
+});
+
+/**
+ * Dispara uma mensagem WhatsApp diretamente para o cliente via Evolution API e armazena na base do chat.
+ * Uso restrito a membros autorizados da equipe (admin ou funcionário ativo).
+ */
+exports.sendWhatsAppDirectMessage = onCall({ secrets: [EVOLUTION_API_KEY] }, async (request) => {
+  if (!(await isAuthorizedForWhatsApp(request))) {
+    throw new functions.https.HttpsError('permission-denied', 'Sem permissão para utilizar o módulo de Atendimento (WhatsApp).');
+  }
+
+  const { phone, text, customerName, customerId } = request.data || {};
+  if (!phone || typeof phone !== 'string' || !phone.trim()) {
+    throw new functions.https.HttpsError('invalid-argument', 'Telefone do destinatário é obrigatório.');
+  }
+  if (!text || typeof text !== 'string' || !text.trim()) {
+    throw new functions.https.HttpsError('invalid-argument', 'Texto da mensagem é obrigatório.');
+  }
+
+  const rawKey = (typeof EVOLUTION_API_KEY.value === 'function' ? EVOLUTION_API_KEY.value() : process.env.EVOLUTION_API_KEY) || '';
+  if (!rawKey) {
+    throw new functions.https.HttpsError('failed-precondition', 'Chave EVOLUTION_API_KEY não configurada no Firebase Secret Manager.');
+  }
+
+  try {
+    const cleanNumber = normalizeWhatsAppNumber(phone);
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000);
+
+    const response = await fetch(
+      `${EVOLUTION_API_URL}/message/sendText/${encodeURIComponent(EVOLUTION_INSTANCE)}`,
+      {
+        method: 'POST',
+        headers: {
+          apikey: rawKey,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ number: cleanNumber, text: text.trim() }),
+        signal: controller.signal,
+      }
+    );
+    clearTimeout(timeout);
+
+    if (!response.ok) {
+      const errBody = await response.text();
+      console.error('[sendWhatsAppDirectMessage] Evolution API erro:', response.status, errBody);
+      throw new functions.https.HttpsError('internal', `Evolution API retornou erro ${response.status}: ${errBody}`);
+    }
+
+    const resData = await response.json().catch(() => ({}));
+    const messageId = resData?.key?.id || `msg_${Date.now()}`;
+    const nowIso = new Date().toISOString();
+
+    // 1. Salva a mensagem no histórico de mensagens do WhatsApp
+    await admin.firestore().collection('whatsapp_messages').add({
+      chatId: cleanNumber,
+      phone: cleanNumber,
+      customerName: customerName || null,
+      customerId: customerId || null,
+      sender: 'me',
+      text: text.trim(),
+      status: 'sent',
+      timestamp: nowIso,
+      evolutionMessageId: messageId,
+      sentByUid: request.auth.uid,
+      userId: request.auth.uid,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    // 2. Atualiza a conversa na listagem de chats
+    await admin.firestore().collection('whatsapp_chats').doc(cleanNumber).set({
+      id: cleanNumber,
+      phone: cleanNumber,
+      customerName: customerName || cleanNumber,
+      customerId: customerId || null,
+      lastMessageText: text.trim(),
+      lastMessageTimestamp: nowIso,
+      lastMessageSender: 'me',
+      userId: request.auth.uid,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    }, { merge: true });
+
+    console.log('[sendWhatsAppDirectMessage] Mensagem enviada com sucesso para:', cleanNumber);
+    return {
+      success: true,
+      message: 'Mensagem enviada com sucesso para o WhatsApp!',
+      data: resData,
+    };
+  } catch (error) {
+    if (error instanceof functions.https.HttpsError) throw error;
+    console.error('[sendWhatsAppDirectMessage] Falha ao enviar mensagem:', error);
+    throw new functions.https.HttpsError('internal', error.message || 'Erro ao conectar com a API do WhatsApp.');
+  }
+});
+
+/**
+ * Exclui uma mensagem do WhatsApp (para todos) e remove da base do Firestore.
+ * Uso restrito a membros autorizados da equipe (admin ou funcionário ativo).
+ */
+exports.deleteWhatsAppMessage = onCall({ secrets: [EVOLUTION_API_KEY] }, async (request) => {
+  if (!(await isAuthorizedForWhatsApp(request))) {
+    throw new functions.https.HttpsError('permission-denied', 'Sem permissão para utilizar o módulo de Atendimento (WhatsApp).');
+  }
+
+  const { messageDocId, phone, evolutionMessageId } = request.data || {};
+  if (!messageDocId && !evolutionMessageId) {
+    throw new functions.https.HttpsError('invalid-argument', 'Identificador da mensagem é obrigatório.');
+  }
+
+  const rawKey = (typeof EVOLUTION_API_KEY.value === 'function' ? EVOLUTION_API_KEY.value() : process.env.EVOLUTION_API_KEY) || '';
+  const cleanNumber = phone ? normalizeWhatsAppNumber(phone) : '';
+
+  // 1. Tenta apagar na API do WhatsApp (para todos) caso tenhamos o evolutionMessageId
+  if (rawKey && evolutionMessageId && cleanNumber) {
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 8000);
+      const remoteJid = cleanNumber.includes('@') ? cleanNumber : `${cleanNumber}@s.whatsapp.net`;
+
+      const response = await fetch(
+        `${EVOLUTION_API_URL}/chat/deleteMessageForEveryone/${encodeURIComponent(EVOLUTION_INSTANCE)}`,
+        {
+          method: 'DELETE',
+          headers: {
+            apikey: rawKey,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            id: evolutionMessageId,
+            remoteJid,
+            fromMe: true,
+          }),
+          signal: controller.signal,
+        }
+      );
+      clearTimeout(timeout);
+
+      if (!response.ok) {
+        console.warn(`[deleteWhatsAppMessage] Aviso ao apagar na API (${response.status}):`, await response.text().catch(() => ''));
+      }
+    } catch (err) {
+      console.warn('[deleteWhatsAppMessage] Falha de rede ao tentar apagar na API do WhatsApp:', err.message);
+    }
+  }
+
+  // 2. Remove da coleção whatsapp_messages no Firestore
+  try {
+    if (messageDocId) {
+      await admin.firestore().collection('whatsapp_messages').doc(messageDocId).delete();
+    }
+    if (evolutionMessageId) {
+      const snap = await admin.firestore().collection('whatsapp_messages').where('evolutionMessageId', '==', evolutionMessageId).get();
+      for (const d of snap.docs) {
+        await d.ref.delete();
+      }
+    }
+  } catch (err) {
+    console.error('[deleteWhatsAppMessage] Erro ao deletar documento no Firestore:', err);
+  }
+
+  // 3. Atualiza o último snippet da conversa no whatsapp_chats
+  if (cleanNumber) {
+    try {
+      const lastMsgSnap = await admin.firestore()
+        .collection('whatsapp_messages')
+        .where('chatId', '==', cleanNumber)
+        .orderBy('timestamp', 'desc')
+        .limit(1)
+        .get();
+
+      if (!lastMsgSnap.empty) {
+        const lastMsg = lastMsgSnap.docs[0].data();
+        await admin.firestore().collection('whatsapp_chats').doc(cleanNumber).set({
+          lastMessageText: lastMsg.text || '',
+          lastMessageTimestamp: lastMsg.timestamp || new Date().toISOString(),
+          lastMessageSender: lastMsg.sender || 'me',
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        }, { merge: true });
+      } else {
+        await admin.firestore().collection('whatsapp_chats').doc(cleanNumber).set({
+          lastMessageText: '',
+          lastMessageTimestamp: null,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        }, { merge: true });
+      }
+    } catch (err) {
+      console.warn('[deleteWhatsAppMessage] Erro ao atualizar resumo do chat:', err);
+    }
+  }
+
+  return {
+    success: true,
+    message: 'Mensagem apagada com sucesso!',
+  };
+});
+
+/**
+ * Sincroniza mensagens recentes de um chat diretamente da API do WhatsApp para o Firestore.
+ * Uso restrito a membros autorizados da equipe (admin ou funcionário ativo).
+ */
+exports.syncWhatsAppChatMessages = onCall({ secrets: [EVOLUTION_API_KEY] }, async (request) => {
+  if (!(await isAuthorizedForWhatsApp(request))) {
+    throw new functions.https.HttpsError('permission-denied', 'Sem permissão para utilizar o módulo de Atendimento (WhatsApp).');
+  }
+
+  const { phone } = request.data || {};
+  if (!phone || typeof phone !== 'string' || !phone.trim()) {
+    throw new functions.https.HttpsError('invalid-argument', 'Telefone do contato é obrigatório.');
+  }
+
+  const rawKey = (typeof EVOLUTION_API_KEY.value === 'function' ? EVOLUTION_API_KEY.value() : process.env.EVOLUTION_API_KEY) || '';
+  if (!rawKey) {
+    throw new functions.https.HttpsError('failed-precondition', 'Chave EVOLUTION_API_KEY não configurada no Firebase Secret Manager.');
+  }
+
+  const cleanPhone = normalizeWhatsAppNumber(phone);
+  const remoteJid = cleanPhone.includes('@') ? cleanPhone : `${cleanPhone}@s.whatsapp.net`;
+
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 12000);
+
+    const response = await fetch(
+      `${EVOLUTION_API_URL}/chat/findMessages/${encodeURIComponent(EVOLUTION_INSTANCE)}`,
+      {
+        method: 'POST',
+        headers: {
+          apikey: rawKey,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          where: {
+            key: {
+              remoteJid,
+            },
+          },
+          limit: 50,
+        }),
+        signal: controller.signal,
+      }
+    );
+    clearTimeout(timeout);
+
+    if (!response.ok) {
+      const errText = await response.text().catch(() => '');
+      console.warn(`[syncWhatsAppChatMessages] Erro ao consultar mensagens (${response.status}):`, errText);
+      return { success: false, message: `Não foi possível sincronizar histórico (${response.status}).` };
+    }
+
+    const data = await response.json().catch(() => []);
+    const messagesList = Array.isArray(data) ? data : data?.messages?.records || data?.records || [];
+
+    // Tenta localizar cliente correspondente
+    let customerName = cleanPhone;
+    let customerId = null;
+    try {
+      const custSnap = await admin.firestore().collection('customers').limit(100).get();
+      for (const d of custSnap.docs) {
+        const cData = d.data();
+        const cPhone = String(cData.phone || '').replace(/\D/g, '');
+        if (cPhone && (cleanPhone.endsWith(cPhone) || cPhone.endsWith(cleanPhone))) {
+          customerName = cData.name || customerName;
+          customerId = d.id;
+          break;
+        }
+      }
+    } catch (e) {
+      console.warn('[syncWhatsAppChatMessages] Erro ao buscar cliente:', e);
+    }
+
+    let syncedCount = 0;
+    let latestMessageText = '';
+    let latestTimestamp = '';
+    let latestSender = 'me';
+
+    for (const item of messagesList) {
+      const key = item?.key;
+      const msg = item?.message;
+      if (!key?.id) continue;
+
+      const fromMe = Boolean(key?.fromMe);
+      const text =
+        msg?.conversation ||
+        msg?.extendedTextMessage?.text ||
+        msg?.imageMessage?.caption ||
+        msg?.videoMessage?.caption ||
+        msg?.documentMessage?.caption ||
+        (msg?.imageMessage ? '📷 [Foto]' : msg?.audioMessage ? '🎵 [Áudio]' : msg?.documentMessage ? '📄 [Documento]' : '');
+
+      if (!text) continue;
+
+      const epochSec = item.messageTimestamp || key.messageTimestamp;
+      const tsIso = epochSec ? new Date(Number(epochSec) * 1000).toISOString() : new Date().toISOString();
+
+      const msgDocId = `wa_${key.id}`;
+      await admin.firestore().collection('whatsapp_messages').doc(msgDocId).set({
+        chatId: cleanPhone,
+        phone: cleanPhone,
+        customerName,
+        customerId,
+        sender: fromMe ? 'me' : 'customer',
+        text,
+        status: fromMe ? 'sent' : 'received',
+        timestamp: tsIso,
+        evolutionMessageId: key.id,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      }, { merge: true });
+
+      syncedCount++;
+      latestMessageText = text;
+      latestTimestamp = tsIso;
+      latestSender = fromMe ? 'me' : 'customer';
+    }
+
+    if (syncedCount > 0 && latestMessageText) {
+      await admin.firestore().collection('whatsapp_chats').doc(cleanPhone).set({
+        id: cleanPhone,
+        phone: cleanPhone,
+        customerName,
+        customerId,
+        lastMessageText: latestMessageText,
+        lastMessageTimestamp: latestTimestamp,
+        lastMessageSender: latestSender,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      }, { merge: true });
+    }
+
+    return {
+      success: true,
+      count: syncedCount,
+      message: `${syncedCount} mensagem(ns) sincronizada(s) com sucesso!`,
+    };
+  } catch (err) {
+    console.error('[syncWhatsAppChatMessages] Erro:', err);
+    throw new functions.https.HttpsError('internal', err.message || 'Erro ao sincronizar mensagens.');
+  }
+});
+
+/**
+ * Consulta o status da conexão da instância com o WhatsApp (open, connecting, close).
+ */
+exports.getWhatsAppInstanceStatus = onCall({ secrets: [EVOLUTION_API_KEY] }, async (request) => {
+  if (!(await isAuthorizedForWhatsApp(request))) {
+    throw new functions.https.HttpsError('permission-denied', 'Sem permissão para utilizar o módulo de Atendimento (WhatsApp).');
+  }
+
+  const rawKey = (typeof EVOLUTION_API_KEY.value === 'function' ? EVOLUTION_API_KEY.value() : process.env.EVOLUTION_API_KEY) || '';
+  if (!rawKey) {
+    return {
+      connected: false,
+      state: 'missing_key',
+      instance: EVOLUTION_INSTANCE,
+      message: 'Chave de integração não configurada.',
+    };
+  }
+
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 6000);
+
+    const response = await fetch(
+      `${EVOLUTION_API_URL}/instance/connectionState/${encodeURIComponent(EVOLUTION_INSTANCE)}`,
+      {
+        method: 'GET',
+        headers: { apikey: rawKey },
+        signal: controller.signal,
+      }
+    );
+    clearTimeout(timeout);
+
+    if (response.ok) {
+      const data = await response.json().catch(() => ({}));
+      const state = data?.instance?.state || data?.state || 'unknown';
+      return {
+        connected: state === 'open',
+        state,
+        instance: EVOLUTION_INSTANCE,
+        serverUrl: EVOLUTION_API_URL,
+      };
+    }
+
+    return {
+      connected: false,
+      state: 'error',
+      status: response.status,
+      instance: EVOLUTION_INSTANCE,
+    };
+  } catch (err) {
+    return {
+      connected: false,
+      state: 'unreachable',
+      error: err.message,
+      instance: EVOLUTION_INSTANCE,
+    };
+  }
+});
+
+/**
+ * Webhook para receber mensagens recebidas (MESSAGES_UPSERT) da API do WhatsApp em tempo real.
+ */
+exports.evolutionWhatsAppWebhook = onRequest(async (req, res) => {
+  if (req.method !== 'POST') {
+    res.status(405).send('Method Not Allowed');
+    return;
+  }
+
+  try {
+    const event = req.body?.event;
+    const data = req.body?.data;
+
+    if (event === 'messages.upsert' || event === 'MESSAGES_UPSERT') {
+      const msg = data?.message || data;
+      const key = data?.key || msg?.key;
+      const fromMe = Boolean(key?.fromMe);
+      const remoteJid = key?.remoteJid || '';
+
+      if (remoteJid && !remoteJid.includes('@g.us') && !remoteJid.includes('status@broadcast')) {
+        const cleanPhone = remoteJid.replace(/\D/g, '');
+        const messageText =
+          msg?.conversation ||
+          msg?.extendedTextMessage?.text ||
+          msg?.imageMessage?.caption ||
+          msg?.videoMessage?.caption ||
+          msg?.documentMessage?.caption ||
+          (msg?.imageMessage ? '📷 [Foto]' : msg?.audioMessage ? '🎵 [Áudio]' : msg?.documentMessage ? '📄 [Documento]' : '');
+
+        if (cleanPhone && messageText) {
+          const nowIso = new Date().toISOString();
+
+          // Tenta localizar o nome do cliente na base customers
+          let customerName = cleanPhone;
+          let customerId = null;
+          try {
+            const custSnap = await admin.firestore().collection('customers').limit(100).get();
+            for (const d of custSnap.docs) {
+              const cData = d.data();
+              const cPhone = String(cData.phone || '').replace(/\D/g, '');
+              if (cPhone && (cleanPhone.endsWith(cPhone) || cPhone.endsWith(cleanPhone))) {
+                customerName = cData.name || customerName;
+                customerId = d.id;
+                break;
+              }
+            }
+          } catch (e) {
+            console.warn('[evolutionWhatsAppWebhook] Erro ao buscar cliente:', e);
+          }
+
+          const msgDocId = key?.id ? `wa_${key.id}` : null;
+          if (msgDocId) {
+            await admin.firestore().collection('whatsapp_messages').doc(msgDocId).set({
+              chatId: cleanPhone,
+              phone: cleanPhone,
+              customerName,
+              customerId,
+              sender: fromMe ? 'me' : 'customer',
+              text: messageText,
+              status: fromMe ? 'sent' : 'received',
+              timestamp: nowIso,
+              evolutionMessageId: key?.id || `inc_${Date.now()}`,
+              createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            }, { merge: true });
+          } else {
+            await admin.firestore().collection('whatsapp_messages').add({
+              chatId: cleanPhone,
+              phone: cleanPhone,
+              customerName,
+              customerId,
+              sender: fromMe ? 'me' : 'customer',
+              text: messageText,
+              status: fromMe ? 'sent' : 'received',
+              timestamp: nowIso,
+              evolutionMessageId: `inc_${Date.now()}`,
+              createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            });
+          }
+
+          await admin.firestore().collection('whatsapp_chats').doc(cleanPhone).set({
+            id: cleanPhone,
+            phone: cleanPhone,
+            customerName,
+            customerId,
+            lastMessageText: messageText,
+            lastMessageTimestamp: nowIso,
+            lastMessageSender: fromMe ? 'me' : 'customer',
+            unreadCount: fromMe ? 0 : admin.firestore.FieldValue.increment(1),
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          }, { merge: true });
+        }
+      }
+    }
+
+    res.status(200).json({ received: true });
+  } catch (error) {
+    console.error('[evolutionWhatsAppWebhook] Erro ao processar webhook:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 
 

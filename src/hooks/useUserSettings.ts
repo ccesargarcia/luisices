@@ -32,6 +32,24 @@ export function useUserSettings() {
     }
   };
 
+  // Alternar publicação da loja (publicada / despublicada)
+  const toggleStorePublished = async (
+    storePublished: boolean,
+    storeUnpublishMessage?: string
+  ): Promise<void> => {
+    if (!user) throw new Error("Usuário não autenticado");
+    try {
+      await firebaseSettingsService.toggleStorePublished(
+        user.uid,
+        storePublished,
+        storeUnpublishMessage
+      );
+    } catch (err) {
+      setError(err as Error);
+      throw err;
+    }
+  };
+
   // Upload de avatar
   const uploadAvatar = async (file: File): Promise<string> => {
     if (!user) throw new Error('Usuário não autenticado');
@@ -364,6 +382,7 @@ export function useUserSettings() {
     loading,
     error,
     updateSettings,
+    toggleStorePublished,
     uploadAvatar,
     uploadLogo,
     uploadCatalogLogo,

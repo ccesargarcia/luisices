@@ -1,8 +1,18 @@
 import React, { useRef, useState } from 'react';
 import { GalleryItem } from '../../types';
 import { SafeImg } from '../SafeMedia';
-import { Images, Plus, ZoomIn, X } from 'lucide-react';
+import { Images, Plus, ZoomIn, X, Loader2 } from 'lucide-react';
 import { firebaseGalleryService } from '../../../services/firebaseGalleryService';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from '../ui/dialog';
+import { Button } from '../ui/button';
+import { Input } from '../ui/input';
+import { Label } from '../ui/label';
 
 interface OrderGallerySectionProps {
   customerName: string;
@@ -130,84 +140,77 @@ export function OrderGallerySection({
       )}
 
       {/* Upload arte — mini dialog */}
-      {galleryUploadOpen && (
-        <div
-          className="fixed inset-0 z-[100] bg-black/60 flex items-center justify-center p-4"
-          onClick={() => setGalleryUploadOpen(false)}
-        >
-          <div
-            className="bg-background rounded-lg shadow-xl p-5 w-full max-w-sm space-y-3"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between">
-              <h4 className="font-semibold text-sm">Adicionar Arte</h4>
-              <button type="button" onClick={() => setGalleryUploadOpen(false)}>
-                <X className="size-4" />
-              </button>
-            </div>
+      <Dialog open={galleryUploadOpen} onOpenChange={setGalleryUploadOpen}>
+        <DialogContent size="sm" className="max-h-[90dvh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Adicionar Arte</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-1">
             {galleryUploadPreview && (
               <SafeImg
                 src={galleryUploadPreview}
                 alt="preview"
-                className="w-full max-h-40 object-contain rounded border"
+                className="w-full max-h-44 object-contain rounded-lg border bg-muted/30"
               />
             )}
-            <div className="space-y-1">
-              <label className="text-xs font-medium">
+            <div className="space-y-1.5">
+              <Label htmlFor="order-art-title" className="text-xs font-medium">
                 Título <span className="text-destructive">*</span>
-              </label>
-              <input
-                className="w-full border rounded-md px-3 py-1.5 text-sm bg-background focus:outline-none focus:ring-2 focus:ring-ring"
+              </Label>
+              <Input
+                id="order-art-title"
                 value={galleryUploadTitle}
                 onChange={(e) => setGalleryUploadTitle(e.target.value)}
                 placeholder="Nome da arte"
                 autoFocus
               />
             </div>
-            <div className="flex gap-2 pt-1">
-              <button
-                type="button"
-                className="flex-1 border rounded-md py-1.5 text-sm hover:bg-muted transition-colors"
-                onClick={() => setGalleryUploadOpen(false)}
-                disabled={galleryUploadSaving}
-              >
-                Cancelar
-              </button>
-              <button
-                type="button"
-                className="flex-1 bg-primary text-primary-foreground rounded-md py-1.5 text-sm hover:bg-primary/90 transition-colors disabled:opacity-50"
-                onClick={handleGalleryUploadSave}
-                disabled={galleryUploadSaving || !galleryUploadTitle.trim()}
-              >
-                {galleryUploadSaving ? 'Salvando...' : 'Salvar'}
-              </button>
-            </div>
           </div>
-        </div>
-      )}
+          <DialogFooter className="pt-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setGalleryUploadOpen(false)}
+              disabled={galleryUploadSaving}
+            >
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              onClick={handleGalleryUploadSave}
+              disabled={galleryUploadSaving || !galleryUploadTitle.trim()}
+            >
+              {galleryUploadSaving ? (
+                <>
+                  <Loader2 className="size-4 animate-spin mr-1.5" />
+                  Salvando...
+                </>
+              ) : (
+                'Salvar'
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Lightbox da galeria */}
       {galleryLightbox && (
-        <div
-          className="fixed inset-0 z-[100] bg-black/80 flex items-center justify-center p-4"
-          onClick={() => setGalleryLightbox(null)}
-        >
-          <div className="relative max-w-3xl w-full" onClick={(e) => e.stopPropagation()}>
-            <button
-              type="button"
-              className="absolute -top-8 right-0 text-white/80 hover:text-white"
-              onClick={() => setGalleryLightbox(null)}
-            >
-              <X className="size-5" />
-            </button>
-            <SafeImg
-              src={galleryLightbox.imageUrl}
-              alt={galleryLightbox.title}
-              className="w-full max-h-[80vh] object-contain rounded-lg"
-            />
-            <p className="text-white/90 text-sm mt-2 text-center">{galleryLightbox.title}</p>
-          </div>
-        </div>
+        <Dialog open={Boolean(galleryLightbox)} onOpenChange={(open) => !open && setGalleryLightbox(null)}>
+          <DialogContent size="3xl" noPadding className="max-h-[90dvh] flex flex-col overflow-hidden bg-black/95 border-border/50 text-white">
+            <div className="flex items-center justify-between px-4 py-2.5 border-b border-white/10 shrink-0">
+              <DialogTitle className="text-sm font-semibold truncate text-white">
+                {galleryLightbox.title}
+              </DialogTitle>
+            </div>
+            <div className="flex-1 flex items-center justify-center p-2 min-h-60 overflow-hidden">
+              <SafeImg
+                src={galleryLightbox.imageUrl}
+                alt={galleryLightbox.title}
+                className="max-w-full max-h-[75vh] object-contain rounded"
+              />
+            </div>
+          </DialogContent>
+        </Dialog>
       )}
     </div>
   );

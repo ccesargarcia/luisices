@@ -1,6 +1,8 @@
-# Firebase Cloud Functions - Luisices
+# Firebase Cloud Functions — Luisices
 
-Funções serverless para autenticação, convites, gestão de usuários e envio de mensagens via Resend e Evolution API.
+Funções serverless (Firebase Functions v2) para autenticação, convites, gestão segura de usuários, envio e recebimento de e-mails transacionais (Resend) e mensageria WhatsApp (Evolution API).
+
+---
 
 ## 📦 Instalação
 
@@ -9,34 +11,43 @@ cd functions
 npm install
 ```
 
-## 🔧 Configuração
+---
 
-### 1. Configurar secrets
+## 🔧 Configuração de Segredos (Secrets)
+
+As funções utilizam o sistema de parâmetros e segredos do Google Cloud Secret Manager integrado ao Firebase Functions v2:
 
 ```bash
+# Chave da API do Resend para envio de e-mails
 firebase functions:secrets:set RESEND_API_KEY
+
+# Token do Webhook do Resend para validação de assinatura Svix
+firebase functions:secrets:set RESEND_WEBHOOK_SECRET
+
+# Chave da API Evolution para envio de mensagens WhatsApp (opcional)
 firebase functions:secrets:set EVOLUTION_API_KEY
+
+# Chave da API Gemini (Google AI) para o Copiloto e Visão Computacional
+firebase functions:secrets:set GEMINI_API_KEY
 ```
 
-`EVOLUTION_API_KEY` é opcional para usar somente e-mail. A API usa `https://wa.luisices.com.br` e a instância `homeassistant`.
+> **Nota:** A Evolution API utiliza a URL `https://wa.luisices.com.br` e a instância `homeassistant`.
 
-### 2. Para desenvolvimento local
-
-```bash
-firebase functions:config:get > .runtimeconfig.json
-```
+---
 
 ## 🚀 Deploy
 
 ```bash
-# Deploy apenas das functions
+# Deploy de todas as functions
 npm run deploy
 
 # Ou via Firebase CLI
 firebase deploy --only functions
 ```
 
-## 🧪 Teste Local
+---
+
+## 🧪 Teste Local (Emuladores)
 
 ```bash
 # Iniciar emuladores
@@ -46,47 +57,66 @@ firebase emulators:start --only functions
 http://localhost:4000
 ```
 
-## 📋 Funções Disponíveis
+---
 
-### Gestão de usuários
+## 📋 Catálogo Completo de Funções
 
-- `sendAdminPasswordReset`: administrador envia reset para outro usuário.
-- `createUserInvitation`: cria convite com token em hash e validade de 48 horas; aceita WhatsApp opcional.
-- `validateUserInvitation`: valida o convite.
-- `completeUserInvitation`: cria o perfil `user` e marca o convite como utilizado.
-- `deleteUser`: remove a conta do Firebase Auth e o perfil do Firestore; não permite excluir o próprio administrador.
+### 👤 1. Gestão de Usuários & Autenticação
 
-### `sendPasswordResetEmail`
+| Função | Tipo | Descrição | Permissão |
+|---|---|---|---|
+| `createUser` | Callable v2 | Cria usuário no Firebase Auth e inicializa perfil em `userProfiles/{uid}` com role e permissões | Apenas Admin |
+| `deleteUser` | Callable v2 | Exclui usuário do Firebase Auth e perfil do Firestore (com bloqueio de auto-exclusão do admin) | Apenas Admin |
+| `createUserInvitation` | Callable v2 | Gera convite com token criptográfico de uso único (SHA-256) válido por 48h, enviado por e-mail e WhatsApp | Apenas Admin |
+| `validateUserInvitation` | Callable v2 | Valida token de convite e retorna e-mail associado se estiver pendente e no prazo | Público |
+| `completeUserInvitation` | Callable v2 | Conclui cadastro convidado via transação atômica, ativando perfil `user` e marcando convite como `accepted` | Autenticado |
+| `sendAdminPasswordReset` | Callable v2 | Gera link de redefinição de senha para outro usuário e envia por e-mail e WhatsApp | Apenas Admin |
+| `sendPasswordResetEmail` | Callable v2 | Solicitação pública de recuperação de senha com rate limit (3 tentativas/hora por e-mail) | Público |
 
-**Trigger**: HTTPS Callable
-**Descrição**: Envia e-mail via Resend e, quando há telefone no perfil, também via Evolution API.
+---
 
-**Parâmetros**:
-```typescript
-{
-  email: string
-}
-```
+### 📧 2. Central de E-mails & Webhooks (Resend)
 
-**Resposta**:
-```typescript
-{
-  success: boolean,
-  message: string
-}
-```
+| Função | Tipo | Descrição | Permissão |
+|---|---|---|---|
+| `sendCustomEmail` | Callable v2 | Disparo de e-mails transacionais com validação estrita de destinatários, tamanho (<500KB) e registro em `sentEmails` | Apenas Admin (Rate limit: 50 envios/hora) |
+| `getEmailUsage` | Callable v2 | Consulta cota diária (100/dia) e mensal (3.000/mês) via Resend Metrics API combinada com contagem do Firestore | Admin ou permissão `emails` |
+| `resendReceivingWebhook` | HTTP onRequest | Endpoint para recebimento de e-mails (`email.received`) com validação de assinatura Svix e tolerância de 5 min contra replay attack | Público / Webhook Svix |
 
-**Exemplo de uso no frontend**:
-```typescript
-import { getFunctions, httpsCallable } from 'firebase/functions';
+---
 
-const functions = getFunctions();
-const sendResetEmail = httpsCallable(functions, 'sendPasswordResetEmail');
+### 🤖 3. Inteligência Artificial (Google Gemini)
 
-await sendResetEmail({ email: 'usuario@exemplo.com' });
-```
+| Função | Tipo | Descrição | Permissão |
+|---|---|---|---|
+| `aiAgentChat` | Callable v2 | Copiloto conversacional multimodal com tool calling: extração de pedidos, cálculo de precificação, sugestão de WhatsApp e consultas com isolamento de dados | Autenticado com `aiCopilot` (Rate limit: 60 req/min) |
+| `enrichGalleryItemWithAi` | Callable v2 | Visão computacional (Gemini Vision) para catalogar foto da galeria, extraindo descrição rica, tags e cores | Autenticado com `aiCopilot` e dono/admin da arte (Rate limit: 20 req/min) |
+| `syncAllOrdersToAiView` | Callable v2 | Sincronização em lote da coleção de pedidos para a base de leitura `ai_orders_view` | Apenas Admin |
+| `getAiUsage` | Callable v2 | Consulta consumo de cota e métricas de requisições do Gemini API | Apenas Admin |
 
-## 📚 Observações
+---
 
-- O Firebase Auth não fornece histórico de senhas. A aplicação não armazena nem compara senhas anteriores.
-- O deploy manual no GitHub Actions é recomendado quando o Firebase CLI local estiver bloqueado pela rede corporativa.
+### 💬 4. Central de Atendimento (Evolution API WhatsApp)
+
+| Função | Tipo | Descrição | Permissão |
+|---|---|---|---|
+| `sendWhatsAppDirectMessage` | Callable v2 | Envio de mensagem direta via Evolution API com gravação em `whatsapp_messages` e atualização do chat | Autenticado com `whatsapp` |
+| `deleteWhatsAppMessage` | Callable v2 | Exclusão de mensagem do chat no Firestore e revogação no WhatsApp via Evolution API | Autenticado com `whatsapp` |
+| `syncWhatsAppMessages` | Callable v2 | Sincronização de mensagens recentes entre a instância WhatsApp e o Firestore | Autenticado com `whatsapp` |
+| `whatsappEvolutionWebhook` | HTTP onRequest | Recebimento de webhooks de mensagens e status de conexão da Evolution API | Público / Webhook Evolution |
+
+---
+
+## 🔒 Regras de Segurança e Rate Limiting
+
+1. **Rate Limiting em Memória**:
+   - `sendPasswordResetEmail`: máximo de 3 tentativas por e-mail por hora.
+   - `sendCustomEmail`: máximo de 50 disparos por hora por administrador autenticado.
+   - `aiAgentChat`: máximo de 60 requisições por minuto por usuário autenticado.
+   - `enrichGalleryItemWithAi`: máximo de 20 requisições por minuto por usuário autenticado.
+2. **Proteção Anti-Replay Svix**:
+   - O webhook `resendReceivingWebhook` valida os headers `svix-id`, `svix-timestamp` e `svix-signature` com tolerância máxima de 300 segundos (5 minutos).
+3. **Isolamento Multiusuário de IA**:
+   - Chamadas de IA executam sob estrito isolamento por `callerUid` para usuários não-administradores. O acesso à base `ai_orders_view` é protegido e inacessível via SDK cliente.
+4. **Senhas**:
+   - A aplicação nunca recebe nem armazena senhas em texto puro; todo o gerenciamento de credenciais é delegado com exclusividade ao Firebase Authentication.

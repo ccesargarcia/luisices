@@ -26,12 +26,31 @@ import { NewOrderItemsSelect } from './orders/NewOrderItemsSelect';
 import { NewOrderPaymentSection } from './orders/NewOrderPaymentSection';
 import { NewOrderGallerySelect } from './orders/NewOrderGallerySelect';
 import { ProductItem } from './orders/OrderEditForm';
+import { AiOrderDraft } from '../types';
 
-export function NewOrderDialog() {
+interface NewOrderDialogProps {
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  initialDraft?: AiOrderDraft | null;
+  hideTrigger?: boolean;
+}
+
+export function NewOrderDialog({
+  open: controlledOpen,
+  onOpenChange: controlledOnOpenChange,
+  initialDraft,
+  hideTrigger = false,
+}: NewOrderDialogProps = {}) {
   const { user, userProfile, hasPermission } = useAuth();
   const { teamMembers } = useOrders();
   const { settings } = useUserSettingsContext();
-  const [open, setOpen] = useState(false);
+  const [internalOpen, setInternalOpen] = useState(false);
+  const isControlled = controlledOpen !== undefined;
+  const open = isControlled ? controlledOpen : internalOpen;
+  const setOpen = (val: boolean) => {
+    if (!isControlled) setInternalOpen(val);
+    controlledOnOpenChange?.(val);
+  };
   const [loading, setLoading] = useState(false);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [selectedCustomer, setSelectedCustomer] = useState<string>('');
@@ -109,6 +128,37 @@ export function NewOrderDialog() {
     setCatalogSearch('');
     setCatalogOpenIdx(null);
   };
+
+  // Preenche dados vindos do Copiloto de IA
+  useEffect(() => {
+    if (initialDraft && open) {
+      setIsNewCustomer(true);
+      setSelectedCustomer('new');
+      setFormData(prev => ({
+        ...prev,
+        customerName: initialDraft.customerName || prev.customerName,
+        customerPhone: initialDraft.customerPhone || prev.customerPhone,
+        deliveryDate: initialDraft.deliveryDate || prev.deliveryDate,
+        notes: initialDraft.notes || prev.notes,
+        paymentMethod: (initialDraft.paymentMethod as PaymentMethod) || prev.paymentMethod,
+      }));
+
+      if (initialDraft.productName) {
+        const qty = initialDraft.quantity || 1;
+        const unit = initialDraft.unitPrice
+          ? String(initialDraft.unitPrice)
+          : (initialDraft.totalPrice ? String(initialDraft.totalPrice / qty) : '');
+
+        setProducts([
+          {
+            name: initialDraft.productName,
+            quantity: String(qty),
+            unitPrice: unit,
+          }
+        ]);
+      }
+    }
+  }, [initialDraft, open]);
 
   // Every opening starts a clean order draft, including after Cancel/close.
   useEffect(() => {
@@ -377,13 +427,15 @@ export function NewOrderDialog() {
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button data-testid="new-order-button" className="gap-2">
-          <Plus className="size-4" />
-          Novo Pedido
-        </Button>
-      </DialogTrigger>
-      <DialogContent className="w-[calc(100%-1rem)] max-w-2xl max-h-[90dvh] min-h-[70dvh] overflow-y-auto">
+      {!hideTrigger && (
+        <DialogTrigger asChild>
+          <Button data-testid="new-order-button" className="gap-2">
+            <Plus className="size-4" />
+            Novo Pedido
+          </Button>
+        </DialogTrigger>
+      )}
+      <DialogContent size="2xl" className="max-h-[90dvh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Adicionar Novo Pedido</DialogTitle>
           <DialogDescription className="sr-only">Formulário para criar um novo pedido</DialogDescription>

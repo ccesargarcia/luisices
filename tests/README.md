@@ -1,8 +1,10 @@
-# 🧪 Testes E2E
+# 🧪 Testes E2E — Playwright (Luisices)
 
-Esta pasta contém testes automatizados end-to-end (E2E) usando Playwright.
+Esta pasta contém a suíte completa de testes automatizados end-to-end (E2E) usando Playwright para validação de fluxos críticos, regras de negócio, permissões RBAC, segurança e catálogo público.
 
-## 📁 Estrutura
+---
+
+## 📁 Estrutura de Testes
 
 ```
 tests/e2e/
@@ -10,78 +12,76 @@ tests/e2e/
 ├── critical-flows.spec.ts            # Fluxos críticos da aplicação
 ├── customer-order-lifecycle.spec.ts  # Ciclo completo cliente -> pedido
 ├── customers.spec.ts                 # CRUD e regras de clientes
+├── exchanges.spec.ts                 # Permutas e parcerias
 ├── gallery.spec.ts                   # Galeria de artes e uploads
+├── help.spec.ts                      # Central de ajuda e atalhos
 ├── navigation.spec.ts                # Navegação entre páginas e rotas
-├── order-details.spec.ts             # Detalhes do pedido
+├── order-details.spec.ts             # Detalhes e workflow de pedidos
 ├── orders.spec.ts                    # Gestão e listagem de pedidos
 ├── permissions.spec.ts               # Validação de permissões e papéis (RBAC)
-├── products.spec.ts                  # CRUD de produtos e catálogo
+├── products.spec.ts                  # CRUD de produtos e catálogo interno
 ├── quotes.spec.ts                    # CRUD e conversão de orçamentos
 ├── reports.spec.ts                   # Relatórios e exportações
-└── settings.spec.ts                  # Configurações do usuário e sistema
+├── security.spec.ts                  # Segurança, isolamento e Firestore rules
+├── settings.spec.ts                  # Configurações do usuário e sistema
+├── store.spec.ts                     # Loja pública, sacola, anti-XSS e backoffice
+├── users.spec.ts                     # Gestão de usuários e convites
+└── weekly-calendar.spec.ts           # Agenda semanal de entregas
 ```
 
-## 🚀 Como Rodar
+---
 
-### Testes Rápidos (Smoke Tests)
+## 🚀 Como Executar
 
+### ⚡ Testes Rápidos (CI / Smoke)
 ```bash
 npm run test:ci
 ```
 
-### Todos os Testes
-
+### 📦 Todos os Testes
 ```bash
 npm run test:e2e
 ```
 
-### Modo Interativo
-
+### 🛍️ Testes Específicos por Módulo
 ```bash
-npm run test:e2e:ui
+npm run test:store        # Lojinha pública, sacola, segurança e backoffice
+npm run test:customers    # Clientes
+npm run test:products     # Produtos do ateliê
+npm run test:quotes       # Orçamentos
+npm run test:orders       # Pedidos
+npm run test:navigation   # Navegação entre telas
+npm run test:security     # Segurança, RBAC e regras de Firestore
+npm run test:critical     # Fluxos críticos consolidados
 ```
 
-### Modo Debug
-
+### 🖥️ Modo Visual / Debug Interativo
 ```bash
+# Interface gráfica interativa
+npm run test:e2e:ui
+
+# Modo Debug com pausas e inspecionador de DOM
 npm run test:debug
 ```
 
-## 📊 Ver Relatórios
-
+### 📊 Relatório HTML
 ```bash
 npm run test:report
 ```
 
-## ⚙️ Configuração
+---
 
-1. Instale o Playwright:
+## ⚙️ Configuração Inicial
+
+1. Instale as dependências e os navegadores do Playwright:
    ```bash
    npm install
    npx playwright install
    ```
 
-2. Configure variáveis de ambiente:
+2. Configure as credenciais de teste:
    ```bash
    cp .env.test.example .env.test
    ```
 
-3. Edite `.env.test` com suas credenciais de teste
-
-## ✍️ Escrevendo Testes
-
-Veja exemplos nos arquivos existentes. Estrutura básica:
-
-```typescript
-import { test, expect } from '@playwright/test';
-
-test('descrição do teste', async ({ page }) => {
-  await page.goto('/pagina');
-  await page.click('button');
-  await expect(page.locator('h1')).toContainText('Sucesso');
-});
-```
-
-## 📚 Mais Informações
-
-Consulte os arquivos `.spec.ts` desta pasta e o workflow `.github/workflows/test-actions.yml`.
+3. Preencha `.env.test` com as credenciais do usuário de teste configurado no Firebase de desenvolvimento (`luisices-dev`).

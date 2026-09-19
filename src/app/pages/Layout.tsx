@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router';
-import { LayoutDashboard, Calendar, Users, Package2, Package, LogOut, Settings as SettingsIcon, BarChart3, FileText, ShoppingBag, Images, AtSign, Globe, Phone, Mail, MapPin, MessageCircle, ArrowLeftRight, UserCog, Info, PanelLeftClose, PanelLeftOpen, MoreHorizontal, HelpCircle, Coins, ExternalLink, Store, Palette, ChevronDown, ChevronRight, ClipboardList, Sparkles } from 'lucide-react';
+import { LayoutDashboard, Calendar, Users, Package2, Package, LogOut, Settings as SettingsIcon, BarChart3, FileText, ShoppingBag, Images, AtSign, Globe, Phone, Mail, MapPin, MessageCircle, MessageSquare, ArrowLeftRight, UserCog, Info, PanelLeftClose, PanelLeftOpen, MoreHorizontal, HelpCircle, Coins, ExternalLink, Store, Palette, ChevronDown, ChevronRight, ClipboardList, Sparkles } from 'lucide-react';
 import { cn } from '../components/ui/utils';
 import { useAuth } from '../../contexts/AuthContext';
 import { useUserSettings } from '../../hooks/useUserSettings';
 import { applyColorTheme } from '../utils/colorThemes';
 import { normalizePhoneForWhatsApp } from '../utils/whatsapp';
+import { normalizeInstagramUrl, normalizeWebsiteUrl } from '../utils/urlUtils';
 import { trackPageView } from '../../services/analyticsService';
 import { Button } from '../components/ui/button';
 import {
@@ -28,12 +29,36 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '../components/ui/dialog';
+import { AiCopilotSheet } from '../components/AiCopilotSheet';
+import { NewOrderDialog } from '../components/NewOrderDialog';
+import { AiOrderDraft } from '../types';
+
+import { firebaseWhatsAppService } from '../../services/firebaseWhatsAppService';
 
 export function Layout() {
   const location = useLocation();
   const navigate = useNavigate();
   const { user, logout, isAdmin, userProfile, hasPermission } = useAuth();
   const { settings } = useUserSettings();
+
+  const [aiCopilotOpen, setAiCopilotOpen] = useState(false);
+  const [aiOrderDraft, setAiOrderDraft] = useState<AiOrderDraft | null>(null);
+  const [aiNewOrderModalOpen, setAiNewOrderModalOpen] = useState(false);
+  const [unreadWhatsAppCount, setUnreadWhatsAppCount] = useState(0);
+
+  // Escuta contagem de mensagens não lidas do WhatsApp em tempo real
+  useEffect(() => {
+    const unsubscribe = firebaseWhatsAppService.subscribeConversations((chats) => {
+      const totalUnread = chats.reduce((acc, c) => acc + (c.unreadCount || 0), 0);
+      setUnreadWhatsAppCount(totalUnread);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  const handleApplyAiOrderDraft = (draft: AiOrderDraft) => {
+    setAiOrderDraft(draft);
+    setAiNewOrderModalOpen(true);
+  };
 
   // Apply color theme CSS vars whenever settings change
   useEffect(() => {
@@ -80,39 +105,35 @@ export function Layout() {
     { name: 'Dashboard',       href: '/',           icon: LayoutDashboard, check: (p: any) => p.dashboard },
     { name: 'Agenda Semanal', href: '/agenda',      icon: Calendar,        check: (p: any) => p.orders?.view },
     { name: 'Clientes',       href: '/clientes',    icon: Users,           check: (p: any) => p.customers?.view },
-    { name: 'Relatórios',     href: '/relatorios',  icon: BarChart3,       check: (p: any) => p.reports, allowUserRole: true },
+    { name: 'Atendimento',    href: '/whatsapp',    icon: MessageSquare,   badge: unreadWhatsAppCount, check: (p: any) => Boolean(p?.whatsapp) },
+    { name: 'Relatórios',     href: '/relatorios',  icon: BarChart3,       check: (p: any) => Boolean(p?.reports) },
     { name: 'Orçamentos',     href: '/orcamentos',  icon: FileText,        check: (p: any) => p.quotes?.view },
     { name: 'Produtos do Ateliê', href: '/produtos', icon: Package,        check: (p: any) => p.products?.view },
-    { name: 'Estúdio IA',     href: '/estudio-ia',  icon: Sparkles,       adminOnly: true, check: () => false },
-    { name: 'Precificação',   href: '/precificacao',icon: Coins,           check: (p: any) => p.pricing ?? false, allowUserRole: true },
+    { name: 'Precificação',   href: '/precificacao',icon: Coins,           check: (p: any) => Boolean(p?.pricing) },
     { name: 'Galeria',        href: '/galeria',     icon: Images,          check: (p: any) => p.gallery?.view },
-    { name: 'Permutas',       href: '/permutas',    icon: ArrowLeftRight,  check: (p: any) => p.exchanges, allowUserRole: true },
+    { name: 'Permutas',       href: '/permutas',    icon: ArrowLeftRight,  check: (p: any) => Boolean(p?.exchanges) },
     {
       name: 'Lojinha Online',
       icon: Store,
-      check: (p: any) => Boolean(p.store || p.storeProducts?.view),
-      allowUserRole: true,
+      check: (p: any) => Boolean(p?.store || p?.storeProducts?.view),
       children: [
         {
           name: 'Pedidos Recebidos',
           href: '/pedidos-lojinha',
           icon: ClipboardList,
-          check: (p: any) => Boolean(p.store || p.storeProducts?.view || p.orders?.view),
-          allowUserRole: true,
+          check: (p: any) => Boolean(p?.store || p?.storeProducts?.view || p?.orders?.view),
         },
         {
           name: 'Produtos da Lojinha',
           href: '/produtos-lojinha',
           icon: ShoppingBag,
-          check: (p: any) => Boolean(p.storeProducts?.view ?? p.store ?? false),
-          allowUserRole: true,
+          check: (p: any) => Boolean(p?.storeProducts?.view ?? p?.store ?? false),
         },
         {
           name: 'Aparência & Vitrine',
           href: '/personalizar-lojinha',
           icon: Palette,
-          check: (p: any) => Boolean(p.store ?? false),
-          allowUserRole: true,
+          check: (p: any) => Boolean(p?.store),
         },
       ],
     },
@@ -130,13 +151,11 @@ export function Layout() {
         if (item.children) {
           const allowedChildren = item.children.filter(child => {
             if ((child as any).adminOnly) return userProfile.role === 'admin';
-            if (child.allowUserRole && (userProfile.role === 'user' || userProfile.role === 'admin')) return true;
             return hasPermission(child.check);
           });
           if (allowedChildren.length === 0) return null;
           return { ...item, children: allowedChildren };
         }
-        if ((item as any).allowUserRole && (userProfile.role === 'user' || userProfile.role === 'admin')) return item;
         if (hasPermission(item.check)) return item;
         return null;
       })
@@ -169,7 +188,8 @@ export function Layout() {
 
   const mobilePrimaryNav = flatNavForMobile.slice(0, 4);
   const mobileMoreNav = flatNavForMobile.slice(4);
-  const canAccessSettings = userProfile?.role === 'user' || hasPermission((p) => p.settings);
+  const canAccessSettings = isAdmin || hasPermission((p) => Boolean(p?.settings));
+  const canAccessAiCopilot = isAdmin || hasPermission((p) => Boolean(p?.aiCopilot));
 
   const businessName = settings?.businessName || 'Papelaria Personalizada';
   const hasLogo = !!settings?.logo;
@@ -307,21 +327,37 @@ export function Layout() {
 
             // Caso 2: Item normal de navegação
             const isActive = location.pathname === item.href;
+            const badgeCount = item.badge ?? 0;
             return (
               <Link
                 key={item.href}
                 to={item.href}
-                title={sidebarCollapsed ? item.name : undefined}
+                title={sidebarCollapsed ? (badgeCount > 0 ? `${item.name} (${badgeCount} não lidas)` : item.name) : undefined}
                 className={cn(
-                  'flex items-center border-l-4 px-5 py-2 text-xs sm:text-sm font-medium transition-colors',
-                  sidebarCollapsed ? 'justify-center' : 'gap-3.5',
+                  'relative flex items-center border-l-4 px-5 py-2 text-xs sm:text-sm font-medium transition-colors',
+                  sidebarCollapsed ? 'justify-center' : 'justify-between',
                   isActive
                     ? 'border-primary bg-primary/10 text-primary'
                     : 'border-transparent text-muted-foreground hover:border-primary/30 hover:bg-primary/5 hover:text-foreground',
                 )}
               >
-                <item.icon className="size-5 shrink-0" />
-                <span className={cn('truncate transition-opacity duration-200', sidebarCollapsed ? 'hidden' : 'inline')}>{item.name}</span>
+                <div className="flex items-center gap-3.5 min-w-0">
+                  <div className="relative flex items-center justify-center">
+                    <item.icon className="size-5 shrink-0" />
+                    {sidebarCollapsed && badgeCount > 0 && (
+                      <span className="absolute -top-1 -right-1 size-2.5 rounded-full bg-emerald-600 ring-2 ring-background animate-pulse" />
+                    )}
+                  </div>
+                  <span className={cn('truncate transition-opacity duration-200', sidebarCollapsed ? 'hidden' : 'inline')}>
+                    {item.name}
+                  </span>
+                </div>
+
+                {!sidebarCollapsed && badgeCount > 0 && (
+                  <Badge className="bg-emerald-600 hover:bg-emerald-600 text-white text-[10px] h-4.5 px-1.5 font-bold rounded-full animate-pulse shadow-xs shrink-0 ml-1">
+                    {badgeCount > 99 ? '99+' : badgeCount}
+                  </Badge>
+                )}
               </Link>
             );
           })}
@@ -394,37 +430,27 @@ export function Layout() {
                     </Badge>
                   )}
                 </div>
-                <div className="flex items-center gap-2">
+                <div>
                   <p className="text-xs text-muted-foreground hidden sm:block">
                     {settings?.businessTagline || 'Sistema de Gestão de Pedidos'}
                   </p>
-                  {settings?.instagramUrl && (
-                    <a
-                      href={settings.instagramUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      title="Instagram"
-                      className="text-muted-foreground hover:text-foreground hidden sm:inline-flex"
-                    >
-                      <AtSign className="size-3" />
-                    </a>
-                  )}
-                  {settings?.websiteUrl && (
-                    <a
-                      href={settings.websiteUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      title="Site"
-                      className="text-muted-foreground hover:text-foreground hidden sm:inline-flex"
-                    >
-                      <Globe className="size-3" />
-                    </a>
-                  )}
                 </div>
               </div>
             </div>
 
             <div className="flex items-center gap-1.5 sm:gap-2">
+              {canAccessAiCopilot && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setAiCopilotOpen(true)}
+                  className="gap-1.5 h-8 sm:h-9 text-xs sm:text-sm font-medium border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400 hover:bg-amber-500/20 transition-colors shadow-xs"
+                  title="Abrir Copiloto de IA Interno"
+                >
+                  <Sparkles className="size-3.5 sm:size-4 text-amber-500" />
+                  <span className="hidden md:inline">Copiloto</span>
+                </Button>
+              )}
               <a
                 href="/catalogo"
                 target="_blank"
@@ -508,14 +534,14 @@ export function Layout() {
       </header>
 
       <main className={cn(
-        'min-w-0 w-full flex-1 px-3 py-4 pb-24 transition-[margin,width] duration-300 sm:px-4 sm:py-8 sm:pb-8',
+        'min-w-0 w-full flex-1 px-3 py-4 pb-24 transition-[margin,width] duration-300 sm:px-4 sm:py-8 md:pb-8',
         sidebarCollapsed ? 'md:ml-20 md:w-[calc(100%-5rem)]' : 'md:ml-72 md:w-[calc(100%-18rem)]',
       )}>
         <Outlet />
       </main>
 
       <footer className={cn(
-        'mt-auto min-w-0 border-t border-white/40 bg-card/85 backdrop-blur-2xl transition-[margin,width] duration-300',
+        'mt-auto min-w-0 border-t border-white/40 bg-card/85 backdrop-blur-2xl transition-[margin,width] duration-300 pb-16 md:pb-0',
         sidebarCollapsed ? 'md:ml-20 md:w-[calc(100%-5rem)]' : 'md:ml-72 md:w-[calc(100%-18rem)]',
       )}>
         <div className="w-full px-4 py-6">
@@ -566,7 +592,7 @@ export function Layout() {
               <div className="flex items-center gap-2">
                 {settings?.instagramUrl && (
                   <a
-                    href={settings.instagramUrl}
+                    href={normalizeInstagramUrl(settings.instagramUrl)}
                     target="_blank"
                     rel="noopener noreferrer"
                     title="Instagram"
@@ -597,7 +623,7 @@ export function Layout() {
                 )}
                 {settings?.websiteUrl && (
                   <a
-                    href={settings.websiteUrl}
+                    href={normalizeWebsiteUrl(settings.websiteUrl)}
                     target="_blank"
                     rel="noopener noreferrer"
                     title="Site"
@@ -614,7 +640,7 @@ export function Layout() {
                     v{appVersion} · © {new Date().getFullYear()} {businessName}
                   </button>
                 </DialogTrigger>
-                <DialogContent className="sm:max-w-md">
+                <DialogContent size="md">
                   <DialogHeader>
                     <DialogTitle className="flex items-center gap-2">
                       {settings?.logo ? (
@@ -668,19 +694,25 @@ export function Layout() {
       </footer>
 
       {/* Navegação inferior — somente mobile */}
-      <nav className="fixed inset-x-0 bottom-0 z-50 flex border-t border-white/40 bg-card/90 pb-[env(safe-area-inset-bottom)] backdrop-blur-2xl sm:hidden">
-        {mobilePrimaryNav.map((item) => {
+      <nav className="fixed inset-x-0 bottom-0 z-40 flex border-t border-white/40 bg-card/90 pb-[env(safe-area-inset-bottom)] backdrop-blur-2xl md:hidden">
+        {mobilePrimaryNav.map((item: any) => {
           const isActive = location.pathname === item.href;
+          const badgeCount = item.badge ?? 0;
           return (
             <Link
               key={item.href}
               to={item.href}
               className={cn(
-                'flex flex-1 flex-col items-center justify-center gap-0.5 py-2 text-[10px] font-medium transition-colors min-w-0',
+                'relative flex flex-1 flex-col items-center justify-center gap-0.5 py-2 text-[10px] font-medium transition-colors min-w-0',
                 isActive ? 'text-primary' : 'text-muted-foreground hover:text-foreground'
               )}
             >
-              <item.icon className="size-5 shrink-0" />
+              <div className="relative flex items-center justify-center">
+                <item.icon className="size-5 shrink-0" />
+                {badgeCount > 0 && (
+                  <span className="absolute -top-1 -right-1 size-2 rounded-full bg-emerald-600 ring-2 ring-card animate-pulse" />
+                )}
+              </div>
               <span className="truncate w-full text-center px-0.5 leading-tight">
                 {item.name.split(' ')[0]}
               </span>
@@ -693,23 +725,38 @@ export function Layout() {
               type="button"
               aria-label="Mais opções"
               className={cn(
-                'flex min-w-0 flex-1 flex-col items-center justify-center gap-0.5 py-2 text-[10px] font-medium text-muted-foreground transition-colors hover:text-foreground',
+                'relative flex min-w-0 flex-1 flex-col items-center justify-center gap-0.5 py-2 text-[10px] font-medium text-muted-foreground transition-colors hover:text-foreground',
                 mobileMoreNav.some((item) => location.pathname === item.href) && 'text-primary',
               )}
             >
-              <MoreHorizontal className="size-5 shrink-0" />
+              <div className="relative flex items-center justify-center">
+                <MoreHorizontal className="size-5 shrink-0" />
+                {mobileMoreNav.some((item: any) => (item.badge ?? 0) > 0) && (
+                  <span className="absolute -top-1 -right-1 size-2 rounded-full bg-emerald-600 ring-2 ring-card animate-pulse" />
+                )}
+              </div>
               <span className="truncate px-0.5 leading-tight">Mais</span>
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" side="top" sideOffset={8} className="mb-2 w-52">
-            {mobileMoreNav.map((item) => (
-              <DropdownMenuItem key={item.href} asChild>
-                <Link to={item.href} className="flex cursor-pointer items-center gap-2">
-                  <item.icon className="size-4" />
-                  {item.name}
-                </Link>
-              </DropdownMenuItem>
-            ))}
+            {mobileMoreNav.map((item: any) => {
+              const badgeCount = item.badge ?? 0;
+              return (
+                <DropdownMenuItem key={item.href} asChild>
+                  <Link to={item.href} className="flex cursor-pointer items-center justify-between w-full">
+                    <div className="flex items-center gap-2">
+                      <item.icon className="size-4" />
+                      <span>{item.name}</span>
+                    </div>
+                    {badgeCount > 0 && (
+                      <Badge className="bg-emerald-600 text-white text-[10px] h-4 px-1 font-bold">
+                        {badgeCount}
+                      </Badge>
+                    )}
+                  </Link>
+                </DropdownMenuItem>
+              );
+            })}
             <DropdownMenuSeparator />
             <DropdownMenuItem asChild>
               <Link to="/ajuda" className="flex cursor-pointer items-center gap-2">
@@ -726,6 +773,21 @@ export function Layout() {
           </DropdownMenuContent>
         </DropdownMenu>
       </nav>
+
+      {/* Copiloto de IA Interno & Modal de Novo Pedido Preenchido */}
+      {canAccessAiCopilot && (
+        <AiCopilotSheet
+          open={aiCopilotOpen}
+          onOpenChange={setAiCopilotOpen}
+          onApplyOrderDraft={handleApplyAiOrderDraft}
+        />
+      )}
+      <NewOrderDialog
+        open={aiNewOrderModalOpen}
+        onOpenChange={setAiNewOrderModalOpen}
+        initialDraft={aiOrderDraft}
+        hideTrigger={true}
+      />
     </div>
   );
 }
