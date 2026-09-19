@@ -24,6 +24,14 @@ Itens mapeados na auditoria de segurança para serem abordados em próximas etap
 
 ## ✅ 2. Concluído Recentemente (Histórico)
 
+### 📖 Central de Ajuda & Atualização de Insumos da IA (Gemini Copilot)
+- **Central de Ajuda (`HelpCenter.tsx`):**
+  - Adicionados passos e dicas no módulo de *Lojinha Online & Catálogo Público* documentando o fluxo completo de *Publicação em Lote via Fotos* e *Criação Dinâmica de Categorias (+ Nova Categoria)*.
+  - Inclusão de 3 novas Perguntas Frequentes (FAQ): upload em lote de fotos, cadastro de categorias durante o envio e como o Copiloto IA auxilia na rotina do ateliê.
+- **Insumos e Contexto do Copiloto Gemini (`functions/index.js` & `AiCopilotSheet.tsx`):**
+  - Atualizada a `systemInstruction` do backend com conhecimento operacional completo sobre o upload em lote por fotos, criação de categorias em tempo real, filtros de equipe/delegação de pedidos (`AdminTeamFilter`) e arquitetura de webhook duplo do WhatsApp (Evolution API / Home Assistant em dual-forwarding para prod e dev).
+  - Adicionados chips de sugestão rápida no drawer do Copiloto para publicar produtos por fotos e consultar pedidos atribuídos à equipe.
+
 ### 🪟 Padronização Total de Modais & Responsividade Mobile/Tablet
 - **Padronização do Design System:** Refatoração de todos os modais da aplicação com uso dos atributos oficiais do `DialogContent` (`size="sm|md|lg|xl|2xl|3xl|4xl"`, `noPadding`) e composição estruturada (`DialogHeader`, `DialogBody`, `DialogFooter`).
 - **Scroll Independente & Safe Area:** Eliminação de barras de rolagem duplicadas com encapsulamento de formulários (`<form className="flex flex-col flex-1 min-h-0 overflow-hidden">`) e áreas de rolagem vertical restritas ao `DialogBody`, mantendo cabeçalhos e botões de ação sempre visíveis e acessíveis em telas mobile.

@@ -50,10 +50,12 @@ const INITIAL_MESSAGE: AiChatMessage = {
 };
 
 const SUGGESTIONS = [
-  '🖼️ Buscar fotos e modelos de camisetas na nossa galeria',
   '📋 Raio-X do Dia (Briefing de produção e prazos)',
+  '📸 Como publicar produtos em lote por fotos na lojinha?',
+  '👥 Quais pedidos estão atribuídos à minha equipe?',
   '💬 Gerar mensagem de cobrança amigável para cliente',
   '💰 Quanto cobrar por 30 camisetas pretas silk 1 cor?',
+  '🖼️ Buscar fotos e modelos de camisetas na nossa galeria',
   '⚠️ Quais pedidos correm risco de atraso?',
 ];
 
