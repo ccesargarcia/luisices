@@ -5,6 +5,13 @@ import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { Badge } from '../ui/badge';
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '../ui/select';
+import {
   Upload,
   Trash2,
   Images,
@@ -83,7 +90,7 @@ export function BulkStoreProductsDialog({
   const [progressCount, setProgressCount] = useState(0);
 
   // Estados para replicação em lote (Barra Superior Rápida)
-  const [batchCategory, setBatchCategory] = useState('');
+  const [batchCategory, setBatchCategory] = useState(existingCategories.length > 0 ? existingCategories[0] : '');
   const [batchPrice, setBatchPrice] = useState('');
   const [batchLeadTime, setBatchLeadTime] = useState('5');
   const [isDragging, setIsDragging] = useState(false);
@@ -98,7 +105,7 @@ export function BulkStoreProductsDialog({
       // Libera object URLs para não vazar memória
       items.forEach(it => URL.revokeObjectURL(it.previewUrl));
       setItems([]);
-      setBatchCategory('');
+      setBatchCategory(existingCategories.length > 0 ? existingCategories[0] : '');
       setBatchPrice('');
       setBatchLeadTime('5');
       setProgressCount(0);
@@ -372,18 +379,20 @@ export function BulkStoreProductsDialog({
 
                 {/* Categoria Comum */}
                 <div className="flex items-center gap-1 bg-background p-1 rounded-lg border border-border">
-                  <Input
-                    placeholder="Categoria..."
-                    value={batchCategory}
-                    onChange={(e) => setBatchCategory(e.target.value)}
-                    className="h-7 text-xs border-0 focus-visible:ring-0 shadow-none px-1.5"
-                    list="bulk-existing-categories"
-                  />
-                  <datalist id="bulk-existing-categories">
-                    {existingCategories.map(cat => (
-                      <option key={cat} value={cat} />
-                    ))}
-                  </datalist>
+                  <Select
+                    value={batchCategory || '__none__'}
+                    onValueChange={(v) => setBatchCategory(v === '__none__' ? '' : v)}
+                  >
+                    <SelectTrigger className="h-7 text-xs border-0 focus-visible:ring-0 shadow-none px-1.5 flex-1">
+                      <SelectValue placeholder="Categoria..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__none__">— Nenhuma —</SelectItem>
+                      {existingCategories.map(cat => (
+                        <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                   <Button
                     type="button"
                     variant="ghost"
@@ -581,14 +590,20 @@ export function BulkStoreProductsDialog({
                         <Label className="text-[11px] font-semibold text-muted-foreground">
                           Categoria
                         </Label>
-                        <Input
-                          value={item.category}
+                        <Select
+                          value={item.category || '__none__'}
+                          onValueChange={(v) => updateItem(item.id, { category: v === '__none__' ? '' : v })}
                           disabled={isProcessing || item.status === 'success'}
-                          onChange={(e) => updateItem(item.id, { category: e.target.value })}
-                          placeholder="Geral"
-                          className="h-8 text-xs"
-                          list="bulk-existing-categories"
-                        />
+                        >
+                          <SelectTrigger size="sm" className="h-8 text-xs">
+                            <SelectValue placeholder="Geral" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {existingCategories.map(cat => (
+                              <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
                       </div>
                     </div>
 
