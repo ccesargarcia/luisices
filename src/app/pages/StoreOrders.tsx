@@ -8,7 +8,7 @@ import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Badge } from '../components/ui/badge';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '../components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogBody, DialogFooter, DialogDescription } from '../components/ui/dialog';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -676,8 +676,8 @@ export function StoreOrders() {
       {/* DIALOG: DETALHES DO PEDIDO */}
       {detailOrder && (
         <Dialog open={Boolean(detailOrder)} onOpenChange={(open) => !open && setDetailOrder(null)}>
-          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-            <DialogHeader>
+          <DialogContent size="2xl" noPadding className="max-h-[90dvh] flex flex-col overflow-hidden">
+            <DialogHeader className="p-4 sm:p-6 pb-3 border-b border-border">
               <div className="flex items-center justify-between pr-4">
                 <DialogTitle className="flex items-center gap-2 text-lg">
                   <span>Pedido #{detailOrder.orderCode}</span>
@@ -705,7 +705,7 @@ export function StoreOrders() {
               )}
             </DialogHeader>
 
-            <div className="space-y-4 py-2">
+            <DialogBody className="p-4 sm:p-6 space-y-4">
               {/* Seção de Itens */}
               <div>
                 <h4 className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2">
@@ -826,9 +826,9 @@ export function StoreOrders() {
                   </Button>
                 </div>
               </div>
-            </div>
+            </DialogBody>
 
-            <DialogFooter className="flex items-center justify-between sm:justify-between w-full">
+            <DialogFooter className="p-4 sm:p-6 pt-3 border-t border-border flex items-center justify-between sm:justify-between w-full">
               <Button
                 variant="destructive"
                 size="sm"
@@ -866,8 +866,8 @@ export function StoreOrders() {
       {/* DIALOG: CONVERSÃO EM PEDIDO OFICIAL DE PRODUÇÃO */}
       {convertOrder && (
         <Dialog open={Boolean(convertOrder)} onOpenChange={(open) => !open && setConvertOrder(null)}>
-          <DialogContent className="max-w-lg">
-            <DialogHeader>
+          <DialogContent size="lg" noPadding className="max-h-[90dvh] flex flex-col overflow-hidden">
+            <DialogHeader className="p-4 sm:p-6 pb-3 border-b border-border">
               <DialogTitle className="flex items-center gap-2 text-lg">
                 <Sparkles className="w-5 h-5 text-amber-500" />
                 <span>Converter em Pedido de Produção Oficial</span>
@@ -877,15 +877,15 @@ export function StoreOrders() {
               </DialogDescription>
             </DialogHeader>
 
-            <div className="space-y-4 py-2">
-              <div className="p-3 rounded-xl bg-stone-50 dark:bg-stone-900 border text-xs space-y-1">
+            <DialogBody className="p-4 sm:p-6 space-y-4">
+              <div className="p-3.5 rounded-xl bg-muted/40 border border-border text-xs space-y-1">
                 <p className="font-semibold text-foreground">
                   Resumo do Pedido ({convertOrder.totalItems} itens):
                 </p>
                 <p className="text-muted-foreground truncate">
                   {convertOrder.items.map((i) => `${i.quantity}x ${i.productName}`).join(', ')}
                 </p>
-                <p className="font-bold text-[#613d3e] dark:text-[#f4b7b9]">
+                <p className="font-bold text-primary">
                   Valor total: {formatCurrency(convertOrder.subtotal)}
                 </p>
               </div>
@@ -929,9 +929,9 @@ export function StoreOrders() {
                   Calculado automaticamente com base nos prazos de confecção dos itens.
                 </p>
               </div>
-            </div>
+            </DialogBody>
 
-            <DialogFooter className="gap-2 sm:gap-0">
+            <DialogFooter className="p-4 sm:p-6 pt-3 border-t border-border gap-2 sm:gap-0">
               <Button
                 variant="outline"
                 onClick={() => setConvertOrder(null)}
@@ -942,7 +942,7 @@ export function StoreOrders() {
               <Button
                 onClick={handleConfirmConvert}
                 disabled={converting || !convertCustomerName.trim() || !convertDeliveryDate}
-                className="bg-[#613d3e] hover:bg-[#4a2e2f] text-white"
+                className="bg-primary hover:bg-primary/90 text-primary-foreground"
               >
                 {converting ? (
                   <>

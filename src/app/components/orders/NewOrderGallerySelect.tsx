@@ -109,7 +109,7 @@ export function NewOrderGallerySelect({
 
         return (
           <Dialog open={galleryBrowserOpen} onOpenChange={onGalleryBrowserOpenChange}>
-            <DialogContent size="2xl" className="max-h-[90dvh] flex flex-col p-0 overflow-hidden">
+            <DialogContent size="2xl" noPadding className="max-h-[90dvh] flex flex-col overflow-hidden">
               <DialogHeader className="px-4 sm:px-6 pt-4 sm:pt-6 pb-2 border-b">
                 <DialogTitle>Selecionar Artes da Galeria</DialogTitle>
               </DialogHeader>

@@ -22,7 +22,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '../components/ui/select';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '../components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogBody, DialogFooter, DialogDescription } from '../components/ui/dialog';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -211,8 +211,8 @@ function StoreProductDialog({ open, onOpenChange, editing, existingCategories }:
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg max-h-[92vh] overflow-y-auto">
-        <DialogHeader>
+      <DialogContent size="lg" noPadding className="max-h-[90dvh] flex flex-col overflow-hidden">
+        <DialogHeader className="p-4 sm:p-6 pb-3 border-b border-border">
           <DialogTitle className="flex items-center gap-2">
             <Store className="size-5 text-primary" />
             {editing ? 'Editar Produto da Lojinha' : 'Novo Produto da Lojinha'}
@@ -222,7 +222,7 @@ function StoreProductDialog({ open, onOpenChange, editing, existingCategories }:
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4 py-2">
+        <DialogBody className="p-4 sm:p-6 space-y-4">
           {/* Foto Comercial de Vitrine */}
           <div className="space-y-2">
             <Label className="text-xs font-semibold">Foto de Vitrine</Label>
@@ -437,9 +437,9 @@ function StoreProductDialog({ open, onOpenChange, editing, existingCategories }:
               />
             </div>
           </div>
-        </div>
+        </DialogBody>
 
-        <DialogFooter>
+        <DialogFooter className="p-4 sm:p-6 pt-3 border-t border-border">
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>
           <Button onClick={handleSave} disabled={saving}>
             {saving && <Loader2 className="size-4 mr-2 animate-spin" />}
@@ -498,8 +498,8 @@ function ImportFromAtelierDialog({ open, onOpenChange, onImported }: ImportFromA
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-xl max-h-[85vh] flex flex-col">
-        <DialogHeader>
+      <DialogContent size="xl" noPadding className="max-h-[88dvh] flex flex-col overflow-hidden">
+        <DialogHeader className="p-4 sm:p-6 pb-3 border-b border-border">
           <DialogTitle className="flex items-center gap-2">
             <PackagePlus className="size-5 text-primary" />
             Importar Produtos do Ateliê para a Lojinha
@@ -509,69 +509,71 @@ function ImportFromAtelierDialog({ open, onOpenChange, onImported }: ImportFromA
           </DialogDescription>
         </DialogHeader>
 
-        <div className="relative my-2">
-          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            placeholder="Buscar peça no catálogo do ateliê..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="pl-9"
-          />
-        </div>
+        <DialogBody className="p-4 sm:p-6 space-y-3">
+          <div className="relative">
+            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              placeholder="Buscar peça no catálogo do ateliê..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-9"
+            />
+          </div>
 
-        <div className="flex-1 min-h-0 overflow-y-auto space-y-2 pr-1">
-          {loading ? (
-            <div className="py-12 flex justify-center items-center gap-2 text-muted-foreground text-xs">
-              <Loader2 className="size-4 animate-spin" /> Carregando produtos do ateliê...
-            </div>
-          ) : filtered.length === 0 ? (
-            <div className="py-12 text-center text-muted-foreground text-xs">
-              Nenhum produto interno encontrado.
-            </div>
-          ) : (
-            filtered.map((prod) => (
-              <div
-                key={prod.id}
-                className="p-3 rounded-xl border border-border/70 hover:border-primary/40 bg-card/60 flex items-center justify-between gap-3 transition-colors"
-              >
-                <div className="flex items-center gap-3 min-w-0">
-                  {prod.photoUrl ? (
-                    <img src={prod.photoUrl} alt={prod.name} className="size-11 rounded-lg object-cover shrink-0" />
-                  ) : (
-                    <div className="size-11 rounded-lg bg-muted flex items-center justify-center text-muted-foreground shrink-0">
-                      <ImageIcon size={18} />
-                    </div>
-                  )}
-                  <div className="min-w-0">
-                    <h4 className="text-xs font-bold text-foreground truncate">{prod.name}</h4>
-                    <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
-                      <span>{prod.category || 'Geral'}</span>
-                      <span>•</span>
-                      <span className="font-bold text-primary">{formatCurrency(prod.unitPrice)}</span>
+          <div className="space-y-2 pr-1">
+            {loading ? (
+              <div className="py-12 flex justify-center items-center gap-2 text-muted-foreground text-xs">
+                <Loader2 className="size-4 animate-spin" /> Carregando produtos do ateliê...
+              </div>
+            ) : filtered.length === 0 ? (
+              <div className="py-12 text-center text-muted-foreground text-xs">
+                Nenhum produto interno encontrado.
+              </div>
+            ) : (
+              filtered.map((prod) => (
+                <div
+                  key={prod.id}
+                  className="p-3 rounded-xl border border-border/70 hover:border-primary/40 bg-card/60 flex items-center justify-between gap-3 transition-colors"
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    {prod.photoUrl ? (
+                      <img src={prod.photoUrl} alt={prod.name} className="size-11 rounded-lg object-cover shrink-0" />
+                    ) : (
+                      <div className="size-11 rounded-lg bg-muted flex items-center justify-center text-muted-foreground shrink-0">
+                        <ImageIcon size={18} />
+                      </div>
+                    )}
+                    <div className="min-w-0">
+                      <h4 className="text-xs font-bold text-foreground truncate">{prod.name}</h4>
+                      <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+                        <span>{prod.category || 'Geral'}</span>
+                        <span>•</span>
+                        <span className="font-bold text-primary">{formatCurrency(prod.unitPrice)}</span>
+                      </div>
                     </div>
                   </div>
+
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => handleImport(prod)}
+                    disabled={importingId === prod.id}
+                    className="shrink-0 text-xs gap-1.5 hover:bg-primary hover:text-white"
+                  >
+                    {importingId === prod.id ? (
+                      <Loader2 size={13} className="animate-spin" />
+                    ) : (
+                      <CheckCircle2 size={13} />
+                    )}
+                    <span>Publicar na Lojinha</span>
+                  </Button>
                 </div>
+              ))
+            )}
+          </div>
+        </DialogBody>
 
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => handleImport(prod)}
-                  disabled={importingId === prod.id}
-                  className="shrink-0 text-xs gap-1.5 hover:bg-primary hover:text-white"
-                >
-                  {importingId === prod.id ? (
-                    <Loader2 size={13} className="animate-spin" />
-                  ) : (
-                    <CheckCircle2 size={13} />
-                  )}
-                  <span>Publicar na Lojinha</span>
-                </Button>
-              </div>
-            ))
-          )}
-        </div>
-
-        <DialogFooter className="pt-2">
+        <DialogFooter className="p-4 sm:p-6 pt-3 border-t border-border">
           <Button variant="outline" onClick={() => onOpenChange(false)}>Fechar</Button>
         </DialogFooter>
       </DialogContent>

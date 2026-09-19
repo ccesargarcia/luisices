@@ -21,6 +21,8 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
+  DialogBody,
   DialogFooter,
 } from '../components/ui/dialog';
 import {
@@ -273,12 +275,16 @@ function UserFormDialog({ open, editingUser, currentUserUid, onClose, onSaved }:
 
   return (
     <Dialog open={open} onOpenChange={v => { if (!v) onClose(); }}>
-      <DialogContent className="w-[calc(100vw-1rem)] max-w-[calc(100vw-1rem)] max-h-[calc(100dvh-1rem)] overflow-y-auto p-4 sm:w-full sm:max-w-lg sm:max-h-[90dvh] sm:p-6">
-        <DialogHeader>
+      <DialogContent size="lg" noPadding className="max-h-[90dvh] flex flex-col overflow-hidden">
+        <DialogHeader className="p-4 sm:p-6 pb-3 border-b border-border">
           <DialogTitle>{isEdit ? 'Editar usuário' : 'Novo usuário'}</DialogTitle>
+          <DialogDescription className="text-xs text-muted-foreground">
+            {isEdit ? 'Atualize as credenciais e o nível de acesso do usuário.' : 'Defina os dados e as permissões para o novo usuário.'}
+          </DialogDescription>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0 overflow-hidden">
+          <DialogBody className="p-4 sm:p-6 space-y-4">
           {/* Name */}
           <div className="space-y-1.5">
             <Label htmlFor="user-name">Nome</Label>
@@ -356,18 +362,19 @@ function UserFormDialog({ open, editingUser, currentUserUid, onClose, onSaved }:
             <p className="text-sm font-semibold">Permissões de acesso</p>
             <PermissionMatrix permissions={permissions} onChange={setPermissions} />
           </div>
+        </DialogBody>
 
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={onClose} disabled={saving}>
-              Cancelar
-            </Button>
-            <Button type="submit" disabled={saving}>
-              {saving ? <><Loader2 className="size-4 mr-2 animate-spin" /> Salvando…</> : isEdit ? 'Salvar alterações' : 'Criar usuário'}
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
+        <DialogFooter className="p-4 sm:p-6 pt-3 border-t border-border">
+          <Button type="button" variant="outline" onClick={onClose} disabled={saving}>
+            Cancelar
+          </Button>
+          <Button type="submit" disabled={saving}>
+            {saving ? <><Loader2 className="size-4 mr-2 animate-spin" /> Salvando…</> : isEdit ? 'Salvar alterações' : 'Criar usuário'}
+          </Button>
+        </DialogFooter>
+      </form>
+    </DialogContent>
+  </Dialog>
   );
 }
 
@@ -725,19 +732,24 @@ export function Users() {
       />
 
       <Dialog open={inviteOpen} onOpenChange={setInviteOpen}>
-        <DialogContent className="w-[calc(100%-1rem)] max-w-md">
-          <DialogHeader>
+        <DialogContent size="md" noPadding className="max-h-[90dvh] flex flex-col overflow-hidden">
+          <DialogHeader className="p-4 sm:p-6 pb-3 border-b border-border">
             <DialogTitle>Enviar convite</DialogTitle>
+            <DialogDescription className="text-xs text-muted-foreground">
+              Convide novos membros para fazerem parte da equipe do ateliê.
+            </DialogDescription>
           </DialogHeader>
-          <form onSubmit={sendInvitation} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="invite-email">E-mail da pessoa convidada</Label>
-              <Input id="invite-email" type="email" value={inviteEmail} onChange={(event) => setInviteEmail(event.target.value)} placeholder="pessoa@empresa.com" required />
-              <Label htmlFor="invite-whatsapp">WhatsApp (opcional)</Label>
-              <Input id="invite-whatsapp" type="tel" value={inviteWhatsapp} onChange={(event) => setInviteWhatsapp(event.target.value)} placeholder="5511999999999" />
-              <p className="text-xs text-muted-foreground">O convite expira em 48 horas. O acesso só é concluído após a confirmação do e-mail.</p>
-            </div>
-            <DialogFooter className="flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+          <form onSubmit={sendInvitation} className="flex flex-col flex-1 min-h-0 overflow-hidden">
+            <DialogBody className="p-4 sm:p-6 space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="invite-email">E-mail da pessoa convidada</Label>
+                <Input id="invite-email" type="email" value={inviteEmail} onChange={(event) => setInviteEmail(event.target.value)} placeholder="pessoa@empresa.com" required />
+                <Label htmlFor="invite-whatsapp">WhatsApp (opcional)</Label>
+                <Input id="invite-whatsapp" type="tel" value={inviteWhatsapp} onChange={(event) => setInviteWhatsapp(event.target.value)} placeholder="5511999999999" />
+                <p className="text-xs text-muted-foreground">O convite expira em 48 horas. O acesso só é concluído após a confirmação do e-mail.</p>
+              </div>
+            </DialogBody>
+            <DialogFooter className="p-4 sm:p-6 pt-3 border-t border-border flex-col-reverse gap-2 sm:flex-row sm:justify-end">
               <Button type="button" variant="outline" onClick={() => setInviteOpen(false)} disabled={inviting}>Cancelar</Button>
               <Button type="submit" disabled={inviting} className="w-full sm:w-auto">
                 {inviting ? <><Loader2 className="size-4 mr-2 animate-spin" /> Enviando...</> : <><MailPlus className="size-4 mr-2" /> Enviar convite</>}
@@ -749,7 +761,7 @@ export function Users() {
 
       {/* Confirmation Dialog for Deleting User */}
       <AlertDialog open={Boolean(deleteUserTarget)} onOpenChange={(open) => { if (!open) setDeleteUserTarget(null); }}>
-        <AlertDialogContent className="w-[calc(100%-1rem)] max-w-md">
+        <AlertDialogContent className="sm:max-w-md">
           <AlertDialogHeader>
             <AlertDialogTitle>Excluir usuário</AlertDialogTitle>
             <AlertDialogDescription>

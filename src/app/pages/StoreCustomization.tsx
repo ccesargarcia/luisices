@@ -9,7 +9,7 @@ import { Label } from '../components/ui/label';
 import { Textarea } from '../components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '../components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogBody, DialogFooter } from '../components/ui/dialog';
 import {
   Store,
   Globe,
@@ -2431,7 +2431,7 @@ export function StoreCustomization() {
 
       {/* Modal de Ajuda & Guia Completo da Lojinha */}
       <Dialog open={showHelpModal} onOpenChange={setShowHelpModal}>
-        <DialogContent className="max-w-3xl max-h-[88vh] flex flex-col p-0 overflow-hidden">
+        <DialogContent size="3xl" noPadding className="max-h-[88dvh] flex flex-col overflow-hidden">
           <DialogHeader className="p-6 pb-4 border-b border-border/60 bg-muted/20">
             <div className="flex items-center gap-2.5">
               <div className="p-2 rounded-xl bg-primary/10 text-primary">
@@ -2448,7 +2448,7 @@ export function StoreCustomization() {
             </div>
           </DialogHeader>
 
-          <div className="flex-1 overflow-y-auto p-6 space-y-5 text-sm">
+          <DialogBody className="p-6 space-y-5 text-sm">
             {/* Seção 1: Publicação & Manutenção */}
             <div className="p-4 rounded-xl border border-border/70 bg-card space-y-2">
               <div className="flex items-center gap-2">
@@ -2562,13 +2562,13 @@ export function StoreCustomization() {
                 <li>Todas as rotas abrem a vitrine completa de forma responsiva no celular ou computador.</li>
               </ul>
             </div>
-          </div>
+          </DialogBody>
 
-          <div className="p-4 border-t border-border/60 bg-muted/20 flex justify-end">
+          <DialogFooter className="p-4 border-t border-border/60 bg-muted/20 flex justify-end">
             <Button type="button" onClick={() => setShowHelpModal(false)} className="px-6">
               Fechar Guia
             </Button>
-          </div>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

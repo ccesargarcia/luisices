@@ -934,7 +934,7 @@ export function WhatsAppChat() {
           }
         }}
       >
-        <DialogContent size="md" className="max-h-[90dvh] flex flex-col p-0 overflow-hidden">
+        <DialogContent size="md" noPadding className="max-h-[90dvh] flex flex-col overflow-hidden">
           <DialogHeader className="px-4 sm:px-6 pt-4 sm:pt-6 pb-3 border-b shrink-0">
             <DialogTitle className="text-base sm:text-lg font-bold flex items-center gap-2">
               <div className="p-1.5 rounded-lg bg-emerald-500/10 text-emerald-600 shrink-0">
@@ -1118,7 +1118,7 @@ export function WhatsAppChat() {
           if (!open && !deletingMessage) setMessageToDelete(null);
         }}
       >
-        <DialogContent size="sm" className="max-h-[90dvh] flex flex-col p-0 overflow-hidden">
+        <DialogContent size="sm" noPadding className="max-h-[90dvh] flex flex-col overflow-hidden">
           <DialogHeader className="px-4 sm:px-6 pt-4 sm:pt-6 pb-3 border-b shrink-0">
             <DialogTitle className="text-base font-bold flex items-center gap-2 text-destructive">
               <Trash2 className="size-4 sm:size-5" />

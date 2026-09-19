@@ -163,7 +163,7 @@ export function GalleryUploadDialog({
         if (!v) handleClose();
       }}
     >
-      <DialogContent size="lg" className="max-h-[90dvh] flex flex-col p-0 overflow-hidden">
+      <DialogContent size="lg" noPadding className="max-h-[90dvh] flex flex-col overflow-hidden">
         <DialogHeader className="px-4 sm:px-6 pt-4 sm:pt-6 pb-2 border-b">
           <DialogTitle>Nova Arte</DialogTitle>
         </DialogHeader>

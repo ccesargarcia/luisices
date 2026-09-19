@@ -534,14 +534,14 @@ export function Layout() {
       </header>
 
       <main className={cn(
-        'min-w-0 w-full flex-1 px-3 py-4 pb-24 transition-[margin,width] duration-300 sm:px-4 sm:py-8 sm:pb-8',
+        'min-w-0 w-full flex-1 px-3 py-4 pb-24 transition-[margin,width] duration-300 sm:px-4 sm:py-8 md:pb-8',
         sidebarCollapsed ? 'md:ml-20 md:w-[calc(100%-5rem)]' : 'md:ml-72 md:w-[calc(100%-18rem)]',
       )}>
         <Outlet />
       </main>
 
       <footer className={cn(
-        'mt-auto min-w-0 border-t border-white/40 bg-card/85 backdrop-blur-2xl transition-[margin,width] duration-300',
+        'mt-auto min-w-0 border-t border-white/40 bg-card/85 backdrop-blur-2xl transition-[margin,width] duration-300 pb-16 md:pb-0',
         sidebarCollapsed ? 'md:ml-20 md:w-[calc(100%-5rem)]' : 'md:ml-72 md:w-[calc(100%-18rem)]',
       )}>
         <div className="w-full px-4 py-6">
@@ -640,7 +640,7 @@ export function Layout() {
                     v{appVersion} · © {new Date().getFullYear()} {businessName}
                   </button>
                 </DialogTrigger>
-                <DialogContent className="sm:max-w-md">
+                <DialogContent size="md">
                   <DialogHeader>
                     <DialogTitle className="flex items-center gap-2">
                       {settings?.logo ? (
@@ -694,7 +694,7 @@ export function Layout() {
       </footer>
 
       {/* Navegação inferior — somente mobile */}
-      <nav className="fixed inset-x-0 bottom-0 z-40 flex border-t border-white/40 bg-card/90 pb-[env(safe-area-inset-bottom)] backdrop-blur-2xl sm:hidden">
+      <nav className="fixed inset-x-0 bottom-0 z-40 flex border-t border-white/40 bg-card/90 pb-[env(safe-area-inset-bottom)] backdrop-blur-2xl md:hidden">
         {mobilePrimaryNav.map((item: any) => {
           const isActive = location.pathname === item.href;
           const badgeCount = item.badge ?? 0;

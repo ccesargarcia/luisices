@@ -559,7 +559,7 @@ export function PricingCalculatorTab({
 
       {/* Modal Principal: Calculadora e Ficha Técnica */}
       <Dialog open={editorOpen} onOpenChange={setEditorOpen}>
-        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+        <DialogContent size="3xl" className="max-h-[90dvh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Calculator className="size-5 text-primary" />

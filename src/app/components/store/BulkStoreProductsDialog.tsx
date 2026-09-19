@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '../ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogBody, DialogFooter, DialogDescription } from '../ui/dialog';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
@@ -274,7 +274,7 @@ export function BulkStoreProductsDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="max-w-4xl w-[96vw] sm:w-[92vw] h-[92vh] sm:h-[88vh] flex flex-col p-0 gap-0 overflow-hidden bg-background rounded-2xl sm:rounded-3xl border shadow-xl">
+      <DialogContent size="4xl" noPadding className="h-[92vh] sm:h-[88vh] flex flex-col overflow-hidden">
         {/* Header Fixo Mobile-First */}
         <DialogHeader className="p-3.5 sm:p-5 border-b border-border bg-card/90 shrink-0 space-y-3">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -427,8 +427,8 @@ export function BulkStoreProductsDialog({
         </DialogHeader>
 
         {/* Área Central Rolável com os Cards Dinâmicos (Mobile First) */}
-        <div
-          className={`flex-1 overflow-y-auto p-3 sm:p-5 space-y-3 transition-colors ${
+        <DialogBody
+          className={`p-3 sm:p-5 space-y-3 transition-colors ${
             isDragging ? 'bg-primary/5 border-2 border-dashed border-primary' : ''
           }`}
           onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
@@ -617,7 +617,7 @@ export function BulkStoreProductsDialog({
               ))}
             </div>
           )}
-        </div>
+        </DialogBody>
 
         {/* Footer com Progresso e Publicação (Mobile First) */}
         <DialogFooter className="p-3 sm:p-4 border-t border-border bg-card/90 shrink-0 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5">

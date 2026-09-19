@@ -24,6 +24,24 @@ Itens mapeados na auditoria de segurança para serem abordados em próximas etap
 
 ## ✅ 2. Concluído Recentemente (Histórico)
 
+### 🪟 Padronização Total de Modais & Responsividade Mobile/Tablet
+- **Padronização do Design System:** Refatoração de todos os modais da aplicação com uso dos atributos oficiais do `DialogContent` (`size="sm|md|lg|xl|2xl|3xl|4xl"`, `noPadding`) e composição estruturada (`DialogHeader`, `DialogBody`, `DialogFooter`).
+- **Scroll Independente & Safe Area:** Eliminação de barras de rolagem duplicadas com encapsulamento de formulários (`<form className="flex flex-col flex-1 min-h-0 overflow-hidden">`) e áreas de rolagem vertical restritas ao `DialogBody`, mantendo cabeçalhos e botões de ação sempre visíveis e acessíveis em telas mobile.
+- **Telas e Componentes Padronizados:**
+  - `StoreOrders.tsx`: Detalhes de pedido (`2xl`) e conversão para pedido do ateliê (`lg`).
+  - `StoreProducts.tsx`: Criação/Edição de produto (`lg`) e importação do catálogo do ateliê (`xl`).
+  - `Users.tsx`: Edição de colaborador/permissões (`lg`) e convite por e-mail (`md`).
+  - `Dashboard.tsx`: Atribuição de pedidos em massa (`md`).
+  - `BulkStoreProductsDialog.tsx`: Cadastro em lote por fotos (`4xl`).
+  - `StoreCustomization.tsx`: Central de ajuda e formatação de temas (`3xl`).
+  - `QuoteDetailsDialog.tsx` & `QuoteFormDialog.tsx`: Detalhes e elaboração de orçamentos (`2xl`).
+  - `Emails.tsx`: Visualização de e-mails recebidos (`3xl`) e enviados (`2xl`).
+  - `WhatsAppChat.tsx`: Iniciar nova conversa (`md`) e confirmação de exclusão (`sm`).
+  - `GalleryUploadDialog.tsx` & `NewOrderGallerySelect.tsx`: Upload de artes e seleção de artes para pedidos.
+  - `PricingCalculatorTab.tsx` & `SuppliesTab.tsx`: Precificação, insumos e simulação de lotes.
+  - `Layout.tsx`: Modal de informações do sistema (`md`).
+- **Resolução de Gap de Navegação em Tablets (`Layout.tsx`):** Ajuste do breakpoint da barra de navegação inferior de `sm:hidden` para `md:hidden` e do container principal para `md:pb-8`, garantindo que dispositivos entre 640px e 767px (tablets e smartphones em modo paisagem) não fiquem sem menu de navegação.
+
 ### 🎨 Padronização do Design System: Eliminação de `<select>` Nativos
 - **Substituição Integral:** Eliminadas 100% das ocorrências de tags HTML nativas `<select>` por componentes oficiais do Design System (`Select`, `SelectTrigger`, `SelectValue`, `SelectContent`, `SelectItem`).
 - **Telas Padronizadas:**
