@@ -247,9 +247,8 @@ test.describe('Gestão da Loja (Backoffice Administrativo)', () => {
     await expect(dialog).toBeVisible({ timeout: 5000 });
     await expect(dialog.getByText(/Publicação em Lote via Fotografias/i)).toBeVisible({ timeout: 5000 });
 
-    // 3. Validar a barra de ferramentas de lote (preço, prazo, categoria)
-    await expect(dialog.getByText(/Prazo:/i)).toBeVisible({ timeout: 5000 });
-    await expect(dialog.getByPlaceholder('0,00')).toBeVisible({ timeout: 5000 });
+    // 3. Validar área de upload e formatos suportados no estado inicial
+    await expect(dialog.getByText(/Toque para selecionar as fotografias|Formatos: JPG, PNG, WebP/i).first()).toBeVisible({ timeout: 5000 });
 
     // 4. Testar o botão Escolher Fotos
     await expect(dialog.getByRole('button', { name: /Escolher Fotos/i })).toBeVisible({ timeout: 5000 });

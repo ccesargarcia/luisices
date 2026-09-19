@@ -6,6 +6,8 @@ import { ensureAuthenticated } from './utils/auth.util';
  * Executa em viewport de smartphone (ex: Pixel 5 / 393x851)
  */
 
+test.use({ viewport: { width: 393, height: 851 } });
+
 test.describe('Experiência Mobile e Responsividade', () => {
   test('deve renderizar a barra de navegação inferior (Bottom Bar) em telas móveis', async ({ page }) => {
     await ensureAuthenticated(page);

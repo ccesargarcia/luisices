@@ -58,22 +58,22 @@ test.describe('Central de Ajuda', () => {
     await page.goto('/ajuda');
     await page.waitForLoadState('domcontentloaded');
 
-    // 1. Buscar guia de Upload em Lote
+    // 1. Buscar guia de Publicação em Lote
     const searchInput = page
       .getByPlaceholder(/Buscar tópicos, dúvidas ou funcionalidades|O que você precisa aprender/i)
       .first();
-    await searchInput.fill('Upload em Lote');
+    await searchInput.fill('Publicação em Lote');
     await page.waitForTimeout(300);
 
-    // Deve exibir o card do guia de upload em lote
-    await expect(page.getByText(/Upload em Lote de Produtos/i).first()).toBeVisible({ timeout: 5000 });
+    // Deve exibir o card do guia ou step de publicação em lote
+    await expect(page.getByText(/Publicação em Lote via Fotos|Lojinha Online/i).first()).toBeVisible({ timeout: 5000 });
 
-    // 2. Ir para FAQ e checar pergunta sobre upload de fotos e Copiloto de IA
+    // 2. Ir para FAQ e checar pergunta sobre fotos e Copiloto de IA
     const faqTab = page.getByRole('tab', { name: /Perguntas Frequentes/i }).first();
     await faqTab.click();
 
     await expect(
-      page.getByText(/múltiplos produtos por foto|Copiloto de IA|planilha/i).first()
+      page.getByText(/publicação em lote de produtos por fotos|Copiloto IA/i).first()
     ).toBeVisible({ timeout: 5000 });
   });
 });

@@ -17,14 +17,14 @@ test.describe('Central de Atendimento WhatsApp', () => {
 
     // 1. Validar container e título da central
     await expect(page.locator('main').first()).toBeVisible({ timeout: 10000 });
-    await expect(page.getByRole('heading', { name: /Central WhatsApp/i })).toBeVisible({ timeout: 5000 });
+    await expect(page.getByRole('heading', { name: /Central de Atendimento/i })).toBeVisible({ timeout: 5000 });
 
     // 2. Validar campo de busca de contatos/conversas
-    const searchInput = page.getByPlaceholder(/Buscar conversas ou clientes/i);
+    const searchInput = page.getByPlaceholder(/Buscar cliente, número ou mensagem/i);
     await expect(searchInput).toBeVisible({ timeout: 5000 });
 
     // 3. Validar botão de nova conversa
-    const newChatBtn = page.getByRole('button', { name: /Nova Conversa/i });
+    const newChatBtn = page.getByRole('button', { name: /Nova Conversa/i }).first();
     await expect(newChatBtn).toBeVisible({ timeout: 5000 });
   });
 
@@ -33,7 +33,7 @@ test.describe('Central de Atendimento WhatsApp', () => {
     await page.waitForLoadState('domcontentloaded');
 
     // Clicar em Nova Conversa
-    const newChatBtn = page.getByRole('button', { name: /Nova Conversa/i });
+    const newChatBtn = page.getByRole('button', { name: /Nova Conversa/i }).first();
     await expect(newChatBtn).toBeVisible({ timeout: 5000 });
     await newChatBtn.click();
 
@@ -58,7 +58,7 @@ test.describe('Central de Atendimento WhatsApp', () => {
     await page.goto('/whatsapp');
     await page.waitForLoadState('domcontentloaded');
 
-    const searchInput = page.getByPlaceholder(/Buscar conversas ou clientes/i);
+    const searchInput = page.getByPlaceholder(/Buscar cliente, número ou mensagem/i);
     await searchInput.fill('Teste');
     await page.waitForTimeout(300);
 
