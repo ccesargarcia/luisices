@@ -43,7 +43,7 @@ test.describe('Central de Atendimento WhatsApp', () => {
     await expect(dialog.getByText(/Iniciar Conversa no WhatsApp/i)).toBeVisible({ timeout: 5000 });
 
     // Alternar para aba de Número Avulso para validar input de telefone
-    const customTab = dialog.getByText(/Número Avulso/i);
+    const customTab = dialog.getByRole('button', { name: 'Número Avulso', exact: true });
     if (await customTab.isVisible()) {
       await customTab.click();
     }
