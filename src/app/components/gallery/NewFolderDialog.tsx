@@ -74,7 +74,7 @@ export function NewFolderDialog({
         if (!v) handleClose();
       }}
     >
-      <DialogContent className="max-w-sm">
+      <DialogContent size="sm">
         <DialogHeader>
           <DialogTitle>Nova Pasta</DialogTitle>
         </DialogHeader>

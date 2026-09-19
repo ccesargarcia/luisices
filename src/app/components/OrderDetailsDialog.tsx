@@ -388,7 +388,7 @@ export function OrderDetailsDialog({ order, open, onOpenChange, onUpdateStatus, 
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="w-[calc(100vw-1.5rem)] sm:w-full sm:max-w-2xl max-h-[90dvh] overflow-y-auto">
+      <DialogContent size="2xl" className="max-h-[90dvh] overflow-y-auto">
         <DialogHeader>
           <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2">
             <DialogTitle className="text-base sm:text-lg">

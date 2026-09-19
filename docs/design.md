@@ -278,9 +278,62 @@ Estas cores mantêm consistência funcional independente do tema ativo:
 * **Tipografia:** Família Sans moderna (`var(--font-family-sans)` / Inter / Geist) com escala tipográfica legível e suporte a números tabulares (`tabular-nums`) para evitar oscilações em contadores monetários e tabelas.
 * **Layouts Fluidos e Mobile-First:**
   * Todos os diálogos e modais ocupam `calc(100vw - 1.5rem)` em smartphones com `max-h-[90dvh]` e rolagem interna.
-  * Interceptação nativa do botão "Voltar" do navegador/Android (`popstate` listener) para fechar modais antes de sair da página.
+  * Interceptação nativa do botão "Voltar" do celular (`popstate` listener via `useModalHistory`) para fechar modais antes de sair da página.
 
 ---
+
+### 6.7 Padrão Oficial do Design System para Diálogos e Modais (Mobile-First & Web)
+
+Para garantir paridade entre a experiência no celular e no computador, e evitar bugs visuais de rolagem e corte de conteúdo, todo novo modal deve seguir obrigatoriamente as seguintes convenções:
+
+#### 1. Tabela de Tamanhos Declarativos (`size` prop no `DialogContent`):
+Evite strings CSS manuais como `w-[calc(100vw-1.5rem)] sm:max-w-2xl`. Utilize a propriedade tipada `size`:
+
+| Tamanho | Classe Aplicada | Largura Desktop | Caso de Uso Recomendado |
+| :--- | :--- | :--- | :--- |
+| `sm` | `sm:max-w-sm` | 384px | Confirmações rápidas, mini-uploads de foto, inputs únicos |
+| `md` | `sm:max-w-md` | 448px | Formulários simples (Pastas, Insumos avulsos, Edição rápida) |
+| `lg` | `sm:max-w-lg` | 512px | *(Padrão default)* Cadastros normais (Clientes, Nova Arte) |
+| `xl` | `sm:max-w-xl` | 576px | Formulários intermediários com mais colunas |
+| `2xl` | `sm:max-w-2xl` | 672px | Novo Pedido, Detalhes de Pedido, Orçamentos, Seletor de Galeria |
+| `3xl` | `sm:max-w-3xl` | 768px | Fichas técnicas, simuladores de lote, lightbox médio |
+| `4xl` | `sm:max-w-4xl` | 896px | Lightbox da Galeria com IA Multimodal e painel lateral |
+| `full` | `sm:max-w-[calc(100vw-2rem)]` | Quase tela cheia | Visualizadores imersivos ou relatórios extensos |
+
+#### 2. Anatomia Padrão do Modal (Header -> Body -> Footer):
+```tsx
+<Dialog open={open} onOpenChange={onOpenChange}>
+  <DialogContent size="lg" className="max-h-[90dvh] flex flex-col p-0 overflow-hidden">
+    {/* Cabeçalho fixo no topo */}
+    <DialogHeader className="px-4 sm:px-6 pt-4 sm:pt-6 pb-2 border-b">
+      <DialogTitle>Título do Modal</DialogTitle>
+      <DialogDescription>Subtítulo ou instrução opcional</DialogDescription>
+    </DialogHeader>
+
+    {/* Corpo com rolagem interna suave */}
+    <DialogBody className="px-4 sm:px-6 py-4 space-y-4">
+      {/* Campos de formulário aqui */}
+    </DialogBody>
+
+    {/* Rodapé fixo na base (botões sempre visíveis) */}
+    <DialogFooter className="px-4 sm:px-6 py-3 border-t bg-card/60">
+      <Button variant="outline" onClick={onClose}>Cancelar</Button>
+      <Button onClick={onSave}>Salvar</Button>
+    </DialogFooter>
+  </DialogContent>
+</Dialog>
+```
+
+#### 3. Regras Mandatórias de UX Mobile:
+1. **Nunca usar `fixed inset-0` manuais com `div`:** Sempre use o `Dialog` do Design System (`src/app/components/ui/dialog.tsx`). Isso garante foco acessível, leitor de tela e suporte ao botão "Voltar" físico/gestual do celular.
+2. **Nunca usar `min-h-[70dvh]` ou alturas mínimas artificiais:** Em celulares, quando o teclado virtual abre, alturas mínimas causam transbordamento e impedem a visualização dos campos.
+3. **Uso de `dvh` em vez de `vh`:** Telas móveis possuem barras dinâmicas do navegador (Safari iOS e Chrome Android). Sempre use `max-h-[90dvh]` ou `h-[100dvh]`.
+4. **Touch targets mínimos:** Todos os botões clicáveis com os dedos devem ter no mínimo `size-8` a `size-10` (36px a 44px) com margens confortáveis.
+5. **Hierarquia de Z-Index Estrita:**
+   - Telas e layouts normais: `z-0` a `z-30`
+   - Barra de navegação inferior mobile (`Layout.tsx`): `z-40`
+   - Overlays, Diálogos e Sheets (`DialogContent`, `SheetContent`): `z-50`
+   - Toasts e notificações Sonner: `z-[100]`
 
 ## 7. Roadmap de Evolução para SaaS Multi-Tenant
 

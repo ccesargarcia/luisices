@@ -1,7 +1,16 @@
-import React from 'react';
 import { GalleryItem } from '../../types';
 import { Label } from '../ui/label';
-import { Images, Plus, X } from 'lucide-react';
+import { Button } from '../ui/button';
+import { Input } from '../ui/input';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogBody,
+  DialogFooter,
+} from '../ui/dialog';
+import { Images, Plus, X, Search, Check } from 'lucide-react';
 
 interface NewOrderGallerySelectProps {
   galleryItems: GalleryItem[];
@@ -85,7 +94,7 @@ export function NewOrderGallerySelect({
       )}
 
       {/* Gallery browser dialog */}
-      {galleryBrowserOpen && (() => {
+      {(() => {
         const customerId =
           selectedCustomer && selectedCustomer !== 'new' ? selectedCustomer : undefined;
         const filtered = galleryItems.filter((g) => {
@@ -99,36 +108,35 @@ export function NewOrderGallerySelect({
         });
 
         return (
-          <div
-            className="fixed inset-0 z-[200] bg-black/60 flex items-center justify-center p-4"
-            onClick={() => onGalleryBrowserOpenChange(false)}
-          >
-            <div
-              className="bg-background rounded-lg shadow-xl w-full max-w-2xl flex flex-col max-h-[85vh]"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="flex items-center justify-between px-4 py-3 border-b">
-                <h4 className="font-semibold text-sm">Selecionar Artes da Galeria</h4>
-                <button type="button" onClick={() => onGalleryBrowserOpenChange(false)}>
-                  <X className="size-4" />
-                </button>
+          <Dialog open={galleryBrowserOpen} onOpenChange={onGalleryBrowserOpenChange}>
+            <DialogContent size="2xl" className="max-h-[90dvh] flex flex-col p-0 overflow-hidden">
+              <DialogHeader className="px-4 sm:px-6 pt-4 sm:pt-6 pb-2 border-b">
+                <DialogTitle>Selecionar Artes da Galeria</DialogTitle>
+              </DialogHeader>
+
+              <div className="px-4 sm:px-6 py-2.5 border-b bg-muted/20 shrink-0">
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+                  <Input
+                    className="pl-9 text-sm"
+                    placeholder="Buscar por título ou cliente..."
+                    value={galleryBrowserSearch}
+                    onChange={(e) => onGalleryBrowserSearchChange(e.target.value)}
+                    autoFocus
+                  />
+                </div>
               </div>
-              <div className="px-4 py-2 border-b">
-                <input
-                  className="w-full border rounded-md px-3 py-1.5 text-sm bg-background focus:outline-none focus:ring-2 focus:ring-ring"
-                  placeholder="Buscar por título ou cliente..."
-                  value={galleryBrowserSearch}
-                  onChange={(e) => onGalleryBrowserSearchChange(e.target.value)}
-                  autoFocus
-                />
-              </div>
-              <div className="flex-1 overflow-y-auto p-4">
+
+              <DialogBody className="p-4 sm:p-6">
                 {filtered.length === 0 ? (
-                  <p className="text-sm text-muted-foreground text-center py-10">
-                    Nenhuma arte encontrada na galeria.
-                  </p>
+                  <div className="text-center py-12 space-y-2">
+                    <Images className="size-10 mx-auto text-muted-foreground/40" />
+                    <p className="text-sm text-muted-foreground">
+                      Nenhuma arte encontrada na galeria.
+                    </p>
+                  </div>
                 ) : (
-                  <div className="grid grid-cols-3 sm:grid-cols-4 gap-3">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
                     {filtered.map((item) => {
                       const isSelected = selectedGalleryIds.includes(item.id);
                       return (
@@ -142,10 +150,10 @@ export function NewOrderGallerySelect({
                                 : [...prev, item.id]
                             )
                           }
-                          className={`relative group rounded-lg overflow-hidden border-2 transition-all ${
+                          className={`relative group rounded-lg overflow-hidden border-2 transition-all cursor-pointer text-left ${
                             isSelected
-                              ? 'border-primary shadow-md scale-[0.97]'
-                              : 'border-transparent hover:border-primary/40'
+                              ? 'border-primary ring-2 ring-primary/20 shadow-sm scale-[0.98]'
+                              : 'border-border hover:border-primary/50'
                           }`}
                         >
                           <img
@@ -155,17 +163,17 @@ export function NewOrderGallerySelect({
                             loading="lazy"
                           />
                           {isSelected && (
-                            <div className="absolute inset-0 bg-primary/20 flex items-center justify-center">
-                              <div className="bg-primary text-primary-foreground rounded-full size-6 flex items-center justify-center text-xs font-bold">
-                                ✓
+                            <div className="absolute inset-0 bg-primary/25 flex items-center justify-center">
+                              <div className="bg-primary text-primary-foreground rounded-full size-6 flex items-center justify-center text-xs font-bold shadow-sm">
+                                <Check className="size-3.5" />
                               </div>
                             </div>
                           )}
-                          <div className="absolute bottom-0 inset-x-0 bg-black/60 text-white text-[10px] px-1.5 py-1 truncate">
+                          <div className="absolute bottom-0 inset-x-0 bg-black/60 text-white text-[11px] px-2 py-1 truncate">
                             {item.title}
                           </div>
                           {item.customerName && (
-                            <div className="absolute top-1 left-1 bg-black/50 text-white text-[9px] px-1 py-0.5 rounded truncate max-w-[90%]">
+                            <div className="absolute top-1 left-1 bg-black/60 backdrop-blur-xs text-white text-[9px] px-1.5 py-0.5 rounded truncate max-w-[90%] font-medium">
                               {item.customerName}
                             </div>
                           )}
@@ -174,22 +182,21 @@ export function NewOrderGallerySelect({
                     })}
                   </div>
                 )}
-              </div>
-              <div className="px-4 py-3 border-t flex justify-between items-center">
-                <span className="text-xs text-muted-foreground">
-                  {selectedGalleryIds.length} selecionada
-                  {selectedGalleryIds.length !== 1 ? 's' : ''}
+              </DialogBody>
+
+              <DialogFooter className="px-4 sm:px-6 py-3 border-t bg-card/60 flex items-center justify-between sm:justify-between">
+                <span className="text-xs text-muted-foreground font-medium">
+                  {selectedGalleryIds.length} selecionada{selectedGalleryIds.length !== 1 ? 's' : ''}
                 </span>
-                <button
+                <Button
                   type="button"
-                  className="bg-primary text-primary-foreground rounded-md px-4 py-1.5 text-sm hover:bg-primary/90"
                   onClick={() => onGalleryBrowserOpenChange(false)}
                 >
                   Confirmar
-                </button>
-              </div>
-            </div>
-          </div>
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
         );
       })()}
     </div>

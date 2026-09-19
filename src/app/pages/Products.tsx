@@ -189,7 +189,7 @@ function ProductFormDialog({ open, onOpenChange, editing, existingCategories, us
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
+      <DialogContent size="md" className="max-h-[90dvh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{editing ? 'Editar Produto' : 'Novo Produto'}</DialogTitle>
         </DialogHeader>

@@ -5,6 +5,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogBody,
   DialogFooter,
 } from '../ui/dialog';
 import { Button } from '../ui/button';
@@ -159,12 +160,12 @@ export function GalleryUploadDialog({
         if (!v) handleClose();
       }}
     >
-      <DialogContent className="w-[calc(100vw-1.5rem)] sm:w-full sm:max-w-lg max-h-[90dvh] overflow-y-auto">
-        <DialogHeader>
+      <DialogContent size="lg" className="max-h-[90dvh] flex flex-col p-0 overflow-hidden">
+        <DialogHeader className="px-4 sm:px-6 pt-4 sm:pt-6 pb-2 border-b">
           <DialogTitle>Nova Arte</DialogTitle>
         </DialogHeader>
 
-        <div className="space-y-4 py-2">
+        <DialogBody className="px-4 sm:px-6 py-4 space-y-4">
           {/* Drop zone */}
           <div
             className={cn(
@@ -174,7 +175,7 @@ export function GalleryUploadDialog({
                 : 'border-muted-foreground/30 hover:border-primary/60',
               preview
                 ? 'p-1'
-                : 'p-8 flex flex-col items-center justify-center gap-2 text-muted-foreground'
+                : 'py-6 px-4 flex flex-col items-center justify-center gap-1.5 text-muted-foreground'
             )}
             onClick={() => inputRef.current?.click()}
             onDragOver={(e) => {
@@ -189,12 +190,12 @@ export function GalleryUploadDialog({
                 <img
                   src={preview}
                   alt="preview"
-                  className="w-full max-h-64 object-contain rounded"
+                  className="w-full max-h-48 sm:max-h-56 object-contain rounded"
                   loading="lazy"
                 />
                 <button
                   type="button"
-                  className="absolute top-2 right-2 bg-black/60 rounded-full p-1 text-white hover:bg-black/80"
+                  className="absolute top-2 right-2 bg-black/60 rounded-full p-1 text-white hover:bg-black/80 cursor-pointer"
                   onClick={(e) => {
                     e.stopPropagation();
                     setFile(null);
@@ -206,16 +207,16 @@ export function GalleryUploadDialog({
               </>
             ) : (
               <>
-                <Upload className="size-8 opacity-50" />
-                <span className="text-sm font-medium">Clique ou arraste uma imagem</span>
-                <span className="text-xs">PNG, JPG, WEBP — até 15MB</span>
+                <Upload className="size-7 opacity-60" />
+                <span className="text-xs sm:text-sm font-medium">Clique ou arraste uma imagem</span>
+                <span className="text-[11px] text-muted-foreground">PNG, JPG, WEBP — até 15MB</span>
               </>
             )}
           </div>
           <input
             ref={inputRef}
             type="file"
-              accept={acceptedImageTypes}
+            accept={acceptedImageTypes}
             className="hidden"
             onChange={(e) => {
               const f = e.target.files?.[0];
@@ -225,7 +226,7 @@ export function GalleryUploadDialog({
 
           {/* Title */}
           <div className="space-y-1">
-            <Label htmlFor="gallery-title">
+            <Label htmlFor="gallery-title" className="text-xs sm:text-sm">
               Título <span className="text-destructive">*</span>
             </Label>
             <Input
@@ -238,7 +239,7 @@ export function GalleryUploadDialog({
 
           {/* Description */}
           <div className="space-y-1">
-            <Label htmlFor="gallery-desc">Descrição</Label>
+            <Label htmlFor="gallery-desc" className="text-xs sm:text-sm">Descrição</Label>
             <Textarea
               id="gallery-desc"
               value={description}
@@ -250,7 +251,7 @@ export function GalleryUploadDialog({
 
           {/* Customer */}
           <div className="space-y-1">
-            <Label>Cliente</Label>
+            <Label className="text-xs sm:text-sm">Cliente</Label>
             <Select
               value={customerId || '__none__'}
               onValueChange={(v) => setCustomerId(v === '__none__' ? '' : v)}
@@ -271,27 +272,27 @@ export function GalleryUploadDialog({
 
           {/* Tags */}
           <div className="space-y-1">
-            <Label>Tags</Label>
+            <Label className="text-xs sm:text-sm">Tags</Label>
             <TagInput tags={tags} onChange={setTags} placeholder="Adicionar tag..." />
           </div>
 
           {/* AI Auto-Catalog Option */}
-          <div className="flex items-center gap-2 p-2.5 rounded-lg border bg-amber-500/5 border-amber-500/20">
+          <div className="flex items-center gap-2.5 p-3 rounded-lg border bg-amber-500/5 border-amber-500/20">
             <input
               type="checkbox"
               id="ai-auto-catalog"
               checked={autoEnrich}
               onChange={(e) => setAutoEnrich(e.target.checked)}
-              className="size-4 text-amber-600 rounded cursor-pointer accent-amber-500"
+              className="size-4 text-amber-600 rounded cursor-pointer accent-amber-500 shrink-0"
             />
-            <Label htmlFor="ai-auto-catalog" className="text-xs font-medium cursor-pointer flex items-center gap-1.5 text-foreground select-none">
-              <Sparkles className="size-3.5 text-amber-500" />
+            <Label htmlFor="ai-auto-catalog" className="text-xs font-medium cursor-pointer flex items-center gap-1.5 text-foreground select-none leading-snug">
+              <Sparkles className="size-3.5 text-amber-500 shrink-0" />
               Catalogar e analisar automaticamente com IA ✨
             </Label>
           </div>
-        </div>
+        </DialogBody>
 
-        <DialogFooter>
+        <DialogFooter className="px-4 sm:px-6 py-3 border-t bg-card/60">
           <Button variant="outline" onClick={handleClose} disabled={saving}>
             Cancelar
           </Button>

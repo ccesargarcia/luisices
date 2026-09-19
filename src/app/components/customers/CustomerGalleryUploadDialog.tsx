@@ -101,7 +101,7 @@ export function CustomerGalleryUploadDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="max-w-md max-h-[90dvh] overflow-y-auto">
+      <DialogContent size="md" className="max-h-[90dvh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Nova Arte — {customer?.name}</DialogTitle>
         </DialogHeader>

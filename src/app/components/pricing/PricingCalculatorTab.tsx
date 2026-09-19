@@ -1050,7 +1050,7 @@ export function PricingCalculatorTab({
 
       {/* Modal: Adicionar Insumo do Catálogo à Ficha */}
       <Dialog open={addSupplyModalOpen} onOpenChange={setAddSupplyModalOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent size="md" className="max-h-[90dvh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Adicionar Insumo do Catálogo</DialogTitle>
           </DialogHeader>
@@ -1109,7 +1109,7 @@ export function PricingCalculatorTab({
 
       {/* Modal: Adicionar Item Avulso */}
       <Dialog open={addCustomModalOpen} onOpenChange={setAddCustomModalOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent size="md" className="max-h-[90dvh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Adicionar Custo / Insumo Avulso</DialogTitle>
           </DialogHeader>
@@ -1171,7 +1171,7 @@ export function PricingCalculatorTab({
           if (!open) setBatchModalRecipe(null);
         }}
       >
-        <DialogContent className="max-w-2xl">
+        <DialogContent size="2xl" className="max-h-[90dvh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Layers className="size-5 text-primary" />
