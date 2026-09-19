@@ -15,6 +15,13 @@ import { Label } from '../components/ui/label';
 import { Textarea } from '../components/ui/textarea';
 import { Badge } from '../components/ui/badge';
 import { Switch } from '../components/ui/switch';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '../components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '../components/ui/dialog';
 import {
   AlertDialog,
@@ -313,25 +320,29 @@ function StoreProductDialog({ open, onOpenChange, editing, existingCategories }:
                   )}
                 </div>
               ) : (
-                <select
-                  id="sp-category"
-                  value={form.category}
-                  onChange={(e) => {
-                    if (e.target.value === '__new__') {
+                <Select
+                  value={form.category || undefined}
+                  onValueChange={(val) => {
+                    if (val === '__new__') {
                       setIsCustomCategory(true);
                       setForm({ ...form, category: '' });
                     } else {
-                      setForm({ ...form, category: e.target.value });
+                      setForm({ ...form, category: val });
                     }
                   }}
-                  className="w-full h-9 px-3 rounded-lg border border-input bg-background text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary cursor-pointer"
                 >
-                  <option value="" disabled>Selecione uma categoria...</option>
-                  {existingCategories.map((c) => (
-                    <option key={c} value={c}>{c}</option>
-                  ))}
-                  <option value="__new__">➕ Cadastrar nova categoria...</option>
-                </select>
+                  <SelectTrigger id="sp-category" className="w-full h-9 text-xs">
+                    <SelectValue placeholder="Selecione uma categoria..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {existingCategories.map((c) => (
+                      <SelectItem key={c} value={c} className="text-xs">{c}</SelectItem>
+                    ))}
+                    <SelectItem value="__new__" className="text-primary font-medium text-xs cursor-pointer">
+                      ➕ Cadastrar nova categoria...
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
               )}
             </div>
 
@@ -916,27 +927,35 @@ export function StoreProducts() {
 
         <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
           {/* Filtro de Categoria */}
-          <select
+          <Select
             value={filterCategory}
-            onChange={(e) => setFilterCategory(e.target.value)}
-            className="h-9 px-2.5 rounded-lg bg-background border border-border text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary cursor-pointer flex-1 sm:flex-none min-w-[130px] max-w-full"
+            onValueChange={(val) => setFilterCategory(val)}
           >
-            <option value="todos">Todas as Categorias</option>
-            {categories.map((cat) => (
-              <option key={cat} value={cat}>{cat}</option>
-            ))}
-          </select>
+            <SelectTrigger aria-label="Filtro de Categoria" className="h-9 text-xs flex-1 sm:flex-none min-w-[140px] max-w-full">
+              <SelectValue placeholder="Todas as Categorias" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="todos" className="text-xs">Todas as Categorias</SelectItem>
+              {categories.map((cat) => (
+                <SelectItem key={cat} value={cat} className="text-xs">{cat}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
 
           {/* Filtro de Status */}
-          <select
+          <Select
             value={filterStatus}
-            onChange={(e) => setFilterStatus(e.target.value as any)}
-            className="h-9 px-2.5 rounded-lg bg-background border border-border text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary cursor-pointer flex-1 sm:flex-none min-w-[110px] max-w-full"
+            onValueChange={(val) => setFilterStatus(val as any)}
           >
-            <option value="todos">Todos os Status</option>
-            <option value="ativos">Apenas Publicados</option>
-            <option value="pausados">Apenas Pausados</option>
-          </select>
+            <SelectTrigger aria-label="Filtro de Status" className="h-9 text-xs flex-1 sm:flex-none min-w-[130px] max-w-full">
+              <SelectValue placeholder="Todos os Status" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="todos" className="text-xs">Todos os Status</SelectItem>
+              <SelectItem value="ativos" className="text-xs">Apenas Publicados</SelectItem>
+              <SelectItem value="pausados" className="text-xs">Apenas Pausados</SelectItem>
+            </SelectContent>
+          </Select>
 
           {/* Alternador Grid / Lista */}
           <div className="flex items-center bg-muted/60 p-0.5 rounded-lg border border-border shrink-0 ml-auto sm:ml-0">

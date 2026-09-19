@@ -24,6 +24,13 @@ Itens mapeados na auditoria de segurança para serem abordados em próximas etap
 
 ## ✅ 2. Concluído Recentemente (Histórico)
 
+### 🎨 Padronização do Design System: Eliminação de `<select>` Nativos
+- **Substituição Integral:** Eliminadas 100% das ocorrências de tags HTML nativas `<select>` por componentes oficiais do Design System (`Select`, `SelectTrigger`, `SelectValue`, `SelectContent`, `SelectItem`).
+- **Telas Padronizadas:**
+  - `Products.tsx`: seletor de categorias dinâmico no cadastro/edição de produtos com suporte à criação de nova categoria.
+  - `StoreProducts.tsx`: seletor de categorias no formulário da lojinha + seletores de filtro por categoria e por status de publicação na barra de ferramentas.
+  - `PublicCatalog.tsx`: seletor de ordenação de produtos (destaques, preços, prazos) com suporte completo a dark mode e tokens semânticos.
+
 ### 📦 Gestão em Massa de Produtos da Lojinha & UI Mobile-First
 - **Cadastro em Massa por Fotos (`BulkStoreProductsDialog.tsx`):** Upload simultâneo de múltiplos arquivos de imagem com inferência automática de título comercial a partir do nome do arquivo e replicação em lote de preço, categoria e prazo.
 - **Exclusão em Massa (`BulkDeleteStoreProductsDialog.tsx`):** Diálogo de confirmação com exibição visual dos itens selecionados antes da exclusão.

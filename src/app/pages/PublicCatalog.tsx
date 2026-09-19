@@ -34,6 +34,13 @@ import { db } from '../../lib/firebase';
 import { BannerCarousel, CatalogBannerItem } from '../components/catalog/BannerCarousel';
 import { firebaseCatalogOrderService } from '../../services/firebaseCatalogOrderService';
 import { toCdnUrl } from '../utils/cdnUtils';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '../components/ui/select';
 
 export interface CatalogProduct {
   id: string;
@@ -987,21 +994,21 @@ export function PublicCatalog() {
 
               <div className="flex items-center gap-1.5">
                 <ArrowUpDown size={13} className="text-stone-400" />
-                <label htmlFor="catalog-sort" className="hidden sm:inline text-stone-500 font-medium">
+                <label htmlFor="catalog-sort" className="hidden sm:inline text-xs text-stone-500 font-medium">
                   Ordenar:
                 </label>
-                <select
-                  id="catalog-sort"
-                  value={sortBy}
-                  onChange={(e) => setSortBy(e.target.value)}
-                  className="px-2.5 py-1 text-xs rounded-lg bg-white/80 dark:bg-[#1f191b]/90 border border-stone-200 dark:border-stone-700 text-[#221a1a] dark:text-[#e8e0e3] focus:outline-none focus:ring-1 focus:ring-[#613d3e] cursor-pointer"
-                >
-                  <option value="destaque">Destaques</option>
-                  <option value="preco-menor">Menor preço</option>
-                  <option value="preco-maior">Maior preço</option>
-                  <option value="nome-az">Nome (A - Z)</option>
-                  <option value="prazo">Menor prazo</option>
-                </select>
+                <Select value={sortBy} onValueChange={(val) => setSortBy(val)}>
+                  <SelectTrigger id="catalog-sort" aria-label="Ordenar produtos" className="h-8 text-xs w-[130px] bg-white/80 dark:bg-[#1f191b]/90 border-stone-200 dark:border-stone-700">
+                    <SelectValue placeholder="Ordenar" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="destaque" className="text-xs">Destaques</SelectItem>
+                    <SelectItem value="preco-menor" className="text-xs">Menor preço</SelectItem>
+                    <SelectItem value="preco-maior" className="text-xs">Maior preço</SelectItem>
+                    <SelectItem value="nome-az" className="text-xs">Nome (A - Z)</SelectItem>
+                    <SelectItem value="prazo" className="text-xs">Menor prazo</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
             </div>
           </div>
