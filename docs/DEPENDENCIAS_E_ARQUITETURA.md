@@ -36,6 +36,7 @@ flowchart TD
         Resend["Resend (Disparo e Webhooks de E-mails)"]
         ViaCEP["ViaCEP (Consulta de Endereço)"]
         WhatsApp["Evolution API (Mensagens WhatsApp)"]
+        Gemini["Google Gemini API (IA & Visão Computacional)"]
     end
 
     UI --> FAuth
@@ -50,8 +51,9 @@ flowchart TD
     CFCache --> FStorageProd
     UI --> Sentry
     UI --> ViaCEP
-    UI --> WhatsApp
+    FFunctions --> WhatsApp
     FFunctions --> Resend
+    FFunctions --> Gemini
     FFunctions --> Firestore
 ```
 
@@ -161,6 +163,10 @@ flowchart TD
 | **Configurações de Usuário** | `/users/{uid}/settings/profile` | Preferências de UI, tema e dados do ateliê | Acesso restrito ao próprio usuário |
 | **Histórico de E-mails** | `/sentEmails/{id}` | Registro de e-mails disparados via Resend | Leitura restrita a Admin |
 | **Convites** | `/invitations/{hashToken}` | Tokens SHA-256 de convite para cadastro | Validação e criação controlada |
+| **Conversas WhatsApp** | `/whatsapp_chats/{phone}` | Metadados e snippets de conversas do WhatsApp | Acesso restrito a usuários com permissão `whatsapp` |
+| **Mensagens WhatsApp** | `/whatsapp_messages/{id}` | Histórico completo de mensagens recebidas e enviadas | Acesso restrito a usuários com permissão `whatsapp` |
+| **Visão de Pedidos para IA** | `/ai_orders_view/{orderId}` | Base desnormalizada somente-leitura para consultas do Copiloto | Exclusivo backend Admin SDK (inacessível via cliente) |
+| **Logs de Consumo de IA** | `/ai_usage_logs/{id}` | Métricas e contagem de tokens/requisições da API Gemini | Exclusivo backend Admin SDK (inacessível via cliente) |
 
 ---
 

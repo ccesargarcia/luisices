@@ -251,7 +251,7 @@ export const router = isCatalogSubdomain
       },
       {
         path: 'relatorios',
-        element: <Lazy><PermissionRoute check={p => p.reports} allowUserRole><Reports /></PermissionRoute></Lazy>,
+        element: <Lazy><PermissionRoute check={p => Boolean(p?.reports)}><Reports /></PermissionRoute></Lazy>,
       },
       {
         path: 'orcamentos',
@@ -263,7 +263,7 @@ export const router = isCatalogSubdomain
       },
       {
         path: 'precificacao',
-        element: <Lazy><PermissionRoute check={p => p.pricing ?? false} allowUserRole><Pricing /></PermissionRoute></Lazy>,
+        element: <Lazy><PermissionRoute check={p => p.pricing ?? false}><Pricing /></PermissionRoute></Lazy>,
       },
       {
         path: 'galeria',
@@ -271,23 +271,23 @@ export const router = isCatalogSubdomain
       },
       {
         path: 'permutas',
-        element: <Lazy><PermissionRoute check={p => p.exchanges} allowUserRole><Exchanges /></PermissionRoute></Lazy>,
+        element: <Lazy><PermissionRoute check={p => Boolean(p?.exchanges)}><Exchanges /></PermissionRoute></Lazy>,
       },
       {
         path: 'configuracoes',
-        element: <Lazy><PermissionRoute check={p => p.settings} allowUserRole><Settings /></PermissionRoute></Lazy>,
+        element: <Lazy><PermissionRoute check={p => Boolean(p?.settings)}><Settings /></PermissionRoute></Lazy>,
       },
       {
         path: 'personalizar-lojinha',
-        element: <Lazy><PermissionRoute check={p => p.store ?? false} allowUserRole><StoreCustomization /></PermissionRoute></Lazy>,
+        element: <Lazy><PermissionRoute check={p => p.store ?? false}><StoreCustomization /></PermissionRoute></Lazy>,
       },
       {
         path: 'produtos-lojinha',
-        element: <Lazy><PermissionRoute check={p => p.storeProducts?.view ?? p.store ?? false} allowUserRole><StoreProducts /></PermissionRoute></Lazy>,
+        element: <Lazy><PermissionRoute check={p => p.storeProducts?.view ?? p.store ?? false}><StoreProducts /></PermissionRoute></Lazy>,
       },
       {
         path: 'pedidos-lojinha',
-        element: <Lazy><PermissionRoute check={p => Boolean(p.store || p.storeProducts?.view || p.orders?.view)} allowUserRole><StoreOrders /></PermissionRoute></Lazy>,
+        element: <Lazy><PermissionRoute check={p => Boolean(p.store || p.storeProducts?.view || p.orders?.view)}><StoreOrders /></PermissionRoute></Lazy>,
       },
       {
         path: 'lojinha/pedidos',

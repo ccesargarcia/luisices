@@ -43,3 +43,16 @@ Itens mapeados na auditoria de segurança para serem abordados em próximas etap
 
 ### 🛍️ Segregação de WhatsApp e Desacoplamento da Lojinha
 - **Segregação de Contatos:** Separação total entre o WhatsApp de vendas da vitrine pública (`catalogWhatsappPhone`) e o WhatsApp institucional do ateliê (`whatsappPhone`) em configurações e serviços.
+
+### 🔐 Blindagem de Permissões (RBAC) & Eliminação de Bypasses
+- **Eliminação de `allowUserRole`:** Removidos todos os bypasses de papel em `Layout.tsx` e `routes.tsx` que impediam a revogação de módulos para contas `user`. Agora todo módulo (`whatsapp`, `aiCopilot`, `reports`, `pricing`, `exchanges`, `settings`, `store`) respeita os toggles de permissão no Firestore.
+- **Regras do Firestore para Mensagens e Chats:** Criação da função `canAccessWhatsApp()` em `firestore.rules`, bloqueando acesso de usuários inativos ou sem permissão explícita e eliminando o backdoor via `customers.view`.
+
+### 📱 Central de Atendimento Mobile-First & Design System
+- **Resolução do Botão "Nova Conversa":** Cabeçalho responsivo com labels adaptáveis e botão flutuante (FAB) estilo WhatsApp no mobile, garantindo acesso instantâneo.
+- **Modais Padronizados:** Refatoração de `newChatModalOpen` e modal de exclusão com componentes do Design System (`DialogContent size="md"`, `DialogHeader`, `DialogBody`, `DialogFooter`), adicionando abas de navegação entre clientes cadastrados e números avulsos.
+
+### 🤖 Guardrails de Inteligência Artificial & Quota
+- **Rate Limiters Dedicados:** Implementação de `galleryAiLimiter` (20 req/min) em `enrichGalleryItemWithAi` e `aiAgentLimiter` (60 req/min) em `aiAgentChat`.
+- **Validação de Inatividade:** Bloqueio de chamadas por usuários inativos (`active: false`) nas Cloud Functions de IA.
+- **Ocultação de Interface:** Bloqueio e ocultação visual completa do Copiloto no header/sheet, análise visual na galeria, badge "IA" e checkbox de auto-enriquecimento no upload para perfis sem `aiCopilot`.

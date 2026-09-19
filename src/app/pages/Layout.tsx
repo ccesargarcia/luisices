@@ -106,38 +106,34 @@ export function Layout() {
     { name: 'Agenda Semanal', href: '/agenda',      icon: Calendar,        check: (p: any) => p.orders?.view },
     { name: 'Clientes',       href: '/clientes',    icon: Users,           check: (p: any) => p.customers?.view },
     { name: 'Atendimento',    href: '/whatsapp',    icon: MessageSquare,   badge: unreadWhatsAppCount, check: (p: any) => Boolean(p?.whatsapp) },
-    { name: 'Relatórios',     href: '/relatorios',  icon: BarChart3,       check: (p: any) => p.reports, allowUserRole: true },
+    { name: 'Relatórios',     href: '/relatorios',  icon: BarChart3,       check: (p: any) => Boolean(p?.reports) },
     { name: 'Orçamentos',     href: '/orcamentos',  icon: FileText,        check: (p: any) => p.quotes?.view },
     { name: 'Produtos do Ateliê', href: '/produtos', icon: Package,        check: (p: any) => p.products?.view },
-    { name: 'Precificação',   href: '/precificacao',icon: Coins,           check: (p: any) => p.pricing ?? false, allowUserRole: true },
+    { name: 'Precificação',   href: '/precificacao',icon: Coins,           check: (p: any) => Boolean(p?.pricing) },
     { name: 'Galeria',        href: '/galeria',     icon: Images,          check: (p: any) => p.gallery?.view },
-    { name: 'Permutas',       href: '/permutas',    icon: ArrowLeftRight,  check: (p: any) => p.exchanges, allowUserRole: true },
+    { name: 'Permutas',       href: '/permutas',    icon: ArrowLeftRight,  check: (p: any) => Boolean(p?.exchanges) },
     {
       name: 'Lojinha Online',
       icon: Store,
-      check: (p: any) => Boolean(p.store || p.storeProducts?.view),
-      allowUserRole: true,
+      check: (p: any) => Boolean(p?.store || p?.storeProducts?.view),
       children: [
         {
           name: 'Pedidos Recebidos',
           href: '/pedidos-lojinha',
           icon: ClipboardList,
-          check: (p: any) => Boolean(p.store || p.storeProducts?.view || p.orders?.view),
-          allowUserRole: true,
+          check: (p: any) => Boolean(p?.store || p?.storeProducts?.view || p?.orders?.view),
         },
         {
           name: 'Produtos da Lojinha',
           href: '/produtos-lojinha',
           icon: ShoppingBag,
-          check: (p: any) => Boolean(p.storeProducts?.view ?? p.store ?? false),
-          allowUserRole: true,
+          check: (p: any) => Boolean(p?.storeProducts?.view ?? p?.store ?? false),
         },
         {
           name: 'Aparência & Vitrine',
           href: '/personalizar-lojinha',
           icon: Palette,
-          check: (p: any) => Boolean(p.store ?? false),
-          allowUserRole: true,
+          check: (p: any) => Boolean(p?.store),
         },
       ],
     },
@@ -155,13 +151,11 @@ export function Layout() {
         if (item.children) {
           const allowedChildren = item.children.filter(child => {
             if ((child as any).adminOnly) return userProfile.role === 'admin';
-            if (child.allowUserRole && (userProfile.role === 'user' || userProfile.role === 'admin')) return true;
             return hasPermission(child.check);
           });
           if (allowedChildren.length === 0) return null;
           return { ...item, children: allowedChildren };
         }
-        if ((item as any).allowUserRole && (userProfile.role === 'user' || userProfile.role === 'admin')) return item;
         if (hasPermission(item.check)) return item;
         return null;
       })
@@ -194,7 +188,7 @@ export function Layout() {
 
   const mobilePrimaryNav = flatNavForMobile.slice(0, 4);
   const mobileMoreNav = flatNavForMobile.slice(4);
-  const canAccessSettings = userProfile?.role === 'user' || hasPermission((p) => p.settings);
+  const canAccessSettings = isAdmin || hasPermission((p) => Boolean(p?.settings));
   const canAccessAiCopilot = isAdmin || hasPermission((p) => Boolean(p?.aiCopilot));
 
   const businessName = settings?.businessName || 'Papelaria Personalizada';

@@ -26,6 +26,9 @@ firebase functions:secrets:set RESEND_WEBHOOK_SECRET
 
 # Chave da API Evolution para envio de mensagens WhatsApp (opcional)
 firebase functions:secrets:set EVOLUTION_API_KEY
+
+# Chave da API Gemini (Google AI) para o Copiloto e Visão Computacional
+firebase functions:secrets:set GEMINI_API_KEY
 ```
 
 > **Nota:** A Evolution API utiliza a URL `https://wa.luisices.com.br` e a instância `homeassistant`.
@@ -82,12 +85,38 @@ http://localhost:4000
 
 ---
 
+### 🤖 3. Inteligência Artificial (Google Gemini)
+
+| Função | Tipo | Descrição | Permissão |
+|---|---|---|---|
+| `aiAgentChat` | Callable v2 | Copiloto conversacional multimodal com tool calling: extração de pedidos, cálculo de precificação, sugestão de WhatsApp e consultas com isolamento de dados | Autenticado com `aiCopilot` (Rate limit: 60 req/min) |
+| `enrichGalleryItemWithAi` | Callable v2 | Visão computacional (Gemini Vision) para catalogar foto da galeria, extraindo descrição rica, tags e cores | Autenticado com `aiCopilot` e dono/admin da arte (Rate limit: 20 req/min) |
+| `syncAllOrdersToAiView` | Callable v2 | Sincronização em lote da coleção de pedidos para a base de leitura `ai_orders_view` | Apenas Admin |
+| `getAiUsage` | Callable v2 | Consulta consumo de cota e métricas de requisições do Gemini API | Apenas Admin |
+
+---
+
+### 💬 4. Central de Atendimento (Evolution API WhatsApp)
+
+| Função | Tipo | Descrição | Permissão |
+|---|---|---|---|
+| `sendWhatsAppDirectMessage` | Callable v2 | Envio de mensagem direta via Evolution API com gravação em `whatsapp_messages` e atualização do chat | Autenticado com `whatsapp` |
+| `deleteWhatsAppMessage` | Callable v2 | Exclusão de mensagem do chat no Firestore e revogação no WhatsApp via Evolution API | Autenticado com `whatsapp` |
+| `syncWhatsAppMessages` | Callable v2 | Sincronização de mensagens recentes entre a instância WhatsApp e o Firestore | Autenticado com `whatsapp` |
+| `whatsappEvolutionWebhook` | HTTP onRequest | Recebimento de webhooks de mensagens e status de conexão da Evolution API | Público / Webhook Evolution |
+
+---
+
 ## 🔒 Regras de Segurança e Rate Limiting
 
 1. **Rate Limiting em Memória**:
    - `sendPasswordResetEmail`: máximo de 3 tentativas por e-mail por hora.
    - `sendCustomEmail`: máximo de 50 disparos por hora por administrador autenticado.
+   - `aiAgentChat`: máximo de 60 requisições por minuto por usuário autenticado.
+   - `enrichGalleryItemWithAi`: máximo de 20 requisições por minuto por usuário autenticado.
 2. **Proteção Anti-Replay Svix**:
    - O webhook `resendReceivingWebhook` valida os headers `svix-id`, `svix-timestamp` e `svix-signature` com tolerância máxima de 300 segundos (5 minutos).
-3. **Senhas**:
+3. **Isolamento Multiusuário de IA**:
+   - Chamadas de IA executam sob estrito isolamento por `callerUid` para usuários não-administradores. O acesso à base `ai_orders_view` é protegido e inacessível via SDK cliente.
+4. **Senhas**:
    - A aplicação nunca recebe nem armazena senhas em texto puro; todo o gerenciamento de credenciais é delegado com exclusividade ao Firebase Authentication.

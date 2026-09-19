@@ -190,10 +190,11 @@ Acompanhamento de parcerias de divulgação sem cobrança monetária convenciona
 
 ## 15. Usuários, Permissões e Equipe (RBAC)
 
-- **Admin:** controle total da operação, equipe, relatórios consolidados e delegação de pedidos.
+- **Admin:** controle total da operação, equipe, relatórios consolidados, delegação de pedidos e auditoria geral.
 - **Funcionário:** execução da produção, acompanhamento de pedidos atribuídos e atualização de etapas.
 - **User:** gestão dos seus próprios pedidos, clientes, orçamentos e relatórios individuais.
-- **Revogação em Tempo Real:** alterações de permissões ou desativação de contas são refletidas imediatamente na sessão via listeners do Firestore.
+- **Permissões Granulares:** controle individual por módulo (dashboard, pedidos, clientes, produtos, orçamentos, galeria, relatórios, permutas, precificação, lojinha, e-mails, whatsapp e copiloto de IA).
+- **Revogação em Tempo Real:** alterações de permissões ou desativação de contas são refletidas imediatamente na sessão via listeners do Firestore, ocultando rotas, menus e botões no frontend e bloqueando o backend.
 
 ## 16. Central de Ajuda (`/ajuda`)
 
@@ -201,3 +202,25 @@ Acompanhamento de parcerias de divulgação sem cobrança monetária convenciona
 - FAQ com soluções para dúvidas comuns.
 - Catálogo de atalhos rápidos de teclado.
 - Atalhos para suporte técnico.
+
+## 17. Central de Atendimento WhatsApp (`/whatsapp`)
+
+- **Chat Bidirecional em Tempo Real:** comunicação direta com o cliente via Evolution API sincronizada com o Firestore (`whatsapp_chats` e `whatsapp_messages`).
+- **Modelos de Resposta Rápida (Quick Replies):** templates prontos para aviso de pedido pronto, entrada em produção, confirmação de orçamento e cobrança amigável.
+- **Início de Conversa (Mobile-First):** suporte tanto para seleção rápida de clientes cadastrados quanto para digitação de número avulso com DDD (com botão flutuante FAB no mobile).
+- **Gestão de Mensagens:** envio direto pelo sistema, link alternativo para abrir conversa no WhatsApp Web e exclusão de mensagens com opção de apagar para todos.
+- **Controle de Acesso:** módulo com controle estrito de permissão (`whatsapp`), ocultando o menu de navegação e bloqueando a rota quando revogado.
+
+## 18. Inteligência Artificial (Copiloto Interno & Visão Computacional)
+
+- **Copiloto Interno Multimodal (`AiCopilotSheet`):** assistente inteligente operacional acessível no cabeçalho alimentado por modelos Gemini (Google AI).
+- **Extração Inteligente de Pedidos:** interpretação de áudios/mensagens de clientes para preenchimento de novo pedido com 1 clique.
+- **Precificação e Margem Protegida:** cálculo de custos, margens mínimas e sugestões de preços de venda.
+- **Visão Computacional na Galeria (`enrichGalleryItemWithAi`):** análise automática de fotos de produtos para gerar descrições ricas, tags e identificação de técnicas de personalização.
+- **Guardrails de Segurança:**
+  - **Isolamento de Dados:** usuários não-admin consultam via IA exclusivamente seus próprios clientes, pedidos e artes; administradores possuem visão de auditoria global.
+  - **Human-in-the-Loop:** a IA gera rascunhos para revisão e aprovação humana do operador.
+  - **Rate Limiting:** limitadores de taxa dedicados (`aiAgentLimiter`: 60 req/min; `galleryAiLimiter`: 20 req/min).
+  - **Sanitização de Saída:** remoção de pensamentos e raciocínios internos de modelos thinking em inglês (`cleanAiOutput`).
+  - **Permissão `aiCopilot`:** revogação oculta o copiloto, desativa ferramentas de IA na galeria e barra execuções nas Cloud Functions.
+
