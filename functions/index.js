@@ -26,6 +26,12 @@ const aiAgentLimiter = new RateLimiterMemory({
   duration: 60,
 });
 
+// Rate limiter para análise de imagens e visão computacional: 20 requisições por minuto por usuário
+const galleryAiLimiter = new RateLimiterMemory({
+  points: 20,
+  duration: 60,
+});
+
 // Configurar secrets usando o sistema de params
 const RESEND_API_KEY = defineSecret('RESEND_API_KEY');
 const EVOLUTION_API_KEY = defineSecret('EVOLUTION_API_KEY');
@@ -1175,6 +1181,9 @@ exports.aiAgentChat = onCall({ secrets: [GEMINI_API_KEY] }, async (request) => {
   const callerUid = request.auth.uid;
   const callerProfileDoc = await admin.firestore().doc(`userProfiles/${callerUid}`).get();
   const callerProfile = callerProfileDoc.exists ? callerProfileDoc.data() : { role: 'user', active: true };
+  if (callerProfile.active === false) {
+    throw new functions.https.HttpsError('permission-denied', 'Conta de usuário desativada.');
+  }
   const isAdmin = callerProfile.role === 'admin';
 
   // Guardrail de Permissão do Copiloto de IA:
@@ -2784,8 +2793,18 @@ exports.enrichGalleryItemWithAi = onCall({ secrets: [GEMINI_API_KEY] }, async (r
   }
 
   const callerUid = request.auth.uid;
+
+  try {
+    await galleryAiLimiter.consume(callerUid);
+  } catch {
+    throw new functions.https.HttpsError('resource-exhausted', 'Muitas requisições de análise de imagem. Aguarde um momento.');
+  }
+
   const callerProfileDoc = await admin.firestore().doc(`userProfiles/${callerUid}`).get();
   const callerProfile = callerProfileDoc.exists ? callerProfileDoc.data() : { role: 'user', active: true };
+  if (callerProfile.active === false) {
+    throw new functions.https.HttpsError('permission-denied', 'Conta de usuário desativada.');
+  }
   const isAdmin = callerProfile.role === 'admin';
 
   // Guardrail de Permissão de Recursos de IA:

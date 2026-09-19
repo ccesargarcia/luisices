@@ -64,8 +64,8 @@ interface WhatsAppComposerProps {
 }
 
 function WhatsAppComposer({ draft, onSendVariantRequest, disabled }: WhatsAppComposerProps) {
-  const { userProfile, hasPermission, isAdmin } = useAuth();
-  const canUseWhatsApp = isAdmin || userProfile?.role === 'user' || hasPermission((p) => p.whatsapp ?? false);
+  const { hasPermission, isAdmin } = useAuth();
+  const canUseWhatsApp = isAdmin || hasPermission((p) => Boolean(p?.whatsapp));
   const { customers } = useFirebaseCustomers();
   const [phone, setPhone] = useState(draft.recipientPhone || '');
   const [recipientName, setRecipientName] = useState(draft.recipientName || '');
@@ -284,7 +284,8 @@ function WhatsAppComposer({ draft, onSendVariantRequest, disabled }: WhatsAppCom
 }
 
 export function AiCopilotSheet({ open, onOpenChange, onApplyOrderDraft }: AiCopilotSheetProps) {
-  const { user, isAdmin } = useAuth();
+  const { user, isAdmin, hasPermission } = useAuth();
+  const canAccessAiCopilot = isAdmin || hasPermission((p) => Boolean(p?.aiCopilot));
   const [messages, setMessages] = useState<AiChatMessage[]>([INITIAL_MESSAGE]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
@@ -447,6 +448,8 @@ export function AiCopilotSheet({ open, onOpenChange, onApplyOrderDraft }: AiCopi
       toast.info('Dados carregados no formulário de Novo Pedido!');
     }
   };
+
+  if (!canAccessAiCopilot) return null;
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>

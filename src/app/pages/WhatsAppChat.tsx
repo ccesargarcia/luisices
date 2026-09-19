@@ -16,7 +16,10 @@ import {
   DialogHeader,
   DialogTitle,
   DialogDescription,
+  DialogBody,
+  DialogFooter,
 } from '../components/ui/dialog';
+import { cn } from '../components/ui/utils';
 import {
   MessageSquare,
   Send,
@@ -30,6 +33,7 @@ import {
   CheckCheck,
   Clock,
   User,
+  Users,
   Package,
   Sparkles,
   Loader2,
@@ -102,9 +106,18 @@ export function WhatsAppChat() {
 
   // Modal Nova Conversa
   const [newChatModalOpen, setNewChatModalOpen] = useState(false);
+  const [newChatTab, setNewChatTab] = useState<'customers' | 'custom'>('customers');
   const [modalCustomerSearch, setModalCustomerSearch] = useState('');
   const [customPhone, setCustomPhone] = useState('');
   const [customName, setCustomName] = useState('');
+
+  const filteredModalCustomers = useMemo(() => {
+    if (!modalCustomerSearch.trim()) return customers.slice(0, 30);
+    const q = modalCustomerSearch.toLowerCase().trim();
+    return customers.filter(
+      (c) => c.name?.toLowerCase().includes(q) || c.phone?.includes(q) || c.email?.toLowerCase().includes(q)
+    ).slice(0, 30);
+  }, [customers, modalCustomerSearch]);
 
   // Status da Conexão WhatsApp
   const [instanceStatus, setInstanceStatus] = useState<WhatsAppStatusResult | null>(null);
@@ -441,17 +454,19 @@ export function WhatsAppChat() {
   return (
     <div className="flex flex-col h-[calc(100dvh-4rem)] max-h-[calc(100dvh-4rem)] overflow-hidden bg-background">
       {/* Barra de Status e Cabeçalho Geral */}
-      <div className="px-4 py-2.5 bg-card/80 border-b flex items-center justify-between gap-3 shrink-0">
-        <div className="flex items-center gap-2.5">
-          <div className="p-2 bg-emerald-500/10 text-emerald-600 rounded-xl">
-            <MessageSquare className="size-5" />
+      <div className="px-3 sm:px-4 py-2 sm:py-2.5 bg-card/80 border-b flex items-center justify-between gap-2 sm:gap-3 shrink-0 min-w-0">
+        <div className="flex items-center gap-2 sm:gap-2.5 min-w-0">
+          <div className="p-1.5 sm:p-2 bg-emerald-500/10 text-emerald-600 rounded-xl shrink-0">
+            <MessageSquare className="size-4 sm:size-5" />
           </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-base sm:text-lg font-bold text-foreground">Central de Atendimento</h1>
+          <div className="min-w-0">
+            <div className="flex items-center gap-1.5 sm:gap-2">
+              <h1 className="text-sm sm:text-base md:text-lg font-bold text-foreground truncate">
+                Central de Atendimento
+              </h1>
               <Badge
                 variant="outline"
-                className={`text-[10px] gap-1 font-semibold ${
+                className={`text-[9px] sm:text-[10px] px-1.5 py-0 gap-1 font-semibold shrink-0 ${
                   instanceStatus?.connected
                     ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/30'
                     : 'bg-amber-500/10 text-amber-600 border-amber-500/30'
@@ -462,22 +477,23 @@ export function WhatsAppChat() {
                     instanceStatus?.connected ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'
                   }`}
                 />
-                {instanceStatus?.connected ? 'WHATSAPP CONECTADO' : 'WHATSAPP INTEGRADO'}
+                <span className="hidden sm:inline">WHATSAPP </span>
+                <span>{instanceStatus?.connected ? 'CONECTADO' : 'INTEGRADO'}</span>
               </Badge>
             </div>
-            <p className="text-xs text-muted-foreground hidden sm:block">
+            <p className="text-xs text-muted-foreground hidden sm:block truncate">
               Atendimento ao cliente via WhatsApp, histórico em tempo real e modelos rápidos
             </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
           <Button
             variant="outline"
             size="sm"
             onClick={checkStatus}
             disabled={checkingStatus}
-            className="h-8 text-xs gap-1.5"
+            className="h-8 px-2 sm:px-2.5 text-xs gap-1.5 cursor-pointer"
             title="Verificar status da conexão"
           >
             <RefreshCw className={`size-3.5 ${checkingStatus ? 'animate-spin' : ''}`} />
@@ -487,10 +503,12 @@ export function WhatsAppChat() {
           <Button
             size="sm"
             onClick={() => setNewChatModalOpen(true)}
-            className="h-8 text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-medium gap-1.5 shadow-xs"
+            className="h-8 px-2.5 sm:px-3 text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-medium gap-1.5 shadow-xs shrink-0 cursor-pointer"
+            title="Iniciar Nova Conversa"
           >
             <Plus className="size-3.5" />
-            <span>Nova Conversa</span>
+            <span className="hidden sm:inline">Nova Conversa</span>
+            <span className="sm:hidden">Nova</span>
           </Button>
         </div>
       </div>
@@ -499,29 +517,40 @@ export function WhatsAppChat() {
       <div className="flex-1 flex overflow-hidden">
         {/* Painel Esquerdo: Lista de Conversas e Contatos */}
         <div
-          className={`w-full md:w-80 lg:w-96 border-r bg-card/40 flex flex-col h-full shrink-0 ${
+          className={`w-full md:w-80 lg:w-96 border-r bg-card/40 flex flex-col h-full shrink-0 relative ${
             selectedPhone ? 'hidden md:flex' : 'flex'
           }`}
         >
           {/* Busca e Filtros */}
           <div className="p-3 border-b space-y-2 bg-card/60">
-            <div className="relative">
-              <Search className="size-4 absolute left-3 top-2.5 text-muted-foreground" />
-              <Input
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Buscar cliente, número ou mensagem..."
-                className="pl-9 h-9 text-xs bg-background"
-              />
-              {searchQuery && (
-                <button
-                  type="button"
-                  onClick={() => setSearchQuery('')}
-                  className="absolute right-2.5 top-2.5 text-muted-foreground hover:text-foreground text-xs"
-                >
-                  ✕
-                </button>
-              )}
+            <div className="flex items-center gap-2">
+              <div className="relative flex-1">
+                <Search className="size-4 absolute left-3 top-2.5 text-muted-foreground" />
+                <Input
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Buscar cliente, número ou mensagem..."
+                  className="pl-9 h-9 text-xs bg-background"
+                />
+                {searchQuery && (
+                  <button
+                    type="button"
+                    onClick={() => setSearchQuery('')}
+                    className="absolute right-2.5 top-2.5 text-muted-foreground hover:text-foreground text-xs cursor-pointer"
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+              <Button
+                size="sm"
+                onClick={() => setNewChatModalOpen(true)}
+                className="h-9 px-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs gap-1 shrink-0 font-medium md:hidden cursor-pointer"
+                title="Iniciar Nova Conversa"
+              >
+                <Plus className="size-4" />
+                <span>Nova</span>
+              </Button>
             </div>
 
             <div className="flex items-center gap-1 overflow-x-auto pb-0.5">
@@ -638,6 +667,17 @@ export function WhatsAppChat() {
               })
             )}
           </div>
+
+          {/* Botão Flutuante (FAB) para Nova Conversa no Mobile */}
+          <button
+            type="button"
+            onClick={() => setNewChatModalOpen(true)}
+            aria-label="Iniciar Nova Conversa"
+            title="Iniciar Nova Conversa"
+            className="md:hidden fixed bottom-20 right-4 z-30 size-12 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white shadow-xl flex items-center justify-center transition-transform active:scale-95 focus:outline-hidden cursor-pointer ring-2 ring-background"
+          >
+            <Plus className="size-6" />
+          </button>
         </div>
 
         {/* Painel Direito: Chat Ativo */}
@@ -882,100 +922,192 @@ export function WhatsAppChat() {
       </div>
 
       {/* Modal Nova Conversa */}
-      <Dialog open={newChatModalOpen} onOpenChange={setNewChatModalOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle className="text-base font-bold flex items-center gap-2">
-              <MessageSquare className="size-5 text-emerald-600" />
-              Iniciar Conversa no WhatsApp
+      <Dialog
+        open={newChatModalOpen}
+        onOpenChange={(open) => {
+          setNewChatModalOpen(open);
+          if (!open) {
+            setModalCustomerSearch('');
+            setCustomPhone('');
+            setCustomName('');
+            setNewChatTab('customers');
+          }
+        }}
+      >
+        <DialogContent size="md" className="max-h-[90dvh] flex flex-col p-0 overflow-hidden">
+          <DialogHeader className="px-4 sm:px-6 pt-4 sm:pt-6 pb-3 border-b shrink-0">
+            <DialogTitle className="text-base sm:text-lg font-bold flex items-center gap-2">
+              <div className="p-1.5 rounded-lg bg-emerald-500/10 text-emerald-600 shrink-0">
+                <MessageSquare className="size-4 sm:size-5" />
+              </div>
+              <span>Iniciar Conversa no WhatsApp</span>
             </DialogTitle>
             <DialogDescription className="text-xs text-muted-foreground">
               Selecione um cliente cadastrado ou digite um número avulso para abrir o chat.
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4 py-2">
-            {/* Opção 1: Selecionar de Clientes Cadastrados */}
-            <div className="space-y-2">
-              <label className="text-xs font-semibold text-foreground block">
-                Clientes Cadastrados no Luisices:
-              </label>
-              <div className="relative">
-                <Search className="size-3.5 absolute left-2.5 top-2.5 text-muted-foreground" />
-                <Input
-                  value={modalCustomerSearch}
-                  onChange={(e) => setModalCustomerSearch(e.target.value)}
-                  placeholder="Pesquisar por nome ou telefone..."
-                  className="pl-8 h-8 text-xs"
-                />
-              </div>
+          <DialogBody className="px-4 sm:px-6 py-4 space-y-4 overflow-y-auto min-h-0">
+            {/* Seletor de Modo (Segmented Control) */}
+            <div className="flex p-1 bg-muted rounded-lg text-xs font-medium shrink-0">
+              <button
+                type="button"
+                onClick={() => setNewChatTab('customers')}
+                className={cn(
+                  'flex-1 py-1.5 px-3 rounded-md transition-all flex items-center justify-center gap-1.5 cursor-pointer',
+                  newChatTab === 'customers'
+                    ? 'bg-background text-foreground shadow-xs font-semibold'
+                    : 'text-muted-foreground hover:text-foreground'
+                )}
+              >
+                <Users className="size-3.5" />
+                <span>Clientes Cadastrados</span>
+                {customers.length > 0 && (
+                  <Badge variant="secondary" className="text-[10px] h-4 px-1.5 rounded-full font-mono">
+                    {customers.length}
+                  </Badge>
+                )}
+              </button>
+              <button
+                type="button"
+                onClick={() => setNewChatTab('custom')}
+                className={cn(
+                  'flex-1 py-1.5 px-3 rounded-md transition-all flex items-center justify-center gap-1.5 cursor-pointer',
+                  newChatTab === 'custom'
+                    ? 'bg-background text-foreground shadow-xs font-semibold'
+                    : 'text-muted-foreground hover:text-foreground'
+                )}
+              >
+                <Phone className="size-3.5" />
+                <span>Número Avulso</span>
+              </button>
+            </div>
 
-              <div className="max-h-48 overflow-y-auto border rounded-lg divide-y divide-border/60">
-                {customers
-                  .filter((c) => {
-                    if (!modalCustomerSearch.trim()) return true;
-                    const q = modalCustomerSearch.toLowerCase();
-                    return c.name.toLowerCase().includes(q) || c.phone.includes(q);
-                  })
-                  .slice(0, 10)
-                  .map((c) => (
+            {newChatTab === 'customers' ? (
+              <div className="space-y-3">
+                <div className="relative">
+                  <Search className="size-3.5 absolute left-3 top-2.5 text-muted-foreground" />
+                  <Input
+                    value={modalCustomerSearch}
+                    onChange={(e) => setModalCustomerSearch(e.target.value)}
+                    placeholder="Pesquisar por nome, telefone ou e-mail..."
+                    className="pl-9 h-9 text-xs bg-background"
+                    autoFocus
+                  />
+                  {modalCustomerSearch && (
                     <button
-                      key={c.id}
                       type="button"
-                      onClick={() => handleStartNewChatWithCustomer(c)}
-                      className="w-full p-2 text-left text-xs flex items-center justify-between hover:bg-emerald-500/10 transition-colors"
+                      onClick={() => setModalCustomerSearch('')}
+                      className="absolute right-2.5 top-2.5 text-muted-foreground hover:text-foreground text-xs cursor-pointer"
                     >
-                      <div className="min-w-0">
-                        <div className="font-semibold text-foreground truncate">{c.name}</div>
-                        <div className="text-[11px] text-muted-foreground">{formatPhoneForDisplay(c.phone)}</div>
-                      </div>
-                      <ChevronRight className="size-4 text-muted-foreground shrink-0" />
+                      ✕
                     </button>
-                  ))}
-              </div>
-            </div>
+                  )}
+                </div>
 
-            <div className="relative flex items-center justify-center">
-              <div className="border-t border-border w-full" />
-              <span className="bg-background px-2 text-[10px] text-muted-foreground uppercase tracking-wider font-semibold">
-                ou número avulso
-              </span>
-            </div>
-
-            {/* Opção 2: Inserir Número Manual */}
-            <div className="space-y-2 text-xs">
-              <div>
-                <label className="text-[11px] font-medium text-muted-foreground block mb-1">
-                  Nome do Contato (Opcional):
-                </label>
-                <Input
-                  value={customName}
-                  onChange={(e) => setCustomName(e.target.value)}
-                  placeholder="Ex: João da Silva"
-                  className="h-8 text-xs"
-                />
+                <div className="max-h-56 sm:max-h-64 overflow-y-auto border rounded-lg divide-y divide-border/60 bg-card/40">
+                  {filteredModalCustomers.length === 0 ? (
+                    <div className="p-6 text-center text-xs text-muted-foreground space-y-2">
+                      <p>Nenhum cliente cadastrado encontrado para a busca.</p>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setNewChatTab('custom')}
+                        className="text-xs h-7 cursor-pointer"
+                      >
+                        Digitar número avulso
+                      </Button>
+                    </div>
+                  ) : (
+                    filteredModalCustomers.map((c) => (
+                      <button
+                        key={c.id}
+                        type="button"
+                        onClick={() => handleStartNewChatWithCustomer(c)}
+                        className="w-full p-2.5 text-left text-xs flex items-center justify-between hover:bg-emerald-500/10 transition-colors group cursor-pointer"
+                      >
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <Avatar className="size-8 shrink-0 border">
+                            <AvatarFallback className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 text-xs font-semibold">
+                              {c.name ? c.name.slice(0, 2).toUpperCase() : 'CL'}
+                            </AvatarFallback>
+                          </Avatar>
+                          <div className="min-w-0">
+                            <div className="font-semibold text-foreground truncate group-hover:text-emerald-600 transition-colors">
+                              {c.name}
+                            </div>
+                            <div className="text-[11px] text-muted-foreground flex items-center gap-1.5">
+                              <span>{formatPhoneForDisplay(c.phone)}</span>
+                              {c.city && <span>• {c.city}</span>}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1 text-emerald-600 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                          <span className="text-[11px] font-medium hidden sm:inline">Iniciar</span>
+                          <ChevronRight className="size-4" />
+                        </div>
+                      </button>
+                    ))
+                  )}
+                </div>
               </div>
-              <div>
-                <label className="text-[11px] font-medium text-muted-foreground block mb-1">
-                  Número de WhatsApp (com DDD):
-                </label>
-                <Input
-                  value={customPhone}
-                  onChange={(e) => setCustomPhone(e.target.value)}
-                  placeholder="Ex: 11999998888"
-                  className="h-8 text-xs"
-                />
+            ) : (
+              <div className="space-y-3.5 py-1">
+                <div>
+                  <label className="text-xs font-medium text-foreground block mb-1.5">
+                    Nome do Contato <span className="text-muted-foreground text-[11px]">(opcional)</span>
+                  </label>
+                  <Input
+                    value={customName}
+                    onChange={(e) => setCustomName(e.target.value)}
+                    placeholder="Ex: João da Silva"
+                    className="h-9 text-xs"
+                    autoFocus
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-foreground block mb-1.5">
+                    Número de WhatsApp com DDD <span className="text-destructive">*</span>
+                  </label>
+                  <Input
+                    value={customPhone}
+                    onChange={(e) => setCustomPhone(e.target.value)}
+                    placeholder="Ex: (11) 99999-8888"
+                    className="h-9 text-xs"
+                    type="tel"
+                  />
+                  <p className="text-[11px] text-muted-foreground mt-1">
+                    Digite o DDD e o número (ex: 11999998888). O código do país +55 será incluído automaticamente.
+                  </p>
+                </div>
               </div>
+            )}
+          </DialogBody>
 
+          <DialogFooter className="px-4 sm:px-6 py-3 border-t bg-card/60 flex items-center justify-between sm:justify-end gap-2 shrink-0">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setNewChatModalOpen(false)}
+              className="h-8 text-xs cursor-pointer"
+            >
+              Cancelar
+            </Button>
+            {newChatTab === 'custom' && (
               <Button
+                type="button"
+                size="sm"
                 onClick={handleStartCustomChat}
                 disabled={!customPhone.trim()}
-                className="w-full h-8 text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-semibold mt-2"
+                className="h-8 text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-semibold gap-1.5 shadow-xs cursor-pointer"
               >
-                Abrir Chat com este Número
+                <MessageSquare className="size-3.5" />
+                <span>Iniciar Chat</span>
               </Button>
-            </div>
-          </div>
+            )}
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
@@ -986,30 +1118,32 @@ export function WhatsAppChat() {
           if (!open && !deletingMessage) setMessageToDelete(null);
         }}
       >
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
+        <DialogContent size="sm" className="max-h-[90dvh] flex flex-col p-0 overflow-hidden">
+          <DialogHeader className="px-4 sm:px-6 pt-4 sm:pt-6 pb-3 border-b shrink-0">
             <DialogTitle className="text-base font-bold flex items-center gap-2 text-destructive">
-              <Trash2 className="size-5" />
-              Apagar mensagem?
+              <Trash2 className="size-4 sm:size-5" />
+              <span>Apagar mensagem?</span>
             </DialogTitle>
             <DialogDescription className="text-xs text-muted-foreground">
-              Esta ação apagará a mensagem para todos no WhatsApp e removerá do histórico de atendimento no sistema.
+              Esta ação apagará a mensagem para todos no WhatsApp e removerá do histórico do sistema.
             </DialogDescription>
           </DialogHeader>
 
-          {messageToDelete && (
-            <div className="p-3 bg-muted/50 border rounded-lg text-xs text-foreground whitespace-pre-wrap max-h-32 overflow-y-auto">
-              {messageToDelete.text}
-            </div>
-          )}
+          <DialogBody className="px-4 sm:px-6 py-4 space-y-3">
+            {messageToDelete && (
+              <div className="p-3 bg-muted/60 border rounded-lg text-xs text-foreground whitespace-pre-wrap max-h-36 overflow-y-auto">
+                {messageToDelete.text}
+              </div>
+            )}
+          </DialogBody>
 
-          <div className="flex items-center justify-end gap-2 pt-2">
+          <DialogFooter className="px-4 sm:px-6 py-3 border-t bg-card/60 flex items-center justify-end gap-2 shrink-0">
             <Button
               variant="outline"
               size="sm"
               disabled={deletingMessage}
               onClick={() => setMessageToDelete(null)}
-              className="h-8 text-xs"
+              className="h-8 text-xs cursor-pointer"
             >
               Cancelar
             </Button>
@@ -1018,7 +1152,7 @@ export function WhatsAppChat() {
               size="sm"
               disabled={deletingMessage}
               onClick={handleDeleteMessage}
-              className="h-8 text-xs gap-1.5 font-semibold"
+              className="h-8 text-xs gap-1.5 font-semibold cursor-pointer"
             >
               {deletingMessage ? (
                 <Loader2 className="size-3.5 animate-spin" />
@@ -1027,7 +1161,7 @@ export function WhatsAppChat() {
               )}
               <span>{deletingMessage ? 'Apagando...' : 'Apagar para Todos'}</span>
             </Button>
-          </div>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
