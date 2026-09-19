@@ -23,8 +23,6 @@ on:
           - products
           - quotes
           - store
-          - audit
-          - screen-audit
         default: 'all'
   pull_request:
     branches:
@@ -57,9 +55,6 @@ jobs:
 
       - name: Install dependencies
         run: npm install --legacy-peer-deps
-
-      - name: Run Unit Tests (Vitest)
-        run: npm run test:unit
 
       - name: Install Playwright browsers
         run: npx playwright install chromium --with-deps

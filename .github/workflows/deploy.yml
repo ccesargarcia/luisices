@@ -4,12 +4,6 @@ on:
   push:
     branches:
       - main
-    paths-ignore:
-      - '.github/workflows/**'
-      - 'tests/**'
-      - 'README.md'
-      - 'docs/**'
-      - 'DEPLOY_PRODUCAO_CHECKLIST.md'
 
 # Define permissões necessárias
 permissions:

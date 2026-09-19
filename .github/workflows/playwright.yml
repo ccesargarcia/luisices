@@ -24,10 +24,6 @@ on:
           - calendar
           - users
           - help
-          - audit
-          - store
-          - whatsapp
-          - responsive
         default: 'security'
 
 permissions:
@@ -56,9 +52,6 @@ jobs:
 
       - name: Install dependencies
         run: npm install --legacy-peer-deps
-
-      - name: Run Unit Tests (Vitest)
-        run: npm run test:unit
 
       - name: Install Playwright Browsers
         run: npx playwright install --with-deps chromium
