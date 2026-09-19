@@ -22,6 +22,7 @@ import {
   AlertCircle,
   FileImage,
   Plus,
+  X,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { firebaseStoreProductService } from '../../../services/firebaseStoreProductService';
@@ -91,9 +92,11 @@ export function BulkStoreProductsDialog({
 
   // Estados para replicação em lote (Barra Superior Rápida)
   const [batchCategory, setBatchCategory] = useState(existingCategories.length > 0 ? existingCategories[0] : '');
+  const [batchCategoryIsNew, setBatchCategoryIsNew] = useState(false);
   const [batchPrice, setBatchPrice] = useState('');
   const [batchLeadTime, setBatchLeadTime] = useState('5');
   const [isDragging, setIsDragging] = useState(false);
+  const [newCategoryItemIds, setNewCategoryItemIds] = useState<Set<string>>(new Set());
 
   // Limpa estados ao fechar ou reabrir
   const handleOpenChange = (nextOpen: boolean) => {
@@ -106,9 +109,11 @@ export function BulkStoreProductsDialog({
       items.forEach(it => URL.revokeObjectURL(it.previewUrl));
       setItems([]);
       setBatchCategory(existingCategories.length > 0 ? existingCategories[0] : '');
+      setBatchCategoryIsNew(false);
       setBatchPrice('');
       setBatchLeadTime('5');
       setProgressCount(0);
+      setNewCategoryItemIds(new Set());
     }
     onOpenChange(nextOpen);
   };
@@ -379,20 +384,55 @@ export function BulkStoreProductsDialog({
 
                 {/* Categoria Comum */}
                 <div className="flex items-center gap-1 bg-background p-1 rounded-lg border border-border">
-                  <Select
-                    value={batchCategory || '__none__'}
-                    onValueChange={(v) => setBatchCategory(v === '__none__' ? '' : v)}
-                  >
-                    <SelectTrigger className="h-7 text-xs border-0 focus-visible:ring-0 shadow-none px-1.5 flex-1">
-                      <SelectValue placeholder="Categoria..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="__none__">— Nenhuma —</SelectItem>
-                      {existingCategories.map(cat => (
-                        <SelectItem key={cat} value={cat}>{cat}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  {batchCategoryIsNew ? (
+                    <>
+                      <Input
+                        autoFocus
+                        placeholder="Nova categoria..."
+                        value={batchCategory}
+                        onChange={(e) => setBatchCategory(e.target.value)}
+                        className="h-7 text-xs border-0 focus-visible:ring-0 shadow-none px-1.5 flex-1"
+                      />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          setBatchCategoryIsNew(false);
+                          setBatchCategory(existingCategories.length > 0 ? existingCategories[0] : '');
+                        }}
+                        className="h-7 px-1 text-muted-foreground hover:text-foreground shrink-0 cursor-pointer"
+                        title="Voltar para categorias existentes"
+                      >
+                        <X size={12} />
+                      </Button>
+                    </>
+                  ) : (
+                    <Select
+                      value={batchCategory || '__none__'}
+                      onValueChange={(v) => {
+                        if (v === '__new__') {
+                          setBatchCategoryIsNew(true);
+                          setBatchCategory('');
+                        } else {
+                          setBatchCategory(v === '__none__' ? '' : v);
+                        }
+                      }}
+                    >
+                      <SelectTrigger className="h-7 text-xs border-0 focus-visible:ring-0 shadow-none px-1.5 flex-1">
+                        <SelectValue placeholder="Categoria..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__none__">— Nenhuma —</SelectItem>
+                        {existingCategories.map(cat => (
+                          <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+                        ))}
+                        <SelectItem value="__new__" className="text-primary font-semibold">
+                          <span className="flex items-center gap-1"><Plus size={12} /> Nova categoria</span>
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+                  )}
                   <Button
                     type="button"
                     variant="ghost"
@@ -590,20 +630,61 @@ export function BulkStoreProductsDialog({
                         <Label className="text-[11px] font-semibold text-muted-foreground">
                           Categoria
                         </Label>
-                        <Select
-                          value={item.category || '__none__'}
-                          onValueChange={(v) => updateItem(item.id, { category: v === '__none__' ? '' : v })}
-                          disabled={isProcessing || item.status === 'success'}
-                        >
-                          <SelectTrigger size="sm" className="h-8 text-xs">
-                            <SelectValue placeholder="Geral" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {existingCategories.map(cat => (
-                              <SelectItem key={cat} value={cat}>{cat}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                        {newCategoryItemIds.has(item.id) ? (
+                          <div className="flex items-center gap-1">
+                            <Input
+                              autoFocus
+                              placeholder="Nova categoria..."
+                              value={item.category}
+                              disabled={isProcessing || item.status === 'success'}
+                              onChange={(e) => updateItem(item.id, { category: e.target.value })}
+                              className="h-8 text-xs flex-1"
+                            />
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => {
+                                setNewCategoryItemIds(prev => {
+                                  const next = new Set(prev);
+                                  next.delete(item.id);
+                                  return next;
+                                });
+                                updateItem(item.id, { category: existingCategories[0] || '' });
+                              }}
+                              disabled={isProcessing || item.status === 'success'}
+                              className="size-8 text-muted-foreground hover:text-foreground shrink-0 cursor-pointer"
+                              title="Voltar para categorias existentes"
+                            >
+                              <X size={13} />
+                            </Button>
+                          </div>
+                        ) : (
+                          <Select
+                            value={item.category || '__none__'}
+                            onValueChange={(v) => {
+                              if (v === '__new__') {
+                                setNewCategoryItemIds(prev => new Set(prev).add(item.id));
+                                updateItem(item.id, { category: '' });
+                              } else {
+                                updateItem(item.id, { category: v === '__none__' ? '' : v });
+                              }
+                            }}
+                            disabled={isProcessing || item.status === 'success'}
+                          >
+                            <SelectTrigger size="sm" className="h-8 text-xs">
+                              <SelectValue placeholder="Geral" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {existingCategories.map(cat => (
+                                <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+                              ))}
+                              <SelectItem value="__new__" className="text-primary font-semibold">
+                                <span className="flex items-center gap-1"><Plus size={12} /> Nova categoria</span>
+                              </SelectItem>
+                            </SelectContent>
+                          </Select>
+                        )}
                       </div>
                     </div>
 
