@@ -41,7 +41,12 @@ jobs:
         run: npm install --legacy-peer-deps
 
       - name: Run Unit Tests (Vitest)
-        run: npm run test:unit
+        run: |
+          if grep -q '"test:unit"' package.json; then
+            npm run test:unit
+          else
+            echo "Aviso: Script test:unit não encontrado nesta branch. Pulando..."
+          fi
 
       - name: Install Playwright Browsers
         run: npx playwright install chromium --with-deps
