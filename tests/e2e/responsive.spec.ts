@@ -24,7 +24,9 @@ test.describe('Experiência Mobile e Responsividade', () => {
 
     // Clicar em Mais deve abrir o menu suspenso com outras opções
     await moreBtn.click();
-    await expect(page.getByText(/Central de Ajuda/i).first()).toBeVisible({ timeout: 5000 });
+    const menu = page.locator('[role="menu"]');
+    await expect(menu).toBeVisible({ timeout: 5000 });
+    await expect(menu.getByText(/Central de Ajuda/i)).toBeVisible({ timeout: 5000 });
   });
 
   test('tela de login deve ser responsiva e sem overflow horizontal', async ({ browser }) => {

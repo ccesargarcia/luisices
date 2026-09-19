@@ -40,10 +40,16 @@ test.describe('Central de Atendimento WhatsApp', () => {
     // Validar modal aberto
     const dialog = page.locator('[role="dialog"]').first();
     await expect(dialog).toBeVisible({ timeout: 5000 });
-    await expect(dialog.getByText(/Iniciar Nova Conversa/i)).toBeVisible({ timeout: 5000 });
+    await expect(dialog.getByText(/Iniciar Conversa no WhatsApp/i)).toBeVisible({ timeout: 5000 });
+
+    // Alternar para aba de Número Avulso para validar input de telefone
+    const customTab = dialog.getByText(/Número Avulso/i);
+    if (await customTab.isVisible()) {
+      await customTab.click();
+    }
 
     // Validar campo de telefone
-    const phoneInput = dialog.locator('input[placeholder*="11 99999-9999"], input[placeholder*="11999999999"]');
+    const phoneInput = dialog.locator('input[type="tel"], input[placeholder*="99999"]');
     await expect(phoneInput).toBeVisible({ timeout: 5000 });
 
     // Validar botão de fechar/cancelar
