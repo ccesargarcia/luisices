@@ -12,7 +12,6 @@ import {
   Trash2,
   ArrowRight,
   Loader2,
-  RefreshCw,
   Calendar,
   Phone,
   Package,
@@ -333,7 +332,6 @@ export function AiCopilotSheet({
   const [progressStepIndex, setProgressStepIndex] = useState(0);
   const [selectedOrderForDetails, setSelectedOrderForDetails] = useState<Order | null>(null);
   const [orderDetailsOpen, setOrderDetailsOpen] = useState(false);
-  const [syncing, setSyncing] = useState(false);
   const [quota, setQuota] = useState<import('../types').AiUsageData | null>(null);
   const [attachedImage, setAttachedImage] = useState<{
     preview: string;
@@ -606,19 +604,6 @@ export function AiCopilotSheet({
     });
   };
 
-  const handleSyncAllOrders = async () => {
-    setSyncing(true);
-    try {
-      const res = await firebaseAiAgentService.syncAllOrders();
-      toast.success(res.message || 'Pedidos sincronizados na base somente-leitura.');
-    } catch (err: any) {
-      console.error('[AiCopilot] Erro ao sincronizar pedidos:', err);
-      toast.error('Não foi possível sincronizar os pedidos.');
-    } finally {
-      setSyncing(false);
-    }
-  };
-
   const handleApplyDraft = (draft: AiOrderDraft) => {
     if (onApplyOrderDraft) {
       onApplyOrderDraft(draft);
@@ -665,16 +650,6 @@ export function AiCopilotSheet({
             </div>
 
             <div className="flex items-center gap-1 pr-6">
-              <Button
-                variant="ghost"
-                size="icon"
-                className="size-8 text-muted-foreground hover:text-foreground"
-                title="Sincronizar base somente-leitura"
-                onClick={handleSyncAllOrders}
-                disabled={syncing}
-              >
-                <RefreshCw className={`size-4 ${syncing ? 'animate-spin' : ''}`} />
-              </Button>
               <Button
                 variant="ghost"
                 size="icon"
