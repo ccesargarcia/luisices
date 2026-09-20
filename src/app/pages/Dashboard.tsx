@@ -31,6 +31,7 @@ import {
   Trash2,
   Users,
   UserCheck,
+  RefreshCw,
 } from 'lucide-react';
 import { AdminTeamFilter } from '../components/AdminTeamFilter';
 import { getTextColor } from '../utils/tagColors';
@@ -101,6 +102,7 @@ export function Dashboard() {
     orders,
     loading,
     error,
+    refreshOrders,
     isFilterActive,
     selectedFilterLabel,
     clearUserFilter,
@@ -552,10 +554,25 @@ export function Dashboard() {
 
   if (error) {
     return (
-      <div className="flex items-center justify-center h-96">
-        <div className="text-center">
-          <p className="text-lg font-semibold text-red-600">Erro ao carregar pedidos</p>
-          <p className="text-sm text-muted-foreground mt-2">{error}</p>
+      <div className="flex items-center justify-center min-h-[50vh] p-4">
+        <div className="flex flex-col items-center justify-center max-w-md p-6 sm:p-8 rounded-2xl bg-card border border-destructive/20 text-center shadow-lg backdrop-blur-md animate-in fade-in">
+          <div className="size-12 rounded-2xl bg-destructive/10 text-destructive flex items-center justify-center mb-4">
+            <AlertCircle className="size-6" />
+          </div>
+          <h2 className="text-lg font-bold text-foreground">Erro ao carregar pedidos</h2>
+          <p className="text-sm text-muted-foreground mt-2 mb-6">
+            {error.includes('Missing or insufficient permissions')
+              ? 'Permissão em sincronização ou sessão expirada. Tente recarregar para restaurar a conexão.'
+              : error}
+          </p>
+          <Button
+            type="button"
+            onClick={() => refreshOrders()}
+            className="gap-2 cursor-pointer"
+          >
+            <RefreshCw className="size-4" />
+            <span>Tentar Novamente</span>
+          </Button>
         </div>
       </div>
     );
