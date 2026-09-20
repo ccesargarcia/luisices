@@ -266,7 +266,25 @@ export function QuoteFormDialog({
           {/* Cliente */}
           <div className="space-y-3">
             <Label htmlFor="q-customer">Cliente *</Label>
-            <Select value={selectedCustomer} onValueChange={setSelectedCustomer}>
+            <Select
+              value={selectedCustomer}
+              onValueChange={(val) => {
+                setSelectedCustomer(val);
+                if (val === "new") {
+                  setForm((f) => ({ ...f, customerName: "", customerPhone: "", customerId: undefined }));
+                } else if (val) {
+                  const c = customers.find((c) => c.id === val);
+                  if (c) {
+                    setForm((f) => ({
+                      ...f,
+                      customerName: c.name,
+                      customerPhone: c.phone,
+                      customerId: c.id,
+                    }));
+                  }
+                }
+              }}
+            >
               <SelectTrigger id="q-customer" className="min-w-0">
                 <SelectValue className="truncate" placeholder="Selecione um cliente cadastrado ou insira manualmente" />
               </SelectTrigger>
