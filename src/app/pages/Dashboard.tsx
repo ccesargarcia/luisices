@@ -7,6 +7,7 @@ import { DeliveryAlerts } from '../components/DeliveryAlerts';
 import { OverdueOrders } from '../components/OverdueOrders';
 import { DashboardCardSkeleton, OrderCardSkeleton } from '../components/SkeletonLoaders';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
+import { SectionErrorBoundary } from '../components/common/SectionErrorBoundary';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
 import { cn } from '../components/ui/utils';
 import { Input } from '../components/ui/input';
@@ -621,7 +622,8 @@ export function Dashboard() {
         </div>
       )}
 
-      <div data-kpi-grid data-count={firstGridCount} className={`grid gap-4 lg:gap-6 ${firstGridClass}`}>
+      <SectionErrorBoundary title="Métricas Financeiras">
+        <div data-kpi-grid data-count={firstGridCount} className={`grid gap-4 lg:gap-6 ${firstGridClass}`}>
         {showCard('total') && (
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
@@ -732,7 +734,8 @@ export function Dashboard() {
         </Card>
         )}
 
-      </div>
+        </div>
+      </SectionErrorBoundary>
 
       {/* Gráficos */}
       {stats.total > 0 && (showCard('statusChart') || showCard('weeklyChart')) && (
@@ -943,7 +946,8 @@ export function Dashboard() {
         </div>
       )}
 
-      <div id="dashboard-orders-section" className="space-y-4">
+      <SectionErrorBoundary title="Esteira de Pedidos">
+        <div id="dashboard-orders-section" className="space-y-4">
         <Tabs
           value={activeTab}
           onValueChange={(val) => {
@@ -1120,7 +1124,8 @@ export function Dashboard() {
             </div>
           )}
         </Tabs>
-      </div>
+        </div>
+      </SectionErrorBoundary>
 
       {/* Diálogo de Atribuição em Lote */}
       <Dialog open={isBulkAssignOpen} onOpenChange={setIsBulkAssignOpen}>

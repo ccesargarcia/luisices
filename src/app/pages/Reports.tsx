@@ -3,6 +3,7 @@ import { formatCurrency } from '../utils/currency';
 import { parseLocalDate } from '../utils/date';
 import { Tag } from '../types';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
+import { SectionErrorBoundary } from '../components/common/SectionErrorBoundary';
 import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
 import { cn } from '../components/ui/utils';
@@ -593,113 +594,118 @@ export function Reports() {
         />
       </div>
 
-      {/* Area chart — receita no tempo */}
-      {stats.dailySales.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Receita ao longo do tempo</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ResponsiveContainer width="100%" height={220}>
-              <AreaChart data={stats.dailySales} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
-                <defs>
-                  <linearGradient id="revenueGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%"  stopColor="#6366F1" stopOpacity={0.25} />
-                    <stop offset="95%" stopColor="#6366F1" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
-                <XAxis dataKey="date" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} />
-                <YAxis
-                  tickFormatter={v => v >= 1000 ? `R$${(v / 1000).toFixed(0)}k` : `R$${v}`}
-                  tick={{ fontSize: 11 }} tickLine={false} axisLine={false} width={52}
-                />
-                <Tooltip content={<CurrencyTooltip />} />
-                <Area
-                  type="monotone" dataKey="total" stroke="#6366F1" strokeWidth={2}
-                  fill="url(#revenueGrad)" dot={false} activeDot={{ r: 4 }} name="Receita"
-                />
-              </AreaChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Row: status donut + payment pie */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-
-        <Card>
-          <CardHeader><CardTitle className="text-base">Status dos Pedidos</CardTitle></CardHeader>
-          <CardContent className="flex flex-col sm:flex-row items-center gap-4 sm:gap-6">
-            {stats.statusData.length === 0 ? (
-              <p className="text-sm text-muted-foreground py-4">Nenhum pedido no período</p>
-            ) : (
-              <>
-                <ResponsiveContainer width={140} height={140}>
-                  <PieChart>
-                    <Pie data={stats.statusData} cx="50%" cy="50%" innerRadius={36} outerRadius={58} paddingAngle={3} dataKey="value" strokeWidth={0}>
-                      {stats.statusData.map((e, i) => <Cell key={i} fill={e.color} />)}
-                    </Pie>
-                    <Tooltip formatter={(v: number) => [v, 'pedidos']} />
-                  </PieChart>
+      {/* Container dos Gráficos Analíticos */}
+      <SectionErrorBoundary title="Gráficos de Desempenho">
+        <div className="space-y-4">
+          {/* Area chart — receita no tempo */}
+          {stats.dailySales.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Receita ao longo do tempo</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ResponsiveContainer width="100%" height={220}>
+                  <AreaChart data={stats.dailySales} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
+                    <defs>
+                      <linearGradient id="revenueGrad" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%"  stopColor="#6366F1" stopOpacity={0.25} />
+                        <stop offset="95%" stopColor="#6366F1" stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
+                    <XAxis dataKey="date" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} />
+                    <YAxis
+                      tickFormatter={v => v >= 1000 ? `R$${(v / 1000).toFixed(0)}k` : `R$${v}`}
+                      tick={{ fontSize: 11 }} tickLine={false} axisLine={false} width={52}
+                    />
+                    <Tooltip content={<CurrencyTooltip />} />
+                    <Area
+                      type="monotone" dataKey="total" stroke="#6366F1" strokeWidth={2}
+                      fill="url(#revenueGrad)" dot={false} activeDot={{ r: 4 }} name="Receita"
+                    />
+                  </AreaChart>
                 </ResponsiveContainer>
-                <div className="space-y-2 w-full flex-1">
-                  {stats.statusData.map(d => (
-                    <div key={d.key} className="flex items-center justify-between text-sm">
-                      <div className="flex items-center gap-2">
-                        <span className="size-2.5 rounded-full shrink-0" style={{ backgroundColor: d.color }} />
-                        <span className="text-muted-foreground">{d.name}</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className="font-semibold tabular-nums">{d.value}</span>
-                        <span className="text-xs text-muted-foreground w-8 text-right">
-                          {stats.total > 0 ? `${((d.value / stats.total) * 100).toFixed(0)}%` : ''}
-                        </span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </>
-            )}
-          </CardContent>
-        </Card>
+              </CardContent>
+            </Card>
+          )}
 
-        <Card>
-          <CardHeader><CardTitle className="text-base">Métodos de Pagamento</CardTitle></CardHeader>
-          <CardContent className="flex flex-col sm:flex-row items-center gap-4">
-            {stats.paymentData.length === 0 ? (
-              <p className="text-sm text-muted-foreground py-4">Nenhum pagamento no período</p>
-            ) : (
-              <>
-                <ResponsiveContainer width={140} height={140}>
-                  <PieChart>
-                    <Pie data={stats.paymentData} cx="50%" cy="50%" innerRadius={36} outerRadius={58} paddingAngle={3} dataKey="total" strokeWidth={0}>
-                      {stats.paymentData.map((e, i) => <Cell key={i} fill={e.color} />)}
-                    </Pie>
-                    <Tooltip formatter={(v: number) => [formatCurrency(v), '']} />
-                  </PieChart>
-                </ResponsiveContainer>
-                <div className="space-y-2 w-full flex-1 min-w-0">
-                  {stats.paymentData.map(d => (
-                    <div key={d.method} className="flex items-center justify-between text-sm">
-                      <div className="flex items-center gap-2 min-w-0">
-                        <span className="size-2.5 rounded-full shrink-0" style={{ backgroundColor: d.color }} />
-                        <span className="text-muted-foreground truncate">{d.label}</span>
-                      </div>
-                      <div className="text-right shrink-0 ml-2">
-                        <div className="font-semibold tabular-nums text-xs">{formatCurrency(d.total)}</div>
-                        <div className="text-[10px] text-muted-foreground">
-                          {stats.totalPaid > 0 ? `${((d.total / stats.totalPaid) * 100).toFixed(0)}%` : ''}
+          {/* Row: status donut + payment pie */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+            <Card>
+              <CardHeader><CardTitle className="text-base">Status dos Pedidos</CardTitle></CardHeader>
+              <CardContent className="flex flex-col sm:flex-row items-center gap-4 sm:gap-6">
+                {stats.statusData.length === 0 ? (
+                  <p className="text-sm text-muted-foreground py-4">Nenhum pedido no período</p>
+                ) : (
+                  <>
+                    <ResponsiveContainer width={140} height={140}>
+                      <PieChart>
+                        <Pie data={stats.statusData} cx="50%" cy="50%" innerRadius={36} outerRadius={58} paddingAngle={3} dataKey="value" strokeWidth={0}>
+                          {stats.statusData.map((e, i) => <Cell key={i} fill={e.color} />)}
+                        </Pie>
+                        <Tooltip formatter={(v: number) => [v, 'pedidos']} />
+                      </PieChart>
+                    </ResponsiveContainer>
+                    <div className="space-y-2 w-full flex-1">
+                      {stats.statusData.map(d => (
+                        <div key={d.key} className="flex items-center justify-between text-sm">
+                          <div className="flex items-center gap-2">
+                            <span className="size-2.5 rounded-full shrink-0" style={{ backgroundColor: d.color }} />
+                            <span className="text-muted-foreground">{d.name}</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-semibold tabular-nums">{d.value}</span>
+                            <span className="text-xs text-muted-foreground w-8 text-right">
+                              {stats.total > 0 ? `${((d.value / stats.total) * 100).toFixed(0)}%` : ''}
+                            </span>
+                          </div>
                         </div>
-                      </div>
+                      ))}
                     </div>
-                  ))}
-                </div>
-              </>
-            )}
-          </CardContent>
-        </Card>
-      </div>
+                  </>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader><CardTitle className="text-base">Métodos de Pagamento</CardTitle></CardHeader>
+              <CardContent className="flex flex-col sm:flex-row items-center gap-4">
+                {stats.paymentData.length === 0 ? (
+                  <p className="text-sm text-muted-foreground py-4">Nenhum pagamento no período</p>
+                ) : (
+                  <>
+                    <ResponsiveContainer width={140} height={140}>
+                      <PieChart>
+                        <Pie data={stats.paymentData} cx="50%" cy="50%" innerRadius={36} outerRadius={58} paddingAngle={3} dataKey="total" strokeWidth={0}>
+                          {stats.paymentData.map((e, i) => <Cell key={i} fill={e.color} />)}
+                        </Pie>
+                        <Tooltip formatter={(v: number) => [formatCurrency(v), '']} />
+                      </PieChart>
+                    </ResponsiveContainer>
+                    <div className="space-y-2 w-full flex-1 min-w-0">
+                      {stats.paymentData.map(d => (
+                        <div key={d.method} className="flex items-center justify-between text-sm">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="size-2.5 rounded-full shrink-0" style={{ backgroundColor: d.color }} />
+                            <span className="text-muted-foreground truncate">{d.label}</span>
+                          </div>
+                          <div className="text-right shrink-0 ml-2">
+                            <div className="font-semibold tabular-nums text-xs">{formatCurrency(d.total)}</div>
+                            <div className="text-[10px] text-muted-foreground">
+                              {stats.totalPaid > 0 ? `${((d.total / stats.totalPaid) * 100).toFixed(0)}%` : ''}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+      </SectionErrorBoundary>
 
       {/* Row: top products + top customers */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
