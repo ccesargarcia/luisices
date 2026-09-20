@@ -29,6 +29,8 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
+  DialogBody,
+  DialogFooter,
 } from '../components/ui/dialog';
 import { AiCopilotSheet } from '../components/AiCopilotSheet';
 import { NewOrderDialog } from '../components/NewOrderDialog';
