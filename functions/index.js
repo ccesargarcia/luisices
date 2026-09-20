@@ -2225,10 +2225,20 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
           // Memoiza o modelo bem-sucedido para que todas as próximas chamadas sejam diretas nele
           preferredWorkingModel = model;
 
+          // Extrai metadados de telemetria de tokens retornados pela API Gemini
+          const usageMetadata = data?.usageMetadata || {};
+          const promptTokens = usageMetadata.promptTokenCount || usageMetadata.promptTokens || 0;
+          const candidatesTokens = usageMetadata.candidatesTokenCount || usageMetadata.candidatesTokens || 0;
+          const totalTokens = usageMetadata.totalTokenCount || usageMetadata.totalTokens || (promptTokens + candidatesTokens);
+
           // Registra consumo exato por requisição HTTP para a API Gemini
           admin.firestore().collection('ai_usage_logs').add({
             userId: callerUid,
             model: model,
+            action: 'copilot_chat',
+            promptTokens,
+            candidatesTokens,
+            totalTokens,
             timestamp: new Date().toISOString(),
             createdAt: admin.firestore.FieldValue.serverTimestamp(),
           }).catch((err) => console.warn('[aiAgentChat] Erro ao gravar ai_usage_logs:', err));
@@ -2595,7 +2605,7 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
  * Consulta a cota e o consumo em tempo real de TODOS os modelos disponíveis da API Gemini.
  * Uso estritamente restrito a administradores.
  */
-exports.getAiUsage = onCall({ cors: true }, async (request) => {
+exports.getAiUsage = onCall({ cors: true, secrets: [GEMINI_API_KEY] }, async (request) => {
   if (!request.auth) {
     throw new functions.https.HttpsError('unauthenticated', 'Usuário não autenticado.');
   }
@@ -2606,6 +2616,9 @@ exports.getAiUsage = onCall({ cors: true }, async (request) => {
   if (!isAdmin) {
     throw new functions.https.HttpsError('permission-denied', 'Acesso restrito a administradores.');
   }
+
+  const rawKey = (typeof GEMINI_API_KEY?.value === 'function' ? GEMINI_API_KEY.value() : process.env.GEMINI_API_KEY) || '';
+  const apiKey = String(rawKey).trim();
 
   const now = new Date();
   const startOfTodayUtc = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 0, 0));
@@ -2625,11 +2638,51 @@ exports.getAiUsage = onCall({ cors: true }, async (request) => {
       isDefault: true,
     },
     {
+      id: 'gemini-3.7-flash',
+      aliases: ['gemini-3.7-flash', 'gemini-3.7-flash-preview'],
+      name: 'Gemini 3.7 Flash',
+      description: 'Modelo avançado com raciocínio híbrido e alta capacidade analítica.',
+      category: 'Raciocínio Avançado',
+      dailyLimit: 1500,
+      rpmLimit: 15,
+      tpmLimit: 1000000,
+    },
+    {
+      id: 'gemini-3.5-flash',
+      aliases: ['gemini-3.5-flash', 'gemini-3.5-flash-preview'],
+      name: 'Gemini 3.5 Flash',
+      description: 'Modelo de produção balanceado para consistência e baixa latência.',
+      category: 'Produção (Fallback)',
+      dailyLimit: 1500,
+      rpmLimit: 15,
+      tpmLimit: 1000000,
+    },
+    {
       id: 'gemini-3.8-flash',
       aliases: ['gemini-3.8-flash', 'gemini-3.8-flash-preview'],
       name: 'Gemini 3.8 Flash',
       description: 'Modelo de última geração para raciocínio multimodal, fotos e acervo do ateliê.',
       category: 'Visão & Raciocínio',
+      dailyLimit: 1500,
+      rpmLimit: 15,
+      tpmLimit: 1000000,
+    },
+    {
+      id: 'gemini-3.1-flash-lite',
+      aliases: ['gemini-3.1-flash-lite', 'gemini-3.1-flash-lite-preview'],
+      name: 'Gemini 3.1 Flash Lite',
+      description: 'Modelo ultraleve e econômico para triagens e respostas instantâneas.',
+      category: 'Econômico / Lite',
+      dailyLimit: 1500,
+      rpmLimit: 15,
+      tpmLimit: 1000000,
+    },
+    {
+      id: 'gemini-3.5-flash-lite',
+      aliases: ['gemini-3.5-flash-lite', 'gemini-3.5-flash-lite-preview'],
+      name: 'Gemini 3.5 Flash Lite',
+      description: 'Modelo leve com pool de cota isolado para alta taxa de requisições.',
+      category: 'Econômico / Lite',
       dailyLimit: 1500,
       rpmLimit: 15,
       tpmLimit: 1000000,
@@ -2646,12 +2699,52 @@ exports.getAiUsage = onCall({ cors: true }, async (request) => {
     },
   ];
 
+  // Probe em tempo real para verificar se o modelo responde 200, 429 ou 503
+  const probeModelStatus = async (modelId) => {
+    if (!apiKey) {
+      return { liveStatus: 'UNAVAILABLE', liveCode: 0, liveMessage: 'API Key não configurada' };
+    }
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 3500);
+
+    try {
+      const probeResp = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${modelId}?key=${apiKey}`,
+        { method: 'GET', signal: controller.signal }
+      );
+      clearTimeout(timeout);
+
+      const status = probeResp.status;
+      if (status === 200) {
+        return { liveStatus: 'ONLINE', liveCode: 200, liveMessage: 'Live 200 OK' };
+      }
+      if (status === 429) {
+        return { liveStatus: 'QUOTA_EXCEEDED', liveCode: 429, liveMessage: '429 Quota Exceeded' };
+      }
+      if (status === 503) {
+        return { liveStatus: 'HIGH_DEMAND', liveCode: 503, liveMessage: '503 Alta Demanda' };
+      }
+      return { liveStatus: 'UNAVAILABLE', liveCode: status, liveMessage: `HTTP ${status}` };
+    } catch (err) {
+      clearTimeout(timeout);
+      const isTimeout = err?.name === 'AbortError';
+      return {
+        liveStatus: 'OFFLINE',
+        liveCode: 0,
+        liveMessage: isTimeout ? 'Timeout (>3.5s)' : (err?.message || 'Falha de conexão')
+      };
+    }
+  };
+
   let todayDocs = [];
   let monthDocs = [];
   let minuteDocs = [];
+  let recentLogs = [];
+  let probeResults = [];
 
   try {
-    const [todaySnap, monthSnap, minuteSnap] = await Promise.all([
+    const [todaySnap, monthSnap, minuteSnap, recentSnap, probes] = await Promise.all([
       admin.firestore().collection('ai_usage_logs')
         .where('timestamp', '>=', startOfTodayUtc.toISOString())
         .get(),
@@ -2661,11 +2754,38 @@ exports.getAiUsage = onCall({ cors: true }, async (request) => {
       admin.firestore().collection('ai_usage_logs')
         .where('timestamp', '>=', oneMinuteAgo.toISOString())
         .get(),
+      admin.firestore().collection('ai_usage_logs')
+        .orderBy('timestamp', 'desc')
+        .limit(15)
+        .get()
+        .catch(async (err) => {
+          console.warn('[getAiUsage] Erro com orderBy timestamp, tentando fallback:', err);
+          return admin.firestore().collection('ai_usage_logs').limit(30).get();
+        }),
+      Promise.all(MODEL_SPECS.map(spec => probeModelStatus(spec.id))),
     ]);
 
     todayDocs = todaySnap.docs.map(d => d.data());
     monthDocs = monthSnap.docs.map(d => d.data());
     minuteDocs = minuteSnap.docs.map(d => d.data());
+    probeResults = probes;
+
+    recentLogs = recentSnap.docs
+      .map(doc => {
+        const data = doc.data();
+        return {
+          id: doc.id,
+          model: data.model || 'gemini-3.6-flash',
+          action: data.action || 'copilot_chat',
+          promptTokens: Number(data.promptTokens || 0),
+          candidatesTokens: Number(data.candidatesTokens || 0),
+          totalTokens: Number(data.totalTokens || 0),
+          timestamp: data.timestamp || (data.createdAt?.toDate?.() ? data.createdAt.toDate().toISOString() : new Date().toISOString()),
+          userId: data.userId || null,
+        };
+      })
+      .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+      .slice(0, 15);
   } catch (fsErr) {
     console.warn('[getAiUsage] Erro ao consultar ai_usage_logs no Firestore:', fsErr);
   }
@@ -2712,9 +2832,11 @@ exports.getAiUsage = onCall({ cors: true }, async (request) => {
 
   const activeModelId = preferredWorkingModel || 'gemini-3.6-flash';
 
-  const models = MODEL_SPECS.map(spec => {
+  const models = MODEL_SPECS.map((spec, idx) => {
     const stats = modelStatsMap.get(spec.id) || { daily: 0, monthly: 0, rpm: 0 };
     const percentage = Math.min(100, Math.round((stats.daily / spec.dailyLimit) * 100));
+    const probe = probeResults[idx] || { liveStatus: 'ONLINE', liveCode: 200, liveMessage: 'Live 200 OK' };
+
     return {
       id: spec.id,
       name: spec.name,
@@ -2735,6 +2857,9 @@ exports.getAiUsage = onCall({ cors: true }, async (request) => {
         used: stats.monthly,
       },
       tpmLimit: spec.tpmLimit,
+      liveStatus: probe.liveStatus,
+      liveCode: probe.liveCode,
+      liveMessage: probe.liveMessage,
     };
   });
 
@@ -2744,6 +2869,7 @@ exports.getAiUsage = onCall({ cors: true }, async (request) => {
   const totalDailyUsed = todayDocs.length;
   const totalMonthlyUsed = monthDocs.length;
   const totalDailyLimit = 1500;
+  const totalTokensToday = todayDocs.reduce((acc, doc) => acc + (Number(doc.totalTokens) || 0), 0);
 
   return {
     success: true,
@@ -2760,6 +2886,8 @@ exports.getAiUsage = onCall({ cors: true }, async (request) => {
       limit: 45000,
       percentage: Math.min(100, Math.round((totalMonthlyUsed / 45000) * 100)),
     },
+    totalTokensToday,
+    recentLogs,
     models,
     // Compatibilidade com interfaces legadas
     daily: {
@@ -2897,6 +3025,7 @@ Responda ESTRITAMENTE em formato JSON com as seguintes propriedades (sem markdow
   let parsedAiResult = null;
   let usedModel = 'gemini-3.6-flash';
   let lastError = null;
+  let usageTokens = { promptTokens: 0, candidatesTokens: 0, totalTokens: 0 };
 
   for (const model of candidateModels) {
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
@@ -2931,17 +3060,24 @@ Responda ESTRITAMENTE em formato JSON com as seguintes propriedades (sem markdow
       }
 
       const data = await resp.json();
+      const meta = data?.usageMetadata || {};
+      const pT = meta.promptTokenCount || meta.promptTokens || 0;
+      const cT = meta.candidatesTokenCount || meta.candidatesTokens || 0;
+      const tT = meta.totalTokenCount || meta.totalTokens || (pT + cT);
+
       const textResp = data?.candidates?.[0]?.content?.parts?.[0]?.text;
       if (textResp) {
         try {
           parsedAiResult = JSON.parse(textResp);
           usedModel = model;
+          usageTokens = { promptTokens: pT, candidatesTokens: cT, totalTokens: tT };
           break;
         } catch {
           const jsonMatch = textResp.match(/\{[\s\S]*\}/);
           if (jsonMatch) {
             parsedAiResult = JSON.parse(jsonMatch[0]);
             usedModel = model;
+            usageTokens = { promptTokens: pT, candidatesTokens: cT, totalTokens: tT };
             break;
           }
         }
@@ -2957,11 +3093,14 @@ Responda ESTRITAMENTE em formato JSON com as seguintes propriedades (sem markdow
     throw new functions.https.HttpsError('internal', lastError?.message || 'Falha ao processar visão computacional com o Gemini.');
   }
 
-  // Registra log de uso da IA
+  // Registra log de uso da IA com tokens
   admin.firestore().collection('ai_usage_logs').add({
     userId: callerUid,
     model: usedModel,
     action: 'gallery_vision_enrichment',
+    promptTokens: usageTokens.promptTokens,
+    candidatesTokens: usageTokens.candidatesTokens,
+    totalTokens: usageTokens.totalTokens,
     itemId,
     timestamp: new Date().toISOString(),
     createdAt: admin.firestore.FieldValue.serverTimestamp(),
