@@ -48,6 +48,17 @@
   --atmospheric-blush: #f7d6d0;
   --atmospheric-lavender: #d1c4e9;
   --atmospheric-blue: #bbdefb;
+
+  /* Escala Semântica de Z-Index (Tokens de Camadas) */
+  --z-sticky: 20;        /* Filtros fixos e cabeçalhos de tabelas */
+  --z-bottom-nav: 30;    /* Barra de navegação inferior no mobile */
+  --z-floating-bar: 35;  /* Barras de ações em massa */
+  --z-drawer: 40;        /* Menus laterais deslizantes / sheets */
+  --z-modal-overlay: 50; /* Backdrop escuro dos diálogos (Radix) */
+  --z-modal: 60;         /* Janelas de diálogo e modais (Radix) */
+  --z-popover: 70;       /* Dropdowns, Selects, DatePickers */
+  --z-toast: 80;         /* Notificações e Toasts (Sonner) */
+  --z-tooltip: 90;       /* Tooltips e dicas flutuantes */
 }
 
 .dark {
@@ -135,6 +146,35 @@
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
 }
+
+@utility z-sticky {
+  z-index: var(--z-sticky);
+}
+@utility z-bottom-nav {
+  z-index: var(--z-bottom-nav);
+}
+@utility z-floating-bar {
+  z-index: var(--z-floating-bar);
+}
+@utility z-drawer {
+  z-index: var(--z-drawer);
+}
+@utility z-modal-overlay {
+  z-index: var(--z-modal-overlay);
+}
+@utility z-modal {
+  z-index: var(--z-modal);
+}
+@utility z-popover {
+  z-index: var(--z-popover);
+}
+@utility z-toast {
+  z-index: var(--z-toast);
+}
+@utility z-tooltip {
+  z-index: var(--z-tooltip);
+}
+
 
 @layer base {
   * {

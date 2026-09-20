@@ -984,7 +984,7 @@ export function StoreProducts() {
       {selectedProductIds.length > 0 && (canDelete || canEdit) && !isAnyModalOpen && (
         <aside
           aria-label="Ações em massa para produtos selecionados"
-          className="fixed bottom-[calc(4.5rem+env(safe-area-inset-bottom,0px))] inset-x-2.5 sm:inset-x-auto sm:left-1/2 sm:-translate-x-1/2 sm:bottom-6 sm:w-auto sm:max-w-2xl z-30 p-2.5 sm:p-2 sm:px-3 rounded-2xl bg-card/95 dark:bg-stone-900/95 backdrop-blur-xl border border-primary/30 dark:border-white/15 shadow-2xl transition-all animate-in fade-in slide-in-from-bottom-4 duration-300"
+          className="fixed bottom-[calc(4.5rem+env(safe-area-inset-bottom,0px))] inset-x-2.5 sm:inset-x-auto sm:left-1/2 sm:-translate-x-1/2 sm:bottom-6 sm:w-auto sm:max-w-2xl z-floating-bar p-2.5 sm:p-2 sm:px-3 rounded-2xl bg-card/95 dark:bg-stone-900/95 backdrop-blur-xl border border-primary/30 dark:border-white/15 shadow-2xl transition-all animate-in fade-in slide-in-from-bottom-4 duration-300"
         >
           <div className="flex flex-col sm:flex-row sm:items-center sm:gap-3 gap-2">
             {/* Topo / Linha de seleção no mobile (ou lado esquerdo no desktop) */}
