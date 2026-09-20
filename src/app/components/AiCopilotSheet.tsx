@@ -898,12 +898,11 @@ export function AiCopilotSheet({
         </div>
 
         {/* Suggestions chips */}
-        {showSuggestions && messages.length <= 1 && !loading && !input.trim() && (
-          <div className="px-3 sm:px-4 py-2 border-t bg-muted/20 space-y-1.5 flex-shrink-0 animate-in fade-in duration-200">
-            <div className="flex items-center justify-between">
-              <span className="text-[10px] sm:text-[11px] font-medium text-muted-foreground flex items-center gap-1.5">
-                <Sparkles className="size-3 text-amber-500 shrink-0" />
-                Sugestões rápidas:
+        {messages.length <= 3 && showSuggestions && !loading && !input.trim() && (
+          <div className="px-3.5 py-2 border-t bg-muted/20 flex-shrink-0 animate-in fade-in duration-200">
+            <div className="flex items-center justify-between mb-1.5">
+              <span className="text-[11px] font-semibold text-muted-foreground flex items-center gap-1.5">
+                💡 Sugestões rápidas:
               </span>
               <button
                 type="button"
@@ -916,8 +915,7 @@ export function AiCopilotSheet({
                 <span>Ocultar</span>
               </button>
             </div>
-            {/* Mobile: chips horizontais deslizáveis (não ocupa altura da tela); Desktop: grid flexível com scroll suave */}
-            <div className="flex flex-row overflow-x-auto gap-2 py-1 scrollbar-none items-center">
+            <div className="flex gap-1.5 overflow-x-auto scrollbar-none [scrollbar-width:none] [&::-webkit-scrollbar]:hidden py-0.5 pb-1 items-center">
               {SUGGESTIONS.map((sug, idx) => (
                 <button
                   key={idx}
@@ -927,7 +925,7 @@ export function AiCopilotSheet({
                     handleSend(sug);
                   }}
                   disabled={loading || cooldownSeconds > 0}
-                  className="px-3 py-1.5 text-xs rounded-full border bg-muted/40 hover:bg-muted hover:border-primary/30 whitespace-nowrap shrink-0 text-foreground/80 leading-relaxed transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="text-left text-xs whitespace-nowrap px-3 py-1.5 rounded-full border border-border/70 bg-card hover:bg-primary/5 hover:border-primary/30 text-foreground/90 transition-colors shrink-0 shadow-2xs cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {sug}
                 </button>
@@ -939,7 +937,7 @@ export function AiCopilotSheet({
         {/* Input Footer */}
         <div className="p-3 border-t bg-card/70 backdrop-blur-xs flex-shrink-0 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
           {/* Opção discreta para reabrir sugestões se o usuário desejar */}
-          {!showSuggestions && messages.length <= 1 && !loading && cooldownSeconds <= 0 && !input.trim() && (
+          {!showSuggestions && messages.length <= 3 && !loading && cooldownSeconds <= 0 && !input.trim() && (
             <div className="mb-2 flex items-center justify-start">
               <button
                 type="button"

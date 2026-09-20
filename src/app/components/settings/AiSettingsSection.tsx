@@ -26,9 +26,9 @@ interface AiSettingsSectionProps {
 
 const FALLBACK_MODELS: AiModelQuotaItem[] = [
   {
-    id: 'gemini-2.0-flash',
-    name: 'Gemini 2.0 Flash',
-    description: 'Modelo de última geração ultra-rápido com suporte multimodal e tool calls integradas.',
+    id: 'gemini-3.6-flash',
+    name: 'Gemini 3.6 Flash',
+    description: 'Modelo principal de alta velocidade em produção com suporte multimodal e tool calls integradas.',
     category: 'Produção (Padrão)',
     isDefault: true,
     isActive: true,
@@ -38,21 +38,10 @@ const FALLBACK_MODELS: AiModelQuotaItem[] = [
     tpmLimit: 1000000,
   },
   {
-    id: 'gemini-2.0-flash-lite',
-    name: 'Gemini 2.0 Flash-Lite',
-    description: 'Modelo ultra-leve e econômico para respostas instantâneas e alto throughput.',
-    category: 'Alta Eficiência / Lite',
-    isActive: false,
-    daily: { used: 0, limit: 1500, percentage: 0 },
-    rpm: { used: 0, limit: 30 },
-    monthly: { used: 0 },
-    tpmLimit: 1000000,
-  },
-  {
-    id: 'gemini-1.5-flash',
-    name: 'Gemini 1.5 Flash',
-    description: 'Modelo comprovado e estável para briefings diários e consultas operacionais.',
-    category: 'Fallback Estável',
+    id: 'gemini-3.8-flash',
+    name: 'Gemini 3.8 Flash',
+    description: 'Modelo de última geração para raciocínio multimodal avançado, fotos e acervo do ateliê.',
+    category: 'Visão & Raciocínio',
     isActive: false,
     daily: { used: 0, limit: 1500, percentage: 0 },
     rpm: { used: 0, limit: 15 },
@@ -60,19 +49,8 @@ const FALLBACK_MODELS: AiModelQuotaItem[] = [
     tpmLimit: 1000000,
   },
   {
-    id: 'gemini-1.5-pro',
-    name: 'Gemini 1.5 Pro',
-    description: 'Modelo de raciocínio profundo para análises complexas e grandes janelas de contexto.',
-    category: 'Raciocínio Avançado',
-    isActive: false,
-    daily: { used: 0, limit: 50, percentage: 0 },
-    rpm: { used: 0, limit: 2 },
-    monthly: { used: 0 },
-    tpmLimit: 32000,
-  },
-  {
-    id: 'gemini-3.0-flash',
-    name: 'Gemini 3.0 Flash (Preview)',
+    id: 'gemini-3-flash-preview',
+    name: 'Gemini 3 Flash Preview',
     description: 'Próxima geração experimental com alta fidelidade lógica e estruturação.',
     category: 'Experimental / Preview',
     isActive: false,
@@ -100,7 +78,7 @@ export function AiSettingsSection({ isAdmin }: AiSettingsSectionProps) {
       // Fallback amigável com lista completa de modelos
       setUsage({
         success: true,
-        activeModel: 'gemini-2.0-flash',
+        activeModel: 'gemini-3.6-flash',
         provider: 'Google AI Studio / Gemini API',
         resetsAt: new Date(Date.now() + 86400000).toISOString(),
         totalDaily: { used: 0, limit: 1500, percentage: 0 },
@@ -217,7 +195,7 @@ export function AiSettingsSection({ isAdmin }: AiSettingsSectionProps) {
             </span>
             <div className="pt-0.5">
               <Badge variant="outline" className="bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30 text-xs py-1">
-                {usage?.activeModel || 'gemini-2.0-flash'}
+                {usage?.activeModel || 'gemini-3.6-flash'}
               </Badge>
             </div>
             <p className="text-[11px] text-muted-foreground pt-1">
