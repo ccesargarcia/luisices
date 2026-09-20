@@ -1109,7 +1109,7 @@ const normalizeString = (str) => {
 };
 
 /**
- * Sanitiza o texto gerado pela IA para remover pensamentos/raciocínios internos vazados
+ * Sanitiza o texto gerado pela IA para remover pensamentos/raciocínios internos vazados e jargões técnicos
  */
 const cleanAiOutput = (text) => {
   if (!text || typeof text !== 'string') return '';
@@ -1120,6 +1120,34 @@ const cleanAiOutput = (text) => {
 
   // Remove preâmbulos típicos de auto-raciocínio em inglês gerados por modelos "Thinking"
   cleaned = cleaned.replace(/^(The user wants to|I need to iterate|Looking at the orders|I have already called|I will present this|Based on the query|Let's check the orders)[\s\S]*?(?=(O pedido|Encontrei|Aqui est|Segue|Não encontrei|\n\n[A-ZÀ-Ú]))/i, '');
+
+  // Higieniza nomes técnicos de ferramentas e chamadas internas para termos naturais do ateliê
+  const toolLabels = {
+    calculate_pricing_estimate: 'calculadora de custos e preços',
+    query_orders_view: 'consulta de pedidos',
+    extract_order_draft: 'rascunho do pedido',
+    generate_whatsapp_message: 'mensagem para WhatsApp',
+    daily_briefing: 'resumo operacional do dia',
+    get_financial_summary: 'resumo financeiro',
+    get_user_summary: 'resumo de métricas da equipe',
+    query_customers: 'consulta de clientes',
+    search_gallery_portfolio: 'acervo da galeria',
+    enrichgalleryitemwithai: 'análise de imagem',
+  };
+
+  const toolNamesPattern = Object.keys(toolLabels).join('|');
+
+  // Substitui padrões como "ferramenta calculate_pricing_estimate" ou "função query_orders_view"
+  cleaned = cleaned.replace(
+    new RegExp(`(?:a\\s+)?(?:ferramenta|função|funcao|endpoint|método|metodo)\\s*[\`'"]?(${toolNamesPattern})[\`'"]?`, 'gi'),
+    (_m, tool) => toolLabels[tool.toLowerCase()] || 'assistente'
+  );
+
+  // Substitui nomes técnicos literais entre crases ou aspas
+  cleaned = cleaned.replace(
+    new RegExp(`[\`'"](${toolNamesPattern})[\`'"]`, 'gi'),
+    (_m, tool) => toolLabels[tool.toLowerCase()] || 'assistente'
+  );
 
   return cleaned.trim();
 };
@@ -1200,6 +1228,14 @@ Você possui responsabilidades principais com ferramentas especializadas:
 - GUARDRAIL 4 (CORTESIA E CDC NA COBRANÇA): Mensagens de cobrança devem ser 100% amigáveis, empáticas e profissionais, sem ameaças ou termos constrangedores.
 - GUARDRAIL 5 (RESPOSTAS LIMPAS EM PT-BR): NUNCA inclua seu raciocínio interno, scratchpad, notas ou pensamentos em inglês no texto de resposta. Responda DIRETA e EXCLUSIVAMENTE em Português do Brasil (pt-BR).
 - GUARDRAIL 6 (MULTIMODALIDADE & VISÃO COMPUTACIONAL): Quando o usuário enviar uma imagem na conversa, examine detalhadamente os elementos visuais (produto, estampa, cores, técnicas como silk, sublimação, bordado, laser). Você pode pesquisar o acervo com 'search_gallery_portfolio' para encontrar produtos similares que a Luisices já produziu, estimar custos com 'calculate_pricing_estimate' ou extrair um pedido com 'extract_order_draft'.
+- GUARDRAIL 7 (VOZ HUMANA E PROIBIÇÃO DE JARGÕES TÉCNICOS):
+  • NUNCA mencione o nome técnico de suas funções ou ferramentas internas (ex: NUNCA diga 'ferramenta calculate_pricing_estimate', 'função query_orders_view', 'extract_order_draft', etc.). 
+  • Em vez disso, fale sempre como uma assistente humana do ateliê:
+    - Em vez de "posso usar a ferramenta calculate_pricing_estimate": diga "Se quiser, posso calcular o custo e sugerir um preço de venda com margem de lucro".
+    - Em vez de "posso usar extract_order_draft": diga "Posso montar o rascunho do pedido para você carregar no formulário".
+    - Em vez de "posso usar search_gallery_portfolio": diga "Posso pesquisar mais fotos e modelos no nosso acervo".
+  • NUNCA use termos de programação, crases com nomes de variáveis (\`nome_da_funcao\`) ou jargões em inglês desnecessários (como 'Backing Card' se puder dizer 'Cartão de apoio' ou 'Tag').
+  • Seja elegante, acolhedora, concisa e focada na linguagem do dia a dia do ateliê.
 
 ---
 BASE DE CONHECIMENTO DO SISTEMA LUISICES:
@@ -2262,7 +2298,7 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
         } else if (summary.isList) {
           let listText = `👥 **Colaboradores e Usuários no Sistema:**\n\n`;
           summary.members.forEach((m) => {
-            listText += `• **${m.name}** (${m.email || 'Sem e-mail'})\n  Cargo: ${m.role} | ID: \`${m.uid}\`\n\n`;
+            listText += `• **${m.name}** (${m.email || 'Sem e-mail'})\n  Cargo: ${m.role}\n\n`;
           });
           listText += `Você pode perguntar detalhes de qualquer um: *"Quantos pedidos e clientes tem a ${summary.members[0]?.name || 'Amanda'}?"*`;
           finalAnswer = listText;
@@ -2474,6 +2510,8 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
     } else {
       finalAnswer = cleanAiOutput(parts.map(p => p.text).filter(Boolean).join('\n')) || 'Como posso ajudar você hoje?';
     }
+
+    finalAnswer = cleanAiOutput(finalAnswer);
 
     // Salva no cache de respostas rápidas
     aiResponseCache.set(cacheKey, {
