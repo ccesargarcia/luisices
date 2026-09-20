@@ -1,9 +1,9 @@
-import { Order, ProductionStep } from '../types';
+import { Order } from '../types';
 import { Badge } from './ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Button } from './ui/button';
 import { Checkbox } from './ui/checkbox';
-import { Phone, Calendar, Package, DollarSign, Tag, MessageCircle, Smartphone, Banknote, CreditCard, ArrowLeftRight, Repeat2, Users, ArrowRight, Loader2 } from 'lucide-react';
+import { Phone, Calendar, Package, DollarSign, Tag, MessageCircle, Smartphone, Banknote, CreditCard, ArrowLeftRight, Repeat2, Users } from 'lucide-react';
 import { getTextColor } from '../utils/tagColors';
 import { openWhatsAppForOrder } from '../utils/whatsapp';
 import { useUserSettings } from '../../hooks/useUserSettings';
@@ -18,41 +18,11 @@ function hexToRgba(hex: string, alpha: number) {
   return `rgba(${r},${g},${b},${alpha})`;
 }
 
-export const WORKFLOW_STEPS_CONFIG: Array<{
-  key: ProductionStep;
-  label: string;
-  actionLabel: string;
-}> = [
-  { key: 'design', label: 'Design', actionLabel: 'Design' },
-  { key: 'approval', label: 'Aprovação', actionLabel: 'Aprovar' },
-  { key: 'printing', label: 'Impressão', actionLabel: 'Imprimir' },
-  { key: 'cutting', label: 'Corte', actionLabel: 'Cortar' },
-  { key: 'assembly', label: 'Montagem', actionLabel: 'Montar' },
-  { key: 'quality-check', label: 'Controle de Qualidade', actionLabel: 'Qualidade' },
-  { key: 'packaging', label: 'Embalagem', actionLabel: 'Embalar' },
-];
-
-export function getNextProductionStep(order: Order): {
-  key: ProductionStep;
-  label: string;
-  actionLabel: string;
-} | null {
-  if (order.status === 'completed' || order.status === 'cancelled') return null;
-  const steps = order.productionWorkflow?.steps;
-  if (!steps) {
-    return WORKFLOW_STEPS_CONFIG[0];
-  }
-  const next = WORKFLOW_STEPS_CONFIG.find((s) => !steps[s.key]?.completed);
-  return next || null;
-}
-
 interface OrderCardProps {
   order: Order;
   onClick?: () => void;
   isSelected?: boolean;
   onToggleSelect?: (orderId: string, selected: boolean) => void;
-  onAdvanceStep?: (orderId: string, nextStep: ProductionStep) => void;
-  isAdvancing?: boolean;
 }
 
 const statusColors = {
@@ -69,19 +39,11 @@ const statusLabels = {
   cancelled: 'Cancelado',
 };
 
-export function OrderCard({
-  order,
-  onClick,
-  isSelected = false,
-  onToggleSelect,
-  onAdvanceStep,
-  isAdvancing = false,
-}: OrderCardProps) {
+export function OrderCard({ order, onClick, isSelected = false, onToggleSelect }: OrderCardProps) {
   const { settings } = useUserSettings();
   const { user } = useAuth();
   const compact = settings?.compactCards ?? false;
   const isShared = order.userId && order.userId !== user?.uid;
-  const nextStep = getNextProductionStep(order);
 
   const handleSelectToggle = (event: React.MouseEvent | React.KeyboardEvent) => {
     event.stopPropagation();
@@ -184,33 +146,6 @@ export function OrderCard({
               ))}
             </div>
           )}
-          {/* Avanço rápido de etapa (compact) */}
-          {nextStep && onAdvanceStep && (
-            <div className="pt-1.5 border-t border-border/30 flex items-center justify-between gap-2 mt-1">
-              <span className="text-[10px] text-muted-foreground truncate">
-                Etapa: <strong className="text-foreground">{nextStep.label}</strong>
-              </span>
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                disabled={isAdvancing}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onAdvanceStep(order.id, nextStep.key);
-                }}
-                className="h-6 px-2 text-[10px] font-semibold text-primary hover:bg-primary/10 border-primary/30 gap-1 transition-all cursor-pointer shrink-0"
-                title={`Avançar para etapa: ${nextStep.label}`}
-              >
-                {isAdvancing ? (
-                  <Loader2 className="size-2.5 animate-spin" />
-                ) : (
-                  <ArrowRight className="size-2.5 text-primary" />
-                )}
-                <span>➔ {nextStep.actionLabel}</span>
-              </Button>
-            </div>
-          )}
         </div>
       ) : (
         /* ── COMFORTABLE ─────────────────────────────────── */
@@ -299,35 +234,6 @@ export function OrderCard({
               <div className="flex items-center gap-2 pt-2 text-xs text-muted-foreground">
                 {getPaymentIcon(order.payment.method)}
                 <span>{getPaymentLabel(order.payment.method)}</span>
-              </div>
-            )}
-            {/* Avanço rápido de etapa (comfortable) */}
-            {nextStep && onAdvanceStep && (
-              <div className="pt-2.5 border-t border-border/40 flex items-center justify-between gap-2 mt-2">
-                <div className="flex items-center gap-1.5 text-xs text-muted-foreground min-w-0">
-                  <span className="truncate">
-                    Próxima etapa: <strong className="text-foreground">{nextStep.label}</strong>
-                  </span>
-                </div>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  disabled={isAdvancing}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onAdvanceStep(order.id, nextStep.key);
-                  }}
-                  className="h-7 px-2.5 text-xs font-semibold text-primary hover:bg-primary/10 border-primary/30 gap-1 transition-all cursor-pointer shrink-0"
-                  title={`Avançar etapa: ${nextStep.label}`}
-                >
-                  {isAdvancing ? (
-                    <Loader2 className="size-3 animate-spin" />
-                  ) : (
-                    <ArrowRight className="size-3 text-primary" />
-                  )}
-                  <span>➔ {nextStep.actionLabel}</span>
-                </Button>
               </div>
             )}
           </CardContent>
