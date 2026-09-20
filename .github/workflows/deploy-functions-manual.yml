@@ -18,10 +18,12 @@ on:
         type: choice
         options:
           - 'all'
-          - 'aiAgentChat,enrichGalleryItemWithAi,getAiUsage,sendWhatsAppDirectMessage,deleteWhatsAppMessage,syncWhatsAppChatMessages,getWhatsAppInstanceStatus,evolutionWhatsAppWebhook,syncOrderToAiView,syncAllOrdersToAiView'
-          - 'aiAgentChat,enrichGalleryItemWithAi,getAiUsage'
+          - 'aiAgentChat,enrichGalleryItemWithAi,enrichStoreProductWithAi,getAiUsage,sendWhatsAppDirectMessage,deleteWhatsAppMessage,syncWhatsAppChatMessages,getWhatsAppInstanceStatus,evolutionWhatsAppWebhook,syncOrderToAiView,syncAllOrdersToAiView'
+          - 'aiAgentChat,enrichGalleryItemWithAi,enrichStoreProductWithAi,getAiUsage'
           - 'aiAgentChat,enrichGalleryItemWithAi'
+          - 'enrichStoreProductWithAi'
           - 'enrichGalleryItemWithAi'
+          - 'enrichGalleryItemWithAi,enrichStoreProductWithAi'
           - 'aiAgentChat'
           - 'getAiUsage'
           - 'sendWhatsAppDirectMessage,deleteWhatsAppMessage,syncWhatsAppChatMessages,getWhatsAppInstanceStatus,evolutionWhatsAppWebhook'

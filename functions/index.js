@@ -3151,6 +3151,211 @@ Responda ESTRITAMENTE em formato JSON com as seguintes propriedades (sem markdow
 });
 
 /**
+ * Analisa a foto de um produto da lojinha com IA (Gemini Vision) para sugerir:
+ * - Nome comercial atraente
+ * - Categoria ideal
+ * - Descrição rica formatada com emojis, tópicos e seções para o catálogo
+ * - Badge e prazo sugerido
+ * Opcional e restrito a usuários com permissão aiCopilot ou admin.
+ */
+exports.enrichStoreProductWithAi = onCall({ cors: true, timeoutSeconds: 120, memory: "512MiB", secrets: [GEMINI_API_KEY] }, async (request) => {
+  if (!request.auth) {
+    throw new functions.https.HttpsError("unauthenticated", "É necessário estar autenticado.");
+  }
+
+  const callerUid = request.auth.uid;
+  try {
+    await galleryAiLimiter.consume(callerUid);
+  } catch {
+    throw new functions.https.HttpsError("resource-exhausted", "Muitas requisições de análise de imagem. Aguarde um momento.");
+  }
+
+  const callerProfileDoc = await admin.firestore().doc(`userProfiles/${callerUid}`).get();
+  const callerProfile = callerProfileDoc.exists ? callerProfileDoc.data() : { role: "user", active: true };
+
+  if (callerProfile.active === false) {
+    throw new functions.https.HttpsError("permission-denied", "Conta de usuário desativada.");
+  }
+
+  const isAdmin = callerProfile.role === "admin";
+  if (!isAdmin) {
+    if (callerProfile.role === "funcionario" && callerProfile.permissions?.aiCopilot !== true) {
+      throw new functions.https.HttpsError("permission-denied", "Seu perfil de funcionário não possui permissão para utilizar recursos de IA.");
+    }
+    if (callerProfile.role === "user" && callerProfile.permissions?.aiCopilot === false) {
+      throw new functions.https.HttpsError("permission-denied", "Seu perfil de usuário não possui permissão para utilizar recursos de IA.");
+    }
+  }
+
+  const { imageBase64, mimeType = "image/jpeg", imageUrl, currentName, currentCategory, currentDescription } = request.data || {};
+
+  let base64Image = imageBase64;
+  let finalMime = mimeType;
+
+  if (!base64Image && imageUrl) {
+    try {
+      const imgResp = await fetch(imageUrl);
+      if (!imgResp.ok) throw new Error(`Falha ao baixar imagem (${imgResp.status})`);
+      const contentType = imgResp.headers.get("content-type");
+      if (contentType && contentType.startsWith("image/")) {
+        finalMime = contentType.split(";")[0];
+      }
+      const buffer = Buffer.from(await imgResp.arrayBuffer());
+      base64Image = buffer.toString("base64");
+    } catch (err) {
+      console.error("[enrichStoreProductWithAi] Erro ao carregar imagem por URL:", err);
+      throw new functions.https.HttpsError("internal", `Não foi possível carregar a imagem: ${err.message}`);
+    }
+  }
+
+  if (!base64Image) {
+    throw new functions.https.HttpsError("invalid-argument", "Imagem (base64 ou URL) é obrigatória para análise de IA.");
+  }
+
+  const rawKey = (typeof GEMINI_API_KEY.value === "function" ? GEMINI_API_KEY.value() : process.env.GEMINI_API_KEY) || "";
+  const apiKey = String(rawKey).trim();
+  if (!apiKey) {
+    throw new functions.https.HttpsError("failed-precondition", "Chave GEMINI_API_KEY não configurada no Firebase.");
+  }
+
+  const visionPrompt = `Você é um redator de e-commerce e especialista em produtos personalizados, papelaria afetiva, artigos para festas, presentes e lembrancinhas artesanais da marca Luisices.
+Analise a imagem deste produto comercial da lojinha.
+Nome atual informado: "${currentName || ""}"
+Categoria atual: "${currentCategory || ""}"
+Descrição atual: "${currentDescription || ""}"
+
+Crie um cadastro de alta conversão para o catálogo online.
+A descrição DEVE ser rica, acolhedora e muito bem formatada para leitura agradável no celular:
+- Um primeiro parágrafo encantador sobre a proposta do produto.
+- Seção de tópicos iniciados com hífen "-" e emojis sutis para "✨ Perfeita para:" (ex: lembrancinhas, festas, presentes, maternidade).
+- Seção de tópicos iniciados com hífen "-" para "🎀 Detalhes do produto:" (acabamentos, laços, fitas, materiais, formato).
+- Uma frase convidativa para tirar dúvidas ou personalizar pelo WhatsApp.
+- Destaque termos-chave em **negrito** e use quebras de linha reais (\n\n).
+
+Responda ESTRITAMENTE em formato JSON com as seguintes propriedades (sem markdown antes ou depois do json, apenas o objeto json puro):
+{
+  "name": "Nome comercial atraente e claro para o produto",
+  "category": "Categoria sugerida (ex: Lembrancinhas, Presenteáveis, Papelaria de Festa, Encadernação, Caixas Personalizadas, Canecas e Copos, etc.)",
+  "description": "Texto completo da descrição formatada com quebras de linha e tópicos",
+  "leadTimeDays": 5,
+  "badge": "Lançamento, Mais Vendido, Personalizado ou vazio",
+  "suggestedTags": ["tag1", "tag2", "tag3"]
+}`;
+
+  const candidateModels = [
+    process.env.GEMINI_MODEL || "gemini-3.8-flash",
+    "gemini-3.8-flash",
+    "gemini-3.6-flash",
+    "gemini-3.7-flash",
+    "gemini-3.5-flash",
+    "gemini-3.1-flash-lite",
+    "gemini-3.5-flash-lite",
+    "gemini-3-flash-preview",
+  ].filter((item, index, self) => Boolean(item) && self.indexOf(item) === index);
+
+  let parsedAiResult = null;
+  let usedModel = "gemini-3.8-flash";
+  let lastError = null;
+  let usageTokens = { promptTokens: 0, candidatesTokens: 0, totalTokens: 0 };
+
+  for (const model of candidateModels) {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15000);
+
+    try {
+      const resp = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [{
+            role: "user",
+            parts: [
+              {
+                inlineData: {
+                  mimeType: finalMime,
+                  data: base64Image,
+                },
+              },
+              { text: visionPrompt },
+            ],
+          }],
+          generationConfig: {
+            temperature: 0.2,
+          },
+        }),
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!resp.ok) {
+        const errText = await resp.text();
+        console.warn(`[enrichStoreProductWithAi] Modelo ${model} falhou (Status ${resp.status}):`, errText);
+        lastError = new Error(`Modelo ${model} (Status ${resp.status}): ${errText}`);
+        continue;
+      }
+
+      const data = await resp.json();
+      const meta = data?.usageMetadata || {};
+      const pT = meta.promptTokenCount || meta.promptTokens || 0;
+      const cT = meta.candidatesTokenCount || meta.candidatesTokens || 0;
+      const tT = meta.totalTokenCount || meta.totalTokens || (pT + cT);
+      const textResp = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+
+      if (textResp) {
+        try {
+          parsedAiResult = JSON.parse(textResp);
+          usedModel = model;
+          usageTokens = { promptTokens: pT, candidatesTokens: cT, totalTokens: tT };
+          break;
+        } catch {
+          const jsonMatch = textResp.match(/\{[\s\S]*\}/);
+          if (jsonMatch) {
+            parsedAiResult = JSON.parse(jsonMatch[0]);
+            usedModel = model;
+            usageTokens = { promptTokens: pT, candidatesTokens: cT, totalTokens: tT };
+            break;
+          }
+        }
+      }
+    } catch (err) {
+      clearTimeout(timeoutId);
+      const isTimeout = err?.name === "AbortError";
+      console.warn(`[enrichStoreProductWithAi] Erro com modelo ${model}:`, isTimeout ? "Timeout de 15s excedido" : err);
+      lastError = isTimeout ? new Error(`Modelo ${model} excedeu timeout de 15s`) : err;
+    }
+  }
+
+  if (!parsedAiResult) {
+    console.error("[enrichStoreProductWithAi] Todos os modelos falharam. Detalhes:", lastError);
+    throw new functions.https.HttpsError("internal", lastError?.message || "Falha ao processar visão computacional com o Gemini.");
+  }
+
+  // Registra log de uso da IA
+  admin.firestore().collection("ai_usage_logs").add({
+    userId: callerUid,
+    model: usedModel,
+    action: "store_product_vision_enrichment",
+    promptTokens: usageTokens.promptTokens,
+    candidatesTokens: usageTokens.candidatesTokens,
+    totalTokens: usageTokens.totalTokens,
+    timestamp: new Date().toISOString(),
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+  }).catch((err) => console.warn("[enrichStoreProductWithAi] Erro ao gravar ai_usage_logs:", err));
+
+  return {
+    success: true,
+    name: parsedAiResult.name || "",
+    category: parsedAiResult.category || "",
+    description: parsedAiResult.description || "",
+    leadTimeDays: typeof parsedAiResult.leadTimeDays === "number" ? parsedAiResult.leadTimeDays : 5,
+    badge: parsedAiResult.badge || "",
+    suggestedTags: Array.isArray(parsedAiResult.suggestedTags) ? parsedAiResult.suggestedTags : [],
+  };
+});
+
+/**
  * Dispara uma mensagem WhatsApp diretamente para o cliente via Evolution API e armazena na base do chat.
  * Uso restrito a membros autorizados da equipe (admin ou funcionário ativo).
  */

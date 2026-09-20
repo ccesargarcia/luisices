@@ -4,6 +4,7 @@ import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { Badge } from '../ui/badge';
+import { Textarea } from '../ui/textarea';
 import {
   Select,
   SelectContent,
@@ -23,10 +24,22 @@ import {
   FileImage,
   Plus,
   X,
+  ChevronDown,
+  ChevronUp,
+  FileText,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { useAuth } from '../../../contexts/AuthContext';
+import { FormattedDescription } from '../FormattedDescription';
 import { firebaseStoreProductService } from '../../../services/firebaseStoreProductService';
 import { StoreProduct } from '../../types';
+import {
+  parsePriceInput,
+  priceInputToFloat,
+  formatFilenameToTitle,
+} from '../../utils/storeBulkUtils';
+
+export { parsePriceInput, priceInputToFloat, formatFilenameToTitle };
 
 interface BulkItemState {
   id: string;
@@ -35,9 +48,13 @@ interface BulkItemState {
   name: string;
   price: string;
   category: string;
+  description?: string;
   leadTimeDays: string;
+  badge?: string;
   isCustomizable: boolean;
   status: 'pending' | 'uploading' | 'success' | 'error';
+  isAiAnalyzing?: boolean;
+  aiAnalyzed?: boolean;
   errorMessage?: string;
 }
 
@@ -47,23 +64,34 @@ interface BulkStoreProductsDialogProps {
   existingCategories: string[];
 }
 
-import {
-  parsePriceInput,
-  priceInputToFloat,
-  formatFilenameToTitle,
-} from '../../utils/storeBulkUtils';
-
-export { parsePriceInput, priceInputToFloat, formatFilenameToTitle };
+function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const res = reader.result as string;
+      const base64 = res.includes(',') ? res.split(',')[1] : res;
+      resolve(base64);
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
 
 export function BulkStoreProductsDialog({
   open,
   onOpenChange,
   existingCategories,
 }: BulkStoreProductsDialogProps) {
+  const { userProfile } = useAuth();
+  const isAdmin = userProfile?.role === 'admin';
+  const canUseAi = isAdmin || userProfile?.permissions?.aiCopilot === true;
+
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [items, setItems] = useState<BulkItemState[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [progressCount, setProgressCount] = useState(0);
+  const [autoAiEnrich, setAutoAiEnrich] = useState(true);
+  const [expandedDescIds, setExpandedDescIds] = useState<Set<string>>(new Set());
 
   // Estados para replicação em lote (Barra Superior Rápida)
   const [batchCategory, setBatchCategory] = useState(existingCategories.length > 0 ? existingCategories[0] : '');
@@ -89,9 +117,36 @@ export function BulkStoreProductsDialog({
       setBatchLeadTime('5');
       setProgressCount(0);
       setNewCategoryItemIds(new Set());
+      setExpandedDescIds(new Set());
     }
     onOpenChange(nextOpen);
   };
+
+  async function analyzeItemWithAi(itemId: string, file: File) {
+    if (!canUseAi) return;
+
+    updateItem(itemId, { isAiAnalyzing: true });
+    try {
+      const imageBase64 = await fileToBase64(file);
+      const res = await firebaseStoreProductService.enrichStoreProductWithAi({
+        imageBase64,
+        mimeType: file.type,
+      });
+
+      updateItem(itemId, {
+        name: res.name || undefined,
+        category: res.category || undefined,
+        description: res.description || undefined,
+        badge: res.badge || undefined,
+        leadTimeDays: res.leadTimeDays ? String(res.leadTimeDays) : undefined,
+        aiAnalyzed: true,
+        isAiAnalyzing: false,
+      });
+    } catch (err: any) {
+      console.warn('Erro ao analisar item com IA:', err);
+      updateItem(itemId, { isAiAnalyzing: false });
+    }
+  }
 
   function processFiles(files: FileList | File[]) {
     const validFiles: File[] = [];
@@ -112,20 +167,30 @@ export function BulkStoreProductsDialog({
 
     const defaultCategory = batchCategory.trim() || (existingCategories.length > 0 ? existingCategories[0] : 'Geral');
 
-    const newItems: BulkItemState[] = validFiles.map((file, idx) => ({
-      id: `${Date.now()}_${idx}_${Math.random().toString(36).substring(2, 7)}`,
-      file,
-      previewUrl: URL.createObjectURL(file),
-      name: formatFilenameToTitle(file.name),
-      price: batchPrice || '',
-      category: defaultCategory,
-      leadTimeDays: batchLeadTime || '5',
-      isCustomizable: true,
-      status: 'pending',
-    }));
+    const newItems: BulkItemState[] = validFiles.map((file, idx) => {
+      const itemId = `${Date.now()}_${idx}_${Math.random().toString(36).substring(2, 7)}`;
+      return {
+        id: itemId,
+        file,
+        previewUrl: URL.createObjectURL(file),
+        name: formatFilenameToTitle(file.name),
+        price: batchPrice || '',
+        category: defaultCategory,
+        leadTimeDays: batchLeadTime || '5',
+        isCustomizable: true,
+        status: 'pending',
+      };
+    });
 
     setItems(prev => [...prev, ...newItems]);
     toast.success(`${validFiles.length} foto(s) adicionada(s)!`);
+
+    // Dispara análise por IA em segundo plano se habilitado
+    if (canUseAi && autoAiEnrich) {
+      newItems.forEach((item) => {
+        analyzeItemWithAi(item.id, item.file);
+      });
+    }
   }
 
   function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
@@ -160,6 +225,15 @@ export function BulkStoreProductsDialog({
 
   function updateItem(id: string, patch: Partial<BulkItemState>) {
     setItems(prev => prev.map(it => it.id === id ? { ...it, ...patch } : it));
+  }
+
+  function toggleExpandDesc(id: string) {
+    setExpandedDescIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
   }
 
   // Ações de preenchimento em lote
@@ -206,7 +280,6 @@ export function BulkStoreProductsDialog({
 
     for (let i = 0; i < items.length; i++) {
       const item = items[i];
-
       // Pula os que já foram enviados com sucesso
       if (item.status === 'success') {
         successCount++;
@@ -221,9 +294,10 @@ export function BulkStoreProductsDialog({
           price: priceInputToFloat(item.price),
           category: item.category.trim() || 'Geral',
           leadTimeDays: parseInt(item.leadTimeDays, 10) || 5,
+          badge: item.badge || undefined,
           isCustomizable: item.isCustomizable,
           active: true,
-          description: 'Produto artesanal confeccionado sob encomenda com acabamento refinado.',
+          description: item.description?.trim() || 'Produto artesanal confeccionado sob encomenda com acabamento refinado.',
         };
 
         // 1. Cria produto no Firestore
@@ -289,6 +363,22 @@ export function BulkStoreProductsDialog({
 
             {/* Ações Rápidas do Header */}
             <div className="flex items-center gap-2 w-full sm:w-auto">
+              {canUseAi && (
+                <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-500/10 border border-amber-500/20 text-foreground text-[11px] font-medium">
+                  <input
+                    type="checkbox"
+                    id="bulk-auto-ai"
+                    checked={autoAiEnrich}
+                    onChange={(e) => setAutoAiEnrich(e.target.checked)}
+                    className="size-3.5 text-amber-600 rounded cursor-pointer accent-amber-500 shrink-0"
+                  />
+                  <Label htmlFor="bulk-auto-ai" className="cursor-pointer flex items-center gap-1 text-[11px]">
+                    <Sparkles size={11} className="text-amber-500" />
+                    Auto-IA ✨
+                  </Label>
+                </div>
+              )}
+
               <Button
                 type="button"
                 variant="outline"
@@ -311,7 +401,7 @@ export function BulkStoreProductsDialog({
                   title="Limpar todas as fotos"
                 >
                   <Trash2 size={14} className="mr-1" />
-                  <span className="hidden sm:inline">Limpar Lista</span>
+                  <span className="hidden sm:inline">Limpar</span>
                 </Button>
               )}
 
@@ -480,212 +570,282 @@ export function BulkStoreProductsDialog({
             </div>
           ) : (
             <div className="grid grid-cols-1 gap-3">
-              {items.map((item, index) => (
-                <div
-                  key={item.id}
-                  className={`p-3 sm:p-4 rounded-xl sm:rounded-2xl border transition-all ${
-                    item.status === 'success'
-                      ? 'bg-emerald-500/5 border-emerald-500/30'
-                      : item.status === 'error'
-                      ? 'bg-red-500/5 border-red-500/30'
-                      : item.status === 'uploading'
-                      ? 'bg-primary/5 border-primary/40 ring-1 ring-primary/20'
-                      : 'bg-card border-border hover:border-border/80'
-                  }`}
-                >
-                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
-                    {/* Linha Superior Mobile: Foto + Título/Numeração + Botão de Excluir */}
-                    <div className="flex items-center gap-3">
-                      {/* Miniatura da Foto com Badge de Ordem */}
-                      <div className="relative size-16 sm:size-18 rounded-xl overflow-hidden bg-muted shrink-0 border border-border/80 shadow-2xs">
-                        <img
-                          src={item.previewUrl}
-                          alt={item.name}
-                          className="w-full h-full object-cover"
-                        />
-                        <span className="absolute top-1 left-1 size-5 rounded-md bg-black/75 text-white text-[10px] font-bold flex items-center justify-center">
-                          {index + 1}
-                        </span>
+              {items.map((item, index) => {
+                const isExpanded = expandedDescIds.has(item.id);
+                return (
+                  <div
+                    key={item.id}
+                    className={`p-3 sm:p-4 rounded-xl sm:rounded-2xl border transition-all ${
+                      item.status === 'success'
+                        ? 'bg-emerald-500/5 border-emerald-500/30'
+                        : item.status === 'error'
+                        ? 'bg-red-500/5 border-red-500/30'
+                        : item.status === 'uploading'
+                        ? 'bg-primary/5 border-primary/40 ring-1 ring-primary/20'
+                        : 'bg-card border-border hover:border-border/80'
+                    }`}
+                  >
+                    <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+                      {/* Linha Superior Mobile: Foto + Título/Numeração + Botão de Excluir */}
+                      <div className="flex items-center gap-3">
+                        {/* Miniatura da Foto com Badge de Ordem */}
+                        <div className="relative size-16 sm:size-18 rounded-xl overflow-hidden bg-muted shrink-0 border border-border/80 shadow-2xs">
+                          <img
+                            src={item.previewUrl}
+                            alt={item.name}
+                            className="w-full h-full object-cover"
+                          />
+                          <span className="absolute top-1 left-1 size-5 rounded-md bg-black/75 text-white text-[10px] font-bold flex items-center justify-center">
+                            {index + 1}
+                          </span>
 
-                        {/* Status Overlay */}
-                        {item.status === 'uploading' && (
-                          <div className="absolute inset-0 bg-black/60 flex items-center justify-center text-white">
-                            <Loader2 className="size-5 animate-spin text-primary" />
-                          </div>
-                        )}
-                        {item.status === 'success' && (
-                          <div className="absolute inset-0 bg-emerald-600/80 flex items-center justify-center text-white">
-                            <CheckCircle2 className="size-5" />
-                          </div>
-                        )}
-                        {item.status === 'error' && (
-                          <div className="absolute inset-0 bg-red-600/80 flex items-center justify-center text-white">
-                            <AlertCircle className="size-5" />
-                          </div>
+                          {/* Status Overlay */}
+                          {item.status === 'uploading' && (
+                            <div className="absolute inset-0 bg-black/60 flex items-center justify-center text-white">
+                              <Loader2 className="size-5 animate-spin text-primary" />
+                            </div>
+                          )}
+                          {item.status === 'success' && (
+                            <div className="absolute inset-0 bg-emerald-600/80 flex items-center justify-center text-white">
+                              <CheckCircle2 className="size-5" />
+                            </div>
+                          )}
+                          {item.status === 'error' && (
+                            <div className="absolute inset-0 bg-red-600/80 flex items-center justify-center text-white">
+                              <AlertCircle className="size-5" />
+                            </div>
+                          )}
+                        </div>
+
+                        {/* No mobile, exibe o nome resumido e o botão de lixeira no topo */}
+                        <div className="flex-1 sm:hidden min-w-0">
+                          <p className="text-xs font-bold text-foreground truncate">{item.name || 'Sem nome'}</p>
+                          <p className="text-[11px] text-muted-foreground">
+                            {item.price ? `R$ ${item.price}` : 'Preço pendente'}
+                          </p>
+                        </div>
+
+                        {!isProcessing && item.status !== 'success' && (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => removeItem(item.id)}
+                            className="size-8 sm:hidden text-muted-foreground hover:text-red-500 hover:bg-red-500/10 rounded-lg shrink-0 cursor-pointer"
+                            title="Remover foto"
+                          >
+                            <Trash2 size={15} />
+                          </Button>
                         )}
                       </div>
 
-                      {/* No mobile, exibe o nome resumido e o botão de lixeira no topo */}
-                      <div className="flex-1 sm:hidden min-w-0">
-                        <p className="text-xs font-bold text-foreground truncate">{item.name || 'Sem nome'}</p>
-                        <p className="text-[11px] text-muted-foreground">
-                          {item.price ? `R$ ${item.price}` : 'Preço pendente'}
-                        </p>
+                      {/* Campos do Produto (Grid Responsivo) */}
+                      <div className="flex-1 grid grid-cols-1 sm:grid-cols-12 gap-2 w-full">
+                        {/* Nome do Produto */}
+                        <div className="sm:col-span-5 space-y-1">
+                          <div className="flex items-center justify-between">
+                            <Label className="text-[11px] font-semibold text-muted-foreground">
+                              Nome do Produto *
+                            </Label>
+                            {item.aiAnalyzed && (
+                              <span className="text-[10px] text-amber-600 dark:text-amber-400 font-semibold flex items-center gap-0.5">
+                                <Sparkles size={9} /> IA
+                              </span>
+                            )}
+                          </div>
+                          <Input
+                            value={item.name}
+                            disabled={isProcessing || item.status === 'success'}
+                            onChange={(e) => updateItem(item.id, { name: e.target.value })}
+                            placeholder="Ex: Caixa Milk Luxo"
+                            className="h-8 text-xs font-semibold"
+                          />
+                        </div>
+
+                        {/* Preço e Prazo lado a lado no mobile */}
+                        <div className="grid grid-cols-2 sm:contents gap-2">
+                          {/* Preço (R$) */}
+                          <div className="sm:col-span-3 space-y-1">
+                            <Label className="text-[11px] font-semibold text-muted-foreground">
+                              Preço (R$) *
+                            </Label>
+                            <div className="relative">
+                              <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[11px] text-muted-foreground font-semibold">
+                                R$
+                              </span>
+                              <Input
+                                value={item.price}
+                                disabled={isProcessing || item.status === 'success'}
+                                onChange={(e) => updateItem(item.id, { price: parsePriceInput(e.target.value) })}
+                                placeholder="0,00"
+                                className="h-8 text-xs font-bold pl-7"
+                              />
+                            </div>
+                          </div>
+
+                          {/* Prazo (Dias) */}
+                          <div className="sm:col-span-2 space-y-1">
+                            <Label className="text-[11px] font-semibold text-muted-foreground">
+                              Prazo (dias)
+                            </Label>
+                            <Input
+                              type="number"
+                              min="0"
+                              value={item.leadTimeDays}
+                              disabled={isProcessing || item.status === 'success'}
+                              onChange={(e) => updateItem(item.id, { leadTimeDays: e.target.value })}
+                              className="h-8 text-xs text-center"
+                            />
+                          </div>
+                        </div>
+
+                        {/* Categoria */}
+                        <div className="sm:col-span-2 space-y-1">
+                          <Label className="text-[11px] font-semibold text-muted-foreground">
+                            Categoria
+                          </Label>
+                          {newCategoryItemIds.has(item.id) ? (
+                            <div className="flex items-center gap-1">
+                              <Input
+                                autoFocus
+                                placeholder="Nova categoria..."
+                                value={item.category}
+                                disabled={isProcessing || item.status === 'success'}
+                                onChange={(e) => updateItem(item.id, { category: e.target.value })}
+                                className="h-8 text-xs flex-1"
+                              />
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => {
+                                  setNewCategoryItemIds(prev => {
+                                    const next = new Set(prev);
+                                    next.delete(item.id);
+                                    return next;
+                                  });
+                                  updateItem(item.id, { category: existingCategories[0] || '' });
+                                }}
+                                disabled={isProcessing || item.status === 'success'}
+                                className="size-8 text-muted-foreground hover:text-foreground shrink-0 cursor-pointer"
+                                title="Voltar para categorias existentes"
+                              >
+                                <X size={13} />
+                              </Button>
+                            </div>
+                          ) : (
+                            <Select
+                              value={item.category || '__none__'}
+                              onValueChange={(v) => {
+                                if (v === '__new__') {
+                                  setNewCategoryItemIds(prev => new Set(prev).add(item.id));
+                                  updateItem(item.id, { category: '' });
+                                } else {
+                                  updateItem(item.id, { category: v === '__none__' ? '' : v });
+                                }
+                              }}
+                              disabled={isProcessing || item.status === 'success'}
+                            >
+                              <SelectTrigger size="sm" className="h-8 text-xs">
+                                <SelectValue placeholder="Geral" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {existingCategories.map(cat => (
+                                  <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+                                ))}
+                                <SelectItem value="__new__" className="text-primary font-semibold">
+                                  <span className="flex items-center gap-1"><Plus size={12} /> Nova categoria</span>
+                                </SelectItem>
+                              </SelectContent>
+                            </Select>
+                          )}
+                        </div>
                       </div>
 
-                      {!isProcessing && item.status !== 'success' && (
+                      {/* Ações Laterais no Desktop */}
+                      <div className="flex items-center gap-1 shrink-0 pt-1 sm:pt-0">
+                        {canUseAi && (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            disabled={isProcessing || item.isAiAnalyzing || item.status === 'success'}
+                            onClick={() => analyzeItemWithAi(item.id, item.file)}
+                            className="size-8 text-amber-600 hover:text-amber-700 hover:bg-amber-500/10 rounded-xl shrink-0 cursor-pointer"
+                            title="Analisar foto com IA"
+                          >
+                            {item.isAiAnalyzing ? (
+                              <Loader2 size={14} className="animate-spin" />
+                            ) : (
+                              <Sparkles size={14} />
+                            )}
+                          </Button>
+                        )}
+
                         <Button
                           type="button"
                           variant="ghost"
                           size="icon"
-                          onClick={() => removeItem(item.id)}
-                          className="size-8 sm:hidden text-muted-foreground hover:text-red-500 hover:bg-red-500/10 rounded-lg shrink-0 cursor-pointer"
-                          title="Remover foto"
+                          onClick={() => toggleExpandDesc(item.id)}
+                          className={`size-8 rounded-xl shrink-0 cursor-pointer ${
+                            item.description ? 'text-primary hover:bg-primary/10' : 'text-muted-foreground hover:bg-muted'
+                          }`}
+                          title="Ver/Editar descrição formatada"
                         >
-                          <Trash2 size={15} />
+                          <FileText size={14} />
                         </Button>
-                      )}
-                    </div>
 
-                    {/* Campos do Produto (Grid Responsivo) */}
-                    <div className="flex-1 grid grid-cols-1 sm:grid-cols-12 gap-2 w-full">
-                      {/* Nome do Produto */}
-                      <div className="sm:col-span-5 space-y-1">
-                        <Label className="text-[11px] font-semibold text-muted-foreground">
-                          Nome do Produto *
-                        </Label>
-                        <Input
-                          value={item.name}
-                          disabled={isProcessing || item.status === 'success'}
-                          onChange={(e) => updateItem(item.id, { name: e.target.value })}
-                          placeholder="Ex: Caixa Milk Luxo"
-                          className="h-8 text-xs font-semibold"
-                        />
-                      </div>
-
-                      {/* Preço e Prazo lado a lado no mobile */}
-                      <div className="grid grid-cols-2 sm:contents gap-2">
-                        {/* Preço (R$) */}
-                        <div className="sm:col-span-3 space-y-1">
-                          <Label className="text-[11px] font-semibold text-muted-foreground">
-                            Preço (R$) *
-                          </Label>
-                          <div className="relative">
-                            <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[11px] text-muted-foreground font-semibold">
-                              R$
-                            </span>
-                            <Input
-                              value={item.price}
-                              disabled={isProcessing || item.status === 'success'}
-                              onChange={(e) => updateItem(item.id, { price: parsePriceInput(e.target.value) })}
-                              placeholder="0,00"
-                              className="h-8 text-xs font-bold pl-7"
-                            />
-                          </div>
-                        </div>
-
-                        {/* Prazo (Dias) */}
-                        <div className="sm:col-span-2 space-y-1">
-                          <Label className="text-[11px] font-semibold text-muted-foreground">
-                            Prazo (dias)
-                          </Label>
-                          <Input
-                            type="number"
-                            min="0"
-                            value={item.leadTimeDays}
-                            disabled={isProcessing || item.status === 'success'}
-                            onChange={(e) => updateItem(item.id, { leadTimeDays: e.target.value })}
-                            className="h-8 text-xs text-center"
-                          />
-                        </div>
-                      </div>
-
-                      {/* Categoria */}
-                      <div className="sm:col-span-2 space-y-1">
-                        <Label className="text-[11px] font-semibold text-muted-foreground">
-                          Categoria
-                        </Label>
-                        {newCategoryItemIds.has(item.id) ? (
-                          <div className="flex items-center gap-1">
-                            <Input
-                              autoFocus
-                              placeholder="Nova categoria..."
-                              value={item.category}
-                              disabled={isProcessing || item.status === 'success'}
-                              onChange={(e) => updateItem(item.id, { category: e.target.value })}
-                              className="h-8 text-xs flex-1"
-                            />
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => {
-                                setNewCategoryItemIds(prev => {
-                                  const next = new Set(prev);
-                                  next.delete(item.id);
-                                  return next;
-                                });
-                                updateItem(item.id, { category: existingCategories[0] || '' });
-                              }}
-                              disabled={isProcessing || item.status === 'success'}
-                              className="size-8 text-muted-foreground hover:text-foreground shrink-0 cursor-pointer"
-                              title="Voltar para categorias existentes"
-                            >
-                              <X size={13} />
-                            </Button>
-                          </div>
-                        ) : (
-                          <Select
-                            value={item.category || '__none__'}
-                            onValueChange={(v) => {
-                              if (v === '__new__') {
-                                setNewCategoryItemIds(prev => new Set(prev).add(item.id));
-                                updateItem(item.id, { category: '' });
-                              } else {
-                                updateItem(item.id, { category: v === '__none__' ? '' : v });
-                              }
-                            }}
-                            disabled={isProcessing || item.status === 'success'}
+                        {!isProcessing && item.status !== 'success' && (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => removeItem(item.id)}
+                            className="hidden sm:inline-flex size-8 text-muted-foreground hover:text-red-500 hover:bg-red-500/10 rounded-xl shrink-0 cursor-pointer"
+                            title="Remover foto"
                           >
-                            <SelectTrigger size="sm" className="h-8 text-xs">
-                              <SelectValue placeholder="Geral" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {existingCategories.map(cat => (
-                                <SelectItem key={cat} value={cat}>{cat}</SelectItem>
-                              ))}
-                              <SelectItem value="__new__" className="text-primary font-semibold">
-                                <span className="flex items-center gap-1"><Plus size={12} /> Nova categoria</span>
-                              </SelectItem>
-                            </SelectContent>
-                          </Select>
+                            <Trash2 size={14} />
+                          </Button>
                         )}
                       </div>
                     </div>
 
-                    {/* Botão de Remover Item (No desktop fica na extrema direita) */}
-                    {!isProcessing && item.status !== 'success' && (
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => removeItem(item.id)}
-                        className="hidden sm:inline-flex size-8 text-muted-foreground hover:text-red-500 hover:bg-red-500/10 rounded-xl shrink-0 cursor-pointer"
-                        title="Remover foto"
-                      >
-                        <Trash2 size={14} />
-                      </Button>
+                    {/* Gaveta de Descrição Formatada Expansível */}
+                    {isExpanded && (
+                      <div className="mt-3 pt-3 border-t border-border/60 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <Label className="text-[11px] font-semibold text-muted-foreground flex items-center gap-1">
+                            <FileText size={12} /> Descrição Formatada do Produto
+                          </Label>
+                          <span className="text-[10px] text-muted-foreground">
+                            Suporta tópicos (-), negrito (**) e emojis
+                          </span>
+                        </div>
+                        <Textarea
+                          rows={3}
+                          value={item.description || ''}
+                          disabled={isProcessing || item.status === 'success'}
+                          onChange={(e) => updateItem(item.id, { description: e.target.value })}
+                          placeholder="Descrição rica do produto, ocasiões de uso e acabamentos..."
+                          className="font-mono text-xs"
+                        />
+                        {item.description && (
+                          <div className="p-2.5 rounded-lg bg-muted/40 border border-border/50 text-xs">
+                            <FormattedDescription text={item.description} compact className="text-xs" />
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {item.errorMessage && (
+                      <p className="text-[11px] text-red-500 mt-2 flex items-center gap-1 font-medium">
+                        <AlertCircle size={12} />
+                        {item.errorMessage}
+                      </p>
                     )}
                   </div>
-
-                  {item.errorMessage && (
-                    <p className="text-[11px] text-red-500 mt-2 flex items-center gap-1 font-medium">
-                      <AlertCircle size={12} />
-                      {item.errorMessage}
-                    </p>
-                  )}
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </DialogBody>

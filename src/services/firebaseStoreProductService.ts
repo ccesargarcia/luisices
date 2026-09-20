@@ -19,12 +19,32 @@ import {
   Timestamp,
   writeBatch,
 } from 'firebase/firestore';
-import { auth, db } from '../lib/firebase';
+import { httpsCallable } from 'firebase/functions';
+import { auth, db, functions } from '../lib/firebase';
 import { StoreProduct, Product } from '../app/types';
 import { firebaseStorageService } from './firebaseStorageService';
 import { toCdnUrl } from '../app/utils/cdnUtils';
 
 const STORE_PRODUCTS_COLLECTION = 'storeProducts';
+
+export interface StoreProductAiSuggestion {
+  success: boolean;
+  name?: string;
+  category?: string;
+  description?: string;
+  leadTimeDays?: number;
+  badge?: string;
+  suggestedTags?: string[];
+}
+
+export interface EnrichStoreProductParams {
+  imageBase64?: string;
+  mimeType?: string;
+  imageUrl?: string;
+  currentName?: string;
+  currentCategory?: string;
+  currentDescription?: string;
+}
 
 class FirebaseStoreProductService {
   private mapDoc(id: string, data: Record<string, any>): StoreProduct {
@@ -97,6 +117,7 @@ class FirebaseStoreProductService {
   async createStoreProduct(data: Partial<StoreProduct>): Promise<StoreProduct> {
     const now = Timestamp.now();
     const currentUid = auth.currentUser?.uid || null;
+
     const ref = await addDoc(collection(db, STORE_PRODUCTS_COLLECTION), {
       name: data.name?.trim() || '',
       price: this.ensurePositive(data.price),
@@ -113,6 +134,7 @@ class FirebaseStoreProductService {
       createdAt: now,
       updatedAt: now,
     });
+
     const snap = await getDoc(ref);
     return this.mapDoc(ref.id, snap.data()!);
   }
@@ -146,6 +168,7 @@ class FirebaseStoreProductService {
     for (let i = 0; i < ids.length; i += 400) {
       chunks.push(ids.slice(i, i + 400));
     }
+
     const now = Timestamp.now();
     for (const chunk of chunks) {
       const batch = writeBatch(db);
@@ -165,6 +188,7 @@ class FirebaseStoreProductService {
     for (let i = 0; i < ids.length; i += 400) {
       chunks.push(ids.slice(i, i + 400));
     }
+
     for (const chunk of chunks) {
       const batch = writeBatch(db);
       for (const id of chunk) {
@@ -185,6 +209,16 @@ class FirebaseStoreProductService {
       updatedAt: Timestamp.now(),
     });
     return url;
+  }
+
+  async enrichStoreProductWithAi(params: EnrichStoreProductParams): Promise<StoreProductAiSuggestion> {
+    const callable = httpsCallable<EnrichStoreProductParams, StoreProductAiSuggestion>(
+      functions,
+      'enrichStoreProductWithAi',
+      { timeout: 120000 }
+    );
+    const result = await callable(params);
+    return result.data;
   }
 
   async importFromInternalProduct(prod: Product): Promise<StoreProduct> {
