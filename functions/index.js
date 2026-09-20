@@ -1219,7 +1219,14 @@ exports.aiAgentChat = onCall({ secrets: [GEMINI_API_KEY] }, async (request) => {
     const cached = aiResponseCache.get(cacheKey);
     if (Date.now() - cached.timestamp < 180000) { // 3 minutos
       console.log('[aiAgentChat] Resposta retornada via cache em memória (instantânea).');
-      return { success: true, reply: cached.reply, orderDraft: cached.orderDraft };
+      return {
+        success: true,
+        reply: cached.reply,
+        orderDraft: cached.orderDraft || null,
+        whatsappDraft: cached.whatsappDraft || null,
+        pricingEstimate: cached.pricingEstimate || null,
+        galleryItems: cached.galleryItems || null,
+      };
     }
   }
 
@@ -2211,9 +2218,15 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
     'gemini-3-flash-preview',
   ].filter((item, index, self) => Boolean(item) && self.indexOf(item) === index);
 
+  // Prioriza o modelo preferido que já teve sucesso recente nesta instância
+  const orderedModels = [
+    preferredWorkingModel,
+    ...CANDIDATE_MODELS
+  ].filter((item, index, self) => Boolean(item) && self.indexOf(item) === index);
+
   const callGeminiWithFallback = async (payload) => {
     let lastError = null;
-    for (const model of CANDIDATE_MODELS) {
+    for (const model of orderedModels) {
       const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
       try {
         const resp = await fetch(url, {
