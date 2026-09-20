@@ -1086,7 +1086,7 @@ exports.syncAllOrdersToAiView = onCall(async () => {
 });
 
 // Modelo padrão ultra-rápido memoizado em memória para respostas sub-segundo
-let preferredWorkingModel = 'gemini-3.6-flash';
+let preferredWorkingModel = 'gemini-3.8-flash';
 
 // Cache global em memória para colaboradores/equipe (TTL de 10 minutos para evitar chamadas repetidas a Auth e Firestore)
 let cachedTeamMembers = null;
@@ -1178,7 +1178,7 @@ const cleanAiOutput = (text) => {
 /**
  * Endpoint Callable Seguro do Copiloto de IA Interno
  */
-exports.aiAgentChat = onCall({ secrets: [GEMINI_API_KEY] }, async (request) => {
+exports.aiAgentChat = onCall({ cors: true, timeoutSeconds: 120, memory: '512MiB', secrets: [GEMINI_API_KEY] }, async (request) => {
   if (!(await isAuthorizedEmployeeOrAdmin(request))) {
     throw new functions.https.HttpsError('permission-denied', 'Acesso restrito a membros autorizados da equipe.');
   }
@@ -2199,11 +2199,11 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
 
   // Definição estrita dos modelos modernos ativos com pools de cota independentes contra 429
   const CANDIDATE_MODELS = [
-    process.env.GEMINI_MODEL || 'gemini-3.6-flash',
+    process.env.GEMINI_MODEL || 'gemini-3.8-flash',
+    'gemini-3.8-flash',
     'gemini-3.6-flash',
     'gemini-3.7-flash',
     'gemini-3.5-flash',
-    'gemini-3.8-flash',
     'gemini-3.1-flash-lite',
     'gemini-3.5-flash-lite',
     'gemini-3-flash-preview',
@@ -2213,12 +2213,17 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
     let lastError = null;
     for (const model of CANDIDATE_MODELS) {
       const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 12000);
+
       try {
         const resp = await fetch(url, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
+          body: JSON.stringify(payload),
+          signal: controller.signal,
         });
+        clearTimeout(timeoutId);
 
         if (resp.ok) {
           const data = await resp.json();
@@ -2250,8 +2255,10 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
         console.warn(`[aiAgentChat] Modelo ${model} retornou status ${resp.status}:`, errText);
         lastError = new Error(`Modelo ${model} (Status ${resp.status}): ${errText}`);
       } catch (err) {
-        console.warn(`[aiAgentChat] Falha de conexão com modelo ${model}:`, err);
-        lastError = err;
+        clearTimeout(timeoutId);
+        const isTimeout = err?.name === 'AbortError';
+        console.warn(`[aiAgentChat] Falha com modelo ${model}:`, isTimeout ? 'Timeout de 12s excedido' : err);
+        lastError = isTimeout ? new Error(`Modelo ${model} excedeu timeout de 12s`) : err;
       }
     }
     throw lastError || new Error('Nenhum modelo Gemini disponível respondeu com sucesso.');
@@ -2627,15 +2634,25 @@ exports.getAiUsage = onCall({ cors: true, secrets: [GEMINI_API_KEY] }, async (re
 
   const MODEL_SPECS = [
     {
-      id: 'gemini-3.6-flash',
-      aliases: ['gemini-3.6-flash', 'gemini-3.6-flash-001'],
-      name: 'Gemini 3.6 Flash',
-      description: 'Modelo principal de alta velocidade em produção com suporte multimodal e tool calls integradas.',
+      id: 'gemini-3.8-flash',
+      aliases: ['gemini-3.8-flash', 'gemini-3.8-flash-preview'],
+      name: 'Gemini 3.8 Flash',
+      description: 'Modelo principal de última geração em produção para raciocínio multimodal, fotos e acervo do ateliê.',
       category: 'Produção (Padrão)',
       dailyLimit: 1500,
       rpmLimit: 15,
       tpmLimit: 1000000,
       isDefault: true,
+    },
+    {
+      id: 'gemini-3.6-flash',
+      aliases: ['gemini-3.6-flash', 'gemini-3.6-flash-001'],
+      name: 'Gemini 3.6 Flash',
+      description: 'Modelo de alta velocidade com suporte multimodal e tool calls integradas.',
+      category: 'Produção (Fallback)',
+      dailyLimit: 1500,
+      rpmLimit: 15,
+      tpmLimit: 1000000,
     },
     {
       id: 'gemini-3.7-flash',
@@ -2653,16 +2670,6 @@ exports.getAiUsage = onCall({ cors: true, secrets: [GEMINI_API_KEY] }, async (re
       name: 'Gemini 3.5 Flash',
       description: 'Modelo de produção balanceado para consistência e baixa latência.',
       category: 'Produção (Fallback)',
-      dailyLimit: 1500,
-      rpmLimit: 15,
-      tpmLimit: 1000000,
-    },
-    {
-      id: 'gemini-3.8-flash',
-      aliases: ['gemini-3.8-flash', 'gemini-3.8-flash-preview'],
-      name: 'Gemini 3.8 Flash',
-      description: 'Modelo de última geração para raciocínio multimodal, fotos e acervo do ateliê.',
-      category: 'Visão & Raciocínio',
       dailyLimit: 1500,
       rpmLimit: 15,
       tpmLimit: 1000000,
@@ -2830,7 +2837,7 @@ exports.getAiUsage = onCall({ cors: true, secrets: [GEMINI_API_KEY] }, async (re
     }
   }
 
-  const activeModelId = preferredWorkingModel || 'gemini-3.6-flash';
+  const activeModelId = preferredWorkingModel || 'gemini-3.8-flash';
 
   const models = MODEL_SPECS.map((spec, idx) => {
     const stats = modelStatsMap.get(spec.id) || { daily: 0, monthly: 0, rpm: 0 };
@@ -2915,7 +2922,7 @@ exports.getAiUsage = onCall({ cors: true, secrets: [GEMINI_API_KEY] }, async (re
  * Extrai descrição rica, tags sugeridas, tipo de produto e cores para busca e catálogo inteligente.
  * Guardrails estritos: usuário não-admin só pode enriquecer itens pertencentes a ele; admin tem acesso geral.
  */
-exports.enrichGalleryItemWithAi = onCall({ secrets: [GEMINI_API_KEY] }, async (request) => {
+exports.enrichGalleryItemWithAi = onCall({ cors: true, timeoutSeconds: 120, memory: '512MiB', secrets: [GEMINI_API_KEY] }, async (request) => {
   if (!request.auth) {
     throw new functions.https.HttpsError('unauthenticated', 'É necessário estar autenticado.');
   }
@@ -3013,22 +3020,25 @@ Responda ESTRITAMENTE em formato JSON com as seguintes propriedades (sem markdow
 }`;
 
   const candidateModels = [
-    process.env.GEMINI_MODEL || 'gemini-3.6-flash',
+    process.env.GEMINI_MODEL || 'gemini-3.8-flash',
+    'gemini-3.8-flash',
     'gemini-3.6-flash',
     'gemini-3.7-flash',
     'gemini-3.5-flash',
-    'gemini-3.8-flash',
     'gemini-3.1-flash-lite',
     'gemini-3.5-flash-lite',
     'gemini-3-flash-preview',
   ].filter((item, index, self) => Boolean(item) && self.indexOf(item) === index);
   let parsedAiResult = null;
-  let usedModel = 'gemini-3.6-flash';
+  let usedModel = 'gemini-3.8-flash';
   let lastError = null;
   let usageTokens = { promptTokens: 0, candidatesTokens: 0, totalTokens: 0 };
 
   for (const model of candidateModels) {
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15000);
+
     try {
       const resp = await fetch(url, {
         method: 'POST',
@@ -3049,8 +3059,10 @@ Responda ESTRITAMENTE em formato JSON com as seguintes propriedades (sem markdow
           generationConfig: {
             temperature: 0.2,
           }
-        })
+        }),
+        signal: controller.signal,
       });
+      clearTimeout(timeoutId);
 
       if (!resp.ok) {
         const errText = await resp.text();
@@ -3083,8 +3095,10 @@ Responda ESTRITAMENTE em formato JSON com as seguintes propriedades (sem markdow
         }
       }
     } catch (err) {
-      console.warn(`[enrichGalleryItemWithAi] Erro com modelo ${model}:`, err);
-      lastError = err;
+      clearTimeout(timeoutId);
+      const isTimeout = err?.name === 'AbortError';
+      console.warn(`[enrichGalleryItemWithAi] Erro com modelo ${model}:`, isTimeout ? 'Timeout de 15s excedido' : err);
+      lastError = isTimeout ? new Error(`Modelo ${model} excedeu timeout de 15s`) : err;
     }
   }
 
