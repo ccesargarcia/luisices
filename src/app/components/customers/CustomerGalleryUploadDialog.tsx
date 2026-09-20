@@ -101,12 +101,12 @@ export function CustomerGalleryUploadDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent size="md" className="max-h-[90dvh] overflow-y-auto">
-        <DialogHeader>
+      <DialogContent size="md" noPadding className="max-h-[90dvh] flex flex-col overflow-hidden">
+        <DialogHeader className="p-4 sm:p-6 pb-3 border-b border-border">
           <DialogTitle>Nova Arte — {customer?.name}</DialogTitle>
         </DialogHeader>
 
-        <div className="space-y-4 py-1">
+        <DialogBody className="p-4 sm:p-6 space-y-4">
           <input
             ref={fileInputRef}
             type="file"
@@ -187,9 +187,9 @@ export function CustomerGalleryUploadDialog({
             <Label>Tags</Label>
             <TagInput tags={tags} onChange={setTags} placeholder="Adicionar tag..." />
           </div>
-        </div>
+        </DialogBody>
 
-        <DialogFooter>
+        <DialogFooter className="p-4 sm:p-6 pt-3 border-t border-border flex items-center justify-end gap-2 bg-card">
           <Button variant="outline" onClick={() => handleClose(false)} disabled={saving}>
             Cancelar
           </Button>

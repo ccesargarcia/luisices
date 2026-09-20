@@ -435,12 +435,13 @@ export function NewOrderDialog({
           </Button>
         </DialogTrigger>
       )}
-      <DialogContent size="2xl" className="max-h-[90dvh] overflow-y-auto">
-        <DialogHeader>
+      <DialogContent size="2xl" noPadding className="max-h-[90dvh] flex flex-col overflow-hidden">
+        <DialogHeader className="p-4 sm:p-6 pb-3 border-b border-border">
           <DialogTitle>Adicionar Novo Pedido</DialogTitle>
           <DialogDescription className="sr-only">Formulário para criar um novo pedido</DialogDescription>
         </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0 overflow-hidden">
+          <DialogBody className="p-4 sm:p-6 space-y-4">
           <NewOrderCustomerSelect
             selectedCustomer={selectedCustomer}
             onSelectCustomer={setSelectedCustomer}
@@ -658,7 +659,8 @@ export function NewOrderDialog({
             />
           )}
 
-          <div className="flex flex-col-reverse gap-2 pt-4 sm:flex-row sm:justify-end">
+          </DialogBody>
+          <DialogFooter className="p-4 sm:p-6 pt-3 border-t border-border flex flex-col-reverse sm:flex-row sm:justify-end gap-2 bg-card">
             <Button type="button" variant="outline" onClick={() => setOpen(false)} disabled={loading}>
               Cancelar
             </Button>
@@ -670,7 +672,7 @@ export function NewOrderDialog({
               {loading && <Loader2 className="size-4 mr-2 animate-spin" />}
               Adicionar Pedido
             </Button>
-          </div>
+          </DialogFooter>
         </form>
       </DialogContent>
     </Dialog>

@@ -91,7 +91,7 @@ http://localhost:4000
 |---|---|---|---|
 | `aiAgentChat` | Callable v2 | Copiloto conversacional multimodal com tool calling: extração de pedidos, cálculo de precificação, sugestão de WhatsApp e consultas com isolamento de dados | Autenticado com `aiCopilot` (Rate limit: 60 req/min) |
 | `enrichGalleryItemWithAi` | Callable v2 | Visão computacional (Gemini Vision) para catalogar foto da galeria, extraindo descrição rica, tags e cores | Autenticado com `aiCopilot` e dono/admin da arte (Rate limit: 20 req/min) |
-| `syncAllOrdersToAiView` | Callable v2 | Sincronização em lote da coleção de pedidos para a base de leitura `ai_orders_view` | Apenas Admin |
+| `syncAllOrdersToAiView` | Callable v2 | *(Legada/No-op)* Mantida para compatibilidade retroativa; o Copiloto agora utiliza projeção em memória em tempo real direta de `orders` | Apenas Admin |
 | `getAiUsage` | Callable v2 | Consulta consumo de cota e métricas de requisições do Gemini API | Apenas Admin |
 
 ---
@@ -116,7 +116,7 @@ http://localhost:4000
    - `enrichGalleryItemWithAi`: máximo de 20 requisições por minuto por usuário autenticado.
 2. **Proteção Anti-Replay Svix**:
    - O webhook `resendReceivingWebhook` valida os headers `svix-id`, `svix-timestamp` e `svix-signature` com tolerância máxima de 300 segundos (5 minutos).
-3. **Isolamento Multiusuário de IA**:
-   - Chamadas de IA executam sob estrito isolamento por `callerUid` para usuários não-administradores. O acesso à base `ai_orders_view` é protegido e inacessível via SDK cliente.
+3. **Isolamento Multiusuário e Projeção em Memória de IA**:
+   - Chamadas de IA executam sob estrito isolamento por `callerUid` para usuários não-administradores com projeção de leitura em memória em tempo real. O Copiloto não possui poder de escrita direta em coleções operacionais.
 4. **Senhas**:
    - A aplicação nunca recebe nem armazena senhas em texto puro; todo o gerenciamento de credenciais é delegado com exclusividade ao Firebase Authentication.

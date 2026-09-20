@@ -13,6 +13,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogBody,
   DialogFooter,
 } from '../ui/dialog';
 import {
@@ -380,14 +381,15 @@ export function SuppliesTab({ supplies, loading, onRefresh }: SuppliesTabProps) 
 
       {/* Modal: Adicionar / Editar Insumo */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent size="md" className="max-h-[90dvh] overflow-y-auto">
-          <DialogHeader>
+        <DialogContent size="md" noPadding className="max-h-[90dvh] flex flex-col overflow-hidden">
+          <DialogHeader className="p-4 sm:p-6 pb-3 border-b border-border">
             <DialogTitle>
               {editingSupply ? 'Editar Insumo' : 'Novo Insumo / Matéria-Prima'}
             </DialogTitle>
           </DialogHeader>
 
-          <form onSubmit={handleSaveSupply} className="space-y-4">
+          <form onSubmit={handleSaveSupply} className="flex flex-col flex-1 min-h-0 overflow-hidden">
+            <DialogBody className="p-4 sm:p-6 space-y-4">
             <div>
               <Label htmlFor="supply-name" className="text-xs">
                 Nome do Insumo *
@@ -522,7 +524,8 @@ export function SuppliesTab({ supplies, loading, onRefresh }: SuppliesTabProps) 
               />
             </div>
 
-            <DialogFooter className="gap-2 sm:gap-0 pt-2">
+            </DialogBody>
+            <DialogFooter className="p-4 sm:p-6 pt-3 border-t border-border flex items-center justify-end gap-2 bg-card">
               <Button
                 type="button"
                 variant="outline"
