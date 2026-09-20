@@ -1087,8 +1087,11 @@ exports.syncAllOrdersToAiView = onCall(async () => {
 
 // Modelo padrão ultra-rápido memoizado em memória para respostas sub-segundo
 let preferredWorkingModel = 'gemini-2.0-flash';
-let cachedCandidateModels = null;
-let cachedModelsTimestamp = 0;
+
+// Cache global em memória para colaboradores/equipe (TTL de 10 minutos para evitar chamadas repetidas a Auth e Firestore)
+let cachedTeamMembers = null;
+let cachedTeamMembersTimestamp = 0;
+const TEAM_MEMBERS_CACHE_TTL = 10 * 60 * 1000;
 
 // Cache global em memória para respostas rápidas (TTL de 3 minutos)
 const aiResponseCache = new Map();
@@ -1415,21 +1418,21 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
   const fetchScopedOrders = async () => {
     let docs = [];
     if (isAdmin) {
-      // Administrador: lê pedidos ativos diretamente de 'orders' com limite de segurança (250 mais recentes)
+      // Administrador: lê pedidos ativos diretamente de 'orders' com limite enxuto (200 mais recentes)
       const snap = await admin
         .firestore()
         .collection('orders')
         .where('deletedAt', '==', null)
-        .limit(250)
+        .limit(200)
         .get();
 
       docs = snap.docs.map((d) => sanitizeOrderForAi(d.id, d.data()));
     } else {
       // Funcionário / Usuário: lê estritamente pedidos onde userId == callerUid ou assignedTo == callerUid
       const [userOrdersSnap, assignedOrdersSnap, createdOrdersSnap] = await Promise.all([
-        admin.firestore().collection('orders').where('userId', '==', callerUid).where('deletedAt', '==', null).limit(250).get(),
-        admin.firestore().collection('orders').where('assignedTo', '==', callerUid).where('deletedAt', '==', null).limit(250).get(),
-        admin.firestore().collection('orders').where('createdBy', '==', callerUid).where('deletedAt', '==', null).limit(250).get(),
+        admin.firestore().collection('orders').where('userId', '==', callerUid).where('deletedAt', '==', null).limit(200).get(),
+        admin.firestore().collection('orders').where('assignedTo', '==', callerUid).where('deletedAt', '==', null).limit(200).get(),
+        admin.firestore().collection('orders').where('createdBy', '==', callerUid).where('deletedAt', '==', null).limit(200).get(),
       ]);
 
       const map = new Map();
@@ -1450,8 +1453,12 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
     return docs;
   };
 
-  // Helper para obter diretório consolidado de todos os colaboradores do sistema
+  // Helper para obter diretório consolidado de todos os colaboradores do sistema (com cache de memória de 10 min)
   const getAllKnownTeamMembers = async () => {
+    if (cachedTeamMembers && (Date.now() - cachedTeamMembersTimestamp < TEAM_MEMBERS_CACHE_TTL)) {
+      return cachedTeamMembers;
+    }
+
     const memberMap = new Map();
 
     // 1. userProfiles
@@ -1500,7 +1507,7 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
 
     // 3. Orders (coleta criadores e responsáveis atribuídos)
     try {
-      const ordersSnap = await admin.firestore().collection('orders').limit(300).get();
+      const ordersSnap = await admin.firestore().collection('orders').limit(200).get();
       ordersSnap.docs.forEach((d) => {
         const data = d.data() || {};
         if (data.userId && !memberMap.has(data.userId)) {
@@ -1530,7 +1537,10 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
       console.warn('[getAllKnownTeamMembers] Erro ao ler orders para membros:', err);
     }
 
-    return Array.from(memberMap.values());
+    const result = Array.from(memberMap.values());
+    cachedTeamMembers = result;
+    cachedTeamMembersTimestamp = Date.now();
+    return result;
   };
 
   // Helper para resolver colaborador/usuário por nome, email ou UID com tolerância e normalização
@@ -2128,53 +2138,14 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
     parts: userParts
   });
 
-  // Obtém dinamicamente os modelos suportados pela API key, priorizando versões Flash e mais modernas
-  const getCandidateModels = async () => {
-    if (cachedCandidateModels && cachedCandidateModels.length > 0 && Date.now() - cachedModelsTimestamp < 3600000) {
-      return cachedCandidateModels;
-    }
-
-    try {
-      const listResp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`);
-      if (listResp.ok) {
-        const listData = await listResp.json();
-        const available = (listData.models || [])
-          .filter(m => Array.isArray(m.supportedGenerationMethods) && m.supportedGenerationMethods.includes('generateContent'))
-          .map(m => m.name.replace(/^models\//, ''));
-
-        if (available.length > 0) {
-          const flashModels = available.filter(m => m.includes('flash'));
-          const otherModels = available.filter(m => !m.includes('flash'));
-
-          cachedCandidateModels = [
-            process.env.GEMINI_MODEL,
-            preferredWorkingModel,
-            ...flashModels,
-            ...otherModels,
-            'gemini-3.1-pro-preview',
-            'gemini-3.0-flash',
-            'gemini-2.0-flash',
-          ].filter((item, index, self) => Boolean(item) && self.indexOf(item) === index);
-
-          cachedModelsTimestamp = Date.now();
-          console.log('[aiAgentChat] Modelos disponíveis detectados dinamicamente:', cachedCandidateModels);
-          return cachedCandidateModels;
-        }
-      }
-    } catch (err) {
-      console.warn('[aiAgentChat] Falha ao consultar endpoint de modelos:', err);
-    }
-
-    return [
-      process.env.GEMINI_MODEL,
-      preferredWorkingModel,
-      'gemini-3.1-pro-preview',
-      'gemini-3.0-flash',
-      'gemini-2.0-flash',
-    ].filter((item, index, self) => Boolean(item) && self.indexOf(item) === index);
-  };
-
-  const candidateModels = await getCandidateModels();
+  // Priorização direta do modelo mais rápido do Google sem consulta HTTP prévia (latência sub-segundo)
+  const candidateModels = [
+    process.env.GEMINI_MODEL,
+    preferredWorkingModel,
+    'gemini-2.0-flash',
+    'gemini-1.5-flash',
+    'gemini-1.5-pro',
+  ].filter((item, index, self) => Boolean(item) && self.indexOf(item) === index);
 
   const callGeminiWithFallback = async (payload) => {
     let lastError = null;
@@ -2842,40 +2813,12 @@ Responda ESTRITAMENTE em formato JSON com as seguintes propriedades (sem markdow
   "suggestedTags": ["tag1", "tag2", "tag3", "tag4", "tag5"]
 }`;
 
-  const getVisionModels = async () => {
-    try {
-      const listResp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`);
-      if (listResp.ok) {
-        const listData = await listResp.json();
-        const available = (listData.models || [])
-          .filter(m => Array.isArray(m.supportedGenerationMethods) && m.supportedGenerationMethods.includes('generateContent'))
-          .map(m => m.name.replace(/^models\//, ''));
-
-        if (available.length > 0) {
-          const flashModels = available.filter(m => m.includes('flash'));
-          const otherModels = available.filter(m => !m.includes('flash'));
-          return [
-            process.env.GEMINI_MODEL,
-            preferredWorkingModel,
-            ...flashModels,
-            ...otherModels,
-            'gemini-2.0-flash',
-            'gemini-1.5-flash',
-          ].filter((item, index, self) => Boolean(item) && self.indexOf(item) === index);
-        }
-      }
-    } catch (err) {
-      console.warn('[enrichGalleryItemWithAi] Falha ao consultar endpoint de modelos:', err);
-    }
-    return [
-      process.env.GEMINI_MODEL,
-      preferredWorkingModel,
-      'gemini-2.0-flash',
-      'gemini-1.5-flash',
-    ].filter((item, index, self) => Boolean(item) && self.indexOf(item) === index);
-  };
-
-  const candidateModels = await getVisionModels();
+  const candidateModels = [
+    process.env.GEMINI_MODEL,
+    preferredWorkingModel,
+    'gemini-2.0-flash',
+    'gemini-1.5-flash',
+  ].filter((item, index, self) => Boolean(item) && self.indexOf(item) === index);
   let parsedAiResult = null;
   let usedModel = 'gemini-2.0-flash';
   let lastError = null;
