@@ -689,6 +689,9 @@ export interface AiModelQuotaItem {
   category: string;
   isDefault?: boolean;
   isActive: boolean;
+  liveStatus?: "ONLINE" | "QUOTA_EXCEEDED" | "HIGH_DEMAND" | "DEGRADED" | "OFFLINE";
+  liveCode?: number;
+  liveMessage?: string;
   daily: {
     used: number;
     limit: number;
@@ -704,11 +707,23 @@ export interface AiModelQuotaItem {
   tpmLimit?: number;
 }
 
+export interface AiRecentLogItem {
+  id: string;
+  model: string;
+  action: string;
+  timestamp: string;
+  tokens?: number;
+}
+
 export interface AiUsageData {
   success: boolean;
   activeModel: string;
   provider: string;
   resetsAt: string;
+  liveHealth?: "OPERATIONAL" | "FALLBACK_ACTIVE" | "DEGRADED";
+  lastCheckedAt?: string;
+  totalTokensToday?: number;
+  recentLogs?: AiRecentLogItem[];
   totalDaily: {
     used: number;
     limit: number;

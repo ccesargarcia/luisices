@@ -2244,10 +2244,15 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
           // Memoiza o modelo bem-sucedido para que todas as próximas chamadas sejam diretas nele
           preferredWorkingModel = model;
 
-          // Registra consumo exato por requisição HTTP para a API Gemini
+          // Registra consumo exato e tokens em tempo real por requisição HTTP para a API Gemini
+          const usageMeta = data?.usageMetadata || {};
           admin.firestore().collection('ai_usage_logs').add({
             userId: callerUid,
             model: model,
+            action: 'copilot_chat',
+            promptTokens: usageMeta.promptTokenCount || 0,
+            candidatesTokens: usageMeta.candidatesTokenCount || 0,
+            totalTokens: usageMeta.totalTokenCount || 0,
             timestamp: new Date().toISOString(),
             createdAt: admin.firestore.FieldValue.serverTimestamp(),
           }).catch((err) => console.warn('[aiAgentChat] Erro ao gravar ai_usage_logs:', err));
@@ -2631,7 +2636,7 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
  * Consulta a cota e o consumo em tempo real de TODOS os modelos disponíveis da API Gemini.
  * Uso estritamente restrito a administradores.
  */
-exports.getAiUsage = onCall({ cors: true }, async (request) => {
+exports.getAiUsage = onCall({ secrets: [GEMINI_API_KEY], cors: true }, async (request) => {
   if (!request.auth) {
     throw new functions.https.HttpsError('unauthenticated', 'Usuário não autenticado.');
   }
@@ -2642,6 +2647,9 @@ exports.getAiUsage = onCall({ cors: true }, async (request) => {
   if (!isAdmin) {
     throw new functions.https.HttpsError('permission-denied', 'Acesso restrito a administradores.');
   }
+
+  const rawKey = (typeof GEMINI_API_KEY.value === 'function' ? GEMINI_API_KEY.value() : process.env.GEMINI_API_KEY) || '';
+  const apiKey = String(rawKey).trim();
 
   const now = new Date();
   const startOfTodayUtc = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 0, 0));
@@ -2725,9 +2733,10 @@ exports.getAiUsage = onCall({ cors: true }, async (request) => {
   let todayDocs = [];
   let monthDocs = [];
   let minuteDocs = [];
+  let recentLogs = [];
 
   try {
-    const [todaySnap, monthSnap, minuteSnap] = await Promise.all([
+    const [todaySnap, monthSnap, minuteSnap, recentSnap] = await Promise.all([
       admin.firestore().collection('ai_usage_logs')
         .where('timestamp', '>=', startOfTodayUtc.toISOString())
         .get(),
@@ -2737,13 +2746,64 @@ exports.getAiUsage = onCall({ cors: true }, async (request) => {
       admin.firestore().collection('ai_usage_logs')
         .where('timestamp', '>=', oneMinuteAgo.toISOString())
         .get(),
+      admin.firestore().collection('ai_usage_logs')
+        .orderBy('timestamp', 'desc')
+        .limit(10)
+        .get(),
     ]);
 
     todayDocs = todaySnap.docs.map(d => d.data());
     monthDocs = monthSnap.docs.map(d => d.data());
     minuteDocs = minuteSnap.docs.map(d => d.data());
+    recentLogs = recentSnap.docs.map(d => ({
+      id: d.id,
+      model: d.data().model || 'desconhecido',
+      action: d.data().action || 'copilot_chat',
+      timestamp: d.data().timestamp || new Date().toISOString(),
+      tokens: d.data().totalTokens || 0,
+    }));
   } catch (fsErr) {
-    console.warn('[getAiUsage] Erro ao consultar ai_usage_logs no Firestore:', fsErr);
+    console.warn('[getAiUsage] Erro ao consultar ai_usage_logs no Firestore (tentando fallback direto):', fsErr);
+    try {
+      const fallbackSnap = await admin.firestore().collection('ai_usage_logs').limit(100).get();
+      const allDocs = fallbackSnap.docs.map(d => d.data());
+      todayDocs = allDocs.filter(d => d.timestamp && d.timestamp >= startOfTodayUtc.toISOString());
+      monthDocs = allDocs.filter(d => d.timestamp && d.timestamp >= startOfMonthUtc.toISOString());
+      minuteDocs = allDocs.filter(d => d.timestamp && d.timestamp >= oneMinuteAgo.toISOString());
+      recentLogs = fallbackSnap.docs.slice(0, 10).map(d => ({
+        id: d.id,
+        model: d.data().model || 'desconhecido',
+        action: d.data().action || 'copilot_chat',
+        timestamp: d.data().timestamp || new Date().toISOString(),
+        tokens: d.data().totalTokens || 0,
+      }));
+    } catch (e2) {
+      console.warn('[getAiUsage] Falha completa ao ler ai_usage_logs:', e2);
+    }
+  }
+
+  // Consulta status de conectividade em tempo real diretamente na API do Gemini (Google AI Studio)
+  const liveStatusMap = {};
+  if (apiKey) {
+    await Promise.all(
+      MODEL_SPECS.map(async (spec) => {
+        try {
+          const probeUrl = `https://generativelanguage.googleapis.com/v1beta/models/${spec.id}?key=${apiKey}`;
+          const probeResp = await fetch(probeUrl, { method: 'GET' });
+          if (probeResp.status === 200) {
+            liveStatusMap[spec.id] = { status: 'ONLINE', code: 200, message: 'Operacional e disponível' };
+          } else if (probeResp.status === 429) {
+            liveStatusMap[spec.id] = { status: 'QUOTA_EXCEEDED', code: 429, message: 'Cota esgotada no Google (429)' };
+          } else if (probeResp.status === 503) {
+            liveStatusMap[spec.id] = { status: 'HIGH_DEMAND', code: 503, message: 'Alta demanda no Google (503)' };
+          } else {
+            liveStatusMap[spec.id] = { status: 'DEGRADED', code: probeResp.status, message: `Status ${probeResp.status}` };
+          }
+        } catch (netErr) {
+          liveStatusMap[spec.id] = { status: 'OFFLINE', code: 0, message: netErr.message };
+        }
+      })
+    );
   }
 
   const findSpecForDocModel = (docModel = '') => {
@@ -2791,6 +2851,7 @@ exports.getAiUsage = onCall({ cors: true }, async (request) => {
   const models = MODEL_SPECS.map(spec => {
     const stats = modelStatsMap.get(spec.id) || { daily: 0, monthly: 0, rpm: 0 };
     const percentage = Math.min(100, Math.round((stats.daily / spec.dailyLimit) * 100));
+    const live = liveStatusMap[spec.id] || { status: 'ONLINE', code: 200, message: 'Disponível' };
     return {
       id: spec.id,
       name: spec.name,
@@ -2798,6 +2859,9 @@ exports.getAiUsage = onCall({ cors: true }, async (request) => {
       category: spec.category,
       isDefault: Boolean(spec.isDefault),
       isActive: spec.id === activeModelId,
+      liveStatus: live.status,
+      liveCode: live.code,
+      liveMessage: live.message,
       daily: {
         used: stats.daily,
         limit: spec.dailyLimit,
@@ -2849,6 +2913,10 @@ exports.getAiUsage = onCall({ cors: true }, async (request) => {
       limit: 15,
       percentage: Math.min(100, Math.round((minuteDocs.length / 15) * 100)),
     },
+    recentLogs,
+    totalTokensToday: todayDocs.reduce((acc, d) => acc + (d.totalTokens || 0), 0),
+    liveHealth: Object.values(liveStatusMap).every(s => s.code === 200) ? 'OPERATIONAL' : 'FALLBACK_ACTIVE',
+    lastCheckedAt: new Date().toISOString(),
     monthly: {
       used: totalMonthlyUsed,
       limit: 45000,

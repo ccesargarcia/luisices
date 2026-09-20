@@ -32,6 +32,31 @@ const FALLBACK_MODELS: AiModelQuotaItem[] = [
     category: 'Produção (Padrão)',
     isDefault: true,
     isActive: true,
+    liveStatus: 'ONLINE',
+    daily: { used: 0, limit: 1500, percentage: 0 },
+    rpm: { used: 0, limit: 15 },
+    monthly: { used: 0 },
+    tpmLimit: 1000000,
+  },
+  {
+    id: 'gemini-3.7-flash',
+    name: 'Gemini 3.7 Flash',
+    description: 'Fallback de alta capacidade analítica e processamento híbrido veloz.',
+    category: 'Produção / Fallback',
+    isActive: false,
+    liveStatus: 'ONLINE',
+    daily: { used: 0, limit: 1500, percentage: 0 },
+    rpm: { used: 0, limit: 15 },
+    monthly: { used: 0 },
+    tpmLimit: 1000000,
+  },
+  {
+    id: 'gemini-3.5-flash',
+    name: 'Gemini 3.5 Flash',
+    description: 'Fallback ultra-estável com cota independente para blindagem contra 429.',
+    category: 'Alta Disponibilidade',
+    isActive: false,
+    liveStatus: 'ONLINE',
     daily: { used: 0, limit: 1500, percentage: 0 },
     rpm: { used: 0, limit: 15 },
     monthly: { used: 0 },
@@ -40,11 +65,36 @@ const FALLBACK_MODELS: AiModelQuotaItem[] = [
   {
     id: 'gemini-3.8-flash',
     name: 'Gemini 3.8 Flash',
-    description: 'Modelo de última geração para raciocínio multimodal avançado, fotos e acervo do ateliê.',
+    description: 'Modelo de última geração para raciocínio multimodal, fotos e acervo do ateliê.',
     category: 'Visão & Raciocínio',
     isActive: false,
+    liveStatus: 'ONLINE',
     daily: { used: 0, limit: 1500, percentage: 0 },
     rpm: { used: 0, limit: 15 },
+    monthly: { used: 0 },
+    tpmLimit: 1000000,
+  },
+  {
+    id: 'gemini-3.1-flash-lite',
+    name: 'Gemini 3.1 Flash Lite',
+    description: 'Linha Lite de latência ultra-baixa com pool de cotas dedicado.',
+    category: 'Lite / Backup',
+    isActive: false,
+    liveStatus: 'ONLINE',
+    daily: { used: 0, limit: 1500, percentage: 0 },
+    rpm: { used: 0, limit: 30 },
+    monthly: { used: 0 },
+    tpmLimit: 1000000,
+  },
+  {
+    id: 'gemini-3.5-flash-lite',
+    name: 'Gemini 3.5 Flash Lite',
+    description: 'Segurança máxima para evitar indisponibilidade por esgotamento de quota.',
+    category: 'Lite / Backup',
+    isActive: false,
+    liveStatus: 'ONLINE',
+    daily: { used: 0, limit: 1500, percentage: 0 },
+    rpm: { used: 0, limit: 30 },
     monthly: { used: 0 },
     tpmLimit: 1000000,
   },
@@ -54,6 +104,7 @@ const FALLBACK_MODELS: AiModelQuotaItem[] = [
     description: 'Próxima geração experimental com alta fidelidade lógica e estruturação.',
     category: 'Experimental / Preview',
     isActive: false,
+    liveStatus: 'ONLINE',
     daily: { used: 0, limit: 1500, percentage: 0 },
     rpm: { used: 0, limit: 15 },
     monthly: { used: 0 },
@@ -245,6 +296,22 @@ export function AiSettingsSection({ isAdmin }: AiSettingsSectionProps) {
                             Padrão
                           </Badge>
                         )}
+                        {m.liveStatus === 'ONLINE' && (
+                          <span className="inline-flex items-center gap-1 text-[10px] text-emerald-600 dark:text-emerald-400 font-medium">
+                            <span className="size-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                            Live 200 OK
+                          </span>
+                        )}
+                        {m.liveStatus === 'QUOTA_EXCEEDED' && (
+                          <Badge variant="destructive" className="text-[10px] px-1.5 py-0 h-4">
+                            429 Quota Exceeded
+                          </Badge>
+                        )}
+                        {m.liveStatus === 'HIGH_DEMAND' && (
+                          <Badge className="bg-amber-500 text-white text-[10px] px-1.5 py-0 h-4">
+                            503 Alta Demanda
+                          </Badge>
+                        )}
                       </div>
                       <p className="text-xs text-muted-foreground line-clamp-2">
                         {m.description}
@@ -288,16 +355,49 @@ export function AiSettingsSection({ isAdmin }: AiSettingsSectionProps) {
           </div>
         </div>
 
-        {/* Sincronização em Tempo Real Ativa */}
+        {/* Histórico Real de Requisições da API */}
+        {usage?.recentLogs && usage.recentLogs.length > 0 && (
+          <div className="space-y-2 pt-2">
+            <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+              <Activity className="size-3.5 text-emerald-500" />
+              Últimas Requisições Reais Executadas (Auditoria em Tempo Real)
+            </h4>
+            <div className="rounded-lg border bg-muted/20 divide-y divide-border/50 text-xs">
+              {usage.recentLogs.map((log) => (
+                <div key={log.id} className="p-2.5 flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <Badge variant="outline" className="font-mono text-[10px] py-0">
+                      {log.model}
+                    </Badge>
+                    <span className="text-foreground/80 font-medium">
+                      {log.action === 'gallery_vision_enrichment' ? 'Catalogação de Foto (Galeria)' : 'Interação Copiloto / Chat'}
+                    </span>
+                    {Boolean(log.tokens) && (
+                      <span className="text-[11px] text-muted-foreground">
+                        ({log.tokens.toLocaleString('pt-BR')} tokens)
+                      </span>
+                    )}
+                  </div>
+                  <span className="text-[11px] text-muted-foreground whitespace-nowrap">
+                    {new Date(log.timestamp).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Status de Saúde Global da Conexão */}
         <div className="p-3.5 rounded-xl border border-border/60 bg-muted/20 flex items-center justify-between text-xs text-muted-foreground">
           <span className="flex items-center gap-2">
             <ShieldCheck className="size-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
             <span>
-              <strong className="text-foreground">Sincronização em Tempo Real Ativa:</strong> O Copiloto opera com projeção em memória segura e somente-leitura.
+              <strong className="text-foreground">Auditoria Direta Conectada:</strong> Métricas aferidas diretamente no Firestore e com probe ativo na API do Google Gemini.
+              {usage?.totalTokensToday ? ` Total de tokens consumidos hoje: ${usage.totalTokensToday.toLocaleString('pt-BR')}.` : ''}
             </span>
           </span>
           <Badge variant="outline" className="text-[10px] text-emerald-600 dark:text-emerald-400 border-emerald-500/30 shrink-0">
-            Zero Manutenção
+            Tempo Real Ativo
           </Badge>
         </div>
       </CardContent>
