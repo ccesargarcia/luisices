@@ -1250,7 +1250,10 @@ Você possui responsabilidades principais com ferramentas especializadas:
 - GUARDRAIL 3 (PROTEÇÃO DE MARGEM FINANCEIRA): Nunca sugira preços que resultem em margem de lucro negativa ou prejuízo operacional (mantenha margem mínima de 30% a 50%).
 - GUARDRAIL 4 (CORTESIA E CDC NA COBRANÇA): Mensagens de cobrança devem ser 100% amigáveis, empáticas e profissionais, sem ameaças ou termos constrangedores.
 - GUARDRAIL 5 (RESPOSTAS LIMPAS EM PT-BR): NUNCA inclua seu raciocínio interno, scratchpad, notas ou pensamentos em inglês no texto de resposta. Responda DIRETA e EXCLUSIVAMENTE em Português do Brasil (pt-BR).
-- GUARDRAIL 6 (MULTIMODALIDADE & VISÃO COMPUTACIONAL): Quando o usuário enviar uma imagem na conversa, examine detalhadamente os elementos visuais (produto, estampa, cores, técnicas como silk, sublimação, bordado, laser). Você pode pesquisar o acervo com 'search_gallery_portfolio' para encontrar produtos similares que a Luisices já produziu, estimar custos com 'calculate_pricing_estimate' ou extrair um pedido com 'extract_order_draft'.
+- GUARDRAIL 6 (MULTIMODALIDADE & ANÁLISE VISUAL PRIORITÁRIA):
+  • Quando o usuário enviar uma imagem na conversa, sua PRIORIDADE MÁXIMA E ABSOLUTA é analisar com riqueza e clareza os detalhes visuais da imagem enviada: identifique o tipo de produto (ex: caneca, camiseta, chaveiro, ecobag, caixa cartonada, brinde), cores predominantes, arte/estampa, materiais aparentes e acabamentos ou técnicas recomendadas (como sublimação, silk screen, bordado, transfer laser, hot stamping, DTF ou corte a laser).
+  • NUNCA substitua a análise visual da imagem por uma busca na galeria. Forneça sempre a análise e descrição visual completa diretamente ao usuário.
+  • Chame a função 'search_gallery_portfolio' SOMENTE se o usuário pedir explicitamente por texto para pesquisar no acervo/galeria de fotos cadastradas no sistema (ex: "pesquise na galeria se já fizemos algo assim").
 - GUARDRAIL 7 (VOZ HUMANA E PROIBIÇÃO DE JARGÕES TÉCNICOS):
   • NUNCA mencione o nome técnico de suas funções ou ferramentas internas (ex: NUNCA diga 'ferramenta calculate_pricing_estimate', 'função query_orders_view', 'extract_order_draft', etc.). 
   • Em vez disso, fale sempre como uma assistente humana do ateliê:
@@ -2244,10 +2247,28 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
   };
 
   try {
+    const hasImage = Boolean(image && typeof image === 'object' && image.base64);
+    const cleanMsgLower = cleanMessage.toLowerCase();
+    const hasExplicitGallerySearch = /(pesquis|busc|encontr|procur|olh).*?(galeria|acervo|cat[aá]logo|fotos?|banco)/i.test(cleanMsgLower);
+
+    // Se o usuário enviou uma imagem para análise visual e NÃO solicitou expressamente busca no acervo/galeria,
+    // removemos 'search_gallery_portfolio' das ferramentas para garantir que o modelo realize a análise visual
+    // direta da imagem enviada em vez de tentar consultar o banco de dados.
+    const activeFunctionDeclarations = toolsDeclaration[0].function_declarations.filter((fn) => {
+      if (hasImage && !hasExplicitGallerySearch && fn.name === 'search_gallery_portfolio') {
+        return false;
+      }
+      return true;
+    });
+
+    const effectiveTools = activeFunctionDeclarations.length > 0
+      ? [{ function_declarations: activeFunctionDeclarations }]
+      : undefined;
+
     const geminiPayload = {
       system_instruction: { parts: [{ text: systemInstruction }] },
       contents,
-      tools: toolsDeclaration,
+      ...(effectiveTools ? { tools: effectiveTools } : {}),
       generationConfig: { temperature: 0.1 }
     };
 
@@ -2398,9 +2419,9 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
         // Segunda chamada enxuta para formulação rápida da resposta final
         const followUpContents = [
           ...contents,
-          { role: 'model', parts: [{ functionCall: functionCallPart.functionCall }] },
+          { role: 'model', parts: candidate.content.parts },
           {
-            role: 'function',
+            role: 'user',
             parts: [{
               functionResponse: {
                 name: 'query_orders_view',
@@ -2468,9 +2489,9 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
 
         const followUpContents = [
           ...contents,
-          { role: 'model', parts: [{ functionCall: functionCallPart.functionCall }] },
+          { role: 'model', parts: candidate.content.parts },
           {
-            role: 'function',
+            role: 'user',
             parts: [{
               functionResponse: {
                 name: 'search_gallery_portfolio',
@@ -2501,9 +2522,15 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
           const textResponse = cleanAiOutput(followUpParts.map(p => p.text).filter(Boolean).join('\n'));
 
           if (galleryResults.length === 0) {
-            finalAnswer = textResponse && textResponse.length > 20
-              ? textResponse
-              : 'Não encontrei nenhuma arte ou foto na galeria correspondente aos critérios consultados.';
+            if (hasImage) {
+              finalAnswer = textResponse && textResponse.length > 20
+                ? textResponse
+                : 'Não localizei fotos semelhantes registradas no acervo da galeria. Analisando a imagem enviada, você pode conferir as características e técnicas necessárias para confeccioná-la, ou se preferir, posso estimar os custos ou gerar um rascunho de pedido!';
+            } else {
+              finalAnswer = textResponse && textResponse.length > 20
+                ? textResponse
+                : 'Não encontrei nenhuma arte ou foto no acervo da galeria correspondente aos critérios consultados.';
+            }
           } else {
             const isGeneric =
               !textResponse ||
@@ -2522,7 +2549,11 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
           }
         } catch {
           if (galleryResults.length === 0) {
-            finalAnswer = 'Não encontrei nenhuma foto ou arte na galeria.';
+            if (hasImage) {
+              finalAnswer = 'Não localizei fotos semelhantes cadastradas na galeria. Caso deseje produzir a peça exibida na imagem enviada, posso calcular os custos ou estruturar um novo pedido!';
+            } else {
+              finalAnswer = 'Não encontrei nenhuma foto ou arte na galeria correspondente aos termos pesquisados.';
+            }
           } else {
             const list = galleryResults.map(it => `• **${it.title}** - [Ver Foto](${it.imageUrl})`).join('\n');
             finalAnswer = `Encontrei **${galleryResults.length} foto(s)/arte(s)** na galeria:\n\n${list}`;
