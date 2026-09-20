@@ -940,6 +940,30 @@ export function StoreProducts() {
     });
   }, [storeProducts, search, filterCategory, filterStatus]);
 
+  // Reset de pagina ao filtrar ou alterar tamanho da pagina
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [search, filterCategory, filterStatus, pageSize]);
+
+  const totalProducts = filteredProducts.length;
+  const effectivePageSize = typeof pageSize === "number" ? pageSize : (totalProducts || 1);
+  const totalPages = pageSize === "all" ? 1 : Math.max(1, Math.ceil(totalProducts / effectivePageSize));
+
+  useEffect(() => {
+    if (currentPage > totalPages && totalPages > 0) {
+      setCurrentPage(totalPages);
+    }
+  }, [currentPage, totalPages]);
+
+  const pagedProducts = useMemo(() => {
+    if (pageSize === "all") return filteredProducts;
+    const start = (currentPage - 1) * effectivePageSize;
+    return filteredProducts.slice(start, start + effectivePageSize);
+  }, [filteredProducts, currentPage, pageSize, effectivePageSize]);
+
+  const startItem = totalProducts === 0 ? 0 : (pageSize === "all" ? 1 : (currentPage - 1) * effectivePageSize + 1);
+  const endItem = pageSize === "all" ? totalProducts : Math.min(currentPage * effectivePageSize, totalProducts);
+
   async function handleDeleteConfirm() {
     if (!deleteTarget) return;
     try {
