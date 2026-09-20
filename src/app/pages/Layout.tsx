@@ -288,7 +288,7 @@ export function Layout() {
             <p className="truncate text-xs text-muted-foreground">{settings?.businessTagline || 'Sistema de Gestão'}</p>
           </div>
         </div>
-        <nav className="flex flex-1 flex-col gap-1 overflow-y-auto pr-1 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+        <nav className="flex flex-1 flex-col gap-1 overflow-y-auto overflow-x-hidden pr-1.5 custom-scrollbar">
           {filteredNavGroups.map((group, groupIdx) => (
             <div key={group.title} className="flex flex-col">
               {!sidebarCollapsed ? (
@@ -478,44 +478,46 @@ export function Layout() {
         'min-w-0 border-b border-white/40 bg-card/85 backdrop-blur-2xl transition-[margin,width] duration-300',
         sidebarCollapsed ? 'md:ml-20 md:w-[calc(100%-5rem)]' : 'md:ml-72 md:w-[calc(100%-18rem)]',
       )}>
-        <div className="w-full px-4 py-3">
+        <div className="w-full px-3 sm:px-4 py-2 sm:py-3">
           <div className="flex items-center justify-between gap-2">
-            <div className="flex items-center gap-2 min-w-0">
+            <div className="flex items-center gap-2 min-w-0 flex-1">
               {hasLogo ? (
                 <img
                   src={settings.logo}
                   alt={businessName}
-                  className="h-9 object-contain flex-shrink-0"
+                  className="h-8 sm:h-9 max-h-8 sm:max-h-9 max-w-[85px] sm:max-w-[140px] object-contain shrink-0 rounded-md"
                 />
               ) : (
-                <div className="flex items-center justify-center size-9 bg-primary text-primary-foreground rounded-lg flex-shrink-0">
-                  <Package2 className="size-5" />
+                <div className="flex items-center justify-center size-8 sm:size-9 bg-primary text-primary-foreground rounded-lg shrink-0 shadow-xs">
+                  <Package2 className="size-4 sm:size-5" />
                 </div>
               )}
-              <div className="min-w-0">
-                <div className="flex items-center gap-2">
-                  <h1 className="font-bold text-base sm:text-xl truncate">{businessName}</h1>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-1.5 sm:gap-2">
+                  <h1 className="font-bold text-sm sm:text-base md:text-xl line-clamp-2 sm:truncate text-foreground leading-tight" title={businessName}>
+                    {businessName}
+                  </h1>
                   {isDevEnvironment && (
-                    <Badge variant="outline" className="bg-yellow-500/10 text-yellow-600 border-yellow-400 font-mono text-[10px] px-1.5 py-0 h-5 hidden sm:inline-flex">
+                    <Badge variant="outline" className="bg-yellow-500/10 text-yellow-600 border-yellow-400 font-mono text-[9px] sm:text-[10px] px-1 sm:px-1.5 py-0 h-4 sm:h-5 hidden xs:inline-flex shrink-0">
                       DEV
                     </Badge>
                   )}
                 </div>
                 <div>
-                  <p className="text-xs text-muted-foreground hidden sm:block">
+                  <p className="text-xs text-muted-foreground hidden sm:block truncate">
                     {settings?.businessTagline || 'Sistema de Gestão de Pedidos'}
                   </p>
                 </div>
               </div>
             </div>
 
-            <div className="flex items-center gap-1.5 sm:gap-2">
+            <div className="flex items-center gap-1 sm:gap-2 shrink-0">
               {canQuickCreate && (
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button
                       size="sm"
-                      className="gap-1 sm:gap-1.5 h-8 sm:h-9 bg-primary text-primary-foreground font-semibold shadow-xs hover:bg-primary/90 px-2.5 sm:px-3 cursor-pointer shrink-0 rounded-lg sm:rounded-md"
+                      className="gap-1 sm:gap-1.5 h-8 sm:h-9 bg-primary text-primary-foreground font-semibold shadow-xs hover:bg-primary/90 px-2 sm:px-3 cursor-pointer shrink-0 rounded-lg sm:rounded-md"
                       title="Criar novo (+ Novo)"
                     >
                       <Plus className="size-4 shrink-0" />
@@ -572,10 +574,10 @@ export function Layout() {
                   variant="outline"
                   size="sm"
                   onClick={() => setAiCopilotOpen(true)}
-                  className="gap-1.5 h-8 sm:h-9 text-xs sm:text-sm font-medium border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400 hover:bg-amber-500/20 transition-colors shadow-xs"
+                  className="gap-1.5 h-8 sm:h-9 text-xs sm:text-sm font-medium border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400 hover:bg-amber-500/20 transition-colors shadow-xs px-2 sm:px-2.5 shrink-0"
                   title="Abrir Copiloto de IA Interno"
                 >
-                  <Sparkles className="size-3.5 sm:size-4 text-amber-500" />
+                  <Sparkles className="size-3.5 sm:size-4 text-amber-500 shrink-0" />
                   <span className="hidden md:inline">Copiloto</span>
                 </Button>
               )}
@@ -583,21 +585,23 @@ export function Layout() {
                 href="/catalogo"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium border border-primary/20 text-primary bg-primary/5 hover:bg-primary/10 transition-colors"
+                className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium border border-primary/20 text-primary bg-primary/5 hover:bg-primary/10 transition-colors shrink-0"
                 title="Abrir Catálogo Online público em nova aba"
               >
                 <Globe className="size-3.5" />
                 <span>Catálogo</span>
                 <ExternalLink className="size-3 opacity-60" />
               </a>
-              <AdminTeamFilter variant="header" />
+              <AdminTeamFilter variant="header" className="hidden md:inline-flex" />
               <NotificationBell />
-              <ThemeToggle />
+              <div className="hidden sm:inline-flex shrink-0">
+                <ThemeToggle />
+              </div>
               <Button
                 variant="ghost"
                 size="icon"
                 onClick={() => navigate('/ajuda')}
-                className="relative size-9 rounded-full text-muted-foreground hover:text-foreground"
+                className="relative size-9 rounded-full text-muted-foreground hover:text-foreground hidden lg:inline-flex shrink-0"
                 title="Central de Ajuda & Guia de Uso"
                 aria-label="Central de Ajuda"
               >
@@ -605,10 +609,10 @@ export function Layout() {
               </Button>
               <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" className="relative size-10 rounded-full">
-                  <Avatar>
+                <Button variant="ghost" className="relative size-8 sm:size-10 rounded-full shrink-0">
+                  <Avatar className="size-8 sm:size-10">
                     <AvatarImage src={settings?.avatar} alt="Avatar" />
-                    <AvatarFallback className="bg-primary text-primary-foreground">
+                    <AvatarFallback className="bg-primary text-primary-foreground text-xs sm:text-sm">
                       {getUserInitials()}
                     </AvatarFallback>
                   </Avatar>
@@ -871,7 +875,7 @@ export function Layout() {
               <span className="truncate px-0.5 leading-tight">Mais</span>
             </button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" side="top" sideOffset={8} className="mb-2 w-56 max-h-[70vh] overflow-y-auto">
+          <DropdownMenuContent align="end" side="top" sideOffset={8} className="mb-2 w-56 max-h-[70vh] overflow-y-auto custom-scrollbar">
             {mobileMoreNav.map((item: any) => {
               const badgeCount = item.badge ?? 0;
               return (
