@@ -1,5 +1,5 @@
 import { useMemo, useState, useEffect, Fragment } from 'react';
-import { Order, OrderStatus, UserProfile } from '../types';
+import { Order, OrderStatus, ProductionStep, UserProfile } from '../types';
 import { OrderCard } from '../components/OrderCard';
 import { OrderDetailsDialog } from '../components/OrderDetailsDialog';
 import { NewOrderDialog } from '../components/NewOrderDialog';
@@ -7,6 +7,7 @@ import { DeliveryAlerts } from '../components/DeliveryAlerts';
 import { OverdueOrders } from '../components/OverdueOrders';
 import { DashboardCardSkeleton, OrderCardSkeleton } from '../components/SkeletonLoaders';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
+import { SectionErrorBoundary } from '../components/common/SectionErrorBoundary';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
 import { cn } from '../components/ui/utils';
 import { Input } from '../components/ui/input';
@@ -31,6 +32,7 @@ import {
   Trash2,
   Users,
   UserCheck,
+  RefreshCw,
 } from 'lucide-react';
 import { AdminTeamFilter } from '../components/AdminTeamFilter';
 import { getTextColor } from '../utils/tagColors';
@@ -97,10 +99,12 @@ function getGreeting() {
 
 export function Dashboard() {
   const { user, userProfile, hasPermission } = useAuth();
+  const canEditOrder = userProfile?.role === 'admin' || userProfile?.role === 'user' || hasPermission((p) => p.orders?.edit ?? false);
   const {
     orders,
     loading,
     error,
+    refreshOrders,
     isFilterActive,
     selectedFilterLabel,
     clearUserFilter,
@@ -176,6 +180,21 @@ export function Dashboard() {
     } catch (err) {
       console.error('Erro ao atualizar status:', err);
       toast.error('Erro ao atualizar status do pedido');
+    }
+  };
+
+  const [advancingOrderId, setAdvancingOrderId] = useState<string | null>(null);
+
+  const handleUpdateWorkflowStep = async (orderId: string, step: ProductionStep) => {
+    setAdvancingOrderId(orderId);
+    try {
+      await firebaseOrderService.updateProductionStep(orderId, step, true);
+      toast.success('Etapa de produção avançada!');
+    } catch (err) {
+      console.error('Erro ao avançar etapa de produção:', err);
+      toast.error('Erro ao avançar etapa de produção');
+    } finally {
+      setAdvancingOrderId(null);
     }
   };
 
@@ -552,10 +571,25 @@ export function Dashboard() {
 
   if (error) {
     return (
-      <div className="flex items-center justify-center h-96">
-        <div className="text-center">
-          <p className="text-lg font-semibold text-red-600">Erro ao carregar pedidos</p>
-          <p className="text-sm text-muted-foreground mt-2">{error}</p>
+      <div className="flex items-center justify-center min-h-[50vh] p-4">
+        <div className="flex flex-col items-center justify-center max-w-md p-6 sm:p-8 rounded-2xl bg-card border border-destructive/20 text-center shadow-lg backdrop-blur-md animate-in fade-in">
+          <div className="size-12 rounded-2xl bg-destructive/10 text-destructive flex items-center justify-center mb-4">
+            <AlertCircle className="size-6" />
+          </div>
+          <h2 className="text-lg font-bold text-foreground">Erro ao carregar pedidos</h2>
+          <p className="text-sm text-muted-foreground mt-2 mb-6">
+            {error.includes('Missing or insufficient permissions')
+              ? 'Permissão em sincronização ou sessão expirada. Tente recarregar para restaurar a conexão.'
+              : error}
+          </p>
+          <Button
+            type="button"
+            onClick={() => refreshOrders()}
+            className="gap-2 cursor-pointer"
+          >
+            <RefreshCw className="size-4" />
+            <span>Tentar Novamente</span>
+          </Button>
         </div>
       </div>
     );
@@ -604,7 +638,8 @@ export function Dashboard() {
         </div>
       )}
 
-      <div data-kpi-grid data-count={firstGridCount} className={`grid gap-4 lg:gap-6 ${firstGridClass}`}>
+      <SectionErrorBoundary title="Métricas Financeiras">
+        <div data-kpi-grid data-count={firstGridCount} className={`grid gap-4 lg:gap-6 ${firstGridClass}`}>
         {showCard('total') && (
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
@@ -715,7 +750,8 @@ export function Dashboard() {
         </Card>
         )}
 
-      </div>
+        </div>
+      </SectionErrorBoundary>
 
       {/* Gráficos */}
       {stats.total > 0 && (showCard('statusChart') || showCard('weeklyChart')) && (
@@ -926,7 +962,8 @@ export function Dashboard() {
         </div>
       )}
 
-      <div id="dashboard-orders-section" className="space-y-4">
+      <SectionErrorBoundary title="Esteira de Pedidos">
+        <div id="dashboard-orders-section" className="space-y-4">
         <Tabs
           value={activeTab}
           onValueChange={(val) => {
@@ -991,6 +1028,8 @@ export function Dashboard() {
                     isSelected={selectedOrderIds.includes(order.id)}
                     onToggleSelect={toggleOrderSelection}
                     onClick={() => handleOrderClick(order)}
+                    onAdvanceStep={canEditOrder ? handleUpdateWorkflowStep : undefined}
+                    isAdvancing={advancingOrderId === order.id}
                   />
                 ))}
               </div>
@@ -1009,6 +1048,8 @@ export function Dashboard() {
                     isSelected={selectedOrderIds.includes(order.id)}
                     onToggleSelect={toggleOrderSelection}
                     onClick={() => handleOrderClick(order)}
+                    onAdvanceStep={canEditOrder ? handleUpdateWorkflowStep : undefined}
+                    isAdvancing={advancingOrderId === order.id}
                   />
                 ))}
               </div>
@@ -1027,6 +1068,8 @@ export function Dashboard() {
                     isSelected={selectedOrderIds.includes(order.id)}
                     onToggleSelect={toggleOrderSelection}
                     onClick={() => handleOrderClick(order)}
+                    onAdvanceStep={canEditOrder ? handleUpdateWorkflowStep : undefined}
+                    isAdvancing={advancingOrderId === order.id}
                   />
                 ))}
               </div>
@@ -1045,6 +1088,8 @@ export function Dashboard() {
                     isSelected={selectedOrderIds.includes(order.id)}
                     onToggleSelect={toggleOrderSelection}
                     onClick={() => handleOrderClick(order)}
+                    onAdvanceStep={canEditOrder ? handleUpdateWorkflowStep : undefined}
+                    isAdvancing={advancingOrderId === order.id}
                   />
                 ))}
               </div>
@@ -1103,7 +1148,8 @@ export function Dashboard() {
             </div>
           )}
         </Tabs>
-      </div>
+        </div>
+      </SectionErrorBoundary>
 
       {/* Diálogo de Atribuição em Lote */}
       <Dialog open={isBulkAssignOpen} onOpenChange={setIsBulkAssignOpen}>

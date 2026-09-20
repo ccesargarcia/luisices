@@ -702,6 +702,20 @@ export interface AiModelQuotaItem {
     used: number;
   };
   tpmLimit?: number;
+  liveStatus?: 'ONLINE' | 'QUOTA_EXCEEDED' | 'HIGH_DEMAND' | 'UNAVAILABLE' | 'OFFLINE';
+  liveCode?: number;
+  liveMessage?: string;
+}
+
+export interface AiRecentLogItem {
+  id: string;
+  model: string;
+  action: string;
+  promptTokens?: number;
+  candidatesTokens?: number;
+  totalTokens?: number;
+  timestamp: string;
+  userId?: string | null;
 }
 
 export interface AiUsageData {
@@ -720,6 +734,8 @@ export interface AiUsageData {
     percentage: number;
   };
   models: AiModelQuotaItem[];
+  recentLogs?: AiRecentLogItem[];
+  totalTokensToday?: number;
   daily?: {
     used: number;
     limit: number;
@@ -737,6 +753,13 @@ export interface AiUsageData {
     percentage: number;
     resetsAt: string;
   };
+}
+
+export interface AiCopilotSheetProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onApplyOrderDraft?: (draft: AiOrderDraft) => void;
+  onOpenOrderDetails?: (order: Order) => void;
 }
 
 // ─── Central de Atendimento WhatsApp ──────────────────────────────────────────

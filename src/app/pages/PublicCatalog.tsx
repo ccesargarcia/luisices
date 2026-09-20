@@ -1293,7 +1293,7 @@ export function PublicCatalog() {
 
         {/* 4. Barra Fixa Inferior de Conversão: Adaptativa (Bottom bar no mobile com safe-area / Floating Dock no desktop) */}
         {featureFlags.enableOnlineOrders !== false && totalItemsCount > 0 && !isCartOpen && !selectedProductPreview && (
-          <aside className="fixed bottom-0 inset-x-0 sm:bottom-6 sm:inset-x-auto sm:left-1/2 sm:-translate-x-1/2 z-40 p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:p-2.5 sm:px-5 bg-white/95 dark:bg-[#161214]/95 backdrop-blur-xl border-t sm:border border-stone-200/80 dark:border-[#ebcdcd]/20 sm:rounded-2xl shadow-2xl animate-in slide-in-from-bottom-4 duration-200">
+          <aside className="fixed bottom-0 inset-x-0 sm:bottom-6 sm:inset-x-auto sm:left-1/2 sm:-translate-x-1/2 z-floating-bar p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:p-2.5 sm:px-5 bg-white/95 dark:bg-[#161214]/95 backdrop-blur-xl border-t sm:border border-stone-200/80 dark:border-[#ebcdcd]/20 sm:rounded-2xl shadow-2xl animate-in slide-in-from-bottom-4 duration-200">
             <div className="max-w-md sm:w-[480px] mx-auto flex items-center justify-between gap-3">
               <div className="flex items-center gap-2.5">
                 <div className="relative p-2 rounded-xl bg-[#613d3e]/10 dark:bg-[#f4b7b9]/15 text-[#613d3e] dark:text-[#f4b7b9]">
@@ -1325,7 +1325,7 @@ export function PublicCatalog() {
 
         {/* 5. Modal Responsivo de Prévia / Personalização (2 Colunas no Desktop) */}
         {selectedProductPreview && (
-          <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/60 backdrop-blur-xs animate-in fade-in">
+          <div className="fixed inset-0 z-modal flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/60 backdrop-blur-xs animate-in fade-in">
             {/* Backdrop clicável para fechar no mobile e desktop */}
             <div 
               className="absolute inset-0" 
@@ -1445,7 +1445,7 @@ export function PublicCatalog() {
 
         {/* 6. Gaveta Lateral / Slide-over Drawer da Sacola de Pedidos */}
         {isCartOpen && featureFlags.enableOnlineOrders !== false && (
-          <div className="fixed inset-0 z-50 flex items-end sm:items-stretch sm:justify-end bg-black/60 backdrop-blur-xs animate-in fade-in">
+          <div className="fixed inset-0 z-drawer flex items-end sm:items-stretch sm:justify-end bg-black/60 backdrop-blur-xs animate-in fade-in">
             {/* Backdrop clicável no mobile e desktop */}
             <div 
               className="absolute inset-0" 
@@ -1630,7 +1630,7 @@ export function PublicCatalog() {
         {/* 6. MODAL DE CONFIRMAÇÃO DE PEDIDO ENVIADO */}
         {submittedOrderInfo && (
           <div 
-            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in"
+            className="fixed inset-0 z-modal flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in"
             onClick={() => setSubmittedOrderInfo(null)}
           >
             <div 

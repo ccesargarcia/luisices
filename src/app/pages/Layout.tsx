@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router';
-import { LayoutDashboard, Calendar, Users, Package2, Package, LogOut, Settings as SettingsIcon, BarChart3, FileText, ShoppingBag, Images, AtSign, Globe, Phone, Mail, MapPin, MessageCircle, MessageSquare, ArrowLeftRight, UserCog, Info, PanelLeftClose, PanelLeftOpen, MoreHorizontal, HelpCircle, Coins, ExternalLink, Store, Palette, ChevronDown, ChevronRight, ClipboardList, Sparkles } from 'lucide-react';
+import { LayoutDashboard, Calendar, Users, Package2, Package, LogOut, Settings as SettingsIcon, BarChart3, FileText, ShoppingBag, Images, AtSign, Globe, Phone, Mail, MapPin, MessageCircle, MessageSquare, ArrowLeftRight, UserCog, Info, PanelLeftClose, PanelLeftOpen, MoreHorizontal, HelpCircle, Coins, ExternalLink, Store, Palette, ChevronDown, ChevronRight, ClipboardList, Sparkles, Plus, PackagePlus, UserPlus } from 'lucide-react';
 import { cn } from '../components/ui/utils';
 import { useAuth } from '../../contexts/AuthContext';
+import { useOrders } from '../../contexts/OrdersContext';
 import { useUserSettings } from '../../hooks/useUserSettings';
 import { applyColorTheme } from '../utils/colorThemes';
 import { normalizePhoneForWhatsApp } from '../utils/whatsapp';
@@ -31,20 +32,45 @@ import {
 } from '../components/ui/dialog';
 import { AiCopilotSheet } from '../components/AiCopilotSheet';
 import { NewOrderDialog } from '../components/NewOrderDialog';
+import { CustomerFormDialog } from '../components/customers/CustomerFormDialog';
 import { AiOrderDraft } from '../types';
 
 import { firebaseWhatsAppService } from '../../services/firebaseWhatsAppService';
+
+/** Converte Date para string "YYYY-MM-DD" local (evita shift UTC à noite no Brasil) */
+function toLocalDateStr(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
 
 export function Layout() {
   const location = useLocation();
   const navigate = useNavigate();
   const { user, logout, isAdmin, userProfile, hasPermission } = useAuth();
+  const { orders } = useOrders();
   const { settings } = useUserSettings();
 
   const [aiCopilotOpen, setAiCopilotOpen] = useState(false);
   const [aiOrderDraft, setAiOrderDraft] = useState<AiOrderDraft | null>(null);
   const [aiNewOrderModalOpen, setAiNewOrderModalOpen] = useState(false);
+  const [isNewOrderOpen, setIsNewOrderOpen] = useState(false);
+  const [isNewCustomerOpen, setIsNewCustomerOpen] = useState(false);
   const [unreadWhatsAppCount, setUnreadWhatsAppCount] = useState(0);
+
+  // Quantidade de pedidos ativos com entrega prevista para a data atual
+  const todayDeliveriesCount = useMemo(() => {
+    const todayString = toLocalDateStr(new Date());
+    return (orders || []).filter(
+      (o) => o.deliveryDate === todayString && o.status !== 'completed' && o.status !== 'cancelled'
+    ).length;
+  }, [orders]);
+
+  const canCreateOrder = isAdmin || hasPermission((p) => p.orders?.create ?? false);
+  const canCreateQuote = isAdmin || hasPermission((p) => p.quotes?.create ?? false);
+  const canCreateCustomer = isAdmin || hasPermission((p) => p.customers?.create ?? false);
+  const canQuickCreate = canCreateOrder || canCreateQuote || canCreateCustomer;
 
   // Escuta contagem de mensagens não lidas do WhatsApp em tempo real
   useEffect(() => {
@@ -101,90 +127,125 @@ export function Layout() {
     }
   }, [location.pathname]);
 
-  const allNavItems = [
-    { name: 'Dashboard',       href: '/',           icon: LayoutDashboard, check: (p: any) => p.dashboard },
-    { name: 'Agenda Semanal', href: '/agenda',      icon: Calendar,        check: (p: any) => p.orders?.view },
-    { name: 'Clientes',       href: '/clientes',    icon: Users,           check: (p: any) => p.customers?.view },
-    { name: 'Atendimento',    href: '/whatsapp',    icon: MessageSquare,   badge: unreadWhatsAppCount, check: (p: any) => Boolean(p?.whatsapp) },
-    { name: 'Relatórios',     href: '/relatorios',  icon: BarChart3,       check: (p: any) => Boolean(p?.reports) },
-    { name: 'Orçamentos',     href: '/orcamentos',  icon: FileText,        check: (p: any) => p.quotes?.view },
-    { name: 'Produtos do Ateliê', href: '/produtos', icon: Package,        check: (p: any) => p.products?.view },
-    { name: 'Precificação',   href: '/precificacao',icon: Coins,           check: (p: any) => Boolean(p?.pricing) },
-    { name: 'Galeria',        href: '/galeria',     icon: Images,          check: (p: any) => p.gallery?.view },
-    { name: 'Permutas',       href: '/permutas',    icon: ArrowLeftRight,  check: (p: any) => Boolean(p?.exchanges) },
+  const rawNavGroups = useMemo(() => [
     {
-      name: 'Lojinha Online',
-      icon: Store,
-      check: (p: any) => Boolean(p?.store || p?.storeProducts?.view),
-      children: [
+      title: 'OPERAÇÃO DIÁRIA',
+      items: [
+        { name: 'Dashboard', href: '/', icon: LayoutDashboard, check: (p: any) => p.dashboard },
         {
-          name: 'Pedidos Recebidos',
-          href: '/pedidos-lojinha',
-          icon: ClipboardList,
-          check: (p: any) => Boolean(p?.store || p?.storeProducts?.view || p?.orders?.view),
+          name: 'Agenda Semanal',
+          href: '/agenda',
+          icon: Calendar,
+          check: (p: any) => p.orders?.view,
+          badge: todayDeliveriesCount,
+          badgeVariant: 'amber' as const,
+          badgeTitle: 'para hoje',
         },
         {
-          name: 'Produtos da Lojinha',
-          href: '/produtos-lojinha',
-          icon: ShoppingBag,
-          check: (p: any) => Boolean(p?.storeProducts?.view ?? p?.store ?? false),
-        },
-        {
-          name: 'Aparência & Vitrine',
-          href: '/personalizar-lojinha',
-          icon: Palette,
-          check: (p: any) => Boolean(p?.store),
+          name: 'Atendimento WhatsApp',
+          href: '/whatsapp',
+          icon: MessageSquare,
+          badge: unreadWhatsAppCount,
+          badgeVariant: 'emerald' as const,
+          badgeTitle: 'não lidas',
+          check: (p: any) => Boolean(p?.whatsapp),
         },
       ],
     },
-    { name: 'E-mails',        href: '/emails',      icon: Mail,            check: (p: any) => p.emails ?? false },
-    { name: 'Usuários',       href: '/usuarios',    icon: UserCog,         check: (p: any) => p.users?.view },
-  ];
+    {
+      title: 'VENDAS & CLIENTES',
+      items: [
+        { name: 'Clientes', href: '/clientes', icon: Users, check: (p: any) => p.customers?.view },
+        { name: 'Orçamentos', href: '/orcamentos', icon: FileText, check: (p: any) => p.quotes?.view },
+        { name: 'Permutas & Parcerias', href: '/permutas', icon: ArrowLeftRight, check: (p: any) => Boolean(p?.exchanges) },
+        {
+          name: 'Lojinha Online',
+          icon: Store,
+          check: (p: any) => Boolean(p?.store || p?.storeProducts?.view),
+          children: [
+            {
+              name: 'Pedidos Recebidos',
+              href: '/pedidos-lojinha',
+              icon: ClipboardList,
+              check: (p: any) => Boolean(p?.store || p?.storeProducts?.view || p?.orders?.view),
+            },
+            {
+              name: 'Produtos da Lojinha',
+              href: '/produtos-lojinha',
+              icon: ShoppingBag,
+              check: (p: any) => Boolean(p?.storeProducts?.view ?? p?.store ?? false),
+            },
+            {
+              name: 'Aparência & Vitrine',
+              href: '/personalizar-lojinha',
+              icon: Palette,
+              check: (p: any) => Boolean(p?.store),
+            },
+          ],
+        },
+      ],
+    },
+    {
+      title: 'ATELIÊ & PRODUÇÃO',
+      items: [
+        { name: 'Produtos do Ateliê', href: '/produtos', icon: Package, check: (p: any) => p.products?.view },
+        { name: 'Precificação & Custos', href: '/precificacao', icon: Coins, check: (p: any) => Boolean(p?.pricing) },
+        { name: 'Galeria de Artes', href: '/galeria', icon: Images, check: (p: any) => p.gallery?.view },
+      ],
+    },
+    {
+      title: 'GESTÃO & AJUSTES',
+      items: [
+        { name: 'Relatórios', href: '/relatorios', icon: BarChart3, check: (p: any) => Boolean(p?.reports) },
+        { name: 'Central de E-mails', href: '/emails', icon: Mail, check: (p: any) => p.emails ?? false },
+        { name: 'Equipe & Usuários', href: '/usuarios', icon: UserCog, check: (p: any) => p.users?.view },
+        { name: 'Configurações', href: '/configuracoes', icon: SettingsIcon, check: (p: any) => Boolean(p?.settings) || userProfile?.role === 'admin' },
+      ],
+    },
+  ], [todayDeliveriesCount, unreadWhatsAppCount, userProfile?.role]);
 
-  const navigation = useMemo(() => {
+  const filteredNavGroups = useMemo(() => {
     if (!userProfile) return [];
-    return allNavItems
-      .map(item => {
-        if ((item as any).adminOnly) {
-          return userProfile.role === 'admin' ? item : null;
-        }
-        if (item.children) {
-          const allowedChildren = item.children.filter(child => {
-            if ((child as any).adminOnly) return userProfile.role === 'admin';
-            return hasPermission(child.check);
-          });
-          if (allowedChildren.length === 0) return null;
-          return { ...item, children: allowedChildren };
-        }
-        if (hasPermission(item.check)) return item;
-        return null;
-      })
-      .filter(Boolean) as any[];
-  }, [userProfile, hasPermission]);
+    return rawNavGroups
+      .map((group) => {
+        const allowedItems = group.items
+          .map((item: any) => {
+            if (item.adminOnly && userProfile.role !== 'admin') return null;
+            if (item.children) {
+              const allowedChildren = item.children.filter((child: any) => {
+                if (child.adminOnly && userProfile.role !== 'admin') return false;
+                return hasPermission(child.check);
+              });
+              if (allowedChildren.length === 0) return null;
+              return { ...item, children: allowedChildren };
+            }
+            if (hasPermission(item.check)) return item;
+            return null;
+          })
+          .filter(Boolean) as any[];
 
-  const orderedNav = useMemo(() => {
-    const order = settings?.navOrder;
-    if (!order || order.length === 0) return navigation;
-    return [...navigation].sort((a, b) => {
-      const aKey = a.href || a.name;
-      const bKey = b.href || b.name;
-      const ai = order.indexOf(aKey);
-      const bi = order.indexOf(bKey);
-      return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
-    });
-  }, [settings?.navOrder, navigation]);
+        if (allowedItems.length === 0) return null;
+        return {
+          title: group.title,
+          items: allowedItems,
+        };
+      })
+      .filter(Boolean) as { title: string; items: any[] }[];
+  }, [userProfile, hasPermission, rawNavGroups]);
 
   const flatNavForMobile = useMemo(() => {
-    const list: { name: string; href: string; icon: any }[] = [];
-    navigation.forEach(item => {
-      if (item.children) {
-        item.children.forEach((c: any) => list.push(c));
-      } else if (item.href) {
-        list.push(item);
-      }
+    const list: { name: string; href: string; icon: any; badge?: number; badgeVariant?: 'emerald' | 'amber' }[] = [];
+    filteredNavGroups.forEach((group) => {
+      group.items.forEach((item) => {
+        if (item.children) {
+          item.children.forEach((c: any) => list.push(c));
+        } else if (item.href) {
+          list.push(item);
+        }
+      });
     });
     return list;
-  }, [navigation]);
+  }, [filteredNavGroups]);
 
   const mobilePrimaryNav = flatNavForMobile.slice(0, 4);
   const mobileMoreNav = flatNavForMobile.slice(4);
@@ -227,155 +288,165 @@ export function Layout() {
             <p className="truncate text-xs text-muted-foreground">{settings?.businessTagline || 'Sistema de Gestão'}</p>
           </div>
         </div>
-        <nav className="flex flex-1 flex-col gap-0.5 overflow-y-auto pr-1 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
-          {orderedNav.map((item) => {
-            // Caso 1: Item com submenu (Lojinha Online)
-            if (item.children && item.children.length > 0) {
-              const isChildActive = item.children.some((c: any) => location.pathname === c.href);
+        <nav className="flex flex-1 flex-col gap-1 overflow-y-auto pr-1 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+          {filteredNavGroups.map((group, groupIdx) => (
+            <div key={group.title} className="flex flex-col">
+              {!sidebarCollapsed ? (
+                <div className="text-[10px] font-bold tracking-wider text-muted-foreground/70 px-4 pt-3 pb-1 uppercase select-none">
+                  {group.title}
+                </div>
+              ) : (
+                groupIdx > 0 && <div className="my-1 border-t border-border/20 mx-3" />
+              )}
+              {group.items.map((item: any) => {
+                // Caso 1: Item com submenu (Lojinha Online)
+                if (item.children && item.children.length > 0) {
+                  const isChildActive = item.children.some((c: any) => location.pathname === c.href);
 
-              if (sidebarCollapsed) {
-                return (
-                  <DropdownMenu key={item.name}>
-                    <DropdownMenuTrigger asChild>
+                  if (sidebarCollapsed) {
+                    return (
+                      <DropdownMenu key={item.name}>
+                        <DropdownMenuTrigger asChild>
+                          <button
+                            type="button"
+                            title={item.name}
+                            className={cn(
+                              'flex items-center justify-center border-l-4 py-2.5 text-sm font-medium transition-colors w-full cursor-pointer',
+                              isChildActive
+                                ? 'border-primary bg-primary/10 text-primary'
+                                : 'border-transparent text-muted-foreground hover:border-primary/30 hover:bg-primary/5 hover:text-foreground'
+                            )}
+                          >
+                            <item.icon className="size-5 shrink-0" />
+                          </button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent side="right" align="start" className="w-48 ml-2">
+                          <DropdownMenuLabel className="text-xs text-muted-foreground font-bold uppercase tracking-wider">
+                            {item.name}
+                          </DropdownMenuLabel>
+                          <DropdownMenuSeparator />
+                          {item.children.map((child: any) => {
+                            const isSubActive = location.pathname === child.href;
+                            return (
+                              <DropdownMenuItem key={child.href} asChild>
+                                <Link
+                                  to={child.href}
+                                  className={cn(
+                                    'flex items-center gap-2 cursor-pointer text-xs',
+                                    isSubActive && 'font-bold text-primary bg-primary/10'
+                                  )}
+                                >
+                                  <child.icon className="size-4" />
+                                  <span>{child.name}</span>
+                                </Link>
+                              </DropdownMenuItem>
+                            );
+                          })}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    );
+                  }
+
+                  return (
+                    <div key={item.name} className="flex flex-col">
                       <button
                         type="button"
-                        title={item.name}
+                        onClick={() => setStoreSubmenuOpen(prev => !prev)}
                         className={cn(
-                          'flex items-center justify-center border-l-4 py-2.5 text-sm font-medium transition-colors w-full cursor-pointer',
+                          'flex items-center justify-between border-l-4 px-5 py-2 text-xs sm:text-sm font-medium transition-colors cursor-pointer w-full text-left',
                           isChildActive
-                            ? 'border-primary bg-primary/10 text-primary'
+                            ? 'border-primary/60 text-primary font-semibold'
                             : 'border-transparent text-muted-foreground hover:border-primary/30 hover:bg-primary/5 hover:text-foreground'
                         )}
                       >
-                        <item.icon className="size-5 shrink-0" />
+                        <div className="flex items-center gap-3.5 min-w-0">
+                          <item.icon className="size-5 shrink-0" />
+                          <span className="truncate">{item.name}</span>
+                        </div>
+                        <ChevronDown
+                          size={14}
+                          className={cn('transition-transform duration-200 shrink-0 text-muted-foreground', storeSubmenuOpen ? 'rotate-180 text-primary' : '')}
+                        />
                       </button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent side="right" align="start" className="w-48 ml-2">
-                      <DropdownMenuLabel className="text-xs text-muted-foreground font-bold uppercase tracking-wider">
-                        {item.name}
-                      </DropdownMenuLabel>
-                      <DropdownMenuSeparator />
-                      {item.children.map((child: any) => {
-                        const isSubActive = location.pathname === child.href;
-                        return (
-                          <DropdownMenuItem key={child.href} asChild>
-                            <Link
-                              to={child.href}
-                              className={cn(
-                                'flex items-center gap-2 cursor-pointer text-xs',
-                                isSubActive && 'font-bold text-primary bg-primary/10'
-                              )}
-                            >
-                              <child.icon className="size-4" />
-                              <span>{child.name}</span>
-                            </Link>
-                          </DropdownMenuItem>
-                        );
-                      })}
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                );
-              }
 
-              return (
-                <div key={item.name} className="flex flex-col">
-                  <button
-                    type="button"
-                    onClick={() => setStoreSubmenuOpen(prev => !prev)}
+                      {storeSubmenuOpen && (
+                        <div className="flex flex-col pl-9 pr-3 space-y-0.5 py-0.5">
+                          {item.children.map((child: any) => {
+                            const isSubActive = location.pathname === child.href;
+                            return (
+                              <Link
+                                key={child.href}
+                                to={child.href}
+                                className={cn(
+                                  'flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all',
+                                  isSubActive
+                                    ? 'bg-primary text-primary-foreground font-bold shadow-xs'
+                                    : 'text-muted-foreground hover:bg-primary/10 hover:text-foreground'
+                                )}
+                              >
+                                <child.icon className="size-3.5 shrink-0" />
+                                <span className="truncate">{child.name}</span>
+                              </Link>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  );
+                }
+
+                // Caso 2: Item normal de navegação
+                const isActive = location.pathname === item.href;
+                const badgeCount = item.badge ?? 0;
+                const badgeLabel = item.badgeTitle ? `(${badgeCount} ${item.badgeTitle})` : `(${badgeCount})`;
+                return (
+                  <Link
+                    key={item.href}
+                    to={item.href}
+                    title={sidebarCollapsed ? (badgeCount > 0 ? `${item.name} ${badgeLabel}` : item.name) : undefined}
                     className={cn(
-                      'flex items-center justify-between border-l-4 px-5 py-2 text-xs sm:text-sm font-medium transition-colors cursor-pointer w-full text-left',
-                      isChildActive
-                        ? 'border-primary/60 text-primary font-semibold'
-                        : 'border-transparent text-muted-foreground hover:border-primary/30 hover:bg-primary/5 hover:text-foreground'
+                      'relative flex items-center border-l-4 px-5 py-2 text-xs sm:text-sm font-medium transition-colors',
+                      sidebarCollapsed ? 'justify-center' : 'justify-between',
+                      isActive
+                        ? 'border-primary bg-primary/10 text-primary'
+                        : 'border-transparent text-muted-foreground hover:border-primary/30 hover:bg-primary/5 hover:text-foreground',
                     )}
                   >
                     <div className="flex items-center gap-3.5 min-w-0">
-                      <item.icon className="size-5 shrink-0" />
-                      <span className="truncate">{item.name}</span>
-                    </div>
-                    <ChevronDown
-                      size={14}
-                      className={cn('transition-transform duration-200 shrink-0 text-muted-foreground', storeSubmenuOpen ? 'rotate-180 text-primary' : '')}
-                    />
-                  </button>
-
-                  {storeSubmenuOpen && (
-                    <div className="flex flex-col pl-9 pr-3 space-y-0.5 py-0.5">
-                      {item.children.map((child: any) => {
-                        const isSubActive = location.pathname === child.href;
-                        return (
-                          <Link
-                            key={child.href}
-                            to={child.href}
+                      <div className="relative flex items-center justify-center">
+                        <item.icon className="size-5 shrink-0" />
+                        {sidebarCollapsed && badgeCount > 0 && (
+                          <span
                             className={cn(
-                              'flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all',
-                              isSubActive
-                                ? 'bg-primary text-primary-foreground font-bold shadow-xs'
-                                : 'text-muted-foreground hover:bg-primary/10 hover:text-foreground'
+                              'absolute -top-1 -right-1 size-2.5 rounded-full ring-2 ring-background animate-pulse',
+                              item.badgeVariant === 'amber' ? 'bg-amber-500' : 'bg-emerald-600'
                             )}
-                          >
-                            <child.icon className="size-3.5 shrink-0" />
-                            <span className="truncate">{child.name}</span>
-                          </Link>
-                        );
-                      })}
+                          />
+                        )}
+                      </div>
+                      <span className={cn('truncate transition-opacity duration-200', sidebarCollapsed ? 'hidden' : 'inline')}>
+                        {item.name}
+                      </span>
                     </div>
-                  )}
-                </div>
-              );
-            }
 
-            // Caso 2: Item normal de navegação
-            const isActive = location.pathname === item.href;
-            const badgeCount = item.badge ?? 0;
-            return (
-              <Link
-                key={item.href}
-                to={item.href}
-                title={sidebarCollapsed ? (badgeCount > 0 ? `${item.name} (${badgeCount} não lidas)` : item.name) : undefined}
-                className={cn(
-                  'relative flex items-center border-l-4 px-5 py-2 text-xs sm:text-sm font-medium transition-colors',
-                  sidebarCollapsed ? 'justify-center' : 'justify-between',
-                  isActive
-                    ? 'border-primary bg-primary/10 text-primary'
-                    : 'border-transparent text-muted-foreground hover:border-primary/30 hover:bg-primary/5 hover:text-foreground',
-                )}
-              >
-                <div className="flex items-center gap-3.5 min-w-0">
-                  <div className="relative flex items-center justify-center">
-                    <item.icon className="size-5 shrink-0" />
-                    {sidebarCollapsed && badgeCount > 0 && (
-                      <span className="absolute -top-1 -right-1 size-2.5 rounded-full bg-emerald-600 ring-2 ring-background animate-pulse" />
+                    {!sidebarCollapsed && badgeCount > 0 && (
+                      <Badge
+                        className={cn(
+                          'text-[10px] h-4.5 px-1.5 font-bold rounded-full shadow-xs shrink-0 ml-1',
+                          item.badgeVariant === 'amber'
+                            ? 'bg-amber-500/15 hover:bg-amber-500/20 text-amber-700 dark:text-amber-400 border border-amber-500/30'
+                            : 'bg-emerald-600 hover:bg-emerald-600 text-white animate-pulse'
+                        )}
+                      >
+                        {badgeCount > 99 ? '99+' : badgeCount}
+                      </Badge>
                     )}
-                  </div>
-                  <span className={cn('truncate transition-opacity duration-200', sidebarCollapsed ? 'hidden' : 'inline')}>
-                    {item.name}
-                  </span>
-                </div>
-
-                {!sidebarCollapsed && badgeCount > 0 && (
-                  <Badge className="bg-emerald-600 hover:bg-emerald-600 text-white text-[10px] h-4.5 px-1.5 font-bold rounded-full animate-pulse shadow-xs shrink-0 ml-1">
-                    {badgeCount > 99 ? '99+' : badgeCount}
-                  </Badge>
-                )}
-              </Link>
-            );
-          })}
+                  </Link>
+                );
+              })}
+            </div>
+          ))}
         </nav>
-        {canAccessSettings && <Link
-          to="/configuracoes"
-          title={sidebarCollapsed ? 'Configurações' : undefined}
-          className={cn(
-            'mx-4 flex items-center rounded-lg px-3 py-1.5 text-xs sm:text-sm font-medium transition-colors',
-            location.pathname === '/configuracoes'
-              ? 'bg-primary/10 text-primary font-semibold'
-              : 'text-muted-foreground hover:bg-primary/5 hover:text-foreground',
-            sidebarCollapsed ? 'justify-center' : 'gap-3.5',
-          )}
-        >
-          <SettingsIcon className="size-4.5 shrink-0" />
-          <span className={sidebarCollapsed ? 'hidden' : 'inline'}>Configurações</span>
-        </Link>}
         <Link
           to="/ajuda"
           title={sidebarCollapsed ? 'Central de Ajuda' : undefined}
@@ -439,6 +510,63 @@ export function Layout() {
             </div>
 
             <div className="flex items-center gap-1.5 sm:gap-2">
+              {canQuickCreate && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      size="sm"
+                      className="gap-1 sm:gap-1.5 h-8 sm:h-9 bg-primary text-primary-foreground font-semibold shadow-xs hover:bg-primary/90 px-2.5 sm:px-3 cursor-pointer shrink-0 rounded-lg sm:rounded-md"
+                      title="Criar novo (+ Novo)"
+                    >
+                      <Plus className="size-4 shrink-0" />
+                      <span className="hidden sm:inline">Novo</span>
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-52">
+                    <DropdownMenuLabel className="text-xs text-muted-foreground font-bold uppercase tracking-wider">
+                      Ações Rápidas
+                    </DropdownMenuLabel>
+                    <DropdownMenuSeparator />
+                    {canCreateOrder && (
+                      <DropdownMenuItem
+                        onClick={() => setIsNewOrderOpen(true)}
+                        className="cursor-pointer flex items-center gap-2"
+                      >
+                        <PackagePlus className="size-4 text-primary shrink-0" />
+                        <div className="flex flex-col">
+                          <span className="font-medium text-sm">Novo Pedido</span>
+                          <span className="text-[11px] text-muted-foreground">Cadastrar na esteira</span>
+                        </div>
+                      </DropdownMenuItem>
+                    )}
+                    {canCreateQuote && (
+                      <DropdownMenuItem
+                        onClick={() => navigate('/orcamentos?novo=1')}
+                        className="cursor-pointer flex items-center gap-2"
+                      >
+                        <FileText className="size-4 text-primary shrink-0" />
+                        <div className="flex flex-col">
+                          <span className="font-medium text-sm">Novo Orçamento</span>
+                          <span className="text-[11px] text-muted-foreground">Gerar proposta</span>
+                        </div>
+                      </DropdownMenuItem>
+                    )}
+                    {canCreateCustomer && (
+                      <DropdownMenuItem
+                        onClick={() => setIsNewCustomerOpen(true)}
+                        className="cursor-pointer flex items-center gap-2"
+                      >
+                        <UserPlus className="size-4 text-primary shrink-0" />
+                        <div className="flex flex-col">
+                          <span className="font-medium text-sm">Novo Cliente</span>
+                          <span className="text-[11px] text-muted-foreground">Cadastrar contato</span>
+                        </div>
+                      </DropdownMenuItem>
+                    )}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
+
               {canAccessAiCopilot && (
                 <Button
                   variant="outline"
@@ -694,7 +822,7 @@ export function Layout() {
       </footer>
 
       {/* Navegação inferior — somente mobile */}
-      <nav className="fixed inset-x-0 bottom-0 z-40 flex border-t border-white/40 bg-card/90 pb-[env(safe-area-inset-bottom)] backdrop-blur-2xl md:hidden">
+      <nav className="fixed inset-x-0 bottom-0 z-bottom-nav flex border-t border-white/40 bg-card/90 pb-[env(safe-area-inset-bottom)] backdrop-blur-2xl md:hidden">
         {mobilePrimaryNav.map((item: any) => {
           const isActive = location.pathname === item.href;
           const badgeCount = item.badge ?? 0;
@@ -710,7 +838,12 @@ export function Layout() {
               <div className="relative flex items-center justify-center">
                 <item.icon className="size-5 shrink-0" />
                 {badgeCount > 0 && (
-                  <span className="absolute -top-1 -right-1 size-2 rounded-full bg-emerald-600 ring-2 ring-card animate-pulse" />
+                  <span
+                    className={cn(
+                      'absolute -top-1 -right-1 size-2 rounded-full ring-2 ring-card animate-pulse',
+                      item.badgeVariant === 'amber' ? 'bg-amber-500' : 'bg-emerald-600'
+                    )}
+                  />
                 )}
               </div>
               <span className="truncate w-full text-center px-0.5 leading-tight">
@@ -738,7 +871,7 @@ export function Layout() {
               <span className="truncate px-0.5 leading-tight">Mais</span>
             </button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" side="top" sideOffset={8} className="mb-2 w-52">
+          <DropdownMenuContent align="end" side="top" sideOffset={8} className="mb-2 w-56 max-h-[70vh] overflow-y-auto">
             {mobileMoreNav.map((item: any) => {
               const badgeCount = item.badge ?? 0;
               return (
@@ -749,7 +882,14 @@ export function Layout() {
                       <span>{item.name}</span>
                     </div>
                     {badgeCount > 0 && (
-                      <Badge className="bg-emerald-600 text-white text-[10px] h-4 px-1 font-bold">
+                      <Badge
+                        className={cn(
+                          'text-[10px] h-4 px-1.5 font-bold',
+                          item.badgeVariant === 'amber'
+                            ? 'bg-amber-500/15 text-amber-700 dark:text-amber-400 border border-amber-500/30'
+                            : 'bg-emerald-600 text-white'
+                        )}
+                      >
                         {badgeCount}
                       </Badge>
                     )}
@@ -774,7 +914,7 @@ export function Layout() {
         </DropdownMenu>
       </nav>
 
-      {/* Copiloto de IA Interno & Modal de Novo Pedido Preenchido */}
+      {/* Copiloto de IA Interno & Modais Globais de Ação Rápida */}
       {canAccessAiCopilot && (
         <AiCopilotSheet
           open={aiCopilotOpen}
@@ -783,10 +923,21 @@ export function Layout() {
         />
       )}
       <NewOrderDialog
-        open={aiNewOrderModalOpen}
-        onOpenChange={setAiNewOrderModalOpen}
+        open={isNewOrderOpen || aiNewOrderModalOpen}
+        onOpenChange={(open) => {
+          setIsNewOrderOpen(open);
+          setAiNewOrderModalOpen(open);
+          if (!open) {
+            setAiOrderDraft(null);
+          }
+        }}
         initialDraft={aiOrderDraft}
         hideTrigger={true}
+      />
+      <CustomerFormDialog
+        open={isNewCustomerOpen}
+        onOpenChange={setIsNewCustomerOpen}
+        userId={user?.uid}
       />
     </div>
   );

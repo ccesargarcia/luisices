@@ -26,6 +26,7 @@ export interface OrdersContextValue {
   allOrders: Order[];
   loading: boolean;
   error: string | null;
+  refreshOrders: () => void;
   selectedUserIds: string[];
   setSelectedUserIds: (ids: string[]) => void;
   selectSoloUser: (id: string) => void;
@@ -56,6 +57,7 @@ const OrdersContext = createContext<OrdersContextValue>({
   allOrders: [],
   loading: true,
   error: null,
+  refreshOrders: () => {},
   selectedUserIds: [],
   setSelectedUserIds: () => {},
   selectSoloUser: () => {},
@@ -69,12 +71,37 @@ const OrdersContext = createContext<OrdersContextValue>({
 });
 
 export function OrdersProvider({ children }: { children: ReactNode }) {
-  const { user, userProfile } = useAuth();
+  const { user, userProfile, loading: authLoading } = useAuth();
   const [allOrders, setAllOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [profiles, setProfiles] = useState<UserProfile[]>([]);
   const [selectedUserIds, setSelectedUserIdsState] = useState<string[]>(getInitialSelectedUsers);
+  const [reloadToken, setReloadToken] = useState(0);
+
+  const refreshOrders = useCallback(() => {
+    setReloadToken((prev) => prev + 1);
+  }, []);
+
+  // Detecção de retomada de segundo plano no mobile (sleep / alternância de apps) e reconexão de rede
+  useEffect(() => {
+    const handleResume = async () => {
+      if (document.visibilityState === 'visible' && user) {
+        try {
+          // Força renovação do token do Firebase caso tenha expirado durante o bloqueio de tela
+          await user.getIdToken(false);
+        } catch {}
+        setReloadToken((prev) => prev + 1);
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleResume);
+    window.addEventListener('online', handleResume);
+    return () => {
+      document.removeEventListener('visibilitychange', handleResume);
+      window.removeEventListener('online', handleResume);
+    };
+  }, [user]);
 
   // Carregar perfis em tempo real quando for admin ou funcionário
   useEffect(() => {
@@ -98,7 +125,7 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
     );
 
     return () => unsub();
-  }, [user, userProfile?.role]);
+  }, [user, userProfile?.role, reloadToken]);
 
   // Listener para pedidos no Firestore
   useEffect(() => {
@@ -106,6 +133,13 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
       setAllOrders([]);
       setLoading(false);
       setError(null);
+      return;
+    }
+
+    // Condição de corrida: aguarda a resolução do perfil do usuário caso a autenticação
+    // ainda esteja baixando o perfil do Firestore, evitando consultas com permissões incorretas
+    if (authLoading && !userProfile) {
+      setLoading(true);
       return;
     }
 
@@ -213,7 +247,7 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
     }
 
     return () => unsubscribers.forEach(unsubscribe => unsubscribe());
-  }, [user, userProfile?.role]);
+  }, [user, userProfile?.role, authLoading, reloadToken]);
 
   // Enriquece pedidos com o nome do criador se disponível nos perfis
   const enrichedOrders = useMemo(() => {
@@ -397,6 +431,7 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
         allOrders: enrichedOrders,
         loading,
         error,
+        refreshOrders,
         selectedUserIds,
         setSelectedUserIds,
         selectSoloUser,

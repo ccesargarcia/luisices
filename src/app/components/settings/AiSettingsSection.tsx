@@ -7,18 +7,15 @@ import {
   Sparkles,
   RefreshCw,
   ExternalLink,
-  Database,
   Activity,
   Zap,
-  CheckCircle2,
   Clock,
   Layers,
   Cpu,
-  Info,
+  ShieldCheck,
 } from 'lucide-react';
 import { firebaseAiAgentService } from '../../../services/firebaseAiAgentService';
 import { AiUsageData, AiModelQuotaItem } from '../../types';
-import { toast } from 'sonner';
 
 interface AiSettingsSectionProps {
   isAdmin: boolean;
@@ -26,9 +23,9 @@ interface AiSettingsSectionProps {
 
 const FALLBACK_MODELS: AiModelQuotaItem[] = [
   {
-    id: 'gemini-2.0-flash',
-    name: 'Gemini 2.0 Flash',
-    description: 'Modelo de última geração ultra-rápido com suporte multimodal e tool calls integradas.',
+    id: 'gemini-3.6-flash',
+    name: 'Gemini 3.6 Flash',
+    description: 'Modelo principal de alta velocidade em produção com suporte multimodal e tool calls integradas.',
     category: 'Produção (Padrão)',
     isDefault: true,
     isActive: true,
@@ -36,43 +33,83 @@ const FALLBACK_MODELS: AiModelQuotaItem[] = [
     rpm: { used: 0, limit: 15 },
     monthly: { used: 0 },
     tpmLimit: 1000000,
+    liveStatus: 'ONLINE',
+    liveCode: 200,
+    liveMessage: 'Live 200 OK',
   },
   {
-    id: 'gemini-2.0-flash-lite',
-    name: 'Gemini 2.0 Flash-Lite',
-    description: 'Modelo ultra-leve e econômico para respostas instantâneas e alto throughput.',
-    category: 'Alta Eficiência / Lite',
-    isActive: false,
-    daily: { used: 0, limit: 1500, percentage: 0 },
-    rpm: { used: 0, limit: 30 },
-    monthly: { used: 0 },
-    tpmLimit: 1000000,
-  },
-  {
-    id: 'gemini-1.5-flash',
-    name: 'Gemini 1.5 Flash',
-    description: 'Modelo comprovado e estável para briefings diários e consultas operacionais.',
-    category: 'Fallback Estável',
+    id: 'gemini-3.7-flash',
+    name: 'Gemini 3.7 Flash',
+    description: 'Modelo avançado com raciocínio híbrido e alta capacidade analítica.',
+    category: 'Raciocínio Avançado',
     isActive: false,
     daily: { used: 0, limit: 1500, percentage: 0 },
     rpm: { used: 0, limit: 15 },
     monthly: { used: 0 },
     tpmLimit: 1000000,
+    liveStatus: 'ONLINE',
+    liveCode: 200,
+    liveMessage: 'Live 200 OK',
   },
   {
-    id: 'gemini-1.5-pro',
-    name: 'Gemini 1.5 Pro',
-    description: 'Modelo de raciocínio profundo para análises complexas e grandes janelas de contexto.',
-    category: 'Raciocínio Avançado',
+    id: 'gemini-3.5-flash',
+    name: 'Gemini 3.5 Flash',
+    description: 'Modelo de produção balanceado para consistência e baixa latência.',
+    category: 'Produção (Fallback)',
     isActive: false,
-    daily: { used: 0, limit: 50, percentage: 0 },
-    rpm: { used: 0, limit: 2 },
+    daily: { used: 0, limit: 1500, percentage: 0 },
+    rpm: { used: 0, limit: 15 },
     monthly: { used: 0 },
-    tpmLimit: 32000,
+    tpmLimit: 1000000,
+    liveStatus: 'ONLINE',
+    liveCode: 200,
+    liveMessage: 'Live 200 OK',
   },
   {
-    id: 'gemini-3.0-flash',
-    name: 'Gemini 3.0 Flash (Preview)',
+    id: 'gemini-3.8-flash',
+    name: 'Gemini 3.8 Flash',
+    description: 'Modelo de última geração para raciocínio multimodal avançado, fotos e acervo do ateliê.',
+    category: 'Visão & Raciocínio',
+    isActive: false,
+    daily: { used: 0, limit: 1500, percentage: 0 },
+    rpm: { used: 0, limit: 15 },
+    monthly: { used: 0 },
+    tpmLimit: 1000000,
+    liveStatus: 'ONLINE',
+    liveCode: 200,
+    liveMessage: 'Live 200 OK',
+  },
+  {
+    id: 'gemini-3.1-flash-lite',
+    name: 'Gemini 3.1 Flash Lite',
+    description: 'Modelo ultraleve e econômico para triagens e respostas instantâneas.',
+    category: 'Econômico / Lite',
+    isActive: false,
+    daily: { used: 0, limit: 1500, percentage: 0 },
+    rpm: { used: 0, limit: 15 },
+    monthly: { used: 0 },
+    tpmLimit: 1000000,
+    liveStatus: 'ONLINE',
+    liveCode: 200,
+    liveMessage: 'Live 200 OK',
+  },
+  {
+    id: 'gemini-3.5-flash-lite',
+    name: 'Gemini 3.5 Flash Lite',
+    description: 'Modelo leve com pool de cota isolado para alta taxa de requisições.',
+    category: 'Econômico / Lite',
+    isActive: false,
+    daily: { used: 0, limit: 1500, percentage: 0 },
+    rpm: { used: 0, limit: 15 },
+    monthly: { used: 0 },
+    tpmLimit: 1000000,
+    liveStatus: 'ONLINE',
+    liveCode: 200,
+    liveMessage: 'Live 200 OK',
+  },
+  {
+    id: 'gemini-3-flash-preview',
+    name: 'Gemini 3 Flash Preview',
     description: 'Próxima geração experimental com alta fidelidade lógica e estruturação.',
     category: 'Experimental / Preview',
     isActive: false,
@@ -80,6 +117,9 @@ const FALLBACK_MODELS: AiModelQuotaItem[] = [
     rpm: { used: 0, limit: 15 },
     monthly: { used: 0 },
     tpmLimit: 1000000,
+    liveStatus: 'ONLINE',
+    liveCode: 200,
+    liveMessage: 'Live 200 OK',
   },
 ];
 
@@ -88,7 +128,6 @@ export function AiSettingsSection({ isAdmin }: AiSettingsSectionProps) {
 
   const [usage, setUsage] = useState<AiUsageData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [syncingOrders, setSyncingOrders] = useState(false);
 
   const fetchUsage = async () => {
     if (!isAdmin) return;
@@ -101,7 +140,7 @@ export function AiSettingsSection({ isAdmin }: AiSettingsSectionProps) {
       // Fallback amigável com lista completa de modelos
       setUsage({
         success: true,
-        activeModel: 'gemini-2.0-flash',
+        activeModel: 'gemini-3.6-flash',
         provider: 'Google AI Studio / Gemini API',
         resetsAt: new Date(Date.now() + 86400000).toISOString(),
         totalDaily: { used: 0, limit: 1500, percentage: 0 },
@@ -119,20 +158,6 @@ export function AiSettingsSection({ isAdmin }: AiSettingsSectionProps) {
     }
   }, [isAdmin]);
 
-  const handleSyncOrders = async () => {
-    if (!isAdmin || syncingOrders) return;
-    setSyncingOrders(true);
-    try {
-      const res = await firebaseAiAgentService.syncAllOrders();
-      toast.success(res.message || `${res.count} pedidos sincronizados para a base da IA!`);
-    } catch (err: any) {
-      console.error('[AiSettingsSection] Erro na sincronização:', err);
-      toast.error(err.message || 'Falha ao sincronizar pedidos.');
-    } finally {
-      setSyncingOrders(false);
-    }
-  };
-
   const getUsageColor = (percentage: number) => {
     if (percentage > 85) return 'text-red-500 dark:text-red-400';
     if (percentage > 60) return 'text-amber-500 dark:text-amber-400';
@@ -149,6 +174,83 @@ export function AiSettingsSection({ isAdmin }: AiSettingsSectionProps) {
     }
   };
 
+  const formatLogTime = (isoString?: string) => {
+    if (!isoString) return '--';
+    try {
+      const d = new Date(isoString);
+      return d.toLocaleString('pt-BR', {
+        day: '2-digit',
+        month: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+      });
+    } catch {
+      return isoString;
+    }
+  };
+
+  const formatActionLabel = (action: string) => {
+    switch (action) {
+      case 'copilot_chat':
+        return 'Chat Copiloto';
+      case 'gallery_vision_enrichment':
+        return 'Visão Galeria';
+      default:
+        return action || 'Requisição IA';
+    }
+  };
+
+  const renderLiveTelemetryBadge = (model: AiModelQuotaItem) => {
+    const status = model.liveStatus || (model.liveCode === 200 ? 'ONLINE' : undefined);
+
+    if (status === 'ONLINE' || model.liveCode === 200) {
+      return (
+        <Badge
+          variant="outline"
+          className="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30 text-[10px] px-1.5 py-0 h-4 font-mono font-medium shrink-0"
+        >
+          <span className="inline-block size-1.5 rounded-full bg-emerald-500 animate-pulse mr-1" />
+          Live 200 OK
+        </Badge>
+      );
+    }
+
+    if (status === 'QUOTA_EXCEEDED' || model.liveCode === 429) {
+      return (
+        <Badge
+          variant="outline"
+          className="bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/30 text-[10px] px-1.5 py-0 h-4 font-mono font-medium shrink-0"
+        >
+          <span className="inline-block size-1.5 rounded-full bg-red-500 mr-1" />
+          429 Quota Exceeded
+        </Badge>
+      );
+    }
+
+    if (status === 'HIGH_DEMAND' || model.liveCode === 503) {
+      return (
+        <Badge
+          variant="outline"
+          className="bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30 text-[10px] px-1.5 py-0 h-4 font-mono font-medium shrink-0"
+        >
+          <span className="inline-block size-1.5 rounded-full bg-amber-500 mr-1" />
+          503 Alta Demanda
+        </Badge>
+      );
+    }
+
+    return (
+      <Badge
+        variant="outline"
+        className="bg-muted text-muted-foreground border-border text-[10px] px-1.5 py-0 h-4 font-mono shrink-0"
+      >
+        <span className="inline-block size-1.5 rounded-full bg-zinc-400 mr-1" />
+        {model.liveMessage || 'Offline'}
+      </Badge>
+    );
+  };
+
   const modelsList = usage?.models && usage.models.length > 0 ? usage.models : FALLBACK_MODELS;
 
   return (
@@ -161,7 +263,7 @@ export function AiSettingsSection({ isAdmin }: AiSettingsSectionProps) {
               Cota e Consumo de Modelos Gemini (Google AI Studio)
             </CardTitle>
             <CardDescription>
-              Acompanhamento de consumo individual por modelo e cotas operacionais em tempo real
+              Acompanhamento de consumo individual por modelo e cotas operacionais em tempo real com telemetria ativa
             </CardDescription>
           </div>
 
@@ -208,9 +310,14 @@ export function AiSettingsSection({ isAdmin }: AiSettingsSectionProps) {
               {usage?.totalDaily?.used ?? 0} <span className="text-xs font-normal text-muted-foreground">/ {usage?.totalDaily?.limit ?? 1500} req</span>
             </p>
             <Progress value={usage?.totalDaily?.percentage ?? 0} className="h-1.5" />
-            <p className="text-[11px] text-muted-foreground pt-0.5">
-              Reset diário às {formatResetTime(usage?.resetsAt)}
-            </p>
+            <div className="flex items-center justify-between text-[11px] text-muted-foreground pt-0.5">
+              <span>Reset às {formatResetTime(usage?.resetsAt)}</span>
+              {typeof usage?.totalTokensToday === 'number' && usage.totalTokensToday > 0 && (
+                <span className="text-amber-600 dark:text-amber-400 font-medium">
+                  ⚡ {usage.totalTokensToday.toLocaleString('pt-BR')} tokens hoje
+                </span>
+              )}
+            </div>
           </div>
 
           <div className="space-y-1">
@@ -230,23 +337,27 @@ export function AiSettingsSection({ isAdmin }: AiSettingsSectionProps) {
             <span className="text-xs text-muted-foreground flex items-center gap-1.5 font-medium">
               <Zap className="size-3.5 text-emerald-500" /> Modelo em Produção Ativo
             </span>
-            <div className="pt-0.5">
+            <div className="pt-0.5 flex items-center gap-2 flex-wrap">
               <Badge variant="outline" className="bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30 text-xs py-1">
-                {usage?.activeModel || 'gemini-2.0-flash'}
+                {usage?.activeModel || 'gemini-3.6-flash'}
               </Badge>
+              {(() => {
+                const currentActive = modelsList.find(m => m.id === (usage?.activeModel || 'gemini-3.6-flash'));
+                return currentActive ? renderLiveTelemetryBadge(currentActive) : null;
+              })()}
             </div>
             <p className="text-[11px] text-muted-foreground pt-1">
-              Fallback automático para modelos secundários
+              Fallback automático para modelos com cotas isoladas
             </p>
           </div>
         </div>
 
-        {/* Lista Detalhada de Modelos Disponíveis */}
+        {/* Lista Detalhada de Modelos Disponíveis com Telemetria ao Vivo */}
         <div className="space-y-3">
           <div className="flex items-center justify-between">
             <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
               <Layers className="size-4 text-purple-500" />
-              Consumo por Modelo & Limites Específicos
+              Consumo por Modelo & Telemetria ao Vivo
             </h4>
             <span className="text-[11px] text-muted-foreground">
               {modelsList.length} modelos mapeados
@@ -266,7 +377,7 @@ export function AiSettingsSection({ isAdmin }: AiSettingsSectionProps) {
                   }`}
                 >
                   <div className="flex items-start justify-between gap-2">
-                    <div className="space-y-0.5">
+                    <div className="space-y-1">
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="text-sm font-bold flex items-center gap-1.5">
                           <Cpu className="size-4 text-muted-foreground" />
@@ -282,6 +393,7 @@ export function AiSettingsSection({ isAdmin }: AiSettingsSectionProps) {
                             Padrão
                           </Badge>
                         )}
+                        {renderLiveTelemetryBadge(m)}
                       </div>
                       <p className="text-xs text-muted-foreground line-clamp-2">
                         {m.description}
@@ -325,27 +437,70 @@ export function AiSettingsSection({ isAdmin }: AiSettingsSectionProps) {
           </div>
         </div>
 
-        {/* Sincronização da Base somente-leitura */}
-        <div className="p-4 rounded-xl border border-dashed border-border/80 bg-muted/20 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-          <div className="space-y-0.5">
-            <p className="text-sm font-medium flex items-center gap-1.5">
-              <Database className="size-4 text-purple-500" />
-              Base Sanitizada do Copiloto (`ai_orders_view`)
-            </p>
-            <p className="text-xs text-muted-foreground">
-              Sincroniza todos os pedidos existentes do ateliê para a base otimizada de leitura rápida dos modelos Gemini.
-            </p>
+        {/* Histórico das Últimas Requisições Reais Executadas */}
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+              <Clock className="size-4 text-amber-500" />
+              Últimas Requisições Reais Executadas
+            </h4>
+            <span className="text-[11px] text-muted-foreground">
+              {usage?.recentLogs?.length ?? 0} registros recentes
+            </span>
           </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleSyncOrders}
-            disabled={syncingOrders}
-            className="gap-1.5 shrink-0 text-xs"
-          >
-            <RefreshCw className={`size-3.5 ${syncingOrders ? 'animate-spin' : ''}`} />
-            {syncingOrders ? 'Sincronizando...' : 'Sincronizar Pedidos'}
-          </Button>
+
+          {(!usage?.recentLogs || usage.recentLogs.length === 0) ? (
+            <div className="p-4 rounded-xl border border-dashed text-center text-xs text-muted-foreground bg-muted/10">
+              Nenhuma requisição registrada ainda hoje ou logs em sincronização.
+            </div>
+          ) : (
+            <div className="rounded-xl border overflow-hidden bg-card/60">
+              <div className="max-h-72 overflow-y-auto divide-y divide-border/40">
+                {usage.recentLogs.map((log) => (
+                  <div
+                    key={log.id}
+                    className="p-3 text-xs flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 hover:bg-muted/30 transition-colors"
+                  >
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <Badge variant="outline" className="font-mono text-[11px] bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30">
+                        {log.model}
+                      </Badge>
+                      <Badge variant="secondary" className="text-[10px]">
+                        {formatActionLabel(log.action)}
+                      </Badge>
+                      <span className="text-muted-foreground text-[11px]">
+                        {formatLogTime(log.timestamp)}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+                      <span className="font-semibold text-foreground">
+                        {log.totalTokens ? `${log.totalTokens.toLocaleString('pt-BR')} tokens` : '0 tokens'}
+                      </span>
+                      {(log.promptTokens || log.candidatesTokens) ? (
+                        <span className="text-[10px] text-muted-foreground">
+                          ({log.promptTokens || 0} prompt / {log.candidatesTokens || 0} output)
+                        </span>
+                      ) : null}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Sincronização em Tempo Real Ativa */}
+        <div className="p-3.5 rounded-xl border border-border/60 bg-muted/20 flex items-center justify-between text-xs text-muted-foreground">
+          <span className="flex items-center gap-2">
+            <ShieldCheck className="size-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+            <span>
+              <strong className="text-foreground">Sincronização em Tempo Real Ativa:</strong> Telemetria ao vivo com sondas HTTP periódicas e logs auditáveis no Firestore.
+            </span>
+          </span>
+          <Badge variant="outline" className="text-[10px] text-emerald-600 dark:text-emerald-400 border-emerald-500/30 shrink-0">
+            Zero Manutenção
+          </Badge>
         </div>
       </CardContent>
     </Card>

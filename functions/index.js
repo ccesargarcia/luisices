@@ -988,150 +988,110 @@ const parseFirestoreDate = (val) => {
 };
 
 /**
- * Converte um documento operacional de 'orders' em formato sanitizado e otimizado para IA
+ * Projeta e sanitiza em memória um documento da coleção operacional 'orders' para a IA.
+ * Minimização drástica de tokens, campos essenciais para resposta e garantia absoluta de somente-leitura.
  */
-const buildAiOrderDoc = (orderId, data = {}) => {
-  const productSummary = data.productName || data.items?.[0]?.name || data.items?.[0]?.productName || 'Não especificado';
-  const quantity = Number(data.quantity) || Number(data.items?.[0]?.quantity) || 1;
-  const totalPrice = Number(data.price) || Number(data.totalPrice) || Number(data.total) || 0;
-  const isDeleted = Boolean(data.isDeleted) || data.status === 'deleted';
-  const status = isDeleted ? 'deleted' : (data.status || 'pending');
-  const paymentStatus = data.payment?.status || data.paymentStatus || 'pending';
-  const paymentMethod = data.payment?.method || data.paymentMethod || null;
-
-  // Cálculo financeiro preciso alinhado com Reports.tsx
-  const paidAmount = data.payment?.paidAmount !== undefined
-    ? Number(data.payment.paidAmount)
-    : (paymentStatus === 'paid' ? totalPrice : 0);
-  const remainingAmount = data.payment?.remainingAmount !== undefined
-    ? Number(data.payment.remainingAmount)
-    : (paymentStatus === 'paid' ? 0 : Math.max(0, totalPrice - paidAmount));
-
+function sanitizeOrderForAi(id, data = {}) {
   const deliveryDate = data.deliveryDate || null;
-  const customerName = data.customerName || data.customer?.name || 'Cliente sem nome';
-  const customerPhone = data.customerPhone || data.customer?.phone || '';
-  const customerId = data.customerId || data.customer?.id || null;
-  const notes = data.notes || '';
-  const orderNumber = data.orderNumber || `#${orderId}`;
-  const isExchange = Boolean(data.isExchange);
-  const cancellationReason = data.cancellationReason || data.cancelReason || null;
-  const userId = data.userId || data.createdBy || null;
-  const createdBy = data.createdBy || data.userId || null;
-  const createdByName = data.createdByName || null;
-  const assignedTo = data.assignedTo || null;
-  const assignedToName = data.assignedToName || null;
+  const isDeleted = Boolean(data.isDeleted || data.deletedAt);
+  const status = isDeleted ? 'deleted' : (data.status || 'pending');
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const isLate = Boolean(
+    deliveryDate &&
+    deliveryDate < todayStr &&
+    status !== 'completed' &&
+    status !== 'cancelled' &&
+    !isDeleted
+  );
+
+  const totalPrice = Number(data.price || data.totalPrice || 0);
+  const paidAmount = Number(
+    data.payment?.paidAmount !== undefined
+      ? data.payment.paidAmount
+      : (data.payment?.status === 'paid' || data.paymentMethod ? totalPrice : 0)
+  );
+  const remainingAmount = Number(
+    data.payment?.remainingAmount !== undefined
+      ? data.payment.remainingAmount
+      : (data.payment?.status === 'paid' ? 0 : Math.max(0, totalPrice - paidAmount))
+  );
+
+  let createdAt = null;
+  if (data.createdAt) {
+    if (typeof data.createdAt.toDate === 'function') {
+      createdAt = data.createdAt.toDate().toISOString();
+    } else if (typeof data.createdAt === 'string') {
+      createdAt = data.createdAt;
+    } else if (data.createdAt._seconds) {
+      createdAt = new Date(data.createdAt._seconds * 1000).toISOString();
+    }
+  }
+
+  const productSummary =
+    data.productName ||
+    (Array.isArray(data.products) ? data.products.map((p) => p.name).filter(Boolean).join(', ') : '') ||
+    data.items?.[0]?.name ||
+    'Produto personalizado';
+
+  const orderNumber = data.orderNumber || '#' + (id ? id.slice(-5) : '00000');
 
   return {
-    orderId,
-    userId,
-    createdBy,
-    createdByName,
-    assignedTo,
-    assignedToName,
-    customerId,
+    id,
+    orderId: id,
     orderNumber,
-    customerName,
-    customerPhone,
+    customerName: data.customerName || data.customer?.name || 'Cliente',
+    customerPhone: data.customerPhone || data.customer?.phone || '',
     productSummary,
-    quantity,
+    quantity: Number(data.quantity || data.items?.[0]?.quantity || 1),
     totalPrice,
     paidAmount,
     remainingAmount,
     status,
-    paymentStatus,
-    paymentMethod,
     deliveryDate,
-    notes,
-    isExchange,
+    paymentStatus: data.payment?.status || (data.paymentMethod ? 'paid' : 'pending'),
+    isLate,
+    currentStep: data.productionWorkflow?.currentStep || null,
+    assignedTo: data.assignedTo || null,
+    assignedToName: data.assignedToName || null,
+    userId: data.userId || data.createdBy || null,
+    createdBy: data.createdBy || data.userId || null,
+    createdByName: data.createdByName || null,
+    notes: data.notes || '',
     isDeleted,
-    cancellationReason,
-    createdAt: parseFirestoreDate(data.createdAt),
-    deletedAt: data.deletedAt ? parseFirestoreDate(data.deletedAt) : (isDeleted ? new Date().toISOString() : null),
-    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    deletedAt: data.deletedAt ? (data.deletedAt.toDate ? data.deletedAt.toDate().toISOString() : data.deletedAt) : null,
+    createdAt,
   };
-};
+}
 
 /**
- * Trigger de sincronização para a base somente-leitura da IA (ai_orders_view).
- * Sempre que um pedido for criado, atualizado ou excluído, projeta uma visão
- * sanitizada e otimizada para consultas do Agente.
- * Se o pedido for excluído do painel operacional, a IA preserva o registro
- * marcado como 'deleted' (Soft Archive) para auditoria e histórico.
+ * Trigger legado de sincronização para ai_orders_view.
+ * Descontinuado: O Copiloto agora opera com projeção em tempo real e somente-leitura em memória.
  */
 exports.syncOrderToAiView = functions.firestore
   .document('orders/{orderId}')
-  .onWrite(async (change, context) => {
-    const orderId = context.params.orderId;
-    const targetRef = admin.firestore().collection('ai_orders_view').doc(orderId);
-
-    // Se o pedido foi excluído da coleção operacional, arquiva na visão da IA
-    if (!change.after || !change.after.exists) {
-      const previousData = change.before ? change.before.data() : {};
-      const archivedDoc = buildAiOrderDoc(orderId, {
-        ...previousData,
-        isDeleted: true,
-        status: 'deleted',
-        deletedAt: new Date().toISOString(),
-      });
-      await targetRef.set(archivedDoc, { merge: true }).catch((err) => {
-        console.warn(`[syncOrderToAiView] Erro ao arquivar pedido excluído ${orderId}:`, err);
-      });
-      console.log(`[syncOrderToAiView] Pedido ${orderId} preservado como excluído na ai_orders_view para auditoria.`);
-      return;
-    }
-
-    const data = change.after.data() || {};
-    const aiDoc = buildAiOrderDoc(orderId, data);
-
-    await targetRef.set(aiDoc, { merge: true });
-    console.log(`[syncOrderToAiView] Pedido ${orderId} sincronizado na ai_orders_view.`);
+  .onWrite(async () => {
+    return null;
   });
 
 /**
- * Sincroniza em lote todos os pedidos existentes para a base somente-leitura.
- * Uso restrito a administradores.
+ * Endpoint legado de sincronização em lote de pedidos.
+ * Mantido como no-op para compatibilidade retroativa com clientes antigos.
  */
-exports.syncAllOrdersToAiView = onCall(async (request) => {
-  if (!(await isAdminRequest(request))) {
-    throw new functions.https.HttpsError('permission-denied', 'Apenas administradores podem executar a sincronização em lote.');
-  }
-
-  const snapshot = await admin.firestore().collection('orders').get();
-  if (snapshot.empty) {
-    return { success: true, count: 0, message: 'Nenhum pedido para sincronizar.' };
-  }
-
-  const db = admin.firestore();
-  let batch = db.batch();
-  let batchCount = 0;
-  let totalCount = 0;
-
-  for (const doc of snapshot.docs) {
-    const data = doc.data();
-    const aiDoc = buildAiOrderDoc(doc.id, data);
-    const targetRef = db.collection('ai_orders_view').doc(doc.id);
-    batch.set(targetRef, aiDoc, { merge: true });
-    batchCount++;
-    totalCount++;
-
-    if (batchCount >= 450) {
-      await batch.commit();
-      batch = db.batch();
-      batchCount = 0;
-    }
-  }
-
-  if (batchCount > 0) {
-    await batch.commit();
-  }
-
-  return { success: true, count: totalCount, message: `${totalCount} pedidos sincronizados com sucesso na ai_orders_view.` };
+exports.syncAllOrdersToAiView = onCall(async () => {
+  return {
+    success: true,
+    count: 0,
+    message: 'A sincronização agora é nativa e em tempo real em memória.',
+  };
 });
 
 // Modelo padrão ultra-rápido memoizado em memória para respostas sub-segundo
-let preferredWorkingModel = 'gemini-2.0-flash';
-let cachedCandidateModels = null;
-let cachedModelsTimestamp = 0;
+let preferredWorkingModel = 'gemini-3.6-flash';
+
+// Cache global em memória para colaboradores/equipe (TTL de 10 minutos para evitar chamadas repetidas a Auth e Firestore)
+let cachedTeamMembers = null;
+let cachedTeamMembersTimestamp = 0;
+const TEAM_MEMBERS_CACHE_TTL = 10 * 60 * 1000;
 
 // Cache global em memória para respostas rápidas (TTL de 3 minutos)
 const aiResponseCache = new Map();
@@ -1149,7 +1109,30 @@ const normalizeString = (str) => {
 };
 
 /**
- * Sanitiza o texto gerado pela IA para remover pensamentos/raciocínios internos vazados
+ * Higieniza rigorosamente termos técnicos e chamadas de ferramentas na resposta
+ */
+function sanitizeAiResponse(text) {
+  if (!text || typeof text !== 'string') return text;
+  let clean = text;
+  const toolTerms = [
+    { pattern: /`?calculate_pricing_estimate`?/gi, replacement: 'calcular a estimativa de valores' },
+    { pattern: /`?extract_order_draft`?/gi, replacement: 'montar o rascunho do pedido' },
+    { pattern: /`?query_orders_view`?/gi, replacement: 'consultar a lista de pedidos' },
+    { pattern: /`?query_customers`?/gi, replacement: 'pesquisar clientes' },
+    { pattern: /`?generate_whatsapp_message`?/gi, replacement: 'gerar a mensagem de WhatsApp' },
+    { pattern: /`?search_gallery_portfolio`?/gi, replacement: 'consultar fotos na galeria' },
+    { pattern: /`?daily_briefing`?/gi, replacement: 'gerar o resumo do dia' },
+    { pattern: /posso usar a ferramenta/gi, replacement: 'posso' },
+    { pattern: /utilizando a ferramenta/gi, replacement: 'posso' },
+  ];
+  toolTerms.forEach(({ pattern, replacement }) => {
+    clean = clean.replace(pattern, replacement);
+  });
+  return clean.trim();
+}
+
+/**
+ * Sanitiza o texto gerado pela IA para remover pensamentos/raciocínios internos vazados e jargões técnicos
  */
 const cleanAiOutput = (text) => {
   if (!text || typeof text !== 'string') return '';
@@ -1161,7 +1144,35 @@ const cleanAiOutput = (text) => {
   // Remove preâmbulos típicos de auto-raciocínio em inglês gerados por modelos "Thinking"
   cleaned = cleaned.replace(/^(The user wants to|I need to iterate|Looking at the orders|I have already called|I will present this|Based on the query|Let's check the orders)[\s\S]*?(?=(O pedido|Encontrei|Aqui est|Segue|Não encontrei|\n\n[A-ZÀ-Ú]))/i, '');
 
-  return cleaned.trim();
+  // Higieniza nomes técnicos de ferramentas e chamadas internas para termos naturais do ateliê
+  const toolLabels = {
+    calculate_pricing_estimate: 'calculadora de custos e preços',
+    query_orders_view: 'consulta de pedidos',
+    extract_order_draft: 'rascunho do pedido',
+    generate_whatsapp_message: 'mensagem para WhatsApp',
+    daily_briefing: 'resumo operacional do dia',
+    get_financial_summary: 'resumo financeiro',
+    get_user_summary: 'resumo de métricas da equipe',
+    query_customers: 'consulta de clientes',
+    search_gallery_portfolio: 'acervo da galeria',
+    enrichgalleryitemwithai: 'análise de imagem',
+  };
+
+  const toolNamesPattern = Object.keys(toolLabels).join('|');
+
+  // Substitui padrões como "ferramenta calculate_pricing_estimate" ou "função query_orders_view"
+  cleaned = cleaned.replace(
+    new RegExp(`(?:a\\s+)?(?:ferramenta|função|funcao|endpoint|método|metodo)\\s*[\`'"]?(${toolNamesPattern})[\`'"]?`, 'gi'),
+    (_m, tool) => toolLabels[tool.toLowerCase()] || 'assistente'
+  );
+
+  // Substitui nomes técnicos literais entre crases ou aspas
+  cleaned = cleaned.replace(
+    new RegExp(`[\`'"](${toolNamesPattern})[\`'"]`, 'gi'),
+    (_m, tool) => toolLabels[tool.toLowerCase()] || 'assistente'
+  );
+
+  return sanitizeAiResponse(cleaned);
 };
 
 /**
@@ -1226,8 +1237,8 @@ Você possui responsabilidades principais com ferramentas especializadas:
 2. AUDITORIA E MÉTRICAS DE USUÁRIOS/COLABORADORES ('get_user_summary'): Permitido EXCLUSIVAMENTE para administradores. Permite consultar quantos pedidos, quantos clientes cadastrados, faturamento gerado e ticket médio pertencem a um usuário/funcionário específico (ex: "Amanda", "Lucas", etc.). Se um usuário não-admin perguntar sobre outros membros, recuse cordialmente informando que a auditoria de equipe é restrita a administradores.
 3. RESUMO FINANCEIRO & MÉTRICAS ('get_financial_summary'): Consultar faturamento realizado, total efetivamente recebido, valores pendentes a receber, volume total emitido, ticket médio e taxa de conclusão por período ('today', 'week', 'month', 'year', 'all').
 4. BRIEFING OPERACIONAL DIÁRIO ('daily_briefing'): Raio-X diário de produção, pedidos urgentes/atrasados, entregas de hoje e pendências financeiras imediatas.
-5. CONSULTA DE CLIENTES ('query_customers'): Buscar clientes cadastrados por nome, telefone, e-mail ou cidade para histórico e contato. Administradores podem filtrar por colaborador específico via 'userIdentifier'.
-6. GERADOR DE MENSAGENS WHATSAPP ('generate_whatsapp_message'): Gerar rascunhos de mensagens para o WhatsApp do cliente (cobrança amigável de sinal/restante, status de produção, aviso de retirada pronta, confirmação de pedido ou orçamento).
+5. CONSULTA DE CLIENTES ('query_customers'): Buscar clientes cadastrados exclusivamente para consultas cadastrais puras (endereço, e-mail, cidade, histórico de compras). ATENÇÃO: NUNCA use 'query_customers' para pedidos de cobrança ou envio de mensagens no WhatsApp.
+6. GERADOR DE MENSAGENS WHATSAPP ('generate_whatsapp_message'): Ferramenta OBRIGATÓRIA sempre que o usuário pedir cobrança de valores, lembrete de pagamento ou envio de qualquer mensagem para cliente via WhatsApp. Ela gera o rascunho e abre diretamente o submodal interativo no chat (<WhatsAppComposer />) para revisão e disparo pelo operador.
 7. CALCULADORA DE PRECIFICAÇÃO & ORÇAMENTOS ('calculate_pricing_estimate'): Calcular custos aproximados, margem de lucro e preço de venda sugerido para personalizações (camisetas, canecas, ecobags, etc.).
 8. EXTRAÇÃO DE PEDIDOS ('extract_order_draft'): Estruturar pedidos a partir de conversas e mensagens de clientes (WhatsApp/áudio).
 9. CONSULTA AO ACERVO DA GALERIA ('search_gallery_portfolio'): Consultar fotos, artes e produtos já produzidos para dar referências de modelos, técnicas, fotos reais e ideias de pedidos anteriores. Administradores podem auditar todo o acervo ou filtrar por colaborador via 'userIdentifier'. Usuários não-admin enxergam exclusivamente suas próprias artes cadastradas.
@@ -1237,9 +1248,17 @@ Você possui responsabilidades principais com ferramentas especializadas:
 - GUARDRAIL 1 (LGPD & SIGILO MULTIUSUÁRIO): Dados, pedidos, clientes e artes da galeria de outros colaboradores são SIGILOSOS e só podem ser auditados por Administradores. Usuários comuns e funcionários só enxergam seus próprios dados e criações.
 - GUARDRAIL 2 (HUMAN-IN-THE-LOOP): Você gera rascunhos de mensagens e orçamentos para REVISÃO E APROVAÇÃO HUMANA do operador. Nunca afirme que disparou a mensagem sozinho.
 - GUARDRAIL 3 (PROTEÇÃO DE MARGEM FINANCEIRA): Nunca sugira preços que resultem em margem de lucro negativa ou prejuízo operacional (mantenha margem mínima de 30% a 50%).
-- GUARDRAIL 4 (CORTESIA E CDC NA COBRANÇA): Mensagens de cobrança devem ser 100% amigáveis, empáticas e profissionais, sem ameaças ou termos constrangedores.
+- GUARDRAIL 4 (COBRANÇA E SUBMODAL INTERATIVO WHATSAPP): Mensagens de cobrança devem ser 100% amigáveis, empáticas e profissionais, sem ameaças ou termos constrangedores. Sempre que o usuário pedir para cobrar um cliente ou enviar mensagem de WhatsApp (ex: "envie uma cobrança para o Carlos", "cobre o sinal da Amanda"), você DEVE invocar IMEDIATAMENTE a ferramenta 'generate_whatsapp_message' com type='cobranca' (ou outro tipo aplicável). NUNCA consulte o cliente antes com 'query_customers', pois o sistema já resolve o telefone e dados do cliente automaticamente via 'resolveCustomerPhone' no backend e abre o submodal interativo no chat (<WhatsAppComposer />).
 - GUARDRAIL 5 (RESPOSTAS LIMPAS EM PT-BR): NUNCA inclua seu raciocínio interno, scratchpad, notas ou pensamentos em inglês no texto de resposta. Responda DIRETA e EXCLUSIVAMENTE em Português do Brasil (pt-BR).
-- GUARDRAIL 6 (MULTIMODALIDADE & VISÃO COMPUTACIONAL): Quando o usuário enviar uma imagem na conversa, examine detalhadamente os elementos visuais (produto, estampa, cores, técnicas como silk, sublimação, bordado, laser). Você pode pesquisar o acervo com 'search_gallery_portfolio' para encontrar produtos similares que a Luisices já produziu, estimar custos com 'calculate_pricing_estimate' ou extrair um pedido com 'extract_order_draft'.
+- GUARDRAIL 6 (MULTIMODALIDADE & VISÃO COMPUTACIONAL): Quando o usuário enviar uma imagem na conversa, priorize SEMPRE a análise visual direta e detalhada na sua resposta (identifique tipo de produto, cores, detalhes visuais, materiais, estampas e técnicas como silk, sublimação, bordado, laser). NUNCA substitua a análise visual por uma busca vazia na galeria. Apenas pesquise o acervo da galeria se o usuário pedir explicitamente para buscar referências ou fotos na galeria.
+- GUARDRAIL 7 (VOZ HUMANA E PROIBIÇÃO DE JARGÕES TÉCNICOS):
+  • NUNCA mencione o nome técnico de suas funções ou ferramentas internas (ex: NUNCA diga 'ferramenta calculate_pricing_estimate', 'função query_orders_view', 'extract_order_draft', etc.). 
+  • Em vez disso, fale sempre como uma assistente humana do ateliê:
+    - Em vez de "posso usar a ferramenta calculate_pricing_estimate": diga "Se quiser, posso calcular o custo e sugerir um preço de venda com margem de lucro".
+    - Em vez de "posso usar extract_order_draft": diga "Posso montar o rascunho do pedido para você carregar no formulário".
+    - Em vez de "posso usar search_gallery_portfolio": diga "Posso pesquisar mais fotos e modelos no nosso acervo".
+  • NUNCA use termos de programação, crases com nomes de variáveis (\`nome_da_funcao\`) ou jargões em inglês desnecessários (como 'Backing Card' se puder dizer 'Cartão de apoio' ou 'Tag').
+  • Seja elegante, acolhedora, concisa e focada na linguagem do dia a dia do ateliê.
 
 ---
 BASE DE CONHECIMENTO DO SISTEMA LUISICES:
@@ -1294,7 +1313,7 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
         },
         {
           name: 'query_orders_view',
-          description: 'Consulta a base somente-leitura de pedidos (ai_orders_view) para obter status, prazos, clientes, valores, cancelamentos e exclusões auditadas.',
+          description: 'Consulta a base de pedidos em tempo real (com projeção em memória) para obter status, prazos, clientes, valores, cancelamentos e métricas atualizadas.',
           parameters: {
             type: 'OBJECT',
             properties: {
@@ -1351,7 +1370,7 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
         },
         {
           name: 'generate_whatsapp_message',
-          description: 'Gera um rascunho de mensagem formatada, amigável e profissional para envio pelo WhatsApp ao cliente (cobrança cordial, status de produção, aviso de retirada pronta, confirmação de pedido ou orçamento).',
+          description: 'Gera o rascunho de mensagem formatada, amigável e profissional e abre o submodal interativo no chat (<WhatsAppComposer />) para disparo direto, edição e revisão humana (cobrança cordial, status de produção, aviso de retirada pronta, confirmação de pedido ou orçamento). OBRIGATÓRIO para qualquer pedido de cobrança ou envio de mensagem para WhatsApp.',
           parameters: {
             type: 'OBJECT',
             properties: {
@@ -1388,7 +1407,7 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
         },
         {
           name: 'query_customers',
-          description: 'Consulta a base de clientes cadastrados no sistema Luisices (por nome, telefone, e-mail ou cidade) para obter número de WhatsApp, histórico de compras e dados cadastrais.',
+          description: 'Consulta a base de clientes cadastrados no sistema Luisices (por nome, telefone, e-mail ou cidade) para obter histórico de compras e dados cadastrais. ATENÇÃO: NUNCA use para cobrança ou envio de mensagens no WhatsApp (para isso, use sempre generate_whatsapp_message).',
           parameters: {
             type: 'OBJECT',
             properties: {
@@ -1427,7 +1446,7 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
         },
         {
           name: 'search_gallery_portfolio',
-          description: 'Consulta o acervo de fotos, produtos e artes da Galeria do sistema (camisetas, brindes, canecas, bordados, personalizações anteriores). Permite buscar referências visuais por tema, produto, técnica, tags ou cliente. Usuários não-admin enxergam apenas suas próprias artes; administradores têm acesso geral e podem filtrar por colaborador.',
+          description: 'Consulta o acervo de fotos, produtos e artes da Galeria do sistema (camisetas, brindes, canecas, bordados, personalizações anteriores). Use esta ferramenta EXCLUSIVAMENTE quando o usuário solicitar explicitamente buscar fotos, modelos, artes ou referências no acervo da galeria. NUNCA use esta ferramenta quando o usuário apenas enviar uma imagem para análise visual.',
           parameters: {
             type: 'OBJECT',
             properties: {
@@ -1454,53 +1473,51 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
     }
   ];
 
-  // Helper central de busca e blindagem estrita de pedidos
+  // Helper central de busca e blindagem estrita de pedidos em tempo real (projeção sanitizada em memória)
   const fetchScopedOrders = async () => {
     let docs = [];
     if (isAdmin) {
-      const [viewSnap, prodSnap] = await Promise.all([
-        admin.firestore().collection('ai_orders_view').get(),
-        admin.firestore().collection('orders').limit(200).get(),
-      ]);
-      const map = new Map();
-      viewSnap.docs.forEach((d) => map.set(d.id, d.data()));
-      prodSnap.docs.forEach((d) => {
-        if (!map.has(d.id)) {
-          map.set(d.id, buildAiOrderDoc(d.id, d.data()));
-        }
-      });
-      docs = Array.from(map.values());
+      // Administrador: lê pedidos ativos diretamente de 'orders' com limite enxuto (200 mais recentes)
+      const snap = await admin
+        .firestore()
+        .collection('orders')
+        .where('deletedAt', '==', null)
+        .limit(200)
+        .get();
+
+      docs = snap.docs.map((d) => sanitizeOrderForAi(d.id, d.data()));
     } else {
-      const [viewUserSnap, viewCreatedSnap, prodUserSnap, prodCreatedSnap] = await Promise.all([
-        admin.firestore().collection('ai_orders_view').where('userId', '==', callerUid).get(),
-        admin.firestore().collection('ai_orders_view').where('createdBy', '==', callerUid).get(),
-        admin.firestore().collection('orders').where('userId', '==', callerUid).limit(200).get(),
-        admin.firestore().collection('orders').where('createdBy', '==', callerUid).limit(200).get(),
+      // Funcionário / Usuário: lê estritamente pedidos onde userId == callerUid ou assignedTo == callerUid
+      const [userOrdersSnap, assignedOrdersSnap, createdOrdersSnap] = await Promise.all([
+        admin.firestore().collection('orders').where('userId', '==', callerUid).where('deletedAt', '==', null).limit(200).get(),
+        admin.firestore().collection('orders').where('assignedTo', '==', callerUid).where('deletedAt', '==', null).limit(200).get(),
+        admin.firestore().collection('orders').where('createdBy', '==', callerUid).where('deletedAt', '==', null).limit(200).get(),
       ]);
+
       const map = new Map();
-      viewUserSnap.docs.forEach((d) => map.set(d.id, d.data()));
-      viewCreatedSnap.docs.forEach((d) => map.set(d.id, d.data()));
-      prodUserSnap.docs.forEach((d) => {
-        if (!map.has(d.id)) {
-          map.set(d.id, buildAiOrderDoc(d.id, d.data()));
-        }
-      });
-      prodCreatedSnap.docs.forEach((d) => {
-        if (!map.has(d.id)) {
-          map.set(d.id, buildAiOrderDoc(d.id, d.data()));
-        }
-      });
+      userOrdersSnap.docs.forEach((d) => map.set(d.id, sanitizeOrderForAi(d.id, d.data())));
+      assignedOrdersSnap.docs.forEach((d) => map.set(d.id, sanitizeOrderForAi(d.id, d.data())));
+      createdOrdersSnap.docs.forEach((d) => map.set(d.id, sanitizeOrderForAi(d.id, d.data())));
+
       // BLINDAGEM INFALÍVEL: Filtra exclusivamente pedidos pertencentes a callerUid
+      const uid = String(callerUid);
       docs = Array.from(map.values()).filter((d) => {
-        const uid = String(callerUid);
-        return d.userId === uid || d.createdBy === uid;
+        if (d.deletedAt || d.isDeleted) return false;
+        return d.userId === uid || d.assignedTo === uid || d.createdBy === uid;
       });
     }
+
+    // Ordenação do mais recente para o mais antigo em memória
+    docs.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
     return docs;
   };
 
-  // Helper para obter diretório consolidado de todos os colaboradores do sistema
+  // Helper para obter diretório consolidado de todos os colaboradores do sistema (com cache de memória de 10 min)
   const getAllKnownTeamMembers = async () => {
+    if (cachedTeamMembers && (Date.now() - cachedTeamMembersTimestamp < TEAM_MEMBERS_CACHE_TTL)) {
+      return cachedTeamMembers;
+    }
+
     const memberMap = new Map();
 
     // 1. userProfiles
@@ -1549,7 +1566,7 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
 
     // 3. Orders (coleta criadores e responsáveis atribuídos)
     try {
-      const ordersSnap = await admin.firestore().collection('orders').limit(300).get();
+      const ordersSnap = await admin.firestore().collection('orders').limit(200).get();
       ordersSnap.docs.forEach((d) => {
         const data = d.data() || {};
         if (data.userId && !memberMap.has(data.userId)) {
@@ -1579,7 +1596,10 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
       console.warn('[getAllKnownTeamMembers] Erro ao ler orders para membros:', err);
     }
 
-    return Array.from(memberMap.values());
+    const result = Array.from(memberMap.values());
+    cachedTeamMembers = result;
+    cachedTeamMembersTimestamp = Date.now();
+    return result;
   };
 
   // Helper para resolver colaborador/usuário por nome, email ou UID com tolerância e normalização
@@ -1667,7 +1687,7 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
     const targetRole = targetUser.role === 'admin' ? 'Administrador' : targetUser.role === 'funcionario' ? 'Funcionário' : 'Usuário';
     const normalizedTargetName = normalizeString(targetName);
 
-    // 1. Busca todos os pedidos do usuário em ambas as fontes (orders + ai_orders_view)
+    // 1. Busca todos os pedidos do usuário diretamente da coleção orders com projeção sanitizada em memória
     const allOrders = await fetchScopedOrders();
     const userOrders = allOrders.filter((o) => {
       if (o.isDeleted) return false;
@@ -2177,57 +2197,21 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
     parts: userParts
   });
 
-  // Obtém dinamicamente os modelos suportados pela API key, priorizando versões Flash e mais modernas
-  const getCandidateModels = async () => {
-    if (cachedCandidateModels && cachedCandidateModels.length > 0 && Date.now() - cachedModelsTimestamp < 3600000) {
-      return cachedCandidateModels;
-    }
-
-    try {
-      const listResp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`);
-      if (listResp.ok) {
-        const listData = await listResp.json();
-        const available = (listData.models || [])
-          .filter(m => Array.isArray(m.supportedGenerationMethods) && m.supportedGenerationMethods.includes('generateContent'))
-          .map(m => m.name.replace(/^models\//, ''));
-
-        if (available.length > 0) {
-          const flashModels = available.filter(m => m.includes('flash'));
-          const otherModels = available.filter(m => !m.includes('flash'));
-
-          cachedCandidateModels = [
-            process.env.GEMINI_MODEL,
-            preferredWorkingModel,
-            ...flashModels,
-            ...otherModels,
-            'gemini-3.1-pro-preview',
-            'gemini-3.0-flash',
-            'gemini-2.0-flash',
-          ].filter((item, index, self) => Boolean(item) && self.indexOf(item) === index);
-
-          cachedModelsTimestamp = Date.now();
-          console.log('[aiAgentChat] Modelos disponíveis detectados dinamicamente:', cachedCandidateModels);
-          return cachedCandidateModels;
-        }
-      }
-    } catch (err) {
-      console.warn('[aiAgentChat] Falha ao consultar endpoint de modelos:', err);
-    }
-
-    return [
-      process.env.GEMINI_MODEL,
-      preferredWorkingModel,
-      'gemini-3.1-pro-preview',
-      'gemini-3.0-flash',
-      'gemini-2.0-flash',
-    ].filter((item, index, self) => Boolean(item) && self.indexOf(item) === index);
-  };
-
-  const candidateModels = await getCandidateModels();
+  // Definição estrita dos modelos modernos ativos com pools de cota independentes contra 429
+  const CANDIDATE_MODELS = [
+    process.env.GEMINI_MODEL || 'gemini-3.6-flash',
+    'gemini-3.6-flash',
+    'gemini-3.7-flash',
+    'gemini-3.5-flash',
+    'gemini-3.8-flash',
+    'gemini-3.1-flash-lite',
+    'gemini-3.5-flash-lite',
+    'gemini-3-flash-preview',
+  ].filter((item, index, self) => Boolean(item) && self.indexOf(item) === index);
 
   const callGeminiWithFallback = async (payload) => {
     let lastError = null;
-    for (const model of candidateModels) {
+    for (const model of CANDIDATE_MODELS) {
       const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
       try {
         const resp = await fetch(url, {
@@ -2241,10 +2225,20 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
           // Memoiza o modelo bem-sucedido para que todas as próximas chamadas sejam diretas nele
           preferredWorkingModel = model;
 
+          // Extrai metadados de telemetria de tokens retornados pela API Gemini
+          const usageMetadata = data?.usageMetadata || {};
+          const promptTokens = usageMetadata.promptTokenCount || usageMetadata.promptTokens || 0;
+          const candidatesTokens = usageMetadata.candidatesTokenCount || usageMetadata.candidatesTokens || 0;
+          const totalTokens = usageMetadata.totalTokenCount || usageMetadata.totalTokens || (promptTokens + candidatesTokens);
+
           // Registra consumo exato por requisição HTTP para a API Gemini
           admin.firestore().collection('ai_usage_logs').add({
             userId: callerUid,
             model: model,
+            action: 'copilot_chat',
+            promptTokens,
+            candidatesTokens,
+            totalTokens,
             timestamp: new Date().toISOString(),
             createdAt: admin.firestore.FieldValue.serverTimestamp(),
           }).catch((err) => console.warn('[aiAgentChat] Erro ao gravar ai_usage_logs:', err));
@@ -2263,11 +2257,31 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
     throw lastError || new Error('Nenhum modelo Gemini disponível respondeu com sucesso.');
   };
 
+  // Filtragem de ferramentas ativas (activeFunctionDeclarations)
+  const lowerMsg = (cleanMessage || '').toLowerCase();
+  const isBillingOrWhatsAppIntent =
+    /(cobranc|cobranç|cobrar|cobre|cobrando|whatsapp|zap|mensagem|aviso|notific|lembrete|pagamento)/i.test(lowerMsg) &&
+    /(para|ao|pro|cliente|cobranc|cobranç|whatsapp|zap|mensagem|sinal|restante|envi|mand)/i.test(lowerMsg);
+
+  let activeFunctionDeclarations = toolsDeclaration[0]?.function_declarations || [];
+
+  // Se o usuário quer cobrar ou enviar mensagem no WhatsApp, remove query_customers para evitar desvio
+  if (isBillingOrWhatsAppIntent) {
+    activeFunctionDeclarations = activeFunctionDeclarations.filter((f) => f.name !== 'query_customers');
+  }
+
+  // Usuários não-administradores não têm acesso a get_user_summary
+  if (!isAdmin) {
+    activeFunctionDeclarations = activeFunctionDeclarations.filter((f) => f.name !== 'get_user_summary');
+  }
+
+  const activeTools = [{ function_declarations: activeFunctionDeclarations }];
+
   try {
     const geminiPayload = {
       system_instruction: { parts: [{ text: systemInstruction }] },
       contents,
-      tools: toolsDeclaration,
+      tools: activeTools,
       generationConfig: { temperature: 0.1 }
     };
 
@@ -2275,6 +2289,7 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
     const candidate = firstResult?.candidates?.[0];
     const parts = candidate?.content?.parts || [];
     const functionCallPart = parts.find(p => p.functionCall);
+    const initialText = cleanAiOutput(parts.filter(p => p.text).map(p => p.text).join('\n'));
 
     let finalAnswer = '';
     let extractedDraft = null;
@@ -2340,7 +2355,7 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
         } else if (summary.isList) {
           let listText = `👥 **Colaboradores e Usuários no Sistema:**\n\n`;
           summary.members.forEach((m) => {
-            listText += `• **${m.name}** (${m.email || 'Sem e-mail'})\n  Cargo: ${m.role} | ID: \`${m.uid}\`\n\n`;
+            listText += `• **${m.name}** (${m.email || 'Sem e-mail'})\n  Cargo: ${m.role}\n\n`;
           });
           listText += `Você pode perguntar detalhes de qualquer um: *"Quantos pedidos e clientes tem a ${summary.members[0]?.name || 'Amanda'}?"*`;
           finalAnswer = listText;
@@ -2418,9 +2433,9 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
         // Segunda chamada enxuta para formulação rápida da resposta final
         const followUpContents = [
           ...contents,
-          { role: 'model', parts: [{ functionCall: functionCallPart.functionCall }] },
+          candidate?.content || { role: 'model', parts: candidate?.content?.parts || [functionCallPart] },
           {
-            role: 'function',
+            role: 'user',
             parts: [{
               functionResponse: {
                 name: 'query_orders_view',
@@ -2437,6 +2452,7 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
           const { data: followUpResult } = await callGeminiWithFallback({
             system_instruction: { parts: [{ text: systemInstruction }] },
             contents: followUpContents,
+            tools: activeTools,
             generationConfig: { temperature: 0.1 }
           });
           const followUpCandidate = followUpResult?.candidates?.[0];
@@ -2488,9 +2504,9 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
 
         const followUpContents = [
           ...contents,
-          { role: 'model', parts: [{ functionCall: functionCallPart.functionCall }] },
+          candidate?.content || { role: 'model', parts: candidate?.content?.parts || [functionCallPart] },
           {
-            role: 'function',
+            role: 'user',
             parts: [{
               functionResponse: {
                 name: 'search_gallery_portfolio',
@@ -2514,6 +2530,7 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
           const { data: followUpResult } = await callGeminiWithFallback({
             system_instruction: { parts: [{ text: systemInstruction }] },
             contents: followUpContents,
+            tools: activeTools,
             generationConfig: { temperature: 0.1 }
           });
           const followUpCandidate = followUpResult?.candidates?.[0];
@@ -2523,7 +2540,7 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
           if (galleryResults.length === 0) {
             finalAnswer = textResponse && textResponse.length > 20
               ? textResponse
-              : 'Não encontrei nenhuma arte ou foto na galeria correspondente aos critérios consultados.';
+              : initialText || 'Não encontrei nenhuma foto ou arte na galeria correspondente aos critérios consultados.';
           } else {
             const isGeneric =
               !textResponse ||
@@ -2535,14 +2552,18 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
                 const tagList = [...(it.tags || []), ...(it.aiTags || [])].slice(0, 3).join(', ');
                 return `• **${it.title}**${it.productType ? ` (${it.productType})` : ''}\n  ${it.description ? it.description.slice(0, 120) : 'Sem descrição'}\n  🔗 [Ver Foto](${it.imageUrl})${tagList ? ` | 🏷️ ${tagList}` : ''}`;
               }).join('\n\n');
-              finalAnswer = `Encontrei **${galleryResults.length} foto(s)/arte(s)** no acervo da galeria:\n\n${list}`;
+              const prefix = initialText ? `${initialText}\n\n` : '';
+              finalAnswer = `${prefix}Encontrei **${galleryResults.length} foto(s)/arte(s)** no acervo da galeria:\n\n${list}`;
             } else {
-              finalAnswer = textResponse;
+              finalAnswer = initialText ? `${initialText}\n\n${textResponse}` : textResponse;
             }
           }
-        } catch {
-          if (galleryResults.length === 0) {
-            finalAnswer = 'Não encontrei nenhuma foto ou arte na galeria.';
+        } catch (followErr) {
+          console.warn('[aiAgentChat] Falha no follow-up da galeria:', followErr);
+          if (initialText) {
+            finalAnswer = initialText;
+          } else if (galleryResults.length === 0) {
+            finalAnswer = 'Não encontrei nenhuma foto ou arte correspondente no acervo da galeria.';
           } else {
             const list = galleryResults.map(it => `• **${it.title}** - [Ver Foto](${it.imageUrl})`).join('\n');
             finalAnswer = `Encontrei **${galleryResults.length} foto(s)/arte(s)** na galeria:\n\n${list}`;
@@ -2552,6 +2573,8 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
     } else {
       finalAnswer = cleanAiOutput(parts.map(p => p.text).filter(Boolean).join('\n')) || 'Como posso ajudar você hoje?';
     }
+
+    finalAnswer = sanitizeAiResponse(cleanAiOutput(finalAnswer));
 
     // Salva no cache de respostas rápidas
     aiResponseCache.set(cacheKey, {
@@ -2582,7 +2605,7 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
  * Consulta a cota e o consumo em tempo real de TODOS os modelos disponíveis da API Gemini.
  * Uso estritamente restrito a administradores.
  */
-exports.getAiUsage = onCall({ cors: true }, async (request) => {
+exports.getAiUsage = onCall({ cors: true, secrets: [GEMINI_API_KEY] }, async (request) => {
   if (!request.auth) {
     throw new functions.https.HttpsError('unauthenticated', 'Usuário não autenticado.');
   }
@@ -2594,6 +2617,9 @@ exports.getAiUsage = onCall({ cors: true }, async (request) => {
     throw new functions.https.HttpsError('permission-denied', 'Acesso restrito a administradores.');
   }
 
+  const rawKey = (typeof GEMINI_API_KEY?.value === 'function' ? GEMINI_API_KEY.value() : process.env.GEMINI_API_KEY) || '';
+  const apiKey = String(rawKey).trim();
+
   const now = new Date();
   const startOfTodayUtc = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 0, 0));
   const startOfMonthUtc = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1, 0, 0, 0));
@@ -2601,10 +2627,10 @@ exports.getAiUsage = onCall({ cors: true }, async (request) => {
 
   const MODEL_SPECS = [
     {
-      id: 'gemini-2.0-flash',
-      aliases: ['gemini-2.0-flash', 'gemini-2.0-flash-exp', 'gemini-2.0-flash-001'],
-      name: 'Gemini 2.0 Flash',
-      description: 'Modelo de última geração ultra-rápido com suporte multimodal e tool calls integradas.',
+      id: 'gemini-3.6-flash',
+      aliases: ['gemini-3.6-flash', 'gemini-3.6-flash-001'],
+      name: 'Gemini 3.6 Flash',
+      description: 'Modelo principal de alta velocidade em produção com suporte multimodal e tool calls integradas.',
       category: 'Produção (Padrão)',
       dailyLimit: 1500,
       rpmLimit: 15,
@@ -2612,39 +2638,59 @@ exports.getAiUsage = onCall({ cors: true }, async (request) => {
       isDefault: true,
     },
     {
-      id: 'gemini-2.0-flash-lite',
-      aliases: ['gemini-2.0-flash-lite', 'gemini-2.0-flash-lite-preview-02-05', 'gemini-2.0-flash-lite-preview'],
-      name: 'Gemini 2.0 Flash-Lite',
-      description: 'Modelo ultra-leve e econômico para respostas instantâneas e alto throughput.',
-      category: 'Alta Eficiência / Lite',
-      dailyLimit: 1500,
-      rpmLimit: 30,
-      tpmLimit: 1000000,
-    },
-    {
-      id: 'gemini-1.5-flash',
-      aliases: ['gemini-1.5-flash', 'gemini-1.5-flash-latest', 'gemini-1.5-flash-002', 'gemini-1.5-flash-8b'],
-      name: 'Gemini 1.5 Flash',
-      description: 'Modelo comprovado e estável para briefings diários e consultas operacionais.',
-      category: 'Fallback Estável',
+      id: 'gemini-3.7-flash',
+      aliases: ['gemini-3.7-flash', 'gemini-3.7-flash-preview'],
+      name: 'Gemini 3.7 Flash',
+      description: 'Modelo avançado com raciocínio híbrido e alta capacidade analítica.',
+      category: 'Raciocínio Avançado',
       dailyLimit: 1500,
       rpmLimit: 15,
       tpmLimit: 1000000,
     },
     {
-      id: 'gemini-1.5-pro',
-      aliases: ['gemini-1.5-pro', 'gemini-1.5-pro-latest', 'gemini-1.5-pro-002'],
-      name: 'Gemini 1.5 Pro',
-      description: 'Modelo de raciocínio profundo para análises avançadas e grandes janelas de contexto.',
-      category: 'Raciocínio Avançado',
-      dailyLimit: 50,
-      rpmLimit: 2,
-      tpmLimit: 32000,
+      id: 'gemini-3.5-flash',
+      aliases: ['gemini-3.5-flash', 'gemini-3.5-flash-preview'],
+      name: 'Gemini 3.5 Flash',
+      description: 'Modelo de produção balanceado para consistência e baixa latência.',
+      category: 'Produção (Fallback)',
+      dailyLimit: 1500,
+      rpmLimit: 15,
+      tpmLimit: 1000000,
     },
     {
-      id: 'gemini-3.0-flash',
-      aliases: ['gemini-3.0-flash', 'gemini-3.1-pro-preview', 'gemini-3.0-flash-preview'],
-      name: 'Gemini 3.0 Flash (Preview)',
+      id: 'gemini-3.8-flash',
+      aliases: ['gemini-3.8-flash', 'gemini-3.8-flash-preview'],
+      name: 'Gemini 3.8 Flash',
+      description: 'Modelo de última geração para raciocínio multimodal, fotos e acervo do ateliê.',
+      category: 'Visão & Raciocínio',
+      dailyLimit: 1500,
+      rpmLimit: 15,
+      tpmLimit: 1000000,
+    },
+    {
+      id: 'gemini-3.1-flash-lite',
+      aliases: ['gemini-3.1-flash-lite', 'gemini-3.1-flash-lite-preview'],
+      name: 'Gemini 3.1 Flash Lite',
+      description: 'Modelo ultraleve e econômico para triagens e respostas instantâneas.',
+      category: 'Econômico / Lite',
+      dailyLimit: 1500,
+      rpmLimit: 15,
+      tpmLimit: 1000000,
+    },
+    {
+      id: 'gemini-3.5-flash-lite',
+      aliases: ['gemini-3.5-flash-lite', 'gemini-3.5-flash-lite-preview'],
+      name: 'Gemini 3.5 Flash Lite',
+      description: 'Modelo leve com pool de cota isolado para alta taxa de requisições.',
+      category: 'Econômico / Lite',
+      dailyLimit: 1500,
+      rpmLimit: 15,
+      tpmLimit: 1000000,
+    },
+    {
+      id: 'gemini-3-flash-preview',
+      aliases: ['gemini-3-flash-preview', 'gemini-3.0-flash', 'gemini-3.0-flash-preview'],
+      name: 'Gemini 3 Flash Preview',
       description: 'Próxima geração experimental com alta fidelidade lógica e estruturação.',
       category: 'Experimental / Preview',
       dailyLimit: 1500,
@@ -2653,12 +2699,52 @@ exports.getAiUsage = onCall({ cors: true }, async (request) => {
     },
   ];
 
+  // Probe em tempo real para verificar se o modelo responde 200, 429 ou 503
+  const probeModelStatus = async (modelId) => {
+    if (!apiKey) {
+      return { liveStatus: 'UNAVAILABLE', liveCode: 0, liveMessage: 'API Key não configurada' };
+    }
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 3500);
+
+    try {
+      const probeResp = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${modelId}?key=${apiKey}`,
+        { method: 'GET', signal: controller.signal }
+      );
+      clearTimeout(timeout);
+
+      const status = probeResp.status;
+      if (status === 200) {
+        return { liveStatus: 'ONLINE', liveCode: 200, liveMessage: 'Live 200 OK' };
+      }
+      if (status === 429) {
+        return { liveStatus: 'QUOTA_EXCEEDED', liveCode: 429, liveMessage: '429 Quota Exceeded' };
+      }
+      if (status === 503) {
+        return { liveStatus: 'HIGH_DEMAND', liveCode: 503, liveMessage: '503 Alta Demanda' };
+      }
+      return { liveStatus: 'UNAVAILABLE', liveCode: status, liveMessage: `HTTP ${status}` };
+    } catch (err) {
+      clearTimeout(timeout);
+      const isTimeout = err?.name === 'AbortError';
+      return {
+        liveStatus: 'OFFLINE',
+        liveCode: 0,
+        liveMessage: isTimeout ? 'Timeout (>3.5s)' : (err?.message || 'Falha de conexão')
+      };
+    }
+  };
+
   let todayDocs = [];
   let monthDocs = [];
   let minuteDocs = [];
+  let recentLogs = [];
+  let probeResults = [];
 
   try {
-    const [todaySnap, monthSnap, minuteSnap] = await Promise.all([
+    const [todaySnap, monthSnap, minuteSnap, recentSnap, probes] = await Promise.all([
       admin.firestore().collection('ai_usage_logs')
         .where('timestamp', '>=', startOfTodayUtc.toISOString())
         .get(),
@@ -2668,11 +2754,38 @@ exports.getAiUsage = onCall({ cors: true }, async (request) => {
       admin.firestore().collection('ai_usage_logs')
         .where('timestamp', '>=', oneMinuteAgo.toISOString())
         .get(),
+      admin.firestore().collection('ai_usage_logs')
+        .orderBy('timestamp', 'desc')
+        .limit(15)
+        .get()
+        .catch(async (err) => {
+          console.warn('[getAiUsage] Erro com orderBy timestamp, tentando fallback:', err);
+          return admin.firestore().collection('ai_usage_logs').limit(30).get();
+        }),
+      Promise.all(MODEL_SPECS.map(spec => probeModelStatus(spec.id))),
     ]);
 
     todayDocs = todaySnap.docs.map(d => d.data());
     monthDocs = monthSnap.docs.map(d => d.data());
     minuteDocs = minuteSnap.docs.map(d => d.data());
+    probeResults = probes;
+
+    recentLogs = recentSnap.docs
+      .map(doc => {
+        const data = doc.data();
+        return {
+          id: doc.id,
+          model: data.model || 'gemini-3.6-flash',
+          action: data.action || 'copilot_chat',
+          promptTokens: Number(data.promptTokens || 0),
+          candidatesTokens: Number(data.candidatesTokens || 0),
+          totalTokens: Number(data.totalTokens || 0),
+          timestamp: data.timestamp || (data.createdAt?.toDate?.() ? data.createdAt.toDate().toISOString() : new Date().toISOString()),
+          userId: data.userId || null,
+        };
+      })
+      .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+      .slice(0, 15);
   } catch (fsErr) {
     console.warn('[getAiUsage] Erro ao consultar ai_usage_logs no Firestore:', fsErr);
   }
@@ -2684,7 +2797,7 @@ exports.getAiUsage = onCall({ cors: true }, async (request) => {
         return spec.id;
       }
     }
-    return 'gemini-2.0-flash';
+    return 'gemini-3.6-flash';
   };
 
   const modelStatsMap = new Map();
@@ -2717,11 +2830,13 @@ exports.getAiUsage = onCall({ cors: true }, async (request) => {
     }
   }
 
-  const activeModelId = preferredWorkingModel || 'gemini-2.0-flash';
+  const activeModelId = preferredWorkingModel || 'gemini-3.6-flash';
 
-  const models = MODEL_SPECS.map(spec => {
+  const models = MODEL_SPECS.map((spec, idx) => {
     const stats = modelStatsMap.get(spec.id) || { daily: 0, monthly: 0, rpm: 0 };
     const percentage = Math.min(100, Math.round((stats.daily / spec.dailyLimit) * 100));
+    const probe = probeResults[idx] || { liveStatus: 'ONLINE', liveCode: 200, liveMessage: 'Live 200 OK' };
+
     return {
       id: spec.id,
       name: spec.name,
@@ -2742,6 +2857,9 @@ exports.getAiUsage = onCall({ cors: true }, async (request) => {
         used: stats.monthly,
       },
       tpmLimit: spec.tpmLimit,
+      liveStatus: probe.liveStatus,
+      liveCode: probe.liveCode,
+      liveMessage: probe.liveMessage,
     };
   });
 
@@ -2751,6 +2869,7 @@ exports.getAiUsage = onCall({ cors: true }, async (request) => {
   const totalDailyUsed = todayDocs.length;
   const totalMonthlyUsed = monthDocs.length;
   const totalDailyLimit = 1500;
+  const totalTokensToday = todayDocs.reduce((acc, doc) => acc + (Number(doc.totalTokens) || 0), 0);
 
   return {
     success: true,
@@ -2767,6 +2886,8 @@ exports.getAiUsage = onCall({ cors: true }, async (request) => {
       limit: 45000,
       percentage: Math.min(100, Math.round((totalMonthlyUsed / 45000) * 100)),
     },
+    totalTokensToday,
+    recentLogs,
     models,
     // Compatibilidade com interfaces legadas
     daily: {
@@ -2891,43 +3012,20 @@ Responda ESTRITAMENTE em formato JSON com as seguintes propriedades (sem markdow
   "suggestedTags": ["tag1", "tag2", "tag3", "tag4", "tag5"]
 }`;
 
-  const getVisionModels = async () => {
-    try {
-      const listResp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`);
-      if (listResp.ok) {
-        const listData = await listResp.json();
-        const available = (listData.models || [])
-          .filter(m => Array.isArray(m.supportedGenerationMethods) && m.supportedGenerationMethods.includes('generateContent'))
-          .map(m => m.name.replace(/^models\//, ''));
-
-        if (available.length > 0) {
-          const flashModels = available.filter(m => m.includes('flash'));
-          const otherModels = available.filter(m => !m.includes('flash'));
-          return [
-            process.env.GEMINI_MODEL,
-            preferredWorkingModel,
-            ...flashModels,
-            ...otherModels,
-            'gemini-2.0-flash',
-            'gemini-1.5-flash',
-          ].filter((item, index, self) => Boolean(item) && self.indexOf(item) === index);
-        }
-      }
-    } catch (err) {
-      console.warn('[enrichGalleryItemWithAi] Falha ao consultar endpoint de modelos:', err);
-    }
-    return [
-      process.env.GEMINI_MODEL,
-      preferredWorkingModel,
-      'gemini-2.0-flash',
-      'gemini-1.5-flash',
-    ].filter((item, index, self) => Boolean(item) && self.indexOf(item) === index);
-  };
-
-  const candidateModels = await getVisionModels();
+  const candidateModels = [
+    process.env.GEMINI_MODEL || 'gemini-3.6-flash',
+    'gemini-3.6-flash',
+    'gemini-3.7-flash',
+    'gemini-3.5-flash',
+    'gemini-3.8-flash',
+    'gemini-3.1-flash-lite',
+    'gemini-3.5-flash-lite',
+    'gemini-3-flash-preview',
+  ].filter((item, index, self) => Boolean(item) && self.indexOf(item) === index);
   let parsedAiResult = null;
-  let usedModel = 'gemini-2.0-flash';
+  let usedModel = 'gemini-3.6-flash';
   let lastError = null;
+  let usageTokens = { promptTokens: 0, candidatesTokens: 0, totalTokens: 0 };
 
   for (const model of candidateModels) {
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
@@ -2962,17 +3060,24 @@ Responda ESTRITAMENTE em formato JSON com as seguintes propriedades (sem markdow
       }
 
       const data = await resp.json();
+      const meta = data?.usageMetadata || {};
+      const pT = meta.promptTokenCount || meta.promptTokens || 0;
+      const cT = meta.candidatesTokenCount || meta.candidatesTokens || 0;
+      const tT = meta.totalTokenCount || meta.totalTokens || (pT + cT);
+
       const textResp = data?.candidates?.[0]?.content?.parts?.[0]?.text;
       if (textResp) {
         try {
           parsedAiResult = JSON.parse(textResp);
           usedModel = model;
+          usageTokens = { promptTokens: pT, candidatesTokens: cT, totalTokens: tT };
           break;
         } catch {
           const jsonMatch = textResp.match(/\{[\s\S]*\}/);
           if (jsonMatch) {
             parsedAiResult = JSON.parse(jsonMatch[0]);
             usedModel = model;
+            usageTokens = { promptTokens: pT, candidatesTokens: cT, totalTokens: tT };
             break;
           }
         }
@@ -2988,11 +3093,14 @@ Responda ESTRITAMENTE em formato JSON com as seguintes propriedades (sem markdow
     throw new functions.https.HttpsError('internal', lastError?.message || 'Falha ao processar visão computacional com o Gemini.');
   }
 
-  // Registra log de uso da IA
+  // Registra log de uso da IA com tokens
   admin.firestore().collection('ai_usage_logs').add({
     userId: callerUid,
     model: usedModel,
     action: 'gallery_vision_enrichment',
+    promptTokens: usageTokens.promptTokens,
+    candidatesTokens: usageTokens.candidatesTokens,
+    totalTokens: usageTokens.totalTokens,
     itemId,
     timestamp: new Date().toISOString(),
     createdAt: admin.firestore.FieldValue.serverTimestamp(),
