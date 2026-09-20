@@ -290,6 +290,7 @@ export function AiCopilotSheet({ open, onOpenChange, onApplyOrderDraft }: AiCopi
   const canAccessAiCopilot = isAdmin || hasPermission((p) => Boolean(p?.aiCopilot));
   const [messages, setMessages] = useState<AiChatMessage[]>([INITIAL_MESSAGE]);
   const [input, setInput] = useState('');
+  const [showSuggestions, setShowSuggestions] = useState(true);
   const [loading, setLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [quota, setQuota] = useState<import('../types').AiUsageData | null>(null);
@@ -383,6 +384,7 @@ export function AiCopilotSheet({ open, onOpenChange, onApplyOrderDraft }: AiCopi
     setMessages(prev => [...prev, userMsg]);
     setInput('');
     setAttachedImage(null);
+    setShowSuggestions(false);
     setLoading(true);
 
     try {
@@ -428,6 +430,7 @@ export function AiCopilotSheet({ open, onOpenChange, onApplyOrderDraft }: AiCopi
 
   const handleClearHistory = () => {
     setMessages([INITIAL_MESSAGE]);
+    setShowSuggestions(true);
   };
 
   const handleSyncAllOrders = async () => {
@@ -721,17 +724,35 @@ export function AiCopilotSheet({ open, onOpenChange, onApplyOrderDraft }: AiCopi
         </div>
 
         {/* Suggestions chips */}
-        {messages.length <= 3 && (
-          <div className="px-3 sm:px-4 py-2 border-t bg-muted/20 space-y-1.5 flex-shrink-0">
-            <span className="text-[10px] sm:text-[11px] font-medium text-muted-foreground">Sugestões rápidas:</span>
-            <div className="flex flex-col gap-1">
+        {showSuggestions && messages.length <= 1 && !loading && !input.trim() && (
+          <div className="px-3 sm:px-4 py-2 border-t bg-muted/20 space-y-1.5 flex-shrink-0 animate-in fade-in duration-200">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] sm:text-[11px] font-medium text-muted-foreground flex items-center gap-1.5">
+                <Sparkles className="size-3 text-amber-500" />
+                Sugestões rápidas:
+              </span>
+              <button
+                type="button"
+                onClick={() => setShowSuggestions(false)}
+                className="text-muted-foreground hover:text-foreground px-1.5 py-0.5 rounded hover:bg-muted/80 transition-colors cursor-pointer text-[10px] flex items-center gap-1"
+                title="Ocultar sugestões rápidas"
+                aria-label="Ocultar sugestões rápidas"
+              >
+                <X className="size-3" />
+                <span>Ocultar</span>
+              </button>
+            </div>
+            <div className="flex flex-col gap-1 max-h-40 overflow-y-auto pr-1">
               {SUGGESTIONS.map((sug, idx) => (
                 <button
                   key={idx}
                   type="button"
-                  onClick={() => handleSend(sug)}
+                  onClick={() => {
+                    setShowSuggestions(false);
+                    handleSend(sug);
+                  }}
                   disabled={loading}
-                  className="text-left text-xs text-foreground/80 hover:text-primary hover:bg-primary/5 px-2.5 py-1.5 rounded-md transition-colors border border-transparent hover:border-primary/20 truncate"
+                  className="text-left text-xs text-foreground/80 hover:text-primary hover:bg-primary/5 px-2.5 py-1.5 rounded-md transition-colors border border-transparent hover:border-primary/20 truncate cursor-pointer"
                 >
                   {sug}
                 </button>
@@ -742,6 +763,19 @@ export function AiCopilotSheet({ open, onOpenChange, onApplyOrderDraft }: AiCopi
 
         {/* Input Footer */}
         <div className="p-3 border-t bg-card/70 backdrop-blur-xs flex-shrink-0 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+          {/* Opção discreta para reabrir sugestões se o usuário desejar */}
+          {!showSuggestions && messages.length <= 1 && !loading && !input.trim() && (
+            <div className="mb-2 flex items-center justify-start">
+              <button
+                type="button"
+                onClick={() => setShowSuggestions(true)}
+                className="text-[11px] text-amber-600 dark:text-amber-400 hover:text-amber-700 bg-amber-500/10 hover:bg-amber-500/15 border border-amber-500/20 px-2.5 py-0.5 rounded-full flex items-center gap-1 transition-colors cursor-pointer"
+              >
+                <Sparkles className="size-3 text-amber-500" />
+                <span>Ver sugestões rápidas</span>
+              </button>
+            </div>
+          )}
           {/* Preview da Imagem Anexada */}
           {attachedImage && (
             <div className="mb-2 p-2 bg-background border rounded-lg flex items-center justify-between gap-2 shadow-xs">
