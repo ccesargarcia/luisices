@@ -2197,11 +2197,15 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
     parts: userParts
   });
 
-  // Definição estrita dos modelos modernos ativos (gemini-3.6-flash, gemini-3.8-flash, etc.)
+  // Definição estrita dos modelos modernos ativos com pools de cota independentes contra 429
   const CANDIDATE_MODELS = [
     process.env.GEMINI_MODEL || 'gemini-3.6-flash',
     'gemini-3.6-flash',
+    'gemini-3.7-flash',
+    'gemini-3.5-flash',
     'gemini-3.8-flash',
+    'gemini-3.1-flash-lite',
+    'gemini-3.5-flash-lite',
     'gemini-3-flash-preview',
   ].filter((item, index, self) => Boolean(item) && self.indexOf(item) === index);
 
@@ -2883,7 +2887,11 @@ Responda ESTRITAMENTE em formato JSON com as seguintes propriedades (sem markdow
   const candidateModels = [
     process.env.GEMINI_MODEL || 'gemini-3.6-flash',
     'gemini-3.6-flash',
+    'gemini-3.7-flash',
+    'gemini-3.5-flash',
     'gemini-3.8-flash',
+    'gemini-3.1-flash-lite',
+    'gemini-3.5-flash-lite',
     'gemini-3-flash-preview',
   ].filter((item, index, self) => Boolean(item) && self.indexOf(item) === index);
   let parsedAiResult = null;
