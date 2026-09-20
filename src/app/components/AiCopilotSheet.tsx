@@ -30,17 +30,24 @@ import {
   X,
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
+import { useOrders } from '../../contexts/OrdersContext';
 import { firebaseAiAgentService } from '../../services/firebaseAiAgentService';
+import { firebaseOrderService } from '../../services/firebaseOrderService';
 import { useFirebaseCustomers } from '../../hooks/useFirebaseCustomers';
-import { AiChatMessage, AiOrderDraft, AiWhatsAppDraft, AiPricingEstimate } from '../types';
+import {
+  AiChatMessage,
+  AiOrderDraft,
+  AiWhatsAppDraft,
+  AiPricingEstimate,
+  AiCopilotSheetProps,
+  Order,
+  OrderStatus,
+} from '../types';
+import { OrderDetailsDialog } from './OrderDetailsDialog';
 import { toast } from 'sonner';
 import { formatCurrency } from '../utils/currency';
 
-interface AiCopilotSheetProps {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  onApplyOrderDraft?: (draft: AiOrderDraft) => void;
-}
+export type { AiCopilotSheetProps };
 
 const INITIAL_MESSAGE: AiChatMessage = {
   id: 'init-1',
@@ -48,6 +55,13 @@ const INITIAL_MESSAGE: AiChatMessage = {
   text: 'Olá! Sou o Copiloto Interno da Luisices. 👕✨\n\nEstou equipado com **Consulta ao Acervo da Galeria**, **Análise de Fotos & Imagens**, **Consulta de Pedidos**, **Raio-X Diário**, **Central WhatsApp**, **Calculadora de Orçamentos** e **Extração de Pedidos** com guardrails de segurança e isolamento por usuário.',
   timestamp: new Date().toISOString(),
 };
+
+const PROGRESS_STEPS = [
+  'Analisando sua solicitação...',
+  'Consultando pedidos e acervo do ateliê...',
+  'Calculando prazos e valores...',
+  'Formatando resposta...',
+];
 
 const SUGGESTIONS = [
   '📋 Raio-X do Dia (Briefing de produção e prazos)',
@@ -285,12 +299,40 @@ function WhatsAppComposer({ draft, onSendVariantRequest, disabled }: WhatsAppCom
   );
 }
 
-export function AiCopilotSheet({ open, onOpenChange, onApplyOrderDraft }: AiCopilotSheetProps) {
+export function AiCopilotSheet({
+  open,
+  onOpenChange,
+  onApplyOrderDraft,
+  onOpenOrderDetails,
+}: AiCopilotSheetProps) {
   const { user, isAdmin, hasPermission } = useAuth();
   const canAccessAiCopilot = isAdmin || hasPermission((p) => Boolean(p?.aiCopilot));
-  const [messages, setMessages] = useState<AiChatMessage[]>([INITIAL_MESSAGE]);
+  const { orders, allOrders } = useOrders();
+
+  const storageKey = `luisices_ai_chat_history_${user?.uid || 'guest'}`;
+
+  const [messages, setMessages] = useState<AiChatMessage[]>(() => {
+    try {
+      const saved = localStorage.getItem(storageKey);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed;
+        }
+      }
+    } catch (e) {
+      console.warn('[AiCopilot] Erro ao carregar histórico salvo:', e);
+    }
+    return [INITIAL_MESSAGE];
+  });
+
   const [input, setInput] = useState('');
+  const [showSuggestions, setShowSuggestions] = useState(true);
   const [loading, setLoading] = useState(false);
+  const [cooldownSeconds, setCooldownSeconds] = useState(0);
+  const [progressStepIndex, setProgressStepIndex] = useState(0);
+  const [selectedOrderForDetails, setSelectedOrderForDetails] = useState<Order | null>(null);
+  const [orderDetailsOpen, setOrderDetailsOpen] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [quota, setQuota] = useState<import('../types').AiUsageData | null>(null);
   const [attachedImage, setAttachedImage] = useState<{
@@ -301,6 +343,61 @@ export function AiCopilotSheet({ open, onOpenChange, onApplyOrderDraft }: AiCopi
   } | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Sincroniza histórico quando o usuário ou storageKey mudar
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(storageKey);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setMessages(parsed);
+          return;
+        }
+      }
+    } catch (e) {
+      console.warn('[AiCopilot] Erro ao sincronizar histórico com usuário:', e);
+    }
+    setMessages([INITIAL_MESSAGE]);
+  }, [storageKey]);
+
+  // Persiste no localStorage limitando às 20 mensagens mais recentes
+  useEffect(() => {
+    try {
+      if (messages.length === 1 && messages[0].id === INITIAL_MESSAGE.id) {
+        return;
+      }
+      const trimmed = messages.slice(-20);
+      localStorage.setItem(storageKey, JSON.stringify(trimmed));
+    } catch (e) {
+      console.warn('[AiCopilot] Erro ao salvar histórico no localStorage:', e);
+    }
+  }, [messages, storageKey]);
+
+  // Cooldown de 3 segundos decrementado a cada segundo
+  useEffect(() => {
+    if (cooldownSeconds <= 0) return;
+
+    const timer = setInterval(() => {
+      setCooldownSeconds((prev) => (prev > 0 ? prev - 1 : 0));
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [cooldownSeconds]);
+
+  // Alterna mensagens de progresso a cada 1.5s enquanto carrega
+  useEffect(() => {
+    if (!loading) {
+      setProgressStepIndex(0);
+      return;
+    }
+
+    const interval = setInterval(() => {
+      setProgressStepIndex((prev) => (prev + 1) % PROGRESS_STEPS.length);
+    }, 1500);
+
+    return () => clearInterval(interval);
+  }, [loading]);
 
   const fetchQuota = async () => {
     if (!isAdmin) return;
@@ -323,7 +420,7 @@ export function AiCopilotSheet({ open, onOpenChange, onApplyOrderDraft }: AiCopi
         fetchQuota();
       }
     }
-  }, [open, messages, isAdmin]);
+  }, [open, messages, loading, isAdmin]);
 
   const handleImagePick = (file: File) => {
     const validMimes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
@@ -366,6 +463,8 @@ export function AiCopilotSheet({ open, onOpenChange, onApplyOrderDraft }: AiCopi
   };
 
   const handleSend = async (textToSend?: string) => {
+    if (loading || cooldownSeconds > 0) return;
+
     const messageText = (textToSend || input).trim();
     if ((!messageText && !attachedImage) || loading) return;
 
@@ -383,6 +482,7 @@ export function AiCopilotSheet({ open, onOpenChange, onApplyOrderDraft }: AiCopi
     setMessages(prev => [...prev, userMsg]);
     setInput('');
     setAttachedImage(null);
+    setShowSuggestions(false);
     setLoading(true);
 
     try {
@@ -423,11 +523,87 @@ export function AiCopilotSheet({ open, onOpenChange, onApplyOrderDraft }: AiCopi
       setMessages(prev => [...prev, errorMsg]);
     } finally {
       setLoading(false);
+      setCooldownSeconds(3);
     }
   };
 
   const handleClearHistory = () => {
     setMessages([INITIAL_MESSAGE]);
+    setShowSuggestions(true);
+    try {
+      localStorage.removeItem(storageKey);
+    } catch (e) {
+      console.warn('[AiCopilot] Erro ao limpar histórico:', e);
+    }
+    toast.success('Histórico do Copiloto limpo com sucesso!');
+  };
+
+  const handleOrderChipClick = (orderNumberStr: string) => {
+    const cleanTarget = orderNumberStr.replace(/^#/, '').trim().toLowerCase();
+    const pool = allOrders && allOrders.length > 0 ? allOrders : orders;
+
+    const found = pool.find((o) => {
+      if (!o) return false;
+      const oNum = (o.orderNumber || '').replace(/^#/, '').trim().toLowerCase();
+      if (oNum === cleanTarget) return true;
+      if (o.id.toLowerCase() === cleanTarget || o.id === orderNumberStr) return true;
+      if (/^\d+$/.test(cleanTarget) && oNum.endsWith(`-${cleanTarget}`)) return true;
+      return false;
+    });
+
+    if (found) {
+      if (onOpenOrderDetails) {
+        onOpenOrderDetails(found);
+      } else {
+        setSelectedOrderForDetails(found);
+        setOrderDetailsOpen(true);
+      }
+    } else {
+      toast.info(`Pedido ${orderNumberStr} identificado`);
+    }
+  };
+
+  const handleUpdateStatusInSheet = async (orderId: string, status: OrderStatus) => {
+    try {
+      await firebaseOrderService.updateOrderStatus(orderId, status);
+      if (selectedOrderForDetails && selectedOrderForDetails.id === orderId) {
+        setSelectedOrderForDetails((prev) => (prev ? { ...prev, status } : null));
+      }
+    } catch (err) {
+      console.error('Erro ao atualizar status:', err);
+      toast.error('Erro ao atualizar status do pedido');
+    }
+  };
+
+  const renderMessageTextWithOrderLinks = (text: string) => {
+    if (!text) return null;
+    const regex = /(#(?:\d{4}-\d{3,}|\d{3,5})\b)/g;
+    const parts = text.split(regex);
+
+    if (parts.length === 1) {
+      return text;
+    }
+
+    return parts.map((part, idx) => {
+      if (/^#(?:\d{4}-\d{3,}|\d{3,5})$/.test(part)) {
+        return (
+          <button
+            key={idx}
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              handleOrderChipClick(part);
+            }}
+            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-primary/10 hover:bg-primary/20 text-primary font-bold text-xs cursor-pointer transition-colors align-baseline mx-0.5"
+            title={`Abrir detalhes do pedido ${part}`}
+          >
+            <Package className="size-3 shrink-0" />
+            <span>{part}</span>
+          </button>
+        );
+      }
+      return <React.Fragment key={idx}>{part}</React.Fragment>;
+    });
   };
 
   const handleSyncAllOrders = async () => {
@@ -558,7 +734,9 @@ export function AiCopilotSheet({ open, onOpenChange, onApplyOrderDraft }: AiCopi
                     </div>
                   )}
 
-                  <div className="leading-relaxed">{msg.text}</div>
+                  <div className="leading-relaxed">
+                    {msg.role === 'assistant' ? renderMessageTextWithOrderLinks(msg.text) : msg.text}
+                  </div>
 
                   {/* Card 1: Central Interativa de WhatsApp com Edição e Envio */}
                   {msg.whatsappDraft && (
@@ -711,9 +889,20 @@ export function AiCopilotSheet({ open, onOpenChange, onApplyOrderDraft }: AiCopi
           })}
 
           {loading && (
-            <div className="flex items-center gap-2 text-muted-foreground text-xs p-2">
-              <Loader2 className="size-4 animate-spin text-amber-500" />
-              <span>Consultando inteligência e base somente-leitura...</span>
+            <div className="flex items-start gap-2 flex-row animate-in fade-in duration-200">
+              <div className="size-7 sm:size-8 rounded-full flex items-center justify-center shrink-0 text-xs font-semibold bg-amber-500/10 text-amber-600 border border-amber-500/20">
+                <Bot className="size-3.5 sm:size-4" />
+              </div>
+
+              <div className="rounded-2xl px-3.5 py-2.5 text-xs sm:text-sm bg-muted/80 text-foreground border rounded-tl-none flex items-center gap-2.5 shadow-xs">
+                <Loader2 className="size-4 animate-spin text-amber-500 shrink-0" />
+                <span
+                  key={progressStepIndex}
+                  className="animate-in fade-in duration-300 font-medium text-foreground/90 transition-all"
+                >
+                  {PROGRESS_STEPS[progressStepIndex]}
+                </span>
+              </div>
             </div>
           )}
 
@@ -721,17 +910,35 @@ export function AiCopilotSheet({ open, onOpenChange, onApplyOrderDraft }: AiCopi
         </div>
 
         {/* Suggestions chips */}
-        {messages.length <= 3 && (
-          <div className="px-3 sm:px-4 py-2 border-t bg-muted/20 space-y-1.5 flex-shrink-0">
-            <span className="text-[10px] sm:text-[11px] font-medium text-muted-foreground">Sugestões rápidas:</span>
-            <div className="flex flex-col gap-1">
+        {showSuggestions && messages.length <= 1 && !loading && !input.trim() && (
+          <div className="px-3 sm:px-4 py-2 border-t bg-muted/20 space-y-1.5 flex-shrink-0 animate-in fade-in duration-200">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] sm:text-[11px] font-medium text-muted-foreground flex items-center gap-1.5">
+                <Sparkles className="size-3 text-amber-500" />
+                Sugestões rápidas:
+              </span>
+              <button
+                type="button"
+                onClick={() => setShowSuggestions(false)}
+                className="text-muted-foreground hover:text-foreground px-1.5 py-0.5 rounded hover:bg-muted/80 transition-colors cursor-pointer text-[10px] flex items-center gap-1"
+                title="Ocultar sugestões rápidas"
+                aria-label="Ocultar sugestões rápidas"
+              >
+                <X className="size-3" />
+                <span>Ocultar</span>
+              </button>
+            </div>
+            <div className="flex flex-col gap-1 max-h-40 overflow-y-auto pr-1">
               {SUGGESTIONS.map((sug, idx) => (
                 <button
                   key={idx}
                   type="button"
-                  onClick={() => handleSend(sug)}
-                  disabled={loading}
-                  className="text-left text-xs text-foreground/80 hover:text-primary hover:bg-primary/5 px-2.5 py-1.5 rounded-md transition-colors border border-transparent hover:border-primary/20 truncate"
+                  onClick={() => {
+                    setShowSuggestions(false);
+                    handleSend(sug);
+                  }}
+                  disabled={loading || cooldownSeconds > 0}
+                  className="text-left text-xs text-foreground/80 hover:text-primary hover:bg-primary/5 px-2.5 py-1.5 rounded-md transition-colors border border-transparent hover:border-primary/20 truncate cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {sug}
                 </button>
@@ -742,6 +949,19 @@ export function AiCopilotSheet({ open, onOpenChange, onApplyOrderDraft }: AiCopi
 
         {/* Input Footer */}
         <div className="p-3 border-t bg-card/70 backdrop-blur-xs flex-shrink-0 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+          {/* Opção discreta para reabrir sugestões se o usuário desejar */}
+          {!showSuggestions && messages.length <= 1 && !loading && cooldownSeconds <= 0 && !input.trim() && (
+            <div className="mb-2 flex items-center justify-start">
+              <button
+                type="button"
+                onClick={() => setShowSuggestions(true)}
+                className="text-[11px] text-amber-600 dark:text-amber-400 hover:text-amber-700 bg-amber-500/10 hover:bg-amber-500/15 border border-amber-500/20 px-2.5 py-0.5 rounded-full flex items-center gap-1 transition-colors cursor-pointer"
+              >
+                <Sparkles className="size-3 text-amber-500" />
+                <span>Ver sugestões rápidas</span>
+              </button>
+            </div>
+          )}
           {/* Preview da Imagem Anexada */}
           {attachedImage && (
             <div className="mb-2 p-2 bg-background border rounded-lg flex items-center justify-between gap-2 shadow-xs">
@@ -794,7 +1014,7 @@ export function AiCopilotSheet({ open, onOpenChange, onApplyOrderDraft }: AiCopi
               className="shrink-0 h-[40px] w-[40px] text-muted-foreground hover:text-foreground"
               onClick={() => fileInputRef.current?.click()}
               title="Anexar foto ou referência para a IA analisar"
-              disabled={loading}
+              disabled={loading || cooldownSeconds > 0}
             >
               <Paperclip className="size-4" />
             </Button>
@@ -806,27 +1026,57 @@ export function AiCopilotSheet({ open, onOpenChange, onApplyOrderDraft }: AiCopi
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && !e.shiftKey) {
                   e.preventDefault();
-                  handleSend();
+                  if (!loading && cooldownSeconds <= 0) {
+                    handleSend();
+                  }
                 }
               }}
               rows={1}
-              placeholder={attachedImage ? "Adicione instruções sobre a foto ou aperte Enter para analisar..." : "Digite sua dúvida, cole texto ou anexe/cole uma foto... (Enter envia)"}
+              placeholder={
+                loading
+                  ? "Processando resposta..."
+                  : cooldownSeconds > 0
+                  ? `Aguarde ${cooldownSeconds}s para nova mensagem...`
+                  : attachedImage
+                  ? "Adicione instruções sobre a foto ou aperte Enter para analisar..."
+                  : "Digite sua dúvida, cole texto ou anexe/cole uma foto... (Enter envia)"
+              }
               className="text-xs sm:text-sm bg-background min-h-[40px] max-h-24 resize-none py-2.5 leading-tight"
-              disabled={loading}
+              disabled={loading || cooldownSeconds > 0}
             />
             <Button
               type="submit"
               size="icon"
-              disabled={(!input.trim() && !attachedImage) || loading}
-              className="shrink-0 h-[40px] w-[40px]"
+              disabled={(!input.trim() && !attachedImage) || loading || cooldownSeconds > 0}
+              className="shrink-0 h-[40px] min-w-[40px] px-2"
+              title={cooldownSeconds > 0 ? `Aguarde ${cooldownSeconds}s...` : 'Enviar mensagem'}
             >
-              {loading ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}
+              {loading ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : cooldownSeconds > 0 ? (
+                <span className="text-[11px] font-mono font-semibold">{cooldownSeconds}s</span>
+              ) : (
+                <Send className="size-4" />
+              )}
             </Button>
           </form>
           <p className="text-[10px] text-center text-muted-foreground mt-1.5 hidden sm:block">
             💡 Pressione <kbd className="px-1 py-0.5 text-[9px] bg-muted border rounded font-mono">Enter</kbd> para enviar, <kbd className="px-1 py-0.5 text-[9px] bg-muted border rounded font-mono">Shift+Enter</kbd> para nova linha ou cole fotos com <kbd className="px-1 py-0.5 text-[9px] bg-muted border rounded font-mono">Ctrl+V</kbd>.
           </p>
         </div>
+
+        {/* Modal de Detalhes do Pedido acionado via Deep Linking */}
+        <OrderDetailsDialog
+          order={selectedOrderForDetails}
+          open={orderDetailsOpen}
+          onOpenChange={(isOpen) => {
+            setOrderDetailsOpen(isOpen);
+            if (!isOpen) {
+              setTimeout(() => setSelectedOrderForDetails(null), 300);
+            }
+          }}
+          onUpdateStatus={handleUpdateStatusInSheet}
+        />
       </SheetContent>
     </Sheet>
   );

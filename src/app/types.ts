@@ -739,6 +739,13 @@ export interface AiUsageData {
   };
 }
 
+export interface AiCopilotSheetProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onApplyOrderDraft?: (draft: AiOrderDraft) => void;
+  onOpenOrderDetails?: (order: Order) => void;
+}
+
 // ─── Central de Atendimento WhatsApp ──────────────────────────────────────────
 export interface WhatsAppMessage {
   id: string;
