@@ -51,9 +51,16 @@ export type { AiCopilotSheetProps };
 const INITIAL_MESSAGE: AiChatMessage = {
   id: 'init-1',
   role: 'assistant',
-  text: 'Olá! Sou o Copiloto Interno da Luisices. 👕✨\n\nEstou equipado com **Consulta ao Acervo da Galeria**, **Análise de Fotos & Imagens**, **Consulta de Pedidos**, **Raio-X Diário**, **Central WhatsApp**, **Calculadora de Orçamentos** e **Extração de Pedidos** com guardrails de segurança e isolamento por usuário.',
+  text: 'Olá! Sou a assistente do Ateliê Luisices. 👕✨\n\nPosso te ajudar a consultar pedidos e prazos, verificar o resumo do dia, pesquisar fotos e modelos no acervo, calcular custos e preços sugeridos, redigir mensagens para WhatsApp ou montar rascunhos de novos pedidos.\n\nComo posso te ajudar hoje?',
   timestamp: new Date().toISOString(),
 };
+
+function cleanHumanText(text: string): string {
+  if (!text) return '';
+  return text
+    .replace(/(?:a\s+)?(?:ferramenta|função|funcao|endpoint|método|metodo)\s*[`'"]?(calculate_pricing_estimate|query_orders_view|extract_order_draft|generate_whatsapp_message|daily_briefing|get_financial_summary|get_user_summary|query_customers|search_gallery_portfolio|enrichGalleryItemWithAi)[`'"]?/gi, 'assistente')
+    .replace(/[`'"]?(calculate_pricing_estimate|query_orders_view|extract_order_draft|generate_whatsapp_message|daily_briefing|get_financial_summary|get_user_summary|query_customers|search_gallery_portfolio)[`'"]?/gi, 'assistente');
+}
 
 const PROGRESS_STEPS = [
   'Analisando sua solicitação...',
@@ -316,6 +323,9 @@ export function AiCopilotSheet({
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) {
+          if (parsed[0]?.id === 'init-1') {
+            parsed[0] = INITIAL_MESSAGE;
+          }
           return parsed;
         }
       }
@@ -349,6 +359,9 @@ export function AiCopilotSheet({
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) {
+          if (parsed[0]?.id === 'init-1') {
+            parsed[0] = INITIAL_MESSAGE;
+          }
           setMessages(parsed);
           return;
         }
@@ -644,7 +657,7 @@ export function AiCopilotSheet({
                   )}
                 </SheetTitle>
                 <SheetDescription className="text-[11px] sm:text-xs text-muted-foreground truncate">
-                  Consultas, Briefings, WhatsApp & Precificação
+                  Consultas, Resumo do Dia, WhatsApp & Orçamentos
                 </SheetDescription>
               </div>
             </div>
@@ -710,7 +723,7 @@ export function AiCopilotSheet({
                   )}
 
                   <div className="leading-relaxed">
-                    {msg.role === 'assistant' ? renderMessageTextWithOrderLinks(msg.text) : msg.text}
+                    {msg.role === 'assistant' ? renderMessageTextWithOrderLinks(cleanHumanText(msg.text)) : msg.text}
                   </div>
 
                   {/* Card 1: Central Interativa de WhatsApp com Edição e Envio */}
