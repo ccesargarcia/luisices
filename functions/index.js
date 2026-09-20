@@ -1086,7 +1086,7 @@ exports.syncAllOrdersToAiView = onCall(async () => {
 });
 
 // Modelo padrão ultra-rápido memoizado em memória para respostas sub-segundo
-let preferredWorkingModel = 'gemini-2.0-flash';
+let preferredWorkingModel = 'gemini-3.6-flash';
 
 // Cache global em memória para colaboradores/equipe (TTL de 10 minutos para evitar chamadas repetidas a Auth e Firestore)
 let cachedTeamMembers = null;
@@ -1107,6 +1107,29 @@ const normalizeString = (str) => {
     .replace(/[\u0300-\u036f]/g, '')
     .trim();
 };
+
+/**
+ * Higieniza rigorosamente termos técnicos e chamadas de ferramentas na resposta
+ */
+function sanitizeAiResponse(text) {
+  if (!text || typeof text !== 'string') return text;
+  let clean = text;
+  const toolTerms = [
+    { pattern: /`?calculate_pricing_estimate`?/gi, replacement: 'calcular a estimativa de valores' },
+    { pattern: /`?extract_order_draft`?/gi, replacement: 'montar o rascunho do pedido' },
+    { pattern: /`?query_orders_view`?/gi, replacement: 'consultar a lista de pedidos' },
+    { pattern: /`?query_customers`?/gi, replacement: 'pesquisar clientes' },
+    { pattern: /`?generate_whatsapp_message`?/gi, replacement: 'gerar a mensagem de WhatsApp' },
+    { pattern: /`?search_gallery_portfolio`?/gi, replacement: 'consultar fotos na galeria' },
+    { pattern: /`?daily_briefing`?/gi, replacement: 'gerar o resumo do dia' },
+    { pattern: /posso usar a ferramenta/gi, replacement: 'posso' },
+    { pattern: /utilizando a ferramenta/gi, replacement: 'posso' },
+  ];
+  toolTerms.forEach(({ pattern, replacement }) => {
+    clean = clean.replace(pattern, replacement);
+  });
+  return clean.trim();
+}
 
 /**
  * Sanitiza o texto gerado pela IA para remover pensamentos/raciocínios internos vazados e jargões técnicos
@@ -1149,7 +1172,7 @@ const cleanAiOutput = (text) => {
     (_m, tool) => toolLabels[tool.toLowerCase()] || 'assistente'
   );
 
-  return cleaned.trim();
+  return sanitizeAiResponse(cleaned);
 };
 
 /**
@@ -2174,18 +2197,17 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
     parts: userParts
   });
 
-  // Priorização direta do modelo mais rápido do Google sem consulta HTTP prévia (latência sub-segundo)
-  const candidateModels = [
-    process.env.GEMINI_MODEL,
-    preferredWorkingModel,
-    'gemini-2.0-flash',
-    'gemini-1.5-flash',
-    'gemini-1.5-pro',
+  // Definição estrita dos modelos modernos ativos (gemini-3.6-flash, gemini-3.8-flash, etc.)
+  const CANDIDATE_MODELS = [
+    process.env.GEMINI_MODEL || 'gemini-3.6-flash',
+    'gemini-3.6-flash',
+    'gemini-3.8-flash',
+    'gemini-3-flash-preview',
   ].filter((item, index, self) => Boolean(item) && self.indexOf(item) === index);
 
   const callGeminiWithFallback = async (payload) => {
     let lastError = null;
-    for (const model of candidateModels) {
+    for (const model of CANDIDATE_MODELS) {
       const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
       try {
         const resp = await fetch(url, {
@@ -2511,7 +2533,7 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
       finalAnswer = cleanAiOutput(parts.map(p => p.text).filter(Boolean).join('\n')) || 'Como posso ajudar você hoje?';
     }
 
-    finalAnswer = cleanAiOutput(finalAnswer);
+    finalAnswer = sanitizeAiResponse(cleanAiOutput(finalAnswer));
 
     // Salva no cache de respostas rápidas
     aiResponseCache.set(cacheKey, {
@@ -2561,10 +2583,10 @@ exports.getAiUsage = onCall({ cors: true }, async (request) => {
 
   const MODEL_SPECS = [
     {
-      id: 'gemini-2.0-flash',
-      aliases: ['gemini-2.0-flash', 'gemini-2.0-flash-exp', 'gemini-2.0-flash-001'],
-      name: 'Gemini 2.0 Flash',
-      description: 'Modelo de última geração ultra-rápido com suporte multimodal e tool calls integradas.',
+      id: 'gemini-3.6-flash',
+      aliases: ['gemini-3.6-flash', 'gemini-3.6-flash-001'],
+      name: 'Gemini 3.6 Flash',
+      description: 'Modelo principal de alta velocidade em produção com suporte multimodal e tool calls integradas.',
       category: 'Produção (Padrão)',
       dailyLimit: 1500,
       rpmLimit: 15,
@@ -2572,39 +2594,19 @@ exports.getAiUsage = onCall({ cors: true }, async (request) => {
       isDefault: true,
     },
     {
-      id: 'gemini-2.0-flash-lite',
-      aliases: ['gemini-2.0-flash-lite', 'gemini-2.0-flash-lite-preview-02-05', 'gemini-2.0-flash-lite-preview'],
-      name: 'Gemini 2.0 Flash-Lite',
-      description: 'Modelo ultra-leve e econômico para respostas instantâneas e alto throughput.',
-      category: 'Alta Eficiência / Lite',
-      dailyLimit: 1500,
-      rpmLimit: 30,
-      tpmLimit: 1000000,
-    },
-    {
-      id: 'gemini-1.5-flash',
-      aliases: ['gemini-1.5-flash', 'gemini-1.5-flash-latest', 'gemini-1.5-flash-002', 'gemini-1.5-flash-8b'],
-      name: 'Gemini 1.5 Flash',
-      description: 'Modelo comprovado e estável para briefings diários e consultas operacionais.',
-      category: 'Fallback Estável',
+      id: 'gemini-3.8-flash',
+      aliases: ['gemini-3.8-flash', 'gemini-3.8-flash-preview'],
+      name: 'Gemini 3.8 Flash',
+      description: 'Modelo de última geração para raciocínio multimodal, fotos e acervo do ateliê.',
+      category: 'Visão & Raciocínio',
       dailyLimit: 1500,
       rpmLimit: 15,
       tpmLimit: 1000000,
     },
     {
-      id: 'gemini-1.5-pro',
-      aliases: ['gemini-1.5-pro', 'gemini-1.5-pro-latest', 'gemini-1.5-pro-002'],
-      name: 'Gemini 1.5 Pro',
-      description: 'Modelo de raciocínio profundo para análises avançadas e grandes janelas de contexto.',
-      category: 'Raciocínio Avançado',
-      dailyLimit: 50,
-      rpmLimit: 2,
-      tpmLimit: 32000,
-    },
-    {
-      id: 'gemini-3.0-flash',
-      aliases: ['gemini-3.0-flash', 'gemini-3.1-pro-preview', 'gemini-3.0-flash-preview'],
-      name: 'Gemini 3.0 Flash (Preview)',
+      id: 'gemini-3-flash-preview',
+      aliases: ['gemini-3-flash-preview', 'gemini-3.0-flash', 'gemini-3.0-flash-preview'],
+      name: 'Gemini 3 Flash Preview',
       description: 'Próxima geração experimental com alta fidelidade lógica e estruturação.',
       category: 'Experimental / Preview',
       dailyLimit: 1500,
@@ -2644,7 +2646,7 @@ exports.getAiUsage = onCall({ cors: true }, async (request) => {
         return spec.id;
       }
     }
-    return 'gemini-2.0-flash';
+    return 'gemini-3.6-flash';
   };
 
   const modelStatsMap = new Map();
@@ -2677,7 +2679,7 @@ exports.getAiUsage = onCall({ cors: true }, async (request) => {
     }
   }
 
-  const activeModelId = preferredWorkingModel || 'gemini-2.0-flash';
+  const activeModelId = preferredWorkingModel || 'gemini-3.6-flash';
 
   const models = MODEL_SPECS.map(spec => {
     const stats = modelStatsMap.get(spec.id) || { daily: 0, monthly: 0, rpm: 0 };
@@ -2852,13 +2854,13 @@ Responda ESTRITAMENTE em formato JSON com as seguintes propriedades (sem markdow
 }`;
 
   const candidateModels = [
-    process.env.GEMINI_MODEL,
-    preferredWorkingModel,
-    'gemini-2.0-flash',
-    'gemini-1.5-flash',
+    process.env.GEMINI_MODEL || 'gemini-3.6-flash',
+    'gemini-3.6-flash',
+    'gemini-3.8-flash',
+    'gemini-3-flash-preview',
   ].filter((item, index, self) => Boolean(item) && self.indexOf(item) === index);
   let parsedAiResult = null;
-  let usedModel = 'gemini-2.0-flash';
+  let usedModel = 'gemini-3.6-flash';
   let lastError = null;
 
   for (const model of candidateModels) {
