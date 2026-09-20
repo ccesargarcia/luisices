@@ -34,6 +34,7 @@ import { db } from '../../lib/firebase';
 import { BannerCarousel, CatalogBannerItem } from '../components/catalog/BannerCarousel';
 import { firebaseCatalogOrderService } from '../../services/firebaseCatalogOrderService';
 import { toCdnUrl } from '../utils/cdnUtils';
+import { FormattedDescription } from '../components/FormattedDescription';
 import {
   Select,
   SelectContent,
@@ -1378,9 +1379,9 @@ export function PublicCatalog() {
                     </span>
                   </div>
 
-                  <p className="text-xs text-[#504444] dark:text-[#c9c0b8] leading-relaxed">
-                    {selectedProductPreview.description}
-                  </p>
+                  <div className="text-xs sm:text-sm text-[#504444] dark:text-[#c9c0b8] leading-relaxed">
+                    <FormattedDescription text={selectedProductPreview.description} />
+                  </div>
 
                   <div className="flex items-center gap-2 p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-800 dark:text-amber-300 text-xs">
                     <Clock size={14} className="shrink-0" />
