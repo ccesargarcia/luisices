@@ -988,144 +988,101 @@ const parseFirestoreDate = (val) => {
 };
 
 /**
- * Converte um documento operacional de 'orders' em formato sanitizado e otimizado para IA
+ * Projeta e sanitiza em memória um documento da coleção operacional 'orders' para a IA.
+ * Minimização drástica de tokens, campos essenciais para resposta e garantia absoluta de somente-leitura.
  */
-const buildAiOrderDoc = (orderId, data = {}) => {
-  const productSummary = data.productName || data.items?.[0]?.name || data.items?.[0]?.productName || 'Não especificado';
-  const quantity = Number(data.quantity) || Number(data.items?.[0]?.quantity) || 1;
-  const totalPrice = Number(data.price) || Number(data.totalPrice) || Number(data.total) || 0;
-  const isDeleted = Boolean(data.isDeleted) || data.status === 'deleted';
-  const status = isDeleted ? 'deleted' : (data.status || 'pending');
-  const paymentStatus = data.payment?.status || data.paymentStatus || 'pending';
-  const paymentMethod = data.payment?.method || data.paymentMethod || null;
-
-  // Cálculo financeiro preciso alinhado com Reports.tsx
-  const paidAmount = data.payment?.paidAmount !== undefined
-    ? Number(data.payment.paidAmount)
-    : (paymentStatus === 'paid' ? totalPrice : 0);
-  const remainingAmount = data.payment?.remainingAmount !== undefined
-    ? Number(data.payment.remainingAmount)
-    : (paymentStatus === 'paid' ? 0 : Math.max(0, totalPrice - paidAmount));
-
+function sanitizeOrderForAi(id, data = {}) {
   const deliveryDate = data.deliveryDate || null;
-  const customerName = data.customerName || data.customer?.name || 'Cliente sem nome';
-  const customerPhone = data.customerPhone || data.customer?.phone || '';
-  const customerId = data.customerId || data.customer?.id || null;
-  const notes = data.notes || '';
-  const orderNumber = data.orderNumber || `#${orderId}`;
-  const isExchange = Boolean(data.isExchange);
-  const cancellationReason = data.cancellationReason || data.cancelReason || null;
-  const userId = data.userId || data.createdBy || null;
-  const createdBy = data.createdBy || data.userId || null;
-  const createdByName = data.createdByName || null;
-  const assignedTo = data.assignedTo || null;
-  const assignedToName = data.assignedToName || null;
+  const isDeleted = Boolean(data.isDeleted || data.deletedAt);
+  const status = isDeleted ? 'deleted' : (data.status || 'pending');
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const isLate = Boolean(
+    deliveryDate &&
+    deliveryDate < todayStr &&
+    status !== 'completed' &&
+    status !== 'cancelled' &&
+    !isDeleted
+  );
+
+  const totalPrice = Number(data.price || data.totalPrice || 0);
+  const paidAmount = Number(
+    data.payment?.paidAmount !== undefined
+      ? data.payment.paidAmount
+      : (data.payment?.status === 'paid' || data.paymentMethod ? totalPrice : 0)
+  );
+  const remainingAmount = Number(
+    data.payment?.remainingAmount !== undefined
+      ? data.payment.remainingAmount
+      : (data.payment?.status === 'paid' ? 0 : Math.max(0, totalPrice - paidAmount))
+  );
+
+  let createdAt = null;
+  if (data.createdAt) {
+    if (typeof data.createdAt.toDate === 'function') {
+      createdAt = data.createdAt.toDate().toISOString();
+    } else if (typeof data.createdAt === 'string') {
+      createdAt = data.createdAt;
+    } else if (data.createdAt._seconds) {
+      createdAt = new Date(data.createdAt._seconds * 1000).toISOString();
+    }
+  }
+
+  const productSummary =
+    data.productName ||
+    (Array.isArray(data.products) ? data.products.map((p) => p.name).filter(Boolean).join(', ') : '') ||
+    data.items?.[0]?.name ||
+    'Produto personalizado';
+
+  const orderNumber = data.orderNumber || '#' + (id ? id.slice(-5) : '00000');
 
   return {
-    orderId,
-    userId,
-    createdBy,
-    createdByName,
-    assignedTo,
-    assignedToName,
-    customerId,
+    id,
+    orderId: id,
     orderNumber,
-    customerName,
-    customerPhone,
+    customerName: data.customerName || data.customer?.name || 'Cliente',
+    customerPhone: data.customerPhone || data.customer?.phone || '',
     productSummary,
-    quantity,
+    quantity: Number(data.quantity || data.items?.[0]?.quantity || 1),
     totalPrice,
     paidAmount,
     remainingAmount,
     status,
-    paymentStatus,
-    paymentMethod,
     deliveryDate,
-    notes,
-    isExchange,
+    paymentStatus: data.payment?.status || (data.paymentMethod ? 'paid' : 'pending'),
+    isLate,
+    currentStep: data.productionWorkflow?.currentStep || null,
+    assignedTo: data.assignedTo || null,
+    assignedToName: data.assignedToName || null,
+    userId: data.userId || data.createdBy || null,
+    createdBy: data.createdBy || data.userId || null,
+    createdByName: data.createdByName || null,
+    notes: data.notes || '',
     isDeleted,
-    cancellationReason,
-    createdAt: parseFirestoreDate(data.createdAt),
-    deletedAt: data.deletedAt ? parseFirestoreDate(data.deletedAt) : (isDeleted ? new Date().toISOString() : null),
-    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    deletedAt: data.deletedAt ? (data.deletedAt.toDate ? data.deletedAt.toDate().toISOString() : data.deletedAt) : null,
+    createdAt,
   };
-};
+}
 
 /**
- * Trigger de sincronização para a base somente-leitura da IA (ai_orders_view).
- * Sempre que um pedido for criado, atualizado ou excluído, projeta uma visão
- * sanitizada e otimizada para consultas do Agente.
- * Se o pedido for excluído do painel operacional, a IA preserva o registro
- * marcado como 'deleted' (Soft Archive) para auditoria e histórico.
+ * Trigger legado de sincronização para ai_orders_view.
+ * Descontinuado: O Copiloto agora opera com projeção em tempo real e somente-leitura em memória.
  */
 exports.syncOrderToAiView = functions.firestore
   .document('orders/{orderId}')
-  .onWrite(async (change, context) => {
-    const orderId = context.params.orderId;
-    const targetRef = admin.firestore().collection('ai_orders_view').doc(orderId);
-
-    // Se o pedido foi excluído da coleção operacional, arquiva na visão da IA
-    if (!change.after || !change.after.exists) {
-      const previousData = change.before ? change.before.data() : {};
-      const archivedDoc = buildAiOrderDoc(orderId, {
-        ...previousData,
-        isDeleted: true,
-        status: 'deleted',
-        deletedAt: new Date().toISOString(),
-      });
-      await targetRef.set(archivedDoc, { merge: true }).catch((err) => {
-        console.warn(`[syncOrderToAiView] Erro ao arquivar pedido excluído ${orderId}:`, err);
-      });
-      console.log(`[syncOrderToAiView] Pedido ${orderId} preservado como excluído na ai_orders_view para auditoria.`);
-      return;
-    }
-
-    const data = change.after.data() || {};
-    const aiDoc = buildAiOrderDoc(orderId, data);
-
-    await targetRef.set(aiDoc, { merge: true });
-    console.log(`[syncOrderToAiView] Pedido ${orderId} sincronizado na ai_orders_view.`);
+  .onWrite(async () => {
+    return null;
   });
 
 /**
- * Sincroniza em lote todos os pedidos existentes para a base somente-leitura.
- * Uso restrito a administradores.
+ * Endpoint legado de sincronização em lote de pedidos.
+ * Mantido como no-op para compatibilidade retroativa com clientes antigos.
  */
-exports.syncAllOrdersToAiView = onCall(async (request) => {
-  if (!(await isAdminRequest(request))) {
-    throw new functions.https.HttpsError('permission-denied', 'Apenas administradores podem executar a sincronização em lote.');
-  }
-
-  const snapshot = await admin.firestore().collection('orders').get();
-  if (snapshot.empty) {
-    return { success: true, count: 0, message: 'Nenhum pedido para sincronizar.' };
-  }
-
-  const db = admin.firestore();
-  let batch = db.batch();
-  let batchCount = 0;
-  let totalCount = 0;
-
-  for (const doc of snapshot.docs) {
-    const data = doc.data();
-    const aiDoc = buildAiOrderDoc(doc.id, data);
-    const targetRef = db.collection('ai_orders_view').doc(doc.id);
-    batch.set(targetRef, aiDoc, { merge: true });
-    batchCount++;
-    totalCount++;
-
-    if (batchCount >= 450) {
-      await batch.commit();
-      batch = db.batch();
-      batchCount = 0;
-    }
-  }
-
-  if (batchCount > 0) {
-    await batch.commit();
-  }
-
-  return { success: true, count: totalCount, message: `${totalCount} pedidos sincronizados com sucesso na ai_orders_view.` };
+exports.syncAllOrdersToAiView = onCall(async () => {
+  return {
+    success: true,
+    count: 0,
+    message: 'A sincronização agora é nativa e em tempo real em memória.',
+  };
 });
 
 // Modelo padrão ultra-rápido memoizado em memória para respostas sub-segundo
@@ -1294,7 +1251,7 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
         },
         {
           name: 'query_orders_view',
-          description: 'Consulta a base somente-leitura de pedidos (ai_orders_view) para obter status, prazos, clientes, valores, cancelamentos e exclusões auditadas.',
+          description: 'Consulta a base de pedidos em tempo real (com projeção em memória) para obter status, prazos, clientes, valores, cancelamentos e métricas atualizadas.',
           parameters: {
             type: 'OBJECT',
             properties: {
@@ -1454,48 +1411,42 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
     }
   ];
 
-  // Helper central de busca e blindagem estrita de pedidos
+  // Helper central de busca e blindagem estrita de pedidos em tempo real (projeção sanitizada em memória)
   const fetchScopedOrders = async () => {
     let docs = [];
     if (isAdmin) {
-      const [viewSnap, prodSnap] = await Promise.all([
-        admin.firestore().collection('ai_orders_view').get(),
-        admin.firestore().collection('orders').limit(200).get(),
-      ]);
-      const map = new Map();
-      viewSnap.docs.forEach((d) => map.set(d.id, d.data()));
-      prodSnap.docs.forEach((d) => {
-        if (!map.has(d.id)) {
-          map.set(d.id, buildAiOrderDoc(d.id, d.data()));
-        }
-      });
-      docs = Array.from(map.values());
+      // Administrador: lê pedidos ativos diretamente de 'orders' com limite de segurança (250 mais recentes)
+      const snap = await admin
+        .firestore()
+        .collection('orders')
+        .where('deletedAt', '==', null)
+        .limit(250)
+        .get();
+
+      docs = snap.docs.map((d) => sanitizeOrderForAi(d.id, d.data()));
     } else {
-      const [viewUserSnap, viewCreatedSnap, prodUserSnap, prodCreatedSnap] = await Promise.all([
-        admin.firestore().collection('ai_orders_view').where('userId', '==', callerUid).get(),
-        admin.firestore().collection('ai_orders_view').where('createdBy', '==', callerUid).get(),
-        admin.firestore().collection('orders').where('userId', '==', callerUid).limit(200).get(),
-        admin.firestore().collection('orders').where('createdBy', '==', callerUid).limit(200).get(),
+      // Funcionário / Usuário: lê estritamente pedidos onde userId == callerUid ou assignedTo == callerUid
+      const [userOrdersSnap, assignedOrdersSnap, createdOrdersSnap] = await Promise.all([
+        admin.firestore().collection('orders').where('userId', '==', callerUid).where('deletedAt', '==', null).limit(250).get(),
+        admin.firestore().collection('orders').where('assignedTo', '==', callerUid).where('deletedAt', '==', null).limit(250).get(),
+        admin.firestore().collection('orders').where('createdBy', '==', callerUid).where('deletedAt', '==', null).limit(250).get(),
       ]);
+
       const map = new Map();
-      viewUserSnap.docs.forEach((d) => map.set(d.id, d.data()));
-      viewCreatedSnap.docs.forEach((d) => map.set(d.id, d.data()));
-      prodUserSnap.docs.forEach((d) => {
-        if (!map.has(d.id)) {
-          map.set(d.id, buildAiOrderDoc(d.id, d.data()));
-        }
-      });
-      prodCreatedSnap.docs.forEach((d) => {
-        if (!map.has(d.id)) {
-          map.set(d.id, buildAiOrderDoc(d.id, d.data()));
-        }
-      });
+      userOrdersSnap.docs.forEach((d) => map.set(d.id, sanitizeOrderForAi(d.id, d.data())));
+      assignedOrdersSnap.docs.forEach((d) => map.set(d.id, sanitizeOrderForAi(d.id, d.data())));
+      createdOrdersSnap.docs.forEach((d) => map.set(d.id, sanitizeOrderForAi(d.id, d.data())));
+
       // BLINDAGEM INFALÍVEL: Filtra exclusivamente pedidos pertencentes a callerUid
+      const uid = String(callerUid);
       docs = Array.from(map.values()).filter((d) => {
-        const uid = String(callerUid);
-        return d.userId === uid || d.createdBy === uid;
+        if (d.deletedAt || d.isDeleted) return false;
+        return d.userId === uid || d.assignedTo === uid || d.createdBy === uid;
       });
     }
+
+    // Ordenação do mais recente para o mais antigo em memória
+    docs.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
     return docs;
   };
 
@@ -1667,7 +1618,7 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
     const targetRole = targetUser.role === 'admin' ? 'Administrador' : targetUser.role === 'funcionario' ? 'Funcionário' : 'Usuário';
     const normalizedTargetName = normalizeString(targetName);
 
-    // 1. Busca todos os pedidos do usuário em ambas as fontes (orders + ai_orders_view)
+    // 1. Busca todos os pedidos do usuário diretamente da coleção orders com projeção sanitizada em memória
     const allOrders = await fetchScopedOrders();
     const userOrders = allOrders.filter((o) => {
       if (o.isDeleted) return false;

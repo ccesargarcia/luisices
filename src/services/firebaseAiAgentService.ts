@@ -45,7 +45,7 @@ export class FirebaseAiAgentService {
   }
 
   /**
-   * Sincroniza em lote todos os pedidos para a coleção ai_orders_view (apenas admin)
+   * @deprecated A sincronização manual não é mais necessária: o Copiloto agora opera com projeção em memória segura e em tempo real diretamente da coleção `orders`.
    */
   async syncAllOrders(): Promise<{ success: boolean; count: number; message: string }> {
     const callable = httpsCallable<

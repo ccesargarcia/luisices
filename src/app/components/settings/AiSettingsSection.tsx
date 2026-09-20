@@ -7,7 +7,6 @@ import {
   Sparkles,
   RefreshCw,
   ExternalLink,
-  Database,
   Activity,
   Zap,
   CheckCircle2,
@@ -15,6 +14,7 @@ import {
   Layers,
   Cpu,
   Info,
+  ShieldCheck,
 } from 'lucide-react';
 import { firebaseAiAgentService } from '../../../services/firebaseAiAgentService';
 import { AiUsageData, AiModelQuotaItem } from '../../types';
@@ -88,7 +88,6 @@ export function AiSettingsSection({ isAdmin }: AiSettingsSectionProps) {
 
   const [usage, setUsage] = useState<AiUsageData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [syncingOrders, setSyncingOrders] = useState(false);
 
   const fetchUsage = async () => {
     if (!isAdmin) return;
@@ -118,20 +117,6 @@ export function AiSettingsSection({ isAdmin }: AiSettingsSectionProps) {
       fetchUsage();
     }
   }, [isAdmin]);
-
-  const handleSyncOrders = async () => {
-    if (!isAdmin || syncingOrders) return;
-    setSyncingOrders(true);
-    try {
-      const res = await firebaseAiAgentService.syncAllOrders();
-      toast.success(res.message || `${res.count} pedidos sincronizados para a base da IA!`);
-    } catch (err: any) {
-      console.error('[AiSettingsSection] Erro na sincronização:', err);
-      toast.error(err.message || 'Falha ao sincronizar pedidos.');
-    } finally {
-      setSyncingOrders(false);
-    }
-  };
 
   const getUsageColor = (percentage: number) => {
     if (percentage > 85) return 'text-red-500 dark:text-red-400';
@@ -325,27 +310,17 @@ export function AiSettingsSection({ isAdmin }: AiSettingsSectionProps) {
           </div>
         </div>
 
-        {/* Sincronização da Base somente-leitura */}
-        <div className="p-4 rounded-xl border border-dashed border-border/80 bg-muted/20 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-          <div className="space-y-0.5">
-            <p className="text-sm font-medium flex items-center gap-1.5">
-              <Database className="size-4 text-purple-500" />
-              Base Sanitizada do Copiloto (`ai_orders_view`)
-            </p>
-            <p className="text-xs text-muted-foreground">
-              Sincroniza todos os pedidos existentes do ateliê para a base otimizada de leitura rápida dos modelos Gemini.
-            </p>
-          </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleSyncOrders}
-            disabled={syncingOrders}
-            className="gap-1.5 shrink-0 text-xs"
-          >
-            <RefreshCw className={`size-3.5 ${syncingOrders ? 'animate-spin' : ''}`} />
-            {syncingOrders ? 'Sincronizando...' : 'Sincronizar Pedidos'}
-          </Button>
+        {/* Sincronização em Tempo Real Ativa */}
+        <div className="p-3.5 rounded-xl border border-border/60 bg-muted/20 flex items-center justify-between text-xs text-muted-foreground">
+          <span className="flex items-center gap-2">
+            <ShieldCheck className="size-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+            <span>
+              <strong className="text-foreground">Sincronização em Tempo Real Ativa:</strong> O Copiloto opera com projeção em memória segura e somente-leitura.
+            </span>
+          </span>
+          <Badge variant="outline" className="text-[10px] text-emerald-600 dark:text-emerald-400 border-emerald-500/30 shrink-0">
+            Zero Manutenção
+          </Badge>
         </div>
       </CardContent>
     </Card>
