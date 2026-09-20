@@ -1,4 +1,5 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
+import { useSearchParams } from 'react-router';
 import { exportQuotesToExcel } from '../utils/exportData';
 import { Quote, Tag } from '../types';
 import { getTextColor } from '../utils/tagColors';
@@ -24,6 +25,7 @@ import { QuoteFormDialog } from '../components/quotes/QuoteFormDialog';
 import { QuoteDetailsDialog } from '../components/quotes/QuoteDetailsDialog';
 
 export function Quotes() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const { user, hasPermission } = useAuth();
   const { quotes, loading, error } = useFirebaseQuotes();
   const { settings } = useUserSettings();
@@ -37,6 +39,22 @@ export function Quotes() {
   const [editingQuote, setEditingQuote] = useState<Quote | null>(null);
   const [detailQuoteId, setDetailQuoteId] = useState<string | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
+
+  // Abrir modal de novo orçamento automaticamente se vier com ?novo=1
+  useEffect(() => {
+    if (searchParams.get('novo') === '1') {
+      setEditingQuote(null);
+      setFormOpen(true);
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          next.delete('novo');
+          return next;
+        },
+        { replace: true }
+      );
+    }
+  }, [searchParams, setSearchParams]);
 
   // Deriva sempre do snapshot em tempo real — atualiza automaticamente após approve/reject/etc
   const detailQuote = detailQuoteId ? (quotes.find((q) => q.id === detailQuoteId) ?? null) : null;
