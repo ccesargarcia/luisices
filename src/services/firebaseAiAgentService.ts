@@ -38,7 +38,7 @@ export class FirebaseAiAgentService {
         image?: { base64: string; mimeType: string } | null;
       },
       AiAgentChatResponse
-    >(functions, 'aiAgentChat');
+    >(functions, 'aiAgentChat', { timeout: 120000 });
 
     const result = await callable({ message, history, image });
     return result.data;

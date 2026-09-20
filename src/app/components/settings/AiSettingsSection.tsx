@@ -23,12 +23,26 @@ interface AiSettingsSectionProps {
 
 const FALLBACK_MODELS: AiModelQuotaItem[] = [
   {
-    id: 'gemini-3.6-flash',
-    name: 'Gemini 3.6 Flash',
-    description: 'Modelo principal de alta velocidade em produção com suporte multimodal e tool calls integradas.',
+    id: 'gemini-3.8-flash',
+    name: 'Gemini 3.8 Flash',
+    description: 'Modelo principal de última geração em produção para raciocínio multimodal, fotos e acervo do ateliê.',
     category: 'Produção (Padrão)',
     isDefault: true,
     isActive: true,
+    daily: { used: 0, limit: 1500, percentage: 0 },
+    rpm: { used: 0, limit: 15 },
+    monthly: { used: 0 },
+    tpmLimit: 1000000,
+    liveStatus: 'ONLINE',
+    liveCode: 200,
+    liveMessage: 'Live 200 OK',
+  },
+  {
+    id: 'gemini-3.6-flash',
+    name: 'Gemini 3.6 Flash',
+    description: 'Modelo de alta velocidade com suporte multimodal e tool calls integradas.',
+    category: 'Produção (Fallback)',
+    isActive: false,
     daily: { used: 0, limit: 1500, percentage: 0 },
     rpm: { used: 0, limit: 15 },
     monthly: { used: 0 },
@@ -56,20 +70,6 @@ const FALLBACK_MODELS: AiModelQuotaItem[] = [
     name: 'Gemini 3.5 Flash',
     description: 'Modelo de produção balanceado para consistência e baixa latência.',
     category: 'Produção (Fallback)',
-    isActive: false,
-    daily: { used: 0, limit: 1500, percentage: 0 },
-    rpm: { used: 0, limit: 15 },
-    monthly: { used: 0 },
-    tpmLimit: 1000000,
-    liveStatus: 'ONLINE',
-    liveCode: 200,
-    liveMessage: 'Live 200 OK',
-  },
-  {
-    id: 'gemini-3.8-flash',
-    name: 'Gemini 3.8 Flash',
-    description: 'Modelo de última geração para raciocínio multimodal avançado, fotos e acervo do ateliê.',
-    category: 'Visão & Raciocínio',
     isActive: false,
     daily: { used: 0, limit: 1500, percentage: 0 },
     rpm: { used: 0, limit: 15 },
@@ -140,7 +140,7 @@ export function AiSettingsSection({ isAdmin }: AiSettingsSectionProps) {
       // Fallback amigável com lista completa de modelos
       setUsage({
         success: true,
-        activeModel: 'gemini-3.6-flash',
+        activeModel: 'gemini-3.8-flash',
         provider: 'Google AI Studio / Gemini API',
         resetsAt: new Date(Date.now() + 86400000).toISOString(),
         totalDaily: { used: 0, limit: 1500, percentage: 0 },
@@ -339,10 +339,10 @@ export function AiSettingsSection({ isAdmin }: AiSettingsSectionProps) {
             </span>
             <div className="pt-0.5 flex items-center gap-2 flex-wrap">
               <Badge variant="outline" className="bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30 text-xs py-1">
-                {usage?.activeModel || 'gemini-3.6-flash'}
+                {usage?.activeModel || 'gemini-3.8-flash'}
               </Badge>
               {(() => {
-                const currentActive = modelsList.find(m => m.id === (usage?.activeModel || 'gemini-3.6-flash'));
+                const currentActive = modelsList.find(m => m.id === (usage?.activeModel || 'gemini-3.8-flash'));
                 return currentActive ? renderLiveTelemetryBadge(currentActive) : null;
               })()}
             </div>
