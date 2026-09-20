@@ -213,14 +213,16 @@ Acompanhamento de parcerias de divulgação sem cobrança monetária convenciona
 
 ## 18. Inteligência Artificial (Copiloto Interno & Visão Computacional)
 
-- **Copiloto Interno Multimodal (`AiCopilotSheet`):** assistente inteligente operacional acessível no cabeçalho alimentado por modelos Gemini (Google AI).
+- **Copiloto Interno Multimodal (`AiCopilotSheet`):** assistente inteligente operacional acessível no cabeçalho alimentado pelos modelos modernos **Gemini 3.6 Flash** e **Gemini 3.8 Flash** (Google AI).
 - **Extração Inteligente de Pedidos:** interpretação de áudios/mensagens de clientes para preenchimento de novo pedido com 1 clique.
 - **Precificação e Margem Protegida:** cálculo de custos, margens mínimas e sugestões de preços de venda.
 - **Visão Computacional na Galeria (`enrichGalleryItemWithAi`):** análise automática de fotos de produtos para gerar descrições ricas, tags e identificação de técnicas de personalização.
-- **Guardrails de Segurança:**
+- **Projeção em Memória em Tempo Real (Somente-Leitura):** elimina necessidade de sincronização manual; a IA consulta a base oficial diretamente com sanitização em memória e blindagem estrita de somente-leitura.
+- **Guardrails de Segurança & UX:**
   - **Isolamento de Dados:** usuários não-admin consultam via IA exclusivamente seus próprios clientes, pedidos e artes; administradores possuem visão de auditoria global.
-  - **Human-in-the-Loop:** a IA gera rascunhos para revisão e aprovação humana do operador.
-  - **Rate Limiting:** limitadores de taxa dedicados (`aiAgentLimiter`: 60 req/min; `galleryAiLimiter`: 20 req/min).
-  - **Sanitização de Saída:** remoção de pensamentos e raciocínios internos de modelos thinking em inglês (`cleanAiOutput`).
+  - **Human-in-the-Loop:** a IA gera exclusivamente rascunhos para revisão e aprovação humana do operador (zero poder de escrita direta no banco).
+  - **Rate Limiting & Cooldown:** limitadores de taxa nas Cloud Functions e cooldown no frontend para prevenir requisições duplicadas.
+  - **Sanitização de Saída & Voz Humana (`sanitizeAiResponse`):** remoção de pensamentos internos e bloqueio contra vazamento de nomes de funções internas e jargões técnicos de programação.
+  - **UI Responsiva Mobile:** sugestões rápidas em chips horizontais deslizáveis (carrossel sem sobreposição de texto), persistência local das conversas recentes e deep linking para abrir pedidos identificados.
   - **Permissão `aiCopilot`:** revogação oculta o copiloto, desativa ferramentas de IA na galeria e barra execuções nas Cloud Functions.
 

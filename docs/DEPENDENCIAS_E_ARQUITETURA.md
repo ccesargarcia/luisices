@@ -165,8 +165,8 @@ flowchart TD
 | **Convites** | `/invitations/{hashToken}` | Tokens SHA-256 de convite para cadastro | Validação e criação controlada |
 | **Conversas WhatsApp** | `/whatsapp_chats/{phone}` | Metadados e snippets de conversas do WhatsApp | Acesso restrito a usuários com permissão `whatsapp` |
 | **Mensagens WhatsApp** | `/whatsapp_messages/{id}` | Histórico completo de mensagens recebidas e enviadas | Acesso restrito a usuários com permissão `whatsapp` |
-| **Visão de Pedidos para IA** | `/ai_orders_view/{orderId}` | Base desnormalizada somente-leitura para consultas do Copiloto | Exclusivo backend Admin SDK (inacessível via cliente) |
-| **Logs de Consumo de IA** | `/ai_usage_logs/{id}` | Métricas e contagem de tokens/requisições da API Gemini | Exclusivo backend Admin SDK (inacessível via cliente) |
+| **Logs de Consumo de IA** | `/ai_usage_logs/{id}` | Métricas e contagem de requisições por modelo da API Gemini | Exclusivo backend Admin SDK (inacessível via cliente) |
+| *(Descontinuada)* **Visão de Pedidos para IA** | `/ai_orders_view/{orderId}` | *Legada/Descontinuada*: Substituída por projeção sanitizada em memória direta de `/orders` | Obsoleta (Zero manutenção manual) |
 
 ---
 
