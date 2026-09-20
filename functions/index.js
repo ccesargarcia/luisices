@@ -2210,11 +2210,15 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
     parts: userParts
   });
 
-  // Definição estrita dos modelos modernos ativos (gemini-3.6-flash, gemini-3.8-flash, etc.)
+  // Lista ampla e resiliente de modelos modernos (com cotas diárias e RPM independentes na API Gemini)
   const CANDIDATE_MODELS = [
     process.env.GEMINI_MODEL || 'gemini-3.6-flash',
     'gemini-3.6-flash',
+    'gemini-3.7-flash',
+    'gemini-3.5-flash',
     'gemini-3.8-flash',
+    'gemini-3.1-flash-lite',
+    'gemini-3.5-flash-lite',
     'gemini-3-flash-preview',
   ].filter((item, index, self) => Boolean(item) && self.indexOf(item) === index);
 
@@ -2252,7 +2256,15 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
         }
 
         const errText = await resp.text();
-        console.warn(`[aiAgentChat] Modelo ${model} retornou status ${resp.status}:`, errText);
+        console.warn(`[aiAgentChat] Modelo ${model} retornou status ${resp.status} (ativando próximo da fila):`, errText.slice(0, 200));
+
+        // Se o modelo estourou cota (429) ou instabilidade (503), desmemoiza ele imediatamente
+        if (resp.status === 429 || resp.status === 503) {
+          if (preferredWorkingModel === model) {
+            preferredWorkingModel = 'gemini-3.6-flash';
+          }
+        }
+
         lastError = new Error(`Modelo ${model} (Status ${resp.status}): ${errText}`);
       } catch (err) {
         console.warn(`[aiAgentChat] Falha de conexão com modelo ${model}:`, err);
@@ -2649,6 +2661,26 @@ exports.getAiUsage = onCall({ cors: true }, async (request) => {
       isDefault: true,
     },
     {
+      id: 'gemini-3.7-flash',
+      aliases: ['gemini-3.7-flash'],
+      name: 'Gemini 3.7 Flash',
+      description: 'Fallback de alta capacidade analítica e processamento híbrido veloz.',
+      category: 'Produção / Fallback',
+      dailyLimit: 1500,
+      rpmLimit: 15,
+      tpmLimit: 1000000,
+    },
+    {
+      id: 'gemini-3.5-flash',
+      aliases: ['gemini-3.5-flash'],
+      name: 'Gemini 3.5 Flash',
+      description: 'Fallback ultra-estável com cota independente para blindagem contra 429.',
+      category: 'Alta Disponibilidade',
+      dailyLimit: 1500,
+      rpmLimit: 15,
+      tpmLimit: 1000000,
+    },
+    {
       id: 'gemini-3.8-flash',
       aliases: ['gemini-3.8-flash', 'gemini-3.8-flash-preview'],
       name: 'Gemini 3.8 Flash',
@@ -2656,6 +2688,26 @@ exports.getAiUsage = onCall({ cors: true }, async (request) => {
       category: 'Visão & Raciocínio',
       dailyLimit: 1500,
       rpmLimit: 15,
+      tpmLimit: 1000000,
+    },
+    {
+      id: 'gemini-3.1-flash-lite',
+      aliases: ['gemini-3.1-flash-lite', 'gemini-3.1-flash-lite-preview'],
+      name: 'Gemini 3.1 Flash Lite',
+      description: 'Linha Lite de latência ultra-baixa com pool de cotas dedicado.',
+      category: 'Lite / Backup',
+      dailyLimit: 1500,
+      rpmLimit: 30,
+      tpmLimit: 1000000,
+    },
+    {
+      id: 'gemini-3.5-flash-lite',
+      aliases: ['gemini-3.5-flash-lite'],
+      name: 'Gemini 3.5 Flash Lite',
+      description: 'Segurança máxima para evitar indisponibilidade por esgotamento de quota.',
+      category: 'Lite / Backup',
+      dailyLimit: 1500,
+      rpmLimit: 30,
       tpmLimit: 1000000,
     },
     {
@@ -2911,7 +2963,11 @@ Responda ESTRITAMENTE em formato JSON com as seguintes propriedades (sem markdow
   const candidateModels = [
     process.env.GEMINI_MODEL || 'gemini-3.6-flash',
     'gemini-3.6-flash',
+    'gemini-3.7-flash',
+    'gemini-3.5-flash',
     'gemini-3.8-flash',
+    'gemini-3.1-flash-lite',
+    'gemini-3.5-flash-lite',
     'gemini-3-flash-preview',
   ].filter((item, index, self) => Boolean(item) && self.indexOf(item) === index);
   let parsedAiResult = null;
