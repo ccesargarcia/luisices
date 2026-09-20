@@ -613,3 +613,5 @@ export function WeeklyCalendar() {
     </div>
   );
 }
+
+export default WeeklyCalendar;

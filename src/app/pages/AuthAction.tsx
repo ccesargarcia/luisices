@@ -268,3 +268,5 @@ export function AuthAction() {
     </div>
   );
 }
+
+export default AuthAction;

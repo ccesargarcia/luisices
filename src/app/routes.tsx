@@ -34,7 +34,12 @@ function isChunkOrStaleDeployError(err: unknown): boolean {
     msg.includes('error loading dynamically imported module') ||
     msg.includes('cannot read properties of undefined') ||
     msg.includes('unexpected token') ||
-    msg.includes('is not a valid javascript mime type')
+    msg.includes('is not a valid javascript mime type') ||
+    msg.includes('módulo') ||
+    msg.includes('indefinido') ||
+    msg.includes('não encontrado') ||
+    msg.includes('falha de carregamento') ||
+    msg.includes('failed to load')
   );
 }
 

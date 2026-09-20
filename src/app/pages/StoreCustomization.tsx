@@ -2574,3 +2574,5 @@ export function StoreCustomization() {
     </div>
   );
 }
+
+export default StoreCustomization;

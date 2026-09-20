@@ -987,3 +987,5 @@ export function StoreOrders() {
     </div>
   );
 }
+
+export default StoreOrders;

@@ -760,3 +760,5 @@ export function Exchanges() {
     </div>
   );
 }
+
+export default Exchanges;
