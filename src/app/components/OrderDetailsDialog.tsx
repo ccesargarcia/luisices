@@ -1,4 +1,4 @@
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from './ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogBody, DialogFooter } from './ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from './ui/alert-dialog';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
@@ -388,8 +388,8 @@ export function OrderDetailsDialog({ order, open, onOpenChange, onUpdateStatus, 
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent size="2xl" className="max-h-[90dvh] overflow-y-auto">
-        <DialogHeader>
+      <DialogContent size="2xl" noPadding className="max-h-[90dvh] flex flex-col overflow-hidden">
+        <DialogHeader className="p-4 sm:p-6 pb-3 border-b border-border">
           <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2">
             <DialogTitle className="text-base sm:text-lg">
               {isEditing ? 'Editar Pedido' : `Detalhes do Pedido ${order.orderNumber || '#' + order.id}`}
@@ -441,9 +441,9 @@ export function OrderDetailsDialog({ order, open, onOpenChange, onUpdateStatus, 
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-6">
-          {isEditing ? (
-            /* Modo de Edição */
+        {isEditing ? (
+          /* Modo de Edição */
+          <DialogBody className="p-4 sm:p-6">
             <OrderEditForm
               editData={editData}
               onEditDataChange={setEditData}
@@ -460,9 +460,11 @@ export function OrderDetailsDialog({ order, open, onOpenChange, onUpdateStatus, 
               onSave={handleSaveEdit}
               isSaving={isSaving}
             />
-          ) : (
-            /* Modo de Visualização */
-            <>
+          </DialogBody>
+        ) : (
+          /* Modo de Visualização */
+          <>
+            <DialogBody className="p-4 sm:p-6 space-y-6">
               <OrderInfoView order={effectiveOrder || order} />
 
               <div className="rounded-lg border p-4 space-y-2">
@@ -526,46 +528,44 @@ export function OrderDetailsDialog({ order, open, onOpenChange, onUpdateStatus, 
                   </SelectContent>
                 </Select>
               </div>
+            </DialogBody>
 
-              <div className="flex justify-between items-center pt-4">
-                {onDeleteOrder && (hasPermission(p => p.orders?.delete ?? false) || order.userId === user?.uid) && (
-                  <AlertDialog>
-                    <AlertDialogTrigger asChild>
-                      <Button variant="outline" className="gap-2">
-                        <Trash2 className="size-4" />
-                        Excluir Pedido
-                      </Button>
-                    </AlertDialogTrigger>
-                    <AlertDialogContent>
-                      <AlertDialogHeader>
-                        <AlertDialogTitle>Excluir pedido?</AlertDialogTitle>
-                        <AlertDialogDescription>
-                          Esta ação não pode ser desfeita. O pedido{' '}
-                          <strong>{order.orderNumber || '#' + order.id}</strong> será
-                          removido permanentemente.
-                        </AlertDialogDescription>
-                      </AlertDialogHeader>
-                      <AlertDialogFooter>
-                        <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                        <AlertDialogAction
-                          className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                          onClick={() => onDeleteOrder(order.id)}
-                        >
-                          Excluir
-                        </AlertDialogAction>
-                      </AlertDialogFooter>
-                    </AlertDialogContent>
-                  </AlertDialog>
-                )}
-                <div className="flex gap-2 ml-auto">
-                  <Button variant="outline" onClick={() => onOpenChange(false)}>
-                    Fechar
-                  </Button>
-                </div>
-              </div>
-            </>
-          )}
-        </div>
+            <DialogFooter className="p-4 sm:p-6 pt-3 border-t border-border flex items-center justify-between">
+              {onDeleteOrder && (hasPermission(p => p.orders?.delete ?? false) || order.userId === user?.uid) ? (
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button variant="outline" className="gap-2 text-destructive border-destructive hover:bg-destructive hover:text-destructive-foreground">
+                      <Trash2 className="size-4" />
+                      Excluir Pedido
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Excluir pedido?</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        Esta ação não pode ser desfeita. O pedido{' '}
+                        <strong>{order.orderNumber || '#' + order.id}</strong> será
+                        removido permanentemente.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                      <AlertDialogAction
+                        className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                        onClick={() => onDeleteOrder(order.id)}
+                      >
+                        Excluir
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+              ) : <div />}
+              <Button variant="outline" onClick={() => onOpenChange(false)}>
+                Fechar
+              </Button>
+            </DialogFooter>
+          </>
+        )}
       </DialogContent>
     </Dialog>
   );
