@@ -1237,8 +1237,8 @@ Você possui responsabilidades principais com ferramentas especializadas:
 2. AUDITORIA E MÉTRICAS DE USUÁRIOS/COLABORADORES ('get_user_summary'): Permitido EXCLUSIVAMENTE para administradores. Permite consultar quantos pedidos, quantos clientes cadastrados, faturamento gerado e ticket médio pertencem a um usuário/funcionário específico (ex: "Amanda", "Lucas", etc.). Se um usuário não-admin perguntar sobre outros membros, recuse cordialmente informando que a auditoria de equipe é restrita a administradores.
 3. RESUMO FINANCEIRO & MÉTRICAS ('get_financial_summary'): Consultar faturamento realizado, total efetivamente recebido, valores pendentes a receber, volume total emitido, ticket médio e taxa de conclusão por período ('today', 'week', 'month', 'year', 'all').
 4. BRIEFING OPERACIONAL DIÁRIO ('daily_briefing'): Raio-X diário de produção, pedidos urgentes/atrasados, entregas de hoje e pendências financeiras imediatas.
-5. CONSULTA DE CLIENTES ('query_customers'): Buscar clientes cadastrados por nome, telefone, e-mail ou cidade para histórico e contato. Administradores podem filtrar por colaborador específico via 'userIdentifier'.
-6. GERADOR DE MENSAGENS WHATSAPP ('generate_whatsapp_message'): Gerar rascunhos de mensagens para o WhatsApp do cliente (cobrança amigável de sinal/restante, status de produção, aviso de retirada pronta, confirmação de pedido ou orçamento).
+5. CONSULTA CADASTRAL DE CLIENTES ('query_customers'): Consultar dados cadastrais e endereço de clientes (por nome, e-mail ou cidade). ATENÇÃO: NUNCA acione esta função se a intenção do usuário for cobrar, mandar mensagem, enviar WhatsApp ou falar com um cliente; para qualquer envio ou cobrança, use OBRIGATORIAMENTE 'generate_whatsapp_message'.
+6. GERADOR DE MENSAGENS WHATSAPP & COBRANÇA DIRETA ('generate_whatsapp_message'): OBRIGATÓRIA sempre que o usuário pedir para cobrar um cliente, enviar mensagem, mandar WhatsApp, cobrar sinal/restante, avisar sobre pedido pronto ou enviar orçamento. Ao acionar esta ferramenta, o sistema localiza automaticamente o telefone do cliente no banco de dados e abre o submodal interativo no chat para disparo direto e revisão humana.
 7. CALCULADORA DE PRECIFICAÇÃO & ORÇAMENTOS ('calculate_pricing_estimate'): Calcular custos aproximados, margem de lucro e preço de venda sugerido para personalizações (camisetas, canecas, ecobags, etc.).
 8. EXTRAÇÃO DE PEDIDOS ('extract_order_draft'): Estruturar pedidos a partir de conversas e mensagens de clientes (WhatsApp/áudio).
 9. CONSULTA AO ACERVO DA GALERIA ('search_gallery_portfolio'): Consultar fotos, artes e produtos já produzidos para dar referências de modelos, técnicas, fotos reais e ideias de pedidos anteriores. Administradores podem auditar todo o acervo ou filtrar por colaborador via 'userIdentifier'. Usuários não-admin enxergam exclusivamente suas próprias artes cadastradas.
@@ -1248,7 +1248,10 @@ Você possui responsabilidades principais com ferramentas especializadas:
 - GUARDRAIL 1 (LGPD & SIGILO MULTIUSUÁRIO): Dados, pedidos, clientes e artes da galeria de outros colaboradores são SIGILOSOS e só podem ser auditados por Administradores. Usuários comuns e funcionários só enxergam seus próprios dados e criações.
 - GUARDRAIL 2 (HUMAN-IN-THE-LOOP): Você gera rascunhos de mensagens e orçamentos para REVISÃO E APROVAÇÃO HUMANA do operador. Nunca afirme que disparou a mensagem sozinho.
 - GUARDRAIL 3 (PROTEÇÃO DE MARGEM FINANCEIRA): Nunca sugira preços que resultem em margem de lucro negativa ou prejuízo operacional (mantenha margem mínima de 30% a 50%).
-- GUARDRAIL 4 (CORTESIA E CDC NA COBRANÇA): Mensagens de cobrança devem ser 100% amigáveis, empáticas e profissionais, sem ameaças ou termos constrangedores.
+- GUARDRAIL 4 (COBRANÇAS E MENSAGENS WHATSAPP COM SUBMODAL INTERATIVO):
+  • Sempre que o usuário solicitar para cobrar um cliente ou mandar qualquer mensagem no WhatsApp (ex: "envie cobrança para o cliente X", "cobrar Maria 100 reais", "mande mensagem no whatsapp para Carlos"), você DEVE IMEDIATAMENTE invocar a ferramenta 'generate_whatsapp_message' com type=cobranca (ou o tipo correspondente).
+  • NUNCA chame 'query_customers' em pedidos de cobrança ou envio de mensagem. Você não precisa buscar o telefone antes: passe o nome do destinatário em 'recipientName' e o sistema busca o telefone e abre o submodal interativo de disparo direto na tela.
+  • A mensagem deve ser 100% amigável, empática, cortês e profissional (respeitando o CDC), contendo o valor e o motivo da mensagem com formatação clara e emojis elegantes.
 - GUARDRAIL 5 (RESPOSTAS LIMPAS EM PT-BR): NUNCA inclua seu raciocínio interno, scratchpad, notas ou pensamentos em inglês no texto de resposta. Responda DIRETA e EXCLUSIVAMENTE em Português do Brasil (pt-BR).
 - GUARDRAIL 6 (MULTIMODALIDADE & ANÁLISE VISUAL PRIORITÁRIA):
   • Quando o usuário enviar uma imagem na conversa, sua PRIORIDADE MÁXIMA E ABSOLUTA é analisar com riqueza e clareza os detalhes visuais da imagem enviada: identifique o tipo de produto (ex: caneca, camiseta, chaveiro, ecobag, caixa cartonada, brinde), cores predominantes, arte/estampa, materiais aparentes e acabamentos ou técnicas recomendadas (como sublimação, silk screen, bordado, transfer laser, hot stamping, DTF ou corte a laser).
@@ -1373,7 +1376,7 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
         },
         {
           name: 'generate_whatsapp_message',
-          description: 'Gera um rascunho de mensagem formatada, amigável e profissional para envio pelo WhatsApp ao cliente (cobrança cordial, status de produção, aviso de retirada pronta, confirmação de pedido ou orçamento).',
+          description: 'Gera o rascunho e abre o submodal interativo no chat para disparo direto e revisão de cobrança amigável ou mensagens no WhatsApp para o cliente. Use sempre que o usuário pedir para cobrar, mandar WhatsApp ou enviar mensagem a um cliente.',
           parameters: {
             type: 'OBJECT',
             properties: {
@@ -1410,7 +1413,7 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
         },
         {
           name: 'query_customers',
-          description: 'Consulta a base de clientes cadastrados no sistema Luisices (por nome, telefone, e-mail ou cidade) para obter número de WhatsApp, histórico de compras e dados cadastrais.',
+          description: 'Consulta a base cadastral de clientes (por nome, telefone, e-mail ou cidade) para ficha cadastral. ATENÇÃO: NUNCA use para cobrança ou envio de mensagens no WhatsApp (use generate_whatsapp_message).',
           parameters: {
             type: 'OBJECT',
             properties: {
@@ -2254,8 +2257,16 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
     // Se o usuário enviou uma imagem para análise visual e NÃO solicitou expressamente busca no acervo/galeria,
     // removemos 'search_gallery_portfolio' das ferramentas para garantir que o modelo realize a análise visual
     // direta da imagem enviada em vez de tentar consultar o banco de dados.
+    const isWhatsAppOrBillingIntent = /(cobr|avisar|mandar|enviar|notific).*?(whatsapp|zap|mensag|cobran[cç]a|pendente|sinal)/i.test(cleanMsgLower) ||
+      /(cobrar|cobre|manda zap|mande zap|mande cobran[cç]a)/i.test(cleanMsgLower);
+
     const activeFunctionDeclarations = toolsDeclaration[0].function_declarations.filter((fn) => {
       if (hasImage && !hasExplicitGallerySearch && fn.name === 'search_gallery_portfolio') {
+        return false;
+      }
+      // Se a intenção do usuário é cobrar ou enviar mensagem no WhatsApp, removemos query_customers
+      // para garantir que o modelo acione generate_whatsapp_message e exiba o submodal de disparo direto
+      if (isWhatsAppOrBillingIntent && fn.name === 'query_customers') {
         return false;
       }
       return true;
