@@ -18,7 +18,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '../components/ui/select';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogBody, DialogFooter } from '../components/ui/dialog';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -196,12 +196,12 @@ function ProductFormDialog({ open, onOpenChange, editing, existingCategories, us
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent size="md" className="max-h-[90dvh] overflow-y-auto">
-        <DialogHeader>
+      <DialogContent size="md" noPadding className="max-h-[90dvh] flex flex-col overflow-hidden">
+        <DialogHeader className="p-4 sm:p-6 pb-3 border-b border-border">
           <DialogTitle>{editing ? 'Editar Produto' : 'Novo Produto'}</DialogTitle>
         </DialogHeader>
 
-        <div className="space-y-4">
+        <DialogBody className="p-4 sm:p-6 space-y-4">
           {/* Foto */}
           <div className="space-y-2">
             <Label>Foto do produto</Label>
@@ -378,9 +378,9 @@ function ProductFormDialog({ open, onOpenChange, editing, existingCategories, us
               </div>
             )}
           </div>
-        </div>
+        </DialogBody>
 
-        <DialogFooter className="mt-4">
+        <DialogFooter className="p-4 sm:p-6 pt-3 border-t border-border flex items-center justify-end gap-2 bg-card">
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>
           <Button data-testid="save-product-button" onClick={handleSave} disabled={saving}>
             {saving ? <Loader2 className="size-4 mr-2 animate-spin" /> : null}

@@ -8,6 +8,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogBody,
   DialogFooter,
 } from '../ui/dialog';
 import { Button } from '../ui/button';
@@ -141,11 +142,11 @@ export function OrderGallerySection({
 
       {/* Upload arte — mini dialog */}
       <Dialog open={galleryUploadOpen} onOpenChange={setGalleryUploadOpen}>
-        <DialogContent size="sm" className="max-h-[90dvh] overflow-y-auto">
-          <DialogHeader>
+        <DialogContent size="sm" noPadding className="max-h-[90dvh] flex flex-col overflow-hidden">
+          <DialogHeader className="p-4 sm:p-6 pb-3 border-b border-border">
             <DialogTitle>Adicionar Arte</DialogTitle>
           </DialogHeader>
-          <div className="space-y-3 py-1">
+          <DialogBody className="p-4 sm:p-6 space-y-3">
             {galleryUploadPreview && (
               <SafeImg
                 src={galleryUploadPreview}
@@ -165,8 +166,8 @@ export function OrderGallerySection({
                 autoFocus
               />
             </div>
-          </div>
-          <DialogFooter className="pt-2">
+          </DialogBody>
+          <DialogFooter className="p-4 sm:p-6 pt-3 border-t border-border flex items-center justify-end gap-2 bg-card">
             <Button
               type="button"
               variant="outline"

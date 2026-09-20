@@ -95,25 +95,26 @@ export function CustomerHistoryDialog({
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent size="2xl" className="max-h-[90dvh] flex flex-col overflow-hidden">
-          <DialogHeader>
+        <DialogContent size="2xl" noPadding className="max-h-[90dvh] flex flex-col overflow-hidden">
+          <DialogHeader className="p-4 sm:p-6 pb-3 border-b border-border">
             <DialogTitle>{customer?.name}</DialogTitle>
           </DialogHeader>
 
-          <Tabs defaultValue="pedidos" className="flex-1 flex flex-col overflow-hidden">
-            <TabsList className="w-full">
-              <TabsTrigger value="pedidos" className="flex-1 gap-1.5">
-                <ShoppingBag className="size-3.5" /> Pedidos
-                {!loadingOrders && <span className="text-xs opacity-60">({orders.length})</span>}
-              </TabsTrigger>
-              <TabsTrigger value="galeria" className="flex-1 gap-1.5">
-                <Images className="size-3.5" /> Galeria
-                {!loadingGallery && <span className="text-xs opacity-60">({gallery.length})</span>}
-              </TabsTrigger>
-            </TabsList>
+          <DialogBody className="p-4 sm:p-6 flex-1 flex flex-col min-h-0 overflow-hidden">
+            <Tabs defaultValue="pedidos" className="flex-1 flex flex-col overflow-hidden">
+              <TabsList className="w-full">
+                <TabsTrigger value="pedidos" className="flex-1 gap-1.5">
+                  <ShoppingBag className="size-3.5" /> Pedidos
+                  {!loadingOrders && <span className="text-xs opacity-60">({orders.length})</span>}
+                </TabsTrigger>
+                <TabsTrigger value="galeria" className="flex-1 gap-1.5">
+                  <Images className="size-3.5" /> Galeria
+                  {!loadingGallery && <span className="text-xs opacity-60">({gallery.length})</span>}
+                </TabsTrigger>
+              </TabsList>
 
-            {/* ── Pedidos ── */}
-            <TabsContent value="pedidos" className="flex-1 overflow-y-auto mt-3">
+              {/* ── Pedidos ── */}
+              <TabsContent value="pedidos" className="flex-1 overflow-y-auto mt-3">
               {loadingOrders ? (
                 <div className="flex justify-center py-8">
                   <Loader2 className="size-6 animate-spin text-primary" />
@@ -218,6 +219,13 @@ export function CustomerHistoryDialog({
               )}
             </TabsContent>
           </Tabs>
+          </DialogBody>
+
+          <DialogFooter className="p-4 sm:p-6 pt-3 border-t border-border flex items-center justify-end bg-card">
+            <Button variant="outline" onClick={() => onOpenChange(false)}>
+              Fechar
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 

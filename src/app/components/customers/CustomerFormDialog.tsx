@@ -6,6 +6,7 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
+  DialogBody,
   DialogFooter,
 } from '../ui/dialog';
 import { Button } from '../ui/button';
@@ -257,8 +258,8 @@ export function CustomerFormDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent size="lg" className="max-h-[90dvh] overflow-y-auto">
-        <DialogHeader>
+      <DialogContent size="lg" noPadding className="max-h-[90dvh] flex flex-col overflow-hidden">
+        <DialogHeader className="p-4 sm:p-6 pb-3 border-b border-border">
           <DialogTitle>{isEditing ? 'Editar Cliente' : 'Novo Cliente'}</DialogTitle>
           <DialogDescription>
             {isEditing
@@ -267,7 +268,8 @@ export function CustomerFormDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0 overflow-hidden">
+          <DialogBody className="p-4 sm:p-6 space-y-4">
           {/* Foto */}
           <div className="flex justify-center">
             <label className="cursor-pointer group relative">
@@ -468,7 +470,9 @@ export function CustomerFormDialog({
             </div>
           </div>
 
-          <DialogFooter className="flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+          </DialogBody>
+
+          <DialogFooter className="p-4 sm:p-6 pt-3 border-t border-border flex flex-col-reverse sm:flex-row sm:justify-end gap-2 bg-card">
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               Cancelar
             </Button>

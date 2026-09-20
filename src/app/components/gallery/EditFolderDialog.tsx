@@ -5,6 +5,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogBody,
   DialogFooter,
 } from '../ui/dialog';
 import { Button } from '../ui/button';
@@ -102,11 +103,11 @@ export function EditFolderDialog({
         if (!v) onClose();
       }}
     >
-      <DialogContent size="md" className="max-h-[90dvh] overflow-y-auto">
-        <DialogHeader>
+      <DialogContent size="md" noPadding className="max-h-[90dvh] flex flex-col overflow-hidden">
+        <DialogHeader className="p-4 sm:p-6 pb-3 border-b border-border">
           <DialogTitle>Editar pasta — {folderName}</DialogTitle>
         </DialogHeader>
-        <div className="space-y-5 py-2">
+        <DialogBody className="p-4 sm:p-6 space-y-5">
           {/* Cover photo */}
           <div className="space-y-2">
             <Label>Foto de capa</Label>
@@ -214,9 +215,9 @@ export function EditFolderDialog({
             <Label>Tags da pasta</Label>
             <TagInput tags={tags} onChange={setTags} />
           </div>
-        </div>
+        </DialogBody>
 
-        <DialogFooter>
+        <DialogFooter className="p-4 sm:p-6 pt-3 border-t border-border flex items-center justify-end gap-2 bg-card">
           <Button variant="outline" onClick={onClose} disabled={uploading}>
             Cancelar
           </Button>

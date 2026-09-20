@@ -23,6 +23,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogBody,
   DialogFooter,
 } from '../ui/dialog';
 import {
@@ -559,15 +560,15 @@ export function PricingCalculatorTab({
 
       {/* Modal Principal: Calculadora e Ficha Técnica */}
       <Dialog open={editorOpen} onOpenChange={setEditorOpen}>
-        <DialogContent size="3xl" className="max-h-[90dvh] overflow-y-auto">
-          <DialogHeader>
+        <DialogContent size="3xl" noPadding className="max-h-[90dvh] flex flex-col overflow-hidden">
+          <DialogHeader className="p-4 sm:p-6 pb-3 border-b border-border">
             <DialogTitle className="flex items-center gap-2">
               <Calculator className="size-5 text-primary" />
               {editingRecipeId ? 'Editar Ficha Técnica' : 'Nova Ficha Técnica & Precificação'}
             </DialogTitle>
           </DialogHeader>
 
-          <div className="space-y-6">
+          <DialogBody className="p-4 sm:p-6 space-y-6">
             {/* Seção 1: Identificação do Produto */}
             <div className="p-4 rounded-xl border bg-muted/20 space-y-3">
               <div className="text-xs font-bold uppercase text-muted-foreground tracking-wide flex items-center gap-1.5">
@@ -1012,9 +1013,9 @@ export function PricingCalculatorTab({
                 </div>
               </div>
             </div>
-          </div>
+          </DialogBody>
 
-          <DialogFooter className="flex flex-col sm:flex-row gap-2 pt-4">
+          <DialogFooter className="p-4 sm:p-6 pt-3 border-t border-border flex flex-col sm:flex-row items-center justify-end gap-2 bg-card">
             <Button
               type="button"
               variant="outline"
@@ -1089,8 +1090,8 @@ export function PricingCalculatorTab({
                 />
               </div>
             )}
-          </div>
-          <DialogFooter>
+          </DialogBody>
+          <DialogFooter className="p-4 sm:p-6 pt-3 border-t border-border flex items-center justify-end gap-2 bg-card">
             <Button
               variant="outline"
               onClick={() => setAddSupplyModalOpen(false)}
@@ -1217,9 +1218,9 @@ export function PricingCalculatorTab({
                 </div>
               ))}
             </div>
-          </div>
+          </DialogBody>
 
-          <DialogFooter>
+          <DialogFooter className="p-4 sm:p-6 pt-3 border-t border-border flex items-center justify-end bg-card">
             <Button onClick={() => setBatchModalRecipe(null)}>Fechar</Button>
           </DialogFooter>
         </DialogContent>

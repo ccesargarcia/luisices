@@ -5,6 +5,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogBody,
   DialogFooter,
 } from '../ui/dialog';
 import { Button } from '../ui/button';
@@ -74,11 +75,11 @@ export function NewFolderDialog({
         if (!v) handleClose();
       }}
     >
-      <DialogContent size="sm">
-        <DialogHeader>
+      <DialogContent size="sm" noPadding className="max-h-[90dvh] flex flex-col overflow-hidden">
+        <DialogHeader className="p-4 sm:p-6 pb-3 border-b border-border">
           <DialogTitle>Nova Pasta</DialogTitle>
         </DialogHeader>
-        <div className="space-y-4 py-2">
+        <DialogBody className="p-4 sm:p-6 space-y-4">
           <div className="space-y-1">
             <Label>
               Cliente <span className="text-destructive">*</span>
@@ -128,8 +129,8 @@ export function NewFolderDialog({
             <Label>Tags</Label>
             <TagInput tags={tags} onChange={setTags} />
           </div>
-        </div>
-        <DialogFooter>
+        </DialogBody>
+        <DialogFooter className="p-4 sm:p-6 pt-3 border-t border-border flex items-center justify-end gap-2 bg-card">
           <Button variant="outline" onClick={handleClose}>
             Cancelar
           </Button>

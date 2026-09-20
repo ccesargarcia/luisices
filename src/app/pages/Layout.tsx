@@ -768,8 +768,8 @@ export function Layout() {
                     v{appVersion} · © {new Date().getFullYear()} {businessName}
                   </button>
                 </DialogTrigger>
-                <DialogContent size="md">
-                  <DialogHeader>
+                <DialogContent size="md" noPadding className="max-h-[90dvh] flex flex-col overflow-hidden">
+                  <DialogHeader className="p-4 sm:p-6 pb-3 border-b border-border">
                     <DialogTitle className="flex items-center gap-2">
                       {settings?.logo ? (
                         <img src={settings.logo} alt={businessName} className="h-8 object-contain" />
@@ -781,7 +781,7 @@ export function Layout() {
                       {businessName}
                     </DialogTitle>
                   </DialogHeader>
-                  <div className="space-y-3 text-sm">
+                  <DialogBody className="p-4 sm:p-6 space-y-3 text-sm">
                     <div className="flex items-center justify-between py-2 border-b">
                       <span className="text-muted-foreground">Versão</span>
                       <Badge variant="secondary" className="font-mono">{appVersion}</Badge>
@@ -813,7 +813,7 @@ export function Layout() {
                     <p className="text-xs text-muted-foreground text-center pt-2">
                       © {new Date().getFullYear()} {businessName}. Todos os direitos reservados.
                     </p>
-                  </div>
+                  </DialogBody>
                 </DialogContent>
               </Dialog>
             </div>
