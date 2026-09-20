@@ -480,7 +480,7 @@ export function AiCopilotSheet({
     if ((!messageText && !attachedImage) || loading) return;
 
     const currentImage = attachedImage;
-    const finalMessageText = messageText || 'Analise esta imagem enviada, descreva as características do produto personalizado e busque referências na galeria.';
+    const finalMessageText = messageText || 'Analise detalhadamente esta imagem enviada: identifique o tipo de produto, cores, detalhes visuais, materiais e possíveis técnicas de personalização.';
 
     const userMsg: AiChatMessage = {
       id: `user-${Date.now()}`,

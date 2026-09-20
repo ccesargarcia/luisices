@@ -1250,7 +1250,7 @@ Você possui responsabilidades principais com ferramentas especializadas:
 - GUARDRAIL 3 (PROTEÇÃO DE MARGEM FINANCEIRA): Nunca sugira preços que resultem em margem de lucro negativa ou prejuízo operacional (mantenha margem mínima de 30% a 50%).
 - GUARDRAIL 4 (CORTESIA E CDC NA COBRANÇA): Mensagens de cobrança devem ser 100% amigáveis, empáticas e profissionais, sem ameaças ou termos constrangedores.
 - GUARDRAIL 5 (RESPOSTAS LIMPAS EM PT-BR): NUNCA inclua seu raciocínio interno, scratchpad, notas ou pensamentos em inglês no texto de resposta. Responda DIRETA e EXCLUSIVAMENTE em Português do Brasil (pt-BR).
-- GUARDRAIL 6 (MULTIMODALIDADE & VISÃO COMPUTACIONAL): Quando o usuário enviar uma imagem na conversa, examine detalhadamente os elementos visuais (produto, estampa, cores, técnicas como silk, sublimação, bordado, laser). Você pode pesquisar o acervo com 'search_gallery_portfolio' para encontrar produtos similares que a Luisices já produziu, estimar custos com 'calculate_pricing_estimate' ou extrair um pedido com 'extract_order_draft'.
+- GUARDRAIL 6 (MULTIMODALIDADE & VISÃO COMPUTACIONAL): Quando o usuário enviar uma imagem na conversa, priorize SEMPRE a análise visual direta e detalhada na sua resposta (identifique tipo de produto, cores, detalhes visuais, materiais, estampas e técnicas como silk, sublimação, bordado, laser). NUNCA substitua a análise visual por uma busca vazia na galeria. Apenas pesquise o acervo da galeria se o usuário pedir explicitamente para buscar referências ou fotos na galeria.
 - GUARDRAIL 7 (VOZ HUMANA E PROIBIÇÃO DE JARGÕES TÉCNICOS):
   • NUNCA mencione o nome técnico de suas funções ou ferramentas internas (ex: NUNCA diga 'ferramenta calculate_pricing_estimate', 'função query_orders_view', 'extract_order_draft', etc.). 
   • Em vez disso, fale sempre como uma assistente humana do ateliê:
@@ -1446,7 +1446,7 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
         },
         {
           name: 'search_gallery_portfolio',
-          description: 'Consulta o acervo de fotos, produtos e artes da Galeria do sistema (camisetas, brindes, canecas, bordados, personalizações anteriores). Permite buscar referências visuais por tema, produto, técnica, tags ou cliente. Usuários não-admin enxergam apenas suas próprias artes; administradores têm acesso geral e podem filtrar por colaborador.',
+          description: 'Consulta o acervo de fotos, produtos e artes da Galeria do sistema (camisetas, brindes, canecas, bordados, personalizações anteriores). Use esta ferramenta EXCLUSIVAMENTE quando o usuário solicitar explicitamente buscar fotos, modelos, artes ou referências no acervo da galeria. NUNCA use esta ferramenta quando o usuário apenas enviar uma imagem para análise visual.',
           parameters: {
             type: 'OBJECT',
             properties: {
@@ -2255,6 +2255,7 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
     const candidate = firstResult?.candidates?.[0];
     const parts = candidate?.content?.parts || [];
     const functionCallPart = parts.find(p => p.functionCall);
+    const initialText = cleanAiOutput(parts.filter(p => p.text).map(p => p.text).join('\n'));
 
     let finalAnswer = '';
     let extractedDraft = null;
@@ -2398,9 +2399,9 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
         // Segunda chamada enxuta para formulação rápida da resposta final
         const followUpContents = [
           ...contents,
-          { role: 'model', parts: [{ functionCall: functionCallPart.functionCall }] },
+          candidate?.content || { role: 'model', parts: candidate?.content?.parts || [functionCallPart] },
           {
-            role: 'function',
+            role: 'user',
             parts: [{
               functionResponse: {
                 name: 'query_orders_view',
@@ -2417,6 +2418,7 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
           const { data: followUpResult } = await callGeminiWithFallback({
             system_instruction: { parts: [{ text: systemInstruction }] },
             contents: followUpContents,
+            tools: toolsDeclaration,
             generationConfig: { temperature: 0.1 }
           });
           const followUpCandidate = followUpResult?.candidates?.[0];
@@ -2468,9 +2470,9 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
 
         const followUpContents = [
           ...contents,
-          { role: 'model', parts: [{ functionCall: functionCallPart.functionCall }] },
+          candidate?.content || { role: 'model', parts: candidate?.content?.parts || [functionCallPart] },
           {
-            role: 'function',
+            role: 'user',
             parts: [{
               functionResponse: {
                 name: 'search_gallery_portfolio',
@@ -2494,6 +2496,7 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
           const { data: followUpResult } = await callGeminiWithFallback({
             system_instruction: { parts: [{ text: systemInstruction }] },
             contents: followUpContents,
+            tools: toolsDeclaration,
             generationConfig: { temperature: 0.1 }
           });
           const followUpCandidate = followUpResult?.candidates?.[0];
@@ -2503,7 +2506,7 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
           if (galleryResults.length === 0) {
             finalAnswer = textResponse && textResponse.length > 20
               ? textResponse
-              : 'Não encontrei nenhuma arte ou foto na galeria correspondente aos critérios consultados.';
+              : initialText || 'Não encontrei nenhuma foto ou arte na galeria correspondente aos critérios consultados.';
           } else {
             const isGeneric =
               !textResponse ||
@@ -2515,14 +2518,18 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
                 const tagList = [...(it.tags || []), ...(it.aiTags || [])].slice(0, 3).join(', ');
                 return `• **${it.title}**${it.productType ? ` (${it.productType})` : ''}\n  ${it.description ? it.description.slice(0, 120) : 'Sem descrição'}\n  🔗 [Ver Foto](${it.imageUrl})${tagList ? ` | 🏷️ ${tagList}` : ''}`;
               }).join('\n\n');
-              finalAnswer = `Encontrei **${galleryResults.length} foto(s)/arte(s)** no acervo da galeria:\n\n${list}`;
+              const prefix = initialText ? `${initialText}\n\n` : '';
+              finalAnswer = `${prefix}Encontrei **${galleryResults.length} foto(s)/arte(s)** no acervo da galeria:\n\n${list}`;
             } else {
-              finalAnswer = textResponse;
+              finalAnswer = initialText ? `${initialText}\n\n${textResponse}` : textResponse;
             }
           }
-        } catch {
-          if (galleryResults.length === 0) {
-            finalAnswer = 'Não encontrei nenhuma foto ou arte na galeria.';
+        } catch (followErr) {
+          console.warn('[aiAgentChat] Falha no follow-up da galeria:', followErr);
+          if (initialText) {
+            finalAnswer = initialText;
+          } else if (galleryResults.length === 0) {
+            finalAnswer = 'Não encontrei nenhuma foto ou arte correspondente no acervo da galeria.';
           } else {
             const list = galleryResults.map(it => `• **${it.title}** - [Ver Foto](${it.imageUrl})`).join('\n');
             finalAnswer = `Encontrei **${galleryResults.length} foto(s)/arte(s)** na galeria:\n\n${list}`;
