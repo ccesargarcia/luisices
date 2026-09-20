@@ -1051,11 +1051,11 @@ export function PricingCalculatorTab({
 
       {/* Modal: Adicionar Insumo do Catálogo à Ficha */}
       <Dialog open={addSupplyModalOpen} onOpenChange={setAddSupplyModalOpen}>
-        <DialogContent size="md" className="max-h-[90dvh] overflow-y-auto">
-          <DialogHeader>
+        <DialogContent size="md" className="max-h-[90dvh] flex flex-col overflow-hidden" noPadding>
+          <DialogHeader className="p-4 sm:p-6 pb-3 border-b border-border">
             <DialogTitle>Adicionar Insumo do Catálogo</DialogTitle>
           </DialogHeader>
-          <div className="space-y-4 py-2">
+          <DialogBody className="p-4 sm:p-6 space-y-4">
             <div>
               <Label className="text-xs">Selecione o Insumo</Label>
               <Select
@@ -1110,11 +1110,11 @@ export function PricingCalculatorTab({
 
       {/* Modal: Adicionar Item Avulso */}
       <Dialog open={addCustomModalOpen} onOpenChange={setAddCustomModalOpen}>
-        <DialogContent size="md" className="max-h-[90dvh] overflow-y-auto">
-          <DialogHeader>
+        <DialogContent size="md" className="max-h-[90dvh] flex flex-col overflow-hidden" noPadding>
+          <DialogHeader className="p-4 sm:p-6 pb-3 border-b border-border">
             <DialogTitle>Adicionar Custo / Insumo Avulso</DialogTitle>
           </DialogHeader>
-          <div className="space-y-4 py-2">
+          <DialogBody className="p-4 sm:p-6 space-y-4">
             <div>
               <Label className="text-xs">Descrição do Item *</Label>
               <Input
@@ -1124,7 +1124,6 @@ export function PricingCalculatorTab({
                 className="mt-1"
               />
             </div>
-
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <Label className="text-xs">Custo Unitário (R$) *</Label>
@@ -1150,8 +1149,8 @@ export function PricingCalculatorTab({
                 />
               </div>
             </div>
-          </div>
-          <DialogFooter>
+          </DialogBody>
+          <DialogFooter className="p-4 sm:p-6 pt-3 border-t border-border flex items-center justify-end gap-2 bg-card">
             <Button
               variant="outline"
               onClick={() => setAddCustomModalOpen(false)}
@@ -1172,15 +1171,15 @@ export function PricingCalculatorTab({
           if (!open) setBatchModalRecipe(null);
         }}
       >
-        <DialogContent size="2xl" className="max-h-[90dvh] overflow-y-auto">
-          <DialogHeader>
+        <DialogContent size="2xl" className="max-h-[90dvh] flex flex-col overflow-hidden" noPadding>
+          <DialogHeader className="p-4 sm:p-6 pb-3 border-b border-border">
             <DialogTitle className="flex items-center gap-2">
               <Layers className="size-5 text-primary" />
               Simulador de Lotes & Kits: {batchModalRecipe?.productName}
             </DialogTitle>
           </DialogHeader>
 
-          <div className="space-y-4 py-2">
+          <DialogBody className="p-4 sm:p-6 space-y-4">
             <p className="text-xs text-muted-foreground">
               Na papelaria personalizada, produzir encomendas em lote (10, 20, 50 unidades) gera economia de tempo com cortes múltiplos na plotter e montagem em escala.
             </p>
@@ -1225,6 +1224,7 @@ export function PricingCalculatorTab({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
 
       {/* Confirmação de Exclusão de Ficha */}
       <AlertDialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
