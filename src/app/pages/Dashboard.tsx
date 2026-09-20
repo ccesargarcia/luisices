@@ -1,5 +1,5 @@
 import { useMemo, useState, useEffect, Fragment } from 'react';
-import { Order, OrderStatus, ProductionStep, UserProfile } from '../types';
+import { Order, OrderStatus, UserProfile } from '../types';
 import { OrderCard } from '../components/OrderCard';
 import { OrderDetailsDialog } from '../components/OrderDetailsDialog';
 import { NewOrderDialog } from '../components/NewOrderDialog';
@@ -99,7 +99,6 @@ function getGreeting() {
 
 export function Dashboard() {
   const { user, userProfile, hasPermission } = useAuth();
-  const canEditOrder = userProfile?.role === 'admin' || userProfile?.role === 'user' || hasPermission((p) => p.orders?.edit ?? false);
   const {
     orders,
     loading,
@@ -180,21 +179,6 @@ export function Dashboard() {
     } catch (err) {
       console.error('Erro ao atualizar status:', err);
       toast.error('Erro ao atualizar status do pedido');
-    }
-  };
-
-  const [advancingOrderId, setAdvancingOrderId] = useState<string | null>(null);
-
-  const handleUpdateWorkflowStep = async (orderId: string, step: ProductionStep) => {
-    setAdvancingOrderId(orderId);
-    try {
-      await firebaseOrderService.updateProductionStep(orderId, step, true);
-      toast.success('Etapa de produção avançada!');
-    } catch (err) {
-      console.error('Erro ao avançar etapa de produção:', err);
-      toast.error('Erro ao avançar etapa de produção');
-    } finally {
-      setAdvancingOrderId(null);
     }
   };
 
@@ -1028,8 +1012,6 @@ export function Dashboard() {
                     isSelected={selectedOrderIds.includes(order.id)}
                     onToggleSelect={toggleOrderSelection}
                     onClick={() => handleOrderClick(order)}
-                    onAdvanceStep={canEditOrder ? handleUpdateWorkflowStep : undefined}
-                    isAdvancing={advancingOrderId === order.id}
                   />
                 ))}
               </div>
@@ -1048,8 +1030,6 @@ export function Dashboard() {
                     isSelected={selectedOrderIds.includes(order.id)}
                     onToggleSelect={toggleOrderSelection}
                     onClick={() => handleOrderClick(order)}
-                    onAdvanceStep={canEditOrder ? handleUpdateWorkflowStep : undefined}
-                    isAdvancing={advancingOrderId === order.id}
                   />
                 ))}
               </div>
@@ -1068,8 +1048,6 @@ export function Dashboard() {
                     isSelected={selectedOrderIds.includes(order.id)}
                     onToggleSelect={toggleOrderSelection}
                     onClick={() => handleOrderClick(order)}
-                    onAdvanceStep={canEditOrder ? handleUpdateWorkflowStep : undefined}
-                    isAdvancing={advancingOrderId === order.id}
                   />
                 ))}
               </div>
@@ -1088,8 +1066,6 @@ export function Dashboard() {
                     isSelected={selectedOrderIds.includes(order.id)}
                     onToggleSelect={toggleOrderSelection}
                     onClick={() => handleOrderClick(order)}
-                    onAdvanceStep={canEditOrder ? handleUpdateWorkflowStep : undefined}
-                    isAdvancing={advancingOrderId === order.id}
                   />
                 ))}
               </div>
