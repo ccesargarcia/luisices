@@ -889,13 +889,13 @@ export function AiCopilotSheet({
           <div className="px-3 sm:px-4 py-2 border-t bg-muted/20 space-y-1.5 flex-shrink-0 animate-in fade-in duration-200">
             <div className="flex items-center justify-between">
               <span className="text-[10px] sm:text-[11px] font-medium text-muted-foreground flex items-center gap-1.5">
-                <Sparkles className="size-3 text-amber-500" />
+                <Sparkles className="size-3 text-amber-500 shrink-0" />
                 Sugestões rápidas:
               </span>
               <button
                 type="button"
                 onClick={() => setShowSuggestions(false)}
-                className="text-muted-foreground hover:text-foreground px-1.5 py-0.5 rounded hover:bg-muted/80 transition-colors cursor-pointer text-[10px] flex items-center gap-1"
+                className="text-muted-foreground hover:text-foreground px-1.5 py-0.5 rounded hover:bg-muted/80 transition-colors cursor-pointer text-[10px] flex items-center gap-1 shrink-0"
                 title="Ocultar sugestões rápidas"
                 aria-label="Ocultar sugestões rápidas"
               >
@@ -903,7 +903,8 @@ export function AiCopilotSheet({
                 <span>Ocultar</span>
               </button>
             </div>
-            <div className="flex flex-col gap-1 max-h-40 overflow-y-auto pr-1">
+            {/* Mobile: chips horizontais deslizáveis (não ocupa altura da tela); Desktop: grid flexível com scroll suave */}
+            <div className="flex flex-row overflow-x-auto gap-2 py-1 scrollbar-none items-center">
               {SUGGESTIONS.map((sug, idx) => (
                 <button
                   key={idx}
@@ -913,7 +914,7 @@ export function AiCopilotSheet({
                     handleSend(sug);
                   }}
                   disabled={loading || cooldownSeconds > 0}
-                  className="text-left text-xs text-foreground/80 hover:text-primary hover:bg-primary/5 px-2.5 py-1.5 rounded-md transition-colors border border-transparent hover:border-primary/20 truncate cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="px-3 py-1.5 text-xs rounded-full border bg-muted/40 hover:bg-muted hover:border-primary/30 whitespace-nowrap shrink-0 text-foreground/80 leading-relaxed transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {sug}
                 </button>
