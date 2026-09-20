@@ -1237,8 +1237,8 @@ Você possui responsabilidades principais com ferramentas especializadas:
 2. AUDITORIA E MÉTRICAS DE USUÁRIOS/COLABORADORES ('get_user_summary'): Permitido EXCLUSIVAMENTE para administradores. Permite consultar quantos pedidos, quantos clientes cadastrados, faturamento gerado e ticket médio pertencem a um usuário/funcionário específico (ex: "Amanda", "Lucas", etc.). Se um usuário não-admin perguntar sobre outros membros, recuse cordialmente informando que a auditoria de equipe é restrita a administradores.
 3. RESUMO FINANCEIRO & MÉTRICAS ('get_financial_summary'): Consultar faturamento realizado, total efetivamente recebido, valores pendentes a receber, volume total emitido, ticket médio e taxa de conclusão por período ('today', 'week', 'month', 'year', 'all').
 4. BRIEFING OPERACIONAL DIÁRIO ('daily_briefing'): Raio-X diário de produção, pedidos urgentes/atrasados, entregas de hoje e pendências financeiras imediatas.
-5. CONSULTA DE CLIENTES ('query_customers'): Buscar clientes cadastrados por nome, telefone, e-mail ou cidade para histórico e contato. Administradores podem filtrar por colaborador específico via 'userIdentifier'.
-6. GERADOR DE MENSAGENS WHATSAPP ('generate_whatsapp_message'): Gerar rascunhos de mensagens para o WhatsApp do cliente (cobrança amigável de sinal/restante, status de produção, aviso de retirada pronta, confirmação de pedido ou orçamento).
+5. CONSULTA DE CLIENTES ('query_customers'): Buscar clientes cadastrados exclusivamente para consultas cadastrais puras (endereço, e-mail, cidade, histórico de compras). ATENÇÃO: NUNCA use 'query_customers' para pedidos de cobrança ou envio de mensagens no WhatsApp.
+6. GERADOR DE MENSAGENS WHATSAPP ('generate_whatsapp_message'): Ferramenta OBRIGATÓRIA sempre que o usuário pedir cobrança de valores, lembrete de pagamento ou envio de qualquer mensagem para cliente via WhatsApp. Ela gera o rascunho e abre diretamente o submodal interativo no chat (<WhatsAppComposer />) para revisão e disparo pelo operador.
 7. CALCULADORA DE PRECIFICAÇÃO & ORÇAMENTOS ('calculate_pricing_estimate'): Calcular custos aproximados, margem de lucro e preço de venda sugerido para personalizações (camisetas, canecas, ecobags, etc.).
 8. EXTRAÇÃO DE PEDIDOS ('extract_order_draft'): Estruturar pedidos a partir de conversas e mensagens de clientes (WhatsApp/áudio).
 9. CONSULTA AO ACERVO DA GALERIA ('search_gallery_portfolio'): Consultar fotos, artes e produtos já produzidos para dar referências de modelos, técnicas, fotos reais e ideias de pedidos anteriores. Administradores podem auditar todo o acervo ou filtrar por colaborador via 'userIdentifier'. Usuários não-admin enxergam exclusivamente suas próprias artes cadastradas.
@@ -1248,7 +1248,7 @@ Você possui responsabilidades principais com ferramentas especializadas:
 - GUARDRAIL 1 (LGPD & SIGILO MULTIUSUÁRIO): Dados, pedidos, clientes e artes da galeria de outros colaboradores são SIGILOSOS e só podem ser auditados por Administradores. Usuários comuns e funcionários só enxergam seus próprios dados e criações.
 - GUARDRAIL 2 (HUMAN-IN-THE-LOOP): Você gera rascunhos de mensagens e orçamentos para REVISÃO E APROVAÇÃO HUMANA do operador. Nunca afirme que disparou a mensagem sozinho.
 - GUARDRAIL 3 (PROTEÇÃO DE MARGEM FINANCEIRA): Nunca sugira preços que resultem em margem de lucro negativa ou prejuízo operacional (mantenha margem mínima de 30% a 50%).
-- GUARDRAIL 4 (CORTESIA E CDC NA COBRANÇA): Mensagens de cobrança devem ser 100% amigáveis, empáticas e profissionais, sem ameaças ou termos constrangedores.
+- GUARDRAIL 4 (COBRANÇA E SUBMODAL INTERATIVO WHATSAPP): Mensagens de cobrança devem ser 100% amigáveis, empáticas e profissionais, sem ameaças ou termos constrangedores. Sempre que o usuário pedir para cobrar um cliente ou enviar mensagem de WhatsApp (ex: "envie uma cobrança para o Carlos", "cobre o sinal da Amanda"), você DEVE invocar IMEDIATAMENTE a ferramenta 'generate_whatsapp_message' com type='cobranca' (ou outro tipo aplicável). NUNCA consulte o cliente antes com 'query_customers', pois o sistema já resolve o telefone e dados do cliente automaticamente via 'resolveCustomerPhone' no backend e abre o submodal interativo no chat (<WhatsAppComposer />).
 - GUARDRAIL 5 (RESPOSTAS LIMPAS EM PT-BR): NUNCA inclua seu raciocínio interno, scratchpad, notas ou pensamentos em inglês no texto de resposta. Responda DIRETA e EXCLUSIVAMENTE em Português do Brasil (pt-BR).
 - GUARDRAIL 6 (MULTIMODALIDADE & VISÃO COMPUTACIONAL): Quando o usuário enviar uma imagem na conversa, priorize SEMPRE a análise visual direta e detalhada na sua resposta (identifique tipo de produto, cores, detalhes visuais, materiais, estampas e técnicas como silk, sublimação, bordado, laser). NUNCA substitua a análise visual por uma busca vazia na galeria. Apenas pesquise o acervo da galeria se o usuário pedir explicitamente para buscar referências ou fotos na galeria.
 - GUARDRAIL 7 (VOZ HUMANA E PROIBIÇÃO DE JARGÕES TÉCNICOS):
@@ -1370,7 +1370,7 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
         },
         {
           name: 'generate_whatsapp_message',
-          description: 'Gera um rascunho de mensagem formatada, amigável e profissional para envio pelo WhatsApp ao cliente (cobrança cordial, status de produção, aviso de retirada pronta, confirmação de pedido ou orçamento).',
+          description: 'Gera o rascunho de mensagem formatada, amigável e profissional e abre o submodal interativo no chat (<WhatsAppComposer />) para disparo direto, edição e revisão humana (cobrança cordial, status de produção, aviso de retirada pronta, confirmação de pedido ou orçamento). OBRIGATÓRIO para qualquer pedido de cobrança ou envio de mensagem para WhatsApp.',
           parameters: {
             type: 'OBJECT',
             properties: {
@@ -1407,7 +1407,7 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
         },
         {
           name: 'query_customers',
-          description: 'Consulta a base de clientes cadastrados no sistema Luisices (por nome, telefone, e-mail ou cidade) para obter número de WhatsApp, histórico de compras e dados cadastrais.',
+          description: 'Consulta a base de clientes cadastrados no sistema Luisices (por nome, telefone, e-mail ou cidade) para obter histórico de compras e dados cadastrais. ATENÇÃO: NUNCA use para cobrança ou envio de mensagens no WhatsApp (para isso, use sempre generate_whatsapp_message).',
           parameters: {
             type: 'OBJECT',
             properties: {
@@ -2243,11 +2243,31 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
     throw lastError || new Error('Nenhum modelo Gemini disponível respondeu com sucesso.');
   };
 
+  // Filtragem de ferramentas ativas (activeFunctionDeclarations)
+  const lowerMsg = (cleanMessage || '').toLowerCase();
+  const isBillingOrWhatsAppIntent =
+    /(cobranc|cobranç|cobrar|cobre|cobrando|whatsapp|zap|mensagem|aviso|notific|lembrete|pagamento)/i.test(lowerMsg) &&
+    /(para|ao|pro|cliente|cobranc|cobranç|whatsapp|zap|mensagem|sinal|restante|envi|mand)/i.test(lowerMsg);
+
+  let activeFunctionDeclarations = toolsDeclaration[0]?.function_declarations || [];
+
+  // Se o usuário quer cobrar ou enviar mensagem no WhatsApp, remove query_customers para evitar desvio
+  if (isBillingOrWhatsAppIntent) {
+    activeFunctionDeclarations = activeFunctionDeclarations.filter((f) => f.name !== 'query_customers');
+  }
+
+  // Usuários não-administradores não têm acesso a get_user_summary
+  if (!isAdmin) {
+    activeFunctionDeclarations = activeFunctionDeclarations.filter((f) => f.name !== 'get_user_summary');
+  }
+
+  const activeTools = [{ function_declarations: activeFunctionDeclarations }];
+
   try {
     const geminiPayload = {
       system_instruction: { parts: [{ text: systemInstruction }] },
       contents,
-      tools: toolsDeclaration,
+      tools: activeTools,
       generationConfig: { temperature: 0.1 }
     };
 
@@ -2418,7 +2438,7 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
           const { data: followUpResult } = await callGeminiWithFallback({
             system_instruction: { parts: [{ text: systemInstruction }] },
             contents: followUpContents,
-            tools: toolsDeclaration,
+            tools: activeTools,
             generationConfig: { temperature: 0.1 }
           });
           const followUpCandidate = followUpResult?.candidates?.[0];
@@ -2496,7 +2516,7 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
           const { data: followUpResult } = await callGeminiWithFallback({
             system_instruction: { parts: [{ text: systemInstruction }] },
             contents: followUpContents,
-            tools: toolsDeclaration,
+            tools: activeTools,
             generationConfig: { temperature: 0.1 }
           });
           const followUpCandidate = followUpResult?.candidates?.[0];
