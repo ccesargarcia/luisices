@@ -29,7 +29,7 @@ import {
   FileText,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { useAuth } from '../../contexts/AuthContext';
+import { useAuth } from '../../../contexts/AuthContext';
 import { FormattedDescription } from '../FormattedDescription';
 import { firebaseStoreProductService } from '../../../services/firebaseStoreProductService';
 import { StoreProduct } from '../../types';
