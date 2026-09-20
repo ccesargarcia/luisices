@@ -1,6 +1,7 @@
 import { BulkDeleteStoreProductsDialog } from '../components/store/BulkDeleteStoreProductsDialog';
 import { BulkStoreProductsDialog } from '../components/store/BulkStoreProductsDialog';
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo, Fragment } from 'react';
+import { cn } from '../components/ui/utils';
 import { Link } from 'react-router';
 import { formatCurrency } from '../utils/currency';
 import { StoreProduct, Product } from '../types';
@@ -802,6 +803,7 @@ function ImportFromAtelierDialog({ open, onOpenChange, onImported }: ImportFromA
 }
 
 const STORE_PRODUCTS_VIEW_MODE_KEY = 'luisices_store_products_view_mode';
+const STORE_PRODUCTS_PAGE_SIZE_KEY = 'luisices_store_products_page_size';
 
 // ─── Página Principal de Produtos da Lojinha ─────────────────────────────────
 export function StoreProducts() {
@@ -812,6 +814,32 @@ export function StoreProducts() {
   const [search, setSearch] = useState('');
   const [filterCategory, setFilterCategory] = useState('todos');
   const [filterStatus, setFilterStatus] = useState<'todos' | 'ativos' | 'pausados'>('todos');
+  const [pageSize, setPageSize] = useState<number | 'all'>((() => {
+    try {
+      const saved = localStorage.getItem(STORE_PRODUCTS_PAGE_SIZE_KEY);
+      if (saved === 'all') return 'all';
+      if (saved) {
+        const num = Number(saved);
+        if ([12, 24, 48, 96].includes(num)) return num;
+      }
+    } catch {}
+    return 24;
+  }));
+  const [currentPage, setCurrentPage] = useState(1);
+
+  const handlePageSizeChange = (newSize: number | 'all') => {
+    setPageSize(newSize);
+    setCurrentPage(1);
+    try {
+      localStorage.setItem(STORE_PRODUCTS_PAGE_SIZE_KEY, String(newSize));
+    } catch {}
+  };
+
+  const handlePageChange = (newPage: number) => {
+    setCurrentPage(newPage);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
   const [viewMode, setViewMode] = useState<'grid' | 'list'>(() => {
     try {
       const saved = localStorage.getItem(STORE_PRODUCTS_VIEW_MODE_KEY);
@@ -1180,6 +1208,27 @@ export function StoreProducts() {
             </SelectContent>
           </Select>
 
+          {/* Seletor de Limite por Página */}
+          <div className="flex items-center gap-1 bg-muted/60 p-0.5 rounded-lg border border-border shrink-0">
+            <span className="text-[10px] font-semibold text-muted-foreground px-1 hidden md:inline">Exibir:</span>
+            {([12, 24, 48, 'all'] as const).map((size) => (
+              <button
+                key={size}
+                type="button"
+                onClick={() => handlePageSizeChange(size)}
+                className={cn(
+                  'px-2 py-1 rounded-md text-xs font-medium transition-all cursor-pointer',
+                  pageSize === size
+                    ? 'bg-background shadow-xs text-foreground font-bold'
+                    : 'text-muted-foreground hover:text-foreground'
+                )}
+                title={size === 'all' ? 'Exibir todos os produtos' : `Exibir ${size} produtos por página`}
+              >
+                {size === 'all' ? 'Todos' : size}
+              </button>
+            ))}
+          </div>
+
           {/* Alternador Grid / Lista */}
           <div className="flex items-center bg-muted/60 p-0.5 rounded-lg border border-border shrink-0 ml-auto sm:ml-0">
             <button
@@ -1313,19 +1362,29 @@ export function StoreProducts() {
         </aside>
       )}
       {/* Barra Informativa com Botão de Selecionar Todos quando nenhum selecionado */}
-      {filteredProducts.length > 0 && selectedProductIds.length === 0 && (canDelete || canEdit) && (
-        <div className="flex items-center justify-between text-xs text-muted-foreground px-1 -mt-2">
-          <span>
-            Exibindo <strong>{filteredProducts.length}</strong> {filteredProducts.length === 1 ? 'produto' : 'produtos'}
-          </span>
-          <button
-            type="button"
-            onClick={selectAllFiltered}
-            className="text-[11px] font-semibold text-primary hover:underline flex items-center gap-1.5 cursor-pointer py-1 px-2 rounded-lg hover:bg-muted/50"
-          >
-            <Square size={13} />
-            <span>Selecionar todos ({filteredProducts.length})</span>
-          </button>
+      {filteredProducts.length > 0 && (
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-muted-foreground px-1 -mt-2">
+          <div>
+            {pageSize === 'all' || totalPages <= 1 ? (
+              <span>
+                Exibindo <strong>{filteredProducts.length}</strong> {filteredProducts.length === 1 ? 'produto' : 'produtos'}
+              </span>
+            ) : (
+              <span>
+                Exibindo <strong>{startItem}–{endItem}</strong> de <strong>{totalProducts}</strong> produtos
+              </span>
+            )}
+          </div>
+          {selectedProductIds.length === 0 && (canDelete || canEdit) && (
+            <button
+              type="button"
+              onClick={selectAllFiltered}
+              className="text-[11px] font-semibold text-primary hover:underline flex items-center gap-1.5 cursor-pointer py-1 px-2 rounded-lg hover:bg-muted/50 self-start sm:self-auto"
+            >
+              <Square size={13} />
+              <span>Selecionar todos ({filteredProducts.length})</span>
+            </button>
+          )}
         </div>
       )}
 
@@ -1363,7 +1422,7 @@ export function StoreProducts() {
         </div>
       ) : viewMode === 'grid' ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-          {filteredProducts.map((prod) => (
+          {pagedProducts.map((prod) => (
             <Card
               key={prod.id}
               className={`overflow-hidden transition-all duration-200 hover:shadow-md flex flex-col ${
@@ -1502,7 +1561,7 @@ export function StoreProducts() {
       ) : (
         /* Visualização em Lista - Responsiva sem overflow ou barra de rolagem horizontal */
         <div className="rounded-2xl border border-border overflow-hidden bg-card divide-y divide-border">
-          {filteredProducts.map((prod) => (
+          {pagedProducts.map((prod) => (
             <div
               key={prod.id}
               className={`p-3 sm:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4 transition-colors ${
@@ -1609,6 +1668,60 @@ export function StoreProducts() {
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Controles de Paginação */}
+      {pageSize !== 'all' && totalPages > 1 && totalProducts > 0 && (
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-4 border-t border-border/50">
+          <p className="text-xs sm:text-sm text-muted-foreground">
+            Mostrando {startItem}–{endItem} de {totalProducts} produto{totalProducts !== 1 ? 's' : ''} — Página{' '}
+            <strong className="text-foreground">{currentPage}</strong> de <strong>{totalPages}</strong>
+          </p>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => handlePageChange(Math.max(1, currentPage - 1))}
+              disabled={currentPage === 1}
+              className="text-xs h-8 cursor-pointer"
+            >
+              Anterior
+            </Button>
+            <div className="flex items-center gap-1">
+              {Array.from({ length: totalPages }, (_, i) => i + 1)
+                .filter((page) => {
+                  if (totalPages <= 5) return true;
+                  return page === 1 || page === totalPages || Math.abs(page - currentPage) <= 1;
+                })
+                .map((page, index, array) => {
+                  const prevPage = array[index - 1];
+                  const hasGap = prevPage && page - prevPage > 1;
+                  return (
+                    <Fragment key={page}>
+                      {hasGap && <span className="px-1 text-xs text-muted-foreground select-none">…</span>}
+                      <Button
+                        variant={currentPage === page ? 'default' : 'outline'}
+                        size="sm"
+                        className="size-8 p-0 text-xs cursor-pointer"
+                        onClick={() => handlePageChange(page)}
+                      >
+                        {page}
+                      </Button>
+                    </Fragment>
+                  );
+                })}
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => handlePageChange(Math.min(totalPages, currentPage + 1))}
+              disabled={currentPage === totalPages}
+              className="text-xs h-8 cursor-pointer"
+            >
+              Próxima
+            </Button>
+          </div>
         </div>
       )}
 
