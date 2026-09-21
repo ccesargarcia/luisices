@@ -38,6 +38,7 @@ import {
   priceInputToFloat,
   formatFilenameToTitle,
 } from '../../utils/storeBulkUtils';
+import { optimizeImageForAi } from '../../utils/imageOptimizer';
 
 export { parsePriceInput, priceInputToFloat, formatFilenameToTitle };
 
@@ -127,10 +128,11 @@ export function BulkStoreProductsDialog({
 
     updateItem(itemId, { isAiAnalyzing: true });
     try {
-      const imageBase64 = await fileToBase64(file);
+      const optimizedForAi = await optimizeImageForAi(file);
+      const imageBase64 = await fileToBase64(optimizedForAi);
       const res = await firebaseStoreProductService.enrichStoreProductWithAi({
         imageBase64,
-        mimeType: file.type,
+        mimeType: optimizedForAi.type,
       });
 
       updateItem(itemId, {
