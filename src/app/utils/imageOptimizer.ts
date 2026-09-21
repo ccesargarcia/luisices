@@ -82,6 +82,20 @@ export async function optimizeImageToWebP(
 }
 
 /**
+ * Otimiza e reduz uma imagem especificamente para análise de visão computacional / IA (Gemini Vision).
+ * Reduz para no máximo 800px e comprime em WebP com 80% de qualidade.
+ * Reduz em até ~95% o payload base64 enviado à Cloud Function e o consumo de tokens de visão.
+ */
+export async function optimizeImageForAi(file: File): Promise<File> {
+  return optimizeImageToWebP(file, {
+    maxDimension: 800,
+    quality: 0.8,
+    fallbackOnError: true,
+  });
+}
+
+
+/**
  * Carrega a imagem e processa a renderização no Canvas para exportação WebP
  */
 function convertImageElementToWebP(

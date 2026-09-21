@@ -63,6 +63,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { FormattedDescription } from '../components/FormattedDescription';
+import { optimizeImageForAi } from '../utils/imageOptimizer';
 
 function parsePriceInput(raw: string): string {
   const digits = raw.replace(/[^\d]/g, '');
@@ -190,8 +191,9 @@ function StoreProductDialog({ open, onOpenChange, editing, existingCategories }:
       let mimeType: string | undefined;
 
       if (targetFile) {
-        imageBase64 = await fileToBase64(targetFile);
-        mimeType = targetFile.type;
+        const optimized = await optimizeImageForAi(targetFile);
+        imageBase64 = await fileToBase64(optimized);
+        mimeType = optimized.type;
       }
 
       const suggestion = await firebaseStoreProductService.enrichStoreProductWithAi({

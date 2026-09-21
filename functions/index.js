@@ -97,7 +97,7 @@ const isAdminRequest = async (request) => {
 const hashToken = (token) => crypto.createHash('sha256').update(token).digest('hex');
 
 /** Envia ao administrador um link seguro para redefinir a senha de outro usuário. */
-exports.sendAdminPasswordReset = onCall({ secrets: [RESEND_API_KEY, EVOLUTION_API_KEY] }, async (request) => {
+exports.sendAdminPasswordReset = onCall({ maxInstances: 5, secrets: [RESEND_API_KEY, EVOLUTION_API_KEY] }, async (request) => {
   if (!(await isAdminRequest(request))) {
     throw new functions.https.HttpsError('permission-denied', 'Apenas administradores podem redefinir senhas.');
   }
@@ -146,7 +146,7 @@ exports.sendAdminPasswordReset = onCall({ secrets: [RESEND_API_KEY, EVOLUTION_AP
 });
 
 /** Cria convite de cadastro com token armazenado apenas em hash e validade de 48 horas. */
-exports.createUserInvitation = onCall({ secrets: [RESEND_API_KEY, EVOLUTION_API_KEY] }, async (request) => {
+exports.createUserInvitation = onCall({ maxInstances: 5, secrets: [RESEND_API_KEY, EVOLUTION_API_KEY] }, async (request) => {
   if (!(await isAdminRequest(request))) {
     throw new functions.https.HttpsError('permission-denied', 'Apenas administradores podem enviar convites.');
   }
@@ -273,7 +273,7 @@ exports.completeUserInvitation = onCall(async (request) => {
  * Trigger: Chamada HTTP (v2)
  * Endpoint: https://REGION-PROJECT_ID.cloudfunctions.net/sendPasswordResetEmail
  */
-exports.sendPasswordResetEmail = onCall({ secrets: [RESEND_API_KEY, EVOLUTION_API_KEY] }, async (request) => {
+exports.sendPasswordResetEmail = onCall({ maxInstances: 5, secrets: [RESEND_API_KEY, EVOLUTION_API_KEY] }, async (request) => {
   const { email } = request.data;
 
   if (!email) {
@@ -508,7 +508,7 @@ exports.createUser = onCall(async (request) => {
  * Cloud Function para envio de e-mails via Resend pela plataforma Luisices.
  * Salva o histórico de envios na coleção 'sentEmails'.
  */
-exports.sendCustomEmail = onCall({ cors: true, secrets: [RESEND_API_KEY] }, async (request) => {
+exports.sendCustomEmail = onCall({ cors: true, maxInstances: 5, secrets: [RESEND_API_KEY] }, async (request) => {
   if (!request.auth) {
     throw new functions.https.HttpsError('unauthenticated', 'Usuário não autenticado.');
   }
@@ -653,7 +653,7 @@ exports.sendCustomEmail = onCall({ cors: true, secrets: [RESEND_API_KEY] }, asyn
 /**
  * Cloud Function para consultar a cota / limite de envio de e-mails via Resend API (ou fallback via Firestore).
  */
-exports.getEmailUsage = onCall({ cors: true, secrets: [RESEND_API_KEY] }, async (request) => {
+exports.getEmailUsage = onCall({ cors: true, maxInstances: 5, secrets: [RESEND_API_KEY] }, async (request) => {
   if (!request.auth) {
     throw new functions.https.HttpsError('unauthenticated', 'Usuário não autenticado.');
   }
@@ -1178,7 +1178,7 @@ const cleanAiOutput = (text) => {
 /**
  * Endpoint Callable Seguro do Copiloto de IA Interno
  */
-exports.aiAgentChat = onCall({ cors: true, timeoutSeconds: 120, memory: '512MiB', secrets: [GEMINI_API_KEY] }, async (request) => {
+exports.aiAgentChat = onCall({ cors: true, timeoutSeconds: 120, memory: '512MiB', maxInstances: 10, secrets: [GEMINI_API_KEY] }, async (request) => {
   if (!(await isAuthorizedEmployeeOrAdmin(request))) {
     throw new functions.https.HttpsError('permission-denied', 'Acesso restrito a membros autorizados da equipe.');
   }
@@ -2612,7 +2612,7 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
  * Consulta a cota e o consumo em tempo real de TODOS os modelos disponíveis da API Gemini.
  * Uso estritamente restrito a administradores.
  */
-exports.getAiUsage = onCall({ cors: true, secrets: [GEMINI_API_KEY] }, async (request) => {
+exports.getAiUsage = onCall({ cors: true, maxInstances: 5, secrets: [GEMINI_API_KEY] }, async (request) => {
   if (!request.auth) {
     throw new functions.https.HttpsError('unauthenticated', 'Usuário não autenticado.');
   }
@@ -2922,7 +2922,7 @@ exports.getAiUsage = onCall({ cors: true, secrets: [GEMINI_API_KEY] }, async (re
  * Extrai descrição rica, tags sugeridas, tipo de produto e cores para busca e catálogo inteligente.
  * Guardrails estritos: usuário não-admin só pode enriquecer itens pertencentes a ele; admin tem acesso geral.
  */
-exports.enrichGalleryItemWithAi = onCall({ cors: true, timeoutSeconds: 120, memory: '512MiB', secrets: [GEMINI_API_KEY] }, async (request) => {
+exports.enrichGalleryItemWithAi = onCall({ cors: true, timeoutSeconds: 120, memory: '512MiB', maxInstances: 5, secrets: [GEMINI_API_KEY] }, async (request) => {
   if (!request.auth) {
     throw new functions.https.HttpsError('unauthenticated', 'É necessário estar autenticado.');
   }
@@ -3158,7 +3158,7 @@ Responda ESTRITAMENTE em formato JSON com as seguintes propriedades (sem markdow
  * - Badge e prazo sugerido
  * Opcional e restrito a usuários com permissão aiCopilot ou admin.
  */
-exports.enrichStoreProductWithAi = onCall({ cors: true, timeoutSeconds: 120, memory: "512MiB", secrets: [GEMINI_API_KEY] }, async (request) => {
+exports.enrichStoreProductWithAi = onCall({ cors: true, timeoutSeconds: 120, memory: "512MiB", maxInstances: 5, secrets: [GEMINI_API_KEY] }, async (request) => {
   if (!request.auth) {
     throw new functions.https.HttpsError("unauthenticated", "É necessário estar autenticado.");
   }
@@ -3359,7 +3359,7 @@ Responda ESTRITAMENTE em formato JSON com as seguintes propriedades (sem markdow
  * Dispara uma mensagem WhatsApp diretamente para o cliente via Evolution API e armazena na base do chat.
  * Uso restrito a membros autorizados da equipe (admin ou funcionário ativo).
  */
-exports.sendWhatsAppDirectMessage = onCall({ secrets: [EVOLUTION_API_KEY] }, async (request) => {
+exports.sendWhatsAppDirectMessage = onCall({ maxInstances: 5, secrets: [EVOLUTION_API_KEY] }, async (request) => {
   if (!(await isAuthorizedForWhatsApp(request))) {
     throw new functions.https.HttpsError('permission-denied', 'Sem permissão para utilizar o módulo de Atendimento (WhatsApp).');
   }
@@ -3452,7 +3452,7 @@ exports.sendWhatsAppDirectMessage = onCall({ secrets: [EVOLUTION_API_KEY] }, asy
  * Exclui uma mensagem do WhatsApp (para todos) e remove da base do Firestore.
  * Uso restrito a membros autorizados da equipe (admin ou funcionário ativo).
  */
-exports.deleteWhatsAppMessage = onCall({ secrets: [EVOLUTION_API_KEY] }, async (request) => {
+exports.deleteWhatsAppMessage = onCall({ maxInstances: 5, secrets: [EVOLUTION_API_KEY] }, async (request) => {
   if (!(await isAuthorizedForWhatsApp(request))) {
     throw new functions.https.HttpsError('permission-denied', 'Sem permissão para utilizar o módulo de Atendimento (WhatsApp).');
   }
@@ -3553,7 +3553,7 @@ exports.deleteWhatsAppMessage = onCall({ secrets: [EVOLUTION_API_KEY] }, async (
  * Sincroniza mensagens recentes de um chat diretamente da API do WhatsApp para o Firestore.
  * Uso restrito a membros autorizados da equipe (admin ou funcionário ativo).
  */
-exports.syncWhatsAppChatMessages = onCall({ secrets: [EVOLUTION_API_KEY] }, async (request) => {
+exports.syncWhatsAppChatMessages = onCall({ maxInstances: 5, secrets: [EVOLUTION_API_KEY] }, async (request) => {
   if (!(await isAuthorizedForWhatsApp(request))) {
     throw new functions.https.HttpsError('permission-denied', 'Sem permissão para utilizar o módulo de Atendimento (WhatsApp).');
   }
@@ -3694,7 +3694,7 @@ exports.syncWhatsAppChatMessages = onCall({ secrets: [EVOLUTION_API_KEY] }, asyn
 /**
  * Consulta o status da conexão da instância com o WhatsApp (open, connecting, close).
  */
-exports.getWhatsAppInstanceStatus = onCall({ secrets: [EVOLUTION_API_KEY] }, async (request) => {
+exports.getWhatsAppInstanceStatus = onCall({ maxInstances: 5, secrets: [EVOLUTION_API_KEY] }, async (request) => {
   if (!(await isAuthorizedForWhatsApp(request))) {
     throw new functions.https.HttpsError('permission-denied', 'Sem permissão para utilizar o módulo de Atendimento (WhatsApp).');
   }
