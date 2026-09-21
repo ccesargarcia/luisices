@@ -535,12 +535,12 @@ export function OrderEditForm({
         </div>
       </div>
 
-      <div className="flex justify-end gap-2 pt-2 border-t">
-        <Button variant="outline" onClick={onCancel} disabled={isSaving}>
+      <div className="flex flex-col-reverse sm:flex-row justify-end gap-2 pt-3 border-t border-border">
+        <Button variant="outline" className="w-full sm:w-auto" onClick={onCancel} disabled={isSaving}>
           <X className="size-4 mr-2" />
           Cancelar
         </Button>
-        <Button onClick={onSave} disabled={isSaving}>
+        <Button className="w-full sm:w-auto" onClick={onSave} disabled={isSaving}>
           <Save className="size-4 mr-2" />
           {isSaving ? 'Salvando...' : 'Salvar Alterações'}
         </Button>
