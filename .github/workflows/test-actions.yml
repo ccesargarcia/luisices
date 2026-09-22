@@ -68,19 +68,28 @@ jobs:
       - name: Install Playwright browsers
         run: npx playwright install chromium --with-deps
 
+      - name: Setup Java (for Firebase Emulators)
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: Install Firebase CLI
+        run: npm install -g firebase-tools
+
       - name: Create .env files with Firebase and test config
         env:
-          API_KEY: ${{ secrets.DEV_VITE_FIREBASE_API_KEY }}
-          AUTH_DOMAIN: ${{ secrets.DEV_VITE_FIREBASE_AUTH_DOMAIN }}
-          PROJECT_ID: ${{ secrets.DEV_VITE_FIREBASE_PROJECT_ID }}
-          STORAGE_BUCKET: ${{ secrets.DEV_VITE_FIREBASE_STORAGE_BUCKET }}
-          MESSAGING_SENDER_ID: ${{ secrets.DEV_VITE_FIREBASE_MESSAGING_SENDER_ID }}
-          APP_ID: ${{ secrets.DEV_VITE_FIREBASE_APP_ID }}
-          MEASUREMENT_ID: ${{ secrets.DEV_VITE_FIREBASE_MEASUREMENT_ID }}
+          API_KEY: ${{ secrets.DEV_VITE_FIREBASE_API_KEY || 'fake-api-key' }}
+          AUTH_DOMAIN: ${{ secrets.DEV_VITE_FIREBASE_AUTH_DOMAIN || 'localhost' }}
+          PROJECT_ID: ${{ secrets.DEV_VITE_FIREBASE_PROJECT_ID || 'luisices-dev' }}
+          STORAGE_BUCKET: ${{ secrets.DEV_VITE_FIREBASE_STORAGE_BUCKET || 'luisices-dev.appspot.com' }}
+          MESSAGING_SENDER_ID: ${{ secrets.DEV_VITE_FIREBASE_MESSAGING_SENDER_ID || '123456789' }}
+          APP_ID: ${{ secrets.DEV_VITE_FIREBASE_APP_ID || '1:123456789:web:abcdef' }}
+          MEASUREMENT_ID: ${{ secrets.DEV_VITE_FIREBASE_MEASUREMENT_ID || 'G-XXXXXXXX' }}
           STORAGE_CDN_URL: ${{ secrets.DEV_VITE_STORAGE_CDN_URL || 'https://cdn-dev.luisices.com.br' }}
           SENTRY_DSN: ${{ secrets.DEV_VITE_SENTRY_DSN || secrets.VITE_SENTRY_DSN }}
-          TEST_EMAIL: ${{ secrets.TEST_USER_EMAIL }}
-          TEST_PASS: ${{ secrets.TEST_USER_PASSWORD }}
+          TEST_EMAIL: ${{ secrets.TEST_USER_EMAIL || 'teste@luisices.com.br' }}
+          TEST_PASS: ${{ secrets.TEST_USER_PASSWORD || 'Senha123456!' }}
         run: |
           printf 'VITE_FIREBASE_API_KEY=%s\n' "$API_KEY" >> .env.local
           printf 'VITE_FIREBASE_AUTH_DOMAIN=%s\n' "$AUTH_DOMAIN" >> .env.local
@@ -91,6 +100,7 @@ jobs:
           printf 'VITE_FIREBASE_MEASUREMENT_ID=%s\n' "$MEASUREMENT_ID" >> .env.local
           printf 'VITE_STORAGE_CDN_URL=%s\n' "$STORAGE_CDN_URL" >> .env.local
           printf 'VITE_SENTRY_DSN=%s\n' "$SENTRY_DSN" >> .env.local
+          printf 'VITE_USE_FIREBASE_EMULATOR=true\n' >> .env.local
           printf 'TEST_USER_EMAIL=%s\n' "$TEST_EMAIL" >> .env.test
           printf 'TEST_USER_PASSWORD=%s\n' "$TEST_PASS" >> .env.test
           printf 'PLAYWRIGHT_BASE_URL=http://localhost:4173\n' >> .env.test
@@ -98,28 +108,28 @@ jobs:
       - name: Build
         run: npm run build
 
-      - name: Run E2E tests
+      - name: Run E2E tests with Firebase Emulator Suite (0 Cloud Reads)
         env:
           CI: true
-          TEST_USER_EMAIL: ${{ secrets.TEST_USER_EMAIL }}
-          TEST_USER_PASSWORD: ${{ secrets.TEST_USER_PASSWORD }}
+          TEST_USER_EMAIL: ${{ secrets.TEST_USER_EMAIL || 'teste@luisices.com.br' }}
+          TEST_USER_PASSWORD: ${{ secrets.TEST_USER_PASSWORD || 'Senha123456!' }}
           PLAYWRIGHT_BASE_URL: http://localhost:4173
           INPUT_TARGET: ${{ inputs.test_target || github.event.inputs.test_target || '' }}
           COMMIT_MSG: ${{ github.event.head_commit.message }}
         run: |
-          if [ "$INPUT_TARGET" = "security" ] || echo "$COMMIT_MSG" | grep -qi '\[test:security\]'; then
-            echo "🛡️ Executando exclusivamente testes de segurança..."
+          npx firebase emulators:exec --only auth,firestore,storage "node scripts/seed-emulator.mjs && if [ \"\$INPUT_TARGET\" = 'security' ] || echo \"\$COMMIT_MSG\" | grep -qi '\\[test:security\\]'; then
+            echo '🛡️ Executando exclusivamente testes de segurança...'
             npx playwright test tests/e2e/security.spec.ts --project=chromium --reporter=list,html
-          elif [ "$INPUT_TARGET" = "critical" ] || echo "$COMMIT_MSG" | grep -qiE '\[test:critical\]|\[fast\]|\[test:fast\]'; then
-            echo "⚡ Executando testes críticos e de segurança..."
+          elif [ \"\$INPUT_TARGET\" = 'critical' ] || echo \"\$COMMIT_MSG\" | grep -qiE '\\[test:critical\\]|\\[fast\\]|\\[test:fast\\]'; then
+            echo '⚡ Executando testes críticos e de segurança...'
             npx playwright test tests/e2e/critical-flows.spec.ts tests/e2e/permissions.spec.ts tests/e2e/security.spec.ts --project=chromium --reporter=list,html
-          elif [ -n "$INPUT_TARGET" ] && [ "$INPUT_TARGET" != "all" ]; then
-            echo "🎯 Executando target específico: $INPUT_TARGET..."
-            npx playwright test tests/e2e/${INPUT_TARGET}.spec.ts --project=chromium --reporter=list,html
+          elif [ -n \"\$INPUT_TARGET\" ] && [ \"\$INPUT_TARGET\" != 'all' ]; then
+            echo \"🎯 Executando target específico: \$INPUT_TARGET...\"
+            npx playwright test tests/e2e/\${INPUT_TARGET}.spec.ts --project=chromium --reporter=list,html
           else
-            echo "🚀 Executando suíte completa de testes E2E (Máquina ${{ matrix.shard }} de 2)..."
+            echo '🚀 Executando suíte completa de testes E2E (Máquina ${{ matrix.shard }} de 2)...'
             npx playwright test --shard=${{ matrix.shard }}/2 --project=chromium --reporter=list,html
-          fi
+          fi"
 
       - name: Upload test report
         if: always()
