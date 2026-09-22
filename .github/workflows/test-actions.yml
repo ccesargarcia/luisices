@@ -117,7 +117,7 @@ jobs:
           INPUT_TARGET: ${{ inputs.test_target || github.event.inputs.test_target || '' }}
           COMMIT_MSG: ${{ github.event.head_commit.message }}
         run: |
-          npx firebase emulators:exec --only auth,firestore,storage "node scripts/seed-emulator.mjs && if [ \"\$INPUT_TARGET\" = 'security' ] || echo \"\$COMMIT_MSG\" | grep -qi '\\[test:security\\]'; then
+          npx firebase emulators:exec --project luisices-dev --only auth,firestore,storage "node scripts/seed-emulator.mjs && if [ \"\$INPUT_TARGET\" = 'security' ] || echo \"\$COMMIT_MSG\" | grep -qi '\\[test:security\\]'; then
             echo '🛡️ Executando exclusivamente testes de segurança...'
             npx playwright test tests/e2e/security.spec.ts --project=chromium --reporter=list,html
           elif [ \"\$INPUT_TARGET\" = 'critical' ] || echo \"\$COMMIT_MSG\" | grep -qiE '\\[test:critical\\]|\\[fast\\]|\\[test:fast\\]'; then
