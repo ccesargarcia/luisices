@@ -381,7 +381,7 @@ function UserFormDialog({ open, editingUser, currentUserUid, onClose, onSaved }:
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export function Users() {
-  const { user: currentUser, isAdmin } = useAuth();
+  const { user: currentUser, isAdmin, loading: authLoading, hasPermission } = useAuth();
   const [users,    setUsers]    = useState<UserProfile[]>([]);
   const [loading,  setLoading]  = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -489,7 +489,15 @@ export function Users() {
   const totalAdmins   = users.filter(u => u.role === 'admin').length;
   const totalInactive = users.filter(u => !u.active).length;
 
-  if (!isAdmin) {
+  if (authLoading) {
+    return (
+      <div className="flex items-center justify-center h-96">
+        <Loader2 className="size-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  if (!isAdmin && !hasPermission(p => p.users?.view ?? false)) {
     return (
       <div className="flex items-center justify-center h-96 text-muted-foreground">
         Você não tem permissão para acessar esta página.

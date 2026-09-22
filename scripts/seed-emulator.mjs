@@ -45,6 +45,7 @@ async function seed() {
         role: { stringValue: 'admin' },
         active: { booleanValue: true },
         createdAt: { stringValue: new Date().toISOString() },
+        createdBy: { stringValue: uid },
       },
     };
 

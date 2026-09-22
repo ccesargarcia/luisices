@@ -82,6 +82,20 @@ test.describe('Segurança - Fluxos de Autenticação e Registro', () => {
     const incognitoContext = await browser.newContext({ storageState: undefined });
     const page = await incognitoContext.newPage();
 
+    // Interceptar chamada da Cloud Function caso o emulador de funções não esteja rodando
+    await page.route('**/validateUserInvitation', async (route) => {
+      await route.fulfill({
+        status: 404,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          error: {
+            message: 'Convite inválido ou expirado.',
+            status: 'NOT_FOUND',
+          },
+        }),
+      });
+    });
+
     // Acessar com token forjado
     await page.goto('/registrar?invite=token_malicioso_forjado_99999');
 

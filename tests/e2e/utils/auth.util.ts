@@ -4,11 +4,12 @@ import * as path from 'path';
 import dotenv from 'dotenv';
 
 dotenv.config({ path: '.env.test' });
+dotenv.config({ path: '.env.local' });
 
 export function getTestCredentials() {
   return {
-    email: process.env.TEST_USER_EMAIL || 'teste@exemplo.com',
-    password: process.env.TEST_USER_PASSWORD || 'senha123',
+    email: process.env.TEST_USER_EMAIL || 'teste@luisices.com.br',
+    password: process.env.TEST_USER_PASSWORD || 'Senha123456!',
   };
 }
 
