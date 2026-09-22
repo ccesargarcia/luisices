@@ -297,6 +297,8 @@ service cloud.firestore {
                   || !('whatsapp' in get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.permissions)
                   || get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.permissions.whatsapp != false))
           || (get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.role == 'funcionario'
+              && ('permissions' in get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data)
+              && ('whatsapp' in get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.permissions)
               && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.permissions.whatsapp == true)
         );
     }
