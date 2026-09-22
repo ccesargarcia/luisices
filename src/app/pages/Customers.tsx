@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from 'react';
-import { collection, query, where, orderBy, onSnapshot } from 'firebase/firestore';
+import { collection, query, where, orderBy, onSnapshot, limit } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { exportCustomersToExcel } from '../utils/exportData';
 import { Customer } from '../types';
@@ -63,6 +63,7 @@ export function Customers() {
   // Assinar clientes em tempo real para refletir criações/edições/exclusões
   useEffect(() => {
     if (!user) {
+      setCustomers([]);
       setLoading(false);
       return;
     }
@@ -73,6 +74,7 @@ export function Customers() {
       collection(db, 'customers'),
       where('userId', '==', user.uid),
       orderBy('createdAt', 'desc'),
+      limit(150),
     );
 
     const unsub = onSnapshot(

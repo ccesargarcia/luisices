@@ -5,6 +5,7 @@ import {
   where,
   orderBy,
   onSnapshot,
+  limit,
   QuerySnapshot,
   DocumentData,
 } from 'firebase/firestore';
@@ -101,11 +102,12 @@ export function useSalesLedger(options?: {
     const isEmployee = userProfile?.role === 'funcionario';
 
     const baseQuery = isAdmin
-      ? query(collection(db, 'salesLedger'), orderBy('date', 'desc'))
+      ? query(collection(db, 'salesLedger'), orderBy('date', 'desc'), limit(200))
       : query(
           collection(db, 'salesLedger'),
           where('userId', '==', user.uid),
-          orderBy('date', 'desc')
+          orderBy('date', 'desc'),
+          limit(200)
         );
 
     const mapSnapshot = (snapshot: QuerySnapshot<DocumentData>): SaleRecord[] =>
@@ -148,7 +150,8 @@ export function useSalesLedger(options?: {
       const assignedQuery = query(
         collection(db, 'salesLedger'),
         where('assignedTo', '==', user.uid),
-        orderBy('date', 'desc')
+        orderBy('date', 'desc'),
+        limit(200)
       );
       unsubscribers.push(
         onSnapshot(

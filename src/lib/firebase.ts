@@ -13,10 +13,12 @@ import {
   persistentMultipleTabManager,
   terminate,
   clearIndexedDbPersistence,
+  connectFirestoreEmulator,
   Firestore,
 } from 'firebase/firestore';
-import { getStorage } from 'firebase/storage';
-import { getFunctions } from 'firebase/functions';
+import { getStorage, connectStorageEmulator } from 'firebase/storage';
+import { getFunctions, connectFunctionsEmulator } from 'firebase/functions';
+import { connectAuthEmulator } from 'firebase/auth';
 import { getAnalytics, isSupported, Analytics } from 'firebase/analytics';
 import { getPerformance, FirebasePerformance, trace as firebaseTrace } from 'firebase/performance';
 
@@ -73,6 +75,20 @@ setPersistence(auth, browserLocalPersistence).catch(error => {
 
 export const storage = getStorage(app);
 export const functions = getFunctions(app);
+
+// Conexão com o Firebase Local Emulator Suite quando ativado via ambiente
+if (import.meta.env.VITE_USE_FIREBASE_EMULATOR === 'true') {
+  const host = import.meta.env.VITE_FIREBASE_EMULATOR_HOST || 'localhost';
+  try {
+    connectFirestoreEmulator(db, host, 8080);
+    connectAuthEmulator(auth, `http://${host}:9099`, { disableWarnings: true });
+    connectStorageEmulator(storage, host, 9199);
+    connectFunctionsEmulator(functions, host, 5001);
+    console.info('[Firebase] Modo Emulator Suite Ativo (0 leituras na nuvem)');
+  } catch (emulatorErr) {
+    console.warn('[Firebase] Aviso ao conectar aos emuladores:', emulatorErr);
+  }
+}
 
 // Analytics & Performance (apenas em browser)
 let analytics: Analytics | null = null;
