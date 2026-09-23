@@ -72,11 +72,11 @@ jobs:
           projectId: luisices-dev
           channelId: live
 
-      - name: Deploy Firestore Rules, Indexes & Storage (Dev)
+      - name: Deploy Firestore Rules & Indexes (Dev)
         env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_DEV }}
         run: |
           echo "$FIREBASE_SERVICE_ACCOUNT" > "$HOME/firebase-service-account.json"
           export GOOGLE_APPLICATION_CREDENTIALS="$HOME/firebase-service-account.json"
-          npx --yes firebase-tools deploy --only firestore:rules,firestore:indexes,storage --project luisices-dev --non-interactive
+          npx --yes firebase-tools deploy --only firestore:rules,firestore:indexes --project luisices-dev --non-interactive
 
