@@ -18,7 +18,7 @@ on:
         type: choice
         options:
           - 'all'
-          - 'aiAgentChat,enrichGalleryItemWithAi,enrichStoreProductWithAi,getAiUsage,sendWhatsAppDirectMessage,deleteWhatsAppMessage,syncWhatsAppChatMessages,getWhatsAppInstanceStatus,evolutionWhatsAppWebhook,syncOrderToAiView,syncAllOrdersToAiView'
+          - 'aiAgentChat,enrichGalleryItemWithAi,enrichStoreProductWithAi,getAiUsage,sendWhatsAppDirectMessage,deleteWhatsAppMessage,syncWhatsAppChatMessages,getWhatsAppInstanceStatus,evolutionWhatsAppWebhook,syncAllOrdersToAiView'
           - 'aiAgentChat,enrichGalleryItemWithAi,enrichStoreProductWithAi,getAiUsage'
           - 'aiAgentChat,enrichGalleryItemWithAi'
           - 'enrichStoreProductWithAi'
@@ -33,7 +33,6 @@ on:
           - 'syncWhatsAppChatMessages'
           - 'getWhatsAppInstanceStatus'
           - 'evolutionWhatsAppWebhook'
-          - 'syncOrderToAiView'
           - 'syncAllOrdersToAiView'
           - 'sendAdminPasswordReset,sendPasswordResetEmail'
           - 'createUserInvitation,validateUserInvitation,completeUserInvitation'
@@ -131,6 +130,9 @@ jobs:
           echo "🚀 Realizando deploy de: $DEPLOY_TARGET"
           firebase deploy --only "$DEPLOY_TARGET" --project luisices-dev --force
 
+          echo "🧹 Podando versões obsoletas de segredos no Secret Manager (Dev)..."
+          firebase functions:secrets:prune --project luisices-dev -f || true
+
       - name: Deploy Firebase Functions & Rules (Production)
         if: steps.env.outputs.target == 'prod'
         env:
@@ -182,3 +184,6 @@ jobs:
 
           echo "🚀 Realizando deploy de: $DEPLOY_TARGET"
           firebase deploy --only "$DEPLOY_TARGET" --project papelaria-dashboard --force
+
+          echo "🧹 Podando versões obsoletas de segredos no Secret Manager (Prod)..."
+          firebase functions:secrets:prune --project papelaria-dashboard -f || true

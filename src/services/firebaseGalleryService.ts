@@ -52,12 +52,17 @@ export class FirebaseGalleryService {
 
   // ─── Read ────────────────────────────────────────────────────────────────────
 
-  async getItems(userId: string): Promise<GalleryItem[]> {
-    const q = query(
-      collection(db, this.collectionName),
-      where('userId', '==', userId),
-      orderBy('createdAt', 'desc')
-    );
+  async getItems(userId: string, isAdmin: boolean = false): Promise<GalleryItem[]> {
+    const q = isAdmin
+      ? query(
+          collection(db, this.collectionName),
+          orderBy('createdAt', 'desc')
+        )
+      : query(
+          collection(db, this.collectionName),
+          where('userId', '==', userId),
+          orderBy('createdAt', 'desc')
+        );
     const snapshot = await getDocs(q);
     return snapshot.docs
       .filter(d => !d.data().deletedAt)

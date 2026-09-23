@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from 'react';
-import { collection, query, where, orderBy, onSnapshot } from 'firebase/firestore';
+import { collection, query, where, orderBy, onSnapshot, limit } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { exportCustomersToExcel } from '../utils/exportData';
 import { Customer } from '../types';
@@ -31,7 +31,7 @@ import { toast } from 'sonner';
 const PAGE_SIZE = 12;
 
 export function Customers() {
-  const { user, hasPermission } = useAuth();
+  const { user, userProfile, hasPermission } = useAuth();
   const { allOrders } = useOrders();
   const { allTimeStats } = useSalesLedger();
 
@@ -63,17 +63,26 @@ export function Customers() {
   // Assinar clientes em tempo real para refletir criações/edições/exclusões
   useEffect(() => {
     if (!user) {
+      setCustomers([]);
       setLoading(false);
       return;
     }
 
     setLoading(true);
 
-    const q = query(
-      collection(db, 'customers'),
-      where('userId', '==', user.uid),
-      orderBy('createdAt', 'desc'),
-    );
+    const isAdmin = userProfile?.role === 'admin';
+    const q = isAdmin
+      ? query(
+          collection(db, 'customers'),
+          orderBy('createdAt', 'desc'),
+          limit(200),
+        )
+      : query(
+          collection(db, 'customers'),
+          where('userId', '==', user.uid),
+          orderBy('createdAt', 'desc'),
+          limit(200),
+        );
 
     const unsub = onSnapshot(
       q,
@@ -83,7 +92,7 @@ export function Customers() {
           return {
             id: doc.id,
             ...raw,
-            createdAt: raw.createdAt?.toDate?.()?.toISOString() ?? new Date().toISOString(),
+            createdAt: raw.createdAt?.toDate?.()?.toISOString() ?? (typeof raw.createdAt === 'string' ? raw.createdAt : new Date().toISOString()),
           } as Customer;
         });
         setCustomers(data);
@@ -97,7 +106,7 @@ export function Customers() {
     );
 
     return unsub;
-  }, [user]);
+  }, [user, userProfile?.role]);
 
   // Mapa de pedidos em aberto e total de pedidos por cliente a partir de OrdersContext
   const openOrdersMap = useMemo(() => {

@@ -2,18 +2,35 @@ rules_version = '2';
 
 service firebase.storage {
   match /b/{bucket}/o {
-    // Helper function para verificar se o usuário solicitante é administrador
+    // Helper functions para controle de acesso granular
     function isAdmin() {
       return request.auth != null
         && firestore.exists(/databases/(default)/documents/userProfiles/$(request.auth.uid))
         && firestore.get(/databases/(default)/documents/userProfiles/$(request.auth.uid)).data.role == 'admin';
     }
 
+    function isActiveEmployee() {
+      return request.auth != null
+        && firestore.exists(/databases/(default)/documents/userProfiles/$(request.auth.uid))
+        && firestore.get(/databases/(default)/documents/userProfiles/$(request.auth.uid)).data.role == 'funcionario'
+        && firestore.get(/databases/(default)/documents/userProfiles/$(request.auth.uid)).data.active == true;
+    }
+
+    function canViewOrders() {
+      return request.auth != null
+        && (isAdmin() || (isActiveEmployee() && firestore.get(/databases/(default)/documents/userProfiles/$(request.auth.uid)).data.permissions.orders.view == true));
+    }
+
+    function canViewGallery() {
+      return request.auth != null
+        && (isAdmin() || (isActiveEmployee() && firestore.get(/databases/(default)/documents/userProfiles/$(request.auth.uid)).data.permissions.gallery.view == true));
+    }
+
     // Anexos de pedidos e thumbnails: imagens ou PDFs, até 100MB
-    // Leitura e escrita restritas estritamente ao dono do pedido ou admin
+    // Leitura permitida para o dono do pedido, admin ou funcionários com permissão de visualização de pedidos
     match /users/{userId}/orders/{orderId}/{allPaths=**} {
-      allow read: if request.auth != null && (request.auth.uid == userId || isAdmin());
-      allow create, update: if request.auth != null && (request.auth.uid == userId || isAdmin())
+      allow read: if request.auth != null && (request.auth.uid == userId || canViewOrders());
+      allow create, update: if request.auth != null && (request.auth.uid == userId || isAdmin() || (isActiveEmployee() && firestore.get(/databases/(default)/documents/userProfiles/$(request.auth.uid)).data.permissions.orders.edit == true))
         && request.resource.size < 100 * 1024 * 1024
         && (request.resource.contentType.matches('image/.*')
             || request.resource.contentType == 'application/pdf');
@@ -22,11 +39,11 @@ service firebase.storage {
 
     // Galeria de artes: apenas imagens, até 15MB
     match /users/{userId}/gallery/{fileName} {
-      allow read: if request.auth != null && (request.auth.uid == userId || isAdmin());
-      allow create, update: if request.auth != null && (request.auth.uid == userId || isAdmin())
+      allow read: if request.auth != null && (request.auth.uid == userId || canViewGallery());
+      allow create, update: if request.auth != null && (request.auth.uid == userId || isAdmin() || (isActiveEmployee() && firestore.get(/databases/(default)/documents/userProfiles/$(request.auth.uid)).data.permissions.gallery.create == true))
         && request.resource.size < 15 * 1024 * 1024
         && request.resource.contentType.matches('image/.*');
-      allow delete: if request.auth != null && (request.auth.uid == userId || isAdmin());
+      allow delete: if request.auth != null && (request.auth.uid == userId || isAdmin() || (isActiveEmployee() && firestore.get(/databases/(default)/documents/userProfiles/$(request.auth.uid)).data.permissions.gallery.delete == true));
     }
 
     // Imagens de perfil, logo e banner do usuário: leitura pública, edição restrita ao dono/admin

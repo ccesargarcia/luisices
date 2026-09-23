@@ -91,7 +91,8 @@ http://localhost:4000
 |---|---|---|---|
 | `aiAgentChat` | Callable v2 | Copiloto conversacional multimodal com tool calling: extração de pedidos, cálculo de precificação, sugestão de WhatsApp e consultas com isolamento de dados | Autenticado com `aiCopilot` (Rate limit: 60 req/min) |
 | `enrichGalleryItemWithAi` | Callable v2 | Visão computacional (Gemini Vision) para catalogar foto da galeria, extraindo descrição rica, tags e cores | Autenticado com `aiCopilot` e dono/admin da arte (Rate limit: 20 req/min) |
-| `syncAllOrdersToAiView` | Callable v2 | *(Legada/No-op)* Mantida para compatibilidade retroativa; o Copiloto agora utiliza projeção em memória em tempo real direta de `orders` | Apenas Admin |
+| `enrichStoreProductWithAi` | Callable v2 | Visão computacional (Gemini Vision) para catálogo de produtos da lojinha pública, sugerindo títulos de alta conversão, categorias e descrições | Autenticado com `aiCopilot` (Rate limit: 20 req/min) |
+| `syncAllOrdersToAiView` | Callable v2 | *(Legada/No-op)* Mantida para compatibilidade retroativa; o Copiloto agora utiliza projeção em tempo real e somente-leitura em memória direta de `orders` | Apenas Admin |
 | `getAiUsage` | Callable v2 | Consulta consumo de cota e métricas de requisições do Gemini API | Apenas Admin |
 
 ---
@@ -102,8 +103,9 @@ http://localhost:4000
 |---|---|---|---|
 | `sendWhatsAppDirectMessage` | Callable v2 | Envio de mensagem direta via Evolution API com gravação em `whatsapp_messages` e atualização do chat | Autenticado com `whatsapp` |
 | `deleteWhatsAppMessage` | Callable v2 | Exclusão de mensagem do chat no Firestore e revogação no WhatsApp via Evolution API | Autenticado com `whatsapp` |
-| `syncWhatsAppMessages` | Callable v2 | Sincronização de mensagens recentes entre a instância WhatsApp e o Firestore | Autenticado com `whatsapp` |
-| `whatsappEvolutionWebhook` | HTTP onRequest | Recebimento de webhooks de mensagens e status de conexão da Evolution API | Público / Webhook Evolution |
+| `syncWhatsAppChatMessages` | Callable v2 | Sincronização de mensagens recentes entre a instância WhatsApp e o Firestore | Autenticado com `whatsapp` |
+| `getWhatsAppInstanceStatus` | Callable v2 | Consulta de status e conectividade da instância Evolution API com cache em memória | Autenticado com `whatsapp` |
+| `evolutionWhatsAppWebhook` | HTTP onRequest | Recebimento de webhooks de mensagens e status de conexão da Evolution API em dual-forwarding | Público / Webhook Evolution |
 
 ---
 

@@ -98,11 +98,13 @@ class FirebaseProductService {
     return url;
   }
 
-  subscribeToProducts(userId: string, callback: (products: Product[]) => void): () => void {
-    const q = query(
-      collection(db, PRODUCTS_COLLECTION),
-      where('userId', '==', userId)
-    );
+  subscribeToProducts(userId: string, callback: (products: Product[]) => void, isAdmin: boolean = false): () => void {
+    const q = isAdmin
+      ? query(collection(db, PRODUCTS_COLLECTION))
+      : query(
+          collection(db, PRODUCTS_COLLECTION),
+          where('userId', '==', userId)
+        );
     return onSnapshot(
       q,
       (snap) => {

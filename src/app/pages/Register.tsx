@@ -32,7 +32,10 @@ export function Register() {
         setInviteEmail(data.email);
         setEmail(data.email);
       })
-      .catch((err) => setError(err?.message || 'Convite inválido ou expirado.'))
+      .catch((err) => {
+        const msg = (err?.message && err.message.includes('Convite')) ? err.message : 'Convite inválido ou expirado.';
+        setError(msg);
+      })
       .finally(() => setInviteLoading(false));
   }, [inviteToken]);
 

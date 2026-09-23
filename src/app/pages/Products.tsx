@@ -397,7 +397,7 @@ const ATELIER_PRODUCTS_VIEW_MODE_KEY = 'luisices_atelier_products_view_mode';
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export function Products() {
-  const { user, hasPermission } = useAuth();
+  const { user, userProfile, hasPermission } = useAuth();
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -425,12 +425,13 @@ export function Products() {
   useEffect(() => {
     if (!user) return;
     setLoading(true);
+    const isAdmin = userProfile?.role === 'admin';
     const unsub = firebaseProductService.subscribeToProducts(user.uid, (data) => {
       setProducts(data);
       setLoading(false);
-    });
+    }, isAdmin);
     return unsub;
-  }, [user]);
+  }, [user, userProfile?.role]);
 
   async function handleDeleteConfirm() {
     if (!deleteTarget) return;

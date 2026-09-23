@@ -74,6 +74,26 @@ const getAppUrl = () => {
   return projectId === 'luisices-dev' ? 'https://dev.luisices.com.br' : 'https://luisices.com.br';
 };
 
+const toCdnUrl = (url) => {
+  if (!url || typeof url !== 'string') return '';
+  if (url.includes('cdn.luisices.com.br') || url.includes('cdn-dev.luisices.com.br')) {
+    return url.split('?')[0];
+  }
+  if (!url.includes('firebasestorage.googleapis.com')) {
+    return url;
+  }
+  try {
+    const match = url.match(/\/o\/(.+?)(\?.*)?$/);
+    if (!match || !match[1]) return url;
+    const rawPath = decodeURIComponent(match[1]);
+    const projectId = process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT;
+    const cdnDomain = projectId === 'luisices-dev' ? 'https://cdn-dev.luisices.com.br' : 'https://cdn.luisices.com.br';
+    return `${cdnDomain}/${rawPath}`;
+  } catch {
+    return url;
+  }
+};
+
 const formatActionLink = (rawFirebaseLink, fallbackMode = 'resetPassword') => {
   try {
     const parsed = new URL(rawFirebaseLink);
@@ -1063,15 +1083,6 @@ function sanitizeOrderForAi(id, data = {}) {
   };
 }
 
-/**
- * Trigger legado de sincronização para ai_orders_view.
- * Descontinuado: O Copiloto agora opera com projeção em tempo real e somente-leitura em memória.
- */
-exports.syncOrderToAiView = functions.firestore
-  .document('orders/{orderId}')
-  .onWrite(async () => {
-    return null;
-  });
 
 /**
  * Endpoint legado de sincronização em lote de pedidos.
@@ -1259,6 +1270,8 @@ Você possui responsabilidades principais com ferramentas especializadas:
     - Em vez de "posso usar search_gallery_portfolio": diga "Posso pesquisar mais fotos e modelos no nosso acervo".
   • NUNCA use termos de programação, crases com nomes de variáveis (\`nome_da_funcao\`) ou jargões em inglês desnecessários (como 'Backing Card' se puder dizer 'Cartão de apoio' ou 'Tag').
   • Seja elegante, acolhedora, concisa e focada na linguagem do dia a dia do ateliê.
+- GUARDRAIL 8 (CONCISÃO & EXPERIÊNCIA MOBILE): Formate suas respostas para leitura confortável e rápida no celular. Evite blocos extensos de texto contínuo; use tópicos claros com marcadores, listas sucintas e resumos objetivos de no máximo 2 a 3 parágrafos curtos.
+- GUARDRAIL 9 (PRECISÃO FACTUAL & ZERO ALUCINAÇÃO): Se um pedido, cliente, data ou número não for encontrado nas ferramentas de consulta, declare claramente que o registro não foi localizado e solicite esclarecimento ao operador. NUNCA invente números de pedidos, valores fictícios ou status presumidos.
 
 ---
 BASE DE CONHECIMENTO DO SISTEMA LUISICES:
@@ -2990,7 +3003,8 @@ exports.enrichGalleryItemWithAi = onCall({ cors: true, timeoutSeconds: 120, memo
   let base64Image = '';
   let mimeType = 'image/jpeg';
   try {
-    const imgResp = await fetch(itemData.imageUrl);
+    const fetchUrl = toCdnUrl(itemData.imageUrl);
+    const imgResp = await fetch(fetchUrl);
     if (!imgResp.ok) {
       throw new Error(`Falha ao baixar imagem (${imgResp.status})`);
     }
@@ -3010,7 +3024,7 @@ Analise a imagem deste produto/arte que foi produzido pela empresa.
 Título atual informado: "${itemData.title || 'Sem título'}"
 Descrição atual: "${itemData.description || ''}"
 
-Responda ESTRITAMENTE em formato JSON com as seguintes propriedades (sem markdown, sem formatação extra, apenas o objeto JSON puro):
+Responda ESTRITAMENTE em formato JSON puro, sem blocos de código markdown (sem crases ou tags json), sem quebras inválidas e sem texto explicativo adicional. Estrutura exata:
 {
   "titleSuggested": "Título comercial conciso e descritivo para o produto",
   "aiDescription": "Descrição comercial rica e técnica dos detalhes visuais do produto, acabamento, estilo, público e possíveis ocasiões (em 2 a 3 frases em pt-BR)",
@@ -3194,7 +3208,8 @@ exports.enrichStoreProductWithAi = onCall({ cors: true, timeoutSeconds: 120, mem
 
   if (!base64Image && imageUrl) {
     try {
-      const imgResp = await fetch(imageUrl);
+      const fetchUrl = toCdnUrl(imageUrl);
+      const imgResp = await fetch(fetchUrl);
       if (!imgResp.ok) throw new Error(`Falha ao baixar imagem (${imgResp.status})`);
       const contentType = imgResp.headers.get("content-type");
       if (contentType && contentType.startsWith("image/")) {
@@ -3232,7 +3247,7 @@ A descrição DEVE ser rica, acolhedora e muito bem formatada para leitura agrad
 - Uma frase convidativa para tirar dúvidas ou personalizar pelo WhatsApp.
 - Destaque termos-chave em **negrito** e use quebras de linha reais (\n\n).
 
-Responda ESTRITAMENTE em formato JSON com as seguintes propriedades (sem markdown antes ou depois do json, apenas o objeto json puro):
+Responda ESTRITAMENTE em formato JSON puro, sem blocos de código markdown (sem crases ou tags json), sem formatação extra antes ou depois, apenas o objeto JSON puro e válido:
 {
   "name": "Nome comercial atraente e claro para o produto",
   "category": "Categoria sugerida (ex: Lembrancinhas, Presenteáveis, Papelaria de Festa, Encadernação, Caixas Personalizadas, Canecas e Copos, etc.)",

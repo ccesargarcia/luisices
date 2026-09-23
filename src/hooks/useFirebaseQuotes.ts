@@ -5,30 +5,46 @@ import {
   where,
   orderBy,
   onSnapshot,
+  limit,
 } from 'firebase/firestore';
-import { db, auth } from '../lib/firebase';
+import { db } from '../lib/firebase';
+import { useAuth } from '../contexts/AuthContext';
 import { Quote } from '../app/types';
 import { firebaseQuoteService } from '../services/firebaseQuoteService';
 import { isQuoteExpired } from '../app/components/quotes/quoteHelpers';
 
 export function useFirebaseQuotes() {
+  const { user, userProfile, loading: authLoading } = useAuth();
   const [quotes, setQuotes] = useState<Quote[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const user = auth.currentUser;
     if (!user) {
-      setError('Usuário não autenticado');
+      setQuotes([]);
       setLoading(false);
+      setError(null);
       return;
     }
 
-    const q = query(
-      collection(db, 'quotes'),
-      where('userId', '==', user.uid),
-      orderBy('createdAt', 'desc')
-    );
+    if (authLoading && !userProfile) {
+      setLoading(true);
+      return;
+    }
+
+    const isAdmin = userProfile?.role === 'admin';
+    const q = isAdmin
+      ? query(
+          collection(db, 'quotes'),
+          orderBy('createdAt', 'desc'),
+          limit(200),
+        )
+      : query(
+          collection(db, 'quotes'),
+          where('userId', '==', user.uid),
+          orderBy('createdAt', 'desc'),
+          limit(200),
+        );
 
     const unsubscribe = onSnapshot(
       q,
@@ -59,7 +75,7 @@ export function useFirebaseQuotes() {
             exchangeNotes: raw.exchangeNotes ?? undefined,
             orderId: raw.orderId ?? undefined,
             orderNumber: raw.orderNumber ?? undefined,
-            createdAt: raw.createdAt?.toDate?.()?.toISOString() ?? new Date().toISOString(),
+            createdAt: raw.createdAt?.toDate?.()?.toISOString() ?? (typeof raw.createdAt === 'string' ? raw.createdAt : new Date().toISOString()),
             sentAt: raw.sentAt?.toDate?.()?.toISOString() ?? undefined,
             approvedAt: raw.approvedAt?.toDate?.()?.toISOString() ?? undefined,
             rejectedAt: raw.rejectedAt?.toDate?.()?.toISOString() ?? undefined,
@@ -88,7 +104,7 @@ export function useFirebaseQuotes() {
     );
 
     return () => unsubscribe();
-  }, []);
+  }, [user, userProfile?.role, authLoading]);
 
   return { quotes, loading, error };
 }

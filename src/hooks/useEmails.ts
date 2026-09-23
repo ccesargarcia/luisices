@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { collection, query, orderBy, onSnapshot } from 'firebase/firestore';
+import { collection, query, orderBy, onSnapshot, limit } from 'firebase/firestore';
 import { db, auth } from '../lib/firebase';
 import { ReceivedEmail, SentEmail, SendEmailPayload, EmailUsage } from '../app/types';
 import { emailService } from '../services/emailService';
@@ -36,8 +36,16 @@ export function useEmails() {
       return;
     }
 
-    const qReceived = query(collection(db, 'receivedEmails'), orderBy('receivedAt', 'desc'));
-    const qSent = query(collection(db, 'sentEmails'), orderBy('sentAt', 'desc'));
+    const qReceived = query(
+      collection(db, 'receivedEmails'),
+      orderBy('receivedAt', 'desc'),
+      limit(50)
+    );
+    const qSent = query(
+      collection(db, 'sentEmails'),
+      orderBy('sentAt', 'desc'),
+      limit(50)
+    );
 
     const unsubReceived = onSnapshot(
       qReceived,

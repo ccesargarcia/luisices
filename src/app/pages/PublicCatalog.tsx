@@ -29,7 +29,7 @@ import {
 } from 'lucide-react';
 import { formatCurrency } from '../utils/currency';
 import { normalizePhoneForWhatsApp, formatPhoneForDisplay } from '../utils/whatsapp';
-import { collection, onSnapshot, doc, getDoc } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { BannerCarousel, CatalogBannerItem } from '../components/catalog/BannerCarousel';
 import { firebaseCatalogOrderService } from '../../services/firebaseCatalogOrderService';
@@ -252,136 +252,158 @@ export function PublicCatalog() {
     } catch {}
   }, [cart]);
 
-  // Escutar configurações públicas da loja em tempo real via onSnapshot
+  // Carregar configurações públicas da loja com cache local inteligente
   useEffect(() => {
-    const unsubscribe = onSnapshot(
-      doc(db, 'storeSettings', 'public'),
-      (publicSettingsSnap) => {
+    let isMounted = true;
+
+    const applySettings = (s: any) => {
+      setBusinessInfo((prev: typeof businessInfo) => ({
+        name: s.catalogStoreName || s.name || (s.businessName !== undefined && s.businessName !== '' ? s.businessName : prev.name),
+        tagline: s.catalogStoreTagline !== undefined ? s.catalogStoreTagline : (s.businessTagline !== undefined ? s.businessTagline : (s.tagline || '')),
+        whatsapp: s.catalogWhatsappPhone || s.whatsappPhone || s.businessPhone || '',
+        instagram: s.instagramUrl ? s.instagramUrl.replace(/^https?:\/\/(www\.)?instagram\.com\//, '').replace(/\/$/, '') : '',
+        instagramColab: s.instagramColabUrl ? s.instagramColabUrl.replace(/^https?:\/\/(www\.)?instagram\.com\//, '').replace(/\/$/, '') : '',
+        website: s.websiteUrl || '',
+        logo: toCdnUrl(s.catalogLogo) || '',
+        banner: toCdnUrl(s.catalogBanner) || '',
+        banners: Array.isArray(s.catalogBanners) && s.catalogBanners.length > 0
+          ? s.catalogBanners.map((b: CatalogBannerItem) => ({ ...b, imageUrl: toCdnUrl(b.imageUrl) }))
+          : (s.catalogBanner ? [{ id: 'b-default', imageUrl: toCdnUrl(s.catalogBanner) }] : []),
+        bannerInterval: Number(s.catalogBannerInterval) || prev.bannerInterval || 5,
+        bannerAutoPlay: s.catalogBannerAutoPlay !== undefined ? Boolean(s.catalogBannerAutoPlay) : true,
+        bannerFixed: s.catalogBannerFixed !== undefined ? Boolean(s.catalogBannerFixed) : false,
+        headerBackground: toCdnUrl(s.catalogHeaderBackground) || '',
+        headerBgColor: s.catalogHeaderBgColor || '',
+        headerTextColor: s.catalogHeaderTextColor || 'dark',
+        headerLogoPosition: s.catalogHeaderLogoPosition || 'left',
+        headerHeight: s.catalogHeaderHeight || 'normal',
+        headerHideText: Boolean(s.catalogHeaderHideText),
+        badge: s.catalogBadge !== undefined ? s.catalogBadge : '',
+        statusText: s.catalogStatusText !== undefined ? s.catalogStatusText : '',
+        announcement: s.catalogAnnouncement !== undefined ? s.catalogAnnouncement : '',
+        heroTitle: s.catalogHeroTitle !== undefined ? s.catalogHeroTitle : '',
+        heroDescription: s.catalogHeroDescription !== undefined ? s.catalogHeroDescription : '',
+        showHero: s.catalogShowHero !== undefined ? Boolean(s.catalogShowHero) : false,
+        whatsappGreeting: s.catalogWhatsappGreeting || prev.whatsappGreeting,
+        whatsappCustomizationLabel: s.catalogWhatsappCustomizationLabel || prev.whatsappCustomizationLabel,
+        whatsappFooter: s.catalogWhatsappFooter || prev.whatsappFooter,
+        footerText: s.catalogFooterText !== undefined ? s.catalogFooterText : '',
+        footerLocation: s.catalogFooterLocation !== undefined ? s.catalogFooterLocation : '',
+        footerBusinessHours: s.catalogFooterBusinessHours !== undefined ? s.catalogFooterBusinessHours : '',
+        footerNotice: s.catalogFooterNotice !== undefined ? s.catalogFooterNotice : '',
+        footerCopyright: s.catalogFooterCopyright !== undefined ? s.catalogFooterCopyright : prev.footerCopyright,
+      }));
+
+      setStorePublished(s.storePublished !== undefined ? Boolean(s.storePublished) : true);
+      setStoreUnpublishMessage(s.storeUnpublishMessage || '');
+      if (s.featureFlags && typeof s.featureFlags === 'object') {
+        setFeatureFlags((prev) => ({ ...prev, ...s.featureFlags }));
+      }
+    };
+
+    // Tentar carregar do cache local primeiro para renderização imediata
+    try {
+      const cached = localStorage.getItem('luisices_public_store_settings');
+      if (cached) {
+        applySettings(JSON.parse(cached));
+      }
+    } catch {}
+
+    // Buscar versão atualizada no Firestore
+    getDoc(doc(db, 'storeSettings', 'public'))
+      .then((publicSettingsSnap) => {
+        if (!isMounted) return;
         if (publicSettingsSnap.exists()) {
           const s = publicSettingsSnap.data();
           try {
             localStorage.setItem('luisices_public_store_settings', JSON.stringify(s));
           } catch {}
-
-          setBusinessInfo((prev: typeof businessInfo) => ({
-            name: s.catalogStoreName || s.name || (s.businessName !== undefined && s.businessName !== '' ? s.businessName : prev.name),
-            tagline: s.catalogStoreTagline !== undefined ? s.catalogStoreTagline : (s.businessTagline !== undefined ? s.businessTagline : (s.tagline || '')),
-            whatsapp: s.catalogWhatsappPhone || s.whatsappPhone || s.businessPhone || '',
-            instagram: s.instagramUrl ? s.instagramUrl.replace(/^https?:\/\/(www\.)?instagram\.com\//, '').replace(/\/$/, '') : '',
-            instagramColab: s.instagramColabUrl ? s.instagramColabUrl.replace(/^https?:\/\/(www\.)?instagram\.com\//, '').replace(/\/$/, '') : '',
-            website: s.websiteUrl || '',
-            logo: toCdnUrl(s.catalogLogo) || '',
-            banner: toCdnUrl(s.catalogBanner) || '',
-            banners: Array.isArray(s.catalogBanners) && s.catalogBanners.length > 0
-              ? s.catalogBanners.map((b: CatalogBannerItem) => ({ ...b, imageUrl: toCdnUrl(b.imageUrl) }))
-              : (s.catalogBanner ? [{ id: 'b-default', imageUrl: toCdnUrl(s.catalogBanner) }] : []),
-            bannerInterval: Number(s.catalogBannerInterval) || prev.bannerInterval || 5,
-            bannerAutoPlay: s.catalogBannerAutoPlay !== undefined ? Boolean(s.catalogBannerAutoPlay) : true,
-            bannerFixed: s.catalogBannerFixed !== undefined ? Boolean(s.catalogBannerFixed) : false,
-            headerBackground: toCdnUrl(s.catalogHeaderBackground) || '',
-            headerBgColor: s.catalogHeaderBgColor || '',
-            headerTextColor: s.catalogHeaderTextColor || 'dark',
-            headerLogoPosition: s.catalogHeaderLogoPosition || 'left',
-            headerHeight: s.catalogHeaderHeight || 'normal',
-            headerHideText: Boolean(s.catalogHeaderHideText),
-            badge: s.catalogBadge !== undefined ? s.catalogBadge : '',
-            statusText: s.catalogStatusText !== undefined ? s.catalogStatusText : '',
-            announcement: s.catalogAnnouncement !== undefined ? s.catalogAnnouncement : '',
-            heroTitle: s.catalogHeroTitle !== undefined ? s.catalogHeroTitle : '',
-            heroDescription: s.catalogHeroDescription !== undefined ? s.catalogHeroDescription : '',
-            showHero: s.catalogShowHero !== undefined ? Boolean(s.catalogShowHero) : false,
-            whatsappGreeting: s.catalogWhatsappGreeting || prev.whatsappGreeting,
-            whatsappCustomizationLabel: s.catalogWhatsappCustomizationLabel || prev.whatsappCustomizationLabel,
-            whatsappFooter: s.catalogWhatsappFooter || prev.whatsappFooter,
-            footerText: s.catalogFooterText !== undefined ? s.catalogFooterText : '',
-            footerLocation: s.catalogFooterLocation !== undefined ? s.catalogFooterLocation : '',
-            footerBusinessHours: s.catalogFooterBusinessHours !== undefined ? s.catalogFooterBusinessHours : '',
-            footerNotice: s.catalogFooterNotice !== undefined ? s.catalogFooterNotice : '',
-            footerCopyright: s.catalogFooterCopyright !== undefined ? s.catalogFooterCopyright : prev.footerCopyright,
-          }));
-
-          // Atualizar estado de publicação da loja em tempo real
-          setStorePublished(s.storePublished !== undefined ? Boolean(s.storePublished) : true);
-          setStoreUnpublishMessage(s.storeUnpublishMessage || '');
-          if (s.featureFlags && typeof s.featureFlags === 'object') {
-            setFeatureFlags((prev) => ({ ...prev, ...s.featureFlags }));
-          }
+          applySettings(s);
         }
-      },
-      (settingsErr) => {
+      })
+      .catch((settingsErr) => {
         console.warn('Configurações públicas locais em uso:', settingsErr);
-      }
-    );
+      });
 
-    return () => unsubscribe();
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
-  // Escutar produtos da vitrine em tempo real via onSnapshot
+  // Carregar produtos da vitrine via getDocs pontual com cache para visitantes
   useEffect(() => {
-    const unsubscribe = onSnapshot(
-      collection(db, 'storeProducts'),
-      (snap) => {
-        const storeList: CatalogProduct[] = [];
-        snap.forEach((d) => {
-          const data = d.data();
-          if (data.name && Number(data.price ?? data.unitPrice) > 0 && data.active !== false) {
-            const rawLead = data.leadTimeDays;
-            const leadTimeDays = rawLead !== undefined && rawLead !== null && !isNaN(Number(rawLead))
-              ? Math.max(0, Number(rawLead))
-              : 5;
-            const rawImg = data.imageUrl || data.photoUrl || (data.images && data.images[0]);
-            storeList.push({
-              id: d.id,
-              name: data.name,
-              category: data.category || 'Geral',
-              price: Number(data.price ?? data.unitPrice) || 0,
-              description: data.description || 'Produto artesanal confeccionado com carinho sob encomenda.',
-              leadTimeDays,
-              imageUrl: toCdnUrl(rawImg) || 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?auto=format&fit=crop&w=800&q=80',
-              badge: data.badge || undefined,
-              isCustomizable: data.isCustomizable ?? true,
-              order: data.order !== undefined ? Number(data.order) : undefined,
-              createdAt: data.createdAt?.toDate?.()?.toISOString() ?? (typeof data.createdAt === 'string' ? data.createdAt : undefined),
+    let isMounted = true;
+
+    const processProducts = (docs: Array<{ id: string; data: () => any }>) => {
+      const storeList: CatalogProduct[] = [];
+      docs.forEach((d) => {
+        const data = d.data();
+        if (data.name && Number(data.price ?? data.unitPrice) > 0 && data.active !== false) {
+          const rawLead = data.leadTimeDays;
+          const leadTimeDays = rawLead !== undefined && rawLead !== null && !isNaN(Number(rawLead))
+            ? Math.max(0, Number(rawLead))
+            : 5;
+          const rawImg = data.imageUrl || data.photoUrl || (data.images && data.images[0]);
+          storeList.push({
+            id: d.id,
+            name: data.name,
+            category: data.category || 'Geral',
+            price: Number(data.price ?? data.unitPrice) || 0,
+            description: data.description || 'Produto artesanal confeccionado com carinho sob encomenda.',
+            leadTimeDays,
+            imageUrl: toCdnUrl(rawImg) || 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?auto=format&fit=crop&w=800&q=80',
+            badge: data.badge || undefined,
+            isCustomizable: data.isCustomizable ?? true,
+            order: data.order !== undefined ? Number(data.order) : undefined,
+            createdAt: data.createdAt?.toDate?.()?.toISOString() ?? (typeof data.createdAt === 'string' ? data.createdAt : undefined),
+          });
+        }
+      });
+
+      // Ordenar produtos por prioridade configurada (ordem do ateliê ou mais recentes primeiro)
+      storeList.sort((a, b) => {
+        if (a.order !== undefined && b.order !== undefined && a.order !== b.order) {
+          return a.order - b.order;
+        }
+        if (a.order !== undefined && b.order === undefined) return -1;
+        if (a.order === undefined && b.order !== undefined) return 1;
+        return (b.createdAt || '').localeCompare(a.createdAt || '');
+      });
+
+      if (!isMounted) return;
+      setProducts(storeList);
+      setLoadingProducts(false);
+
+      // Sincronizar carrinho: atualizar dados/preços vigentes e remover itens que foram excluídos da vitrine
+      setCart((prevCart) => {
+        if (!prevCart || prevCart.length === 0) return prevCart;
+        const updatedCart: CartItem[] = [];
+        for (const item of prevCart) {
+          const current = storeList.find((p) => p.id === item.product.id);
+          if (current) {
+            updatedCart.push({
+              ...item,
+              product: current,
             });
           }
-        });
+        }
+        return updatedCart;
+      });
+    };
 
-        // Ordenar produtos por prioridade configurada (ordem do ateliê ou mais recentes primeiro)
-        storeList.sort((a, b) => {
-          if (a.order !== undefined && b.order !== undefined && a.order !== b.order) {
-            return a.order - b.order;
-          }
-          if (a.order !== undefined && b.order === undefined) return -1;
-          if (a.order === undefined && b.order !== undefined) return 1;
-          return (b.createdAt || '').localeCompare(a.createdAt || '');
-        });
+    getDocs(collection(db, 'storeProducts'))
+      .then((snap) => {
+        if (!isMounted) return;
+        processProducts(snap.docs.map((d) => ({ id: d.id, data: () => d.data() })));
+      })
+      .catch((err) => {
+        console.warn('Erro ao carregar produtos da vitrine pública:', err);
+        if (isMounted) setLoadingProducts(false);
+      });
 
-        setProducts(storeList);
-        setLoadingProducts(false);
-
-        // Sincronizar carrinho: atualizar dados/preços vigentes e remover itens que foram excluídos da vitrine
-        setCart((prevCart) => {
-          if (!prevCart || prevCart.length === 0) return prevCart;
-          const updatedCart: CartItem[] = [];
-          for (const item of prevCart) {
-            const current = storeList.find((p) => p.id === item.product.id);
-            if (current) {
-              updatedCart.push({
-                ...item,
-                product: current,
-              });
-            }
-          }
-          return updatedCart;
-        });
-      },
-      (err) => {
-        console.warn('Erro ao escutar produtos da vitrine pública:', err);
-        setLoadingProducts(false);
-      }
-    );
-
-    return () => unsubscribe();
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
 

@@ -24,7 +24,13 @@ Itens mapeados na auditoria de segurança para serem abordados em próximas etap
 
 ## ✅ 2. Concluído Recentemente (Histórico)
 
-### 📖 Central de Ajuda & Atualização de Insumos da IA (Gemini Copilot)
+### 🛡️ Qualidade, FinOps e Otimizações de Arquitetura (Auditoria Sênior)
+- **Eliminação de Triggers Fantasmas de Cloud Functions (`functions/index.js`):** Removido o export `syncOrderToAiView` que interceptava desnecessariamente 100% dos writes de `orders`, cortando invocações desnecessárias e reduzindo custos de infraestrutura serverless.
+- **Correção de Fuso Horário UTC em Datas de Entrega (`validationSchemas.ts`):** Substituição de `new Date()` por `parseLocalDate()` na validação de `orderSchema`, eliminando o erro de offset UTC no Brasil (onde a data de hoje era rejeitada como passada) e criação do schema dedicado `orderEditSchema` para suportar edição de pedidos históricos.
+- **Desbloqueio de Anexos no Firebase Storage para Equipe (`storage.rules`):** Adicionadas as funções de autorização granular `isActiveEmployee()`, `canViewOrders()` e `canViewGallery()`, permitindo que colaboradores designados a pedidos ou com permissão de visualização acessem anexos, fotos e PDFs no Storage.
+- **Suporte a Admin e Escopo Global de Clientes (`useFirebaseCustomers.ts` & `Customers.tsx`):** Ajustada a consulta em tempo real para carregar a base consolidada de clientes quando o usuário autenticado for Administrador, mantendo o isolamento por `userId` para usuários regulares.
+- **Sincronização de Documentação e Workflows de CI/CD:** Corrigidos os nomes de funções e catálogos em `functions/README.md`, `DEPLOY_PRODUCAO_CHECKLIST.md`, `.github/workflows/deploy-functions-manual.yml` e `tests/e2e/README.md`.
+- **Cobertura de Testes Unitários (`validation-schemas.test.ts`):** Adicionada nova suíte de testes unitários com Vitest para garantir conformidade contínua da validação de datas e schemas Zod.
 - **Central de Ajuda (`HelpCenter.tsx`):**
   - Adicionados passos e dicas no módulo de *Lojinha Online & Catálogo Público* documentando o fluxo completo de *Publicação em Lote via Fotos* e *Criação Dinâmica de Categorias (+ Nova Categoria)*.
   - Inclusão de 3 novas Perguntas Frequentes (FAQ): upload em lote de fotos, cadastro de categorias durante o envio e como o Copiloto IA auxilia na rotina do ateliê.

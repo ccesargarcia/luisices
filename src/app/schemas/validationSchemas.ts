@@ -5,6 +5,7 @@
  */
 
 import { z } from 'zod';
+import { parseLocalDate } from '../utils/date';
 
 // ========== AUTHENTICATION ==========
 
@@ -105,10 +106,14 @@ export const orderSchema = z.object({
     .string()
     .min(1, 'Data de entrega é obrigatória')
     .refine((date) => {
-      const deliveryDate = new Date(date);
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      return deliveryDate >= today;
+      try {
+        const deliveryDate = parseLocalDate(date);
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        return deliveryDate >= today;
+      } catch {
+        return false;
+      }
     }, 'Data de entrega não pode ser no passado'),
   notes: z
     .string()
@@ -118,6 +123,13 @@ export const orderSchema = z.object({
     .number()
     .nonnegative('Valor pago não pode ser negativo')
     .optional(),
+});
+
+/** Schema para edição de pedidos existentes (permite manter datas de entrega passadas) */
+export const orderEditSchema = orderSchema.extend({
+  deliveryDate: z
+    .string()
+    .min(1, 'Data de entrega é obrigatória'),
 });
 
 // ========== QUOTES ==========
@@ -197,6 +209,7 @@ export type RegisterInput = z.infer<typeof registerSchema>;
 export type ResetPasswordInput = z.infer<typeof resetPasswordSchema>;
 export type CustomerInput = z.infer<typeof customerSchema>;
 export type OrderInput = z.infer<typeof orderSchema>;
+export type OrderEditInput = z.infer<typeof orderEditSchema>;
 export type QuoteInput = z.infer<typeof quoteSchema>;
 export type QuoteItemInput = z.infer<typeof quoteItemSchema>;
 export type ProductInput = z.infer<typeof productSchema>;
