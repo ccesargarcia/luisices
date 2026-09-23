@@ -74,6 +74,26 @@ const getAppUrl = () => {
   return projectId === 'luisices-dev' ? 'https://dev.luisices.com.br' : 'https://luisices.com.br';
 };
 
+const toCdnUrl = (url) => {
+  if (!url || typeof url !== 'string') return '';
+  if (url.includes('cdn.luisices.com.br') || url.includes('cdn-dev.luisices.com.br')) {
+    return url.split('?')[0];
+  }
+  if (!url.includes('firebasestorage.googleapis.com')) {
+    return url;
+  }
+  try {
+    const match = url.match(/\/o\/(.+?)(\?.*)?$/);
+    if (!match || !match[1]) return url;
+    const rawPath = decodeURIComponent(match[1]);
+    const projectId = process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT;
+    const cdnDomain = projectId === 'luisices-dev' ? 'https://cdn-dev.luisices.com.br' : 'https://cdn.luisices.com.br';
+    return `${cdnDomain}/${rawPath}`;
+  } catch {
+    return url;
+  }
+};
+
 const formatActionLink = (rawFirebaseLink, fallbackMode = 'resetPassword') => {
   try {
     const parsed = new URL(rawFirebaseLink);
@@ -1063,15 +1083,6 @@ function sanitizeOrderForAi(id, data = {}) {
   };
 }
 
-/**
- * Trigger legado de sincronização para ai_orders_view.
- * Descontinuado: O Copiloto agora opera com projeção em tempo real e somente-leitura em memória.
- */
-exports.syncOrderToAiView = functions.firestore
-  .document('orders/{orderId}')
-  .onWrite(async () => {
-    return null;
-  });
 
 /**
  * Endpoint legado de sincronização em lote de pedidos.
@@ -2992,7 +3003,8 @@ exports.enrichGalleryItemWithAi = onCall({ cors: true, timeoutSeconds: 120, memo
   let base64Image = '';
   let mimeType = 'image/jpeg';
   try {
-    const imgResp = await fetch(itemData.imageUrl);
+    const fetchUrl = toCdnUrl(itemData.imageUrl);
+    const imgResp = await fetch(fetchUrl);
     if (!imgResp.ok) {
       throw new Error(`Falha ao baixar imagem (${imgResp.status})`);
     }
@@ -3196,7 +3208,8 @@ exports.enrichStoreProductWithAi = onCall({ cors: true, timeoutSeconds: 120, mem
 
   if (!base64Image && imageUrl) {
     try {
-      const imgResp = await fetch(imageUrl);
+      const fetchUrl = toCdnUrl(imageUrl);
+      const imgResp = await fetch(fetchUrl);
       if (!imgResp.ok) throw new Error(`Falha ao baixar imagem (${imgResp.status})`);
       const contentType = imgResp.headers.get("content-type");
       if (contentType && contentType.startsWith("image/")) {

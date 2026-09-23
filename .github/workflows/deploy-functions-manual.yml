@@ -18,7 +18,7 @@ on:
         type: choice
         options:
           - 'all'
-          - 'aiAgentChat,enrichGalleryItemWithAi,enrichStoreProductWithAi,getAiUsage,sendWhatsAppDirectMessage,deleteWhatsAppMessage,syncWhatsAppChatMessages,getWhatsAppInstanceStatus,evolutionWhatsAppWebhook,syncOrderToAiView,syncAllOrdersToAiView'
+          - 'aiAgentChat,enrichGalleryItemWithAi,enrichStoreProductWithAi,getAiUsage,sendWhatsAppDirectMessage,deleteWhatsAppMessage,syncWhatsAppChatMessages,getWhatsAppInstanceStatus,evolutionWhatsAppWebhook,syncAllOrdersToAiView'
           - 'aiAgentChat,enrichGalleryItemWithAi,enrichStoreProductWithAi,getAiUsage'
           - 'aiAgentChat,enrichGalleryItemWithAi'
           - 'enrichStoreProductWithAi'
@@ -33,7 +33,6 @@ on:
           - 'syncWhatsAppChatMessages'
           - 'getWhatsAppInstanceStatus'
           - 'evolutionWhatsAppWebhook'
-          - 'syncOrderToAiView'
           - 'syncAllOrdersToAiView'
           - 'sendAdminPasswordReset,sendPasswordResetEmail'
           - 'createUserInvitation,validateUserInvitation,completeUserInvitation'

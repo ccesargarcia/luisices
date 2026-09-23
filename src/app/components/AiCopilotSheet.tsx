@@ -45,6 +45,7 @@ import {
 import { OrderDetailsDialog } from './OrderDetailsDialog';
 import { toast } from 'sonner';
 import { formatCurrency } from '../utils/currency';
+import { optimizeImageForAi } from '../utils/imageOptimizer';
 
 export type { AiCopilotSheetProps };
 
@@ -433,28 +434,47 @@ export function AiCopilotSheet({
     }
   }, [open, messages, loading, isAdmin]);
 
-  const handleImagePick = (file: File) => {
+  const handleImagePick = async (file: File) => {
     const validMimes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
     if (!validMimes.includes(file.type)) {
       toast.error('Formato não suportado. Envie JPG, PNG ou WebP.');
       return;
     }
-    if (file.size > 10 * 1024 * 1024) {
-      toast.error('A imagem deve ter no máximo 10MB.');
+    if (file.size > 15 * 1024 * 1024) {
+      toast.error('A imagem deve ter no máximo 15MB.');
       return;
     }
-    const reader = new FileReader();
-    reader.onload = () => {
-      const dataUrl = reader.result as string;
-      setAttachedImage({
-        preview: dataUrl,
-        base64: dataUrl,
-        mimeType: file.type,
-        name: file.name,
-      });
-      toast.success('Imagem anexada para análise visual');
-    };
-    reader.readAsDataURL(file);
+
+    try {
+      // Otimiza e redimensiona para no máximo 800px WebP para economizar tokens de IA e latência
+      const processedFile = await optimizeImageForAi(file);
+      const reader = new FileReader();
+      reader.onload = () => {
+        const dataUrl = reader.result as string;
+        setAttachedImage({
+          preview: dataUrl,
+          base64: dataUrl,
+          mimeType: processedFile.type,
+          name: processedFile.name,
+        });
+        toast.success('Imagem otimizada e anexada para análise visual');
+      };
+      reader.readAsDataURL(processedFile);
+    } catch (err) {
+      console.warn('[AiCopilotSheet] Falha ao otimizar imagem, usando original:', err);
+      const reader = new FileReader();
+      reader.onload = () => {
+        const dataUrl = reader.result as string;
+        setAttachedImage({
+          preview: dataUrl,
+          base64: dataUrl,
+          mimeType: file.type,
+          name: file.name,
+        });
+        toast.success('Imagem anexada para análise visual');
+      };
+      reader.readAsDataURL(file);
+    }
   };
 
   const handlePaste = (e: React.ClipboardEvent) => {

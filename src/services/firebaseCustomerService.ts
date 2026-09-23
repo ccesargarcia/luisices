@@ -44,15 +44,17 @@ export const firebaseCustomerService = {
   },
 
   /**
-   * Buscar todos os clientes do usuário
+   * Buscar todos os clientes do usuário (ou todos os clientes se for admin)
    */
-  async getCustomers(userId: string): Promise<Customer[]> {
+  async getCustomers(userId: string, isAdmin: boolean = false): Promise<Customer[]> {
     const customersRef = collection(db, 'customers');
-    const q = query(
-      customersRef,
-      where('userId', '==', userId),
-      orderBy('createdAt', 'desc')
-    );
+    const q = isAdmin
+      ? query(customersRef, orderBy('createdAt', 'desc'))
+      : query(
+          customersRef,
+          where('userId', '==', userId),
+          orderBy('createdAt', 'desc')
+        );
 
     const snapshot = await getDocs(q);
     return snapshot.docs.map(doc => ({

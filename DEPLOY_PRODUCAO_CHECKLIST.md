@@ -65,9 +65,9 @@ firebase functions:secrets:set RESEND_API_KEY --project papelaria-dashboard
 
 ### D. Deploy das Cloud Functions (`functions/index.js`)
 Funções a serem publicadas no projeto `papelaria-dashboard`:
-- **IA:** `aiAgentChat`, `enrichGalleryItemWithAi`, `getAiUsage`, `syncOrderToAiView`, `syncAllOrdersToAiView`
+- **IA:** `aiAgentChat`, `enrichGalleryItemWithAi`, `enrichStoreProductWithAi`, `getAiUsage`, `syncAllOrdersToAiView`
 - **WhatsApp:** `sendWhatsAppDirectMessage`, `deleteWhatsAppMessage`, `syncWhatsAppChatMessages`, `getWhatsAppInstanceStatus`, `evolutionWhatsAppWebhook`
-- **Auth/E-mail:** `sendAdminPasswordReset`, `createUserInvitation`, `sendPasswordResetEmail`, `sendCustomEmail`
+- **Auth/E-mail:** `sendAdminPasswordReset`, `createUserInvitation`, `validateUserInvitation`, `completeUserInvitation`, `createUser`, `deleteUser`, `sendPasswordResetEmail`, `sendCustomEmail`, `getEmailUsage`, `resendReceivingWebhook`
 
 **Comando CLI:**
 ```bash

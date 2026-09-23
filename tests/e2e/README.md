@@ -8,14 +8,29 @@ Este diretório contém os testes end-to-end (E2E) automatizados usando Playwrig
 
 ```
 tests/e2e/
-├── auth.spec.ts           # 🔐 Autenticação (login, logout, reset)
-├── navigation.spec.ts     # 🧭 Navegação entre páginas
-├── dashboard.spec.ts      # 📊 Dashboard e estatísticas
-├── customers.spec.ts      # 👥 CRUD de clientes
-├── products.spec.ts       # 🎨 CRUD de produtos
-├── quotes.spec.ts         # 📝 CRUD de orçamentos
-├── orders.spec.ts         # 📦 CRUD de pedidos (agenda semanal)
-└── security.spec.ts       # 🛡️ Testes de segurança, RBAC e isolamento de dados
+├── auth.setup.ts                     # 🔐 Setup global de autenticação
+├── auth.spec.ts                      # 🔐 Autenticação (login, logout, reset)
+├── critical-flows.spec.ts            # ⚡ Fluxos críticos consolidados
+├── customer-order-lifecycle.spec.ts  # 🔄 Ciclo de vida cliente -> pedido
+├── customers.spec.ts                 # 👥 CRUD e regras de clientes
+├── exchanges.spec.ts                 # 🤝 Permutas e parcerias
+├── gallery.spec.ts                   # 🎨 Galeria de artes e uploads
+├── help.spec.ts                      # 💡 Central de ajuda e atalhos
+├── navigation.spec.ts                # 🧭 Navegação entre páginas
+├── order-details.spec.ts             # 🔍 Detalhes e workflow de pedidos
+├── orders.spec.ts                    # 📦 Gestão e listagem de pedidos
+├── permissions.spec.ts               # 🛡️ Validação de permissões (RBAC)
+├── products.spec.ts                  # 🏷️ Catálogo interno de produtos
+├── quotes.spec.ts                    # 📝 Orçamentos e conversão
+├── reports.spec.ts                   # 📊 Relatórios e exportações
+├── responsive.spec.ts                # 📱 Responsividade e mobile-first
+├── screen-audit.spec.ts              # 🖥️ Auditoria visual de telas
+├── security.spec.ts                  # 🔒 Segurança, isolamento e Firestore rules
+├── settings.spec.ts                  # ⚙️ Configurações e preferências
+├── store.spec.ts                     # 🛍️ Lojinha pública e backoffice
+├── users.spec.ts                     # 👤 Gestão de usuários e equipe
+├── weekly-calendar.spec.ts           # 📅 Agenda semanal de entregas
+└── whatsapp.spec.ts                  # 💬 Central de atendimento WhatsApp
 ```
 
 ---
@@ -440,11 +455,11 @@ test.describe('Minha Feature', () => {
 
 ## 🤖 Integração com CI/CD
 
-Os smoke tests rodam **automaticamente** no GitHub Actions quando você faz push no `develop`:
+Os testes rodam **automaticamente** no GitHub Actions quando você faz push no `develop`:
 
 ```yaml
-- name: Run E2E Tests (Smoke)
-  run: npm run test:smoke
+- name: Run E2E Tests (CI)
+  run: npm run test:ci
 ```
 
 **Fluxo:**

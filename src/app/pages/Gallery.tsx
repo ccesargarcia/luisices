@@ -19,7 +19,7 @@ import { NewFolderDialog } from '../components/gallery/NewFolderDialog';
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export function Gallery() {
-  const { user, hasPermission } = useAuth();
+  const { user, userProfile, hasPermission } = useAuth();
   const [items, setItems] = useState<GalleryItem[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
@@ -51,9 +51,10 @@ export function Gallery() {
     if (!user) return;
     const loadData = async () => {
       try {
+        const isAdmin = userProfile?.role === 'admin';
         const [galleryItems, cList] = await Promise.all([
-          firebaseGalleryService.getItems(user.uid),
-          firebaseCustomerService.getCustomers(user.uid),
+          firebaseGalleryService.getItems(user.uid, isAdmin),
+          firebaseCustomerService.getCustomers(user.uid, isAdmin),
         ]);
         setItems(galleryItems);
         setCustomers(cList);
@@ -65,7 +66,7 @@ export function Gallery() {
       }
     };
     loadData();
-  }, [user]);
+  }, [user, userProfile?.role]);
 
   // Group items into folders by customer, merging with manual empty folders
   const folders = useMemo(() => {
