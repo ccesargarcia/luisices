@@ -920,6 +920,20 @@ export function Layout() {
         </DropdownMenu>
       </nav>
 
+      {/* Botão Flutuante Mobile para reabrir / expandir Copiloto de IA quando minimizado */}
+      {canAccessAiCopilot && !aiCopilotOpen && (
+        <button
+          type="button"
+          onClick={() => setAiCopilotOpen(true)}
+          className="md:hidden fixed bottom-[calc(4.5rem+env(safe-area-inset-bottom,0px))] right-3.5 z-40 flex items-center gap-1.5 px-3.5 py-2 rounded-full bg-gradient-to-r from-amber-500 to-amber-600 text-amber-950 font-bold text-xs shadow-lg shadow-amber-500/30 border border-amber-400/60 hover:brightness-105 active:scale-95 transition-all cursor-pointer"
+          title="Abrir Copiloto de IA Interno"
+          aria-label="Abrir Copiloto de IA Interno"
+        >
+          <Sparkles className="size-3.5 fill-amber-950 text-amber-950 animate-pulse" />
+          <span>Copiloto IA</span>
+        </button>
+      )}
+
       {/* Copiloto de IA Interno & Modais Globais de Ação Rápida */}
       {canAccessAiCopilot && (
         <AiCopilotSheet

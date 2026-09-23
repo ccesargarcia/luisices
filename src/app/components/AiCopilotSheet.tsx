@@ -27,6 +27,8 @@ import {
   Images,
   ZoomIn,
   X,
+  ChevronDown,
+  Minimize2,
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useOrders } from '../../contexts/OrdersContext';
@@ -653,40 +655,65 @@ export function AiCopilotSheet({
         side="right"
         className="w-full sm:max-w-md md:max-w-lg lg:max-w-xl p-0 flex flex-col h-[100dvh] max-h-[100dvh] bg-background border-l shadow-2xl overflow-hidden"
       >
+        {/* Barra superior de toque para minimizar no mobile */}
+        <button
+          type="button"
+          onClick={() => onOpenChange(false)}
+          className="sm:hidden w-full flex flex-col items-center justify-center py-2 bg-muted/30 hover:bg-muted/60 active:bg-muted/80 transition-colors border-b border-border/30 shrink-0 cursor-pointer"
+          title="Toque para minimizar o chat"
+          aria-label="Minimizar Copiloto de IA"
+        >
+          <div className="w-10 h-1 bg-muted-foreground/40 rounded-full mb-0.5" />
+          <span className="text-[10px] text-muted-foreground font-medium flex items-center gap-1">
+            <ChevronDown className="size-3" /> Toque para minimizar
+          </span>
+        </button>
+
         {/* Header */}
-        <SheetHeader className="px-3.5 sm:px-4 py-3 border-b flex-shrink-0 bg-card/70 backdrop-blur-xs">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <div className="p-2 bg-amber-500/10 text-amber-600 rounded-lg shrink-0">
-                <Sparkles className="size-5" />
+        <SheetHeader className="px-3.5 sm:px-4 py-2.5 sm:py-3 border-b flex-shrink-0 bg-card/70 backdrop-blur-xs">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 min-w-0">
+              <div className="p-1.5 sm:p-2 bg-amber-500/10 text-amber-600 rounded-lg shrink-0">
+                <Sparkles className="size-4 sm:size-5" />
               </div>
               <div className="min-w-0">
                 <SheetTitle className="text-sm sm:text-base font-bold flex items-center gap-1.5 truncate">
                   Copiloto Interno
-                  <Badge variant="outline" className="text-[9px] sm:text-[10px] px-1.5 py-0 bg-amber-500/10 text-amber-600 border-amber-500/30">
+                  <Badge variant="outline" className="text-[9px] sm:text-[10px] px-1.5 py-0 bg-amber-500/10 text-amber-600 border-amber-500/30 shrink-0">
                     IA SEGURA
                   </Badge>
                   {isAdmin && quota?.daily && (
                     <Badge
                       variant="outline"
-                      className="text-[9px] sm:text-[10px] px-1.5 py-0 bg-muted/60 text-muted-foreground border-border gap-1 font-mono"
+                      className="hidden xs:inline-flex text-[9px] sm:text-[10px] px-1.5 py-0 bg-muted/60 text-muted-foreground border-border gap-1 font-mono shrink-0"
                       title={`Cota Gemini: ${quota.daily.used}/${quota.daily.limit} requisições hoje (${quota.daily.percentage}%)`}
                     >
                       ⚡ {quota.daily.used}/{quota.daily.limit} req
                     </Badge>
                   )}
                 </SheetTitle>
-                <SheetDescription className="text-[11px] sm:text-xs text-muted-foreground truncate">
+                <SheetDescription className="text-[10px] sm:text-xs text-muted-foreground truncate">
                   Consultas, Resumo do Dia, WhatsApp & Orçamentos
                 </SheetDescription>
               </div>
             </div>
 
-            <div className="flex items-center gap-1 pr-6">
+            <div className="flex items-center gap-1 shrink-0 pr-7">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-8 px-2 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted/80 flex items-center gap-1"
+                title="Minimizar / Ocultar chat"
+                onClick={() => onOpenChange(false)}
+              >
+                <ChevronDown className="size-4" />
+                <span className="hidden xs:inline">Minimizar</span>
+              </Button>
+
               <Button
                 variant="ghost"
                 size="icon"
-                className="size-8 text-muted-foreground hover:text-destructive"
+                className="size-8 text-muted-foreground hover:text-destructive shrink-0"
                 title="Limpar conversa"
                 onClick={handleClearHistory}
               >
