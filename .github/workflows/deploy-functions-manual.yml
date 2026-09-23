@@ -102,10 +102,10 @@ jobs:
             firebase functions:secrets:set GEMINI_API_KEY --project luisices-dev --data-file "$HOME/gemini_api_key.txt" || true
           fi
 
-          # Determina se deve publicar regras e índices
+          # Determina se deve publicar regras, índices e storage
           if [ "${{ inputs.deploy_rules_and_indexes }}" != "false" ]; then
-            echo "📄 Publicando regras e índices do Firestore..."
-            firebase deploy --only firestore:rules,firestore:indexes --project luisices-dev
+            echo "📄 Publicando regras, índices e storage..."
+            firebase deploy --only firestore:rules,firestore:indexes,storage --project luisices-dev
           fi
 
           # Determina quais funções publicar via seleção
