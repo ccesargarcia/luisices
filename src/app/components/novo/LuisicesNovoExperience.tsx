@@ -24,14 +24,30 @@ import {
   RefreshCw,
   X,
   Package,
-  Check
+  Check,
+  Instagram,
+  Loader2
 } from 'lucide-react';
-import { STORE_PRODUCTS, GLOBAL_FINISHES } from '../../data/storeProductsData';
+import { GLOBAL_FINISHES } from '../../data/storeProductsData';
 import { StoreProduct, ProductFinish } from '../../types/store';
 import { ArchiveItem } from '../../types';
 
+export interface BusinessInfo {
+  name?: string;
+  tagline?: string;
+  whatsapp?: string;
+  instagram?: string;
+  logo?: string;
+  banner?: string;
+  statusText?: string;
+  announcement?: string;
+}
+
 interface LuisicesNovoExperienceProps {
-  archiveItems: ArchiveItem[];
+  storeProducts?: StoreProduct[];
+  archiveItems?: ArchiveItem[];
+  businessInfo?: BusinessInfo;
+  isLoading?: boolean;
   cartItems: Array<{
     product: StoreProduct;
     quantity: number;
@@ -54,7 +70,10 @@ interface LuisicesNovoExperienceProps {
 }
 
 export const LuisicesNovoExperience: React.FC<LuisicesNovoExperienceProps> = ({
-  archiveItems,
+  storeProducts = [],
+  archiveItems = [],
+  businessInfo,
+  isLoading = false,
   cartItems,
   onAddToCart,
   onOpenCart,
@@ -64,13 +83,12 @@ export const LuisicesNovoExperience: React.FC<LuisicesNovoExperienceProps> = ({
   // Navigation & Filtering
   const [activeCategory, setActiveCategory] = useState<string>('todos');
   const [searchQuery, setSearchQuery] = useState<string>('');
-  const [favorites, setFavorites] = useState<string[]>(['prod-convite-botanico']);
+  const [favorites, setFavorites] = useState<string[]>([]);
   const [sourceFilter, setSourceFilter] = useState<'all' | 'store' | 'archive'>('all');
 
   // Interactive Modals
   const [activeCustomizingProduct, setActiveCustomizingProduct] = useState<StoreProduct | null>(null);
   const [activeSampleProduct, setActiveSampleProduct] = useState<StoreProduct | null>(null);
-  const [activeArchivePreview, setActiveArchivePreview] = useState<ArchiveItem | null>(null);
 
   // Customization State inside the modal/drawer
   const [customQty, setCustomQty] = useState<number>(30);
@@ -103,14 +121,14 @@ export const LuisicesNovoExperience: React.FC<LuisicesNovoExperienceProps> = ({
     { id: 'corporativo', label: 'Corporativo de Luxo', icon: '🏛️' },
   ];
 
-  // Merge Store Products and Archive Items into a unified, synchronized feed
+  // Merge Real Store Products and Real Archive Items into a unified feed
   const unifiedProducts = useMemo(() => {
-    const storeMapped: (StoreProduct & { isArchive?: boolean; originalArchive?: ArchiveItem })[] = STORE_PRODUCTS.map(p => ({
+    const storeMapped: (StoreProduct & { isArchive?: boolean; originalArchive?: ArchiveItem })[] = (storeProducts || []).map(p => ({
       ...p,
       isArchive: false,
     }));
 
-    // Map Archive Items to StoreProduct compatible objects so they render with the same luxury cards
+    // Map Archive Items to StoreProduct compatible objects
     const archiveMapped: (StoreProduct & { isArchive?: boolean; originalArchive?: ArchiveItem })[] = (archiveItems || []).map(arc => {
       const rawTags = Array.isArray(arc?.tags) 
         ? arc.tags 
@@ -177,15 +195,18 @@ export const LuisicesNovoExperience: React.FC<LuisicesNovoExperienceProps> = ({
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       combined = combined.filter(p => 
-        p.title.toLowerCase().includes(q) ||
-        p.subtitle.toLowerCase().includes(q) ||
-        p.description.toLowerCase().includes(q) ||
-        p.tags.some(t => t.toLowerCase().includes(q))
+        (p.title || '').toLowerCase().includes(q) ||
+        (p.subtitle || '').toLowerCase().includes(q) ||
+        (p.description || '').toLowerCase().includes(q) ||
+        (p.tags || []).some(t => (t || '').toLowerCase().includes(q))
       );
     }
 
     return combined;
-  }, [archiveItems, sourceFilter, activeCategory, searchQuery]);
+  }, [storeProducts, archiveItems, sourceFilter, activeCategory, searchQuery]);
+
+  // Featured Product for Hero
+  const featuredProduct = unifiedProducts[0] || null;
 
   // Toggle favorites
   const toggleFavorite = (id: string) => {
@@ -195,7 +216,7 @@ export const LuisicesNovoExperience: React.FC<LuisicesNovoExperienceProps> = ({
   // Open Customizer for a product
   const handleOpenCustomizer = (product: StoreProduct) => {
     setActiveCustomizingProduct(product);
-    setCustomQty(product.minQuantity || 20);
+    setCustomQty(product.minQuantity || 1);
     setCheckoutSuccess(false);
   };
 
@@ -238,7 +259,7 @@ export const LuisicesNovoExperience: React.FC<LuisicesNovoExperienceProps> = ({
     if (!activeCustomizingProduct) return 0;
     let sum = 0;
     Object.values(selectedFinishes).forEach(fId => {
-      const f = activeCustomizingProduct.availableFinishes.find(item => item.id === fId);
+      const f = (activeCustomizingProduct.availableFinishes || GLOBAL_FINISHES).find(item => item.id === fId);
       if (f) sum += f.extraPrice;
     });
     return sum;
@@ -256,7 +277,7 @@ export const LuisicesNovoExperience: React.FC<LuisicesNovoExperienceProps> = ({
     
     const finishesSummary = Object.entries(selectedFinishes)
       .map(([cat, fId]) => {
-        const f = activeCustomizingProduct.availableFinishes.find(x => x.id === fId);
+        const f = (activeCustomizingProduct.availableFinishes || GLOBAL_FINISHES).find(x => x.id === fId);
         return f ? `• ${f.name} (+R$ ${f.extraPrice.toFixed(2)})` : null;
       })
       .filter(Boolean)
@@ -266,7 +287,7 @@ export const LuisicesNovoExperience: React.FC<LuisicesNovoExperienceProps> = ({
       ? `Modelo 2x Ateliê: Sinal 50% de R$ ${currentDeposit50.toFixed(2)} + 50% na aprovação da prova física`
       : `Pagamento Integral Pix (5% OFF): R$ ${currentPixTotal.toFixed(2)}`;
 
-    const msg = `🌸 *SOLICITAÇÃO DE RESERVA DE DATA — LUISICES ATELIÊ*\n\n` +
+    const msg = `🌸 *SOLICITAÇÃO DE RESERVA DE DATA — ${businessInfo?.name || 'LUISICES ATELIÊ'}*\n\n` +
       `✨ *Projeto:* ${activeCustomizingProduct.title}\n` +
       `📦 *Quantidade:* ${customQty} unidades\n` +
       `🗓️ *Data da Celebração:* ${timeline?.eventDateFmt || celebrationDate}\n` +
@@ -276,10 +297,14 @@ export const LuisicesNovoExperience: React.FC<LuisicesNovoExperienceProps> = ({
       `💰 *Valor Total do Pedido:* R$ ${currentSubtotal.toFixed(2)}\n` +
       `💳 *Forma de Pagamento:* ${paymentText}\n\n` +
       (specialNotes ? `📝 *Observações:* ${specialNotes}\n\n` : '') +
-      `_Enviado através da nova vitrine digital do Ateliê Luisices._`;
+      `_Enviado através da vitrine digital ${businessInfo?.name || 'Luisices'}._`;
+
+    const rawPhone = businessInfo?.whatsapp || '5511999999999';
+    const cleanPhone = rawPhone.replace(/\D/g, '');
+    const finalPhone = cleanPhone.startsWith('55') ? cleanPhone : `55${cleanPhone}`;
 
     const encoded = encodeURIComponent(msg);
-    const whatsappUrl = `https://wa.me/5511999999999?text=${encoded}`;
+    const whatsappUrl = `https://wa.me/${finalPhone}?text=${encoded}`;
     
     // Also save to cart
     onAddToCart({
@@ -302,20 +327,28 @@ export const LuisicesNovoExperience: React.FC<LuisicesNovoExperienceProps> = ({
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-18 flex items-center justify-between gap-4">
           {/* Brand Logo & Tagline */}
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-[#613D3E] to-[#4E3031] dark:from-[#f4b7b9] dark:to-[#e09fa2] flex items-center justify-center text-white dark:text-[#4C2527] shadow-md shadow-[#613d3e]/20 font-serif font-bold text-xl">
-              L
-            </div>
+            {businessInfo?.logo ? (
+              <img
+                src={businessInfo.logo}
+                alt={businessInfo.name || 'Luisices'}
+                className="w-10 h-10 rounded-2xl object-cover shadow-md border border-[var(--glass-border)]"
+              />
+            ) : (
+              <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-[#613D3E] to-[#4E3031] dark:from-[#f4b7b9] dark:to-[#e09fa2] flex items-center justify-center text-white dark:text-[#4C2527] shadow-md shadow-[#613d3e]/20 font-serif font-bold text-xl">
+                {(businessInfo?.name || 'L')[0]}
+              </div>
+            )}
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="font-serif font-bold text-lg sm:text-xl tracking-wide text-[var(--primary)]">
-                  Luisices
+                  {businessInfo?.name || 'Luisices'}
                 </h1>
                 <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-[var(--accent)] text-[var(--accent-foreground)] border border-[var(--glass-border)] uppercase tracking-wider">
-                  Novo Visual 2026
+                  Vitrine Oficial
                 </span>
               </div>
               <p className="text-[11px] text-[var(--muted-foreground)] font-medium hidden sm:block">
-                Papelaria de Afeto &amp; Luxo Artesanal
+                {businessInfo?.tagline || 'Papelaria de Afeto & Luxo Artesanal'}
               </p>
             </div>
           </div>
@@ -344,15 +377,17 @@ export const LuisicesNovoExperience: React.FC<LuisicesNovoExperienceProps> = ({
 
           {/* Right Action Badges */}
           <div className="flex items-center gap-2 sm:gap-3">
-            {/* Quick Link to internal tools */}
-            {onNavigateToStudio && (
-              <button
-                onClick={onNavigateToStudio}
-                className="hidden lg:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[var(--button-glass-bg)] hover:bg-[var(--button-glass-hover)] text-[var(--button-glass-text)] text-xs font-bold transition active:scale-95"
+            {businessInfo?.instagram && (
+              <a
+                href={`https://instagram.com/${businessInfo.instagram}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="p-2.5 rounded-xl bg-white/60 dark:bg-white/10 hover:bg-white/90 border border-[var(--glass-border)] text-[var(--foreground)] transition hidden sm:flex items-center gap-1.5 text-xs font-semibold"
+                title="Instagram do Ateliê"
               >
-                <Scissors className="w-3.5 h-3.5" />
-                <span>Estúdio Silhouette</span>
-              </button>
+                <Instagram className="w-4 h-4 text-[var(--primary)]" />
+                <span>@{businessInfo.instagram}</span>
+              </a>
             )}
 
             {/* Cart Button */}
@@ -389,109 +424,110 @@ export const LuisicesNovoExperience: React.FC<LuisicesNovoExperienceProps> = ({
 
       {/* Main Content Area */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-12 sm:space-y-16">
-        {/* 2. Editorial Hero Section with Affective Metrics */}
-        <section className="relative overflow-hidden rounded-3xl luisices-glass p-6 sm:p-10 md:p-12 border border-[var(--glass-border)] shadow-xl">
-          {/* Subtle glowing orbs */}
-          <div className="absolute -top-24 -right-24 w-72 h-72 bg-gradient-to-br from-[#f7d6d0]/60 to-[#d1c4e9]/40 rounded-full blur-3xl pointer-events-none -z-10" />
-          <div className="absolute -bottom-20 -left-20 w-64 h-64 bg-gradient-to-tr from-[#bbdefb]/40 to-[#ede7f6]/50 rounded-full blur-3xl pointer-events-none -z-10" />
+        {/* 2. Editorial Hero Section */}
+        {featuredProduct && (
+          <section className="relative overflow-hidden rounded-3xl luisices-glass p-6 sm:p-10 md:p-12 border border-[var(--glass-border)] shadow-xl">
+            <div className="absolute -top-24 -right-24 w-72 h-72 bg-gradient-to-br from-[#f7d6d0]/60 to-[#d1c4e9]/40 rounded-full blur-3xl pointer-events-none -z-10" />
+            <div className="absolute -bottom-20 -left-20 w-64 h-64 bg-gradient-to-tr from-[#bbdefb]/40 to-[#ede7f6]/50 rounded-full blur-3xl pointer-events-none -z-10" />
 
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
-            {/* Left Narrative */}
-            <div className="lg:col-span-7 space-y-6">
-              <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white/70 dark:bg-white/10 border border-[var(--glass-border)] text-[var(--primary)] text-xs font-bold tracking-wide shadow-sm">
-                <Sparkle className="w-3.5 h-3.5 fill-[var(--primary)]" />
-                <span>Ateliê de Alta Papelaria &amp; Afeto</span>
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
+              {/* Left Narrative */}
+              <div className="lg:col-span-7 space-y-6">
+                <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white/70 dark:bg-white/10 border border-[var(--glass-border)] text-[var(--primary)] text-xs font-bold tracking-wide shadow-sm">
+                  <Sparkle className="w-3.5 h-3.5 fill-[var(--primary)]" />
+                  <span>{businessInfo?.tagline || 'Ateliê de Alta Papelaria & Afeto'}</span>
+                </div>
+
+                <h2 className="font-serif text-3xl sm:text-4xl md:text-5xl font-bold text-[var(--primary)] leading-[1.15] tracking-tight">
+                  Onde cada detalhe celebra uma história única.
+                </h2>
+
+                <p className="text-sm sm:text-base text-[var(--muted-foreground)] leading-relaxed max-w-xl font-normal">
+                  Convites em papel de algodão prensado 300g, hot stamping espelhado, lacres botânicos de cera pura e topos de bolo 3D com corte milimétrico na Silhouette.
+                </p>
+
+                {/* Action Buttons */}
+                <div className="flex flex-wrap items-center gap-3 pt-2">
+                  <a
+                    href="#vitrine-projetos"
+                    className="px-6 py-3.5 rounded-2xl bg-[var(--primary)] hover:bg-[var(--primary-hover)] text-white text-xs sm:text-sm font-bold uppercase tracking-wider shadow-lg shadow-[var(--primary)]/25 flex items-center gap-2 transition active:scale-95"
+                  >
+                    <span>Explorar Catálogo ({unifiedProducts.length} itens)</span>
+                    <ArrowRight className="w-4 h-4" />
+                  </a>
+
+                  <button
+                    onClick={() => handleOpenCustomizer(featuredProduct)}
+                    className="px-5 py-3.5 rounded-2xl bg-white/80 dark:bg-white/10 hover:bg-white border border-[var(--glass-border)] text-[var(--foreground)] text-xs sm:text-sm font-bold flex items-center gap-2 transition active:scale-95 shadow-sm"
+                  >
+                    <Calendar className="w-4 h-4 text-[var(--primary)]" />
+                    <span>Simular Cronograma &amp; Data</span>
+                  </button>
+                </div>
+
+                {/* Affective Metrics Grid */}
+                <div className="grid grid-cols-3 gap-3 pt-6 border-t border-[var(--border)]">
+                  <div className="space-y-0.5">
+                    <span className="font-serif text-xl sm:text-2xl font-bold text-[var(--primary)]">100%</span>
+                    <p className="text-[10px] sm:text-xs text-[var(--muted-foreground)] font-medium">Manufatura Artesanal</p>
+                  </div>
+                  <div className="space-y-0.5">
+                    <span className="font-serif text-xl sm:text-2xl font-bold text-[var(--primary)]">+1.800</span>
+                    <p className="text-[10px] sm:text-xs text-[var(--muted-foreground)] font-medium">Histórias Celebradas</p>
+                  </div>
+                  <div className="space-y-0.5">
+                    <span className="font-serif text-xl sm:text-2xl font-bold text-[var(--primary)]">10 Dias</span>
+                    <p className="text-[10px] sm:text-xs text-[var(--muted-foreground)] font-medium">Margem de Folga</p>
+                  </div>
+                </div>
               </div>
 
-              <h2 className="font-serif text-3xl sm:text-4xl md:text-5xl font-bold text-[var(--primary)] leading-[1.15] tracking-tight">
-                Onde cada detalhe celebra uma história única.
-              </h2>
-
-              <p className="text-sm sm:text-base text-[var(--muted-foreground)] leading-relaxed max-w-xl font-normal">
-                Convites em papel de algodão prensado 300g, hot stamping rosé espelhado, lacres botânicos de cera pura e topos de bolo 3D com corte de alta precisão na Silhouette.
-              </p>
-
-              {/* Action Buttons */}
-              <div className="flex flex-wrap items-center gap-3 pt-2">
-                <a
-                  href="#vitrine-projetos"
-                  className="px-6 py-3.5 rounded-2xl bg-[var(--primary)] hover:bg-[var(--primary-hover)] text-white text-xs sm:text-sm font-bold uppercase tracking-wider shadow-lg shadow-[var(--primary)]/25 flex items-center gap-2 transition active:scale-95"
-                >
-                  <span>Explorar Coleções</span>
-                  <ArrowRight className="w-4 h-4" />
-                </a>
-
-                <button
-                  onClick={() => handleOpenCustomizer(STORE_PRODUCTS[0])}
-                  className="px-5 py-3.5 rounded-2xl bg-white/80 dark:bg-white/10 hover:bg-white border border-[var(--glass-border)] text-[var(--foreground)] text-xs sm:text-sm font-bold flex items-center gap-2 transition active:scale-95 shadow-sm"
-                >
-                  <Calendar className="w-4 h-4 text-[var(--primary)]" />
-                  <span>Simular Cronograma &amp; Data</span>
-                </button>
-              </div>
-
-              {/* Affective Metrics Grid */}
-              <div className="grid grid-cols-3 gap-3 pt-6 border-t border-[var(--border)]">
-                <div className="space-y-0.5">
-                  <span className="font-serif text-xl sm:text-2xl font-bold text-[var(--primary)]">100%</span>
-                  <p className="text-[10px] sm:text-xs text-[var(--muted-foreground)] font-medium">Manufatura Artesanal</p>
-                </div>
-                <div className="space-y-0.5">
-                  <span className="font-serif text-xl sm:text-2xl font-bold text-[var(--primary)]">+1.800</span>
-                  <p className="text-[10px] sm:text-xs text-[var(--muted-foreground)] font-medium">Histórias Celebradas</p>
-                </div>
-                <div className="space-y-0.5">
-                  <span className="font-serif text-xl sm:text-2xl font-bold text-[var(--primary)]">10 Dias</span>
-                  <p className="text-[10px] sm:text-xs text-[var(--muted-foreground)] font-medium">Margem de Segurança</p>
-                </div>
-              </div>
-            </div>
-
-            {/* Right Featured Hero Piece */}
-            <div className="lg:col-span-5">
-              <div className="relative group rounded-3xl overflow-hidden luisices-glass p-2 border border-white/60 shadow-2xl">
-                <div className="relative aspect-[4/3] sm:aspect-square rounded-2xl overflow-hidden">
-                  <img
-                    src="https://images.unsplash.com/photo-1519741497674-611481863552?auto=format&fit=crop&w=1000&q=80"
-                    alt="Convite Botânico Jardim Secreto"
-                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700"
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent flex flex-col justify-end p-5 text-white">
-                    <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded bg-white/20 backdrop-blur-md uppercase tracking-wider w-fit mb-1">
-                      Destaque do Ateliê
-                    </span>
-                    <h3 className="font-serif text-lg sm:text-xl font-bold">Convite Botânico Jardim Secreto</h3>
-                    <p className="text-xs text-white/80 line-clamp-1 mt-0.5">
-                      Papel de algodão 300g com sobreposição vegetal e fita de seda chiffon
-                    </p>
-                    <div className="flex items-center justify-between mt-3 pt-3 border-t border-white/20">
-                      <div>
-                        <span className="text-[10px] text-white/70 uppercase">A partir de</span>
-                        <p className="font-serif font-bold text-base">R$ 18,50 <span className="text-[10px] font-normal">/un</span></p>
+              {/* Right Featured Hero Piece */}
+              <div className="lg:col-span-5">
+                <div className="relative group rounded-3xl overflow-hidden luisices-glass p-2 border border-white/60 shadow-2xl">
+                  <div className="relative aspect-[4/3] sm:aspect-square rounded-2xl overflow-hidden">
+                    <img
+                      src={featuredProduct.mainImage}
+                      alt={featuredProduct.title}
+                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700"
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent flex flex-col justify-end p-5 text-white">
+                      <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded bg-white/20 backdrop-blur-md uppercase tracking-wider w-fit mb-1">
+                        Destaque da Coleção
+                      </span>
+                      <h3 className="font-serif text-lg sm:text-xl font-bold">{featuredProduct.title}</h3>
+                      <p className="text-xs text-white/80 line-clamp-1 mt-0.5">
+                        {featuredProduct.subtitle}
+                      </p>
+                      <div className="flex items-center justify-between mt-3 pt-3 border-t border-white/20">
+                        <div>
+                          <span className="text-[10px] text-white/70 uppercase">A partir de</span>
+                          <p className="font-serif font-bold text-base">R$ {featuredProduct.basePrice.toFixed(2)} <span className="text-[10px] font-normal">/un</span></p>
+                        </div>
+                        <button
+                          onClick={() => handleOpenCustomizer(featuredProduct)}
+                          className="px-3.5 py-1.5 rounded-xl bg-white text-[#613D3E] text-xs font-bold hover:bg-white/90 transition shadow"
+                        >
+                          Personalizar
+                        </button>
                       </div>
-                      <button
-                        onClick={() => handleOpenCustomizer(STORE_PRODUCTS[0])}
-                        className="px-3.5 py-1.5 rounded-xl bg-white text-[#613D3E] text-xs font-bold hover:bg-white/90 transition shadow"
-                      >
-                        Personalizar
-                      </button>
                     </div>
                   </div>
                 </div>
               </div>
             </div>
-          </div>
-        </section>
+          </section>
+        )}
 
-        {/* 3. Synchronization & Category Filter Pills */}
+        {/* 3. Catalog & Category Filter */}
         <section id="vitrine-projetos" className="space-y-6">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div>
               <span className="text-xs font-bold uppercase tracking-widest text-[var(--primary)]">
-                Catálogo Unificado &amp; Acervo
+                Catálogo Unificado do Ateliê
               </span>
               <h2 className="font-serif text-2xl sm:text-3xl font-bold text-[var(--primary)]">
-                Coleções Autorais &amp; Topos 3D
+                Coleções &amp; Peças do Acervo
               </h2>
             </div>
 
@@ -503,7 +539,7 @@ export const LuisicesNovoExperience: React.FC<LuisicesNovoExperienceProps> = ({
                   sourceFilter === 'all' ? 'bg-[var(--primary)] text-white shadow-sm' : 'text-[var(--muted-foreground)] hover:text-[var(--foreground)]'
                 }`}
               >
-                Todos ({STORE_PRODUCTS.length + archiveItems.length})
+                Todos ({unifiedProducts.length})
               </button>
               <button
                 onClick={() => setSourceFilter('store')}
@@ -511,7 +547,7 @@ export const LuisicesNovoExperience: React.FC<LuisicesNovoExperienceProps> = ({
                   sourceFilter === 'store' ? 'bg-[var(--primary)] text-white shadow-sm' : 'text-[var(--muted-foreground)] hover:text-[var(--foreground)]'
                 }`}
               >
-                Loja ({STORE_PRODUCTS.length})
+                Vitrine Loja ({storeProducts.length})
               </button>
               <button
                 onClick={() => setSourceFilter('archive')}
@@ -543,8 +579,15 @@ export const LuisicesNovoExperience: React.FC<LuisicesNovoExperienceProps> = ({
             ))}
           </div>
 
-          {/* Product Grid */}
-          {unifiedProducts.length === 0 ? (
+          {/* Loading State */}
+          {isLoading && unifiedProducts.length === 0 ? (
+            <div className="luisices-glass p-16 rounded-3xl text-center space-y-3 flex flex-col items-center justify-center">
+              <Loader2 className="w-8 h-8 text-[var(--primary)] animate-spin" />
+              <p className="font-serif font-bold text-base text-[var(--primary)]">
+                Carregando acervo do ateliê...
+              </p>
+            </div>
+          ) : unifiedProducts.length === 0 ? (
             <div className="luisices-glass p-12 rounded-3xl text-center space-y-3">
               <p className="font-serif font-bold text-lg text-[var(--primary)]">
                 Nenhum projeto encontrado para "{searchQuery}"
@@ -582,11 +625,11 @@ export const LuisicesNovoExperience: React.FC<LuisicesNovoExperienceProps> = ({
                         {product.isArchive ? (
                           <span className="px-2.5 py-1 rounded-lg bg-[#5D5C76]/90 backdrop-blur-md text-white text-[10px] font-bold flex items-center gap-1 shadow">
                             <Scissors className="w-3 h-3" />
-                            <span>Acervo Ateliê 3D</span>
+                            <span>Acervo 3D</span>
                           </span>
                         ) : product.isBestseller ? (
                           <span className="px-2.5 py-1 rounded-lg bg-[var(--primary)]/90 backdrop-blur-md text-white text-[10px] font-bold shadow">
-                            Mais Escolhido
+                            Destaque
                           </span>
                         ) : null}
                       </div>
@@ -604,7 +647,7 @@ export const LuisicesNovoExperience: React.FC<LuisicesNovoExperienceProps> = ({
 
                       {/* Quick Finish Chips Floating Overlay */}
                       <div className="absolute bottom-3 left-3 right-3 flex items-center gap-1 overflow-x-auto scrollbar-none">
-                        {product.tags.slice(0, 3).map((tag, idx) => (
+                        {(product.tags || []).slice(0, 3).map((tag, idx) => (
                           <span
                             key={idx}
                             className="px-2 py-0.5 rounded-md bg-black/60 backdrop-blur-md text-white text-[9px] font-semibold whitespace-nowrap"
@@ -637,7 +680,7 @@ export const LuisicesNovoExperience: React.FC<LuisicesNovoExperienceProps> = ({
 
                       {/* Materials / Papers Pills */}
                       <div className="flex flex-wrap gap-1">
-                        {product.materials.slice(0, 2).map((mat, i) => (
+                        {(product.materials || []).slice(0, 2).map((mat, i) => (
                           <span key={i} className="text-[10px] px-2 py-0.5 rounded-full bg-[var(--card)] border border-[var(--border)] text-[var(--foreground)]/80">
                             {mat}
                           </span>
@@ -648,11 +691,11 @@ export const LuisicesNovoExperience: React.FC<LuisicesNovoExperienceProps> = ({
                       <div className="pt-3 border-t border-[var(--border)] flex items-center justify-between gap-2">
                         <div>
                           <span className="text-[10px] text-[var(--muted-foreground)] uppercase">
-                            {product.minQuantity > 1 ? `Min. ${product.minQuantity} un` : 'Produção Individual'}
+                            {product.minQuantity > 1 ? `Min. ${product.minQuantity} un` : 'Sob Encomenda'}
                           </span>
                           <p className="font-serif font-bold text-base text-[var(--primary)]">
                             R$ {product.basePrice.toFixed(2)}
-                            <span className="text-[11px] font-normal text-[var(--muted-foreground)]"> /{product.unitLabel}</span>
+                            <span className="text-[11px] font-normal text-[var(--muted-foreground)]"> /{product.unitLabel || 'un'}</span>
                           </p>
                         </div>
 
@@ -682,7 +725,7 @@ export const LuisicesNovoExperience: React.FC<LuisicesNovoExperienceProps> = ({
           )}
         </section>
 
-        {/* 4. Brand Differentials — O Cuidado de um Ateliê de Afeto */}
+        {/* 4. Brand Differentials */}
         <section className="rounded-3xl luisices-glass p-8 sm:p-10 border border-[var(--glass-border)] space-y-8 shadow-lg">
           <div className="text-center max-w-2xl mx-auto space-y-2">
             <span className="text-xs font-bold uppercase tracking-widest text-[var(--primary)]">
@@ -739,7 +782,7 @@ export const LuisicesNovoExperience: React.FC<LuisicesNovoExperienceProps> = ({
           </div>
         </section>
 
-        {/* 5. Bespoke WhatsApp Consulting Banner */}
+        {/* 5. WhatsApp Consulting Banner */}
         <section className="rounded-3xl bg-gradient-to-r from-[#613D3E] to-[#4E3031] text-white p-8 sm:p-10 shadow-2xl relative overflow-hidden">
           <div className="relative z-10 flex flex-col md:flex-row items-center justify-between gap-6">
             <div className="space-y-2 text-center md:text-left">
@@ -755,7 +798,7 @@ export const LuisicesNovoExperience: React.FC<LuisicesNovoExperienceProps> = ({
             </div>
 
             <a
-              href="https://wa.me/5511999999999?text=Ol%C3%A1!%20Gostaria%20de%20uma%20consultoria%20personalizada%20para%20meu%20evento."
+              href={`https://wa.me/${(businessInfo?.whatsapp || '5511999999999').replace(/\D/g, '')}?text=${encodeURIComponent('Olá! Gostaria de uma consultoria personalizada para meu evento.')}`}
               target="_blank"
               rel="noopener noreferrer"
               className="px-6 py-3.5 rounded-2xl bg-[#25D366] hover:bg-[#20ba59] text-white text-xs sm:text-sm font-bold flex items-center gap-2 shadow-lg transition active:scale-95 whitespace-nowrap"
@@ -767,7 +810,7 @@ export const LuisicesNovoExperience: React.FC<LuisicesNovoExperienceProps> = ({
         </section>
       </main>
 
-      {/* 6. MODAL: FLUXO DE PERSONALIZAÇÃO & CHECKOUT DE ORÇAMENTO (/checkout) */}
+      {/* 6. MODAL: FLUXO DE PERSONALIZAÇÃO & CHECKOUT DE ORÇAMENTO */}
       {activeCustomizingProduct && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/60 backdrop-blur-md overflow-y-auto animate-fade-in">
           <div className="relative w-full max-w-3xl rounded-3xl luisices-glass border border-white/60 bg-[#FFF8F7]/95 dark:bg-[#1A1416]/95 p-6 sm:p-8 shadow-2xl space-y-6 my-auto max-h-[92vh] overflow-y-auto">
@@ -817,7 +860,7 @@ export const LuisicesNovoExperience: React.FC<LuisicesNovoExperienceProps> = ({
                   </h4>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    {GLOBAL_FINISHES.map((finish) => {
+                    {(activeCustomizingProduct.availableFinishes || GLOBAL_FINISHES).map((finish) => {
                       const isSelected = Object.values(selectedFinishes).includes(finish.id);
                       return (
                         <div
@@ -924,7 +967,7 @@ export const LuisicesNovoExperience: React.FC<LuisicesNovoExperienceProps> = ({
                   {/* Open Cost Breakdown */}
                   <div className="p-4 rounded-2xl bg-white/60 dark:bg-white/5 border border-[var(--border)] space-y-2 text-xs">
                     <div className="flex justify-between text-[var(--muted-foreground)]">
-                      <span>Papel de Algodão &amp; Insumos Nobres</span>
+                      <span>Papel de Algodão &amp; Insumos Certificados</span>
                       <span>R$ {(customQty * (activeCustomizingProduct.basePrice * 0.45)).toFixed(2)}</span>
                     </div>
                     <div className="flex justify-between text-[var(--muted-foreground)]">
@@ -1055,7 +1098,7 @@ export const LuisicesNovoExperience: React.FC<LuisicesNovoExperienceProps> = ({
               <div className="p-3 rounded-xl bg-[var(--card)] border border-[var(--border)] space-y-1">
                 <span className="font-bold text-[var(--primary)]">Detalhes de Confecção:</span>
                 <ul className="list-disc pl-4 text-[11px] text-[var(--muted-foreground)] space-y-0.5">
-                  {activeSampleProduct.details.map((d, i) => (
+                  {(activeSampleProduct.details || []).map((d, i) => (
                     <li key={i}>{d}</li>
                   ))}
                 </ul>
