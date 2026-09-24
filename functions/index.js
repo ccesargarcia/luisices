@@ -1252,6 +1252,49 @@ const cleanAiOutput = (text) => {
 /**
  * Endpoint Callable Seguro do Copiloto de IA Interno
  */
+// Helper para carregar e compilar resumo compacto do catálogo e acervo com cache TTL
+const getDynamicCatalogKnowledge = async () => {
+  if (cachedCatalogSummary && (Date.now() - cachedCatalogTimestamp < CATALOG_CACHE_TTL)) {
+    return cachedCatalogSummary;
+  }
+
+  try {
+    const [productsSnap, gallerySnap] = await Promise.all([
+      admin.firestore().collection("storeProducts").where("active", "!=", false).limit(50).get().catch(() => ({ docs: [] })),
+      admin.firestore().collection("gallery").limit(20).get().catch(() => ({ docs: [] })),
+    ]);
+
+    const lines = [];
+    if (productsSnap && productsSnap.docs && productsSnap.docs.length > 0) {
+      lines.push("PRODUTOS ATIVOS DO ATELIÊ:");
+      productsSnap.docs.forEach((doc) => {
+        const d = doc.data() || {};
+        const price = d.price ? ` | R$ ${Number(d.price).toFixed(2)}` : "";
+        const cat = d.category ? ` [${d.category}]` : "";
+        const mat = d.materials && d.materials.length ? ` (Materiais: ${d.materials.join(", ")})` : "";
+        lines.push(`• ${d.name || "Item"}${cat}${price}${mat}`);
+      });
+    }
+
+    if (gallerySnap && gallerySnap.docs && gallerySnap.docs.length > 0) {
+      lines.push("DESTAQUES DO ACERVO DE PROJETOS REAIS:");
+      gallerySnap.docs.slice(0, 10).forEach((doc) => {
+        const d = doc.data() || {};
+        const title = d.title || d.theme || "Projeto";
+        const papers = d.papers && d.papers.length ? ` (Papéis: ${d.papers.join(", ")})` : "";
+        lines.push(`• ${title}${d.category ? " [" + d.category + "]" : ""}${papers}`);
+      });
+    }
+
+    cachedCatalogSummary = lines.length > 0 ? "\n\nCONHECIMENTO DINÂMICO DO ATELIÊ (PRODUTOS & ACERVO ATUALIZADO):\n" + lines.join("\n") : "";
+    cachedCatalogTimestamp = Date.now();
+    return cachedCatalogSummary;
+  } catch (err) {
+    console.warn("[getDynamicCatalogKnowledge] Erro ao carregar catálogo para o prompt:", err);
+    return "";
+  }
+};
+
 exports.aiAgentChat = onCall({ cors: true, timeoutSeconds: 120, memory: '1GiB', maxInstances: 10, secrets: [GEMINI_API_KEY] }, async (request) => {
   if (!(await isAuthorizedEmployeeOrAdmin(request))) {
     throw new functions.https.HttpsError('permission-denied', 'Acesso restrito a membros autorizados da equipe.');
@@ -1575,6 +1618,7 @@ A auditoria e visualização de dados do colaborador **${targetFound.displayName
     throw new functions.https.HttpsError('failed-precondition', 'Chave GEMINI_API_KEY não configurada no Firebase Secret Manager.');
   }
 
+  const catalogContext = await getDynamicCatalogKnowledge();
   const systemInstruction = `Você é o Copiloto Especialista da Luisices (ateliê de Papelaria Personalizada, Cartonagem, Encadernação, Scrap Festa, Topos de Bolo, Caixas Luxo, Sublimação e Brindes). Assistente ágil da equipe operacional e administrativa.
 
 RESPONSABILIDADES & FERRAMENTAS:
@@ -2459,7 +2503,7 @@ Você possui permissão para consultar exclusivamente os **seus próprios pedido
 
   try {
     const geminiPayload = {
-      system_instruction: { parts: [{ text: systemInstruction }] },
+      system_instruction: { parts: [{ text: systemInstruction + (catalogContext || "") }] },
       contents,
       tools: activeTools,
       generationConfig: { temperature: 0.2, maxOutputTokens: 1536 }
