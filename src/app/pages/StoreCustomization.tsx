@@ -1209,21 +1209,30 @@ Retorne ESTRITAMENTE um objeto JSON válido (sem comentários, sem texto antes o
           : '';
 
       if (!rawText.trim()) {
-        throw new Error('A IA não retornou conteúdo válido.');
+        throw new Error('A IA não retornou conteúdo.');
       }
 
-      let jsonStr = rawText.trim();
-      const codeBlockMatch = jsonStr.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
-      if (codeBlockMatch && codeBlockMatch[1]) {
-        jsonStr = codeBlockMatch[1].trim();
+      // Isola com precisão o bloco JSON delimitado por { ... }
+      let jsonText = rawText.trim();
+      const firstBrace = jsonText.indexOf('{');
+      const lastBrace = jsonText.lastIndexOf('}');
+
+      if (firstBrace !== -1 && lastBrace > firstBrace) {
+        jsonText = jsonText.substring(firstBrace, lastBrace + 1).trim();
       } else {
-        const braceMatch = jsonStr.match(/(\{[\s\S]*\})/);
-        if (braceMatch && braceMatch[1]) {
-          jsonStr = braceMatch[1].trim();
-        }
+        jsonText = jsonText.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
       }
 
-      const parsed = JSON.parse(jsonStr);
+      let parsed: any;
+      try {
+        parsed = JSON.parse(jsonText);
+      } catch {
+        // Fallback: remove vírgulas residuais antes de fechamento de chaves/colchetes e caracteres de controle
+        const sanitized = jsonText
+          .replace(/,\s*([}\]])/g, '$1')
+          .replace(/[\u0000-\u001F\u007F-\u009F]/g, ' ');
+        parsed = JSON.parse(sanitized);
+      }
 
       const aiPillars: InstitutionalPillarItem[] = [
         { id: 'p1', title: parsed.catalogAboutPillar1Title || 'Produção Artesanal', text: parsed.catalogAboutPillar1Text || '' },
