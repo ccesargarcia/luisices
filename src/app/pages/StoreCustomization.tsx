@@ -4,6 +4,7 @@ import { db } from '../../lib/firebase';
 import { useAuth } from '../../contexts/AuthContext';
 import { useUserSettings } from '../../hooks/useUserSettings';
 import { firebaseAiAgentService } from '../../services/firebaseAiAgentService';
+import { parseLlmJson } from '../../lib/robustJsonParser';
 import { Button } from '../components/ui/button';
 import { Switch } from '../components/ui/switch';
 import { Input } from '../components/ui/input';
@@ -1154,7 +1155,10 @@ Gere o conteúdo institucional completo para o catálogo online da loja "${store
 Slogan da loja: "${tagline}".
 Nicho principal: "${targetNiche}".${extraContext}
 
-Retorne ESTRITAMENTE um objeto JSON válido (sem comentários, sem texto antes ou depois, sem markdown adicional além do bloco json) com exatamente os seguintes campos:
+IMPORTANTE:
+- Retorne ESTRITAMENTE um objeto JSON válido.
+- Para textos com mais de um parágrafo, use \\n para quebras de linha (nunca insira quebras de linha literais dentro das strings).
+- Preencha todos os campos do modelo abaixo:
 {
   "catalogAboutBadge": "Selo curto (ex: Sobre Nós)",
   "catalogAboutTitle": "Título acolhedor e atrativo",
@@ -1212,27 +1216,52 @@ Retorne ESTRITAMENTE um objeto JSON válido (sem comentários, sem texto antes o
         throw new Error('A IA não retornou conteúdo.');
       }
 
-      // Isola com precisão o bloco JSON delimitado por { ... }
-      let jsonText = rawText.trim();
-      const firstBrace = jsonText.indexOf('{');
-      const lastBrace = jsonText.lastIndexOf('}');
+      const defaultFallback: Record<string, string> = {
+        catalogAboutBadge: 'Sobre Nós',
+        catalogAboutTitle: 'Feito à Mão com Afeto & Dedicação',
+        catalogAboutText: 'Somos um ateliê apaixonado por transformar momentos especiais em memórias inesquecíveis.',
+        catalogAboutPillar1Title: 'Produção Artesanal',
+        catalogAboutPillar1Text: 'Cada mimo é elaborado individualmente com cuidado minucioso.',
+        catalogAboutPillar2Title: 'Materiais Nobres',
+        catalogAboutPillar2Text: 'Papéis de alta gramatura, laminação especial e acabamento premium.',
+        catalogAboutPillar3Title: 'Afeto em Cada Detalhe',
+        catalogAboutPillar3Text: 'Criamos itens personalizados com amor para encantar você e seus convidados.',
+        catalogHowItWorksBadge: 'Passo a Passo',
+        catalogHowItWorksTitle: 'Como Funciona sua Encomenda?',
+        catalogHowItWorksSubtitle: 'Um processo simples, rápido e transparente do início à entrega',
+        catalogHowItWorksStep1Title: '1. Escolha seus Mimos',
+        catalogHowItWorksStep1Text: 'Navegue pelo catálogo e adicione os itens ao seu carrinho.',
+        catalogHowItWorksStep2Title: '2. Envie pelo WhatsApp',
+        catalogHowItWorksStep2Text: 'Finalize o pedido para enviar os detalhes direto para nossa equipe.',
+        catalogHowItWorksStep3Title: '3. Prévia & Aprovação',
+        catalogHowItWorksStep3Text: 'Personalizamos a arte com seu tema e enviamos para sua aprovação antes de produzir.',
+        catalogHowItWorksStep4Title: '4. Confecção & Envio',
+        catalogHowItWorksStep4Text: 'Produzimos com todo carinho, embalamos com segurança e despachamos com código de rastreio.',
+        catalogFeaturesBadge: 'Por Que Nos Escolher',
+        catalogFeaturesTitle: 'Nossos Diferenciais',
+        catalogFeature1Title: 'Atendimento Humanizado',
+        catalogFeature1Text: 'Suporte dedicado via WhatsApp para tirar todas as dúvidas e acompanhar seu pedido.',
+        catalogFeature2Title: 'Laminação Protetora',
+        catalogFeature2Text: 'Acabamento que garante cores vivas e maior durabilidade às suas peças.',
+        catalogFeature3Title: 'Embalagem Reforçada',
+        catalogFeature3Text: 'Seus produtos chegam intactos e impecáveis no conforto da sua casa.',
+        catalogFeature4Title: 'Arte Sob Medida',
+        catalogFeature4Text: 'Desenvolvemos temas exclusivos com o nome e estilo que você desejar.',
+        catalogFaqBadge: 'Dúvidas Comuns',
+        catalogFaqTitle: 'Perguntas Frequentes',
+        catalogFaq1Q: 'Qual é o prazo médio de confecção dos personalizados?',
+        catalogFaq1A: 'Nosso prazo padrão de confecção varia de 5 a 10 dias úteis após a aprovação da arte, mais o prazo do frete escolhido.',
+        catalogFaq2Q: 'Vocês enviam para todo o Brasil?',
+        catalogFaq2A: 'Sim! Enviamos para todo o território nacional através dos Correios e das principais transportadoras.',
+        catalogFaq3Q: 'Posso personalizar com qualquer tema ou nome?',
+        catalogFaq3A: 'Com certeza! Adaptamos o design com o tema, nome, idade e cores que você preferir.',
+        catalogFaq4Q: 'Como funciona o pagamento?',
+        catalogFaq4A: 'Aceitamos Pix (com confirmação instantânea) e Cartão de Crédito. Para encomendas personalizadas, a produção é iniciada após o pagamento.',
+        catalogFaq5Q: 'Consigo ver uma prévia antes da confecção?',
+        catalogFaq5A: 'Sim! Sempre enviamos a arte digital para sua conferência e aprovação antes de iniciar a impressão e montagem.',
+      };
 
-      if (firstBrace !== -1 && lastBrace > firstBrace) {
-        jsonText = jsonText.substring(firstBrace, lastBrace + 1).trim();
-      } else {
-        jsonText = jsonText.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
-      }
-
-      let parsed: any;
-      try {
-        parsed = JSON.parse(jsonText);
-      } catch {
-        // Fallback: remove vírgulas residuais antes de fechamento de chaves/colchetes e caracteres de controle
-        const sanitized = jsonText
-          .replace(/,\s*([}\]])/g, '$1')
-          .replace(/[\u0000-\u001F\u007F-\u009F]/g, ' ');
-        parsed = JSON.parse(sanitized);
-      }
+      const parsed = parseLlmJson<Record<string, string>>(rawText, defaultFallback);
 
       const aiPillars: InstitutionalPillarItem[] = [
         { id: 'p1', title: parsed.catalogAboutPillar1Title || 'Produção Artesanal', text: parsed.catalogAboutPillar1Text || '' },
