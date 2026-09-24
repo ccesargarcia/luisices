@@ -2491,143 +2491,42 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
         finalAnswer = report;
       } else if (name === 'query_orders_view') {
         const queryResults = await executeQueryOrdersView(args);
-        
-        // Segunda chamada enxuta para formulação rápida da resposta final
-        const followUpContents = [
-          ...contents,
-          candidate?.content || { role: 'model', parts: candidate?.content?.parts || [functionCallPart] },
-          {
-            role: 'user',
-            parts: [{
-              functionResponse: {
-                name: 'query_orders_view',
-                response: {
-                  summary: `Foram encontrados ${queryResults.length} registros.`,
-                  orders: queryResults.slice(0, 20),
-                }
-              }
-            }]
-          }
-        ];
+        const statusMap = {
+          pending: 'Pendente',
+          'in-progress': 'Em Produção',
+          completed: 'Concluído',
+          cancelled: 'Cancelado',
+          deleted: 'Excluído (Auditado)',
+        };
 
-        try {
-          const { data: followUpResult } = await callGeminiWithFallback({
-            system_instruction: { parts: [{ text: systemInstruction }] },
-            contents: followUpContents,
-            tools: activeTools,
-            generationConfig: { temperature: 0.2, maxOutputTokens: 1536 }
-          });
-          const followUpCandidate = followUpResult?.candidates?.[0];
-          const followUpParts = followUpCandidate?.content?.parts || [];
-          const textResponse = cleanAiOutput(followUpParts.map(p => p.text).filter(Boolean).join('\n'));
+        if (queryResults.length === 0) {
+          finalAnswer = 'Não encontrei nenhum pedido correspondente aos critérios consultados.';
+        } else {
+          const list = queryResults.map((o) => {
+            const formattedPrice = Number(o.totalPrice || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+            const st = statusMap[o.status] || o.status || 'Pendente';
+            const paySt = o.paymentStatus === 'paid' ? 'Pago' : o.paymentStatus === 'partial' ? 'Parcial' : 'Pendente';
+            const alertLate = o.isLate ? ' ⚠️ **(Atrasado)**' : '';
+            const dt = o.deliveryDate ? ` | 📅 Entrega: ${o.deliveryDate}` : '';
+            return `• **${o.orderNumber}** — **${o.customerName}**${alertLate}\n  📦 ${o.productSummary} (${o.quantity} un) | 💰 ${formattedPrice} | 🏷️ ${st} (${paySt})${dt}`;
+          }).join('\n\n');
 
-          const statusMap = {
-            pending: 'Pendente',
-            'in-progress': 'Em Produção',
-            completed: 'Concluído',
-            cancelled: 'Cancelado',
-            deleted: 'Excluído (Auditado)',
-          };
-
-          if (queryResults.length === 0) {
-            finalAnswer = textResponse && textResponse.length > 20
-              ? textResponse
-              : 'Não encontrei nenhum pedido correspondente aos critérios consultados.';
-          } else {
-            const isGeneric =
-              !textResponse ||
-              textResponse.length < 40 ||
-              textResponse.toLowerCase().includes('consulta realizada');
-
-            if (isGeneric) {
-              const list = queryResults.map(o => {
-                const formattedPrice = Number(o.totalPrice || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-                const st = statusMap[o.status] || (o.isDeleted ? 'Excluído (Auditado)' : o.status);
-                const paySt = o.paymentStatus === 'paid' ? 'Pago' : o.paymentStatus === 'partial' ? 'Parcial' : 'Pendente';
-                return `• **${o.orderNumber || '#' + o.orderId}** — **${o.customerName}**\n  📦 ${o.productSummary} (${o.quantity} un) | 💰 ${formattedPrice} | 🏷️ ${st} (${paySt})`;
-              }).join('\n\n');
-
-              finalAnswer = `Encontrei **${queryResults.length} registro(s)**:\n\n${list}`;
-            } else {
-              finalAnswer = textResponse;
-            }
-          }
-        } catch {
-          if (queryResults.length === 0) {
-            finalAnswer = 'Não encontrei nenhum pedido correspondente na base.';
-          } else {
-            const list = queryResults.map(o => `• **${o.orderNumber || '#' + o.orderId}** — ${o.customerName}: ${o.productSummary} (${o.quantity} un) - R$ ${o.totalPrice}`).join('\n');
-            finalAnswer = `Encontrei **${queryResults.length} registro(s)**:\n\n${list}`;
-          }
+          finalAnswer = `Encontrei **${queryResults.length} pedido(s)** no sistema:\n\n${list}`;
         }
       } else if (name === 'search_gallery_portfolio') {
         const galleryResults = await executeSearchGalleryPortfolio(args);
         extractedGalleryItems = galleryResults;
 
-        const followUpContents = [
-          ...contents,
-          candidate?.content || { role: 'model', parts: candidate?.content?.parts || [functionCallPart] },
-          {
-            role: 'user',
-            parts: [{
-              functionResponse: {
-                name: 'search_gallery_portfolio',
-                response: {
-                  summary: `Foram encontradas ${galleryResults.length} artes/fotos na galeria.`,
-                  items: galleryResults.map((it) => ({
-                    title: it.title,
-                    description: it.description,
-                    productType: it.productType,
-                    tags: it.tags,
-                  })),
-                }
-              }
-            }]
-          }
-        ];
+        if (galleryResults.length === 0) {
+          finalAnswer = 'Não encontrei nenhuma foto ou arte na galeria correspondente aos critérios consultados.';
+        } else {
+          const list = galleryResults.map((it) => {
+            const tagList = (it.tags || []).slice(0, 3).join(', ');
+            const viewLink = it.imageUrl ? ` | 🔗 [Ver Foto](${it.imageUrl})` : '';
+            return `• **${it.title}**${it.productType ? ` (${it.productType})` : ''}\n  ${it.description ? it.description.slice(0, 120) : 'Sem descrição'}${tagList ? ` | 🏷️ ${tagList}` : ''}${viewLink}`;
+          }).join('\n\n');
 
-        try {
-          const { data: followUpResult } = await callGeminiWithFallback({
-            system_instruction: { parts: [{ text: systemInstruction }] },
-            contents: followUpContents,
-            tools: activeTools,
-            generationConfig: { temperature: 0.2, maxOutputTokens: 1536 }
-          });
-          const followUpCandidate = followUpResult?.candidates?.[0];
-          const followUpParts = followUpCandidate?.content?.parts || [];
-          const textResponse = cleanAiOutput(followUpParts.map(p => p.text).filter(Boolean).join('\n'));
-
-          if (galleryResults.length === 0) {
-            finalAnswer = textResponse && textResponse.length > 20
-              ? textResponse
-              : initialText || 'Não encontrei nenhuma foto ou arte na galeria correspondente aos critérios consultados.';
-          } else {
-            const isGeneric =
-              !textResponse ||
-              textResponse.length < 30 ||
-              textResponse.toLowerCase().includes('consulta realizada');
-
-            if (isGeneric) {
-              const list = galleryResults.map(it => {
-                const tagList = [...(it.tags || []), ...(it.aiTags || [])].slice(0, 3).join(', ');
-                return `• **${it.title}**${it.productType ? ` (${it.productType})` : ''}\n  ${it.description ? it.description.slice(0, 120) : 'Sem descrição'}\n  🔗 [Ver Foto](${it.imageUrl})${tagList ? ` | 🏷️ ${tagList}` : ''}`;
-              }).join('\n\n');
-              const prefix = initialText ? `${initialText}\n\n` : '';
-              finalAnswer = `${prefix}Encontrei **${galleryResults.length} foto(s)/arte(s)** no acervo da galeria:\n\n${list}`;
-            } else {
-              finalAnswer = initialText ? `${initialText}\n\n${textResponse}` : textResponse;
-            }
-          }
-        } catch (followErr) {
-          console.warn('[aiAgentChat] Falha no follow-up da galeria:', followErr);
-          if (initialText) {
-            finalAnswer = initialText;
-          } else if (galleryResults.length === 0) {
-            finalAnswer = 'Não encontrei nenhuma foto ou arte correspondente no acervo da galeria.';
-          } else {
-            const list = galleryResults.map(it => `• **${it.title}** - [Ver Foto](${it.imageUrl})`).join('\n');
-            finalAnswer = `Encontrei **${galleryResults.length} foto(s)/arte(s)** na galeria:\n\n${list}`;
-          }
+          finalAnswer = `Encontrei **${galleryResults.length} foto(s)/arte(s)** no acervo da galeria:\n\n${list}`;
         }
       }
     } else {
