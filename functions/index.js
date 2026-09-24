@@ -1575,156 +1575,75 @@ A auditoria e visualização de dados do colaborador **${targetFound.displayName
     throw new functions.https.HttpsError('failed-precondition', 'Chave GEMINI_API_KEY não configurada no Firebase Secret Manager.');
   }
 
-  const systemInstruction = `Você é o Copiloto Especialista da Luisices, ateliê de alta precisão especializado em Papelaria Personalizada, Cartonagem, Encadernação Artesanal, Scrap Festa, Topos de Bolo, Caixas Luxo, Lembrancinhas, Sublimação e Brindes.
-Seu papel é atuar como o assistente e guia inteligente da equipe administrativa e operacional.
+  const systemInstruction = `Você é o Copiloto Especialista da Luisices (ateliê de Papelaria Personalizada, Cartonagem, Encadernação, Scrap Festa, Topos de Bolo, Caixas Luxo, Sublimação e Brindes). Assistente ágil da equipe operacional e administrativa.
 
-Você possui responsabilidades principais com ferramentas especializadas:
-1. CONSULTA DE DADOS & AUDITORIA ('query_orders_view'): Consultar status de pedidos, prazos de entrega, pedidos em aberto ('open'), pendentes, concluídos, cancelados ou excluídos da base. Administradores podem filtrar por colaborador específico via 'userIdentifier'.
-2. AUDITORIA E MÉTRICAS DE USUÁRIOS/COLABORADORES ('get_user_summary'): Permitido EXCLUSIVAMENTE para administradores. Permite consultar quantos pedidos, quantos clientes cadastrados, faturamento gerado e ticket médio pertencem a um usuário/funcionário específico (ex: "Amanda", "Lucas", etc.). Se um usuário não-admin perguntar sobre outros membros, recuse cordialmente informando que a auditoria de equipe é restrita a administradores.
-3. RESUMO FINANCEIRO & MÉTRICAS ('get_financial_summary'): Consultar faturamento realizado, total efetivamente recebido, valores pendentes a receber, volume total emitido, ticket médio e taxa de conclusão por período ('today', 'week', 'month', 'year', 'all').
-4. BRIEFING OPERACIONAL DIÁRIO ('daily_briefing'): Raio-X diário de produção, pedidos urgentes/atrasados, entregas de hoje e pendências financeiras imediatas.
-5. CONSULTA DE CLIENTES ('query_customers'): Buscar clientes cadastrados exclusivamente para consultas cadastrais puras (endereço, e-mail, cidade, histórico de compras). ATENÇÃO: NUNCA use 'query_customers' para pedidos de cobrança ou envio de mensagens no WhatsApp.
-6. GERADOR DE MENSAGENS WHATSAPP ('generate_whatsapp_message'): Ferramenta OBRIGATÓRIA sempre que o usuário pedir cobrança de valores, lembrete de pagamento ou envio de qualquer mensagem para cliente via WhatsApp. Ela gera o rascunho e abre diretamente o submodal interativo no chat (<WhatsAppComposer />) para revisão e disparo pelo operador.
-7. CALCULADORA DE PRECIFICAÇÃO & ORÇAMENTOS ('calculate_pricing_estimate'): Calcular custos aproximados, margem de lucro e preço de venda sugerido para personalizações (camisetas, canecas, ecobags, etc.).
-8. EXTRAÇÃO DE PEDIDOS ('extract_order_draft'): Estruturar pedidos a partir de conversas e mensagens de clientes (WhatsApp/áudio).
-9. CONSULTA AO ACERVO DA GALERIA ('search_gallery_portfolio'): Consultar fotos, artes e produtos já produzidos para dar referências de modelos, técnicas, fotos reais e ideias de pedidos anteriores. Administradores podem auditar todo o acervo ou filtrar por colaborador via 'userIdentifier'. Usuários não-admin enxergam exclusivamente suas próprias artes cadastradas.
+RESPONSABILIDADES & FERRAMENTAS:
+1. 'query_orders_view': Consultar pedidos (status, prazos, clientes, valores, cancelados/excluídos).
+2. 'get_user_summary': Auditoria de colaborador (pedidos, faturamento, ticket médio). EXCLUSIVO ADMIN.
+3. 'get_financial_summary': Métricas financeiras (faturamento, recebido, a receber, volume, ticket médio).
+4. 'daily_briefing': Raio-X diário de produção, atrasos e entregas de hoje.
+5. 'query_customers': Busca cadastral pura de clientes. NUNCA usar para cobrança/WhatsApp.
+6. 'generate_whatsapp_message': OBRIGATÓRIO para cobranças e mensagens a clientes (abre <WhatsAppComposer />).
+7. 'calculate_pricing_estimate': Custos, margens de lucro e preços sugeridos de itens personalizados.
+8. 'extract_order_draft': Estruturar rascunhos de pedidos a partir de conversas.
+9. 'search_gallery_portfolio': Consultar referências e fotos do acervo.
 
----
-🛡️ GUARDRAILS CRÍTICOS DE SEGURANÇA E CONFORMIDADE:
-- GUARDRAIL 1 (LGPD & SIGILO MULTIUSUÁRIO): Dados, pedidos, clientes e artes da galeria de outros colaboradores são SIGILOSOS e só podem ser auditados por Administradores. Usuários comuns e funcionários só enxergam seus próprios dados e criações.
-- GUARDRAIL 2 (HUMAN-IN-THE-LOOP): Você gera rascunhos de mensagens e orçamentos para REVISÃO E APROVAÇÃO HUMANA do operador. Nunca afirme que disparou a mensagem sozinho.
-- GUARDRAIL 3 (PROTEÇÃO DE MARGEM FINANCEIRA): Nunca sugira preços que resultem em margem de lucro negativa ou prejuízo operacional (mantenha margem mínima de 30% a 50%).
-- GUARDRAIL 4 (COBRANÇA E SUBMODAL INTERATIVO WHATSAPP): Mensagens de cobrança devem ser 100% amigáveis, empáticas e profissionais, sem ameaças ou termos constrangedores. Sempre que o usuário pedir para cobrar um cliente ou enviar mensagem de WhatsApp (ex: "envie uma cobrança para o Carlos", "cobre o sinal da Amanda"), você DEVE invocar IMEDIATAMENTE a ferramenta 'generate_whatsapp_message' com type='cobranca' (ou outro tipo aplicável). NUNCA consulte o cliente antes com 'query_customers', pois o sistema já resolve o telefone e dados do cliente automaticamente via 'resolveCustomerPhone' no backend e abre o submodal interativo no chat (<WhatsAppComposer />).
-- GUARDRAIL 5 (RESPOSTAS LIMPAS EM PT-BR): NUNCA inclua seu raciocínio interno, scratchpad, notas ou pensamentos em inglês no texto de resposta. Responda DIRETA e EXCLUSIVAMENTE em Português do Brasil (pt-BR).
-- GUARDRAIL 6 (MULTIMODALIDADE & VISÃO COMPUTACIONAL): Quando o usuário enviar uma imagem na conversa, priorize SEMPRE a análise visual direta e detalhada na sua resposta (identifique tipo de produto, cores, detalhes visuais, materiais, estampas e técnicas como silk, sublimação, bordado, laser). NUNCA substitua a análise visual por uma busca vazia na galeria. Apenas pesquise o acervo da galeria se o usuário pedir explicitamente para buscar referências ou fotos na galeria.
-- GUARDRAIL 7 (VOZ HUMANA E PROIBIÇÃO DE JARGÕES TÉCNICOS):
-  • NUNCA mencione o nome técnico de suas funções ou ferramentas internas (ex: NUNCA diga 'ferramenta calculate_pricing_estimate', 'função query_orders_view', 'extract_order_draft', etc.). 
-  • Em vez disso, fale sempre como uma assistente humana do ateliê:
-    - Em vez de "posso usar a ferramenta calculate_pricing_estimate": diga "Se quiser, posso calcular o custo e sugerir um preço de venda com margem de lucro".
-    - Em vez de "posso usar extract_order_draft": diga "Posso montar o rascunho do pedido para você carregar no formulário".
-    - Em vez de "posso usar search_gallery_portfolio": diga "Posso pesquisar mais fotos e modelos no nosso acervo".
-  • NUNCA use termos de programação, crases com nomes de variáveis (\`nome_da_funcao\`) ou jargões em inglês desnecessários (como 'Backing Card' se puder dizer 'Cartão de apoio' ou 'Tag').
-  • Seja elegante, acolhedora, concisa e focada na linguagem do dia a dia do ateliê.
-- GUARDRAIL 8 (CONCISÃO & EXPERIÊNCIA MOBILE): Formate suas respostas para leitura confortável e rápida no celular. Evite blocos extensos de texto contínuo; use tópicos claros com marcadores, listas sucintas e resumos objetivos de no máximo 2 a 3 parágrafos curtos.
-- GUARDRAIL 9 (PRECISÃO FACTUAL & ZERO ALUCINAÇÃO): Se um pedido, cliente, data ou número não for encontrado nas ferramentas de consulta, declare claramente que o registro não foi localizado e solicite esclarecimento ao operador. NUNCA invente números de pedidos, valores fictícios ou status presumidos.
+GUARDRAILS:
+• LGPD & RBAC: Dados de outros colaboradores são sigilosos (restrito a Admin). Usuários comuns só acessam seus próprios registros.
+• Human-in-the-Loop: Rascunhos de mensagens e orçamentos sempre exigem aprovação humana.
+• Cobrança WhatsApp: Sempre cordial. Use 'generate_whatsapp_message' (type='cobranca'). Não consulte antes com 'query_customers'.
+• Comunicação: pt-BR direto e acolhedor. Sem jargões técnicos ou nomes de funções. Respostas em tópicos curtos para celular.
+• Precisão: Se algo não for encontrado, informe com clareza. Não invente dados.
+• Imagens: Faça análise visual direta. Só pesquise o acervo se solicitado expressamente.
 
----
-BASE DE CONHECIMENTO DO SISTEMA LUISICES:
-• LOJINHA ONLINE & CATÁLOGO:
-- Produtos da Lojinha (/produtos-lojinha): Para publicar produtos avulsos, acesse Lojinha Online > Produtos da Lojinha, preencha nome, fotos, descrição e valor.
-- Publicação em Lote via Fotos: No menu Produtos da Lojinha, o botão 'Mais Fotos' (ou 'Publicação em Lote') permite subir dezenas de fotos simultaneamente (JPG, PNG, WebP até 8MB). O sistema formata os nomes dos arquivos automaticamente em títulos comerciais limpos (ex: "caixa_milk_luxo.jpg" -> "Caixa Milk Luxo"), permite configurar preço, prazo e categoria em massa pela barra superior ou individualmente em cada card, suportando criação de novas categorias livres (+ Nova categoria) e publicação direta no catálogo e Storage.
-- Exclusão em Massa: Na tabela de produtos da lojinha, múltiplos itens podem ser selecionados para exclusão em lote com confirmação.
-- Vitrine Pública (/loja ou /catalogo): Link público para os clientes montarem o carrinho e enviarem o pedido para o WhatsApp (com suporte a modo manutenção e modo apenas vitrine).
-- Pedidos da Lojinha (/pedidos-lojinha): Pedidos recebidos via vitrine pública, convertíveis em pedidos de produção com 1 clique.
-- Aparência & Vitrine (/personalizar-lojinha): Personaliza carrossel de banners rotativos (4:1), cores, logo e contato da vitrine.
-
-• PEDIDOS DO ATELIÊ, DELEGAÇÃO & WORKFLOW (/):
-- Novo Pedido: Botão 'Novo Pedido' no Dashboard ou via Copiloto IA.
-- Atribuição de Equipe & Gestão: Administradores contam com filtro de equipe ('Equipe: Todos' / AdminTeamFilter) no Dashboard e na Agenda Semanal para auditar ou delegar pedidos a colaboradores específicos. Funcionários visualizam com foco nos pedidos atribuídos a eles ou criados por eles.
-- Workflow em 7 Etapas: Design → Aprovação do Cliente → Impressão → Corte → Montagem → Controle de Qualidade → Embalagem/Entrega.
-- Histórico & Auditoria: Pedidos cancelados e excluídos ficam preservados na memória do Agente para fins de consulta e métricas.
-
-• COMUNICAÇÃO, WHATSAPP & WEBHOOKS:
-- Automação WhatsApp (Evolution API): Integrada com o Home Assistant em servidor próprio, operando com webhook em dual-forwarding (retransmissão simultânea e paralela para os ambientes de produção e dev).
-- Mensagens do Copiloto: Mensagens de cobrança amigável, atualização de status e aviso de retirada podem ser copiadas ou disparadas diretamente via Evolution API após revisão humana.
-
-• PRECIFICAÇÃO INTELIGENTE (/precificacao) & ORÇAMENTOS (/orcamentos):
-- Custos: Matérias-primas, mão de obra, margem de desperdício, taxa de pagamento e margem de lucro protegida (mínimo 30%).
-- Orçamentos: Propostas comerciais com validade e conversão em pedido com 1 clique.
-
-• CLIENTES (/clientes), GALERIA (/galeria) E PERMUTAS (/permutas):
-- Clientes: Cadastro completo com endereço automático via CEP, histórico de pedidos e alerta de aniversário.
-- Galeria: Banco de artes e estampas dos clientes com catalogação automática por visão computacional via IA (enrichGalleryItemWithAi).
-- Permutas: Controle de parcerias com influenciadores e permutas sem cobrança financeira.
-• GUIA TÉCNICO DE ENGENHARIA DE MATERIAIS & ATELIÊ LUISICES:
-- PAPÉIS & GRAMATURAS:
-  • Offset (75g a 90g para miolos de agendas/planners; 180g a 240g para impressos estruturados, tags e caixas leves).
-  • Color Plus 180g (papel de massa colorida ideal para scrapfesta, topos de bolo em camadas e caixas de corte na plotter, pois não deixa vinco branco no vinco).
-  • Papel Fotográfico Glossy/Matte (115g adesivo para rótulos; 180g a 230g para caixas personalizadas com laminação).
-  • Lamicote 250g (acabamento metalizado ouro/prata para detalhes nobres em topos e caixas luxo).
-- CARTONAGEM & ENCADERNAÇÃO:
-  • Papelão Cinza / Horlle (1.9mm a 2.2mm para capas duras de planners, álbuns e caixas rígidas).
-  • Laminação Térmica (BOPP Fosco, Brilho, Holográfico Caquinhos/Confete, Soft Touch) aplicada com termolaminadora para proteção contra umidade e desgaste.
-  • Encadernação Wire-o: Passo 2:1 (para blocos grossos e cadernos com mais de 110 folhas) e Passo 3:1 (para cadernos finos e bloquinhos com até 110 folhas).
-- ENGENHARIA DE CUSTO & PRECIFICAÇÃO:
-  • Margem Técnica de Perda: Incluir 15% sobre insumos de papel e filme para cobrir testes de corte e perdas operacionais.
-  • Custo da Hora Trabalhada: R$ 24,00 a R$ 36,00/hora (R$ 0,40 a R$ 0,60/minuto).
-  • Margem de Lucro Segura: Entre 40% e 60% para produtos personalizados artesanais.`;
+MATERIAIS & PRECIFICAÇÃO:
+• Papéis: Offset (75-90g miolos; 180-240g caixas), Color Plus 180g (scrap/sem vinco branco), Fotográfico 115-230g, Lamicote 250g (luxo).
+• Cartonagem: Papelão Horlle 1.9-2.2mm, BOPP (Fosco/Brilho/Holo/Soft Touch), Wire-o 2:1 (>110 fls) e 3:1 (<=110 fls).
+• Margens: Mão de obra R$ 24-36/h (R$ 0,40-0,60/min), perda técnica 15%, margem de lucro 30% a 50% (artesanal 40-60%).`;
 
   const toolsDeclaration = [
     {
       function_declarations: [
         {
           name: 'get_user_summary',
-          description: 'Consulta o resumo de auditoria e métricas de um usuário/colaborador específico (quantidade de pedidos, clientes cadastrados, faturamento gerado e ticket médio) pelo nome, e-mail ou UID. ATENÇÃO: Esta ferramenta é de uso EXCLUSIVO DO ADMINISTRADOR.',
+          description: 'Auditoria de colaborador (pedidos, clientes, faturamento, ticket médio). EXCLUSIVO ADMIN.',
           parameters: {
             type: 'OBJECT',
             properties: {
-              userIdentifier: {
-                type: 'STRING',
-                description: 'Nome, e-mail ou UID do usuário/funcionário da equipe a consultar (ex: Amanda, Lucas, amanda@email.com)'
-              },
-              period: {
-                type: 'STRING',
-                enum: ['today', 'week', 'month', 'year', 'all'],
-                description: 'Período para análise (padrão: all)'
-              }
+              userIdentifier: { type: 'STRING', description: 'Nome, e-mail ou UID do colaborador' },
+              period: { type: 'STRING', enum: ['today', 'week', 'month', 'year', 'all'], description: 'Período (padrão: all)' }
             },
             required: ['userIdentifier']
           }
         },
         {
           name: 'query_orders_view',
-          description: 'Consulta a base de pedidos em tempo real (com projeção em memória) para obter status, prazos, clientes, valores, cancelamentos e métricas atualizadas.',
+          description: 'Consulta pedidos em tempo real por status, pagamento, busca de texto ou colaborador.',
           parameters: {
             type: 'OBJECT',
             properties: {
-              status: {
-                type: 'STRING',
-                enum: ['open', 'pending', 'in-progress', 'completed', 'cancelled', 'deleted', 'all'],
-                description: 'Filtro por status do pedido: open (em aberto: pendentes e em produção, não concluídos), pending (pendente), in-progress (em produção), completed (concluído), cancelled (cancelado), deleted (excluído/arquivado) ou all (todos)'
-              },
-              paymentStatus: {
-                type: 'STRING',
-                enum: ['pending', 'partial', 'paid', 'all'],
-                description: 'Filtro por status de pagamento'
-              },
-              userIdentifier: {
-                type: 'STRING',
-                description: 'Opcional (Apenas Admin): Nome, e-mail ou UID do colaborador para filtrar apenas os pedidos dele'
-              },
-              searchTerm: {
-                type: 'STRING',
-                description: 'Termo de busca para nome do cliente, produto ou telefone'
-              },
-              limit: {
-                type: 'INTEGER',
-                description: 'Quantidade máxima de registros a retornar (máximo 30)'
-              }
+              status: { type: 'STRING', enum: ['open', 'pending', 'in-progress', 'completed', 'cancelled', 'deleted', 'all'], description: 'Status do pedido' },
+              paymentStatus: { type: 'STRING', enum: ['pending', 'partial', 'paid', 'all'], description: 'Status pagamento' },
+              userIdentifier: { type: 'STRING', description: 'Admin apenas: filtrar por colaborador' },
+              searchTerm: { type: 'STRING', description: 'Busca cliente, produto ou fone' },
+              limit: { type: 'INTEGER', description: 'Máx registros (máx 30)' }
             }
           }
         },
         {
           name: 'get_financial_summary',
-          description: 'Consulta o resumo financeiro exato (faturamento realizado de concluídos, total a receber/pendente, volume total emitido, ticket médio e contagem de pedidos) para um período específico (today, week, month, year, all). Os cálculos seguem estritamente as regras oficiais dos Relatórios.',
+          description: 'Resumo financeiro oficial (faturamento realizado, recebido, pendente, volume, ticket médio) por período.',
           parameters: {
             type: 'OBJECT',
             properties: {
-              period: {
-                type: 'STRING',
-                enum: ['today', 'week', 'month', 'year', 'all'],
-                description: 'Período para análise financeira: today (hoje), week (últimos 7 dias), month (mês atual/30 dias), year (ano atual), all (todo o histórico)'
-              },
-              userIdentifier: {
-                type: 'STRING',
-                description: 'Opcional (Apenas Admin): Filtrar métricas financeiras de um colaborador específico por nome, e-mail ou UID'
-              }
+              period: { type: 'STRING', enum: ['today', 'week', 'month', 'year', 'all'], description: 'Período: today, week, month, year, all' },
+              userIdentifier: { type: 'STRING', description: 'Admin apenas: filtrar por colaborador' }
             }
           }
         },
         {
           name: 'daily_briefing',
-          description: 'Gera um briefing operacional completo do dia: pedidos atrasados ou com risco de atraso, entregas de hoje, pedidos em produção e valores pendentes a receber.',
+          description: 'Briefing diário: pedidos atrasados, entregas de hoje, em produção e pendências financeiras.',
           parameters: {
             type: 'OBJECT',
             properties: {}
@@ -1732,79 +1651,63 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
         },
         {
           name: 'generate_whatsapp_message',
-          description: 'Gera o rascunho de mensagem formatada, amigável e profissional e abre o submodal interativo no chat (<WhatsAppComposer />) para disparo direto, edição e revisão humana (cobrança cordial, status de produção, aviso de retirada pronta, confirmação de pedido ou orçamento). OBRIGATÓRIO para qualquer pedido de cobrança ou envio de mensagem para WhatsApp.',
+          description: 'Gera mensagem formatada e abre o WhatsAppComposer no chat. OBRIGATÓRIO para cobrança e WhatsApp.',
           parameters: {
             type: 'OBJECT',
             properties: {
-              type: {
-                type: 'STRING',
-                enum: ['cobranca', 'status_producao', 'pronto_retirada', 'confirmacao_pedido', 'orcamento', 'geral'],
-                description: 'Tipo de mensagem a ser enviada'
-              },
-              recipientName: { type: 'STRING', description: 'Nome do cliente destinatário' },
-              recipientPhone: { type: 'STRING', description: 'Telefone de contato do cliente (WhatsApp)' },
-              orderNumber: { type: 'STRING', description: 'Número de referência do pedido (ex: #2026-0109)' },
-              productName: { type: 'STRING', description: 'Produto ou serviço do pedido' },
-              amount: { type: 'NUMBER', description: 'Valor financeiro pendente ou total em reais' },
-              messageText: { type: 'STRING', description: 'O texto completo da mensagem formatada com quebras de linha e emojis adequados para o cliente' }
+              type: { type: 'STRING', enum: ['cobranca', 'status_producao', 'pronto_retirada', 'confirmacao_pedido', 'orcamento', 'geral'], description: 'Tipo mensagem' },
+              recipientName: { type: 'STRING', description: 'Nome cliente' },
+              recipientPhone: { type: 'STRING', description: 'Telefone WhatsApp' },
+              orderNumber: { type: 'STRING', description: 'Nº do pedido' },
+              productName: { type: 'STRING', description: 'Produto/serviço' },
+              amount: { type: 'NUMBER', description: 'Valor R$' },
+              messageText: { type: 'STRING', description: 'Texto completo formatado com emojis' }
             },
             required: ['type', 'messageText']
           }
         },
         {
           name: 'calculate_pricing_estimate',
-          description: 'Calcula estimativa rápida de custos e preço de venda sugerido com proteção de margem de lucro mínima para produtos personalizados (camisetas, canecas, ecobags, brindes).',
+          description: 'Calcula custos e preço de venda com margem protegida para produtos personalizados.',
           parameters: {
             type: 'OBJECT',
             properties: {
-              productName: { type: 'STRING', description: 'Nome do produto personalizado (ex: Camiseta Algodão Silk 1 cor, Caneca Cerâmica Sublimada)' },
-              quantity: { type: 'INTEGER', description: 'Quantidade total de peças' },
-              unitCostRaw: { type: 'NUMBER', description: 'Custo estimado da matéria-prima base por unidade em reais' },
-              customizationCost: { type: 'NUMBER', description: 'Custo estimado de tinta, filme ou insumos de estamparia por peça em reais' },
-              laborTimeMinutes: { type: 'NUMBER', description: 'Tempo estimado de trabalho por peça em minutos' },
-              profitMarginPercent: { type: 'NUMBER', description: 'Margem de lucro desejada em % (mínimo 30%, padrão 45%)' }
+              productName: { type: 'STRING', description: 'Nome do produto' },
+              quantity: { type: 'INTEGER', description: 'Quantidade de peças' },
+              unitCostRaw: { type: 'NUMBER', description: 'Custo matéria-prima unitária R$' },
+              customizationCost: { type: 'NUMBER', description: 'Custo insumos/personalização R$' },
+              laborTimeMinutes: { type: 'NUMBER', description: 'Tempo de trabalho em min/peça' },
+              profitMarginPercent: { type: 'NUMBER', description: 'Margem % (mín 30%, padrão 45%)' }
             },
             required: ['productName', 'quantity']
           }
         },
         {
           name: 'query_customers',
-          description: 'Consulta a base de clientes cadastrados no sistema Luisices (por contagem geral, nome, telefone, e-mail, cidade ou status). Retorna o total consolidado de clientes e a lista de cadastros com dados cadastrais e histórico de compras. ATENÇÃO: NUNCA use para cobrança ou envio de mensagens no WhatsApp (para isso, use sempre generate_whatsapp_message).',
+          description: 'Consulta cadastral de clientes (total, busca por nome, fone, e-mail, cidade). NÃO usar para cobrança.',
           parameters: {
             type: 'OBJECT',
             properties: {
-              searchTerm: {
-                type: 'STRING',
-                description: 'Nome, telefone, e-mail ou cidade do cliente para busca (deixe vazio se o usuário pediu contagem total ou visão geral de clientes)'
-              },
-              userIdentifier: {
-                type: 'STRING',
-                description: 'Opcional (Apenas Admin): Nome, e-mail ou UID do colaborador para filtrar apenas os clientes cadastrados por ele'
-              },
-              status: {
-                type: 'STRING',
-                description: 'Opcional: status do cliente (active, vip, recurring, defaulter, partner)'
-              },
-              limit: {
-                type: 'INTEGER',
-                description: 'Quantidade máxima de fichas a detalhar na tela (padrão 15, máximo 30)'
-              }
+              searchTerm: { type: 'STRING', description: 'Busca nome, fone, e-mail ou cidade' },
+              userIdentifier: { type: 'STRING', description: 'Admin apenas: filtrar por colaborador' },
+              status: { type: 'STRING', description: 'Status (active, vip, recurring, defaulter, partner)' },
+              limit: { type: 'INTEGER', description: 'Qtd máx (padrão 15, máx 30)' }
             }
           }
         },
         {
           name: 'extract_order_draft',
-          description: 'Extrai dados estruturados de um novo pedido a partir de uma mensagem ou conversa para pré-preenchimento.',
+          description: 'Extrai dados estruturados de pedido de mensagem/conversa para pré-preenchimento.',
           parameters: {
             type: 'OBJECT',
             properties: {
               customerName: { type: 'STRING', description: 'Nome do cliente' },
-              customerPhone: { type: 'STRING', description: 'Telefone de contato' },
-              productName: { type: 'STRING', description: 'Nome e especificações do produto' },
-              quantity: { type: 'INTEGER', description: 'Quantidade de peças' },
-              totalPrice: { type: 'NUMBER', description: 'Valor total do pedido em reais' },
-              deliveryDate: { type: 'STRING', description: 'Data de entrega estimada no formato YYYY-MM-DD' },
-              notes: { type: 'STRING', description: 'Observações, estampas ou detalhes' },
+              customerPhone: { type: 'STRING', description: 'Telefone' },
+              productName: { type: 'STRING', description: 'Produto e especificações' },
+              quantity: { type: 'INTEGER', description: 'Quantidade' },
+              totalPrice: { type: 'NUMBER', description: 'Valor total R$' },
+              deliveryDate: { type: 'STRING', description: 'Data YYYY-MM-DD' },
+              notes: { type: 'STRING', description: 'Detalhes/observações' },
               paymentMethod: { type: 'STRING', enum: ['pix', 'cash', 'credit', 'debit', 'other'] }
             },
             required: ['customerName', 'productName']
@@ -1812,26 +1715,14 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
         },
         {
           name: 'search_gallery_portfolio',
-          description: 'Consulta o acervo de fotos, produtos e artes da Galeria do sistema (camisetas, brindes, canecas, bordados, personalizações anteriores). Use esta ferramenta EXCLUSIVAMENTE quando o usuário solicitar explicitamente buscar fotos, modelos, artes ou referências no acervo da galeria. NUNCA use esta ferramenta quando o usuário apenas enviar uma imagem para análise visual.',
+          description: 'Busca fotos, referências e artes na Galeria. Apenas se solicitado explicitamente.',
           parameters: {
             type: 'OBJECT',
             properties: {
-              searchTerm: {
-                type: 'STRING',
-                description: 'Termo de busca para título, descrição, tema, cliente, técnica ou número de pedido'
-              },
-              tag: {
-                type: 'STRING',
-                description: 'Filtrar por tag ou categoria específica (ex: camisetas, canecas, brindes, bordado, silk)'
-              },
-              userIdentifier: {
-                type: 'STRING',
-                description: 'Opcional (Apenas Admin): Filtrar artes cadastradas por um colaborador específico por nome, e-mail ou UID'
-              },
-              limit: {
-                type: 'INTEGER',
-                description: 'Quantidade máxima de registros a retornar (padrão 10, máximo 20)'
-              }
+              searchTerm: { type: 'STRING', description: 'Busca por título, tema, técnica ou produto' },
+              tag: { type: 'STRING', description: 'Tag/categoria' },
+              userIdentifier: { type: 'STRING', description: 'Admin apenas: filtrar por colaborador' },
+              limit: { type: 'INTEGER', description: 'Qtd máx (padrão 10, máx 20)' }
             }
           }
         }
