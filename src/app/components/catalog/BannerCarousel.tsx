@@ -110,7 +110,7 @@ export function BannerCarousel({
           alt={single.title || `Banner de capa de ${storeName}`}
           className="w-full h-full object-cover"
           decoding="async"
-          fetchPriority="high"
+          {...({ fetchpriority: 'high' } as any)}
         />
         {single.title && (
           <div className="absolute bottom-2 left-3 bg-black/50 backdrop-blur-xs text-white text-[11px] px-2.5 py-1 rounded-lg">
@@ -162,7 +162,7 @@ export function BannerCarousel({
                 className="w-full h-full object-cover object-center"
                 decoding="async"
                 loading={idx === 0 ? 'eager' : 'lazy'}
-                fetchPriority={idx === 0 ? 'high' : 'low'}
+                {...({ fetchpriority: idx === 0 ? 'high' : 'low' } as any)}
               />
 
               {/* Título ou Link indicador */}
