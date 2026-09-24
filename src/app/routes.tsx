@@ -129,6 +129,7 @@ const Emails             = lazyWithRetry(() => import('./pages/Emails'), 'Emails
 const Pricing            = lazyWithRetry(() => import('./pages/Pricing'), 'Pricing');
 const FixNegativeValues  = lazyWithRetry(() => import('./pages/FixNegativeValues'));
 const PublicCatalog      = lazyWithRetry(() => import('./pages/PublicCatalog'), 'PublicCatalog');
+const NovoVisual         = lazyWithRetry(() => import('./pages/NovoVisual'), 'NovoVisual');
 const StoreCustomization = lazyWithRetry(() => import('./pages/StoreCustomization'), 'StoreCustomization');
 const StoreProducts      = lazyWithRetry(() => import('./pages/StoreProducts'), 'StoreProducts');
 const StoreOrders        = lazyWithRetry(() => import('./pages/StoreOrders'), 'StoreOrders');
