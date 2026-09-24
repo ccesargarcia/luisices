@@ -1240,7 +1240,7 @@ exports.aiAgentChat = onCall({ cors: true, timeoutSeconds: 120, memory: '512MiB'
     throw new functions.https.HttpsError('failed-precondition', 'Chave GEMINI_API_KEY não configurada no Firebase Secret Manager.');
   }
 
-  const systemInstruction = `Você é o Copiloto Interno da Luisices (confecção/gráfica especializada em camisetas, brindes e personalizados).
+  const systemInstruction = `Você é o Copiloto Especialista da Luisices, ateliê de alta precisão especializado em Papelaria Personalizada, Cartonagem, Encadernação Artesanal, Scrap Festa, Topos de Bolo, Caixas Luxo, Lembrancinhas, Sublimação e Brindes.
 Seu papel é atuar como o assistente e guia inteligente da equipe administrativa e operacional.
 
 Você possui responsabilidades principais com ferramentas especializadas:
@@ -1300,7 +1300,21 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
 • CLIENTES (/clientes), GALERIA (/galeria) E PERMUTAS (/permutas):
 - Clientes: Cadastro completo com endereço automático via CEP, histórico de pedidos e alerta de aniversário.
 - Galeria: Banco de artes e estampas dos clientes com catalogação automática por visão computacional via IA (enrichGalleryItemWithAi).
-- Permutas: Controle de parcerias com influenciadores e permutas sem cobrança financeira.`;
+- Permutas: Controle de parcerias com influenciadores e permutas sem cobrança financeira.
+• GUIA TÉCNICO DE ENGENHARIA DE MATERIAIS & ATELIÊ LUISICES:
+- PAPÉIS & GRAMATURAS:
+  • Offset (75g a 90g para miolos de agendas/planners; 180g a 240g para impressos estruturados, tags e caixas leves).
+  • Color Plus 180g (papel de massa colorida ideal para scrapfesta, topos de bolo em camadas e caixas de corte na plotter, pois não deixa vinco branco no vinco).
+  • Papel Fotográfico Glossy/Matte (115g adesivo para rótulos; 180g a 230g para caixas personalizadas com laminação).
+  • Lamicote 250g (acabamento metalizado ouro/prata para detalhes nobres em topos e caixas luxo).
+- CARTONAGEM & ENCADERNAÇÃO:
+  • Papelão Cinza / Horlle (1.9mm a 2.2mm para capas duras de planners, álbuns e caixas rígidas).
+  • Laminação Térmica (BOPP Fosco, Brilho, Holográfico Caquinhos/Confete, Soft Touch) aplicada com termolaminadora para proteção contra umidade e desgaste.
+  • Encadernação Wire-o: Passo 2:1 (para blocos grossos e cadernos com mais de 110 folhas) e Passo 3:1 (para cadernos finos e bloquinhos com até 110 folhas).
+- ENGENHARIA DE CUSTO & PRECIFICAÇÃO:
+  • Margem Técnica de Perda: Incluir 15% sobre insumos de papel e filme para cobrir testes de corte e perdas operacionais.
+  • Custo da Hora Trabalhada: R$ 24,00 a R$ 36,00/hora (R$ 0,40 a R$ 0,60/minuto).
+  • Margem de Lucro Segura: Entre 40% e 60% para produtos personalizados artesanais.`;
 
   const toolsDeclaration = [
     {
@@ -2137,49 +2151,64 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
     return null;
   };
 
-  // Helper para cálculo de estimativa de precificação com guardrails de margem mínima
+  // Helper para cálculo de estimativa de precificação com guardrails de engenharia de custo e ateliê
   const executePricingEstimate = (args) => {
     const qty = Math.max(Number(args.quantity) || 1, 1);
-    const rawCost = Number(args.unitCostRaw) || 25; // Ex: custo médio de camiseta/caneca
-    const customCost = Number(args.customizationCost) || 6; // Insumos estamparia/filme
-    const laborMinutes = Number(args.laborTimeMinutes) || 10;
-    const laborCostPerMinute = 0.40; // R$ 24/hora de mão de obra
+    const rawCost = Number(args.unitCostRaw) || 15; // Custo base de insumos/papéis/matéria-prima
+    const customCost = Number(args.customizationCost) || 5; // Laminação BOPP, apliques, fitas, Wire-o
+    const technicalWasteFactor = 1.15; // 15% de margem de perda técnica e desgaste de lâmina
+    const materialCostWithWaste = (rawCost + customCost) * technicalWasteFactor;
+
+    const laborMinutes = Number(args.laborTimeMinutes) || 15;
+    const laborCostPerMinute = 0.45; // R$ 27,00/hora de mão de obra técnica especializada
     const laborCost = laborMinutes * laborCostPerMinute;
+    const unitBaseCost = materialCostWithWaste + laborCost;
 
-    const unitBaseCost = rawCost + customCost + laborCost;
-    
-    // Guardrail: Margem de lucro mínima protegida de 30%
+    // Guardrail de Ciência de Dados: Margem de lucro protegida (mínimo 35%, máximo 75%)
     const requestedMargin = Number(args.profitMarginPercent) || 45;
-    const margin = Math.max(requestedMargin, 30);
-
+    const margin = Math.min(Math.max(requestedMargin, 35), 75);
     const suggestedUnitPrice = Number((unitBaseCost / (1 - (margin / 100))).toFixed(2));
     const suggestedTotalPrice = Number((suggestedUnitPrice * qty).toFixed(2));
 
     return {
-      productName: args.productName || 'Personalizado',
+      productName: args.productName || 'Personalizado Luisices',
       quantity: qty,
       unitCost: Number(unitBaseCost.toFixed(2)),
       suggestedUnitPrice,
       suggestedTotalPrice,
       profitMarginPercent: margin,
       breakdown: {
-        materials: Number(rawCost.toFixed(2)),
-        customization: Number(customCost.toFixed(2)),
-        labor: Number(laborCost.toFixed(2)),
+        materialsBase: Number((rawCost + customCost).toFixed(2)),
+        technicalWasteAllowance15Percent: Number(((rawCost + customCost) * 0.15).toFixed(2)),
+        totalMaterialsWithWaste: Number(materialCostWithWaste.toFixed(2)),
+        specializedLabor: Number(laborCost.toFixed(2)),
       }
     };
   };
 
-  // Monta histórico de mensagens
+  // Monta histórico de mensagens com Sliding Window Memory e alternância estrita de papéis (LLMOps)
   const contents = [];
-  if (Array.isArray(history)) {
-    for (const item of history.slice(-4)) {
-      if (item.role && item.text) {
+  if (Array.isArray(history) && history.length > 0) {
+    const rawHistory = history.slice(-6); // Mantém as últimas 6 mensagens (3 turnos completos de diálogo)
+    let lastRole = null;
+    for (const item of rawHistory) {
+      if (!item || !item.text || typeof item.text !== 'string' || !item.text.trim()) continue;
+      const normalizedRole = item.role === 'user' ? 'user' : 'model';
+      if (normalizedRole === lastRole) {
+        if (contents.length > 0) {
+          contents[contents.length - 1].parts[0].text += `\n${item.text.trim()}`;
+        }
+      } else {
         contents.push({
-          role: item.role === 'user' ? 'user' : 'model',
-          parts: [{ text: item.text }]
+          role: normalizedRole,
+          parts: [{ text: item.text.trim() }]
         });
+        lastRole = normalizedRole;
       }
+    }
+    // Se a última mensagem do histórico for user, removemos para unificar com a mensagem atual enriquecida
+    if (contents.length > 0 && contents[contents.length - 1].role === 'user') {
+      contents.pop();
     }
   }
   // Prepara as partes da mensagem atual do usuário com suporte a imagem multimodal
@@ -2302,7 +2331,7 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
       system_instruction: { parts: [{ text: systemInstruction }] },
       contents,
       tools: activeTools,
-      generationConfig: { temperature: 0.1 }
+      generationConfig: { temperature: 0.2, maxOutputTokens: 1536 }
     };
 
     const { data: firstResult } = await callGeminiWithFallback(geminiPayload);
@@ -2473,7 +2502,7 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
             system_instruction: { parts: [{ text: systemInstruction }] },
             contents: followUpContents,
             tools: activeTools,
-            generationConfig: { temperature: 0.1 }
+            generationConfig: { temperature: 0.2, maxOutputTokens: 1536 }
           });
           const followUpCandidate = followUpResult?.candidates?.[0];
           const followUpParts = followUpCandidate?.content?.parts || [];
@@ -2551,7 +2580,7 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
             system_instruction: { parts: [{ text: systemInstruction }] },
             contents: followUpContents,
             tools: activeTools,
-            generationConfig: { temperature: 0.1 }
+            generationConfig: { temperature: 0.2, maxOutputTokens: 1536 }
           });
           const followUpCandidate = followUpResult?.candidates?.[0];
           const followUpParts = followUpCandidate?.content?.parts || [];
