@@ -1162,6 +1162,11 @@ let cachedTeamMembers = null;
 let cachedTeamMembersTimestamp = 0;
 const TEAM_MEMBERS_CACHE_TTL = 10 * 60 * 1000;
 
+// Cache global em memória para catálogo e produtos (TTL de 15 minutos)
+let cachedCatalogSummary = null;
+let cachedCatalogTimestamp = 0;
+const CATALOG_CACHE_TTL = 15 * 60 * 1000;
+
 // Cache global em memória para respostas rápidas (TTL de 3 minutos)
 const aiResponseCache = new Map();
 
@@ -1281,6 +1286,101 @@ exports.aiAgentChat = onCall({ cors: true, timeoutSeconds: 120, memory: '1GiB', 
 
   const cleanMessage = message.trim();
   const hasImage = Boolean(image && (image.base64 || image.imageUrl));
+  const trimmedLower = cleanMessage.toLowerCase().trim();
+
+  // COMANDO DE CACHE NATIVO DO COPILOTO (Resposta ultra-rápida, zero custo de tokens)
+  if (
+    trimmedLower === 'cache' ||
+    trimmedLower === '/cache' ||
+    trimmedLower === 'menu cache' ||
+    trimmedLower === 'cache menu' ||
+    trimmedLower === 'ajuda cache' ||
+    trimmedLower === 'limpar cache' ||
+    trimmedLower === 'comandos cache'
+  ) {
+    return {
+      success: true,
+      reply: `⚡ **Gerenciamento de Cache do Copiloto Luisices**
+
+Você pode consultar ou limpar itens da memória a qualquer momento digitando o comando no chat:
+
+• 🧹 **\`cache limpar respostas\`** — Esvazia o cache em memória de respostas instantâneas.
+• 📦 **\`cache limpar catalogo\`** — Força a atualização do catálogo de produtos e preços do Firestore.
+• 👥 **\`cache limpar equipe\`** — Recarrega permissões, nomes e contas dos colaboradores.
+• 🔄 **\`cache limpar tudo\`** — Reseta todos os caches em memória do Copiloto de uma só vez.
+
+💡 *Dica: Envie qualquer um dos comandos acima para executar a limpeza imediatamente.*`,
+    };
+  }
+
+  if (
+    trimmedLower.startsWith('cache limpar') ||
+    trimmedLower.startsWith('/cache limpar') ||
+    trimmedLower === 'limpar todo o cache' ||
+    trimmedLower === 'limpar cache tudo'
+  ) {
+    let clearedWhat = [];
+    if (trimmedLower.includes('respostas') || trimmedLower.includes('resposta')) {
+      aiResponseCache.clear();
+      clearedWhat.push('Respostas Rápidas');
+    } else if (trimmedLower.includes('catalogo') || trimmedLower.includes('catálogo') || trimmedLower.includes('produtos') || trimmedLower.includes('precos') || trimmedLower.includes('preços')) {
+      cachedCatalogSummary = null;
+      cachedCatalogTimestamp = 0;
+      clearedWhat.push('Catálogo & Produtos');
+    } else if (trimmedLower.includes('equipe') || trimmedLower.includes('usuarios') || trimmedLower.includes('usuários') || trimmedLower.includes('colaboradores')) {
+      cachedTeamMembers = null;
+      cachedTeamMembersTimestamp = 0;
+      clearedWhat.push('Equipe & Colaboradores');
+    } else {
+      aiResponseCache.clear();
+      cachedCatalogSummary = null;
+      cachedCatalogTimestamp = 0;
+      cachedTeamMembers = null;
+      cachedTeamMembersTimestamp = 0;
+      clearedWhat.push('Todos os Caches (Respostas, Catálogo e Equipe)');
+    }
+
+    return {
+      success: true,
+      reply: `✅ **Cache limpo com sucesso!**
+
+• **Itens atualizados:** ${clearedWhat.join(', ')}
+• **Status:** Sincronizado diretamente com os dados em tempo real do banco de dados.`,
+    };
+  }
+
+  // GUARDRAIL ULTRA-RÁPIDO DE RBAC: Bloqueia não-admin de bisbilhotar outros colaboradores
+  if (!isAdmin) {
+    const isAuditOrCollabQuery = /(pedido|pedidos|venda|vendas|cliente|clientes|faturamento|orcamento|orçamento|trabalho|fazendo|producao|produção|atendimento|ticket)/i.test(trimmedLower);
+    if (isAuditOrCollabQuery) {
+      const allMembers = await getAllKnownTeamMembers();
+      const otherMembers = allMembers.filter((m) => m.uid !== String(callerUid));
+      const targetFound = otherMembers.find((m) => {
+        const normMsg = normalizeString(trimmedLower);
+        const normName = normalizeString(m.displayName);
+        const normFirst = normName.split(' ')[0];
+        const normEmail = normalizeString(m.email ? m.email.split('@')[0] : '');
+        return (
+          (normName && normName.length >= 3 && normMsg.includes(normName)) ||
+          (normFirst && normFirst.length >= 3 && normMsg.split(/\s+/).includes(normFirst)) ||
+          (normEmail && normEmail.length >= 3 && normMsg.includes(normEmail))
+        );
+      });
+
+      if (targetFound) {
+        console.log(`[aiAgentChat] Guardrail RBAC rápido ativado para ${callerUid} consultando ${targetFound.displayName}`);
+        return {
+          success: true,
+          reply: `🔒 **Acesso Restrito:**
+
+Você possui permissão para consultar exclusivamente os **seus próprios pedidos e atendimentos**.
+
+A auditoria e visualização de dados do colaborador **${targetFound.displayName}** é restrita a **Administradores** do sistema.`,
+        };
+      }
+    }
+  }
+
   const cacheKey = `${callerUid}_${cleanMessage.toLowerCase()}`;
 
   // Se for uma pergunta comum sem histórico, sem imagem e estiver no cache recente, responde instantaneamente
@@ -1845,6 +1945,32 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
 
   // Helper para consultar a base de pedidos com filtros e isolamento
   const executeQueryOrdersView = async (args = {}) => {
+    // 0. BLINDAGEM MULTIUSUÁRIO & RBAC ESTREITA:
+    if (!isAdmin) {
+      if (args.userIdentifier) {
+        const target = await resolveTargetUser(args.userIdentifier);
+        if (target && target.uid !== String(callerUid)) {
+          return {
+            unauthorized: true,
+            message: `🔒 **Acesso Restrito:**
+
+Você possui permissão para consultar exclusivamente os **seus próprios pedidos e atendimentos**. A visualização de pedidos de outros colaboradores (${target.displayName || args.userIdentifier}) é restrita a **Administradores** do sistema.`,
+          };
+        }
+      }
+      if (args.searchTerm && typeof args.searchTerm === 'string') {
+        const target = await resolveTargetUser(args.searchTerm);
+        if (target && target.uid !== String(callerUid)) {
+          return {
+            unauthorized: true,
+            message: `🔒 **Acesso Restrito:**
+
+Você possui permissão para consultar exclusivamente os **seus próprios pedidos e atendimentos**. A consulta de dados de **${target.displayName || args.searchTerm}** é restrita a **Administradores** do sistema.`,
+          };
+        }
+      }
+    }
+
     let docs = await fetchScopedOrders();
 
     // 0. Filtro por usuário específico (Apenas Admin)
@@ -2615,72 +2741,77 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
       } else if (name === 'query_orders_view') {
         const queryResults = await executeQueryOrdersView(args);
         
-        // Segunda chamada enxuta para formulação rápida da resposta final
-        const followUpContents = [
-          ...contents,
-          candidate?.content || { role: 'model', parts: candidate?.content?.parts || [functionCallPart] },
-          {
-            role: 'user',
-            parts: [{
-              functionResponse: {
-                name: 'query_orders_view',
-                response: {
-                  summary: `Foram encontrados ${queryResults.length} registros.`,
-                  orders: queryResults.slice(0, 20),
+        if (queryResults && queryResults.unauthorized) {
+          finalAnswer = queryResults.message;
+        } else {
+          const actualOrders = Array.isArray(queryResults) ? queryResults : [];
+          // Segunda chamada enxuta para formulação rápida da resposta final
+          const followUpContents = [
+            ...contents,
+            candidate?.content || { role: 'model', parts: candidate?.content?.parts || [functionCallPart] },
+            {
+              role: 'user',
+              parts: [{
+                functionResponse: {
+                  name: 'query_orders_view',
+                  response: {
+                    summary: `Foram encontrados ${actualOrders.length} registros.`,
+                    orders: actualOrders.slice(0, 20),
+                  }
                 }
-              }
-            }]
-          }
-        ];
-
-        try {
-          const { data: followUpResult } = await callGeminiWithFallback({
-            system_instruction: { parts: [{ text: systemInstruction }] },
-            contents: followUpContents,
-            tools: activeTools,
-            generationConfig: { temperature: 0.2, maxOutputTokens: 1536 }
-          });
-          const followUpCandidate = followUpResult?.candidates?.[0];
-          const followUpParts = followUpCandidate?.content?.parts || [];
-          const textResponse = cleanAiOutput(followUpParts.map(p => p.text).filter(Boolean).join('\n'));
-
-          const statusMap = {
-            pending: 'Pendente',
-            'in-progress': 'Em Produção',
-            completed: 'Concluído',
-            cancelled: 'Cancelado',
-            deleted: 'Excluído (Auditado)',
-          };
-
-          if (queryResults.length === 0) {
-            finalAnswer = textResponse && textResponse.length > 20
-              ? textResponse
-              : 'Não encontrei nenhum pedido correspondente aos critérios consultados.';
-          } else {
-            const isGeneric =
-              !textResponse ||
-              textResponse.length < 40 ||
-              textResponse.toLowerCase().includes('consulta realizada');
-
-            if (isGeneric) {
-              const list = queryResults.map(o => {
-                const formattedPrice = Number(o.totalPrice || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-                const st = statusMap[o.status] || (o.isDeleted ? 'Excluído (Auditado)' : o.status);
-                const paySt = o.paymentStatus === 'paid' ? 'Pago' : o.paymentStatus === 'partial' ? 'Parcial' : 'Pendente';
-                return `• **${o.orderNumber || '#' + o.orderId}** — **${o.customerName}**\n  📦 ${o.productSummary} (${o.quantity} un) | 💰 ${formattedPrice} | 🏷️ ${st} (${paySt})`;
-              }).join('\n\n');
-
-              finalAnswer = `Encontrei **${queryResults.length} registro(s)**:\n\n${list}`;
-            } else {
-              finalAnswer = textResponse;
+              }]
             }
-          }
-        } catch {
-          if (queryResults.length === 0) {
-            finalAnswer = 'Não encontrei nenhum pedido correspondente na base.';
-          } else {
-            const list = queryResults.map(o => `• **${o.orderNumber || '#' + o.orderId}** — ${o.customerName}: ${o.productSummary} (${o.quantity} un) - R$ ${o.totalPrice}`).join('\n');
-            finalAnswer = `Encontrei **${queryResults.length} registro(s)**:\n\n${list}`;
+          ];
+
+          try {
+            const { data: followUpResult } = await callGeminiWithFallback({
+              system_instruction: { parts: [{ text: systemInstruction }] },
+              contents: followUpContents,
+              tools: activeTools,
+              generationConfig: { temperature: 0.2, maxOutputTokens: 1536 }
+            });
+            const followUpCandidate = followUpResult?.candidates?.[0];
+            const followUpParts = followUpCandidate?.content?.parts || [];
+            const textResponse = cleanAiOutput(followUpParts.map(p => p.text).filter(Boolean).join('\n'));
+
+            const statusMap = {
+              pending: 'Pendente',
+              'in-progress': 'Em Produção',
+              completed: 'Concluído',
+              cancelled: 'Cancelado',
+              deleted: 'Excluído (Auditado)',
+            };
+
+            if (actualOrders.length === 0) {
+              finalAnswer = textResponse && textResponse.length > 20
+                ? textResponse
+                : 'Não encontrei nenhum pedido correspondente aos critérios consultados.';
+            } else {
+              const isGeneric =
+                !textResponse ||
+                textResponse.length < 40 ||
+                textResponse.toLowerCase().includes('consulta realizada');
+
+              if (isGeneric) {
+                const list = actualOrders.map(o => {
+                  const formattedPrice = Number(o.totalPrice || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+                  const st = statusMap[o.status] || (o.isDeleted ? 'Excluído (Auditado)' : o.status);
+                  const paySt = o.paymentStatus === 'paid' ? 'Pago' : o.paymentStatus === 'partial' ? 'Parcial' : 'Pendente';
+                  return `• **${o.orderNumber || '#' + o.orderId}** — **${o.customerName}**\n  📦 ${o.productSummary} (${o.quantity} un) | 💰 ${formattedPrice} | 🏷️ ${st} (${paySt})`;
+                }).join('\n\n');
+
+                finalAnswer = `Encontrei **${actualOrders.length} registro(s)**:\n\n${list}`;
+              } else {
+                finalAnswer = textResponse;
+              }
+            }
+          } catch {
+            if (actualOrders.length === 0) {
+              finalAnswer = 'Não encontrei nenhum pedido correspondente na base.';
+            } else {
+              const list = actualOrders.map(o => `• **${o.orderNumber || '#' + o.orderId}** — ${o.customerName}: ${o.productSummary} (${o.quantity} un) - R$ ${o.totalPrice}`).join('\n');
+              finalAnswer = `Encontrei **${actualOrders.length} registro(s)**:\n\n${list}`;
+            }
           }
         }
       } else if (name === 'search_gallery_portfolio') {
