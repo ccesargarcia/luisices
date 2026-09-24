@@ -1271,6 +1271,183 @@ exports.aiAgentChat = onCall({ cors: true, timeoutSeconds: 120, memory: '1GiB', 
   }
   const isAdmin = callerProfile.role === 'admin';
 
+  // Helper central de busca e blindagem estrita de pedidos em tempo real (projeção sanitizada em memória)
+  const fetchScopedOrders = async () => {
+    let docs = [];
+    if (isAdmin) {
+      // Administrador: lê pedidos ativos diretamente de 'orders' com limite enxuto (200 mais recentes)
+      const snap = await admin
+        .firestore()
+        .collection('orders')
+        .where('deletedAt', '==', null)
+        .limit(200)
+        .get();
+
+      docs = snap.docs.map((d) => sanitizeOrderForAi(d.id, d.data()));
+    } else {
+      // Funcionário / Usuário: lê estritamente pedidos onde userId == callerUid ou assignedTo == callerUid
+      const [userOrdersSnap, assignedOrdersSnap, createdOrdersSnap] = await Promise.all([
+        admin.firestore().collection('orders').where('userId', '==', callerUid).where('deletedAt', '==', null).limit(200).get(),
+        admin.firestore().collection('orders').where('assignedTo', '==', callerUid).where('deletedAt', '==', null).limit(200).get(),
+        admin.firestore().collection('orders').where('createdBy', '==', callerUid).where('deletedAt', '==', null).limit(200).get(),
+      ]);
+
+      const map = new Map();
+      userOrdersSnap.docs.forEach((d) => map.set(d.id, sanitizeOrderForAi(d.id, d.data())));
+      assignedOrdersSnap.docs.forEach((d) => map.set(d.id, sanitizeOrderForAi(d.id, d.data())));
+      createdOrdersSnap.docs.forEach((d) => map.set(d.id, sanitizeOrderForAi(d.id, d.data())));
+
+      // BLINDAGEM INFALÍVEL: Filtra exclusivamente pedidos pertencentes a callerUid
+      const uid = String(callerUid);
+      docs = Array.from(map.values()).filter((d) => {
+        if (d.deletedAt || d.isDeleted) return false;
+        return d.userId === uid || d.assignedTo === uid || d.createdBy === uid;
+      });
+    }
+
+    // Ordenação do mais recente para o mais antigo em memória
+    docs.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+    return docs;
+  };
+
+  // Helper para obter diretório consolidado de todos os colaboradores do sistema (com cache de memória de 10 min)
+  const getAllKnownTeamMembers = async () => {
+    if (cachedTeamMembers && (Date.now() - cachedTeamMembersTimestamp < TEAM_MEMBERS_CACHE_TTL)) {
+      return cachedTeamMembers;
+    }
+
+    const memberMap = new Map();
+
+    // 1. userProfiles
+    try {
+      const snap = await admin.firestore().collection('userProfiles').get();
+      snap.docs.forEach((d) => {
+        const data = d.data() || {};
+        const uid = d.id;
+        const displayName = data.displayName || (data.email ? data.email.split('@')[0] : 'Usuário');
+        const email = data.email || '';
+        const role = data.role || 'user';
+        const active = data.active !== false;
+        memberMap.set(uid, {
+          uid,
+          displayName,
+          email,
+          role,
+          active,
+          names: [displayName, email ? email.split('@')[0] : ''].filter(Boolean),
+        });
+      });
+    } catch (err) {
+      console.warn('[getAllKnownTeamMembers] Erro ao ler userProfiles:', err);
+    }
+
+    // 2. Firebase Auth (garante contas criadas que ainda não têm doc em userProfiles)
+    try {
+      const authList = await admin.auth().listUsers(100);
+      authList.users.forEach((u) => {
+        if (!memberMap.has(u.uid)) {
+          const displayName = u.displayName || (u.email ? u.email.split('@')[0] : 'Usuário');
+          const email = u.email || '';
+          memberMap.set(u.uid, {
+            uid: u.uid,
+            displayName,
+            email,
+            role: 'user',
+            active: !u.disabled,
+            names: [displayName, email ? email.split('@')[0] : ''].filter(Boolean),
+          });
+        }
+      });
+    } catch (err) {
+      console.warn('[getAllKnownTeamMembers] Erro ao listar Auth users:', err);
+    }
+
+    // 3. Orders (coleta criadores e responsáveis atribuídos)
+    try {
+      const ordersSnap = await admin.firestore().collection('orders').limit(200).get();
+      ordersSnap.docs.forEach((d) => {
+        const data = d.data() || {};
+        if (data.userId && !memberMap.has(data.userId)) {
+          const name = data.createdByName || 'Colaborador';
+          memberMap.set(data.userId, {
+            uid: data.userId,
+            displayName: name,
+            email: '',
+            role: 'user',
+            active: true,
+            names: [name],
+          });
+        }
+        if (data.assignedTo && !memberMap.has(data.assignedTo)) {
+          const name = data.assignedToName || 'Colaborador';
+          memberMap.set(data.assignedTo, {
+            uid: data.assignedTo,
+            displayName: name,
+            email: '',
+            role: 'funcionario',
+            active: true,
+            names: [name],
+          });
+        }
+      });
+    } catch (err) {
+      console.warn('[getAllKnownTeamMembers] Erro ao ler orders para membros:', err);
+    }
+
+    const result = Array.from(memberMap.values());
+    cachedTeamMembers = result;
+    cachedTeamMembersTimestamp = Date.now();
+    return result;
+  };
+
+  // Helper para resolver colaborador/usuário por nome, email ou UID com tolerância e normalização
+  const resolveTargetUser = async (identifier) => {
+    if (!identifier || typeof identifier !== 'string' || !identifier.trim()) return null;
+    const clean = normalizeString(identifier);
+    const members = await getAllKnownTeamMembers();
+
+    // 1. Busca exata por UID
+    let match = members.find((m) => normalizeString(m.uid) === clean);
+    if (match) return match;
+
+    // 2. Busca exata por email
+    match = members.find((m) => m.email && normalizeString(m.email) === clean);
+    if (match) return match;
+
+    // 3. Busca exata por displayName
+    match = members.find((m) => normalizeString(m.displayName) === clean);
+    if (match) return match;
+
+    // 4. Busca por primeiro nome (ex: "amanda" em "Amanda Silva")
+    match = members.find((m) => {
+      const firstName = normalizeString(m.displayName).split(' ')[0];
+      return firstName === clean;
+    });
+    if (match) return match;
+
+    // 5. Busca por inclusão mútua
+    match = members.find((m) => {
+      const d = normalizeString(m.displayName);
+      const e = normalizeString(m.email);
+      return (d && (d.includes(clean) || clean.includes(d))) || (e && e.includes(clean));
+    });
+    if (match) return match;
+
+    // 6. Busca nos nomes/aliases
+    match = members.find((m) =>
+      m.names && m.names.some((n) => {
+        const norm = normalizeString(n);
+        return norm.includes(clean) || clean.includes(norm);
+      })
+    );
+    if (match) return match;
+
+    return null;
+  };
+
+
+
+
   // Guardrail de Permissão do Copiloto de IA:
   if (callerProfile.role === 'funcionario' && callerProfile.permissions?.aiCopilot !== true) {
     throw new functions.https.HttpsError('permission-denied', 'Seu perfil de funcionário não possui permissão para acessar o Copiloto de IA.');
@@ -1661,180 +1838,6 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
       ]
     }
   ];
-
-  // Helper central de busca e blindagem estrita de pedidos em tempo real (projeção sanitizada em memória)
-  const fetchScopedOrders = async () => {
-    let docs = [];
-    if (isAdmin) {
-      // Administrador: lê pedidos ativos diretamente de 'orders' com limite enxuto (200 mais recentes)
-      const snap = await admin
-        .firestore()
-        .collection('orders')
-        .where('deletedAt', '==', null)
-        .limit(200)
-        .get();
-
-      docs = snap.docs.map((d) => sanitizeOrderForAi(d.id, d.data()));
-    } else {
-      // Funcionário / Usuário: lê estritamente pedidos onde userId == callerUid ou assignedTo == callerUid
-      const [userOrdersSnap, assignedOrdersSnap, createdOrdersSnap] = await Promise.all([
-        admin.firestore().collection('orders').where('userId', '==', callerUid).where('deletedAt', '==', null).limit(200).get(),
-        admin.firestore().collection('orders').where('assignedTo', '==', callerUid).where('deletedAt', '==', null).limit(200).get(),
-        admin.firestore().collection('orders').where('createdBy', '==', callerUid).where('deletedAt', '==', null).limit(200).get(),
-      ]);
-
-      const map = new Map();
-      userOrdersSnap.docs.forEach((d) => map.set(d.id, sanitizeOrderForAi(d.id, d.data())));
-      assignedOrdersSnap.docs.forEach((d) => map.set(d.id, sanitizeOrderForAi(d.id, d.data())));
-      createdOrdersSnap.docs.forEach((d) => map.set(d.id, sanitizeOrderForAi(d.id, d.data())));
-
-      // BLINDAGEM INFALÍVEL: Filtra exclusivamente pedidos pertencentes a callerUid
-      const uid = String(callerUid);
-      docs = Array.from(map.values()).filter((d) => {
-        if (d.deletedAt || d.isDeleted) return false;
-        return d.userId === uid || d.assignedTo === uid || d.createdBy === uid;
-      });
-    }
-
-    // Ordenação do mais recente para o mais antigo em memória
-    docs.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
-    return docs;
-  };
-
-  // Helper para obter diretório consolidado de todos os colaboradores do sistema (com cache de memória de 10 min)
-  const getAllKnownTeamMembers = async () => {
-    if (cachedTeamMembers && (Date.now() - cachedTeamMembersTimestamp < TEAM_MEMBERS_CACHE_TTL)) {
-      return cachedTeamMembers;
-    }
-
-    const memberMap = new Map();
-
-    // 1. userProfiles
-    try {
-      const snap = await admin.firestore().collection('userProfiles').get();
-      snap.docs.forEach((d) => {
-        const data = d.data() || {};
-        const uid = d.id;
-        const displayName = data.displayName || (data.email ? data.email.split('@')[0] : 'Usuário');
-        const email = data.email || '';
-        const role = data.role || 'user';
-        const active = data.active !== false;
-        memberMap.set(uid, {
-          uid,
-          displayName,
-          email,
-          role,
-          active,
-          names: [displayName, email ? email.split('@')[0] : ''].filter(Boolean),
-        });
-      });
-    } catch (err) {
-      console.warn('[getAllKnownTeamMembers] Erro ao ler userProfiles:', err);
-    }
-
-    // 2. Firebase Auth (garante contas criadas que ainda não têm doc em userProfiles)
-    try {
-      const authList = await admin.auth().listUsers(100);
-      authList.users.forEach((u) => {
-        if (!memberMap.has(u.uid)) {
-          const displayName = u.displayName || (u.email ? u.email.split('@')[0] : 'Usuário');
-          const email = u.email || '';
-          memberMap.set(u.uid, {
-            uid: u.uid,
-            displayName,
-            email,
-            role: 'user',
-            active: !u.disabled,
-            names: [displayName, email ? email.split('@')[0] : ''].filter(Boolean),
-          });
-        }
-      });
-    } catch (err) {
-      console.warn('[getAllKnownTeamMembers] Erro ao listar Auth users:', err);
-    }
-
-    // 3. Orders (coleta criadores e responsáveis atribuídos)
-    try {
-      const ordersSnap = await admin.firestore().collection('orders').limit(200).get();
-      ordersSnap.docs.forEach((d) => {
-        const data = d.data() || {};
-        if (data.userId && !memberMap.has(data.userId)) {
-          const name = data.createdByName || 'Colaborador';
-          memberMap.set(data.userId, {
-            uid: data.userId,
-            displayName: name,
-            email: '',
-            role: 'user',
-            active: true,
-            names: [name],
-          });
-        }
-        if (data.assignedTo && !memberMap.has(data.assignedTo)) {
-          const name = data.assignedToName || 'Colaborador';
-          memberMap.set(data.assignedTo, {
-            uid: data.assignedTo,
-            displayName: name,
-            email: '',
-            role: 'funcionario',
-            active: true,
-            names: [name],
-          });
-        }
-      });
-    } catch (err) {
-      console.warn('[getAllKnownTeamMembers] Erro ao ler orders para membros:', err);
-    }
-
-    const result = Array.from(memberMap.values());
-    cachedTeamMembers = result;
-    cachedTeamMembersTimestamp = Date.now();
-    return result;
-  };
-
-  // Helper para resolver colaborador/usuário por nome, email ou UID com tolerância e normalização
-  const resolveTargetUser = async (identifier) => {
-    if (!identifier || typeof identifier !== 'string' || !identifier.trim()) return null;
-    const clean = normalizeString(identifier);
-    const members = await getAllKnownTeamMembers();
-
-    // 1. Busca exata por UID
-    let match = members.find((m) => normalizeString(m.uid) === clean);
-    if (match) return match;
-
-    // 2. Busca exata por email
-    match = members.find((m) => m.email && normalizeString(m.email) === clean);
-    if (match) return match;
-
-    // 3. Busca exata por displayName
-    match = members.find((m) => normalizeString(m.displayName) === clean);
-    if (match) return match;
-
-    // 4. Busca por primeiro nome (ex: "amanda" em "Amanda Silva")
-    match = members.find((m) => {
-      const firstName = normalizeString(m.displayName).split(' ')[0];
-      return firstName === clean;
-    });
-    if (match) return match;
-
-    // 5. Busca por inclusão mútua
-    match = members.find((m) => {
-      const d = normalizeString(m.displayName);
-      const e = normalizeString(m.email);
-      return (d && (d.includes(clean) || clean.includes(d))) || (e && e.includes(clean));
-    });
-    if (match) return match;
-
-    // 6. Busca nos nomes/aliases
-    match = members.find((m) =>
-      m.names && m.names.some((n) => {
-        const norm = normalizeString(n);
-        return norm.includes(clean) || clean.includes(norm);
-      })
-    );
-    if (match) return match;
-
-    return null;
-  };
 
   // Helper para auditoria e métricas de usuário/colaborador (EXCLUSIVO ADMIN)
   const executeUserSummary = async (args = {}) => {
