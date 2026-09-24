@@ -162,7 +162,7 @@ const isCatalogSubdomain = typeof window !== 'undefined' && (() => {
     host.startsWith('lojinha.') ||
     host.startsWith('catalogo.') ||
     host.startsWith('catalog.') ||
-    ['loja', 'lojinha', 'catalog', 'catalogo'].includes(view)
+    ['loja', 'lojinha', 'catalog', 'catalogo', 'novo'].includes(view)
   );
 })();
 
@@ -171,6 +171,16 @@ export const router = isCatalogSubdomain
       {
         path: '/',
         element: <Lazy><PublicCatalog /></Lazy>,
+        errorElement: <ErrorBoundary />,
+      },
+      {
+        path: '/novo',
+        element: <Lazy><NovoVisual /></Lazy>,
+        errorElement: <ErrorBoundary />,
+      },
+      {
+        path: '/novo/*',
+        element: <Lazy><NovoVisual /></Lazy>,
         errorElement: <ErrorBoundary />,
       },
       {
@@ -221,6 +231,20 @@ export const router = isCatalogSubdomain
       {
         path: '/catalog',
         element: <Navigate to="/loja" replace />,
+      },
+      {
+        path: '/novo',
+        element: <Lazy><NovoVisual /></Lazy>,
+        errorElement: <ErrorBoundary />,
+      },
+      {
+        path: '/novo/*',
+        element: <Lazy><NovoVisual /></Lazy>,
+        errorElement: <ErrorBoundary />,
+      },
+      {
+        path: '/novo-catalogo',
+        element: <Navigate to="/novo" replace />,
       },
       {
         path: '/',
