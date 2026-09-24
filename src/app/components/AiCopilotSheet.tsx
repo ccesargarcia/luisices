@@ -878,43 +878,79 @@ export function AiCopilotSheet({
                     </div>
                   )}
 
-                  {/* Card 4: Fotos da Galeria Encontradas */}
+                  {/* Card 4: Fotos e Modelos da Galeria (Design Elegante & Bem Formatado) */}
                   {msg.galleryItems && msg.galleryItems.length > 0 && (
-                    <div className="mt-3 p-3 bg-card border rounded-xl shadow-xs space-y-2 text-foreground">
-                      <div className="flex items-center justify-between border-b pb-1.5">
-                        <span className="text-xs font-semibold text-primary flex items-center gap-1.5">
-                          <Images className="size-3.5" />
-                          Modelos da Galeria ({msg.galleryItems.length})
+                    <div className="mt-3 p-3.5 bg-card/90 backdrop-blur-xs border border-border/80 rounded-2xl shadow-sm space-y-3 text-foreground">
+                      <div className="flex items-center justify-between border-b border-border/60 pb-2">
+                        <span className="text-xs font-bold text-primary flex items-center gap-2">
+                          <Images className="size-4 text-primary" />
+                          Modelos Encontrados no Acervo ({msg.galleryItems.length})
+                        </span>
+                        <span className="text-[10px] text-muted-foreground font-medium">
+                          Toque na foto para ampliar
                         </span>
                       </div>
-                      <div className="grid grid-cols-2 gap-2 pt-1">
-                        {msg.galleryItems.slice(0, 6).map((item) => (
-                          <div key={item.id} className="border rounded-lg overflow-hidden bg-background flex flex-col group text-left">
-                            <div className="aspect-square relative overflow-hidden bg-muted">
-                              <img
-                                src={item.imageUrl}
-                                alt={item.title}
-                                className="w-full h-full object-cover group-hover:scale-105 transition-transform"
-                              />
-                              <a
-                                href={item.imageUrl}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center"
-                              >
-                                <ZoomIn className="size-5 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
-                              </a>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-0.5">
+                        {msg.galleryItems.slice(0, 6).map((item) => {
+                          const allTags = [...(item.tags || []), ...(item.aiTags || [])].filter(Boolean);
+                          const uniqueTags = Array.from(new Set(allTags)).slice(0, 3);
+                          return (
+                            <div 
+                              key={item.id} 
+                              className="border border-border/70 rounded-xl overflow-hidden bg-background hover:border-primary/50 transition-all flex flex-col group text-left shadow-xs"
+                            >
+                              <div className="aspect-[4/3] relative overflow-hidden bg-muted/60">
+                                <img
+                                  src={item.imageUrl}
+                                  alt={item.title}
+                                  loading="lazy"
+                                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                                />
+                                <a
+                                  href={item.imageUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="absolute inset-0 bg-black/0 group-hover:bg-black/35 transition-all flex items-center justify-center"
+                                  title="Ver Foto em Alta Resolução"
+                                >
+                                  <span className="opacity-0 group-hover:opacity-100 transition-opacity bg-black/70 text-white text-[11px] font-semibold px-2.5 py-1 rounded-full flex items-center gap-1.5 backdrop-blur-xs shadow-md">
+                                    <ZoomIn className="size-3.5" />
+                                    Ver Foto
+                                  </span>
+                                </a>
+                                {item.productType && (
+                                  <span className="absolute top-2 left-2 px-2 py-0.5 rounded-md bg-black/60 text-white text-[9px] font-bold backdrop-blur-xs">
+                                    {item.productType}
+                                  </span>
+                                )}
+                              </div>
+                              <div className="p-2.5 space-y-1.5 flex-1 flex flex-col justify-between">
+                                <div>
+                                  <h4 className="text-xs font-bold text-foreground leading-snug line-clamp-1" title={item.title}>
+                                    {item.title || "Modelo Personalizado"}
+                                  </h4>
+                                  {item.description && (
+                                    <p className="text-[11px] text-muted-foreground line-clamp-2 leading-relaxed mt-0.5">
+                                      {item.description}
+                                    </p>
+                                  )}
+                                </div>
+                                {uniqueTags.length > 0 && (
+                                  <div className="flex flex-wrap gap-1 pt-1 border-t border-border/40">
+                                    {uniqueTags.map((tag, tIdx) => (
+                                      <span 
+                                        key={tIdx} 
+                                        className="text-[9px] font-medium px-1.5 py-0.5 rounded-md bg-muted text-muted-foreground"
+                                      >
+                                        #{tag}
+                                      </span>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
                             </div>
-                            <div className="p-1.5 space-y-0.5">
-                              <p className="text-[11px] font-medium truncate" title={item.title}>{item.title}</p>
-                              {item.productType && (
-                                <span className="text-[9px] px-1 py-0.5 bg-muted text-muted-foreground rounded inline-block truncate max-w-full">
-                                  {item.productType}
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     </div>
                   )}

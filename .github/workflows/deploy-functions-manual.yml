@@ -39,9 +39,14 @@ on:
           - 'createUser,deleteUser'
           - 'sendCustomEmail,getEmailUsage,resendReceivingWebhook'
       deploy_rules_and_indexes:
-        description: 'Publicar Firestore Rules e Indexes?'
+        description: 'Publicar Firestore Rules e Indexes? (Já publicado no deploy de Hosting)'
         required: false
-        default: true
+        default: false
+        type: boolean
+      update_secrets:
+        description: 'Atualizar secrets no Secret Manager? (Marque apenas se alterou chaves/tokens no GitHub Secrets)'
+        required: false
+        default: false
         type: boolean
 
 permissions:
@@ -51,7 +56,6 @@ jobs:
   deploy-functions:
     runs-on: ubuntu-latest
     timeout-minutes: 15
-
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -59,12 +63,12 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v5
         with:
-          node-version: '20'
+          node-version: '22'
           cache: 'npm'
           cache-dependency-path: functions/package-lock.json
 
       - name: Install Firebase CLI
-        run: npm install -g firebase-tools
+        run: npm install -g firebase-tools@13.16.0
 
       - name: Install Functions Dependencies
         working-directory: functions
@@ -92,20 +96,25 @@ jobs:
         run: |
           echo "$FIREBASE_SERVICE_ACCOUNT" > "$HOME/firebase-service-account.json"
           export GOOGLE_APPLICATION_CREDENTIALS="$HOME/firebase-service-account.json"
-          echo "$RESEND_API_KEY" > "$HOME/resend_api_key.txt"
-          echo "$EVOLUTION_API_KEY" > "$HOME/evolution_api_key.txt"
-          echo "$GEMINI_API_KEY" > "$HOME/gemini_api_key.txt"
-          firebase use luisices-dev --project luisices-dev
-          firebase functions:secrets:set RESEND_API_KEY --project luisices-dev --data-file "$HOME/resend_api_key.txt" || true
-          firebase functions:secrets:set EVOLUTION_API_KEY --project luisices-dev --data-file "$HOME/evolution_api_key.txt" || true
-          if [ -n "$GEMINI_API_KEY" ]; then
-            firebase functions:secrets:set GEMINI_API_KEY --project luisices-dev --data-file "$HOME/gemini_api_key.txt" || true
+          firebase use luisices-dev --project luisices-dev --non-interactive
+
+          # Atualiza segredos no Secret Manager apenas se explicitamente solicitado
+          if [ "${{ inputs.update_secrets }}" = "true" ]; then
+            echo "🔐 Atualizando secrets no Google Secret Manager (Dev)..."
+            echo "$RESEND_API_KEY" > "$HOME/resend_api_key.txt"
+            echo "$EVOLUTION_API_KEY" > "$HOME/evolution_api_key.txt"
+            echo "$GEMINI_API_KEY" > "$HOME/gemini_api_key.txt"
+            firebase functions:secrets:set RESEND_API_KEY --project luisices-dev --data-file "$HOME/resend_api_key.txt" --non-interactive --force || true
+            firebase functions:secrets:set EVOLUTION_API_KEY --project luisices-dev --data-file "$HOME/evolution_api_key.txt" --non-interactive --force || true
+            if [ -n "$GEMINI_API_KEY" ]; then
+              firebase functions:secrets:set GEMINI_API_KEY --project luisices-dev --data-file "$HOME/gemini_api_key.txt" --non-interactive --force || true
+            fi
           fi
 
           # Determina se deve publicar regras e índices
-          if [ "${{ inputs.deploy_rules_and_indexes }}" != "false" ]; then
+          if [ "${{ inputs.deploy_rules_and_indexes }}" = "true" ]; then
             echo "📄 Publicando regras e índices do Firestore..."
-            firebase deploy --only firestore:rules,firestore:indexes --project luisices-dev
+            firebase deploy --only firestore:rules,firestore:indexes --project luisices-dev --non-interactive --force
           fi
 
           # Determina quais funções publicar via seleção
@@ -128,10 +137,12 @@ jobs:
           fi
 
           echo "🚀 Realizando deploy de: $DEPLOY_TARGET"
-          firebase deploy --only "$DEPLOY_TARGET" --project luisices-dev --force
+          firebase deploy --only "$DEPLOY_TARGET" --project luisices-dev --non-interactive --force
 
-          echo "🧹 Podando versões obsoletas de segredos no Secret Manager (Dev)..."
-          firebase functions:secrets:prune --project luisices-dev -f || true
+          if [ "${{ inputs.update_secrets }}" = "true" ]; then
+            echo "🧹 Podando versões obsoletas de segredos no Secret Manager (Dev)..."
+            firebase functions:secrets:prune --project luisices-dev -f --non-interactive || true
+          fi
 
       - name: Deploy Firebase Functions & Rules (Production)
         if: steps.env.outputs.target == 'prod'
@@ -147,20 +158,25 @@ jobs:
           fi
           echo "$FIREBASE_SERVICE_ACCOUNT" > "$HOME/firebase-service-account.json"
           export GOOGLE_APPLICATION_CREDENTIALS="$HOME/firebase-service-account.json"
-          echo "$RESEND_API_KEY" > "$HOME/resend_api_key.txt"
-          echo "$EVOLUTION_API_KEY" > "$HOME/evolution_api_key.txt"
-          echo "$GEMINI_API_KEY" > "$HOME/gemini_api_key.txt"
-          firebase use papelaria-dashboard --project papelaria-dashboard
-          firebase functions:secrets:set RESEND_API_KEY --project papelaria-dashboard --data-file "$HOME/resend_api_key.txt" || true
-          firebase functions:secrets:set EVOLUTION_API_KEY --project papelaria-dashboard --data-file "$HOME/evolution_api_key.txt" || true
-          if [ -n "$GEMINI_API_KEY" ]; then
-            firebase functions:secrets:set GEMINI_API_KEY --project papelaria-dashboard --data-file "$HOME/gemini_api_key.txt" || true
+          firebase use papelaria-dashboard --project papelaria-dashboard --non-interactive
+
+          # Atualiza segredos no Secret Manager apenas se explicitamente solicitado
+          if [ "${{ inputs.update_secrets }}" = "true" ]; then
+            echo "🔐 Atualizando secrets no Google Secret Manager (Prod)..."
+            echo "$RESEND_API_KEY" > "$HOME/resend_api_key.txt"
+            echo "$EVOLUTION_API_KEY" > "$HOME/evolution_api_key.txt"
+            echo "$GEMINI_API_KEY" > "$HOME/gemini_api_key.txt"
+            firebase functions:secrets:set RESEND_API_KEY --project papelaria-dashboard --data-file "$HOME/resend_api_key.txt" --non-interactive --force || true
+            firebase functions:secrets:set EVOLUTION_API_KEY --project papelaria-dashboard --data-file "$HOME/evolution_api_key.txt" --non-interactive --force || true
+            if [ -n "$GEMINI_API_KEY" ]; then
+              firebase functions:secrets:set GEMINI_API_KEY --project papelaria-dashboard --data-file "$HOME/gemini_api_key.txt" --non-interactive --force || true
+            fi
           fi
 
           # Determina se deve publicar regras e índices
-          if [ "${{ inputs.deploy_rules_and_indexes }}" != "false" ]; then
+          if [ "${{ inputs.deploy_rules_and_indexes }}" = "true" ]; then
             echo "📄 Publicando regras, índices e storage..."
-            firebase deploy --only firestore:rules,firestore:indexes,storage --project papelaria-dashboard
+            firebase deploy --only firestore:rules,firestore:indexes,storage --project papelaria-dashboard --non-interactive --force
           fi
 
           # Determina quais funções publicar via seleção
@@ -183,7 +199,9 @@ jobs:
           fi
 
           echo "🚀 Realizando deploy de: $DEPLOY_TARGET"
-          firebase deploy --only "$DEPLOY_TARGET" --project papelaria-dashboard --force
+          firebase deploy --only "$DEPLOY_TARGET" --project papelaria-dashboard --non-interactive --force
 
-          echo "🧹 Podando versões obsoletas de segredos no Secret Manager (Prod)..."
-          firebase functions:secrets:prune --project papelaria-dashboard -f || true
+          if [ "${{ inputs.update_secrets }}" = "true" ]; then
+            echo "🧹 Podando versões obsoletas de segredos no Secret Manager (Prod)..."
+            firebase functions:secrets:prune --project papelaria-dashboard -f --non-interactive || true
+          fi

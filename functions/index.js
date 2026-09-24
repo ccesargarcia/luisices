@@ -1082,6 +1082,64 @@ function sanitizeOrderForAi(id, data = {}) {
     createdAt,
   };
 }
+/**
+ * Projeta e sanitiza em memória um documento da coleção operacional 'customers' para a IA.
+ * Suporta modelos novos e legados (address/street/city/state), garantindo dados limpos sem 'undefined'.
+ */
+function sanitizeCustomerForAi(id, data = {}) {
+  const name = String(data.name || data.customerName || data.fullName || '').trim() || 'Cliente sem nome';
+  const phone = String(data.phone || data.whatsapp || data.telephone || data.mobile || '').trim();
+  const email = String(data.email || '').trim();
+  
+  // Extrai cidade e estado considerando variações de esquema
+  let city = String(data.city || data.cidade || '').trim();
+  let state = String(data.state || data.uf || data.estado || '').trim();
+  
+  if (!city && data.address && typeof data.address === 'string') {
+    // Tenta extrair 'Cidade - UF' ou 'Cidade/UF' de strings de endereço legado
+    const match = data.address.match(/(?:-|–|,)?\s*([A-Za-zÀ-ÖØ-öø-ÿ\s]+)(?:[\/\-]\s*([A-Z]{2}))?$/);
+    if (match && match[1]) {
+      city = match[1].trim();
+      if (match[2]) state = match[2].trim();
+    }
+  }
+
+  const totalOrders = Number(data.totalOrders || data.ordersCount || 0);
+  const totalSpent = Number(data.totalSpent || data.spentTotal || data.totalValue || 0);
+  const status = String(data.status || 'active').trim();
+  const notes = String(data.notes || '').trim();
+  const birthday = String(data.birthday || '').trim();
+  
+  let createdAt = '';
+  if (data.createdAt) {
+    if (typeof data.createdAt.toDate === 'function') {
+      createdAt = data.createdAt.toDate().toISOString();
+    } else if (typeof data.createdAt === 'string') {
+      createdAt = data.createdAt;
+    } else if (data.createdAt._seconds) {
+      createdAt = new Date(data.createdAt._seconds * 1000).toISOString();
+    }
+  }
+
+  return {
+    id,
+    customerId: id,
+    name,
+    phone,
+    email,
+    city,
+    state,
+    status,
+    totalOrders,
+    totalSpent,
+    birthday,
+    notes,
+    userId: data.userId || data.createdBy || null,
+    createdBy: data.createdBy || data.userId || null,
+    createdByName: data.createdByName || null,
+    createdAt,
+  };
+}
 
 
 /**
@@ -1103,6 +1161,11 @@ let preferredWorkingModel = 'gemini-3.8-flash';
 let cachedTeamMembers = null;
 let cachedTeamMembersTimestamp = 0;
 const TEAM_MEMBERS_CACHE_TTL = 10 * 60 * 1000;
+
+// Cache global em memória para catálogo e produtos (TTL de 15 minutos)
+let cachedCatalogSummary = null;
+let cachedCatalogTimestamp = 0;
+const CATALOG_CACHE_TTL = 15 * 60 * 1000;
 
 // Cache global em memória para respostas rápidas (TTL de 3 minutos)
 const aiResponseCache = new Map();
@@ -1189,7 +1252,50 @@ const cleanAiOutput = (text) => {
 /**
  * Endpoint Callable Seguro do Copiloto de IA Interno
  */
-exports.aiAgentChat = onCall({ cors: true, timeoutSeconds: 120, memory: '512MiB', maxInstances: 10, secrets: [GEMINI_API_KEY] }, async (request) => {
+// Helper para carregar e compilar resumo compacto do catálogo e acervo com cache TTL
+const getDynamicCatalogKnowledge = async () => {
+  if (cachedCatalogSummary && (Date.now() - cachedCatalogTimestamp < CATALOG_CACHE_TTL)) {
+    return cachedCatalogSummary;
+  }
+
+  try {
+    const [productsSnap, gallerySnap] = await Promise.all([
+      admin.firestore().collection("storeProducts").where("active", "!=", false).limit(50).get().catch(() => ({ docs: [] })),
+      admin.firestore().collection("gallery").limit(20).get().catch(() => ({ docs: [] })),
+    ]);
+
+    const lines = [];
+    if (productsSnap && productsSnap.docs && productsSnap.docs.length > 0) {
+      lines.push("PRODUTOS ATIVOS DO ATELIÊ:");
+      productsSnap.docs.forEach((doc) => {
+        const d = doc.data() || {};
+        const price = d.price ? ` | R$ ${Number(d.price).toFixed(2)}` : "";
+        const cat = d.category ? ` [${d.category}]` : "";
+        const mat = d.materials && d.materials.length ? ` (Materiais: ${d.materials.join(", ")})` : "";
+        lines.push(`• ${d.name || "Item"}${cat}${price}${mat}`);
+      });
+    }
+
+    if (gallerySnap && gallerySnap.docs && gallerySnap.docs.length > 0) {
+      lines.push("DESTAQUES DO ACERVO DE PROJETOS REAIS:");
+      gallerySnap.docs.slice(0, 10).forEach((doc) => {
+        const d = doc.data() || {};
+        const title = d.title || d.theme || "Projeto";
+        const papers = d.papers && d.papers.length ? ` (Papéis: ${d.papers.join(", ")})` : "";
+        lines.push(`• ${title}${d.category ? " [" + d.category + "]" : ""}${papers}`);
+      });
+    }
+
+    cachedCatalogSummary = lines.length > 0 ? "\n\nCONHECIMENTO DINÂMICO DO ATELIÊ (PRODUTOS & ACERVO ATUALIZADO):\n" + lines.join("\n") : "";
+    cachedCatalogTimestamp = Date.now();
+    return cachedCatalogSummary;
+  } catch (err) {
+    console.warn("[getDynamicCatalogKnowledge] Erro ao carregar catálogo para o prompt:", err);
+    return "";
+  }
+};
+
+exports.aiAgentChat = onCall({ cors: true, timeoutSeconds: 120, memory: '1GiB', maxInstances: 10, secrets: [GEMINI_API_KEY] }, async (request) => {
   if (!(await isAuthorizedEmployeeOrAdmin(request))) {
     throw new functions.https.HttpsError('permission-denied', 'Acesso restrito a membros autorizados da equipe.');
   }
@@ -1207,284 +1313,6 @@ exports.aiAgentChat = onCall({ cors: true, timeoutSeconds: 120, memory: '512MiB'
     throw new functions.https.HttpsError('permission-denied', 'Conta de usuário desativada.');
   }
   const isAdmin = callerProfile.role === 'admin';
-
-  // Guardrail de Permissão do Copiloto de IA:
-  if (callerProfile.role === 'funcionario' && callerProfile.permissions?.aiCopilot !== true) {
-    throw new functions.https.HttpsError('permission-denied', 'Seu perfil de funcionário não possui permissão para acessar o Copiloto de IA.');
-  }
-  if (callerProfile.role === 'user' && callerProfile.permissions?.aiCopilot === false) {
-    throw new functions.https.HttpsError('permission-denied', 'Seu perfil de usuário não possui permissão para acessar o Copiloto de IA.');
-  }
-
-  const { message, history = [], image = null } = request.data || {};
-  if (!message || typeof message !== 'string' || !message.trim()) {
-    throw new functions.https.HttpsError('invalid-argument', 'Mensagem é obrigatória.');
-  }
-
-  const cleanMessage = message.trim();
-  const hasImage = Boolean(image && (image.base64 || image.imageUrl));
-  const cacheKey = `${callerUid}_${cleanMessage.toLowerCase()}`;
-
-  // Se for uma pergunta comum sem histórico, sem imagem e estiver no cache recente, responde instantaneamente
-  if ((!history || history.length === 0) && !hasImage && aiResponseCache.has(cacheKey)) {
-    const cached = aiResponseCache.get(cacheKey);
-    if (Date.now() - cached.timestamp < 180000) { // 3 minutos
-      console.log('[aiAgentChat] Resposta retornada via cache em memória (instantânea).');
-      return { success: true, reply: cached.reply, orderDraft: cached.orderDraft };
-    }
-  }
-
-  const rawKey = (typeof GEMINI_API_KEY.value === 'function' ? GEMINI_API_KEY.value() : process.env.GEMINI_API_KEY) || '';
-  const apiKey = String(rawKey).trim();
-  if (!apiKey) {
-    throw new functions.https.HttpsError('failed-precondition', 'Chave GEMINI_API_KEY não configurada no Firebase Secret Manager.');
-  }
-
-  const systemInstruction = `Você é o Copiloto Interno da Luisices (confecção/gráfica especializada em camisetas, brindes e personalizados).
-Seu papel é atuar como o assistente e guia inteligente da equipe administrativa e operacional.
-
-Você possui responsabilidades principais com ferramentas especializadas:
-1. CONSULTA DE DADOS & AUDITORIA ('query_orders_view'): Consultar status de pedidos, prazos de entrega, pedidos em aberto ('open'), pendentes, concluídos, cancelados ou excluídos da base. Administradores podem filtrar por colaborador específico via 'userIdentifier'.
-2. AUDITORIA E MÉTRICAS DE USUÁRIOS/COLABORADORES ('get_user_summary'): Permitido EXCLUSIVAMENTE para administradores. Permite consultar quantos pedidos, quantos clientes cadastrados, faturamento gerado e ticket médio pertencem a um usuário/funcionário específico (ex: "Amanda", "Lucas", etc.). Se um usuário não-admin perguntar sobre outros membros, recuse cordialmente informando que a auditoria de equipe é restrita a administradores.
-3. RESUMO FINANCEIRO & MÉTRICAS ('get_financial_summary'): Consultar faturamento realizado, total efetivamente recebido, valores pendentes a receber, volume total emitido, ticket médio e taxa de conclusão por período ('today', 'week', 'month', 'year', 'all').
-4. BRIEFING OPERACIONAL DIÁRIO ('daily_briefing'): Raio-X diário de produção, pedidos urgentes/atrasados, entregas de hoje e pendências financeiras imediatas.
-5. CONSULTA DE CLIENTES ('query_customers'): Buscar clientes cadastrados exclusivamente para consultas cadastrais puras (endereço, e-mail, cidade, histórico de compras). ATENÇÃO: NUNCA use 'query_customers' para pedidos de cobrança ou envio de mensagens no WhatsApp.
-6. GERADOR DE MENSAGENS WHATSAPP ('generate_whatsapp_message'): Ferramenta OBRIGATÓRIA sempre que o usuário pedir cobrança de valores, lembrete de pagamento ou envio de qualquer mensagem para cliente via WhatsApp. Ela gera o rascunho e abre diretamente o submodal interativo no chat (<WhatsAppComposer />) para revisão e disparo pelo operador.
-7. CALCULADORA DE PRECIFICAÇÃO & ORÇAMENTOS ('calculate_pricing_estimate'): Calcular custos aproximados, margem de lucro e preço de venda sugerido para personalizações (camisetas, canecas, ecobags, etc.).
-8. EXTRAÇÃO DE PEDIDOS ('extract_order_draft'): Estruturar pedidos a partir de conversas e mensagens de clientes (WhatsApp/áudio).
-9. CONSULTA AO ACERVO DA GALERIA ('search_gallery_portfolio'): Consultar fotos, artes e produtos já produzidos para dar referências de modelos, técnicas, fotos reais e ideias de pedidos anteriores. Administradores podem auditar todo o acervo ou filtrar por colaborador via 'userIdentifier'. Usuários não-admin enxergam exclusivamente suas próprias artes cadastradas.
-
----
-🛡️ GUARDRAILS CRÍTICOS DE SEGURANÇA E CONFORMIDADE:
-- GUARDRAIL 1 (LGPD & SIGILO MULTIUSUÁRIO): Dados, pedidos, clientes e artes da galeria de outros colaboradores são SIGILOSOS e só podem ser auditados por Administradores. Usuários comuns e funcionários só enxergam seus próprios dados e criações.
-- GUARDRAIL 2 (HUMAN-IN-THE-LOOP): Você gera rascunhos de mensagens e orçamentos para REVISÃO E APROVAÇÃO HUMANA do operador. Nunca afirme que disparou a mensagem sozinho.
-- GUARDRAIL 3 (PROTEÇÃO DE MARGEM FINANCEIRA): Nunca sugira preços que resultem em margem de lucro negativa ou prejuízo operacional (mantenha margem mínima de 30% a 50%).
-- GUARDRAIL 4 (COBRANÇA E SUBMODAL INTERATIVO WHATSAPP): Mensagens de cobrança devem ser 100% amigáveis, empáticas e profissionais, sem ameaças ou termos constrangedores. Sempre que o usuário pedir para cobrar um cliente ou enviar mensagem de WhatsApp (ex: "envie uma cobrança para o Carlos", "cobre o sinal da Amanda"), você DEVE invocar IMEDIATAMENTE a ferramenta 'generate_whatsapp_message' com type='cobranca' (ou outro tipo aplicável). NUNCA consulte o cliente antes com 'query_customers', pois o sistema já resolve o telefone e dados do cliente automaticamente via 'resolveCustomerPhone' no backend e abre o submodal interativo no chat (<WhatsAppComposer />).
-- GUARDRAIL 5 (RESPOSTAS LIMPAS EM PT-BR): NUNCA inclua seu raciocínio interno, scratchpad, notas ou pensamentos em inglês no texto de resposta. Responda DIRETA e EXCLUSIVAMENTE em Português do Brasil (pt-BR).
-- GUARDRAIL 6 (MULTIMODALIDADE & VISÃO COMPUTACIONAL): Quando o usuário enviar uma imagem na conversa, priorize SEMPRE a análise visual direta e detalhada na sua resposta (identifique tipo de produto, cores, detalhes visuais, materiais, estampas e técnicas como silk, sublimação, bordado, laser). NUNCA substitua a análise visual por uma busca vazia na galeria. Apenas pesquise o acervo da galeria se o usuário pedir explicitamente para buscar referências ou fotos na galeria.
-- GUARDRAIL 7 (VOZ HUMANA E PROIBIÇÃO DE JARGÕES TÉCNICOS):
-  • NUNCA mencione o nome técnico de suas funções ou ferramentas internas (ex: NUNCA diga 'ferramenta calculate_pricing_estimate', 'função query_orders_view', 'extract_order_draft', etc.). 
-  • Em vez disso, fale sempre como uma assistente humana do ateliê:
-    - Em vez de "posso usar a ferramenta calculate_pricing_estimate": diga "Se quiser, posso calcular o custo e sugerir um preço de venda com margem de lucro".
-    - Em vez de "posso usar extract_order_draft": diga "Posso montar o rascunho do pedido para você carregar no formulário".
-    - Em vez de "posso usar search_gallery_portfolio": diga "Posso pesquisar mais fotos e modelos no nosso acervo".
-  • NUNCA use termos de programação, crases com nomes de variáveis (\`nome_da_funcao\`) ou jargões em inglês desnecessários (como 'Backing Card' se puder dizer 'Cartão de apoio' ou 'Tag').
-  • Seja elegante, acolhedora, concisa e focada na linguagem do dia a dia do ateliê.
-- GUARDRAIL 8 (CONCISÃO & EXPERIÊNCIA MOBILE): Formate suas respostas para leitura confortável e rápida no celular. Evite blocos extensos de texto contínuo; use tópicos claros com marcadores, listas sucintas e resumos objetivos de no máximo 2 a 3 parágrafos curtos.
-- GUARDRAIL 9 (PRECISÃO FACTUAL & ZERO ALUCINAÇÃO): Se um pedido, cliente, data ou número não for encontrado nas ferramentas de consulta, declare claramente que o registro não foi localizado e solicite esclarecimento ao operador. NUNCA invente números de pedidos, valores fictícios ou status presumidos.
-
----
-BASE DE CONHECIMENTO DO SISTEMA LUISICES:
-• LOJINHA ONLINE & CATÁLOGO:
-- Produtos da Lojinha (/produtos-lojinha): Para publicar produtos avulsos, acesse Lojinha Online > Produtos da Lojinha, preencha nome, fotos, descrição e valor.
-- Publicação em Lote via Fotos: No menu Produtos da Lojinha, o botão 'Mais Fotos' (ou 'Publicação em Lote') permite subir dezenas de fotos simultaneamente (JPG, PNG, WebP até 8MB). O sistema formata os nomes dos arquivos automaticamente em títulos comerciais limpos (ex: "caixa_milk_luxo.jpg" -> "Caixa Milk Luxo"), permite configurar preço, prazo e categoria em massa pela barra superior ou individualmente em cada card, suportando criação de novas categorias livres (+ Nova categoria) e publicação direta no catálogo e Storage.
-- Exclusão em Massa: Na tabela de produtos da lojinha, múltiplos itens podem ser selecionados para exclusão em lote com confirmação.
-- Vitrine Pública (/loja ou /catalogo): Link público para os clientes montarem o carrinho e enviarem o pedido para o WhatsApp (com suporte a modo manutenção e modo apenas vitrine).
-- Pedidos da Lojinha (/pedidos-lojinha): Pedidos recebidos via vitrine pública, convertíveis em pedidos de produção com 1 clique.
-- Aparência & Vitrine (/personalizar-lojinha): Personaliza carrossel de banners rotativos (4:1), cores, logo e contato da vitrine.
-
-• PEDIDOS DO ATELIÊ, DELEGAÇÃO & WORKFLOW (/):
-- Novo Pedido: Botão 'Novo Pedido' no Dashboard ou via Copiloto IA.
-- Atribuição de Equipe & Gestão: Administradores contam com filtro de equipe ('Equipe: Todos' / AdminTeamFilter) no Dashboard e na Agenda Semanal para auditar ou delegar pedidos a colaboradores específicos. Funcionários visualizam com foco nos pedidos atribuídos a eles ou criados por eles.
-- Workflow em 7 Etapas: Design → Aprovação do Cliente → Impressão → Corte → Montagem → Controle de Qualidade → Embalagem/Entrega.
-- Histórico & Auditoria: Pedidos cancelados e excluídos ficam preservados na memória do Agente para fins de consulta e métricas.
-
-• COMUNICAÇÃO, WHATSAPP & WEBHOOKS:
-- Automação WhatsApp (Evolution API): Integrada com o Home Assistant em servidor próprio, operando com webhook em dual-forwarding (retransmissão simultânea e paralela para os ambientes de produção e dev).
-- Mensagens do Copiloto: Mensagens de cobrança amigável, atualização de status e aviso de retirada podem ser copiadas ou disparadas diretamente via Evolution API após revisão humana.
-
-• PRECIFICAÇÃO INTELIGENTE (/precificacao) & ORÇAMENTOS (/orcamentos):
-- Custos: Matérias-primas, mão de obra, margem de desperdício, taxa de pagamento e margem de lucro protegida (mínimo 30%).
-- Orçamentos: Propostas comerciais com validade e conversão em pedido com 1 clique.
-
-• CLIENTES (/clientes), GALERIA (/galeria) E PERMUTAS (/permutas):
-- Clientes: Cadastro completo com endereço automático via CEP, histórico de pedidos e alerta de aniversário.
-- Galeria: Banco de artes e estampas dos clientes com catalogação automática por visão computacional via IA (enrichGalleryItemWithAi).
-- Permutas: Controle de parcerias com influenciadores e permutas sem cobrança financeira.`;
-
-  const toolsDeclaration = [
-    {
-      function_declarations: [
-        {
-          name: 'get_user_summary',
-          description: 'Consulta o resumo de auditoria e métricas de um usuário/colaborador específico (quantidade de pedidos, clientes cadastrados, faturamento gerado e ticket médio) pelo nome, e-mail ou UID. ATENÇÃO: Esta ferramenta é de uso EXCLUSIVO DO ADMINISTRADOR.',
-          parameters: {
-            type: 'OBJECT',
-            properties: {
-              userIdentifier: {
-                type: 'STRING',
-                description: 'Nome, e-mail ou UID do usuário/funcionário da equipe a consultar (ex: Amanda, Lucas, amanda@email.com)'
-              },
-              period: {
-                type: 'STRING',
-                enum: ['today', 'week', 'month', 'year', 'all'],
-                description: 'Período para análise (padrão: all)'
-              }
-            },
-            required: ['userIdentifier']
-          }
-        },
-        {
-          name: 'query_orders_view',
-          description: 'Consulta a base de pedidos em tempo real (com projeção em memória) para obter status, prazos, clientes, valores, cancelamentos e métricas atualizadas.',
-          parameters: {
-            type: 'OBJECT',
-            properties: {
-              status: {
-                type: 'STRING',
-                enum: ['open', 'pending', 'in-progress', 'completed', 'cancelled', 'deleted', 'all'],
-                description: 'Filtro por status do pedido: open (em aberto: pendentes e em produção, não concluídos), pending (pendente), in-progress (em produção), completed (concluído), cancelled (cancelado), deleted (excluído/arquivado) ou all (todos)'
-              },
-              paymentStatus: {
-                type: 'STRING',
-                enum: ['pending', 'partial', 'paid', 'all'],
-                description: 'Filtro por status de pagamento'
-              },
-              userIdentifier: {
-                type: 'STRING',
-                description: 'Opcional (Apenas Admin): Nome, e-mail ou UID do colaborador para filtrar apenas os pedidos dele'
-              },
-              searchTerm: {
-                type: 'STRING',
-                description: 'Termo de busca para nome do cliente, produto ou telefone'
-              },
-              limit: {
-                type: 'INTEGER',
-                description: 'Quantidade máxima de registros a retornar (máximo 30)'
-              }
-            }
-          }
-        },
-        {
-          name: 'get_financial_summary',
-          description: 'Consulta o resumo financeiro exato (faturamento realizado de concluídos, total a receber/pendente, volume total emitido, ticket médio e contagem de pedidos) para um período específico (today, week, month, year, all). Os cálculos seguem estritamente as regras oficiais dos Relatórios.',
-          parameters: {
-            type: 'OBJECT',
-            properties: {
-              period: {
-                type: 'STRING',
-                enum: ['today', 'week', 'month', 'year', 'all'],
-                description: 'Período para análise financeira: today (hoje), week (últimos 7 dias), month (mês atual/30 dias), year (ano atual), all (todo o histórico)'
-              },
-              userIdentifier: {
-                type: 'STRING',
-                description: 'Opcional (Apenas Admin): Filtrar métricas financeiras de um colaborador específico por nome, e-mail ou UID'
-              }
-            }
-          }
-        },
-        {
-          name: 'daily_briefing',
-          description: 'Gera um briefing operacional completo do dia: pedidos atrasados ou com risco de atraso, entregas de hoje, pedidos em produção e valores pendentes a receber.',
-          parameters: {
-            type: 'OBJECT',
-            properties: {}
-          }
-        },
-        {
-          name: 'generate_whatsapp_message',
-          description: 'Gera o rascunho de mensagem formatada, amigável e profissional e abre o submodal interativo no chat (<WhatsAppComposer />) para disparo direto, edição e revisão humana (cobrança cordial, status de produção, aviso de retirada pronta, confirmação de pedido ou orçamento). OBRIGATÓRIO para qualquer pedido de cobrança ou envio de mensagem para WhatsApp.',
-          parameters: {
-            type: 'OBJECT',
-            properties: {
-              type: {
-                type: 'STRING',
-                enum: ['cobranca', 'status_producao', 'pronto_retirada', 'confirmacao_pedido', 'orcamento', 'geral'],
-                description: 'Tipo de mensagem a ser enviada'
-              },
-              recipientName: { type: 'STRING', description: 'Nome do cliente destinatário' },
-              recipientPhone: { type: 'STRING', description: 'Telefone de contato do cliente (WhatsApp)' },
-              orderNumber: { type: 'STRING', description: 'Número de referência do pedido (ex: #2026-0109)' },
-              productName: { type: 'STRING', description: 'Produto ou serviço do pedido' },
-              amount: { type: 'NUMBER', description: 'Valor financeiro pendente ou total em reais' },
-              messageText: { type: 'STRING', description: 'O texto completo da mensagem formatada com quebras de linha e emojis adequados para o cliente' }
-            },
-            required: ['type', 'messageText']
-          }
-        },
-        {
-          name: 'calculate_pricing_estimate',
-          description: 'Calcula estimativa rápida de custos e preço de venda sugerido com proteção de margem de lucro mínima para produtos personalizados (camisetas, canecas, ecobags, brindes).',
-          parameters: {
-            type: 'OBJECT',
-            properties: {
-              productName: { type: 'STRING', description: 'Nome do produto personalizado (ex: Camiseta Algodão Silk 1 cor, Caneca Cerâmica Sublimada)' },
-              quantity: { type: 'INTEGER', description: 'Quantidade total de peças' },
-              unitCostRaw: { type: 'NUMBER', description: 'Custo estimado da matéria-prima base por unidade em reais' },
-              customizationCost: { type: 'NUMBER', description: 'Custo estimado de tinta, filme ou insumos de estamparia por peça em reais' },
-              laborTimeMinutes: { type: 'NUMBER', description: 'Tempo estimado de trabalho por peça em minutos' },
-              profitMarginPercent: { type: 'NUMBER', description: 'Margem de lucro desejada em % (mínimo 30%, padrão 45%)' }
-            },
-            required: ['productName', 'quantity']
-          }
-        },
-        {
-          name: 'query_customers',
-          description: 'Consulta a base de clientes cadastrados no sistema Luisices (por nome, telefone, e-mail ou cidade) para obter histórico de compras e dados cadastrais. ATENÇÃO: NUNCA use para cobrança ou envio de mensagens no WhatsApp (para isso, use sempre generate_whatsapp_message).',
-          parameters: {
-            type: 'OBJECT',
-            properties: {
-              searchTerm: {
-                type: 'STRING',
-                description: 'Nome, telefone, e-mail ou cidade do cliente para busca'
-              },
-              userIdentifier: {
-                type: 'STRING',
-                description: 'Opcional (Apenas Admin): Nome, e-mail ou UID do colaborador para filtrar apenas os clientes cadastrados por ele'
-              },
-              limit: {
-                type: 'INTEGER',
-                description: 'Quantidade máxima de clientes a retornar (máximo 20)'
-              }
-            }
-          }
-        },
-        {
-          name: 'extract_order_draft',
-          description: 'Extrai dados estruturados de um novo pedido a partir de uma mensagem ou conversa para pré-preenchimento.',
-          parameters: {
-            type: 'OBJECT',
-            properties: {
-              customerName: { type: 'STRING', description: 'Nome do cliente' },
-              customerPhone: { type: 'STRING', description: 'Telefone de contato' },
-              productName: { type: 'STRING', description: 'Nome e especificações do produto' },
-              quantity: { type: 'INTEGER', description: 'Quantidade de peças' },
-              totalPrice: { type: 'NUMBER', description: 'Valor total do pedido em reais' },
-              deliveryDate: { type: 'STRING', description: 'Data de entrega estimada no formato YYYY-MM-DD' },
-              notes: { type: 'STRING', description: 'Observações, estampas ou detalhes' },
-              paymentMethod: { type: 'STRING', enum: ['pix', 'cash', 'credit', 'debit', 'other'] }
-            },
-            required: ['customerName', 'productName']
-          }
-        },
-        {
-          name: 'search_gallery_portfolio',
-          description: 'Consulta o acervo de fotos, produtos e artes da Galeria do sistema (camisetas, brindes, canecas, bordados, personalizações anteriores). Use esta ferramenta EXCLUSIVAMENTE quando o usuário solicitar explicitamente buscar fotos, modelos, artes ou referências no acervo da galeria. NUNCA use esta ferramenta quando o usuário apenas enviar uma imagem para análise visual.',
-          parameters: {
-            type: 'OBJECT',
-            properties: {
-              searchTerm: {
-                type: 'STRING',
-                description: 'Termo de busca para título, descrição, tema, cliente, técnica ou número de pedido'
-              },
-              tag: {
-                type: 'STRING',
-                description: 'Filtrar por tag ou categoria específica (ex: camisetas, canecas, brindes, bordado, silk)'
-              },
-              userIdentifier: {
-                type: 'STRING',
-                description: 'Opcional (Apenas Admin): Filtrar artes cadastradas por um colaborador específico por nome, e-mail ou UID'
-              },
-              limit: {
-                type: 'INTEGER',
-                description: 'Quantidade máxima de registros a retornar (padrão 10, máximo 20)'
-              }
-            }
-          }
-        }
-      ]
-    }
-  ];
 
   // Helper central de busca e blindagem estrita de pedidos em tempo real (projeção sanitizada em memória)
   const fetchScopedOrders = async () => {
@@ -1660,6 +1488,292 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
     return null;
   };
 
+
+
+
+  // Guardrail de Permissão do Copiloto de IA:
+  if (callerProfile.role === 'funcionario' && callerProfile.permissions?.aiCopilot !== true) {
+    throw new functions.https.HttpsError('permission-denied', 'Seu perfil de funcionário não possui permissão para acessar o Copiloto de IA.');
+  }
+  if (callerProfile.role === 'user' && callerProfile.permissions?.aiCopilot === false) {
+    throw new functions.https.HttpsError('permission-denied', 'Seu perfil de usuário não possui permissão para acessar o Copiloto de IA.');
+  }
+
+  const { message, history = [], image = null } = request.data || {};
+  if (!message || typeof message !== 'string' || !message.trim()) {
+    throw new functions.https.HttpsError('invalid-argument', 'Mensagem é obrigatória.');
+  }
+
+  const cleanMessage = message.trim();
+  const hasImage = Boolean(image && (image.base64 || image.imageUrl));
+  const trimmedLower = cleanMessage.toLowerCase().trim();
+
+  // COMANDO DE CACHE NATIVO DO COPILOTO (Resposta ultra-rápida, zero custo de tokens)
+  if (
+    trimmedLower === 'cache' ||
+    trimmedLower === '/cache' ||
+    trimmedLower === 'menu cache' ||
+    trimmedLower === 'cache menu' ||
+    trimmedLower === 'ajuda cache' ||
+    trimmedLower === 'limpar cache' ||
+    trimmedLower === 'comandos cache'
+  ) {
+    return {
+      success: true,
+      reply: `⚡ **Gerenciamento de Cache do Copiloto Luisices**
+
+Você pode consultar ou limpar itens da memória a qualquer momento digitando o comando no chat:
+
+• 🧹 **\`cache limpar respostas\`** — Esvazia o cache em memória de respostas instantâneas.
+• 📦 **\`cache limpar catalogo\`** — Força a atualização do catálogo de produtos e preços do Firestore.
+• 👥 **\`cache limpar equipe\`** — Recarrega permissões, nomes e contas dos colaboradores.
+• 🔄 **\`cache limpar tudo\`** — Reseta todos os caches em memória do Copiloto de uma só vez.
+
+💡 *Dica: Envie qualquer um dos comandos acima para executar a limpeza imediatamente.*`,
+    };
+  }
+
+  if (
+    trimmedLower.startsWith('cache limpar') ||
+    trimmedLower.startsWith('/cache limpar') ||
+    trimmedLower === 'limpar todo o cache' ||
+    trimmedLower === 'limpar cache tudo'
+  ) {
+    let clearedWhat = [];
+    if (trimmedLower.includes('respostas') || trimmedLower.includes('resposta')) {
+      aiResponseCache.clear();
+      clearedWhat.push('Respostas Rápidas');
+    } else if (trimmedLower.includes('catalogo') || trimmedLower.includes('catálogo') || trimmedLower.includes('produtos') || trimmedLower.includes('precos') || trimmedLower.includes('preços')) {
+      cachedCatalogSummary = null;
+      cachedCatalogTimestamp = 0;
+      clearedWhat.push('Catálogo & Produtos');
+    } else if (trimmedLower.includes('equipe') || trimmedLower.includes('usuarios') || trimmedLower.includes('usuários') || trimmedLower.includes('colaboradores')) {
+      cachedTeamMembers = null;
+      cachedTeamMembersTimestamp = 0;
+      clearedWhat.push('Equipe & Colaboradores');
+    } else {
+      aiResponseCache.clear();
+      cachedCatalogSummary = null;
+      cachedCatalogTimestamp = 0;
+      cachedTeamMembers = null;
+      cachedTeamMembersTimestamp = 0;
+      clearedWhat.push('Todos os Caches (Respostas, Catálogo e Equipe)');
+    }
+
+    return {
+      success: true,
+      reply: `✅ **Cache limpo com sucesso!**
+
+• **Itens atualizados:** ${clearedWhat.join(', ')}
+• **Status:** Sincronizado diretamente com os dados em tempo real do banco de dados.`,
+    };
+  }
+
+  // GUARDRAIL ULTRA-RÁPIDO DE RBAC: Bloqueia não-admin de bisbilhotar outros colaboradores
+  if (!isAdmin) {
+    const isAuditOrCollabQuery = /(pedido|pedidos|venda|vendas|cliente|clientes|faturamento|orcamento|orçamento|trabalho|fazendo|producao|produção|atendimento|ticket)/i.test(trimmedLower);
+    if (isAuditOrCollabQuery) {
+      const allMembers = await getAllKnownTeamMembers();
+      const otherMembers = allMembers.filter((m) => m.uid !== String(callerUid));
+      const targetFound = otherMembers.find((m) => {
+        const normMsg = normalizeString(trimmedLower);
+        const normName = normalizeString(m.displayName);
+        const normFirst = normName.split(' ')[0];
+        const normEmail = normalizeString(m.email ? m.email.split('@')[0] : '');
+        return (
+          (normName && normName.length >= 3 && normMsg.includes(normName)) ||
+          (normFirst && normFirst.length >= 3 && normMsg.split(/\s+/).includes(normFirst)) ||
+          (normEmail && normEmail.length >= 3 && normMsg.includes(normEmail))
+        );
+      });
+
+      if (targetFound) {
+        console.log(`[aiAgentChat] Guardrail RBAC rápido ativado para ${callerUid} consultando ${targetFound.displayName}`);
+        return {
+          success: true,
+          reply: `🔒 **Acesso Restrito:**
+
+Você possui permissão para consultar exclusivamente os **seus próprios pedidos e atendimentos**.
+
+A auditoria e visualização de dados do colaborador **${targetFound.displayName}** é restrita a **Administradores** do sistema.`,
+        };
+      }
+    }
+  }
+
+  const cacheKey = `${callerUid}_${cleanMessage.toLowerCase()}`;
+
+  // Se for uma pergunta comum sem histórico, sem imagem e estiver no cache recente, responde instantaneamente
+  if ((!history || history.length === 0) && !hasImage && aiResponseCache.has(cacheKey)) {
+    const cached = aiResponseCache.get(cacheKey);
+    if (Date.now() - cached.timestamp < 180000) { // 3 minutos
+      console.log('[aiAgentChat] Resposta retornada via cache em memória (instantânea).');
+      return { success: true, reply: cached.reply, orderDraft: cached.orderDraft };
+    }
+  }
+
+  const rawKey = (typeof GEMINI_API_KEY.value === 'function' ? GEMINI_API_KEY.value() : process.env.GEMINI_API_KEY) || '';
+  const apiKey = String(rawKey).trim();
+  if (!apiKey) {
+    throw new functions.https.HttpsError('failed-precondition', 'Chave GEMINI_API_KEY não configurada no Firebase Secret Manager.');
+  }
+
+  const catalogContext = await getDynamicCatalogKnowledge();
+  const systemInstruction = `Você é o Copiloto Especialista da Luisices (ateliê de Papelaria Personalizada, Cartonagem, Encadernação, Scrap Festa, Topos de Bolo, Caixas Luxo, Sublimação e Brindes). Assistente ágil da equipe operacional e administrativa.
+
+RESPONSABILIDADES & FERRAMENTAS:
+1. 'query_orders_view': Consultar pedidos (status, prazos, clientes, valores, cancelados/excluídos).
+2. 'get_user_summary': Auditoria de colaborador (pedidos, faturamento, ticket médio). EXCLUSIVO ADMIN.
+3. 'get_financial_summary': Métricas financeiras (faturamento, recebido, a receber, volume, ticket médio).
+4. 'daily_briefing': Raio-X diário de produção, atrasos e entregas de hoje.
+5. 'query_customers': Busca cadastral pura de clientes. NUNCA usar para cobrança/WhatsApp.
+6. 'generate_whatsapp_message': OBRIGATÓRIO para cobranças e mensagens a clientes (abre <WhatsAppComposer />).
+7. 'calculate_pricing_estimate': Custos, margens de lucro e preços sugeridos de itens personalizados.
+8. 'extract_order_draft': Estruturar rascunhos de pedidos a partir de conversas.
+9. 'search_gallery_portfolio': Consultar referências e fotos do acervo.
+
+GUARDRAILS:
+• LGPD & RBAC: Dados de outros colaboradores são sigilosos (restrito a Admin). Usuários comuns só acessam seus próprios registros.
+• Human-in-the-Loop: Rascunhos de mensagens e orçamentos sempre exigem aprovação humana.
+• Cobrança WhatsApp: Sempre cordial. Use 'generate_whatsapp_message' (type='cobranca'). Não consulte antes com 'query_customers'.
+• Comunicação: pt-BR direto e acolhedor. Sem jargões técnicos ou nomes de funções. Respostas em tópicos curtos para celular.
+• Precisão: Se algo não for encontrado, informe com clareza. Não invente dados.
+• Imagens: Faça análise visual direta. Só pesquise o acervo se solicitado expressamente.
+
+MATERIAIS & PRECIFICAÇÃO:
+• Papéis: Offset (75-90g miolos; 180-240g caixas), Color Plus 180g (scrap/sem vinco branco), Fotográfico 115-230g, Lamicote 250g (luxo).
+• Cartonagem: Papelão Horlle 1.9-2.2mm, BOPP (Fosco/Brilho/Holo/Soft Touch), Wire-o 2:1 (>110 fls) e 3:1 (<=110 fls).
+• Margens: Mão de obra R$ 24-36/h (R$ 0,40-0,60/min), perda técnica 15%, margem de lucro 30% a 50% (artesanal 40-60%).`;
+
+  const toolsDeclaration = [
+    {
+      function_declarations: [
+        {
+          name: 'get_user_summary',
+          description: 'Auditoria de colaborador (pedidos, clientes, faturamento, ticket médio). EXCLUSIVO ADMIN.',
+          parameters: {
+            type: 'OBJECT',
+            properties: {
+              userIdentifier: { type: 'STRING', description: 'Nome, e-mail ou UID do colaborador' },
+              period: { type: 'STRING', enum: ['today', 'week', 'month', 'year', 'all'], description: 'Período (padrão: all)' }
+            },
+            required: ['userIdentifier']
+          }
+        },
+        {
+          name: 'query_orders_view',
+          description: 'Consulta pedidos em tempo real por status, pagamento, busca de texto ou colaborador.',
+          parameters: {
+            type: 'OBJECT',
+            properties: {
+              status: { type: 'STRING', enum: ['open', 'pending', 'in-progress', 'completed', 'cancelled', 'deleted', 'all'], description: 'Status do pedido' },
+              paymentStatus: { type: 'STRING', enum: ['pending', 'partial', 'paid', 'all'], description: 'Status pagamento' },
+              userIdentifier: { type: 'STRING', description: 'Admin apenas: filtrar por colaborador' },
+              searchTerm: { type: 'STRING', description: 'Busca cliente, produto ou fone' },
+              limit: { type: 'INTEGER', description: 'Máx registros (máx 30)' }
+            }
+          }
+        },
+        {
+          name: 'get_financial_summary',
+          description: 'Resumo financeiro oficial (faturamento realizado, recebido, pendente, volume, ticket médio) por período.',
+          parameters: {
+            type: 'OBJECT',
+            properties: {
+              period: { type: 'STRING', enum: ['today', 'week', 'month', 'year', 'all'], description: 'Período: today, week, month, year, all' },
+              userIdentifier: { type: 'STRING', description: 'Admin apenas: filtrar por colaborador' }
+            }
+          }
+        },
+        {
+          name: 'daily_briefing',
+          description: 'Briefing diário: pedidos atrasados, entregas de hoje, em produção e pendências financeiras.',
+          parameters: {
+            type: 'OBJECT',
+            properties: {}
+          }
+        },
+        {
+          name: 'generate_whatsapp_message',
+          description: 'Gera mensagem formatada e abre o WhatsAppComposer no chat. OBRIGATÓRIO para cobrança e WhatsApp.',
+          parameters: {
+            type: 'OBJECT',
+            properties: {
+              type: { type: 'STRING', enum: ['cobranca', 'status_producao', 'pronto_retirada', 'confirmacao_pedido', 'orcamento', 'geral'], description: 'Tipo mensagem' },
+              recipientName: { type: 'STRING', description: 'Nome cliente' },
+              recipientPhone: { type: 'STRING', description: 'Telefone WhatsApp' },
+              orderNumber: { type: 'STRING', description: 'Nº do pedido' },
+              productName: { type: 'STRING', description: 'Produto/serviço' },
+              amount: { type: 'NUMBER', description: 'Valor R$' },
+              messageText: { type: 'STRING', description: 'Texto completo formatado com emojis' }
+            },
+            required: ['type', 'messageText']
+          }
+        },
+        {
+          name: 'calculate_pricing_estimate',
+          description: 'Calcula custos e preço de venda com margem protegida para produtos personalizados.',
+          parameters: {
+            type: 'OBJECT',
+            properties: {
+              productName: { type: 'STRING', description: 'Nome do produto' },
+              quantity: { type: 'INTEGER', description: 'Quantidade de peças' },
+              unitCostRaw: { type: 'NUMBER', description: 'Custo matéria-prima unitária R$' },
+              customizationCost: { type: 'NUMBER', description: 'Custo insumos/personalização R$' },
+              laborTimeMinutes: { type: 'NUMBER', description: 'Tempo de trabalho em min/peça' },
+              profitMarginPercent: { type: 'NUMBER', description: 'Margem % (mín 30%, padrão 45%)' }
+            },
+            required: ['productName', 'quantity']
+          }
+        },
+        {
+          name: 'query_customers',
+          description: 'Consulta cadastral de clientes (total, busca por nome, fone, e-mail, cidade). NÃO usar para cobrança.',
+          parameters: {
+            type: 'OBJECT',
+            properties: {
+              searchTerm: { type: 'STRING', description: 'Busca nome, fone, e-mail ou cidade' },
+              userIdentifier: { type: 'STRING', description: 'Admin apenas: filtrar por colaborador' },
+              status: { type: 'STRING', description: 'Status (active, vip, recurring, defaulter, partner)' },
+              limit: { type: 'INTEGER', description: 'Qtd máx (padrão 15, máx 30)' }
+            }
+          }
+        },
+        {
+          name: 'extract_order_draft',
+          description: 'Extrai dados estruturados de pedido de mensagem/conversa para pré-preenchimento.',
+          parameters: {
+            type: 'OBJECT',
+            properties: {
+              customerName: { type: 'STRING', description: 'Nome do cliente' },
+              customerPhone: { type: 'STRING', description: 'Telefone' },
+              productName: { type: 'STRING', description: 'Produto e especificações' },
+              quantity: { type: 'INTEGER', description: 'Quantidade' },
+              totalPrice: { type: 'NUMBER', description: 'Valor total R$' },
+              deliveryDate: { type: 'STRING', description: 'Data YYYY-MM-DD' },
+              notes: { type: 'STRING', description: 'Detalhes/observações' },
+              paymentMethod: { type: 'STRING', enum: ['pix', 'cash', 'credit', 'debit', 'other'] }
+            },
+            required: ['customerName', 'productName']
+          }
+        },
+        {
+          name: 'search_gallery_portfolio',
+          description: 'Busca fotos, referências e artes na Galeria. Apenas se solicitado explicitamente.',
+          parameters: {
+            type: 'OBJECT',
+            properties: {
+              searchTerm: { type: 'STRING', description: 'Busca por título, tema, técnica ou produto' },
+              tag: { type: 'STRING', description: 'Tag/categoria' },
+              userIdentifier: { type: 'STRING', description: 'Admin apenas: filtrar por colaborador' },
+              limit: { type: 'INTEGER', description: 'Qtd máx (padrão 10, máx 20)' }
+            }
+          }
+        }
+      ]
+    }
+  ];
+
   // Helper para auditoria e métricas de usuário/colaborador (EXCLUSIVO ADMIN)
   const executeUserSummary = async (args = {}) => {
     if (!isAdmin) {
@@ -1769,6 +1883,32 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
 
   // Helper para consultar a base de pedidos com filtros e isolamento
   const executeQueryOrdersView = async (args = {}) => {
+    // 0. BLINDAGEM MULTIUSUÁRIO & RBAC ESTREITA:
+    if (!isAdmin) {
+      if (args.userIdentifier) {
+        const target = await resolveTargetUser(args.userIdentifier);
+        if (target && target.uid !== String(callerUid)) {
+          return {
+            unauthorized: true,
+            message: `🔒 **Acesso Restrito:**
+
+Você possui permissão para consultar exclusivamente os **seus próprios pedidos e atendimentos**. A visualização de pedidos de outros colaboradores (${target.displayName || args.userIdentifier}) é restrita a **Administradores** do sistema.`,
+          };
+        }
+      }
+      if (args.searchTerm && typeof args.searchTerm === 'string') {
+        const target = await resolveTargetUser(args.searchTerm);
+        if (target && target.uid !== String(callerUid)) {
+          return {
+            unauthorized: true,
+            message: `🔒 **Acesso Restrito:**
+
+Você possui permissão para consultar exclusivamente os **seus próprios pedidos e atendimentos**. A consulta de dados de **${target.displayName || args.searchTerm}** é restrita a **Administradores** do sistema.`,
+          };
+        }
+      }
+    }
+
     let docs = await fetchScopedOrders();
 
     // 0. Filtro por usuário específico (Apenas Admin)
@@ -1948,16 +2088,17 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
     };
   };
 
-  // Helper para consultar a base de clientes cadastrados com isolamento estrito
+  // Helper para consultar a base de clientes cadastrados com isolamento estrito e contagem real
   const executeQueryCustomers = async (args = {}) => {
     try {
       let snap;
       if (isAdmin) {
-        snap = await admin.firestore().collection('customers').limit(150).get();
+        // Administrador: busca na coleção com limite ampliado para cobrir toda a carteira ativa
+        snap = await admin.firestore().collection('customers').limit(500).get();
       } else {
         const [userSnap, createdSnap] = await Promise.all([
-          admin.firestore().collection('customers').where('userId', '==', callerUid).limit(150).get(),
-          admin.firestore().collection('customers').where('createdBy', '==', callerUid).limit(150).get(),
+          admin.firestore().collection('customers').where('userId', '==', callerUid).limit(500).get(),
+          admin.firestore().collection('customers').where('createdBy', '==', callerUid).limit(500).get(),
         ]);
         const map = new Map();
         userSnap.docs.forEach((d) => map.set(d.id, d));
@@ -1965,20 +2106,7 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
         snap = { docs: Array.from(map.values()) };
       }
 
-      let customers = snap.docs.map((d) => ({
-        id: d.id,
-        userId: d.data().userId || d.data().createdBy || null,
-        createdBy: d.data().createdBy || d.data().userId || null,
-        name: d.data().name || '',
-        phone: d.data().phone || '',
-        email: d.data().email || '',
-        city: d.data().city || '',
-        state: d.data().state || '',
-        status: d.data().status || 'active',
-        totalOrders: d.data().totalOrders || 0,
-        totalSpent: d.data().totalSpent || 0,
-        createdAt: d.data().createdAt || '',
-      }));
+      let customers = snap.docs.map((d) => sanitizeCustomerForAi(d.id, d.data()));
 
       // Blindagem estrita de clientes para não-admins
       if (!isAdmin) {
@@ -1992,22 +2120,83 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
         }
       }
 
-      if (args.searchTerm && typeof args.searchTerm === 'string') {
-        const term = args.searchTerm.toLowerCase().trim();
-        customers = customers.filter(
-          (c) =>
-            (c.name && c.name.toLowerCase().includes(term)) ||
-            (c.phone && c.phone.includes(term)) ||
-            (c.email && c.email.toLowerCase().includes(term)) ||
-            (c.city && c.city.toLowerCase().includes(term))
-        );
+      const totalScoped = customers.length;
+
+      // Filtro por status (active, vip, recurring, defaulter, partner)
+      if (args.status && typeof args.status === 'string' && args.status.toLowerCase() !== 'all') {
+        const targetStatus = args.status.toLowerCase().trim();
+        customers = customers.filter((c) => c.status.toLowerCase() === targetStatus);
       }
 
-      const maxLimit = Math.min(Math.max(Number(args.limit) || 10, 1), 30);
-      return customers.slice(0, maxLimit);
+      // Filtro por termo de busca (nome, telefone, email, cidade ou notas)
+      const hasSearchTerm = Boolean(args.searchTerm && typeof args.searchTerm === 'string' && args.searchTerm.trim());
+      if (hasSearchTerm) {
+        const rawTerm = args.searchTerm.trim();
+        const term = normalizeString(rawTerm);
+        const digitsTerm = rawTerm.replace(/\D/g, '');
+        customers = customers.filter((c) => {
+          const normName = normalizeString(c.name);
+          const normEmail = normalizeString(c.email);
+          const normCity = normalizeString(c.city);
+          const cleanPhone = (c.phone || '').replace(/\D/g, '');
+          const matchText = normName.includes(term) || normEmail.includes(term) || normCity.includes(term);
+          const matchPhone = digitsTerm ? cleanPhone.includes(digitsTerm) : false;
+          return matchText || matchPhone;
+        });
+      }
+
+      // Ordenação inteligente:
+      // Se não há busca por termo específico, prioriza clientes com histórico de compras ou mais recentes
+      if (!hasSearchTerm) {
+        customers.sort((a, b) => {
+          if (b.totalSpent !== a.totalSpent) {
+            return b.totalSpent - a.totalSpent;
+          }
+          if (b.totalOrders !== a.totalOrders) {
+            return b.totalOrders - a.totalOrders;
+          }
+          const dateA = new Date(a.createdAt || 0).getTime();
+          const dateB = new Date(b.createdAt || 0).getTime();
+          return dateB - dateA;
+        });
+      }
+
+      const totalFiltered = customers.length;
+      const maxLimit = Math.min(Math.max(Number(args.limit) || (hasSearchTerm ? 15 : 10), 1), 30);
+      const displayedCustomers = customers.slice(0, maxLimit);
+
+      return {
+        totalScoped,
+        totalFiltered,
+        isFiltered: hasSearchTerm || Boolean(args.status),
+        searchTerm: args.searchTerm || null,
+        customers: displayedCustomers,
+        hasMore: totalFiltered > maxLimit,
+        // Compatibilidade de array para chamadas diretas como resolveCustomerPhone
+        map: (fn) => displayedCustomers.map(fn),
+        forEach: (fn) => displayedCustomers.forEach(fn),
+        slice: (start, end) => displayedCustomers.slice(start, end),
+        length: displayedCustomers.length,
+        [Symbol.iterator]: function* () {
+          yield* displayedCustomers;
+        },
+      };
     } catch (err) {
       console.error('[executeQueryCustomers] Erro:', err);
-      return [];
+      const emptyResult = {
+        totalScoped: 0,
+        totalFiltered: 0,
+        isFiltered: false,
+        searchTerm: null,
+        customers: [],
+        hasMore: false,
+        map: (fn) => [].map(fn),
+        forEach: (fn) => [].forEach(fn),
+        slice: (start, end) => [].slice(start, end),
+        length: 0,
+        [Symbol.iterator]: function* () {},
+      };
+      return emptyResult;
     }
   };
 
@@ -2137,49 +2326,64 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
     return null;
   };
 
-  // Helper para cálculo de estimativa de precificação com guardrails de margem mínima
+  // Helper para cálculo de estimativa de precificação com guardrails de engenharia de custo e ateliê
   const executePricingEstimate = (args) => {
     const qty = Math.max(Number(args.quantity) || 1, 1);
-    const rawCost = Number(args.unitCostRaw) || 25; // Ex: custo médio de camiseta/caneca
-    const customCost = Number(args.customizationCost) || 6; // Insumos estamparia/filme
-    const laborMinutes = Number(args.laborTimeMinutes) || 10;
-    const laborCostPerMinute = 0.40; // R$ 24/hora de mão de obra
+    const rawCost = Number(args.unitCostRaw) || 15; // Custo base de insumos/papéis/matéria-prima
+    const customCost = Number(args.customizationCost) || 5; // Laminação BOPP, apliques, fitas, Wire-o
+    const technicalWasteFactor = 1.15; // 15% de margem de perda técnica e desgaste de lâmina
+    const materialCostWithWaste = (rawCost + customCost) * technicalWasteFactor;
+
+    const laborMinutes = Number(args.laborTimeMinutes) || 15;
+    const laborCostPerMinute = 0.45; // R$ 27,00/hora de mão de obra técnica especializada
     const laborCost = laborMinutes * laborCostPerMinute;
+    const unitBaseCost = materialCostWithWaste + laborCost;
 
-    const unitBaseCost = rawCost + customCost + laborCost;
-    
-    // Guardrail: Margem de lucro mínima protegida de 30%
+    // Guardrail de Ciência de Dados: Margem de lucro protegida (mínimo 35%, máximo 75%)
     const requestedMargin = Number(args.profitMarginPercent) || 45;
-    const margin = Math.max(requestedMargin, 30);
-
+    const margin = Math.min(Math.max(requestedMargin, 35), 75);
     const suggestedUnitPrice = Number((unitBaseCost / (1 - (margin / 100))).toFixed(2));
     const suggestedTotalPrice = Number((suggestedUnitPrice * qty).toFixed(2));
 
     return {
-      productName: args.productName || 'Personalizado',
+      productName: args.productName || 'Personalizado Luisices',
       quantity: qty,
       unitCost: Number(unitBaseCost.toFixed(2)),
       suggestedUnitPrice,
       suggestedTotalPrice,
       profitMarginPercent: margin,
       breakdown: {
-        materials: Number(rawCost.toFixed(2)),
-        customization: Number(customCost.toFixed(2)),
-        labor: Number(laborCost.toFixed(2)),
+        materialsBase: Number((rawCost + customCost).toFixed(2)),
+        technicalWasteAllowance15Percent: Number(((rawCost + customCost) * 0.15).toFixed(2)),
+        totalMaterialsWithWaste: Number(materialCostWithWaste.toFixed(2)),
+        specializedLabor: Number(laborCost.toFixed(2)),
       }
     };
   };
 
-  // Monta histórico de mensagens
+  // Monta histórico de mensagens com Sliding Window Memory e alternância estrita de papéis (LLMOps)
   const contents = [];
-  if (Array.isArray(history)) {
-    for (const item of history.slice(-4)) {
-      if (item.role && item.text) {
+  if (Array.isArray(history) && history.length > 0) {
+    const rawHistory = history.slice(-6); // Mantém as últimas 6 mensagens (3 turnos completos de diálogo)
+    let lastRole = null;
+    for (const item of rawHistory) {
+      if (!item || !item.text || typeof item.text !== 'string' || !item.text.trim()) continue;
+      const normalizedRole = item.role === 'user' ? 'user' : 'model';
+      if (normalizedRole === lastRole) {
+        if (contents.length > 0) {
+          contents[contents.length - 1].parts[0].text += `\n${item.text.trim()}`;
+        }
+      } else {
         contents.push({
-          role: item.role === 'user' ? 'user' : 'model',
-          parts: [{ text: item.text }]
+          role: normalizedRole,
+          parts: [{ text: item.text.trim() }]
         });
+        lastRole = normalizedRole;
       }
+    }
+    // Se a última mensagem do histórico for user, removemos para unificar com a mensagem atual enriquecida
+    if (contents.length > 0 && contents[contents.length - 1].role === 'user') {
+      contents.pop();
     }
   }
   // Prepara as partes da mensagem atual do usuário com suporte a imagem multimodal
@@ -2299,10 +2503,10 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
 
   try {
     const geminiPayload = {
-      system_instruction: { parts: [{ text: systemInstruction }] },
+      system_instruction: { parts: [{ text: systemInstruction + (catalogContext || "") }] },
       contents,
       tools: activeTools,
-      generationConfig: { temperature: 0.1 }
+      generationConfig: { temperature: 0.2, maxOutputTokens: 1536 }
     };
 
     const { data: firstResult } = await callGeminiWithFallback(geminiPayload);
@@ -2333,14 +2537,39 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
         extractedWhatsApp = args;
         finalAnswer = `Gerei o rascunho da mensagem para **${args.recipientName || 'o cliente'}**${args.recipientPhone ? ` (${args.recipientPhone})` : ''}. Você pode revisar o texto e enviar diretamente para o WhatsApp abaixo:`;
       } else if (name === 'query_customers') {
-        const queryResults = await executeQueryCustomers(args);
-        if (queryResults.length === 0) {
-          finalAnswer = 'Não encontrei nenhum cliente cadastrado correspondente aos termos pesquisados.';
+        const result = await executeQueryCustomers(args);
+        const customersList = Array.isArray(result) ? result : (result.customers || []);
+        const totalScoped = result.totalScoped !== undefined ? result.totalScoped : customersList.length;
+        const totalFiltered = result.totalFiltered !== undefined ? result.totalFiltered : customersList.length;
+        const isFiltered = Boolean(result.isFiltered);
+
+        if (customersList.length === 0) {
+          if (isFiltered) {
+            const queryLabel = args.searchTerm || args.status || 'critérios informados';
+            finalAnswer = `🔍 **Nenhum cliente localizado:**\n\nNão encontrei nenhum cliente correspondente a **"${queryLabel}"** na sua base (${totalScoped} cliente(s) cadastrado(s)).\n\n💡 *Dica: Tente pesquisar por parte do nome, número de telefone ou cidade.*`;
+          } else {
+            finalAnswer = 'Você ainda não possui nenhum cliente cadastrado no sistema.';
+          }
         } else {
-          const list = queryResults.map(c =>
-            `• **${c.name}**\n  📱 Telefone: ${c.phone || 'Não informado'} | ✉️ E-mail: ${c.email || 'Não informado'} | 🏙️ Cidade: ${c.city || 'N/D'}`
-          ).join('\n\n');
-          finalAnswer = `Encontrei **${queryResults.length} cliente(s) cadastrado(s)** no sistema:\n\n${list}`;
+          const list = customersList.map((c) => {
+            const loc = c.city ? (c.state ? `${c.city}/${c.state}` : c.city) : 'Não informada';
+            const phone = c.phone || 'Não informado';
+            const email = c.email || 'Não informado';
+            const statusLabel = c.status === 'vip' ? ' ⭐ VIP' : c.status === 'defaulter' ? ' ⚠️ Em débito' : c.status === 'partner' ? ' 🤝 Parceiro' : '';
+            
+            let extra = '';
+            if (c.totalOrders > 0 || c.totalSpent > 0) {
+              const spentFmt = Number(c.totalSpent || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+              extra = `\n  📊 ${c.totalOrders} pedido(s) realizados | Total: ${spentFmt}`;
+            }
+            return `• **${c.name}**${statusLabel}\n  📱 Telefone: ${phone} | ✉️ E-mail: ${email} | 🏙️ Cidade: ${loc}${extra}`;
+          }).join('\n\n');
+
+          if (!isFiltered) {
+            finalAnswer = `👥 **Base de Clientes Luisices (${totalScoped} cliente(s) cadastrado(s)):**\n\nExibindo os **${customersList.length} clientes** de maior atividade / mais recentes:\n\n${list}${totalScoped > customersList.length ? `\n\n💡 *Exibindo ${customersList.length} de ${totalScoped} clientes. Para ver a ficha completa de alguém específico, pesquise por nome, telefone ou cidade (ex: \"cliente Amanda\" ou \"clientes de Florianópolis\").*` : ''}`;
+          } else {
+            finalAnswer = `🔍 **Resultado da Busca de Clientes (${totalFiltered} encontrado(s)):**\n\n${list}${totalFiltered > customersList.length ? `\n\n*(Exibindo os primeiros ${customersList.length} resultados de ${totalFiltered})*` : ''}`;
+          }
         }
       } else if (name === 'calculate_pricing_estimate') {
         extractedPricing = executePricingEstimate(args);
@@ -2450,144 +2679,44 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
       } else if (name === 'query_orders_view') {
         const queryResults = await executeQueryOrdersView(args);
         
-        // Segunda chamada enxuta para formulação rápida da resposta final
-        const followUpContents = [
-          ...contents,
-          candidate?.content || { role: 'model', parts: candidate?.content?.parts || [functionCallPart] },
-          {
-            role: 'user',
-            parts: [{
-              functionResponse: {
-                name: 'query_orders_view',
-                response: {
-                  summary: `Foram encontrados ${queryResults.length} registros.`,
-                  orders: queryResults.slice(0, 20),
-                }
-              }
-            }]
-          }
-        ];
-
-        try {
-          const { data: followUpResult } = await callGeminiWithFallback({
-            system_instruction: { parts: [{ text: systemInstruction }] },
-            contents: followUpContents,
-            tools: activeTools,
-            generationConfig: { temperature: 0.1 }
-          });
-          const followUpCandidate = followUpResult?.candidates?.[0];
-          const followUpParts = followUpCandidate?.content?.parts || [];
-          const textResponse = cleanAiOutput(followUpParts.map(p => p.text).filter(Boolean).join('\n'));
-
+        if (queryResults && queryResults.unauthorized) {
+          finalAnswer = queryResults.message;
+        } else {
+          const actualOrders = Array.isArray(queryResults) ? queryResults : [];
           const statusMap = {
-            pending: 'Pendente',
-            'in-progress': 'Em Produção',
-            completed: 'Concluído',
-            cancelled: 'Cancelado',
-            deleted: 'Excluído (Auditado)',
+            pending: '⏳ Pendente',
+            'in-progress': '🔄 Em Produção',
+            completed: '✅ Concluído',
+            cancelled: '❌ Cancelado',
+            deleted: '🗑️ Excluído (Auditado)',
           };
 
-          if (queryResults.length === 0) {
-            finalAnswer = textResponse && textResponse.length > 20
-              ? textResponse
-              : 'Não encontrei nenhum pedido correspondente aos critérios consultados.';
+          if (actualOrders.length === 0) {
+            const statusLabel = args.status && args.status !== 'all' ? ` com status "${args.status}"` : '';
+            const searchLabel = args.searchTerm ? ` para "${args.searchTerm}"` : '';
+            finalAnswer = `🔍 Não encontrei nenhum pedido correspondente${statusLabel}${searchLabel} na base de dados.`;
           } else {
-            const isGeneric =
-              !textResponse ||
-              textResponse.length < 40 ||
-              textResponse.toLowerCase().includes('consulta realizada');
+            const list = actualOrders.map((o) => {
+              const formattedPrice = Number(o.totalPrice || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+              const st = statusMap[o.status] || (o.isDeleted ? '🗑️ Excluído (Auditado)' : o.status);
+              const paySt = o.paymentStatus === 'paid' ? '🟢 Pago' : o.paymentStatus === 'partial' ? '🟡 Parcial' : '🔴 Pendente';
+              const dateStr = o.deliveryDate ? ` | 📅 Entrega: ${o.deliveryDate}` : '';
+              return `• **${o.orderNumber || '#' + o.orderId}** — **${o.customerName || 'Cliente'}**\n  📦 ${o.productSummary || 'Produto Personalizado'} (${o.quantity || 1} un) | 💰 ${formattedPrice}\n  🏷️ ${st} | Pagamento: ${paySt}${dateStr}`;
+            }).join('\n\n');
 
-            if (isGeneric) {
-              const list = queryResults.map(o => {
-                const formattedPrice = Number(o.totalPrice || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-                const st = statusMap[o.status] || (o.isDeleted ? 'Excluído (Auditado)' : o.status);
-                const paySt = o.paymentStatus === 'paid' ? 'Pago' : o.paymentStatus === 'partial' ? 'Parcial' : 'Pendente';
-                return `• **${o.orderNumber || '#' + o.orderId}** — **${o.customerName}**\n  📦 ${o.productSummary} (${o.quantity} un) | 💰 ${formattedPrice} | 🏷️ ${st} (${paySt})`;
-              }).join('\n\n');
-
-              finalAnswer = `Encontrei **${queryResults.length} registro(s)**:\n\n${list}`;
-            } else {
-              finalAnswer = textResponse;
-            }
-          }
-        } catch {
-          if (queryResults.length === 0) {
-            finalAnswer = 'Não encontrei nenhum pedido correspondente na base.';
-          } else {
-            const list = queryResults.map(o => `• **${o.orderNumber || '#' + o.orderId}** — ${o.customerName}: ${o.productSummary} (${o.quantity} un) - R$ ${o.totalPrice}`).join('\n');
-            finalAnswer = `Encontrei **${queryResults.length} registro(s)**:\n\n${list}`;
+            finalAnswer = `📦 **Encontrei ${actualOrders.length} pedido(s):**\n\n${list}`;
           }
         }
       } else if (name === 'search_gallery_portfolio') {
         const galleryResults = await executeSearchGalleryPortfolio(args);
         extractedGalleryItems = galleryResults;
 
-        const followUpContents = [
-          ...contents,
-          candidate?.content || { role: 'model', parts: candidate?.content?.parts || [functionCallPart] },
-          {
-            role: 'user',
-            parts: [{
-              functionResponse: {
-                name: 'search_gallery_portfolio',
-                response: {
-                  summary: `Foram encontradas ${galleryResults.length} artes/fotos na galeria.`,
-                  items: galleryResults.map((it) => ({
-                    title: it.title,
-                    description: it.description,
-                    productType: it.productType,
-                    tags: it.tags,
-                    aiTags: it.aiTags,
-                    imageUrl: it.imageUrl,
-                  })),
-                }
-              }
-            }]
-          }
-        ];
-
-        try {
-          const { data: followUpResult } = await callGeminiWithFallback({
-            system_instruction: { parts: [{ text: systemInstruction }] },
-            contents: followUpContents,
-            tools: activeTools,
-            generationConfig: { temperature: 0.1 }
-          });
-          const followUpCandidate = followUpResult?.candidates?.[0];
-          const followUpParts = followUpCandidate?.content?.parts || [];
-          const textResponse = cleanAiOutput(followUpParts.map(p => p.text).filter(Boolean).join('\n'));
-
-          if (galleryResults.length === 0) {
-            finalAnswer = textResponse && textResponse.length > 20
-              ? textResponse
-              : initialText || 'Não encontrei nenhuma foto ou arte na galeria correspondente aos critérios consultados.';
-          } else {
-            const isGeneric =
-              !textResponse ||
-              textResponse.length < 30 ||
-              textResponse.toLowerCase().includes('consulta realizada');
-
-            if (isGeneric) {
-              const list = galleryResults.map(it => {
-                const tagList = [...(it.tags || []), ...(it.aiTags || [])].slice(0, 3).join(', ');
-                return `• **${it.title}**${it.productType ? ` (${it.productType})` : ''}\n  ${it.description ? it.description.slice(0, 120) : 'Sem descrição'}\n  🔗 [Ver Foto](${it.imageUrl})${tagList ? ` | 🏷️ ${tagList}` : ''}`;
-              }).join('\n\n');
-              const prefix = initialText ? `${initialText}\n\n` : '';
-              finalAnswer = `${prefix}Encontrei **${galleryResults.length} foto(s)/arte(s)** no acervo da galeria:\n\n${list}`;
-            } else {
-              finalAnswer = initialText ? `${initialText}\n\n${textResponse}` : textResponse;
-            }
-          }
-        } catch (followErr) {
-          console.warn('[aiAgentChat] Falha no follow-up da galeria:', followErr);
-          if (initialText) {
-            finalAnswer = initialText;
-          } else if (galleryResults.length === 0) {
-            finalAnswer = 'Não encontrei nenhuma foto ou arte correspondente no acervo da galeria.';
-          } else {
-            const list = galleryResults.map(it => `• **${it.title}** - [Ver Foto](${it.imageUrl})`).join('\n');
-            finalAnswer = `Encontrei **${galleryResults.length} foto(s)/arte(s)** na galeria:\n\n${list}`;
-          }
+        if (galleryResults && galleryResults.unauthorized) {
+          finalAnswer = galleryResults.message;
+        } else if (!galleryResults || galleryResults.length === 0) {
+          finalAnswer = '🔍 Não encontrei nenhuma foto ou arte correspondente no acervo da galeria.';
+        } else {
+          finalAnswer = `🎨 Encontrei **${galleryResults.length} modelo(s)** no acervo da galeria correspondentes à sua busca. Você pode conferir os detalhes e fotos nos cards interativos abaixo:`;
         }
       }
     } else {
@@ -2935,7 +3064,7 @@ exports.getAiUsage = onCall({ cors: true, maxInstances: 5, secrets: [GEMINI_API_
  * Extrai descrição rica, tags sugeridas, tipo de produto e cores para busca e catálogo inteligente.
  * Guardrails estritos: usuário não-admin só pode enriquecer itens pertencentes a ele; admin tem acesso geral.
  */
-exports.enrichGalleryItemWithAi = onCall({ cors: true, timeoutSeconds: 120, memory: '512MiB', maxInstances: 5, secrets: [GEMINI_API_KEY] }, async (request) => {
+exports.enrichGalleryItemWithAi = onCall({ cors: true, timeoutSeconds: 120, memory: '1GiB', maxInstances: 5, secrets: [GEMINI_API_KEY] }, async (request) => {
   if (!request.auth) {
     throw new functions.https.HttpsError('unauthenticated', 'É necessário estar autenticado.');
   }
@@ -3172,7 +3301,7 @@ Responda ESTRITAMENTE em formato JSON puro, sem blocos de código markdown (sem 
  * - Badge e prazo sugerido
  * Opcional e restrito a usuários com permissão aiCopilot ou admin.
  */
-exports.enrichStoreProductWithAi = onCall({ cors: true, timeoutSeconds: 120, memory: "512MiB", maxInstances: 5, secrets: [GEMINI_API_KEY] }, async (request) => {
+exports.enrichStoreProductWithAi = onCall({ cors: true, timeoutSeconds: 120, memory: '1GiB', maxInstances: 5, secrets: [GEMINI_API_KEY] }, async (request) => {
   if (!request.auth) {
     throw new functions.https.HttpsError("unauthenticated", "É necessário estar autenticado.");
   }
