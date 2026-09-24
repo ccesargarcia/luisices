@@ -3,6 +3,7 @@ import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { useAuth } from '../../contexts/AuthContext';
 import { useUserSettings } from '../../hooks/useUserSettings';
+import { firebaseAiAgentService } from '../../services/firebaseAiAgentService';
 import { Button } from '../components/ui/button';
 import { Switch } from '../components/ui/switch';
 import { Input } from '../components/ui/input';
@@ -52,6 +53,7 @@ import {
   Power,
   Zap,
   ShieldAlert,
+  Bot,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { BannerCarousel, CatalogBannerItem } from '../components/catalog/BannerCarousel';
@@ -328,6 +330,10 @@ export function StoreCustomization() {
     enableDarkMode: true,
   });
   const [showHelpModal, setShowHelpModal] = useState(false);
+  const [showAiModal, setShowAiModal] = useState(false);
+  const [generatingAi, setGeneratingAi] = useState(false);
+  const [aiNiche, setAiNiche] = useState('papelaria');
+  const [aiCustomContext, setAiCustomContext] = useState('');
 
   // Carregar dados quando settings estiver pronto ou carregar de storeSettings/public
   useEffect(() => {
@@ -988,6 +994,147 @@ export function StoreCustomization() {
       catalogFaq5A: 'Com certeza! Antes de imprimir qualquer produto, enviamos a prévia digital no WhatsApp para sua total aprovação.',
     }));
     toast.success('Sugestões preenchidas com sucesso! Revise os campos e clique em Salvar Alterações.');
+  };
+
+  const handleGenerateWithAi = async () => {
+    setGeneratingAi(true);
+    const storeName = formData.catalogStoreName.trim() || 'Luisices Ateliê';
+    const tagline = formData.catalogStoreTagline.trim() || 'Papelaria afetiva e personalizados';
+
+    const nicheDescriptions: Record<string, string> = {
+      papelaria: 'Papelaria personalizada e afetiva, cadernos, planners, blocos e encadernação artesanal',
+      maternidade: 'Maternidade e bebês, cadernetas de vacinação, livros do bebê, kits de nascimento e batizado',
+      minimalista: 'Papelaria minimalista de alto padrão, planners executivos, capas neutras e design contemporâneo',
+      festas: 'Kits de festa, topos de bolo, lembrancinhas temáticas, caixinhas personalizadas e scraps criativos',
+      personalizado: aiCustomContext.trim() || 'Ateliê criativo de presentes e papelaria sob medida',
+    };
+
+    const targetNiche = nicheDescriptions[aiNiche] || nicheDescriptions.papelaria;
+    const extraContext = aiCustomContext.trim() ? `\nDetalhes adicionais fornecidos pelo ateliê: "${aiCustomContext.trim()}"` : '';
+
+    const prompt = `Você é um copywriter e estrategista de marketing especialista em marcas de artesanato e ateliês de papelaria personalizada.
+Gere o conteúdo institucional completo para o catálogo online da loja "${storeName}".
+Slogan da loja: "${tagline}".
+Nicho principal: "${targetNiche}".${extraContext}
+
+Retorne ESTRITAMENTE um objeto JSON válido (sem comentários, sem texto antes ou depois, sem markdown adicional além do bloco json) com exatamente os seguintes campos:
+{
+  "catalogAboutBadge": "Selo curto (ex: Sobre Nós)",
+  "catalogAboutTitle": "Título acolhedor e atrativo",
+  "catalogAboutText": "História e propósito do ateliê em 2 a 3 parágrafos carinhosos e profissionais.",
+  "catalogAboutPillar1Title": "Título do Pilar 1 (ex: Produção Artesanal)",
+  "catalogAboutPillar1Text": "Descrição breve do pilar 1 (1-2 frases)",
+  "catalogAboutPillar2Title": "Título do Pilar 2 (ex: Materiais Nobres)",
+  "catalogAboutPillar2Text": "Descrição breve do pilar 2 (1-2 frases)",
+  "catalogAboutPillar3Title": "Título do Pilar 3 (ex: Feito com Afeto)",
+  "catalogAboutPillar3Text": "Descrição breve do pilar 3 (1-2 frases)",
+  "catalogHowItWorksBadge": "Selo curto (ex: Passo a Passo)",
+  "catalogHowItWorksTitle": "Título da seção Como Funciona",
+  "catalogHowItWorksSubtitle": "Subtítulo amigável explicando a simplicidade",
+  "catalogHowItWorksStep1Title": "1. Escolha no Catálogo",
+  "catalogHowItWorksStep1Text": "Texto explicativo do passo 1",
+  "catalogHowItWorksStep2Title": "2. Envie pelo WhatsApp",
+  "catalogHowItWorksStep2Text": "Texto explicativo do passo 2",
+  "catalogHowItWorksStep3Title": "3. Aprovação da Arte",
+  "catalogHowItWorksStep3Text": "Texto explicativo do passo 3",
+  "catalogHowItWorksStep4Title": "4. Produção & Envio",
+  "catalogHowItWorksStep4Text": "Texto explicativo do passo 4",
+  "catalogFeaturesBadge": "Selo curto de diferenciais",
+  "catalogFeaturesTitle": "Título da seção de diferenciais",
+  "catalogFeature1Title": "Diferencial 1 (título)",
+  "catalogFeature1Text": "Diferencial 1 (descrição)",
+  "catalogFeature2Title": "Diferencial 2 (título)",
+  "catalogFeature2Text": "Diferencial 2 (descrição)",
+  "catalogFeature3Title": "Diferencial 3 (título)",
+  "catalogFeature3Text": "Diferencial 3 (descrição)",
+  "catalogFeature4Title": "Diferencial 4 (título)",
+  "catalogFeature4Text": "Diferencial 4 (descrição)",
+  "catalogFaqBadge": "Selo curto FAQ",
+  "catalogFaqTitle": "Título da seção FAQ",
+  "catalogFaq1Q": "Pergunta 1 (prazo)",
+  "catalogFaq1A": "Resposta 1",
+  "catalogFaq2Q": "Pergunta 2 (envio / frete)",
+  "catalogFaq2A": "Resposta 2",
+  "catalogFaq3Q": "Pergunta 3 (personalização de tema/nome)",
+  "catalogFaq3A": "Resposta 3",
+  "catalogFaq4Q": "Pergunta 4 (formas de pagamento)",
+  "catalogFaq4A": "Resposta 4",
+  "catalogFaq5Q": "Pergunta 5 (aprovação de prévia)",
+  "catalogFaq5A": "Resposta 5"
+}`;
+
+    try {
+      const response = await firebaseAiAgentService.sendMessage(prompt);
+      let cleanText = response.trim();
+      if (cleanText.startsWith('```')) {
+        cleanText = cleanText.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim();
+      }
+
+      const parsed = JSON.parse(cleanText);
+
+      setFormData((prev) => ({
+        ...prev,
+        catalogShowAbout: true,
+        catalogAboutBadge: parsed.catalogAboutBadge || 'Sobre Nós',
+        catalogAboutTitle: parsed.catalogAboutTitle || 'Feito à Mão com Afeto & Dedicação',
+        catalogAboutText: parsed.catalogAboutText || prev.catalogAboutText,
+        catalogAboutPillar1Title: parsed.catalogAboutPillar1Title || 'Produção Artesanal',
+        catalogAboutPillar1Text: parsed.catalogAboutPillar1Text || '',
+        catalogAboutPillar2Title: parsed.catalogAboutPillar2Title || 'Materiais Nobres',
+        catalogAboutPillar2Text: parsed.catalogAboutPillar2Text || '',
+        catalogAboutPillar3Title: parsed.catalogAboutPillar3Title || 'Afeto em Cada Detalhe',
+        catalogAboutPillar3Text: parsed.catalogAboutPillar3Text || '',
+
+        catalogShowHowItWorks: true,
+        catalogHowItWorksBadge: parsed.catalogHowItWorksBadge || 'Passo a Passo',
+        catalogHowItWorksTitle: parsed.catalogHowItWorksTitle || 'Como Funciona sua Encomenda?',
+        catalogHowItWorksSubtitle: parsed.catalogHowItWorksSubtitle || 'Um processo simples e transparente',
+        catalogHowItWorksStep1Title: parsed.catalogHowItWorksStep1Title || '1. Escolha seus Mimos',
+        catalogHowItWorksStep1Text: parsed.catalogHowItWorksStep1Text || '',
+        catalogHowItWorksStep2Title: parsed.catalogHowItWorksStep2Title || '2. Envie pelo WhatsApp',
+        catalogHowItWorksStep2Text: parsed.catalogHowItWorksStep2Text || '',
+        catalogHowItWorksStep3Title: parsed.catalogHowItWorksStep3Title || '3. Prévia & Aprovação',
+        catalogHowItWorksStep3Text: parsed.catalogHowItWorksStep3Text || '',
+        catalogHowItWorksStep4Title: parsed.catalogHowItWorksStep4Title || '4. Confecção & Envio',
+        catalogHowItWorksStep4Text: parsed.catalogHowItWorksStep4Text || '',
+
+        catalogShowFeatures: true,
+        catalogFeaturesBadge: parsed.catalogFeaturesBadge || 'Diferenciais do Ateliê',
+        catalogFeaturesTitle: parsed.catalogFeaturesTitle || 'Por que escolher nosso ateliê?',
+        catalogFeature1Title: parsed.catalogFeature1Title || '',
+        catalogFeature1Text: parsed.catalogFeature1Text || '',
+        catalogFeature2Title: parsed.catalogFeature2Title || '',
+        catalogFeature2Text: parsed.catalogFeature2Text || '',
+        catalogFeature3Title: parsed.catalogFeature3Title || '',
+        catalogFeature3Text: parsed.catalogFeature3Text || '',
+        catalogFeature4Title: parsed.catalogFeature4Title || '',
+        catalogFeature4Text: parsed.catalogFeature4Text || '',
+
+        catalogShowFaq: true,
+        catalogFaqBadge: parsed.catalogFaqBadge || 'Tire suas Dúvidas',
+        catalogFaqTitle: parsed.catalogFaqTitle || 'Perguntas Frequentes (FAQ)',
+        catalogFaq1Q: parsed.catalogFaq1Q || '',
+        catalogFaq1A: parsed.catalogFaq1A || '',
+        catalogFaq2Q: parsed.catalogFaq2Q || '',
+        catalogFaq2A: parsed.catalogFaq2A || '',
+        catalogFaq3Q: parsed.catalogFaq3Q || '',
+        catalogFaq3A: parsed.catalogFaq3A || '',
+        catalogFaq4Q: parsed.catalogFaq4Q || '',
+        catalogFaq4A: parsed.catalogFaq4A || '',
+        catalogFaq5Q: parsed.catalogFaq5Q || '',
+        catalogFaq5A: parsed.catalogFaq5A || '',
+      }));
+
+      setShowAiModal(false);
+      toast.success('✨ Conteúdo gerado com IA com sucesso! Revise os campos e clique em Salvar Alterações.');
+    } catch (err) {
+      console.warn('Erro ou indisponibilidade da IA:', err);
+      fillInstitutionalDefaults();
+      setShowAiModal(false);
+      toast.info('A IA está temporariamente indisponível. Aplicamos as sugestões manuais padrão para você não perder tempo!');
+    } finally {
+      setGeneratingAi(false);
+    }
   };
 
   const handleChange = (field: keyof typeof formData, value: any) => {
@@ -2256,16 +2403,28 @@ export function StoreCustomization() {
                     Ative e personalize seções modulares para tornar seu catálogo mais profissional e confiável: <strong>Quem Somos</strong>, <strong>Como Funciona a Encomenda</strong>, <strong>Diferenciais</strong> e <strong>Perguntas Frequentes (FAQ)</strong>.
                   </p>
                 </div>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={fillInstitutionalDefaults}
-                  className="gap-1.5 border-primary/30 text-primary hover:bg-primary/10 shrink-0 text-xs font-semibold"
-                >
-                  <Sparkles className="size-3.5" />
-                  Preencher com Sugestões
-                </Button>
+                <div className="flex flex-wrap items-center gap-2 shrink-0">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={fillInstitutionalDefaults}
+                    className="gap-1.5 border-primary/30 text-primary hover:bg-primary/10 text-xs font-semibold"
+                  >
+                    <Sparkles className="size-3.5" />
+                    Sugestão Manual
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="default"
+                    size="sm"
+                    onClick={() => setShowAiModal(true)}
+                    className="gap-1.5 shadow-xs text-xs font-semibold bg-primary hover:bg-primary/90 text-primary-foreground"
+                  >
+                    <Bot className="size-3.5" />
+                    Sugestão por IA (Gemini)
+                  </Button>
+                </div>
               </div>
 
               {/* 1. SEÇÃO QUEM SOMOS / SOBRE O ATELIÊ */}
@@ -3658,6 +3817,131 @@ export function StoreCustomization() {
             <Button type="button" onClick={() => setShowHelpModal(false)} className="px-6">
               Fechar Guia
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal de Sugestão Institucional com IA */}
+      <Dialog open={showAiModal} onOpenChange={setShowAiModal}>
+        <DialogContent size="lg" noPadding className="max-h-[90dvh] flex flex-col overflow-hidden">
+          <DialogHeader className="p-6 pb-4 border-b border-border/60 bg-muted/20">
+            <div className="flex items-center gap-2.5">
+              <div className="p-2 rounded-xl bg-primary/10 text-primary">
+                <Bot className="size-5" />
+              </div>
+              <div>
+                <DialogTitle className="text-lg font-bold">
+                  Gerador Institucional com IA (Gemini)
+                </DialogTitle>
+                <DialogDescription className="text-xs text-muted-foreground mt-0.5">
+                  Crie textos profissionais e acolhedores para <strong>Quem Somos</strong>, <strong>Como Funciona</strong>, <strong>Diferenciais</strong> e <strong>FAQ</strong> adaptados ao seu público.
+                </DialogDescription>
+              </div>
+            </div>
+          </DialogHeader>
+
+          <DialogBody className="p-6 space-y-4 text-sm overflow-y-auto">
+            <div className="space-y-2">
+              <Label className="text-xs font-semibold text-foreground">
+                Selecione o estilo ou nicho do seu ateliê:
+              </Label>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                {[
+                  { id: 'papelaria', title: '🌸 Papelaria Afetiva & Geral', desc: 'Encadernação, cadernos, agendas e mimos artesanais' },
+                  { id: 'maternidade', title: '🍼 Maternidade & Bebê', desc: 'Cadernetas de vacina, livros do bebê e batizado' },
+                  { id: 'minimalista', title: '🌿 Minimalista & Planners', desc: 'Design clean, executivo, sofisticado e atemporal' },
+                  { id: 'festas', title: '🎈 Festas & Lembrancinhas', desc: 'Kits temáticos, topos de bolo, caixinhas e scraps' },
+                  { id: 'personalizado', title: '✏️ Nicho Customizado', desc: 'Descreva livremente os detalhes do seu segmento' },
+                ].map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => setAiNiche(item.id)}
+                    className={`text-left p-3 rounded-xl border transition-all ${
+                      aiNiche === item.id
+                        ? 'border-primary bg-primary/10 shadow-xs'
+                        : 'border-border/70 hover:border-border hover:bg-muted/30'
+                    }`}
+                  >
+                    <div className="text-xs font-bold text-foreground">{item.title}</div>
+                    <div className="text-[11px] text-muted-foreground mt-0.5">{item.desc}</div>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="space-y-1.5 pt-1">
+              <Label htmlFor="ai-custom-context" className="text-xs font-semibold text-foreground">
+                Informações adicionais ou diferenciais do seu ateliê (Opcional):
+              </Label>
+              <Textarea
+                id="ai-custom-context"
+                rows={3}
+                placeholder="Ex: Trabalhamos desde 2020 em Campinas-SP, enviamos brindes em todas as encomendas, usamos laminação holográfica e caixas reforçadas..."
+                value={aiCustomContext}
+                onChange={(e) => setAiCustomContext(e.target.value)}
+                className="text-xs"
+              />
+              <p className="text-[10px] text-muted-foreground">
+                A IA usará o nome da sua loja (<strong>{formData.catalogStoreName || 'Luisices Ateliê'}</strong>) e o slogan para personalizar o copywriting.
+              </p>
+            </div>
+
+            <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-800 dark:text-amber-300 text-xs flex items-start gap-2">
+              <Sparkles className="size-4 shrink-0 mt-0.5 text-amber-600 dark:text-amber-400" />
+              <p className="leading-relaxed text-[11px]">
+                <strong>Garantia de Disponibilidade:</strong> Caso a IA esteja temporariamente instável ou sem sinal, o sistema aplicará o modelo padrão predefinido sem travar ou deixar seus campos vazios.
+              </p>
+            </div>
+          </DialogBody>
+
+          <DialogFooter className="p-4 border-t border-border/60 bg-muted/20 flex flex-wrap items-center justify-between gap-2">
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              disabled={generatingAi}
+              onClick={() => {
+                fillInstitutionalDefaults();
+                setShowAiModal(false);
+              }}
+              className="text-xs text-muted-foreground hover:text-foreground"
+            >
+              Usar sugestão manual
+            </Button>
+
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={generatingAi}
+                onClick={() => setShowAiModal(false)}
+                className="text-xs"
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="button"
+                variant="default"
+                size="sm"
+                disabled={generatingAi}
+                onClick={handleGenerateWithAi}
+                className="text-xs gap-1.5 font-semibold bg-primary hover:bg-primary/90 text-primary-foreground min-w-[130px]"
+              >
+                {generatingAi ? (
+                  <>
+                    <Loader2 className="size-3.5 animate-spin" />
+                    Gerando com IA...
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="size-3.5" />
+                    Gerar Conteúdo
+                  </>
+                )}
+              </Button>
+            </div>
           </DialogFooter>
         </DialogContent>
       </Dialog>
