@@ -344,6 +344,48 @@ export function useUserSettings() {
     }
   };
 
+  // Upload de foto/imagem da seção Quem Somos / Sobre o Ateliê
+  const uploadCatalogAboutImage = async (file: File, oldUrl?: string): Promise<string> => {
+    if (!user) throw new Error('Usuário não autenticado');
+
+    try {
+      if (oldUrl) {
+        try {
+          await firebaseStorageService.deleteImage(oldUrl);
+        } catch (deleteError) {
+          console.warn('Não foi possível deletar catalogAboutImageUrl antigo (continuando):', deleteError);
+        }
+      }
+
+      const url = await firebaseStorageService.uploadImage(file, user.uid, 'catalog-about');
+      await firebaseSettingsService.updateCatalogAboutImage(user.uid, url);
+
+      return url;
+    } catch (err) {
+      setError(err as Error);
+      throw err;
+    }
+  };
+
+  // Remover foto da seção Quem Somos
+  const removeCatalogAboutImage = async () => {
+    if (!user) throw new Error('Usuário não autenticado');
+
+    try {
+      if (settings?.catalogAboutImageUrl) {
+        try {
+          await firebaseStorageService.deleteImage(settings.catalogAboutImageUrl);
+        } catch (storageError) {
+          console.warn('Erro ao deletar imagem do Storage (continuando):', storageError);
+        }
+      }
+      await firebaseSettingsService.updateCatalogAboutImage(user.uid, null);
+    } catch (err) {
+      setError(err as Error);
+      throw err;
+    }
+  };
+
   // Resetar para padrões
   const resetToDefaults = async () => {
     if (!user) throw new Error('Usuário não autenticado');
@@ -364,6 +406,9 @@ export function useUserSettings() {
       }
       if (settings?.catalogHeaderBackground) {
         await firebaseStorageService.deleteImage(settings.catalogHeaderBackground);
+      }
+      if (settings?.catalogAboutImageUrl) {
+        await firebaseStorageService.deleteImage(settings.catalogAboutImageUrl);
       }
       if (settings?.banner) {
         await firebaseStorageService.deleteImage(settings.banner);
@@ -390,12 +435,14 @@ export function useUserSettings() {
     uploadCatalogBannerImage,
     deleteCatalogBannerImage,
     uploadCatalogHeaderBackground,
+    uploadCatalogAboutImage,
     uploadBanner,
     removeAvatar,
     removeLogo,
     removeCatalogLogo,
     removeCatalogBanner,
     removeCatalogHeaderBackground,
+    removeCatalogAboutImage,
     removeBanner,
     resetToDefaults,
   };

@@ -98,6 +98,62 @@ export interface UserSettings {
   catalogFooterCopyright?: string;           // Linha de copyright no rodapé
   catalogFooterNotice?: string;              // Aviso sobre prazos e políticas no rodapé
 
+  // Seções Institucionais & Quem Somos (Modular / Toggles)
+  // 1. Quem Somos / Sobre o Ateliê
+  catalogShowAbout?: boolean;
+  catalogAboutBadge?: string;
+  catalogAboutTitle?: string;
+  catalogAboutText?: string;
+  catalogAboutImageUrl?: string;
+  catalogAboutPillar1Title?: string;
+  catalogAboutPillar1Text?: string;
+  catalogAboutPillar2Title?: string;
+  catalogAboutPillar2Text?: string;
+  catalogAboutPillar3Title?: string;
+  catalogAboutPillar3Text?: string;
+
+  // 2. Como Funciona a Encomenda
+  catalogShowHowItWorks?: boolean;
+  catalogHowItWorksBadge?: string;
+  catalogHowItWorksTitle?: string;
+  catalogHowItWorksSubtitle?: string;
+  catalogHowItWorksStep1Title?: string;
+  catalogHowItWorksStep1Text?: string;
+  catalogHowItWorksStep2Title?: string;
+  catalogHowItWorksStep2Text?: string;
+  catalogHowItWorksStep3Title?: string;
+  catalogHowItWorksStep3Text?: string;
+  catalogHowItWorksStep4Title?: string;
+  catalogHowItWorksStep4Text?: string;
+
+  // 3. Diferenciais da Marca
+  catalogShowFeatures?: boolean;
+  catalogFeaturesBadge?: string;
+  catalogFeaturesTitle?: string;
+  catalogFeature1Title?: string;
+  catalogFeature1Text?: string;
+  catalogFeature2Title?: string;
+  catalogFeature2Text?: string;
+  catalogFeature3Title?: string;
+  catalogFeature3Text?: string;
+  catalogFeature4Title?: string;
+  catalogFeature4Text?: string;
+
+  // 4. Dúvidas Frequentes (FAQ)
+  catalogShowFaq?: boolean;
+  catalogFaqBadge?: string;
+  catalogFaqTitle?: string;
+  catalogFaq1Q?: string;
+  catalogFaq1A?: string;
+  catalogFaq2Q?: string;
+  catalogFaq2A?: string;
+  catalogFaq3Q?: string;
+  catalogFaq3A?: string;
+  catalogFaq4Q?: string;
+  catalogFaq4A?: string;
+  catalogFaq5Q?: string;
+  catalogFaq5A?: string;
+
   // Publicação e Feature Flags
   storePublished?: boolean;                  // Loja publicada (true) ou despublicada (false) — controle de visibilidade
   storeUnpublishMessage?: string;            // Mensagem personalizada exibida quando a loja está despublicada
@@ -288,6 +344,61 @@ export class FirebaseSettingsService {
       if (settings.catalogFooterCopyright !== undefined) publicData.catalogFooterCopyright = settings.catalogFooterCopyright;
       if (settings.catalogFooterNotice !== undefined) publicData.catalogFooterNotice = settings.catalogFooterNotice;
 
+      // 1. Quem Somos / Sobre o Ateliê
+      if (settings.catalogShowAbout !== undefined) publicData.catalogShowAbout = settings.catalogShowAbout;
+      if (settings.catalogAboutBadge !== undefined) publicData.catalogAboutBadge = settings.catalogAboutBadge;
+      if (settings.catalogAboutTitle !== undefined) publicData.catalogAboutTitle = settings.catalogAboutTitle;
+      if (settings.catalogAboutText !== undefined) publicData.catalogAboutText = settings.catalogAboutText;
+      if (settings.catalogAboutImageUrl !== undefined) publicData.catalogAboutImageUrl = settings.catalogAboutImageUrl;
+      if (settings.catalogAboutPillar1Title !== undefined) publicData.catalogAboutPillar1Title = settings.catalogAboutPillar1Title;
+      if (settings.catalogAboutPillar1Text !== undefined) publicData.catalogAboutPillar1Text = settings.catalogAboutPillar1Text;
+      if (settings.catalogAboutPillar2Title !== undefined) publicData.catalogAboutPillar2Title = settings.catalogAboutPillar2Title;
+      if (settings.catalogAboutPillar2Text !== undefined) publicData.catalogAboutPillar2Text = settings.catalogAboutPillar2Text;
+      if (settings.catalogAboutPillar3Title !== undefined) publicData.catalogAboutPillar3Title = settings.catalogAboutPillar3Title;
+      if (settings.catalogAboutPillar3Text !== undefined) publicData.catalogAboutPillar3Text = settings.catalogAboutPillar3Text;
+
+      // 2. Como Funciona
+      if (settings.catalogShowHowItWorks !== undefined) publicData.catalogShowHowItWorks = settings.catalogShowHowItWorks;
+      if (settings.catalogHowItWorksBadge !== undefined) publicData.catalogHowItWorksBadge = settings.catalogHowItWorksBadge;
+      if (settings.catalogHowItWorksTitle !== undefined) publicData.catalogHowItWorksTitle = settings.catalogHowItWorksTitle;
+      if (settings.catalogHowItWorksSubtitle !== undefined) publicData.catalogHowItWorksSubtitle = settings.catalogHowItWorksSubtitle;
+      if (settings.catalogHowItWorksStep1Title !== undefined) publicData.catalogHowItWorksStep1Title = settings.catalogHowItWorksStep1Title;
+      if (settings.catalogHowItWorksStep1Text !== undefined) publicData.catalogHowItWorksStep1Text = settings.catalogHowItWorksStep1Text;
+      if (settings.catalogHowItWorksStep2Title !== undefined) publicData.catalogHowItWorksStep2Title = settings.catalogHowItWorksStep2Title;
+      if (settings.catalogHowItWorksStep2Text !== undefined) publicData.catalogHowItWorksStep2Text = settings.catalogHowItWorksStep2Text;
+      if (settings.catalogHowItWorksStep3Title !== undefined) publicData.catalogHowItWorksStep3Title = settings.catalogHowItWorksStep3Title;
+      if (settings.catalogHowItWorksStep3Text !== undefined) publicData.catalogHowItWorksStep3Text = settings.catalogHowItWorksStep3Text;
+      if (settings.catalogHowItWorksStep4Title !== undefined) publicData.catalogHowItWorksStep4Title = settings.catalogHowItWorksStep4Title;
+      if (settings.catalogHowItWorksStep4Text !== undefined) publicData.catalogHowItWorksStep4Text = settings.catalogHowItWorksStep4Text;
+
+      // 3. Diferenciais
+      if (settings.catalogShowFeatures !== undefined) publicData.catalogShowFeatures = settings.catalogShowFeatures;
+      if (settings.catalogFeaturesBadge !== undefined) publicData.catalogFeaturesBadge = settings.catalogFeaturesBadge;
+      if (settings.catalogFeaturesTitle !== undefined) publicData.catalogFeaturesTitle = settings.catalogFeaturesTitle;
+      if (settings.catalogFeature1Title !== undefined) publicData.catalogFeature1Title = settings.catalogFeature1Title;
+      if (settings.catalogFeature1Text !== undefined) publicData.catalogFeature1Text = settings.catalogFeature1Text;
+      if (settings.catalogFeature2Title !== undefined) publicData.catalogFeature2Title = settings.catalogFeature2Title;
+      if (settings.catalogFeature2Text !== undefined) publicData.catalogFeature2Text = settings.catalogFeature2Text;
+      if (settings.catalogFeature3Title !== undefined) publicData.catalogFeature3Title = settings.catalogFeature3Title;
+      if (settings.catalogFeature3Text !== undefined) publicData.catalogFeature3Text = settings.catalogFeature3Text;
+      if (settings.catalogFeature4Title !== undefined) publicData.catalogFeature4Title = settings.catalogFeature4Title;
+      if (settings.catalogFeature4Text !== undefined) publicData.catalogFeature4Text = settings.catalogFeature4Text;
+
+      // 4. Dúvidas Frequentes (FAQ)
+      if (settings.catalogShowFaq !== undefined) publicData.catalogShowFaq = settings.catalogShowFaq;
+      if (settings.catalogFaqBadge !== undefined) publicData.catalogFaqBadge = settings.catalogFaqBadge;
+      if (settings.catalogFaqTitle !== undefined) publicData.catalogFaqTitle = settings.catalogFaqTitle;
+      if (settings.catalogFaq1Q !== undefined) publicData.catalogFaq1Q = settings.catalogFaq1Q;
+      if (settings.catalogFaq1A !== undefined) publicData.catalogFaq1A = settings.catalogFaq1A;
+      if (settings.catalogFaq2Q !== undefined) publicData.catalogFaq2Q = settings.catalogFaq2Q;
+      if (settings.catalogFaq2A !== undefined) publicData.catalogFaq2A = settings.catalogFaq2A;
+      if (settings.catalogFaq3Q !== undefined) publicData.catalogFaq3Q = settings.catalogFaq3Q;
+      if (settings.catalogFaq3A !== undefined) publicData.catalogFaq3A = settings.catalogFaq3A;
+      if (settings.catalogFaq4Q !== undefined) publicData.catalogFaq4Q = settings.catalogFaq4Q;
+      if (settings.catalogFaq4A !== undefined) publicData.catalogFaq4A = settings.catalogFaq4A;
+      if (settings.catalogFaq5Q !== undefined) publicData.catalogFaq5Q = settings.catalogFaq5Q;
+      if (settings.catalogFaq5A !== undefined) publicData.catalogFaq5A = settings.catalogFaq5A;
+
       // Publicação e Feature Flags — sincronizados instantaneamente para a loja pública
       if (settings.storePublished !== undefined) publicData.storePublished = settings.storePublished;
       if (settings.storeUnpublishMessage !== undefined) publicData.storeUnpublishMessage = settings.storeUnpublishMessage;
@@ -441,6 +552,37 @@ export class FirebaseSettingsService {
       },
       { merge: true }
     );
+  }
+
+  /**
+   * Atualizar imagem da seção Quem Somos / Sobre o Ateliê
+   */
+  async updateCatalogAboutImage(userId: string, imageUrl: string | null): Promise<void> {
+    const docRef = doc(db, 'users', userId, 'settings', 'profile');
+    const isRemove = imageUrl === null || imageUrl === '';
+
+    await setDoc(
+      docRef,
+      {
+        catalogAboutImageUrl: isRemove ? null : imageUrl,
+        userId,
+        updatedAt: new Date(),
+      },
+      { merge: true }
+    );
+
+    try {
+      await setDoc(
+        doc(db, 'storeSettings', 'public'),
+        {
+          catalogAboutImageUrl: isRemove ? null : imageUrl,
+          updatedAt: new Date(),
+        },
+        { merge: true }
+      );
+    } catch (e) {
+      console.warn('Erro ao sincronizar catalogAboutImageUrl em storeSettings pública:', e);
+    }
   }
 
   /**

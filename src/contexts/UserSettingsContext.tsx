@@ -25,6 +25,7 @@ function formatUserSettings(data: any): UserSettings {
     catalogLogo: data.catalogLogo ? toCdnUrl(data.catalogLogo) : undefined,
     catalogBanner: data.catalogBanner ? toCdnUrl(data.catalogBanner) : undefined,
     catalogHeaderBackground: data.catalogHeaderBackground ? toCdnUrl(data.catalogHeaderBackground) : undefined,
+    catalogAboutImageUrl: data.catalogAboutImageUrl ? toCdnUrl(data.catalogAboutImageUrl) : undefined,
     catalogBanners: Array.isArray(data.catalogBanners)
       ? data.catalogBanners.map((b: any) => ({ ...b, imageUrl: toCdnUrl(b.imageUrl) }))
       : undefined,

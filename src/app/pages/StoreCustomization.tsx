@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
+import { useAuth } from '../../contexts/AuthContext';
 import { useUserSettings } from '../../hooks/useUserSettings';
 import { Button } from '../components/ui/button';
 import { Switch } from '../components/ui/switch';
@@ -160,6 +161,9 @@ export const HEADER_COLOR_PRESETS = [
 ];
 
 export function StoreCustomization() {
+  const { isAdmin, hasPermission } = useAuth();
+  const canEdit = isAdmin || hasPermission((p) => Boolean(p?.store || p?.settings));
+
   const { 
     settings, 
     loading, 
@@ -172,14 +176,18 @@ export function StoreCustomization() {
     removeCatalogBanner,
     uploadCatalogHeaderBackground,
     removeCatalogHeaderBackground,
+    uploadCatalogAboutImage,
+    removeCatalogAboutImage,
     toggleStorePublished,
   } = useUserSettings();
   const [saving, setSaving] = useState(false);
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const [uploadingBanner, setUploadingBanner] = useState(false);
   const [uploadingHeaderBackground, setUploadingHeaderBackground] = useState(false);
+  const [uploadingAboutImage, setUploadingAboutImage] = useState(false);
   const [currentCatalogLogo, setCurrentCatalogLogo] = useState<string | null>(null);
   const [currentCatalogBanner, setCurrentCatalogBanner] = useState<string | null>(null);
+  const [currentCatalogAboutImage, setCurrentCatalogAboutImage] = useState<string | null>(null);
   const [catalogBanners, setCatalogBanners] = useState<CatalogBannerItem[]>([]);
   const [catalogBannerInterval, setCatalogBannerInterval] = useState<number>(5);
   const [catalogBannerAutoPlay, setCatalogBannerAutoPlay] = useState<boolean>(true);
@@ -214,6 +222,60 @@ export function StoreCustomization() {
     catalogHeaderHeight: 'normal' as 'compact' | 'normal' | 'large',
     catalogHeaderHideText: false,
     catalogShowHero: true,
+
+    // Seção 1: Quem Somos / Sobre o Ateliê
+    catalogShowAbout: false,
+    catalogAboutBadge: '',
+    catalogAboutTitle: '',
+    catalogAboutText: '',
+    catalogAboutPillar1Title: '',
+    catalogAboutPillar1Text: '',
+    catalogAboutPillar2Title: '',
+    catalogAboutPillar2Text: '',
+    catalogAboutPillar3Title: '',
+    catalogAboutPillar3Text: '',
+
+    // Seção 2: Como Funciona a Encomenda
+    catalogShowHowItWorks: false,
+    catalogHowItWorksBadge: '',
+    catalogHowItWorksTitle: '',
+    catalogHowItWorksSubtitle: '',
+    catalogHowItWorksStep1Title: '',
+    catalogHowItWorksStep1Text: '',
+    catalogHowItWorksStep2Title: '',
+    catalogHowItWorksStep2Text: '',
+    catalogHowItWorksStep3Title: '',
+    catalogHowItWorksStep3Text: '',
+    catalogHowItWorksStep4Title: '',
+    catalogHowItWorksStep4Text: '',
+
+    // Seção 3: Diferenciais da Marca
+    catalogShowFeatures: false,
+    catalogFeaturesBadge: '',
+    catalogFeaturesTitle: '',
+    catalogFeature1Title: '',
+    catalogFeature1Text: '',
+    catalogFeature2Title: '',
+    catalogFeature2Text: '',
+    catalogFeature3Title: '',
+    catalogFeature3Text: '',
+    catalogFeature4Title: '',
+    catalogFeature4Text: '',
+
+    // Seção 4: Dúvidas Frequentes (FAQ)
+    catalogShowFaq: false,
+    catalogFaqBadge: '',
+    catalogFaqTitle: '',
+    catalogFaq1Q: '',
+    catalogFaq1A: '',
+    catalogFaq2Q: '',
+    catalogFaq2A: '',
+    catalogFaq3Q: '',
+    catalogFaq3A: '',
+    catalogFaq4Q: '',
+    catalogFaq4A: '',
+    catalogFaq5Q: '',
+    catalogFaq5A: '',
   });
 
   const [dataLoaded, setDataLoaded] = useState(false);
@@ -232,6 +294,10 @@ export function StoreCustomization() {
   const [togglingPublished, setTogglingPublished] = useState(false);
 
   const handleTogglePublished = async (newPublished: boolean) => {
+    if (!canEdit) {
+      toast.error('Você não tem permissão para alterar a visibilidade da loja.');
+      return;
+    }
     setTogglingPublished(true);
     setStorePublished(newPublished);
     try {
@@ -272,6 +338,8 @@ export function StoreCustomization() {
       let loadedLogo: string | null = settings?.catalogLogo || null;
       let loadedBanner: string | null = settings?.catalogBanner || null;
       let loadedHeaderBg: string | null = settings?.catalogHeaderBackground || null;
+      let loadedAboutImg: string | null = settings?.catalogAboutImageUrl || null;
+
       // Dados exclusivos da lojinha — totalmente desacoplados do painel interno.
       let data = {
         catalogStoreName: settings?.catalogStoreName || '',
@@ -300,6 +368,60 @@ export function StoreCustomization() {
         catalogHeaderHeight: (settings?.catalogHeaderHeight || 'normal') as 'compact' | 'normal' | 'large',
         catalogHeaderHideText: Boolean(settings?.catalogHeaderHideText),
         catalogShowHero: settings?.catalogShowHero !== undefined ? Boolean(settings.catalogShowHero) : true,
+
+        // 1. Quem Somos
+        catalogShowAbout: settings?.catalogShowAbout !== undefined ? Boolean(settings.catalogShowAbout) : false,
+        catalogAboutBadge: settings?.catalogAboutBadge || '',
+        catalogAboutTitle: settings?.catalogAboutTitle || '',
+        catalogAboutText: settings?.catalogAboutText || '',
+        catalogAboutPillar1Title: settings?.catalogAboutPillar1Title || '',
+        catalogAboutPillar1Text: settings?.catalogAboutPillar1Text || '',
+        catalogAboutPillar2Title: settings?.catalogAboutPillar2Title || '',
+        catalogAboutPillar2Text: settings?.catalogAboutPillar2Text || '',
+        catalogAboutPillar3Title: settings?.catalogAboutPillar3Title || '',
+        catalogAboutPillar3Text: settings?.catalogAboutPillar3Text || '',
+
+        // 2. Como Funciona
+        catalogShowHowItWorks: settings?.catalogShowHowItWorks !== undefined ? Boolean(settings.catalogShowHowItWorks) : false,
+        catalogHowItWorksBadge: settings?.catalogHowItWorksBadge || '',
+        catalogHowItWorksTitle: settings?.catalogHowItWorksTitle || '',
+        catalogHowItWorksSubtitle: settings?.catalogHowItWorksSubtitle || '',
+        catalogHowItWorksStep1Title: settings?.catalogHowItWorksStep1Title || '',
+        catalogHowItWorksStep1Text: settings?.catalogHowItWorksStep1Text || '',
+        catalogHowItWorksStep2Title: settings?.catalogHowItWorksStep2Title || '',
+        catalogHowItWorksStep2Text: settings?.catalogHowItWorksStep2Text || '',
+        catalogHowItWorksStep3Title: settings?.catalogHowItWorksStep3Title || '',
+        catalogHowItWorksStep3Text: settings?.catalogHowItWorksStep3Text || '',
+        catalogHowItWorksStep4Title: settings?.catalogHowItWorksStep4Title || '',
+        catalogHowItWorksStep4Text: settings?.catalogHowItWorksStep4Text || '',
+
+        // 3. Diferenciais
+        catalogShowFeatures: settings?.catalogShowFeatures !== undefined ? Boolean(settings.catalogShowFeatures) : false,
+        catalogFeaturesBadge: settings?.catalogFeaturesBadge || '',
+        catalogFeaturesTitle: settings?.catalogFeaturesTitle || '',
+        catalogFeature1Title: settings?.catalogFeature1Title || '',
+        catalogFeature1Text: settings?.catalogFeature1Text || '',
+        catalogFeature2Title: settings?.catalogFeature2Title || '',
+        catalogFeature2Text: settings?.catalogFeature2Text || '',
+        catalogFeature3Title: settings?.catalogFeature3Title || '',
+        catalogFeature3Text: settings?.catalogFeature3Text || '',
+        catalogFeature4Title: settings?.catalogFeature4Title || '',
+        catalogFeature4Text: settings?.catalogFeature4Text || '',
+
+        // 4. FAQ
+        catalogShowFaq: settings?.catalogShowFaq !== undefined ? Boolean(settings.catalogShowFaq) : false,
+        catalogFaqBadge: settings?.catalogFaqBadge || '',
+        catalogFaqTitle: settings?.catalogFaqTitle || '',
+        catalogFaq1Q: settings?.catalogFaq1Q || '',
+        catalogFaq1A: settings?.catalogFaq1A || '',
+        catalogFaq2Q: settings?.catalogFaq2Q || '',
+        catalogFaq2A: settings?.catalogFaq2A || '',
+        catalogFaq3Q: settings?.catalogFaq3Q || '',
+        catalogFaq3A: settings?.catalogFaq3A || '',
+        catalogFaq4Q: settings?.catalogFaq4Q || '',
+        catalogFaq4A: settings?.catalogFaq4A || '',
+        catalogFaq5Q: settings?.catalogFaq5Q || '',
+        catalogFaq5A: settings?.catalogFaq5A || '',
       };
 
       // Carrega os dados compartilhados públicos da loja do Firestore
@@ -330,6 +452,13 @@ export function StoreCustomization() {
             loadedHeaderBg = null;
           }
 
+          // Imagem institucional Sobre Nós
+          if (pub.catalogAboutImageUrl) {
+            loadedAboutImg = pub.catalogAboutImageUrl;
+          } else {
+            loadedAboutImg = null;
+          }
+
           // Merge exclusivo da lojinha — totalmente desacoplado do painel interno.
           data = {
             catalogStoreName: pub.catalogStoreName || pub.name || pub.businessName || settings?.catalogStoreName || '',
@@ -358,6 +487,60 @@ export function StoreCustomization() {
             catalogHeaderHeight: pub.catalogHeaderHeight || data.catalogHeaderHeight,
             catalogHeaderHideText: pub.catalogHeaderHideText !== undefined ? Boolean(pub.catalogHeaderHideText) : data.catalogHeaderHideText,
             catalogShowHero: pub.catalogShowHero !== undefined ? Boolean(pub.catalogShowHero) : data.catalogShowHero,
+
+            // 1. Quem Somos
+            catalogShowAbout: pub.catalogShowAbout !== undefined ? Boolean(pub.catalogShowAbout) : data.catalogShowAbout,
+            catalogAboutBadge: pub.catalogAboutBadge !== undefined ? pub.catalogAboutBadge : data.catalogAboutBadge,
+            catalogAboutTitle: pub.catalogAboutTitle !== undefined ? pub.catalogAboutTitle : data.catalogAboutTitle,
+            catalogAboutText: pub.catalogAboutText !== undefined ? pub.catalogAboutText : data.catalogAboutText,
+            catalogAboutPillar1Title: pub.catalogAboutPillar1Title !== undefined ? pub.catalogAboutPillar1Title : data.catalogAboutPillar1Title,
+            catalogAboutPillar1Text: pub.catalogAboutPillar1Text !== undefined ? pub.catalogAboutPillar1Text : data.catalogAboutPillar1Text,
+            catalogAboutPillar2Title: pub.catalogAboutPillar2Title !== undefined ? pub.catalogAboutPillar2Title : data.catalogAboutPillar2Title,
+            catalogAboutPillar2Text: pub.catalogAboutPillar2Text !== undefined ? pub.catalogAboutPillar2Text : data.catalogAboutPillar2Text,
+            catalogAboutPillar3Title: pub.catalogAboutPillar3Title !== undefined ? pub.catalogAboutPillar3Title : data.catalogAboutPillar3Title,
+            catalogAboutPillar3Text: pub.catalogAboutPillar3Text !== undefined ? pub.catalogAboutPillar3Text : data.catalogAboutPillar3Text,
+
+            // 2. Como Funciona
+            catalogShowHowItWorks: pub.catalogShowHowItWorks !== undefined ? Boolean(pub.catalogShowHowItWorks) : data.catalogShowHowItWorks,
+            catalogHowItWorksBadge: pub.catalogHowItWorksBadge !== undefined ? pub.catalogHowItWorksBadge : data.catalogHowItWorksBadge,
+            catalogHowItWorksTitle: pub.catalogHowItWorksTitle !== undefined ? pub.catalogHowItWorksTitle : data.catalogHowItWorksTitle,
+            catalogHowItWorksSubtitle: pub.catalogHowItWorksSubtitle !== undefined ? pub.catalogHowItWorksSubtitle : data.catalogHowItWorksSubtitle,
+            catalogHowItWorksStep1Title: pub.catalogHowItWorksStep1Title !== undefined ? pub.catalogHowItWorksStep1Title : data.catalogHowItWorksStep1Title,
+            catalogHowItWorksStep1Text: pub.catalogHowItWorksStep1Text !== undefined ? pub.catalogHowItWorksStep1Text : data.catalogHowItWorksStep1Text,
+            catalogHowItWorksStep2Title: pub.catalogHowItWorksStep2Title !== undefined ? pub.catalogHowItWorksStep2Title : data.catalogHowItWorksStep2Title,
+            catalogHowItWorksStep2Text: pub.catalogHowItWorksStep2Text !== undefined ? pub.catalogHowItWorksStep2Text : data.catalogHowItWorksStep2Text,
+            catalogHowItWorksStep3Title: pub.catalogHowItWorksStep3Title !== undefined ? pub.catalogHowItWorksStep3Title : data.catalogHowItWorksStep3Title,
+            catalogHowItWorksStep3Text: pub.catalogHowItWorksStep3Text !== undefined ? pub.catalogHowItWorksStep3Text : data.catalogHowItWorksStep3Text,
+            catalogHowItWorksStep4Title: pub.catalogHowItWorksStep4Title !== undefined ? pub.catalogHowItWorksStep4Title : data.catalogHowItWorksStep4Title,
+            catalogHowItWorksStep4Text: pub.catalogHowItWorksStep4Text !== undefined ? pub.catalogHowItWorksStep4Text : data.catalogHowItWorksStep4Text,
+
+            // 3. Diferenciais
+            catalogShowFeatures: pub.catalogShowFeatures !== undefined ? Boolean(pub.catalogShowFeatures) : data.catalogShowFeatures,
+            catalogFeaturesBadge: pub.catalogFeaturesBadge !== undefined ? pub.catalogFeaturesBadge : data.catalogFeaturesBadge,
+            catalogFeaturesTitle: pub.catalogFeaturesTitle !== undefined ? pub.catalogFeaturesTitle : data.catalogFeaturesTitle,
+            catalogFeature1Title: pub.catalogFeature1Title !== undefined ? pub.catalogFeature1Title : data.catalogFeature1Title,
+            catalogFeature1Text: pub.catalogFeature1Text !== undefined ? pub.catalogFeature1Text : data.catalogFeature1Text,
+            catalogFeature2Title: pub.catalogFeature2Title !== undefined ? pub.catalogFeature2Title : data.catalogFeature2Title,
+            catalogFeature2Text: pub.catalogFeature2Text !== undefined ? pub.catalogFeature2Text : data.catalogFeature2Text,
+            catalogFeature3Title: pub.catalogFeature3Title !== undefined ? pub.catalogFeature3Title : data.catalogFeature3Title,
+            catalogFeature3Text: pub.catalogFeature3Text !== undefined ? pub.catalogFeature3Text : data.catalogFeature3Text,
+            catalogFeature4Title: pub.catalogFeature4Title !== undefined ? pub.catalogFeature4Title : data.catalogFeature4Title,
+            catalogFeature4Text: pub.catalogFeature4Text !== undefined ? pub.catalogFeature4Text : data.catalogFeature4Text,
+
+            // 4. FAQ
+            catalogShowFaq: pub.catalogShowFaq !== undefined ? Boolean(pub.catalogShowFaq) : data.catalogShowFaq,
+            catalogFaqBadge: pub.catalogFaqBadge !== undefined ? pub.catalogFaqBadge : data.catalogFaqBadge,
+            catalogFaqTitle: pub.catalogFaqTitle !== undefined ? pub.catalogFaqTitle : data.catalogFaqTitle,
+            catalogFaq1Q: pub.catalogFaq1Q !== undefined ? pub.catalogFaq1Q : data.catalogFaq1Q,
+            catalogFaq1A: pub.catalogFaq1A !== undefined ? pub.catalogFaq1A : data.catalogFaq1A,
+            catalogFaq2Q: pub.catalogFaq2Q !== undefined ? pub.catalogFaq2Q : data.catalogFaq2Q,
+            catalogFaq2A: pub.catalogFaq2A !== undefined ? pub.catalogFaq2A : data.catalogFaq2A,
+            catalogFaq3Q: pub.catalogFaq3Q !== undefined ? pub.catalogFaq3Q : data.catalogFaq3Q,
+            catalogFaq3A: pub.catalogFaq3A !== undefined ? pub.catalogFaq3A : data.catalogFaq3A,
+            catalogFaq4Q: pub.catalogFaq4Q !== undefined ? pub.catalogFaq4Q : data.catalogFaq4Q,
+            catalogFaq4A: pub.catalogFaq4A !== undefined ? pub.catalogFaq4A : data.catalogFaq4A,
+            catalogFaq5Q: pub.catalogFaq5Q !== undefined ? pub.catalogFaq5Q : data.catalogFaq5Q,
+            catalogFaq5A: pub.catalogFaq5A !== undefined ? pub.catalogFaq5A : data.catalogFaq5A,
           };
         }
       } catch (err) {
@@ -368,6 +551,7 @@ export function StoreCustomization() {
         setCurrentCatalogLogo(loadedLogo);
         setCurrentCatalogBanner(loadedBanner);
         setCurrentCatalogHeaderBackground(loadedHeaderBg);
+        setCurrentCatalogAboutImage(loadedAboutImg);
 
         // Carrega múltiplos banners rotativos (carrossel / propaganda)
         let loadedBanners: CatalogBannerItem[] = [];
@@ -694,6 +878,118 @@ export function StoreCustomization() {
     }
   };
 
+  const handleAboutImageUpload = async (file: File) => {
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+      toast.error('Formato inválido. Use imagem JPG, PNG ou WebP.');
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error('A imagem deve ter no máximo 5 MB.');
+      return;
+    }
+
+    setUploadingAboutImage(true);
+    try {
+      const url = await uploadCatalogAboutImage(file, currentCatalogAboutImage || undefined);
+      setCurrentCatalogAboutImage(url);
+      try {
+        const cached = localStorage.getItem('luisices_public_store_settings');
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          parsed.catalogAboutImageUrl = url;
+          localStorage.setItem('luisices_public_store_settings', JSON.stringify(parsed));
+        }
+      } catch {}
+      toast.success('Foto institucional da seção "Quem Somos" atualizada com sucesso!');
+    } catch (error) {
+      console.error('Erro no upload da foto institucional:', error);
+      toast.error(error instanceof Error ? error.message : 'Erro ao fazer upload da foto');
+    } finally {
+      setUploadingAboutImage(false);
+    }
+  };
+
+  const handleAboutImageRemove = async () => {
+    if (!confirm('Deseja realmente remover a foto institucional?')) return;
+    setUploadingAboutImage(true);
+    const previousImg = currentCatalogAboutImage;
+    try {
+      setCurrentCatalogAboutImage(null);
+      await removeCatalogAboutImage(previousImg || undefined);
+      try {
+        const cached = localStorage.getItem('luisices_public_store_settings');
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          parsed.catalogAboutImageUrl = '';
+          localStorage.setItem('luisices_public_store_settings', JSON.stringify(parsed));
+        }
+      } catch {}
+      toast.success('Foto institucional removida com sucesso!');
+    } catch (error) {
+      console.error('Erro ao remover foto institucional:', error);
+      setCurrentCatalogAboutImage(previousImg);
+      toast.error('Erro ao remover imagem');
+    } finally {
+      setUploadingAboutImage(false);
+    }
+  };
+
+  const fillInstitutionalDefaults = () => {
+    setFormData((prev) => ({
+      ...prev,
+      catalogShowAbout: true,
+      catalogAboutBadge: 'Sobre Nós',
+      catalogAboutTitle: 'Feito à Mão com Afeto & Dedicação',
+      catalogAboutText: 'No Ateliê Luisices, acreditamos que a papelaria personalizada vai muito além do papel: ela materializa memórias, celebra novas fases e acolhe com carinho momentos únicos. Cada peça é desenhada e produzida artesanalmente com os mais nobres materiais.',
+      catalogAboutPillar1Title: 'Produção Artesanal',
+      catalogAboutPillar1Text: 'Corte, dobra, montagem e laminação feitos à mão com rigoroso controle de acabamento.',
+      catalogAboutPillar2Title: 'Materiais Nobres',
+      catalogAboutPillar2Text: 'Papéis especiais de alta gramatura, laminação fosca/holográfica e acabamentos duradouros.',
+      catalogAboutPillar3Title: 'Afeto em Cada Detalhe',
+      catalogAboutPillar3Text: 'Personalização exclusiva com seu nome, tema e cores para tornar seu momento inesquecível.',
+
+      catalogShowHowItWorks: true,
+      catalogHowItWorksBadge: 'Passo a Passo',
+      catalogHowItWorksTitle: 'Como Funciona sua Encomenda?',
+      catalogHowItWorksSubtitle: 'Um processo simples, transparente e carinhoso do pedido até a sua entrega',
+      catalogHowItWorksStep1Title: '1. Escolha seus Mimos',
+      catalogHowItWorksStep1Text: 'Explore os produtos na vitrine e adicione à sacola os itens desejados.',
+      catalogHowItWorksStep2Title: '2. Envie pelo WhatsApp',
+      catalogHowItWorksStep2Text: 'Informe o nome para personalização e clique para enviar a sacola direto no WhatsApp.',
+      catalogHowItWorksStep3Title: '3. Prévia & Aprovação',
+      catalogHowItWorksStep3Text: 'Enviamos a arte digital para você conferir e aprovar cada detalhe antes da impressão.',
+      catalogHowItWorksStep4Title: '4. Confecção & Envio',
+      catalogHowItWorksStep4Text: 'Produzimos com todo o carinho e despachamos com embalagem segura para o seu endereço.',
+
+      catalogShowFeatures: true,
+      catalogFeaturesBadge: 'Diferenciais do Ateliê',
+      catalogFeaturesTitle: 'Por que escolher a Luisices?',
+      catalogFeature1Title: 'Atendimento Humanizado',
+      catalogFeature1Text: 'Conversa direta pelo WhatsApp para tirar dúvidas e alinhar sua arte com calma.',
+      catalogFeature2Title: 'Laminação Protetora',
+      catalogFeature2Text: 'Capas e peças protegidas contra respingos e sujeira, com toque suave e aveludado.',
+      catalogFeature3Title: 'Embalagem Reforçada',
+      catalogFeature3Text: 'Seus mimos viajam com proteção extra para chegarem impecáveis até você.',
+      catalogFeature4Title: 'Arte Sob Medida',
+      catalogFeature4Text: 'Criações autorais e adaptações em qualquer tema para transformar sua festa ou rotina.',
+
+      catalogShowFaq: true,
+      catalogFaqBadge: 'Tire suas Dúvidas',
+      catalogFaqTitle: 'Perguntas Frequentes (FAQ)',
+      catalogFaq1Q: 'Qual é o prazo médio de produção?',
+      catalogFaq1A: 'O prazo varia de acordo com cada produto (geralmente entre 5 a 10 dias úteis) e começa a contar após a aprovação da arte final.',
+      catalogFaq2Q: 'Vocês enviam para todo o Brasil?',
+      catalogFaq2A: 'Sim! Enviamos para todo o território nacional via Correios (PAC/Sedex) ou transportadora, com código de rastreio.',
+      catalogFaq3Q: 'Posso personalizar com qualquer tema ou nome?',
+      catalogFaq3A: 'Sim! Todos os nossos produtos personalizáveis podem ser adaptados com seu tema, nome, idade ou paleta de cores desejada.',
+      catalogFaq4Q: 'Como funciona o pagamento?',
+      catalogFaq4A: 'Aceitamos PIX (com confirmação imediata) e Cartão de Crédito. Os dados são fornecidos diretamente no WhatsApp.',
+      catalogFaq5Q: 'Consigo ver uma prévia antes da confecção?',
+      catalogFaq5A: 'Com certeza! Antes de imprimir qualquer produto, enviamos a prévia digital no WhatsApp para sua total aprovação.',
+    }));
+    toast.success('Sugestões preenchidas com sucesso! Revise os campos e clique em Salvar Alterações.');
+  };
+
   const handleChange = (field: keyof typeof formData, value: any) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
   };
@@ -712,6 +1008,10 @@ export function StoreCustomization() {
   };
 
   const handleSave = async () => {
+    if (!canEdit) {
+      toast.error('Você não tem permissão para salvar personalizações da loja.');
+      return;
+    }
     setSaving(true);
     try {
       await updateSettings({
@@ -731,6 +1031,62 @@ export function StoreCustomization() {
         catalogHeaderHeight: formData.catalogHeaderHeight,
         catalogHeaderHideText: Boolean(formData.catalogHeaderHideText),
         catalogShowHero: Boolean(formData.catalogShowHero),
+
+        // 1. Quem Somos
+        catalogShowAbout: Boolean(formData.catalogShowAbout),
+        catalogAboutBadge: formData.catalogAboutBadge,
+        catalogAboutTitle: formData.catalogAboutTitle,
+        catalogAboutText: formData.catalogAboutText,
+        catalogAboutImageUrl: currentCatalogAboutImage || '',
+        catalogAboutPillar1Title: formData.catalogAboutPillar1Title,
+        catalogAboutPillar1Text: formData.catalogAboutPillar1Text,
+        catalogAboutPillar2Title: formData.catalogAboutPillar2Title,
+        catalogAboutPillar2Text: formData.catalogAboutPillar2Text,
+        catalogAboutPillar3Title: formData.catalogAboutPillar3Title,
+        catalogAboutPillar3Text: formData.catalogAboutPillar3Text,
+
+        // 2. Como Funciona
+        catalogShowHowItWorks: Boolean(formData.catalogShowHowItWorks),
+        catalogHowItWorksBadge: formData.catalogHowItWorksBadge,
+        catalogHowItWorksTitle: formData.catalogHowItWorksTitle,
+        catalogHowItWorksSubtitle: formData.catalogHowItWorksSubtitle,
+        catalogHowItWorksStep1Title: formData.catalogHowItWorksStep1Title,
+        catalogHowItWorksStep1Text: formData.catalogHowItWorksStep1Text,
+        catalogHowItWorksStep2Title: formData.catalogHowItWorksStep2Title,
+        catalogHowItWorksStep2Text: formData.catalogHowItWorksStep2Text,
+        catalogHowItWorksStep3Title: formData.catalogHowItWorksStep3Title,
+        catalogHowItWorksStep3Text: formData.catalogHowItWorksStep3Text,
+        catalogHowItWorksStep4Title: formData.catalogHowItWorksStep4Title,
+        catalogHowItWorksStep4Text: formData.catalogHowItWorksStep4Text,
+
+        // 3. Diferenciais
+        catalogShowFeatures: Boolean(formData.catalogShowFeatures),
+        catalogFeaturesBadge: formData.catalogFeaturesBadge,
+        catalogFeaturesTitle: formData.catalogFeaturesTitle,
+        catalogFeature1Title: formData.catalogFeature1Title,
+        catalogFeature1Text: formData.catalogFeature1Text,
+        catalogFeature2Title: formData.catalogFeature2Title,
+        catalogFeature2Text: formData.catalogFeature2Text,
+        catalogFeature3Title: formData.catalogFeature3Title,
+        catalogFeature3Text: formData.catalogFeature3Text,
+        catalogFeature4Title: formData.catalogFeature4Title,
+        catalogFeature4Text: formData.catalogFeature4Text,
+
+        // 4. FAQ
+        catalogShowFaq: Boolean(formData.catalogShowFaq),
+        catalogFaqBadge: formData.catalogFaqBadge,
+        catalogFaqTitle: formData.catalogFaqTitle,
+        catalogFaq1Q: formData.catalogFaq1Q,
+        catalogFaq1A: formData.catalogFaq1A,
+        catalogFaq2Q: formData.catalogFaq2Q,
+        catalogFaq2A: formData.catalogFaq2A,
+        catalogFaq3Q: formData.catalogFaq3Q,
+        catalogFaq3A: formData.catalogFaq3A,
+        catalogFaq4Q: formData.catalogFaq4Q,
+        catalogFaq4A: formData.catalogFaq4A,
+        catalogFaq5Q: formData.catalogFaq5Q,
+        catalogFaq5A: formData.catalogFaq5A,
+
         storePublished,
         storeUnpublishMessage,
         featureFlags,
@@ -774,6 +1130,62 @@ export function StoreCustomization() {
           heroDescription: formData.catalogHeroDescription,
           showHero: Boolean(formData.catalogShowHero),
           catalogShowHero: Boolean(formData.catalogShowHero),
+
+          // 1. Quem Somos
+          catalogShowAbout: Boolean(formData.catalogShowAbout),
+          catalogAboutBadge: formData.catalogAboutBadge,
+          catalogAboutTitle: formData.catalogAboutTitle,
+          catalogAboutText: formData.catalogAboutText,
+          catalogAboutImageUrl: currentCatalogAboutImage || '',
+          catalogAboutPillar1Title: formData.catalogAboutPillar1Title,
+          catalogAboutPillar1Text: formData.catalogAboutPillar1Text,
+          catalogAboutPillar2Title: formData.catalogAboutPillar2Title,
+          catalogAboutPillar2Text: formData.catalogAboutPillar2Text,
+          catalogAboutPillar3Title: formData.catalogAboutPillar3Title,
+          catalogAboutPillar3Text: formData.catalogAboutPillar3Text,
+
+          // 2. Como Funciona
+          catalogShowHowItWorks: Boolean(formData.catalogShowHowItWorks),
+          catalogHowItWorksBadge: formData.catalogHowItWorksBadge,
+          catalogHowItWorksTitle: formData.catalogHowItWorksTitle,
+          catalogHowItWorksSubtitle: formData.catalogHowItWorksSubtitle,
+          catalogHowItWorksStep1Title: formData.catalogHowItWorksStep1Title,
+          catalogHowItWorksStep1Text: formData.catalogHowItWorksStep1Text,
+          catalogHowItWorksStep2Title: formData.catalogHowItWorksStep2Title,
+          catalogHowItWorksStep2Text: formData.catalogHowItWorksStep2Text,
+          catalogHowItWorksStep3Title: formData.catalogHowItWorksStep3Title,
+          catalogHowItWorksStep3Text: formData.catalogHowItWorksStep3Text,
+          catalogHowItWorksStep4Title: formData.catalogHowItWorksStep4Title,
+          catalogHowItWorksStep4Text: formData.catalogHowItWorksStep4Text,
+
+          // 3. Diferenciais
+          catalogShowFeatures: Boolean(formData.catalogShowFeatures),
+          catalogFeaturesBadge: formData.catalogFeaturesBadge,
+          catalogFeaturesTitle: formData.catalogFeaturesTitle,
+          catalogFeature1Title: formData.catalogFeature1Title,
+          catalogFeature1Text: formData.catalogFeature1Text,
+          catalogFeature2Title: formData.catalogFeature2Title,
+          catalogFeature2Text: formData.catalogFeature2Text,
+          catalogFeature3Title: formData.catalogFeature3Title,
+          catalogFeature3Text: formData.catalogFeature3Text,
+          catalogFeature4Title: formData.catalogFeature4Title,
+          catalogFeature4Text: formData.catalogFeature4Text,
+
+          // 4. FAQ
+          catalogShowFaq: Boolean(formData.catalogShowFaq),
+          catalogFaqBadge: formData.catalogFaqBadge,
+          catalogFaqTitle: formData.catalogFaqTitle,
+          catalogFaq1Q: formData.catalogFaq1Q,
+          catalogFaq1A: formData.catalogFaq1A,
+          catalogFaq2Q: formData.catalogFaq2Q,
+          catalogFaq2A: formData.catalogFaq2A,
+          catalogFaq3Q: formData.catalogFaq3Q,
+          catalogFaq3A: formData.catalogFaq3A,
+          catalogFaq4Q: formData.catalogFaq4Q,
+          catalogFaq4A: formData.catalogFaq4A,
+          catalogFaq5Q: formData.catalogFaq5Q,
+          catalogFaq5A: formData.catalogFaq5A,
+
           whatsappGreeting: formData.catalogWhatsappGreeting,
           whatsappCustomizationLabel: formData.catalogWhatsappCustomizationLabel,
           whatsappFooter: formData.catalogWhatsappFooter,
@@ -801,6 +1213,20 @@ export function StoreCustomization() {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
         <Loader2 className="size-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  if (!canEdit) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh] p-6 text-center">
+        <div className="p-4 rounded-full bg-amber-100 dark:bg-amber-950/40 text-amber-600 mb-4">
+          <ShieldAlert className="size-8" />
+        </div>
+        <h2 className="text-xl font-bold text-gray-800 dark:text-gray-100 mb-2">Acesso restrito</h2>
+        <p className="text-sm text-gray-500 dark:text-gray-400 max-w-md">
+          Seu perfil de usuário não possui permissão para personalizar a loja online. Solicite liberação a um administrador se necessário.
+        </p>
       </div>
     );
   }
@@ -973,6 +1399,10 @@ export function StoreCustomization() {
             <TabsList className="flex flex-wrap w-full h-auto p-1 bg-muted/60">
               <TabsTrigger value="identity" className="text-xs py-2">
                 Logo & Vitrine
+              </TabsTrigger>
+              <TabsTrigger value="institutional" className="text-xs py-2">
+                <Building2 className="size-3 mr-1 inline" />
+                Institucional & Sobre
               </TabsTrigger>
               <TabsTrigger value="whatsapp" className="text-xs py-2">
                 WhatsApp
@@ -1810,6 +2240,666 @@ export function StoreCustomization() {
                     />
                   </div>
                 </CardContent>
+              </Card>
+            </TabsContent>
+
+            {/* ABA: Institucional & Sobre (Modular & Toggles) */}
+            <TabsContent value="institutional" className="space-y-5 pt-3">
+              {/* Header / Banner de Sugestões Prontas */}
+              <div className="p-4 rounded-2xl bg-primary/5 border border-primary/20 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-2xs">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2 font-bold text-sm text-primary">
+                    <Building2 className="size-4" />
+                    <span>Seções Institucionais & Confiança da Marca</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground max-w-xl leading-relaxed">
+                    Ative e personalize seções modulares para tornar seu catálogo mais profissional e confiável: <strong>Quem Somos</strong>, <strong>Como Funciona a Encomenda</strong>, <strong>Diferenciais</strong> e <strong>Perguntas Frequentes (FAQ)</strong>.
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={fillInstitutionalDefaults}
+                  className="gap-1.5 border-primary/30 text-primary hover:bg-primary/10 shrink-0 text-xs font-semibold"
+                >
+                  <Sparkles className="size-3.5" />
+                  Preencher com Sugestões
+                </Button>
+              </div>
+
+              {/* 1. SEÇÃO QUEM SOMOS / SOBRE O ATELIÊ */}
+              <Card className={`shadow-xs transition-colors ${formData.catalogShowAbout ? 'border-primary/30' : 'border-border/60 opacity-90'}`}>
+                <CardHeader className="pb-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="space-y-0.5">
+                      <CardTitle className="text-base flex items-center gap-2">
+                        <Heart className="size-4 text-rose-500" />
+                        1. Quem Somos / Sobre o Ateliê
+                      </CardTitle>
+                      <CardDescription className="text-xs">
+                        Apresente a história, carinho artesanal e propósito do seu ateliê para encantar os visitantes.
+                      </CardDescription>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${formData.catalogShowAbout ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-400' : 'bg-muted text-muted-foreground'}`}>
+                        {formData.catalogShowAbout ? 'Ativa no Catálogo' : 'Oculta'}
+                      </span>
+                      <Switch
+                        id="toggle-show-about"
+                        checked={Boolean(formData.catalogShowAbout)}
+                        onCheckedChange={(checked) => handleChange('catalogShowAbout', checked)}
+                      />
+                    </div>
+                  </div>
+                </CardHeader>
+
+                {formData.catalogShowAbout && (
+                  <CardContent className="space-y-5 pt-0 border-t border-border/40 animate-in fade-in-50 duration-200">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-4">
+                      <div className="space-y-1.5">
+                        <Label htmlFor="inst-about-badge" className="text-xs font-semibold">
+                          Selo Superior (Badge)
+                        </Label>
+                        <Input
+                          id="inst-about-badge"
+                          placeholder="Ex: Sobre Nós ou Nosso Ateliê"
+                          value={formData.catalogAboutBadge}
+                          onChange={(e) => handleChange('catalogAboutBadge', e.target.value)}
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label htmlFor="inst-about-title" className="text-xs font-semibold">
+                          Título Principal da Seção
+                        </Label>
+                        <Input
+                          id="inst-about-title"
+                          placeholder="Ex: Feito à Mão com Afeto & Dedicação"
+                          value={formData.catalogAboutTitle}
+                          onChange={(e) => handleChange('catalogAboutTitle', e.target.value)}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <Label htmlFor="inst-about-text" className="text-xs font-semibold">
+                        História / Apresentação do Ateliê
+                      </Label>
+                      <Textarea
+                        id="inst-about-text"
+                        rows={4}
+                        placeholder="Conte como o ateliê nasceu, seu amor pela encadernação/papelaria e o cuidado em cada pedido..."
+                        value={formData.catalogAboutText}
+                        onChange={(e) => handleChange('catalogAboutText', e.target.value)}
+                        className="text-xs leading-relaxed"
+                      />
+                    </div>
+
+                    {/* Foto Institucional / Foto da Artesã ou Ateliê */}
+                    <div className="p-4 rounded-xl border border-border/70 bg-muted/20 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <Label className="text-xs font-bold flex items-center gap-1.5">
+                          <ImageIcon className="size-3.5 text-primary" />
+                          Foto Institucional (Artesã ou Ateliê)
+                        </Label>
+                        <span className="text-[10px] text-muted-foreground">Opcional • Formato 4:3 ou 1:1</span>
+                      </div>
+
+                      <div className="flex flex-col sm:flex-row items-center gap-4">
+                        {currentCatalogAboutImage ? (
+                          <div className="relative size-24 rounded-2xl overflow-hidden border border-border shadow-xs shrink-0 bg-muted">
+                            <img
+                              src={currentCatalogAboutImage}
+                              alt="Foto Institucional"
+                              className="size-full object-cover"
+                            />
+                          </div>
+                        ) : (
+                          <div className="size-24 rounded-2xl border-2 border-dashed border-border flex flex-col items-center justify-center text-muted-foreground/60 shrink-0 bg-background/50">
+                            <ImageIcon className="size-6" />
+                            <span className="text-[9px] mt-1">Sem foto</span>
+                          </div>
+                        )}
+
+                        <div className="flex-1 space-y-2 text-center sm:text-left w-full">
+                          <div className="flex flex-wrap items-center gap-2 justify-center sm:justify-start">
+                            <Label htmlFor="inst-about-img-upload" className="cursor-pointer">
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                disabled={uploadingAboutImage}
+                                className="gap-1.5 text-xs border-primary/30 text-primary hover:bg-primary/5"
+                                asChild
+                              >
+                                <span>
+                                  {uploadingAboutImage ? (
+                                    <>
+                                      <Loader2 className="size-3.5 animate-spin" />
+                                      Enviando foto...
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Upload className="size-3.5" />
+                                      {currentCatalogAboutImage ? 'Trocar Foto' : 'Enviar Foto'}
+                                    </>
+                                  )}
+                                </span>
+                              </Button>
+                            </Label>
+                            <Input
+                              id="inst-about-img-upload"
+                              type="file"
+                              accept="image/jpeg,image/png,image/webp"
+                              className="hidden"
+                              onChange={(e) => {
+                                const file = e.target.files?.[0];
+                                e.target.value = '';
+                                if (file) void handleAboutImageUpload(file);
+                              }}
+                            />
+
+                            {currentCatalogAboutImage && (
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                disabled={uploadingAboutImage}
+                                onClick={handleAboutImageRemove}
+                                className="gap-1.5 text-destructive hover:text-destructive hover:bg-destructive/10 text-xs"
+                              >
+                                <X className="size-3.5" />
+                                Remover Foto
+                              </Button>
+                            )}
+                          </div>
+                          <p className="text-[10px] text-muted-foreground">
+                            JPG, PNG ou WebP até 5MB. Uma foto acolhedora da artesã ou do ambiente do ateliê gera grande conexão e confiança.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* 3 Pilares do Ateliê */}
+                    <div className="space-y-3 pt-1">
+                      <Label className="text-xs font-bold flex items-center gap-1.5">
+                        <Sparkles className="size-3.5 text-primary" />
+                        3 Pilares / Destaques do Ateliê (Cards Curtos)
+                      </Label>
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                        <div className="p-3 rounded-xl border border-border/80 bg-background space-y-2">
+                          <Label className="text-[11px] font-semibold text-primary">Pilar 1</Label>
+                          <Input
+                            placeholder="Título (ex: Produção Artesanal)"
+                            value={formData.catalogAboutPillar1Title}
+                            onChange={(e) => handleChange('catalogAboutPillar1Title', e.target.value)}
+                            className="text-xs font-medium"
+                          />
+                          <Textarea
+                            rows={2}
+                            placeholder="Descrição curta do pilar..."
+                            value={formData.catalogAboutPillar1Text}
+                            onChange={(e) => handleChange('catalogAboutPillar1Text', e.target.value)}
+                            className="text-xs"
+                          />
+                        </div>
+
+                        <div className="p-3 rounded-xl border border-border/80 bg-background space-y-2">
+                          <Label className="text-[11px] font-semibold text-primary">Pilar 2</Label>
+                          <Input
+                            placeholder="Título (ex: Materiais Nobres)"
+                            value={formData.catalogAboutPillar2Title}
+                            onChange={(e) => handleChange('catalogAboutPillar2Title', e.target.value)}
+                            className="text-xs font-medium"
+                          />
+                          <Textarea
+                            rows={2}
+                            placeholder="Descrição curta do pilar..."
+                            value={formData.catalogAboutPillar2Text}
+                            onChange={(e) => handleChange('catalogAboutPillar2Text', e.target.value)}
+                            className="text-xs"
+                          />
+                        </div>
+
+                        <div className="p-3 rounded-xl border border-border/80 bg-background space-y-2">
+                          <Label className="text-[11px] font-semibold text-primary">Pilar 3</Label>
+                          <Input
+                            placeholder="Título (ex: Afeto em Cada Detalhe)"
+                            value={formData.catalogAboutPillar3Title}
+                            onChange={(e) => handleChange('catalogAboutPillar3Title', e.target.value)}
+                            className="text-xs font-medium"
+                          />
+                          <Textarea
+                            rows={2}
+                            placeholder="Descrição curta do pilar..."
+                            value={formData.catalogAboutPillar3Text}
+                            onChange={(e) => handleChange('catalogAboutPillar3Text', e.target.value)}
+                            className="text-xs"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </CardContent>
+                )}
+              </Card>
+
+              {/* 2. SEÇÃO COMO FUNCIONA A ENCOMENDA */}
+              <Card className={`shadow-xs transition-colors ${formData.catalogShowHowItWorks ? 'border-primary/30' : 'border-border/60 opacity-90'}`}>
+                <CardHeader className="pb-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="space-y-0.5">
+                      <CardTitle className="text-base flex items-center gap-2">
+                        <Clock className="size-4 text-primary" />
+                        2. Como Funciona a Encomenda (Passo a Passo)
+                      </CardTitle>
+                      <CardDescription className="text-xs">
+                        Explique aos clientes de forma visual e simples as 4 etapas da encomenda até a entrega.
+                      </CardDescription>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${formData.catalogShowHowItWorks ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-400' : 'bg-muted text-muted-foreground'}`}>
+                        {formData.catalogShowHowItWorks ? 'Ativa no Catálogo' : 'Oculta'}
+                      </span>
+                      <Switch
+                        id="toggle-show-how-it-works"
+                        checked={Boolean(formData.catalogShowHowItWorks)}
+                        onCheckedChange={(checked) => handleChange('catalogShowHowItWorks', checked)}
+                      />
+                    </div>
+                  </div>
+                </CardHeader>
+
+                {formData.catalogShowHowItWorks && (
+                  <CardContent className="space-y-4 pt-0 border-t border-border/40 animate-in fade-in-50 duration-200">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-4">
+                      <div className="space-y-1.5">
+                        <Label htmlFor="inst-hiw-badge" className="text-xs font-semibold">
+                          Selo Superior (Badge)
+                        </Label>
+                        <Input
+                          id="inst-hiw-badge"
+                          placeholder="Ex: Passo a Passo"
+                          value={formData.catalogHowItWorksBadge}
+                          onChange={(e) => handleChange('catalogHowItWorksBadge', e.target.value)}
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label htmlFor="inst-hiw-title" className="text-xs font-semibold">
+                          Título da Seção
+                        </Label>
+                        <Input
+                          id="inst-hiw-title"
+                          placeholder="Ex: Como Funciona sua Encomenda?"
+                          value={formData.catalogHowItWorksTitle}
+                          onChange={(e) => handleChange('catalogHowItWorksTitle', e.target.value)}
+                        />
+                      </div>
+                      <div className="space-y-1.5 sm:col-span-1">
+                        <Label htmlFor="inst-hiw-sub" className="text-xs font-semibold">
+                          Subtítulo Explicativo
+                        </Label>
+                        <Input
+                          id="inst-hiw-sub"
+                          placeholder="Ex: Um processo simples do pedido até a sua porta"
+                          value={formData.catalogHowItWorksSubtitle}
+                          onChange={(e) => handleChange('catalogHowItWorksSubtitle', e.target.value)}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
+                      <div className="p-3.5 rounded-xl border border-border/80 bg-background space-y-2">
+                        <span className="inline-block px-2 py-0.5 rounded-full bg-primary/10 text-primary font-bold text-[10px]">
+                          Etapa 1
+                        </span>
+                        <Input
+                          placeholder="Título da Etapa 1 (ex: 1. Escolha seus Mimos)"
+                          value={formData.catalogHowItWorksStep1Title}
+                          onChange={(e) => handleChange('catalogHowItWorksStep1Title', e.target.value)}
+                          className="text-xs font-semibold"
+                        />
+                        <Textarea
+                          rows={2}
+                          placeholder="Texto da etapa..."
+                          value={formData.catalogHowItWorksStep1Text}
+                          onChange={(e) => handleChange('catalogHowItWorksStep1Text', e.target.value)}
+                          className="text-xs"
+                        />
+                      </div>
+
+                      <div className="p-3.5 rounded-xl border border-border/80 bg-background space-y-2">
+                        <span className="inline-block px-2 py-0.5 rounded-full bg-primary/10 text-primary font-bold text-[10px]">
+                          Etapa 2
+                        </span>
+                        <Input
+                          placeholder="Título da Etapa 2 (ex: 2. Envie pelo WhatsApp)"
+                          value={formData.catalogHowItWorksStep2Title}
+                          onChange={(e) => handleChange('catalogHowItWorksStep2Title', e.target.value)}
+                          className="text-xs font-semibold"
+                        />
+                        <Textarea
+                          rows={2}
+                          placeholder="Texto da etapa..."
+                          value={formData.catalogHowItWorksStep2Text}
+                          onChange={(e) => handleChange('catalogHowItWorksStep2Text', e.target.value)}
+                          className="text-xs"
+                        />
+                      </div>
+
+                      <div className="p-3.5 rounded-xl border border-border/80 bg-background space-y-2">
+                        <span className="inline-block px-2 py-0.5 rounded-full bg-primary/10 text-primary font-bold text-[10px]">
+                          Etapa 3
+                        </span>
+                        <Input
+                          placeholder="Título da Etapa 3 (ex: 3. Prévia & Aprovação)"
+                          value={formData.catalogHowItWorksStep3Title}
+                          onChange={(e) => handleChange('catalogHowItWorksStep3Title', e.target.value)}
+                          className="text-xs font-semibold"
+                        />
+                        <Textarea
+                          rows={2}
+                          placeholder="Texto da etapa..."
+                          value={formData.catalogHowItWorksStep3Text}
+                          onChange={(e) => handleChange('catalogHowItWorksStep3Text', e.target.value)}
+                          className="text-xs"
+                        />
+                      </div>
+
+                      <div className="p-3.5 rounded-xl border border-border/80 bg-background space-y-2">
+                        <span className="inline-block px-2 py-0.5 rounded-full bg-primary/10 text-primary font-bold text-[10px]">
+                          Etapa 4
+                        </span>
+                        <Input
+                          placeholder="Título da Etapa 4 (ex: 4. Confecção & Envio)"
+                          value={formData.catalogHowItWorksStep4Title}
+                          onChange={(e) => handleChange('catalogHowItWorksStep4Title', e.target.value)}
+                          className="text-xs font-semibold"
+                        />
+                        <Textarea
+                          rows={2}
+                          placeholder="Texto da etapa..."
+                          value={formData.catalogHowItWorksStep4Text}
+                          onChange={(e) => handleChange('catalogHowItWorksStep4Text', e.target.value)}
+                          className="text-xs"
+                        />
+                      </div>
+                    </div>
+                  </CardContent>
+                )}
+              </Card>
+
+              {/* 3. SEÇÃO DIFERENCIAIS DA MARCA */}
+              <Card className={`shadow-xs transition-colors ${formData.catalogShowFeatures ? 'border-primary/30' : 'border-border/60 opacity-90'}`}>
+                <CardHeader className="pb-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="space-y-0.5">
+                      <CardTitle className="text-base flex items-center gap-2">
+                        <Sparkles className="size-4 text-amber-500" />
+                        3. Diferenciais do Ateliê (Qualidade & Garantia)
+                      </CardTitle>
+                      <CardDescription className="text-xs">
+                        Destaque 4 motivos e garantias que tornam sua papelaria única (ex: atendimento, acabamento, envio seguro).
+                      </CardDescription>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${formData.catalogShowFeatures ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-400' : 'bg-muted text-muted-foreground'}`}>
+                        {formData.catalogShowFeatures ? 'Ativa no Catálogo' : 'Oculta'}
+                      </span>
+                      <Switch
+                        id="toggle-show-features"
+                        checked={Boolean(formData.catalogShowFeatures)}
+                        onCheckedChange={(checked) => handleChange('catalogShowFeatures', checked)}
+                      />
+                    </div>
+                  </div>
+                </CardHeader>
+
+                {formData.catalogShowFeatures && (
+                  <CardContent className="space-y-4 pt-0 border-t border-border/40 animate-in fade-in-50 duration-200">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-4">
+                      <div className="space-y-1.5">
+                        <Label htmlFor="inst-feat-badge" className="text-xs font-semibold">
+                          Selo Superior (Badge)
+                        </Label>
+                        <Input
+                          id="inst-feat-badge"
+                          placeholder="Ex: Nossos Diferenciais"
+                          value={formData.catalogFeaturesBadge}
+                          onChange={(e) => handleChange('catalogFeaturesBadge', e.target.value)}
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label htmlFor="inst-feat-title" className="text-xs font-semibold">
+                          Título da Seção
+                        </Label>
+                        <Input
+                          id="inst-feat-title"
+                          placeholder="Ex: Por que escolher a Luisices?"
+                          value={formData.catalogFeaturesTitle}
+                          onChange={(e) => handleChange('catalogFeaturesTitle', e.target.value)}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
+                      <div className="p-3 rounded-xl border border-border/80 bg-background space-y-2">
+                        <Label className="text-[11px] font-semibold text-primary">Diferencial 1</Label>
+                        <Input
+                          placeholder="Título (ex: Atendimento Humanizado)"
+                          value={formData.catalogFeature1Title}
+                          onChange={(e) => handleChange('catalogFeature1Title', e.target.value)}
+                          className="text-xs font-medium"
+                        />
+                        <Textarea
+                          rows={2}
+                          placeholder="Descrição do diferencial..."
+                          value={formData.catalogFeature1Text}
+                          onChange={(e) => handleChange('catalogFeature1Text', e.target.value)}
+                          className="text-xs"
+                        />
+                      </div>
+
+                      <div className="p-3 rounded-xl border border-border/80 bg-background space-y-2">
+                        <Label className="text-[11px] font-semibold text-primary">Diferencial 2</Label>
+                        <Input
+                          placeholder="Título (ex: Laminação Protetora)"
+                          value={formData.catalogFeature2Title}
+                          onChange={(e) => handleChange('catalogFeature2Title', e.target.value)}
+                          className="text-xs font-medium"
+                        />
+                        <Textarea
+                          rows={2}
+                          placeholder="Descrição do diferencial..."
+                          value={formData.catalogFeature2Text}
+                          onChange={(e) => handleChange('catalogFeature2Text', e.target.value)}
+                          className="text-xs"
+                        />
+                      </div>
+
+                      <div className="p-3 rounded-xl border border-border/80 bg-background space-y-2">
+                        <Label className="text-[11px] font-semibold text-primary">Diferencial 3</Label>
+                        <Input
+                          placeholder="Título (ex: Embalagem Reforçada)"
+                          value={formData.catalogFeature3Title}
+                          onChange={(e) => handleChange('catalogFeature3Title', e.target.value)}
+                          className="text-xs font-medium"
+                        />
+                        <Textarea
+                          rows={2}
+                          placeholder="Descrição do diferencial..."
+                          value={formData.catalogFeature3Text}
+                          onChange={(e) => handleChange('catalogFeature3Text', e.target.value)}
+                          className="text-xs"
+                        />
+                      </div>
+
+                      <div className="p-3 rounded-xl border border-border/80 bg-background space-y-2">
+                        <Label className="text-[11px] font-semibold text-primary">Diferencial 4</Label>
+                        <Input
+                          placeholder="Título (ex: Arte Sob Medida)"
+                          value={formData.catalogFeature4Title}
+                          onChange={(e) => handleChange('catalogFeature4Title', e.target.value)}
+                          className="text-xs font-medium"
+                        />
+                        <Textarea
+                          rows={2}
+                          placeholder="Descrição do diferencial..."
+                          value={formData.catalogFeature4Text}
+                          onChange={(e) => handleChange('catalogFeature4Text', e.target.value)}
+                          className="text-xs"
+                        />
+                      </div>
+                    </div>
+                  </CardContent>
+                )}
+              </Card>
+
+              {/* 4. SEÇÃO PERGUNTAS FREQUENTES (FAQ) */}
+              <Card className={`shadow-xs transition-colors ${formData.catalogShowFaq ? 'border-primary/30' : 'border-border/60 opacity-90'}`}>
+                <CardHeader className="pb-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="space-y-0.5">
+                      <CardTitle className="text-base flex items-center gap-2">
+                        <HelpCircle className="size-4 text-indigo-500" />
+                        4. Dúvidas Frequentes (FAQ)
+                      </CardTitle>
+                      <CardDescription className="text-xs">
+                        Responda antecipadamente às principais dúvidas sobre prazos, envio, pagamento e aprovação de arte.
+                      </CardDescription>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${formData.catalogShowFaq ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-400' : 'bg-muted text-muted-foreground'}`}>
+                        {formData.catalogShowFaq ? 'Ativa no Catálogo' : 'Oculta'}
+                      </span>
+                      <Switch
+                        id="toggle-show-faq"
+                        checked={Boolean(formData.catalogShowFaq)}
+                        onCheckedChange={(checked) => handleChange('catalogShowFaq', checked)}
+                      />
+                    </div>
+                  </div>
+                </CardHeader>
+
+                {formData.catalogShowFaq && (
+                  <CardContent className="space-y-4 pt-0 border-t border-border/40 animate-in fade-in-50 duration-200">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-4">
+                      <div className="space-y-1.5">
+                        <Label htmlFor="inst-faq-badge" className="text-xs font-semibold">
+                          Selo Superior (Badge)
+                        </Label>
+                        <Input
+                          id="inst-faq-badge"
+                          placeholder="Ex: Tire suas Dúvidas"
+                          value={formData.catalogFaqBadge}
+                          onChange={(e) => handleChange('catalogFaqBadge', e.target.value)}
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label htmlFor="inst-faq-title" className="text-xs font-semibold">
+                          Título da Seção
+                        </Label>
+                        <Input
+                          id="inst-faq-title"
+                          placeholder="Ex: Perguntas Frequentes (FAQ)"
+                          value={formData.catalogFaqTitle}
+                          onChange={(e) => handleChange('catalogFaqTitle', e.target.value)}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-3 pt-2">
+                      {/* FAQ Item 1 */}
+                      <div className="p-3.5 rounded-xl border border-border/80 bg-background space-y-2">
+                        <Label className="text-[11px] font-semibold text-primary">Pergunta 1</Label>
+                        <Input
+                          placeholder="Pergunta (ex: Qual é o prazo médio de produção?)"
+                          value={formData.catalogFaq1Q}
+                          onChange={(e) => handleChange('catalogFaq1Q', e.target.value)}
+                          className="text-xs font-medium"
+                        />
+                        <Textarea
+                          rows={2}
+                          placeholder="Resposta clara e objetiva..."
+                          value={formData.catalogFaq1A}
+                          onChange={(e) => handleChange('catalogFaq1A', e.target.value)}
+                          className="text-xs"
+                        />
+                      </div>
+
+                      {/* FAQ Item 2 */}
+                      <div className="p-3.5 rounded-xl border border-border/80 bg-background space-y-2">
+                        <Label className="text-[11px] font-semibold text-primary">Pergunta 2</Label>
+                        <Input
+                          placeholder="Pergunta (ex: Vocês enviam para todo o Brasil?)"
+                          value={formData.catalogFaq2Q}
+                          onChange={(e) => handleChange('catalogFaq2Q', e.target.value)}
+                          className="text-xs font-medium"
+                        />
+                        <Textarea
+                          rows={2}
+                          placeholder="Resposta..."
+                          value={formData.catalogFaq2A}
+                          onChange={(e) => handleChange('catalogFaq2A', e.target.value)}
+                          className="text-xs"
+                        />
+                      </div>
+
+                      {/* FAQ Item 3 */}
+                      <div className="p-3.5 rounded-xl border border-border/80 bg-background space-y-2">
+                        <Label className="text-[11px] font-semibold text-primary">Pergunta 3</Label>
+                        <Input
+                          placeholder="Pergunta (ex: Posso personalizar com qualquer tema ou nome?)"
+                          value={formData.catalogFaq3Q}
+                          onChange={(e) => handleChange('catalogFaq3Q', e.target.value)}
+                          className="text-xs font-medium"
+                        />
+                        <Textarea
+                          rows={2}
+                          placeholder="Resposta..."
+                          value={formData.catalogFaq3A}
+                          onChange={(e) => handleChange('catalogFaq3A', e.target.value)}
+                          className="text-xs"
+                        />
+                      </div>
+
+                      {/* FAQ Item 4 */}
+                      <div className="p-3.5 rounded-xl border border-border/80 bg-background space-y-2">
+                        <Label className="text-[11px] font-semibold text-primary">Pergunta 4</Label>
+                        <Input
+                          placeholder="Pergunta (ex: Como funciona o pagamento?)"
+                          value={formData.catalogFaq4Q}
+                          onChange={(e) => handleChange('catalogFaq4Q', e.target.value)}
+                          className="text-xs font-medium"
+                        />
+                        <Textarea
+                          rows={2}
+                          placeholder="Resposta..."
+                          value={formData.catalogFaq4A}
+                          onChange={(e) => handleChange('catalogFaq4A', e.target.value)}
+                          className="text-xs"
+                        />
+                      </div>
+
+                      {/* FAQ Item 5 */}
+                      <div className="p-3.5 rounded-xl border border-border/80 bg-background space-y-2">
+                        <Label className="text-[11px] font-semibold text-primary">Pergunta 5</Label>
+                        <Input
+                          placeholder="Pergunta (ex: Consigo ver uma prévia antes da confecção?)"
+                          value={formData.catalogFaq5Q}
+                          onChange={(e) => handleChange('catalogFaq5Q', e.target.value)}
+                          className="text-xs font-medium"
+                        />
+                        <Textarea
+                          rows={2}
+                          placeholder="Resposta..."
+                          value={formData.catalogFaq5A}
+                          onChange={(e) => handleChange('catalogFaq5A', e.target.value)}
+                          className="text-xs"
+                        />
+                      </div>
+                    </div>
+                  </CardContent>
+                )}
               </Card>
             </TabsContent>
 

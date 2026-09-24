@@ -26,6 +26,10 @@ import {
   CheckCircle2,
   Tag,
   ShieldAlert,
+  ChevronDown,
+  ChevronUp,
+  HelpCircle,
+  Building2,
 } from 'lucide-react';
 import { formatCurrency } from '../utils/currency';
 import {
@@ -84,6 +88,7 @@ export function PublicCatalog() {
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [selectedCategory, setSelectedCategory] = useState<string>('todos');
   const [sortBy, setSortBy] = useState<string>('destaque');
+  const [expandedFaq, setExpandedFaq] = useState<number | null>(null);
 
   // Produtos reais carregados em tempo real via Firestore (IndexedDB nativo do SDK)
   const [products, setProducts] = useState<CatalogProduct[]>([]);
@@ -141,6 +146,61 @@ export function PublicCatalog() {
       footerBusinessHours: saved?.catalogFooterBusinessHours || saved?.footerBusinessHours || '',
       footerNotice: saved?.catalogFooterNotice || saved?.footerNotice || '',
       footerCopyright: saved?.catalogFooterCopyright || saved?.footerCopyright || `© ${new Date().getFullYear()} Luisices. Todos os direitos reservados.`,
+
+      // 1. Quem Somos
+      showAbout: saved?.catalogShowAbout !== undefined ? Boolean(saved.catalogShowAbout) : false,
+      aboutBadge: saved?.catalogAboutBadge || '',
+      aboutTitle: saved?.catalogAboutTitle || '',
+      aboutText: saved?.catalogAboutText || '',
+      aboutImageUrl: saved?.catalogAboutImageUrl ? toCdnUrl(saved.catalogAboutImageUrl) : '',
+      aboutPillar1Title: saved?.catalogAboutPillar1Title || '',
+      aboutPillar1Text: saved?.catalogAboutPillar1Text || '',
+      aboutPillar2Title: saved?.catalogAboutPillar2Title || '',
+      aboutPillar2Text: saved?.catalogAboutPillar2Text || '',
+      aboutPillar3Title: saved?.catalogAboutPillar3Title || '',
+      aboutPillar3Text: saved?.catalogAboutPillar3Text || '',
+
+      // 2. Como Funciona
+      showHowItWorks: saved?.catalogShowHowItWorks !== undefined ? Boolean(saved.catalogShowHowItWorks) : false,
+      howItWorksBadge: saved?.catalogHowItWorksBadge || '',
+      howItWorksTitle: saved?.catalogHowItWorksTitle || '',
+      howItWorksSubtitle: saved?.catalogHowItWorksSubtitle || '',
+      howItWorksStep1Title: saved?.catalogHowItWorksStep1Title || '',
+      howItWorksStep1Text: saved?.catalogHowItWorksStep1Text || '',
+      howItWorksStep2Title: saved?.catalogHowItWorksStep2Title || '',
+      howItWorksStep2Text: saved?.catalogHowItWorksStep2Text || '',
+      howItWorksStep3Title: saved?.catalogHowItWorksStep3Title || '',
+      howItWorksStep3Text: saved?.catalogHowItWorksStep3Text || '',
+      howItWorksStep4Title: saved?.catalogHowItWorksStep4Title || '',
+      howItWorksStep4Text: saved?.catalogHowItWorksStep4Text || '',
+
+      // 3. Diferenciais
+      showFeatures: saved?.catalogShowFeatures !== undefined ? Boolean(saved.catalogShowFeatures) : false,
+      featuresBadge: saved?.catalogFeaturesBadge || '',
+      featuresTitle: saved?.catalogFeaturesTitle || '',
+      feature1Title: saved?.catalogFeature1Title || '',
+      feature1Text: saved?.catalogFeature1Text || '',
+      feature2Title: saved?.catalogFeature2Title || '',
+      feature2Text: saved?.catalogFeature2Text || '',
+      feature3Title: saved?.catalogFeature3Title || '',
+      feature3Text: saved?.catalogFeature3Text || '',
+      feature4Title: saved?.catalogFeature4Title || '',
+      feature4Text: saved?.catalogFeature4Text || '',
+
+      // 4. FAQ
+      showFaq: saved?.catalogShowFaq !== undefined ? Boolean(saved.catalogShowFaq) : false,
+      faqBadge: saved?.catalogFaqBadge || '',
+      faqTitle: saved?.catalogFaqTitle || '',
+      faq1Q: saved?.catalogFaq1Q || '',
+      faq1A: saved?.catalogFaq1A || '',
+      faq2Q: saved?.catalogFaq2Q || '',
+      faq2A: saved?.catalogFaq2A || '',
+      faq3Q: saved?.catalogFaq3Q || '',
+      faq3A: saved?.catalogFaq3A || '',
+      faq4Q: saved?.catalogFaq4Q || '',
+      faq4A: saved?.catalogFaq4A || '',
+      faq5Q: saved?.catalogFaq5Q || '',
+      faq5A: saved?.catalogFaq5A || '',
     };
   });
 
@@ -298,6 +358,61 @@ export function PublicCatalog() {
         footerBusinessHours: s.catalogFooterBusinessHours !== undefined ? s.catalogFooterBusinessHours : '',
         footerNotice: s.catalogFooterNotice !== undefined ? s.catalogFooterNotice : '',
         footerCopyright: s.catalogFooterCopyright !== undefined ? s.catalogFooterCopyright : prev.footerCopyright,
+
+        // 1. Quem Somos
+        showAbout: s.catalogShowAbout !== undefined ? Boolean(s.catalogShowAbout) : false,
+        aboutBadge: s.catalogAboutBadge || '',
+        aboutTitle: s.catalogAboutTitle || '',
+        aboutText: s.catalogAboutText || '',
+        aboutImageUrl: toCdnUrl(s.catalogAboutImageUrl) || '',
+        aboutPillar1Title: s.catalogAboutPillar1Title || '',
+        aboutPillar1Text: s.catalogAboutPillar1Text || '',
+        aboutPillar2Title: s.catalogAboutPillar2Title || '',
+        aboutPillar2Text: s.catalogAboutPillar2Text || '',
+        aboutPillar3Title: s.catalogAboutPillar3Title || '',
+        aboutPillar3Text: s.catalogAboutPillar3Text || '',
+
+        // 2. Como Funciona
+        showHowItWorks: s.catalogShowHowItWorks !== undefined ? Boolean(s.catalogShowHowItWorks) : false,
+        howItWorksBadge: s.catalogHowItWorksBadge || '',
+        howItWorksTitle: s.catalogHowItWorksTitle || '',
+        howItWorksSubtitle: s.catalogHowItWorksSubtitle || '',
+        howItWorksStep1Title: s.catalogHowItWorksStep1Title || '',
+        howItWorksStep1Text: s.catalogHowItWorksStep1Text || '',
+        howItWorksStep2Title: s.catalogHowItWorksStep2Title || '',
+        howItWorksStep2Text: s.catalogHowItWorksStep2Text || '',
+        howItWorksStep3Title: s.catalogHowItWorksStep3Title || '',
+        howItWorksStep3Text: s.catalogHowItWorksStep3Text || '',
+        howItWorksStep4Title: s.catalogHowItWorksStep4Title || '',
+        howItWorksStep4Text: s.catalogHowItWorksStep4Text || '',
+
+        // 3. Diferenciais
+        showFeatures: s.catalogShowFeatures !== undefined ? Boolean(s.catalogShowFeatures) : false,
+        featuresBadge: s.catalogFeaturesBadge || '',
+        featuresTitle: s.catalogFeaturesTitle || '',
+        feature1Title: s.catalogFeature1Title || '',
+        feature1Text: s.catalogFeature1Text || '',
+        feature2Title: s.catalogFeature2Title || '',
+        feature2Text: s.catalogFeature2Text || '',
+        feature3Title: s.catalogFeature3Title || '',
+        feature3Text: s.catalogFeature3Text || '',
+        feature4Title: s.catalogFeature4Title || '',
+        feature4Text: s.catalogFeature4Text || '',
+
+        // 4. FAQ
+        showFaq: s.catalogShowFaq !== undefined ? Boolean(s.catalogShowFaq) : false,
+        faqBadge: s.catalogFaqBadge || '',
+        faqTitle: s.catalogFaqTitle || '',
+        faq1Q: s.catalogFaq1Q || '',
+        faq1A: s.catalogFaq1A || '',
+        faq2Q: s.catalogFaq2Q || '',
+        faq2A: s.catalogFaq2A || '',
+        faq3Q: s.catalogFaq3Q || '',
+        faq3A: s.catalogFaq3A || '',
+        faq4Q: s.catalogFaq4Q || '',
+        faq4A: s.catalogFaq4A || '',
+        faq5Q: s.catalogFaq5Q || '',
+        faq5A: s.catalogFaq5A || '',
       }));
 
       setStorePublished(s.storePublished !== undefined ? Boolean(s.storePublished) : true);
@@ -1198,6 +1313,242 @@ export function PublicCatalog() {
           )}
 
 
+
+          {/* SEÇÕES INSTITUCIONAIS MODULARES (Controladas via Toggles) */}
+
+          {/* 1. QUEM SOMOS / SOBRE O ATELIÊ */}
+          {businessInfo.showAbout && (businessInfo.aboutText || businessInfo.aboutTitle || businessInfo.aboutImageUrl) && (
+            <section className="mt-12 p-6 sm:p-10 rounded-3xl bg-white/70 dark:bg-[#1f191b]/70 backdrop-blur-md border border-white/60 dark:border-[#ebcdcd]/15 shadow-sm space-y-6 animate-in fade-in duration-300">
+              <div className="flex flex-col lg:flex-row items-center gap-8">
+                {businessInfo.aboutImageUrl && (
+                  <div className="relative w-full lg:w-1/3 aspect-[4/3] sm:aspect-square rounded-2xl overflow-hidden shadow-md border border-stone-200/60 dark:border-stone-800 shrink-0 bg-stone-100 dark:bg-stone-900">
+                    <img
+                      src={businessInfo.aboutImageUrl}
+                      alt={businessInfo.aboutTitle || 'Sobre o Ateliê'}
+                      className="size-full object-cover"
+                      loading="lazy"
+                    />
+                  </div>
+                )}
+                <div className={`space-y-4 ${businessInfo.aboutImageUrl ? 'w-full lg:w-2/3' : 'w-full'}`}>
+                  {businessInfo.aboutBadge && (
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-[#613d3e]/10 dark:bg-[#f4b7b9]/15 text-[#613d3e] dark:text-[#f4b7b9] border border-[#613d3e]/20 dark:border-[#f4b7b9]/20">
+                      <Heart size={12} className="text-rose-500 fill-rose-500/20" />
+                      <span>{businessInfo.aboutBadge}</span>
+                    </span>
+                  )}
+                  {businessInfo.aboutTitle && (
+                    <h3 className="text-xl sm:text-2xl font-black text-[#221a1a] dark:text-[#e8e0e3] tracking-tight leading-tight">
+                      {businessInfo.aboutTitle}
+                    </h3>
+                  )}
+                  {businessInfo.aboutText && (
+                    <div className="text-xs sm:text-sm text-[#504444] dark:text-[#c9c0b8] leading-relaxed whitespace-pre-line">
+                      {businessInfo.aboutText}
+                    </div>
+                  )}
+
+                  {/* 3 Pilares do Ateliê */}
+                  {(businessInfo.aboutPillar1Title || businessInfo.aboutPillar2Title || businessInfo.aboutPillar3Title) && (
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-3">
+                      {businessInfo.aboutPillar1Title && (
+                        <div className="p-3.5 rounded-2xl bg-stone-50/80 dark:bg-[#261f22]/80 border border-stone-200/60 dark:border-stone-800 space-y-1">
+                          <h4 className="text-xs font-bold text-[#613d3e] dark:text-[#f4b7b9]">
+                            {businessInfo.aboutPillar1Title}
+                          </h4>
+                          {businessInfo.aboutPillar1Text && (
+                            <p className="text-[11px] text-[#504444] dark:text-[#c9c0b8] leading-snug">
+                              {businessInfo.aboutPillar1Text}
+                            </p>
+                          )}
+                        </div>
+                      )}
+                      {businessInfo.aboutPillar2Title && (
+                        <div className="p-3.5 rounded-2xl bg-stone-50/80 dark:bg-[#261f22]/80 border border-stone-200/60 dark:border-stone-800 space-y-1">
+                          <h4 className="text-xs font-bold text-[#613d3e] dark:text-[#f4b7b9]">
+                            {businessInfo.aboutPillar2Title}
+                          </h4>
+                          {businessInfo.aboutPillar2Text && (
+                            <p className="text-[11px] text-[#504444] dark:text-[#c9c0b8] leading-snug">
+                              {businessInfo.aboutPillar2Text}
+                            </p>
+                          )}
+                        </div>
+                      )}
+                      {businessInfo.aboutPillar3Title && (
+                        <div className="p-3.5 rounded-2xl bg-stone-50/80 dark:bg-[#261f22]/80 border border-stone-200/60 dark:border-stone-800 space-y-1">
+                          <h4 className="text-xs font-bold text-[#613d3e] dark:text-[#f4b7b9]">
+                            {businessInfo.aboutPillar3Title}
+                          </h4>
+                          {businessInfo.aboutPillar3Text && (
+                            <p className="text-[11px] text-[#504444] dark:text-[#c9c0b8] leading-snug">
+                              {businessInfo.aboutPillar3Text}
+                            </p>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </section>
+          )}
+
+          {/* 2. COMO FUNCIONA A ENCOMENDA (PASSO A PASSO) */}
+          {businessInfo.showHowItWorks && (businessInfo.howItWorksTitle || businessInfo.howItWorksStep1Title) && (
+            <section className="mt-12 p-6 sm:p-10 rounded-3xl bg-white/70 dark:bg-[#1f191b]/70 backdrop-blur-md border border-white/60 dark:border-[#ebcdcd]/15 shadow-sm space-y-8 animate-in fade-in duration-300">
+              <div className="text-center max-w-xl mx-auto space-y-2">
+                {businessInfo.howItWorksBadge && (
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-[#613d3e]/10 dark:bg-[#f4b7b9]/15 text-[#613d3e] dark:text-[#f4b7b9] border border-[#613d3e]/20 dark:border-[#f4b7b9]/20">
+                    <Clock size={12} />
+                    <span>{businessInfo.howItWorksBadge}</span>
+                  </span>
+                )}
+                {businessInfo.howItWorksTitle && (
+                  <h3 className="text-xl sm:text-2xl font-black text-[#221a1a] dark:text-[#e8e0e3] tracking-tight">
+                    {businessInfo.howItWorksTitle}
+                  </h3>
+                )}
+                {businessInfo.howItWorksSubtitle && (
+                  <p className="text-xs sm:text-sm text-stone-500 dark:text-stone-400">
+                    {businessInfo.howItWorksSubtitle}
+                  </p>
+                )}
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                {[
+                  { step: 1, title: businessInfo.howItWorksStep1Title, text: businessInfo.howItWorksStep1Text },
+                  { step: 2, title: businessInfo.howItWorksStep2Title, text: businessInfo.howItWorksStep2Text },
+                  { step: 3, title: businessInfo.howItWorksStep3Title, text: businessInfo.howItWorksStep3Text },
+                  { step: 4, title: businessInfo.howItWorksStep4Title, text: businessInfo.howItWorksStep4Text },
+                ].filter(s => Boolean(s.title)).map((s) => (
+                  <div
+                    key={s.step}
+                    className="relative p-5 rounded-2xl bg-stone-50/80 dark:bg-[#261f22]/80 border border-stone-200/70 dark:border-stone-800 flex flex-col justify-between space-y-3 hover:border-[#613d3e]/30 transition-all shadow-2xs"
+                  >
+                    <div className="space-y-2">
+                      <div className="size-8 rounded-xl bg-[#613d3e] dark:bg-[#f4b7b9] text-white dark:text-[#4c2527] font-black text-sm flex items-center justify-center shadow-xs">
+                        {s.step}
+                      </div>
+                      <h4 className="text-xs sm:text-sm font-bold text-[#221a1a] dark:text-[#e8e0e3]">
+                        {s.title}
+                      </h4>
+                      {s.text && (
+                        <p className="text-[11px] sm:text-xs text-[#504444] dark:text-[#c9c0b8] leading-relaxed">
+                          {s.text}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+
+          {/* 3. DIFERENCIAIS DA MARCA */}
+          {businessInfo.showFeatures && (businessInfo.featuresTitle || businessInfo.feature1Title) && (
+            <section className="mt-12 p-6 sm:p-10 rounded-3xl bg-white/70 dark:bg-[#1f191b]/70 backdrop-blur-md border border-white/60 dark:border-[#ebcdcd]/15 shadow-sm space-y-8 animate-in fade-in duration-300">
+              <div className="text-center max-w-xl mx-auto space-y-2">
+                {businessInfo.featuresBadge && (
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/20">
+                    <Sparkles size={12} className="text-amber-500" />
+                    <span>{businessInfo.featuresBadge}</span>
+                  </span>
+                )}
+                {businessInfo.featuresTitle && (
+                  <h3 className="text-xl sm:text-2xl font-black text-[#221a1a] dark:text-[#e8e0e3] tracking-tight">
+                    {businessInfo.featuresTitle}
+                  </h3>
+                )}
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                {[
+                  { icon: Heart, color: 'text-rose-500 bg-rose-500/10', title: businessInfo.feature1Title, text: businessInfo.feature1Text },
+                  { icon: ShieldCheck, color: 'text-emerald-500 bg-emerald-500/10', title: businessInfo.feature2Title, text: businessInfo.feature2Text },
+                  { icon: Truck, color: 'text-blue-500 bg-blue-500/10', title: businessInfo.feature3Title, text: businessInfo.feature3Text },
+                  { icon: Sparkles, color: 'text-amber-500 bg-amber-500/10', title: businessInfo.feature4Title, text: businessInfo.feature4Text },
+                ].filter(f => Boolean(f.title)).map((f, idx) => {
+                  const Icon = f.icon;
+                  return (
+                    <div
+                      key={idx}
+                      className="p-5 rounded-2xl bg-stone-50/80 dark:bg-[#261f22]/80 border border-stone-200/70 dark:border-stone-800 space-y-2.5 hover:border-[#613d3e]/30 transition-all shadow-2xs"
+                    >
+                      <div className={`size-10 rounded-xl ${f.color} flex items-center justify-center shrink-0`}>
+                        <Icon size={18} />
+                      </div>
+                      <h4 className="text-xs sm:text-sm font-bold text-[#221a1a] dark:text-[#e8e0e3]">
+                        {f.title}
+                      </h4>
+                      {f.text && (
+                        <p className="text-[11px] sm:text-xs text-[#504444] dark:text-[#c9c0b8] leading-relaxed">
+                          {f.text}
+                        </p>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+          )}
+
+          {/* 4. PERGUNTAS FREQUENTES (FAQ) */}
+          {businessInfo.showFaq && (businessInfo.faqTitle || businessInfo.faq1Q) && (
+            <section className="mt-12 p-6 sm:p-10 rounded-3xl bg-white/70 dark:bg-[#1f191b]/70 backdrop-blur-md border border-white/60 dark:border-[#ebcdcd]/15 shadow-sm space-y-6 animate-in fade-in duration-300">
+              <div className="text-center max-w-xl mx-auto space-y-2">
+                {businessInfo.faqBadge && (
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-indigo-500/10 text-indigo-700 dark:text-indigo-400 border border-indigo-500/20">
+                    <HelpCircle size={12} className="text-indigo-500" />
+                    <span>{businessInfo.faqBadge}</span>
+                  </span>
+                )}
+                {businessInfo.faqTitle && (
+                  <h3 className="text-xl sm:text-2xl font-black text-[#221a1a] dark:text-[#e8e0e3] tracking-tight">
+                    {businessInfo.faqTitle}
+                  </h3>
+                )}
+              </div>
+
+              <div className="max-w-2xl mx-auto space-y-3">
+                {[
+                  { q: businessInfo.faq1Q, a: businessInfo.faq1A },
+                  { q: businessInfo.faq2Q, a: businessInfo.faq2A },
+                  { q: businessInfo.faq3Q, a: businessInfo.faq3A },
+                  { q: businessInfo.faq4Q, a: businessInfo.faq4A },
+                  { q: businessInfo.faq5Q, a: businessInfo.faq5A },
+                ].filter(faq => Boolean(faq.q && faq.a)).map((faq, idx) => {
+                  const isOpen = expandedFaq === idx;
+                  return (
+                    <div
+                      key={idx}
+                      className="rounded-2xl border border-stone-200/70 dark:border-stone-800 bg-stone-50/80 dark:bg-[#261f22]/80 overflow-hidden transition-all shadow-2xs"
+                    >
+                      <button
+                        type="button"
+                        onClick={() => setExpandedFaq(isOpen ? null : idx)}
+                        className="w-full p-4 text-left flex items-center justify-between gap-3 cursor-pointer hover:bg-stone-100/60 dark:hover:bg-stone-800/40 transition-colors"
+                      >
+                        <span className="text-xs sm:text-sm font-bold text-[#221a1a] dark:text-[#e8e0e3]">
+                          {faq.q}
+                        </span>
+                        <ChevronDown
+                          size={16}
+                          className={`text-stone-400 shrink-0 transition-transform duration-200 ${isOpen ? 'rotate-180 text-[#613d3e] dark:text-[#f4b7b9]' : ''}`}
+                        />
+                      </button>
+                      {isOpen && (
+                        <div className="px-4 pb-4 pt-1 text-xs sm:text-sm text-[#504444] dark:text-[#c9c0b8] leading-relaxed border-t border-stone-200/40 dark:border-stone-800/60 animate-in fade-in-50 duration-150">
+                          {faq.a}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+          )}
 
           {/* Footer Institucional Responsivo com Multi-colunas */}
           <footer className="mt-8 pt-8 pb-6 border-t border-stone-200/60 dark:border-[#ebcdcd]/15 text-xs text-[#504444] dark:text-[#c9c0b8]">

@@ -284,7 +284,7 @@ export const router = isCatalogSubdomain
       },
       {
         path: 'personalizar-lojinha',
-        element: <Lazy><PermissionRoute check={p => p.store ?? false}><StoreCustomization /></PermissionRoute></Lazy>,
+        element: <Lazy><PermissionRoute check={p => Boolean(p?.store || p?.settings)}><StoreCustomization /></PermissionRoute></Lazy>,
       },
       {
         path: 'produtos-lojinha',
