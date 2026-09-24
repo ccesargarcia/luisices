@@ -1812,16 +1812,16 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
 
     const maxLimit = Math.min(Math.max(Number(args.limit) || 20, 1), 30);
     return docs.slice(0, maxLimit).map((d) => ({
-      numero: d.orderNumber,
-      cliente: d.customerName,
-      produto: d.productSummary,
-      qtd: d.quantity,
-      valor: d.totalPrice,
-      saldo: d.remainingAmount,
-      status: d.status,
-      pgto: d.paymentStatus,
-      entrega: d.deliveryDate,
-      atrasado: d.isLate ? true : undefined,
+      orderNumber: d.orderNumber || "#" + (d.id ? d.id.slice(-5) : "00000"),
+      customerName: d.customerName || "Cliente",
+      productSummary: d.productSummary || "Produto personalizado",
+      quantity: Number(d.quantity || 1),
+      totalPrice: Number(d.totalPrice || 0),
+      remainingAmount: Number(d.remainingAmount || 0),
+      status: d.status || "pending",
+      paymentStatus: d.paymentStatus || "pending",
+      deliveryDate: d.deliveryDate || null,
+      isLate: Boolean(d.isLate),
     }));
   };
 
@@ -1938,18 +1938,19 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
       todayDate,
       delayedCount: delayedOrders.length,
       delayedOrders: delayedOrders.slice(0, 5).map((o) => ({
-        numero: o.orderNumber,
-        cliente: o.customerName,
-        entrega: o.deliveryDate,
-        valor: o.totalPrice,
-        saldo: o.remainingAmount,
+        orderNumber: o.orderNumber || "#" + (o.id ? o.id.slice(-5) : "00000"),
+        customerName: o.customerName || "Cliente",
+        productSummary: o.productSummary || "Produto personalizado",
+        deliveryDate: o.deliveryDate || "",
+        totalPrice: Number(o.totalPrice || 0),
+        remainingAmount: Number(o.remainingAmount || 0),
       })),
       todayDeliveriesCount: todayDeliveries.length,
       todayDeliveries: todayDeliveries.slice(0, 5).map((o) => ({
-        numero: o.orderNumber,
-        cliente: o.customerName,
-        produto: o.productSummary,
-        valor: o.totalPrice,
+        orderNumber: o.orderNumber || "#" + (o.id ? o.id.slice(-5) : "00000"),
+        customerName: o.customerName || "Cliente",
+        productSummary: o.productSummary || "Produto personalizado",
+        totalPrice: Number(o.totalPrice || 0),
       })),
       inProgressCount: inProgressOrders.length,
       completedCount: completedOrders.length,
@@ -2017,11 +2018,12 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
 
       const maxLimit = Math.min(Math.max(Number(args.limit) || 10, 1), 20);
       return customers.slice(0, maxLimit).map((c) => ({
-        nome: c.name,
-        telefone: c.phone || undefined,
-        cidade: c.city || undefined,
-        pedidos: c.totalOrders || 0,
-        gastoTotal: c.totalSpent || 0,
+        name: c.name || "Cliente",
+        phone: c.phone || "",
+        email: c.email || "",
+        city: c.city || "",
+        totalOrders: Number(c.totalOrders || 0),
+        totalSpent: Number(c.totalSpent || 0),
       }));
     } catch (err) {
       console.error('[executeQueryCustomers] Erro:', err);
@@ -2369,9 +2371,14 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
         if (queryResults.length === 0) {
           finalAnswer = 'Não encontrei nenhum cliente cadastrado correspondente aos termos pesquisados.';
         } else {
-          const list = queryResults.map(c =>
-            `• **${c.name}**\n  📱 Telefone: ${c.phone || 'Não informado'} | ✉️ E-mail: ${c.email || 'Não informado'} | 🏙️ Cidade: ${c.city || 'N/D'}`
-          ).join('\n\n');
+          const list = queryResults.map((c) => {
+            const name = c.name || c.nome || 'Cliente';
+            const phone = c.phone || c.telefone || 'Não informado';
+            const email = c.email || 'Não informado';
+            const city = c.city || c.cidade || 'N/D';
+            const orders = c.totalOrders || c.pedidos || 0;
+            return `• **${name}**\n  📱 Telefone: ${phone} | ✉️ E-mail: ${email} | 🏙️ Cidade: ${city}${orders > 0 ? ` | 📦 Pedidos: ${orders}` : ''}`;
+          }).join('\n\n');
           finalAnswer = `Encontrei **${queryResults.length} cliente(s) cadastrado(s)** no sistema:\n\n${list}`;
         }
       } else if (name === 'calculate_pricing_estimate') {
