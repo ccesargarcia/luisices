@@ -198,6 +198,7 @@ service cloud.firestore {
             && (
               get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.role == 'user'
               || get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.permissions.store == true
+              || get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.permissions.settings == true
             ))
       );
     }
