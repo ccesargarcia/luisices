@@ -111,35 +111,53 @@ export const LuisicesNovoExperience: React.FC<LuisicesNovoExperienceProps> = ({
     }));
 
     // Map Archive Items to StoreProduct compatible objects so they render with the same luxury cards
-    const archiveMapped: (StoreProduct & { isArchive?: boolean; originalArchive?: ArchiveItem })[] = archiveItems.map(arc => ({
-      id: `arc-prod-${arc.id}`,
-      slug: `acervo-${arc.id}`,
-      title: arc.title,
-      subtitle: `Projeto em ${arc.layersCount} camadas 3D • ${arc.papers.slice(0, 2).join(', ')}`,
-      category: 'topos_3d',
-      categoryLabel: 'Topos de Bolo 3D (Acervo Ateliê)',
-      description: arc.description,
-      details: [
-        `Gabarito e Ficha Técnica Silhouette Portrait 3`,
-        `Composição em ${arc.layersCount} camadas de relevo com fita banana`,
-        `Papéis: ${arc.papers.join(' • ')}`,
-        `Dicas de Calibração: ${arc.silhouetteTips}`,
-      ],
-      basePrice: 28.00,
-      minQuantity: 1,
-      unitLabel: 'un',
-      rating: 5.0,
-      reviewsCount: 32,
-      mainImage: arc.imageUrl,
-      galleryImages: [arc.imageUrl],
-      tags: arc.tags.map(t => t.startsWith('#') ? t : `#${t}`),
-      materials: arc.papers,
-      estimatedDaysToProduce: 5,
-      isBestseller: arc.category === 'infantil_3d' || arc.category === 'floral_luxo',
-      availableFinishes: GLOBAL_FINISHES,
-      isArchive: true,
-      originalArchive: arc,
-    }));
+    const archiveMapped: (StoreProduct & { isArchive?: boolean; originalArchive?: ArchiveItem })[] = (archiveItems || []).map(arc => {
+      const rawTags = Array.isArray(arc?.tags) 
+        ? arc.tags 
+        : (typeof arc?.tags === 'string' ? (arc.tags as string).split(',') : []);
+      const safeTags = rawTags
+        .map(t => {
+          if (!t) return '';
+          const str = typeof t === 'string' ? t.trim() : String(t).trim();
+          return str.startsWith('#') ? str : `#${str}`;
+        })
+        .filter(Boolean);
+
+      const rawPapers = Array.isArray(arc?.papers)
+        ? arc.papers
+        : (typeof arc?.papers === 'string' ? (arc.papers as string).split(',') : []);
+      const safePapers = rawPapers.map(p => typeof p === 'string' ? p.trim() : String(p).trim()).filter(Boolean);
+
+      return {
+        id: `arc-prod-${arc?.id || Math.random()}`,
+        slug: `acervo-${arc?.id || 'item'}`,
+        title: arc?.title || 'Projeto Autoral 3D',
+        subtitle: `Projeto em ${arc?.layersCount || 3} camadas 3D • ${safePapers.slice(0, 2).join(', ') || 'Papel Especial'}`,
+        category: 'topos_3d',
+        categoryLabel: 'Topos de Bolo 3D (Acervo Ateliê)',
+        description: arc?.description || 'Projeto exclusivo do ateliê.',
+        details: [
+          `Gabarito e Ficha Técnica Silhouette Portrait 3`,
+          `Composição em ${arc?.layersCount || 3} camadas de relevo com fita banana`,
+          `Papéis: ${safePapers.join(' • ') || 'Papel Algodão / Colorplus'}`,
+          `Dicas de Calibração: ${arc?.silhouetteTips || 'Corte com lâmina de precisão'}`,
+        ],
+        basePrice: 28.00,
+        minQuantity: 1,
+        unitLabel: 'un',
+        rating: 5.0,
+        reviewsCount: 32,
+        mainImage: arc?.imageUrl || 'https://images.unsplash.com/photo-1519741497674-611481863552?auto=format&fit=crop&w=600&q=80',
+        galleryImages: [arc?.imageUrl || 'https://images.unsplash.com/photo-1519741497674-611481863552?auto=format&fit=crop&w=600&q=80'],
+        tags: safeTags.length > 0 ? safeTags : ['#TopodeBolo', '#3D', '#Silhouette'],
+        materials: safePapers.length > 0 ? safePapers : ['Papel Algodão 300g', 'Lamicote Dourado'],
+        estimatedDaysToProduce: 5,
+        isBestseller: arc?.category === 'infantil_3d' || arc?.category === 'floral_luxo',
+        availableFinishes: GLOBAL_FINISHES,
+        isArchive: true,
+        originalArchive: arc,
+      };
+    });
 
     let combined = [...storeMapped, ...archiveMapped];
 
