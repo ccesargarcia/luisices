@@ -1082,6 +1082,64 @@ function sanitizeOrderForAi(id, data = {}) {
     createdAt,
   };
 }
+/**
+ * Projeta e sanitiza em memória um documento da coleção operacional 'customers' para a IA.
+ * Suporta modelos novos e legados (address/street/city/state), garantindo dados limpos sem 'undefined'.
+ */
+function sanitizeCustomerForAi(id, data = {}) {
+  const name = String(data.name || data.customerName || data.fullName || '').trim() || 'Cliente sem nome';
+  const phone = String(data.phone || data.whatsapp || data.telephone || data.mobile || '').trim();
+  const email = String(data.email || '').trim();
+  
+  // Extrai cidade e estado considerando variações de esquema
+  let city = String(data.city || data.cidade || '').trim();
+  let state = String(data.state || data.uf || data.estado || '').trim();
+  
+  if (!city && data.address && typeof data.address === 'string') {
+    // Tenta extrair 'Cidade - UF' ou 'Cidade/UF' de strings de endereço legado
+    const match = data.address.match(/(?:-|–|,)?\s*([A-Za-zÀ-ÖØ-öø-ÿ\s]+)(?:[\/\-]\s*([A-Z]{2}))?$/);
+    if (match && match[1]) {
+      city = match[1].trim();
+      if (match[2]) state = match[2].trim();
+    }
+  }
+
+  const totalOrders = Number(data.totalOrders || data.ordersCount || 0);
+  const totalSpent = Number(data.totalSpent || data.spentTotal || data.totalValue || 0);
+  const status = String(data.status || 'active').trim();
+  const notes = String(data.notes || '').trim();
+  const birthday = String(data.birthday || '').trim();
+  
+  let createdAt = '';
+  if (data.createdAt) {
+    if (typeof data.createdAt.toDate === 'function') {
+      createdAt = data.createdAt.toDate().toISOString();
+    } else if (typeof data.createdAt === 'string') {
+      createdAt = data.createdAt;
+    } else if (data.createdAt._seconds) {
+      createdAt = new Date(data.createdAt._seconds * 1000).toISOString();
+    }
+  }
+
+  return {
+    id,
+    customerId: id,
+    name,
+    phone,
+    email,
+    city,
+    state,
+    status,
+    totalOrders,
+    totalSpent,
+    birthday,
+    notes,
+    userId: data.userId || data.createdBy || null,
+    createdBy: data.createdBy || data.userId || null,
+    createdByName: data.createdByName || null,
+    createdAt,
+  };
+}
 
 
 /**
@@ -1434,21 +1492,25 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
         },
         {
           name: 'query_customers',
-          description: 'Consulta a base de clientes cadastrados no sistema Luisices (por nome, telefone, e-mail ou cidade) para obter histórico de compras e dados cadastrais. ATENÇÃO: NUNCA use para cobrança ou envio de mensagens no WhatsApp (para isso, use sempre generate_whatsapp_message).',
+          description: 'Consulta a base de clientes cadastrados no sistema Luisices (por contagem geral, nome, telefone, e-mail, cidade ou status). Retorna o total consolidado de clientes e a lista de cadastros com dados cadastrais e histórico de compras. ATENÇÃO: NUNCA use para cobrança ou envio de mensagens no WhatsApp (para isso, use sempre generate_whatsapp_message).',
           parameters: {
             type: 'OBJECT',
             properties: {
               searchTerm: {
                 type: 'STRING',
-                description: 'Nome, telefone, e-mail ou cidade do cliente para busca'
+                description: 'Nome, telefone, e-mail ou cidade do cliente para busca (deixe vazio se o usuário pediu contagem total ou visão geral de clientes)'
               },
               userIdentifier: {
                 type: 'STRING',
                 description: 'Opcional (Apenas Admin): Nome, e-mail ou UID do colaborador para filtrar apenas os clientes cadastrados por ele'
               },
+              status: {
+                type: 'STRING',
+                description: 'Opcional: status do cliente (active, vip, recurring, defaulter, partner)'
+              },
               limit: {
                 type: 'INTEGER',
-                description: 'Quantidade máxima de clientes a retornar (máximo 20)'
+                description: 'Quantidade máxima de fichas a detalhar na tela (padrão 15, máximo 30)'
               }
             }
           }
@@ -1962,16 +2024,17 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
     };
   };
 
-  // Helper para consultar a base de clientes cadastrados com isolamento estrito
+  // Helper para consultar a base de clientes cadastrados com isolamento estrito e contagem real
   const executeQueryCustomers = async (args = {}) => {
     try {
       let snap;
       if (isAdmin) {
-        snap = await admin.firestore().collection('customers').limit(150).get();
+        // Administrador: busca na coleção com limite ampliado para cobrir toda a carteira ativa
+        snap = await admin.firestore().collection('customers').limit(500).get();
       } else {
         const [userSnap, createdSnap] = await Promise.all([
-          admin.firestore().collection('customers').where('userId', '==', callerUid).limit(150).get(),
-          admin.firestore().collection('customers').where('createdBy', '==', callerUid).limit(150).get(),
+          admin.firestore().collection('customers').where('userId', '==', callerUid).limit(500).get(),
+          admin.firestore().collection('customers').where('createdBy', '==', callerUid).limit(500).get(),
         ]);
         const map = new Map();
         userSnap.docs.forEach((d) => map.set(d.id, d));
@@ -1979,20 +2042,7 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
         snap = { docs: Array.from(map.values()) };
       }
 
-      let customers = snap.docs.map((d) => ({
-        id: d.id,
-        userId: d.data().userId || d.data().createdBy || null,
-        createdBy: d.data().createdBy || d.data().userId || null,
-        name: d.data().name || '',
-        phone: d.data().phone || '',
-        email: d.data().email || '',
-        city: d.data().city || '',
-        state: d.data().state || '',
-        status: d.data().status || 'active',
-        totalOrders: d.data().totalOrders || 0,
-        totalSpent: d.data().totalSpent || 0,
-        createdAt: d.data().createdAt || '',
-      }));
+      let customers = snap.docs.map((d) => sanitizeCustomerForAi(d.id, d.data()));
 
       // Blindagem estrita de clientes para não-admins
       if (!isAdmin) {
@@ -2006,22 +2056,83 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
         }
       }
 
-      if (args.searchTerm && typeof args.searchTerm === 'string') {
-        const term = args.searchTerm.toLowerCase().trim();
-        customers = customers.filter(
-          (c) =>
-            (c.name && c.name.toLowerCase().includes(term)) ||
-            (c.phone && c.phone.includes(term)) ||
-            (c.email && c.email.toLowerCase().includes(term)) ||
-            (c.city && c.city.toLowerCase().includes(term))
-        );
+      const totalScoped = customers.length;
+
+      // Filtro por status (active, vip, recurring, defaulter, partner)
+      if (args.status && typeof args.status === 'string' && args.status.toLowerCase() !== 'all') {
+        const targetStatus = args.status.toLowerCase().trim();
+        customers = customers.filter((c) => c.status.toLowerCase() === targetStatus);
       }
 
-      const maxLimit = Math.min(Math.max(Number(args.limit) || 10, 1), 30);
-      return customers.slice(0, maxLimit);
+      // Filtro por termo de busca (nome, telefone, email, cidade ou notas)
+      const hasSearchTerm = Boolean(args.searchTerm && typeof args.searchTerm === 'string' && args.searchTerm.trim());
+      if (hasSearchTerm) {
+        const rawTerm = args.searchTerm.trim();
+        const term = normalizeString(rawTerm);
+        const digitsTerm = rawTerm.replace(/\D/g, '');
+        customers = customers.filter((c) => {
+          const normName = normalizeString(c.name);
+          const normEmail = normalizeString(c.email);
+          const normCity = normalizeString(c.city);
+          const cleanPhone = (c.phone || '').replace(/\D/g, '');
+          const matchText = normName.includes(term) || normEmail.includes(term) || normCity.includes(term);
+          const matchPhone = digitsTerm ? cleanPhone.includes(digitsTerm) : false;
+          return matchText || matchPhone;
+        });
+      }
+
+      // Ordenação inteligente:
+      // Se não há busca por termo específico, prioriza clientes com histórico de compras ou mais recentes
+      if (!hasSearchTerm) {
+        customers.sort((a, b) => {
+          if (b.totalSpent !== a.totalSpent) {
+            return b.totalSpent - a.totalSpent;
+          }
+          if (b.totalOrders !== a.totalOrders) {
+            return b.totalOrders - a.totalOrders;
+          }
+          const dateA = new Date(a.createdAt || 0).getTime();
+          const dateB = new Date(b.createdAt || 0).getTime();
+          return dateB - dateA;
+        });
+      }
+
+      const totalFiltered = customers.length;
+      const maxLimit = Math.min(Math.max(Number(args.limit) || (hasSearchTerm ? 15 : 10), 1), 30);
+      const displayedCustomers = customers.slice(0, maxLimit);
+
+      return {
+        totalScoped,
+        totalFiltered,
+        isFiltered: hasSearchTerm || Boolean(args.status),
+        searchTerm: args.searchTerm || null,
+        customers: displayedCustomers,
+        hasMore: totalFiltered > maxLimit,
+        // Compatibilidade de array para chamadas diretas como resolveCustomerPhone
+        map: (fn) => displayedCustomers.map(fn),
+        forEach: (fn) => displayedCustomers.forEach(fn),
+        slice: (start, end) => displayedCustomers.slice(start, end),
+        length: displayedCustomers.length,
+        [Symbol.iterator]: function* () {
+          yield* displayedCustomers;
+        },
+      };
     } catch (err) {
       console.error('[executeQueryCustomers] Erro:', err);
-      return [];
+      const emptyResult = {
+        totalScoped: 0,
+        totalFiltered: 0,
+        isFiltered: false,
+        searchTerm: null,
+        customers: [],
+        hasMore: false,
+        map: (fn) => [].map(fn),
+        forEach: (fn) => [].forEach(fn),
+        slice: (start, end) => [].slice(start, end),
+        length: 0,
+        [Symbol.iterator]: function* () {},
+      };
+      return emptyResult;
     }
   };
 
@@ -2362,14 +2473,39 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
         extractedWhatsApp = args;
         finalAnswer = `Gerei o rascunho da mensagem para **${args.recipientName || 'o cliente'}**${args.recipientPhone ? ` (${args.recipientPhone})` : ''}. Você pode revisar o texto e enviar diretamente para o WhatsApp abaixo:`;
       } else if (name === 'query_customers') {
-        const queryResults = await executeQueryCustomers(args);
-        if (queryResults.length === 0) {
-          finalAnswer = 'Não encontrei nenhum cliente cadastrado correspondente aos termos pesquisados.';
+        const result = await executeQueryCustomers(args);
+        const customersList = Array.isArray(result) ? result : (result.customers || []);
+        const totalScoped = result.totalScoped !== undefined ? result.totalScoped : customersList.length;
+        const totalFiltered = result.totalFiltered !== undefined ? result.totalFiltered : customersList.length;
+        const isFiltered = Boolean(result.isFiltered);
+
+        if (customersList.length === 0) {
+          if (isFiltered) {
+            const queryLabel = args.searchTerm || args.status || 'critérios informados';
+            finalAnswer = `🔍 **Nenhum cliente localizado:**\n\nNão encontrei nenhum cliente correspondente a **"${queryLabel}"** na sua base (${totalScoped} cliente(s) cadastrado(s)).\n\n💡 *Dica: Tente pesquisar por parte do nome, número de telefone ou cidade.*`;
+          } else {
+            finalAnswer = 'Você ainda não possui nenhum cliente cadastrado no sistema.';
+          }
         } else {
-          const list = queryResults.map(c =>
-            `• **${c.name}**\n  📱 Telefone: ${c.phone || 'Não informado'} | ✉️ E-mail: ${c.email || 'Não informado'} | 🏙️ Cidade: ${c.city || 'N/D'}`
-          ).join('\n\n');
-          finalAnswer = `Encontrei **${queryResults.length} cliente(s) cadastrado(s)** no sistema:\n\n${list}`;
+          const list = customersList.map((c) => {
+            const loc = c.city ? (c.state ? `${c.city}/${c.state}` : c.city) : 'Não informada';
+            const phone = c.phone || 'Não informado';
+            const email = c.email || 'Não informado';
+            const statusLabel = c.status === 'vip' ? ' ⭐ VIP' : c.status === 'defaulter' ? ' ⚠️ Em débito' : c.status === 'partner' ? ' 🤝 Parceiro' : '';
+            
+            let extra = '';
+            if (c.totalOrders > 0 || c.totalSpent > 0) {
+              const spentFmt = Number(c.totalSpent || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+              extra = `\n  📊 ${c.totalOrders} pedido(s) realizados | Total: ${spentFmt}`;
+            }
+            return `• **${c.name}**${statusLabel}\n  📱 Telefone: ${phone} | ✉️ E-mail: ${email} | 🏙️ Cidade: ${loc}${extra}`;
+          }).join('\n\n');
+
+          if (!isFiltered) {
+            finalAnswer = `👥 **Base de Clientes Luisices (${totalScoped} cliente(s) cadastrado(s)):**\n\nExibindo os **${customersList.length} clientes** de maior atividade / mais recentes:\n\n${list}${totalScoped > customersList.length ? `\n\n💡 *Exibindo ${customersList.length} de ${totalScoped} clientes. Para ver a ficha completa de alguém específico, pesquise por nome, telefone ou cidade (ex: \"cliente Amanda\" ou \"clientes de Florianópolis\").*` : ''}`;
+          } else {
+            finalAnswer = `🔍 **Resultado da Busca de Clientes (${totalFiltered} encontrado(s)):**\n\n${list}${totalFiltered > customersList.length ? `\n\n*(Exibindo os primeiros ${customersList.length} resultados de ${totalFiltered})*` : ''}`;
+          }
         }
       } else if (name === 'calculate_pricing_estimate') {
         extractedPricing = executePricingEstimate(args);
