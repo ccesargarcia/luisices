@@ -1202,12 +1202,28 @@ Retorne ESTRITAMENTE um objeto JSON válido (sem comentários, sem texto antes o
 
     try {
       const response = await firebaseAiAgentService.sendMessage(prompt);
-      let cleanText = response.trim();
-      if (cleanText.startsWith('```')) {
-        cleanText = cleanText.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim();
+      const rawText = typeof response === 'string'
+        ? response
+        : (response && typeof response === 'object' && 'reply' in response)
+          ? String((response as { reply?: string }).reply || '')
+          : '';
+
+      if (!rawText.trim()) {
+        throw new Error('A IA não retornou conteúdo válido.');
       }
 
-      const parsed = JSON.parse(cleanText);
+      let jsonStr = rawText.trim();
+      const codeBlockMatch = jsonStr.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+      if (codeBlockMatch && codeBlockMatch[1]) {
+        jsonStr = codeBlockMatch[1].trim();
+      } else {
+        const braceMatch = jsonStr.match(/(\{[\s\S]*\})/);
+        if (braceMatch && braceMatch[1]) {
+          jsonStr = braceMatch[1].trim();
+        }
+      }
+
+      const parsed = JSON.parse(jsonStr);
 
       const aiPillars: InstitutionalPillarItem[] = [
         { id: 'p1', title: parsed.catalogAboutPillar1Title || 'Produção Artesanal', text: parsed.catalogAboutPillar1Text || '' },
