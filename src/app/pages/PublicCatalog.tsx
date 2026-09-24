@@ -28,7 +28,13 @@ import {
   ShieldAlert,
 } from 'lucide-react';
 import { formatCurrency } from '../utils/currency';
-import { normalizePhoneForWhatsApp, formatPhoneForDisplay } from '../utils/whatsapp';
+import {
+  normalizePhoneForWhatsApp,
+  formatPhoneForDisplay,
+  generateCatalogOrderWhatsAppMessage,
+  generateProductInquiryWhatsAppMessage,
+  generateBespokeConsultationWhatsAppMessage,
+} from '../utils/whatsapp';
 import { collection, doc, getDoc, getDocs } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { BannerCarousel, CatalogBannerItem } from '../components/catalog/BannerCarousel';
@@ -539,6 +545,21 @@ export function PublicCatalog() {
     setCart((prev) => prev.filter((item) => item.id !== cartItemId));
   }, []);
 
+  // Consultoria dinâmica sobre projetos sob medida
+  const handleOpenBespokeWhatsApp = useCallback(() => {
+    const cleanPhone = normalizePhoneForWhatsApp(businessInfo.whatsapp);
+    if (!cleanPhone) {
+      alert('O número de WhatsApp da loja ainda não foi configurado pelo ateliê.');
+      return;
+    }
+    const msg = generateBespokeConsultationWhatsAppMessage({
+      businessName: businessInfo.name,
+      category: selectedCategory !== 'todos' ? selectedCategory : undefined,
+    });
+    const url = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(msg)}`;
+    window.open(url, '_blank', 'noopener,noreferrer');
+  }, [businessInfo.whatsapp, businessInfo.name, selectedCategory]);
+
   // Envio de Pedido no WhatsApp com Deep Link formatado e registro no histórico
   const handleSendToWhatsApp = async () => {
     if (submittingOrder) return;
@@ -552,39 +573,24 @@ export function PublicCatalog() {
     setSubmittingOrder(true);
 
     const orderCode = `LJ-${Math.floor(1000 + Math.random() * 9000)}`;
-    const greeting = businessInfo.whatsappGreeting || `🌸 *Olá, ${businessInfo.name}! Gostaria de confirmar esta encomenda pelo Catálogo:*`;
-    const labelCustom = businessInfo.whatsappCustomizationLabel || 'Personalização/Nome:';
-    const footerMsg = businessInfo.whatsappFooter || 'Poderia me passar as opções de frete/retirada e a chave PIX para confirmar?';
 
-    let msg = `🛍️ *NOVO PEDIDO DA LOJINHA* • \`#${orderCode}\`\n`;
-    msg += `━━━━━━━━━━━━━━━━━━━━\n`;
-    msg += `${greeting}\n\n`;
-    msg += `📦 *ITENS ESCOLHIDOS:*\n`;
-
-    cart.forEach((item, index) => {
-      msg += `*${index + 1}️⃣ ${item.product.name}* (${item.quantity}x)\n`;
-      msg += `   💰 ${formatCurrency(item.product.price)} un.`;
-      if (item.quantity > 1) {
-        msg += ` = ${formatCurrency(item.product.price * item.quantity)}`;
-      }
-      msg += `\n`;
-      if (item.customName) {
-        msg += `   ✍️ *${labelCustom}* ${item.customName}\n`;
-      }
-      msg += item.product.leadTimeDays > 0
-        ? `   ⏳ *Prazo:* até ${item.product.leadTimeDays} dias úteis\n\n`
-        : `   ⏳ *Prazo:* Pronta entrega\n\n`;
+    const msg = generateCatalogOrderWhatsAppMessage({
+      orderCode,
+      businessName: businessInfo.name,
+      items: cart.map((item) => ({
+        name: item.product.name,
+        price: item.product.price,
+        quantity: item.quantity,
+        leadTimeDays: item.product.leadTimeDays,
+        customName: item.customName,
+        category: item.product.category,
+      })),
+      subtotal,
+      customerNotes,
+      greeting: businessInfo.whatsappGreeting,
+      footer: businessInfo.whatsappFooter,
+      customizationLabel: businessInfo.whatsappCustomizationLabel,
     });
-
-    msg += `━━━━━━━━━━━━━━━━━━━━\n`;
-    msg += `✨ *Subtotal dos Produtos:* *${formatCurrency(subtotal)}*\n`;
-    if (customerNotes.trim()) {
-      msg += `📝 *Observações / Data do Evento:* ${customerNotes}\n`;
-    }
-    msg += `\n📍 *DADOS PARA O ATENDIMENTO:*\n`;
-    msg += `• Meu CEP ou bairro para cálculo do frete: \n`;
-    msg += `• Como prefiro pagar: ( ) PIX  ( ) Cartão\n\n`;
-    msg += `${footerMsg}`;
 
     const encoded = encodeURIComponent(msg);
     const whatsappUrl = `https://wa.me/${cleanPhone}?text=${encoded}`;
@@ -1226,7 +1232,7 @@ export function PublicCatalog() {
                 <div className="flex flex-col items-center md:items-start gap-2 pt-1">
                   {businessInfo.whatsapp ? (
                     <button
-                      onClick={handleSendToWhatsApp}
+                      onClick={handleOpenBespokeWhatsApp}
                       className="inline-flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400 font-semibold hover:underline cursor-pointer"
                     >
                       <MessageCircle size={14} />
@@ -1431,32 +1437,60 @@ export function PublicCatalog() {
                 </div>
 
                 {/* Ação de Adicionar ou Consulta direta via WhatsApp */}
-                <div className="pt-3 pb-[max(1rem,env(safe-area-inset-bottom))] sm:pb-0 border-t border-stone-200/50 dark:border-stone-800 shrink-0 bg-[#fff8f7] dark:bg-[#1f191b]">
+                <div className="pt-3 pb-[max(1rem,env(safe-area-inset-bottom))] sm:pb-0 border-t border-stone-200/50 dark:border-stone-800 shrink-0 bg-[#fff8f7] dark:bg-[#1f191b] space-y-2">
                   {featureFlags.enableOnlineOrders !== false ? (
-                    <button
-                      onClick={() => {
-                        addToCart(selectedProductPreview, previewCustomName);
-                        setSelectedProductPreview(null);
-                        setIsCartOpen(true);
-                      }}
-                      className="w-full py-3.5 px-4 rounded-xl font-bold text-xs sm:text-sm flex items-center justify-center gap-2 bg-[#613d3e] dark:bg-[#f4b7b9] text-white dark:text-[#4c2527] hover:opacity-95 active:scale-[0.98] transition-all shadow-md cursor-pointer"
-                    >
-                      <ShoppingBag size={16} />
-                      <span>Adicionar à Sacola</span>
-                    </button>
+                    <>
+                      <button
+                        onClick={() => {
+                          addToCart(selectedProductPreview, previewCustomName);
+                          setSelectedProductPreview(null);
+                          setIsCartOpen(true);
+                        }}
+                        className="w-full py-3.5 px-4 rounded-xl font-bold text-xs sm:text-sm flex items-center justify-center gap-2 bg-[#613d3e] dark:bg-[#f4b7b9] text-white dark:text-[#4c2527] hover:opacity-95 active:scale-[0.98] transition-all shadow-md cursor-pointer"
+                      >
+                        <ShoppingBag size={16} />
+                        <span>Adicionar à Sacola</span>
+                      </button>
+
+                      {businessInfo.whatsapp && (
+                        <a
+                          href={`https://wa.me/${normalizePhoneForWhatsApp(businessInfo.whatsapp)}?text=${encodeURIComponent(
+                            generateProductInquiryWhatsAppMessage({
+                              businessName: businessInfo.name,
+                              productName: selectedProductPreview.name,
+                              price: selectedProductPreview.price,
+                              category: selectedProductPreview.category,
+                              leadTimeDays: selectedProductPreview.leadTimeDays,
+                              customName: previewCustomName,
+                            })
+                          )}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="w-full py-2.5 px-3 rounded-xl font-semibold text-xs flex items-center justify-center gap-1.5 border border-emerald-600/30 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-500/10 active:scale-98 transition-all cursor-pointer"
+                        >
+                          <MessageCircle size={15} />
+                          <span>Tirar dúvidas deste item no WhatsApp</span>
+                        </a>
+                      )}
+                    </>
                   ) : (
                     <a
                       href={`https://wa.me/${normalizePhoneForWhatsApp(businessInfo.whatsapp)}?text=${encodeURIComponent(
-                        `Olá! Gostaria de mais informações sobre "${selectedProductPreview.name}" (${formatCurrency(selectedProductPreview.price)})${
-                          previewCustomName.trim() ? ` para a personalização: "${previewCustomName.trim()}"` : ''
-                        }.`
+                        generateProductInquiryWhatsAppMessage({
+                          businessName: businessInfo.name,
+                          productName: selectedProductPreview.name,
+                          price: selectedProductPreview.price,
+                          category: selectedProductPreview.category,
+                          leadTimeDays: selectedProductPreview.leadTimeDays,
+                          customName: previewCustomName,
+                        })
                       )}`}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="w-full py-3.5 px-4 rounded-xl font-bold text-xs sm:text-sm flex items-center justify-center gap-2 bg-green-600 hover:bg-green-700 text-white transition-all shadow-md cursor-pointer"
+                      className="w-full py-3.5 px-4 rounded-xl font-bold text-xs sm:text-sm flex items-center justify-center gap-2 bg-[#25D366] hover:bg-[#20ba59] text-white transition-all shadow-md cursor-pointer"
                     >
                       <MessageCircle size={16} />
-                      <span>Consultar pelo WhatsApp</span>
+                      <span>Consultar no WhatsApp</span>
                     </a>
                   )}
                 </div>

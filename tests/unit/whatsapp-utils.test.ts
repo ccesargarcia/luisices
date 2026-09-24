@@ -2,6 +2,9 @@ import { describe, it, expect } from 'vitest';
 import {
   normalizePhoneForWhatsApp,
   formatPhoneForDisplay,
+  generateCatalogOrderWhatsAppMessage,
+  generateProductInquiryWhatsAppMessage,
+  generateBespokeConsultationWhatsAppMessage,
 } from '../../src/app/utils/whatsapp';
 
 describe('Utilitários de WhatsApp (whatsapp-utils)', () => {
@@ -44,6 +47,77 @@ describe('Utilitários de WhatsApp (whatsapp-utils)', () => {
       expect(formatPhoneForDisplay(null)).toBe('');
       expect(formatPhoneForDisplay(undefined)).toBe('');
       expect(formatPhoneForDisplay('')).toBe('');
+    });
+  });
+
+  describe('generateCatalogOrderWhatsAppMessage', () => {
+    it('deve gerar mensagem dinâmica com itens, valores, personalização e prazo calculado', () => {
+      const msg = generateCatalogOrderWhatsAppMessage({
+        orderCode: 'LJ-1234',
+        businessName: 'Luisices',
+        items: [
+          {
+            name: 'Convite Luxo Rosé',
+            price: 15.5,
+            quantity: 30,
+            leadTimeDays: 7,
+            customName: 'Helena & Rafael',
+          },
+          {
+            name: 'Menu de Mesa',
+            price: 5.0,
+            quantity: 30,
+            leadTimeDays: 3,
+          },
+        ],
+        subtotal: 615,
+        customerNotes: 'Evento dia 25/12',
+      });
+
+      expect(msg).toContain('NOVO PEDIDO DA LOJINHA');
+      expect(msg).toContain('#LJ-1234');
+      expect(msg).toContain('Convite Luxo Rosé');
+      expect(msg).toContain('Helena & Rafael');
+      expect(msg).toContain('Menu de Mesa');
+      expect(msg).toContain('até 7 dias úteis');
+      expect(msg).toContain('R$ 615,00');
+      expect(msg).toContain('Evento dia 25/12');
+    });
+  });
+
+  describe('generateProductInquiryWhatsAppMessage', () => {
+    it('deve formatar consulta de produto individual com categoria e valor', () => {
+      const msg = generateProductInquiryWhatsAppMessage({
+        businessName: 'Luisices',
+        productName: 'Topo de Bolo Shaker',
+        price: 45.0,
+        category: 'Festas',
+        leadTimeDays: 5,
+        customName: 'Bernardo 5 anos',
+      });
+
+      expect(msg).toContain('Luisices');
+      expect(msg).toContain('Topo de Bolo Shaker');
+      expect(msg).toContain('(Festas)');
+      expect(msg).toContain('R$ 45,00');
+      expect(msg).toContain('até 5 dias úteis');
+      expect(msg).toContain('Bernardo 5 anos');
+    });
+  });
+
+  describe('generateBespokeConsultationWhatsAppMessage', () => {
+    it('deve formatar pedido de consultoria sob medida com categoria e data', () => {
+      const msg = generateBespokeConsultationWhatsAppMessage({
+        businessName: 'Luisices',
+        category: 'Casamentos',
+        eventDate: '15/10/2026',
+        notes: 'Identidade visual completa com monograma em hot stamping',
+      });
+
+      expect(msg).toContain('Luisices');
+      expect(msg).toContain('categoria *Casamentos*');
+      expect(msg).toContain('15/10/2026');
+      expect(msg).toContain('Identidade visual completa com monograma em hot stamping');
     });
   });
 });
