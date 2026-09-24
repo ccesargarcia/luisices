@@ -1104,31 +1104,8 @@ let cachedTeamMembers = null;
 let cachedTeamMembersTimestamp = 0;
 const TEAM_MEMBERS_CACHE_TTL = 10 * 60 * 1000;
 
-// Cache global em memória com normalização semântica e pruning automático (TTL de 3 minutos)
-const AI_RESPONSE_CACHE_TTL = 3 * 60 * 1000;
+// Cache global em memória para respostas rápidas (TTL de 3 minutos)
 const aiResponseCache = new Map();
-
-const normalizeCacheQuery = (query) => {
-  if (!query || typeof query !== 'string') return '';
-  return query
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[?!.,;:_\-]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-};
-
-const pruneAiResponseCache = () => {
-  if (aiResponseCache.size > 150) {
-    const now = Date.now();
-    for (const [key, val] of aiResponseCache.entries()) {
-      if (now - val.timestamp > AI_RESPONSE_CACHE_TTL) {
-        aiResponseCache.delete(key);
-      }
-    }
-  }
-};
 
 /**
  * Normaliza strings para comparações insensíveis a maiúsculas e acentos
@@ -1246,26 +1223,14 @@ exports.aiAgentChat = onCall({ cors: true, timeoutSeconds: 120, memory: '512MiB'
 
   const cleanMessage = message.trim();
   const hasImage = Boolean(image && (image.base64 || image.imageUrl));
-  pruneAiResponseCache();
-  const normalizedQueryKey = normalizeCacheQuery(cleanMessage);
-  const cacheKey = `${callerUid}_${normalizedQueryKey}`;
+  const cacheKey = `${callerUid}_${cleanMessage.toLowerCase()}`;
 
-  // Se for uma pergunta comum sem histórico, sem imagem e estiver no cache recente, responde instantaneamente (0 tokens consumidos)
+  // Se for uma pergunta comum sem histórico, sem imagem e estiver no cache recente, responde instantaneamente
   if ((!history || history.length === 0) && !hasImage && aiResponseCache.has(cacheKey)) {
     const cached = aiResponseCache.get(cacheKey);
-    if (Date.now() - cached.timestamp < AI_RESPONSE_CACHE_TTL) {
-      console.log('[aiAgentChat] Resposta retornada via cache semântico em memória (0 tokens, instantânea).');
-      return {
-        success: true,
-        reply: cached.reply,
-        orderDraft: cached.orderDraft || null,
-        whatsappDraft: cached.whatsappDraft || null,
-        pricingEstimate: cached.pricingEstimate || null,
-        galleryItems: cached.galleryItems || null,
-        fromCache: true,
-      };
-    } else {
-      aiResponseCache.delete(cacheKey);
+    if (Date.now() - cached.timestamp < 180000) { // 3 minutos
+      console.log('[aiAgentChat] Resposta retornada via cache em memória (instantânea).');
+      return { success: true, reply: cached.reply, orderDraft: cached.orderDraft };
     }
   }
 
@@ -1356,104 +1321,151 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
       function_declarations: [
         {
           name: 'get_user_summary',
-          description: 'Resumo de métricas e pedidos de colaborador da equipe. Exclusivo Admin.',
+          description: 'Consulta o resumo de auditoria e métricas de um usuário/colaborador específico (quantidade de pedidos, clientes cadastrados, faturamento gerado e ticket médio) pelo nome, e-mail ou UID. ATENÇÃO: Esta ferramenta é de uso EXCLUSIVO DO ADMINISTRADOR.',
           parameters: {
             type: 'OBJECT',
             properties: {
-              userIdentifier: { type: 'STRING', description: 'Nome ou email do colaborador' },
-              period: { type: 'STRING', enum: ['today', 'week', 'month', 'year', 'all'] }
+              userIdentifier: {
+                type: 'STRING',
+                description: 'Nome, e-mail ou UID do usuário/funcionário da equipe a consultar (ex: Amanda, Lucas, amanda@email.com)'
+              },
+              period: {
+                type: 'STRING',
+                enum: ['today', 'week', 'month', 'year', 'all'],
+                description: 'Período para análise (padrão: all)'
+              }
             },
             required: ['userIdentifier']
           }
         },
         {
           name: 'query_orders_view',
-          description: 'Consulta pedidos em tempo real por status, pagamento ou cliente.',
+          description: 'Consulta a base de pedidos em tempo real (com projeção em memória) para obter status, prazos, clientes, valores, cancelamentos e métricas atualizadas.',
           parameters: {
             type: 'OBJECT',
             properties: {
-              status: { type: 'STRING', enum: ['open', 'pending', 'in-progress', 'completed', 'cancelled', 'deleted', 'all'] },
-              paymentStatus: { type: 'STRING', enum: ['pending', 'partial', 'paid', 'all'] },
-              userIdentifier: { type: 'STRING', description: 'Filtro de colaborador (Admin)' },
-              searchTerm: { type: 'STRING', description: 'Nome cliente, produto ou fone' },
-              limit: { type: 'INTEGER', description: 'Máximo de registros (max 30)' }
+              status: {
+                type: 'STRING',
+                enum: ['open', 'pending', 'in-progress', 'completed', 'cancelled', 'deleted', 'all'],
+                description: 'Filtro por status do pedido: open (em aberto: pendentes e em produção, não concluídos), pending (pendente), in-progress (em produção), completed (concluído), cancelled (cancelado), deleted (excluído/arquivado) ou all (todos)'
+              },
+              paymentStatus: {
+                type: 'STRING',
+                enum: ['pending', 'partial', 'paid', 'all'],
+                description: 'Filtro por status de pagamento'
+              },
+              userIdentifier: {
+                type: 'STRING',
+                description: 'Opcional (Apenas Admin): Nome, e-mail ou UID do colaborador para filtrar apenas os pedidos dele'
+              },
+              searchTerm: {
+                type: 'STRING',
+                description: 'Termo de busca para nome do cliente, produto ou telefone'
+              },
+              limit: {
+                type: 'INTEGER',
+                description: 'Quantidade máxima de registros a retornar (máximo 30)'
+              }
             }
           }
         },
         {
           name: 'get_financial_summary',
-          description: 'Resumo financeiro oficial (faturamento, a receber, ticket médio).',
+          description: 'Consulta o resumo financeiro exato (faturamento realizado de concluídos, total a receber/pendente, volume total emitido, ticket médio e contagem de pedidos) para um período específico (today, week, month, year, all). Os cálculos seguem estritamente as regras oficiais dos Relatórios.',
           parameters: {
             type: 'OBJECT',
             properties: {
-              period: { type: 'STRING', enum: ['today', 'week', 'month', 'year', 'all'] },
-              userIdentifier: { type: 'STRING', description: 'Filtro de colaborador (Admin)' }
+              period: {
+                type: 'STRING',
+                enum: ['today', 'week', 'month', 'year', 'all'],
+                description: 'Período para análise financeira: today (hoje), week (últimos 7 dias), month (mês atual/30 dias), year (ano atual), all (todo o histórico)'
+              },
+              userIdentifier: {
+                type: 'STRING',
+                description: 'Opcional (Apenas Admin): Filtrar métricas financeiras de um colaborador específico por nome, e-mail ou UID'
+              }
             }
           }
         },
         {
           name: 'daily_briefing',
-          description: 'Briefing do dia: atrasados, entregas de hoje e pendências financeiras.',
-          parameters: { type: 'OBJECT', properties: {} }
+          description: 'Gera um briefing operacional completo do dia: pedidos atrasados ou com risco de atraso, entregas de hoje, pedidos em produção e valores pendentes a receber.',
+          parameters: {
+            type: 'OBJECT',
+            properties: {}
+          }
         },
         {
           name: 'generate_whatsapp_message',
-          description: 'Gera rascunho de WhatsApp e abre modal interativo para envio.',
+          description: 'Gera o rascunho de mensagem formatada, amigável e profissional e abre o submodal interativo no chat (<WhatsAppComposer />) para disparo direto, edição e revisão humana (cobrança cordial, status de produção, aviso de retirada pronta, confirmação de pedido ou orçamento). OBRIGATÓRIO para qualquer pedido de cobrança ou envio de mensagem para WhatsApp.',
           parameters: {
             type: 'OBJECT',
             properties: {
-              type: { type: 'STRING', enum: ['cobranca', 'status_producao', 'pronto_retirada', 'confirmacao_pedido', 'orcamento', 'geral'] },
-              recipientName: { type: 'STRING', description: 'Nome do cliente' },
-              recipientPhone: { type: 'STRING', description: 'WhatsApp do cliente' },
-              orderNumber: { type: 'STRING', description: 'Número do pedido' },
-              productName: { type: 'STRING', description: 'Produto do pedido' },
-              amount: { type: 'NUMBER', description: 'Valor em reais' },
-              messageText: { type: 'STRING', description: 'Texto formatado da mensagem' }
+              type: {
+                type: 'STRING',
+                enum: ['cobranca', 'status_producao', 'pronto_retirada', 'confirmacao_pedido', 'orcamento', 'geral'],
+                description: 'Tipo de mensagem a ser enviada'
+              },
+              recipientName: { type: 'STRING', description: 'Nome do cliente destinatário' },
+              recipientPhone: { type: 'STRING', description: 'Telefone de contato do cliente (WhatsApp)' },
+              orderNumber: { type: 'STRING', description: 'Número de referência do pedido (ex: #2026-0109)' },
+              productName: { type: 'STRING', description: 'Produto ou serviço do pedido' },
+              amount: { type: 'NUMBER', description: 'Valor financeiro pendente ou total em reais' },
+              messageText: { type: 'STRING', description: 'O texto completo da mensagem formatada com quebras de linha e emojis adequados para o cliente' }
             },
             required: ['type', 'messageText']
           }
         },
         {
           name: 'calculate_pricing_estimate',
-          description: 'Calcula custo unitário, margem técnica e preço sugerido de personalizado.',
+          description: 'Calcula estimativa rápida de custos e preço de venda sugerido com proteção de margem de lucro mínima para produtos personalizados (camisetas, canecas, ecobags, brindes).',
           parameters: {
             type: 'OBJECT',
             properties: {
-              productName: { type: 'STRING', description: 'Nome do personalizado' },
-              quantity: { type: 'INTEGER', description: 'Quantidade de peças' },
-              unitCostRaw: { type: 'NUMBER', description: 'Custo base de insumos/papel (R$)' },
-              customizationCost: { type: 'NUMBER', description: 'Custo de acabamento/BOPP/fitas (R$)' },
-              laborTimeMinutes: { type: 'NUMBER', description: 'Tempo de montagem (minutos)' },
-              profitMarginPercent: { type: 'NUMBER', description: 'Margem de lucro desejada (%)' }
+              productName: { type: 'STRING', description: 'Nome do produto personalizado (ex: Camiseta Algodão Silk 1 cor, Caneca Cerâmica Sublimada)' },
+              quantity: { type: 'INTEGER', description: 'Quantidade total de peças' },
+              unitCostRaw: { type: 'NUMBER', description: 'Custo estimado da matéria-prima base por unidade em reais' },
+              customizationCost: { type: 'NUMBER', description: 'Custo estimado de tinta, filme ou insumos de estamparia por peça em reais' },
+              laborTimeMinutes: { type: 'NUMBER', description: 'Tempo estimado de trabalho por peça em minutos' },
+              profitMarginPercent: { type: 'NUMBER', description: 'Margem de lucro desejada em % (mínimo 30%, padrão 45%)' }
             },
             required: ['productName', 'quantity']
           }
         },
         {
           name: 'query_customers',
-          description: 'Consulta clientes cadastrados por nome, telefone, email ou cidade.',
+          description: 'Consulta a base de clientes cadastrados no sistema Luisices (por nome, telefone, e-mail ou cidade) para obter histórico de compras e dados cadastrais. ATENÇÃO: NUNCA use para cobrança ou envio de mensagens no WhatsApp (para isso, use sempre generate_whatsapp_message).',
           parameters: {
             type: 'OBJECT',
             properties: {
-              searchTerm: { type: 'STRING', description: 'Nome, telefone ou cidade' },
-              userIdentifier: { type: 'STRING', description: 'Filtro de colaborador (Admin)' },
-              limit: { type: 'INTEGER', description: 'Máximo de clientes (max 20)' }
+              searchTerm: {
+                type: 'STRING',
+                description: 'Nome, telefone, e-mail ou cidade do cliente para busca'
+              },
+              userIdentifier: {
+                type: 'STRING',
+                description: 'Opcional (Apenas Admin): Nome, e-mail ou UID do colaborador para filtrar apenas os clientes cadastrados por ele'
+              },
+              limit: {
+                type: 'INTEGER',
+                description: 'Quantidade máxima de clientes a retornar (máximo 20)'
+              }
             }
           }
         },
         {
           name: 'extract_order_draft',
-          description: 'Extrai dados estruturados de um pedido a partir de conversa.',
+          description: 'Extrai dados estruturados de um novo pedido a partir de uma mensagem ou conversa para pré-preenchimento.',
           parameters: {
             type: 'OBJECT',
             properties: {
               customerName: { type: 'STRING', description: 'Nome do cliente' },
-              customerPhone: { type: 'STRING', description: 'Telefone' },
-              productName: { type: 'STRING', description: 'Nome do produto' },
-              quantity: { type: 'INTEGER', description: 'Quantidade' },
-              totalPrice: { type: 'NUMBER', description: 'Valor total (R$)' },
-              deliveryDate: { type: 'STRING', description: 'Entrega (YYYY-MM-DD)' },
-              notes: { type: 'STRING', description: 'Detalhes ou arte' },
+              customerPhone: { type: 'STRING', description: 'Telefone de contato' },
+              productName: { type: 'STRING', description: 'Nome e especificações do produto' },
+              quantity: { type: 'INTEGER', description: 'Quantidade de peças' },
+              totalPrice: { type: 'NUMBER', description: 'Valor total do pedido em reais' },
+              deliveryDate: { type: 'STRING', description: 'Data de entrega estimada no formato YYYY-MM-DD' },
+              notes: { type: 'STRING', description: 'Observações, estampas ou detalhes' },
               paymentMethod: { type: 'STRING', enum: ['pix', 'cash', 'credit', 'debit', 'other'] }
             },
             required: ['customerName', 'productName']
@@ -1461,14 +1473,26 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
         },
         {
           name: 'search_gallery_portfolio',
-          description: 'Pesquisa fotos, modelos e artes no acervo da Galeria.',
+          description: 'Consulta o acervo de fotos, produtos e artes da Galeria do sistema (camisetas, brindes, canecas, bordados, personalizações anteriores). Use esta ferramenta EXCLUSIVAMENTE quando o usuário solicitar explicitamente buscar fotos, modelos, artes ou referências no acervo da galeria. NUNCA use esta ferramenta quando o usuário apenas enviar uma imagem para análise visual.',
           parameters: {
             type: 'OBJECT',
             properties: {
-              searchTerm: { type: 'STRING', description: 'Termo ou tema de busca' },
-              tag: { type: 'STRING', description: 'Tag ou categoria' },
-              userIdentifier: { type: 'STRING', description: 'Filtro de colaborador (Admin)' },
-              limit: { type: 'INTEGER', description: 'Máximo de fotos (max 15)' }
+              searchTerm: {
+                type: 'STRING',
+                description: 'Termo de busca para título, descrição, tema, cliente, técnica ou número de pedido'
+              },
+              tag: {
+                type: 'STRING',
+                description: 'Filtrar por tag ou categoria específica (ex: camisetas, canecas, brindes, bordado, silk)'
+              },
+              userIdentifier: {
+                type: 'STRING',
+                description: 'Opcional (Apenas Admin): Filtrar artes cadastradas por um colaborador específico por nome, e-mail ou UID'
+              },
+              limit: {
+                type: 'INTEGER',
+                description: 'Quantidade máxima de registros a retornar (padrão 10, máximo 20)'
+              }
             }
           }
         }
@@ -1810,19 +1834,8 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
       );
     }
 
-    const maxLimit = Math.min(Math.max(Number(args.limit) || 20, 1), 30);
-    return docs.slice(0, maxLimit).map((d) => ({
-      orderNumber: d.orderNumber || "#" + (d.id ? d.id.slice(-5) : "00000"),
-      customerName: d.customerName || "Cliente",
-      productSummary: d.productSummary || "Produto personalizado",
-      quantity: Number(d.quantity || 1),
-      totalPrice: Number(d.totalPrice || 0),
-      remainingAmount: Number(d.remainingAmount || 0),
-      status: d.status || "pending",
-      paymentStatus: d.paymentStatus || "pending",
-      deliveryDate: d.deliveryDate || null,
-      isLate: Boolean(d.isLate),
-    }));
+    const maxLimit = Math.min(Math.max(Number(args.limit) || 30, 1), 50);
+    return docs.slice(0, maxLimit);
   };
 
   // Helper para cálculo financeiro exato alinhado com Reports.tsx
@@ -1937,21 +1950,9 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
     return {
       todayDate,
       delayedCount: delayedOrders.length,
-      delayedOrders: delayedOrders.slice(0, 5).map((o) => ({
-        orderNumber: o.orderNumber || "#" + (o.id ? o.id.slice(-5) : "00000"),
-        customerName: o.customerName || "Cliente",
-        productSummary: o.productSummary || "Produto personalizado",
-        deliveryDate: o.deliveryDate || "",
-        totalPrice: Number(o.totalPrice || 0),
-        remainingAmount: Number(o.remainingAmount || 0),
-      })),
+      delayedOrders: delayedOrders.slice(0, 5),
       todayDeliveriesCount: todayDeliveries.length,
-      todayDeliveries: todayDeliveries.slice(0, 5).map((o) => ({
-        orderNumber: o.orderNumber || "#" + (o.id ? o.id.slice(-5) : "00000"),
-        customerName: o.customerName || "Cliente",
-        productSummary: o.productSummary || "Produto personalizado",
-        totalPrice: Number(o.totalPrice || 0),
-      })),
+      todayDeliveries: todayDeliveries.slice(0, 5),
       inProgressCount: inProgressOrders.length,
       completedCount: completedOrders.length,
       realizedRevenue,
@@ -2016,15 +2017,8 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
         );
       }
 
-      const maxLimit = Math.min(Math.max(Number(args.limit) || 10, 1), 20);
-      return customers.slice(0, maxLimit).map((c) => ({
-        name: c.name || "Cliente",
-        phone: c.phone || "",
-        email: c.email || "",
-        city: c.city || "",
-        totalOrders: Number(c.totalOrders || 0),
-        totalSpent: Number(c.totalSpent || 0),
-      }));
+      const maxLimit = Math.min(Math.max(Number(args.limit) || 10, 1), 30);
+      return customers.slice(0, maxLimit);
     } catch (err) {
       console.error('[executeQueryCustomers] Erro:', err);
       return [];
@@ -2103,18 +2097,19 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
         });
       }
 
-      const maxLimit = Math.min(Math.max(Number(args.limit) || 6, 1), 12);
+      const maxLimit = Math.min(Math.max(Number(args.limit) || 10, 1), 25);
       return items.slice(0, maxLimit).map((item) => ({
         id: item.id,
         title: item.title,
-        description: (item.description || item.aiDescription || '').slice(0, 120),
+        description: item.description || item.aiDescription || '',
         imageUrl: item.imageUrl,
         customerName: item.customerName || null,
         orderNumber: item.orderNumber || null,
         tags: Array.isArray(item.tags)
-          ? item.tags.slice(0, 4).map((t) => (typeof t === 'string' ? t : t.text || t.name || ''))
+          ? item.tags.map((t) => (typeof t === 'string' ? t : t.text || t.name || ''))
           : [],
-        productType: item.productType || undefined,
+        aiTags: item.aiTags || [],
+        productType: item.productType || null,
       }));
     } catch (err) {
       console.error('[executeSearchGalleryPortfolio] Erro:', err);
@@ -2371,14 +2366,9 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
         if (queryResults.length === 0) {
           finalAnswer = 'Não encontrei nenhum cliente cadastrado correspondente aos termos pesquisados.';
         } else {
-          const list = queryResults.map((c) => {
-            const name = c.name || c.nome || 'Cliente';
-            const phone = c.phone || c.telefone || 'Não informado';
-            const email = c.email || 'Não informado';
-            const city = c.city || c.cidade || 'N/D';
-            const orders = c.totalOrders || c.pedidos || 0;
-            return `• **${name}**\n  📱 Telefone: ${phone} | ✉️ E-mail: ${email} | 🏙️ Cidade: ${city}${orders > 0 ? ` | 📦 Pedidos: ${orders}` : ''}`;
-          }).join('\n\n');
+          const list = queryResults.map(c =>
+            `• **${c.name}**\n  📱 Telefone: ${c.phone || 'Não informado'} | ✉️ E-mail: ${c.email || 'Não informado'} | 🏙️ Cidade: ${c.city || 'N/D'}`
+          ).join('\n\n');
           finalAnswer = `Encontrei **${queryResults.length} cliente(s) cadastrado(s)** no sistema:\n\n${list}`;
         }
       } else if (name === 'calculate_pricing_estimate') {
@@ -2395,10 +2385,7 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
         if (briefing.delayedCount > 0) {
           briefingText += `⚠️ **Atenção: ${briefing.delayedCount} pedido(s) com prazo vencido/urgente:**\n`;
           briefing.delayedOrders.forEach(o => {
-            const num = o.numero || o.orderNumber || (o.orderId ? '#' + o.orderId : '#---');
-            const cli = o.cliente || o.customerName || 'Cliente';
-            const dt = o.entrega || o.deliveryDate || 'Data não definida';
-            briefingText += `  • **${num}** — ${cli} | Prazo: ${dt}\n`;
+            briefingText += `  • **${o.orderNumber || '#' + o.orderId}** — ${o.customerName} (${o.productSummary}) | Prazo: ${o.deliveryDate}\n`;
           });
           briefingText += '\n';
         } else {
@@ -2491,42 +2478,145 @@ BASE DE CONHECIMENTO DO SISTEMA LUISICES:
         finalAnswer = report;
       } else if (name === 'query_orders_view') {
         const queryResults = await executeQueryOrdersView(args);
-        const statusMap = {
-          pending: 'Pendente',
-          'in-progress': 'Em Produção',
-          completed: 'Concluído',
-          cancelled: 'Cancelado',
-          deleted: 'Excluído (Auditado)',
-        };
+        
+        // Segunda chamada enxuta para formulação rápida da resposta final
+        const followUpContents = [
+          ...contents,
+          candidate?.content || { role: 'model', parts: candidate?.content?.parts || [functionCallPart] },
+          {
+            role: 'user',
+            parts: [{
+              functionResponse: {
+                name: 'query_orders_view',
+                response: {
+                  summary: `Foram encontrados ${queryResults.length} registros.`,
+                  orders: queryResults.slice(0, 20),
+                }
+              }
+            }]
+          }
+        ];
 
-        if (queryResults.length === 0) {
-          finalAnswer = 'Não encontrei nenhum pedido correspondente aos critérios consultados.';
-        } else {
-          const list = queryResults.map((o) => {
-            const formattedPrice = Number(o.totalPrice || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-            const st = statusMap[o.status] || o.status || 'Pendente';
-            const paySt = o.paymentStatus === 'paid' ? 'Pago' : o.paymentStatus === 'partial' ? 'Parcial' : 'Pendente';
-            const alertLate = o.isLate ? ' ⚠️ **(Atrasado)**' : '';
-            const dt = o.deliveryDate ? ` | 📅 Entrega: ${o.deliveryDate}` : '';
-            return `• **${o.orderNumber}** — **${o.customerName}**${alertLate}\n  📦 ${o.productSummary} (${o.quantity} un) | 💰 ${formattedPrice} | 🏷️ ${st} (${paySt})${dt}`;
-          }).join('\n\n');
+        try {
+          const { data: followUpResult } = await callGeminiWithFallback({
+            system_instruction: { parts: [{ text: systemInstruction }] },
+            contents: followUpContents,
+            tools: activeTools,
+            generationConfig: { temperature: 0.2, maxOutputTokens: 1536 }
+          });
+          const followUpCandidate = followUpResult?.candidates?.[0];
+          const followUpParts = followUpCandidate?.content?.parts || [];
+          const textResponse = cleanAiOutput(followUpParts.map(p => p.text).filter(Boolean).join('\n'));
 
-          finalAnswer = `Encontrei **${queryResults.length} pedido(s)** no sistema:\n\n${list}`;
+          const statusMap = {
+            pending: 'Pendente',
+            'in-progress': 'Em Produção',
+            completed: 'Concluído',
+            cancelled: 'Cancelado',
+            deleted: 'Excluído (Auditado)',
+          };
+
+          if (queryResults.length === 0) {
+            finalAnswer = textResponse && textResponse.length > 20
+              ? textResponse
+              : 'Não encontrei nenhum pedido correspondente aos critérios consultados.';
+          } else {
+            const isGeneric =
+              !textResponse ||
+              textResponse.length < 40 ||
+              textResponse.toLowerCase().includes('consulta realizada');
+
+            if (isGeneric) {
+              const list = queryResults.map(o => {
+                const formattedPrice = Number(o.totalPrice || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+                const st = statusMap[o.status] || (o.isDeleted ? 'Excluído (Auditado)' : o.status);
+                const paySt = o.paymentStatus === 'paid' ? 'Pago' : o.paymentStatus === 'partial' ? 'Parcial' : 'Pendente';
+                return `• **${o.orderNumber || '#' + o.orderId}** — **${o.customerName}**\n  📦 ${o.productSummary} (${o.quantity} un) | 💰 ${formattedPrice} | 🏷️ ${st} (${paySt})`;
+              }).join('\n\n');
+
+              finalAnswer = `Encontrei **${queryResults.length} registro(s)**:\n\n${list}`;
+            } else {
+              finalAnswer = textResponse;
+            }
+          }
+        } catch {
+          if (queryResults.length === 0) {
+            finalAnswer = 'Não encontrei nenhum pedido correspondente na base.';
+          } else {
+            const list = queryResults.map(o => `• **${o.orderNumber || '#' + o.orderId}** — ${o.customerName}: ${o.productSummary} (${o.quantity} un) - R$ ${o.totalPrice}`).join('\n');
+            finalAnswer = `Encontrei **${queryResults.length} registro(s)**:\n\n${list}`;
+          }
         }
       } else if (name === 'search_gallery_portfolio') {
         const galleryResults = await executeSearchGalleryPortfolio(args);
         extractedGalleryItems = galleryResults;
 
-        if (galleryResults.length === 0) {
-          finalAnswer = 'Não encontrei nenhuma foto ou arte na galeria correspondente aos critérios consultados.';
-        } else {
-          const list = galleryResults.map((it) => {
-            const tagList = (it.tags || []).slice(0, 3).join(', ');
-            const viewLink = it.imageUrl ? ` | 🔗 [Ver Foto](${it.imageUrl})` : '';
-            return `• **${it.title}**${it.productType ? ` (${it.productType})` : ''}\n  ${it.description ? it.description.slice(0, 120) : 'Sem descrição'}${tagList ? ` | 🏷️ ${tagList}` : ''}${viewLink}`;
-          }).join('\n\n');
+        const followUpContents = [
+          ...contents,
+          candidate?.content || { role: 'model', parts: candidate?.content?.parts || [functionCallPart] },
+          {
+            role: 'user',
+            parts: [{
+              functionResponse: {
+                name: 'search_gallery_portfolio',
+                response: {
+                  summary: `Foram encontradas ${galleryResults.length} artes/fotos na galeria.`,
+                  items: galleryResults.map((it) => ({
+                    title: it.title,
+                    description: it.description,
+                    productType: it.productType,
+                    tags: it.tags,
+                    aiTags: it.aiTags,
+                    imageUrl: it.imageUrl,
+                  })),
+                }
+              }
+            }]
+          }
+        ];
 
-          finalAnswer = `Encontrei **${galleryResults.length} foto(s)/arte(s)** no acervo da galeria:\n\n${list}`;
+        try {
+          const { data: followUpResult } = await callGeminiWithFallback({
+            system_instruction: { parts: [{ text: systemInstruction }] },
+            contents: followUpContents,
+            tools: activeTools,
+            generationConfig: { temperature: 0.2, maxOutputTokens: 1536 }
+          });
+          const followUpCandidate = followUpResult?.candidates?.[0];
+          const followUpParts = followUpCandidate?.content?.parts || [];
+          const textResponse = cleanAiOutput(followUpParts.map(p => p.text).filter(Boolean).join('\n'));
+
+          if (galleryResults.length === 0) {
+            finalAnswer = textResponse && textResponse.length > 20
+              ? textResponse
+              : initialText || 'Não encontrei nenhuma foto ou arte na galeria correspondente aos critérios consultados.';
+          } else {
+            const isGeneric =
+              !textResponse ||
+              textResponse.length < 30 ||
+              textResponse.toLowerCase().includes('consulta realizada');
+
+            if (isGeneric) {
+              const list = galleryResults.map(it => {
+                const tagList = [...(it.tags || []), ...(it.aiTags || [])].slice(0, 3).join(', ');
+                return `• **${it.title}**${it.productType ? ` (${it.productType})` : ''}\n  ${it.description ? it.description.slice(0, 120) : 'Sem descrição'}\n  🔗 [Ver Foto](${it.imageUrl})${tagList ? ` | 🏷️ ${tagList}` : ''}`;
+              }).join('\n\n');
+              const prefix = initialText ? `${initialText}\n\n` : '';
+              finalAnswer = `${prefix}Encontrei **${galleryResults.length} foto(s)/arte(s)** no acervo da galeria:\n\n${list}`;
+            } else {
+              finalAnswer = initialText ? `${initialText}\n\n${textResponse}` : textResponse;
+            }
+          }
+        } catch (followErr) {
+          console.warn('[aiAgentChat] Falha no follow-up da galeria:', followErr);
+          if (initialText) {
+            finalAnswer = initialText;
+          } else if (galleryResults.length === 0) {
+            finalAnswer = 'Não encontrei nenhuma foto ou arte correspondente no acervo da galeria.';
+          } else {
+            const list = galleryResults.map(it => `• **${it.title}** - [Ver Foto](${it.imageUrl})`).join('\n');
+            finalAnswer = `Encontrei **${galleryResults.length} foto(s)/arte(s)** na galeria:\n\n${list}`;
+          }
         }
       }
     } else {
