@@ -2716,12 +2716,7 @@ Você possui permissão para consultar exclusivamente os **seus próprios pedido
         } else if (!galleryResults || galleryResults.length === 0) {
           finalAnswer = '🔍 Não encontrei nenhuma foto ou arte correspondente no acervo da galeria.';
         } else {
-          const list = galleryResults.map((it) => {
-            const tagList = [...(it.tags || []), ...(it.aiTags || [])].slice(0, 3).join(', ');
-            return `• **${it.title || 'Arte Personalizada'}**${it.productType ? ` (${it.productType})` : ''}\n  ${it.description ? it.description.slice(0, 120) : 'Item do portfólio'}\n  🔗 [Ver Foto](${it.imageUrl})${tagList ? ` | 🏷️ ${tagList}` : ''}`;
-          }).join('\n\n');
-
-          finalAnswer = `🎨 **Encontrei ${galleryResults.length} foto(s)/arte(s) no acervo da galeria:**\n\n${list}`;
+          finalAnswer = `🎨 Encontrei **${galleryResults.length} modelo(s)** no acervo da galeria correspondentes à sua busca. Você pode conferir os detalhes e fotos nos cards interativos abaixo:`;
         }
       }
     } else {
