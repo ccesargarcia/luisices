@@ -1247,7 +1247,7 @@ const cleanAiOutput = (text) => {
 /**
  * Endpoint Callable Seguro do Copiloto de IA Interno
  */
-exports.aiAgentChat = onCall({ cors: true, timeoutSeconds: 120, memory: '512MiB', maxInstances: 10, secrets: [GEMINI_API_KEY] }, async (request) => {
+exports.aiAgentChat = onCall({ cors: true, timeoutSeconds: 120, memory: '1GiB', maxInstances: 10, secrets: [GEMINI_API_KEY] }, async (request) => {
   if (!(await isAuthorizedEmployeeOrAdmin(request))) {
     throw new functions.https.HttpsError('permission-denied', 'Acesso restrito a membros autorizados da equipe.');
   }
@@ -3100,7 +3100,7 @@ exports.getAiUsage = onCall({ cors: true, maxInstances: 5, secrets: [GEMINI_API_
  * Extrai descrição rica, tags sugeridas, tipo de produto e cores para busca e catálogo inteligente.
  * Guardrails estritos: usuário não-admin só pode enriquecer itens pertencentes a ele; admin tem acesso geral.
  */
-exports.enrichGalleryItemWithAi = onCall({ cors: true, timeoutSeconds: 120, memory: '512MiB', maxInstances: 5, secrets: [GEMINI_API_KEY] }, async (request) => {
+exports.enrichGalleryItemWithAi = onCall({ cors: true, timeoutSeconds: 120, memory: '1GiB', maxInstances: 5, secrets: [GEMINI_API_KEY] }, async (request) => {
   if (!request.auth) {
     throw new functions.https.HttpsError('unauthenticated', 'É necessário estar autenticado.');
   }
@@ -3337,7 +3337,7 @@ Responda ESTRITAMENTE em formato JSON puro, sem blocos de código markdown (sem 
  * - Badge e prazo sugerido
  * Opcional e restrito a usuários com permissão aiCopilot ou admin.
  */
-exports.enrichStoreProductWithAi = onCall({ cors: true, timeoutSeconds: 120, memory: "512MiB", maxInstances: 5, secrets: [GEMINI_API_KEY] }, async (request) => {
+exports.enrichStoreProductWithAi = onCall({ cors: true, timeoutSeconds: 120, memory: '1GiB', maxInstances: 5, secrets: [GEMINI_API_KEY] }, async (request) => {
   if (!request.auth) {
     throw new functions.https.HttpsError("unauthenticated", "É necessário estar autenticado.");
   }
