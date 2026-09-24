@@ -42,6 +42,13 @@ import {
 import { collection, doc, getDoc, getDocs } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { BannerCarousel, CatalogBannerItem } from '../components/catalog/BannerCarousel';
+import {
+  InstitutionalPillarItem,
+  InstitutionalStepItem,
+  InstitutionalFeatureItem,
+  InstitutionalFaqItem,
+  InstitutionalCustomSection,
+} from '../../services/firebaseSettingsService';
 import { firebaseCatalogOrderService } from '../../services/firebaseCatalogOrderService';
 import { toCdnUrl } from '../utils/cdnUtils';
 import { FormattedDescription } from '../components/FormattedDescription';
@@ -153,6 +160,14 @@ export function PublicCatalog() {
       aboutTitle: saved?.catalogAboutTitle || '',
       aboutText: saved?.catalogAboutText || '',
       aboutImageUrl: saved?.catalogAboutImageUrl ? toCdnUrl(saved.catalogAboutImageUrl) : '',
+      aboutPillars: (Array.isArray(saved?.catalogAboutPillars) && saved.catalogAboutPillars.length > 0
+        ? saved.catalogAboutPillars
+        : [
+            { id: 'p1', title: saved?.catalogAboutPillar1Title || '', text: saved?.catalogAboutPillar1Text || '' },
+            { id: 'p2', title: saved?.catalogAboutPillar2Title || '', text: saved?.catalogAboutPillar2Text || '' },
+            { id: 'p3', title: saved?.catalogAboutPillar3Title || '', text: saved?.catalogAboutPillar3Text || '' },
+          ]
+      ).filter((p: InstitutionalPillarItem) => Boolean(p.title || p.text)),
       aboutPillar1Title: saved?.catalogAboutPillar1Title || '',
       aboutPillar1Text: saved?.catalogAboutPillar1Text || '',
       aboutPillar2Title: saved?.catalogAboutPillar2Title || '',
@@ -165,6 +180,15 @@ export function PublicCatalog() {
       howItWorksBadge: saved?.catalogHowItWorksBadge || '',
       howItWorksTitle: saved?.catalogHowItWorksTitle || '',
       howItWorksSubtitle: saved?.catalogHowItWorksSubtitle || '',
+      howItWorksSteps: (Array.isArray(saved?.catalogHowItWorksSteps) && saved.catalogHowItWorksSteps.length > 0
+        ? saved.catalogHowItWorksSteps
+        : [
+            { id: 's1', title: saved?.catalogHowItWorksStep1Title || '', text: saved?.catalogHowItWorksStep1Text || '' },
+            { id: 's2', title: saved?.catalogHowItWorksStep2Title || '', text: saved?.catalogHowItWorksStep2Text || '' },
+            { id: 's3', title: saved?.catalogHowItWorksStep3Title || '', text: saved?.catalogHowItWorksStep3Text || '' },
+            { id: 's4', title: saved?.catalogHowItWorksStep4Title || '', text: saved?.catalogHowItWorksStep4Text || '' },
+          ]
+      ).filter((st: InstitutionalStepItem) => Boolean(st.title || st.text)),
       howItWorksStep1Title: saved?.catalogHowItWorksStep1Title || '',
       howItWorksStep1Text: saved?.catalogHowItWorksStep1Text || '',
       howItWorksStep2Title: saved?.catalogHowItWorksStep2Title || '',
@@ -178,6 +202,15 @@ export function PublicCatalog() {
       showFeatures: saved?.catalogShowFeatures !== undefined ? Boolean(saved.catalogShowFeatures) : false,
       featuresBadge: saved?.catalogFeaturesBadge || '',
       featuresTitle: saved?.catalogFeaturesTitle || '',
+      featureItems: (Array.isArray(saved?.catalogFeatureItems) && saved.catalogFeatureItems.length > 0
+        ? saved.catalogFeatureItems
+        : [
+            { id: 'f1', title: saved?.catalogFeature1Title || '', text: saved?.catalogFeature1Text || '' },
+            { id: 'f2', title: saved?.catalogFeature2Title || '', text: saved?.catalogFeature2Text || '' },
+            { id: 'f3', title: saved?.catalogFeature3Title || '', text: saved?.catalogFeature3Text || '' },
+            { id: 'f4', title: saved?.catalogFeature4Title || '', text: saved?.catalogFeature4Text || '' },
+          ]
+      ).filter((f: InstitutionalFeatureItem) => Boolean(f.title || f.text)),
       feature1Title: saved?.catalogFeature1Title || '',
       feature1Text: saved?.catalogFeature1Text || '',
       feature2Title: saved?.catalogFeature2Title || '',
@@ -191,6 +224,16 @@ export function PublicCatalog() {
       showFaq: saved?.catalogShowFaq !== undefined ? Boolean(saved.catalogShowFaq) : false,
       faqBadge: saved?.catalogFaqBadge || '',
       faqTitle: saved?.catalogFaqTitle || '',
+      faqItems: (Array.isArray(saved?.catalogFaqItems) && saved.catalogFaqItems.length > 0
+        ? saved.catalogFaqItems
+        : [
+            { id: 'faq1', question: saved?.catalogFaq1Q || '', answer: saved?.catalogFaq1A || '' },
+            { id: 'faq2', question: saved?.catalogFaq2Q || '', answer: saved?.catalogFaq2A || '' },
+            { id: 'faq3', question: saved?.catalogFaq3Q || '', answer: saved?.catalogFaq3A || '' },
+            { id: 'faq4', question: saved?.catalogFaq4Q || '', answer: saved?.catalogFaq4A || '' },
+            { id: 'faq5', question: saved?.catalogFaq5Q || '', answer: saved?.catalogFaq5A || '' },
+          ]
+      ).filter((faq: InstitutionalFaqItem) => Boolean(faq.question || faq.answer)),
       faq1Q: saved?.catalogFaq1Q || '',
       faq1A: saved?.catalogFaq1A || '',
       faq2Q: saved?.catalogFaq2Q || '',
@@ -201,6 +244,11 @@ export function PublicCatalog() {
       faq4A: saved?.catalogFaq4A || '',
       faq5Q: saved?.catalogFaq5Q || '',
       faq5A: saved?.catalogFaq5A || '',
+
+      // 5. Seções Extras
+      customSections: Array.isArray(saved?.catalogCustomSections)
+        ? saved.catalogCustomSections.filter((sec: InstitutionalCustomSection) => Boolean(sec.title || sec.content))
+        : [],
     };
   });
 
@@ -365,6 +413,14 @@ export function PublicCatalog() {
         aboutTitle: s.catalogAboutTitle || '',
         aboutText: s.catalogAboutText || '',
         aboutImageUrl: toCdnUrl(s.catalogAboutImageUrl) || '',
+        aboutPillars: (Array.isArray(s.catalogAboutPillars) && s.catalogAboutPillars.length > 0
+          ? s.catalogAboutPillars
+          : [
+              { id: 'p1', title: s.catalogAboutPillar1Title || '', text: s.catalogAboutPillar1Text || '' },
+              { id: 'p2', title: s.catalogAboutPillar2Title || '', text: s.catalogAboutPillar2Text || '' },
+              { id: 'p3', title: s.catalogAboutPillar3Title || '', text: s.catalogAboutPillar3Text || '' },
+            ]
+        ).filter((p: InstitutionalPillarItem) => Boolean(p.title || p.text)),
         aboutPillar1Title: s.catalogAboutPillar1Title || '',
         aboutPillar1Text: s.catalogAboutPillar1Text || '',
         aboutPillar2Title: s.catalogAboutPillar2Title || '',
@@ -377,6 +433,15 @@ export function PublicCatalog() {
         howItWorksBadge: s.catalogHowItWorksBadge || '',
         howItWorksTitle: s.catalogHowItWorksTitle || '',
         howItWorksSubtitle: s.catalogHowItWorksSubtitle || '',
+        howItWorksSteps: (Array.isArray(s.catalogHowItWorksSteps) && s.catalogHowItWorksSteps.length > 0
+          ? s.catalogHowItWorksSteps
+          : [
+              { id: 's1', title: s.catalogHowItWorksStep1Title || '', text: s.catalogHowItWorksStep1Text || '' },
+              { id: 's2', title: s.catalogHowItWorksStep2Title || '', text: s.catalogHowItWorksStep2Text || '' },
+              { id: 's3', title: s.catalogHowItWorksStep3Title || '', text: s.catalogHowItWorksStep3Text || '' },
+              { id: 's4', title: s.catalogHowItWorksStep4Title || '', text: s.catalogHowItWorksStep4Text || '' },
+            ]
+        ).filter((st: InstitutionalStepItem) => Boolean(st.title || st.text)),
         howItWorksStep1Title: s.catalogHowItWorksStep1Title || '',
         howItWorksStep1Text: s.catalogHowItWorksStep1Text || '',
         howItWorksStep2Title: s.catalogHowItWorksStep2Title || '',
@@ -390,6 +455,15 @@ export function PublicCatalog() {
         showFeatures: s.catalogShowFeatures !== undefined ? Boolean(s.catalogShowFeatures) : false,
         featuresBadge: s.catalogFeaturesBadge || '',
         featuresTitle: s.catalogFeaturesTitle || '',
+        featureItems: (Array.isArray(s.catalogFeatureItems) && s.catalogFeatureItems.length > 0
+          ? s.catalogFeatureItems
+          : [
+              { id: 'f1', title: s.catalogFeature1Title || '', text: s.catalogFeature1Text || '' },
+              { id: 'f2', title: s.catalogFeature2Title || '', text: s.catalogFeature2Text || '' },
+              { id: 'f3', title: s.catalogFeature3Title || '', text: s.catalogFeature3Text || '' },
+              { id: 'f4', title: s.catalogFeature4Title || '', text: s.catalogFeature4Text || '' },
+            ]
+        ).filter((f: InstitutionalFeatureItem) => Boolean(f.title || f.text)),
         feature1Title: s.catalogFeature1Title || '',
         feature1Text: s.catalogFeature1Text || '',
         feature2Title: s.catalogFeature2Title || '',
@@ -403,6 +477,16 @@ export function PublicCatalog() {
         showFaq: s.catalogShowFaq !== undefined ? Boolean(s.catalogShowFaq) : false,
         faqBadge: s.catalogFaqBadge || '',
         faqTitle: s.catalogFaqTitle || '',
+        faqItems: (Array.isArray(s.catalogFaqItems) && s.catalogFaqItems.length > 0
+          ? s.catalogFaqItems
+          : [
+              { id: 'faq1', question: s.catalogFaq1Q || '', answer: s.catalogFaq1A || '' },
+              { id: 'faq2', question: s.catalogFaq2Q || '', answer: s.catalogFaq2A || '' },
+              { id: 'faq3', question: s.catalogFaq3Q || '', answer: s.catalogFaq3A || '' },
+              { id: 'faq4', question: s.catalogFaq4Q || '', answer: s.catalogFaq4A || '' },
+              { id: 'faq5', question: s.catalogFaq5Q || '', answer: s.catalogFaq5A || '' },
+            ]
+        ).filter((faq: InstitutionalFaqItem) => Boolean(faq.question || faq.answer)),
         faq1Q: s.catalogFaq1Q || '',
         faq1A: s.catalogFaq1A || '',
         faq2Q: s.catalogFaq2Q || '',
@@ -413,6 +497,11 @@ export function PublicCatalog() {
         faq4A: s.catalogFaq4A || '',
         faq5Q: s.catalogFaq5Q || '',
         faq5A: s.catalogFaq5A || '',
+
+        // 5. Seções Extras
+        customSections: Array.isArray(s.catalogCustomSections)
+          ? s.catalogCustomSections.filter((sec: InstitutionalCustomSection) => Boolean(sec.title || sec.content))
+          : [],
       }));
 
       setStorePublished(s.storePublished !== undefined ? Boolean(s.storePublished) : true);
@@ -1314,10 +1403,10 @@ export function PublicCatalog() {
 
 
 
-          {/* SEÇÕES INSTITUCIONAIS MODULARES (Controladas via Toggles) */}
+          {/* SEÇÕES INSTITUCIONAIS MODULARES (Controladas via Toggles & Listas Dinâmicas) */}
 
           {/* 1. QUEM SOMOS / SOBRE O ATELIÊ */}
-          {businessInfo.showAbout && (businessInfo.aboutText || businessInfo.aboutTitle || businessInfo.aboutImageUrl) && (
+          {businessInfo.showAbout && (businessInfo.aboutText || businessInfo.aboutTitle || businessInfo.aboutImageUrl || (businessInfo.aboutPillars && businessInfo.aboutPillars.length > 0)) && (
             <section className="mt-12 p-6 sm:p-10 rounded-3xl bg-white/70 dark:bg-[#1f191b]/70 backdrop-blur-md border border-white/60 dark:border-[#ebcdcd]/15 shadow-sm space-y-6 animate-in fade-in duration-300">
               <div className="flex flex-col lg:flex-row items-center gap-8">
                 {businessInfo.aboutImageUrl && (
@@ -1348,45 +1437,21 @@ export function PublicCatalog() {
                     </div>
                   )}
 
-                  {/* 3 Pilares do Ateliê */}
-                  {(businessInfo.aboutPillar1Title || businessInfo.aboutPillar2Title || businessInfo.aboutPillar3Title) && (
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-3">
-                      {businessInfo.aboutPillar1Title && (
-                        <div className="p-3.5 rounded-2xl bg-stone-50/80 dark:bg-[#261f22]/80 border border-stone-200/60 dark:border-stone-800 space-y-1">
+                  {/* Pilares do Ateliê (Dinâmicos) */}
+                  {businessInfo.aboutPillars && businessInfo.aboutPillars.length > 0 && (
+                    <div className={`grid grid-cols-1 ${businessInfo.aboutPillars.length === 2 ? 'sm:grid-cols-2' : businessInfo.aboutPillars.length >= 3 ? 'sm:grid-cols-3' : ''} gap-3 pt-3`}>
+                      {businessInfo.aboutPillars.map((p, idx) => (
+                        <div key={p.id || idx} className="p-3.5 rounded-2xl bg-stone-50/80 dark:bg-[#261f22]/80 border border-stone-200/60 dark:border-stone-800 space-y-1">
                           <h4 className="text-xs font-bold text-[#613d3e] dark:text-[#f4b7b9]">
-                            {businessInfo.aboutPillar1Title}
+                            {p.title}
                           </h4>
-                          {businessInfo.aboutPillar1Text && (
+                          {p.text && (
                             <p className="text-[11px] text-[#504444] dark:text-[#c9c0b8] leading-snug">
-                              {businessInfo.aboutPillar1Text}
+                              {p.text}
                             </p>
                           )}
                         </div>
-                      )}
-                      {businessInfo.aboutPillar2Title && (
-                        <div className="p-3.5 rounded-2xl bg-stone-50/80 dark:bg-[#261f22]/80 border border-stone-200/60 dark:border-stone-800 space-y-1">
-                          <h4 className="text-xs font-bold text-[#613d3e] dark:text-[#f4b7b9]">
-                            {businessInfo.aboutPillar2Title}
-                          </h4>
-                          {businessInfo.aboutPillar2Text && (
-                            <p className="text-[11px] text-[#504444] dark:text-[#c9c0b8] leading-snug">
-                              {businessInfo.aboutPillar2Text}
-                            </p>
-                          )}
-                        </div>
-                      )}
-                      {businessInfo.aboutPillar3Title && (
-                        <div className="p-3.5 rounded-2xl bg-stone-50/80 dark:bg-[#261f22]/80 border border-stone-200/60 dark:border-stone-800 space-y-1">
-                          <h4 className="text-xs font-bold text-[#613d3e] dark:text-[#f4b7b9]">
-                            {businessInfo.aboutPillar3Title}
-                          </h4>
-                          {businessInfo.aboutPillar3Text && (
-                            <p className="text-[11px] text-[#504444] dark:text-[#c9c0b8] leading-snug">
-                              {businessInfo.aboutPillar3Text}
-                            </p>
-                          )}
-                        </div>
-                      )}
+                      ))}
                     </div>
                   )}
                 </div>
@@ -1394,8 +1459,8 @@ export function PublicCatalog() {
             </section>
           )}
 
-          {/* 2. COMO FUNCIONA A ENCOMENDA (PASSO A PASSO) */}
-          {businessInfo.showHowItWorks && (businessInfo.howItWorksTitle || businessInfo.howItWorksStep1Title) && (
+          {/* 2. COMO FUNCIONA A ENCOMENDA (PASSO A PASSO DINÂMICO) */}
+          {businessInfo.showHowItWorks && (businessInfo.howItWorksTitle || (businessInfo.howItWorksSteps && businessInfo.howItWorksSteps.length > 0)) && (
             <section className="mt-12 p-6 sm:p-10 rounded-3xl bg-white/70 dark:bg-[#1f191b]/70 backdrop-blur-md border border-white/60 dark:border-[#ebcdcd]/15 shadow-sm space-y-8 animate-in fade-in duration-300">
               <div className="text-center max-w-xl mx-auto space-y-2">
                 {businessInfo.howItWorksBadge && (
@@ -1416,38 +1481,35 @@ export function PublicCatalog() {
                 )}
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                {[
-                  { step: 1, title: businessInfo.howItWorksStep1Title, text: businessInfo.howItWorksStep1Text },
-                  { step: 2, title: businessInfo.howItWorksStep2Title, text: businessInfo.howItWorksStep2Text },
-                  { step: 3, title: businessInfo.howItWorksStep3Title, text: businessInfo.howItWorksStep3Text },
-                  { step: 4, title: businessInfo.howItWorksStep4Title, text: businessInfo.howItWorksStep4Text },
-                ].filter(s => Boolean(s.title)).map((s) => (
-                  <div
-                    key={s.step}
-                    className="relative p-5 rounded-2xl bg-stone-50/80 dark:bg-[#261f22]/80 border border-stone-200/70 dark:border-stone-800 flex flex-col justify-between space-y-3 hover:border-[#613d3e]/30 transition-all shadow-2xs"
-                  >
-                    <div className="space-y-2">
-                      <div className="size-8 rounded-xl bg-[#613d3e] dark:bg-[#f4b7b9] text-white dark:text-[#4c2527] font-black text-sm flex items-center justify-center shadow-xs">
-                        {s.step}
+              {businessInfo.howItWorksSteps && businessInfo.howItWorksSteps.length > 0 && (
+                <div className={`grid grid-cols-1 sm:grid-cols-2 ${businessInfo.howItWorksSteps.length >= 4 ? 'lg:grid-cols-4' : businessInfo.howItWorksSteps.length === 3 ? 'lg:grid-cols-3' : ''} gap-4`}>
+                  {businessInfo.howItWorksSteps.map((s, idx) => (
+                    <div
+                      key={s.id || idx}
+                      className="relative p-5 rounded-2xl bg-stone-50/80 dark:bg-[#261f22]/80 border border-stone-200/70 dark:border-stone-800 flex flex-col justify-between space-y-3 hover:border-[#613d3e]/30 transition-all shadow-2xs"
+                    >
+                      <div className="space-y-2">
+                        <div className="size-8 rounded-xl bg-[#613d3e] dark:bg-[#f4b7b9] text-white dark:text-[#4c2527] font-black text-sm flex items-center justify-center shadow-xs">
+                          {idx + 1}
+                        </div>
+                        <h4 className="text-xs sm:text-sm font-bold text-[#221a1a] dark:text-[#e8e0e3]">
+                          {s.title}
+                        </h4>
+                        {s.text && (
+                          <p className="text-[11px] sm:text-xs text-[#504444] dark:text-[#c9c0b8] leading-relaxed">
+                            {s.text}
+                          </p>
+                        )}
                       </div>
-                      <h4 className="text-xs sm:text-sm font-bold text-[#221a1a] dark:text-[#e8e0e3]">
-                        {s.title}
-                      </h4>
-                      {s.text && (
-                        <p className="text-[11px] sm:text-xs text-[#504444] dark:text-[#c9c0b8] leading-relaxed">
-                          {s.text}
-                        </p>
-                      )}
                     </div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              )}
             </section>
           )}
 
-          {/* 3. DIFERENCIAIS DA MARCA */}
-          {businessInfo.showFeatures && (businessInfo.featuresTitle || businessInfo.feature1Title) && (
+          {/* 3. DIFERENCIAIS DA MARCA (DINÂMICOS) */}
+          {businessInfo.showFeatures && (businessInfo.featuresTitle || (businessInfo.featureItems && businessInfo.featureItems.length > 0)) && (
             <section className="mt-12 p-6 sm:p-10 rounded-3xl bg-white/70 dark:bg-[#1f191b]/70 backdrop-blur-md border border-white/60 dark:border-[#ebcdcd]/15 shadow-sm space-y-8 animate-in fade-in duration-300">
               <div className="text-center max-w-xl mx-auto space-y-2">
                 {businessInfo.featuresBadge && (
@@ -1463,39 +1525,44 @@ export function PublicCatalog() {
                 )}
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                {[
-                  { icon: Heart, color: 'text-rose-500 bg-rose-500/10', title: businessInfo.feature1Title, text: businessInfo.feature1Text },
-                  { icon: ShieldCheck, color: 'text-emerald-500 bg-emerald-500/10', title: businessInfo.feature2Title, text: businessInfo.feature2Text },
-                  { icon: Truck, color: 'text-blue-500 bg-blue-500/10', title: businessInfo.feature3Title, text: businessInfo.feature3Text },
-                  { icon: Sparkles, color: 'text-amber-500 bg-amber-500/10', title: businessInfo.feature4Title, text: businessInfo.feature4Text },
-                ].filter(f => Boolean(f.title)).map((f, idx) => {
-                  const Icon = f.icon;
-                  return (
-                    <div
-                      key={idx}
-                      className="p-5 rounded-2xl bg-stone-50/80 dark:bg-[#261f22]/80 border border-stone-200/70 dark:border-stone-800 space-y-2.5 hover:border-[#613d3e]/30 transition-all shadow-2xs"
-                    >
-                      <div className={`size-10 rounded-xl ${f.color} flex items-center justify-center shrink-0`}>
-                        <Icon size={18} />
+              {businessInfo.featureItems && businessInfo.featureItems.length > 0 && (
+                <div className={`grid grid-cols-1 sm:grid-cols-2 ${businessInfo.featureItems.length >= 4 ? 'lg:grid-cols-4' : businessInfo.featureItems.length === 3 ? 'lg:grid-cols-3' : ''} gap-4`}>
+                  {businessInfo.featureItems.map((f, idx) => {
+                    const icons = [Heart, ShieldCheck, Truck, Sparkles];
+                    const colors = [
+                      'text-rose-500 bg-rose-500/10',
+                      'text-emerald-500 bg-emerald-500/10',
+                      'text-blue-500 bg-blue-500/10',
+                      'text-amber-500 bg-amber-500/10',
+                    ];
+                    const Icon = icons[idx % icons.length];
+                    const color = colors[idx % colors.length];
+                    return (
+                      <div
+                        key={f.id || idx}
+                        className="p-5 rounded-2xl bg-stone-50/80 dark:bg-[#261f22]/80 border border-stone-200/70 dark:border-stone-800 space-y-2.5 hover:border-[#613d3e]/30 transition-all shadow-2xs"
+                      >
+                        <div className={`size-10 rounded-xl ${color} flex items-center justify-center shrink-0`}>
+                          <Icon size={18} />
+                        </div>
+                        <h4 className="text-xs sm:text-sm font-bold text-[#221a1a] dark:text-[#e8e0e3]">
+                          {f.title}
+                        </h4>
+                        {f.text && (
+                          <p className="text-[11px] sm:text-xs text-[#504444] dark:text-[#c9c0b8] leading-relaxed">
+                            {f.text}
+                          </p>
+                        )}
                       </div>
-                      <h4 className="text-xs sm:text-sm font-bold text-[#221a1a] dark:text-[#e8e0e3]">
-                        {f.title}
-                      </h4>
-                      {f.text && (
-                        <p className="text-[11px] sm:text-xs text-[#504444] dark:text-[#c9c0b8] leading-relaxed">
-                          {f.text}
-                        </p>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
+                    );
+                  })}
+                </div>
+              )}
             </section>
           )}
 
-          {/* 4. PERGUNTAS FREQUENTES (FAQ) */}
-          {businessInfo.showFaq && (businessInfo.faqTitle || businessInfo.faq1Q) && (
+          {/* 4. PERGUNTAS FREQUENTES (FAQ DINÂMICO) */}
+          {businessInfo.showFaq && (businessInfo.faqTitle || (businessInfo.faqItems && businessInfo.faqItems.length > 0)) && (
             <section className="mt-12 p-6 sm:p-10 rounded-3xl bg-white/70 dark:bg-[#1f191b]/70 backdrop-blur-md border border-white/60 dark:border-[#ebcdcd]/15 shadow-sm space-y-6 animate-in fade-in duration-300">
               <div className="text-center max-w-xl mx-auto space-y-2">
                 {businessInfo.faqBadge && (
@@ -1511,43 +1578,68 @@ export function PublicCatalog() {
                 )}
               </div>
 
-              <div className="max-w-2xl mx-auto space-y-3">
-                {[
-                  { q: businessInfo.faq1Q, a: businessInfo.faq1A },
-                  { q: businessInfo.faq2Q, a: businessInfo.faq2A },
-                  { q: businessInfo.faq3Q, a: businessInfo.faq3A },
-                  { q: businessInfo.faq4Q, a: businessInfo.faq4A },
-                  { q: businessInfo.faq5Q, a: businessInfo.faq5A },
-                ].filter(faq => Boolean(faq.q && faq.a)).map((faq, idx) => {
-                  const isOpen = expandedFaq === idx;
-                  return (
-                    <div
-                      key={idx}
-                      className="rounded-2xl border border-stone-200/70 dark:border-stone-800 bg-stone-50/80 dark:bg-[#261f22]/80 overflow-hidden transition-all shadow-2xs"
-                    >
-                      <button
-                        type="button"
-                        onClick={() => setExpandedFaq(isOpen ? null : idx)}
-                        className="w-full p-4 text-left flex items-center justify-between gap-3 cursor-pointer hover:bg-stone-100/60 dark:hover:bg-stone-800/40 transition-colors"
+              {businessInfo.faqItems && businessInfo.faqItems.length > 0 && (
+                <div className="max-w-2xl mx-auto space-y-3">
+                  {businessInfo.faqItems.map((faq, idx) => {
+                    const isOpen = expandedFaq === idx;
+                    return (
+                      <div
+                        key={faq.id || idx}
+                        className="rounded-2xl border border-stone-200/70 dark:border-stone-800 bg-stone-50/80 dark:bg-[#261f22]/80 overflow-hidden transition-all shadow-2xs"
                       >
-                        <span className="text-xs sm:text-sm font-bold text-[#221a1a] dark:text-[#e8e0e3]">
-                          {faq.q}
-                        </span>
-                        <ChevronDown
-                          size={16}
-                          className={`text-stone-400 shrink-0 transition-transform duration-200 ${isOpen ? 'rotate-180 text-[#613d3e] dark:text-[#f4b7b9]' : ''}`}
-                        />
-                      </button>
-                      {isOpen && (
-                        <div className="px-4 pb-4 pt-1 text-xs sm:text-sm text-[#504444] dark:text-[#c9c0b8] leading-relaxed border-t border-stone-200/40 dark:border-stone-800/60 animate-in fade-in-50 duration-150">
-                          {faq.a}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
+                        <button
+                          type="button"
+                          onClick={() => setExpandedFaq(isOpen ? null : idx)}
+                          className="w-full p-4 text-left flex items-center justify-between gap-3 cursor-pointer hover:bg-stone-100/60 dark:hover:bg-stone-800/40 transition-colors"
+                        >
+                          <span className="text-xs sm:text-sm font-bold text-[#221a1a] dark:text-[#e8e0e3]">
+                            {faq.question}
+                          </span>
+                          <ChevronDown
+                            size={16}
+                            className={`text-stone-400 shrink-0 transition-transform duration-200 ${isOpen ? 'rotate-180 text-[#613d3e] dark:text-[#f4b7b9]' : ''}`}
+                          />
+                        </button>
+                        {isOpen && (
+                          <div className="px-4 pb-4 pt-1 text-xs sm:text-sm text-[#504444] dark:text-[#c9c0b8] leading-relaxed border-t border-stone-200/40 dark:border-stone-800/60 animate-in fade-in-50 duration-150 whitespace-pre-line">
+                            {faq.answer}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </section>
+          )}
+
+          {/* 5. SEÇÕES EXTRAS CUSTOMIZADAS */}
+          {businessInfo.customSections && businessInfo.customSections.length > 0 && (
+            <div className="space-y-8 mt-12">
+              {businessInfo.customSections.map((sec, idx) => (
+                <section
+                  key={sec.id || idx}
+                  className="p-6 sm:p-10 rounded-3xl bg-white/70 dark:bg-[#1f191b]/70 backdrop-blur-md border border-white/60 dark:border-[#ebcdcd]/15 shadow-sm space-y-4 animate-in fade-in duration-300"
+                >
+                  {sec.badge && (
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-[#613d3e]/10 dark:bg-[#f4b7b9]/15 text-[#613d3e] dark:text-[#f4b7b9] border border-[#613d3e]/20 dark:border-[#f4b7b9]/20">
+                      <Sparkles size={12} />
+                      <span>{sec.badge}</span>
+                    </span>
+                  )}
+                  {sec.title && (
+                    <h3 className="text-xl sm:text-2xl font-black text-[#221a1a] dark:text-[#e8e0e3] tracking-tight">
+                      {sec.title}
+                    </h3>
+                  )}
+                  {sec.content && (
+                    <div className="text-xs sm:text-sm text-[#504444] dark:text-[#c9c0b8] leading-relaxed whitespace-pre-line">
+                      {sec.content}
+                    </div>
+                  )}
+                </section>
+              ))}
+            </div>
           )}
 
           {/* Footer Institucional Responsivo com Multi-colunas */}

@@ -14,6 +14,37 @@ export interface CatalogBannerItem {
   linkUrl?: string;
 }
 
+export interface InstitutionalPillarItem {
+  id: string;
+  title: string;
+  text: string;
+}
+
+export interface InstitutionalStepItem {
+  id: string;
+  title: string;
+  text: string;
+}
+
+export interface InstitutionalFeatureItem {
+  id: string;
+  title: string;
+  text: string;
+}
+
+export interface InstitutionalFaqItem {
+  id: string;
+  question: string;
+  answer: string;
+}
+
+export interface InstitutionalCustomSection {
+  id: string;
+  title: string;
+  badge?: string;
+  content: string;
+}
+
 export interface UserSettings {
   userId: string;
 
@@ -153,6 +184,13 @@ export interface UserSettings {
   catalogFaq4A?: string;
   catalogFaq5Q?: string;
   catalogFaq5A?: string;
+
+  // Listas Dinâmicas / Itens Expansíveis (Botão + Adicionar / Remover)
+  catalogAboutPillars?: InstitutionalPillarItem[];
+  catalogHowItWorksSteps?: InstitutionalStepItem[];
+  catalogFeatureItems?: InstitutionalFeatureItem[];
+  catalogFaqItems?: InstitutionalFaqItem[];
+  catalogCustomSections?: InstitutionalCustomSection[];
 
   // Publicação e Feature Flags
   storePublished?: boolean;                  // Loja publicada (true) ou despublicada (false) — controle de visibilidade
