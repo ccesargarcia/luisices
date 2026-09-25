@@ -18,7 +18,6 @@ import { ResultViewer } from './components/ResultViewer';
 import { ArchiveManager } from './components/ArchiveManager';
 import { SaaSPlansModal } from './components/SaaSPlansModal';
 import { LuisicesStorefront } from './components/store/LuisicesStorefront';
-import { LuisicesNovoExperience } from './components/novo/LuisicesNovoExperience';
 import { CartDrawer } from './components/store/CartDrawer';
 import { CustomizationCheckoutModal } from './components/store/CustomizationCheckoutModal';
 import { INITIAL_ARCHIVE_ITEMS } from './archiveData';
@@ -27,19 +26,15 @@ import { STORE_PRODUCTS } from './data/storeProductsData';
 import { GenerationResult, ArchiveItem, TenantQuota, SaaSPlanId } from './types';
 import { StoreProduct } from './types/store';
 
-export type AppRoute = 'novo' | 'store' | 'generator' | 'archive' | 'history';
+export type AppRoute = 'store' | 'generator' | 'archive' | 'history';
 
 export function App() {
   // Determine initial tab from pathname or hash
   const getInitialRoute = (): AppRoute => {
-    if (typeof window === 'undefined') return 'novo';
+    if (typeof window === 'undefined') return 'store';
     const path = window.location.pathname.toLowerCase();
     const hash = window.location.hash.toLowerCase();
-    const search = window.location.search.toLowerCase();
 
-    if (path.includes('/novo') || hash.includes('#/novo') || search.includes('novo')) {
-      return 'novo';
-    }
     if (path.includes('/catalogo') || hash.includes('#/catalogo')) {
       return 'store';
     }
@@ -49,7 +44,7 @@ export function App() {
     if (path.includes('/acervo') || hash.includes('#/acervo')) {
       return 'archive';
     }
-    return 'novo'; // Default to the brand-new visual experience!
+    return 'store';
   };
 
   const [activeTab, setActiveTab] = useState<AppRoute>(getInitialRoute);
@@ -98,8 +93,7 @@ export function App() {
   const handleNavigate = (route: AppRoute) => {
     setActiveTab(route);
     let targetPath = '/';
-    if (route === 'novo') targetPath = '/novo';
-    else if (route === 'store') targetPath = '/catalogo';
+    if (route === 'store') targetPath = '/catalogo';
     else if (route === 'generator') targetPath = '/estudio';
     else if (route === 'archive') targetPath = '/acervo';
     else if (route === 'history') targetPath = '/historico';
@@ -214,24 +208,14 @@ export function App() {
         <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
           {/* Quick Route Switchers */}
           <button
-            onClick={() => handleNavigate('novo')}
-            className={`px-3 py-1 rounded-full text-xs font-bold transition flex items-center gap-1.5 ${
-              activeTab === 'novo'
+            onClick={() => handleNavigate('store')}
+            className={`px-3 py-1 rounded-full font-bold transition text-xs ${
+              activeTab === 'store'
                 ? 'bg-gradient-to-r from-[#f4b7b9] to-[#eed0d1] text-[#4C2527] shadow-sm ring-2 ring-white/30'
                 : 'bg-white/10 text-white/80 hover:text-white hover:bg-white/20'
             }`}
           >
-            <Sparkle className="w-3 h-3 fill-current" />
-            <span>Novo Visual (/novo)</span>
-          </button>
-
-          <button
-            onClick={() => handleNavigate('store')}
-            className={`px-2.5 py-1 rounded-full font-bold transition text-xs ${
-              activeTab === 'store' ? 'bg-white text-black' : 'text-white/70 hover:text-white'
-            }`}
-          >
-            Catálogo Clássico (/catalogo)
+            Catálogo (/catalogo)
           </button>
 
           <button
@@ -264,19 +248,7 @@ export function App() {
         </div>
       </div>
 
-      {/* VIEW 1: NOVO VISUAL LUXUOSO & AFETIVO (/novo) */}
-      {activeTab === 'novo' && (
-        <LuisicesNovoExperience
-          archiveItems={archiveItems}
-          cartItems={cartItems}
-          onAddToCart={handleAddToCart}
-          onOpenCart={() => setIsCartOpen(true)}
-          onNavigateToStudio={() => handleNavigate('generator')}
-          onNavigateToArchive={() => handleNavigate('archive')}
-        />
-      )}
-
-      {/* VIEW 2: Vitrine e Fluxo de Loja Anterior */}
+      {/* VIEW 1: Vitrine e Catálogo da Loja */}
       {activeTab === 'store' && (
         <LuisicesStorefront />
       )}
