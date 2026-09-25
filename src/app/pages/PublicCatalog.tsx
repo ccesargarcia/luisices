@@ -1271,16 +1271,7 @@ export function PublicCatalog() {
                 )}
 
                 
-                {lastAdminRoute && (
-                  <a
-                    href={lastAdminRoute}
-                    className="inline-flex items-center gap-1 px-2.5 py-2 rounded-xl sm:rounded-2xl text-xs font-semibold bg-[var(--store-primary,#613d3e)]/10 hover:bg-[var(--store-primary,#613d3e)]/20 text-[var(--store-primary,#613d3e)] dark:text-[#f4b7b9] border border-[var(--store-primary,#613d3e)]/20 transition-all shadow-2xs cursor-pointer shrink-0"
-                    title="Retornar à página anterior do painel administrativo"
-                  >
-                    <ArrowLeft size={13} />
-                    <span className="hidden sm:inline text-xs">Painel Adm</span>
-                  </a>
-                )}
+                
 
                 {featureFlags.enableDarkMode !== false && (
                 <button
