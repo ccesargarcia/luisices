@@ -1110,8 +1110,40 @@ export function PublicCatalog() {
 
   const titleFontClass = businessInfo.typographyStyle === 'editorial' ? 'font-serif' : 'font-sans';
 
+  const getButtonVars = () => {
+    let radius = '0.75rem'; // md default
+    switch(businessInfo.buttonRadius) {
+      case 'none': radius = '0px'; break;
+      case 'sm': radius = '0.375rem'; break;
+      case 'md': radius = '0.5rem'; break;
+      case 'lg': radius = '1rem'; break;
+      case 'full': radius = '9999px'; break;
+    }
+    
+    let bg = 'var(--store-primary, #613d3e)';
+    let text = '#ffffff';
+    let border = 'transparent';
+    
+    if (businessInfo.buttonStyle === 'outline') {
+      bg = 'transparent';
+      text = 'var(--store-primary, #613d3e)';
+      border = 'var(--store-primary, #613d3e)';
+    } else if (businessInfo.buttonStyle === 'soft') {
+      bg = 'color-mix(in srgb, var(--store-primary, #613d3e) 15%, transparent)';
+      text = 'var(--store-primary, #613d3e)';
+      border = 'transparent';
+    }
+    
+    return {
+      '--btn-radius': radius,
+      '--btn-bg': bg,
+      '--btn-text': text,
+      '--btn-border': border,
+    };
+  };
+
   return (
-    <div className={isDarkMode ? 'dark' : ''} style={{ '--store-primary': businessInfo.primaryColor || '#613d3e' } as React.CSSProperties}>
+    <div className={isDarkMode ? 'dark' : ''} style={{ '--store-primary': businessInfo.primaryColor || '#613d3e', ...getButtonVars() } as React.CSSProperties}>
 
       {/* 
         Container Principal com Iluminação Atmosférica Radial (Glassmorphism & Depth) ou Papel Clean Solid
@@ -1251,7 +1283,7 @@ export function PublicCatalog() {
               {featureFlags.enableOnlineOrders !== false && businessInfo.storeMode === 'cart' && (
               <button
                 onClick={() => setIsCartOpen(true)}
-                className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl sm:rounded-2xl bg-[var(--store-primary,#613d3e)] dark:bg-[#f4b7b9] text-white dark:text-[#4c2527] hover:opacity-95 active:scale-98 transition-all shadow-sm font-bold text-xs sm:text-sm cursor-pointer"
+                className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl sm:rounded-[var(--btn-radius)] bg-[var(--store-primary,#613d3e)] dark:bg-[#f4b7b9] text-white dark:text-[#4c2527] hover:opacity-95 active:scale-98 transition-all shadow-sm font-bold text-xs sm:text-sm cursor-pointer"
                 aria-label="Abrir sacola de encomendas"
               >
                 <div className="relative">
@@ -1799,7 +1831,7 @@ export function PublicCatalog() {
                             setIsCartOpen(true);
                           }
                         }}
-                        className="w-full mt-2 py-2 sm:py-2.5 px-3 rounded-xl font-bold text-[11px] sm:text-xs flex items-center justify-center gap-1.5 bg-[var(--store-primary,#613d3e)] dark:bg-[#f4b7b9] text-white dark:text-[#4c2527] hover:opacity-95 active:scale-98 transition-all shadow-xs cursor-pointer"
+                        className="w-full mt-2 py-2 sm:py-2.5 px-3 rounded-[var(--btn-radius)] font-bold text-[11px] sm:text-xs flex items-center justify-center gap-1.5 bg-[var(--btn-bg)] text-[var(--btn-text)] border-2 border-[var(--btn-border)] hover:opacity-95 active:scale-98 transition-all shadow-xs cursor-pointer"
                         title={prod.isCustomizable ? 'Personalizar e adicionar à sacola' : 'Adicionar à sacola de encomendas'}
                         aria-label="Adicionar ao carrinho"
                       >
@@ -1820,7 +1852,7 @@ export function PublicCatalog() {
                         target="_blank"
                         rel="noopener noreferrer"
                         onClick={(e) => e.stopPropagation()}
-                        className="w-full mt-2 py-2 sm:py-2.5 px-3 rounded-xl font-bold text-[11px] sm:text-xs flex items-center justify-center gap-1.5 bg-[#10B981] hover:bg-[#059669] text-white active:scale-98 transition-all shadow-xs cursor-pointer"
+                        className="w-full mt-2 py-2 sm:py-2.5 px-3 rounded-[var(--btn-radius)] font-bold text-[11px] sm:text-xs flex items-center justify-center gap-1.5 bg-[#10B981] hover:bg-[#059669] text-white active:scale-98 transition-all shadow-xs cursor-pointer"
                         title="Pedir direto no WhatsApp"
                       >
                         <MessageCircle size={13} className="shrink-0" />
@@ -1832,7 +1864,7 @@ export function PublicCatalog() {
                           e.stopPropagation();
                           handleOpenPreview(prod);
                         }}
-                        className="w-full mt-2 py-2 sm:py-2.5 px-3 rounded-xl font-bold text-[11px] sm:text-xs flex items-center justify-center gap-1.5 bg-stone-100 dark:bg-stone-800 text-[var(--store-primary,#613d3e)] dark:text-[#f4b7b9] border border-[var(--store-primary,#613d3e)]/20 dark:border-[#f4b7b9]/20 hover:bg-[var(--store-primary,#613d3e)]/10 active:scale-98 transition-all cursor-pointer"
+                        className="w-full mt-2 py-2 sm:py-2.5 px-3 rounded-[var(--btn-radius)] font-bold text-[11px] sm:text-xs flex items-center justify-center gap-1.5 bg-stone-100 dark:bg-stone-800 text-[var(--store-primary,#613d3e)] dark:text-[#f4b7b9] border border-[var(--store-primary,#613d3e)]/20 dark:border-[#f4b7b9]/20 hover:bg-[var(--store-primary,#613d3e)]/10 active:scale-98 transition-all cursor-pointer"
                         title="Ver detalhes do produto"
                       >
                         <Eye size={13} className="shrink-0" />
@@ -1867,7 +1899,7 @@ export function PublicCatalog() {
                 <button
                   type="button"
                   onClick={() => setVisibleCount((prev) => prev + effectivePageSize)}
-                  className="inline-flex items-center justify-center gap-2 px-6 py-2.5 rounded-full bg-[var(--store-primary,#613d3e)] dark:bg-[#f4b7b9] text-white dark:text-[#4c2527] text-xs md:text-sm font-bold shadow-md hover:shadow-lg transition-all active:scale-95 cursor-pointer"
+                  className="inline-flex items-center justify-center gap-2 px-6 py-2.5 rounded-[var(--btn-radius)] bg-[var(--btn-bg)] text-[var(--btn-text)] border border-[var(--btn-border)] text-xs md:text-sm font-bold shadow-md hover:shadow-lg transition-all active:scale-95 cursor-pointer"
                 >
                   <Sparkles size={14} className="animate-pulse" />
                   <span>Carregar Mais (+{Math.min(effectivePageSize, filteredProducts.length - displayedProducts.length)})</span>
@@ -2538,7 +2570,7 @@ export function PublicCatalog() {
                           setSelectedProductPreview(null);
                           setIsCartOpen(true);
                         }}
-                        className="w-full py-3.5 px-4 rounded-xl font-bold text-xs sm:text-sm flex items-center justify-center gap-2 bg-[var(--store-primary,#613d3e)] dark:bg-[#f4b7b9] text-white dark:text-[#4c2527] hover:opacity-95 active:scale-[0.98] transition-all shadow-md cursor-pointer"
+                        className="w-full py-3.5 px-4 rounded-[var(--btn-radius)] font-bold text-xs sm:text-sm flex items-center justify-center gap-2 bg-[var(--btn-bg)] text-[var(--btn-text)] border border-[var(--btn-border)] hover:opacity-95 active:scale-[0.98] transition-all shadow-md cursor-pointer"
                       >
                         <ShoppingBag size={16} />
                         <span>Adicionar à Sacola</span>
@@ -2773,7 +2805,7 @@ export function PublicCatalog() {
                   <button
                     onClick={handleSendToWhatsApp}
                     disabled={submittingOrder || (businessInfo.minOrderAmount > 0 && subtotal < businessInfo.minOrderAmount)}
-                    className="w-full py-3.5 px-4 rounded-xl bg-[#10B981] hover:bg-[#059669] text-white font-bold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg active:scale-98 transition-all cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+                    className="w-full py-3.5 px-4 rounded-[var(--btn-radius)] bg-[#10B981] hover:bg-[#059669] text-white font-bold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg active:scale-98 transition-all cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
                   >
                     {submittingOrder ? (
                       <>
@@ -2843,7 +2875,7 @@ export function PublicCatalog() {
                   href={submittedOrderInfo.whatsappUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="w-full py-3 px-4 rounded-xl bg-[#10B981] hover:bg-[#059669] text-white font-bold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-md transition-all active:scale-98 cursor-pointer"
+                  className="w-full py-3 px-4 rounded-[var(--btn-radius)] bg-[#10B981] hover:bg-[#059669] text-white font-bold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-md transition-all active:scale-98 cursor-pointer"
                 >
                   <MessageCircle size={16} />
                   <span>Reabrir WhatsApp</span>
