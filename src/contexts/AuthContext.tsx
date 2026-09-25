@@ -57,6 +57,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(u);
 
       if (u) {
+        try {
+          // Garante que o token de autenticação está válido e renovado antes de conectar os listeners do Firestore
+          await u.getIdToken();
+        } catch (tokenErr) {
+          console.warn('[AuthContext] Falha ao renovar token de autenticação:', tokenErr);
+          await firebaseAuthService.logout().catch(() => {});
+          setUser(null);
+          setUserProfile(null);
+          setLoading(false);
+          return;
+        }
+
         // Assina atualizações em tempo real do perfil do usuário diretamente
         profileUnsub = onSnapshot(
           doc(db, 'userProfiles', u.uid),
@@ -137,6 +149,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           },
           (err) => {
             console.warn('[AuthContext] Aviso ao escutar perfil do usuário no Firestore:', err?.message || err);
+            // Se o Firestore rejeitar a credencial (permission-denied), limpa a sessão zumbi para evitar cascata de erros
+            if (err?.code === 'permission-denied' || String(err?.message).includes('insufficient permissions')) {
+              firebaseAuthService.logout().catch(() => {});
+              setUser(null);
+            }
             setUserProfile(null);
             setLoading(false);
           }

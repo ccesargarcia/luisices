@@ -42,13 +42,13 @@ interface UserSettingsContextValue {
 const UserSettingsContext = createContext<UserSettingsContextValue | null>(null);
 
 export function UserSettingsProvider({ children }: { children: ReactNode }) {
-  const { user } = useAuth();
+  const { user, userProfile, loading: authLoading } = useAuth();
   const [settings, setSettings] = useState<UserSettings | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
 
   useEffect(() => {
-    if (!user) {
+    if (!user || !userProfile || authLoading) {
       setSettings(null);
       setLoading(false);
       return;
@@ -76,7 +76,7 @@ export function UserSettingsProvider({ children }: { children: ReactNode }) {
     );
 
     return () => unsubscribe();
-  }, [user]);
+  }, [user, userProfile, authLoading]);
 
   return (
     <UserSettingsContext.Provider value={{ settings, loading, error }}>

@@ -105,7 +105,7 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
 
   // Carregar perfis em tempo real quando for admin ou funcionário
   useEffect(() => {
-    if (!user || (userProfile?.role !== 'admin' && userProfile?.role !== 'funcionario')) {
+    if (!user || !userProfile || (userProfile.role !== 'admin' && userProfile.role !== 'funcionario')) {
       setProfiles([]);
       return;
     }
@@ -129,17 +129,10 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
 
   // Listener para pedidos no Firestore
   useEffect(() => {
-    if (!user) {
+    if (!user || !userProfile || authLoading) {
       setAllOrders([]);
       setLoading(false);
       setError(null);
-      return;
-    }
-
-    // Condição de corrida: aguarda a resolução do perfil do usuário caso a autenticação
-    // ainda esteja baixando o perfil do Firestore, evitando consultas com permissões incorretas
-    if (authLoading && !userProfile) {
-      setLoading(true);
       return;
     }
 
@@ -219,7 +212,7 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
         publish();
       },
       (err) => {
-        console.error('OrdersContext: erro no snapshot:', err);
+        console.warn('OrdersContext: aviso ao escutar orders no Firestore:', err?.message || err);
         setError(err.message);
         setLoading(false);
       }
