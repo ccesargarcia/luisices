@@ -58,15 +58,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       if (u) {
         try {
-          // Garante que o token de autenticação está válido e renovado antes de conectar os listeners do Firestore
+          // Garante que o token de autenticação está válido antes de conectar os listeners do Firestore
           await u.getIdToken();
         } catch (tokenErr) {
-          console.warn('[AuthContext] Falha ao renovar token de autenticação:', tokenErr);
-          await firebaseAuthService.logout().catch(() => {});
-          setUser(null);
-          setUserProfile(null);
-          setLoading(false);
-          return;
+          console.warn('[AuthContext] Falha ao renovar token de autenticação inicial (possível offline):', tokenErr);
         }
 
         // Assina atualizações em tempo real do perfil do usuário diretamente
@@ -149,13 +144,35 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           },
           (err) => {
             console.warn('[AuthContext] Aviso ao escutar perfil do usuário no Firestore:', err?.message || err);
-            // Se o Firestore rejeitar a credencial (permission-denied), limpa a sessão zumbi para evitar cascata de erros
-            if (err?.code === 'permission-denied' || String(err?.message).includes('insufficient permissions')) {
-              firebaseAuthService.logout().catch(() => {});
-              setUser(null);
-            }
-            setUserProfile(null);
+            // Nunca efetua logout forçado por falha transitória de listener (evita deslogar o usuário em oscilações de rede/token)
+            const fallbackProfile: UserProfile = {
+              uid: u.uid,
+              email: u.email || '',
+              displayName: u.displayName || u.email?.split('@')[0] || 'Usuário',
+              role: 'user',
+              permissions: { ...DEFAULT_USER_PERMISSIONS },
+              active: true,
+              createdAt: new Date().toISOString(),
+              createdBy: u.uid,
+            };
+
+            // Mantém perfil existente caso já carregado, ou aplica perfil de contingência para não travar a aplicação
+            setUserProfile((prev) => prev ?? fallbackProfile);
             setLoading(false);
+
+            // Tenta recuperação silenciosa em background renovando o token do Firebase
+            if (err?.code === 'permission-denied' || String(err?.message).includes('insufficient permissions')) {
+              u.getIdToken(true)
+                .then(() => firebaseUserService.getUserProfile(u.uid, u.email ?? undefined, u.displayName ?? undefined))
+                .then((fresh) => {
+                  if (fresh && fresh.active !== false) {
+                    setUserProfile(fresh);
+                  }
+                })
+                .catch(() => {
+                  // Fallback de contingência permanece ativo
+                });
+            }
           }
         );
       } else {

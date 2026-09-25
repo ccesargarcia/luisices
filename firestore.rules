@@ -10,14 +10,17 @@ service cloud.firestore {
     function isAdmin() {
       return request.auth != null
         && exists(/databases/$(database)/documents/userProfiles/$(request.auth.uid))
+        && ('role' in get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data)
         && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.role == 'admin';
     }
 
     function isActiveEmployee() {
       return request.auth != null
         && exists(/databases/$(database)/documents/userProfiles/$(request.auth.uid))
+        && ('role' in get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data)
         && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.role == 'funcionario'
-        && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.active == true;
+        && (!('active' in get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data)
+            || get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.active == true);
     }
 
     function isAssignedEmployee(assignedTo) {
@@ -36,34 +39,36 @@ service cloud.firestore {
 
     // Regras para pedidos (orders)
     match /orders/{orderId} {
-      allow read: if isOwner(resource.data.userId)
+      allow read: if ('userId' in resource.data && isOwner(resource.data.userId))
         || isAdmin()
-        || isAssignedEmployee(resource.data.assignedTo);
+        || ('assignedTo' in resource.data && isAssignedEmployee(resource.data.assignedTo));
       allow create: if isOwner(request.resource.data.userId);
-      allow update: if isOwner(resource.data.userId)
+      allow update: if ('userId' in resource.data && isOwner(resource.data.userId))
         || isAdmin()
         || (
-          isAssignedEmployeeEditor(resource.data.assignedTo)
+          'assignedTo' in resource.data
+          && isAssignedEmployeeEditor(resource.data.assignedTo)
           && request.resource.data.userId == resource.data.userId
           && request.resource.data.assignedTo == resource.data.assignedTo
         );
-      allow delete: if isOwner(resource.data.userId)
+      allow delete: if ('userId' in resource.data && isOwner(resource.data.userId))
         || isAdmin()
-        || isAssignedEmployeeDeleter(resource.data.assignedTo);
+        || ('assignedTo' in resource.data && isAssignedEmployeeDeleter(resource.data.assignedTo));
     }
 
     // Regras para histórico financeiro de vendas (salesLedger)
     match /salesLedger/{saleId} {
-      allow read: if isOwner(resource.data.userId)
+      allow read: if ('userId' in resource.data && isOwner(resource.data.userId))
         || isAdmin()
-        || isAssignedEmployee(resource.data.assignedTo);
+        || ('assignedTo' in resource.data && isAssignedEmployee(resource.data.assignedTo));
       allow create, update: if isOwner(request.resource.data.userId)
         || isAdmin()
         || (
-          isAssignedEmployeeEditor(resource.data.assignedTo)
+          'assignedTo' in resource.data
+          && isAssignedEmployeeEditor(resource.data.assignedTo)
           && request.resource.data.userId == resource.data.userId
         );
-      allow delete: if isOwner(resource.data.userId)
+      allow delete: if ('userId' in resource.data && isOwner(resource.data.userId))
         || isAdmin();
     }
 
