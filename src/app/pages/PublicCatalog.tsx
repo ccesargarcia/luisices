@@ -198,6 +198,7 @@ export function PublicCatalog() {
       backgroundStyle: (saved?.catalogBackgroundStyle || 'atmospheric') as 'atmospheric' | 'solid',
       typographyStyle: (saved?.catalogTypographyStyle || 'modern') as 'modern' | 'editorial',
       defaultSort: (saved?.catalogDefaultSort || 'destaque') as string,
+      productsPerPage: saved?.catalogProductsPerPage !== undefined ? Number(saved.catalogProductsPerPage) : 12,
       badge: saved?.catalogBadge !== undefined ? saved.catalogBadge : '',
       statusText: saved?.catalogStatusText !== undefined ? saved.catalogStatusText : '',
       announcement: saved?.catalogAnnouncement !== undefined ? saved.catalogAnnouncement : '',
@@ -467,6 +468,7 @@ export function PublicCatalog() {
         backgroundStyle: (s.catalogBackgroundStyle || prev.backgroundStyle || 'atmospheric') as 'atmospheric' | 'solid',
         typographyStyle: (s.catalogTypographyStyle || prev.typographyStyle || 'modern') as 'modern' | 'editorial',
         defaultSort: (s.catalogDefaultSort || prev.defaultSort || 'destaque') as string,
+        productsPerPage: s.catalogProductsPerPage !== undefined ? Number(s.catalogProductsPerPage) : (prev.productsPerPage ?? 12),
         badge: s.catalogBadge !== undefined ? s.catalogBadge : '',
         statusText: s.catalogStatusText !== undefined ? s.catalogStatusText : '',
         announcement: s.catalogAnnouncement !== undefined ? s.catalogAnnouncement : '',
@@ -823,6 +825,24 @@ export function PublicCatalog() {
 
     return list;
   }, [products, isAllCategories, selectedCategories, searchQuery, sortBy]);
+
+  // Paginação / Limite de Produtos Carregados
+  const effectivePageSize = useMemo(() => {
+    if (businessInfo.productsPerPage === 0) return 999999;
+    return businessInfo.productsPerPage || 12;
+  }, [businessInfo.productsPerPage]);
+
+  const [visibleCount, setVisibleCount] = useState<number>(effectivePageSize);
+
+  // Resetar contagem visível ao alterar filtros de busca, categoria, ordenação ou tamanho de página
+  useEffect(() => {
+    setVisibleCount(effectivePageSize);
+  }, [effectivePageSize, isAllCategories, selectedCategories, searchQuery, sortBy]);
+
+  const displayedProducts = useMemo(() => {
+    if (effectivePageSize >= 999999) return filteredProducts;
+    return filteredProducts.slice(0, visibleCount);
+  }, [filteredProducts, visibleCount, effectivePageSize]);
 
   // Cálculos do Carrinho
   const totalItemsCount = useMemo(() => cart.reduce((acc, item) => acc + item.quantity, 0), [cart]);
@@ -1680,7 +1700,7 @@ export function PublicCatalog() {
                 </div>
               ))
             ) : (
-              filteredProducts.map((prod) => (
+              displayedProducts.map((prod) => (
                 <article
                   key={prod.id}
                   className="group flex flex-col h-full rounded-2xl bg-white/70 dark:bg-[#1f191b]/85 backdrop-blur-md border border-white/60 dark:border-[#ebcdcd]/15 shadow-xs hover:shadow-xl hover:-translate-y-1 transition-all duration-200 overflow-hidden"
@@ -1818,6 +1838,55 @@ export function PublicCatalog() {
               ))
             )}
           </div>
+
+          {/* Botão de Paginação / Carregar Mais com Indicador de Progresso */}
+          {!loadingProducts && displayedProducts.length < filteredProducts.length && (
+            <div className="mt-12 mb-6 flex flex-col items-center justify-center text-center space-y-4 max-w-sm mx-auto px-4">
+              <div className="w-full space-y-1.5">
+                <div className="flex items-center justify-between text-xs text-[#504444] dark:text-[#c9c0b8] font-medium">
+                  <span>Mostrando <strong>{displayedProducts.length}</strong> de <strong>{filteredProducts.length}</strong> criações</span>
+                  <span className="font-semibold text-[#613d3e] dark:text-[#f4b7b9]">
+                    {Math.round((displayedProducts.length / filteredProducts.length) * 100)}%
+                  </span>
+                </div>
+                <div className="w-full h-1.5 bg-stone-200 dark:bg-stone-800 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-[#613d3e] dark:bg-[#f4b7b9] rounded-full transition-all duration-300 ease-out"
+                    style={{ width: `${Math.min(100, Math.round((displayedProducts.length / filteredProducts.length) * 100))}%` }}
+                  />
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center justify-center gap-3 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setVisibleCount((prev) => prev + effectivePageSize)}
+                  className="inline-flex items-center justify-center gap-2 px-6 py-2.5 rounded-full bg-[#613d3e] dark:bg-[#f4b7b9] text-white dark:text-[#4c2527] text-xs md:text-sm font-bold shadow-md hover:shadow-lg transition-all active:scale-95 cursor-pointer"
+                >
+                  <Sparkles size={14} className="animate-pulse" />
+                  <span>Carregar Mais (+{Math.min(effectivePageSize, filteredProducts.length - displayedProducts.length)})</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setVisibleCount(filteredProducts.length)}
+                  className="inline-flex items-center justify-center px-4 py-2.5 rounded-full border border-stone-300 dark:border-stone-700 bg-white/80 dark:bg-[#1f191b]/80 hover:bg-stone-100 dark:hover:bg-stone-800 text-[#221a1a] dark:text-[#e8e0e3] text-xs md:text-sm font-semibold transition-all active:scale-95 cursor-pointer"
+                >
+                  Ver Todos ({filteredProducts.length})
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Indicador de Fim de Catálogo */}
+          {!loadingProducts && filteredProducts.length > 0 && displayedProducts.length >= filteredProducts.length && filteredProducts.length > effectivePageSize && (
+            <div className="mt-10 mb-6 flex flex-col items-center justify-center text-center py-4 text-xs text-muted-foreground">
+              <div className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full bg-stone-100/80 dark:bg-stone-900/60 border border-stone-200 dark:border-stone-800">
+                <Check size={13} className="text-[#613d3e] dark:text-[#f4b7b9]" />
+                <span>Você visualizou todas as <strong>{filteredProducts.length}</strong> criações</span>
+              </div>
+            </div>
+          )}
 
           {/* Feedback de Busca Vazia / Catálogo Vazio */}
           {!loadingProducts && filteredProducts.length === 0 && (

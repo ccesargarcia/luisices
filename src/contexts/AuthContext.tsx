@@ -127,7 +127,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
             const profile: UserProfile = {
               ...data,
-              active: data.active !== false,
+              active: true,
               permissions,
             };
 

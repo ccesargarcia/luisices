@@ -130,6 +130,7 @@ export interface UserSettings {
   catalogBackgroundStyle?: 'atmospheric' | 'solid'; // Estilo de fundo (atmospheric: glassmorphism suave com gradientes, solid: papel clean minimalista)
   catalogTypographyStyle?: 'modern' | 'editorial';  // Estilo tipográfico (modern: sans-serif, editorial: serif elegante)
   catalogDefaultSort?: 'destaque' | 'preco-menor' | 'preco-maior' | 'nome-az' | 'prazo'; // Ordenação padrão do catálogo
+  catalogProductsPerPage?: number;           // Quantidade de produtos carregados inicialmente (ex: 12, 16, 24, 36, 48 ou 0 para todos)
 
   catalogBadge?: string;                      // Selo no header (ex: "Atelier", "Papelaria Afetiva")
   catalogStatusText?: string;                // Texto do status (ex: "Atendimento WhatsApp ativo")

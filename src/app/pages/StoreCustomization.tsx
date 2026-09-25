@@ -371,6 +371,7 @@ export function StoreCustomization() {
     catalogBackgroundStyle: 'atmospheric' as 'atmospheric' | 'solid',
     catalogTypographyStyle: 'modern' as 'modern' | 'editorial',
     catalogDefaultSort: 'destaque' as 'destaque' | 'preco-menor' | 'preco-maior' | 'nome-az' | 'prazo',
+    catalogProductsPerPage: 12 as number,
 
     // Seção 1: Quem Somos / Sobre o Ateliê
     catalogShowAbout: false,
@@ -564,6 +565,7 @@ export function StoreCustomization() {
         catalogBackgroundStyle: (settings?.catalogBackgroundStyle || 'atmospheric') as 'atmospheric' | 'solid',
         catalogTypographyStyle: (settings?.catalogTypographyStyle || 'modern') as 'modern' | 'editorial',
         catalogDefaultSort: (settings?.catalogDefaultSort || 'destaque') as 'destaque' | 'preco-menor' | 'preco-maior' | 'nome-az' | 'prazo',
+        catalogProductsPerPage: settings?.catalogProductsPerPage !== undefined ? Number(settings.catalogProductsPerPage) : 12,
 
         // 1. Quem Somos
         catalogShowAbout: settings?.catalogShowAbout !== undefined ? Boolean(settings.catalogShowAbout) : false,
@@ -699,6 +701,7 @@ export function StoreCustomization() {
             catalogBackgroundStyle: pub.catalogBackgroundStyle || data.catalogBackgroundStyle,
             catalogTypographyStyle: pub.catalogTypographyStyle || data.catalogTypographyStyle,
             catalogDefaultSort: pub.catalogDefaultSort || data.catalogDefaultSort,
+            catalogProductsPerPage: pub.catalogProductsPerPage !== undefined ? Number(pub.catalogProductsPerPage) : (data.catalogProductsPerPage ?? 12),
 
             // 1. Quem Somos
             catalogShowAbout: pub.catalogShowAbout !== undefined ? Boolean(pub.catalogShowAbout) : data.catalogShowAbout,
@@ -3076,7 +3079,49 @@ IMPORTANTE:
                     </div>
                   </div>
 
-                  {/* 3. Selos e Indicadores nos Cards de Produto */}
+                  {/* 3. Limite de Produtos por Exibição (Paginação & Carregar Mais) */}
+                  <div className="space-y-2 pt-2 border-t border-border/60">
+                    <div className="flex items-center justify-between">
+                      <Label className="text-xs font-bold flex items-center gap-1.5">
+                        <Layers className="size-3.5 text-primary" />
+                        Produtos por Exibição (Botão "Carregar Mais")
+                      </Label>
+                      <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-primary/10 text-primary">
+                        {formData.catalogProductsPerPage === 0 ? 'Sem limite (Todos)' : `${formData.catalogProductsPerPage} itens`}
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+                      {[
+                        { label: '12 itens', value: 12, desc: 'Rápido & leve' },
+                        { label: '24 itens', value: 24, desc: 'Equilibrado' },
+                        { label: '36 itens', value: 36, desc: 'Amplo' },
+                        { label: '48 itens', value: 48, desc: 'Catálogo grande' },
+                        { label: 'Todos', value: 0, desc: 'Sem paginação' },
+                      ].map((opt) => (
+                        <button
+                          key={opt.value}
+                          type="button"
+                          onClick={() => handleChange('catalogProductsPerPage', opt.value)}
+                          className={`p-3 rounded-2xl border text-left transition-all cursor-pointer flex flex-col justify-between gap-1 ${
+                            formData.catalogProductsPerPage === opt.value
+                              ? 'border-primary bg-primary/10 ring-2 ring-primary/40 font-semibold text-foreground shadow-xs'
+                              : 'border-border/80 bg-muted/20 hover:border-border hover:bg-muted/40 text-muted-foreground'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-bold text-foreground">{opt.label}</span>
+                            {formData.catalogProductsPerPage === opt.value && <Check className="size-3.5 text-primary" />}
+                          </div>
+                          <span className="text-[10px] leading-tight opacity-75">{opt.desc}</span>
+                        </button>
+                      ))}
+                    </div>
+                    <p className="text-[11px] text-muted-foreground leading-relaxed">
+                      Define a quantidade inicial de produtos renderizados na vitrine. Ao atingir o limite, um botão elegante <strong>"Carregar Mais"</strong> com barra de progresso permite que o cliente continue visualizando o restante do catálogo de forma rápida e fluida.
+                    </p>
+                  </div>
+
+                  {/* 4. Selos e Indicadores nos Cards de Produto */}
                   <div className="space-y-3 pt-2 border-t border-border/60">
                     <Label className="text-xs font-bold flex items-center gap-1.5">
                       <BadgeCheck className="size-3.5 text-primary" />
