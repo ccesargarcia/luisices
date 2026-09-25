@@ -115,6 +115,21 @@ export interface UserSettings {
   catalogHeaderHideText?: boolean;           // Ocultar texto do nome caso a logo já contenha o nome
   catalogShowHero?: boolean;                 // Exibir ou ocultar cartão de apresentação/vitrine (hero)
   catalogCategoryFilterStyle?: 'dropdown' | 'carousel' | 'bottom_sheet'; // Estilo do seletor de temas/categorias na vitrine (dropdown, carrossel ou bottom sheet)
+  catalogCardDensity?: 'compact' | 'editorial'; // Densidade do grid de produtos (compact: 2 cols mobile / 4 desktop; editorial: 1 col mobile / 3 desktop)
+  catalogImageAspect?: 'square' | 'portrait'; // Proporção da imagem (square: 1:1, portrait: 4:5 lookbook)
+  catalogShowBadgeCustomizable?: boolean;    // Exibir selo "Personalizável" nos cards
+  catalogShowBadgeLeadTime?: boolean;        // Exibir prazo de confecção nos cards
+  catalogShowBadgeBestSeller?: boolean;      // Exibir selo de destaque / mais vendido
+  catalogShowBadgeNew?: boolean;             // Exibir selo de novidade
+  catalogStoreMode?: 'cart' | 'direct_inquiry' | 'portfolio'; // Modo de operação (cart: sacola de compras, direct_inquiry: whatsapp direto por produto, portfolio: vitrine/lookbook)
+  catalogShowFloatingWhatsApp?: boolean;     // Exibir botão flutuante do WhatsApp
+  catalogFloatingWhatsAppText?: string;      // Mensagem/Tooltip do botão flutuante do WhatsApp
+  catalogPixDiscountText?: string;           // Destaque de desconto no PIX (ex: "5% OFF no PIX")
+  catalogAdvanceNoticeText?: string;         // Aviso de encomenda antecipada / produção artesanal
+  catalogMinOrderAmount?: number;            // Valor mínimo de pedido para finalizar sacola (R$)
+  catalogBackgroundStyle?: 'atmospheric' | 'solid'; // Estilo de fundo (atmospheric: glassmorphism suave com gradientes, solid: papel clean minimalista)
+  catalogTypographyStyle?: 'modern' | 'editorial';  // Estilo tipográfico (modern: sans-serif, editorial: serif elegante)
+  catalogDefaultSort?: 'destaque' | 'preco-menor' | 'preco-maior' | 'nome-az' | 'prazo'; // Ordenação padrão do catálogo
 
   catalogBadge?: string;                      // Selo no header (ex: "Atelier", "Papelaria Afetiva")
   catalogStatusText?: string;                // Texto do status (ex: "Atendimento WhatsApp ativo")
@@ -368,6 +383,23 @@ export class FirebaseSettingsService {
       }
 
       // Customizações da Lojinha / Catálogo
+      if (settings.catalogCardDensity !== undefined) publicData.catalogCardDensity = settings.catalogCardDensity;
+      if (settings.catalogImageAspect !== undefined) publicData.catalogImageAspect = settings.catalogImageAspect;
+      if (settings.catalogShowBadgeCustomizable !== undefined) publicData.catalogShowBadgeCustomizable = settings.catalogShowBadgeCustomizable;
+      if (settings.catalogShowBadgeLeadTime !== undefined) publicData.catalogShowBadgeLeadTime = settings.catalogShowBadgeLeadTime;
+      if (settings.catalogShowBadgeBestSeller !== undefined) publicData.catalogShowBadgeBestSeller = settings.catalogShowBadgeBestSeller;
+      if (settings.catalogShowBadgeNew !== undefined) publicData.catalogShowBadgeNew = settings.catalogShowBadgeNew;
+      if (settings.catalogStoreMode !== undefined) publicData.catalogStoreMode = settings.catalogStoreMode;
+      if (settings.catalogShowFloatingWhatsApp !== undefined) publicData.catalogShowFloatingWhatsApp = settings.catalogShowFloatingWhatsApp;
+      if (settings.catalogFloatingWhatsAppText !== undefined) publicData.catalogFloatingWhatsAppText = settings.catalogFloatingWhatsAppText;
+      if (settings.catalogPixDiscountText !== undefined) publicData.catalogPixDiscountText = settings.catalogPixDiscountText;
+      if (settings.catalogAdvanceNoticeText !== undefined) publicData.catalogAdvanceNoticeText = settings.catalogAdvanceNoticeText;
+      if (settings.catalogMinOrderAmount !== undefined) publicData.catalogMinOrderAmount = settings.catalogMinOrderAmount;
+      if (settings.catalogBackgroundStyle !== undefined) publicData.catalogBackgroundStyle = settings.catalogBackgroundStyle;
+      if (settings.catalogTypographyStyle !== undefined) publicData.catalogTypographyStyle = settings.catalogTypographyStyle;
+      if (settings.catalogDefaultSort !== undefined) publicData.catalogDefaultSort = settings.catalogDefaultSort;
+      if (settings.catalogCategoryFilterStyle !== undefined) publicData.catalogCategoryFilterStyle = settings.catalogCategoryFilterStyle;
+
       if (settings.catalogBadge !== undefined) publicData.catalogBadge = settings.catalogBadge;
       if (settings.catalogStatusText !== undefined) publicData.catalogStatusText = settings.catalogStatusText;
       if (settings.catalogHeroTitle !== undefined) publicData.catalogHeroTitle = settings.catalogHeroTitle;

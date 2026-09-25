@@ -31,6 +31,9 @@ import {
   SlidersHorizontal,
   HelpCircle,
   Building2,
+  Percent,
+  BadgePercent,
+  AlertCircle,
 } from 'lucide-react';
 import { formatCurrency } from '../utils/currency';
 import {
@@ -95,7 +98,16 @@ export function PublicCatalog() {
 
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [selectedCategory, setSelectedCategory] = useState<string>('todos');
-  const [sortBy, setSortBy] = useState<string>('destaque');
+  const [sortBy, setSortBy] = useState<string>(() => {
+    try {
+      const raw = typeof window !== 'undefined' ? localStorage.getItem('luisices_public_store_settings') : null;
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed.catalogDefaultSort) return parsed.catalogDefaultSort;
+      }
+    } catch {}
+    return 'destaque';
+  });
   const [expandedFaq, setExpandedFaq] = useState<number | null>(null);
   const [isCategoryDropdownOpen, setIsCategoryDropdownOpen] = useState<boolean>(false);
   const [isBottomSheetOpen, setIsBottomSheetOpen] = useState<boolean>(false);
@@ -183,6 +195,21 @@ export function PublicCatalog() {
       headerHeight: (saved?.catalogHeaderHeight || saved?.headerHeight || 'normal') as 'compact' | 'normal' | 'large',
       headerHideText: Boolean(saved?.catalogHeaderHideText ?? saved?.headerHideText ?? false),
       categoryFilterStyle: (saved?.catalogCategoryFilterStyle || 'dropdown') as 'dropdown' | 'carousel' | 'bottom_sheet',
+      cardDensity: (saved?.catalogCardDensity || 'compact') as 'compact' | 'editorial',
+      imageAspect: (saved?.catalogImageAspect || 'square') as 'square' | 'portrait',
+      showBadgeCustomizable: saved?.catalogShowBadgeCustomizable !== undefined ? Boolean(saved.catalogShowBadgeCustomizable) : true,
+      showBadgeLeadTime: saved?.catalogShowBadgeLeadTime !== undefined ? Boolean(saved.catalogShowBadgeLeadTime) : true,
+      showBadgeBestSeller: saved?.catalogShowBadgeBestSeller !== undefined ? Boolean(saved.catalogShowBadgeBestSeller) : true,
+      showBadgeNew: saved?.catalogShowBadgeNew !== undefined ? Boolean(saved.catalogShowBadgeNew) : true,
+      storeMode: (saved?.catalogStoreMode || 'cart') as 'cart' | 'direct_inquiry' | 'portfolio',
+      showFloatingWhatsApp: saved?.catalogShowFloatingWhatsApp !== undefined ? Boolean(saved.catalogShowFloatingWhatsApp) : true,
+      floatingWhatsAppText: saved?.catalogFloatingWhatsAppText || 'Fale Conosco no WhatsApp',
+      pixDiscountText: saved?.catalogPixDiscountText || '',
+      advanceNoticeText: saved?.catalogAdvanceNoticeText || '',
+      minOrderAmount: Number(saved?.catalogMinOrderAmount) || 0,
+      backgroundStyle: (saved?.catalogBackgroundStyle || 'atmospheric') as 'atmospheric' | 'solid',
+      typographyStyle: (saved?.catalogTypographyStyle || 'modern') as 'modern' | 'editorial',
+      defaultSort: (saved?.catalogDefaultSort || 'destaque') as string,
       badge: saved?.catalogBadge !== undefined ? saved.catalogBadge : '',
       statusText: saved?.catalogStatusText !== undefined ? saved.catalogStatusText : '',
       announcement: saved?.catalogAnnouncement !== undefined ? saved.catalogAnnouncement : '',
@@ -437,6 +464,21 @@ export function PublicCatalog() {
         headerHeight: s.catalogHeaderHeight || 'normal',
         headerHideText: Boolean(s.catalogHeaderHideText),
         categoryFilterStyle: (s.catalogCategoryFilterStyle || prev.categoryFilterStyle || 'dropdown') as 'dropdown' | 'carousel' | 'bottom_sheet',
+        cardDensity: (s.catalogCardDensity || prev.cardDensity || 'compact') as 'compact' | 'editorial',
+        imageAspect: (s.catalogImageAspect || prev.imageAspect || 'square') as 'square' | 'portrait',
+        showBadgeCustomizable: s.catalogShowBadgeCustomizable !== undefined ? Boolean(s.catalogShowBadgeCustomizable) : prev.showBadgeCustomizable,
+        showBadgeLeadTime: s.catalogShowBadgeLeadTime !== undefined ? Boolean(s.catalogShowBadgeLeadTime) : prev.showBadgeLeadTime,
+        showBadgeBestSeller: s.catalogShowBadgeBestSeller !== undefined ? Boolean(s.catalogShowBadgeBestSeller) : prev.showBadgeBestSeller,
+        showBadgeNew: s.catalogShowBadgeNew !== undefined ? Boolean(s.catalogShowBadgeNew) : prev.showBadgeNew,
+        storeMode: (s.catalogStoreMode || prev.storeMode || 'cart') as 'cart' | 'direct_inquiry' | 'portfolio',
+        showFloatingWhatsApp: s.catalogShowFloatingWhatsApp !== undefined ? Boolean(s.catalogShowFloatingWhatsApp) : prev.showFloatingWhatsApp,
+        floatingWhatsAppText: s.catalogFloatingWhatsAppText !== undefined ? s.catalogFloatingWhatsAppText : prev.floatingWhatsAppText,
+        pixDiscountText: s.catalogPixDiscountText !== undefined ? s.catalogPixDiscountText : prev.pixDiscountText,
+        advanceNoticeText: s.catalogAdvanceNoticeText !== undefined ? s.catalogAdvanceNoticeText : prev.advanceNoticeText,
+        minOrderAmount: s.catalogMinOrderAmount !== undefined ? Number(s.catalogMinOrderAmount) : prev.minOrderAmount,
+        backgroundStyle: (s.catalogBackgroundStyle || prev.backgroundStyle || 'atmospheric') as 'atmospheric' | 'solid',
+        typographyStyle: (s.catalogTypographyStyle || prev.typographyStyle || 'modern') as 'modern' | 'editorial',
+        defaultSort: (s.catalogDefaultSort || prev.defaultSort || 'destaque') as string,
         badge: s.catalogBadge !== undefined ? s.catalogBadge : '',
         statusText: s.catalogStatusText !== undefined ? s.catalogStatusText : '',
         announcement: s.catalogAnnouncement !== undefined ? s.catalogAnnouncement : '',
@@ -1015,25 +1057,29 @@ export function PublicCatalog() {
     );
   }
 
+  const titleFontClass = businessInfo.typographyStyle === 'editorial' ? 'font-serif' : 'font-sans';
+
   return (
     <div className={isDarkMode ? 'dark' : ''}>
 
       {/* 
-        Container Principal com Iluminação Atmosférica Radial (Glassmorphism & Depth)
+        Container Principal com Iluminação Atmosférica Radial (Glassmorphism & Depth) ou Papel Clean Solid
       */}
       <div
         className={`min-h-[100dvh] flex flex-col justify-between text-[#221a1a] dark:text-[#e8e0e3] transition-colors duration-300 font-sans
-        bg-[#fff8f7] dark:bg-[#161214]
-        [background-image:linear-gradient(135deg,#fceee9_0%,#fff8f7_52%,#ede7f6_100%)]
-        dark:[background-image:none]
-        relative selection:bg-[#613d3e] selection:text-white ${featureFlags.enableOnlineOrders !== false && totalItemsCount > 0 ? 'pb-24 sm:pb-20' : 'pb-4'}`}
+        ${businessInfo.backgroundStyle === 'solid'
+          ? 'bg-stone-50 dark:bg-[#161214]'
+          : 'bg-[#fff8f7] dark:bg-[#161214] [background-image:linear-gradient(135deg,#fceee9_0%,#fff8f7_52%,#ede7f6_100%)] dark:[background-image:none]'}
+        relative selection:bg-[#613d3e] selection:text-white ${featureFlags.enableOnlineOrders !== false && businessInfo.storeMode === 'cart' && totalItemsCount > 0 ? 'pb-24 sm:pb-20' : 'pb-4'}`}
       >
-        {/* Camada de Gradientes Atmosféricos Fixos */}
-        <div className="fixed inset-0 pointer-events-none opacity-80 dark:opacity-40 z-0">
-          <div className="absolute top-0 left-0 w-96 sm:w-[500px] h-96 sm:h-[500px] rounded-full bg-[#f7d6d0] dark:bg-[#5b3234] blur-3xl -translate-x-1/3 -translate-y-1/3" />
-          <div className="absolute top-1/3 right-0 w-80 sm:w-[450px] h-80 sm:h-[450px] rounded-full bg-[#d1c4e9] dark:bg-[#28192d] blur-3xl translate-x-1/4" />
-          <div className="absolute bottom-10 left-1/4 w-96 sm:w-[500px] h-96 sm:h-[500px] rounded-full bg-[#bbdefb] dark:bg-[#121c20] blur-3xl" />
-        </div>
+        {/* Camada de Gradientes Atmosféricos Fixos (desativada no modo clean solid) */}
+        {businessInfo.backgroundStyle !== 'solid' && (
+          <div className="fixed inset-0 pointer-events-none opacity-80 dark:opacity-40 z-0">
+            <div className="absolute top-0 left-0 w-96 sm:w-[500px] h-96 sm:h-[500px] rounded-full bg-[#f7d6d0] dark:bg-[#5b3234] blur-3xl -translate-x-1/3 -translate-y-1/3" />
+            <div className="absolute top-1/3 right-0 w-80 sm:w-[450px] h-80 sm:h-[450px] rounded-full bg-[#d1c4e9] dark:bg-[#28192d] blur-3xl translate-x-1/4" />
+            <div className="absolute bottom-10 left-1/4 w-96 sm:w-[500px] h-96 sm:h-[500px] rounded-full bg-[#bbdefb] dark:bg-[#121c20] blur-3xl" />
+          </div>
+        )}
 
         {/* Barra de Aviso / Alerta Promocional (se preenchido no painel) */}
         {businessInfo.announcement && (
@@ -1075,7 +1121,7 @@ export function PublicCatalog() {
             </div>
           ) : (
             <div className="flex items-center justify-center px-4">
-              <span className={`font-black text-base sm:text-lg tracking-tight ${
+              <span className={`font-black text-base sm:text-lg tracking-tight ${titleFontClass} ${
                 businessInfo.headerTextColor === 'light' ? 'text-white' : 'text-[#613d3e] dark:text-[#f4b7b9]'
               }`}>
                 {businessInfo.name}
@@ -1084,7 +1130,7 @@ export function PublicCatalog() {
           )}
         </header>
 
-        {/* 2. BARRA DE AÇÕES DA LOJINHA: BUSCA, SACOLA, REDES & TEMA (LOCALIZADA EM OUTRA ÁREA) */}
+        {/* 2. BARRA DE AÇÕES DA LOJINHA: BUSCA, SACOLA, REDES & TEMA */}
         <section aria-label="Busca e sacola da loja" className="relative z-20 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-3 sm:pt-4">
           <div className="bg-white/90 dark:bg-[#1f191b]/90 backdrop-blur-md rounded-2xl sm:rounded-3xl border border-stone-200/70 dark:border-[#ebcdcd]/15 p-3 sm:p-4 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-3 sm:gap-4">
             
@@ -1150,8 +1196,8 @@ export function PublicCatalog() {
                 )}
               </div>
 
-              {/* Botão Principal da Sacola com Subtotal */}
-              {featureFlags.enableOnlineOrders !== false && (
+              {/* Botão Principal da Sacola (Apenas exibido no modo 'cart' com pedidos ativos) */}
+              {featureFlags.enableOnlineOrders !== false && businessInfo.storeMode === 'cart' && (
               <button
                 onClick={() => setIsCartOpen(true)}
                 className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl sm:rounded-2xl bg-[#613d3e] dark:bg-[#f4b7b9] text-white dark:text-[#4c2527] hover:opacity-95 active:scale-98 transition-all shadow-sm font-bold text-xs sm:text-sm cursor-pointer"
@@ -1171,9 +1217,47 @@ export function PublicCatalog() {
                 )}
               </button>
               )}
+
+              {/* Botão de Consulta Direta Geral no WhatsApp (quando em modo direct_inquiry) */}
+              {businessInfo.storeMode === 'direct_inquiry' && businessInfo.whatsapp && (
+              <a
+                href={generateBespokeConsultationWhatsAppMessage(businessInfo.whatsapp, 'Catálogo Online')}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl sm:rounded-2xl bg-[#10B981] hover:bg-[#059669] text-white transition-all shadow-sm font-bold text-xs sm:text-sm cursor-pointer"
+                aria-label="Falar no WhatsApp"
+              >
+                <MessageCircle size={17} />
+                <span>WhatsApp</span>
+              </a>
+              )}
             </div>
 
           </div>
+
+          {/* Destaques Comerciais & Condições de Pagamento (PIX, Antecedência, Pedido Mínimo) */}
+          {(businessInfo.pixDiscountText || businessInfo.advanceNoticeText || businessInfo.minOrderAmount > 0) && (
+            <div className="flex flex-wrap items-center justify-center gap-2 pt-2.5 text-xs">
+              {businessInfo.pixDiscountText && (
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/10 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 font-semibold shadow-2xs backdrop-blur-xs">
+                  <Percent size={11} className="text-emerald-600 dark:text-emerald-400" />
+                  <span>{businessInfo.pixDiscountText}</span>
+                </span>
+              )}
+              {businessInfo.advanceNoticeText && (
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/10 dark:bg-amber-500/20 text-amber-800 dark:text-amber-200 border border-amber-500/30 font-medium shadow-2xs backdrop-blur-xs">
+                  <Clock size={11} className="text-amber-600 dark:text-amber-400" />
+                  <span>{businessInfo.advanceNoticeText}</span>
+                </span>
+              )}
+              {businessInfo.minOrderAmount > 0 && (
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-primary/10 text-primary border border-primary/20 font-medium shadow-2xs backdrop-blur-xs">
+                  <ShoppingBag size={11} />
+                  <span>Pedido mínimo: {formatCurrency(businessInfo.minOrderAmount)}</span>
+                </span>
+              )}
+            </div>
+          )}
         </section>
 
         {/* Banner de Capa Rotativo / Carrossel Panorâmico (se cadastrado) */}
@@ -1515,15 +1599,19 @@ export function PublicCatalog() {
             </div>
           )}
 
-          {/* 3. Grid Responsivo de Produtos: 2 colunas mobile / 3 tablet / 4 desktop */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-5 lg:gap-6">
+          {/* 3. Grid Responsivo de Produtos (Densidade customizável: Compacto ou Editorial) */}
+          <div className={
+            businessInfo.cardDensity === 'editorial'
+              ? 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6 lg:gap-8'
+              : 'grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-5 lg:gap-6'
+          }>
             {loadingProducts && products.length === 0 ? (
               Array.from({ length: 8 }).map((_, i) => (
                 <div
                   key={`skeleton-${i}`}
                   className="flex flex-col h-full rounded-2xl bg-white/70 dark:bg-[#1f191b]/85 border border-white/60 dark:border-[#ebcdcd]/15 p-3 space-y-3 animate-pulse"
                 >
-                  <div className="aspect-square w-full rounded-xl bg-stone-200/80 dark:bg-stone-800" />
+                  <div className={`w-full rounded-xl bg-stone-200/80 dark:bg-stone-800 ${businessInfo.imageAspect === 'portrait' ? 'aspect-[4/5]' : 'aspect-square'}`} />
                   <div className="space-y-1.5 flex-1">
                     <div className="h-3 w-1/3 rounded bg-stone-200/70 dark:bg-stone-800" />
                     <div className="h-4 w-4/5 rounded bg-stone-200/80 dark:bg-stone-800" />
@@ -1537,9 +1625,11 @@ export function PublicCatalog() {
                   key={prod.id}
                   className="group flex flex-col h-full rounded-2xl bg-white/70 dark:bg-[#1f191b]/85 backdrop-blur-md border border-white/60 dark:border-[#ebcdcd]/15 shadow-xs hover:shadow-xl hover:-translate-y-1 transition-all duration-200 overflow-hidden"
                 >
-                  {/* Imagem do Produto (Aspect-Square padrão e-commerce) */}
+                  {/* Imagem do Produto (Proporção customizável: Quadrado 1:1 ou Retrato 4:5 Lookbook) */}
                   <div 
-                    className="relative aspect-square w-full overflow-hidden bg-stone-100 dark:bg-stone-900 cursor-pointer"
+                    className={`relative w-full overflow-hidden bg-stone-100 dark:bg-stone-900 cursor-pointer ${
+                      businessInfo.imageAspect === 'portrait' ? 'aspect-[4/5]' : 'aspect-square'
+                    }`}
                     onClick={() => handleOpenPreview(prod)}
                   >
                     <img
@@ -1558,8 +1648,8 @@ export function PublicCatalog() {
                       </span>
                     </div>
 
-                    {/* Badge de Destaque / Categoria */}
-                    {prod.badge && (
+                    {/* Badge de Destaque / Categoria (se habilitado) */}
+                    {prod.badge && (businessInfo.showBadgeBestSeller || businessInfo.showBadgeNew) && (
                       <span className="absolute top-2 left-2 px-2 py-0.5 rounded-md text-[10px] font-bold bg-[#613d3e]/90 dark:bg-[#f4b7b9]/90 text-white dark:text-[#4c2527] backdrop-blur-xs shadow-xs">
                         {prod.badge}
                       </span>
@@ -1579,7 +1669,7 @@ export function PublicCatalog() {
                         <span className="truncate">{prod.category || 'Geral'}</span>
                       </span>
                       <h3 
-                        className="text-xs sm:text-sm font-bold text-[#221a1a] dark:text-[#e8e0e3] line-clamp-2 leading-snug cursor-pointer group-hover:text-[#613d3e] dark:group-hover:text-[#f4b7b9] transition-colors"
+                        className={`text-xs sm:text-sm font-bold text-[#221a1a] dark:text-[#e8e0e3] line-clamp-2 leading-snug cursor-pointer group-hover:text-[#613d3e] dark:group-hover:text-[#f4b7b9] transition-colors ${titleFontClass}`}
                         onClick={() => handleOpenPreview(prod)}
                         title={prod.name}
                       >
@@ -1590,12 +1680,14 @@ export function PublicCatalog() {
                     {/* Prazo de Confecção, Selo Personalizável & Preço Desktop */}
                     <div className="space-y-1.5 pt-1">
                       <div className="flex items-center justify-between gap-1">
-                        <div className="inline-flex items-center gap-1 text-[10px] sm:text-[11px] font-medium text-amber-700 dark:text-amber-300 bg-amber-500/10 px-2 py-0.5 rounded-md">
-                          <Clock size={11} />
-                          <span>{prod.leadTimeDays > 0 ? `Até ${prod.leadTimeDays} dias úteis` : 'Pronta entrega'}</span>
-                        </div>
-                        {prod.isCustomizable && (
-                          <span className="text-[10px] font-semibold text-[#613d3e] dark:text-[#f4b7b9] inline-flex items-center gap-0.5">
+                        {businessInfo.showBadgeLeadTime && (
+                          <div className="inline-flex items-center gap-1 text-[10px] sm:text-[11px] font-medium text-amber-700 dark:text-amber-300 bg-amber-500/10 px-2 py-0.5 rounded-md">
+                            <Clock size={11} />
+                            <span>{prod.leadTimeDays > 0 ? `Até ${prod.leadTimeDays} dias úteis` : 'Pronta entrega'}</span>
+                          </div>
+                        )}
+                        {businessInfo.showBadgeCustomizable && prod.isCustomizable && (
+                          <span className="text-[10px] font-semibold text-[#613d3e] dark:text-[#f4b7b9] inline-flex items-center gap-0.5 ml-auto">
                             <Sparkles size={10} /> Personalizável
                           </span>
                         )}
@@ -1609,8 +1701,8 @@ export function PublicCatalog() {
                       </div>
                     </div>
 
-                    {/* Botão de Adição à Sacola / Consulta */}
-                    {featureFlags.enableOnlineOrders !== false ? (
+                    {/* Botão de Ação Dinâmico baseado no Store Mode */}
+                    {businessInfo.storeMode === 'cart' && featureFlags.enableOnlineOrders !== false ? (
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
@@ -1628,6 +1720,18 @@ export function PublicCatalog() {
                         <ShoppingBag size={13} className="shrink-0" />
                         <span>Adicionar à Sacola</span>
                       </button>
+                    ) : businessInfo.storeMode === 'direct_inquiry' && businessInfo.whatsapp ? (
+                      <a
+                        href={generateProductInquiryWhatsAppMessage(businessInfo.whatsapp, prod.name, prod.price)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={(e) => e.stopPropagation()}
+                        className="w-full mt-2 py-2 sm:py-2.5 px-3 rounded-xl font-bold text-[11px] sm:text-xs flex items-center justify-center gap-1.5 bg-[#10B981] hover:bg-[#059669] text-white active:scale-98 transition-all shadow-xs cursor-pointer"
+                        title="Pedir direto no WhatsApp"
+                      >
+                        <MessageCircle size={13} className="shrink-0" />
+                        <span>Pedir no WhatsApp</span>
+                      </a>
                     ) : (
                       <button
                         onClick={(e) => {
@@ -2499,6 +2603,14 @@ export function PublicCatalog() {
               {/* Footer do Carrinho com Envio WhatsApp */}
               {cart.length > 0 && (
                 <div className="p-4 sm:p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] bg-white/95 dark:bg-[#161214]/95 border-t border-stone-200/80 dark:border-stone-800 space-y-3 shrink-0">
+                  {/* Desconto PIX no Carrinho */}
+                  {businessInfo.pixDiscountText && (
+                    <div className="flex items-center gap-1.5 p-2 rounded-xl bg-emerald-500/10 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 text-xs font-semibold">
+                      <Percent size={13} className="text-emerald-600 dark:text-emerald-400 shrink-0" />
+                      <span>{businessInfo.pixDiscountText}</span>
+                    </div>
+                  )}
+
                   <div className="flex justify-between items-center text-sm font-bold">
                     <span>Subtotal Estimado:</span>
                     <span className="text-lg text-[#613d3e] dark:text-[#f4b7b9] tabular-nums font-extrabold">
@@ -2506,9 +2618,19 @@ export function PublicCatalog() {
                     </span>
                   </div>
 
+                  {/* Validação de Valor Mínimo de Pedido */}
+                  {businessInfo.minOrderAmount > 0 && subtotal < businessInfo.minOrderAmount && (
+                    <div className="flex items-center gap-1.5 p-2.5 rounded-xl bg-amber-500/10 dark:bg-amber-500/20 text-amber-800 dark:text-amber-300 border border-amber-500/30 text-xs font-medium">
+                      <AlertCircle size={14} className="text-amber-600 dark:text-amber-400 shrink-0" />
+                      <span>
+                        Pedido mínimo de <strong>{formatCurrency(businessInfo.minOrderAmount)}</strong>. Adicione mais <strong>{formatCurrency(businessInfo.minOrderAmount - subtotal)}</strong> para finalizar.
+                      </span>
+                    </div>
+                  )}
+
                   <button
                     onClick={handleSendToWhatsApp}
-                    disabled={submittingOrder}
+                    disabled={submittingOrder || (businessInfo.minOrderAmount > 0 && subtotal < businessInfo.minOrderAmount)}
                     className="w-full py-3.5 px-4 rounded-xl bg-[#10B981] hover:bg-[#059669] text-white font-bold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg active:scale-98 transition-all cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
                   >
                     {submittingOrder ? (
@@ -2606,6 +2728,28 @@ export function PublicCatalog() {
               </div>
             </div>
           </div>
+        )}
+
+        {/* 7. BOTÃO FLUTUANTE DO WHATSAPP */}
+        {businessInfo.showFloatingWhatsApp && businessInfo.whatsapp && (
+          <aside aria-label="Atendimento WhatsApp" className="fixed bottom-6 right-6 z-40 flex items-center gap-2 group">
+            {businessInfo.floatingWhatsAppText && (
+              <div className="hidden sm:flex items-center px-3 py-1.5 rounded-full bg-white dark:bg-[#1f191b] border border-stone-200/80 dark:border-[#ebcdcd]/20 shadow-lg text-xs font-semibold text-stone-800 dark:text-stone-200 backdrop-blur-md opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
+                <span>{businessInfo.floatingWhatsAppText}</span>
+              </div>
+            )}
+            <a
+              href={generateBespokeConsultationWhatsAppMessage(businessInfo.whatsapp, 'Catálogo Online')}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="relative size-14 rounded-full bg-[#25D366] hover:bg-[#1EBE5D] text-white shadow-xl flex items-center justify-center transition-transform hover:scale-110 active:scale-95 cursor-pointer ring-4 ring-white/60 dark:ring-[#161214]/60"
+              title={businessInfo.floatingWhatsAppText || 'Fale Conosco no WhatsApp'}
+              aria-label="Atendimento direto no WhatsApp"
+            >
+              <MessageCircle size={28} className="fill-white/20" />
+              <span className="absolute top-1 right-1 size-3.5 bg-emerald-300 rounded-full border-2 border-white dark:border-[#161214] animate-ping" />
+            </a>
+          </aside>
         )}
       </div>
     </div>

@@ -58,6 +58,11 @@ import {
   Zap,
   ShieldAlert,
   Bot,
+  Percent,
+  BadgeCheck,
+  Type,
+  ArrowUpDown,
+  Smartphone,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { BannerCarousel, CatalogBannerItem } from '../components/catalog/BannerCarousel';
@@ -351,6 +356,21 @@ export function StoreCustomization() {
     catalogHeaderHideText: false,
     catalogShowHero: true,
     catalogCategoryFilterStyle: 'dropdown' as 'dropdown' | 'carousel' | 'bottom_sheet',
+    catalogCardDensity: 'compact' as 'compact' | 'editorial',
+    catalogImageAspect: 'square' as 'square' | 'portrait',
+    catalogShowBadgeCustomizable: true,
+    catalogShowBadgeLeadTime: true,
+    catalogShowBadgeBestSeller: true,
+    catalogShowBadgeNew: true,
+    catalogStoreMode: 'cart' as 'cart' | 'direct_inquiry' | 'portfolio',
+    catalogShowFloatingWhatsApp: true,
+    catalogFloatingWhatsAppText: 'Fale Conosco no WhatsApp',
+    catalogPixDiscountText: '',
+    catalogAdvanceNoticeText: '',
+    catalogMinOrderAmount: 0,
+    catalogBackgroundStyle: 'atmospheric' as 'atmospheric' | 'solid',
+    catalogTypographyStyle: 'modern' as 'modern' | 'editorial',
+    catalogDefaultSort: 'destaque' as 'destaque' | 'preco-menor' | 'preco-maior' | 'nome-az' | 'prazo',
 
     // Seção 1: Quem Somos / Sobre o Ateliê
     catalogShowAbout: false,
@@ -529,6 +549,21 @@ export function StoreCustomization() {
         catalogHeaderHideText: Boolean(settings?.catalogHeaderHideText),
         catalogShowHero: settings?.catalogShowHero !== undefined ? Boolean(settings.catalogShowHero) : true,
         catalogCategoryFilterStyle: (settings?.catalogCategoryFilterStyle || 'dropdown') as 'dropdown' | 'carousel' | 'bottom_sheet',
+        catalogCardDensity: (settings?.catalogCardDensity || 'compact') as 'compact' | 'editorial',
+        catalogImageAspect: (settings?.catalogImageAspect || 'square') as 'square' | 'portrait',
+        catalogShowBadgeCustomizable: settings?.catalogShowBadgeCustomizable !== undefined ? Boolean(settings.catalogShowBadgeCustomizable) : true,
+        catalogShowBadgeLeadTime: settings?.catalogShowBadgeLeadTime !== undefined ? Boolean(settings.catalogShowBadgeLeadTime) : true,
+        catalogShowBadgeBestSeller: settings?.catalogShowBadgeBestSeller !== undefined ? Boolean(settings.catalogShowBadgeBestSeller) : true,
+        catalogShowBadgeNew: settings?.catalogShowBadgeNew !== undefined ? Boolean(settings.catalogShowBadgeNew) : true,
+        catalogStoreMode: (settings?.catalogStoreMode || 'cart') as 'cart' | 'direct_inquiry' | 'portfolio',
+        catalogShowFloatingWhatsApp: settings?.catalogShowFloatingWhatsApp !== undefined ? Boolean(settings.catalogShowFloatingWhatsApp) : true,
+        catalogFloatingWhatsAppText: settings?.catalogFloatingWhatsAppText || 'Fale Conosco no WhatsApp',
+        catalogPixDiscountText: settings?.catalogPixDiscountText || '',
+        catalogAdvanceNoticeText: settings?.catalogAdvanceNoticeText || '',
+        catalogMinOrderAmount: Number(settings?.catalogMinOrderAmount) || 0,
+        catalogBackgroundStyle: (settings?.catalogBackgroundStyle || 'atmospheric') as 'atmospheric' | 'solid',
+        catalogTypographyStyle: (settings?.catalogTypographyStyle || 'modern') as 'modern' | 'editorial',
+        catalogDefaultSort: (settings?.catalogDefaultSort || 'destaque') as 'destaque' | 'preco-menor' | 'preco-maior' | 'nome-az' | 'prazo',
 
         // 1. Quem Somos
         catalogShowAbout: settings?.catalogShowAbout !== undefined ? Boolean(settings.catalogShowAbout) : false,
@@ -646,8 +681,23 @@ export function StoreCustomization() {
             catalogHeaderTextColor: pub.catalogHeaderTextColor || data.catalogHeaderTextColor,
             catalogHeaderLogoPosition: pub.catalogHeaderLogoPosition || data.catalogHeaderLogoPosition,
             catalogHeaderHeight: pub.catalogHeaderHeight || data.catalogHeaderHeight,
-            catalogHeaderHideText: pub.catalogHeaderHideText !== undefined ? Boolean(pub.catalogHeaderHideText) : data.catalogHeaderHideText,
             catalogShowHero: pub.catalogShowHero !== undefined ? Boolean(pub.catalogShowHero) : data.catalogShowHero,
+            catalogCategoryFilterStyle: pub.catalogCategoryFilterStyle || data.catalogCategoryFilterStyle,
+            catalogCardDensity: pub.catalogCardDensity || data.catalogCardDensity,
+            catalogImageAspect: pub.catalogImageAspect || data.catalogImageAspect,
+            catalogShowBadgeCustomizable: pub.catalogShowBadgeCustomizable !== undefined ? Boolean(pub.catalogShowBadgeCustomizable) : data.catalogShowBadgeCustomizable,
+            catalogShowBadgeLeadTime: pub.catalogShowBadgeLeadTime !== undefined ? Boolean(pub.catalogShowBadgeLeadTime) : data.catalogShowBadgeLeadTime,
+            catalogShowBadgeBestSeller: pub.catalogShowBadgeBestSeller !== undefined ? Boolean(pub.catalogShowBadgeBestSeller) : data.catalogShowBadgeBestSeller,
+            catalogShowBadgeNew: pub.catalogShowBadgeNew !== undefined ? Boolean(pub.catalogShowBadgeNew) : data.catalogShowBadgeNew,
+            catalogStoreMode: pub.catalogStoreMode || data.catalogStoreMode,
+            catalogShowFloatingWhatsApp: pub.catalogShowFloatingWhatsApp !== undefined ? Boolean(pub.catalogShowFloatingWhatsApp) : data.catalogShowFloatingWhatsApp,
+            catalogFloatingWhatsAppText: pub.catalogFloatingWhatsAppText !== undefined ? pub.catalogFloatingWhatsAppText : data.catalogFloatingWhatsAppText,
+            catalogPixDiscountText: pub.catalogPixDiscountText !== undefined ? pub.catalogPixDiscountText : data.catalogPixDiscountText,
+            catalogAdvanceNoticeText: pub.catalogAdvanceNoticeText !== undefined ? pub.catalogAdvanceNoticeText : data.catalogAdvanceNoticeText,
+            catalogMinOrderAmount: pub.catalogMinOrderAmount !== undefined ? Number(pub.catalogMinOrderAmount) : data.catalogMinOrderAmount,
+            catalogBackgroundStyle: pub.catalogBackgroundStyle || data.catalogBackgroundStyle,
+            catalogTypographyStyle: pub.catalogTypographyStyle || data.catalogTypographyStyle,
+            catalogDefaultSort: pub.catalogDefaultSort || data.catalogDefaultSort,
 
             // 1. Quem Somos
             catalogShowAbout: pub.catalogShowAbout !== undefined ? Boolean(pub.catalogShowAbout) : data.catalogShowAbout,
@@ -2917,6 +2967,319 @@ IMPORTANTE:
                   </div>
                 </CardContent>
               </Card>
+
+              {/* Card de Grid, Densidade & Exibição dos Produtos */}
+              <Card className="border-primary/25 shadow-xs">
+                <CardHeader>
+                  <div className="flex items-center justify-between gap-2">
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <LayoutGrid className="size-4 text-primary" />
+                      Grid, Densidade & Proporção das Fotos
+                    </CardTitle>
+                    <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-primary/10 text-primary shrink-0">
+                      Vitrine dos Cards
+                    </span>
+                  </div>
+                  <CardDescription className="text-xs">
+                    Personalize o layout dos cartões de produtos, tamanho das imagens e a densidade da grade tanto no celular quanto no computador.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-5">
+                  {/* 1. Densidade do Grid */}
+                  <div className="space-y-2">
+                    <Label className="text-xs font-bold flex items-center gap-1.5">
+                      <Smartphone className="size-3.5 text-primary" />
+                      Densidade do Grid de Produtos
+                    </Label>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <button
+                        type="button"
+                        onClick={() => handleChange('catalogCardDensity', 'compact')}
+                        className={`p-3.5 rounded-2xl border text-left transition-all cursor-pointer flex flex-col justify-between gap-2 ${
+                          formData.catalogCardDensity === 'compact'
+                            ? 'border-primary bg-primary/10 ring-2 ring-primary/40 font-semibold text-foreground shadow-xs'
+                            : 'border-border/80 bg-muted/20 hover:border-border hover:bg-muted/40 text-muted-foreground'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-bold text-foreground">Compacto E-commerce (Padrão)</span>
+                          {formData.catalogCardDensity === 'compact' && <Check className="size-3.5 text-primary" />}
+                        </div>
+                        <p className="text-[11px] leading-relaxed opacity-85">
+                          2 colunas no celular e até 4 no desktop. Exibe mais produtos simultaneamente na tela.
+                        </p>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleChange('catalogCardDensity', 'editorial')}
+                        className={`p-3.5 rounded-2xl border text-left transition-all cursor-pointer flex flex-col justify-between gap-2 ${
+                          formData.catalogCardDensity === 'editorial'
+                            ? 'border-primary bg-primary/10 ring-2 ring-primary/40 font-semibold text-foreground shadow-xs'
+                            : 'border-border/80 bg-muted/20 hover:border-border hover:bg-muted/40 text-muted-foreground'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-bold text-foreground">Editorial & Lookbook</span>
+                          {formData.catalogCardDensity === 'editorial' && <Check className="size-3.5 text-primary" />}
+                        </div>
+                        <p className="text-[11px] leading-relaxed opacity-85">
+                          1 coluna ampla no celular e 3 no desktop. Foco máximo em fotos grandes e detalhes de luxo.
+                        </p>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* 2. Proporção das Imagens */}
+                  <div className="space-y-2">
+                    <Label className="text-xs font-bold flex items-center gap-1.5">
+                      <ImageIcon className="size-3.5 text-primary" />
+                      Proporção da Imagem dos Produtos
+                    </Label>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <button
+                        type="button"
+                        onClick={() => handleChange('catalogImageAspect', 'square')}
+                        className={`p-3.5 rounded-2xl border text-left transition-all cursor-pointer flex flex-col justify-between gap-2 ${
+                          formData.catalogImageAspect === 'square'
+                            ? 'border-primary bg-primary/10 ring-2 ring-primary/40 font-semibold text-foreground shadow-xs'
+                            : 'border-border/80 bg-muted/20 hover:border-border hover:bg-muted/40 text-muted-foreground'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-bold text-foreground">Quadrado 1:1 (Padrão)</span>
+                          {formData.catalogImageAspect === 'square' && <Check className="size-3.5 text-primary" />}
+                        </div>
+                        <p className="text-[11px] leading-relaxed opacity-85">
+                          Proporção simétrica clássica de e-commerce e catálogo de produtos.
+                        </p>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleChange('catalogImageAspect', 'portrait')}
+                        className={`p-3.5 rounded-2xl border text-left transition-all cursor-pointer flex flex-col justify-between gap-2 ${
+                          formData.catalogImageAspect === 'portrait'
+                            ? 'border-primary bg-primary/10 ring-2 ring-primary/40 font-semibold text-foreground shadow-xs'
+                            : 'border-border/80 bg-muted/20 hover:border-border hover:bg-muted/40 text-muted-foreground'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-bold text-foreground">Retrato 4:5 (Lookbook)</span>
+                          {formData.catalogImageAspect === 'portrait' && <Check className="size-3.5 text-primary" />}
+                        </div>
+                        <p className="text-[11px] leading-relaxed opacity-85">
+                          Formato vertical estendido, valorizando cadernos, planners e fotos de papelaria afetiva.
+                        </p>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* 3. Selos e Indicadores nos Cards de Produto */}
+                  <div className="space-y-3 pt-2 border-t border-border/60">
+                    <Label className="text-xs font-bold flex items-center gap-1.5">
+                      <BadgeCheck className="size-3.5 text-primary" />
+                      Selos e Indicadores Visuais nos Cards
+                    </Label>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div className="flex items-center justify-between p-3 rounded-xl border border-border/70 bg-muted/10">
+                        <div className="space-y-0.5 pr-2">
+                          <Label htmlFor="m-badge-custom" className="text-xs font-semibold cursor-pointer">
+                            Selo "Personalizável"
+                          </Label>
+                          <p className="text-[10px] text-muted-foreground">Ícone de brilho indicando que o produto aceita nome/tema.</p>
+                        </div>
+                        <Switch
+                          id="m-badge-custom"
+                          checked={formData.catalogShowBadgeCustomizable}
+                          onCheckedChange={(checked) => handleChange('catalogShowBadgeCustomizable', checked)}
+                        />
+                      </div>
+
+                      <div className="flex items-center justify-between p-3 rounded-xl border border-border/70 bg-muted/10">
+                        <div className="space-y-0.5 pr-2">
+                          <Label htmlFor="m-badge-lead" className="text-xs font-semibold cursor-pointer">
+                            Prazo de Confecção
+                          </Label>
+                          <p className="text-[10px] text-muted-foreground">Pílula com o tempo de produção em dias úteis ou pronta entrega.</p>
+                        </div>
+                        <Switch
+                          id="m-badge-lead"
+                          checked={formData.catalogShowBadgeLeadTime}
+                          onCheckedChange={(checked) => handleChange('catalogShowBadgeLeadTime', checked)}
+                        />
+                      </div>
+
+                      <div className="flex items-center justify-between p-3 rounded-xl border border-border/70 bg-muted/10">
+                        <div className="space-y-0.5 pr-2">
+                          <Label htmlFor="m-badge-bestseller" className="text-xs font-semibold cursor-pointer">
+                            Selo de Destaque / Mais Vendido
+                          </Label>
+                          <p className="text-[10px] text-muted-foreground">Etiqueta destacada no canto da foto para produtos em alta.</p>
+                        </div>
+                        <Switch
+                          id="m-badge-bestseller"
+                          checked={formData.catalogShowBadgeBestSeller}
+                          onCheckedChange={(checked) => handleChange('catalogShowBadgeBestSeller', checked)}
+                        />
+                      </div>
+
+                      <div className="flex items-center justify-between p-3 rounded-xl border border-border/70 bg-muted/10">
+                        <div className="space-y-0.5 pr-2">
+                          <Label htmlFor="m-badge-new" className="text-xs font-semibold cursor-pointer">
+                            Selo de Novidades
+                          </Label>
+                          <p className="text-[10px] text-muted-foreground">Identificador visual para novos lançamentos do ateliê.</p>
+                        </div>
+                        <Switch
+                          id="m-badge-new"
+                          checked={formData.catalogShowBadgeNew}
+                          onCheckedChange={(checked) => handleChange('catalogShowBadgeNew', checked)}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Card de Atmosfera Visual, Tipografia & Ordenação */}
+              <Card className="border-primary/25 shadow-xs">
+                <CardHeader>
+                  <div className="flex items-center justify-between gap-2">
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <Palette className="size-4 text-primary" />
+                      Atmosfera Visual, Tipografia & Ordenação
+                    </CardTitle>
+                    <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-primary/10 text-primary shrink-0">
+                      Design System
+                    </span>
+                  </div>
+                  <CardDescription className="text-xs">
+                    Defina o clima estético da loja (glassmorphism ou minimalismo puro), o estilo tipográfico e como os produtos são ordenados por padrão.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-5">
+                  {/* 1. Estilo de Fundo & Superfície */}
+                  <div className="space-y-2">
+                    <Label className="text-xs font-bold flex items-center gap-1.5">
+                      <Sparkles className="size-3.5 text-primary" />
+                      Estilo de Fundo & Superfície
+                    </Label>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <button
+                        type="button"
+                        onClick={() => handleChange('catalogBackgroundStyle', 'atmospheric')}
+                        className={`p-3.5 rounded-2xl border text-left transition-all cursor-pointer flex flex-col justify-between gap-2 ${
+                          formData.catalogBackgroundStyle === 'atmospheric'
+                            ? 'border-primary bg-primary/10 ring-2 ring-primary/40 font-semibold text-foreground shadow-xs'
+                            : 'border-border/80 bg-muted/20 hover:border-border hover:bg-muted/40 text-muted-foreground'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-bold text-foreground">Liquid Glassmorphism (Padrão)</span>
+                          {formData.catalogBackgroundStyle === 'atmospheric' && <Check className="size-3.5 text-primary" />}
+                        </div>
+                        <p className="text-[11px] leading-relaxed opacity-85">
+                          Efeito de vidro translúcido com orbes de cor suaves e desfoque moderno.
+                        </p>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleChange('catalogBackgroundStyle', 'solid')}
+                        className={`p-3.5 rounded-2xl border text-left transition-all cursor-pointer flex flex-col justify-between gap-2 ${
+                          formData.catalogBackgroundStyle === 'solid'
+                            ? 'border-primary bg-primary/10 ring-2 ring-primary/40 font-semibold text-foreground shadow-xs'
+                            : 'border-border/80 bg-muted/20 hover:border-border hover:bg-muted/40 text-muted-foreground'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-bold text-foreground">Papel Clean Minimalista</span>
+                          {formData.catalogBackgroundStyle === 'solid' && <Check className="size-3.5 text-primary" />}
+                        </div>
+                        <p className="text-[11px] leading-relaxed opacity-85">
+                          Fundo plano e sólido com bordas nítidas, máxima velocidade e legibilidade.
+                        </p>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* 2. Estilo Tipográfico */}
+                  <div className="space-y-2">
+                    <Label className="text-xs font-bold flex items-center gap-1.5">
+                      <Type className="size-3.5 text-primary" />
+                      Estilo Tipográfico dos Títulos
+                    </Label>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <button
+                        type="button"
+                        onClick={() => handleChange('catalogTypographyStyle', 'modern')}
+                        className={`p-3.5 rounded-2xl border text-left transition-all cursor-pointer flex flex-col justify-between gap-2 ${
+                          formData.catalogTypographyStyle === 'modern'
+                            ? 'border-primary bg-primary/10 ring-2 ring-primary/40 font-semibold text-foreground shadow-xs'
+                            : 'border-border/80 bg-muted/20 hover:border-border hover:bg-muted/40 text-muted-foreground'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-bold text-foreground font-sans">Sans-Serif Moderno (Padrão)</span>
+                          {formData.catalogTypographyStyle === 'modern' && <Check className="size-3.5 text-primary" />}
+                        </div>
+                        <p className="text-[11px] leading-relaxed opacity-85">
+                          Letras limpas e contemporâneas, alta legibilidade no mobile.
+                        </p>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleChange('catalogTypographyStyle', 'editorial')}
+                        className={`p-3.5 rounded-2xl border text-left transition-all cursor-pointer flex flex-col justify-between gap-2 ${
+                          formData.catalogTypographyStyle === 'editorial'
+                            ? 'border-primary bg-primary/10 ring-2 ring-primary/40 font-semibold text-foreground shadow-xs'
+                            : 'border-border/80 bg-muted/20 hover:border-border hover:bg-muted/40 text-muted-foreground'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-bold text-foreground font-serif">Serif Editorial & Luxo</span>
+                          {formData.catalogTypographyStyle === 'editorial' && <Check className="size-3.5 text-primary" />}
+                        </div>
+                        <p className="text-[11px] leading-relaxed opacity-85">
+                          Tipografia nobre estilo revista e ateliê de alta costura e papelaria fina.
+                        </p>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* 3. Ordenação Padrão dos Produtos */}
+                  <div className="space-y-2 pt-2 border-t border-border/60">
+                    <Label htmlFor="m-default-sort" className="text-xs font-bold flex items-center gap-1.5">
+                      <ArrowUpDown className="size-3.5 text-primary" />
+                      Ordenação Padrão ao Abrir a Vitrine
+                    </Label>
+                    <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+                      {[
+                        { val: 'destaque', label: 'Destaque / Ateliê' },
+                        { val: 'preco-menor', label: 'Menor Preço' },
+                        { val: 'preco-maior', label: 'Maior Preço' },
+                        { val: 'nome-az', label: 'Nome (A-Z)' },
+                        { val: 'prazo', label: 'Menor Prazo' },
+                      ].map((item) => (
+                        <button
+                          key={item.val}
+                          type="button"
+                          onClick={() => handleChange('catalogDefaultSort', item.val)}
+                          className={`p-2.5 rounded-xl border text-xs text-center transition-all cursor-pointer ${
+                            formData.catalogDefaultSort === item.val
+                              ? 'border-primary bg-primary/10 ring-1 ring-primary font-bold text-foreground'
+                              : 'border-border/70 bg-muted/20 hover:border-border text-muted-foreground'
+                          }`}
+                        >
+                          {item.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
             </TabsContent>
 
             {/* ABA: Institucional & Sobre (Modular & Toggles) */}
@@ -4002,6 +4365,226 @@ IMPORTANTE:
                     <p className="text-[10px] text-muted-foreground flex items-center gap-1">
                       <Info className="size-3 opacity-60" />
                       Novas feature flags serão adicionadas automaticamente conforme novas funcionalidades forem implementadas.
+                    </p>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Card: Modo de Operação da Loja */}
+              <Card className="border-primary/25 shadow-xs">
+                <CardHeader>
+                  <div className="flex items-center justify-between gap-2">
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <ShoppingBag className="size-4 text-primary" />
+                      Modo de Operação da Vitrine Online
+                    </CardTitle>
+                    <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-primary/10 text-primary shrink-0">
+                      Fluxo de Venda
+                    </span>
+                  </div>
+                  <CardDescription className="text-xs">
+                    Escolha como os clientes interagem com os seus produtos e como os pedidos chegam até o seu WhatsApp.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    {/* Modo 1: Sacola de Encomendas */}
+                    <button
+                      type="button"
+                      onClick={() => handleChange('catalogStoreMode', 'cart')}
+                      className={`p-3.5 rounded-2xl border text-left transition-all cursor-pointer flex flex-col justify-between gap-2.5 ${
+                        formData.catalogStoreMode === 'cart'
+                          ? 'border-primary bg-primary/10 ring-2 ring-primary/40 font-semibold text-foreground shadow-xs'
+                          : 'border-border/80 bg-muted/20 hover:border-border hover:bg-muted/40 text-muted-foreground'
+                      }`}
+                    >
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                            <ShoppingBag className="size-3.5 text-primary" />
+                            Sacola de Encomendas (Padrão)
+                          </span>
+                          {formData.catalogStoreMode === 'cart' && <Check className="size-3.5 text-primary" />}
+                        </div>
+                        <p className="text-[11px] leading-relaxed opacity-85">
+                          Clientes adicionam múltiplos mimos à sacola, personalizam cada item e enviam o pedido consolidado no WhatsApp.
+                        </p>
+                      </div>
+                      <span className="text-[10px] text-primary font-medium">Recomendado para Ateliês</span>
+                    </button>
+
+                    {/* Modo 2: Consulta Direta por Produto */}
+                    <button
+                      type="button"
+                      onClick={() => handleChange('catalogStoreMode', 'direct_inquiry')}
+                      className={`p-3.5 rounded-2xl border text-left transition-all cursor-pointer flex flex-col justify-between gap-2.5 ${
+                        formData.catalogStoreMode === 'direct_inquiry'
+                          ? 'border-primary bg-primary/10 ring-2 ring-primary/40 font-semibold text-foreground shadow-xs'
+                          : 'border-border/80 bg-muted/20 hover:border-border hover:bg-muted/40 text-muted-foreground'
+                      }`}
+                    >
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                            <MessageCircle className="size-3.5 text-primary" />
+                            Consulta Rápida Direta
+                          </span>
+                          {formData.catalogStoreMode === 'direct_inquiry' && <Check className="size-3.5 text-primary" />}
+                        </div>
+                        <p className="text-[11px] leading-relaxed opacity-85">
+                          Botão de WhatsApp direto em cada card de produto, abrindo uma conversa imediata sobre aquela peça específica.
+                        </p>
+                      </div>
+                      <span className="text-[10px] text-primary font-medium">Atendimento 1 a 1</span>
+                    </button>
+
+                    {/* Modo 3: Portfólio / Vitrine Pura */}
+                    <button
+                      type="button"
+                      onClick={() => handleChange('catalogStoreMode', 'portfolio')}
+                      className={`p-3.5 rounded-2xl border text-left transition-all cursor-pointer flex flex-col justify-between gap-2.5 ${
+                        formData.catalogStoreMode === 'portfolio'
+                          ? 'border-primary bg-primary/10 ring-2 ring-primary/40 font-semibold text-foreground shadow-xs'
+                          : 'border-border/80 bg-muted/20 hover:border-border hover:bg-muted/40 text-muted-foreground'
+                      }`}
+                    >
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                            <Eye className="size-3.5 text-primary" />
+                            Catálogo / Portfólio Lookbook
+                          </span>
+                          {formData.catalogStoreMode === 'portfolio' && <Check className="size-3.5 text-primary" />}
+                        </div>
+                        <p className="text-[11px] leading-relaxed opacity-85">
+                          Exibe apenas fotos e detalhes das peças. Sem carrinho ou botões de compra direta na vitrine.
+                        </p>
+                      </div>
+                      <span className="text-[10px] text-primary font-medium">Apenas Exibição</span>
+                    </button>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Card: Botão Flutuante do WhatsApp */}
+              <Card className="border-primary/25 shadow-xs">
+                <CardHeader>
+                  <div className="flex items-center justify-between gap-2">
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <MessageCircle className="size-4 text-emerald-600" />
+                      Botão Flutuante do WhatsApp
+                    </CardTitle>
+                    <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 shrink-0">
+                      Conversão Rápida
+                    </span>
+                  </div>
+                  <CardDescription className="text-xs">
+                    Exibe um botão flutuante com a logo do WhatsApp fixo no canto inferior da tela em todas as páginas do catálogo.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="flex items-center justify-between p-3.5 rounded-xl border border-border/70 bg-muted/20">
+                    <div className="space-y-0.5 pr-4">
+                      <Label htmlFor="m-floating-wa-toggle" className="text-xs font-semibold cursor-pointer">
+                        Exibir Botão Flutuante do WhatsApp
+                      </Label>
+                      <p className="text-[11px] text-muted-foreground">
+                        Permite que os clientes cliquem e iniciem uma conversa no WhatsApp a qualquer momento durante a navegação.
+                      </p>
+                    </div>
+                    <Switch
+                      id="m-floating-wa-toggle"
+                      checked={formData.catalogShowFloatingWhatsApp}
+                      onCheckedChange={(checked) => handleChange('catalogShowFloatingWhatsApp', checked)}
+                    />
+                  </div>
+
+                  {formData.catalogShowFloatingWhatsApp && (
+                    <div className="space-y-1.5 animate-in fade-in-50 duration-200">
+                      <Label htmlFor="m-floating-wa-text" className="text-xs font-semibold">
+                        Mensagem de Chamada / Tooltip do Botão Flutuante
+                      </Label>
+                      <Input
+                        id="m-floating-wa-text"
+                        placeholder="Ex: Fale Conosco no WhatsApp"
+                        value={formData.catalogFloatingWhatsAppText}
+                        onChange={(e) => handleChange('catalogFloatingWhatsAppText', e.target.value)}
+                      />
+                      <p className="text-[10px] text-muted-foreground">
+                        Texto amigável que aparece ao passar o cursor sobre o botão flutuante.
+                      </p>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* Card: Condições Comerciais, PIX & Pedido Mínimo */}
+              <Card className="border-primary/25 shadow-xs">
+                <CardHeader>
+                  <div className="flex items-center justify-between gap-2">
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <Percent className="size-4 text-primary" />
+                      Condições Comerciais & Destaques de Pagamento
+                    </CardTitle>
+                    <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-primary/10 text-primary shrink-0">
+                      Transparência
+                    </span>
+                  </div>
+                  <CardDescription className="text-xs">
+                    Configure selos de desconto no PIX, avisos de produção antecipada e valor mínimo de encomenda.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="space-y-1.5">
+                      <Label htmlFor="m-pix-text" className="text-xs font-semibold flex items-center gap-1.5">
+                        <Percent className="size-3.5 text-emerald-600" />
+                        Destaque de Desconto no PIX (Opcional)
+                      </Label>
+                      <Input
+                        id="m-pix-text"
+                        placeholder="Ex: 5% de desconto à vista no PIX"
+                        value={formData.catalogPixDiscountText}
+                        onChange={(e) => handleChange('catalogPixDiscountText', e.target.value)}
+                      />
+                      <p className="text-[10px] text-muted-foreground">
+                        Exibido com destaque em selo verde na vitrine e na sacola de compras.
+                      </p>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <Label htmlFor="m-min-order" className="text-xs font-semibold flex items-center gap-1.5">
+                        <ShoppingBag className="size-3.5 text-primary" />
+                        Valor Mínimo de Pedido (R$)
+                      </Label>
+                      <Input
+                        id="m-min-order"
+                        type="number"
+                        min={0}
+                        step={5}
+                        placeholder="0.00"
+                        value={formData.catalogMinOrderAmount || ''}
+                        onChange={(e) => handleChange('catalogMinOrderAmount', parseFloat(e.target.value) || 0)}
+                      />
+                      <p className="text-[10px] text-muted-foreground">
+                        Deixe 0 para desativar. Se preenchido, a sacola avisará caso o subtotal seja menor.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label htmlFor="m-advance-text" className="text-xs font-semibold flex items-center gap-1.5">
+                      <Clock className="size-3.5 text-amber-500" />
+                      Aviso de Produção & Antecedência (Opcional)
+                    </Label>
+                    <Input
+                      id="m-advance-text"
+                      placeholder="Ex: Peças 100% artesanais • Reserve sua data com 15 dias de antecedência"
+                      value={formData.catalogAdvanceNoticeText}
+                      onChange={(e) => handleChange('catalogAdvanceNoticeText', e.target.value)}
+                    />
+                    <p className="text-[10px] text-muted-foreground">
+                      Frase em faixa de aviso para orientar os clientes sobre o planejamento de encomendas.
                     </p>
                   </div>
                 </CardContent>
