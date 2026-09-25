@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import DOMPurify from 'dompurify';
 import { ConceptResult, CutSheetPreview } from '../types';
 import { 
   Check, 
@@ -271,7 +272,11 @@ export const ResultViewer: React.FC<ResultViewerProps> = ({ result }) => {
 
                     <div 
                       className="w-full max-h-[380px] overflow-auto flex items-center justify-center bg-slate-50/70 rounded-lg p-2 border border-dashed border-slate-200"
-                      dangerouslySetInnerHTML={{ __html: currentCutSheet.svgContent }}
+                      dangerouslySetInnerHTML={{ 
+                        __html: DOMPurify.sanitize(currentCutSheet.svgContent, {
+                          USE_PROFILES: { svg: true, svgFilters: true },
+                        }) 
+                      }}
                     />
                   </div>
 

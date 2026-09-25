@@ -57,7 +57,7 @@ firebase firestore:get users/{UID} --project luisices-dev
 #### Opção A: Via Console Firebase
 1. Authentication > Add user
    - Email: `caio.garcia@gmail.com`
-   - Password: `Hexa1020**`
+   - Password: `<SUA_SENHA_DE_TESTE>`
 
 2. Firestore > users > Add document
    - Document ID: `{UID do usuário criado}`
@@ -93,7 +93,7 @@ https://github.com/ccesargarcia/luisices/settings/secrets/actions
 
 **Secrets necessárias:**
 - ✅ `TEST_USER_EMAIL` = caio.garcia@gmail.com
-- ✅ `TEST_USER_PASSWORD` = Hexa1020**
+- ✅ `TEST_USER_PASSWORD` = <SUA_SENHA_DE_TESTE>
 
 **Firebase DEV (7 secrets):**
 - ✅ `DEV_VITE_FIREBASE_API_KEY`
@@ -172,7 +172,7 @@ Após criar o usuário ou ajustar credenciais, rode localmente:
 # 1. Configurar .env.test com credenciais do DEV
 cat > .env.test << 'EOF'
 TEST_USER_EMAIL=caio.garcia@gmail.com
-TEST_USER_PASSWORD=Hexa1020**
+TEST_USER_PASSWORD=<SUA_SENHA_DE_TESTE>
 PLAYWRIGHT_BASE_URL=https://dev.luisices.com.br
 EOF
 

@@ -252,7 +252,7 @@ service cloud.firestore {
         && request.resource.data.totalItems <= 1000
         && request.resource.data.subtotal is number
         && request.resource.data.subtotal >= 0
-        && request.resource.data.status in ['received', 'converted', 'cancelled']
+        && request.resource.data.status == 'received'
         && (!('customerNotes' in request.resource.data) || (request.resource.data.customerNotes is string && request.resource.data.customerNotes.size() <= 2000));
 
       // Leitura permitida para administradores, role user ou membros autorizados

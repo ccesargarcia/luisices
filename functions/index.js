@@ -3897,9 +3897,19 @@ exports.getWhatsAppInstanceStatus = onCall({ maxInstances: 5, secrets: [EVOLUTIO
 /**
  * Webhook para receber mensagens recebidas (MESSAGES_UPSERT) da API do WhatsApp em tempo real.
  */
-exports.evolutionWhatsAppWebhook = onRequest(async (req, res) => {
+exports.evolutionWhatsAppWebhook = onRequest({ secrets: [EVOLUTION_API_KEY] }, async (req, res) => {
   if (req.method !== 'POST') {
     res.status(405).send('Method Not Allowed');
+    return;
+  }
+
+  // Validação de autenticação/segredo do webhook (Evolution API)
+  const expectedApiKey = (EVOLUTION_API_KEY.value && EVOLUTION_API_KEY.value()) || process.env.EVOLUTION_API_KEY;
+  const providedApiKey = req.headers['x-api-key'] || req.headers['apikey'] || req.query.token || (req.headers.authorization ? req.headers.authorization.replace(/^Bearer\s+/i, '') : null);
+
+  if (expectedApiKey && (!providedApiKey || providedApiKey !== expectedApiKey)) {
+    console.warn('[evolutionWhatsAppWebhook] Tentativa de requisição não autorizada rejeitada.');
+    res.status(401).json({ error: 'Unauthorized webhook request' });
     return;
   }
 

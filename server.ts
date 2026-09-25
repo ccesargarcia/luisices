@@ -162,6 +162,41 @@ app.get('/api/health', (req, res) => {
   });
 });
 
+// Rate limiting & security middleware for Studio AI endpoints
+const studioRateLimiterMap = new Map<string, { count: number; resetTime: number }>();
+const STUDIO_WINDOW_MS = 60 * 1000;
+const STUDIO_MAX_REQUESTS = 20;
+
+app.use('/api/studio', (req, res, next) => {
+  // 1. Validação de segredo caso STUDIO_API_SECRET esteja configurado no ambiente
+  const expectedSecret = process.env.STUDIO_API_SECRET;
+  if (expectedSecret) {
+    const headerAuth = req.headers['x-studio-secret'] || (req.headers.authorization ? req.headers.authorization.replace(/^Bearer\s+/i, '') : null);
+    if (!headerAuth || headerAuth !== expectedSecret) {
+      return res.status(401).json({ error: 'Acesso não autorizado ao estúdio de criação.' });
+    }
+  }
+
+  // 2. Proteção contra abuso e exaustão de cota por IP
+  const forwarded = req.headers['x-forwarded-for'];
+  const ip = (typeof forwarded === 'string' ? forwarded.split(',')[0].trim() : req.socket.remoteAddress) || 'unknown';
+  const now = Date.now();
+  const record = studioRateLimiterMap.get(ip);
+
+  if (!record || now > record.resetTime) {
+    studioRateLimiterMap.set(ip, { count: 1, resetTime: now + STUDIO_WINDOW_MS });
+  } else {
+    record.count++;
+    if (record.count > STUDIO_MAX_REQUESTS) {
+      return res.status(429).json({ 
+        error: 'Limite de requisições excedido para geração de IA. Aguarde um minuto antes de tentar novamente.' 
+      });
+    }
+  }
+
+  next();
+});
+
 // Endpoint: Dynamic Catalog Knowledge & Learning Status
 app.get('/api/studio/catalog-knowledge', (req, res) => {
   const promptContext = getCompiledCatalogSystemPrompt();
