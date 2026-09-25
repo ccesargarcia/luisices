@@ -1236,168 +1236,131 @@ export function PublicCatalog() {
               </section>
             )}
 
-          {/* Barra de Filtros & Ordenação (Conceito 3 - Menu Dropdown Integrado com Contadores Dinâmicos) */}
-          <div className="space-y-3" ref={categoryDropdownRef}>
-            {/* 1. BARRA DE METADADOS & DROPDOWN INTEGRADO */}
-            <div className="relative z-30">
-              <div className="min-h-12 py-2 px-3.5 sm:px-4 rounded-2xl bg-white/85 dark:bg-[#1f191b]/90 backdrop-blur-md border border-stone-200/70 dark:border-[#ebcdcd]/15 flex flex-wrap items-center justify-between gap-2.5 text-xs text-[#504444] dark:text-[#c9c0b8] shadow-xs">
+          {/* Barra de Filtros & Ordenação (Conceito 3 - Barra Única de Temas & Ocasiões com Dropdown Integrado) */}
+          <div className="relative z-30" ref={categoryDropdownRef}>
+            <div className="min-h-12 py-2 px-3.5 sm:px-4 rounded-2xl bg-white/85 dark:bg-[#1f191b]/90 backdrop-blur-md border border-stone-200/70 dark:border-[#ebcdcd]/15 flex flex-wrap items-center justify-between gap-2.5 text-xs text-[#504444] dark:text-[#c9c0b8] shadow-xs">
+              
+              {/* Lado Esquerdo: Metadados com Gatilho Interativo de Dropdown */}
+              <div className="flex items-center gap-1.5 flex-wrap font-medium">
+                <span>Mostrando <strong className="text-[#221a1a] dark:text-[#e8e0e3] font-bold">{filteredProducts.length} {filteredProducts.length === 1 ? 'criação' : 'criações'}</strong> em</span>
                 
-                {/* Lado Esquerdo: Metadados com Gatilho Interativo de Dropdown */}
-                <div className="flex items-center gap-1.5 flex-wrap font-medium">
-                  <span>Mostrando <strong className="text-[#221a1a] dark:text-[#e8e0e3] font-bold">{filteredProducts.length} {filteredProducts.length === 1 ? 'criação' : 'criações'}</strong> em</span>
+                <button 
+                  type="button"
+                  onClick={() => setIsCategoryDropdownOpen((prev) => !prev)}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#613d3e]/10 dark:bg-[#f4b7b9]/15 hover:bg-[#613d3e]/20 dark:hover:bg-[#f4b7b9]/25 text-[#613d3e] dark:text-[#f4b7b9] font-bold text-xs border border-[#613d3e]/25 dark:border-[#f4b7b9]/30 transition active:scale-95 cursor-pointer shadow-2xs"
+                  title="Explorar temas e ocasiões do ateliê"
+                >
+                  <SlidersHorizontal size={13} className="shrink-0" />
+                  <span className="capitalize">{selectedCategory === 'todos' ? 'Temas & Ocasiões' : selectedCategory}</span>
+                  <ChevronDown size={14} className={`shrink-0 transform transition-transform duration-200 ${isCategoryDropdownOpen ? 'rotate-180' : ''}`} />
+                </button>
+              </div>
+
+              {/* Lado Direito: Seletor de Ordenação */}
+              <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1.5">
+                  <ArrowUpDown size={13} className="text-stone-400 dark:text-stone-500" />
+                  <label htmlFor="catalog-sort" className="hidden sm:inline text-xs text-stone-500 dark:text-stone-400 font-medium">
+                    Ordenar:
+                  </label>
+                  <Select value={sortBy} onValueChange={(val) => setSortBy(val)}>
+                    <SelectTrigger id="catalog-sort" aria-label="Ordenar produtos" className="h-8 text-xs w-[130px] bg-white/90 dark:bg-[#161214]/90 border-stone-200 dark:border-stone-700">
+                      <SelectValue placeholder="Ordenar" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="destaque" className="text-xs">Destaques</SelectItem>
+                      <SelectItem value="preco-menor" className="text-xs">Menor preço</SelectItem>
+                      <SelectItem value="preco-maior" className="text-xs">Maior preço</SelectItem>
+                      <SelectItem value="nome-az" className="text-xs">Nome (A - Z)</SelectItem>
+                      <SelectItem value="prazo" className="text-xs">Menor prazo</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            </div>
+
+            {/* FLOATING DROPDOWN POPOVER (Temas & Ocasiões) */}
+            {isCategoryDropdownOpen && (
+              <div className="absolute left-0 right-0 top-full mt-2 p-4 rounded-2xl bg-[#1e1a1c]/95 dark:bg-[#1a1618]/95 backdrop-blur-2xl border border-[#d39a9c]/40 shadow-2xl z-50 text-white space-y-3 animate-in fade-in slide-in-from-top-2 duration-200">
+                
+                {/* Cabeçalho do Popover */}
+                <div className="flex items-center justify-between pb-2.5 border-b border-white/10">
+                  <div className="flex items-center gap-2">
+                    <SlidersHorizontal className="size-4 text-[#d39a9c]" />
+                    <span className="text-xs font-bold uppercase tracking-wider text-[#d39a9c]">
+                      TEMAS &amp; OCASIÕES DO ATELIÊ
+                    </span>
+                  </div>
                   
+                  <span className="text-[10px] px-2.5 py-0.5 rounded-full border border-[#d39a9c]/40 text-[#d39a9c] font-bold bg-[#d39a9c]/10">
+                    {products.length} {products.length === 1 ? 'Peça Ativa' : 'Peças Ativas'}
+                  </span>
+                </div>
+
+                {/* Subtítulo */}
+                <div className="text-[10px] font-bold uppercase tracking-widest text-white/50 pt-1">
+                  FILTRAR POR TEMA OU OCASIÃO
+                </div>
+
+                {/* Lista de Categorias com Contadores Dinâmicos em Tempo Real */}
+                <div className="space-y-1 max-h-64 overflow-y-auto pr-1 custom-scrollbar">
+                  {categories.map((cat) => {
+                    const isActive = selectedCategory.toLowerCase() === cat.toLowerCase();
+                    const count = categoryCounts[cat] ?? 0;
+                    return (
+                      <button
+                        key={cat}
+                        type="button"
+                        onClick={() => {
+                          setSelectedCategory(cat);
+                          setIsCategoryDropdownOpen(false);
+                        }}
+                        className={`w-full flex items-center justify-between p-2.5 rounded-xl transition text-xs font-medium cursor-pointer ${
+                          isActive 
+                            ? 'bg-[#d39a9c]/20 text-white border border-[#d39a9c]/40 shadow-sm'
+                            : 'hover:bg-white/5 text-white/70 hover:text-white'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2.5">
+                          <span className={`size-2 rounded-full ${isActive ? 'bg-[#d39a9c] shadow-sm' : 'bg-transparent border border-white/40'}`} />
+                          <span className="capitalize">{cat === 'todos' ? 'Todos os temas & ocasiões' : cat}</span>
+                        </div>
+
+                        <div className="flex items-center gap-1.5">
+                          <span className={`text-[11px] font-bold ${isActive ? 'text-[#d39a9c]' : 'text-white/50'}`}>
+                            {count}
+                          </span>
+                          {isActive && <Check className="size-3.5 text-[#d39a9c]" />}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Rodapé de Ações do Popover */}
+                <div className="pt-3 border-t border-white/10 flex items-center justify-between gap-2">
                   <button 
                     type="button"
-                    onClick={() => setIsCategoryDropdownOpen((prev) => !prev)}
-                    className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-[#613d3e]/10 dark:bg-[#f4b7b9]/15 hover:bg-[#613d3e]/20 dark:hover:bg-[#f4b7b9]/25 text-[#613d3e] dark:text-[#f4b7b9] font-bold text-xs border border-[#613d3e]/25 dark:border-[#f4b7b9]/30 transition active:scale-95 cursor-pointer shadow-2xs"
-                    title="Explorar coleções do ateliê"
+                    onClick={() => {
+                      setSelectedCategory('todos');
+                      setIsCategoryDropdownOpen(false);
+                    }}
+                    className="text-xs text-white/70 hover:text-[#d39a9c] font-medium transition cursor-pointer"
                   >
-                    <SlidersHorizontal size={13} className="shrink-0" />
-                    <span className="capitalize">{selectedCategory === 'todos' ? 'Todas as coleções' : selectedCategory}</span>
-                    <ChevronDown size={14} className={`shrink-0 transform transition-transform duration-200 ${isCategoryDropdownOpen ? 'rotate-180' : ''}`} />
+                    Ver todos os temas &amp; ocasiões ({products.length}) →
+                  </button>
+
+                  <button 
+                    type="button"
+                    onClick={() => setIsCategoryDropdownOpen(false)}
+                    className="px-4 py-1.5 rounded-xl border border-[#d39a9c] text-[#d39a9c] hover:bg-[#d39a9c] hover:text-[#161214] font-bold text-xs uppercase tracking-wider transition active:scale-95 cursor-pointer"
+                  >
+                    FECHAR
                   </button>
                 </div>
 
-                {/* Lado Direito: Seletor de Ordenação */}
-                <div className="flex items-center gap-2">
-                  <div className="flex items-center gap-1.5">
-                    <ArrowUpDown size={13} className="text-stone-400 dark:text-stone-500" />
-                    <label htmlFor="catalog-sort" className="hidden sm:inline text-xs text-stone-500 dark:text-stone-400 font-medium">
-                      Ordenar:
-                    </label>
-                    <Select value={sortBy} onValueChange={(val) => setSortBy(val)}>
-                      <SelectTrigger id="catalog-sort" aria-label="Ordenar produtos" className="h-8 text-xs w-[130px] bg-white/90 dark:bg-[#161214]/90 border-stone-200 dark:border-stone-700">
-                        <SelectValue placeholder="Ordenar" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="destaque" className="text-xs">Destaques</SelectItem>
-                        <SelectItem value="preco-menor" className="text-xs">Menor preço</SelectItem>
-                        <SelectItem value="preco-maior" className="text-xs">Maior preço</SelectItem>
-                        <SelectItem value="nome-az" className="text-xs">Nome (A - Z)</SelectItem>
-                        <SelectItem value="prazo" className="text-xs">Menor prazo</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
               </div>
-
-              {/* FLOATING DROPDOWN POPOVER (Conceito 3) */}
-              {isCategoryDropdownOpen && (
-                <div className="absolute left-0 right-0 top-full mt-2 p-4 rounded-2xl bg-[#1e1a1c]/95 dark:bg-[#1a1618]/95 backdrop-blur-2xl border border-[#d39a9c]/40 shadow-2xl z-50 text-white space-y-3 animate-in fade-in slide-in-from-top-2 duration-200">
-                  
-                  {/* Cabeçalho do Popover */}
-                  <div className="flex items-center justify-between pb-2.5 border-b border-white/10">
-                    <div className="flex items-center gap-2">
-                      <SlidersHorizontal className="size-4 text-[#d39a9c]" />
-                      <span className="text-xs font-bold uppercase tracking-wider text-[#d39a9c]">
-                        COLEÇÕES DO ATELIÊ
-                      </span>
-                    </div>
-                    
-                    <span className="text-[10px] px-2.5 py-0.5 rounded-full border border-[#d39a9c]/40 text-[#d39a9c] font-bold bg-[#d39a9c]/10">
-                      {products.length} {products.length === 1 ? 'Peça Ativa' : 'Peças Ativas'}
-                    </span>
-                  </div>
-
-                  {/* Subtítulo */}
-                  <div className="text-[10px] font-bold uppercase tracking-widest text-white/50 pt-1">
-                    FILTRAR POR CATEGORIA
-                  </div>
-
-                  {/* Lista de Categorias com Contadores Dinâmicos em Tempo Real */}
-                  <div className="space-y-1 max-h-64 overflow-y-auto pr-1 custom-scrollbar">
-                    {categories.map((cat) => {
-                      const isActive = selectedCategory.toLowerCase() === cat.toLowerCase();
-                      const count = categoryCounts[cat] ?? 0;
-                      return (
-                        <button
-                          key={cat}
-                          type="button"
-                          onClick={() => {
-                            setSelectedCategory(cat);
-                            setIsCategoryDropdownOpen(false);
-                          }}
-                          className={`w-full flex items-center justify-between p-2.5 rounded-xl transition text-xs font-medium cursor-pointer ${
-                            isActive 
-                              ? 'bg-[#d39a9c]/20 text-white border border-[#d39a9c]/40 shadow-sm'
-                              : 'hover:bg-white/5 text-white/70 hover:text-white'
-                          }`}
-                        >
-                          <div className="flex items-center gap-2.5">
-                            <span className={`size-2 rounded-full ${isActive ? 'bg-[#d39a9c] shadow-sm' : 'bg-transparent border border-white/40'}`} />
-                            <span className="capitalize">{cat === 'todos' ? 'Todas as coleções' : cat}</span>
-                          </div>
-
-                          <div className="flex items-center gap-1.5">
-                            <span className={`text-[11px] font-bold ${isActive ? 'text-[#d39a9c]' : 'text-white/50'}`}>
-                              {count}
-                            </span>
-                            {isActive && <Check className="size-3.5 text-[#d39a9c]" />}
-                          </div>
-                        </button>
-                      );
-                    })}
-                  </div>
-
-                  {/* Rodapé de Ações do Popover */}
-                  <div className="pt-3 border-t border-white/10 flex items-center justify-between gap-2">
-                    <button 
-                      type="button"
-                      onClick={() => {
-                        setSelectedCategory('todos');
-                        setIsCategoryDropdownOpen(false);
-                      }}
-                      className="text-xs text-white/70 hover:text-[#d39a9c] font-medium transition cursor-pointer"
-                    >
-                      Ver todas as {products.length} peças →
-                    </button>
-
-                    <button 
-                      type="button"
-                      onClick={() => setIsCategoryDropdownOpen(false)}
-                      className="px-4 py-1.5 rounded-xl border border-[#d39a9c] text-[#d39a9c] hover:bg-[#d39a9c] hover:text-[#161214] font-bold text-xs uppercase tracking-wider transition active:scale-95 cursor-pointer"
-                    >
-                      FECHAR
-                    </button>
-                  </div>
-
-                </div>
-              )}
-            </div>
-
-            {/* Categorias: Carrossel Horizontal em Linha Única com Contadores Dinâmicos */}
-            <div className="relative group">
-              <div className="absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-[#fff8f7] dark:from-[#161214] to-transparent pointer-events-none z-10" />
-              <div className="flex items-center gap-1.5 sm:gap-2 overflow-x-auto pb-1 pt-0.5 no-scrollbar scroll-smooth flex-nowrap -mx-1 px-1">
-                {categories.map((cat) => {
-                  const isActive = selectedCategory.toLowerCase() === cat.toLowerCase();
-                  const count = categoryCounts[cat];
-                  return (
-                    <button
-                      key={cat}
-                      onClick={() => setSelectedCategory(cat)}
-                      className={`flex-shrink-0 flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-all duration-150 cursor-pointer shadow-xs ${
-                        isActive
-                          ? 'bg-[#613d3e] dark:bg-[#f4b7b9] text-white dark:text-[#4c2527] shadow-sm scale-102'
-                          : 'bg-white/70 dark:bg-[#1f191b]/80 border border-stone-200/70 dark:border-[#ebcdcd]/15 text-[#504444] dark:text-[#c9c0b8] hover:bg-white dark:hover:bg-[#2b2225]'
-                      }`}
-                    >
-                      {cat === 'todos' && <Sparkles size={12} />}
-                      <span className="capitalize">{cat === 'todos' ? 'Todos os produtos' : cat}</span>
-                      {typeof count === 'number' && (
-                        <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold tabular-nums ${
-                          isActive
-                            ? 'bg-white/20 dark:bg-black/20 text-white dark:text-[#4c2527]'
-                            : 'bg-stone-200/70 dark:bg-stone-800 text-stone-600 dark:text-stone-300'
-                        }`}>
-                          {count}
-                        </span>
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
+            )}
           </div>
 
           {/* 3. Grid Responsivo de Produtos: 2 colunas mobile / 3 tablet / 4 desktop */}
