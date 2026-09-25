@@ -24,7 +24,7 @@ export function PermissionRoute({ children, check, allowUserRole = false }: Perm
     );
   }
 
-  const isAllowed = hasPermission(check) || (allowUserRole && (userProfile?.role === 'user' || userProfile?.role === 'admin') && userProfile.active);
+  const isAllowed = hasPermission(check) || (allowUserRole && (userProfile?.role === 'user' || userProfile?.role === 'admin') && userProfile.active !== false);
 
   if (!isAllowed) {
     return (

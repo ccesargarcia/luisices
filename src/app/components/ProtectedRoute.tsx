@@ -27,7 +27,7 @@ export function ProtectedRoute({ children, adminOnly = false }: ProtectedRoutePr
   }
 
   // Block inactive users
-  if (userProfile && !userProfile.active) {
+  if (userProfile && userProfile.active === false) {
     return <Navigate to="/login" replace />;
   }
 

@@ -82,7 +82,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             const data = snap.data() as UserProfile;
 
             // Se o administrador desativar a conta, efetua logout imediatamente
-            if (!data.active) {
+            if (data.active === false) {
               toast.error('Sua conta foi desativada pelo administrador.');
               firebaseAuthService.logout().catch(() => {});
               setUserProfile(null);
@@ -127,6 +127,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
             const profile: UserProfile = {
               ...data,
+              active: data.active !== false,
               permissions,
             };
 
@@ -162,7 +163,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       user.displayName ?? undefined
     );
 
-    if (profile && !profile.active) {
+    if (profile && profile.active === false) {
       // Usuário inativo - fazer logout imediato
       await firebaseAuthService.logout();
       throw new Error('Sua conta foi desativada. Entre em contato com o administrador.');
@@ -188,7 +189,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const hasPermission = useCallback(
     (check: (p: UserProfile['permissions']) => boolean): boolean => {
-      if (!userProfile || !userProfile.active) {
+      if (!userProfile || userProfile.active === false) {
         return false;
       }
       if (userProfile.role === 'admin') {
