@@ -97,7 +97,7 @@ export function PublicCatalog() {
   });
 
   const [searchQuery, setSearchQuery] = useState<string>('');
-  const [selectedCategory, setSelectedCategory] = useState<string>('todos');
+  const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
   const [sortBy, setSortBy] = useState<string>(() => {
     try {
       const raw = typeof window !== 'undefined' ? localStorage.getItem('luisices_public_store_settings') : null;
@@ -139,18 +139,6 @@ export function PublicCatalog() {
       document.removeEventListener('keydown', handleKeyDown);
     };
   }, [isCategoryDropdownOpen, isBottomSheetOpen]);
-
-  // Trava scroll do body quando a gaveta / bottom sheet estiver aberta
-  useEffect(() => {
-    if (typeof document === 'undefined') return;
-    if (isBottomSheetOpen) {
-      const originalStyle = window.getComputedStyle(document.body).overflow;
-      document.body.style.overflow = 'hidden';
-      return () => {
-        document.body.style.overflow = originalStyle;
-      };
-    }
-  }, [isBottomSheetOpen]);
 
   // Produtos reais carregados em tempo real via Firestore (IndexedDB nativo do SDK)
   const [products, setProducts] = useState<CatalogProduct[]>([]);
@@ -709,13 +697,15 @@ export function PublicCatalog() {
   const isAnyModalOpen = Boolean(isCartOpen || selectedProductPreview || submittedOrderInfo || isBottomSheetOpen);
 
   useEffect(() => {
+    if (typeof document === 'undefined') return;
     if (isAnyModalOpen) {
-      const originalOverflow = document.body.style.overflow;
       document.body.style.overflow = 'hidden';
-      return () => {
-        document.body.style.overflow = originalOverflow;
-      };
+    } else {
+      document.body.style.overflow = '';
     }
+    return () => {
+      document.body.style.overflow = '';
+    };
   }, [isAnyModalOpen]);
 
   // Fechar modal, gaveta ou sacola com a tecla Escape
@@ -749,6 +739,40 @@ export function PublicCatalog() {
     return ['todos', ...unique];
   }, [products]);
 
+  // Helpers para Seleção Múltipla de Categorias
+  const isAllCategories = selectedCategories.length === 0 || selectedCategories.includes('todos');
+
+  const isCategorySelected = useCallback((cat: string) => {
+    if (cat.toLowerCase() === 'todos') {
+      return isAllCategories;
+    }
+    return !isAllCategories && selectedCategories.some((c) => c.toLowerCase() === cat.toLowerCase());
+  }, [isAllCategories, selectedCategories]);
+
+  const toggleCategory = useCallback((cat: string) => {
+    if (cat.toLowerCase() === 'todos') {
+      setSelectedCategories([]);
+      return;
+    }
+    setSelectedCategories((prev) => {
+      const isSelected = prev.some((c) => c.toLowerCase() === cat.toLowerCase());
+      if (isSelected) {
+        return prev.filter((c) => c.toLowerCase() !== cat.toLowerCase());
+      } else {
+        const clean = prev.filter((c) => c.toLowerCase() !== 'todos');
+        return [...clean, cat];
+      }
+    });
+  }, []);
+
+  const removeCategory = useCallback((cat: string) => {
+    setSelectedCategories((prev) => prev.filter((c) => c.toLowerCase() !== cat.toLowerCase()));
+  }, []);
+
+  const clearCategories = useCallback(() => {
+    setSelectedCategories([]);
+  }, []);
+
   // Contadores dinâmicos de produtos por categoria em tempo real
   const categoryCounts = useMemo(() => {
     const map: Record<string, number> = { todos: products.length };
@@ -770,10 +794,10 @@ export function PublicCatalog() {
     );
   }, [categories, bottomSheetSearchQuery]);
 
-  // Filtragem dinâmica e ordenação
+  // Filtragem dinâmica e ordenação com suporte a Seleção Múltipla de Temas
   const filteredProducts = useMemo(() => {
     let list = products.filter((prod) => {
-      const matchesCat = selectedCategory === 'todos' || prod.category.toLowerCase() === selectedCategory.toLowerCase();
+      const matchesCat = isAllCategories || selectedCategories.some((c) => c.toLowerCase() === prod.category.toLowerCase());
       const q = searchQuery.toLowerCase().trim();
       const matchesSearch = !q || prod.name.toLowerCase().includes(q) || prod.description.toLowerCase().includes(q) || prod.category.toLowerCase().includes(q);
       return matchesCat && matchesSearch;
@@ -798,7 +822,7 @@ export function PublicCatalog() {
     }
 
     return list;
-  }, [products, selectedCategory, searchQuery, sortBy]);
+  }, [products, isAllCategories, selectedCategories, searchQuery, sortBy]);
 
   // Cálculos do Carrinho
   const totalItemsCount = useMemo(() => cart.reduce((acc, item) => acc + item.quantity, 0), [cart]);
@@ -868,13 +892,14 @@ export function PublicCatalog() {
       alert('O número de WhatsApp da loja ainda não foi configurado pelo ateliê.');
       return;
     }
+    const catLabel = !isAllCategories ? selectedCategories.join(', ') : undefined;
     const msg = generateBespokeConsultationWhatsAppMessage({
       businessName: businessInfo.name,
-      category: selectedCategory !== 'todos' ? selectedCategory : undefined,
+      category: catLabel,
     });
     const url = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(msg)}`;
     window.open(url, '_blank', 'noopener,noreferrer');
-  }, [businessInfo.whatsapp, businessInfo.name, selectedCategory]);
+  }, [businessInfo.whatsapp, businessInfo.name, isAllCategories, selectedCategories]);
 
   // Envio de Pedido no WhatsApp com Deep Link formatado e registro no histórico
   const handleSendToWhatsApp = async () => {
@@ -1357,12 +1382,17 @@ export function PublicCatalog() {
 
           {/* Barra de Filtros & Navegação de Temas (Configurável: Dropdown / Carrossel / Bottom Sheet) */}
           {businessInfo.categoryFilterStyle === 'carousel' ? (
-            /* FORMATO 2: CARROSSEL DE CHIPS HORIZONTAIS */
+            /* FORMATO 2: CARROSSEL DE CHIPS HORIZONTAIS COM SELEÇÃO MÚLTIPLA */
             <div className="space-y-3">
               {/* Barra Superior de Contagem e Seletor de Ordenação */}
               <div className="flex items-center justify-between gap-2 text-xs text-[#504444] dark:text-[#c9c0b8] pt-1">
                 <span className="font-medium">
                   <strong>{filteredProducts.length}</strong> {filteredProducts.length === 1 ? 'criação encontrada' : 'criações encontradas'}
+                  {!isAllCategories && (
+                    <span className="ml-1 text-[#613d3e] dark:text-[#f4b7b9] font-bold">
+                      ({selectedCategories.length} {selectedCategories.length === 1 ? 'tema ativo' : 'temas ativos'})
+                    </span>
+                  )}
                 </span>
 
                 <div className="flex items-center gap-1.5">
@@ -1390,15 +1420,15 @@ export function PublicCatalog() {
                 <div className="absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-[#fff8f7] dark:from-[#161214] to-transparent pointer-events-none z-10" />
                 <div className="flex items-center gap-1.5 sm:gap-2 overflow-x-auto pb-1 pt-0.5 no-scrollbar scroll-smooth flex-nowrap -mx-1 px-1">
                   {categories.map((cat) => {
-                    const isActive = selectedCategory.toLowerCase() === cat.toLowerCase();
+                    const isActive = isCategorySelected(cat);
                     const count = categoryCounts[cat];
                     return (
                       <button
                         key={cat}
-                        onClick={() => setSelectedCategory(cat)}
+                        onClick={() => toggleCategory(cat)}
                         className={`flex-shrink-0 flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-all duration-150 cursor-pointer shadow-xs ${
                           isActive
-                            ? 'bg-[#613d3e] dark:bg-[#f4b7b9] text-white dark:text-[#4c2527] shadow-sm scale-102'
+                            ? 'bg-[#613d3e] dark:bg-[#f4b7b9] text-white dark:text-[#4c2527] shadow-sm scale-102 ring-2 ring-[#613d3e]/20 dark:ring-[#f4b7b9]/30'
                             : 'bg-white/70 dark:bg-[#1f191b]/80 border border-stone-200/70 dark:border-[#ebcdcd]/15 text-[#504444] dark:text-[#c9c0b8] hover:bg-white dark:hover:bg-[#2b2225]'
                         }`}
                       >
@@ -1424,36 +1454,52 @@ export function PublicCatalog() {
             <div className="space-y-3">
               <div className="min-h-12 py-2 px-3.5 sm:px-4 rounded-2xl bg-white/85 dark:bg-[#1f191b]/90 backdrop-blur-md border border-stone-200/70 dark:border-[#ebcdcd]/15 flex flex-wrap items-center justify-between gap-2.5 text-xs text-[#504444] dark:text-[#c9c0b8] shadow-xs">
                 
-                {/* Lado Esquerdo: Botão Principal de Filtro */}
-                <button
-                  type="button"
-                  onClick={() => setIsBottomSheetOpen(true)}
-                  className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-[#613d3e] dark:bg-[#f4b7b9] text-white dark:text-[#4c2527] font-bold text-xs shadow-sm hover:opacity-95 active:scale-95 transition cursor-pointer min-h-[44px]"
-                  aria-label="Abrir gaveta de temas e ocasiões"
-                >
-                  <SlidersHorizontal size={14} />
-                  <span>Temas &amp; Ocasiões</span>
-                  <span className="px-2 py-0.5 rounded-full bg-white/20 dark:bg-black/20 text-[10px] font-black tabular-nums">
-                    {selectedCategory === 'todos' ? products.length : (categoryCounts[selectedCategory] || 1)}
-                  </span>
-                </button>
+                {/* Lado Esquerdo: Botão Principal de Filtro + Pills Multi-seleção */}
+                <div className="flex items-center gap-2 flex-wrap">
+                  <button
+                    type="button"
+                    onClick={() => setIsBottomSheetOpen(true)}
+                    className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-[#613d3e] dark:bg-[#f4b7b9] text-white dark:text-[#4c2527] font-bold text-xs shadow-sm hover:opacity-95 active:scale-95 transition cursor-pointer min-h-[44px]"
+                    aria-label="Abrir gaveta de temas e ocasiões"
+                  >
+                    <SlidersHorizontal size={14} />
+                    <span>Temas &amp; Ocasiões</span>
+                    <span className="px-2 py-0.5 rounded-full bg-white/20 dark:bg-black/20 text-[10px] font-black tabular-nums">
+                      {isAllCategories ? products.length : `${selectedCategories.length} sel.`}
+                    </span>
+                  </button>
+
+                  {/* Pills dos temas selecionados */}
+                  {!isAllCategories && (
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      {selectedCategories.map((cat) => (
+                        <div key={cat} className="flex items-center gap-1.5 bg-[#613d3e]/10 dark:bg-[#f4b7b9]/15 text-[#613d3e] dark:text-[#f4b7b9] px-2.5 py-1 rounded-xl text-xs font-semibold border border-[#613d3e]/20 dark:border-[#f4b7b9]/30">
+                          <span className="capitalize truncate max-w-[130px] sm:max-w-none">{cat}</span>
+                          <button
+                            type="button"
+                            onClick={() => removeCategory(cat)}
+                            className="hover:opacity-75 p-0.5 cursor-pointer ml-0.5"
+                            title={`Remover filtro de ${cat}`}
+                          >
+                            <X size={12} />
+                          </button>
+                        </div>
+                      ))}
+                      {selectedCategories.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={clearCategories}
+                          className="text-[11px] text-stone-500 hover:text-stone-800 dark:hover:text-stone-200 underline cursor-pointer px-1"
+                        >
+                          Limpar todos
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
 
                 {/* Status da Seleção Atual + Seletor de Ordenação */}
                 <div className="flex items-center gap-3 flex-wrap">
-                  {selectedCategory !== 'todos' && (
-                    <div className="flex items-center gap-1.5 bg-[#613d3e]/10 dark:bg-[#f4b7b9]/15 text-[#613d3e] dark:text-[#f4b7b9] px-3 py-1 rounded-xl text-xs font-semibold border border-[#613d3e]/20 dark:border-[#f4b7b9]/30">
-                      <span className="capitalize truncate max-w-[140px] sm:max-w-none">{selectedCategory}</span>
-                      <button
-                        type="button"
-                        onClick={() => setSelectedCategory('todos')}
-                        className="hover:opacity-75 p-0.5 cursor-pointer ml-0.5"
-                        title="Limpar filtro de tema"
-                      >
-                        <X size={12} />
-                      </button>
-                    </div>
-                  )}
-
                   <div className="flex items-center gap-1.5">
                     <ArrowUpDown size={13} className="text-stone-400 dark:text-stone-500" />
                     <label htmlFor="catalog-sort" className="hidden sm:inline text-xs text-stone-500 dark:text-stone-400 font-medium">
@@ -1491,9 +1537,21 @@ export function PublicCatalog() {
                     title="Explorar temas e ocasiões do ateliê"
                   >
                     <SlidersHorizontal size={13} className="shrink-0" />
-                    <span className="capitalize">{selectedCategory === 'todos' ? 'Temas & Ocasiões' : selectedCategory}</span>
+                    <span className="capitalize">
+                      {isAllCategories ? 'Temas & Ocasiões' : (selectedCategories.length === 1 ? selectedCategories[0] : `${selectedCategories.length} temas sel.`)}
+                    </span>
                     <ChevronDown size={14} className={`shrink-0 transform transition-transform duration-200 ${isCategoryDropdownOpen ? 'rotate-180' : ''}`} />
                   </button>
+
+                  {!isAllCategories && (
+                    <button
+                      type="button"
+                      onClick={clearCategories}
+                      className="text-[11px] text-stone-500 hover:text-stone-800 dark:hover:text-stone-200 underline cursor-pointer ml-1"
+                    >
+                      Limpar
+                    </button>
+                  )}
                 </div>
 
                 {/* Lado Direito: Seletor de Ordenação */}
@@ -1533,36 +1591,37 @@ export function PublicCatalog() {
                     </div>
                     
                     <span className="text-[10px] px-2.5 py-0.5 rounded-full border border-[#d39a9c]/40 text-[#d39a9c] font-bold bg-[#d39a9c]/10">
-                      {products.length} {products.length === 1 ? 'Peça Ativa' : 'Peças Ativas'}
+                      {isAllCategories ? `${products.length} Peças` : `${selectedCategories.length} selecionados`}
                     </span>
                   </div>
 
                   {/* Subtítulo */}
                   <div className="text-[10px] font-bold uppercase tracking-widest text-white/50 pt-1">
-                    FILTRAR POR TEMA OU OCASIÃO
+                    SELECIONE UM OU MAIS TEMAS
                   </div>
 
                   {/* Lista de Categorias com Contadores Dinâmicos em Tempo Real */}
                   <div className="space-y-1 max-h-64 overflow-y-auto pr-1 custom-scrollbar">
                     {categories.map((cat) => {
-                      const isActive = selectedCategory.toLowerCase() === cat.toLowerCase();
+                      const isActive = isCategorySelected(cat);
                       const count = categoryCounts[cat] ?? 0;
                       return (
                         <button
                           key={cat}
                           type="button"
-                          onClick={() => {
-                            setSelectedCategory(cat);
-                            setIsCategoryDropdownOpen(false);
-                          }}
+                          onClick={() => toggleCategory(cat)}
                           className={`w-full flex items-center justify-between p-2.5 rounded-xl transition text-xs font-medium cursor-pointer ${
                             isActive 
                               ? 'bg-[#d39a9c]/20 text-white border border-[#d39a9c]/40 shadow-sm'
-                              : 'hover:bg-white/5 text-white/70 hover:text-white'
+                              : 'hover:bg-white/5 text-white/70 hover:text-white border border-transparent'
                           }`}
                         >
                           <div className="flex items-center gap-2.5">
-                            <span className={`size-2 rounded-full ${isActive ? 'bg-[#d39a9c] shadow-sm' : 'bg-transparent border border-white/40'}`} />
+                            <div className={`size-3.5 rounded border flex items-center justify-center transition-colors ${
+                              isActive ? 'bg-[#d39a9c] border-[#d39a9c] text-[#1e1a1c]' : 'border-white/30 bg-transparent'
+                            }`}>
+                              {isActive && <Check className="size-2.5 stroke-[3]" />}
+                            </div>
                             <span className="capitalize">{cat === 'todos' ? 'Todos os temas & ocasiões' : cat}</span>
                           </div>
 
@@ -1570,7 +1629,6 @@ export function PublicCatalog() {
                             <span className={`text-[11px] font-bold ${isActive ? 'text-[#d39a9c]' : 'text-white/50'}`}>
                               {count}
                             </span>
-                            {isActive && <Check className="size-3.5 text-[#d39a9c]" />}
                           </div>
                         </button>
                       );
@@ -1581,21 +1639,18 @@ export function PublicCatalog() {
                   <div className="pt-3 border-t border-white/10 flex items-center justify-between gap-2">
                     <button 
                       type="button"
-                      onClick={() => {
-                        setSelectedCategory('todos');
-                        setIsCategoryDropdownOpen(false);
-                      }}
+                      onClick={() => clearCategories()}
                       className="text-xs text-white/70 hover:text-[#d39a9c] font-medium transition cursor-pointer"
                     >
-                      Ver todos os temas &amp; ocasiões ({products.length}) →
+                      {isAllCategories ? `Todos (${products.length})` : 'Limpar seleção'}
                     </button>
 
                     <button 
                       type="button"
                       onClick={() => setIsCategoryDropdownOpen(false)}
-                      className="px-4 py-1.5 rounded-xl border border-[#d39a9c] text-[#d39a9c] hover:bg-[#d39a9c] hover:text-[#161214] font-bold text-xs uppercase tracking-wider transition active:scale-95 cursor-pointer"
+                      className="px-4 py-1.5 rounded-xl bg-[#d39a9c] text-[#161214] hover:bg-[#c4898b] font-bold text-xs uppercase tracking-wider transition active:scale-95 cursor-pointer shadow-sm"
                     >
-                      FECHAR
+                      CONCLUÍDO ({filteredProducts.length})
                     </button>
                   </div>
 
@@ -1776,9 +1831,9 @@ export function PublicCatalog() {
                   ? 'Os produtos marcados como públicos no painel aparecerão aqui.'
                   : 'Tente buscar por outros termos ou selecione "Todos os produtos".'}
               </p>
-              {products.length > 0 && (searchQuery || selectedCategory !== 'todos') && (
+              {products.length > 0 && (searchQuery || !isAllCategories) && (
                 <button
-                  onClick={() => { setSearchQuery(''); setSelectedCategory('todos'); }}
+                  onClick={() => { setSearchQuery(''); clearCategories(); }}
                   className="mt-4 px-4 py-2 rounded-xl text-xs font-semibold bg-[#613d3e] text-white cursor-pointer"
                 >
                   Limpar filtros
@@ -2251,16 +2306,13 @@ export function PublicCatalog() {
               {/* Lista de Opções Rolável com Altura Mínima de Toque >= 44px */}
               <div className="p-5 overflow-y-auto max-h-[50dvh] space-y-1.5 custom-scrollbar flex-1">
                 {filteredCategoriesForSheet.map((cat) => {
-                  const isActive = selectedCategory.toLowerCase() === cat.toLowerCase();
+                  const isActive = isCategorySelected(cat);
                   const count = categoryCounts[cat] ?? 0;
                   return (
                     <button
                       key={cat}
                       type="button"
-                      onClick={() => {
-                        setSelectedCategory(cat);
-                        setIsBottomSheetOpen(false);
-                      }}
+                      onClick={() => toggleCategory(cat)}
                       className={`w-full flex items-center justify-between p-3 rounded-2xl transition text-xs font-medium cursor-pointer min-h-[48px] ${
                         isActive 
                           ? 'bg-[#d39a9c]/20 text-white border border-[#d39a9c]/40 shadow-sm'
@@ -2268,7 +2320,13 @@ export function PublicCatalog() {
                       }`}
                     >
                       <div className="flex items-center gap-3">
-                        <span className={`size-2.5 rounded-full shrink-0 ${isActive ? 'bg-[#d39a9c] shadow-sm' : 'bg-transparent border border-white/40'}`} />
+                        <div className={`size-4.5 rounded-lg border flex items-center justify-center transition-colors ${
+                          isActive 
+                            ? 'bg-[#d39a9c] border-[#d39a9c] text-[#1e1a1c]' 
+                            : 'border-white/30 bg-transparent'
+                        }`}>
+                          {isActive && <Check className="size-3.5 stroke-[3]" />}
+                        </div>
                         <span className="capitalize font-semibold">{cat === 'todos' ? 'Todos os temas & ocasiões' : cat}</span>
                       </div>
 
@@ -2276,7 +2334,6 @@ export function PublicCatalog() {
                         <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${isActive ? 'bg-[#d39a9c] text-[#1e1a1c]' : 'bg-white/10 text-white/60'}`}>
                           {count}
                         </span>
-                        {isActive && <Check className="size-4 text-[#d39a9c] shrink-0" />}
                       </div>
                     </button>
                   );
@@ -2293,13 +2350,10 @@ export function PublicCatalog() {
               <div className="p-4 border-t border-white/10 bg-white/5 flex items-center justify-between gap-3 shrink-0">
                 <button
                   type="button"
-                  onClick={() => {
-                    setSelectedCategory('todos');
-                    setIsBottomSheetOpen(false);
-                  }}
+                  onClick={clearCategories}
                   className="text-xs text-white/70 hover:text-[#d39a9c] font-medium transition cursor-pointer px-2 py-1.5"
                 >
-                  Ver todos os temas ({products.length})
+                  {isAllCategories ? `Todos (${products.length})` : 'Limpar seleção'}
                 </button>
 
                 <button
