@@ -1221,7 +1221,12 @@ export function PublicCatalog() {
               {/* Botão de Consulta Direta Geral no WhatsApp (quando em modo direct_inquiry) */}
               {businessInfo.storeMode === 'direct_inquiry' && businessInfo.whatsapp && (
               <a
-                href={generateBespokeConsultationWhatsAppMessage(businessInfo.whatsapp, 'Catálogo Online')}
+                href={`https://wa.me/${normalizePhoneForWhatsApp(businessInfo.whatsapp)}?text=${encodeURIComponent(
+                  generateBespokeConsultationWhatsAppMessage({
+                    businessName: businessInfo.name,
+                    notes: 'Olá! Gostaria de tirar dúvidas pelo Catálogo Online.',
+                  })
+                )}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl sm:rounded-2xl bg-[#10B981] hover:bg-[#059669] text-white transition-all shadow-sm font-bold text-xs sm:text-sm cursor-pointer"
@@ -1722,7 +1727,15 @@ export function PublicCatalog() {
                       </button>
                     ) : businessInfo.storeMode === 'direct_inquiry' && businessInfo.whatsapp ? (
                       <a
-                        href={generateProductInquiryWhatsAppMessage(businessInfo.whatsapp, prod.name, prod.price)}
+                        href={`https://wa.me/${normalizePhoneForWhatsApp(businessInfo.whatsapp)}?text=${encodeURIComponent(
+                          generateProductInquiryWhatsAppMessage({
+                            businessName: businessInfo.name,
+                            productName: prod.name,
+                            price: prod.price,
+                            category: prod.category,
+                            leadTimeDays: prod.leadTimeDays,
+                          })
+                        )}`}
                         target="_blank"
                         rel="noopener noreferrer"
                         onClick={(e) => e.stopPropagation()}
@@ -2739,7 +2752,12 @@ export function PublicCatalog() {
               </div>
             )}
             <a
-              href={generateBespokeConsultationWhatsAppMessage(businessInfo.whatsapp, 'Catálogo Online')}
+              href={`https://wa.me/${normalizePhoneForWhatsApp(businessInfo.whatsapp)}?text=${encodeURIComponent(
+                generateBespokeConsultationWhatsAppMessage({
+                  businessName: businessInfo.name,
+                  notes: 'Olá! Estou navegando pelo Catálogo Online e gostaria de tirar algumas dúvidas.',
+                })
+              )}`}
               target="_blank"
               rel="noopener noreferrer"
               className="relative size-14 rounded-full bg-[#25D366] hover:bg-[#1EBE5D] text-white shadow-xl flex items-center justify-center transition-transform hover:scale-110 active:scale-95 cursor-pointer ring-4 ring-white/60 dark:ring-[#161214]/60"
