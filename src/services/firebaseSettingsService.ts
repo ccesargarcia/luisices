@@ -130,6 +130,9 @@ export interface UserSettings {
   catalogBackgroundStyle?: 'atmospheric' | 'solid'; // Estilo de fundo (atmospheric: glassmorphism suave com gradientes, solid: papel clean minimalista)
   catalogTypographyStyle?: 'modern' | 'editorial';  // Estilo tipográfico (modern: sans-serif, editorial: serif elegante)
   catalogDefaultSort?: 'destaque' | 'preco-menor' | 'preco-maior' | 'nome-az' | 'prazo'; // Ordenação padrão do catálogo
+  catalogPrimaryColor?: string;              // Cor primária da lojinha (botões, destaques)
+  catalogButtonRadius?: 'none' | 'sm' | 'md' | 'lg' | 'full'; // Arredondamento dos botões
+  catalogButtonStyle?: 'solid' | 'soft' | 'outline'; // Estilo dos botões
   catalogProductsPerPage?: number;           // Quantidade de produtos carregados inicialmente (ex: 12, 16, 24, 36, 48 ou 0 para todos)
 
   catalogBadge?: string;                      // Selo no header (ex: "Atelier", "Papelaria Afetiva")
@@ -400,6 +403,9 @@ export class FirebaseSettingsService {
       if (settings.catalogTypographyStyle !== undefined) publicData.catalogTypographyStyle = settings.catalogTypographyStyle;
       if (settings.catalogDefaultSort !== undefined) publicData.catalogDefaultSort = settings.catalogDefaultSort;
       if (settings.catalogCategoryFilterStyle !== undefined) publicData.catalogCategoryFilterStyle = settings.catalogCategoryFilterStyle;
+      if (settings.catalogPrimaryColor !== undefined) publicData.catalogPrimaryColor = settings.catalogPrimaryColor;
+      if (settings.catalogButtonRadius !== undefined) publicData.catalogButtonRadius = settings.catalogButtonRadius;
+      if (settings.catalogButtonStyle !== undefined) publicData.catalogButtonStyle = settings.catalogButtonStyle;
 
       if (settings.catalogBadge !== undefined) publicData.catalogBadge = settings.catalogBadge;
       if (settings.catalogStatusText !== undefined) publicData.catalogStatusText = settings.catalogStatusText;

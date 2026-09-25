@@ -197,6 +197,9 @@ export function PublicCatalog() {
       minOrderAmount: Number(saved?.catalogMinOrderAmount) || 0,
       backgroundStyle: (saved?.catalogBackgroundStyle || 'atmospheric') as 'atmospheric' | 'solid',
       typographyStyle: (saved?.catalogTypographyStyle || 'modern') as 'modern' | 'editorial',
+      primaryColor: saved?.catalogPrimaryColor || '',
+      buttonRadius: (saved?.catalogButtonRadius || 'md') as 'none' | 'sm' | 'md' | 'lg' | 'full',
+      buttonStyle: (saved?.catalogButtonStyle || 'solid') as 'solid' | 'soft' | 'outline',
       defaultSort: (saved?.catalogDefaultSort || 'destaque') as string,
       productsPerPage: saved?.catalogProductsPerPage !== undefined ? Number(saved.catalogProductsPerPage) : 12,
       badge: saved?.catalogBadge !== undefined ? saved.catalogBadge : '',
@@ -467,6 +470,9 @@ export function PublicCatalog() {
         minOrderAmount: s.catalogMinOrderAmount !== undefined ? Number(s.catalogMinOrderAmount) : prev.minOrderAmount,
         backgroundStyle: (s.catalogBackgroundStyle || prev.backgroundStyle || 'atmospheric') as 'atmospheric' | 'solid',
         typographyStyle: (s.catalogTypographyStyle || prev.typographyStyle || 'modern') as 'modern' | 'editorial',
+        primaryColor: s.catalogPrimaryColor || prev.primaryColor || '',
+        buttonRadius: (s.catalogButtonRadius || prev.buttonRadius || 'md') as 'none' | 'sm' | 'md' | 'lg' | 'full',
+        buttonStyle: (s.catalogButtonStyle || prev.buttonStyle || 'solid') as 'solid' | 'soft' | 'outline',
         defaultSort: (s.catalogDefaultSort || prev.defaultSort || 'destaque') as string,
         productsPerPage: s.catalogProductsPerPage !== undefined ? Number(s.catalogProductsPerPage) : (prev.productsPerPage ?? 12),
         badge: s.catalogBadge !== undefined ? s.catalogBadge : '',
@@ -1003,14 +1009,14 @@ export function PublicCatalog() {
   // ─── Página de Loja Despublicada (Manutenção / Fora do Ar) ───
   if (!storePublished) {
     return (
-      <div className={isDarkMode ? 'dark' : ''}>
+      <div className={isDarkMode ? 'dark' : ''} style={{ '--store-primary': businessInfo.primaryColor || '#613d3e' } as React.CSSProperties}>
 
         <div
           className={`min-h-[100dvh] flex flex-col items-center justify-center text-[#221a1a] dark:text-[#e8e0e3] transition-colors duration-500 font-sans
           bg-[#fff8f7] dark:bg-[#161214]
           [background-image:linear-gradient(135deg,#fceee9_0%,#fff8f7_52%,#ede7f6_100%)]
           dark:[background-image:none]
-          relative selection:bg-[#613d3e] selection:text-white px-6`}
+          relative selection:bg-[var(--store-primary,#613d3e)] selection:text-white px-6`}
         >
           {/* Camada de Gradientes Atmosféricos Fixos */}
           <div className="fixed inset-0 pointer-events-none opacity-80 dark:opacity-40 z-0">
@@ -1041,13 +1047,13 @@ export function PublicCatalog() {
               <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">
                 {businessInfo.name || 'Loja'}
               </h1>
-              <p className="text-base sm:text-lg text-[#613d3e]/80 dark:text-[#d4a0a2]/80 font-medium">
+              <p className="text-base sm:text-lg text-[var(--store-primary,#613d3e)]/80 dark:text-[#d4a0a2]/80 font-medium">
                 Estamos em manutenção
               </p>
             </div>
 
             {/* Mensagem personalizada ou padrão */}
-            <div className="p-5 rounded-2xl bg-white/60 dark:bg-white/5 border border-[#613d3e]/10 dark:border-white/10 backdrop-blur-sm shadow-sm max-w-sm">
+            <div className="p-5 rounded-2xl bg-white/60 dark:bg-white/5 border border-[var(--store-primary,#613d3e)]/10 dark:border-white/10 backdrop-blur-sm shadow-sm max-w-sm">
               <p className="text-sm sm:text-base text-[#221a1a]/70 dark:text-[#e8e0e3]/70 leading-relaxed">
                 {storeUnpublishMessage || 'Nossa loja está temporariamente fora do ar para atualizações. Voltaremos em breve com novidades! 💕'}
               </p>
@@ -1084,10 +1090,10 @@ export function PublicCatalog() {
                   href={sanitizedWebsiteUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="p-2.5 rounded-xl bg-[#613d3e]/10 hover:bg-[#613d3e]/20 dark:bg-white/10 dark:hover:bg-white/20 transition-colors"
+                  className="p-2.5 rounded-xl bg-[var(--store-primary,#613d3e)]/10 hover:bg-[var(--store-primary,#613d3e)]/20 dark:bg-white/10 dark:hover:bg-white/20 transition-colors"
                   title="Website"
                 >
-                  <Globe className="size-5 text-[#613d3e] dark:text-[#d4a0a2]" />
+                  <Globe className="size-5 text-[var(--store-primary,#613d3e)] dark:text-[#d4a0a2]" />
                 </a>
               )}
             </div>
@@ -1105,7 +1111,7 @@ export function PublicCatalog() {
   const titleFontClass = businessInfo.typographyStyle === 'editorial' ? 'font-serif' : 'font-sans';
 
   return (
-    <div className={isDarkMode ? 'dark' : ''}>
+    <div className={isDarkMode ? 'dark' : ''} style={{ '--store-primary': businessInfo.primaryColor || '#613d3e' } as React.CSSProperties}>
 
       {/* 
         Container Principal com Iluminação Atmosférica Radial (Glassmorphism & Depth) ou Papel Clean Solid
@@ -1115,7 +1121,7 @@ export function PublicCatalog() {
         ${businessInfo.backgroundStyle === 'solid'
           ? 'bg-stone-50 dark:bg-[#161214]'
           : 'bg-[#fff8f7] dark:bg-[#161214] [background-image:linear-gradient(135deg,#fceee9_0%,#fff8f7_52%,#ede7f6_100%)] dark:[background-image:none]'}
-        relative selection:bg-[#613d3e] selection:text-white ${featureFlags.enableOnlineOrders !== false && businessInfo.storeMode === 'cart' && totalItemsCount > 0 ? 'pb-24 sm:pb-20' : 'pb-4'}`}
+        relative selection:bg-[var(--store-primary,#613d3e)] selection:text-white ${featureFlags.enableOnlineOrders !== false && businessInfo.storeMode === 'cart' && totalItemsCount > 0 ? 'pb-24 sm:pb-20' : 'pb-4'}`}
       >
         {/* Camada de Gradientes Atmosféricos Fixos (desativada no modo clean solid) */}
         {businessInfo.backgroundStyle !== 'solid' && (
@@ -1167,7 +1173,7 @@ export function PublicCatalog() {
           ) : (
             <div className="flex items-center justify-center px-4">
               <span className={`font-black text-base sm:text-lg tracking-tight ${titleFontClass} ${
-                businessInfo.headerTextColor === 'light' ? 'text-white' : 'text-[#613d3e] dark:text-[#f4b7b9]'
+                businessInfo.headerTextColor === 'light' ? 'text-white' : 'text-[var(--store-primary,#613d3e)] dark:text-[#f4b7b9]'
               }`}>
                 {businessInfo.name}
               </span>
@@ -1187,7 +1193,7 @@ export function PublicCatalog() {
                 placeholder="Buscar produtos, temas, lembranças..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-10 pr-9 py-2.5 text-base sm:text-sm rounded-xl sm:rounded-2xl bg-stone-100/90 dark:bg-[#161214]/90 border border-stone-200/80 dark:border-stone-700 text-[#221a1a] dark:text-[#e8e0e3] placeholder:text-stone-400 dark:placeholder:text-stone-500 focus:outline-none focus:ring-2 focus:ring-[#613d3e]/30 dark:focus:ring-[#f4b7b9]/30 transition-all shadow-inner"
+                className="w-full pl-10 pr-9 py-2.5 text-base sm:text-sm rounded-xl sm:rounded-2xl bg-stone-100/90 dark:bg-[#161214]/90 border border-stone-200/80 dark:border-stone-700 text-[#221a1a] dark:text-[#e8e0e3] placeholder:text-stone-400 dark:placeholder:text-stone-500 focus:outline-none focus:ring-2 focus:ring-[var(--store-primary,#613d3e)]/30 dark:focus:ring-[#f4b7b9]/30 transition-all shadow-inner"
               />
               {searchQuery && (
                 <button
@@ -1236,7 +1242,7 @@ export function PublicCatalog() {
                   className="p-2.5 rounded-xl sm:rounded-2xl bg-stone-100/90 dark:bg-[#2b2225]/80 hover:bg-stone-200/80 dark:hover:bg-[#34292d] text-[#504444] dark:text-[#e8e0e3] border border-stone-200/80 dark:border-[#ebcdcd]/20 transition-all shadow-2xs cursor-pointer"
                   aria-label="Alternar tema"
                 >
-                  {isDarkMode ? <Sun size={16} className="text-[#fbbf24]" /> : <Moon size={16} className="text-[#613d3e]" />}
+                  {isDarkMode ? <Sun size={16} className="text-[#fbbf24]" /> : <Moon size={16} className="text-[var(--store-primary,#613d3e)]" />}
                 </button>
                 )}
               </div>
@@ -1245,7 +1251,7 @@ export function PublicCatalog() {
               {featureFlags.enableOnlineOrders !== false && businessInfo.storeMode === 'cart' && (
               <button
                 onClick={() => setIsCartOpen(true)}
-                className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl sm:rounded-2xl bg-[#613d3e] dark:bg-[#f4b7b9] text-white dark:text-[#4c2527] hover:opacity-95 active:scale-98 transition-all shadow-sm font-bold text-xs sm:text-sm cursor-pointer"
+                className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl sm:rounded-2xl bg-[var(--store-primary,#613d3e)] dark:bg-[#f4b7b9] text-white dark:text-[#4c2527] hover:opacity-95 active:scale-98 transition-all shadow-sm font-bold text-xs sm:text-sm cursor-pointer"
                 aria-label="Abrir sacola de encomendas"
               >
                 <div className="relative">
@@ -1353,7 +1359,7 @@ export function PublicCatalog() {
                         {businessInfo.name}
                       </h2>
                       {businessInfo.tagline && (
-                        <p className="text-sm sm:text-base font-medium text-[#613d3e] dark:text-[#f4b7b9] leading-snug">
+                        <p className="text-sm sm:text-base font-medium text-[var(--store-primary,#613d3e)] dark:text-[#f4b7b9] leading-snug">
                           {businessInfo.tagline}
                         </p>
                       )}
@@ -1364,7 +1370,7 @@ export function PublicCatalog() {
                   {(businessInfo.badge || businessInfo.statusText) && (
                     <div className="flex flex-wrap items-center gap-2 shrink-0">
                       {businessInfo.badge ? (
-                        <span className="text-xs font-semibold px-3 py-1 rounded-full bg-[#613d3e]/10 dark:bg-[#f4b7b9]/15 text-[#613d3e] dark:text-[#f4b7b9]">
+                        <span className="text-xs font-semibold px-3 py-1 rounded-full bg-[var(--store-primary,#613d3e)]/10 dark:bg-[#f4b7b9]/15 text-[var(--store-primary,#613d3e)] dark:text-[#f4b7b9]">
                           {businessInfo.badge}
                         </span>
                       ) : null}
@@ -1387,7 +1393,7 @@ export function PublicCatalog() {
                 {/* Destaques de confiança (Pills informativas) */}
                 <div className="pt-1 flex flex-wrap gap-2 text-[11px] text-[#504444] dark:text-[#c9c0b8] font-medium">
                   <span className="inline-flex items-center gap-1 bg-stone-100/80 dark:bg-[#161214]/60 px-2.5 py-1 rounded-full border border-stone-200/60 dark:border-stone-800">
-                    <Sparkle size={12} className="text-[#613d3e] dark:text-[#f4b7b9]" /> Feito à mão com afeto
+                    <Sparkle size={12} className="text-[var(--store-primary,#613d3e)] dark:text-[#f4b7b9]" /> Feito à mão com afeto
                   </span>
                   <span className="inline-flex items-center gap-1 bg-stone-100/80 dark:bg-[#161214]/60 px-2.5 py-1 rounded-full border border-stone-200/60 dark:border-stone-800">
                     <ShieldCheck size={12} className="text-emerald-600 dark:text-emerald-400" /> Aprovação da arte prévia
@@ -1409,7 +1415,7 @@ export function PublicCatalog() {
                 <span className="font-medium">
                   <strong>{filteredProducts.length}</strong> {filteredProducts.length === 1 ? 'criação encontrada' : 'criações encontradas'}
                   {!isAllCategories && (
-                    <span className="ml-1 text-[#613d3e] dark:text-[#f4b7b9] font-bold">
+                    <span className="ml-1 text-[var(--store-primary,#613d3e)] dark:text-[#f4b7b9] font-bold">
                       ({selectedCategories.length} {selectedCategories.length === 1 ? 'tema ativo' : 'temas ativos'})
                     </span>
                   )}
@@ -1448,7 +1454,7 @@ export function PublicCatalog() {
                         onClick={() => toggleCategory(cat)}
                         className={`flex-shrink-0 flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-all duration-150 cursor-pointer shadow-xs ${
                           isActive
-                            ? 'bg-[#613d3e] dark:bg-[#f4b7b9] text-white dark:text-[#4c2527] shadow-sm scale-102 ring-2 ring-[#613d3e]/20 dark:ring-[#f4b7b9]/30'
+                            ? 'bg-[var(--store-primary,#613d3e)] dark:bg-[#f4b7b9] text-white dark:text-[#4c2527] shadow-sm scale-102 ring-2 ring-[var(--store-primary,#613d3e)]/20 dark:ring-[#f4b7b9]/30'
                             : 'bg-white/70 dark:bg-[#1f191b]/80 border border-stone-200/70 dark:border-[#ebcdcd]/15 text-[#504444] dark:text-[#c9c0b8] hover:bg-white dark:hover:bg-[#2b2225]'
                         }`}
                       >
@@ -1479,7 +1485,7 @@ export function PublicCatalog() {
                   <button
                     type="button"
                     onClick={() => setIsBottomSheetOpen(true)}
-                    className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-[#613d3e] dark:bg-[#f4b7b9] text-white dark:text-[#4c2527] font-bold text-xs shadow-sm hover:opacity-95 active:scale-95 transition cursor-pointer min-h-[44px]"
+                    className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-[var(--store-primary,#613d3e)] dark:bg-[#f4b7b9] text-white dark:text-[#4c2527] font-bold text-xs shadow-sm hover:opacity-95 active:scale-95 transition cursor-pointer min-h-[44px]"
                     aria-label="Abrir gaveta de temas e ocasiões"
                   >
                     <SlidersHorizontal size={14} />
@@ -1493,7 +1499,7 @@ export function PublicCatalog() {
                   {!isAllCategories && (
                     <div className="flex items-center gap-1.5 flex-wrap">
                       {selectedCategories.map((cat) => (
-                        <div key={cat} className="flex items-center gap-1.5 bg-[#613d3e]/10 dark:bg-[#f4b7b9]/15 text-[#613d3e] dark:text-[#f4b7b9] px-2.5 py-1 rounded-xl text-xs font-semibold border border-[#613d3e]/20 dark:border-[#f4b7b9]/30">
+                        <div key={cat} className="flex items-center gap-1.5 bg-[var(--store-primary,#613d3e)]/10 dark:bg-[#f4b7b9]/15 text-[var(--store-primary,#613d3e)] dark:text-[#f4b7b9] px-2.5 py-1 rounded-xl text-xs font-semibold border border-[var(--store-primary,#613d3e)]/20 dark:border-[#f4b7b9]/30">
                           <span className="capitalize truncate max-w-[130px] sm:max-w-none">{cat}</span>
                           <button
                             type="button"
@@ -1553,7 +1559,7 @@ export function PublicCatalog() {
                   <button 
                     type="button"
                     onClick={() => setIsCategoryDropdownOpen((prev) => !prev)}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#613d3e]/10 dark:bg-[#f4b7b9]/15 hover:bg-[#613d3e]/20 dark:hover:bg-[#f4b7b9]/25 text-[#613d3e] dark:text-[#f4b7b9] font-bold text-xs border border-[#613d3e]/25 dark:border-[#f4b7b9]/30 transition active:scale-95 cursor-pointer shadow-2xs"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[var(--store-primary,#613d3e)]/10 dark:bg-[#f4b7b9]/15 hover:bg-[var(--store-primary,#613d3e)]/20 dark:hover:bg-[#f4b7b9]/25 text-[var(--store-primary,#613d3e)] dark:text-[#f4b7b9] font-bold text-xs border border-[var(--store-primary,#613d3e)]/25 dark:border-[#f4b7b9]/30 transition active:scale-95 cursor-pointer shadow-2xs"
                     title="Explorar temas e ocasiões do ateliê"
                   >
                     <SlidersHorizontal size={13} className="shrink-0" />
@@ -1730,7 +1736,7 @@ export function PublicCatalog() {
 
                     {/* Badge de Destaque / Categoria (se habilitado) */}
                     {prod.badge && (businessInfo.showBadgeBestSeller || businessInfo.showBadgeNew) && (
-                      <span className="absolute top-2 left-2 px-2 py-0.5 rounded-md text-[10px] font-bold bg-[#613d3e]/90 dark:bg-[#f4b7b9]/90 text-white dark:text-[#4c2527] backdrop-blur-xs shadow-xs">
+                      <span className="absolute top-2 left-2 px-2 py-0.5 rounded-md text-[10px] font-bold bg-[var(--store-primary,#613d3e)]/90 dark:bg-[#f4b7b9]/90 text-white dark:text-[#4c2527] backdrop-blur-xs shadow-xs">
                         {prod.badge}
                       </span>
                     )}
@@ -1744,12 +1750,12 @@ export function PublicCatalog() {
                   {/* Detalhes do Produto */}
                   <div className="p-3 sm:p-4 flex-1 flex flex-col justify-between space-y-2">
                     <div className="space-y-1.5">
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] sm:text-[11px] font-semibold bg-[#613d3e]/10 dark:bg-[#f4b7b9]/15 text-[#613d3e] dark:text-[#f4b7b9] border border-[#613d3e]/20 dark:border-[#f4b7b9]/20 w-fit max-w-full">
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] sm:text-[11px] font-semibold bg-[var(--store-primary,#613d3e)]/10 dark:bg-[#f4b7b9]/15 text-[var(--store-primary,#613d3e)] dark:text-[#f4b7b9] border border-[var(--store-primary,#613d3e)]/20 dark:border-[#f4b7b9]/20 w-fit max-w-full">
                         <Tag size={10} className="shrink-0" />
                         <span className="truncate">{prod.category || 'Geral'}</span>
                       </span>
                       <h3 
-                        className={`text-xs sm:text-sm font-bold text-[#221a1a] dark:text-[#e8e0e3] line-clamp-2 leading-snug cursor-pointer group-hover:text-[#613d3e] dark:group-hover:text-[#f4b7b9] transition-colors ${titleFontClass}`}
+                        className={`text-xs sm:text-sm font-bold text-[#221a1a] dark:text-[#e8e0e3] line-clamp-2 leading-snug cursor-pointer group-hover:text-[var(--store-primary,#613d3e)] dark:group-hover:text-[#f4b7b9] transition-colors ${titleFontClass}`}
                         onClick={() => handleOpenPreview(prod)}
                         title={prod.name}
                       >
@@ -1767,7 +1773,7 @@ export function PublicCatalog() {
                           </div>
                         )}
                         {businessInfo.showBadgeCustomizable && prod.isCustomizable && (
-                          <span className="text-[10px] font-semibold text-[#613d3e] dark:text-[#f4b7b9] inline-flex items-center gap-0.5 ml-auto">
+                          <span className="text-[10px] font-semibold text-[var(--store-primary,#613d3e)] dark:text-[#f4b7b9] inline-flex items-center gap-0.5 ml-auto">
                             <Sparkles size={10} /> Personalizável
                           </span>
                         )}
@@ -1775,7 +1781,7 @@ export function PublicCatalog() {
 
                       <div className="hidden sm:flex items-baseline justify-between pt-0.5">
                         <span className="text-xs text-stone-400 font-medium">Valor:</span>
-                        <span className="text-base font-extrabold text-[#613d3e] dark:text-[#f4b7b9] tabular-nums">
+                        <span className="text-base font-extrabold text-[var(--store-primary,#613d3e)] dark:text-[#f4b7b9] tabular-nums">
                           {formatCurrency(prod.price)}
                         </span>
                       </div>
@@ -1793,7 +1799,7 @@ export function PublicCatalog() {
                             setIsCartOpen(true);
                           }
                         }}
-                        className="w-full mt-2 py-2 sm:py-2.5 px-3 rounded-xl font-bold text-[11px] sm:text-xs flex items-center justify-center gap-1.5 bg-[#613d3e] dark:bg-[#f4b7b9] text-white dark:text-[#4c2527] hover:opacity-95 active:scale-98 transition-all shadow-xs cursor-pointer"
+                        className="w-full mt-2 py-2 sm:py-2.5 px-3 rounded-xl font-bold text-[11px] sm:text-xs flex items-center justify-center gap-1.5 bg-[var(--store-primary,#613d3e)] dark:bg-[#f4b7b9] text-white dark:text-[#4c2527] hover:opacity-95 active:scale-98 transition-all shadow-xs cursor-pointer"
                         title={prod.isCustomizable ? 'Personalizar e adicionar à sacola' : 'Adicionar à sacola de encomendas'}
                         aria-label="Adicionar ao carrinho"
                       >
@@ -1826,7 +1832,7 @@ export function PublicCatalog() {
                           e.stopPropagation();
                           handleOpenPreview(prod);
                         }}
-                        className="w-full mt-2 py-2 sm:py-2.5 px-3 rounded-xl font-bold text-[11px] sm:text-xs flex items-center justify-center gap-1.5 bg-stone-100 dark:bg-stone-800 text-[#613d3e] dark:text-[#f4b7b9] border border-[#613d3e]/20 dark:border-[#f4b7b9]/20 hover:bg-[#613d3e]/10 active:scale-98 transition-all cursor-pointer"
+                        className="w-full mt-2 py-2 sm:py-2.5 px-3 rounded-xl font-bold text-[11px] sm:text-xs flex items-center justify-center gap-1.5 bg-stone-100 dark:bg-stone-800 text-[var(--store-primary,#613d3e)] dark:text-[#f4b7b9] border border-[var(--store-primary,#613d3e)]/20 dark:border-[#f4b7b9]/20 hover:bg-[var(--store-primary,#613d3e)]/10 active:scale-98 transition-all cursor-pointer"
                         title="Ver detalhes do produto"
                       >
                         <Eye size={13} className="shrink-0" />
@@ -1845,13 +1851,13 @@ export function PublicCatalog() {
               <div className="w-full space-y-1.5">
                 <div className="flex items-center justify-between text-xs text-[#504444] dark:text-[#c9c0b8] font-medium">
                   <span>Mostrando <strong>{displayedProducts.length}</strong> de <strong>{filteredProducts.length}</strong> criações</span>
-                  <span className="font-semibold text-[#613d3e] dark:text-[#f4b7b9]">
+                  <span className="font-semibold text-[var(--store-primary,#613d3e)] dark:text-[#f4b7b9]">
                     {Math.round((displayedProducts.length / filteredProducts.length) * 100)}%
                   </span>
                 </div>
                 <div className="w-full h-1.5 bg-stone-200 dark:bg-stone-800 rounded-full overflow-hidden">
                   <div
-                    className="h-full bg-[#613d3e] dark:bg-[#f4b7b9] rounded-full transition-all duration-300 ease-out"
+                    className="h-full bg-[var(--store-primary,#613d3e)] dark:bg-[#f4b7b9] rounded-full transition-all duration-300 ease-out"
                     style={{ width: `${Math.min(100, Math.round((displayedProducts.length / filteredProducts.length) * 100))}%` }}
                   />
                 </div>
@@ -1861,7 +1867,7 @@ export function PublicCatalog() {
                 <button
                   type="button"
                   onClick={() => setVisibleCount((prev) => prev + effectivePageSize)}
-                  className="inline-flex items-center justify-center gap-2 px-6 py-2.5 rounded-full bg-[#613d3e] dark:bg-[#f4b7b9] text-white dark:text-[#4c2527] text-xs md:text-sm font-bold shadow-md hover:shadow-lg transition-all active:scale-95 cursor-pointer"
+                  className="inline-flex items-center justify-center gap-2 px-6 py-2.5 rounded-full bg-[var(--store-primary,#613d3e)] dark:bg-[#f4b7b9] text-white dark:text-[#4c2527] text-xs md:text-sm font-bold shadow-md hover:shadow-lg transition-all active:scale-95 cursor-pointer"
                 >
                   <Sparkles size={14} className="animate-pulse" />
                   <span>Carregar Mais (+{Math.min(effectivePageSize, filteredProducts.length - displayedProducts.length)})</span>
@@ -1882,7 +1888,7 @@ export function PublicCatalog() {
           {!loadingProducts && filteredProducts.length > 0 && displayedProducts.length >= filteredProducts.length && filteredProducts.length > effectivePageSize && (
             <div className="mt-10 mb-6 flex flex-col items-center justify-center text-center py-4 text-xs text-muted-foreground">
               <div className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full bg-stone-100/80 dark:bg-stone-900/60 border border-stone-200 dark:border-stone-800">
-                <Check size={13} className="text-[#613d3e] dark:text-[#f4b7b9]" />
+                <Check size={13} className="text-[var(--store-primary,#613d3e)] dark:text-[#f4b7b9]" />
                 <span>Você visualizou todas as <strong>{filteredProducts.length}</strong> criações</span>
               </div>
             </div>
@@ -1903,7 +1909,7 @@ export function PublicCatalog() {
               {products.length > 0 && (searchQuery || !isAllCategories) && (
                 <button
                   onClick={() => { setSearchQuery(''); clearCategories(); }}
-                  className="mt-4 px-4 py-2 rounded-xl text-xs font-semibold bg-[#613d3e] text-white cursor-pointer"
+                  className="mt-4 px-4 py-2 rounded-xl text-xs font-semibold bg-[var(--store-primary,#613d3e)] text-white cursor-pointer"
                 >
                   Limpar filtros
                 </button>
@@ -1931,7 +1937,7 @@ export function PublicCatalog() {
                 )}
                 <div className={`space-y-4 ${businessInfo.aboutImageUrl ? 'w-full lg:w-2/3' : 'w-full'}`}>
                   {businessInfo.aboutBadge && (
-                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-[#613d3e]/10 dark:bg-[#f4b7b9]/15 text-[#613d3e] dark:text-[#f4b7b9] border border-[#613d3e]/20 dark:border-[#f4b7b9]/20">
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-[var(--store-primary,#613d3e)]/10 dark:bg-[#f4b7b9]/15 text-[var(--store-primary,#613d3e)] dark:text-[#f4b7b9] border border-[var(--store-primary,#613d3e)]/20 dark:border-[#f4b7b9]/20">
                       <Heart size={12} className="text-rose-500 fill-rose-500/20" />
                       <span>{businessInfo.aboutBadge}</span>
                     </span>
@@ -1952,7 +1958,7 @@ export function PublicCatalog() {
                     <div className={`grid grid-cols-1 ${businessInfo.aboutPillars.length === 2 ? 'sm:grid-cols-2' : businessInfo.aboutPillars.length >= 3 ? 'sm:grid-cols-3' : ''} gap-3 pt-3`}>
                       {businessInfo.aboutPillars.map((p: InstitutionalPillarItem, idx: number) => (
                         <div key={p.id || idx} className="p-3.5 rounded-2xl bg-stone-50/80 dark:bg-[#261f22]/80 border border-stone-200/60 dark:border-stone-800 space-y-1">
-                          <h4 className="text-xs font-bold text-[#613d3e] dark:text-[#f4b7b9]">
+                          <h4 className="text-xs font-bold text-[var(--store-primary,#613d3e)] dark:text-[#f4b7b9]">
                             {p.title}
                           </h4>
                           {p.text && (
@@ -1974,7 +1980,7 @@ export function PublicCatalog() {
             <section className="mt-12 p-6 sm:p-10 rounded-3xl bg-white/70 dark:bg-[#1f191b]/70 backdrop-blur-md border border-white/60 dark:border-[#ebcdcd]/15 shadow-sm space-y-8 animate-in fade-in duration-300">
               <div className="text-center max-w-xl mx-auto space-y-2">
                 {businessInfo.howItWorksBadge && (
-                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-[#613d3e]/10 dark:bg-[#f4b7b9]/15 text-[#613d3e] dark:text-[#f4b7b9] border border-[#613d3e]/20 dark:border-[#f4b7b9]/20">
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-[var(--store-primary,#613d3e)]/10 dark:bg-[#f4b7b9]/15 text-[var(--store-primary,#613d3e)] dark:text-[#f4b7b9] border border-[var(--store-primary,#613d3e)]/20 dark:border-[#f4b7b9]/20">
                     <Clock size={12} />
                     <span>{businessInfo.howItWorksBadge}</span>
                   </span>
@@ -1996,10 +2002,10 @@ export function PublicCatalog() {
                   {businessInfo.howItWorksSteps.map((s: InstitutionalStepItem, idx: number) => (
                     <div
                       key={s.id || idx}
-                      className="relative p-5 rounded-2xl bg-stone-50/80 dark:bg-[#261f22]/80 border border-stone-200/70 dark:border-stone-800 flex flex-col justify-between space-y-3 hover:border-[#613d3e]/30 transition-all shadow-2xs"
+                      className="relative p-5 rounded-2xl bg-stone-50/80 dark:bg-[#261f22]/80 border border-stone-200/70 dark:border-stone-800 flex flex-col justify-between space-y-3 hover:border-[var(--store-primary,#613d3e)]/30 transition-all shadow-2xs"
                     >
                       <div className="space-y-2">
-                        <div className="size-8 rounded-xl bg-[#613d3e] dark:bg-[#f4b7b9] text-white dark:text-[#4c2527] font-black text-sm flex items-center justify-center shadow-xs">
+                        <div className="size-8 rounded-xl bg-[var(--store-primary,#613d3e)] dark:bg-[#f4b7b9] text-white dark:text-[#4c2527] font-black text-sm flex items-center justify-center shadow-xs">
                           {idx + 1}
                         </div>
                         <h4 className="text-xs sm:text-sm font-bold text-[#221a1a] dark:text-[#e8e0e3]">
@@ -2050,7 +2056,7 @@ export function PublicCatalog() {
                     return (
                       <div
                         key={f.id || idx}
-                        className="p-5 rounded-2xl bg-stone-50/80 dark:bg-[#261f22]/80 border border-stone-200/70 dark:border-stone-800 space-y-2.5 hover:border-[#613d3e]/30 transition-all shadow-2xs"
+                        className="p-5 rounded-2xl bg-stone-50/80 dark:bg-[#261f22]/80 border border-stone-200/70 dark:border-stone-800 space-y-2.5 hover:border-[var(--store-primary,#613d3e)]/30 transition-all shadow-2xs"
                       >
                         <div className={`size-10 rounded-xl ${color} flex items-center justify-center shrink-0`}>
                           <Icon size={18} />
@@ -2107,7 +2113,7 @@ export function PublicCatalog() {
                           </span>
                           <ChevronDown
                             size={16}
-                            className={`text-stone-400 shrink-0 transition-transform duration-200 ${isOpen ? 'rotate-180 text-[#613d3e] dark:text-[#f4b7b9]' : ''}`}
+                            className={`text-stone-400 shrink-0 transition-transform duration-200 ${isOpen ? 'rotate-180 text-[var(--store-primary,#613d3e)] dark:text-[#f4b7b9]' : ''}`}
                           />
                         </button>
                         {isOpen && (
@@ -2132,7 +2138,7 @@ export function PublicCatalog() {
                   className="p-6 sm:p-10 rounded-3xl bg-white/70 dark:bg-[#1f191b]/70 backdrop-blur-md border border-white/60 dark:border-[#ebcdcd]/15 shadow-sm space-y-4 animate-in fade-in duration-300"
                 >
                   {sec.badge && (
-                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-[#613d3e]/10 dark:bg-[#f4b7b9]/15 text-[#613d3e] dark:text-[#f4b7b9] border border-[#613d3e]/20 dark:border-[#f4b7b9]/20">
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-[var(--store-primary,#613d3e)]/10 dark:bg-[#f4b7b9]/15 text-[var(--store-primary,#613d3e)] dark:text-[#f4b7b9] border border-[var(--store-primary,#613d3e)]/20 dark:border-[#f4b7b9]/20">
                       <Sparkles size={12} />
                       <span>{sec.badge}</span>
                     </span>
@@ -2166,7 +2172,7 @@ export function PublicCatalog() {
                       className="size-7 rounded-full object-cover border border-white/60"
                     />
                   ) : null}
-                  <h4 className="font-bold text-sm text-[#613d3e] dark:text-[#f4b7b9]">
+                  <h4 className="font-bold text-sm text-[var(--store-primary,#613d3e)] dark:text-[#f4b7b9]">
                     {businessInfo.name}
                   </h4>
                 </div>
@@ -2246,13 +2252,13 @@ export function PublicCatalog() {
                 </h5>
                 {businessInfo.footerLocation && (
                   <p className="flex items-center justify-center md:justify-start gap-1.5">
-                    <MapPin size={13} className="text-[#613d3e] dark:text-[#f4b7b9] shrink-0" />
+                    <MapPin size={13} className="text-[var(--store-primary,#613d3e)] dark:text-[#f4b7b9] shrink-0" />
                     <span>{businessInfo.footerLocation}</span>
                   </p>
                 )}
                 {businessInfo.footerBusinessHours && (
                   <p className="flex items-center justify-center md:justify-start gap-1.5">
-                    <Clock size={13} className="text-[#613d3e] dark:text-[#f4b7b9] shrink-0" />
+                    <Clock size={13} className="text-[var(--store-primary,#613d3e)] dark:text-[#f4b7b9] shrink-0" />
                     <span>{businessInfo.footerBusinessHours}</span>
                   </p>
                 )}
@@ -2278,7 +2284,7 @@ export function PublicCatalog() {
           <aside className="fixed bottom-0 inset-x-0 sm:bottom-6 sm:inset-x-auto sm:left-1/2 sm:-translate-x-1/2 z-floating-bar p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:p-2.5 sm:px-5 bg-white/95 dark:bg-[#161214]/95 backdrop-blur-xl border-t sm:border border-stone-200/80 dark:border-[#ebcdcd]/20 sm:rounded-2xl shadow-2xl animate-in slide-in-from-bottom-4 duration-200">
             <div className="max-w-md sm:w-[480px] mx-auto flex items-center justify-between gap-3">
               <div className="flex items-center gap-2.5">
-                <div className="relative p-2 rounded-xl bg-[#613d3e]/10 dark:bg-[#f4b7b9]/15 text-[#613d3e] dark:text-[#f4b7b9]">
+                <div className="relative p-2 rounded-xl bg-[var(--store-primary,#613d3e)]/10 dark:bg-[#f4b7b9]/15 text-[var(--store-primary,#613d3e)] dark:text-[#f4b7b9]">
                   <ShoppingBag size={18} />
                   <span className="absolute -top-1.5 -right-1.5 size-4.5 bg-amber-400 text-stone-950 text-[10px] font-black rounded-full flex items-center justify-center tabular-nums shadow-xs">
                     {totalItemsCount}
@@ -2288,7 +2294,7 @@ export function PublicCatalog() {
                   <span className="block text-[10px] uppercase font-bold text-stone-500 dark:text-stone-400 tracking-wider">
                     {totalItemsCount} {totalItemsCount === 1 ? 'item' : 'itens'} na sacola
                   </span>
-                  <span className="text-sm sm:text-base font-extrabold text-[#613d3e] dark:text-[#f4b7b9] tabular-nums">
+                  <span className="text-sm sm:text-base font-extrabold text-[var(--store-primary,#613d3e)] dark:text-[#f4b7b9] tabular-nums">
                     {formatCurrency(subtotal)}
                   </span>
                 </div>
@@ -2296,7 +2302,7 @@ export function PublicCatalog() {
 
               <button
                 onClick={() => setIsCartOpen(true)}
-                className="px-4 py-2.5 rounded-xl bg-[#613d3e] dark:bg-[#f4b7b9] text-white dark:text-[#4c2527] font-bold text-xs flex items-center gap-2 shadow-md hover:opacity-95 active:scale-95 transition-all cursor-pointer"
+                className="px-4 py-2.5 rounded-xl bg-[var(--store-primary,#613d3e)] dark:bg-[#f4b7b9] text-white dark:text-[#4c2527] font-bold text-xs flex items-center gap-2 shadow-md hover:opacity-95 active:scale-95 transition-all cursor-pointer"
               >
                 <span>Ver Sacola</span>
                 <Send size={13} />
@@ -2469,7 +2475,7 @@ export function PublicCatalog() {
                   <X size={18} />
                 </button>
                 {selectedProductPreview.badge && (
-                  <span className="absolute bottom-3 left-3 px-3 py-1 rounded-md text-xs font-bold bg-[#613d3e]/90 text-white backdrop-blur-sm">
+                  <span className="absolute bottom-3 left-3 px-3 py-1 rounded-md text-xs font-bold bg-[var(--store-primary,#613d3e)]/90 text-white backdrop-blur-sm">
                     {selectedProductPreview.badge}
                   </span>
                 )}
@@ -2480,7 +2486,7 @@ export function PublicCatalog() {
                 <div className="space-y-3 overflow-y-auto flex-1 min-h-0 pr-1 overscroll-contain">
                   <div className="flex justify-between items-start gap-2">
                     <div>
-                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-[11px] font-semibold bg-[#613d3e]/10 dark:bg-[#f4b7b9]/15 text-[#613d3e] dark:text-[#f4b7b9] border border-[#613d3e]/20 dark:border-[#f4b7b9]/20 mb-1">
+                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-[11px] font-semibold bg-[var(--store-primary,#613d3e)]/10 dark:bg-[#f4b7b9]/15 text-[var(--store-primary,#613d3e)] dark:text-[#f4b7b9] border border-[var(--store-primary,#613d3e)]/20 dark:border-[#f4b7b9]/20 mb-1">
                         <Tag size={11} className="shrink-0" />
                         <span>{selectedProductPreview.category || 'Geral'}</span>
                       </span>
@@ -2488,7 +2494,7 @@ export function PublicCatalog() {
                         {selectedProductPreview.name}
                       </h3>
                     </div>
-                    <span className="text-base sm:text-xl font-extrabold text-[#613d3e] dark:text-[#f4b7b9] tabular-nums shrink-0">
+                    <span className="text-base sm:text-xl font-extrabold text-[var(--store-primary,#613d3e)] dark:text-[#f4b7b9] tabular-nums shrink-0">
                       {formatCurrency(selectedProductPreview.price)}
                     </span>
                   </div>
@@ -2513,7 +2519,7 @@ export function PublicCatalog() {
                         placeholder="Ex: Nome da criança, idade ou tema desejado"
                         value={previewCustomName}
                         onChange={(e) => setPreviewCustomName(e.target.value)}
-                        className="w-full px-3.5 py-2 text-base sm:text-xs rounded-xl bg-white dark:bg-[#161214] border border-stone-300 dark:border-stone-700 text-[#221a1a] dark:text-[#e8e0e3] focus:outline-none focus:ring-2 focus:ring-[#613d3e]/30"
+                        className="w-full px-3.5 py-2 text-base sm:text-xs rounded-xl bg-white dark:bg-[#161214] border border-stone-300 dark:border-stone-700 text-[#221a1a] dark:text-[#e8e0e3] focus:outline-none focus:ring-2 focus:ring-[var(--store-primary,#613d3e)]/30"
                       />
                       <p className="text-[10px] text-stone-400">
                         Você também poderá combinar mais detalhes da arte depois no WhatsApp.
@@ -2532,7 +2538,7 @@ export function PublicCatalog() {
                           setSelectedProductPreview(null);
                           setIsCartOpen(true);
                         }}
-                        className="w-full py-3.5 px-4 rounded-xl font-bold text-xs sm:text-sm flex items-center justify-center gap-2 bg-[#613d3e] dark:bg-[#f4b7b9] text-white dark:text-[#4c2527] hover:opacity-95 active:scale-[0.98] transition-all shadow-md cursor-pointer"
+                        className="w-full py-3.5 px-4 rounded-xl font-bold text-xs sm:text-sm flex items-center justify-center gap-2 bg-[var(--store-primary,#613d3e)] dark:bg-[#f4b7b9] text-white dark:text-[#4c2527] hover:opacity-95 active:scale-[0.98] transition-all shadow-md cursor-pointer"
                       >
                         <ShoppingBag size={16} />
                         <span>Adicionar à Sacola</span>
@@ -2602,7 +2608,7 @@ export function PublicCatalog() {
               {/* Header do Carrinho */}
               <div className="p-4 sm:p-5 flex items-center justify-between border-b border-stone-200/60 dark:border-[#ebcdcd]/10 shrink-0">
                 <div className="flex items-center gap-2.5">
-                  <div className="p-2 rounded-xl bg-[#613d3e]/10 dark:bg-[#f4b7b9]/15 text-[#613d3e] dark:text-[#f4b7b9]">
+                  <div className="p-2 rounded-xl bg-[var(--store-primary,#613d3e)]/10 dark:bg-[#f4b7b9]/15 text-[var(--store-primary,#613d3e)] dark:text-[#f4b7b9]">
                     <ShoppingBag size={18} />
                   </div>
                   <div>
@@ -2652,7 +2658,7 @@ export function PublicCatalog() {
                             <h4 className="text-xs font-bold text-[#221a1a] dark:text-[#e8e0e3] truncate" title={item.product.name}>
                               {item.product.name}
                             </h4>
-                            <span className="text-xs font-bold text-[#613d3e] dark:text-[#f4b7b9] tabular-nums">
+                            <span className="text-xs font-bold text-[var(--store-primary,#613d3e)] dark:text-[#f4b7b9] tabular-nums">
                               {formatCurrency(item.product.price * item.quantity)}
                             </span>
                           </div>
@@ -2685,7 +2691,7 @@ export function PublicCatalog() {
                                 )
                               );
                             }}
-                            className="w-full px-2.5 py-1.5 text-base sm:text-xs rounded-lg bg-white dark:bg-[#161214] border border-stone-200 dark:border-stone-700 text-[#221a1a] dark:text-[#e8e0e3] focus:outline-none focus:ring-1 focus:ring-[#613d3e]"
+                            className="w-full px-2.5 py-1.5 text-base sm:text-xs rounded-lg bg-white dark:bg-[#161214] border border-stone-200 dark:border-stone-700 text-[#221a1a] dark:text-[#e8e0e3] focus:outline-none focus:ring-1 focus:ring-[var(--store-primary,#613d3e)]"
                           />
                         </div>
                       )}
@@ -2730,7 +2736,7 @@ export function PublicCatalog() {
                       placeholder="Ex: Preciso receber até dia 20 para o aniversário..."
                       value={customerNotes}
                       onChange={(e) => setCustomerNotes(e.target.value)}
-                      className="w-full p-2.5 text-base sm:text-xs rounded-xl bg-white dark:bg-[#261f22] border border-stone-200 dark:border-stone-700 text-[#221a1a] dark:text-[#e8e0e3] focus:outline-none focus:ring-1 focus:ring-[#613d3e]"
+                      className="w-full p-2.5 text-base sm:text-xs rounded-xl bg-white dark:bg-[#261f22] border border-stone-200 dark:border-stone-700 text-[#221a1a] dark:text-[#e8e0e3] focus:outline-none focus:ring-1 focus:ring-[var(--store-primary,#613d3e)]"
                     />
                   </div>
                 )}
@@ -2749,7 +2755,7 @@ export function PublicCatalog() {
 
                   <div className="flex justify-between items-center text-sm font-bold">
                     <span>Subtotal Estimado:</span>
-                    <span className="text-lg text-[#613d3e] dark:text-[#f4b7b9] tabular-nums font-extrabold">
+                    <span className="text-lg text-[var(--store-primary,#613d3e)] dark:text-[#f4b7b9] tabular-nums font-extrabold">
                       {formatCurrency(subtotal)}
                     </span>
                   </div>
@@ -2811,7 +2817,7 @@ export function PublicCatalog() {
               </div>
 
               <div className="space-y-2">
-                <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#613d3e]/10 dark:bg-[#f4b7b9]/15 text-[#613d3e] dark:text-[#f4b7b9] font-mono font-bold text-xs">
+                <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[var(--store-primary,#613d3e)]/10 dark:bg-[#f4b7b9]/15 text-[var(--store-primary,#613d3e)] dark:text-[#f4b7b9] font-mono font-bold text-xs">
                   Pedido #{submittedOrderInfo.orderCode}
                 </div>
                 <h3 className="text-xl font-black text-stone-900 dark:text-stone-100 tracking-tight">

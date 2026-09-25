@@ -371,6 +371,9 @@ export function StoreCustomization() {
     catalogBackgroundStyle: 'atmospheric' as 'atmospheric' | 'solid',
     catalogTypographyStyle: 'modern' as 'modern' | 'editorial',
     catalogDefaultSort: 'destaque' as 'destaque' | 'preco-menor' | 'preco-maior' | 'nome-az' | 'prazo',
+    catalogPrimaryColor: '',
+    catalogButtonRadius: 'md' as 'none' | 'sm' | 'md' | 'lg' | 'full',
+    catalogButtonStyle: 'solid' as 'solid' | 'soft' | 'outline',
     catalogProductsPerPage: 12 as number,
 
     // Seção 1: Quem Somos / Sobre o Ateliê
@@ -565,6 +568,9 @@ export function StoreCustomization() {
         catalogBackgroundStyle: (settings?.catalogBackgroundStyle || 'atmospheric') as 'atmospheric' | 'solid',
         catalogTypographyStyle: (settings?.catalogTypographyStyle || 'modern') as 'modern' | 'editorial',
         catalogDefaultSort: (settings?.catalogDefaultSort || 'destaque') as 'destaque' | 'preco-menor' | 'preco-maior' | 'nome-az' | 'prazo',
+        catalogPrimaryColor: settings?.catalogPrimaryColor || '',
+        catalogButtonRadius: (settings?.catalogButtonRadius || 'md') as 'none' | 'sm' | 'md' | 'lg' | 'full',
+        catalogButtonStyle: (settings?.catalogButtonStyle || 'solid') as 'solid' | 'soft' | 'outline',
         catalogProductsPerPage: settings?.catalogProductsPerPage !== undefined ? Number(settings.catalogProductsPerPage) : 12,
 
         // 1. Quem Somos
@@ -701,6 +707,9 @@ export function StoreCustomization() {
             catalogBackgroundStyle: pub.catalogBackgroundStyle || data.catalogBackgroundStyle,
             catalogTypographyStyle: pub.catalogTypographyStyle || data.catalogTypographyStyle,
             catalogDefaultSort: pub.catalogDefaultSort || data.catalogDefaultSort,
+            catalogPrimaryColor: pub.catalogPrimaryColor || data.catalogPrimaryColor,
+            catalogButtonRadius: pub.catalogButtonRadius || data.catalogButtonRadius,
+            catalogButtonStyle: pub.catalogButtonStyle || data.catalogButtonStyle,
             catalogProductsPerPage: pub.catalogProductsPerPage !== undefined ? Number(pub.catalogProductsPerPage) : (data.catalogProductsPerPage ?? 12),
 
             // 1. Quem Somos
@@ -1727,6 +1736,9 @@ IMPORTANTE:
         catalogHeaderHeight: formData.catalogHeaderHeight,
         catalogHeaderHideText: Boolean(formData.catalogHeaderHideText),
         catalogShowHero: Boolean(formData.catalogShowHero),
+        catalogPrimaryColor: formData.catalogPrimaryColor,
+        catalogButtonRadius: formData.catalogButtonRadius,
+        catalogButtonStyle: formData.catalogButtonStyle,
 
         // 1. Quem Somos
         catalogShowAbout: Boolean(formData.catalogShowAbout),
@@ -1817,6 +1829,9 @@ IMPORTANTE:
           bannerFixed: Boolean(formData.catalogBannerFixed),
           headerBackground: currentCatalogHeaderBackground || '',
           showHero: Boolean(formData.catalogShowHero),
+          catalogPrimaryColor: formData.catalogPrimaryColor,
+          catalogButtonRadius: formData.catalogButtonRadius,
+          catalogButtonStyle: formData.catalogButtonStyle,
           whatsappGreeting: formData.catalogWhatsappGreeting,
           whatsappCustomizationLabel: formData.catalogWhatsappCustomizationLabel,
           whatsappFooter: formData.catalogWhatsappFooter,
@@ -3295,8 +3310,86 @@ IMPORTANTE:
                     </div>
                   </div>
 
+                  {/* NOVO: Tema de Cores e Botões */}
+                  <div className="space-y-4 pt-3 border-t border-border/60">
+                    <Label className="text-xs font-bold flex items-center gap-1.5">
+                      <Palette className="size-3.5 text-primary" />
+                      Cores e Botões da Lojinha
+                    </Label>
+                    
+                    <div className="space-y-2">
+                      <Label className="text-xs font-semibold">Cor Primária (Botões e Destaques)</Label>
+                      <div className="flex items-center gap-3">
+                        <div className="relative flex items-center gap-2">
+                          <input
+                            type="color"
+                            id="m-primary-color-picker"
+                            value={formData.catalogPrimaryColor || '#f97316'}
+                            onChange={(e) => handleChange('catalogPrimaryColor', e.target.value)}
+                            className="size-9 rounded-lg border border-border cursor-pointer p-0.5 bg-background"
+                          />
+                        </div>
+                        <div className="w-32">
+                          <Input
+                            placeholder="#f97316"
+                            value={formData.catalogPrimaryColor}
+                            onChange={(e) => handleChange('catalogPrimaryColor', e.target.value)}
+                            className="text-xs uppercase font-mono"
+                          />
+                        </div>
+                        {formData.catalogPrimaryColor && (
+                          <button
+                            type="button"
+                            onClick={() => handleChange('catalogPrimaryColor', '')}
+                            className="text-[11px] text-primary hover:underline"
+                          >
+                            Restaurar Padrão
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label className="text-xs font-semibold">Arredondamento dos Botões</Label>
+                        <Select 
+                          value={formData.catalogButtonRadius} 
+                          onValueChange={(val) => handleChange('catalogButtonRadius', val)}
+                        >
+                          <SelectTrigger className="text-xs bg-background">
+                            <SelectValue placeholder="Selecione..." />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="none">Quadrado (Sem arredondamento)</SelectItem>
+                            <SelectItem value="sm">Suave (Arredondamento leve)</SelectItem>
+                            <SelectItem value="md">Médio (Padrão)</SelectItem>
+                            <SelectItem value="lg">Grande (Bem arredondado)</SelectItem>
+                            <SelectItem value="full">Pílula (Totalmente redondo)</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label className="text-xs font-semibold">Estilo dos Botões</Label>
+                        <Select 
+                          value={formData.catalogButtonStyle} 
+                          onValueChange={(val) => handleChange('catalogButtonStyle', val)}
+                        >
+                          <SelectTrigger className="text-xs bg-background">
+                            <SelectValue placeholder="Selecione..." />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="solid">Sólido (Preenchido)</SelectItem>
+                            <SelectItem value="soft">Suave (Fundo claro)</SelectItem>
+                            <SelectItem value="outline">Contorno (Vazado)</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                  </div>
+
                   {/* 3. Ordenação Padrão dos Produtos */}
-                  <div className="space-y-2 pt-2 border-t border-border/60">
+                  <div className="space-y-2 pt-4 border-t border-border/60">
                     <Label htmlFor="m-default-sort" className="text-xs font-bold flex items-center gap-1.5">
                       <ArrowUpDown className="size-3.5 text-primary" />
                       Ordenação Padrão ao Abrir a Vitrine
