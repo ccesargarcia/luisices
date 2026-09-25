@@ -184,15 +184,7 @@ export function isStoreRoute(): boolean {
 }
 
 
-function AdminIndexRedirect() {
-  const lastRoute = typeof window !== 'undefined'
-    ? (sessionStorage.getItem('luisices_last_admin_route') || localStorage.getItem('luisices_last_admin_route'))
-    : null;
-  const target = (lastRoute && lastRoute !== '/' && lastRoute !== '/login' && !lastRoute.startsWith('/loja') && !lastRoute.startsWith('/catalogo'))
-    ? lastRoute
-    : '/dashboard';
-  return <Navigate to={target} replace />;
-}
+
 
 export const router = isCatalogSubdomain
   ? createBrowserRouter([
@@ -265,7 +257,7 @@ export const router = isCatalogSubdomain
     children: [
       {
         index: true,
-        element: <AdminIndexRedirect />,
+        element: <Navigate to="/dashboard" replace />,
       },
       {
         path: 'dashboard',
