@@ -27,9 +27,11 @@ test.describe('Loja Pública - Funcionalidade e Experiência do Cliente', () => 
     const searchInput = page.locator('input[placeholder*="Buscar"]').first();
     await expect(searchInput).toBeVisible({ timeout: 10000 });
 
-    // 3. Validar seletor de categorias
-    const allCategoryBtn = page.getByRole('button', { name: /Todos/i }).first();
-    await expect(allCategoryBtn).toBeVisible({ timeout: 5000 });
+    // 3. Validar seletor de categorias/temas (compatível com Dropdown, Carrossel e Bottom Sheet)
+    const categorySelectorBtn = page.getByRole('button', { name: /Todos|Temas/i }).or(
+      page.locator('button[title*="temas" i], button[aria-label*="temas" i]')
+    ).first();
+    await expect(categorySelectorBtn).toBeVisible({ timeout: 5000 });
 
     // 4. Validar alternador de tema claro/escuro
     const themeBtn = page.locator('button[title*="tema" i], button:has(.lucide-sun), button:has(.lucide-moon)').first();
