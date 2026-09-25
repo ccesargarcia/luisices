@@ -156,13 +156,14 @@ service cloud.firestore {
       allow create: if request.auth != null && (request.auth.uid == uid || isAdmin());
 
       // Atualização: admin pode alterar tudo;
-      // usuário comum pode atualizar seus dados (nome, etc), mas não pode mudar seu role nem seu active (evita auto-promoção)
+      // usuário comum pode atualizar seus dados (nome, etc), mas não pode mudar seu role, permissions nem seu active (evita auto-promoção)
       allow update: if request.auth != null && (
         isAdmin()
         || (
           request.auth.uid == uid
           && (!('role' in resource.data) || request.resource.data.role == resource.data.role)
           && (!('active' in resource.data) || request.resource.data.active == resource.data.active)
+          && (!('permissions' in resource.data) || request.resource.data.permissions == resource.data.permissions)
         )
       );
 
