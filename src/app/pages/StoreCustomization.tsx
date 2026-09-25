@@ -158,6 +158,116 @@ export const STORE_TEMPLATES = [
       catalogFooterBusinessHours: 'Segunda a Sexta, das 9h às 18h',
       catalogFooterNotice: 'Personalizamos em qualquer tema sob consulta. As artes são enviadas para prévia antes da impressão.',
     }
+  },
+  {
+    id: 'natal',
+    name: 'Natal Encantado & Fim de Ano',
+    icon: '🎄',
+    tag: 'Sazonal',
+    description: 'Caixas de panetone, lembrancinhas natalinas, cartões de presente, mimos corporativos e embalagens de luxo.',
+    data: {
+      catalogBadge: 'Especial de Natal',
+      catalogStatusText: 'Agenda de Natal aberta • Vagas limitadas',
+      catalogAnnouncement: '🎄 Encomendas de Natal abertas! Garanta suas caixas e lembrancinhas natalinas com antecedência.',
+      catalogHeroTitle: 'Coleção Natal Encantado & Fim de Ano',
+      catalogStoreTagline: 'Lembranças afetivas e embalagens de luxo para celebrar o Natal com quem você ama',
+      catalogHeroDescription: 'Caixas para panetones, mini bebidas, porta-chocolates, cartões e mimos corporativos com acabamento em hot stamping dourado.',
+      catalogWhatsappGreeting: 'Olá! Gostaria de encomendar itens da Coleção de Natal pelo catálogo:',
+      catalogWhatsappCustomizationLabel: 'Nome/Texto para a personalização e tema natalino:',
+      catalogWhatsappFooter: 'Poderia me informar as datas limite de envio para entrega antes do Natal e a chave PIX?',
+      catalogFooterText: 'Que a magia do Natal encha o seu lar de luz, amor e doces memórias feitas à mão. ✨🎄',
+      catalogFooterLocation: 'Enviamos para todo o Brasil com embalagem reforçada 📦',
+      catalogFooterBusinessHours: 'Segunda a Sábado, das 8h às 19h (Horário Especial de Fim de Ano)',
+      catalogFooterNotice: 'Recomendamos antecipar seus pedidos de fim de ano devido à alta demanda dos Correios e transportadoras.',
+    }
+  },
+  {
+    id: 'pascoa',
+    name: 'Páscoa Afetiva & Chocolates',
+    icon: '🐰',
+    tag: 'Sazonal',
+    description: 'Caixas para ovos de colher, kits confeiteiro, cestas de doces e lembrancinhas lúdicas para a Páscoa.',
+    data: {
+      catalogBadge: 'Páscoa Especial',
+      catalogStatusText: 'Agenda de Páscoa aberta • Encomendas ativas',
+      catalogAnnouncement: '🐰 Coleção de Páscoa aberta! Embalagens para ovos de colher e caixas personalizadas.',
+      catalogHeroTitle: 'Coleção Páscoa Afetiva & Doçura',
+      catalogStoreTagline: 'Embalagens artesanais e encantos de Páscoa para surpreender quem você ama',
+      catalogHeroDescription: 'Caixas reforçadas para ovos de colher (150g a 500g), caixas cenário 3D, kits confeiteiro infantil e mimos especiais.',
+      catalogWhatsappGreeting: 'Olá! Gostaria de encomendar embalagens e itens de Páscoa pelo catálogo:',
+      catalogWhatsappCustomizationLabel: 'Nome da criança/pessoa e gramatura do ovo ou doce:',
+      catalogWhatsappFooter: 'Por favor, confirme a data limite de envio e os métodos de pagamento disponíveis.',
+      catalogFooterText: 'Doçura, afeto e delicadeza em cada detalhe para uma Páscoa inesquecível. 🍫🐰',
+      catalogFooterLocation: 'Produção artesanal • Envio seguro para todo o Brasil ✈️',
+      catalogFooterBusinessHours: 'Segunda a Sexta, das 9h às 18h',
+      catalogFooterNotice: 'Caixas enviadas desmontadas para otimizar o frete com fácil montagem por encaixe.',
+    }
+  },
+  {
+    id: 'casamento',
+    name: 'Casamentos, Noivados & Bodas',
+    icon: '💍',
+    tag: 'Luxo',
+    description: 'Convites finos, caixas para padrinhos, lágrimas de alegria, menus e papelaria completa para o grande dia.',
+    data: {
+      catalogBadge: 'Papelaria Fina',
+      catalogStatusText: 'Atendimento exclusivo para Noivas & Cerimonialistas',
+      catalogAnnouncement: '💍 Convites de casamento com lacre de cera, relevo seco e lamicote rosé/dourado.',
+      catalogHeroTitle: 'Casamentos, Noivados & Momentos Únicos',
+      catalogStoreTagline: 'Papelaria fina e encadernação de luxo para eternizar a sua história de amor',
+      catalogHeroDescription: 'Identidade visual completa para seu evento: convites artesanais, caixas cartonadas para padrinhos, votos dos noivos e lembranças requintadas.',
+      catalogWhatsappGreeting: 'Olá! Sou noiva/cerimonialista e gostaria de orçar a papelaria do nosso casamento:',
+      catalogWhatsappCustomizationLabel: 'Nomes dos noivos, data do casamento e paleta de cores:',
+      catalogWhatsappFooter: 'Poderia me enviar o catálogo completo de papéis especiais, lacres e opções de frete?',
+      catalogFooterText: 'Cada detalhe pensado com sofisticação para o dia mais especial da sua vida. 💒✨',
+      catalogFooterLocation: 'Atendimento personalizado com envio seguro para todo o Brasil',
+      catalogFooterBusinessHours: 'Segunda a Sexta, das 9h às 18h (Atendimento com hora marcada)',
+      catalogFooterNotice: 'Para convites e caixas de padrinhos, recomendamos solicitar com 3 a 6 meses de antecedência do evento.',
+    }
+  },
+  {
+    id: 'batizado',
+    name: 'Batizados & Eucaristia',
+    icon: '🕊️',
+    tag: 'Delicado',
+    description: 'Caixas de lembrança com mini terço, livretos de oração, convites para padrinhos de batismo e topos de bolo sacros.',
+    data: {
+      catalogBadge: 'Batizado & Sacro',
+      catalogStatusText: 'Produção artesanal com amor e devoção',
+      catalogAnnouncement: '🕊️ Lembrancinhas e caixas para padrinhos de batizado com papéis texturizados nobres.',
+      catalogHeroTitle: 'Batizados, Eucaristia & Momentos Especiais',
+      catalogStoreTagline: 'Papelaria delicada e lembranças abençoadas para celebrar a vida e a fé',
+      catalogHeroDescription: 'Lembrancinhas com mini terço, caixas cartonadas com almofada, convites para padrinhos de consagração e cadernos de recordação.',
+      catalogWhatsappGreeting: 'Olá! Gostaria de encomendar itens de batizado pelo catálogo do Ateliê:',
+      catalogWhatsappCustomizationLabel: 'Nome da criança, nome dos padrinhos e data do batismo:',
+      catalogWhatsappFooter: 'Por favor, confirme as opções de frete e o prazo de produção para a minha data.',
+      catalogFooterText: 'Um momento sagrado celebrado com pureza, delicadeza e afeto em cada dobra de papel. 🕊️🤍',
+      catalogFooterLocation: 'Enviamos para todo o Brasil com todo cuidado 📦',
+      catalogFooterBusinessHours: 'Segunda a Sexta, das 9h às 18h',
+      catalogFooterNotice: 'Personalizamos os textos das orações e dedicatórias conforme o desejo da família.',
+    }
+  },
+  {
+    id: 'volta_aulas',
+    name: 'Volta às Aulas & Planners',
+    icon: '🎒',
+    tag: 'Sazonal',
+    description: 'Kits de etiquetas escolares à prova d\'água, agendas escolares personalizadas, cadernos e planners pedagógicos.',
+    data: {
+      catalogBadge: 'Volta às Aulas',
+      catalogStatusText: 'Produção rápida de etiquetas escolares e planners',
+      catalogAnnouncement: '🎒 Etiquetas escolares laváveis e plastificadas para livros, cadernos e materiais!',
+      catalogHeroTitle: 'Volta às Aulas, Agendas & Organização',
+      catalogStoreTagline: 'Etiquetas escolares impermeáveis e encadernações duráveis para o ano letivo',
+      catalogHeroDescription: 'Combos completos de etiquetas adesivas para uniformes e materiais, agendas escolares e planners para professores e estudantes.',
+      catalogWhatsappGreeting: 'Olá! Gostaria de encomendar kits escolares pelo catálogo:',
+      catalogWhatsappCustomizationLabel: 'Nome do aluno, turma, série e tema escolhido:',
+      catalogWhatsappFooter: 'Qual o prazo de envio para o meu CEP para receber antes do início das aulas?',
+      catalogFooterText: 'Organização, cor e praticidade para um ano escolar incrível e cheio de descobertas! 📚✏️',
+      catalogFooterLocation: 'Envio rápido para todo o Brasil 🚀',
+      catalogFooterBusinessHours: 'Segunda a Sábado, das 8h às 19h',
+      catalogFooterNotice: 'Etiquetas impressas em vinil adesivo resistente à água e ao micro-ondas.',
+    }
   }
 ];
 
@@ -171,6 +281,11 @@ export const HEADER_COLOR_PRESETS = [
   { name: 'Grafite Nobre', color: '#1f191b', textColor: 'light' as const },
   { name: 'Vinho Marsala', color: '#613d3e', textColor: 'light' as const },
   { name: 'Dourado Suave', color: '#fcf4e6', textColor: 'dark' as const },
+  { name: 'Verde Natalino', color: '#1b3b2b', textColor: 'light' as const },
+  { name: 'Vermelho Rubi Natal', color: '#851c22', textColor: 'light' as const },
+  { name: 'Amarelo Páscoa', color: '#fef9e7', textColor: 'dark' as const },
+  { name: 'Azul Céu Batizado', color: '#eef6fc', textColor: 'dark' as const },
+  { name: 'Lilás Festivo', color: '#f7f0fa', textColor: 'dark' as const },
 ];
 
 export function StoreCustomization() {
@@ -1809,7 +1924,7 @@ IMPORTANTE:
             </div>
           </CardHeader>
           <CardContent className="pt-0">
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
               {STORE_TEMPLATES.map((tmpl) => (
                 <div
                   key={tmpl.id}
