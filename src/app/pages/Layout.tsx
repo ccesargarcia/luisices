@@ -118,6 +118,18 @@ export function Layout() {
 
   const [storeSubmenuOpen, setStoreSubmenuOpen] = useState(true);
 
+  
+  // Salvar a última rota administrativa acessada para permitir retorno fiel
+  useEffect(() => {
+    if (location.pathname && location.pathname !== '/' && location.pathname !== '/login' && !location.pathname.startsWith('/loja') && !location.pathname.startsWith('/catalogo')) {
+      try {
+        const fullPath = location.pathname + location.search;
+        sessionStorage.setItem('luisices_last_admin_route', fullPath);
+        localStorage.setItem('luisices_last_admin_route', fullPath);
+      } catch {}
+    }
+  }, [location.pathname, location.search]);
+
   // Auto-expandir submenu da lojinha se estiver em uma rota da lojinha
   useEffect(() => {
     if (
