@@ -2088,9 +2088,9 @@ IMPORTANTE:
       )}
 
       {/* Grid Principal: Formulário de Configuração (2/3) + Prévia Visual (1/3) */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
+      <div className="max-w-5xl mx-auto space-y-6">
         {/* Formulário com Abas (2 Colunas) */}
-        <div className="lg:col-span-2 space-y-6">
+        <div className="w-full space-y-6">
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
             <TabsList className="flex flex-wrap w-full h-auto p-1 bg-muted/60">
               <TabsTrigger value="identity" className="text-xs py-2">
@@ -4854,7 +4854,7 @@ IMPORTANTE:
         </div>
 
         {/* Coluna Lateral: Prévia Visual ao Vivo (1 Coluna) */}
-        <div className="lg:col-span-1 lg:sticky lg:top-6 space-y-4">
+        <div className="hidden">
           <Card className="overflow-hidden border-primary/25 shadow-md">
             <CardHeader className="bg-primary/5 py-3 border-b border-primary/10">
               <div className="flex items-center justify-between">

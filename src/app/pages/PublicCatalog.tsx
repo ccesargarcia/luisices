@@ -1748,14 +1748,7 @@ export function PublicCatalog() {
                     className={`relative w-full overflow-hidden bg-stone-100 dark:bg-stone-900 cursor-pointer ${
                       businessInfo.imageAspect === 'portrait' ? 'aspect-[4/5]' : 'aspect-square'
                     }`}
-                    onClick={(e) => {
-                      if (businessInfo.storeMode === 'cart' && featureFlags.enableOnlineOrders !== false) {
-                        addToCart(prod);
-                        setIsCartOpen(true);
-                      } else {
-                        handleOpenPreview(prod);
-                      }
-                    }}
+                    onClick={() => handleOpenPreview(prod)}
                   >
                     <img
                       src={prod.imageUrl}
@@ -1795,14 +1788,7 @@ export function PublicCatalog() {
                       </span>
                       <h3 
                         className={`text-xs sm:text-sm font-bold text-[#221a1a] dark:text-[#e8e0e3] line-clamp-2 leading-snug cursor-pointer group-hover:text-[var(--store-primary,#613d3e)] dark:group-hover:text-[#f4b7b9] transition-colors ${titleFontClass}`}
-                        onClick={(e) => {
-                      if (businessInfo.storeMode === 'cart' && featureFlags.enableOnlineOrders !== false) {
-                        addToCart(prod);
-                        setIsCartOpen(true);
-                      } else {
-                        handleOpenPreview(prod);
-                      }
-                    }}
+                        onClick={() => handleOpenPreview(prod)}
                         title={prod.name}
                       >
                         {prod.name}
@@ -1838,7 +1824,7 @@ export function PublicCatalog() {
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
-                          if (false) {
+                          if (prod.isCustomizable) {
                             handleOpenPreview(prod);
                           } else {
                             addToCart(prod);
