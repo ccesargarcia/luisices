@@ -1,0 +1,146 @@
+@import url('https://fonts.googleapis.com/css2?family=EB+Garamond:wght@400;500;600;700&family=Manrope:wght@300;400;500;600;700&display=swap');
+@import "tailwindcss";
+
+:root {
+  --font-family-sans: 'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-family-display: 'Manrope', sans-serif;
+
+  /* Modo Claro - Design System Luisices */
+  --background: #fff8f7;
+  --foreground: #221a1a;
+  --card: rgb(255 255 255 / 65%);
+  --card-foreground: #221a1a;
+  --popover: rgb(255 255 255 / 80%);
+  --popover-foreground: #221a1a;
+
+  /* Rosewood Escuro (#613d3e) */
+  --primary: #613d3e;
+  --primary-hover: #4e3031;
+  --primary-foreground: #ffffff;
+
+  /* Índigo Acinzentado / Lavanda (#5d5c76) */
+  --secondary: #5d5c76;
+  --secondary-foreground: #ffffff;
+
+  --muted: rgb(255 240 240 / 70%);
+  --muted-foreground: #504444;
+
+  /* Lilás Claro / Accent (#e2dfff) */
+  --accent: #e2dfff;
+  --accent-foreground: #45445d;
+
+  --destructive: #ba1a1a;
+  --destructive-foreground: #ffffff;
+
+  --border: rgb(255 255 255 / 45%);
+  --input: rgb(255 255 255 / 50%);
+  --ring: #e2dfff;
+
+  --glass-border: rgb(255 255 255 / 55%);
+  --glass-shadow: 0 8px 32px rgb(230 180 180 / 16%), 0 2px 8px rgb(0 0 0 / 4%);
+  --glass-blur: 28px;
+  --button-glass-bg: rgb(123 84 85 / 14%);
+  --button-glass-hover: rgb(123 84 85 / 24%);
+  --button-glass-text: #613d3e;
+
+  /* Cores de Iluminação Atmosférica */
+  --atmospheric-blush: #f7d6d0;
+  --atmospheric-lavender: #d1c4e9;
+  --atmospheric-blue: #bbdefb;
+}
+
+.dark {
+  /* Modo Escuro - Design System Luisices */
+  --background: #161214;
+  --foreground: #e8e0e3;
+  --card: rgb(31 25 27 / 86%);
+  --card-foreground: #e8e0e3;
+  --popover: rgb(36 28 31 / 88%);
+  --popover-foreground: #e8e0e3;
+
+  /* Rose Blush Suave / Pastel (#f4b7b9) */
+  --primary: #f4b7b9;
+  --primary-hover: #f9cbcd;
+  --primary-foreground: #4c2527;
+
+  /* Lavanda Suave (#b9b5d4) */
+  --secondary: #b9b5d4;
+  --secondary-foreground: #28253a;
+
+  --muted: rgb(43 34 37 / 90%);
+  --muted-foreground: #c9c0b8;
+
+  --accent: #534150;
+  --accent-foreground: #d8bfd1;
+
+  --destructive: #e58e8e;
+  --destructive-foreground: #321114;
+
+  --border: rgb(235 205 205 / 16%);
+  --input: rgb(18 14 16 / 70%);
+  --ring: #d8bfd1;
+
+  --glass-border: rgb(235 205 205 / 18%);
+  --glass-shadow: 0 16px 40px -8px rgb(0 0 0 / 65%);
+  --button-glass-bg: rgb(211 154 156 / 14%);
+  --button-glass-hover: rgb(211 154 156 / 24%);
+  --button-glass-text: #e8c5c8;
+
+  --atmospheric-blush: rgb(91 50 52 / 22%);
+  --atmospheric-lavender: rgb(40 25 45 / 28%);
+  --atmospheric-blue: rgb(18 28 32 / 30%);
+}
+
+body {
+  font-family: var(--font-family-sans);
+  background-color: var(--background);
+  color: var(--foreground);
+  background-image: 
+    radial-gradient(circle at 8% 8%, rgb(247 214 208 / 80%) 0, transparent 34%),
+    radial-gradient(circle at 52% 38%, rgb(209 196 233 / 65%) 0, transparent 38%),
+    radial-gradient(circle at 92% 82%, rgb(187 222 251 / 60%) 0, transparent 36%),
+    linear-gradient(135deg, #fceee9 0%, #fff8f7 52%, #ede7f6 100%);
+  background-attachment: fixed;
+  min-height: 100vh;
+}
+
+.dark body, body.dark {
+  background-color: #161214;
+  background-image: 
+    radial-gradient(circle at 15% 10%, rgb(91 50 52 / 24%) 0, transparent 45%),
+    radial-gradient(circle at 85% 25%, rgb(40 25 45 / 28%) 0, transparent 50%),
+    radial-gradient(circle at 50% 80%, rgb(18 28 32 / 30%) 0, transparent 60%),
+    #131112;
+}
+
+/* Utilitários Glassmorphism Luisices */
+.luisices-glass {
+  background: var(--card);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow);
+}
+
+.luisices-glass-input {
+  background: var(--input);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--border);
+}
+
+.luisices-chip {
+  background: color-mix(in srgb, var(--card) 85%, transparent);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--glass-border);
+}
+
+/* Ocultar barra de rolagem em navegadores mantendo o scroll funcional */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
