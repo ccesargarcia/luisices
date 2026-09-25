@@ -1198,25 +1198,28 @@ export function PublicCatalog() {
 
           {/* Barra de Filtros & Ordenação (Estilo Stoqui Shop) */}
           <div className="space-y-3">
-            {/* Categorias: flex-wrap responsivo sem barra de rolagem horizontal tanto no mobile quanto no desktop */}
-            <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
-              {categories.map((cat) => {
-                const isActive = selectedCategory.toLowerCase() === cat.toLowerCase();
-                return (
-                  <button
-                    key={cat}
-                    onClick={() => setSelectedCategory(cat)}
-                    className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-all duration-150 cursor-pointer ${
-                      isActive
-                        ? 'bg-[#613d3e] dark:bg-[#f4b7b9] text-white dark:text-[#4c2527] shadow-sm scale-102'
-                        : 'bg-white/70 dark:bg-[#1f191b]/80 border border-stone-200/70 dark:border-[#ebcdcd]/15 text-[#504444] dark:text-[#c9c0b8] hover:bg-white dark:hover:bg-[#2b2225]'
-                    }`}
-                  >
-                    {cat === 'todos' && <Sparkles size={12} />}
-                    <span>{cat === 'todos' ? 'Todos os produtos' : cat}</span>
-                  </button>
-                );
-              })}
+            {/* Categorias: Carrossel Horizontal em Linha Única (Opção 1) com Scroll Lateral Suave */}
+            <div className="relative group">
+              <div className="absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-[#fff8f7] dark:from-[#161214] to-transparent pointer-events-none z-10" />
+              <div className="flex items-center gap-1.5 sm:gap-2 overflow-x-auto pb-1 pt-0.5 no-scrollbar scroll-smooth flex-nowrap -mx-1 px-1">
+                {categories.map((cat) => {
+                  const isActive = selectedCategory.toLowerCase() === cat.toLowerCase();
+                  return (
+                    <button
+                      key={cat}
+                      onClick={() => setSelectedCategory(cat)}
+                      className={`flex-shrink-0 flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-all duration-150 cursor-pointer shadow-xs ${
+                        isActive
+                          ? 'bg-[#613d3e] dark:bg-[#f4b7b9] text-white dark:text-[#4c2527] shadow-sm scale-102'
+                          : 'bg-white/70 dark:bg-[#1f191b]/80 border border-stone-200/70 dark:border-[#ebcdcd]/15 text-[#504444] dark:text-[#c9c0b8] hover:bg-white dark:hover:bg-[#2b2225]'
+                      }`}
+                    >
+                      {cat === 'todos' && <Sparkles size={12} />}
+                      <span>{cat === 'todos' ? 'Todos os produtos' : cat}</span>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
 
             {/* Barra de Contagem e Seletor de Ordenação */}
