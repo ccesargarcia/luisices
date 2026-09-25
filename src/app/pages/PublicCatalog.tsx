@@ -75,6 +75,7 @@ export interface CatalogProduct {
   badge?: string;
   isCustomizable?: boolean;
   order?: number;
+  active?: boolean;
   createdAt?: string;
 }
 
@@ -631,7 +632,7 @@ export function PublicCatalog() {
       const storeList: CatalogProduct[] = [];
       docs.forEach((d) => {
         const data = d.data();
-        if (data.name && Number(data.price ?? data.unitPrice) > 0 && data.active !== false) {
+        if (data.name && Number(data.price ?? data.unitPrice) > 0) {
           const rawLead = data.leadTimeDays;
           const leadTimeDays = rawLead !== undefined && rawLead !== null && !isNaN(Number(rawLead))
             ? Math.max(0, Number(rawLead))
@@ -648,6 +649,7 @@ export function PublicCatalog() {
             badge: data.badge || undefined,
             isCustomizable: data.isCustomizable ?? true,
             order: data.order !== undefined ? Number(data.order) : undefined,
+            active: data.active !== false,
             createdAt: data.createdAt?.toDate?.()?.toISOString() ?? (typeof data.createdAt === 'string' ? data.createdAt : undefined),
           });
         }
@@ -1748,7 +1750,7 @@ export function PublicCatalog() {
                     className={`relative w-full overflow-hidden bg-stone-100 dark:bg-stone-900 cursor-pointer ${
                       businessInfo.imageAspect === 'portrait' ? 'aspect-[4/5]' : 'aspect-square'
                     }`}
-                    onClick={() => handleOpenPreview(prod)}
+                    onClick={() => prod.active !== false && handleOpenPreview(prod)}
                   >
                     <img
                       src={prod.imageUrl}
@@ -1765,6 +1767,14 @@ export function PublicCatalog() {
                         <Eye size={13} /> Ver detalhes
                       </span>
                     </div>
+
+                    {prod.active === false && (
+                      <div className="absolute inset-0 bg-black/20 backdrop-blur-[2px] flex items-center justify-center z-10">
+                        <span className="bg-white text-stone-900 font-black px-4 py-1 text-xs uppercase tracking-widest rounded shadow-xl -rotate-12 border-2 border-stone-100">
+                          Pausado
+                        </span>
+                      </div>
+                    )}
 
                     {/* Badge de Destaque / Categoria (se habilitado) */}
                     {prod.badge && (businessInfo.showBadgeBestSeller || businessInfo.showBadgeNew) && (
@@ -1788,7 +1798,7 @@ export function PublicCatalog() {
                       </span>
                       <h3 
                         className={`text-xs sm:text-sm font-bold text-[#221a1a] dark:text-[#e8e0e3] line-clamp-2 leading-snug cursor-pointer group-hover:text-[var(--store-primary,#613d3e)] dark:group-hover:text-[#f4b7b9] transition-colors ${titleFontClass}`}
-                        onClick={() => handleOpenPreview(prod)}
+                        onClick={() => prod.active !== false && handleOpenPreview(prod)}
                         title={prod.name}
                       >
                         {prod.name}
@@ -1820,7 +1830,11 @@ export function PublicCatalog() {
                     </div>
 
                     {/* Botão de Ação Dinâmico baseado no Store Mode */}
-                    {businessInfo.storeMode === 'cart' && featureFlags.enableOnlineOrders !== false ? (
+                    {prod.active === false ? (
+                      <button disabled className="w-full mt-2 py-2 sm:py-2.5 px-3 rounded-[var(--btn-radius)] font-bold text-[11px] sm:text-xs flex items-center justify-center gap-1.5 bg-stone-200 dark:bg-stone-800 text-stone-500 cursor-not-allowed">
+                        <span>Pausado / Esgotado</span>
+                      </button>
+                    ) : businessInfo.storeMode === 'cart' && featureFlags.enableOnlineOrders !== false ? (
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
