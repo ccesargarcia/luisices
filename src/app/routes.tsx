@@ -9,6 +9,8 @@ import { Register } from './pages/Register';
 import { Login } from './pages/Login';
 import { ResetPassword } from './pages/ResetPassword';
 import { AuthAction } from './pages/AuthAction';
+import { OrdersProvider } from '../contexts/OrdersContext';
+import { UserSettingsProvider } from '../contexts/UserSettingsContext';
 
 /**
  * Carregador lazy resiliente a falhas de rede e descompasso de chunks pós-deploy.
@@ -153,7 +155,7 @@ const basename = import.meta.env.BASE_URL || '/';
 
 // Detecção de subdomínio de catálogo/loja (ex: loja.dev.luisices.com.br, catalogo.dev.luisices.com.br, etc.)
 // Também aceita parâmetro ?view=loja ou ?view=catalog para testes locais ou de desenvolvimento
-const isCatalogSubdomain = typeof window !== 'undefined' && (() => {
+export const isCatalogSubdomain = typeof window !== 'undefined' && (() => {
   const host = window.location.hostname.toLowerCase();
   const view = (new URLSearchParams(window.location.search).get('view') || '').toLowerCase();
   return (
@@ -164,6 +166,22 @@ const isCatalogSubdomain = typeof window !== 'undefined' && (() => {
     ['loja', 'lojinha', 'catalog', 'catalogo'].includes(view)
   );
 })();
+
+export function isStoreRoute(): boolean {
+  if (typeof window === 'undefined') return false;
+  if (isCatalogSubdomain) return true;
+  const path = window.location.pathname.toLowerCase();
+  return (
+    path === '/loja' ||
+    path.startsWith('/loja/') ||
+    path === '/lojinha' ||
+    path.startsWith('/lojinha/') ||
+    path === '/catalogo' ||
+    path.startsWith('/catalogo/') ||
+    path === '/catalog' ||
+    path.startsWith('/catalog/')
+  );
+}
 
 export const router = isCatalogSubdomain
   ? createBrowserRouter([
@@ -225,7 +243,11 @@ export const router = isCatalogSubdomain
         path: '/',
         element: (
           <ProtectedRoute>
-            <Layout />
+            <UserSettingsProvider>
+              <OrdersProvider>
+                <Layout />
+              </OrdersProvider>
+            </UserSettingsProvider>
           </ProtectedRoute>
         ),
         errorElement: <ErrorBoundary />,

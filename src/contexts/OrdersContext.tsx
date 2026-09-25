@@ -120,7 +120,9 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
         setProfiles(list);
       },
       (err) => {
-        console.warn('OrdersContext: aviso ao escutar userProfiles:', err);
+        if (err?.code !== 'permission-denied' && !String(err?.message).includes('insufficient permissions')) {
+          console.warn('OrdersContext: aviso ao escutar userProfiles:', err);
+        }
       }
     );
 
@@ -212,7 +214,9 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
         publish();
       },
       (err) => {
-        console.warn('OrdersContext: aviso ao escutar orders no Firestore:', err?.message || err);
+        if (err?.code !== 'permission-denied' && !String(err?.message).includes('insufficient permissions')) {
+          console.warn('OrdersContext: aviso ao escutar orders no Firestore:', err?.message || err);
+        }
         setError(err.message);
         setLoading(false);
       }
@@ -232,7 +236,9 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
           publish();
         },
         (err) => {
-          console.error('OrdersContext: erro nos pedidos atribuídos:', err);
+          if (err?.code !== 'permission-denied' && !String(err?.message).includes('insufficient permissions')) {
+            console.error('OrdersContext: erro nos pedidos atribuídos:', err);
+          }
           setError(err.message);
           setLoading(false);
         }

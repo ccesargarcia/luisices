@@ -25,6 +25,32 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+function isStoreRoute(): boolean {
+  if (typeof window === 'undefined') return false;
+  const host = window.location.hostname.toLowerCase();
+  const view = (new URLSearchParams(window.location.search).get('view') || '').toLowerCase();
+  const isCatalogSubdomain =
+    host.startsWith('loja.') ||
+    host.startsWith('lojinha.') ||
+    host.startsWith('catalogo.') ||
+    host.startsWith('catalog.') ||
+    ['loja', 'lojinha', 'catalog', 'catalogo'].includes(view);
+
+  if (isCatalogSubdomain) return true;
+
+  const path = window.location.pathname.toLowerCase();
+  return (
+    path === '/loja' ||
+    path.startsWith('/loja/') ||
+    path === '/lojinha' ||
+    path.startsWith('/lojinha/') ||
+    path === '/catalogo' ||
+    path.startsWith('/catalogo/') ||
+    path === '/catalog' ||
+    path.startsWith('/catalog/')
+  );
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser]               = useState<User | null>(null);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
@@ -57,6 +83,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(u);
 
       if (u) {
+        // Se estiver navegando na loja/vitrine pública, desativa a escuta em tempo real do perfil administrativo
+        if (isStoreRoute()) {
+          setLoading(false);
+          return;
+        }
+
         try {
           // Garante que o token de autenticação está válido antes de conectar os listeners do Firestore
           await u.getIdToken();
@@ -143,7 +175,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             setLoading(false);
           },
           (err) => {
-            console.warn('[AuthContext] Aviso ao escutar perfil do usuário no Firestore:', err?.message || err);
+            if (!isStoreRoute() && err?.code !== 'permission-denied' && !String(err?.message).includes('insufficient permissions')) {
+              console.warn('[AuthContext] Aviso ao escutar perfil do usuário no Firestore:', err?.message || err);
+            }
             // Nunca efetua logout forçado por falha transitória de listener (evita deslogar o usuário em oscilações de rede/token)
             const fallbackProfile: UserProfile = {
               uid: u.uid,

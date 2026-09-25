@@ -68,7 +68,9 @@ export function UserSettingsProvider({ children }: { children: ReactNode }) {
         setLoading(false);
       },
       (err) => {
-        console.warn('UserSettingsContext: onSnapshot listener cancelado:', err?.message || err);
+        if (err?.code !== 'permission-denied' && !String(err?.message).includes('insufficient permissions')) {
+          console.warn('UserSettingsContext: onSnapshot listener cancelado:', err?.message || err);
+        }
         setError(err as Error);
         setSettings((prev) => prev ?? null);
         setLoading(false);

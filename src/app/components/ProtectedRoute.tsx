@@ -1,4 +1,4 @@
-import { ReactNode } from 'react';
+import { ReactNode, useEffect } from 'react';
 import { Navigate } from 'react-router';
 import { useAuth } from '../../contexts/AuthContext';
 import { Loader2 } from 'lucide-react';
@@ -9,7 +9,13 @@ interface ProtectedRouteProps {
 }
 
 export function ProtectedRoute({ children, adminOnly = false }: ProtectedRouteProps) {
-  const { isAuthenticated, loading, isAdmin, userProfile } = useAuth();
+  const { isAuthenticated, loading, isAdmin, userProfile, refreshUserProfile } = useAuth();
+
+  useEffect(() => {
+    if (isAuthenticated && !userProfile && !loading) {
+      refreshUserProfile().catch(() => {});
+    }
+  }, [isAuthenticated, userProfile, loading, refreshUserProfile]);
 
   if (loading || (isAuthenticated && !userProfile)) {
     return (
