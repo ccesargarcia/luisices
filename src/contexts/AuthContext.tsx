@@ -135,10 +135,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             setLoading(false);
           },
           (err) => {
-            console.warn('[AuthContext] Sessão residual inválida ou sem permissões no Firestore. Efetuando logout profilático:', err?.message || err);
-            // Limpa sessão fantasma do IndexedDB/Auth para evitar loops de permissão em telas públicas
-            firebaseAuthService.logout().catch(() => {});
-            setUser(null);
+            console.warn('[AuthContext] Aviso ao escutar perfil do usuário no Firestore:', err?.message || err);
             setUserProfile(null);
             setLoading(false);
           }
