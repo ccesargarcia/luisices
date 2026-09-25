@@ -1203,9 +1203,9 @@ export function StoreProducts() {
         </Card>
       </div>
 
-      {/* Barra de Filtros e Busca */}
-      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-card p-3 rounded-2xl border border-border shadow-2xs">
-        <div className="w-full sm:flex-1 relative min-w-0">
+            {/* Barra de Filtros e Busca */}
+      <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3 bg-card p-3 rounded-2xl border border-border shadow-2xs">
+        <div className="w-full lg:flex-1 relative min-w-0">
           <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
           <Input
             placeholder="Buscar por nome do produto, categoria ou descrição..."
@@ -1225,13 +1225,13 @@ export function StoreProducts() {
           )}
         </div>
 
-        <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+        <div className="flex items-center gap-2 flex-wrap">
           {/* Filtro de Categoria */}
           <Select
             value={filterCategory}
             onValueChange={(val) => setFilterCategory(val)}
           >
-            <SelectTrigger aria-label="Filtro de Categoria" className="h-9 text-xs flex-1 sm:flex-none min-w-[140px] max-w-full">
+            <SelectTrigger aria-label="Filtro de Categoria" className="h-9 text-xs flex-1 sm:flex-none min-w-[130px] max-w-full">
               <SelectValue placeholder="Todas as Categorias" />
             </SelectTrigger>
             <SelectContent>
@@ -1247,7 +1247,7 @@ export function StoreProducts() {
             value={filterStatus}
             onValueChange={(val) => setFilterStatus(val as any)}
           >
-            <SelectTrigger aria-label="Filtro de Status" className="h-9 text-xs flex-1 sm:flex-none min-w-[130px] max-w-full">
+            <SelectTrigger aria-label="Filtro de Status" className="h-9 text-xs flex-1 sm:flex-none min-w-[120px] max-w-full">
               <SelectValue placeholder="Todos os Status" />
             </SelectTrigger>
             <SelectContent>
@@ -1260,7 +1260,7 @@ export function StoreProducts() {
 
           {/* Seletor de Limite por Página */}
           <div className="flex items-center gap-1 bg-muted/60 p-0.5 rounded-lg border border-border shrink-0">
-            <span className="text-[10px] font-semibold text-muted-foreground px-1 hidden md:inline">Exibir:</span>
+            <span className="text-[10px] font-semibold text-muted-foreground px-1 hidden xl:inline">Exibir:</span>
             {([12, 24, 48, 'all'] as const).map((size) => (
               <button
                 key={size}
@@ -1282,18 +1282,30 @@ export function StoreProducts() {
           {/* Alternador Grid / Lista */}
           <div className="flex items-center bg-muted/60 p-0.5 rounded-lg border border-border shrink-0 ml-auto sm:ml-0">
             <button
+              type="button"
               onClick={() => handleSetViewMode('grid')}
-              className={`p-1.5 rounded-md transition-colors cursor-pointer ${viewMode === 'grid' ? 'bg-background shadow-xs text-foreground font-semibold' : 'text-muted-foreground hover:text-foreground'}`}
+              className={`flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium transition-colors cursor-pointer ${
+                viewMode === 'grid'
+                  ? 'bg-background shadow-xs text-foreground font-bold'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
               title="Visualização em galeria (grade)"
             >
-              <LayoutGrid size={15} />
+              <LayoutGrid size={14} className="shrink-0" />
+              <span className="hidden sm:inline text-[11px]">Grade</span>
             </button>
             <button
+              type="button"
               onClick={() => handleSetViewMode('list')}
-              className={`p-1.5 rounded-md transition-colors cursor-pointer ${viewMode === 'list' ? 'bg-background shadow-xs text-foreground font-semibold' : 'text-muted-foreground hover:text-foreground'}`}
+              className={`flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium transition-colors cursor-pointer ${
+                viewMode === 'list'
+                  ? 'bg-background shadow-xs text-foreground font-bold'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
               title="Visualização em lista"
             >
-              <LayoutList size={15} />
+              <LayoutList size={14} className="shrink-0" />
+              <span className="hidden sm:inline text-[11px]">Lista</span>
             </button>
           </div>
         </div>
