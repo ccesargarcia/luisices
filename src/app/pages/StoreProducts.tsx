@@ -52,7 +52,7 @@ import {
   Globe,
   ExternalLink,
   Eye,
-  EyeOff,
+  EyeOff, Pause,
   PackagePlus,
   CheckCircle2,
   CheckSquare,
@@ -85,6 +85,7 @@ interface StoreProductFormState {
   badge: string;
   isCustomizable: boolean;
   active: boolean;
+  status: "active" | "paused" | "hidden";
 }
 
 function emptyForm(): StoreProductFormState {
@@ -97,6 +98,7 @@ function emptyForm(): StoreProductFormState {
     badge: '',
     isCustomizable: true,
     active: true,
+    status: "active",
   };
 }
 
@@ -110,6 +112,7 @@ function formFromStoreProduct(p: StoreProduct): StoreProductFormState {
     badge: p.badge || '',
     isCustomizable: p.isCustomizable !== false,
     active: p.active !== false,
+    status: p.status || (p.active === false ? "hidden" : "active"),
   };
 }
 
@@ -290,7 +293,8 @@ function StoreProductDialog({ open, onOpenChange, editing, existingCategories }:
         leadTimeDays: parseInt(form.leadTimeDays, 10) || 5,
         badge: form.badge.trim() || undefined,
         isCustomizable: form.isCustomizable,
-        active: form.active,
+        active: form.status !== 'hidden',
+        status: form.status,
       };
 
       let prodId = editing?.id;
@@ -643,22 +647,30 @@ function StoreProductDialog({ open, onOpenChange, editing, existingCategories }:
               />
             </div>
 
-            <div className="pt-2 border-t border-border/60 flex items-center justify-between">
-              <div className="space-y-0.5">
-                <Label htmlFor="sp-active" className="text-xs font-semibold cursor-pointer flex items-center gap-1.5">
-                  <Globe size={13} className="text-emerald-600" />
-                  Ativo e visível no Catálogo Online
-                </Label>
-                <p className="text-[11px] text-muted-foreground">
-                  Se desmarcado, o produto fica pausado e não aparece para os clientes.
-                </p>
-              </div>
-              <Switch
-                id="sp-active"
-                checked={form.active}
-                onCheckedChange={(checked) => setForm({ ...form, active: checked })}
-              />
+            
+            <div className="pt-3 border-t border-border/60">
+              <Label className="text-xs font-semibold mb-2 flex items-center gap-1.5">
+                <Globe size={13} className="text-emerald-600" />
+                Status na Vitrine
+              </Label>
+              <Select value={form.status} onValueChange={(val) => setForm({ ...form, status: val })}>
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Selecione o status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="active">
+                    <span className="font-semibold text-emerald-600">🟢 Ativo (Vendas abertas)</span>
+                  </SelectItem>
+                  <SelectItem value="paused">
+                    <span className="font-semibold text-amber-500">🟠 Pausado (Esgotado / Vitrine apenas)</span>
+                  </SelectItem>
+                  <SelectItem value="hidden">
+                    <span className="font-semibold text-red-500">🔴 Oculto (Não aparece no catálogo)</span>
+                  </SelectItem>
+                </SelectContent>
+              </Select>
             </div>
+
           </div>
         </DialogBody>
 
@@ -815,7 +827,7 @@ export function StoreProducts() {
   const [permissionError, setPermissionError] = useState(false);
   const [search, setSearch] = useState('');
   const [filterCategory, setFilterCategory] = useState('todos');
-  const [filterStatus, setFilterStatus] = useState<'todos' | 'ativos' | 'pausados'>('todos');
+  const [filterStatus, setFilterStatus] = useState<'todos' | 'ativos' | 'pausados' | 'ocultos'>('todos');
   const [pageSize, setPageSize] = useState<number | 'all'>((() => {
     try {
       const saved = localStorage.getItem(STORE_PRODUCTS_PAGE_SIZE_KEY);
@@ -933,10 +945,13 @@ export function StoreProducts() {
 
       const matchesCat = filterCategory === 'todos' || p.category.toLowerCase() === filterCategory.toLowerCase();
 
+      
       const matchesStatus =
         filterStatus === 'todos' ||
-        (filterStatus === 'ativos' && p.active !== false) ||
-        (filterStatus === 'pausados' && p.active === false);
+        (filterStatus === 'ativos' && (p.status === 'active' || (!p.status && p.active !== false))) ||
+        (filterStatus === 'pausados' && p.status === 'paused') ||
+        (filterStatus === 'ocultos' && (p.status === 'hidden' || (!p.status && p.active === false)));
+
 
       return matchesSearch && matchesCat && matchesStatus;
     });
@@ -978,21 +993,23 @@ export function StoreProducts() {
     }
   }
 
-  async function handleToggleActive(p: StoreProduct) {
+  
+  async function handleStatusChange(p: StoreProduct, status: 'active' | 'paused' | 'hidden') {
     if (!canEdit) {
       toast.error('Você não tem permissão para alterar produtos da vitrine');
       return;
     }
-    const nextState = !p.active;
     try {
-      await firebaseStoreProductService.toggleStoreProductActive(p.id, nextState);
-      toast.success(nextState ? `"${p.name}" publicado na vitrine!` : `"${p.name}" pausado na vitrine.`);
+      await firebaseStoreProductService.bulkUpdateStatus([p.id], status);
+      toast.success(`"${p.name}" ${status === 'active' ? 'ativado' : status === 'paused' ? 'pausado' : 'oculto'}!`);
     } catch {
       toast.error('Erro ao alternar status da publicação');
     }
   }
 
-  async function handleBulkToggleActive(active: boolean) {
+
+  
+  async function handleBulkUpdateStatus(status: 'active' | 'paused' | 'hidden') {
     if (selectedProductIds.length === 0) return;
     if (!canEdit) {
       toast.error('Você não tem permissão para alterar produtos da vitrine.');
@@ -1000,11 +1017,13 @@ export function StoreProducts() {
     }
     setIsBulkStatusUpdating(true);
     try {
-      await firebaseStoreProductService.bulkToggleActive(selectedProductIds, active);
+      await firebaseStoreProductService.bulkUpdateStatus(selectedProductIds, status);
       toast.success(
-        active
+        status === 'active'
           ? `${selectedProductIds.length} ${selectedProductIds.length === 1 ? 'publicação ativada' : 'publicações ativadas'} no catálogo.`
-          : `${selectedProductIds.length} ${selectedProductIds.length === 1 ? 'publicação pausada' : 'publicações pausadas'} no catálogo.`
+          : status === 'paused'
+          ? `${selectedProductIds.length} ${selectedProductIds.length === 1 ? 'publicação pausada' : 'publicações pausadas'} no catálogo.`
+          : `${selectedProductIds.length} ${selectedProductIds.length === 1 ? 'publicação oculta' : 'publicações ocultas'}.`
       );
       setSelectedProductIds([]);
     } catch (err) {
@@ -1015,8 +1034,12 @@ export function StoreProducts() {
     }
   }
 
-  const activeCount = storeProducts.filter((p) => p.active !== false).length;
-  const pausedCount = storeProducts.filter((p) => p.active === false).length;
+
+  
+  const activeCount = storeProducts.filter((p) => p.status === 'active' || (!p.status && p.active !== false)).length;
+  const pausedCount = storeProducts.filter((p) => p.status === 'paused').length;
+  const hiddenCount = storeProducts.filter((p) => p.status === 'hidden' || (!p.status && p.active === false)).length;
+
 
   return (
     <div className="space-y-6 pb-16 w-full max-w-full overflow-x-hidden">
@@ -1161,8 +1184,8 @@ export function StoreProducts() {
               <EyeOff className="size-5" />
             </div>
             <div>
-              <p className="text-[11px] text-muted-foreground font-medium uppercase tracking-wider">Publicações Pausadas</p>
-              <p className="text-xl font-black text-amber-600 dark:text-amber-400">{pausedCount}</p>
+              <p className="text-[11px] text-muted-foreground font-medium uppercase tracking-wider">Pausados / Ocultos</p>
+              <p className="text-xl font-black text-amber-600 dark:text-amber-400">{pausedCount + hiddenCount}</p>
             </div>
           </CardContent>
         </Card>
@@ -1230,7 +1253,8 @@ export function StoreProducts() {
             <SelectContent>
               <SelectItem value="todos" className="text-xs">Todos os Status</SelectItem>
               <SelectItem value="ativos" className="text-xs">Apenas Publicados</SelectItem>
-              <SelectItem value="pausados" className="text-xs">Apenas Pausados</SelectItem>
+              <SelectItem value="pausados" className="text-xs">Pausados (Vitrine)</SelectItem>
+              <SelectItem value="ocultos" className="text-xs">Ocultos</SelectItem>
             </SelectContent>
           </Select>
 
@@ -1332,23 +1356,41 @@ export function StoreProducts() {
                     variant="outline"
                     size="sm"
                     disabled={isBulkStatusUpdating}
-                    onClick={() => handleBulkToggleActive(false)}
-                    className="flex-1 sm:flex-initial h-8.5 sm:h-8 px-2 sm:px-2.5 text-xs font-semibold gap-1.5 border-amber-500/30 text-amber-600 dark:text-amber-400 hover:bg-amber-500/10 cursor-pointer shadow-2xs"
-                    title="Pausar publicações na vitrine"
+                    onClick={() => handleBulkUpdateStatus('hidden')}
+                    className="flex-1 sm:flex-initial h-8.5 sm:h-8 px-2 sm:px-2.5 text-xs font-semibold gap-1.5 border-red-500/30 text-red-600 dark:text-red-400 hover:bg-red-500/10 cursor-pointer shadow-2xs"
+                    title="Ocultar publicações da vitrine"
                   >
                     {isBulkStatusUpdating ? (
                       <Loader2 size={13} className="animate-spin shrink-0" />
                     ) : (
                       <EyeOff size={13} className="shrink-0" />
                     )}
-                    <span>Pausar</span>
+                    <span>Ocultar</span>
                   </Button>
+
                   <Button
                     type="button"
                     variant="outline"
                     size="sm"
                     disabled={isBulkStatusUpdating}
-                    onClick={() => handleBulkToggleActive(true)}
+                    onClick={() => handleBulkUpdateStatus('paused')}
+                    className="flex-1 sm:flex-initial h-8.5 sm:h-8 px-2 sm:px-2.5 text-xs font-semibold gap-1.5 border-amber-500/30 text-amber-600 dark:text-amber-400 hover:bg-amber-500/10 cursor-pointer shadow-2xs"
+                    title="Pausar vendas na vitrine"
+                  >
+                    {isBulkStatusUpdating ? (
+                      <Loader2 size={13} className="animate-spin shrink-0" />
+                    ) : (
+                      <Pause size={13} className="shrink-0" />
+                    )}
+                    <span>Pausar</span>
+                  </Button>
+
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={isBulkStatusUpdating}
+                    onClick={() => handleBulkUpdateStatus("active")}
                     className="flex-1 sm:flex-initial h-8.5 sm:h-8 px-2 sm:px-2.5 text-xs font-semibold gap-1.5 border-emerald-500/30 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10 cursor-pointer shadow-2xs"
                     title="Ativar publicações na vitrine"
                   >
@@ -1500,14 +1542,20 @@ export function StoreProducts() {
                 )}
 
                 {/* Switch de Ativação Rápida */}
-                <div className="absolute top-2 right-2 flex items-center gap-1.5 bg-black/60 backdrop-blur-xs px-2 py-1 rounded-full text-white">
-                  <span className="text-[10px] font-semibold">{prod.active ? 'Publicado' : 'Pausado'}</span>
-                  <Switch
-                    checked={prod.active}
-                    onCheckedChange={() => handleToggleActive(prod)}
-                    className="scale-75 cursor-pointer"
-                  />
+                
+                <div className="absolute top-2 right-2 flex items-center gap-1.5 bg-black/70 backdrop-blur-md px-1 py-1 rounded text-white shadow-xl">
+                  <Select value={prod.status || (prod.active === false ? 'hidden' : 'active')} onValueChange={(val) => handleStatusChange(prod, val as any)}>
+                    <SelectTrigger className="h-5 text-[10px] px-1.5 bg-transparent border-none text-white focus:ring-0 w-[80px]">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="active"><span className="text-emerald-500 font-bold text-[10px]">Ativo</span></SelectItem>
+                      <SelectItem value="paused"><span className="text-amber-500 font-bold text-[10px]">Pausado</span></SelectItem>
+                      <SelectItem value="hidden"><span className="text-red-500 font-bold text-[10px]">Oculto</span></SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
+
               </div>
 
               {/* Informações */}
@@ -1652,15 +1700,20 @@ export function StoreProducts() {
                   {formatCurrency(prod.price)}
                 </span>
 
-                <div className="flex items-center gap-1.5">
-                  <span className="text-xs text-muted-foreground">
-                    {prod.active ? 'Publicado' : 'Pausado'}
-                  </span>
-                  <Switch
-                    checked={prod.active}
-                    onCheckedChange={() => handleToggleActive(prod)}
-                  />
+                
+                <div className="flex items-center gap-1.5 w-28 sm:w-32">
+                  <Select value={prod.status || (prod.active === false ? 'hidden' : 'active')} onValueChange={(val) => handleStatusChange(prod, val as any)}>
+                    <SelectTrigger className="h-8 text-xs px-2 bg-transparent border-border/50">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="active"><span className="text-emerald-600 font-semibold">Ativo</span></SelectItem>
+                      <SelectItem value="paused"><span className="text-amber-500 font-semibold">Pausado</span></SelectItem>
+                      <SelectItem value="hidden"><span className="text-red-500 font-semibold">Oculto</span></SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
+
 
                 {(canEdit || canDelete) && (
                   <div className="flex items-center gap-1">

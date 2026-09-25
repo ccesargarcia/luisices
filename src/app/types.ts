@@ -302,6 +302,7 @@ export interface StoreProduct {
   badge?: string;
   isCustomizable: boolean;
   active: boolean;
+  status?: 'active' | 'paused' | 'hidden';
   order?: number;
   internalProductId?: string;
   createdAt: string;
@@ -438,6 +439,7 @@ export interface UserProfile {
   role: UserRole;
   permissions: Permission;
   active: boolean;
+  status?: 'active' | 'paused' | 'hidden';
   createdAt: string;
   createdBy: string;
   lastPasswordResetRequestedAt?: string;
@@ -514,7 +516,8 @@ export interface SharedAccess {
   resources: SharedResourceType[]; // Quais recursos foram compartilhados
   createdAt: string;
   expiresAt?: string; // Opcional - data de expiração do compartilhamento
-  active: boolean; // Permite desativar sem deletar
+  active: boolean;
+  status?: 'active' | 'paused' | 'hidden'; // Permite desativar sem deletar
 }
 
 // ─── Central de E-mails Resend ────────────────────────────────────────────────
