@@ -68,8 +68,9 @@ export function UserSettingsProvider({ children }: { children: ReactNode }) {
         setLoading(false);
       },
       (err) => {
-        console.error('UserSettingsContext: onSnapshot error:', err);
+        console.warn('UserSettingsContext: onSnapshot listener cancelado:', err?.message || err);
         setError(err as Error);
+        setSettings(null);
         setLoading(false);
       }
     );
