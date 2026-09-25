@@ -114,6 +114,7 @@ export interface UserSettings {
   catalogHeaderHeight?: 'compact' | 'normal' | 'large'; // Altura da barra fixa (compact: 60px, normal: 74px, large: 90px)
   catalogHeaderHideText?: boolean;           // Ocultar texto do nome caso a logo já contenha o nome
   catalogShowHero?: boolean;                 // Exibir ou ocultar cartão de apresentação/vitrine (hero)
+  catalogCategoryFilterStyle?: 'dropdown' | 'carousel' | 'bottom_sheet'; // Estilo do seletor de temas/categorias na vitrine (dropdown, carrossel ou bottom sheet)
 
   catalogBadge?: string;                      // Selo no header (ex: "Atelier", "Papelaria Afetiva")
   catalogStatusText?: string;                // Texto do status (ex: "Atendimento WhatsApp ativo")

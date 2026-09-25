@@ -20,6 +20,9 @@ import {
   MessageCircle,
   Sparkles,
   CheckCircle2,
+  Check,
+  SlidersHorizontal,
+  LayoutGrid,
   Loader2,
   Clock,
   MapPin,
@@ -232,6 +235,7 @@ export function StoreCustomization() {
     catalogHeaderHeight: 'normal' as 'compact' | 'normal' | 'large',
     catalogHeaderHideText: false,
     catalogShowHero: true,
+    catalogCategoryFilterStyle: 'dropdown' as 'dropdown' | 'carousel' | 'bottom_sheet',
 
     // Seção 1: Quem Somos / Sobre o Ateliê
     catalogShowAbout: false,
@@ -409,6 +413,7 @@ export function StoreCustomization() {
         catalogHeaderHeight: (settings?.catalogHeaderHeight || 'normal') as 'compact' | 'normal' | 'large',
         catalogHeaderHideText: Boolean(settings?.catalogHeaderHideText),
         catalogShowHero: settings?.catalogShowHero !== undefined ? Boolean(settings.catalogShowHero) : true,
+        catalogCategoryFilterStyle: (settings?.catalogCategoryFilterStyle || 'dropdown') as 'dropdown' | 'carousel' | 'bottom_sheet',
 
         // 1. Quem Somos
         catalogShowAbout: settings?.catalogShowAbout !== undefined ? Boolean(settings.catalogShowAbout) : false,
@@ -2692,6 +2697,108 @@ IMPORTANTE:
                       value={formData.catalogHeroDescription}
                       onChange={(e) => handleChange('catalogHeroDescription', e.target.value)}
                     />
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Card de Estilo de Filtros & Navegação de Temas */}
+              <Card className="border-primary/25 shadow-xs">
+                <CardHeader>
+                  <div className="flex items-center justify-between gap-2">
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <SlidersHorizontal className="size-4 text-primary" />
+                      Estilo de Filtros & Navegação de Temas
+                    </CardTitle>
+                    <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-primary/10 text-primary shrink-0">
+                      Mobile & Web
+                    </span>
+                  </div>
+                  <CardDescription className="text-xs">
+                    Escolha como os clientes navegam pelos seus temas e ocasiões (ex: Batizados, Planners, Topos de Bolo) no catálogo público.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    {/* Opção 1: Dropdown */}
+                    <button
+                      type="button"
+                      onClick={() => handleChange('catalogCategoryFilterStyle', 'dropdown')}
+                      className={`p-3.5 rounded-2xl border text-left transition-all cursor-pointer flex flex-col justify-between gap-2.5 ${
+                        formData.catalogCategoryFilterStyle === 'dropdown'
+                          ? 'border-primary bg-primary/10 ring-2 ring-primary/40 font-semibold text-foreground shadow-xs'
+                          : 'border-border/80 bg-muted/20 hover:border-border hover:bg-muted/40 text-muted-foreground'
+                      }`}
+                    >
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                            <SlidersHorizontal className="size-3.5 text-primary" />
+                            Dropdown Compacto
+                          </span>
+                          {formData.catalogCategoryFilterStyle === 'dropdown' && (
+                            <Check className="size-3.5 text-primary" />
+                          )}
+                        </div>
+                        <p className="text-[11px] leading-relaxed opacity-85">
+                          Barra única minimalista com menu flutuante e contadores dinâmicos.
+                        </p>
+                      </div>
+                      <span className="text-[10px] text-primary font-medium">Recomendado • Mais limpo</span>
+                    </button>
+
+                    {/* Opção 2: Carrossel */}
+                    <button
+                      type="button"
+                      onClick={() => handleChange('catalogCategoryFilterStyle', 'carousel')}
+                      className={`p-3.5 rounded-2xl border text-left transition-all cursor-pointer flex flex-col justify-between gap-2.5 ${
+                        formData.catalogCategoryFilterStyle === 'carousel'
+                          ? 'border-primary bg-primary/10 ring-2 ring-primary/40 font-semibold text-foreground shadow-xs'
+                          : 'border-border/80 bg-muted/20 hover:border-border hover:bg-muted/40 text-muted-foreground'
+                      }`}
+                    >
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                            <LayoutGrid className="size-3.5 text-primary" />
+                            Carrossel de Chips
+                          </span>
+                          {formData.catalogCategoryFilterStyle === 'carousel' && (
+                            <Check className="size-3.5 text-primary" />
+                          )}
+                        </div>
+                        <p className="text-[11px] leading-relaxed opacity-85">
+                          Linha horizontal com scroll lateral suave e todos os temas visíveis de imediato.
+                        </p>
+                      </div>
+                      <span className="text-[10px] text-primary font-medium">Descoberta rápida</span>
+                    </button>
+
+                    {/* Opção 3: Bottom Sheet */}
+                    <button
+                      type="button"
+                      onClick={() => handleChange('catalogCategoryFilterStyle', 'bottom_sheet')}
+                      className={`p-3.5 rounded-2xl border text-left transition-all cursor-pointer flex flex-col justify-between gap-2.5 ${
+                        formData.catalogCategoryFilterStyle === 'bottom_sheet'
+                          ? 'border-primary bg-primary/10 ring-2 ring-primary/40 font-semibold text-foreground shadow-xs'
+                          : 'border-border/80 bg-muted/20 hover:border-border hover:bg-muted/40 text-muted-foreground'
+                      }`}
+                    >
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                            <Layers className="size-3.5 text-primary" />
+                            Gaveta / Bottom Sheet
+                          </span>
+                          {formData.catalogCategoryFilterStyle === 'bottom_sheet' && (
+                            <Check className="size-3.5 text-primary" />
+                          )}
+                        </div>
+                        <p className="text-[11px] leading-relaxed opacity-85">
+                          Botão moderno que abre uma gaveta deslizante com busca e contadores.
+                        </p>
+                      </div>
+                      <span className="text-[10px] text-primary font-medium">Estilo App Nativo</span>
+                    </button>
                   </div>
                 </CardContent>
               </Card>

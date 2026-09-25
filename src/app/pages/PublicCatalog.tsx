@@ -98,6 +98,8 @@ export function PublicCatalog() {
   const [sortBy, setSortBy] = useState<string>('destaque');
   const [expandedFaq, setExpandedFaq] = useState<number | null>(null);
   const [isCategoryDropdownOpen, setIsCategoryDropdownOpen] = useState<boolean>(false);
+  const [isBottomSheetOpen, setIsBottomSheetOpen] = useState<boolean>(false);
+  const [bottomSheetSearchQuery, setBottomSheetSearchQuery] = useState<string>('');
   const categoryDropdownRef = useRef<HTMLDivElement>(null);
 
   // Fecha o dropdown flutuante de categorias ao clicar fora ou pressionar ESC
@@ -113,9 +115,10 @@ export function PublicCatalog() {
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key === 'Escape') {
         setIsCategoryDropdownOpen(false);
+        setIsBottomSheetOpen(false);
       }
     }
-    if (isCategoryDropdownOpen) {
+    if (isCategoryDropdownOpen || isBottomSheetOpen) {
       document.addEventListener('mousedown', handleClickOutside);
       document.addEventListener('keydown', handleKeyDown);
     }
@@ -123,7 +126,19 @@ export function PublicCatalog() {
       document.removeEventListener('mousedown', handleClickOutside);
       document.removeEventListener('keydown', handleKeyDown);
     };
-  }, [isCategoryDropdownOpen]);
+  }, [isCategoryDropdownOpen, isBottomSheetOpen]);
+
+  // Trava scroll do body quando a gaveta / bottom sheet estiver aberta
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    if (isBottomSheetOpen) {
+      const originalStyle = window.getComputedStyle(document.body).overflow;
+      document.body.style.overflow = 'hidden';
+      return () => {
+        document.body.style.overflow = originalStyle;
+      };
+    }
+  }, [isBottomSheetOpen]);
 
   // Produtos reais carregados em tempo real via Firestore (IndexedDB nativo do SDK)
   const [products, setProducts] = useState<CatalogProduct[]>([]);
@@ -167,6 +182,7 @@ export function PublicCatalog() {
       headerLogoPosition: (saved?.catalogHeaderLogoPosition || saved?.headerLogoPosition || 'left') as 'left' | 'center' | 'full',
       headerHeight: (saved?.catalogHeaderHeight || saved?.headerHeight || 'normal') as 'compact' | 'normal' | 'large',
       headerHideText: Boolean(saved?.catalogHeaderHideText ?? saved?.headerHideText ?? false),
+      categoryFilterStyle: (saved?.catalogCategoryFilterStyle || 'dropdown') as 'dropdown' | 'carousel' | 'bottom_sheet',
       badge: saved?.catalogBadge !== undefined ? saved.catalogBadge : '',
       statusText: saved?.catalogStatusText !== undefined ? saved.catalogStatusText : '',
       announcement: saved?.catalogAnnouncement !== undefined ? saved.catalogAnnouncement : '',
@@ -420,6 +436,7 @@ export function PublicCatalog() {
         headerLogoPosition: s.catalogHeaderLogoPosition || 'left',
         headerHeight: s.catalogHeaderHeight || 'normal',
         headerHideText: Boolean(s.catalogHeaderHideText),
+        categoryFilterStyle: (s.catalogCategoryFilterStyle || prev.categoryFilterStyle || 'dropdown') as 'dropdown' | 'carousel' | 'bottom_sheet',
         badge: s.catalogBadge !== undefined ? s.catalogBadge : '',
         statusText: s.catalogStatusText !== undefined ? s.catalogStatusText : '',
         announcement: s.catalogAnnouncement !== undefined ? s.catalogAnnouncement : '',
@@ -646,8 +663,8 @@ export function PublicCatalog() {
 
 
 
-  // Travar o scroll de fundo enquanto modal ou sacola estiverem abertos
-  const isAnyModalOpen = Boolean(isCartOpen || selectedProductPreview || submittedOrderInfo);
+  // Travar o scroll de fundo enquanto modal, sacola ou gaveta estiverem abertos
+  const isAnyModalOpen = Boolean(isCartOpen || selectedProductPreview || submittedOrderInfo || isBottomSheetOpen);
 
   useEffect(() => {
     if (isAnyModalOpen) {
@@ -659,7 +676,7 @@ export function PublicCatalog() {
     }
   }, [isAnyModalOpen]);
 
-  // Fechar modal ou sacola com a tecla Escape
+  // Fechar modal, gaveta ou sacola com a tecla Escape
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
@@ -669,12 +686,16 @@ export function PublicCatalog() {
           setSelectedProductPreview(null);
         } else if (isCartOpen) {
           setIsCartOpen(false);
+        } else if (isBottomSheetOpen) {
+          setIsBottomSheetOpen(false);
+        } else if (isCategoryDropdownOpen) {
+          setIsCategoryDropdownOpen(false);
         }
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedProductPreview, isCartOpen, submittedOrderInfo]);
+  }, [selectedProductPreview, isCartOpen, submittedOrderInfo, isBottomSheetOpen, isCategoryDropdownOpen]);
 
   // Categorias dinâmicas derivadas dos produtos
   const categories = useMemo(() => {
@@ -697,6 +718,15 @@ export function PublicCatalog() {
     });
     return map;
   }, [products]);
+
+  // Lista de temas filtrada na busca interna da Gaveta / Bottom Sheet
+  const filteredCategoriesForSheet = useMemo(() => {
+    if (!bottomSheetSearchQuery.trim()) return categories;
+    const q = bottomSheetSearchQuery.toLowerCase().trim();
+    return categories.filter((c) =>
+      c === 'todos' ? 'todos os temas & ocasiões todas as peças'.includes(q) : c.toLowerCase().includes(q)
+    );
+  }, [categories, bottomSheetSearchQuery]);
 
   // Filtragem dinâmica e ordenação
   const filteredProducts = useMemo(() => {
@@ -1236,28 +1266,16 @@ export function PublicCatalog() {
               </section>
             )}
 
-          {/* Barra de Filtros & Ordenação (Conceito 3 - Barra Única de Temas & Ocasiões com Dropdown Integrado) */}
-          <div className="relative z-30" ref={categoryDropdownRef}>
-            <div className="min-h-12 py-2 px-3.5 sm:px-4 rounded-2xl bg-white/85 dark:bg-[#1f191b]/90 backdrop-blur-md border border-stone-200/70 dark:border-[#ebcdcd]/15 flex flex-wrap items-center justify-between gap-2.5 text-xs text-[#504444] dark:text-[#c9c0b8] shadow-xs">
-              
-              {/* Lado Esquerdo: Metadados com Gatilho Interativo de Dropdown */}
-              <div className="flex items-center gap-1.5 flex-wrap font-medium">
-                <span>Mostrando <strong className="text-[#221a1a] dark:text-[#e8e0e3] font-bold">{filteredProducts.length} {filteredProducts.length === 1 ? 'criação' : 'criações'}</strong> em</span>
-                
-                <button 
-                  type="button"
-                  onClick={() => setIsCategoryDropdownOpen((prev) => !prev)}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#613d3e]/10 dark:bg-[#f4b7b9]/15 hover:bg-[#613d3e]/20 dark:hover:bg-[#f4b7b9]/25 text-[#613d3e] dark:text-[#f4b7b9] font-bold text-xs border border-[#613d3e]/25 dark:border-[#f4b7b9]/30 transition active:scale-95 cursor-pointer shadow-2xs"
-                  title="Explorar temas e ocasiões do ateliê"
-                >
-                  <SlidersHorizontal size={13} className="shrink-0" />
-                  <span className="capitalize">{selectedCategory === 'todos' ? 'Temas & Ocasiões' : selectedCategory}</span>
-                  <ChevronDown size={14} className={`shrink-0 transform transition-transform duration-200 ${isCategoryDropdownOpen ? 'rotate-180' : ''}`} />
-                </button>
-              </div>
+          {/* Barra de Filtros & Navegação de Temas (Configurável: Dropdown / Carrossel / Bottom Sheet) */}
+          {businessInfo.categoryFilterStyle === 'carousel' ? (
+            /* FORMATO 2: CARROSSEL DE CHIPS HORIZONTAIS */
+            <div className="space-y-3">
+              {/* Barra Superior de Contagem e Seletor de Ordenação */}
+              <div className="flex items-center justify-between gap-2 text-xs text-[#504444] dark:text-[#c9c0b8] pt-1">
+                <span className="font-medium">
+                  <strong>{filteredProducts.length}</strong> {filteredProducts.length === 1 ? 'criação encontrada' : 'criações encontradas'}
+                </span>
 
-              {/* Lado Direito: Seletor de Ordenação */}
-              <div className="flex items-center gap-2">
                 <div className="flex items-center gap-1.5">
                   <ArrowUpDown size={13} className="text-stone-400 dark:text-stone-500" />
                   <label htmlFor="catalog-sort" className="hidden sm:inline text-xs text-stone-500 dark:text-stone-400 font-medium">
@@ -1277,91 +1295,225 @@ export function PublicCatalog() {
                   </Select>
                 </div>
               </div>
-            </div>
 
-            {/* FLOATING DROPDOWN POPOVER (Temas & Ocasiões) */}
-            {isCategoryDropdownOpen && (
-              <div className="absolute left-0 right-0 top-full mt-2 p-4 rounded-2xl bg-[#1e1a1c]/95 dark:bg-[#1a1618]/95 backdrop-blur-2xl border border-[#d39a9c]/40 shadow-2xl z-50 text-white space-y-3 animate-in fade-in slide-in-from-top-2 duration-200">
-                
-                {/* Cabeçalho do Popover */}
-                <div className="flex items-center justify-between pb-2.5 border-b border-white/10">
-                  <div className="flex items-center gap-2">
-                    <SlidersHorizontal className="size-4 text-[#d39a9c]" />
-                    <span className="text-xs font-bold uppercase tracking-wider text-[#d39a9c]">
-                      TEMAS &amp; OCASIÕES DO ATELIÊ
-                    </span>
-                  </div>
-                  
-                  <span className="text-[10px] px-2.5 py-0.5 rounded-full border border-[#d39a9c]/40 text-[#d39a9c] font-bold bg-[#d39a9c]/10">
-                    {products.length} {products.length === 1 ? 'Peça Ativa' : 'Peças Ativas'}
-                  </span>
-                </div>
-
-                {/* Subtítulo */}
-                <div className="text-[10px] font-bold uppercase tracking-widest text-white/50 pt-1">
-                  FILTRAR POR TEMA OU OCASIÃO
-                </div>
-
-                {/* Lista de Categorias com Contadores Dinâmicos em Tempo Real */}
-                <div className="space-y-1 max-h-64 overflow-y-auto pr-1 custom-scrollbar">
+              {/* Carrossel Horizontal em Linha Única com Contadores */}
+              <div className="relative group">
+                <div className="absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-[#fff8f7] dark:from-[#161214] to-transparent pointer-events-none z-10" />
+                <div className="flex items-center gap-1.5 sm:gap-2 overflow-x-auto pb-1 pt-0.5 no-scrollbar scroll-smooth flex-nowrap -mx-1 px-1">
                   {categories.map((cat) => {
                     const isActive = selectedCategory.toLowerCase() === cat.toLowerCase();
-                    const count = categoryCounts[cat] ?? 0;
+                    const count = categoryCounts[cat];
                     return (
                       <button
                         key={cat}
-                        type="button"
-                        onClick={() => {
-                          setSelectedCategory(cat);
-                          setIsCategoryDropdownOpen(false);
-                        }}
-                        className={`w-full flex items-center justify-between p-2.5 rounded-xl transition text-xs font-medium cursor-pointer ${
-                          isActive 
-                            ? 'bg-[#d39a9c]/20 text-white border border-[#d39a9c]/40 shadow-sm'
-                            : 'hover:bg-white/5 text-white/70 hover:text-white'
+                        onClick={() => setSelectedCategory(cat)}
+                        className={`flex-shrink-0 flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-all duration-150 cursor-pointer shadow-xs ${
+                          isActive
+                            ? 'bg-[#613d3e] dark:bg-[#f4b7b9] text-white dark:text-[#4c2527] shadow-sm scale-102'
+                            : 'bg-white/70 dark:bg-[#1f191b]/80 border border-stone-200/70 dark:border-[#ebcdcd]/15 text-[#504444] dark:text-[#c9c0b8] hover:bg-white dark:hover:bg-[#2b2225]'
                         }`}
                       >
-                        <div className="flex items-center gap-2.5">
-                          <span className={`size-2 rounded-full ${isActive ? 'bg-[#d39a9c] shadow-sm' : 'bg-transparent border border-white/40'}`} />
-                          <span className="capitalize">{cat === 'todos' ? 'Todos os temas & ocasiões' : cat}</span>
-                        </div>
-
-                        <div className="flex items-center gap-1.5">
-                          <span className={`text-[11px] font-bold ${isActive ? 'text-[#d39a9c]' : 'text-white/50'}`}>
+                        {cat === 'todos' && <Sparkles size={12} />}
+                        <span className="capitalize">{cat === 'todos' ? 'Todos os temas' : cat}</span>
+                        {typeof count === 'number' && (
+                          <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold tabular-nums ${
+                            isActive
+                              ? 'bg-white/20 dark:bg-black/20 text-white dark:text-[#4c2527]'
+                              : 'bg-stone-200/70 dark:bg-stone-800 text-stone-600 dark:text-stone-300'
+                          }`}>
                             {count}
                           </span>
-                          {isActive && <Check className="size-3.5 text-[#d39a9c]" />}
-                        </div>
+                        )}
                       </button>
                     );
                   })}
                 </div>
+              </div>
+            </div>
+          ) : businessInfo.categoryFilterStyle === 'bottom_sheet' ? (
+            /* FORMATO 3: GAVETA / BOTTOM SHEET (ESTILO APP NATIVO) */
+            <div className="space-y-3">
+              <div className="min-h-12 py-2 px-3.5 sm:px-4 rounded-2xl bg-white/85 dark:bg-[#1f191b]/90 backdrop-blur-md border border-stone-200/70 dark:border-[#ebcdcd]/15 flex flex-wrap items-center justify-between gap-2.5 text-xs text-[#504444] dark:text-[#c9c0b8] shadow-xs">
+                
+                {/* Lado Esquerdo: Botão Principal de Filtro */}
+                <button
+                  type="button"
+                  onClick={() => setIsBottomSheetOpen(true)}
+                  className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-[#613d3e] dark:bg-[#f4b7b9] text-white dark:text-[#4c2527] font-bold text-xs shadow-sm hover:opacity-95 active:scale-95 transition cursor-pointer min-h-[44px]"
+                  aria-label="Abrir gaveta de temas e ocasiões"
+                >
+                  <SlidersHorizontal size={14} />
+                  <span>Temas &amp; Ocasiões</span>
+                  <span className="px-2 py-0.5 rounded-full bg-white/20 dark:bg-black/20 text-[10px] font-black tabular-nums">
+                    {selectedCategory === 'todos' ? products.length : (categoryCounts[selectedCategory] || 1)}
+                  </span>
+                </button>
 
-                {/* Rodapé de Ações do Popover */}
-                <div className="pt-3 border-t border-white/10 flex items-center justify-between gap-2">
+                {/* Status da Seleção Atual + Seletor de Ordenação */}
+                <div className="flex items-center gap-3 flex-wrap">
+                  {selectedCategory !== 'todos' && (
+                    <div className="flex items-center gap-1.5 bg-[#613d3e]/10 dark:bg-[#f4b7b9]/15 text-[#613d3e] dark:text-[#f4b7b9] px-3 py-1 rounded-xl text-xs font-semibold border border-[#613d3e]/20 dark:border-[#f4b7b9]/30">
+                      <span className="capitalize truncate max-w-[140px] sm:max-w-none">{selectedCategory}</span>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedCategory('todos')}
+                        className="hover:opacity-75 p-0.5 cursor-pointer ml-0.5"
+                        title="Limpar filtro de tema"
+                      >
+                        <X size={12} />
+                      </button>
+                    </div>
+                  )}
+
+                  <div className="flex items-center gap-1.5">
+                    <ArrowUpDown size={13} className="text-stone-400 dark:text-stone-500" />
+                    <label htmlFor="catalog-sort" className="hidden sm:inline text-xs text-stone-500 dark:text-stone-400 font-medium">
+                      Ordenar:
+                    </label>
+                    <Select value={sortBy} onValueChange={(val) => setSortBy(val)}>
+                      <SelectTrigger id="catalog-sort" aria-label="Ordenar produtos" className="h-8 text-xs w-[130px] bg-white/90 dark:bg-[#161214]/90 border-stone-200 dark:border-stone-700">
+                        <SelectValue placeholder="Ordenar" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="destaque" className="text-xs">Destaques</SelectItem>
+                        <SelectItem value="preco-menor" className="text-xs">Menor preço</SelectItem>
+                        <SelectItem value="preco-maior" className="text-xs">Maior preço</SelectItem>
+                        <SelectItem value="nome-az" className="text-xs">Nome (A - Z)</SelectItem>
+                        <SelectItem value="prazo" className="text-xs">Menor prazo</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : (
+            /* FORMATO 1: DROPDOWN COMPACTO COM METADADOS (CONCEITO 3 - PADRÃO) */
+            <div className="relative z-30" ref={categoryDropdownRef}>
+              <div className="min-h-12 py-2 px-3.5 sm:px-4 rounded-2xl bg-white/85 dark:bg-[#1f191b]/90 backdrop-blur-md border border-stone-200/70 dark:border-[#ebcdcd]/15 flex flex-wrap items-center justify-between gap-2.5 text-xs text-[#504444] dark:text-[#c9c0b8] shadow-xs">
+                
+                {/* Lado Esquerdo: Metadados com Gatilho Interativo de Dropdown */}
+                <div className="flex items-center gap-1.5 flex-wrap font-medium">
+                  <span>Mostrando <strong className="text-[#221a1a] dark:text-[#e8e0e3] font-bold">{filteredProducts.length} {filteredProducts.length === 1 ? 'criação' : 'criações'}</strong> em</span>
+                  
                   <button 
                     type="button"
-                    onClick={() => {
-                      setSelectedCategory('todos');
-                      setIsCategoryDropdownOpen(false);
-                    }}
-                    className="text-xs text-white/70 hover:text-[#d39a9c] font-medium transition cursor-pointer"
+                    onClick={() => setIsCategoryDropdownOpen((prev) => !prev)}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#613d3e]/10 dark:bg-[#f4b7b9]/15 hover:bg-[#613d3e]/20 dark:hover:bg-[#f4b7b9]/25 text-[#613d3e] dark:text-[#f4b7b9] font-bold text-xs border border-[#613d3e]/25 dark:border-[#f4b7b9]/30 transition active:scale-95 cursor-pointer shadow-2xs"
+                    title="Explorar temas e ocasiões do ateliê"
                   >
-                    Ver todos os temas &amp; ocasiões ({products.length}) →
-                  </button>
-
-                  <button 
-                    type="button"
-                    onClick={() => setIsCategoryDropdownOpen(false)}
-                    className="px-4 py-1.5 rounded-xl border border-[#d39a9c] text-[#d39a9c] hover:bg-[#d39a9c] hover:text-[#161214] font-bold text-xs uppercase tracking-wider transition active:scale-95 cursor-pointer"
-                  >
-                    FECHAR
+                    <SlidersHorizontal size={13} className="shrink-0" />
+                    <span className="capitalize">{selectedCategory === 'todos' ? 'Temas & Ocasiões' : selectedCategory}</span>
+                    <ChevronDown size={14} className={`shrink-0 transform transition-transform duration-200 ${isCategoryDropdownOpen ? 'rotate-180' : ''}`} />
                   </button>
                 </div>
 
+                {/* Lado Direito: Seletor de Ordenação */}
+                <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1.5">
+                    <ArrowUpDown size={13} className="text-stone-400 dark:text-stone-500" />
+                    <label htmlFor="catalog-sort" className="hidden sm:inline text-xs text-stone-500 dark:text-stone-400 font-medium">
+                      Ordenar:
+                    </label>
+                    <Select value={sortBy} onValueChange={(val) => setSortBy(val)}>
+                      <SelectTrigger id="catalog-sort" aria-label="Ordenar produtos" className="h-8 text-xs w-[130px] bg-white/90 dark:bg-[#161214]/90 border-stone-200 dark:border-stone-700">
+                        <SelectValue placeholder="Ordenar" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="destaque" className="text-xs">Destaques</SelectItem>
+                        <SelectItem value="preco-menor" className="text-xs">Menor preço</SelectItem>
+                        <SelectItem value="preco-maior" className="text-xs">Maior preço</SelectItem>
+                        <SelectItem value="nome-az" className="text-xs">Nome (A - Z)</SelectItem>
+                        <SelectItem value="prazo" className="text-xs">Menor prazo</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
               </div>
-            )}
-          </div>
+
+              {/* FLOATING DROPDOWN POPOVER (Temas & Ocasiões) */}
+              {isCategoryDropdownOpen && (
+                <div className="absolute left-0 right-0 top-full mt-2 p-4 rounded-2xl bg-[#1e1a1c]/95 dark:bg-[#1a1618]/95 backdrop-blur-2xl border border-[#d39a9c]/40 shadow-2xl z-50 text-white space-y-3 animate-in fade-in slide-in-from-top-2 duration-200">
+                  
+                  {/* Cabeçalho do Popover */}
+                  <div className="flex items-center justify-between pb-2.5 border-b border-white/10">
+                    <div className="flex items-center gap-2">
+                      <SlidersHorizontal className="size-4 text-[#d39a9c]" />
+                      <span className="text-xs font-bold uppercase tracking-wider text-[#d39a9c]">
+                        TEMAS &amp; OCASIÕES DO ATELIÊ
+                      </span>
+                    </div>
+                    
+                    <span className="text-[10px] px-2.5 py-0.5 rounded-full border border-[#d39a9c]/40 text-[#d39a9c] font-bold bg-[#d39a9c]/10">
+                      {products.length} {products.length === 1 ? 'Peça Ativa' : 'Peças Ativas'}
+                    </span>
+                  </div>
+
+                  {/* Subtítulo */}
+                  <div className="text-[10px] font-bold uppercase tracking-widest text-white/50 pt-1">
+                    FILTRAR POR TEMA OU OCASIÃO
+                  </div>
+
+                  {/* Lista de Categorias com Contadores Dinâmicos em Tempo Real */}
+                  <div className="space-y-1 max-h-64 overflow-y-auto pr-1 custom-scrollbar">
+                    {categories.map((cat) => {
+                      const isActive = selectedCategory.toLowerCase() === cat.toLowerCase();
+                      const count = categoryCounts[cat] ?? 0;
+                      return (
+                        <button
+                          key={cat}
+                          type="button"
+                          onClick={() => {
+                            setSelectedCategory(cat);
+                            setIsCategoryDropdownOpen(false);
+                          }}
+                          className={`w-full flex items-center justify-between p-2.5 rounded-xl transition text-xs font-medium cursor-pointer ${
+                            isActive 
+                              ? 'bg-[#d39a9c]/20 text-white border border-[#d39a9c]/40 shadow-sm'
+                              : 'hover:bg-white/5 text-white/70 hover:text-white'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2.5">
+                            <span className={`size-2 rounded-full ${isActive ? 'bg-[#d39a9c] shadow-sm' : 'bg-transparent border border-white/40'}`} />
+                            <span className="capitalize">{cat === 'todos' ? 'Todos os temas & ocasiões' : cat}</span>
+                          </div>
+
+                          <div className="flex items-center gap-1.5">
+                            <span className={`text-[11px] font-bold ${isActive ? 'text-[#d39a9c]' : 'text-white/50'}`}>
+                              {count}
+                            </span>
+                            {isActive && <Check className="size-3.5 text-[#d39a9c]" />}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {/* Rodapé de Ações do Popover */}
+                  <div className="pt-3 border-t border-white/10 flex items-center justify-between gap-2">
+                    <button 
+                      type="button"
+                      onClick={() => {
+                        setSelectedCategory('todos');
+                        setIsCategoryDropdownOpen(false);
+                      }}
+                      className="text-xs text-white/70 hover:text-[#d39a9c] font-medium transition cursor-pointer"
+                    >
+                      Ver todos os temas &amp; ocasiões ({products.length}) →
+                    </button>
+
+                    <button 
+                      type="button"
+                      onClick={() => setIsCategoryDropdownOpen(false)}
+                      className="px-4 py-1.5 rounded-xl border border-[#d39a9c] text-[#d39a9c] hover:bg-[#d39a9c] hover:text-[#161214] font-bold text-xs uppercase tracking-wider transition active:scale-95 cursor-pointer"
+                    >
+                      FECHAR
+                    </button>
+                  </div>
+
+                </div>
+              )}
+            </div>
+          )}
 
           {/* 3. Grid Responsivo de Produtos: 2 colunas mobile / 3 tablet / 4 desktop */}
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-5 lg:gap-6">
@@ -1910,6 +2062,140 @@ export function PublicCatalog() {
               </button>
             </div>
           </aside>
+        )}
+
+        {/* GAVETA DESLIZANTE / BOTTOM SHEET DE TEMAS & OCASIÕES (Mobile & Web) */}
+        {isBottomSheetOpen && (
+          <div className="fixed inset-0 z-modal flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in duration-200">
+            {/* Backdrop Escuro com Blur */}
+            <div 
+              className="fixed inset-0 bg-black/70 backdrop-blur-xs transition-opacity" 
+              onClick={() => setIsBottomSheetOpen(false)}
+              aria-hidden="true"
+            />
+
+            {/* Container da Gaveta (Bottom Sheet no celular com safe-area / Modal elegante centralizado no Desktop) */}
+            <div 
+              className="relative w-full sm:max-w-lg max-h-[88dvh] sm:max-h-[80vh] rounded-t-3xl sm:rounded-3xl bg-[#1e1a1c]/95 dark:bg-[#161214]/98 backdrop-blur-2xl border-t sm:border border-[#d39a9c]/35 shadow-2xl z-10 text-white flex flex-col animate-in slide-in-from-bottom duration-300 overflow-hidden pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:pb-4"
+              role="dialog"
+              aria-modal="true"
+              aria-label="Filtro de temas e ocasiões"
+            >
+              {/* Grab handle mobile */}
+              <div className="w-12 h-1.5 bg-white/20 rounded-full mx-auto mt-3 mb-1 sm:hidden shrink-0" />
+
+              {/* Cabeçalho da Gaveta */}
+              <div className="px-5 py-3.5 border-b border-white/10 flex items-center justify-between shrink-0">
+                <div className="flex items-center gap-2">
+                  <SlidersHorizontal className="size-4 text-[#d39a9c]" />
+                  <h3 className="text-sm font-bold uppercase tracking-wider text-[#d39a9c] font-sans">
+                    TEMAS &amp; OCASIÕES DO ATELIÊ
+                  </h3>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] px-2.5 py-0.5 rounded-full border border-[#d39a9c]/40 text-[#d39a9c] font-bold bg-[#d39a9c]/10">
+                    {products.length} {products.length === 1 ? 'Peça' : 'Peças'}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setIsBottomSheetOpen(false)}
+                    className="p-1.5 rounded-full hover:bg-white/10 text-white/70 hover:text-white transition cursor-pointer min-w-[36px] min-h-[36px] flex items-center justify-center"
+                    aria-label="Fechar gaveta"
+                  >
+                    <X size={18} />
+                  </button>
+                </div>
+              </div>
+
+              {/* Campo de Busca Rápida de Temas dentro da Gaveta */}
+              <div className="px-5 pt-3 pb-1 shrink-0">
+                <div className="relative">
+                  <Search size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-white/40" />
+                  <input
+                    type="text"
+                    placeholder="Buscar tema (ex: Batizado, Safari, Planners)..."
+                    value={bottomSheetSearchQuery}
+                    onChange={(e) => setBottomSheetSearchQuery(e.target.value)}
+                    className="w-full pl-9 pr-8 py-2 text-xs rounded-xl bg-white/10 border border-white/15 text-white placeholder:text-white/40 focus:outline-none focus:ring-1 focus:ring-[#d39a9c] transition"
+                  />
+                  {bottomSheetSearchQuery && (
+                    <button
+                      type="button"
+                      onClick={() => setBottomSheetSearchQuery('')}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-white/40 hover:text-white cursor-pointer"
+                    >
+                      <X size={12} />
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Lista de Opções Rolável com Altura Mínima de Toque >= 44px */}
+              <div className="p-5 overflow-y-auto max-h-[50dvh] space-y-1.5 custom-scrollbar flex-1">
+                {filteredCategoriesForSheet.map((cat) => {
+                  const isActive = selectedCategory.toLowerCase() === cat.toLowerCase();
+                  const count = categoryCounts[cat] ?? 0;
+                  return (
+                    <button
+                      key={cat}
+                      type="button"
+                      onClick={() => {
+                        setSelectedCategory(cat);
+                        setIsBottomSheetOpen(false);
+                      }}
+                      className={`w-full flex items-center justify-between p-3 rounded-2xl transition text-xs font-medium cursor-pointer min-h-[48px] ${
+                        isActive 
+                          ? 'bg-[#d39a9c]/20 text-white border border-[#d39a9c]/40 shadow-sm'
+                          : 'hover:bg-white/5 text-white/70 hover:text-white border border-transparent'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <span className={`size-2.5 rounded-full shrink-0 ${isActive ? 'bg-[#d39a9c] shadow-sm' : 'bg-transparent border border-white/40'}`} />
+                        <span className="capitalize font-semibold">{cat === 'todos' ? 'Todos os temas & ocasiões' : cat}</span>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${isActive ? 'bg-[#d39a9c] text-[#1e1a1c]' : 'bg-white/10 text-white/60'}`}>
+                          {count}
+                        </span>
+                        {isActive && <Check className="size-4 text-[#d39a9c] shrink-0" />}
+                      </div>
+                    </button>
+                  );
+                })}
+
+                {filteredCategoriesForSheet.length === 0 && (
+                  <div className="py-8 text-center text-white/50 text-xs">
+                    Nenhum tema encontrado para "{bottomSheetSearchQuery}".
+                  </div>
+                )}
+              </div>
+
+              {/* Rodapé da Gaveta */}
+              <div className="p-4 border-t border-white/10 bg-white/5 flex items-center justify-between gap-3 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedCategory('todos');
+                    setIsBottomSheetOpen(false);
+                  }}
+                  className="text-xs text-white/70 hover:text-[#d39a9c] font-medium transition cursor-pointer px-2 py-1.5"
+                >
+                  Ver todos os temas ({products.length})
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setIsBottomSheetOpen(false)}
+                  className="px-5 py-2.5 rounded-xl bg-[#d39a9c] hover:bg-[#c4898b] text-[#1e1a1c] font-bold text-xs uppercase tracking-wider transition active:scale-95 cursor-pointer shadow-md min-h-[44px] flex items-center justify-center"
+                >
+                  APLICAR ({filteredProducts.length})
+                </button>
+              </div>
+
+            </div>
+          </div>
         )}
 
         {/* 5. Modal Responsivo de Prévia / Personalização (2 Colunas no Desktop) */}
