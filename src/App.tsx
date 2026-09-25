@@ -369,8 +369,8 @@ export function App() {
       {/* SaaS Plans Modal */}
       {isPlansModalOpen && (
         <SaaSPlansModal
-          currentPlanId={quota.planId}
-          quota={quota}
+          isOpen={isPlansModalOpen}
+          currentQuota={quota}
           onClose={() => setIsPlansModalOpen(false)}
           onSelectPlan={handleSelectPlan}
           onAddCreditPack={(amount) => {

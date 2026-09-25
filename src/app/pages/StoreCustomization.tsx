@@ -681,6 +681,7 @@ export function StoreCustomization() {
             catalogHeaderTextColor: pub.catalogHeaderTextColor || data.catalogHeaderTextColor,
             catalogHeaderLogoPosition: pub.catalogHeaderLogoPosition || data.catalogHeaderLogoPosition,
             catalogHeaderHeight: pub.catalogHeaderHeight || data.catalogHeaderHeight,
+            catalogHeaderHideText: pub.catalogHeaderHideText !== undefined ? Boolean(pub.catalogHeaderHideText) : data.catalogHeaderHideText,
             catalogShowHero: pub.catalogShowHero !== undefined ? Boolean(pub.catalogShowHero) : data.catalogShowHero,
             catalogCategoryFilterStyle: pub.catalogCategoryFilterStyle || data.catalogCategoryFilterStyle,
             catalogCardDensity: pub.catalogCardDensity || data.catalogCardDensity,

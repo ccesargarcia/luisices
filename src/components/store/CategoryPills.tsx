@@ -46,7 +46,7 @@ export const CategoryPills: React.FC<CategoryPillsProps> = ({
       {/* 3. BARRA DE METADADOS & DROPDOWN INTEGRADO (Conceito 3) */}
       <div className="h-12 px-3.5 sm:px-4 rounded-2xl bg-white/80 dark:bg-[#1a1719]/90 backdrop-blur-xl border border-[var(--glass-border)] flex items-center justify-between text-xs text-[var(--muted-foreground)] shadow-sm">
         
-        <!-- Left: Metadata Text with Interactive Dropdown Trigger -->
+        {/* Left: Metadata Text with Interactive Dropdown Trigger */}
         <div className="flex items-center gap-1.5 font-medium flex-wrap">
           <span>Mostrando <strong className="text-[var(--foreground)] font-bold">{currentCount} criações</strong> em</span>
           
@@ -60,7 +60,7 @@ export const CategoryPills: React.FC<CategoryPillsProps> = ({
           </button>
         </div>
 
-        <!-- Right: Sort and View Controls -->
+        {/* Right: Sort and View Controls */}
         <div className="flex items-center gap-1.5">
           <button 
             type="button"

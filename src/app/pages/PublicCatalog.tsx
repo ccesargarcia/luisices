@@ -1881,7 +1881,7 @@ export function PublicCatalog() {
                   {/* Pilares do Ateliê (Dinâmicos) */}
                   {businessInfo.aboutPillars && businessInfo.aboutPillars.length > 0 && (
                     <div className={`grid grid-cols-1 ${businessInfo.aboutPillars.length === 2 ? 'sm:grid-cols-2' : businessInfo.aboutPillars.length >= 3 ? 'sm:grid-cols-3' : ''} gap-3 pt-3`}>
-                      {businessInfo.aboutPillars.map((p, idx) => (
+                      {businessInfo.aboutPillars.map((p: InstitutionalPillarItem, idx: number) => (
                         <div key={p.id || idx} className="p-3.5 rounded-2xl bg-stone-50/80 dark:bg-[#261f22]/80 border border-stone-200/60 dark:border-stone-800 space-y-1">
                           <h4 className="text-xs font-bold text-[#613d3e] dark:text-[#f4b7b9]">
                             {p.title}
@@ -1924,7 +1924,7 @@ export function PublicCatalog() {
 
               {businessInfo.howItWorksSteps && businessInfo.howItWorksSteps.length > 0 && (
                 <div className={`grid grid-cols-1 sm:grid-cols-2 ${businessInfo.howItWorksSteps.length >= 4 ? 'lg:grid-cols-4' : businessInfo.howItWorksSteps.length === 3 ? 'lg:grid-cols-3' : ''} gap-4`}>
-                  {businessInfo.howItWorksSteps.map((s, idx) => (
+                  {businessInfo.howItWorksSteps.map((s: InstitutionalStepItem, idx: number) => (
                     <div
                       key={s.id || idx}
                       className="relative p-5 rounded-2xl bg-stone-50/80 dark:bg-[#261f22]/80 border border-stone-200/70 dark:border-stone-800 flex flex-col justify-between space-y-3 hover:border-[#613d3e]/30 transition-all shadow-2xs"
@@ -1968,7 +1968,7 @@ export function PublicCatalog() {
 
               {businessInfo.featureItems && businessInfo.featureItems.length > 0 && (
                 <div className={`grid grid-cols-1 sm:grid-cols-2 ${businessInfo.featureItems.length >= 4 ? 'lg:grid-cols-4' : businessInfo.featureItems.length === 3 ? 'lg:grid-cols-3' : ''} gap-4`}>
-                  {businessInfo.featureItems.map((f, idx) => {
+                  {businessInfo.featureItems.map((f: InstitutionalFeatureItem, idx: number) => {
                     const icons = [Heart, ShieldCheck, Truck, Sparkles];
                     const colors = [
                       'text-rose-500 bg-rose-500/10',
@@ -2021,7 +2021,7 @@ export function PublicCatalog() {
 
               {businessInfo.faqItems && businessInfo.faqItems.length > 0 && (
                 <div className="max-w-2xl mx-auto space-y-3">
-                  {businessInfo.faqItems.map((faq, idx) => {
+                  {businessInfo.faqItems.map((faq: InstitutionalFaqItem, idx: number) => {
                     const isOpen = expandedFaq === idx;
                     return (
                       <div
@@ -2057,7 +2057,7 @@ export function PublicCatalog() {
           {/* 5. SEÇÕES EXTRAS CUSTOMIZADAS */}
           {businessInfo.customSections && businessInfo.customSections.length > 0 && (
             <div className="space-y-8 mt-12">
-              {businessInfo.customSections.map((sec, idx) => (
+              {businessInfo.customSections.map((sec: InstitutionalCustomSection, idx: number) => (
                 <section
                   key={sec.id || idx}
                   className="p-6 sm:p-10 rounded-3xl bg-white/70 dark:bg-[#1f191b]/70 backdrop-blur-md border border-white/60 dark:border-[#ebcdcd]/15 shadow-sm space-y-4 animate-in fade-in duration-300"

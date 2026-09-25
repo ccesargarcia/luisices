@@ -368,13 +368,14 @@ export function useUserSettings() {
   };
 
   // Remover foto da seção Quem Somos
-  const removeCatalogAboutImage = async () => {
+  const removeCatalogAboutImage = async (oldUrl?: string) => {
     if (!user) throw new Error('Usuário não autenticado');
 
     try {
-      if (settings?.catalogAboutImageUrl) {
+      const urlToDelete = oldUrl || settings?.catalogAboutImageUrl;
+      if (urlToDelete) {
         try {
-          await firebaseStorageService.deleteImage(settings.catalogAboutImageUrl);
+          await firebaseStorageService.deleteImage(urlToDelete);
         } catch (storageError) {
           console.warn('Erro ao deletar imagem do Storage (continuando):', storageError);
         }

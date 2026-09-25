@@ -95,7 +95,7 @@ export class FirebaseStorageService {
   async uploadImage(
     file: File,
     userId: string,
-    folder: 'avatar' | 'logo' | 'banner' | 'catalog-logo' | 'catalog-banner' | 'catalog-header'
+    folder: 'avatar' | 'logo' | 'banner' | 'catalog-logo' | 'catalog-banner' | 'catalog-header' | 'catalog-about'
   ): Promise<string> {
     const allowedImageTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/svg+xml'];
     if (!allowedImageTypes.includes(file.type)) {
@@ -104,7 +104,7 @@ export class FirebaseStorageService {
 
     // Definir resolução máxima ideal dependendo do tipo de imagem
     const maxDimension =
-      folder === 'banner' || folder === 'catalog-banner' || folder === 'catalog-header'
+      folder === 'banner' || folder === 'catalog-banner' || folder === 'catalog-header' || folder === 'catalog-about'
         ? 2560
         : folder === 'avatar' || folder === 'logo' || folder === 'catalog-logo'
         ? 1000
