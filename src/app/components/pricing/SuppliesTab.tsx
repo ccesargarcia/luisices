@@ -433,27 +433,18 @@ export function SuppliesTab({
           </CardContent>
         </Card>
       ) : viewMode === 'table' ? (
-        /* VISUALIZAÇÃO EM PLANILHA (ABA 1 — CADASTRO DE CUSTOS) */
+        /* VISUALIZAÇÃO EM PLANILHA COMPACTA (CADASTRO DE CUSTOS) */
         <div className="border rounded-xl bg-card overflow-hidden shadow-sm">
           <div className="overflow-x-auto">
             <table className="w-full text-xs text-left border-collapse">
               <thead>
                 <tr className="bg-muted/60 border-b text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
-                  <th className="py-3 px-3">Categoria</th>
-                  <th className="py-3 px-3">Insumo</th>
-                  <th className="py-3 px-3">Marca / Modelo</th>
-                  <th className="py-3 px-3">Onde comprei</th>
-                  <th className="py-3 px-3">Última Compra</th>
-                  <th className="py-3 px-3 text-right">Qtd. Comp.</th>
-                  <th className="py-3 px-3">Unid.</th>
-                  <th className="py-3 px-3 text-right">Valor Pago</th>
-                  <th className="py-3 px-3 text-right">Frete</th>
-                  <th className="py-3 px-3 text-right">Custo Total</th>
-                  <th className="py-3 px-3 text-right bg-primary/5 font-bold text-primary">Custo Unit.</th>
-                  <th className="py-3 px-3 text-center">Estoque</th>
-                  <th className="py-3 px-3 text-center">Repor?</th>
-                  <th className="py-3 px-3">Rendimento / Obs.</th>
-                  {(canEdit || canDelete) && <th className="py-3 px-3 text-center">Ações</th>}
+                  <th className="py-3 px-4 min-w-[240px]">Insumo & Detalhes</th>
+                  <th className="py-3 px-3 min-w-[130px]">Embalagem</th>
+                  <th className="py-3 px-3 text-right min-w-[120px]">Custo Aquisição</th>
+                  <th className="py-3 px-4 text-right bg-primary/5 font-bold text-primary min-w-[130px]">Custo Unitário</th>
+                  <th className="py-3 px-3 text-center min-w-[130px]">Estoque & Status</th>
+                  {(canEdit || canDelete) && <th className="py-3 px-3 text-center w-[90px]">Ações</th>}
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
@@ -469,78 +460,116 @@ export function SuppliesTab({
                       key={item.id}
                       className={`hover:bg-muted/30 transition-colors ${isLow ? 'bg-amber-50/40 dark:bg-amber-950/20' : ''}`}
                     >
-                      <td className="py-2.5 px-3 whitespace-nowrap">
-                        <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${cat.color}`}>
-                          {cat.label}
-                        </span>
-                      </td>
-                      <td className="py-2.5 px-3 font-semibold text-foreground whitespace-nowrap">
-                        <div className="flex items-center gap-1.5">
-                          {item.name}
-                          {item.purchaseUrl && (
-                            <a
-                              href={item.purchaseUrl}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="text-muted-foreground hover:text-primary"
-                              title="Abrir link de compra"
-                            >
-                              <ExternalLink className="size-3" />
-                            </a>
+                      {/* Insumo & Detalhes */}
+                      <td className="py-3 px-4 align-middle">
+                        <div className="flex flex-col gap-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full shrink-0 ${cat.color}`}>
+                              {cat.label}
+                            </span>
+                            <span className="font-semibold text-foreground text-sm">
+                              {item.name}
+                            </span>
+                            {item.purchaseUrl && (
+                              <a
+                                href={item.purchaseUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="text-muted-foreground hover:text-primary transition-colors p-0.5"
+                                title="Abrir link da compra"
+                              >
+                                <ExternalLink className="size-3.5" />
+                              </a>
+                            )}
+                          </div>
+                          
+                          {/* Metadados: Marca, Loja, Notas */}
+                          <div className="flex items-center gap-2 text-[11px] text-muted-foreground flex-wrap">
+                            {item.brandModel && (
+                              <span>Marca: <strong className="font-medium text-foreground/80">{item.brandModel}</strong></span>
+                            )}
+                            {item.brandModel && item.supplier && <span>•</span>}
+                            {item.supplier && (
+                              <span>Loja: <strong className="font-medium text-foreground/80">{item.supplier}</strong></span>
+                            )}
+                          </div>
+
+                          {item.notes && (
+                            <p className="text-[11px] text-muted-foreground/90 italic truncate max-w-md" title={item.notes}>
+                              Obs: {item.notes}
+                            </p>
                           )}
                         </div>
                       </td>
-                      <td className="py-2.5 px-3 text-muted-foreground whitespace-nowrap">
-                        {item.brandModel || '—'}
-                      </td>
-                      <td className="py-2.5 px-3 text-muted-foreground whitespace-nowrap">
-                        {item.supplier || '—'}
-                      </td>
-                      <td className="py-2.5 px-3 text-muted-foreground whitespace-nowrap">
-                        {item.lastPurchaseDate ? new Date(item.lastPurchaseDate + 'T00:00:00').toLocaleDateString('pt-BR') : '—'}
-                      </td>
-                      <td className="py-2.5 px-3 text-right font-medium whitespace-nowrap">
-                        {item.packageQuantity}
-                      </td>
-                      <td className="py-2.5 px-3 text-muted-foreground whitespace-nowrap">
-                        {UNIT_MAP[item.unit] || item.unit}
-                      </td>
-                      <td className="py-2.5 px-3 text-right font-medium whitespace-nowrap">
-                        {formatCurrency(item.purchasePrice)}
-                      </td>
-                      <td className="py-2.5 px-3 text-right text-muted-foreground whitespace-nowrap">
-                        {item.shippingCost ? formatCurrency(item.shippingCost) : 'R$ 0,00'}
-                      </td>
-                      <td className="py-2.5 px-3 text-right font-bold text-foreground whitespace-nowrap">
-                        {formatCurrency(total)}
-                      </td>
-                      <td className="py-2.5 px-3 text-right font-black text-primary bg-primary/5 whitespace-nowrap">
-                        {formatCurrency(item.unitCost)}
-                      </td>
-                      <td className="py-2.5 px-3 text-center whitespace-nowrap">
-                        <span className={`font-medium ${isLow ? 'text-amber-600 font-bold' : ''}`}>
-                          {item.currentStock ?? '—'}
-                        </span>
-                        {item.minStock ? (
-                          <span className="text-[10px] text-muted-foreground block">
-                            mín: {item.minStock}
+
+                      {/* Embalagem & Data de Compra */}
+                      <td className="py-3 px-3 align-middle">
+                        <div className="flex flex-col">
+                          <span className="font-semibold text-foreground text-xs">
+                            {item.packageQuantity} {UNIT_MAP[item.unit] || item.unit}
                           </span>
-                        ) : null}
+                          <span className="text-[11px] text-muted-foreground">
+                            {item.lastPurchaseDate
+                              ? `Compra: ${new Date(item.lastPurchaseDate + 'T00:00:00').toLocaleDateString('pt-BR')}`
+                              : 'Sem data reg.'}
+                          </span>
+                        </div>
                       </td>
-                      <td className="py-2.5 px-3 text-center whitespace-nowrap">
-                        {isLow ? (
-                          <Badge variant="outline" className="text-[10px] bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-950 dark:text-amber-300">
-                            Sim ⚠️
-                          </Badge>
-                        ) : (
-                          <span className="text-[11px] text-muted-foreground">Não</span>
-                        )}
+
+                      {/* Custo de Aquisição */}
+                      <td className="py-3 px-3 text-right align-middle">
+                        <div className="flex flex-col items-end">
+                          <span className="font-bold text-foreground text-xs">
+                            {formatCurrency(total)}
+                          </span>
+                          <span className="text-[10px] text-muted-foreground">
+                            {item.shippingCost && item.shippingCost > 0
+                              ? `${formatCurrency(item.purchasePrice)} + ${formatCurrency(item.shippingCost)} fr.`
+                              : 'Frete grátis / R$ 0'}
+                          </span>
+                        </div>
                       </td>
-                      <td className="py-2.5 px-3 text-muted-foreground max-w-[200px] truncate" title={item.notes || ''}>
-                        {item.notes || '—'}
+
+                      {/* Custo Unitário */}
+                      <td className="py-3 px-4 text-right align-middle bg-primary/5">
+                        <div className="flex flex-col items-end">
+                          <span className="font-black text-primary text-sm">
+                            {formatCurrency(item.unitCost)}
+                          </span>
+                          <span className="text-[10px] font-medium text-muted-foreground">
+                            por {item.unit}
+                          </span>
+                        </div>
                       </td>
+
+                      {/* Estoque & Status */}
+                      <td className="py-3 px-3 text-center align-middle">
+                        <div className="flex flex-col items-center gap-1">
+                          <div className="flex items-center gap-1 text-xs">
+                            <span className={`font-semibold ${isLow ? 'text-amber-600 dark:text-amber-400 font-bold' : 'text-foreground'}`}>
+                              {item.currentStock ?? '0'} {item.unit}s
+                            </span>
+                            {item.minStock ? (
+                              <span className="text-[10px] text-muted-foreground">
+                                (mín: {item.minStock})
+                              </span>
+                            ) : null}
+                          </div>
+                          {isLow ? (
+                            <Badge variant="outline" className="text-[10px] px-1.5 py-0 bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-950 dark:text-amber-300">
+                              ⚠️ Repor
+                            </Badge>
+                          ) : (
+                            <Badge variant="secondary" className="text-[10px] px-1.5 py-0 font-normal text-muted-foreground">
+                              ✅ Em dia
+                            </Badge>
+                          )}
+                        </div>
+                      </td>
+
+                      {/* Ações */}
                       {(canEdit || canDelete) && (
-                        <td className="py-2.5 px-3 text-center whitespace-nowrap">
+                        <td className="py-3 px-3 text-center align-middle">
                           <div className="flex items-center justify-center gap-1">
                             {canEdit && (
                               <Button
