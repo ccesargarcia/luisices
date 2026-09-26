@@ -49,6 +49,8 @@ import {
   Truck,
   CheckCircle2,
   Filter,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -101,6 +103,8 @@ export function SuppliesTab({
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [filterLowStockOnly, setFilterLowStockOnly] = useState(false);
   const [viewMode, setViewMode] = useState<'table' | 'grid'>('table');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState<number | 'all'>(12);
 
   // Modal de Adição/Edição
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -292,6 +296,19 @@ export function SuppliesTab({
     });
   }, [supplies, searchTerm, selectedCategory, filterLowStockOnly]);
 
+  const totalPages = useMemo(() => {
+    if (pageSize === 'all' || filteredSupplies.length === 0) return 1;
+    return Math.ceil(filteredSupplies.length / pageSize);
+  }, [filteredSupplies.length, pageSize]);
+
+  const validCurrentPage = Math.min(currentPage, totalPages || 1);
+
+  const paginatedSupplies = useMemo(() => {
+    if (pageSize === 'all') return filteredSupplies;
+    const start = (validCurrentPage - 1) * pageSize;
+    return filteredSupplies.slice(start, start + pageSize);
+  }, [filteredSupplies, validCurrentPage, pageSize]);
+
   const lowStockCount = useMemo(() => {
     return supplies.filter(
       (s) =>
@@ -310,12 +327,21 @@ export function SuppliesTab({
             <Input
               placeholder="Buscar por insumo, marca ou loja..."
               value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
+              onChange={(e) => {
+                setSearchTerm(e.target.value);
+                setCurrentPage(1);
+              }}
               className="pl-9 h-9 text-xs"
             />
           </div>
 
-          <Select value={selectedCategory} onValueChange={setSelectedCategory}>
+          <Select
+            value={selectedCategory}
+            onValueChange={(val) => {
+              setSelectedCategory(val);
+              setCurrentPage(1);
+            }}
+          >
             <SelectTrigger className="w-[180px] h-9 text-xs">
               <SelectValue placeholder="Todas as Categorias" />
             </SelectTrigger>
@@ -333,7 +359,10 @@ export function SuppliesTab({
             type="button"
             variant={filterLowStockOnly ? 'default' : 'outline'}
             size="sm"
-            onClick={() => setFilterLowStockOnly(!filterLowStockOnly)}
+            onClick={() => {
+              setFilterLowStockOnly(!filterLowStockOnly);
+              setCurrentPage(1);
+            }}
             className={`h-9 text-xs gap-1.5 ${
               filterLowStockOnly
                 ? 'bg-amber-600 hover:bg-amber-700 text-white'
@@ -448,7 +477,7 @@ export function SuppliesTab({
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
-                {filteredSupplies.map((item) => {
+                {paginatedSupplies.map((item) => {
                   const cat = CATEGORY_MAP[item.category] || CATEGORY_MAP.outros;
                   const total = (item.purchasePrice || 0) + (item.shippingCost || 0);
                   const isLow =
@@ -609,7 +638,7 @@ export function SuppliesTab({
       ) : (
         /* VISUALIZAÇÃO EM GRADE DE CARDS */
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filteredSupplies.map((item) => {
+          {paginatedSupplies.map((item) => {
             const cat = CATEGORY_MAP[item.category] || CATEGORY_MAP.outros;
             const total = (item.purchasePrice || 0) + (item.shippingCost || 0);
             const isLow =
@@ -728,6 +757,86 @@ export function SuppliesTab({
               </Card>
             );
           })}
+        </div>
+      )}
+
+      {/* Controles de Paginação */}
+      {filteredSupplies.length > 0 && (
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2 bg-card p-3 rounded-xl border border-border/80 text-xs shadow-xs">
+          <div className="flex items-center gap-2 text-muted-foreground">
+            <span>
+              Exibindo{' '}
+              <strong className="text-foreground font-semibold">
+                {pageSize === 'all'
+                  ? `1–${filteredSupplies.length}`
+                  : `${(validCurrentPage - 1) * pageSize + 1}–${Math.min(
+                      validCurrentPage * pageSize,
+                      filteredSupplies.length
+                    )}`}
+              </strong>{' '}
+              de <strong className="text-foreground font-semibold">{filteredSupplies.length}</strong> insumos
+            </span>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-3">
+            {/* Seletor de Itens por Página */}
+            <div className="flex items-center gap-1.5 text-muted-foreground">
+              <span>Por página:</span>
+              <div className="inline-flex rounded-lg border bg-muted/40 p-0.5">
+                {([12, 24, 48, 'all'] as const).map((size) => (
+                  <button
+                    key={size}
+                    type="button"
+                    onClick={() => {
+                      setPageSize(size);
+                      setCurrentPage(1);
+                    }}
+                    className={`px-2 py-0.5 text-[11px] font-medium rounded-md transition-colors ${
+                      pageSize === size
+                        ? 'bg-background text-foreground shadow-xs'
+                        : 'text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    {size === 'all' ? 'Todos' : size}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Navegação entre páginas */}
+            {totalPages > 1 && (
+              <div className="flex items-center gap-1.5">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                  disabled={validCurrentPage === 1}
+                  className="h-7 px-2 text-xs gap-1"
+                >
+                  <ChevronLeft className="size-3.5" />
+                  <span className="hidden sm:inline">Anterior</span>
+                </Button>
+                
+                <span className="text-[11px] font-medium text-muted-foreground px-1">
+                  Pág. <strong className="text-foreground">{validCurrentPage}</strong> de{' '}
+                  <strong className="text-foreground">{totalPages}</strong>
+                </span>
+
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={validCurrentPage === totalPages}
+                  className="h-7 px-2 text-xs gap-1"
+                >
+                  <span className="hidden sm:inline">Próxima</span>
+                  <ChevronRight className="size-3.5" />
+                </Button>
+              </div>
+            )}
+          </div>
         </div>
       )}
 
