@@ -8,6 +8,9 @@ const { calculateRecipePricing, DEFAULT_PRICING_SETTINGS } = require('./pricing/
 /**
  * Calcula intervalos de data no fuso do negócio (America/Sao_Paulo - UTC-3)
  */
+/**
+ * Calcula intervalos de data no fuso do negócio (America/Sao_Paulo - UTC-3) com suporte a meses específicos e rótulos
+ */
 function getPeriodInterval(period = 'month', baseDate = new Date()) {
   const d = new Date(baseDate);
 
@@ -21,38 +24,169 @@ function getPeriodInterval(period = 'month', baseDate = new Date()) {
 
   const parts = formatter.formatToParts(d);
   const getPart = (type) => Number(parts.find((p) => p.type === type)?.value || 0);
-  const year = getPart('year');
-  const month = getPart('month'); // 1-12
-  const day = getPart('day');
+  const currentYear = getPart('year');
+  const currentMonth = getPart('month'); // 1-12
+  const currentDay = getPart('day');
 
   const spOffset = '-03:00';
   const pad = (n) => String(n).padStart(2, '0');
+  const formatBr = (date) => {
+    try {
+      return new Intl.DateTimeFormat('pt-BR', { timeZone: BUSINESS_TIMEZONE }).format(date);
+    } catch {
+      return date.toISOString().split('T')[0];
+    }
+  };
 
-  if (period === 'today') {
-    const start = new Date(`${year}-${pad(month)}-${pad(day)}T00:00:00.000${spOffset}`);
-    const end = new Date(`${year}-${pad(month)}-${pad(day)}T23:59:59.999${spOffset}`);
-    return { startDate: start, endDate: end };
+  const MONTH_NAMES_PT = {
+    janeiro: 1, jan: 1,
+    fevereiro: 2, fev: 2,
+    marco: 3, março: 3, mar: 3,
+    abril: 4, abr: 4,
+    maio: 5, mai: 5,
+    junho: 6, jun: 6,
+    julho: 7, jul: 7,
+    agosto: 8, ago: 8,
+    setembro: 9, set: 9,
+    outubro: 10, out: 10,
+    novembro: 11, nov: 11,
+    dezembro: 12, dez: 12,
+  };
+
+  const cleanPeriod = String(period || 'month').toLowerCase().trim();
+
+  // 1. Checa se é um mês específico por nome ou chave (ex: "setembro", "setembro 2026", "2026-09", "09/2026")
+  let targetYear = currentYear;
+  let targetMonth = null;
+
+  const yyyyMmMatch = cleanPeriod.match(/^(\d{4})[-/](\d{1,2})$/);
+  const mmYyyyMatch = cleanPeriod.match(/^(\d{1,2})[-/](\d{4})$/);
+
+  if (yyyyMmMatch) {
+    targetYear = Number(yyyyMmMatch[1]);
+    targetMonth = Number(yyyyMmMatch[2]);
+  } else if (mmYyyyMatch) {
+    targetMonth = Number(mmYyyyMatch[1]);
+    targetYear = Number(mmYyyyMatch[2]);
+  } else {
+    for (const [mName, mNum] of Object.entries(MONTH_NAMES_PT)) {
+      if (cleanPeriod.includes(mName)) {
+        targetMonth = mNum;
+        const yearInStr = cleanPeriod.match(/\b(20\d{2})\b/);
+        if (yearInStr) targetYear = Number(yearInStr[1]);
+        break;
+      }
+    }
   }
 
-  if (period === 'week') {
+  if (targetMonth && targetMonth >= 1 && targetMonth <= 12) {
+    const isCurrentMonthAndYear = targetYear === currentYear && targetMonth === currentMonth;
+    const lastDayOfMonth = new Date(targetYear, targetMonth, 0).getDate();
+    const start = new Date(`${targetYear}-${pad(targetMonth)}-01T00:00:00.000${spOffset}`);
+    const end = isCurrentMonthAndYear
+      ? d
+      : new Date(`${targetYear}-${pad(targetMonth)}-${pad(lastDayOfMonth)}T23:59:59.999${spOffset}`);
+    
+    const monthNameCapitalized = Object.keys(MONTH_NAMES_PT).find((k) => MONTH_NAMES_PT[k] === targetMonth && k.length > 3) || `Mês ${targetMonth}`;
+    const formattedName = monthNameCapitalized.charAt(0).toUpperCase() + monthNameCapitalized.slice(1);
+
+    return {
+      startDate: start,
+      endDate: end,
+      periodLabel: `${formattedName} de ${targetYear} (${formatBr(start)} a ${formatBr(end)})`,
+      startFormatted: formatBr(start),
+      endFormatted: formatBr(end),
+      targetMonth,
+      targetYear,
+    };
+  }
+
+  if (cleanPeriod === 'today' || cleanPeriod === 'hoje') {
+    const start = new Date(`${currentYear}-${pad(currentMonth)}-${pad(currentDay)}T00:00:00.000${spOffset}`);
+    const end = new Date(`${currentYear}-${pad(currentMonth)}-${pad(currentDay)}T23:59:59.999${spOffset}`);
+    return {
+      startDate: start,
+      endDate: end,
+      periodLabel: `Hoje (${formatBr(start)})`,
+      startFormatted: formatBr(start),
+      endFormatted: formatBr(end),
+    };
+  }
+
+  if (cleanPeriod === 'yesterday' || cleanPeriod === 'ontem') {
+    const yestDate = new Date(d.getTime() - 24 * 60 * 60 * 1000);
+    const yParts = formatter.formatToParts(yestDate);
+    const yYear = Number(yParts.find((p) => p.type === 'year')?.value || currentYear);
+    const yMonth = Number(yParts.find((p) => p.type === 'month')?.value || currentMonth);
+    const yDay = Number(yParts.find((p) => p.type === 'day')?.value || currentDay);
+
+    const start = new Date(`${yYear}-${pad(yMonth)}-${pad(yDay)}T00:00:00.000${spOffset}`);
+    const end = new Date(`${yYear}-${pad(yMonth)}-${pad(yDay)}T23:59:59.999${spOffset}`);
+    return {
+      startDate: start,
+      endDate: end,
+      periodLabel: `Ontem (${formatBr(start)})`,
+      startFormatted: formatBr(start),
+      endFormatted: formatBr(end),
+    };
+  }
+
+  if (cleanPeriod === 'week' || cleanPeriod === 'semana' || cleanPeriod === 'ultimos_7_dias') {
     const start = new Date(d.getTime() - 7 * 24 * 60 * 60 * 1000);
-    return { startDate: start, endDate: d };
+    return {
+      startDate: start,
+      endDate: d,
+      periodLabel: `Últimos 7 dias (${formatBr(start)} a ${formatBr(d)})`,
+      startFormatted: formatBr(start),
+      endFormatted: formatBr(d),
+    };
   }
 
-  if (period === 'month') {
-    const start = new Date(`${year}-${pad(month)}-01T00:00:00.000${spOffset}`);
-    return { startDate: start, endDate: d };
+  if (cleanPeriod === 'last_month' || cleanPeriod === 'previous_month' || cleanPeriod === 'mes_passado' || cleanPeriod === 'mes_anterior') {
+    const prevMonth = currentMonth === 1 ? 12 : currentMonth - 1;
+    const prevYear = currentMonth === 1 ? currentYear - 1 : currentYear;
+    const lastDayOfPrevMonth = new Date(prevYear, prevMonth, 0).getDate();
+    const start = new Date(`${prevYear}-${pad(prevMonth)}-01T00:00:00.000${spOffset}`);
+    const end = new Date(`${prevYear}-${pad(prevMonth)}-${pad(lastDayOfPrevMonth)}T23:59:59.999${spOffset}`);
+    return {
+      startDate: start,
+      endDate: end,
+      periodLabel: `Mês Anterior (${formatBr(start)} a ${formatBr(end)})`,
+      startFormatted: formatBr(start),
+      endFormatted: formatBr(end),
+    };
   }
 
-  if (period === 'year') {
-    const start = new Date(`${year}-01-01T00:00:00.000${spOffset}`);
-    return { startDate: start, endDate: d };
+  if (cleanPeriod === 'month' || cleanPeriod === 'mes' || cleanPeriod === 'este_mes' || cleanPeriod === 'mes_atual') {
+    const start = new Date(`${currentYear}-${pad(currentMonth)}-01T00:00:00.000${spOffset}`);
+    return {
+      startDate: start,
+      endDate: d,
+      periodLabel: `Mês Atual (${formatBr(start)} a ${formatBr(d)})`,
+      startFormatted: formatBr(start),
+      endFormatted: formatBr(d),
+    };
   }
 
-  // 'all'
+  if (cleanPeriod === 'year' || cleanPeriod === 'ano' || cleanPeriod === 'este_ano') {
+    const start = new Date(`${currentYear}-01-01T00:00:00.000${spOffset}`);
+    return {
+      startDate: start,
+      endDate: d,
+      periodLabel: `Ano ${currentYear} (${formatBr(start)} a ${formatBr(d)})`,
+      startFormatted: formatBr(start),
+      endFormatted: formatBr(d),
+    };
+  }
+
+  // 'all' / 'todos'
+  const startAll = new Date('2020-01-01T00:00:00.000Z');
   return {
-    startDate: new Date('2000-01-01T00:00:00.000Z'),
+    startDate: startAll,
     endDate: new Date('2100-01-01T00:00:00.000Z'),
+    periodLabel: 'Todo o Histórico',
+    startFormatted: 'Início do sistema',
+    endFormatted: formatBr(d),
   };
 }
 
@@ -134,7 +268,8 @@ class AiToolsExecutor {
       }
     }
 
-    const { startDate, endDate } = getPeriodInterval(period);
+    const interval = getPeriodInterval(period);
+    const { startDate, endDate } = interval;
 
     const filtered = orders.filter((o) => {
       if (o.isDeleted) return false;
@@ -166,12 +301,19 @@ class AiToolsExecutor {
 
     return {
       period,
+      periodLabel: interval.periodLabel,
+      intervaloDatas: {
+        inicio: interval.startFormatted,
+        fim: interval.endFormatted,
+      },
+      criterioFiltro: 'Data de criação do pedido (createdAt)',
       faturamentoRealizado: Number(realizedRevenue.toFixed(2)),
       volumeTotalEmitido: Number(grossIssuedVolume.toFixed(2)),
       totalRecebido: Number(totalReceived.toFixed(2)),
       totalPendenteReceber: Number(pendingReceivables.toFixed(2)),
       ticketMedio: Number(averageTicket.toFixed(2)),
       taxaConversao: Number(conversionRate.toFixed(1)),
+      pedidosCriadosNoPeriodo: filtered.length,
       pedidosConcluidos: completedOrders.length,
       pedidosEmProducao: inProgressOrders.length,
       pedidosPendentes: pendingOrders.length,

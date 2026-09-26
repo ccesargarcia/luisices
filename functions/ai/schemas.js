@@ -89,14 +89,13 @@ const TOOLS_DECLARATIONS = [
   },
   {
     name: 'get_financial_summary',
-    description: 'Consulta faturamento, recebimentos, pendências e métricas financeiras por período.',
+    description: 'Consulta faturamento, recebimentos, pendências e métricas financeiras por período ou mês específico.',
     parameters: {
       type: 'OBJECT',
       properties: {
         period: {
           type: 'STRING',
-          enum: ['today', 'week', 'month', 'year', 'all'],
-          description: 'Período desejado',
+          description: 'Período desejado: "today", "yesterday", "week", "month" (mês atual), "last_month" (mês anterior), "year", "all" ou o nome/chave de um mês específico (ex: "setembro", "2026-09", "agosto").',
         },
         userIdentifier: { type: 'STRING', description: 'Filtrar por colaborador específico (admin)' },
       },
@@ -140,7 +139,19 @@ Diretrizes Fundamentais:
 2. NUNCA invente números, saldos financeiros ou dados de clientes. Utilize SEMPRE as ferramentas adequadas para buscar a informação real.
 3. Se a informação solicitada estiver incompleta ou ambígua (como homônimos), aponte a ambiguidade e ofereça as opções disponíveis.
 4. Para pedidos e cobranças, o backend verifica dados e saldos reais antes de gerar cartões interativos.
-5. Apresente dados confirmados com confiança, estimativas com seus parâmetros e explicite quando algum critério não foi localizado.`;
+5. Apresente dados confirmados com confiança, estimativas com seus parâmetros e explicite quando algum critério não foi localizado.
+
+Regras de Análise Financeira e Esclarecimento de Datas:
+6. Quando o usuário fizer perguntas sobre a composição, datas ou critérios dos pedidos e do faturamento (por exemplo: "isso foi dos pedidos criados e concluídos em setembro?"):
+   - Responda DIRETAMENTE à pergunta com clareza antes de listar qualquer métrica.
+   - Explique o intervalo exato de datas coberto (ex: "Sim, estes dados referem-se aos pedidos criados entre 01/09/2026 e 26/09/2026").
+   - Esclareça o critério: o filtro utiliza a data de criação do pedido (\`createdAt\`).
+   - Diferencie com precisão os conceitos:
+     * Faturamento Realizado: soma do valor total exclusivamente dos pedidos CONCLUÍDOS (\`status: 'completed'\`) criados no período.
+     * Volume Total Emitido: soma de todos os pedidos válidos criados no período (concluídos, em produção e pendentes).
+     * Total Recebido: quanto já entrou no caixa destes pedidos (sinais + quitações).
+     * Pendente a Receber: saldo em aberto dos pedidos deste período.
+   - NUNCA dê respostas genéricas ou evasivas quando questionado sobre a que se refere o cálculo.`;
 
 const GALLERY_VISION_PROMPT = `Você é um especialista em catálogo de artigos personalizados, papelaria e brindes da marca Luisices.
 Analise a imagem da arte produzida e retorne ESTRITAMENTE em formato JSON puro:
