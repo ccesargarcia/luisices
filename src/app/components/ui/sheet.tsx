@@ -78,12 +78,19 @@ const SheetContent = React.forwardRef<
   React.ComponentPropsWithoutRef<typeof SheetPrimitive.Content> & {
     side?: "top" | "right" | "bottom" | "left";
   }
->(({ className, children, side = "right", ...props }, ref) => (
+>(({ className, children, side = "right", onOpenAutoFocus, ...props }, ref) => (
   <SheetPortal>
     <SheetOverlay />
     <SheetPrimitive.Content
       ref={ref}
       data-slot="sheet-content"
+      onOpenAutoFocus={(e) => {
+        if (onOpenAutoFocus) {
+          onOpenAutoFocus(e);
+        } else {
+          e.preventDefault();
+        }
+      }}
       className={cn(
         "bg-background data-[state=open]:animate-in data-[state=closed]:animate-out fixed z-drawer flex flex-col shadow-2xl transition ease-in-out data-[state=closed]:duration-300 data-[state=open]:duration-500",
         side === "right" &&
