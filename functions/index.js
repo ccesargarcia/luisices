@@ -1252,16 +1252,17 @@ const cleanAiOutput = (text) => {
 /**
  * Endpoint Callable Seguro do Copiloto de IA Interno
  */
-// Helper para carregar e compilar resumo compacto do catálogo e acervo com cache TTL
+// Helper para carregar e compilar resumo compacto do catálogo, insumos e acervo com cache TTL
 const getDynamicCatalogKnowledge = async () => {
   if (cachedCatalogSummary && (Date.now() - cachedCatalogTimestamp < CATALOG_CACHE_TTL)) {
     return cachedCatalogSummary;
   }
 
   try {
-    const [productsSnap, gallerySnap] = await Promise.all([
+    const [productsSnap, gallerySnap, suppliesSnap] = await Promise.all([
       admin.firestore().collection("storeProducts").where("active", "!=", false).limit(50).get().catch(() => ({ docs: [] })),
       admin.firestore().collection("gallery").limit(20).get().catch(() => ({ docs: [] })),
+      admin.firestore().collection("pricingSupplies").limit(30).get().catch(() => ({ docs: [] })),
     ]);
 
     const lines = [];
@@ -1276,6 +1277,16 @@ const getDynamicCatalogKnowledge = async () => {
       });
     }
 
+    if (suppliesSnap && suppliesSnap.docs && suppliesSnap.docs.length > 0) {
+      lines.push("INSUMOS & CUSTOS UNITÁRIOS CADASTRADOS (MÓDULO DE PRECIFICAÇÃO):");
+      suppliesSnap.docs.forEach((doc) => {
+        const d = doc.data() || {};
+        const unitCost = d.unitCost !== undefined ? ` | R$ ${Number(d.unitCost).toFixed(4)}/${d.unit || 'un'}` : "";
+        const stock = d.currentStock !== undefined ? ` (Estoque: ${d.currentStock})` : "";
+        lines.push(`• ${d.name || "Insumo"}${d.category ? " [" + d.category + "]" : ""}${unitCost}${stock}`);
+      });
+    }
+
     if (gallerySnap && gallerySnap.docs && gallerySnap.docs.length > 0) {
       lines.push("DESTAQUES DO ACERVO DE PROJETOS REAIS:");
       gallerySnap.docs.slice(0, 10).forEach((doc) => {
@@ -1286,7 +1297,7 @@ const getDynamicCatalogKnowledge = async () => {
       });
     }
 
-    cachedCatalogSummary = lines.length > 0 ? "\n\nCONHECIMENTO DINÂMICO DO ATELIÊ (PRODUTOS & ACERVO ATUALIZADO):\n" + lines.join("\n") : "";
+    cachedCatalogSummary = lines.length > 0 ? "\n\nCONHECIMENTO DINÂMICO DO ATELIÊ (CATÁLOGO, INSUMOS & ACERVO ATUALIZADO):\n" + lines.join("\n") : "";
     cachedCatalogTimestamp = Date.now();
     return cachedCatalogSummary;
   } catch (err) {
@@ -1631,6 +1642,20 @@ RESPONSABILIDADES & FERRAMENTAS:
 7. 'calculate_pricing_estimate': Custos, margens de lucro e preços sugeridos de itens personalizados.
 8. 'extract_order_draft': Estruturar rascunhos de pedidos a partir de conversas.
 9. 'search_gallery_portfolio': Consultar referências e fotos do acervo.
+
+MÓDULOS & FUNCIONALIDADES DA PLATAFORMA LUISICES:
+• Pedidos & Workflow: Esteira de produção em 7 etapas, controle de prazos e pagamentos (sinal/saldo).
+• Precificação & Custos (/precificacao): 4 abas completas:
+  1. Cadastro de Custos / Insumos (papéis, vinis, botons, canecas, embalagens, fitas, colas, etc.) com cálculo automático de custo unitário com frete incluso, visualização compacta e alerta de reposição.
+  2. Calculadora de Precificação inteligente com seleção de insumos, tempo de confecção em minutos (mão de obra por minuto), rateio de custos fixos e margem de lucro com sincronização para o catálogo.
+  3. Histórico de Compras de lotes de matéria-prima e fornecedores.
+  4. Configurações do Ateliê (valor hora de trabalho, percentual de custos fixos e margem alvo).
+  Suporta exportação de relatórios em Excel (.xlsx).
+• Lojinha Online (/catalogo & /produtos-lojinha): Vitrine comercial pública, pedidos online no WhatsApp e gestão de pedidos.
+• Clientes & Relacionamento: Base de clientes com histórico financeiro e alertas de aniversário.
+• Orçamentos: Propostas comerciais com conversão automática em pedidos.
+• Galeria & Portfólio: Acervo de fotos de projetos reais com visão computacional.
+• Central de Ajuda (/ajuda): Manuais operacionais, FAQs e atalhos.
 
 GUARDRAILS:
 • LGPD & RBAC: Dados de outros colaboradores são sigilosos (restrito a Admin). Usuários comuns só acessam seus próprios registros.

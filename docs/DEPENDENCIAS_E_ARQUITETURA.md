@@ -160,6 +160,9 @@ flowchart TD
 | **Produtos da Lojinha** | `/storeProducts/{id}` | Vitrine de produtos do catálogo online | Leitura pública; escrita restrita a usuários com permissão |
 | **Pedidos da Lojinha** | `/catalogOrders/{id}` | Pedidos recebidos via vitrine pública | Criação pública; gestão por usuários autorizados |
 | **Configurações da Loja** | `/storeSettings/public` | Banners, WhatsApp de vendas e tema da lojinha | Leitura pública; edição exclusiva por Admin |
+| **Insumos de Precificação** | `/pricingSupplies/{id}` | Cadastro de matérias-primas e custos unitários | Acesso autenticado com permissão `pricing` |
+| **Histórico de Compras** | `/pricingPurchases/{id}` | Registro de lotes e notas de suprimentos adquiridos | Acesso autenticado com permissão `pricing` |
+| **Configurações do Ateliê** | `/pricingStudioSettings/{userId}` | Custo hora de trabalho, custos fixos e margem padrão | Acesso autenticado por usuário / Admin |
 | **Configurações de Usuário** | `/users/{uid}/settings/profile` | Preferências de UI, tema e dados do ateliê | Acesso restrito ao próprio usuário |
 | **Histórico de E-mails** | `/sentEmails/{id}` | Registro de e-mails disparados via Resend | Leitura restrita a Admin |
 | **Convites** | `/invitations/{hashToken}` | Tokens SHA-256 de convite para cadastro | Validação e criação controlada |

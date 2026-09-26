@@ -52,6 +52,14 @@ Para detalhes sobre a stack técnica, todas as dependências e a arquitetura de 
 - Controle de itens fornecidos e benefícios/produtos recebidos.
 - Relatórios específicos de trocas com acesso escopado para usuário comum.
 
+### 💰 Precificação, Gestão de Custos & Insumos (`/precificacao`)
+- **4 Abas especializadas**: Cadastro de Custos (Insumos), Calculadora de Precificação Inteligente, Histórico de Compras e Configurações do Ateliê.
+- **Cálculo unitário automático**: incorporação de preço e rateio de frete `(Preço + Frete) ÷ Qtd`.
+- **Formação de preço com markup real**: cálculo de tempo de produção/mão de obra por minuto, custos fixos da oficina e margem de lucro.
+- **Sincronização com 1 clique**: atualização automática do valor de venda no catálogo.
+- **Visualização compacta**: tabela otimizada sem barras de rolagem excessivas e alertas de reposição de estoque (`⚠️ Repor`).
+- **Exportação para Excel (`xlsx`)**: download de planilha completa de custos e estoque de insumos.
+
 ### 🎨 Galeria de Artes
 - Upload e organização de trabalhos realizados em pastas por cliente/tema.
 - Tags, busca avançada e visualização em lightbox.
