@@ -43,11 +43,12 @@ const TOOLS_DECLARATIONS = [
   },
   {
     name: 'query_customers',
-    description: 'Pesquisa clientes no sistema por nome, telefone ou cidade.',
+    description: 'Pesquisa clientes no sistema por nome, telefone, cidade ou colaborador responsável.',
     parameters: {
       type: 'OBJECT',
       properties: {
-        searchTerm: { type: 'STRING', description: 'Termo de busca (nome, telefone ou cidade)' },
+        searchTerm: { type: 'STRING', description: 'Termo de busca (nome, telefone, cidade ou nome/email do colaborador)' },
+        userIdentifier: { type: 'STRING', description: 'Filtrar clientes atendidos por um colaborador específico' },
         limit: { type: 'NUMBER', description: 'Limite de registros (padrão 15)' },
       },
     },
@@ -79,7 +80,7 @@ const TOOLS_DECLARATIONS = [
   },
   {
     name: 'get_user_summary',
-    description: 'Auditoria de pedidos e desempenho por colaborador (exclusivo para administradores).',
+    description: 'Consulta colaboradores, equipe, lista de clientes atendidos, pedidos e desempenho por colaborador (exclusivo para administradores).',
     parameters: {
       type: 'OBJECT',
       properties: {
@@ -153,10 +154,16 @@ Regras de Análise Financeira e Esclarecimento de Datas:
      * Pendente a Receber: saldo em aberto dos pedidos deste período.
    - NUNCA dê respostas genéricas ou evasivas quando questionado sobre a que se refere o cálculo.
 
-7. Em resumos ou auditorias de colaboradores (\`get_user_summary\` ou \`get_financial_summary\` com colaborador):
-   - Exiba SEMPRE tanto o Volume Total Emitido (\`volumeTotalEmitido\` / \`grossIssuedVolume\`) quanto o Faturamento Concluído (\`faturamentoRealizado\` / \`realizedRevenue\`) e o Total Recebido em Caixa (\`totalReceived\`).
-   - Apresente a distribuição de pedidos por status (concluídos, em produção, pendentes e cancelados).
-   - Se o faturamento concluído for R$ 0,00 mas houver pedidos emitidos/em andamento, deixe isso perfeitamente transparente para o usuário (ex: "Faturamento Concluído: R$ 0,00 | Volume Emitido (19 pedidos): R$ X.XX | Recebido em Caixa: R$ Y.YY").`;
+7. Resposta Específica e Focada à Pergunta do Usuário:
+   - Responda SEMPRE de forma direta e personalizada ao que o usuário perguntou.
+   - Quando o usuário perguntar sobre os CLIENTES de um colaborador (por exemplo: "sobre os clientes do colaborador lagoona", "quais são os clientes de fulano?", "quem comprou com o colaborador X?"):
+     * LISTE nominalmente os clientes atendidos por esse colaborador (disponíveis em \`customers\` ou nos pedidos vinculados), informando nome, telefone (se houver), total de pedidos e valores gastos.
+     * NUNCA responda apenas com um resumo financeiro ou contagem seca de pedidos (ex: "Auditoria do Colaborador... Pedidos: 19, Faturamento: R$ ...") quando o usuário perguntou sobre os clientes.
+   - Quando o usuário perguntar sobre PEDIDOS ou PRODUTOS de um colaborador, detalhe os pedidos/produtos reais (amostra de itens, datas e valores).
+   - Em auditorias financeiras gerais (quando o usuário perguntar especificamente sobre faturamento ou desempenho geral):
+     * Exiba o Volume Total Emitido (\`volumeTotalEmitido\` / \`grossIssuedVolume\`), o Faturamento Concluído (\`faturamentoRealizado\` / \`realizedRevenue\`) e o Total Recebido em Caixa (\`totalReceived\`).
+     * Apresente a distribuição de pedidos por status (concluídos, em produção, pendentes e cancelados).
+     * Se o faturamento concluído for R$ 0,00 mas houver pedidos emitidos/em andamento, deixe isso perfeitamente transparente para o usuário (ex: "Faturamento Concluído: R$ 0,00 | Volume Emitido (19 pedidos): R$ X.XX | Recebido em Caixa: R$ Y.YY").`;
 
 const GALLERY_VISION_PROMPT = `Você é um especialista em catálogo de artigos personalizados, papelaria e brindes da marca Luisices.
 Analise a imagem da arte produzida e retorne ESTRITAMENTE em formato JSON puro:

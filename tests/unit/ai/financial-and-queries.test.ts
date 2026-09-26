@@ -193,6 +193,19 @@ describe('IA-02: Cálculos Financeiros Exatos e Consultas Completas', () => {
       expect(res.customers.length).toBe(1);
       expect(res.customers[0].name).toBe('Carlos Silva');
     });
+
+    it('deve pesquisar clientes atendidos por um colaborador a partir de seus pedidos', async () => {
+      const scopeAdmin = getCallerScope('user-admin', { role: 'admin', active: true });
+      const res = await executor.executeQueryCustomers({ searchTerm: 'amanda@luisices.com.br' }, scopeAdmin);
+
+      expect(res.customers.length).toBe(1);
+      expect(res.customers[0].name).toBe('Amanda Ferreira');
+      expect(res.customers[0].totalOrders).toBe(1);
+
+      const resByIdentifier = await executor.executeQueryCustomers({ userIdentifier: 'Amanda' }, scopeAdmin);
+      expect(resByIdentifier.customers.length).toBe(1);
+      expect(resByIdentifier.customers[0].name).toBe('Amanda Ferreira');
+    });
   });
 
   describe('sanitizeOrderForAi', () => {
@@ -237,6 +250,9 @@ describe('IA-02: Cálculos Financeiros Exatos e Consultas Completas', () => {
       expect(res.metrics.volumeTotalEmitido).toBe(200);
       expect(res.metrics.pendingReceivables).toBe(200);
       expect(res.metrics.pendingOrders).toBe(1);
+      expect(res.customers.length).toBe(1);
+      expect(res.customers[0].name).toBe('Amanda Ferreira');
+      expect(res.customers[0].totalSpent).toBe(200);
     });
 
     it('deve localizar colaborador por nome ou parte do e-mail', async () => {
@@ -245,6 +261,7 @@ describe('IA-02: Cálculos Financeiros Exatos e Consultas Completas', () => {
 
       expect(res.found).toBe(true);
       expect(res.user.name).toBe('Amanda Vendedora');
+      expect(res.customers.length).toBe(1);
     });
   });
 });

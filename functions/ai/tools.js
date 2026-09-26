@@ -426,7 +426,78 @@ class AiToolsExecutor {
    * Ferramenta 4: Consulta de Clientes
    */
   async executeQueryCustomers(args = {}, scope) {
-    return this.repos.getScopedCustomers(scope, args);
+    let customersResult = await this.repos.getScopedCustomers(scope, args);
+
+    // Se a busca tradicional retornou vazio ou se foi explicitado um colaborador (userIdentifier),
+    // verifica se o termo de busca refere-se a um membro da equipe para listar os clientes atendidos por ele através dos pedidos!
+    const userIdentifier = args.userIdentifier || args.searchTerm;
+    if (userIdentifier && (customersResult.customers.length === 0 || args.userIdentifier)) {
+      const term = String(userIdentifier).trim().toLowerCase();
+      const team = await this.repos.getTeamMembers();
+      const matchedMember = team.find((m) =>
+        m.name.toLowerCase().includes(term) ||
+        m.email.toLowerCase().includes(term) ||
+        m.uid.toLowerCase() === term ||
+        term.includes(m.email.toLowerCase()) ||
+        (m.email && term.includes(m.email.toLowerCase().split('@')[0]))
+      );
+
+      if (matchedMember || args.userIdentifier) {
+        const uid = matchedMember ? String(matchedMember.uid) : term;
+        const allOrders = await this.repos.getScopedOrders(scope);
+        const collaboratorOrders = allOrders.filter((o) =>
+          o.userId === uid ||
+          o.createdBy === uid ||
+          o.assignedTo === uid ||
+          (o.createdByName && o.createdByName.toLowerCase().includes(term)) ||
+          (o.assignedToName && o.assignedToName.toLowerCase().includes(term))
+        );
+
+        if (collaboratorOrders.length > 0) {
+          const map = new Map();
+          collaboratorOrders.forEach((o) => {
+            const name = (o.customerName || '').trim();
+            if (!name || name.toLowerCase() === 'cliente não informado') return;
+            const key = name.toLowerCase();
+            const existing = map.get(key) || {
+              id: `cust-${key.replace(/[^a-z0-9]/g, '-')}`,
+              name,
+              phone: o.customerPhone || '',
+              city: '',
+              totalOrders: 0,
+              totalSpent: 0,
+              recentProducts: [],
+              collaborator: matchedMember ? matchedMember.name : term,
+            };
+            existing.totalOrders += 1;
+            existing.totalSpent += Number(o.totalPrice) || 0;
+            if (!existing.phone && o.customerPhone) existing.phone = o.customerPhone;
+            const pName = o.productSummary || o.productName;
+            if (pName && !existing.recentProducts.includes(pName) && existing.recentProducts.length < 3) {
+              existing.recentProducts.push(pName);
+            }
+            map.set(key, existing);
+          });
+
+          const derivedCustomers = Array.from(map.values())
+            .sort((a, b) => b.totalOrders - a.totalOrders || b.totalSpent - a.totalSpent);
+
+          if (derivedCustomers.length > 0) {
+            const limit = Math.min(Math.max(Number(args.limit) || TOOL_LIMITS.CUSTOMERS_PAGE_LIMIT, 1), 50);
+            return {
+              customers: derivedCustomers.slice(0, limit),
+              totalScoped: derivedCustomers.length,
+              totalFiltered: derivedCustomers.length,
+              isFiltered: true,
+              hasMore: derivedCustomers.length > limit,
+              collaboratorFound: matchedMember ? { name: matchedMember.name, email: matchedMember.email } : { identifier: term },
+            };
+          }
+        }
+      }
+    }
+
+    return customersResult;
   }
 
   /**
@@ -696,7 +767,50 @@ class AiToolsExecutor {
     const uid = String(target.uid);
     const orders = allScopedOrders.filter((o) => o.userId === uid || o.createdBy === uid || o.assignedTo === uid);
     const customersResult = await this.repos.getScopedCustomers(scope);
-    const userCustomers = (customersResult.customers || []).filter((c) => c.userId === uid || c.createdBy === uid || c.assignedTo === uid);
+
+    // Consolida clientes atendidos tanto pela coleção de clientes quanto diretamente pelos pedidos
+    const customerMap = new Map();
+
+    (customersResult.customers || []).forEach((c) => {
+      if (c.userId === uid || c.createdBy === uid || c.assignedTo === uid) {
+        const key = (c.name || '').toLowerCase().trim();
+        if (key) {
+          customerMap.set(key, {
+            name: c.name,
+            phone: c.phone || '',
+            city: c.city || '',
+            totalOrders: Number(c.totalOrders) || 0,
+            totalSpent: Number(c.totalSpent) || 0,
+            recentProducts: [],
+          });
+        }
+      }
+    });
+
+    orders.forEach((o) => {
+      const cName = (o.customerName || '').trim();
+      if (!cName || cName.toLowerCase() === 'cliente não informado') return;
+      const key = cName.toLowerCase();
+      const existing = customerMap.get(key) || {
+        name: cName,
+        phone: o.customerPhone || '',
+        city: '',
+        totalOrders: 0,
+        totalSpent: 0,
+        recentProducts: [],
+      };
+      existing.totalOrders += 1;
+      existing.totalSpent += Number(o.totalPrice) || 0;
+      if (!existing.phone && o.customerPhone) existing.phone = o.customerPhone;
+      const pName = o.productSummary || o.productName;
+      if (pName && !existing.recentProducts.includes(pName) && existing.recentProducts.length < 3) {
+        existing.recentProducts.push(pName);
+      }
+      customerMap.set(key, existing);
+    });
+
+    const attendedCustomers = Array.from(customerMap.values())
+      .sort((a, b) => b.totalOrders - a.totalOrders || b.totalSpent - a.totalSpent);
 
     const validOrders = orders.filter((o) => o.status !== 'cancelled' && !o.isDeleted);
     const completedOrders = orders.filter((o) => o.status === 'completed' && !o.isDeleted);
@@ -717,13 +831,32 @@ class AiToolsExecutor {
         ? grossIssuedVolume / validOrders.length
         : 0;
 
+    const sampleOrders = orders.slice(0, 10).map((o) => ({
+      orderNumber: o.orderNumber,
+      customerName: o.customerName,
+      productName: o.productName || o.productSummary,
+      totalPrice: Number((Number(o.totalPrice) || 0).toFixed(2)),
+      paidAmount: Number((Number(o.paidAmount) || 0).toFixed(2)),
+      status: o.status,
+      deliveryDate: o.deliveryDate,
+    }));
+
     return {
       authorized: true,
       found: true,
       user: target,
+      customers: attendedCustomers.map((c) => ({
+        name: c.name,
+        phone: c.phone,
+        totalOrders: c.totalOrders,
+        totalSpent: Number(c.totalSpent.toFixed(2)),
+        recentProducts: c.recentProducts,
+      })),
+      totalCustomers: attendedCustomers.length,
+      sampleOrders,
       metrics: {
-        totalCustomers: userCustomers.length,
-        recentCustomers: userCustomers.slice(0, 3).map((c) => c.name),
+        totalCustomers: attendedCustomers.length,
+        recentCustomers: attendedCustomers.slice(0, 5).map((c) => c.name),
         totalOrders: orders.length,
         totalValidOrders: validOrders.length,
         completedOrders: completedOrders.length,
