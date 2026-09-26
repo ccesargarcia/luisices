@@ -4,7 +4,7 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "build": "vite build",
+    "build": "npm run typecheck && vite build",
     "typecheck": "tsc --noEmit",
     "dev": "vite",
     "deploy:functions": "firebase deploy --only functions && firebase functions:secrets:prune -f",
@@ -42,7 +42,8 @@
     "test:whatsapp": "playwright test tests/e2e/whatsapp.spec.ts",
     "test:responsive": "playwright test tests/e2e/responsive.spec.ts",
     "test:audit": "playwright test tests/e2e/screen-audit.spec.ts",
-    "test:critical": "playwright test tests/e2e/critical-flows.spec.ts tests/e2e/permissions.spec.ts tests/e2e/security.spec.ts"
+    "test:critical": "playwright test tests/e2e/critical-flows.spec.ts tests/e2e/permissions.spec.ts tests/e2e/security.spec.ts",
+    "test:integration": "firebase emulators:exec --config firebase.test.json --project demo-luisices-review --only firestore,storage \"vitest run --config vitest.integration.config.ts\""
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
@@ -103,6 +104,7 @@
     "zod": "^4.6.5"
   },
   "devDependencies": {
+    "@firebase/rules-unit-testing": "^5.0.2",
     "@playwright/test": "^1.49.1",
     "@tailwindcss/vite": "4.1.12",
     "@types/node": "^22.20.4",
@@ -111,6 +113,7 @@
     "@vitejs/plugin-react": "4.7.0",
     "dotenv": "^17.3.1",
     "firebase-admin": "^13.7.0",
+    "firebase-tools": "^15.31.0",
     "sharp": "^0.34.5",
     "tailwindcss": "4.1.12",
     "typescript": "^5.9.3",

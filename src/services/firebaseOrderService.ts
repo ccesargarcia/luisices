@@ -16,7 +16,6 @@ import {
   orderBy,
   Timestamp,
   runTransaction,
-  writeBatch,
 } from 'firebase/firestore';
 import { db, auth } from '../lib/firebase';
 import { Order, OrderStatus, ProductionStep, ProductionWorkflow } from '../app/types';
@@ -95,10 +94,7 @@ export class FirebaseOrderService {
   /**
    * Criar pedido
    */
-  async createOrder(orderData: Partial<Order>): Promise<Order> {
-    const userId = this.getCurrentUserId();
-    const orderNumber = await this.generateOrderNumber(userId);
-
+  private buildOrderData(orderData: Partial<Order>, userId: string, orderNumber: string) {
     // Garantir que valores monetários sejam positivos
     const price = this.ensurePositive(orderData.price);
 
@@ -121,8 +117,7 @@ export class FirebaseOrderService {
         }
       : null;
 
-    const ordersRef = collection(db, ORDERS_COLLECTION);
-    const newOrderRef = await addDoc(ordersRef, {
+    return {
       userId,
       createdByName: auth.currentUser?.displayName || auth.currentUser?.email || userId,
       orderNumber,
@@ -161,14 +156,48 @@ export class FirebaseOrderService {
       version: 1,
       createdAt: Timestamp.now(),
       deletedAt: null,
-    });
+    };
 
-    const createdOrder = await this.getOrderById(newOrderRef.id);
-    firebaseLedgerService.recordOrderSale(createdOrder, userId).catch(err => {
-      console.warn('firebaseLedgerService: erro ao gravar venda no ledger:', err);
-    });
+  }
 
-    return createdOrder;
+  /** Grava contador, pedido, venda e vínculo de catálogo em uma única transação. */
+  async createOrder(orderData: Partial<Order>, catalogOrderId?: string): Promise<Order> {
+    const userId = this.getCurrentUserId();
+    const orderRef = doc(collection(db, ORDERS_COLLECTION));
+    const counterRef = doc(db, 'users', userId, 'metadata', 'counters');
+    const catalogRef = catalogOrderId ? doc(db, 'catalogOrders', catalogOrderId) : null;
+
+    const savedOrderId = await runTransaction(db, async (transaction) => {
+      if (catalogRef) {
+        const catalogSnap = await transaction.get(catalogRef);
+        if (!catalogSnap.exists()) throw new Error('Pedido da lojinha não encontrado.');
+        const catalog = catalogSnap.data();
+        // O vínculo é permanente, mesmo se o status de atendimento mudar posteriormente.
+        if (catalog.convertedOrderId) return String(catalog.convertedOrderId);
+        if (catalog.status === 'converted') {
+          throw new Error('Este pedido da lojinha já foi convertido em pedido de produção anteriormente.');
+        }
+      }
+      const counterSnap = await transaction.get(counterRef);
+      const nextCount = (counterSnap.data()?.orderCounter || 0) + 1;
+      const orderNumber = `#${new Date().getFullYear()}-${String(nextCount).padStart(4, '0')}`;
+      const data = this.buildOrderData(orderData, userId, orderNumber);
+      const sale = firebaseLedgerService.mapOrderToSaleRecord({
+        ...orderData, ...data, id: orderRef.id,
+        createdAt: data.createdAt.toDate().toISOString(),
+      } as Order, userId);
+
+      transaction.set(counterRef, { orderCounter: nextCount }, { merge: true });
+      transaction.set(orderRef, data);
+      transaction.set(doc(db, 'salesLedger', orderRef.id), sale);
+      if (catalogRef) {
+        transaction.update(catalogRef, {
+          status: 'converted', convertedOrderId: orderRef.id, updatedAt: Timestamp.now(),
+        });
+      }
+      return orderRef.id;
+    });
+    return this.getOrderById(savedOrderId);
   }
 
   /**
@@ -326,7 +355,7 @@ export class FirebaseOrderService {
       }
     }
 
-    await updateDoc(orderRef, updateData);
+    await this.commitAssignments([orderId], updateData);
   }
 
   async assignOrdersBulk(orderIds: string[], employee: { uid: string; displayName: string } | null): Promise<void> {
@@ -346,15 +375,42 @@ export class FirebaseOrderService {
       updatedAt: now,
     };
 
-    // Firestore batch comporta até 500 operações por lote
-    const BATCH_SIZE = 500;
-    for (let i = 0; i < orderIds.length; i += BATCH_SIZE) {
-      const chunk = orderIds.slice(i, i + BATCH_SIZE);
-      const batch = writeBatch(db);
-      for (const id of chunk) {
-        batch.update(doc(db, ORDERS_COLLECTION, id), payload);
-      }
-      await batch.commit();
+    await this.commitAssignments(orderIds, payload);
+  }
+
+  private async commitAssignments(orderIds: string[], payload: Record<string, any>): Promise<void> {
+    // Duas gravações por pedido; cada par é atômico, inclusive em lotes grandes.
+    const ids = [...new Set(orderIds)];
+    const BATCH_SIZE = 200;
+    for (let i = 0; i < ids.length; i += BATCH_SIZE) {
+      const chunk = ids.slice(i, i + BATCH_SIZE);
+      await runTransaction(db, async (transaction) => {
+        const records = await Promise.all(chunk.map(async (id) => {
+          const orderRef = doc(db, ORDERS_COLLECTION, id);
+          const saleRef = doc(db, 'salesLedger', id);
+          const order = await transaction.get(orderRef);
+          const sale = await transaction.get(saleRef);
+          if (!order.exists()) throw new Error(`Pedido ${id} não encontrado`);
+          return { orderRef, saleRef, order, sale };
+        }));
+        for (const { orderRef, saleRef, order, sale } of records) {
+          transaction.update(orderRef, payload);
+          if (sale.exists()) {
+            transaction.update(saleRef, {
+              assignedTo: payload.assignedTo,
+              assignedToName: payload.assignedToName,
+              updatedAt: payload.updatedAt,
+            });
+          } else {
+            const record = firebaseLedgerService.mapOrderToSaleRecord({
+              ...this.mapOrderDoc(order), ...payload,
+            });
+            transaction.set(saleRef, {
+              ...record, isDeletedFromOrders: order.data().deletedAt != null,
+            });
+          }
+        }
+      });
     }
   }
 

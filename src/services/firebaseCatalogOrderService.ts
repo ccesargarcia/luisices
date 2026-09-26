@@ -207,18 +207,12 @@ class FirebaseCatalogOrderService {
     customerPhone: string,
     deliveryDate: string
   ): Promise<Order> {
-    // Prevenção contra concorrência e clique duplo (double-click lock)
-    const docRef = doc(db, CATALOG_ORDERS_COLLECTION, catalogOrder.id);
-    const snap = await getDoc(docRef);
-    if (!snap.exists()) {
-      throw new Error('Pedido da lojinha não encontrado.');
-    }
-    if (snap.data()?.status === 'converted') {
-      throw new Error('Este pedido da lojinha já foi convertido em pedido de produção anteriormente.');
-    }
+    // Usa os dados persistidos; a transação de criação verifica novamente o vínculo.
+    const snap = await getDoc(doc(db, CATALOG_ORDERS_COLLECTION, catalogOrder.id));
+    if (!snap.exists()) throw new Error('Pedido da lojinha não encontrado.');
+    catalogOrder = this.mapDoc(snap.id, snap.data());
 
     // Monta a descrição resumida dos produtos
-    const productNames = catalogOrder.items.map((i) => `${i.quantity}x ${i.productName}`).join(', ');
     const firstProductName = catalogOrder.items[0]?.productName || 'Pedido da Lojinha';
     const totalQuantity = catalogOrder.totalItems || catalogOrder.items.reduce((s, i) => s + i.quantity, 0);
 
@@ -255,14 +249,7 @@ class FirebaseCatalogOrderService {
         notes: `Pedido criado a partir da Lojinha (${catalogOrder.orderCode})`,
         history: null,
       },
-    });
-
-    // Atualiza o pedido da lojinha para 'converted'
-    await updateDoc(docRef, {
-      status: 'converted',
-      convertedOrderId: newOrder.id,
-      updatedAt: Timestamp.now(),
-    });
+    }, catalogOrder.id);
 
     return newOrder;
   }

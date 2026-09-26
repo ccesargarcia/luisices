@@ -1,18 +1,12 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import {
-  collection,
-  query,
-  where,
-  orderBy,
   onSnapshot,
-  limit,
   QuerySnapshot,
   DocumentData,
 } from 'firebase/firestore';
-import { db } from '../lib/firebase';
 import { useAuth } from '../contexts/AuthContext';
 import { SaleRecord, LedgerPeriod } from '../app/types';
-import { firebaseLedgerService } from '../services/firebaseLedgerService';
+import { firebaseLedgerService, getSalesLedgerQuery } from '../services/firebaseLedgerService';
 
 export interface DateRange {
   start: Date;
@@ -101,14 +95,7 @@ export function useSalesLedger(options?: {
     const isAdmin = userProfile?.role === 'admin';
     const isEmployee = userProfile?.role === 'funcionario';
 
-    const baseQuery = isAdmin
-      ? query(collection(db, 'salesLedger'), orderBy('date', 'desc'), limit(200))
-      : query(
-          collection(db, 'salesLedger'),
-          where('userId', '==', user.uid),
-          orderBy('date', 'desc'),
-          limit(200)
-        );
+    const baseQuery = getSalesLedgerQuery(user.uid, isAdmin ? 'all' : 'own');
 
     const mapSnapshot = (snapshot: QuerySnapshot<DocumentData>): SaleRecord[] =>
       snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as SaleRecord));
@@ -147,12 +134,7 @@ export function useSalesLedger(options?: {
     ];
 
     if (isEmployee) {
-      const assignedQuery = query(
-        collection(db, 'salesLedger'),
-        where('assignedTo', '==', user.uid),
-        orderBy('date', 'desc'),
-        limit(200)
-      );
+      const assignedQuery = getSalesLedgerQuery(user.uid, 'assigned');
       unsubscribers.push(
         onSnapshot(
           assignedQuery,

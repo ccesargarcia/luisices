@@ -17,6 +17,13 @@ import { Order, OrderStatus, SaleRecord } from '../app/types';
 
 const SALES_LEDGER_COLLECTION = 'salesLedger';
 
+/** Consulta completa usada pelos relatórios; paginação visual não deve truncar os totais. */
+export function getSalesLedgerQuery(userId: string, scope: 'all' | 'own' | 'assigned') {
+  const sales = collection(db, SALES_LEDGER_COLLECTION);
+  if (scope === 'all') return query(sales, orderBy('date', 'desc'));
+  return query(sales, where(scope === 'own' ? 'userId' : 'assignedTo', '==', userId), orderBy('date', 'desc'));
+}
+
 export const firebaseLedgerService = {
   getCurrentUserId(): string {
     const user = auth.currentUser;

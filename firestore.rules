@@ -2,13 +2,20 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
+    // Perfis legados sem active continuam válidos; desativação explícita bloqueia acesso.
+    function isActiveUser() {
+      return request.auth != null
+        && exists(/databases/$(database)/documents/userProfiles/$(request.auth.uid))
+        && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.get('active', true) == true;
+    }
+
     // Helper function para verificar se o usuário é o dono do recurso
     function isOwner(userId) {
-      return request.auth != null && request.auth.uid == userId;
+      return isActiveUser() && request.auth.uid == userId;
     }
 
     function isAdmin() {
-      return request.auth != null
+      return isActiveUser()
         && exists(/databases/$(database)/documents/userProfiles/$(request.auth.uid))
         && ('role' in get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data)
         && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.role == 'admin';
@@ -61,13 +68,15 @@ service cloud.firestore {
       allow read: if ('userId' in resource.data && isOwner(resource.data.userId))
         || isAdmin()
         || ('assignedTo' in resource.data && isAssignedEmployee(resource.data.assignedTo));
-      allow create, update: if isOwner(request.resource.data.userId)
-        || isAdmin()
-        || (
+      allow create: if isOwner(request.resource.data.userId) || isAdmin();
+      allow update: if isAdmin() || (
+        request.resource.data.userId == resource.data.userId
+        && (isOwner(resource.data.userId) || (
           'assignedTo' in resource.data
           && isAssignedEmployeeEditor(resource.data.assignedTo)
-          && request.resource.data.userId == resource.data.userId
-        );
+          && request.resource.data.assignedTo == resource.data.assignedTo
+        ))
+      );
       allow delete: if ('userId' in resource.data && isOwner(resource.data.userId))
         || isAdmin();
     }
@@ -158,17 +167,39 @@ service cloud.firestore {
       allow read: if request.auth != null && (request.auth.uid == uid || isAdmin() || isActiveEmployee());
 
       // Criação: usuário cria o próprio perfil (primeiro acesso automático), ou admin cria para outro
-      allow create: if request.auth != null && (request.auth.uid == uid || isAdmin());
+      allow create: if isAdmin() || (request.auth != null
+        && request.auth.uid == uid
+        && request.resource.data.uid == uid
+        && request.resource.data.role == 'user'
+        && request.resource.data.active == true
+        && request.resource.data.createdBy == uid
+        && request.resource.data.permissions == {
+          'dashboard': true,
+          'orders':    { 'view': true, 'create': true, 'edit': true, 'delete': true },
+          'customers': { 'view': true, 'create': true, 'edit': true, 'delete': true },
+          'products':  { 'view': true, 'create': true, 'edit': true, 'delete': true },
+          'quotes':    { 'view': true, 'create': true, 'edit': true, 'delete': true },
+          'gallery':   { 'view': true, 'create': true, 'delete': true },
+          'reports':   true,
+          'exchanges': true,
+          'settings':  true,
+          'users':     { 'view': false, 'create': false, 'edit': false, 'delete': false },
+          'emails':    false,
+          'pricing':   true,
+          'store':     true,
+          'storeProducts': { 'view': true, 'create': true, 'edit': true, 'delete': false },
+          'whatsapp':  true,
+          'aiCopilot': true
+        });
 
       // Atualização: admin pode alterar tudo;
       // usuário comum pode atualizar seus dados (nome, etc), mas não pode mudar seu role, permissions nem seu active (evita auto-promoção)
       allow update: if request.auth != null && (
         isAdmin()
         || (
-          request.auth.uid == uid
-          && (!('role' in resource.data) || request.resource.data.role == resource.data.role)
-          && (!('active' in resource.data) || request.resource.data.active == resource.data.active)
-          && (!('permissions' in resource.data) || request.resource.data.permissions == resource.data.permissions)
+          request.auth.uid == uid && isActiveUser()
+          && !request.resource.data.diff(resource.data).affectedKeys()
+            .hasAny(['uid', 'role', 'active', 'permissions', 'createdBy', 'createdAt'])
         )
       );
 

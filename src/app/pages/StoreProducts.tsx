@@ -653,7 +653,11 @@ function StoreProductDialog({ open, onOpenChange, editing, existingCategories }:
                 <Globe size={13} className="text-emerald-600" />
                 Status na Vitrine
               </Label>
-              <Select value={form.status} onValueChange={(val) => setForm({ ...form, status: val })}>
+              <Select value={form.status} onValueChange={(val) => {
+                if (val === 'active' || val === 'paused' || val === 'hidden') {
+                  setForm({ ...form, status: val });
+                }
+              }}>
                 <SelectTrigger className="w-full">
                   <SelectValue placeholder="Selecione o status" />
                 </SelectTrigger>

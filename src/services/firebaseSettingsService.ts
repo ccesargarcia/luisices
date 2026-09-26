@@ -4,7 +4,7 @@
  * Serviço para gerenciar configurações e personalização do usuário
  */
 
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc, writeBatch } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 
 export interface CatalogBannerItem {
@@ -222,6 +222,14 @@ export interface UserSettings {
 }
 
 export class FirebaseSettingsService {
+  /** Mantém as flags privadas e públicas consistentes ao pausar ou retomar vendas. */
+  async updateStoreFeatureFlags(userId: string, featureFlags: Record<string, boolean>): Promise<void> {
+    const batch = writeBatch(db);
+    batch.set(doc(db, 'users', userId, 'settings', 'profile'), { featureFlags }, { merge: true });
+    batch.set(doc(db, 'storeSettings', 'public'), { featureFlags }, { merge: true });
+    await batch.commit();
+  }
+
   /**
    * Obter configurações do usuário
    */

@@ -68,6 +68,7 @@ import {
 import { toast } from 'sonner';
 import { BannerCarousel, CatalogBannerItem } from '../components/catalog/BannerCarousel';
 import {
+  firebaseSettingsService,
   InstitutionalPillarItem,
   InstitutionalStepItem,
   InstitutionalFeatureItem,
@@ -295,7 +296,7 @@ export const HEADER_COLOR_PRESETS = [
 ];
 
 export function StoreCustomization() {
-  const { isAdmin, hasPermission } = useAuth();
+  const { user, isAdmin, hasPermission } = useAuth();
   const canEdit = isAdmin || hasPermission((p) => Boolean(p?.store || p?.settings));
 
   const { 
@@ -506,7 +507,7 @@ export function StoreCustomization() {
   
   const [togglingSales, setTogglingSales] = useState(false);
   const handleToggleSales = async (enable: boolean) => {
-    if (!canEdit) {
+    if (!canEdit || !user) {
       toast.error('Você não tem permissão para alterar configurações da loja');
       return;
     }
@@ -514,9 +515,7 @@ export function StoreCustomization() {
     const updatedFlags = { ...featureFlags, enableOnlineOrders: enable };
     setFeatureFlags(updatedFlags);
     try {
-      // Just update the featureFlags field in the document
-      await setDoc(doc(db, `users/${userProfile?.uid}/settings/profile`), { featureFlags: updatedFlags }, { merge: true });
-      await setDoc(doc(db, 'storeSettings/public'), { featureFlags: updatedFlags }, { merge: true });
+      await firebaseSettingsService.updateStoreFeatureFlags(user.uid, updatedFlags);
       try {
         const cached = localStorage.getItem("luisices_public_store_settings");
         const parsed = cached ? JSON.parse(cached) : {};
