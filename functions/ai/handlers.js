@@ -275,6 +275,9 @@ function createAiAgentChatHandler(deps = {}) {
 
     const startTime = Date.now();
     let totalTokensConsumed = 0;
+    let promptTokensConsumed = 0;
+    let candidatesTokensConsumed = 0;
+    let reasoningTokensConsumed = 0;
     let usedModel = MODEL_CONFIG.PRIMARY_CHAT_MODEL;
     let geminiAttempts = [];
 
@@ -351,13 +354,16 @@ function createAiAgentChatHandler(deps = {}) {
       };
 
       // 6. Executa chamada ao Gemini
-      const geminiResp = await geminiClient.generateContent(geminiPayload, {
+      let geminiResp = await geminiClient.generateContent(geminiPayload, {
         totalTimeoutMs: TIMEOUTS.CHAT_TOTAL_MS,
       });
       geminiAttempts = geminiResp.attempts || [];
 
       usedModel = geminiResp.modelUsed;
       totalTokensConsumed = geminiResp.tokens.totalTokens;
+      promptTokensConsumed = geminiResp.tokens.promptTokens;
+      candidatesTokensConsumed = geminiResp.tokens.candidatesTokens;
+      reasoningTokensConsumed = geminiResp.tokens.reasoningTokens;
 
       const candidate = geminiResp.data?.candidates?.[0];
       const parts = candidate?.content?.parts || [];
@@ -442,6 +448,59 @@ function createAiAgentChatHandler(deps = {}) {
             }
           }
         }
+
+        // Em consultas que exigem mais de uma ferramenta, permita uma rodada
+        // curta de síntese. Consultas simples continuam sem a chamada extra,
+        // reduzindo latência e custo. O resultado determinístico acima segue
+        // como fallback caso a síntese falhe.
+        if (functionCalls.length > 1 && TOOL_LIMITS.MAX_MODEL_ROUNDS > 1 && answers.length > 1) {
+          const remainingMs = TIMEOUTS.CHAT_TOTAL_MS - (Date.now() - startTime);
+          if (remainingMs > 1000) {
+            let synthesisContextChars = 8000;
+            const functionResponseParts = functionCalls.slice(0, answers.length).map((call, index) => {
+              const result = answers[index].slice(0, synthesisContextChars);
+              synthesisContextChars -= result.length;
+              return {
+              functionResponse: {
+                name: call.name,
+                response: { result },
+              },
+              };
+            });
+            const synthesisPayload = {
+              system_instruction: {
+                parts: [{
+                  text: `${COPILOT_SYSTEM_INSTRUCTION}\n\nVocê está na rodada final de síntese. Use somente os resultados das ferramentas fornecidos nesta conversa. Preserve nomes, datas e valores exatamente; não recalcule nem invente dados. Responda diretamente ao pedido e destaque divergências ou limitações.`,
+                }],
+              },
+              contents: [
+                ...contents,
+                { ...candidate.content, role: 'model' },
+                { role: 'user', parts: functionResponseParts },
+              ],
+              generationConfig: { temperature: 0.1, maxOutputTokens: 768 },
+            };
+
+            try {
+              const synthesisResp = await geminiClient.generateContent(synthesisPayload, {
+                totalTimeoutMs: remainingMs,
+              });
+              totalTokensConsumed += synthesisResp.tokens.totalTokens;
+              promptTokensConsumed += synthesisResp.tokens.promptTokens;
+              candidatesTokensConsumed += synthesisResp.tokens.candidatesTokens;
+              reasoningTokensConsumed += synthesisResp.tokens.reasoningTokens;
+              geminiAttempts = [...geminiAttempts, ...(synthesisResp.attempts || [])];
+              usedModel = synthesisResp.modelUsed || usedModel;
+              const synthesisParts = synthesisResp.data?.candidates?.[0]?.content?.parts || [];
+              const synthesizedAnswer = cleanAiOutput(synthesisParts.map((part) => part.text).filter(Boolean).join('\n'));
+              if (synthesizedAnswer) answers.splice(0, answers.length, synthesizedAnswer);
+            } catch (synthesisError) {
+              // A síntese é uma melhoria opcional; preserve os resultados reais
+              // das ferramentas e registre a tentativa para orçamento/telemetria.
+              geminiAttempts = [...geminiAttempts, ...(synthesisError.attempts || [])];
+            }
+          }
+        }
       } else {
         answers.push(cleanAiOutput(parts.map((p) => p.text).filter(Boolean).join('\n')) || 'Como posso ajudar você hoje?');
       }
@@ -476,9 +535,9 @@ function createAiAgentChatHandler(deps = {}) {
           action: 'copilot_chat',
           requestedModel: MODEL_CONFIG.PRIMARY_CHAT_MODEL,
           usedModel,
-          promptTokens: geminiResp.tokens.promptTokens,
-          candidatesTokens: geminiResp.tokens.candidatesTokens,
-          reasoningTokens: geminiResp.tokens.reasoningTokens,
+          promptTokens: promptTokensConsumed,
+          candidatesTokens: candidatesTokensConsumed,
+          reasoningTokens: reasoningTokensConsumed,
           totalTokens: totalTokensConsumed,
           attempts: geminiAttempts,
           durationMs: Date.now() - startTime,
