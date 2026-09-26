@@ -244,7 +244,34 @@ class AiToolsExecutor {
     if (scope.isAdmin && validatedArgs.userIdentifier) {
       const term = String(validatedArgs.userIdentifier).trim().toLowerCase();
       const team = await this.repos.getTeamMembers();
-      const target = team.find((m) => m.name.toLowerCase().includes(term) || m.email.toLowerCase().includes(term) || m.uid === term);
+      let target = team.find(
+        (m) =>
+          m.name.toLowerCase().includes(term) ||
+          m.email.toLowerCase().includes(term) ||
+          m.uid.toLowerCase() === term ||
+          term.includes(m.email.toLowerCase()) ||
+          (m.email && term.includes(m.email.toLowerCase().split('@')[0]))
+      );
+
+      if (!target) {
+        const matchingOrder = orders.find(
+          (o) =>
+            (o.userId && o.userId.toLowerCase() === term) ||
+            (o.createdBy && o.createdBy.toLowerCase() === term) ||
+            (o.assignedTo && o.assignedTo.toLowerCase() === term) ||
+            (o.createdByName && o.createdByName.toLowerCase().includes(term)) ||
+            (o.assignedToName && o.assignedToName.toLowerCase().includes(term))
+        );
+        if (matchingOrder) {
+          const uid = matchingOrder.userId || matchingOrder.createdBy || matchingOrder.assignedTo;
+          target = {
+            uid,
+            name: matchingOrder.createdByName || matchingOrder.assignedToName || term,
+            email: term.includes('@') ? term : '',
+          };
+        }
+      }
+
       if (target) {
         const uid = String(target.uid);
         orders = orders.filter((o) => o.userId === uid || o.createdBy === uid || o.assignedTo === uid);
@@ -627,7 +654,37 @@ class AiToolsExecutor {
       };
     }
 
-    const target = team.find((m) => m.name.toLowerCase().includes(identifier) || m.email.toLowerCase().includes(identifier) || m.uid === identifier);
+    let target = team.find(
+      (m) =>
+        m.name.toLowerCase().includes(identifier) ||
+        m.email.toLowerCase().includes(identifier) ||
+        m.uid.toLowerCase() === identifier ||
+        identifier.includes(m.email.toLowerCase()) ||
+        (m.email && identifier.includes(m.email.toLowerCase().split('@')[0]))
+    );
+
+    const allScopedOrders = await this.repos.getScopedOrders(scope);
+
+    if (!target) {
+      const matchingOrder = allScopedOrders.find(
+        (o) =>
+          (o.userId && o.userId.toLowerCase() === identifier) ||
+          (o.createdBy && o.createdBy.toLowerCase() === identifier) ||
+          (o.assignedTo && o.assignedTo.toLowerCase() === identifier) ||
+          (o.createdByName && o.createdByName.toLowerCase().includes(identifier)) ||
+          (o.assignedToName && o.assignedToName.toLowerCase().includes(identifier))
+      );
+      if (matchingOrder) {
+        const uid = matchingOrder.userId || matchingOrder.createdBy || matchingOrder.assignedTo;
+        target = {
+          uid,
+          name: matchingOrder.createdByName || matchingOrder.assignedToName || identifier,
+          email: identifier.includes('@') ? identifier : '',
+          role: 'user',
+        };
+      }
+    }
+
     if (!target) {
       return {
         authorized: true,
@@ -637,23 +694,28 @@ class AiToolsExecutor {
     }
 
     const uid = String(target.uid);
-    const orders = (await this.repos.getScopedOrders(scope)).filter((o) => o.userId === uid || o.createdBy === uid || o.assignedTo === uid);
+    const orders = allScopedOrders.filter((o) => o.userId === uid || o.createdBy === uid || o.assignedTo === uid);
     const customersResult = await this.repos.getScopedCustomers(scope);
     const userCustomers = (customersResult.customers || []).filter((c) => c.userId === uid || c.createdBy === uid || c.assignedTo === uid);
 
     const validOrders = orders.filter((o) => o.status !== 'cancelled' && !o.isDeleted);
-    const completedOrders = orders.filter((o) => o.status === 'completed');
-    const inProgressOrders = orders.filter((o) => o.status === 'in-progress');
-    const pendingOrders = orders.filter((o) => o.status === 'pending');
-    const cancelledOrders = orders.filter((o) => o.status === 'cancelled');
+    const completedOrders = orders.filter((o) => o.status === 'completed' && !o.isDeleted);
+    const inProgressOrders = orders.filter((o) => o.status === 'in-progress' && !o.isDeleted);
+    const pendingOrders = orders.filter((o) => o.status === 'pending' && !o.isDeleted);
+    const cancelledOrders = orders.filter((o) => o.status === 'cancelled' || o.isDeleted);
 
+    const grossIssuedVolume = validOrders.reduce((sum, o) => sum + (Number(o.totalPrice) || 0), 0);
     const realizedRevenue = completedOrders.reduce((sum, o) => sum + (Number(o.totalPrice) || 0), 0);
     const totalReceived = validOrders.reduce((sum, o) => sum + (Number(o.paidAmount) || 0), 0);
     const pendingReceivables = validOrders
       .filter((o) => o.paymentStatus !== 'paid')
       .reduce((sum, o) => sum + (Number(o.remainingAmount !== undefined ? o.remainingAmount : (o.totalPrice - (o.paidAmount || 0))) || 0), 0);
 
-    const averageTicket = completedOrders.length > 0 ? realizedRevenue / completedOrders.length : 0;
+    const averageTicket = completedOrders.length > 0
+      ? realizedRevenue / completedOrders.length
+      : validOrders.length > 0
+        ? grossIssuedVolume / validOrders.length
+        : 0;
 
     return {
       authorized: true,
@@ -668,10 +730,16 @@ class AiToolsExecutor {
         inProgressOrders: inProgressOrders.length,
         pendingOrders: pendingOrders.length,
         cancelledOrders: cancelledOrders.length,
+        volumeTotalEmitido: Number(grossIssuedVolume.toFixed(2)),
+        grossIssuedVolume: Number(grossIssuedVolume.toFixed(2)),
+        faturamentoRealizado: Number(realizedRevenue.toFixed(2)),
         realizedRevenue: Number(realizedRevenue.toFixed(2)),
         totalReceived: Number(totalReceived.toFixed(2)),
+        totalRecebido: Number(totalReceived.toFixed(2)),
         pendingReceivables: Number(pendingReceivables.toFixed(2)),
+        totalPendenteReceber: Number(pendingReceivables.toFixed(2)),
         averageTicket: Number(averageTicket.toFixed(2)),
+        ticketMedio: Number(averageTicket.toFixed(2)),
       },
     };
   }

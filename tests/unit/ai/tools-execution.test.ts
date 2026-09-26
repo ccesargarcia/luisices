@@ -82,7 +82,7 @@ describe('IA-07 & IA-08: Execução de Ferramentas e Saídas Estruturadas', () =
   it('deve executar resposta do chat com chamada de ferramenta (Function Call)', async () => {
     const mockGeminiClient = {
       generateContent: async () => ({
-        modelUsed: 'gemini-2.5-flash',
+        modelUsed: 'gemini-3.8-flash',
         tokens: { promptTokens: 100, candidatesTokens: 50, totalTokens: 150 },
         data: {
           candidates: [

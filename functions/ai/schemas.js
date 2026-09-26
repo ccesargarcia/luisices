@@ -151,7 +151,12 @@ Regras de Análise Financeira e Esclarecimento de Datas:
      * Volume Total Emitido: soma de todos os pedidos válidos criados no período (concluídos, em produção e pendentes).
      * Total Recebido: quanto já entrou no caixa destes pedidos (sinais + quitações).
      * Pendente a Receber: saldo em aberto dos pedidos deste período.
-   - NUNCA dê respostas genéricas ou evasivas quando questionado sobre a que se refere o cálculo.`;
+   - NUNCA dê respostas genéricas ou evasivas quando questionado sobre a que se refere o cálculo.
+
+7. Em resumos ou auditorias de colaboradores (\`get_user_summary\` ou \`get_financial_summary\` com colaborador):
+   - Exiba SEMPRE tanto o Volume Total Emitido (\`volumeTotalEmitido\` / \`grossIssuedVolume\`) quanto o Faturamento Concluído (\`faturamentoRealizado\` / \`realizedRevenue\`) e o Total Recebido em Caixa (\`totalReceived\`).
+   - Apresente a distribuição de pedidos por status (concluídos, em produção, pendentes e cancelados).
+   - Se o faturamento concluído for R$ 0,00 mas houver pedidos emitidos/em andamento, deixe isso perfeitamente transparente para o usuário (ex: "Faturamento Concluído: R$ 0,00 | Volume Emitido (19 pedidos): R$ X.XX | Recebido em Caixa: R$ Y.YY").`;
 
 const GALLERY_VISION_PROMPT = `Você é um especialista em catálogo de artigos personalizados, papelaria e brindes da marca Luisices.
 Analise a imagem da arte produzida e retorne ESTRITAMENTE em formato JSON puro:

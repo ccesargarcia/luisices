@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 const { AiToolsExecutor, getPeriodInterval } = require('../../../functions/ai/tools');
 const { getCallerScope } = require('../../../functions/ai/authorization');
+const { sanitizeOrderForAi } = require('../../../functions/ai/repositories');
 
 describe('IA-02: Cálculos Financeiros Exatos e Consultas Completas', () => {
   const mockOrders = [
@@ -191,6 +192,59 @@ describe('IA-02: Cálculos Financeiros Exatos e Consultas Completas', () => {
 
       expect(res.customers.length).toBe(1);
       expect(res.customers[0].name).toBe('Carlos Silva');
+    });
+  });
+
+  describe('sanitizeOrderForAi', () => {
+    it('deve extrair preço e pagamento a partir da estrutura real do Firestore (price e payment object)', () => {
+      const rawFirestoreOrder = {
+        price: 250,
+        customerName: 'Lagoona Personalizados',
+        status: 'concluido',
+        payment: {
+          totalAmount: 250,
+          paidAmount: 100,
+          remainingAmount: 150,
+          status: 'partial',
+        },
+      };
+
+      const sanitized = sanitizeOrderForAi('order-123', rawFirestoreOrder);
+      expect(sanitized.totalPrice).toBe(250);
+      expect(sanitized.paidAmount).toBe(100);
+      expect(sanitized.remainingAmount).toBe(150);
+      expect(sanitized.status).toBe('completed');
+      expect(sanitized.paymentStatus).toBe('partial');
+    });
+
+    it('deve normalizar status em português e variações operacionais', () => {
+      expect(sanitizeOrderForAi('1', { status: 'entregue' }).status).toBe('completed');
+      expect(sanitizeOrderForAi('2', { status: 'em produção' }).status).toBe('in-progress');
+      expect(sanitizeOrderForAi('3', { status: 'cancelado' }).status).toBe('cancelled');
+      expect(sanitizeOrderForAi('4', { status: 'pendente' }).status).toBe('pending');
+    });
+  });
+
+  describe('executeUserSummary', () => {
+    it('deve retornar métricas detalhadas com volume emitido e faturamento para colaborador auditado', async () => {
+      const scopeAdmin = getCallerScope('user-admin', { role: 'admin', active: true });
+      const res = await executor.executeUserSummary({ userIdentifier: 'amanda@luisices.com.br' }, scopeAdmin);
+
+      expect(res.authorized).toBe(true);
+      expect(res.found).toBe(true);
+      expect(res.metrics.totalOrders).toBe(1);
+      expect(res.metrics.grossIssuedVolume).toBe(200);
+      expect(res.metrics.volumeTotalEmitido).toBe(200);
+      expect(res.metrics.pendingReceivables).toBe(200);
+      expect(res.metrics.pendingOrders).toBe(1);
+    });
+
+    it('deve localizar colaborador por nome ou parte do e-mail', async () => {
+      const scopeAdmin = getCallerScope('user-admin', { role: 'admin', active: true });
+      const res = await executor.executeUserSummary({ userIdentifier: 'Amanda' }, scopeAdmin);
+
+      expect(res.found).toBe(true);
+      expect(res.user.name).toBe('Amanda Vendedora');
     });
   });
 });

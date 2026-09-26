@@ -21,6 +21,56 @@ function normalizeTimestamp(val) {
 
 function sanitizeOrderForAi(id, data = {}) {
   const pName = data.productName || data.productSummary || data.itemsSummary || data.description || 'Personalizado Luisices';
+
+  // Extrai preço total do pedido considerando todas as variações de campos do schema (price, totalPrice, payment.totalAmount, etc.)
+  const rawPrice = data.price !== undefined && data.price !== null
+    ? data.price
+    : (data.totalPrice !== undefined && data.totalPrice !== null
+      ? data.totalPrice
+      : (data.payment?.totalAmount !== undefined && data.payment?.totalAmount !== null
+        ? data.payment.totalAmount
+        : (data.totalAmount !== undefined && data.totalAmount !== null
+          ? data.totalAmount
+          : (data.value !== undefined && data.value !== null
+            ? data.value
+            : (data.amount !== undefined && data.amount !== null ? data.amount : 0)))));
+  const totalPrice = Number(rawPrice) || 0;
+
+  // Extrai valor já pago considerando payment.paidAmount, paidAmount, signalAmount
+  const rawPaid = data.payment?.paidAmount !== undefined && data.payment?.paidAmount !== null
+    ? data.payment.paidAmount
+    : (data.paidAmount !== undefined && data.paidAmount !== null
+      ? data.paidAmount
+      : (data.signalAmount !== undefined && data.signalAmount !== null
+        ? data.signalAmount
+        : 0));
+  const paidAmount = Number(rawPaid) || 0;
+
+  // Extrai saldo restante considerando payment.remainingAmount, remainingAmount ou calculando diferença
+  const rawRemaining = data.payment?.remainingAmount !== undefined && data.payment?.remainingAmount !== null
+    ? data.payment.remainingAmount
+    : (data.remainingAmount !== undefined && data.remainingAmount !== null
+      ? data.remainingAmount
+      : Math.max(0, totalPrice - paidAmount));
+  const remainingAmount = Number(rawRemaining) || 0;
+
+  // Normaliza status do pagamento
+  const rawPaymentStatus = data.payment?.status || data.paymentStatus || (paidAmount >= totalPrice && totalPrice > 0 ? 'paid' : (paidAmount > 0 ? 'partial' : 'pending'));
+  const paymentStatus = String(rawPaymentStatus).toLowerCase();
+
+  // Normaliza status do pedido
+  const rawStatus = String(data.status || 'pending').toLowerCase().trim();
+  let normalizedStatus = 'pending';
+  if (['completed', 'concluido', 'concluído', 'delivered', 'entregue', 'finalizado', 'pronto'].includes(rawStatus)) {
+    normalizedStatus = 'completed';
+  } else if (['in-progress', 'in_progress', 'em-andamento', 'em_andamento', 'producao', 'produção', 'em producao', 'em produção', 'recebido', 'received', 'in_contact'].includes(rawStatus)) {
+    normalizedStatus = 'in-progress';
+  } else if (['cancelled', 'canceled', 'cancelado', 'cancelada'].includes(rawStatus)) {
+    normalizedStatus = 'cancelled';
+  } else {
+    normalizedStatus = 'pending';
+  }
+
   return {
     orderId: id,
     orderNumber: data.orderNumber || (id ? `#${id.slice(-5)}` : 'S/N'),
@@ -29,18 +79,21 @@ function sanitizeOrderForAi(id, data = {}) {
     productName: pName,
     productSummary: pName,
     quantity: Number(data.quantity) || 1,
-    totalPrice: Number(data.totalPrice || data.totalAmount || data.value || 0),
-    paidAmount: Number(data.paidAmount || data.signalAmount || 0),
-    remainingAmount: Number(data.remainingAmount !== undefined ? data.remainingAmount : (data.totalPrice || 0) - (data.paidAmount || 0)),
-    status: data.status || 'pending',
-    paymentStatus: data.paymentStatus || 'pending',
+    totalPrice,
+    paidAmount,
+    remainingAmount,
+    status: normalizedStatus,
+    rawStatus,
+    paymentStatus,
     deliveryDate: normalizeTimestamp(data.deliveryDate || data.deadline).split('T')[0] || '',
     createdAt: normalizeTimestamp(data.createdAt || data.creationDate),
     theme: data.theme || '',
     notes: data.notes || '',
     userId: String(data.userId || ''),
     createdBy: String(data.createdBy || ''),
+    createdByName: String(data.createdByName || ''),
     assignedTo: String(data.assignedTo || ''),
+    assignedToName: String(data.assignedToName || ''),
     isDeleted: Boolean(data.deletedAt || data.isDeleted),
   };
 }
