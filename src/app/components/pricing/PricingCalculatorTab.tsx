@@ -71,6 +71,9 @@ interface PricingCalculatorTabProps {
   products: Product[];
   studioSettings?: StudioPricingSettings | null;
   loading: boolean;
+  canCreate?: boolean;
+  canEdit?: boolean;
+  canDelete?: boolean;
   onRefresh?: () => void;
   onProductSynced?: () => void;
 }
@@ -81,6 +84,9 @@ export function PricingCalculatorTab({
   products,
   studioSettings,
   loading,
+  canCreate = true,
+  canEdit = true,
+  canDelete = true,
   onRefresh,
   onProductSynced,
 }: PricingCalculatorTabProps) {
@@ -406,10 +412,12 @@ export function PricingCalculatorTab({
           />
         </div>
 
-        <Button onClick={() => openNewRecipeDialog()} className="gap-2 w-full sm:w-auto">
-          <Plus className="size-4" />
-          Nova Ficha Técnica
-        </Button>
+        {canCreate && (
+          <Button onClick={() => openNewRecipeDialog()} className="gap-2 w-full sm:w-auto">
+            <Plus className="size-4" />
+            Nova Ficha Técnica
+          </Button>
+        )}
       </div>
 
       {/* Grid de Fichas Técnicas Salvas */}
@@ -425,10 +433,12 @@ export function PricingCalculatorTab({
             <p className="text-sm text-muted-foreground max-w-md mt-1 mb-6">
               Crie fichas técnicas detalhadas para calcular o custo real de produção, margem líquida e preços sugeridos dos seus produtos.
             </p>
-            <Button onClick={() => openNewRecipeDialog()} className="gap-2">
-              <Plus className="size-4" />
-              Criar Primeira Ficha Técnica
-            </Button>
+            {canCreate && (
+              <Button onClick={() => openNewRecipeDialog()} className="gap-2">
+                <Plus className="size-4" />
+                Criar Primeira Ficha Técnica
+              </Button>
+            )}
           </CardContent>
         </Card>
       ) : (
@@ -461,25 +471,31 @@ export function PricingCalculatorTab({
                       )}
                     </div>
                     <div className="flex items-center gap-1">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="size-7 text-muted-foreground hover:text-foreground"
-                        onClick={() => openEditRecipeDialog(recipe)}
-                      >
-                        <Pencil className="size-3.5" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="size-7 text-muted-foreground hover:text-destructive"
-                        onClick={() => {
-                          setRecipeToDelete(recipe);
-                          setDeleteConfirmOpen(true);
-                        }}
-                      >
-                        <Trash2 className="size-3.5" />
-                      </Button>
+                      {canEdit && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="size-7 text-muted-foreground hover:text-foreground"
+                          onClick={() => openEditRecipeDialog(recipe)}
+                          title="Editar Ficha Técnica"
+                        >
+                          <Pencil className="size-3.5" />
+                        </Button>
+                      )}
+                      {canDelete && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="size-7 text-muted-foreground hover:text-destructive"
+                          onClick={() => {
+                            setRecipeToDelete(recipe);
+                            setDeleteConfirmOpen(true);
+                          }}
+                          title="Excluir Ficha Técnica"
+                        >
+                          <Trash2 className="size-3.5" />
+                        </Button>
+                      )}
                     </div>
                   </div>
                   <CardTitle className="text-base font-semibold leading-tight mt-1">
@@ -541,7 +557,7 @@ export function PricingCalculatorTab({
                       Simular Lotes
                     </Button>
 
-                    {hasProductLink && (
+                    {hasProductLink && canEdit && (
                       <Button
                         variant="secondary"
                         size="sm"
