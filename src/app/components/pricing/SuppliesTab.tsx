@@ -91,6 +91,9 @@ const UNIT_MAP: Record<SupplyUnit, string> = {
   par: 'par(es)',
 };
 
+const SUPPLIES_VIEW_MODE_KEY = 'luisices_supplies_view_mode';
+const SUPPLIES_PAGE_SIZE_KEY = 'luisices_supplies_page_size';
+
 export function SuppliesTab({
   supplies,
   loading,
@@ -102,9 +105,42 @@ export function SuppliesTab({
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [filterLowStockOnly, setFilterLowStockOnly] = useState(false);
-  const [viewMode, setViewMode] = useState<'table' | 'grid'>('table');
+  
+  const [viewMode, setViewMode] = useState<'table' | 'grid'>(() => {
+    try {
+      const saved = localStorage.getItem(SUPPLIES_VIEW_MODE_KEY);
+      if (saved === 'table' || saved === 'grid') return saved;
+    } catch {}
+    return 'table';
+  });
+
+  const handleSetViewMode = (mode: 'table' | 'grid') => {
+    setViewMode(mode);
+    try {
+      localStorage.setItem(SUPPLIES_VIEW_MODE_KEY, mode);
+    } catch {}
+  };
+
   const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize, setPageSize] = useState<number | 'all'>(12);
+  const [pageSize, setPageSize] = useState<number | 'all'>(() => {
+    try {
+      const saved = localStorage.getItem(SUPPLIES_PAGE_SIZE_KEY);
+      if (saved === 'all') return 'all';
+      if (saved) {
+        const num = Number(saved);
+        if ([12, 24, 48].includes(num)) return num;
+      }
+    } catch {}
+    return 12;
+  });
+
+  const handleSetPageSize = (size: number | 'all') => {
+    setPageSize(size);
+    setCurrentPage(1);
+    try {
+      localStorage.setItem(SUPPLIES_PAGE_SIZE_KEY, String(size));
+    } catch {}
+  };
 
   // Modal de Adição/Edição
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -385,7 +421,7 @@ export function SuppliesTab({
               variant={viewMode === 'table' ? 'secondary' : 'ghost'}
               size="sm"
               className="h-8 px-2.5 text-xs gap-1.5"
-              onClick={() => setViewMode('table')}
+              onClick={() => handleSetViewMode('table')}
               title="Visualização em Planilha (Tabela completa)"
             >
               <TableIcon className="size-3.5" />
@@ -396,7 +432,7 @@ export function SuppliesTab({
               variant={viewMode === 'grid' ? 'secondary' : 'ghost'}
               size="sm"
               className="h-8 px-2.5 text-xs gap-1.5"
-              onClick={() => setViewMode('grid')}
+              onClick={() => handleSetViewMode('grid')}
               title="Visualização em Cards"
             >
               <LayoutGrid className="size-3.5" />
@@ -787,10 +823,7 @@ export function SuppliesTab({
                   <button
                     key={size}
                     type="button"
-                    onClick={() => {
-                      setPageSize(size);
-                      setCurrentPage(1);
-                    }}
+                    onClick={() => handleSetPageSize(size)}
                     className={`px-2 py-0.5 text-[11px] font-medium rounded-md transition-colors ${
                       pageSize === size
                         ? 'bg-background text-foreground shadow-xs'
