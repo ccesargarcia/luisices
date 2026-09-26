@@ -338,31 +338,63 @@ export interface CatalogOrder {
   priceWarning?: string;
 }
 
-// ─── Pricing & Costs (Papelaria Personalizada) ────────────────────────────────
+// ─── Pricing & Costs (Papelaria Personalizada & Ateliê Luisices) ──────────────
 
-export type SupplyUnit = 'folha' | 'metro' | 'cm' | 'unidade' | 'ml' | 'g' | 'pacote';
+export type SupplyUnit = 'folha' | 'metro' | 'cm' | 'unidade' | 'ml' | 'g' | 'pacote' | 'rolo' | 'kit' | 'par';
 
 export type SupplyCategory =
   | 'papeis'
-  | 'fitas_aviamentos'
-  | 'impressao_tintas'
+  | 'vinis'
+  | 'botons'
+  | 'canecas'
   | 'embalagens'
+  | 'fitas_aviamentos'
   | 'adesivos_colas'
+  | 'impressao_tintas'
+  | 'laminacao_foils'
+  | 'acrilicos'
+  | 'chaveiros'
   | 'outros';
 
 export interface SupplyItem {
   id: string;
   userId: string;
-  name: string;
-  category: SupplyCategory;
-  purchasePrice: number;       // Preço de compra do pacote/rolo (ex: R$ 35,00)
-  packageQuantity: number;     // Quantidade no pacote/rolo (ex: 100)
-  unit: SupplyUnit;            // Unidade fracionada (ex: 'folha', 'metro')
-  unitCost: number;            // Custo unitário = purchasePrice / packageQuantity
-  supplier?: string | null;    // Loja/fornecedor
-  notes?: string | null;
+  name: string;                   // Nome do Insumo
+  category: SupplyCategory;       // Categoria
+  brandModel?: string | null;     // Marca / Modelo
+  supplier?: string | null;       // Onde comprei / Fornecedor
+  purchaseUrl?: string | null;    // Link da compra ou contato
+  lastPurchaseDate?: string | null; // Data da última compra (YYYY-MM-DD)
+  packageQuantity: number;        // Quantidade comprada
+  unit: SupplyUnit;               // Unidade fracionada (ex: 'folha', 'unidade', 'cm')
+  purchasePrice: number;          // Valor pago (R$)
+  shippingCost?: number;          // Frete (R$)
+  totalPrice?: number;            // Custo Total = purchasePrice + shippingCost
+  unitCost: number;               // Custo unitário = totalPrice / packageQuantity
+  notes?: string | null;          // Rendimento / Observações (ex: "pacote 200 fls", "calcular por cm²")
+  currentStock?: number;          // Estoque atual
+  minStock?: number;              // Estoque mínimo
+  needsReorder?: boolean;         // "Comprar novamente?" (Status de reposição)
   createdAt: string;
   updatedAt?: string;
+}
+
+export interface PurchaseHistoryItem {
+  id: string;
+  userId: string;
+  supplyId: string;
+  supplyName: string;
+  category: SupplyCategory;
+  date: string;                   // Data da compra (YYYY-MM-DD)
+  store: string;                  // Loja / Fornecedor
+  quantity: number;               // Quantidade comprada
+  unit: SupplyUnit;
+  price: number;                  // Valor pago (R$)
+  shippingCost: number;           // Frete (R$)
+  totalPrice: number;             // Valor final com frete
+  unitCost: number;               // Custo unitário resultante
+  notes?: string | null;
+  createdAt: string;
 }
 
 export interface RecipeItem {

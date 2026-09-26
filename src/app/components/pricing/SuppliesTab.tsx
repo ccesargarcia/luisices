@@ -54,10 +54,16 @@ interface SuppliesTabProps {
 
 const CATEGORY_MAP: Record<SupplyCategory, { label: string; color: string }> = {
   papeis: { label: 'Papéis', color: 'bg-blue-100 text-blue-800 dark:bg-blue-950/40 dark:text-blue-300' },
-  fitas_aviamentos: { label: 'Fitas & Aviamentos', color: 'bg-pink-100 text-pink-800 dark:bg-pink-950/40 dark:text-pink-300' },
+  vinis: { label: 'Vinis & Recorte', color: 'bg-purple-100 text-purple-800 dark:bg-purple-950/40 dark:text-purple-300' },
+  botons: { label: 'Bótons', color: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300' },
+  canecas: { label: 'Canecas & Sublimação', color: 'bg-cyan-100 text-cyan-800 dark:bg-cyan-950/40 dark:text-cyan-300' },
+  embalagens: { label: 'Caixas & Embalagens', color: 'bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300' },
+  fitas_aviamentos: { label: 'Fitas & Laços / Aviamentos', color: 'bg-pink-100 text-pink-800 dark:bg-pink-950/40 dark:text-pink-300' },
+  adesivos_colas: { label: 'Colas & Adesivos', color: 'bg-teal-100 text-teal-800 dark:bg-teal-950/40 dark:text-teal-300' },
   impressao_tintas: { label: 'Impressão & Tintas', color: 'bg-indigo-100 text-indigo-800 dark:bg-indigo-950/40 dark:text-indigo-300' },
-  embalagens: { label: 'Embalagens', color: 'bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300' },
-  adesivos_colas: { label: 'Adesivos & Colas', color: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300' },
+  laminacao_foils: { label: 'Laminação & Foils', color: 'bg-rose-100 text-rose-800 dark:bg-rose-950/40 dark:text-rose-300' },
+  acrilicos: { label: 'Acrílicos', color: 'bg-fuchsia-100 text-fuchsia-800 dark:bg-fuchsia-950/40 dark:text-fuchsia-300' },
+  chaveiros: { label: 'Chaveiros & Mimos', color: 'bg-violet-100 text-violet-800 dark:bg-violet-950/40 dark:text-violet-300' },
   outros: { label: 'Outros', color: 'bg-slate-100 text-slate-800 dark:bg-slate-800 dark:text-slate-300' },
 };
 
@@ -69,6 +75,9 @@ const UNIT_MAP: Record<SupplyUnit, string> = {
   ml: 'ml',
   g: 'grama(s)',
   pacote: 'pacote(s)',
+  rolo: 'rolo(s)',
+  kit: 'kit(s)',
+  par: 'par(es)',
 };
 
 export function SuppliesTab({ supplies, loading, onRefresh }: SuppliesTabProps) {

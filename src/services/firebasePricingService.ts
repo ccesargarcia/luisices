@@ -26,6 +26,7 @@ import {
   SupplyItem,
   ProductPricingRecipe,
   StudioPricingSettings,
+  PurchaseHistoryItem,
 } from '../app/types';
 import { DEFAULT_PRICING_SETTINGS } from '../app/utils/pricingCalculations';
 
@@ -33,6 +34,7 @@ const SUPPLIES_COLLECTION = 'supplies';
 const RECIPES_COLLECTION = 'pricingRecipes';
 const SETTINGS_COLLECTION = 'pricingSettings';
 const PRODUCTS_COLLECTION = 'products';
+const PURCHASE_HISTORY_COLLECTION = 'purchaseHistory';
 
 /**
  * Remove recursivamente valores undefined de objetos e arrays antes de enviar ao Firestore.
@@ -255,17 +257,31 @@ class FirebasePricingService {
   // ─── Insumos (Supplies) ───────────────────────────────────────────────────
 
   private mapSupplyDoc(id: string, data: Record<string, any>): SupplyItem {
+    const purchasePrice = Number(data.purchasePrice) || 0;
+    const shippingCost = Number(data.shippingCost) || 0;
+    const packageQuantity = Number(data.packageQuantity) || 1;
+    const totalPrice = data.totalPrice != null ? Number(data.totalPrice) : purchasePrice + shippingCost;
+    const unitCost = data.unitCost != null ? Number(data.unitCost) : (packageQuantity > 0 ? totalPrice / packageQuantity : 0);
+
     return {
       id,
       userId: data.userId,
       name: data.name,
       category: data.category || 'outros',
-      purchasePrice: Number(data.purchasePrice) || 0,
-      packageQuantity: Number(data.packageQuantity) || 1,
-      unit: data.unit || 'unidade',
-      unitCost: Number(data.unitCost) || 0,
+      brandModel: data.brandModel || undefined,
       supplier: data.supplier || undefined,
+      purchaseUrl: data.purchaseUrl || data.supplierContact || undefined,
+      lastPurchaseDate: data.lastPurchaseDate || undefined,
+      purchasePrice,
+      shippingCost,
+      totalPrice,
+      packageQuantity,
+      unit: data.unit || 'unidade',
+      unitCost,
       notes: data.notes || undefined,
+      currentStock: data.currentStock != null ? Number(data.currentStock) : undefined,
+      minStock: data.minStock != null ? Number(data.minStock) : undefined,
+      needsReorder: Boolean(data.needsReorder),
       createdAt: data.createdAt?.toDate?.()?.toISOString() || data.createdAt || new Date().toISOString(),
       updatedAt: data.updatedAt?.toDate?.()?.toISOString() || data.updatedAt || undefined,
     };
@@ -351,6 +367,132 @@ class FirebasePricingService {
 
   async deleteSupply(id: string): Promise<void> {
     await deleteDoc(doc(db, SUPPLIES_COLLECTION, id));
+  }
+
+  // ─── Histórico de Compras (Purchase History) ──────────────────────────────
+
+  private mapPurchaseHistoryDoc(id: string, data: Record<string, any>): PurchaseHistoryItem {
+    const price = Number(data.price) || 0;
+    const shippingCost = Number(data.shippingCost) || 0;
+    const totalPrice = data.totalPrice != null ? Number(data.totalPrice) : price + shippingCost;
+    const quantity = Number(data.quantity) || 1;
+    const unitCost = data.unitCost != null ? Number(data.unitCost) : (quantity > 0 ? totalPrice / quantity : 0);
+
+    return {
+      id,
+      userId: data.userId,
+      supplyId: data.supplyId,
+      supplyName: data.supplyName,
+      category: data.category || 'outros',
+      date: data.date || new Date().toISOString().slice(0, 10),
+      store: data.store || '—',
+      quantity,
+      unit: data.unit || 'unidade',
+      price,
+      shippingCost,
+      totalPrice,
+      unitCost,
+      notes: data.notes || undefined,
+      createdAt: data.createdAt?.toDate?.()?.toISOString() || data.createdAt || new Date().toISOString(),
+    };
+  }
+
+  subscribeToPurchaseHistory(callback: (history: PurchaseHistoryItem[]) => void): Unsubscribe {
+    const userId = this.getCurrentUserId();
+    const q = query(
+      collection(db, PURCHASE_HISTORY_COLLECTION),
+      where('userId', '==', userId)
+    );
+
+    return onSnapshot(
+      q,
+      (snap) => {
+        const history = snap.docs
+          .map((d) => this.mapPurchaseHistoryDoc(d.id, d.data()))
+          .sort((a, b) => b.date.localeCompare(a.date));
+        callback(history);
+      },
+      (err) => {
+        console.warn('Erro na sincronização do histórico de compras:', err);
+        this.getPurchaseHistory().then(callback).catch(() => {});
+      }
+    );
+  }
+
+  async getPurchaseHistory(): Promise<PurchaseHistoryItem[]> {
+    const userId = this.getCurrentUserId();
+    const q = query(
+      collection(db, PURCHASE_HISTORY_COLLECTION),
+      where('userId', '==', userId)
+    );
+    const snap = await getDocs(q);
+    return snap.docs
+      .map((d) => this.mapPurchaseHistoryDoc(d.id, d.data()))
+      .sort((a, b) => b.date.localeCompare(a.date));
+  }
+
+  /**
+   * Grava uma nova compra no histórico E atualiza automaticamente o insumo correspondente na Aba 1
+   */
+  async addPurchaseRecord(
+    record: Omit<PurchaseHistoryItem, 'id' | 'userId' | 'createdAt'>
+  ): Promise<PurchaseHistoryItem> {
+    const userId = this.getCurrentUserId();
+    const price = Number(record.price) || 0;
+    const shippingCost = Number(record.shippingCost) || 0;
+    const quantity = Number(record.quantity) || 1;
+    const totalPrice = price + shippingCost;
+    const calculatedUnitCost = quantity > 0 ? totalPrice / quantity : 0;
+
+    const payload = sanitizeForFirestore({
+      ...record,
+      price,
+      shippingCost,
+      totalPrice,
+      unitCost: calculatedUnitCost,
+      userId,
+      createdAt: new Date().toISOString(),
+    });
+
+    const docRef = await addDoc(collection(db, PURCHASE_HISTORY_COLLECTION), payload);
+    const createdRecord = { id: docRef.id, ...payload };
+
+    // Se houver um insumo vinculado, atualiza preço, frete, quantidade, última compra e soma estoque
+    if (record.supplyId) {
+      try {
+        const supplyDocRef = doc(db, SUPPLIES_COLLECTION, record.supplyId);
+        const supplySnap = await getDoc(supplyDocRef);
+
+        if (supplySnap.exists()) {
+          const currentSupplyData = supplySnap.data();
+          const oldStock = Number(currentSupplyData.currentStock) || 0;
+
+          await updateDoc(
+            supplyDocRef,
+            sanitizeForFirestore({
+              lastPurchaseDate: record.date,
+              supplier: record.store,
+              purchasePrice: price,
+              shippingCost: shippingCost,
+              totalPrice: totalPrice,
+              packageQuantity: quantity,
+              unitCost: calculatedUnitCost,
+              currentStock: oldStock + quantity,
+              needsReorder: false, // desmarca alerta de reposição
+              updatedAt: new Date().toISOString(),
+            })
+          );
+        }
+      } catch (err) {
+        console.warn('Não foi possível atualizar o insumo automaticamente ao gravar compra:', err);
+      }
+    }
+
+    return createdRecord;
+  }
+
+  async deletePurchaseRecord(id: string): Promise<void> {
+    await deleteDoc(doc(db, PURCHASE_HISTORY_COLLECTION, id));
   }
 
   /**
