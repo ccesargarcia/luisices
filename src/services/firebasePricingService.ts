@@ -27,6 +27,7 @@ import {
   ProductPricingRecipe,
   StudioPricingSettings,
   PurchaseHistoryItem,
+  ProductionTrackingRecord,
 } from '../app/types';
 import { DEFAULT_PRICING_SETTINGS } from '../app/utils/pricingCalculations';
 
@@ -35,6 +36,7 @@ const RECIPES_COLLECTION = 'pricingRecipes';
 const SETTINGS_COLLECTION = 'pricingSettings';
 const PRODUCTS_COLLECTION = 'products';
 const PURCHASE_HISTORY_COLLECTION = 'purchaseHistory';
+const PRODUCTION_TRACKING_COLLECTION = 'productionTracking';
 
 /**
  * Remove recursivamente valores undefined de objetos e arrays antes de enviar ao Firestore.
@@ -326,16 +328,24 @@ class FirebasePricingService {
     supply: Omit<SupplyItem, 'id' | 'userId' | 'createdAt' | 'updatedAt'>
   ): Promise<SupplyItem> {
     const userId = this.getCurrentUserId();
+    const purchasePrice = Number(supply.purchasePrice) || 0;
+    const shippingCost = Number(supply.shippingCost) || 0;
+    const packageQuantity = Number(supply.packageQuantity) || 0;
+    const totalPrice = purchasePrice + shippingCost;
     const calculatedUnitCost =
-      supply.packageQuantity > 0
-        ? Math.round((supply.purchasePrice / supply.packageQuantity) * 1000) / 1000
+      packageQuantity > 0
+        ? Math.round((totalPrice / packageQuantity) * 10000) / 10000
         : 0;
 
     const payload = sanitizeForFirestore({
       ...supply,
+      purchasePrice,
+      shippingCost,
+      totalPrice,
+      packageQuantity,
       supplier: supply.supplier || null,
       notes: supply.notes || null,
-      unitCost: calculatedUnitCost,
+      unitCost: supply.unitCost !== undefined ? Number(supply.unitCost) : calculatedUnitCost,
       userId,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
@@ -349,8 +359,6 @@ class FirebasePricingService {
     id: string,
     data: Partial<Omit<SupplyItem, 'id' | 'userId' | 'createdAt'>>
   ): Promise<void> {
-    const purchasePrice = Number(data.purchasePrice);
-    const packageQuantity = Number(data.packageQuantity);
     const updates: Record<string, any> = sanitizeForFirestore({
       ...data,
       supplier: data.supplier !== undefined ? (data.supplier || null) : undefined,
@@ -358,8 +366,18 @@ class FirebasePricingService {
       updatedAt: new Date().toISOString(),
     });
 
-    if (!isNaN(purchasePrice) && !isNaN(packageQuantity) && packageQuantity > 0) {
-      updates.unitCost = Math.round((purchasePrice / packageQuantity) * 1000) / 1000;
+    const purchasePrice = data.purchasePrice !== undefined ? Number(data.purchasePrice) : undefined;
+    const shippingCost = data.shippingCost !== undefined ? Number(data.shippingCost) : undefined;
+    const packageQuantity = data.packageQuantity !== undefined ? Number(data.packageQuantity) : undefined;
+
+    if (purchasePrice !== undefined || shippingCost !== undefined || packageQuantity !== undefined) {
+      if (data.unitCost !== undefined) {
+        updates.unitCost = Number(data.unitCost);
+      } else if (purchasePrice !== undefined && packageQuantity !== undefined && packageQuantity > 0) {
+        const total = purchasePrice + (shippingCost || 0);
+        updates.unitCost = Math.round((total / packageQuantity) * 10000) / 10000;
+        updates.totalPrice = total;
+      }
     }
 
     await updateDoc(doc(db, SUPPLIES_COLLECTION, id), updates);
@@ -532,6 +550,9 @@ class FirebasePricingService {
         ...it,
         supplyId: it.supplyId || undefined,
         category: it.category || undefined,
+        piecesPerSheet: it.piecesPerSheet != null ? Number(it.piecesPerSheet) : undefined,
+        useSheetRounding: Boolean(it.useSheetRounding),
+        originalUnitCost: it.originalUnitCost != null ? Number(it.originalUnitCost) : undefined,
         isCustomItem: Boolean(it.isCustomItem),
       })),
       materialsCost: Number(data.materialsCost) || 0,
@@ -539,6 +560,7 @@ class FirebasePricingService {
       materialsCostWithWaste: Number(data.materialsCostWithWaste) || 0,
       laborMode: data.laborMode || 'time',
       productionTimeMinutes: Number(data.productionTimeMinutes) || 0,
+      setupTimeMinutes: Number(data.setupTimeMinutes) || 0,
       hourlyRateApplied: Number(data.hourlyRateApplied) || 0,
       proportionalPercent: Number(data.proportionalPercent) || 0,
       laborCost: Number(data.laborCost) || 0,
@@ -546,9 +568,13 @@ class FirebasePricingService {
       totalUnitCost: Number(data.totalUnitCost) || 0,
       paymentFeePercent: Number(data.paymentFeePercent) || 0,
       profitMarginPercent: Number(data.profitMarginPercent) || 0,
+      pricingMethod: data.pricingMethod || 'margin_on_sale',
+      breakevenPrice: Number(data.breakevenPrice) || 0,
       suggestedUnitPrice: Number(data.suggestedUnitPrice) || 0,
       manualUnitPrice: data.manualUnitPrice != null ? Number(data.manualUnitPrice) : undefined,
       batchTiers: data.batchTiers || undefined,
+      isKit: Boolean(data.isKit),
+      kitComponents: data.kitComponents || undefined,
       createdAt: data.createdAt?.toDate?.()?.toISOString() || data.createdAt || new Date().toISOString(),
       updatedAt: data.updatedAt?.toDate?.()?.toISOString() || data.updatedAt || undefined,
     };
@@ -606,6 +632,9 @@ class FirebasePricingService {
         ...item,
         supplyId: item.supplyId || null,
         category: item.category || null,
+        piecesPerSheet: item.piecesPerSheet != null ? Number(item.piecesPerSheet) : null,
+        useSheetRounding: Boolean(item.useSheetRounding),
+        originalUnitCost: item.originalUnitCost != null ? Number(item.originalUnitCost) : (item.unitCost || null),
         isCustomItem: Boolean(item.isCustomItem),
       })
     );
@@ -620,6 +649,7 @@ class FirebasePricingService {
       materialsCostWithWaste: Number(recipe.materialsCostWithWaste) || 0,
       laborMode: recipe.laborMode || 'time',
       productionTimeMinutes: Number(recipe.productionTimeMinutes) || 0,
+      setupTimeMinutes: Number(recipe.setupTimeMinutes) || 0,
       hourlyRateApplied: Number(recipe.hourlyRateApplied) || 0,
       proportionalPercent: Number(recipe.proportionalPercent) || 0,
       laborCost: Number(recipe.laborCost) || 0,
@@ -627,12 +657,16 @@ class FirebasePricingService {
       totalUnitCost: Number(recipe.totalUnitCost) || 0,
       paymentFeePercent: Number(recipe.paymentFeePercent) || 0,
       profitMarginPercent: Number(recipe.profitMarginPercent) || 0,
+      pricingMethod: recipe.pricingMethod || 'margin_on_sale',
+      breakevenPrice: Number(recipe.breakevenPrice) || 0,
       suggestedUnitPrice: Number(recipe.suggestedUnitPrice) || 0,
       manualUnitPrice:
         recipe.manualUnitPrice != null && Number(recipe.manualUnitPrice) > 0
           ? Number(recipe.manualUnitPrice)
           : null,
       batchTiers: recipe.batchTiers || null,
+      isKit: Boolean(recipe.isKit),
+      kitComponents: recipe.kitComponents || null,
       userId,
       updatedAt: now,
     };
@@ -654,6 +688,78 @@ class FirebasePricingService {
 
   async deleteRecipe(id: string): Promise<void> {
     await deleteDoc(doc(db, RECIPES_COLLECTION, id));
+  }
+
+  // ─── Acompanhamento de Produção (Previsto vs Realizado) ─────────────────────
+
+  private mapTrackingDoc(id: string, data: Record<string, any>): ProductionTrackingRecord {
+    return {
+      id,
+      userId: data.userId,
+      recipeId: data.recipeId || null,
+      productName: data.productName || '',
+      orderNumber: data.orderNumber || null,
+      date: data.date || new Date().toISOString().slice(0, 10),
+      plannedQuantity: Number(data.plannedQuantity) || 1,
+      plannedMinutes: Number(data.plannedMinutes) || 0,
+      actualMinutes: Number(data.actualMinutes) || 0,
+      plannedMaterialsCost: Number(data.plannedMaterialsCost) || 0,
+      actualMaterialsCost: Number(data.actualMaterialsCost) || 0,
+      salePrice: Number(data.salePrice) || 0,
+      notes: data.notes || null,
+      createdAt: data.createdAt?.toDate?.()?.toISOString() || data.createdAt || new Date().toISOString(),
+    };
+  }
+
+  subscribeToProductionTracking(callback: (records: ProductionTrackingRecord[]) => void): Unsubscribe {
+    const userId = this.getCurrentUserId();
+    const q = query(
+      collection(db, PRODUCTION_TRACKING_COLLECTION),
+      where('userId', '==', userId)
+    );
+
+    return onSnapshot(
+      q,
+      (snap) => {
+        const records = snap.docs
+          .map((d) => this.mapTrackingDoc(d.id, d.data()))
+          .sort((a, b) => b.date.localeCompare(a.date));
+        callback(records);
+      },
+      (err) => {
+        console.warn('Erro na sincronização de acompanhamento de produção:', err);
+        this.getProductionTracking().then(callback).catch(() => {});
+      }
+    );
+  }
+
+  async getProductionTracking(): Promise<ProductionTrackingRecord[]> {
+    const userId = this.getCurrentUserId();
+    const q = query(
+      collection(db, PRODUCTION_TRACKING_COLLECTION),
+      where('userId', '==', userId)
+    );
+    const snap = await getDocs(q);
+    return snap.docs
+      .map((d) => this.mapTrackingDoc(d.id, d.data()))
+      .sort((a, b) => b.date.localeCompare(a.date));
+  }
+
+  async addProductionTrackingRecord(
+    record: Omit<ProductionTrackingRecord, 'id' | 'userId' | 'createdAt'>
+  ): Promise<ProductionTrackingRecord> {
+    const userId = this.getCurrentUserId();
+    const payload = sanitizeForFirestore({
+      ...record,
+      userId,
+      createdAt: new Date().toISOString(),
+    });
+    const docRef = await addDoc(collection(db, PRODUCTION_TRACKING_COLLECTION), payload);
+    return { id: docRef.id, ...payload };
+  }
+
+  async deleteProductionTrackingRecord(id: string): Promise<void> {
+    await deleteDoc(doc(db, PRODUCTION_TRACKING_COLLECTION, id));
   }
 
   /**

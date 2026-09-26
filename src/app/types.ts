@@ -420,7 +420,18 @@ export interface RecipeItem {
   unitCost: number;            // Custo por unidade fracionada
   quantityUsed: number;        // Quantidade consumida por unidade do produto
   totalCost: number;           // unitCost * quantityUsed
+  piecesPerSheet?: number | null; // Rendimento: quantas peças cabem por folha/unidade inteira
+  useSheetRounding?: boolean;  // Se true, calcula folhas inteiras (Math.ceil)
+  originalUnitCost?: number | null; // Custo histórico no momento da criação da ficha
   isCustomItem?: boolean;      // Item avulso sem cadastro prévio
+}
+
+export interface KitComponentItem {
+  recipeId: string;
+  recipeName: string;
+  quantity: number;
+  unitCost: number;
+  suggestedUnitPrice: number;
 }
 
 export interface MonthlyFixedExpenses {
@@ -465,6 +476,7 @@ export interface ProductPricingRecipe {
   materialsCostWithWaste: number;
   laborMode: 'time' | 'proportional';
   productionTimeMinutes?: number;
+  setupTimeMinutes?: number;          // Tempo de preparação/arte por encomenda (min)
   hourlyRateApplied: number;
   proportionalPercent?: number;
   laborCost: number;
@@ -472,11 +484,32 @@ export interface ProductPricingRecipe {
   totalUnitCost: number;
   paymentFeePercent: number;
   profitMarginPercent: number;
+  pricingMethod?: 'margin_on_sale' | 'markup_on_cost';
+  breakevenPrice?: number;            // Preço mínimo para cobrir custos e taxas
   suggestedUnitPrice: number;
   manualUnitPrice?: number | null;
   batchTiers?: BatchTier[];
+  isKit?: boolean;
+  kitComponents?: KitComponentItem[];
   createdAt: string;
   updatedAt?: string;
+}
+
+export interface ProductionTrackingRecord {
+  id: string;
+  userId: string;
+  recipeId?: string | null;
+  productName: string;
+  orderNumber?: string | null;
+  date: string;
+  plannedQuantity: number;
+  plannedMinutes: number;
+  actualMinutes: number;
+  plannedMaterialsCost: number;
+  actualMaterialsCost: number;
+  salePrice: number;
+  notes?: string | null;
+  createdAt: string;
 }
 
 export interface UserProfile {

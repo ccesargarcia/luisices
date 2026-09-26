@@ -83,12 +83,160 @@ describe('Cálculos Financeiros e Precificação (pricing-calculations)', () => 
       expect(result.suggestedUnitPrice).toBeGreaterThan(result.totalUnitCost);
       expect(result.netProfitAmount).toBeGreaterThan(0);
     });
+
+    it('deve exibir prejuízo real (valor negativo) quando o preço de venda for insuficiente', () => {
+      // Cenário: custo total R$ 10, venda por R$ 8 e taxa de 5%
+      // Taxa: R$ 0,40. Custo: R$ 10,00. Resultado real: 8 - 10 - 0.40 = -R$ 2,40
+      const result = calculateRecipePricing({
+        items: [
+          {
+            name: 'Item Teste',
+            unit: 'unidade',
+            unitCost: 10.0,
+            quantityUsed: 1,
+            totalCost: 10.0,
+          },
+        ],
+        wasteMarginPercent: 0,
+        productionTimeMinutes: 0,
+        paymentFeePercent: 5,
+        profitMarginPercent: 20,
+        manualUnitPrice: 8.0, // Preço praticado com desconto excessivo
+        settings: DEFAULT_PRICING_SETTINGS,
+      });
+
+      expect(result.totalUnitCost).toBe(10.0);
+      expect(result.paymentFeeAmount).toBe(0.40);
+      expect(result.netProfitAmount).toBeCloseTo(-2.40, 2);
+      expect(result.netProfitPercent).toBeLessThan(0);
+    });
+
+    it('deve manter monotonicidade do preço mesmo em margens solicitadas altas (>90%)', () => {
+      const baseParams = {
+        items: [
+          {
+            name: 'Insumo',
+            unit: 'unidade' as const,
+            unitCost: 10.0,
+            quantityUsed: 1,
+            totalCost: 10.0,
+          },
+        ],
+        wasteMarginPercent: 0,
+        productionTimeMinutes: 0,
+        paymentFeePercent: 5,
+        settings: DEFAULT_PRICING_SETTINGS,
+      };
+
+      const result89 = calculateRecipePricing({
+        ...baseParams,
+        profitMarginPercent: 89,
+      });
+
+      const result91 = calculateRecipePricing({
+        ...baseParams,
+        profitMarginPercent: 91,
+      });
+
+      // Pedir 91% de margem NUNCA pode resultar em preço menor do que pedir 89%
+      expect(result91.suggestedUnitPrice).toBeGreaterThanOrEqual(result89.suggestedUnitPrice);
+      expect(result89.suggestedUnitPrice).toBeGreaterThan(100);
+      expect(result91.suggestedUnitPrice).toBeGreaterThan(100);
+    });
+
+    it('deve diluir tempo fixo de setup da encomenda entre as unidades do lote', () => {
+      const result = calculateRecipePricing({
+        items: [
+          {
+            name: 'Papel',
+            unit: 'folha',
+            unitCost: 0.50,
+            quantityUsed: 1,
+            totalCost: 0.50,
+          },
+        ],
+        wasteMarginPercent: 0,
+        setupTimeMinutes: 30, // 30 min de arte/setup da encomenda
+        productionTimeMinutes: 5, // 5 min de montagem por unidade
+        paymentFeePercent: 0,
+        profitMarginPercent: 30,
+        settings: DEFAULT_PRICING_SETTINGS,
+      });
+
+      expect(result.setupTimeMinutes).toBe(30);
+      expect(result.productionTimeMinutes).toBe(5);
+      expect(result.totalLaborMinutes).toBe(35);
+
+      // No lote de 1 unidade, o custo unitário inclui os 30 min de setup
+      const tier1 = result.batchTiers.find((t) => t.quantity === 1);
+      // No lote de 10 unidades, o setup de 30 min vira 3 min por unidade
+      const tier10 = result.batchTiers.find((t) => t.quantity === 10);
+
+      expect(tier1).toBeDefined();
+      expect(tier10).toBeDefined();
+      expect(tier10!.unitCost).toBeLessThan(tier1!.unitCost);
+      expect(tier10!.unitPrice).toBeLessThan(tier1!.unitPrice);
+    });
+
+    it('deve calcular rendimento de folhas inteiras (Math.ceil)', () => {
+      const result = calculateRecipePricing({
+        items: [
+          {
+            name: 'Papel Fotográfico A4',
+            unit: 'folha',
+            unitCost: 1.00,
+            quantityUsed: 1,
+            totalCost: 1.00,
+            piecesPerSheet: 6, // Cabem 6 tags por folha
+            useSheetRounding: true,
+          },
+        ],
+        wasteMarginPercent: 0,
+        productionTimeMinutes: 0,
+        paymentFeePercent: 0,
+        profitMarginPercent: 0,
+        settings: DEFAULT_PRICING_SETTINGS,
+      });
+
+      // Para 1 tag avulsa com folha inteira: consome 1 folha = R$ 1,00
+      expect(result.materialsCost).toBe(1.00);
+
+      // No lote de 10 tags: ceil(10 / 6) = 2 folhas -> 2 * R$ 1,00 = R$ 2,00 / 10 = R$ 0,20 por unidade
+      const tier10 = result.batchTiers.find((t) => t.quantity === 10);
+      expect(tier10).toBeDefined();
+      expect(tier10!.unitCost).toBeCloseTo(0.20, 2);
+    });
+
+    it('deve calcular preço de ponto de equilíbrio e desconto máximo', () => {
+      const result = calculateRecipePricing({
+        items: [
+          {
+            name: 'Caixa',
+            unit: 'unidade',
+            unitCost: 10.0,
+            quantityUsed: 1,
+            totalCost: 10.0,
+          },
+        ],
+        wasteMarginPercent: 0,
+        productionTimeMinutes: 0,
+        paymentFeePercent: 10,
+        profitMarginPercent: 40,
+        settings: DEFAULT_PRICING_SETTINGS,
+      });
+
+      // Custo: R$ 10. Taxa de 10%. Preço de equilíbrio: 10 / 0.9 = R$ 11,11
+      expect(result.breakevenPrice).toBeCloseTo(11.11, 2);
+      // Preço sugerido: 10 / (1 - 0.5) = R$ 20,00
+      expect(result.suggestedUnitPrice).toBeCloseTo(20.00, 2);
+      // Desconto máximo até chegar em R$ 11,11: (20 - 11.11) / 20 = ~44.4%
+      expect(result.maxDiscountPercent).toBeGreaterThan(40);
+    });
   });
 
   describe('formatCurrency', () => {
     it('deve formatar valores numéricos no padrão monetário BRL', () => {
       const formatted = formatCurrency(24.5);
-      // Deve conter "24,50" e o símbolo de R$
       expect(formatted).toContain('24,50');
       expect(formatted).toContain('R$');
     });
