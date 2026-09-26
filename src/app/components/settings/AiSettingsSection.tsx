@@ -23,103 +23,18 @@ interface AiSettingsSectionProps {
 
 const FALLBACK_MODELS: AiModelQuotaItem[] = [
   {
-    id: 'gemini-3.8-flash',
-    name: 'Gemini 3.8 Flash',
-    description: 'Modelo principal de última geração em produção para raciocínio multimodal, fotos e acervo do ateliê.',
+    id: 'modelo-indisponivel',
+    name: 'Modelo não identificado',
+    description: 'Não foi possível carregar as métricas atuais do Firestore.',
     category: 'Produção (Padrão)',
     isDefault: true,
     isActive: true,
-    daily: { used: 0, limit: 1500, percentage: 0 },
-    rpm: { used: 0, limit: 15 },
-    monthly: { used: 0 },
-    tpmLimit: 1000000,
-    liveStatus: 'ONLINE',
-    liveCode: 200,
-    liveMessage: 'Live 200 OK',
-  },
-  {
-    id: 'gemini-3.6-flash',
-    name: 'Gemini 3.6 Flash',
-    description: 'Modelo de alta velocidade com suporte multimodal e tool calls integradas.',
-    category: 'Produção (Fallback)',
-    isActive: false,
-    daily: { used: 0, limit: 1500, percentage: 0 },
-    rpm: { used: 0, limit: 15 },
-    monthly: { used: 0 },
-    tpmLimit: 1000000,
-    liveStatus: 'ONLINE',
-    liveCode: 200,
-    liveMessage: 'Live 200 OK',
-  },
-  {
-    id: 'gemini-3.7-flash',
-    name: 'Gemini 3.7 Flash',
-    description: 'Modelo avançado com raciocínio híbrido e alta capacidade analítica.',
-    category: 'Raciocínio Avançado',
-    isActive: false,
-    daily: { used: 0, limit: 1500, percentage: 0 },
-    rpm: { used: 0, limit: 15 },
-    monthly: { used: 0 },
-    tpmLimit: 1000000,
-    liveStatus: 'ONLINE',
-    liveCode: 200,
-    liveMessage: 'Live 200 OK',
-  },
-  {
-    id: 'gemini-3.5-flash',
-    name: 'Gemini 3.5 Flash',
-    description: 'Modelo de produção balanceado para consistência e baixa latência.',
-    category: 'Produção (Fallback)',
-    isActive: false,
-    daily: { used: 0, limit: 1500, percentage: 0 },
-    rpm: { used: 0, limit: 15 },
-    monthly: { used: 0 },
-    tpmLimit: 1000000,
-    liveStatus: 'ONLINE',
-    liveCode: 200,
-    liveMessage: 'Live 200 OK',
-  },
-  {
-    id: 'gemini-3.1-flash-lite',
-    name: 'Gemini 3.1 Flash Lite',
-    description: 'Modelo ultraleve e econômico para triagens e respostas instantâneas.',
-    category: 'Econômico / Lite',
-    isActive: false,
-    daily: { used: 0, limit: 1500, percentage: 0 },
-    rpm: { used: 0, limit: 15 },
-    monthly: { used: 0 },
-    tpmLimit: 1000000,
-    liveStatus: 'ONLINE',
-    liveCode: 200,
-    liveMessage: 'Live 200 OK',
-  },
-  {
-    id: 'gemini-3.5-flash-lite',
-    name: 'Gemini 3.5 Flash Lite',
-    description: 'Modelo leve com pool de cota isolado para alta taxa de requisições.',
-    category: 'Econômico / Lite',
-    isActive: false,
-    daily: { used: 0, limit: 1500, percentage: 0 },
-    rpm: { used: 0, limit: 15 },
-    monthly: { used: 0 },
-    tpmLimit: 1000000,
-    liveStatus: 'ONLINE',
-    liveCode: 200,
-    liveMessage: 'Live 200 OK',
-  },
-  {
-    id: 'gemini-3-flash-preview',
-    name: 'Gemini 3 Flash Preview',
-    description: 'Próxima geração experimental com alta fidelidade lógica e estruturação.',
-    category: 'Experimental / Preview',
-    isActive: false,
-    daily: { used: 0, limit: 1500, percentage: 0 },
-    rpm: { used: 0, limit: 15 },
-    monthly: { used: 0 },
-    tpmLimit: 1000000,
-    liveStatus: 'ONLINE',
-    liveCode: 200,
-    liveMessage: 'Live 200 OK',
+    daily: { used: 0, limit: null, percentage: null },
+    rpm: { used: null, limit: null },
+    monthly: { used: null },
+    tpmLimit: null,
+    liveStatus: 'INDISPONIVEL',
+    liveMessage: 'Estado de telemetria indisponível',
   },
 ];
 
@@ -139,12 +54,13 @@ export function AiSettingsSection({ isAdmin }: AiSettingsSectionProps) {
       console.warn('[AiSettingsSection] Erro ao buscar quota de IA:', err);
       // Fallback amigável com lista completa de modelos
       setUsage({
-        success: true,
-        activeModel: 'gemini-3.8-flash',
+        success: false,
+        isAvailable: false,
+        activeModel: 'desconhecido',
         provider: 'Google AI Studio / Gemini API',
-        resetsAt: new Date(Date.now() + 86400000).toISOString(),
-        totalDaily: { used: 0, limit: 1500, percentage: 0 },
-        totalMonthly: { used: 0, limit: 45000, percentage: 0 },
+        resetsAt: '',
+        totalDaily: { used: 0, limit: null, percentage: null },
+        totalMonthly: { used: 0, limit: null, percentage: null },
         models: FALLBACK_MODELS,
       });
     } finally {
@@ -164,7 +80,8 @@ export function AiSettingsSection({ isAdmin }: AiSettingsSectionProps) {
     return 'text-emerald-500 dark:text-emerald-400';
   };
 
-  const formatResetTime = (isoString?: string) => {
+  const formatResetTime = (isoString?: string | null) => {
+    if (!isoString || Number.isNaN(new Date(isoString).getTime())) return 'não confirmado';
     if (!isoString) return '00:00 UTC';
     try {
       const date = new Date(isoString);
@@ -202,16 +119,16 @@ export function AiSettingsSection({ isAdmin }: AiSettingsSectionProps) {
   };
 
   const renderLiveTelemetryBadge = (model: AiModelQuotaItem) => {
-    const status = model.liveStatus || (model.liveCode === 200 ? 'ONLINE' : undefined);
+    const status = model.liveStatus;
 
-    if (status === 'ONLINE' || model.liveCode === 200) {
+    if (status === 'ONLINE') {
       return (
         <Badge
           variant="outline"
           className="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30 text-[10px] px-1.5 py-0 h-4 font-mono font-medium shrink-0"
         >
           <span className="inline-block size-1.5 rounded-full bg-emerald-500 animate-pulse mr-1" />
-          Live 200 OK
+          Disponível
         </Badge>
       );
     }
@@ -238,6 +155,16 @@ export function AiSettingsSection({ isAdmin }: AiSettingsSectionProps) {
           503 Alta Demanda
         </Badge>
       );
+    }
+
+    if (status === 'DADOS_REGISTRADOS') {
+      return <Badge variant="outline" className="text-[10px]">Métricas registradas; API não sondada</Badge>;
+    }
+    if (status === 'SEM_DADOS') {
+      return <Badge variant="outline" className="text-[10px]">Sem chamadas registradas</Badge>;
+    }
+    if (status === 'METRICA_INCOMPLETA') {
+      return <Badge variant="outline" className="text-[10px]">Uso sem separação por modelo</Badge>;
     }
 
     return (
@@ -307,7 +234,7 @@ export function AiSettingsSection({ isAdmin }: AiSettingsSectionProps) {
               <Clock className="size-3.5 text-amber-500" /> Total Diário Geral
             </span>
             <p className="text-base sm:text-lg font-bold">
-              {usage?.totalDaily?.used ?? 0} <span className="text-xs font-normal text-muted-foreground">/ {usage?.totalDaily?.limit ?? 1500} req</span>
+              {usage?.isAvailable === false ? '—' : (usage?.totalDaily?.used ?? 0)} <span className="text-xs font-normal text-muted-foreground">/ {usage?.totalDaily?.limit ?? 'limite não confirmado'} req</span>
             </p>
             <Progress value={usage?.totalDaily?.percentage ?? 0} className="h-1.5" />
             <div className="flex items-center justify-between text-[11px] text-muted-foreground pt-0.5">
@@ -409,26 +336,29 @@ export function AiSettingsSection({ isAdmin }: AiSettingsSectionProps) {
                   <div className="space-y-1.5 pt-1">
                     <div className="flex items-center justify-between text-xs">
                       <span className="text-muted-foreground font-medium">Cota Diária (RPD)</span>
-                      <span className={`font-semibold ${getUsageColor(m.daily.percentage)}`}>
-                        {m.daily.used} / {m.daily.limit} req ({m.daily.percentage}%)
+                      <span className={`font-semibold ${getUsageColor(m.daily.percentage ?? 0)}`}>
+                        {usage?.isAvailable === false ? '—' : m.daily.used} / {m.daily.limit ?? 'limite não confirmado'} req{m.daily.percentage !== null ? ` (${m.daily.percentage}%)` : ''}
                       </span>
                     </div>
-                    <Progress value={m.daily.percentage} className="h-1.5" />
+                    {m.daily.percentage !== null && <Progress value={m.daily.percentage} className="h-1.5" />}
+                    {(m.unknownUsageAttempts || 0) > 0 && (
+                      <p className="text-[11px] text-amber-600">Uso não informado pelo provedor em {m.unknownUsageAttempts} tentativa(s).</p>
+                    )}
                   </div>
 
                   {/* Métricas Extras de Limites */}
                   <div className="grid grid-cols-3 gap-2 pt-1 border-t border-border/40 text-[11px] text-muted-foreground">
                     <div>
                       <span className="block text-[10px] uppercase font-semibold text-foreground/70">Rate Limit</span>
-                      <span>{m.rpm.limit} req/min</span>
+                      <span>{m.rpm.limit ?? 'não confirmado'}</span>
                     </div>
                     <div>
                       <span className="block text-[10px] uppercase font-semibold text-foreground/70">Mês</span>
-                      <span>{m.monthly.used} req</span>
+                      <span>{m.monthly.used === null ? 'não medido' : `${m.monthly.used} req`}</span>
                     </div>
                     <div>
                       <span className="block text-[10px] uppercase font-semibold text-foreground/70">Tokens/Min</span>
-                      <span>{m.tpmLimit ? `${(m.tpmLimit / 1000).toLocaleString('pt-BR')}k` : '1.000k'}</span>
+                      <span>{m.tpmLimit ? `${(m.tpmLimit / 1000).toLocaleString('pt-BR')}k` : 'não confirmado'}</span>
                     </div>
                   </div>
                 </div>

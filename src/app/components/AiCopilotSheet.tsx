@@ -686,9 +686,9 @@ export function AiCopilotSheet({
                     <Badge
                       variant="outline"
                       className="hidden xs:inline-flex text-[9px] sm:text-[10px] px-1.5 py-0 bg-muted/60 text-muted-foreground border-border gap-1 font-mono shrink-0"
-                      title={`Cota Gemini: ${quota.daily.used}/${quota.daily.limit} requisições hoje (${quota.daily.percentage}%)`}
+                      title={quota.isAvailable === false ? 'Métricas de uso indisponíveis' : `Uso registrado: ${quota.daily.used} requisições hoje${quota.daily.limit == null ? '; limite do provedor não confirmado' : ` de ${quota.daily.limit} (${quota.daily.percentage ?? 0}%)`}`}
                     >
-                      ⚡ {quota.daily.used}/{quota.daily.limit} req
+                      ⚡ {quota.isAvailable === false ? '—' : quota.daily.used}{quota.isAvailable === false || quota.daily.limit == null ? ' req' : `/${quota.daily.limit} req`}
                     </Badge>
                   )}
                 </SheetTitle>

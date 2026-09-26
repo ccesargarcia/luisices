@@ -774,19 +774,20 @@ export interface AiModelQuotaItem {
   isActive: boolean;
   daily: {
     used: number;
-    limit: number;
-    percentage: number;
+    limit: number | null;
+    percentage: number | null;
   };
   rpm: {
-    used: number;
-    limit: number;
+    used: number | null;
+    limit: number | null;
   };
   monthly: {
-    used: number;
+    used: number | null;
   };
-  tpmLimit?: number;
-  liveStatus?: 'ONLINE' | 'QUOTA_EXCEEDED' | 'HIGH_DEMAND' | 'UNAVAILABLE' | 'OFFLINE';
-  liveCode?: number;
+  tpmLimit?: number | null;
+  unknownUsageAttempts?: number;
+  liveStatus?: 'ONLINE' | 'QUOTA_EXCEEDED' | 'HIGH_DEMAND' | 'UNAVAILABLE' | 'OFFLINE' | 'DADOS_REGISTRADOS' | 'SEM_DADOS' | 'METRICA_INCOMPLETA' | 'INDISPONIVEL';
+  liveCode?: number | null;
   liveMessage?: string;
 }
 
@@ -805,35 +806,36 @@ export interface AiUsageData {
   success: boolean;
   activeModel: string;
   provider: string;
-  resetsAt: string;
+  resetsAt: string | null;
   totalDaily: {
     used: number;
-    limit: number;
-    percentage: number;
+    limit: number | null;
+    percentage: number | null;
   };
   totalMonthly: {
     used: number;
-    limit: number;
-    percentage: number;
+    limit: number | null;
+    percentage: number | null;
   };
+  isAvailable?: boolean;
   models: AiModelQuotaItem[];
   recentLogs?: AiRecentLogItem[];
   totalTokensToday?: number;
   daily?: {
     used: number;
-    limit: number;
-    percentage: number;
-    resetsAt: string;
+    limit: number | null;
+    percentage: number | null;
+    resetsAt: string | null;
   };
   rpm?: {
-    used: number;
-    limit: number;
-    percentage: number;
+    used: number | null;
+    limit: number | null;
+    percentage: number | null;
   };
   monthly?: {
     used: number;
-    limit: number;
-    percentage: number;
+    limit: number | null;
+    percentage: number | null;
     resetsAt: string;
   };
 }
