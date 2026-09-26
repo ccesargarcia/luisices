@@ -310,16 +310,23 @@ export function PricingCalculatorTab({
 
       // Se solicitado ou se houver produto vinculado, sincronizar preço
       if (andSyncToProduct && recipePayload.productId) {
-        const finalPrice = recipePayload.manualUnitPrice ?? recipePayload.suggestedUnitPrice;
-        await firebasePricingService.syncPriceToProduct(
-          recipePayload.productId,
-          finalPrice,
-          recipePayload.totalUnitCost,
-          recipePayload.profitMarginPercent,
-          savedRecipe.id
-        );
-        toast.success(`Preço (${formatCurrency(finalPrice)}) sincronizado com o produto!`);
-        if (onProductSynced) onProductSynced();
+        try {
+          const finalPrice = recipePayload.manualUnitPrice ?? recipePayload.suggestedUnitPrice;
+          await firebasePricingService.syncPriceToProduct(
+            recipePayload.productId,
+            finalPrice,
+            recipePayload.totalUnitCost,
+            recipePayload.profitMarginPercent,
+            savedRecipe.id
+          );
+          toast.success(`Ficha técnica salva e preço (${formatCurrency(finalPrice)}) sincronizado!`);
+          if (onProductSynced) onProductSynced();
+        } catch (syncErr: any) {
+          console.error('Erro ao sincronizar preço com o produto:', syncErr);
+          toast.warning(
+            `Ficha salva, mas não foi possível sincronizar o preço com o produto: ${syncErr?.message || 'Produto não encontrado'}`
+          );
+        }
       } else {
         toast.success('Ficha técnica salva com sucesso!');
       }
@@ -328,7 +335,7 @@ export function PricingCalculatorTab({
       if (onRefresh) onRefresh();
     } catch (err: any) {
       console.error('Erro ao salvar ficha técnica:', err);
-      toast.error('Não foi possível salvar a ficha técnica.');
+      toast.error(err?.message || 'Não foi possível salvar a ficha técnica.');
     } finally {
       setSaving(false);
     }
@@ -352,9 +359,9 @@ export function PricingCalculatorTab({
       );
       toast.success(`Preço de ${recipe.productName} atualizado para ${formatCurrency(finalPrice)}!`);
       if (onProductSynced) onProductSynced();
-    } catch (err) {
+    } catch (err: any) {
       console.error('Erro ao sincronizar preço:', err);
-      toast.error('Erro ao sincronizar com o produto.');
+      toast.error(err?.message || 'Erro ao sincronizar com o produto.');
     } finally {
       setSyncingProductId(null);
     }

@@ -525,6 +525,12 @@ class FirebasePricingService {
     recipeId: string
   ): Promise<void> {
     const productRef = doc(db, PRODUCTS_COLLECTION, productId);
+    const productSnap = await getDoc(productRef);
+    if (!productSnap.exists()) {
+      throw new Error(
+        `O produto vinculado (ID: ${productId}) não foi encontrado no catálogo. Verifique se ele foi excluído ou selecione outro produto.`
+      );
+    }
     await updateDoc(
       productRef,
       sanitizeForFirestore({
