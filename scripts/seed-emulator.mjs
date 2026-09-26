@@ -1,24 +1,14 @@
 #!/usr/bin/env node
 /**
  * Script para popular dados essenciais no Firebase Local Emulator para testes E2E
- * Utiliza o Firebase SDK oficial para garantir tipagem e integridade exatas no Firestore e Auth.
+ * Utiliza o Firebase Admin SDK oficial para garantir permissões de escrita completas no Firestore e Auth Emulator.
  */
 
 import { config } from 'dotenv';
 import { resolve } from 'path';
-import { initializeApp } from 'firebase/app';
-import {
-  getAuth,
-  connectAuthEmulator,
-  createUserWithEmailAndPassword,
-  signInWithEmailAndPassword,
-} from 'firebase/auth';
-import {
-  getFirestore,
-  connectFirestoreEmulator,
-  doc,
-  setDoc,
-} from 'firebase/firestore';
+import { initializeApp, getApps } from 'firebase-admin/app';
+import { getAuth } from 'firebase-admin/auth';
+import { getFirestore } from 'firebase-admin/firestore';
 
 config({ path: resolve(process.cwd(), '.env.test') });
 config({ path: resolve(process.cwd(), '.env.local') });
@@ -27,6 +17,10 @@ const host = process.env.VITE_FIREBASE_EMULATOR_HOST || '127.0.0.1';
 const projectId = process.env.VITE_FIREBASE_PROJECT_ID || 'luisices-dev';
 const email = process.env.TEST_USER_EMAIL || 'teste@luisices.com.br';
 const password = process.env.TEST_USER_PASSWORD || 'Senha123456!';
+
+process.env.FIREBASE_AUTH_EMULATOR_HOST = `${host}:9099`;
+process.env.FIRESTORE_EMULATOR_HOST = `${host}:8080`;
+process.env.FIREBASE_STORAGE_EMULATOR_HOST = `${host}:9199`;
 
 const ADMIN_PERMISSIONS = {
   dashboard: true,
@@ -51,35 +45,32 @@ async function seed() {
   console.log(`🌱 Populando Firebase Local Emulator (${projectId} em ${host})...`);
 
   try {
-    const app = initializeApp({
-      apiKey: 'fake-api-key',
-      projectId,
-    });
-
+    const app = getApps().length === 0 ? initializeApp({ projectId }) : getApps()[0];
     const auth = getAuth(app);
-    connectAuthEmulator(auth, `http://${host}:9099`, { disableWarnings: true });
-
     const db = getFirestore(app);
-    connectFirestoreEmulator(db, host, 8080);
 
-    // 1. Criar ou autenticar usuário no Auth Emulator
+    // 1. Criar ou obter usuário no Auth Emulator
     let uid;
     try {
-      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-      uid = userCredential.user.uid;
-      console.log(`✅ Usuário criado no Auth Emulator (UID: ${uid})`);
-    } catch (authErr) {
-      if (authErr.code === 'auth/email-already-in-use') {
-        const userCredential = await signInWithEmailAndPassword(auth, email, password);
-        uid = userCredential.user.uid;
-        console.log(`ℹ️ Usuário já existente no Auth Emulator (UID: ${uid})`);
+      const user = await auth.getUserByEmail(email);
+      uid = user.uid;
+      console.log(`ℹ️ Usuário já existente no Auth Emulator (UID: ${uid})`);
+    } catch (err) {
+      if (err?.code === 'auth/user-not-found') {
+        const newUser = await auth.createUser({
+          email,
+          password,
+          displayName: 'Admin Teste',
+        });
+        uid = newUser.uid;
+        console.log(`✅ Usuário criado no Auth Emulator (UID: ${uid})`);
       } else {
-        throw authErr;
+        throw err;
       }
     }
 
-    // 2. Criar perfil completo de admin no Firestore Emulator
-    await setDoc(doc(db, 'userProfiles', uid), {
+    // 2. Criar perfil completo de admin no Firestore Emulator (Admin SDK ignora security rules de cliente)
+    await db.doc(`userProfiles/${uid}`).set({
       uid,
       email,
       displayName: 'Admin Teste',
@@ -92,7 +83,7 @@ async function seed() {
     console.log('✅ Perfil userProfiles (admin) criado no Firestore Emulator');
 
     // 3. Criar storeSettings/public
-    await setDoc(doc(db, 'storeSettings', 'public'), {
+    await db.doc('storeSettings/public').set({
       catalogStoreName: 'Luisices Papelaria',
       catalogStoreTagline: 'Papelaria Personalizada',
       storePublished: true,
@@ -101,7 +92,7 @@ async function seed() {
     console.log('✅ Configurações storeSettings/public criadas no Firestore Emulator');
 
     // 4. Criar produto de exemplo
-    await setDoc(doc(db, 'storeProducts', 'prod-sample-1'), {
+    await db.doc('storeProducts/prod-sample-1').set({
       name: 'Agenda Personalizada 2026',
       category: 'Agendas',
       price: 49.9,
