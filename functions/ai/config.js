@@ -17,10 +17,10 @@ const TIMEOUTS = {
 
 // Modelos Gemini suportados
 const MODEL_CONFIG = {
-  PRIMARY_CHAT_MODEL: process.env.GEMINI_MODEL || 'gemini-2.5-flash',
-  FALLBACK_CHAT_MODEL: 'gemini-2.5-flash-lite',
-  PRIMARY_VISION_MODEL: process.env.GEMINI_MODEL || 'gemini-2.5-flash',
-  FALLBACK_VISION_MODEL: 'gemini-2.5-flash-lite',
+  PRIMARY_CHAT_MODEL: process.env.GEMINI_MODEL || 'gemini-3.8-flash',
+  FALLBACK_CHAT_MODEL: 'gemini-3.1-flash-lite',
+  PRIMARY_VISION_MODEL: process.env.GEMINI_MODEL || 'gemini-3.8-flash',
+  FALLBACK_VISION_MODEL: 'gemini-3.1-flash-lite',
   MAX_FALLBACK_ATTEMPTS: 1, // No máximo 1 tentativa alternativa por chamada
   CIRCUIT_BREAKER_FAIL_THRESHOLD: 3,
   CIRCUIT_BREAKER_COOLDOWN_MS: 60000,

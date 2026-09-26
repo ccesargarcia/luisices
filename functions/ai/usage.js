@@ -50,7 +50,7 @@ async function recordAiUsage(db, record = {}) {
     userId = 'anon',
     action = 'chat',
     requestedModel = '',
-    usedModel = 'gemini-2.5-flash',
+    usedModel = MODEL_CONFIG.PRIMARY_CHAT_MODEL || 'gemini-3.8-flash',
     promptTokens = 0,
     candidatesTokens = 0,
     reasoningTokens = 0,
@@ -247,50 +247,55 @@ async function getAiUsageSummary(db) {
   const monthlyUsed = monthlyData.requests || monthlyData.totalRequests || 0;
 
   // Extrai uso observado por modelo de forma factual
-  const flashObserved = dailyData.models?.['gemini-2_5-flash'] || dailyData.models?.['gemini-2.5-flash'] || { requests: 0, tokens: 0 };
-  const liteObserved = dailyData.models?.['gemini-2_5-flash-lite'] || dailyData.models?.['gemini-2.5-flash-lite'] || { requests: 0, tokens: 0 };
+  const primaryModel = MODEL_CONFIG.PRIMARY_CHAT_MODEL || 'gemini-3.8-flash';
+  const fallbackModel = MODEL_CONFIG.FALLBACK_CHAT_MODEL || 'gemini-3.1-flash-lite';
+  const primaryKey = primaryModel.replace(/\./g, '_');
+  const fallbackKey = fallbackModel.replace(/\./g, '_');
+
+  const primaryObserved = dailyData.models?.[primaryKey] || dailyData.models?.[primaryModel] || { requests: 0, tokens: 0 };
+  const fallbackObserved = dailyData.models?.[fallbackKey] || dailyData.models?.[fallbackModel] || { requests: 0, tokens: 0 };
   const hasAnyModelBreakdown = Boolean(dailyData.models && Object.keys(dailyData.models).length);
 
   const models = [
     {
-      id: 'gemini-2.5-flash',
-      name: 'Gemini 2.5 Flash',
+      id: primaryModel,
+      name: primaryModel === 'gemini-3.8-flash' ? 'Gemini 3.8 Flash' : primaryModel,
       description: 'Modelo principal para chat operacional, tool calls e visão rápida.',
       category: 'Produção (Padrão)',
       isDefault: true,
       isActive: true,
       daily: {
-        used: flashObserved.requests || dailyUsed,
+        used: primaryObserved.requests || dailyUsed,
         limit: dailyLimit,
-        percentage: dailyLimit ? Math.min(100, Math.round(((flashObserved.requests || dailyUsed) / dailyLimit) * 100)) : null,
+        percentage: dailyLimit ? Math.min(100, Math.round(((primaryObserved.requests || dailyUsed) / dailyLimit) * 100)) : null,
       },
       rpm: { used: null, limit: null },
-      monthly: { used: monthlyData.models?.['gemini-2_5-flash']?.requests ?? null },
+      monthly: { used: monthlyData.models?.[primaryKey]?.requests ?? null },
       tpmLimit: null,
-      unknownUsageAttempts: dailyData.models?.['gemini-2_5-flash']?.unknownUsageAttempts || 0,
-      liveStatus: !isFirestoreAvailable ? 'INDISPONIVEL' : (flashObserved.requests ? 'DADOS_REGISTRADOS' : (dailyUsed && !hasAnyModelBreakdown ? 'METRICA_INCOMPLETA' : 'SEM_DADOS')),
+      unknownUsageAttempts: dailyData.models?.[primaryKey]?.unknownUsageAttempts || 0,
+      liveStatus: !isFirestoreAvailable ? 'INDISPONIVEL' : (primaryObserved.requests ? 'DADOS_REGISTRADOS' : (dailyUsed && !hasAnyModelBreakdown ? 'METRICA_INCOMPLETA' : 'SEM_DADOS')),
       liveCode: null,
-      liveMessage: !isFirestoreAvailable ? 'Falha na leitura de telemetria' : (flashObserved.requests ? 'Uso registrado no Firestore; API não sondada' : (dailyUsed && !hasAnyModelBreakdown ? 'Há uso agregado sem separação por modelo' : 'Sem chamadas registradas no período')),
+      liveMessage: !isFirestoreAvailable ? 'Falha na leitura de telemetria' : (primaryObserved.requests ? 'Uso registrado no Firestore; API não sondada' : (dailyUsed && !hasAnyModelBreakdown ? 'Há uso agregado sem separação por modelo' : 'Sem chamadas registradas no período')),
     },
     {
-      id: 'gemini-2.5-flash-lite',
-      name: 'Gemini 2.5 Flash Lite',
+      id: fallbackModel,
+      name: fallbackModel === 'gemini-3.1-flash-lite' ? 'Gemini 3.1 Flash Lite' : fallbackModel,
       description: 'Modelo econômico para fallback, resumos e alta taxa de requisições.',
       category: 'Produção (Fallback)',
       isDefault: false,
       isActive: false,
       daily: {
-        used: liteObserved.requests || 0,
+        used: fallbackObserved.requests || 0,
         limit: dailyLimit,
-        percentage: dailyLimit ? Math.min(100, Math.round(((liteObserved.requests || 0) / dailyLimit) * 100)) : null,
+        percentage: dailyLimit ? Math.min(100, Math.round(((fallbackObserved.requests || 0) / dailyLimit) * 100)) : null,
       },
       rpm: { used: null, limit: null },
-      monthly: { used: monthlyData.models?.['gemini-2_5-flash-lite']?.requests ?? null },
+      monthly: { used: monthlyData.models?.[fallbackKey]?.requests ?? null },
       tpmLimit: null,
-      unknownUsageAttempts: dailyData.models?.['gemini-2_5-flash-lite']?.unknownUsageAttempts || 0,
-      liveStatus: !isFirestoreAvailable ? 'INDISPONIVEL' : (liteObserved.requests ? 'DADOS_REGISTRADOS' : (dailyUsed && !hasAnyModelBreakdown ? 'METRICA_INCOMPLETA' : 'SEM_DADOS')),
+      unknownUsageAttempts: dailyData.models?.[fallbackKey]?.unknownUsageAttempts || 0,
+      liveStatus: !isFirestoreAvailable ? 'INDISPONIVEL' : (fallbackObserved.requests ? 'DADOS_REGISTRADOS' : (dailyUsed && !hasAnyModelBreakdown ? 'METRICA_INCOMPLETA' : 'SEM_DADOS')),
       liveCode: null,
-      liveMessage: !isFirestoreAvailable ? 'Falha na leitura de telemetria' : (liteObserved.requests ? 'Uso registrado no Firestore; API não sondada' : (dailyUsed && !hasAnyModelBreakdown ? 'Há uso agregado sem separação por modelo' : 'Sem chamadas registradas no período')),
+      liveMessage: !isFirestoreAvailable ? 'Falha na leitura de telemetria' : (fallbackObserved.requests ? 'Uso registrado no Firestore; API não sondada' : (dailyUsed && !hasAnyModelBreakdown ? 'Há uso agregado sem separação por modelo' : 'Sem chamadas registradas no período')),
     },
   ];
 
