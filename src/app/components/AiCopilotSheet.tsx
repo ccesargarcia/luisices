@@ -520,8 +520,12 @@ export function AiCopilotSheet({
 
     try {
       const history = messages
-        .filter(m => m.id !== 'init-1')
-        .map(m => ({ role: m.role, text: m.text }));
+        .filter(m => m.id !== 'init-1' && !m.id.startsWith('assistant-err-') && Boolean(m.text?.trim()))
+        .slice(-6)
+        .map(m => ({
+          role: m.role,
+          text: m.text.length > 2000 ? `${m.text.slice(0, 2000)}...` : m.text,
+        }));
 
       const imagePayload = currentImage
         ? { base64: currentImage.base64, mimeType: currentImage.mimeType }

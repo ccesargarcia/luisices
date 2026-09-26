@@ -15,7 +15,7 @@ class GeminiClient {
   constructor(options = {}) {
     this.apiKey = options.apiKey || process.env.GEMINI_API_KEY || '';
     this.primaryModel = options.primaryModel || MODEL_CONFIG.PRIMARY_CHAT_MODEL;
-    this.fallbackModels = options.fallbackModels || (options.fallbackModel ? [options.fallbackModel] : (Array.isArray(MODEL_CONFIG.FALLBACK_CHAT_MODELS) ? MODEL_CONFIG.FALLBACK_CHAT_MODELS : [MODEL_CONFIG.FALLBACK_CHAT_MODEL, 'gemini-1.5-flash'].filter(Boolean)));
+    this.fallbackModels = options.fallbackModels || (options.fallbackModel ? [options.fallbackModel] : (Array.isArray(MODEL_CONFIG.FALLBACK_CHAT_MODELS) ? MODEL_CONFIG.FALLBACK_CHAT_MODELS : [MODEL_CONFIG.FALLBACK_CHAT_MODEL, 'gemini-3.1-flash-lite'].filter(Boolean)));
     this.fallbackModel = options.fallbackModel || this.fallbackModels[0] || MODEL_CONFIG.FALLBACK_CHAT_MODEL;
     this.modelFailures = SHARED_MODEL_FAILURES;
     this.fetchFn = options.fetchFn || globalThis.fetch;
@@ -29,13 +29,17 @@ class GeminiClient {
         return false; // Circuit aberto (em suspensão)
       }
       // Cooldown expirou, tenta reabilitar
+      console.info(`[GeminiClient] Circuit breaker cooldown expirou para o modelo ${model}. Reabilitando modelo para nova tentativa.`);
       this.modelFailures.delete(model);
     }
     return true;
   }
 
   recordModelSuccess(model) {
-    this.modelFailures.delete(model);
+    if (this.modelFailures.has(model)) {
+      console.info(`[GeminiClient] Modelo ${model} restabelecido com sucesso. Resetando contador de falhas.`);
+      this.modelFailures.delete(model);
+    }
   }
 
   recordModelFailure(model, error) {
@@ -43,10 +47,15 @@ class GeminiClient {
     if (isFatalAuthError) return; // Erros de credenciais não são falha de saúde do modelo
 
     const current = this.modelFailures.get(model) || { count: 0, lastFailedAt: 0 };
+    const nextCount = current.count + 1;
     this.modelFailures.set(model, {
-      count: current.count + 1,
+      count: nextCount,
       lastFailedAt: Date.now(),
     });
+
+    if (nextCount >= MODEL_CONFIG.CIRCUIT_BREAKER_FAIL_THRESHOLD) {
+      console.warn(`[GeminiClient] Circuit breaker acionado para o modelo ${model} (${nextCount} falhas consecutivas). Suspenso por ${MODEL_CONFIG.CIRCUIT_BREAKER_COOLDOWN_MS / 1000}s.`);
+    }
   }
 
   /**
