@@ -3132,17 +3132,31 @@ exports.enrichGalleryItemWithAi = onCall({ cors: true, timeoutSeconds: 120, memo
   let base64Image = '';
   let mimeType = 'image/jpeg';
   try {
-    const fetchUrl = toCdnUrl(itemData.imageUrl);
-    const imgResp = await fetch(fetchUrl);
-    if (!imgResp.ok) {
-      throw new Error(`Falha ao baixar imagem (${imgResp.status})`);
+    const imageUrl = new URL(itemData.imageUrl);
+    let galleryPath = null;
+    if (['cdn.luisices.com.br', 'cdn-dev.luisices.com.br'].includes(imageUrl.hostname)) {
+      galleryPath = decodeURIComponent(imageUrl.pathname.slice(1));
+    } else if (imageUrl.hostname === 'firebasestorage.googleapis.com') {
+      const match = imageUrl.pathname.match(/\/o\/(.+)$/);
+      galleryPath = match ? decodeURIComponent(match[1]) : null;
     }
-    const contentType = imgResp.headers.get('content-type');
-    if (contentType && contentType.startsWith('image/')) {
-      mimeType = contentType.split(';')[0];
+    if (galleryPath && /^users\/[^/]+\/gallery\/[^/]+$/.test(galleryPath)) {
+      // A autorização do item já foi verificada acima. Não dependa de leitura pública na CDN.
+      if (galleryPath.split('/')[1] !== itemData.userId) {
+        throw new Error('A imagem não pertence ao proprietário da arte.');
+      }
+      const file = admin.storage().bucket().file(galleryPath);
+      const [buffer] = await file.download();
+      const [metadata] = await file.getMetadata();
+      mimeType = metadata.contentType || mimeType;
+      base64Image = buffer.toString('base64');
+    } else {
+      const imgResp = await fetch(itemData.imageUrl);
+      if (!imgResp.ok) throw new Error(`Falha ao baixar imagem (${imgResp.status})`);
+      const contentType = imgResp.headers.get('content-type');
+      if (contentType && contentType.startsWith('image/')) mimeType = contentType.split(';')[0];
+      base64Image = Buffer.from(await imgResp.arrayBuffer()).toString('base64');
     }
-    const buffer = Buffer.from(await imgResp.arrayBuffer());
-    base64Image = buffer.toString('base64');
   } catch (err) {
     console.error('[enrichGalleryItemWithAi] Erro ao carregar imagem:', err);
     throw new functions.https.HttpsError('internal', `Não foi possível carregar a imagem do item: ${err.message}`);

@@ -169,7 +169,8 @@ export class FirebaseStorageService {
       contentType: optimizedFile.type,
       customMetadata: { uploadedAt: new Date().toISOString() },
     });
-    return toCdnUrl(await getDownloadURL(storageRef));
+    // A galeria é privada: preserve o token da URL obtida com autorização.
+    return getDownloadURL(storageRef);
   }
 
   /**

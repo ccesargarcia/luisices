@@ -21,7 +21,7 @@ import { httpsCallable } from 'firebase/functions';
 import { db, storage, auth, functions } from '../lib/firebase';
 import type { GalleryItem } from '../app/types';
 import { firebaseStorageService } from './firebaseStorageService';
-import { toCdnUrl } from '../app/utils/cdnUtils';
+import { resolveGalleryImageUrl } from './firebaseGalleryImageService';
 
 const storageService = firebaseStorageService;
 
@@ -64,9 +64,18 @@ export class FirebaseGalleryService {
           orderBy('createdAt', 'desc')
         );
     const snapshot = await getDocs(q);
-    return snapshot.docs
+    return Promise.all(snapshot.docs
       .filter(d => !d.data().deletedAt)
-      .map(d => this.fromFirestore(d.id, d.data()));
+      .map(async d => {
+        const item = this.fromFirestore(d.id, d.data());
+        try {
+          item.imageUrl = await resolveGalleryImageUrl(item.imageUrl);
+        } catch {
+          // Uma imagem indisponível não deve impedir a listagem das demais artes.
+          item.imageUrl = '';
+        }
+        return item;
+      }));
   }
 
   // ─── Create ───────────────────────────────────────────────────────────────────
@@ -192,7 +201,7 @@ export class FirebaseGalleryService {
       userId: data.userId as string,
       title: data.title as string,
       description: (data.description as string) || undefined,
-      imageUrl: toCdnUrl(data.imageUrl as string),
+      imageUrl: (data.imageUrl as string) || '',
       customerId: (data.customerId as string) || undefined,
       customerName: (data.customerName as string) || undefined,
       orderId: (data.orderId as string) || undefined,
