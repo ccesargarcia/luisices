@@ -15,13 +15,14 @@ const TIMEOUTS = {
   DB_QUERY_MS: 5000,
 };
 
-// Modelos Gemini suportados
+// Modelos Gemini suportados com cascata resiliente de 3 níveis
 const MODEL_CONFIG = {
   PRIMARY_CHAT_MODEL: process.env.GEMINI_MODEL || 'gemini-3.8-flash',
+  FALLBACK_CHAT_MODELS: ['gemini-3.1-flash-lite', 'gemini-1.5-flash'],
   FALLBACK_CHAT_MODEL: 'gemini-3.1-flash-lite',
   PRIMARY_VISION_MODEL: process.env.GEMINI_MODEL || 'gemini-3.8-flash',
   FALLBACK_VISION_MODEL: 'gemini-3.1-flash-lite',
-  MAX_FALLBACK_ATTEMPTS: 1, // No máximo 1 tentativa alternativa por chamada
+  MAX_FALLBACK_ATTEMPTS: 2, // Até 2 tentativas alternativas em caso de 404, 429 ou 503
   CIRCUIT_BREAKER_FAIL_THRESHOLD: 3,
   CIRCUIT_BREAKER_COOLDOWN_MS: 60000,
 };

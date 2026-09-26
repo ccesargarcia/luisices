@@ -7,14 +7,14 @@ describe('IA-06: Cliente Gemini, Resiliência e Política de Tentativas', () => 
     await expect(client.generateContent({ contents: [] })).rejects.toThrow('Chave GEMINI_API_KEY não configurada');
   });
 
-  it('NÃO deve tentar modelos subsequentes em erros 400/401/403/404 (não-repetíveis)', async () => {
+  it('NÃO deve tentar modelos subsequentes em erros 401/403 (autenticação fatal da chave)', async () => {
     let attempts = 0;
     const mockFetch = vi.fn().mockImplementation(async () => {
       attempts++;
       return {
         ok: false,
-        status: 400,
-        text: async () => 'Invalid Argument / Payload Malformed',
+        status: 401,
+        text: async () => 'API key not valid / Unauthorized',
       };
     });
 
@@ -25,8 +25,43 @@ describe('IA-06: Cliente Gemini, Resiliência e Política de Tentativas', () => 
       fetchFn: mockFetch,
     });
 
-    await expect(client.generateContent({ contents: [] })).rejects.toThrow('Gemini API error (Status 400)');
-    expect(attempts).toBe(1); // Exatamente 1 tentativa, sem loop de retry
+    await expect(client.generateContent({ contents: [] })).rejects.toThrow('Gemini API error (Status 401)');
+    expect(attempts).toBe(1); // Exatamente 1 tentativa, sem retry em erro de chave inválida
+  });
+
+  it('deve fazer fallback com sucesso quando o modelo primário retornar 404 (modelo descontinuado/indisponível)', async () => {
+    let callCount = 0;
+    const mockFetch = vi.fn().mockImplementation(async (url: string) => {
+      callCount++;
+      if (url.includes('deprecated-model')) {
+        return {
+          ok: false,
+          status: 404,
+          text: async () => 'This model is no longer available to new users.',
+        };
+      }
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          candidates: [{ content: { parts: [{ text: 'Resposta do Fallback Funcional' }] }, finishReason: 'STOP' }],
+          usageMetadata: { promptTokenCount: 80, candidatesTokenCount: 40, totalTokenCount: 120 },
+        }),
+      };
+    });
+
+    const client = new GeminiClient({
+      apiKey: 'test-key',
+      primaryModel: 'deprecated-model',
+      fallbackModel: 'gemini-3.1-flash-lite',
+      fallbackModels: ['gemini-3.1-flash-lite', 'gemini-1.5-flash'],
+      fetchFn: mockFetch,
+    });
+
+    const res = await client.generateContent({ contents: [] });
+    expect(callCount).toBe(2);
+    expect(res.modelUsed).toBe('gemini-3.1-flash-lite');
+    expect(res.tokens.totalTokens).toBe(120);
   });
 
   it('deve tentar o modelo de fallback apenas 1 vez em caso de erro 500 ou 429', async () => {

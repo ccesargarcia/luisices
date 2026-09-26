@@ -15,7 +15,8 @@ class GeminiClient {
   constructor(options = {}) {
     this.apiKey = options.apiKey || process.env.GEMINI_API_KEY || '';
     this.primaryModel = options.primaryModel || MODEL_CONFIG.PRIMARY_CHAT_MODEL;
-    this.fallbackModel = options.fallbackModel || MODEL_CONFIG.FALLBACK_CHAT_MODEL;
+    this.fallbackModels = options.fallbackModels || (options.fallbackModel ? [options.fallbackModel] : (Array.isArray(MODEL_CONFIG.FALLBACK_CHAT_MODELS) ? MODEL_CONFIG.FALLBACK_CHAT_MODELS : [MODEL_CONFIG.FALLBACK_CHAT_MODEL, 'gemini-1.5-flash'].filter(Boolean)));
+    this.fallbackModel = options.fallbackModel || this.fallbackModels[0] || MODEL_CONFIG.FALLBACK_CHAT_MODEL;
     this.modelFailures = SHARED_MODEL_FAILURES;
     this.fetchFn = options.fetchFn || globalThis.fetch;
   }
@@ -38,8 +39,8 @@ class GeminiClient {
   }
 
   recordModelFailure(model, error) {
-    const isFatalAuthOrClientError = error?.status === 400 || error?.status === 401 || error?.status === 403 || error?.status === 404;
-    if (isFatalAuthOrClientError) return; // Erros de cliente/credenciais não são falha de saúde do modelo
+    const isFatalAuthError = error?.status === 401 || error?.status === 403;
+    if (isFatalAuthError) return; // Erros de credenciais não são falha de saúde do modelo
 
     const current = this.modelFailures.get(model) || { count: 0, lastFailedAt: 0 };
     this.modelFailures.set(model, {
@@ -65,12 +66,12 @@ class GeminiClient {
 
     const candidateModels = [
       options.primaryModel || this.primaryModel,
-      options.fallbackModel || this.fallbackModel,
+      ...(options.fallbackModels || this.fallbackModels || [this.fallbackModel]),
     ].filter((m, i, arr) => Boolean(m) && arr.indexOf(m) === i && this.isModelHealthy(m));
 
     if (candidateModels.length === 0) {
-      // Se todos os modelos saudáveis estiverem suspensos, força o primário
-      candidateModels.push(this.primaryModel);
+      // Se todos os modelos saudáveis estiverem suspensos, tenta a lista toda
+      candidateModels.push(this.primaryModel, ...this.fallbackModels);
     }
 
     let lastError = null;
@@ -115,13 +116,15 @@ class GeminiClient {
           attemptRecorded = true;
           attemptLog.push({ ...attempt });
 
-          // Classificação de erros não-repetíveis (400, 401, 403, 404)
-          if (status === 400 || status === 401 || status === 403 || status === 404) {
+          // Classificação de erros fatais de autenticação que afetam toda a conta (401, 403)
+          if (status === 401 || status === 403) {
             error.isNonRetryable = true;
             this.recordModelFailure(model, error);
             throw error;
           }
 
+          // Se status for 404 (modelo específico inexistente/descontinuado) ou 429 ou 5xx:
+          // Grava a falha do modelo e tenta imediatamente o próximo da cascata
           this.recordModelFailure(model, error);
           lastError = error;
           continue;
