@@ -35,7 +35,7 @@ import {
 import { AiCopilotSheet } from '../components/AiCopilotSheet';
 import { NewOrderDialog } from '../components/NewOrderDialog';
 import { CustomerFormDialog } from '../components/customers/CustomerFormDialog';
-import { AiOrderDraft } from '../types';
+import { AiOrderDraft, canAccessPricing } from '../types';
 
 import { firebaseWhatsAppService } from '../../services/firebaseWhatsAppService';
 
@@ -194,7 +194,7 @@ export function Layout() {
       title: 'ATELIÊ & PRODUÇÃO',
       items: [
         { name: 'Produtos do Ateliê', href: '/produtos', icon: Package, check: (p: any) => p.products?.view },
-        { name: 'Precificação & Custos', href: '/precificacao', icon: Coins, check: (p: any) => Boolean(p?.pricing) },
+        { name: 'Precificação & Custos', href: '/precificacao', icon: Coins, check: (p: any) => canAccessPricing(p, 'view') },
         { name: 'Galeria de Artes', href: '/galeria', icon: Images, check: (p: any) => p.gallery?.view },
       ],
     },

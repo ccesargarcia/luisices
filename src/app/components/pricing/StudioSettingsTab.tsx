@@ -25,11 +25,13 @@ import {
 
 interface StudioSettingsTabProps {
   initialSettings?: StudioPricingSettings | null;
+  canEdit?: boolean;
   onSettingsSaved?: (settings: StudioPricingSettings) => void;
 }
 
 export function StudioSettingsTab({
   initialSettings,
+  canEdit = true,
   onSettingsSaved,
 }: StudioSettingsTabProps) {
   const [loading, setLoading] = useState(false);
@@ -473,15 +475,24 @@ export function StudioSettingsTab({
             </div>
           </div>
 
-          <div className="flex justify-end mt-6">
-            <Button onClick={handleSave} disabled={saving} className="gap-2">
-              {saving ? (
-                <Loader2 className="size-4 animate-spin" />
-              ) : (
-                <Save className="size-4" />
+          <div className="flex items-center justify-between mt-6">
+            {!canEdit && (
+              <span className="text-xs text-muted-foreground italic">
+                Modo somente leitura (permissão de edição restrita)
+              </span>
+            )}
+            <div className="ml-auto">
+              {canEdit && (
+                <Button onClick={handleSave} disabled={saving} className="gap-2">
+                  {saving ? (
+                    <Loader2 className="size-4 animate-spin" />
+                  ) : (
+                    <Save className="size-4" />
+                  )}
+                  Salvar Configurações do Ateliê
+                </Button>
               )}
-              Salvar Configurações do Ateliê
-            </Button>
+            </div>
           </div>
         </CardContent>
       </Card>

@@ -56,6 +56,8 @@ interface PurchaseHistoryTabProps {
   historyItems: PurchaseHistoryItem[];
   supplies: SupplyItem[];
   loading: boolean;
+  canCreate?: boolean;
+  canDelete?: boolean;
   onRefresh?: () => void;
 }
 
@@ -91,6 +93,8 @@ export function PurchaseHistoryTab({
   historyItems,
   supplies,
   loading,
+  canCreate = true,
+  canDelete = true,
   onRefresh,
 }: PurchaseHistoryTabProps) {
   const [searchTerm, setSearchTerm] = useState('');
@@ -325,10 +329,12 @@ export function PurchaseHistoryTab({
               </CardDescription>
             </div>
 
-            <Button onClick={openAddDialog} className="gap-2 font-bold shadow-md">
-              <Plus className="size-4" />
-              Lançar Nova Compra
-            </Button>
+            {canCreate && (
+              <Button onClick={openAddDialog} className="gap-2 font-bold shadow-md">
+                <Plus className="size-4" />
+                Lançar Nova Compra
+              </Button>
+            )}
           </div>
         </CardHeader>
 
@@ -396,7 +402,7 @@ export function PurchaseHistoryTab({
                     <th className="p-3 text-right">Frete</th>
                     <th className="p-3 text-right">Valor Final</th>
                     <th className="p-3 text-right">Custo Unitário</th>
-                    <th className="p-3 text-center">Ação</th>
+                    {canDelete && <th className="p-3 text-center">Ação</th>}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border/60">
@@ -451,20 +457,22 @@ export function PurchaseHistoryTab({
                         <td className="p-3 text-right font-black text-primary whitespace-nowrap bg-primary/5">
                           R$ {unitCostVal.toFixed(4)}
                         </td>
-                        <td className="p-3 text-center whitespace-nowrap">
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            className="size-7 text-muted-foreground hover:text-destructive"
-                            title="Excluir do Histórico"
-                            onClick={() => {
-                              setItemToDelete(item);
-                              setDeleteConfirmOpen(true);
-                            }}
-                          >
-                            <Trash2 className="size-3.5" />
-                          </Button>
-                        </td>
+                        {canDelete && (
+                          <td className="p-3 text-center whitespace-nowrap">
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="size-7 text-muted-foreground hover:text-destructive"
+                              title="Excluir do Histórico"
+                              onClick={() => {
+                                setItemToDelete(item);
+                                setDeleteConfirmOpen(true);
+                              }}
+                            >
+                              <Trash2 className="size-3.5" />
+                            </Button>
+                          </td>
+                        )}
                       </tr>
                     );
                   })}

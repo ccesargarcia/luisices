@@ -284,11 +284,26 @@ export interface Permission {
   settings: boolean;
   users: ModulePermission;
   emails?: boolean;
-  pricing?: boolean;
+  pricing?: ModulePermission | boolean;
   store?: boolean;
   storeProducts?: ModulePermission;
   whatsapp?: boolean;
   aiCopilot?: boolean;
+}
+
+/**
+ * Utilitário de permissão para o módulo de Precificação & Custos de Insumos.
+ * Suporta perfis legados (onde pricing é boolean) e perfis detalhados (onde pricing é ModulePermission).
+ */
+export function canAccessPricing(
+  permissions?: Permission | null,
+  action: keyof ModulePermission = 'view'
+): boolean {
+  if (!permissions) return false;
+  const p = permissions.pricing;
+  if (typeof p === 'boolean') return p;
+  if (p && typeof p === 'object') return Boolean(p[action]);
+  return false;
 }
 
 export interface StoreProduct {
@@ -490,7 +505,7 @@ export const ADMIN_PERMISSIONS: Permission = {
   settings:  true,
   users:     { view: true, create: true, edit: true, delete: true },
   emails:    true,
-  pricing:   true,
+  pricing:   { view: true, create: true, edit: true, delete: true },
   store:     true,
   storeProducts: { view: true, create: true, edit: true, delete: true },
   whatsapp:  true,
@@ -509,7 +524,7 @@ export const DEFAULT_USER_PERMISSIONS: Permission = {
   settings:  true,
   users:     { view: false, create: false, edit: false, delete: false },
   emails:    false,
-  pricing:   true,
+  pricing:   { view: true, create: true, edit: true, delete: true },
   store:     true,
   storeProducts: { view: true, create: true, edit: true, delete: false },
   whatsapp:  true,
@@ -528,7 +543,7 @@ export const EMPLOYEE_PERMISSIONS: Permission = {
   settings:  false,
   users:     { view: false, create: false, edit: false, delete: false },
   emails:    false,
-  pricing:   false,
+  pricing:   { view: false, create: false, edit: false, delete: false },
   store:     false,
   storeProducts: { view: false, create: false, edit: false, delete: false },
   whatsapp:  false,
