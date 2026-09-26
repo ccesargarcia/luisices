@@ -15,28 +15,31 @@ const TIMEOUTS = {
   DB_QUERY_MS: 5000,
 };
 
-// Modelos Gemini suportados com cascata resiliente de 3 níveis
+// Modelos Gemini suportados exclusivamente da Geração 3
 const MODEL_CONFIG = {
   PRIMARY_CHAT_MODEL: process.env.GEMINI_MODEL || 'gemini-3.8-flash',
-  FALLBACK_CHAT_MODELS: ['gemini-3.1-flash-lite', 'gemini-1.5-flash'],
+  FALLBACK_CHAT_MODELS: [
+    'gemini-3.1-flash-lite',
+    'gemini-3.5-flash-lite',
+    'gemini-3-flash-preview',
+    'gemini-3.8-pro',
+  ],
   FALLBACK_CHAT_MODEL: 'gemini-3.1-flash-lite',
   PRIMARY_VISION_MODEL: process.env.GEMINI_MODEL || 'gemini-3.8-flash',
   FALLBACK_VISION_MODEL: 'gemini-3.1-flash-lite',
-  MAX_FALLBACK_ATTEMPTS: 2, // Até 2 tentativas alternativas em caso de 404, 429 ou 503
+  MAX_FALLBACK_ATTEMPTS: 3, // Percorre as variantes da Geração 3 em caso de falha
   CIRCUIT_BREAKER_FAIL_THRESHOLD: 3,
   CIRCUIT_BREAKER_COOLDOWN_MS: 60000,
 };
 
-// Tarifas oficiais de referência por milhão de tokens (USD)
+// Tarifas oficiais de referência por milhão de tokens da Geração 3 (USD)
 const MODEL_PRICING_USD = {
-  'gemini-2.5-flash': { promptPerMillion: 0.30, candidatesPerMillion: 2.50 },
-  'gemini-2.5-flash-lite': { promptPerMillion: 0.10, candidatesPerMillion: 0.40 },
-  'gemini-1.5-flash': { promptPerMillion: 0.075, candidatesPerMillion: 0.30 },
-  'gemini-1.5-flash-8b': { promptPerMillion: 0.0375, candidatesPerMillion: 0.15 },
-  'gemini-1.5-pro': { promptPerMillion: 1.25, candidatesPerMillion: 5.00 },
   'gemini-3.8-flash': { promptPerMillion: 0.75, candidatesPerMillion: 3.75 },
   'gemini-3.1-flash-lite': { promptPerMillion: 0.25, candidatesPerMillion: 1.50 },
-  'default': { promptPerMillion: 0.30, candidatesPerMillion: 2.50 },
+  'gemini-3.5-flash-lite': { promptPerMillion: 0.25, candidatesPerMillion: 1.50 },
+  'gemini-3-flash-preview': { promptPerMillion: 0.75, candidatesPerMillion: 3.75 },
+  'gemini-3.8-pro': { promptPerMillion: 1.25, candidatesPerMillion: 5.00 },
+  'default': { promptPerMillion: 0.75, candidatesPerMillion: 3.75 },
 };
 
 // Limites de entrada e segurança

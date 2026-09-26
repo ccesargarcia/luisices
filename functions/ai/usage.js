@@ -246,58 +246,75 @@ async function getAiUsageSummary(db) {
   const dailyUsed = dailyData.requests || dailyData.totalRequests || 0;
   const monthlyUsed = monthlyData.requests || monthlyData.totalRequests || 0;
 
-  // Extrai uso observado por modelo de forma factual
-  const primaryModel = MODEL_CONFIG.PRIMARY_CHAT_MODEL || 'gemini-3.8-flash';
-  const fallbackModel = MODEL_CONFIG.FALLBACK_CHAT_MODEL || 'gemini-3.1-flash-lite';
-  const primaryKey = primaryModel.replace(/\./g, '_');
-  const fallbackKey = fallbackModel.replace(/\./g, '_');
-
-  const primaryObserved = dailyData.models?.[primaryKey] || dailyData.models?.[primaryModel] || { requests: 0, tokens: 0 };
-  const fallbackObserved = dailyData.models?.[fallbackKey] || dailyData.models?.[fallbackModel] || { requests: 0, tokens: 0 };
-  const hasAnyModelBreakdown = Boolean(dailyData.models && Object.keys(dailyData.models).length);
-
-  const models = [
+  // Catálogo completo de variações da Geração Gemini 3
+  const v3Catalog = [
     {
-      id: primaryModel,
-      name: primaryModel === 'gemini-3.8-flash' ? 'Gemini 3.8 Flash' : primaryModel,
+      id: 'gemini-3.8-flash',
+      name: 'Gemini 3.8 Flash',
       description: 'Modelo principal para chat operacional, tool calls e visão rápida.',
       category: 'Produção (Padrão)',
       isDefault: true,
-      isActive: true,
-      daily: {
-        used: primaryObserved.requests || dailyUsed,
-        limit: dailyLimit,
-        percentage: dailyLimit ? Math.min(100, Math.round(((primaryObserved.requests || dailyUsed) / dailyLimit) * 100)) : null,
-      },
-      rpm: { used: null, limit: null },
-      monthly: { used: monthlyData.models?.[primaryKey]?.requests ?? null },
-      tpmLimit: null,
-      unknownUsageAttempts: dailyData.models?.[primaryKey]?.unknownUsageAttempts || 0,
-      liveStatus: !isFirestoreAvailable ? 'INDISPONIVEL' : (primaryObserved.requests ? 'DADOS_REGISTRADOS' : (dailyUsed && !hasAnyModelBreakdown ? 'METRICA_INCOMPLETA' : 'SEM_DADOS')),
-      liveCode: null,
-      liveMessage: !isFirestoreAvailable ? 'Falha na leitura de telemetria' : (primaryObserved.requests ? 'Uso registrado no Firestore; API não sondada' : (dailyUsed && !hasAnyModelBreakdown ? 'Há uso agregado sem separação por modelo' : 'Sem chamadas registradas no período')),
     },
     {
-      id: fallbackModel,
-      name: fallbackModel === 'gemini-3.1-flash-lite' ? 'Gemini 3.1 Flash Lite' : fallbackModel,
-      description: 'Modelo econômico para fallback, resumos e alta taxa de requisições.',
+      id: 'gemini-3.1-flash-lite',
+      name: 'Gemini 3.1 Flash Lite',
+      description: 'Modelo ultraleve e econômico para fallback e respostas instantâneas.',
       category: 'Produção (Fallback)',
       isDefault: false,
-      isActive: false,
-      daily: {
-        used: fallbackObserved.requests || 0,
-        limit: dailyLimit,
-        percentage: dailyLimit ? Math.min(100, Math.round(((fallbackObserved.requests || 0) / dailyLimit) * 100)) : null,
-      },
-      rpm: { used: null, limit: null },
-      monthly: { used: monthlyData.models?.[fallbackKey]?.requests ?? null },
-      tpmLimit: null,
-      unknownUsageAttempts: dailyData.models?.[fallbackKey]?.unknownUsageAttempts || 0,
-      liveStatus: !isFirestoreAvailable ? 'INDISPONIVEL' : (fallbackObserved.requests ? 'DADOS_REGISTRADOS' : (dailyUsed && !hasAnyModelBreakdown ? 'METRICA_INCOMPLETA' : 'SEM_DADOS')),
-      liveCode: null,
-      liveMessage: !isFirestoreAvailable ? 'Falha na leitura de telemetria' : (fallbackObserved.requests ? 'Uso registrado no Firestore; API não sondada' : (dailyUsed && !hasAnyModelBreakdown ? 'Há uso agregado sem separação por modelo' : 'Sem chamadas registradas no período')),
+    },
+    {
+      id: 'gemini-3.5-flash-lite',
+      name: 'Gemini 3.5 Flash Lite',
+      description: 'Modelo leve com pool de cota isolado para alta taxa de requisições.',
+      category: 'Econômico / Lite',
+      isDefault: false,
+    },
+    {
+      id: 'gemini-3-flash-preview',
+      name: 'Gemini 3 Flash Preview',
+      description: 'Geração 3 experimental com alta fidelidade lógica e estruturação.',
+      category: 'Experimental / Preview',
+      isDefault: false,
+    },
+    {
+      id: 'gemini-3.8-pro',
+      name: 'Gemini 3.8 Pro',
+      description: 'Modelo de alta capacidade para raciocínio complexo e tarefas densas.',
+      category: 'Alta Capacidade',
+      isDefault: false,
     },
   ];
+
+  const hasAnyModelBreakdown = Boolean(dailyData.models && Object.keys(dailyData.models).length);
+  const activeChatModel = MODEL_CONFIG.PRIMARY_CHAT_MODEL || 'gemini-3.8-flash';
+
+  const models = v3Catalog.map((m) => {
+    const sanitizedKey = m.id.replace(/\./g, '_');
+    const observed = dailyData.models?.[sanitizedKey] || dailyData.models?.[m.id] || { requests: 0, tokens: 0 };
+    const monthlyObserved = monthlyData.models?.[sanitizedKey]?.requests ?? monthlyData.models?.[m.id]?.requests ?? null;
+    const isModelActive = m.id === activeChatModel;
+
+    return {
+      id: m.id,
+      name: m.name,
+      description: m.description,
+      category: m.category,
+      isDefault: m.isDefault,
+      isActive: isModelActive,
+      daily: {
+        used: observed.requests || (isModelActive && !hasAnyModelBreakdown ? dailyUsed : 0),
+        limit: dailyLimit,
+        percentage: dailyLimit ? Math.min(100, Math.round(((observed.requests || (isModelActive && !hasAnyModelBreakdown ? dailyUsed : 0)) / dailyLimit) * 100)) : null,
+      },
+      rpm: { used: null, limit: null },
+      monthly: { used: monthlyObserved },
+      tpmLimit: null,
+      unknownUsageAttempts: observed.unknownUsageAttempts || 0,
+      liveStatus: !isFirestoreAvailable ? 'INDISPONIVEL' : (observed.requests ? 'DADOS_REGISTRADOS' : (dailyUsed && isModelActive && !hasAnyModelBreakdown ? 'METRICA_INCOMPLETA' : 'SEM_DADOS')),
+      liveCode: null,
+      liveMessage: !isFirestoreAvailable ? 'Falha na leitura de telemetria' : (observed.requests ? 'Uso registrado no Firestore; API não sondada' : (dailyUsed && isModelActive && !hasAnyModelBreakdown ? 'Há uso agregado sem separação por modelo' : 'Sem chamadas registradas no período')),
+    };
+  });
 
   return {
     success: true,

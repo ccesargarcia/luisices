@@ -2,18 +2,23 @@ import { describe, it, expect } from 'vitest';
 const { calculateTokenCost, recordAiUsage, getAiUsageSummary } = require('../../../functions/ai/usage');
 
 describe('IA-09: Observabilidade, Telemetria e Gestão de Custos', () => {
-  it('deve calcular corretamente o custo com base nas tarifas vigentes', () => {
-    // gemini-2.5-flash: 0.30 / milhão prompt, 2.50 / milhão resposta
-    // 100.000 prompt = $0.03, 50.000 resp = $0.125 -> total $0.155
-    const cost = calculateTokenCost('gemini-2.5-flash', 100000, 50000);
-    expect(cost).toBeCloseTo(0.155, 4);
+  it('deve calcular corretamente o custo com base nas tarifas vigentes da Geração 3', () => {
+    // gemini-3.8-flash: 0.75 / milhão prompt, 3.75 / milhão resposta
+    // 100.000 prompt = $0.075, 50.000 resp = $0.1875 -> total $0.2625
+    const cost = calculateTokenCost('gemini-3.8-flash', 100000, 50000);
+    expect(cost).toBeCloseTo(0.2625, 4);
+
+    // gemini-3.1-flash-lite: 0.25 / milhão prompt, 1.50 / milhão resposta
+    // 100.000 prompt = $0.025, 50.000 resp = $0.075 -> total $0.1000
+    const costLite = calculateTokenCost('gemini-3.1-flash-lite', 100000, 50000);
+    expect(costLite).toBeCloseTo(0.1000, 4);
   });
 
   it('deve sanitizar o log de uso, garantindo que não contenha chaves, imagens base64 ou dados privados', async () => {
     const entry = await recordAiUsage(null, {
       userId: 'user-123',
       action: 'chat',
-      usedModel: 'gemini-2.5-flash',
+      usedModel: 'gemini-3.8-flash',
       promptTokens: 500,
       candidatesTokens: 200,
       durationMs: 450,
