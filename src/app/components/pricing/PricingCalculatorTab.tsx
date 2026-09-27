@@ -795,59 +795,120 @@ export function PricingCalculatorTab({
               </CardContent>
             </Card>
           ) : (
-            <div className="border rounded-xl overflow-hidden divide-y text-xs">
-              <div className="bg-muted/50 font-semibold p-3 grid grid-cols-12 gap-2 text-muted-foreground">
-                <span className="col-span-3">Produto / Pedido</span>
-                <span className="col-span-2 text-center">Data</span>
-                <span className="col-span-2 text-center">Tempo Previsto</span>
-                <span className="col-span-2 text-center">Tempo Real</span>
-                <span className="col-span-2 text-center">Variação</span>
-                <span className="col-span-1"></span>
+            <div className="border rounded-xl overflow-hidden divide-y text-xs bg-card shadow-xs">
+              {/* Mobile Card List (< sm) */}
+              <div className="block sm:hidden divide-y divide-border">
+                {trackingRecords.map((rec) => {
+                  const diffMin = rec.actualMinutes - rec.plannedMinutes;
+                  const isOvertime = diffMin > 0;
+
+                  return (
+                    <div key={rec.id} className="p-3.5 space-y-2">
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <div className="font-bold text-sm text-foreground">{rec.productName}</div>
+                          {rec.orderNumber && (
+                            <div className="text-[11px] text-muted-foreground">Pedido #{rec.orderNumber} • {rec.plannedQuantity} un.</div>
+                          )}
+                          <div className="text-[10px] text-muted-foreground">{rec.date}</div>
+                        </div>
+
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="size-7 text-muted-foreground hover:text-destructive"
+                          onClick={async () => {
+                            try {
+                              await firebasePricingService.deleteProductionTrackingRecord(rec.id);
+                              toast.success('Registro removido.');
+                            } catch (err) {
+                              toast.error('Erro ao remover.');
+                            }
+                          }}
+                        >
+                          <Trash2 className="size-3.5" />
+                        </Button>
+                      </div>
+
+                      <div className="grid grid-cols-3 gap-2 bg-muted/30 p-2 rounded-lg text-center">
+                        <div>
+                          <div className="text-[10px] text-muted-foreground">Previsto</div>
+                          <div className="font-semibold">{rec.plannedMinutes} min</div>
+                        </div>
+                        <div>
+                          <div className="text-[10px] text-muted-foreground">Real</div>
+                          <div className="font-bold">{rec.actualMinutes} min</div>
+                        </div>
+                        <div>
+                          <div className="text-[10px] text-muted-foreground">Variação</div>
+                          <Badge
+                            variant={isOvertime ? 'destructive' : 'secondary'}
+                            className={`text-[10px] px-1 py-0 ${!isOvertime ? 'bg-emerald-600/10 text-emerald-600' : ''}`}
+                          >
+                            {isOvertime ? `+${diffMin}m` : `${diffMin}m`}
+                          </Badge>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
 
-              {trackingRecords.map((rec) => {
-                const diffMin = rec.actualMinutes - rec.plannedMinutes;
-                const isOvertime = diffMin > 0;
+              {/* Desktop 12-col Grid (>= sm) */}
+              <div className="hidden sm:block divide-y">
+                <div className="bg-muted/50 font-semibold p-3 grid grid-cols-12 gap-2 text-muted-foreground">
+                  <span className="col-span-3">Produto / Pedido</span>
+                  <span className="col-span-2 text-center">Data</span>
+                  <span className="col-span-2 text-center">Tempo Previsto</span>
+                  <span className="col-span-2 text-center">Tempo Real</span>
+                  <span className="col-span-2 text-center">Variação</span>
+                  <span className="col-span-1"></span>
+                </div>
 
-                return (
-                  <div key={rec.id} className="p-3 grid grid-cols-12 gap-2 items-center hover:bg-muted/10">
-                    <div className="col-span-3">
-                      <div className="font-semibold">{rec.productName}</div>
-                      {rec.orderNumber && (
-                        <div className="text-[10px] text-muted-foreground">Pedido #{rec.orderNumber} • {rec.plannedQuantity} un.</div>
-                      )}
+                {trackingRecords.map((rec) => {
+                  const diffMin = rec.actualMinutes - rec.plannedMinutes;
+                  const isOvertime = diffMin > 0;
+
+                  return (
+                    <div key={rec.id} className="p-3 grid grid-cols-12 gap-2 items-center hover:bg-muted/10">
+                      <div className="col-span-3">
+                        <div className="font-semibold">{rec.productName}</div>
+                        {rec.orderNumber && (
+                          <div className="text-[10px] text-muted-foreground">Pedido #{rec.orderNumber} • {rec.plannedQuantity} un.</div>
+                        )}
+                      </div>
+                      <div className="col-span-2 text-center text-muted-foreground">{rec.date}</div>
+                      <div className="col-span-2 text-center font-medium">{rec.plannedMinutes} min</div>
+                      <div className="col-span-2 text-center font-bold">{rec.actualMinutes} min</div>
+                      <div className="col-span-2 text-center">
+                        <Badge
+                          variant={isOvertime ? 'destructive' : 'secondary'}
+                          className={`text-[10px] ${!isOvertime ? 'bg-emerald-600/10 text-emerald-600' : ''}`}
+                        >
+                          {isOvertime ? `+${diffMin} min (Excesso)` : `${diffMin} min (Dentro)`}
+                        </Badge>
+                      </div>
+                      <div className="col-span-1 flex justify-end">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="size-7 text-muted-foreground hover:text-destructive"
+                          onClick={async () => {
+                            try {
+                              await firebasePricingService.deleteProductionTrackingRecord(rec.id);
+                              toast.success('Registro removido.');
+                            } catch (err) {
+                              toast.error('Erro ao remover.');
+                            }
+                          }}
+                        >
+                          <Trash2 className="size-3.5" />
+                        </Button>
+                      </div>
                     </div>
-                    <div className="col-span-2 text-center text-muted-foreground">{rec.date}</div>
-                    <div className="col-span-2 text-center font-medium">{rec.plannedMinutes} min</div>
-                    <div className="col-span-2 text-center font-bold">{rec.actualMinutes} min</div>
-                    <div className="col-span-2 text-center">
-                      <Badge
-                        variant={isOvertime ? 'destructive' : 'secondary'}
-                        className={`text-[10px] ${!isOvertime ? 'bg-emerald-600/10 text-emerald-600' : ''}`}
-                      >
-                        {isOvertime ? `+${diffMin} min (Excesso)` : `${diffMin} min (Dentro)`}
-                      </Badge>
-                    </div>
-                    <div className="col-span-1 flex justify-end">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="size-7 text-muted-foreground hover:text-destructive"
-                        onClick={async () => {
-                          try {
-                            await firebasePricingService.deleteProductionTrackingRecord(rec.id);
-                            toast.success('Registro removido.');
-                          } catch (err) {
-                            toast.error('Erro ao remover.');
-                          }
-                        }}
-                      >
-                        <Trash2 className="size-3.5" />
-                      </Button>
-                    </div>
-                  </div>
-                );
-              })}
+                  );
+                })}
+              </div>
             </div>
           )}
         </div>

@@ -111,6 +111,9 @@ export function SuppliesTab({
       const saved = localStorage.getItem(SUPPLIES_VIEW_MODE_KEY);
       if (saved === 'table' || saved === 'grid') return saved;
     } catch {}
+    if (typeof window !== 'undefined' && window.innerWidth < 768) {
+      return 'grid';
+    }
     return 'table';
   });
 
@@ -356,9 +359,9 @@ export function SuppliesTab({
   return (
     <div className="space-y-4">
       {/* Barra de Filtros e Ações */}
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 bg-card p-4 rounded-xl border shadow-sm">
-        <div className="flex flex-wrap items-center gap-2 flex-1">
-          <div className="relative min-w-[200px] flex-1 max-w-sm">
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 bg-card p-3 sm:p-4 rounded-xl border shadow-sm">
+        <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-2 flex-1 w-full">
+          <div className="relative w-full sm:w-auto sm:min-w-[200px] sm:flex-1 sm:max-w-xs">
             <Search className="size-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
             <Input
               placeholder="Buscar por insumo, marca ou loja..."
@@ -367,89 +370,91 @@ export function SuppliesTab({
                 setSearchTerm(e.target.value);
                 setCurrentPage(1);
               }}
-              className="pl-9 h-9 text-xs"
+              className="pl-9 h-9 text-xs w-full"
             />
           </div>
 
-          <Select
-            value={selectedCategory}
-            onValueChange={(val) => {
-              setSelectedCategory(val);
-              setCurrentPage(1);
-            }}
-          >
-            <SelectTrigger className="w-[180px] h-9 text-xs">
-              <SelectValue placeholder="Todas as Categorias" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todas as Categorias</SelectItem>
-              {Object.entries(CATEGORY_MAP).map(([key, { label }]) => (
-                <SelectItem key={key} value={key}>
-                  {label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <div className="flex items-center gap-2 w-full sm:w-auto flex-wrap sm:flex-nowrap">
+            <Select
+              value={selectedCategory}
+              onValueChange={(val) => {
+                setSelectedCategory(val);
+                setCurrentPage(1);
+              }}
+            >
+              <SelectTrigger className="flex-1 sm:flex-initial sm:w-[180px] h-9 text-xs min-w-[130px]">
+                <SelectValue placeholder="Todas as Categorias" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todas as Categorias</SelectItem>
+                {Object.entries(CATEGORY_MAP).map(([key, { label }]) => (
+                  <SelectItem key={key} value={key}>
+                    {label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
 
-          <Button
-            type="button"
-            variant={filterLowStockOnly ? 'default' : 'outline'}
-            size="sm"
-            onClick={() => {
-              setFilterLowStockOnly(!filterLowStockOnly);
-              setCurrentPage(1);
-            }}
-            className={`h-9 text-xs gap-1.5 ${
-              filterLowStockOnly
-                ? 'bg-amber-600 hover:bg-amber-700 text-white'
-                : 'text-amber-700 dark:text-amber-400 border-amber-300 dark:border-amber-800'
-            }`}
-          >
-            <AlertTriangle className="size-3.5" />
-            Reposição
-            {lowStockCount > 0 && (
-              <span className="ml-1 px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-amber-500 text-white">
-                {lowStockCount}
-              </span>
-            )}
-          </Button>
-
-          {/* Alternador de visualização */}
-          <div className="flex items-center border rounded-lg p-0.5 bg-muted/40">
             <Button
               type="button"
-              variant={viewMode === 'table' ? 'secondary' : 'ghost'}
+              variant={filterLowStockOnly ? 'default' : 'outline'}
               size="sm"
-              className="h-8 px-2.5 text-xs gap-1.5"
-              onClick={() => handleSetViewMode('table')}
-              title="Visualização em Planilha (Tabela completa)"
+              onClick={() => {
+                setFilterLowStockOnly(!filterLowStockOnly);
+                setCurrentPage(1);
+              }}
+              className={`h-9 text-xs gap-1.5 shrink-0 ${
+                filterLowStockOnly
+                  ? 'bg-amber-600 hover:bg-amber-700 text-white'
+                  : 'text-amber-700 dark:text-amber-400 border-amber-300 dark:border-amber-800'
+              }`}
             >
-              <TableIcon className="size-3.5" />
-              <span className="hidden sm:inline">Planilha</span>
+              <AlertTriangle className="size-3.5" />
+              <span>Reposição</span>
+              {lowStockCount > 0 && (
+                <span className="ml-0.5 px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-amber-500 text-white">
+                  {lowStockCount}
+                </span>
+              )}
             </Button>
-            <Button
-              type="button"
-              variant={viewMode === 'grid' ? 'secondary' : 'ghost'}
-              size="sm"
-              className="h-8 px-2.5 text-xs gap-1.5"
-              onClick={() => handleSetViewMode('grid')}
-              title="Visualização em Cards"
-            >
-              <LayoutGrid className="size-3.5" />
-              <span className="hidden sm:inline">Cards</span>
-            </Button>
+
+            {/* Alternador de visualização */}
+            <div className="flex items-center border rounded-lg p-0.5 bg-muted/40 shrink-0 ml-auto sm:ml-0">
+              <Button
+                type="button"
+                variant={viewMode === 'table' ? 'secondary' : 'ghost'}
+                size="sm"
+                className="h-8 px-2 sm:px-2.5 text-xs gap-1.5"
+                onClick={() => handleSetViewMode('table')}
+                title="Visualização em Lista / Planilha"
+              >
+                <TableIcon className="size-3.5" />
+                <span className="hidden sm:inline">Lista</span>
+              </Button>
+              <Button
+                type="button"
+                variant={viewMode === 'grid' ? 'secondary' : 'ghost'}
+                size="sm"
+                className="h-8 px-2 sm:px-2.5 text-xs gap-1.5"
+                onClick={() => handleSetViewMode('grid')}
+                title="Visualização em Cards"
+              >
+                <LayoutGrid className="size-3.5" />
+                <span className="hidden sm:inline">Cards</span>
+              </Button>
+            </div>
           </div>
         </div>
 
         {/* Botões de Ação com respeito estrito a permissões */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 w-full sm:w-auto">
           {canCreate && supplies.length === 0 && (
             <Button
               variant="outline"
               size="sm"
               onClick={() => setPresetConfirmOpen(true)}
               disabled={loadingPresets}
-              className="gap-1.5 text-xs h-9"
+              className="gap-1.5 text-xs h-9 flex-1 sm:flex-initial"
             >
               <Sparkles className="size-3.5 text-primary" />
               Sugerir Insumos
@@ -457,7 +462,7 @@ export function SuppliesTab({
           )}
 
           {canCreate && (
-            <Button onClick={openAddDialog} className="gap-2 text-xs font-semibold h-9 shadow-sm">
+            <Button onClick={openAddDialog} className="gap-2 text-xs font-semibold h-9 shadow-sm w-full sm:w-auto justify-center">
               <Plus className="size-4" />
               Novo Insumo
             </Button>
@@ -500,7 +505,159 @@ export function SuppliesTab({
       ) : viewMode === 'table' ? (
         /* VISUALIZAÇÃO EM PLANILHA COMPACTA (CADASTRO DE CUSTOS) */
         <div className="border rounded-xl bg-card overflow-hidden shadow-sm">
-          <div className="overflow-x-auto">
+          {/* Mobile Card List (Visível no mobile/tablet, sem overflow horizontal) */}
+          <div className="block md:hidden divide-y divide-border">
+            {paginatedSupplies.map((item) => {
+              const cat = CATEGORY_MAP[item.category] || CATEGORY_MAP.outros;
+              const total = (item.purchasePrice || 0) + (item.shippingCost || 0);
+              const isLow =
+                (item.currentStock !== undefined && item.minStock !== undefined && item.minStock > 0 && item.currentStock <= item.minStock) ||
+                Boolean(item.needsReorder);
+
+              return (
+                <div
+                  key={item.id}
+                  className={`p-3.5 space-y-2.5 transition-colors ${
+                    isLow ? 'bg-amber-50/50 dark:bg-amber-950/20' : 'hover:bg-muted/30'
+                  }`}
+                >
+                  {/* Top Bar: Categoria + Badges + Ações */}
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-1.5 flex-wrap min-w-0">
+                      <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full shrink-0 ${cat.color}`}>
+                        {cat.label}
+                      </span>
+                      {isLow ? (
+                        <Badge variant="outline" className="text-[10px] px-1.5 py-0 bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-950 dark:text-amber-300 font-medium">
+                          ⚠️ Repor
+                        </Badge>
+                      ) : (
+                        <Badge variant="secondary" className="text-[10px] px-1.5 py-0 font-normal text-muted-foreground">
+                          ✅ Em dia
+                        </Badge>
+                      )}
+                    </div>
+
+                    {(canEdit || canDelete) && (
+                      <div className="flex items-center gap-1 shrink-0">
+                        {canEdit && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="size-8 text-muted-foreground hover:text-foreground hover:bg-muted"
+                            onClick={() => openEditDialog(item)}
+                            title="Editar Insumo"
+                          >
+                            <Pencil className="size-3.5" />
+                          </Button>
+                        )}
+                        {canDelete && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="size-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                            onClick={() => {
+                              setSupplyToDelete(item);
+                              setDeleteConfirmOpen(true);
+                            }}
+                            title="Excluir Insumo"
+                          >
+                            <Trash2 className="size-3.5" />
+                          </Button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Nome do Insumo e Detalhes */}
+                  <div>
+                    <div className="flex items-center gap-1.5">
+                      <h4 className="font-bold text-foreground text-sm leading-tight break-words">
+                        {item.name}
+                      </h4>
+                      {item.purchaseUrl && (
+                        <a
+                          href={item.purchaseUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-muted-foreground hover:text-primary transition-colors p-1"
+                          title="Abrir link da compra"
+                        >
+                          <ExternalLink className="size-3.5" />
+                        </a>
+                      )}
+                    </div>
+
+                    {/* Metadados: Marca e Loja */}
+                    {(item.brandModel || item.supplier) && (
+                      <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground mt-0.5 flex-wrap">
+                        {item.brandModel && (
+                          <span>Marca: <strong className="font-medium text-foreground/80">{item.brandModel}</strong></span>
+                        )}
+                        {item.brandModel && item.supplier && <span>•</span>}
+                        {item.supplier && (
+                          <span>Loja: <strong className="font-medium text-foreground/80">{item.supplier}</strong></span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Box de Custo Unitário e Aquisição em Destaque */}
+                  <div className="bg-muted/40 p-2.5 rounded-lg border border-border/50 flex items-center justify-between gap-3">
+                    <div className="space-y-0.5 min-w-0">
+                      <div className="text-[10px] uppercase font-semibold text-muted-foreground">
+                        Embalagem & Aquisição
+                      </div>
+                      <div className="text-xs font-semibold text-foreground truncate">
+                        {item.packageQuantity} {UNIT_MAP[item.unit] || item.unit}
+                      </div>
+                      <div className="text-[11px] text-muted-foreground">
+                        Total: <span className="font-medium text-foreground">{formatCurrency(total)}</span>
+                        {item.shippingCost && item.shippingCost > 0 ? ` (fr. ${formatCurrency(item.shippingCost)})` : ''}
+                      </div>
+                    </div>
+
+                    <div className="text-right shrink-0">
+                      <div className="text-[10px] uppercase font-bold text-muted-foreground">
+                        Custo Unitário
+                      </div>
+                      <div className="text-base font-black text-primary">
+                        {formatCurrency(item.unitCost)}
+                      </div>
+                      <div className="text-[10px] text-muted-foreground">
+                        por {item.unit}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Rodapé do Card: Estoque e Data */}
+                  <div className="flex items-center justify-between text-[11px] text-muted-foreground pt-0.5">
+                    <div>
+                      Estoque: <strong className={isLow ? 'text-amber-600 dark:text-amber-400 font-bold' : 'text-foreground'}>
+                        {item.currentStock ?? 0} {item.unit}s
+                      </strong>
+                      {item.minStock ? ` (mín: ${item.minStock})` : ''}
+                    </div>
+
+                    {item.lastPurchaseDate && (
+                      <div className="text-[10px]">
+                        Compra: {new Date(item.lastPurchaseDate + 'T00:00:00').toLocaleDateString('pt-BR')}
+                      </div>
+                    )}
+                  </div>
+
+                  {item.notes && (
+                    <p className="text-[11px] text-muted-foreground/90 italic truncate" title={item.notes}>
+                      Obs: {item.notes}
+                    </p>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Desktop Spreadsheet Table (Oculta no mobile, visível em md+) */}
+          <div className="hidden md:block overflow-x-auto">
             <table className="w-full text-xs text-left border-collapse">
               <thead>
                 <tr className="bg-muted/60 border-b text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">

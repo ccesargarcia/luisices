@@ -330,7 +330,7 @@ export function PurchaseHistoryTab({
             </div>
 
             {canCreate && (
-              <Button onClick={openAddDialog} className="gap-2 font-bold shadow-md">
+              <Button onClick={openAddDialog} className="gap-2 font-bold shadow-md w-full sm:w-auto justify-center">
                 <Plus className="size-4" />
                 Lançar Nova Compra
               </Button>
@@ -389,95 +389,185 @@ export function PurchaseHistoryTab({
               </Button>
             </div>
           ) : (
-            <div className="overflow-x-auto rounded-xl border border-border/80">
-              <table className="w-full text-xs text-left">
-                <thead className="bg-muted/70 text-muted-foreground font-bold uppercase tracking-wider text-[10px] border-b border-border">
-                  <tr>
-                    <th className="p-3">Data</th>
-                    <th className="p-3">Insumo</th>
-                    <th className="p-3">Categoria</th>
-                    <th className="p-3">Loja / Fornecedor</th>
-                    <th className="p-3 text-right">Qtd.</th>
-                    <th className="p-3 text-right">Valor Pago</th>
-                    <th className="p-3 text-right">Frete</th>
-                    <th className="p-3 text-right">Valor Final</th>
-                    <th className="p-3 text-right">Custo Unitário</th>
-                    {canDelete && <th className="p-3 text-center">Ação</th>}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border/60">
-                  {filteredHistory.map((item) => {
-                    const totalVal = item.totalPrice || item.price + (item.shippingCost || 0);
-                    const unitCostVal = item.quantity > 0 ? totalVal / item.quantity : item.unitCost;
+            <div className="rounded-xl border border-border/80 overflow-hidden bg-card shadow-xs">
+              {/* Mobile Card List (Visível no mobile, sem overflow horizontal) */}
+              <div className="block md:hidden divide-y divide-border">
+                {filteredHistory.map((item) => {
+                  const totalVal = item.totalPrice || item.price + (item.shippingCost || 0);
+                  const unitCostVal = item.quantity > 0 ? totalVal / item.quantity : item.unitCost;
 
-                    return (
-                      <tr
-                        key={item.id}
-                        className="hover:bg-muted/30 transition-colors group"
-                      >
-                        <td className="p-3 font-semibold whitespace-nowrap text-foreground">
-                          <span className="flex items-center gap-1.5">
+                  return (
+                    <div key={item.id} className="p-3.5 space-y-2.5 transition-colors hover:bg-muted/20">
+                      {/* Top Bar: Data + Categoria + Ação */}
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="flex items-center gap-1 text-xs font-semibold text-foreground">
                             <Calendar className="size-3.5 text-muted-foreground" />
                             {formatDateBR(item.date)}
                           </span>
-                        </td>
-                        <td className="p-3 font-bold text-foreground">
-                          <div>
-                            {item.supplyName}
-                            {item.notes && (
-                              <p className="text-[10px] text-muted-foreground font-normal line-clamp-1 mt-0.5">
-                                {item.notes}
-                              </p>
-                            )}
-                          </div>
-                        </td>
-                        <td className="p-3 whitespace-nowrap">
                           <Badge variant="outline" className="text-[10px] font-normal">
                             {CATEGORY_LABELS[item.category] || item.category}
                           </Badge>
-                        </td>
-                        <td className="p-3 text-muted-foreground whitespace-nowrap">
-                          <span className="flex items-center gap-1">
-                            <Store className="size-3 text-muted-foreground" />
-                            {item.store || '—'}
-                          </span>
-                        </td>
-                        <td className="p-3 text-right font-medium whitespace-nowrap">
-                          {item.quantity} {UNIT_LABELS[item.unit] || item.unit}
-                        </td>
-                        <td className="p-3 text-right font-medium text-foreground whitespace-nowrap">
-                          {formatCurrency(item.price)}
-                        </td>
-                        <td className="p-3 text-right text-muted-foreground whitespace-nowrap">
-                          {item.shippingCost ? formatCurrency(item.shippingCost) : 'R$ 0,00'}
-                        </td>
-                        <td className="p-3 text-right font-bold text-foreground whitespace-nowrap">
-                          {formatCurrency(totalVal)}
-                        </td>
-                        <td className="p-3 text-right font-black text-primary whitespace-nowrap bg-primary/5">
-                          R$ {unitCostVal.toFixed(4)}
-                        </td>
+                        </div>
+
                         {canDelete && (
-                          <td className="p-3 text-center whitespace-nowrap">
-                            <Button
-                              size="icon"
-                              variant="ghost"
-                              className="size-7 text-muted-foreground hover:text-destructive"
-                              title="Excluir do Histórico"
-                              onClick={() => {
-                                setItemToDelete(item);
-                                setDeleteConfirmOpen(true);
-                              }}
-                            >
-                              <Trash2 className="size-3.5" />
-                            </Button>
-                          </td>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="size-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                            title="Excluir do Histórico"
+                            onClick={() => {
+                              setItemToDelete(item);
+                              setDeleteConfirmOpen(true);
+                            }}
+                          >
+                            <Trash2 className="size-3.5" />
+                          </Button>
                         )}
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+                      </div>
+
+                      {/* Nome do Insumo e Loja */}
+                      <div>
+                        <h4 className="font-bold text-foreground text-sm leading-tight break-words">
+                          {item.supplyName}
+                        </h4>
+                        {item.store && (
+                          <div className="flex items-center gap-1 text-[11px] text-muted-foreground mt-0.5">
+                            <Store className="size-3 text-muted-foreground" />
+                            <span>Loja: <strong className="font-medium text-foreground/80">{item.store}</strong></span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Box de Valores em Destaque */}
+                      <div className="bg-muted/40 p-2.5 rounded-lg border border-border/50 flex items-center justify-between gap-3">
+                        <div className="space-y-0.5 min-w-0">
+                          <div className="text-[10px] uppercase font-semibold text-muted-foreground">
+                            Quantidade & Total
+                          </div>
+                          <div className="text-xs font-semibold text-foreground truncate">
+                            {item.quantity} {UNIT_LABELS[item.unit] || item.unit}
+                          </div>
+                          <div className="text-[11px] text-muted-foreground">
+                            Total: <strong className="font-medium text-foreground">{formatCurrency(totalVal)}</strong>
+                            {item.shippingCost && item.shippingCost > 0 ? ` (fr. ${formatCurrency(item.shippingCost)})` : ''}
+                          </div>
+                        </div>
+
+                        <div className="text-right shrink-0">
+                          <div className="text-[10px] uppercase font-bold text-muted-foreground">
+                            Custo Unitário
+                          </div>
+                          <div className="text-base font-black text-primary">
+                            R$ {unitCostVal.toFixed(4)}
+                          </div>
+                          <div className="text-[10px] text-muted-foreground">
+                            por {UNIT_LABELS[item.unit] || item.unit}
+                          </div>
+                        </div>
+                      </div>
+
+                      {item.notes && (
+                        <p className="text-[11px] text-muted-foreground/90 italic truncate" title={item.notes}>
+                          Obs: {item.notes}
+                        </p>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Desktop Table (Oculta no mobile, visível em md+) */}
+              <div className="hidden md:block overflow-x-auto">
+                <table className="w-full text-xs text-left">
+                  <thead className="bg-muted/70 text-muted-foreground font-bold uppercase tracking-wider text-[10px] border-b border-border">
+                    <tr>
+                      <th className="p-3">Data</th>
+                      <th className="p-3">Insumo</th>
+                      <th className="p-3">Categoria</th>
+                      <th className="p-3">Loja / Fornecedor</th>
+                      <th className="p-3 text-right">Qtd.</th>
+                      <th className="p-3 text-right">Valor Pago</th>
+                      <th className="p-3 text-right">Frete</th>
+                      <th className="p-3 text-right">Valor Final</th>
+                      <th className="p-3 text-right">Custo Unitário</th>
+                      {canDelete && <th className="p-3 text-center">Ação</th>}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border/60">
+                    {filteredHistory.map((item) => {
+                      const totalVal = item.totalPrice || item.price + (item.shippingCost || 0);
+                      const unitCostVal = item.quantity > 0 ? totalVal / item.quantity : item.unitCost;
+
+                      return (
+                        <tr
+                          key={item.id}
+                          className="hover:bg-muted/30 transition-colors group"
+                        >
+                          <td className="p-3 font-semibold whitespace-nowrap text-foreground">
+                            <span className="flex items-center gap-1.5">
+                              <Calendar className="size-3.5 text-muted-foreground" />
+                              {formatDateBR(item.date)}
+                            </span>
+                          </td>
+                          <td className="p-3 font-bold text-foreground">
+                            <div>
+                              {item.supplyName}
+                              {item.notes && (
+                                <p className="text-[10px] text-muted-foreground font-normal line-clamp-1 mt-0.5">
+                                  {item.notes}
+                                </p>
+                              )}
+                            </div>
+                          </td>
+                          <td className="p-3 whitespace-nowrap">
+                            <Badge variant="outline" className="text-[10px] font-normal">
+                              {CATEGORY_LABELS[item.category] || item.category}
+                            </Badge>
+                          </td>
+                          <td className="p-3 text-muted-foreground whitespace-nowrap">
+                            <span className="flex items-center gap-1">
+                              <Store className="size-3 text-muted-foreground" />
+                              {item.store || '—'}
+                            </span>
+                          </td>
+                          <td className="p-3 text-right font-medium whitespace-nowrap">
+                            {item.quantity} {UNIT_LABELS[item.unit] || item.unit}
+                          </td>
+                          <td className="p-3 text-right font-medium text-foreground whitespace-nowrap">
+                            {formatCurrency(item.price)}
+                          </td>
+                          <td className="p-3 text-right text-muted-foreground whitespace-nowrap">
+                            {item.shippingCost ? formatCurrency(item.shippingCost) : 'R$ 0,00'}
+                          </td>
+                          <td className="p-3 text-right font-bold text-foreground whitespace-nowrap">
+                            {formatCurrency(totalVal)}
+                          </td>
+                          <td className="p-3 text-right font-black text-primary whitespace-nowrap bg-primary/5">
+                            R$ {unitCostVal.toFixed(4)}
+                          </td>
+                          {canDelete && (
+                            <td className="p-3 text-center whitespace-nowrap">
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                className="size-7 text-muted-foreground hover:text-destructive"
+                                title="Excluir do Histórico"
+                                onClick={() => {
+                                  setItemToDelete(item);
+                                  setDeleteConfirmOpen(true);
+                                }}
+                              >
+                                <Trash2 className="size-3.5" />
+                              </Button>
+                            </td>
+                          )}
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
         </CardContent>

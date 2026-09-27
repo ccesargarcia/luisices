@@ -156,66 +156,68 @@ export function Pricing() {
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 w-full sm:w-auto">
           <Button
             type="button"
             variant="outline"
-            className="gap-2 bg-card hover:bg-muted text-xs h-9 border-primary/30 hover:border-primary/60 shadow-sm"
+            className="gap-2 bg-card hover:bg-muted text-xs h-9 border-primary/30 hover:border-primary/60 shadow-sm w-full sm:w-auto justify-center"
             onClick={handleExportExcel}
             title="Download da planilha Excel (.xlsx) com as 3 abas"
           >
-            <FileSpreadsheet className="size-4 text-emerald-600 dark:text-emerald-400" />
-            <span className="font-semibold">Exportar Planilha Excel (.xlsx)</span>
+            <FileSpreadsheet className="size-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+            <span className="font-semibold truncate">
+              <span className="hidden sm:inline">Exportar Planilha </span>Excel (.xlsx)
+            </span>
           </Button>
         </div>
       </div>
 
       {/* Mini Cards de Indicadores Rápidos */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4">
         <Card className="bg-card/50">
-          <CardContent className="p-4 flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-blue-500/10 text-blue-600 dark:text-blue-400">
-              <Layers className="size-5" />
+          <CardContent className="p-3 sm:p-4 flex items-center gap-2.5 sm:gap-3">
+            <div className="p-2 rounded-lg bg-blue-500/10 text-blue-600 dark:text-blue-400 shrink-0">
+              <Layers className="size-4 sm:size-5" />
             </div>
-            <div>
-              <div className="text-[11px] font-medium text-muted-foreground">Cadastro de Insumos</div>
-              <div className="text-xl font-bold">{supplies.length} itens</div>
+            <div className="min-w-0">
+              <div className="text-[10px] sm:text-[11px] font-medium text-muted-foreground truncate">Cadastro de Insumos</div>
+              <div className="text-base sm:text-xl font-bold truncate">{supplies.length} itens</div>
             </div>
           </CardContent>
         </Card>
 
         <Card className="bg-card/50">
-          <CardContent className="p-4 flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-purple-500/10 text-purple-600 dark:text-purple-400">
-              <History className="size-5" />
+          <CardContent className="p-3 sm:p-4 flex items-center gap-2.5 sm:gap-3">
+            <div className="p-2 rounded-lg bg-purple-500/10 text-purple-600 dark:text-purple-400 shrink-0">
+              <History className="size-4 sm:size-5" />
             </div>
-            <div>
-              <div className="text-[11px] font-medium text-muted-foreground">Histórico de Compras</div>
-              <div className="text-xl font-bold">{historyItems.length} compras</div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="bg-card/50">
-          <CardContent className="p-4 flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-primary/10 text-primary">
-              <Calculator className="size-5" />
-            </div>
-            <div>
-              <div className="text-[11px] font-medium text-muted-foreground">Custo por Produto</div>
-              <div className="text-xl font-bold">{recipes.length} fichas</div>
+            <div className="min-w-0">
+              <div className="text-[10px] sm:text-[11px] font-medium text-muted-foreground truncate">Histórico de Compras</div>
+              <div className="text-base sm:text-xl font-bold truncate">{historyItems.length} compras</div>
             </div>
           </CardContent>
         </Card>
 
         <Card className="bg-card/50">
-          <CardContent className="p-4 flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
-              <Clock className="size-5" />
+          <CardContent className="p-3 sm:p-4 flex items-center gap-2.5 sm:gap-3">
+            <div className="p-2 rounded-lg bg-primary/10 text-primary shrink-0">
+              <Calculator className="size-4 sm:size-5" />
             </div>
-            <div>
-              <div className="text-[11px] font-medium text-muted-foreground">Hora de Trabalho</div>
-              <div className="text-xl font-bold text-emerald-600 dark:text-emerald-400">
+            <div className="min-w-0">
+              <div className="text-[10px] sm:text-[11px] font-medium text-muted-foreground truncate">Custo por Produto</div>
+              <div className="text-base sm:text-xl font-bold truncate">{recipes.length} fichas</div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-card/50">
+          <CardContent className="p-3 sm:p-4 flex items-center gap-2.5 sm:gap-3">
+            <div className="p-2 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 shrink-0">
+              <Clock className="size-4 sm:size-5" />
+            </div>
+            <div className="min-w-0">
+              <div className="text-[10px] sm:text-[11px] font-medium text-muted-foreground truncate">Hora de Trabalho</div>
+              <div className="text-base sm:text-xl font-bold text-emerald-600 dark:text-emerald-400 truncate">
                 {formatCurrency(currentHourly.hourlyRate)}
               </div>
             </div>
@@ -226,21 +228,29 @@ export function Pricing() {
       {/* Navegação entre as 4 Abas Estruturadas */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
         <TabsList className="grid grid-cols-2 md:grid-cols-4 w-full h-auto p-1 bg-muted/60 gap-1">
-          <TabsTrigger value="supplies" className="text-xs sm:text-sm gap-2 py-2">
-            <Layers className="size-4" />
-            <span className="truncate">Aba 1 — Cadastro de Custos</span>
+          <TabsTrigger value="supplies" className="text-xs sm:text-sm gap-1.5 sm:gap-2 py-2 px-2 sm:px-3">
+            <Layers className="size-3.5 sm:size-4 shrink-0" />
+            <span className="truncate">
+              <span className="hidden sm:inline">Aba 1 — </span>Insumos & Custos
+            </span>
           </TabsTrigger>
-          <TabsTrigger value="history" className="text-xs sm:text-sm gap-2 py-2">
-            <History className="size-4" />
-            <span className="truncate">Aba 2 — Histórico de Compras</span>
+          <TabsTrigger value="history" className="text-xs sm:text-sm gap-1.5 sm:gap-2 py-2 px-2 sm:px-3">
+            <History className="size-3.5 sm:size-4 shrink-0" />
+            <span className="truncate">
+              <span className="hidden sm:inline">Aba 2 — </span>Histórico
+            </span>
           </TabsTrigger>
-          <TabsTrigger value="recipes" className="text-xs sm:text-sm gap-2 py-2">
-            <Calculator className="size-4" />
-            <span className="truncate">Aba 3 — Custo por Produto</span>
+          <TabsTrigger value="recipes" className="text-xs sm:text-sm gap-1.5 sm:gap-2 py-2 px-2 sm:px-3">
+            <Calculator className="size-3.5 sm:size-4 shrink-0" />
+            <span className="truncate">
+              <span className="hidden sm:inline">Aba 3 — </span>Fichas & Preço
+            </span>
           </TabsTrigger>
-          <TabsTrigger value="settings" className="text-xs sm:text-sm gap-2 py-2">
-            <Settings2 className="size-4" />
-            <span className="truncate">Custos do Ateliê & Hora</span>
+          <TabsTrigger value="settings" className="text-xs sm:text-sm gap-1.5 sm:gap-2 py-2 px-2 sm:px-3">
+            <Settings2 className="size-3.5 sm:size-4 shrink-0" />
+            <span className="truncate">
+              <span className="hidden sm:inline">Custos do </span>Ateliê & Hora
+            </span>
           </TabsTrigger>
         </TabsList>
 
