@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { SupplyItem, SupplyCategory, SupplyUnit } from '../../types';
 import { firebasePricingService } from '../../../services/firebasePricingService';
 import { formatCurrency } from '../../utils/currency';
@@ -62,6 +62,7 @@ interface SuppliesTabProps {
   canEdit?: boolean;
   canDelete?: boolean;
   onRefresh?: () => void;
+  openAddSupplyTrigger?: number;
 }
 
 const CATEGORY_MAP: Record<SupplyCategory, { label: string; color: string }> = {
@@ -102,6 +103,7 @@ export function SuppliesTab({
   canEdit = true,
   canDelete = true,
   onRefresh,
+  openAddSupplyTrigger,
 }: SuppliesTabProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
@@ -194,6 +196,12 @@ export function SuppliesTab({
     setNotes('');
     setDialogOpen(true);
   };
+
+  useEffect(() => {
+    if (openAddSupplyTrigger && openAddSupplyTrigger > 0) {
+      openAddDialog();
+    }
+  }, [openAddSupplyTrigger]);
 
   const openEditDialog = (item: SupplyItem) => {
     setEditingSupply(item);
@@ -359,7 +367,47 @@ export function SuppliesTab({
 
   return (
     <div className="space-y-4">
-      {/* Barra de Filtros e Ações */}
+      {/* Cabeçalho da Aba 1 - Luisices Design System */}
+      <Card className="luisices-glass bg-card/60 backdrop-blur-md border-border/80 shadow-sm rounded-2xl">
+        <CardHeader className="p-4 sm:p-5">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <CardTitle className="text-lg font-bold flex items-center gap-2">
+                <Layers className="size-5 text-primary" />
+                Aba 1 — Cadastro & Gestão de Insumos
+              </CardTitle>
+              <CardDescription className="text-xs text-muted-foreground mt-1">
+                Cadastre e precifique papéis, tintas, vinis, lamicotes e matérias-primas com custos unitários calculados automaticamente.
+              </CardDescription>
+            </div>
+            <div className="flex items-center gap-2 w-full sm:w-auto">
+              {canCreate && supplies.length === 0 && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPresetConfirmOpen(true)}
+                  disabled={loadingPresets}
+                  className="gap-1.5 text-xs h-10 rounded-xl flex-1 sm:flex-initial"
+                >
+                  <Sparkles className="size-3.5 text-primary" />
+                  Sugerir Insumos
+                </Button>
+              )}
+              {canCreate && (
+                <Button
+                  onClick={openAddDialog}
+                  className="gap-2 text-xs font-semibold min-h-[40px] px-4 rounded-xl shadow-md hover:bg-primary/90 active:scale-95 transition-all w-full sm:w-auto justify-center"
+                >
+                  <Plus className="size-4" />
+                  Novo Insumo
+                </Button>
+              )}
+            </div>
+          </div>
+        </CardHeader>
+      </Card>
+
+      {/* Barra de Filtros e Visualização */}
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 bg-card p-3 sm:p-4 rounded-xl border shadow-sm">
         <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-2 flex-1 w-full">
           <div className="relative w-full sm:w-auto sm:min-w-[200px] sm:flex-1 sm:max-w-xs">
@@ -456,29 +504,6 @@ export function SuppliesTab({
               </Button>
             </div>
           </div>
-        </div>
-
-        {/* Botões de Ação com respeito estrito a permissões */}
-        <div className="flex items-center gap-2 w-full sm:w-auto">
-          {canCreate && supplies.length === 0 && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setPresetConfirmOpen(true)}
-              disabled={loadingPresets}
-              className="gap-1.5 text-xs h-9 flex-1 sm:flex-initial"
-            >
-              <Sparkles className="size-3.5 text-primary" />
-              Sugerir Insumos
-            </Button>
-          )}
-
-          {canCreate && (
-            <Button onClick={openAddDialog} className="gap-2 text-xs font-semibold h-9 shadow-sm w-full sm:w-auto justify-center">
-              <Plus className="size-4" />
-              Novo Insumo
-            </Button>
-          )}
         </div>
       </div>
 
