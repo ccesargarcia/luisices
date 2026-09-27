@@ -74,6 +74,19 @@ async function processAlexaEnvelope(envelope, { db, config }) {
   // 3. Autorização estrita de voz para pedidos (LaunchRequest, CreateOrderIntent, etc.)
   const authRes = await authorizeAlexaPerson(envelope, config, db);
   if (!authRes.authorized) {
+    // Se for LaunchRequest e o motivo for falta de vínculo ou reconhecimento inicial,
+    // mantém a sessão aberta para que a pessoa possa dizer "vincular minha voz".
+    if (reqType === 'LaunchRequest' && (authRes.code === 'VOICE_NOT_ALLOWED' || authRes.code === 'VOICE_NOT_RECOGNIZED')) {
+      const speech = authRes.code === 'VOICE_NOT_ALLOWED'
+        ? 'Olá! Sua voz foi reconhecida, mas ainda não está vinculada ao Luisices. Diga: vincular minha voz, para receber seu código de vinculação.'
+        : 'Olá! Bem-vindo ao Luisices de teste. Diga: vincular minha voz, para receber seu código de vinculação.';
+      return buildAlexaResponse({
+        speech,
+        reprompt: 'Diga: vincular minha voz.',
+        shouldEndSession: false,
+      });
+    }
+
     return buildAlexaResponse({
       speech: authRes.speech,
       shouldEndSession: true,
