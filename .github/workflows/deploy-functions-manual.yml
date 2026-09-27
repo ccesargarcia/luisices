@@ -38,6 +38,8 @@ on:
           - 'createUserInvitation,validateUserInvitation,completeUserInvitation'
           - 'createUser,deleteUser'
           - 'sendCustomEmail,getEmailUsage,resendReceivingWebhook'
+          - 'alexaWebhook,approveAlexaPairing,setAlexaPermission,revokeAlexaBinding,toggleGlobalAlexaIntegration,getAlexaIntegrationStatus,approveAlexaDraft'
+          - 'alexaWebhook'
       deploy_rules_and_indexes:
         description: 'Publicar Firestore Rules e Indexes? (Já publicado no deploy de Hosting)'
         required: false
