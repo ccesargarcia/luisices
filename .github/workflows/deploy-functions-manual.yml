@@ -111,6 +111,15 @@ jobs:
             if [ -n "$GEMINI_API_KEY" ]; then
               firebase functions:secrets:set GEMINI_API_KEY --project luisices-dev --data-file "$HOME/gemini_api_key.txt" --non-interactive --force || true
             fi
+            echo "luisices-alexa-hmac-dev-secret-key-2026" > "$HOME/alexa_hmac.txt"
+            firebase functions:secrets:set ALEXA_IDENTITY_HMAC_KEY --project luisices-dev --data-file "$HOME/alexa_hmac.txt" --non-interactive --force || true
+          fi
+
+          # Garante que ALEXA_IDENTITY_HMAC_KEY existe no Secret Manager de Dev antes do deploy
+          if ! firebase functions:secrets:get ALEXA_IDENTITY_HMAC_KEY --project luisices-dev --non-interactive > /dev/null 2>&1; then
+            echo "🔐 Inicializando ALEXA_IDENTITY_HMAC_KEY no Secret Manager (Dev)..."
+            echo "luisices-alexa-hmac-dev-secret-key-2026" > "$HOME/alexa_hmac.txt"
+            firebase functions:secrets:set ALEXA_IDENTITY_HMAC_KEY --project luisices-dev --data-file "$HOME/alexa_hmac.txt" --non-interactive --force || true
           fi
 
           # Determina se deve publicar regras e índices
