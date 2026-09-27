@@ -3,7 +3,7 @@ import { Badge } from './ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Button } from './ui/button';
 import { Checkbox } from './ui/checkbox';
-import { Phone, Calendar, Package, DollarSign, Tag, MessageCircle, Smartphone, Banknote, CreditCard, ArrowLeftRight, Repeat2, Users } from 'lucide-react';
+import { Phone, Calendar, Package, DollarSign, Tag, MessageCircle, Smartphone, Banknote, CreditCard, ArrowLeftRight, Repeat2, Users, Mic } from 'lucide-react';
 import { getTextColor } from '../utils/tagColors';
 import { openWhatsAppForOrder } from '../utils/whatsapp';
 import { useUserSettings } from '../../hooks/useUserSettings';
@@ -107,6 +107,12 @@ export function OrderCard({ order, onClick, isSelected = false, onToggleSelect }
                 </Badge>
               )}
               {order.isExchange && <Repeat2 className="size-3 text-purple-600" />}
+              {order.source === 'alexa' && (
+                <Badge variant="outline" className="text-[10px] py-0 px-1.5 leading-4 bg-sky-50 text-sky-700 border-sky-200 dark:bg-sky-950/40 dark:text-sky-300 dark:border-sky-800 gap-0.5">
+                  <Mic className="size-2.5" />
+                  Alexa
+                </Badge>
+              )}
               <Badge className={`text-[10px] py-0 px-1.5 leading-4 ${statusColors[order.status]}`}>
                 {statusLabels[order.status]}
               </Badge>
@@ -163,6 +169,11 @@ export function OrderCard({ order, onClick, isSelected = false, onToggleSelect }
                   {order.isExchange && (
                     <Badge className="bg-purple-100 text-purple-800 border-purple-300 border gap-1 py-0 text-xs">
                       <Repeat2 className="size-3" /> Permuta
+                    </Badge>
+                  )}
+                  {order.source === 'alexa' && (
+                    <Badge variant="outline" className="bg-sky-50 text-sky-700 border-sky-200 dark:bg-sky-950/40 dark:text-sky-300 dark:border-sky-800 gap-1 py-0 text-xs">
+                      <Mic className="size-3" /> Alexa
                     </Badge>
                   )}
                 </div>

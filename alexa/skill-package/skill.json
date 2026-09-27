@@ -1,0 +1,45 @@
+{
+  "manifest": {
+    "publishingInformation": {
+      "locales": {
+        "pt-BR": {
+          "summary": "Criação de pedidos por voz para o ateliê Luisices.",
+          "examplePhrases": [
+            "Alexa, abrir luisices de teste",
+            "Alexa, peça ao luisices de teste para criar um pedido",
+            "vincular minha voz"
+          ],
+          "name": "Luisices de Teste",
+          "description": "Skill privada para criação rápida e segura de pedidos por comando de voz no ateliê Luisices, vinculada ao perfil de voz de pessoas autorizadas."
+        }
+      },
+      "isAvailableWorldwide": false,
+      "testingInstructions": "Ambiente isolado de desenvolvimento. Requer perfil de voz ativo no aplicativo Alexa e pareamento supervisionado aprovado por administrador no Luisices.",
+      "category": "ORGANIZERS_AND_ASSISTANTS",
+      "distributionCountries": [
+        "BR"
+      ]
+    },
+    "apis": {
+      "custom": {
+        "endpoint": {
+          "uri": "https://alexawebhook-g7z2w635ya-uc.a.run.app"
+        },
+        "interfaces": []
+      }
+    },
+    "manifestVersion": "1.0",
+    "permissions": [
+      {
+        "name": "alexa::person_id:read"
+      }
+    ],
+    "privacyAndCompliance": {
+      "allowsPurchases": false,
+      "usesPersonalInfo": true,
+      "isChildDirected": false,
+      "isExportCompliant": true,
+      "containsAds": false
+    }
+  }
+}

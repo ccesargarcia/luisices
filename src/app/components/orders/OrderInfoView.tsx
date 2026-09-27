@@ -12,7 +12,9 @@ import {
   Tag as TagIcon,
   Repeat2,
   UserRoundCheck,
+  Mic,
 } from 'lucide-react';
+
 import { formatDate } from '../../utils/date';
 import { formatCurrency } from '../../utils/currency';
 import { getTextColor } from '../../utils/tagColors';
@@ -99,6 +101,13 @@ export function OrderInfoView({ order }: OrderInfoViewProps) {
           <div className="font-medium">{createdByDisplay}</div>
         </div>
       </div>
+
+      {order.source === 'alexa' && (
+        <div className="flex items-center gap-2.5 p-3 rounded-lg border border-sky-500/25 bg-sky-500/10 text-sky-800 dark:text-sky-200 text-xs font-medium">
+          <Mic className="size-4 text-sky-500 shrink-0" />
+          <span>Pedido registrado por comando de voz via <strong>Alexa</strong></span>
+        </div>
+      )}
 
       {/* Permuta / Parceria */}
       {order.isExchange && (

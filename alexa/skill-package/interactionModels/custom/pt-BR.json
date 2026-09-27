@@ -1,0 +1,324 @@
+{
+  "interactionModel": {
+    "languageModel": {
+      "invocationName": "luisices de teste",
+      "intents": [
+        {
+          "name": "AMAZON.CancelIntent",
+          "samples": [
+            "cancelar",
+            "cancela",
+            "cancelar pedido",
+            "desistir",
+            "não quero mais"
+          ]
+        },
+        {
+          "name": "AMAZON.HelpIntent",
+          "samples": [
+            "ajuda",
+            "o que você pode fazer",
+            "como funciona",
+            "me ajuda"
+          ]
+        },
+        {
+          "name": "AMAZON.StopIntent",
+          "samples": [
+            "parar",
+            "sair",
+            "fechar",
+            "tchau",
+            "encerra"
+          ]
+        },
+        {
+          "name": "AMAZON.FallbackIntent",
+          "samples": []
+        },
+        {
+          "name": "AMAZON.YesIntent",
+          "samples": [
+            "sim",
+            "confirmo",
+            "confirmar",
+            "pode confirmar",
+            "está certo",
+            "correto",
+            "gravar",
+            "pode gravar",
+            "com certeza"
+          ]
+        },
+        {
+          "name": "AMAZON.NoIntent",
+          "samples": [
+            "não",
+            "não confirmo",
+            "está errado",
+            "quero mudar",
+            "corrigir",
+            "alterar",
+            "espera"
+          ]
+        },
+        {
+          "name": "LinkVoiceIntent",
+          "samples": [
+            "vincular minha voz",
+            "conectar minha voz",
+            "iniciar pareamento",
+            "vincular perfil",
+            "vincular usuário",
+            "gerar código de vinculação",
+            "gerar código"
+          ],
+          "slots": []
+        },
+        {
+          "name": "CreateOrderIntent",
+          "samples": [
+            "criar pedido",
+            "novo pedido",
+            "anotar pedido",
+            "criar um pedido",
+            "registrar pedido",
+            "fazer pedido",
+            "criar pedido de {quantity} {product} para {customer}",
+            "criar pedido para {customer}",
+            "pedido de {quantity} {product} para {customer}",
+            "novo pedido de {product} para {customer}"
+          ],
+          "slots": [
+            {
+              "name": "customer",
+              "type": "AMAZON.Person"
+            },
+            {
+              "name": "product",
+              "type": "PRODUCT_TYPE"
+            },
+            {
+              "name": "quantity",
+              "type": "AMAZON.NUMBER"
+            },
+            {
+              "name": "deliveryDate",
+              "type": "AMAZON.DATE"
+            },
+            {
+              "name": "total",
+              "type": "AMAZON.NUMBER"
+            }
+          ]
+        },
+        {
+          "name": "ProvideCustomerIntent",
+          "samples": [
+            "para {customer}",
+            "o cliente é {customer}",
+            "cliente {customer}",
+            "é para {customer}",
+            "o nome é {customer}"
+          ],
+          "slots": [
+            {
+              "name": "customer",
+              "type": "AMAZON.Person"
+            }
+          ]
+        },
+        {
+          "name": "ProvideProductIntent",
+          "samples": [
+            "{product}",
+            "o produto é {product}",
+            "produto {product}",
+            "são {product}",
+            "é um {product}",
+            "são caixinhas",
+            "são cadernos"
+          ],
+          "slots": [
+            {
+              "name": "product",
+              "type": "PRODUCT_TYPE"
+            }
+          ]
+        },
+        {
+          "name": "ProvideQuantityIntent",
+          "samples": [
+            "{quantity}",
+            "{quantity} unidades",
+            "{quantity} itens",
+            "quantidade {quantity}",
+            "são {quantity}"
+          ],
+          "slots": [
+            {
+              "name": "quantity",
+              "type": "AMAZON.NUMBER"
+            }
+          ]
+        },
+        {
+          "name": "ProvideDeliveryDateIntent",
+          "samples": [
+            "entrega em {deliveryDate}",
+            "entregar dia {deliveryDate}",
+            "para o dia {deliveryDate}",
+            "data de entrega {deliveryDate}",
+            "dia {deliveryDate}",
+            "{deliveryDate}"
+          ],
+          "slots": [
+            {
+              "name": "deliveryDate",
+              "type": "AMAZON.DATE"
+            }
+          ]
+        },
+        {
+          "name": "ProvideTotalIntent",
+          "samples": [
+            "{total} reais",
+            "o valor é {total} reais",
+            "total de {total} reais",
+            "deu {total} reais",
+            "valor {total}",
+            "{total}"
+          ],
+          "slots": [
+            {
+              "name": "total",
+              "type": "AMAZON.NUMBER"
+            }
+          ]
+        }
+      ],
+      "types": [
+        {
+          "name": "PRODUCT_TYPE",
+          "values": [
+            {
+              "name": {
+                "value": "caixinhas",
+                "synonyms": [
+                  "caixa",
+                  "caixas",
+                  "caixinha",
+                  "caixas personalizadas",
+                  "caixinhas personalizadas",
+                  "caixa milk",
+                  "caixa pirâmide",
+                  "caixa bala"
+                ]
+              }
+            },
+            {
+              "name": {
+                "value": "cadernos",
+                "synonyms": [
+                  "caderno",
+                  "caderno personalizado",
+                  "caderninho",
+                  "caderninhos"
+                ]
+              }
+            },
+            {
+              "name": {
+                "value": "bloquinhos",
+                "synonyms": [
+                  "bloquinho",
+                  "bloco de anotações",
+                  "blocos",
+                  "bloco"
+                ]
+              }
+            },
+            {
+              "name": {
+                "value": "agendas",
+                "synonyms": [
+                  "agenda",
+                  "planner",
+                  "planners",
+                  "agenda escolar"
+                ]
+              }
+            },
+            {
+              "name": {
+                "value": "convites",
+                "synonyms": [
+                  "convite",
+                  "convite de aniversário",
+                  "convite de casamento",
+                  "convitinhos"
+                ]
+              }
+            },
+            {
+              "name": {
+                "value": "etiquetas",
+                "synonyms": [
+                  "etiqueta",
+                  "etiquetas escolares",
+                  "tags",
+                  "tag",
+                  "rótulos",
+                  "rótulo"
+                ]
+              }
+            },
+            {
+              "name": {
+                "value": "adesivos",
+                "synonyms": [
+                  "adesivo",
+                  "cartela de adesivos",
+                  "stickers"
+                ]
+              }
+            },
+            {
+              "name": {
+                "value": "topo de bolo",
+                "synonyms": [
+                  "topos de bolo",
+                  "topper",
+                  "toppers",
+                  "topper de bolo"
+                ]
+              }
+            },
+            {
+              "name": {
+                "value": "sacolas",
+                "synonyms": [
+                  "sacola",
+                  "sacolinhas",
+                  "sacolinha personalizada",
+                  "sacolas personalizadas"
+                ]
+              }
+            },
+            {
+              "name": {
+                "value": "lembrancinhas",
+                "synonyms": [
+                  "lembrancinha",
+                  "kits festa",
+                  "kit festa",
+                  "lembrança"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

@@ -1729,6 +1729,12 @@ exports.evolutionWhatsAppWebhook = onRequest({ secrets: [EVOLUTION_API_KEY] }, a
     res.status(500).json({ error: error.message });
   }
 });
-
-
-
+// ─── Integração Alexa (Voice Order Creation) ──────────────────────────────────
+const alexaModule = require('./alexa');
+exports.alexaWebhook = alexaModule.alexaWebhook;
+exports.approveAlexaPairing = alexaModule.approveAlexaPairing;
+exports.setAlexaPermission = alexaModule.setAlexaPermission;
+exports.revokeAlexaBinding = alexaModule.revokeAlexaBinding;
+exports.toggleGlobalAlexaIntegration = alexaModule.toggleGlobalAlexaIntegration;
+exports.getAlexaIntegrationStatus = alexaModule.getAlexaIntegrationStatus;
+exports.approveAlexaDraft = alexaModule.approveAlexaDraft;

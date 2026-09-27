@@ -415,5 +415,37 @@ service cloud.firestore {
     match /whatsapp_messages/{messageId} {
       allow read, write: if canAccessWhatsApp();
     }
+
+    // ─── Integração Alexa (Coleções Técnicas Internas) ────────────────────────
+    // Bloqueio total de leitura e escrita direta pelo SDK cliente web/mobile.
+    // Todas as operações devem passar exclusivamente por Cloud Functions v2 (Admin SDK).
+    match /integrationSettings/alexa {
+      allow read, write: if false;
+    }
+    match /alexaPermissions/{uid} {
+      allow read, write: if false;
+    }
+    match /alexaBindings/{bindingKey} {
+      allow read, write: if false;
+    }
+    match /alexaPairings/{codeHmac} {
+      allow read, write: if false;
+    }
+    match /alexaDrafts/{draftId} {
+      allow read, write: if false;
+    }
+    match /alexaRequests/{requestKey} {
+      allow read, write: if false;
+    }
+    match /alexaCommits/{draftId} {
+      allow read, write: if false;
+    }
+    match /alexaRateLimits/{bucketKey} {
+      allow read, write: if false;
+    }
+    match /alexaAudit/{eventId} {
+      allow read, write: if false;
+    }
   }
 }
+

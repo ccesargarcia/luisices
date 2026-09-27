@@ -104,7 +104,12 @@ export interface Order {
   cardColor?: string;      // Cor de destaque do card
   realCost?: number;       // Custo real da produção
   version?: number;        // Versão para controle de concorrência
+  source?: 'web' | 'alexa' | 'store' | string; // Origem do pedido (web, alexa, lojinha)
+  createdByUid?: string;   // UID do criador
+  voiceDraftId?: string;   // Rascunho de voz de origem
+  voiceConfirmationMode?: 'voice_confirm' | 'app_approval';
 }
+
 
 export interface ExchangeItem {
   name: string;
@@ -879,3 +884,65 @@ export interface WhatsAppConversation {
   lastOrderSummary?: string;
   updatedAt?: any;
 }
+
+// ─── Integração Alexa (Voice Order Creation) ──────────────────────────────────
+
+export type AlexaEnvironment = 'dev' | 'prod';
+export type AlexaConfirmationMode = 'voice_confirm' | 'app_approval';
+
+export interface AlexaBinding {
+  id: string;
+  uid: string;
+  active: boolean;
+  environment: string;
+  approvedBy?: string;
+  approvedByEmail?: string;
+  createdAt?: string;
+}
+
+export interface AlexaPermission {
+  uid: string;
+  enabled: boolean;
+  mode: AlexaConfirmationMode;
+  scope: string;
+  approvedBy?: string;
+  updatedAt?: string;
+}
+
+export interface AlexaDraft {
+  id: string;
+  uid: string;
+  customer: string;
+  product: string;
+  quantity: number;
+  deliveryDate: string;
+  price: number;
+  notes?: string | null;
+  state: 'collecting' | 'awaiting_confirmation' | 'awaiting_app_approval' | 'committed' | 'cancelled' | 'expired';
+  revision: number;
+  environment: string;
+  createdAt?: string;
+  expiresAt?: string;
+}
+
+export interface AlexaIntegrationStatus {
+  environment: AlexaEnvironment;
+  isEnabled: boolean;
+  allowedSkillIdConfigured: boolean;
+  timezone: string;
+  userPermission?: AlexaPermission | null;
+  bindings: AlexaBinding[];
+  pendingDrafts: AlexaDraft[];
+  recentAudit?: Array<{
+    id: string;
+    event: string;
+    uid?: string | null;
+    orderId?: string | null;
+    reason?: string | null;
+    durationMs?: number;
+    success?: boolean;
+    timestamp?: string | null;
+  }>;
+  isAdmin: boolean;
+}
+

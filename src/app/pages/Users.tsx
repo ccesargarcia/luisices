@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { firebaseUserService } from '../../services/firebaseUserService';
+import { firebaseAlexaService } from '../../services/firebaseAlexaService';
 import {
   UserProfile,
   UserRole,
@@ -9,6 +10,7 @@ import {
   DEFAULT_USER_PERMISSIONS,
   EMPLOYEE_PERMISSIONS,
   ModulePermission,
+  AlexaConfirmationMode,
 } from '../types';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -66,7 +68,9 @@ import {
   MailPlus,
   KeyRound,
   Trash2,
+  Mic,
 } from 'lucide-react';
+
 
 // ─── Permission matrix helpers ───────────────────────────────────────────────
 
@@ -216,6 +220,8 @@ function UserFormDialog({ open, editingUser, currentUserUid, onClose, onSaved }:
   const [role,        setRole]        = useState<UserRole>('user');
   const [permissions, setPermissions] = useState<Permission>(deepClonePermission(DEFAULT_USER_PERMISSIONS));
   const [saving,      setSaving]      = useState(false);
+  const [alexaEnabled, setAlexaEnabled] = useState(false);
+  const [alexaMode, setAlexaMode] = useState<AlexaConfirmationMode>('voice_confirm');
 
   useEffect(() => {
     if (editingUser) {
@@ -224,12 +230,24 @@ function UserFormDialog({ open, editingUser, currentUserUid, onClose, onSaved }:
       setRole(editingUser.role);
       setPermissions(deepClonePermission(editingUser.permissions));
       setPassword('');
+      // Consultar status de permissão Alexa para este usuário
+      firebaseAlexaService.getStatus().then((st) => {
+        if (st.userPermission && st.userPermission.uid === editingUser.uid) {
+          setAlexaEnabled(st.userPermission.enabled);
+          setAlexaMode(st.userPermission.mode || 'voice_confirm');
+        } else {
+          setAlexaEnabled(false);
+          setAlexaMode('voice_confirm');
+        }
+      }).catch(() => {});
     } else {
       setDisplayName('');
       setEmail('');
       setPassword('');
       setRole('user');
       setPermissions(deepClonePermission(DEFAULT_USER_PERMISSIONS));
+      setAlexaEnabled(false);
+      setAlexaMode('voice_confirm');
     }
   }, [editingUser, open]);
 
@@ -262,6 +280,7 @@ function UserFormDialog({ open, editingUser, currentUserUid, onClose, onSaved }:
           role,
           permissions,
         });
+        await firebaseAlexaService.setPermission(editingUser!.uid, alexaEnabled, alexaMode);
         toast.success('Usuário atualizado com sucesso. As alterações já estão ativas em tempo real.');
       } else {
         await firebaseUserService.createUser(email.trim(), password, displayName.trim(), role, permissions, currentUserUid);
@@ -366,7 +385,48 @@ function UserFormDialog({ open, editingUser, currentUserUid, onClose, onSaved }:
             <p className="text-sm font-semibold">Permissões de acesso</p>
             <PermissionMatrix permissions={permissions} onChange={setPermissions} />
           </div>
+
+          {/* Integração Alexa (apenas ao editar usuário existente) */}
+          {isEdit && (
+            <div className="space-y-3 p-4 rounded-xl border border-sky-500/25 bg-sky-500/5 dark:bg-sky-950/20">
+              <div className="flex items-center justify-between gap-3">
+                <div className="space-y-0.5">
+                  <Label className="text-sm font-semibold flex items-center gap-1.5 text-foreground">
+                    <Mic className="size-4 text-sky-500" />
+                    Criação de Pedidos por Alexa
+                  </Label>
+                  <p className="text-xs text-muted-foreground">
+                    Permite que esta pessoa crie pedidos por voz na Alexa diretamente em seu espaço pessoal.
+                  </p>
+                </div>
+                <Switch
+                  checked={alexaEnabled}
+                  onCheckedChange={setAlexaEnabled}
+                />
+              </div>
+
+              {alexaEnabled && (
+                <div className="space-y-1.5 pt-2 border-t border-sky-500/15">
+                  <Label className="text-xs font-medium">Modo de Confirmação</Label>
+                  <Select value={alexaMode} onValueChange={(val: any) => setAlexaMode(val)}>
+                    <SelectTrigger className="h-8 text-xs bg-background">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="voice_confirm" className="text-xs">
+                        Confirmação por Voz Direta (Grava no quadro após dizer "Sim")
+                      </SelectItem>
+                      <SelectItem value="app_approval" className="text-xs">
+                        Aprovação Prévia no Aplicativo (Exige revisão web antes de gravar)
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+            </div>
+          )}
         </DialogBody>
+
 
         <DialogFooter className="p-4 sm:p-6 pt-3 border-t border-border">
           <Button type="button" variant="outline" onClick={onClose} disabled={saving}>

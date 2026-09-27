@@ -17,6 +17,7 @@ import { CardDensitySection } from '../components/settings/CardDensitySection';
 import { WhatsAppTemplateSection } from '../components/settings/WhatsAppTemplateSection';
 import { PermissionsSection } from '../components/settings/PermissionsSection';
 import { AiSettingsSection } from '../components/settings/AiSettingsSection';
+import { AlexaSettingsSection } from '../components/settings/AlexaSettingsSection';
 import { CatalogSettingsSection, type CatalogCustomizationSettings } from '../components/settings/CatalogSettingsSection';
 import { DangerZoneSection } from '../components/settings/DangerZoneSection';
 
@@ -457,6 +458,9 @@ export function Settings() {
 
       {/* Cota e Monitoramento de IA (Gemini) - Apenas Admin */}
       {isAdmin && <AiSettingsSection isAdmin={isAdmin} />}
+
+      {/* Integração de Pedidos por Alexa */}
+      <AlexaSettingsSection isAdmin={isAdmin} />
 
       {/* Zona de Perigo */}
       <DangerZoneSection onReset={handleReset} />
