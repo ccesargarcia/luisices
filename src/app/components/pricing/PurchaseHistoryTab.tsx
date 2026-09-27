@@ -49,6 +49,8 @@ import {
   Tag,
   ArrowUpDown,
   ShoppingBag,
+  Table as TableIcon,
+  LayoutList,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -99,6 +101,23 @@ export function PurchaseHistoryTab({
 }: PurchaseHistoryTabProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
+  const [viewMode, setViewMode] = useState<'list' | 'table'>(() => {
+    try {
+      const saved = localStorage.getItem('luisices_purchase_history_view_mode');
+      if (saved === 'list' || saved === 'table') return saved;
+    } catch {}
+    if (typeof window !== 'undefined' && window.innerWidth < 768) {
+      return 'list';
+    }
+    return 'table';
+  });
+
+  const handleSetViewMode = (mode: 'list' | 'table') => {
+    setViewMode(mode);
+    try {
+      localStorage.setItem('luisices_purchase_history_view_mode', mode);
+    } catch {}
+  };
 
   // Modal para lançar nova compra
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -351,19 +370,47 @@ export function PurchaseHistoryTab({
               />
             </div>
 
-            <Select value={selectedCategory} onValueChange={setSelectedCategory}>
-              <SelectTrigger className="w-full sm:w-56 text-xs">
-                <SelectValue placeholder="Todas as Categorias" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Todas as Categorias</SelectItem>
-                {Object.entries(CATEGORY_LABELS).map(([key, label]) => (
-                  <SelectItem key={key} value={key}>
-                    {label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <div className="flex items-center gap-2 w-full sm:w-auto">
+              <Select value={selectedCategory} onValueChange={setSelectedCategory}>
+                <SelectTrigger className="flex-1 sm:flex-initial sm:w-56 text-xs">
+                  <SelectValue placeholder="Todas as Categorias" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todas as Categorias</SelectItem>
+                  {Object.entries(CATEGORY_LABELS).map(([key, label]) => (
+                    <SelectItem key={key} value={key}>
+                      {label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              {/* Alternador de visualização (Lista | Planilha) */}
+              <div className="flex items-center border rounded-lg p-0.5 bg-muted/40 shrink-0">
+                <Button
+                  type="button"
+                  variant={viewMode === 'list' ? 'secondary' : 'ghost'}
+                  size="sm"
+                  className="h-8 px-2 sm:px-2.5 text-xs gap-1.5"
+                  onClick={() => handleSetViewMode('list')}
+                  title="Lista vertical (sem barra de rolagem horizontal)"
+                >
+                  <LayoutList className="size-3.5" />
+                  <span className="hidden sm:inline">Lista</span>
+                </Button>
+                <Button
+                  type="button"
+                  variant={viewMode === 'table' ? 'secondary' : 'ghost'}
+                  size="sm"
+                  className="h-8 px-2 sm:px-2.5 text-xs gap-1.5"
+                  onClick={() => handleSetViewMode('table')}
+                  title="Planilha clássica (com rolagem horizontal)"
+                >
+                  <TableIcon className="size-3.5" />
+                  <span className="hidden sm:inline">Planilha</span>
+                </Button>
+              </div>
+            </div>
           </div>
 
           {/* Tabela do Histórico de Compras */}
@@ -390,96 +437,104 @@ export function PurchaseHistoryTab({
             </div>
           ) : (
             <div className="rounded-xl border border-border/80 overflow-hidden bg-card shadow-xs">
-              {/* Mobile Card List (Visível no mobile, sem overflow horizontal) */}
-              <div className="block md:hidden divide-y divide-border">
-                {filteredHistory.map((item) => {
-                  const totalVal = item.totalPrice || item.price + (item.shippingCost || 0);
-                  const unitCostVal = item.quantity > 0 ? totalVal / item.quantity : item.unitCost;
+              {viewMode === 'list' ? (
+                /* Mobile-First Card List (Sem scroll horizontal) */
+                <div className="divide-y divide-border">
+                  {filteredHistory.map((item) => {
+                    const totalVal = item.totalPrice || item.price + (item.shippingCost || 0);
+                    const unitCostVal = item.quantity > 0 ? totalVal / item.quantity : item.unitCost;
 
-                  return (
-                    <div key={item.id} className="p-3.5 space-y-2.5 transition-colors hover:bg-muted/20">
-                      {/* Top Bar: Data + Categoria + Ação */}
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="flex items-center gap-1 text-xs font-semibold text-foreground">
-                            <Calendar className="size-3.5 text-muted-foreground" />
-                            {formatDateBR(item.date)}
-                          </span>
-                          <Badge variant="outline" className="text-[10px] font-normal">
-                            {CATEGORY_LABELS[item.category] || item.category}
-                          </Badge>
+                    return (
+                      <div key={item.id} className="p-3.5 space-y-2.5 transition-colors hover:bg-muted/20">
+                        {/* Top Bar: Data + Categoria + Ação */}
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="flex items-center gap-1 text-xs font-semibold text-foreground">
+                              <Calendar className="size-3.5 text-muted-foreground" />
+                              {formatDateBR(item.date)}
+                            </span>
+                            <Badge variant="outline" className="text-[10px] font-normal">
+                              {CATEGORY_LABELS[item.category] || item.category}
+                            </Badge>
+                          </div>
+
+                          {canDelete && (
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="size-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                              title="Excluir do Histórico"
+                              onClick={() => {
+                                setItemToDelete(item);
+                                setDeleteConfirmOpen(true);
+                              }}
+                            >
+                              <Trash2 className="size-3.5" />
+                            </Button>
+                          )}
                         </div>
 
-                        {canDelete && (
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            className="size-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-                            title="Excluir do Histórico"
-                            onClick={() => {
-                              setItemToDelete(item);
-                              setDeleteConfirmOpen(true);
-                            }}
-                          >
-                            <Trash2 className="size-3.5" />
-                          </Button>
+                        {/* Nome do Insumo e Loja */}
+                        <div>
+                          <h4 className="font-bold text-foreground text-sm leading-tight break-words">
+                            {item.supplyName}
+                          </h4>
+                          {item.store && (
+                            <div className="flex items-center gap-1 text-[11px] text-muted-foreground mt-0.5">
+                              <Store className="size-3 text-muted-foreground" />
+                              <span>Loja: <strong className="font-medium text-foreground/80">{item.store}</strong></span>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Box de Valores em Destaque */}
+                        <div className="bg-muted/40 p-2.5 rounded-lg border border-border/50 flex items-center justify-between gap-3">
+                          <div className="space-y-0.5 min-w-0">
+                            <div className="text-[10px] uppercase font-semibold text-muted-foreground">
+                              Quantidade & Total
+                            </div>
+                            <div className="text-xs font-semibold text-foreground truncate">
+                              {item.quantity} {UNIT_LABELS[item.unit] || item.unit}
+                            </div>
+                            <div className="text-[11px] text-muted-foreground">
+                              Total: <strong className="font-medium text-foreground">{formatCurrency(totalVal)}</strong>
+                              {item.shippingCost && item.shippingCost > 0 ? ` (fr. ${formatCurrency(item.shippingCost)})` : ''}
+                            </div>
+                          </div>
+
+                          <div className="text-right shrink-0">
+                            <div className="text-[10px] uppercase font-bold text-muted-foreground">
+                              Custo Unitário
+                            </div>
+                            <div className="text-base font-black text-primary">
+                              R$ {unitCostVal.toFixed(4)}
+                            </div>
+                            <div className="text-[10px] text-muted-foreground">
+                              por {UNIT_LABELS[item.unit] || item.unit}
+                            </div>
+                          </div>
+                        </div>
+
+                        {item.notes && (
+                          <p className="text-[11px] text-muted-foreground/90 italic truncate" title={item.notes}>
+                            Obs: {item.notes}
+                          </p>
                         )}
                       </div>
-
-                      {/* Nome do Insumo e Loja */}
-                      <div>
-                        <h4 className="font-bold text-foreground text-sm leading-tight break-words">
-                          {item.supplyName}
-                        </h4>
-                        {item.store && (
-                          <div className="flex items-center gap-1 text-[11px] text-muted-foreground mt-0.5">
-                            <Store className="size-3 text-muted-foreground" />
-                            <span>Loja: <strong className="font-medium text-foreground/80">{item.store}</strong></span>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Box de Valores em Destaque */}
-                      <div className="bg-muted/40 p-2.5 rounded-lg border border-border/50 flex items-center justify-between gap-3">
-                        <div className="space-y-0.5 min-w-0">
-                          <div className="text-[10px] uppercase font-semibold text-muted-foreground">
-                            Quantidade & Total
-                          </div>
-                          <div className="text-xs font-semibold text-foreground truncate">
-                            {item.quantity} {UNIT_LABELS[item.unit] || item.unit}
-                          </div>
-                          <div className="text-[11px] text-muted-foreground">
-                            Total: <strong className="font-medium text-foreground">{formatCurrency(totalVal)}</strong>
-                            {item.shippingCost && item.shippingCost > 0 ? ` (fr. ${formatCurrency(item.shippingCost)})` : ''}
-                          </div>
-                        </div>
-
-                        <div className="text-right shrink-0">
-                          <div className="text-[10px] uppercase font-bold text-muted-foreground">
-                            Custo Unitário
-                          </div>
-                          <div className="text-base font-black text-primary">
-                            R$ {unitCostVal.toFixed(4)}
-                          </div>
-                          <div className="text-[10px] text-muted-foreground">
-                            por {UNIT_LABELS[item.unit] || item.unit}
-                          </div>
-                        </div>
-                      </div>
-
-                      {item.notes && (
-                        <p className="text-[11px] text-muted-foreground/90 italic truncate" title={item.notes}>
-                          Obs: {item.notes}
-                        </p>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-
-              {/* Desktop Table (Oculta no mobile, visível em md+) */}
-              <div className="hidden md:block overflow-x-auto">
-                <table className="w-full text-xs text-left">
+                    );
+                  })}
+                </div>
+              ) : (
+                /* Planilha Completa (Disponível no mobile e desktop com rolagem horizontal) */
+                <div>
+                  <div className="md:hidden px-3 py-1.5 bg-muted/60 text-[11px] text-muted-foreground border-b flex items-center justify-between">
+                    <span>Formato Planilha Completa</span>
+                    <span className="text-[10px] text-primary font-semibold flex items-center gap-1">
+                      ↔️ Deslize para os lados
+                    </span>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs text-left">
                   <thead className="bg-muted/70 text-muted-foreground font-bold uppercase tracking-wider text-[10px] border-b border-border">
                     <tr>
                       <th className="p-3">Data</th>
@@ -566,10 +621,12 @@ export function PurchaseHistoryTab({
                       );
                     })}
                   </tbody>
-                </table>
+                  </table>
+                </div>
               </div>
-            </div>
-          )}
+            )}
+          </div>
+        )}
         </CardContent>
       </Card>
 
