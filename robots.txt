@@ -1,0 +1,15 @@
+User-agent: *
+Disallow: /dashboard
+Disallow: /agenda
+Disallow: /clientes
+Disallow: /relatorios
+Disallow: /orcamentos
+Disallow: /produtos
+Disallow: /galeria
+Disallow: /permutas
+Disallow: /configuracoes
+Disallow: /usuarios
+Disallow: /corrigir-valores
+Disallow: /action
+
+Sitemap: https://luisices.com.br/sitemap.xml
