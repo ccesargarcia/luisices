@@ -78,11 +78,11 @@ async function processAlexaEnvelope(envelope, { db, config }) {
     // mantém a sessão aberta para que a pessoa possa dizer "vincular minha voz".
     if (reqType === 'LaunchRequest' && (authRes.code === 'VOICE_NOT_ALLOWED' || authRes.code === 'VOICE_NOT_RECOGNIZED')) {
       const speech = authRes.code === 'VOICE_NOT_ALLOWED'
-        ? 'Olá! Sua voz foi reconhecida, mas ainda não está vinculada ao Luisices. Diga: vincular minha voz, para receber seu código de vinculação.'
-        : 'Olá! Bem-vindo ao Luisices de teste. Diga: vincular minha voz, para receber seu código de vinculação.';
+        ? 'Olá! Sua voz foi reconhecida, mas ainda não está vinculada ao Luisices. Diga: gerar código, para receber seu código de vinculação.'
+        : 'Olá! Bem-vindo ao Luisices de teste. Diga: gerar código, para receber seu código de vinculação.';
       return buildAlexaResponse({
         speech,
-        reprompt: 'Diga: vincular minha voz.',
+        reprompt: 'Diga: gerar código.',
         shouldEndSession: false,
       });
     }
