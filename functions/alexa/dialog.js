@@ -92,6 +92,15 @@ function parseAndValidateDeliveryDate(dateSlotValue, timezone = 'America/Sao_Pau
     return { valid: false, error: 'Data inválida no calendário.' };
   }
 
+  const testDate = new Date(Date.UTC(y, m - 1, d));
+  if (
+    testDate.getUTCFullYear() !== y ||
+    testDate.getUTCMonth() !== m - 1 ||
+    testDate.getUTCDate() !== d
+  ) {
+    return { valid: false, error: 'Data inválida no calendário.' };
+  }
+
   // Validar se não é data retroativa
   const now = new Date();
   // Comparação considerando timezone de São Paulo (UTC-3 padrão)
@@ -146,15 +155,24 @@ function parsePortugueseWordsToNumber(text) {
     } else if (/^\d+$/.test(token)) {
       matchedAny = true;
       current += parseInt(token, 10);
+    } else {
+      return null;
     }
   }
   total += current;
   return matchedAny ? total : null;
 }
 
+function parsePartToNumber(partStr) {
+  if (!partStr) return 0;
+  const clean = partStr.replace(/r\$/gi, '').trim();
+  if (/^\d+$/.test(clean)) return parseInt(clean, 10);
+  return parsePortugueseWordsToNumber(clean);
+}
+
 /**
  * Interpreta e valida valor monetário em reais (máximo R$ 10.000,00 ou 1.000.000 centavos).
- * Suporta dígitos (100, 100,50, R$ 150) e números por extenso (cem reais, cinquenta, duzentos).
+ * Suporta dígitos (100, 100,50, 1.500,00, R$ 150) e números por extenso (cem reais, cinquenta, dez reais e cinquenta centavos).
  */
 function parseAndValidatePrice(priceValue) {
   if (priceValue === null || priceValue === undefined || priceValue === '') {
@@ -167,9 +185,55 @@ function parseAndValidatePrice(priceValue) {
     return { valid: false, error: 'Valor total não pode ser negativo.' };
   }
 
-  // 1. Tentar extração de números com separador decimal (ex: "R$ 150,50", "150.50", "100 reais")
-  const regexNum = /(\d+(?:[.,]\d{1,2})?)/;
-  const match = rawStr.match(regexNum);
+  if (/\bou\b/.test(rawStr)) {
+    return { valid: false, error: 'Valor ambíguo. Por favor, diga um único valor total em reais.' };
+  }
+
+  const cleanNumStr = rawStr.replace(/r\$/gi, '').trim();
+
+  // 1. Tentar extração de números com formato brasileiro de milhar e decimal: 1.500,00 ou 1.500
+  const brThousands = cleanNumStr.match(/^(\d{1,3}(?:\.\d{3})+(?:,\d{1,2})?)$/);
+  if (brThousands) {
+    const num = parseFloat(brThousands[1].replace(/\./g, '').replace(',', '.'));
+    if (!isNaN(num) && num >= 0) {
+      if (num > 10000) {
+        return { valid: false, error: 'O valor do pedido excede o limite máximo permitido de dez mil reais.' };
+      }
+      return { valid: true, price: Math.round(num * 100) / 100 };
+    }
+  }
+
+  // 2. Se contiver menção a centavos (ex: "dez reais e cinquenta centavos", "cinquenta centavos", "10 reais e 50 centavos")
+  if (/\bcentavos?\b/.test(rawStr)) {
+    let reaisStr = '';
+    let centavosStr = '';
+    if (/\b(reais|real)\b/.test(rawStr)) {
+      const match = rawStr.match(/^(.*?)\b(?:reais|real)\b(?:\s+e\s+)?(.*?)\bcentavos?\b/);
+      if (match) {
+        reaisStr = match[1].trim();
+        centavosStr = match[2].trim();
+      }
+    } else {
+      const match = rawStr.match(/^(.*?)\bcentavos?\b/);
+      if (match) {
+        centavosStr = match[1].replace(/^\s*e\s+/, '').trim();
+      }
+    }
+    const rVal = parsePartToNumber(reaisStr);
+    const cVal = parsePartToNumber(centavosStr);
+    if (rVal === null || cVal === null || cVal >= 100) {
+      return { valid: false, error: 'Valor total inválido. Por favor, diga o valor em reais, por exemplo: cem reais.' };
+    }
+    const total = rVal + (cVal / 100);
+    if (total > 10000) {
+      return { valid: false, error: 'O valor do pedido excede o limite máximo permitido de dez mil reais.' };
+    }
+    return { valid: true, price: Math.round(total * 100) / 100 };
+  }
+
+  // 3. Números padrão com vírgula ou ponto decimal simples: 150,50 ou 150.50 ou 150 ou "150 reais"
+  const regexNum = /^(\d+(?:[.,]\d{1,2})?)(?:\s*(?:reais|real))?$/;
+  const match = cleanNumStr.match(regexNum);
   if (match) {
     const num = parseFloat(match[1].replace(',', '.'));
     if (!isNaN(num) && num >= 0) {
@@ -180,8 +244,9 @@ function parseAndValidatePrice(priceValue) {
     }
   }
 
-  // 2. Se for número por extenso em português (ex: "cem reais", "duzentos e cinquenta", "cinquenta")
-  const wordNum = parsePortugueseWordsToNumber(rawStr);
+  // 4. Se for número por extenso em português (ex: "cem reais", "duzentos e cinquenta")
+  const cleanWords = cleanNumStr.replace(/\b(reais|real)\b/g, '').trim();
+  const wordNum = parsePortugueseWordsToNumber(cleanWords);
   if (wordNum !== null && wordNum >= 0) {
     if (wordNum > 10000) {
       return { valid: false, error: 'O valor do pedido excede o limite máximo permitido de dez mil reais.' };
@@ -205,7 +270,11 @@ async function getOrCreateDraft(db, draftId, identity, config) {
     if (snap.exists) {
       const data = snap.data() || {};
       const expTime = data.expiresAt?.toDate ? data.expiresAt.toDate().getTime() : 0;
-      if (expTime > now && data.state !== 'committed') {
+      const isAllowedState = data.state === 'collecting' || data.state === 'awaiting_confirmation';
+      const isSameUser = !data.uid || data.uid === identity.uid;
+      const isSameBinding = !data.bindingKey || data.bindingKey === identity.bindingKey;
+      const isSameEnv = !data.environment || data.environment === config.environment;
+      if (expTime > now && isAllowedState && isSameUser && isSameBinding && isSameEnv) {
         return { draftId, data, ref: snap.ref };
       }
     }
@@ -316,22 +385,43 @@ async function handleAlexaDialog({ envelope, identity, config, db }) {
 
   // 3. Fallback intent (tratamento de fala não compreendida com limite de 3 tentativas)
   if (intentName === 'AMAZON.FallbackIntent') {
-    const { data: draftData, ref: draftRef } = await getOrCreateDraft(db, currentDraftId, identity, config);
-    const fallbacks = (draftData.fallbackCount || 0) + 1;
-    if (fallbacks >= 3) {
-      await draftRef.update({ state: 'expired' }).catch(() => {});
+    let prevFallbacks = sessionAttrs.fallbackCount || 0;
+    if (currentDraftId) {
+      const snap = await db.collection(COLLECTIONS.DRAFTS).doc(currentDraftId).get().catch(() => null);
+      if (snap && snap.exists) {
+        const dData = snap.data() || {};
+        if (dData.fallbackCount !== undefined) {
+          prevFallbacks = Math.max(prevFallbacks, dData.fallbackCount);
+        }
+      }
+    }
+    const fallbackCount = prevFallbacks + 1;
+    if (fallbackCount >= 3) {
+      if (currentDraftId) {
+        await db.collection(COLLECTIONS.DRAFTS).doc(currentDraftId).update({
+          state: 'expired',
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        }).catch(() => {});
+      }
       return {
         speech: 'Não consegui entender após três tentativas. Por favor, acesse o aplicativo Luisices para registrar o pedido.',
         shouldEndSession: true,
         sessionAttributes: {},
       };
     }
-    await draftRef.update({ fallbackCount: fallbacks });
+
+    if (currentDraftId) {
+      await db.collection(COLLECTIONS.DRAFTS).doc(currentDraftId).update({
+        fallbackCount,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      }).catch(() => {});
+    }
+
     return {
       speech: 'Não entendi. Por favor, repita a informação do pedido.',
       reprompt: 'Diga os dados do pedido ou diga cancelar.',
       shouldEndSession: false,
-      sessionAttributes: { draftId: currentDraftId },
+      sessionAttributes: { ...sessionAttrs, draftId: currentDraftId, fallbackCount },
     };
   }
 
@@ -362,14 +452,29 @@ async function handleAlexaDialog({ envelope, identity, config, db }) {
     }
   }
 
-  // Slot: quantidade
+  // Slot: quantidade (estritamente inteiro entre 1 e 10.000)
   const quantitySlot = slots.quantity?.value || slots.Quantity?.value;
   if (quantitySlot) {
-    const q = parseInt(quantitySlot, 10);
-    if (!isNaN(q) && q > 0 && q <= 10000) {
-      draft.quantity = q;
-      updated = true;
+    const cleanQty = String(quantitySlot).trim();
+    if (!/^\d+$/.test(cleanQty)) {
+      return {
+        speech: 'A quantidade de itens deve ser um número inteiro. Por exemplo: dez ou quinze.',
+        reprompt: 'Qual é a quantidade inteira de itens?',
+        shouldEndSession: false,
+        sessionAttributes: { draftId, revision: draft.revision, personId: identity.personId },
+      };
     }
+    const q = parseInt(cleanQty, 10);
+    if (q <= 0 || q > 10000) {
+      return {
+        speech: 'A quantidade deve ser entre 1 e dez mil itens.',
+        reprompt: 'Qual é a quantidade de itens?',
+        shouldEndSession: false,
+        sessionAttributes: { draftId, revision: draft.revision, personId: identity.personId },
+      };
+    }
+    draft.quantity = q;
+    updated = true;
   }
 
   // Slot: data de entrega
@@ -384,7 +489,7 @@ async function handleAlexaDialog({ envelope, identity, config, db }) {
         speech: dateRes.error,
         reprompt: 'Qual é a data de entrega desejada?',
         shouldEndSession: false,
-        sessionAttributes: { draftId },
+        sessionAttributes: { draftId, revision: draft.revision, personId: identity.personId },
       };
     }
   }
@@ -401,7 +506,7 @@ async function handleAlexaDialog({ envelope, identity, config, db }) {
         speech: priceRes.error,
         reprompt: 'Qual é o valor total do pedido?',
         shouldEndSession: false,
-        sessionAttributes: { draftId },
+        sessionAttributes: { draftId, revision: draft.revision, personId: identity.personId },
       };
     }
   }
@@ -413,16 +518,44 @@ async function handleAlexaDialog({ envelope, identity, config, db }) {
         speech: 'Ainda faltam informações para concluir o pedido. O que deseja cadastrar?',
         reprompt: 'Diga os dados do pedido.',
         shouldEndSession: false,
-        sessionAttributes: { draftId },
+        sessionAttributes: { draftId, revision: draft.revision, personId: identity.personId },
       };
     }
 
-    // Validação estrita de personId na confirmação
-    if (draft.personId && identity.personId && draft.personId !== identity.personId) {
+    // Biometria vocal obrigatória no momento da confirmação final.
+    // NÃO usa identity.personId como fallback: se a fala atual não carrega personId
+    // (outra pessoa tomou a conversa, sessão de outro contexto), o pedido é rejeitado.
+    // identity.personId pode vir de sessionAttrs de turno anterior — não é suficiente
+    // para autorizar a confirmação definitiva (achado 2 do audit).
+    const physicalPersonId =
+      envelope?.context?.System?.person?.personId ||
+      envelope?.session?.System?.person?.personId ||
+      null;
+
+    if (!physicalPersonId) {
+      return {
+        speech: 'Não reconheci sua voz na confirmação do pedido. Por segurança, o pedido não foi confirmado.',
+        shouldEndSession: true,
+        sessionAttributes: {},
+      };
+    }
+
+    // Validação estrita de correspondência com o autor do rascunho
+    if (draft.personId && draft.personId !== physicalPersonId) {
       return {
         speech: 'A pessoa que está confirmando não é a mesma que iniciou o pedido. Criação cancelada por segurança.',
         shouldEndSession: true,
         sessionAttributes: {},
+      };
+    }
+
+    // Validação de consistência da revisão entre sessão e rascunho
+    if (sessionAttrs.revision !== undefined && sessionAttrs.revision !== draft.revision) {
+      return {
+        speech: 'Houve uma divergência nas informações do pedido. Por favor, revise os dados.',
+        reprompt: 'Deseja revisar os dados do pedido?',
+        shouldEndSession: false,
+        sessionAttributes: { draftId, revision: draft.revision, personId: identity.personId },
       };
     }
 
@@ -433,7 +566,7 @@ async function handleAlexaDialog({ envelope, identity, config, db }) {
       try {
         const commitRes = await commitOrderFromDraft({
           draftId,
-          callerPersonId: identity.personId,
+          callerPersonId: physicalPersonId,
           expectedRevision: draft.revision,
           config,
           db,
@@ -482,7 +615,7 @@ async function handleAlexaDialog({ envelope, identity, config, db }) {
         speech: 'Qual dado você deseja corrigir? Diga o cliente, produto, quantidade, entrega ou valor.',
         reprompt: 'O que deseja alterar?',
         shouldEndSession: false,
-        sessionAttributes: { draftId },
+        sessionAttributes: { draftId, revision: draft.revision, personId: identity.personId },
       };
     }
     return {
@@ -513,7 +646,7 @@ async function handleAlexaDialog({ envelope, identity, config, db }) {
       speech: 'Qual é o produto e o cliente do pedido?',
       reprompt: 'Diga o produto e o nome do cliente.',
       shouldEndSession: false,
-      sessionAttributes: { draftId },
+      sessionAttributes: { draftId, revision: draft.revision, personId: identity.personId },
     };
   }
 
@@ -523,7 +656,7 @@ async function handleAlexaDialog({ envelope, identity, config, db }) {
       speech: 'Qual é o produto do pedido?',
       reprompt: 'Diga o produto.',
       shouldEndSession: false,
-      sessionAttributes: { draftId },
+      sessionAttributes: { draftId, revision: draft.revision, personId: identity.personId },
     };
   }
 
@@ -533,7 +666,7 @@ async function handleAlexaDialog({ envelope, identity, config, db }) {
       speech: 'Para qual cliente é o pedido?',
       reprompt: 'Diga o nome do cliente.',
       shouldEndSession: false,
-      sessionAttributes: { draftId },
+      sessionAttributes: { draftId, revision: draft.revision, personId: identity.personId },
     };
   }
 
@@ -543,7 +676,7 @@ async function handleAlexaDialog({ envelope, identity, config, db }) {
       speech: 'Qual é a quantidade de itens?',
       reprompt: 'Informe a quantidade inteira.',
       shouldEndSession: false,
-      sessionAttributes: { draftId },
+      sessionAttributes: { draftId, revision: draft.revision, personId: identity.personId },
     };
   }
 
@@ -553,7 +686,7 @@ async function handleAlexaDialog({ envelope, identity, config, db }) {
       speech: 'Qual é a data de entrega?',
       reprompt: 'Informe dia e mês da entrega.',
       shouldEndSession: false,
-      sessionAttributes: { draftId },
+      sessionAttributes: { draftId, revision: draft.revision, personId: identity.personId },
     };
   }
 
@@ -563,7 +696,7 @@ async function handleAlexaDialog({ envelope, identity, config, db }) {
       speech: 'Qual é o valor total do pedido?',
       reprompt: 'Diga o valor total em reais.',
       shouldEndSession: false,
-      sessionAttributes: { draftId },
+      sessionAttributes: { draftId, revision: draft.revision, personId: identity.personId },
     };
   }
 
@@ -576,7 +709,7 @@ async function handleAlexaDialog({ envelope, identity, config, db }) {
     speech: confirmSpeech,
     reprompt: 'Você confirma o pedido? Diga sim para confirmar ou não para alterar.',
     shouldEndSession: false,
-    sessionAttributes: { draftId, revision: draft.revision },
+    sessionAttributes: { draftId, revision: draft.revision, personId: identity.personId },
   };
 }
 

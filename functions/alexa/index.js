@@ -11,6 +11,7 @@ const { authorizeAlexaPerson } = require('./authorization');
 const { checkBindingRequestRateLimit } = require('./rateLimit');
 const { handleVoicePairingRequest } = require('./pairing');
 const { handleAlexaDialog } = require('./dialog');
+const { COLLECTIONS, computeRequestKey } = require('./repository');
 const {
   approveAlexaPairingHandler,
   setAlexaPermissionHandler,
@@ -56,6 +57,30 @@ function buildAlexaResponse({ speech, reprompt, shouldEndSession = true, session
 async function processAlexaEnvelope(envelope, { db, config }) {
   const reqType = envelope?.request?.type;
   const intentName = envelope?.request?.intent?.name;
+  const requestId = envelope?.request?.requestId;
+  const appId =
+    envelope?.session?.application?.applicationId ||
+    envelope?.context?.System?.application?.applicationId ||
+    config?.allowedSkillId ||
+    '';
+
+  // 0. Deduplicação e proteção contra replays HTTP (alexaRequests/{requestKey})
+  let reqRef = null;
+  if (requestId && db) {
+    const requestKey = computeRequestKey(appId, requestId);
+    reqRef = db.collection(COLLECTIONS.REQUESTS).doc(requestKey);
+    const existingSnap = await reqRef.get().catch(() => null);
+    if (existingSnap && existingSnap.exists) {
+      const data = existingSnap.data() || {};
+      if (data.response) {
+        return data.response;
+      }
+      return buildAlexaResponse({
+        speech: 'Esta solicitação já está em processamento.',
+        shouldEndSession: true,
+      });
+    }
+  }
 
   // 1. Tratamento de SessionEndedRequest
   if (reqType === 'SessionEndedRequest') {
@@ -65,10 +90,22 @@ async function processAlexaEnvelope(envelope, { db, config }) {
   // 2. Fluxo de Pareamento Supervisionado (LinkVoiceIntent)
   if (intentName === 'LinkVoiceIntent') {
     const pairingRes = await handleVoicePairingRequest(envelope, config, db);
-    return buildAlexaResponse({
+    const resp = buildAlexaResponse({
       speech: pairingRes.speech,
       shouldEndSession: pairingRes.shouldEndSession,
     });
+    if (reqRef) {
+      reqRef.set({
+        requestKey: computeRequestKey(appId, requestId),
+        requestId,
+        appId,
+        environment: config?.environment || 'dev',
+        response: resp,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        expiresAt: new Date(Date.now() + 150000),
+      }).catch(() => {});
+    }
+    return resp;
   }
 
   // 3. Autorização estrita de voz para pedidos (LaunchRequest, CreateOrderIntent, etc.)
@@ -76,21 +113,37 @@ async function processAlexaEnvelope(envelope, { db, config }) {
   if (!authRes.authorized) {
     // Se for LaunchRequest e o motivo for falta de vínculo ou reconhecimento inicial,
     // mantém a sessão aberta para que a pessoa possa dizer "vincular minha voz".
+    let speech = authRes.speech;
+    let shouldEnd = true;
+    let reprompt = undefined;
+
     if (reqType === 'LaunchRequest' && (authRes.code === 'VOICE_NOT_ALLOWED' || authRes.code === 'VOICE_NOT_RECOGNIZED')) {
-      const speech = authRes.code === 'VOICE_NOT_ALLOWED'
+      speech = authRes.code === 'VOICE_NOT_ALLOWED'
         ? 'Olá! Sua voz foi reconhecida, mas ainda não está vinculada ao Luisices. Diga: gerar código, para receber seu código de vinculação.'
         : 'Olá! Bem-vindo ao Luisices de teste. Diga: gerar código, para receber seu código de vinculação.';
-      return buildAlexaResponse({
-        speech,
-        reprompt: 'Diga: gerar código.',
-        shouldEndSession: false,
-      });
+      reprompt = 'Diga: gerar código.';
+      shouldEnd = false;
     }
 
-    return buildAlexaResponse({
-      speech: authRes.speech,
-      shouldEndSession: true,
+    const resp = buildAlexaResponse({
+      speech,
+      reprompt,
+      shouldEndSession: shouldEnd,
     });
+
+    if (reqRef) {
+      reqRef.set({
+        requestKey: computeRequestKey(appId, requestId),
+        requestId,
+        appId,
+        environment: config?.environment || 'dev',
+        response: resp,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        expiresAt: new Date(Date.now() + 150000),
+      }).catch(() => {});
+    }
+
+    return resp;
   }
 
   const identity = authRes.identity;
@@ -119,12 +172,28 @@ async function processAlexaEnvelope(envelope, { db, config }) {
     personId: identity.personId,
   };
 
-  return buildAlexaResponse({
+  const finalResponse = buildAlexaResponse({
     speech: dialogRes.speech,
     reprompt: dialogRes.reprompt,
     shouldEndSession: dialogRes.shouldEndSession,
     sessionAttributes,
   });
+
+  if (reqRef) {
+    reqRef.set({
+      requestKey: computeRequestKey(appId, requestId),
+      requestId,
+      appId,
+      environment: config?.environment || 'dev',
+      response: finalResponse,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      expiresAt: new Date(Date.now() + 150000),
+    }).catch((err) => {
+      console.warn('[AlexaDeduplication] Erro ao salvar cache de requisição:', err.message);
+    });
+  }
+
+  return finalResponse;
 }
 
 /**
@@ -138,18 +207,23 @@ const alexaWebhook = onRequest(
     secrets: [ALEXA_IDENTITY_HMAC_KEY],
   },
   async (req, res) => {
-    const db = admin.firestore();
-    const config = await getAlexaConfig(db);
-
-    // 1. Verificação Criptográfica da Amazon sobre o rawBody
-    const verification = await verifyAlexaHttpRequest(req, config);
+    // 1. Verificação criptográfica da Amazon ANTES de qualquer acesso ao Firestore.
+    // Tráfego inválido (GET, corpo ausente, assinatura errada, timestamp vencido) é
+    // rejeitado aqui sem gerar nenhuma leitura paga de configuração dinâmica.
+    // Usa apenas env vars (sem db) para obter maxRequestBodySize e allowedSkillId estático.
+    const staticConfig = await getAlexaConfig();
+    const verification = await verifyAlexaHttpRequest(req, staticConfig);
     if (!verification.valid) {
       console.warn('[alexaWebhook] Falha de verificação HTTP:', verification.error);
       return res.status(verification.statusCode || 400).json({ error: verification.error });
     }
 
+    // 2. Somente após verificação aprovada, inicializar Firestore e carregar config dinâmica.
+    const db = admin.firestore();
+    const config = await getAlexaConfig(db);
+
     try {
-      // 2. Processar envelope verificado
+      // 3. Processar envelope verificado
       const alexaResponse = await processAlexaEnvelope(verification.envelope, { db, config });
       return res.status(200).json(alexaResponse);
     } catch (err) {

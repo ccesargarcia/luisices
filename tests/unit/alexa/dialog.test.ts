@@ -207,12 +207,19 @@ describe('Alexa: Máquina de Estados, Diálogo e Validação de Slots pt-BR', ()
         personId: 'amzn1.ask.person.OTHER_PERSON', // Outra pessoa confirmando!
       };
 
+      // Simula o impostor com personId físico presente na request atual
+      // (Achado 2: physicalPersonId só aceito do envelope, não do identity)
       const envelope = {
         request: {
           type: 'IntentRequest',
           intent: { name: 'AMAZON.YesIntent' },
         },
         session: { attributes: { draftId } },
+        context: {
+          System: {
+            person: { personId: 'amzn1.ask.person.OTHER_PERSON' }, // personId físico diferente
+          },
+        },
       };
 
       const res = await handleAlexaDialog({
