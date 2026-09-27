@@ -253,7 +253,37 @@ function parseAndValidatePrice(priceValue) {
   }
 
   // 4. Se for número por extenso em português (ex: "cem reais", "duzentos e cinquenta")
+  // ANTES de tentar o parser de palavras, rejeitar entradas que parecem números malformados:
+  // - dígitos com separadores inválidos ou ambíguos (100,001 / 1,500.00 / 1.23.45)
+  // - múltiplos números isolados sem palavras (10 20 → seria 30 por soma de fragmentos)
+  // Isso evita que o parser de palavras reinterprete fragmentos numéricos como soma.
   const cleanWords = cleanNumStr.replace(/\b(reais|real)\b/g, '').trim();
+
+  // Rejeita se a entrada (sem "reais"/"real") contém dígitos e parece número mal-formado.
+  // Detecta: múltiplos separadores, separador decimal com mais de 2 dígitos após, etc.
+  const hasDigit = /\d/.test(cleanWords);
+  if (hasDigit) {
+    // Dígitos isolados múltiplos (ex: "10 20") — sem palavras PT entre eles
+    if (/^\d+(\s+\d+)+$/.test(cleanWords)) {
+      return { valid: false, error: 'Valor ambíguo. Por favor, diga um único valor total em reais.' };
+    }
+    // Formato numérico com separadores inválidos (mais de 2 decimais, separador duplo, etc.)
+    if (/\d[.,]\d{3,}/.test(cleanWords) || /\d\.\d+\.\d/.test(cleanWords) || /,\d+[.,]/.test(cleanWords)) {
+      return { valid: false, error: 'Formato de valor não reconhecido. Por favor, diga o valor em reais, por exemplo: cem reais.' };
+    }
+    // Dígitos misturados com texto não-português — não é extenso, não é número válido
+    const wordNum = parsePortugueseWordsToNumber(cleanWords);
+    if (wordNum !== null && wordNum >= 0) {
+      if (wordNum > 10000) {
+        return { valid: false, error: 'O valor do pedido excede o limite máximo permitido de dez mil reais.' };
+      }
+      return { valid: true, price: Math.round(wordNum * 100) / 100 };
+    }
+    // Tinha dígitos mas não parseou — formato inválido
+    return { valid: false, error: 'Formato de valor não reconhecido. Por favor, diga o valor em reais, por exemplo: cem reais.' };
+  }
+
+  // Sem dígitos — tentar inteiramente como extenso em português
   const wordNum = parsePortugueseWordsToNumber(cleanWords);
   if (wordNum !== null && wordNum >= 0) {
     if (wordNum > 10000) {

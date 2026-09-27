@@ -153,10 +153,11 @@ async function commitOrderFromDraft({
       throw new Error('USER_INACTIVE: Usuário inativo no momento do commit.');
     }
     const profile = profileSnap.data() || {};
+    // Achado 4: exige admin OU orders.create === true explícito.
+    // Remove exceção permissiva que liberava role:'user' sem permissão explícita.
     const canCreate =
       profile.role === 'admin' ||
-      profile.permissions?.orders?.create === true ||
-      (!profile.permissions && profile.role !== 'funcionario');
+      profile.permissions?.orders?.create === true;
     if (!canCreate) {
       throw new Error('PERMISSION_DENIED: Seu perfil não possui permissão para criar pedidos.');
     }
@@ -171,11 +172,17 @@ async function commitOrderFromDraft({
       throw new Error('VOICE_NOT_ALLOWED: O modo de aprovação foi alterado para confirmação no aplicativo.');
     }
 
+    // Achado 5a: ambiente do rascunho deve corresponder ao config.environment atual
+    if (draft.environment && draft.environment !== config.environment) {
+      throw new Error(`ENVIRONMENT_MISMATCH: Rascunho do ambiente '${draft.environment}' não pode ser confirmado no ambiente '${config.environment}'.`);
+    }
+
     // Revalidação de campos obrigatórios do pedido
     const cleanCustomer = String(draft.customer || '').trim();
     const cleanProduct = String(draft.product || '').trim();
     const cleanQuantity = Number(draft.quantity);
-    const cleanPrice = Number(draft.price);
+    // Achado 5b: price deve ser número real — null/undefined → NaN, não 0
+    const cleanPrice = (draft.price !== null && draft.price !== undefined) ? Number(draft.price) : NaN;
     const cleanDate = String(draft.deliveryDate || '').trim();
 
     if (!cleanCustomer || cleanCustomer.length < 2 || cleanCustomer.length > 100) {
@@ -187,11 +194,21 @@ async function commitOrderFromDraft({
     if (!Number.isInteger(cleanQuantity) || cleanQuantity <= 0 || cleanQuantity > 10000) {
       throw new Error('DRAFT_INVALID_DATA: Quantidade inválida.');
     }
-    if (isNaN(cleanPrice) || cleanPrice < 0 || cleanPrice > 10000) {
-      throw new Error('DRAFT_INVALID_DATA: Preço total inválido.');
+    if (isNaN(cleanPrice) || cleanPrice <= 0 || cleanPrice > 10000) {
+      throw new Error('DRAFT_INVALID_DATA: Preço total inválido ou ausente.');
     }
+    // Achado 5c: validar data no calendário real (rejeita 2027-02-31)
     if (!/^\d{4}-\d{2}-\d{2}$/.test(cleanDate)) {
       throw new Error('DRAFT_INVALID_DATA: Data de entrega inválida.');
+    }
+    const [dy, dm, dd] = cleanDate.split('-').map(Number);
+    const testDate = new Date(Date.UTC(dy, dm - 1, dd));
+    if (
+      testDate.getUTCFullYear() !== dy ||
+      testDate.getUTCMonth() !== dm - 1 ||
+      testDate.getUTCDate() !== dd
+    ) {
+      throw new Error('DRAFT_INVALID_DATA: Data de entrega inválida no calendário (ex: 31 de fevereiro).');
     }
 
     // Revalidação da conta Firebase Auth

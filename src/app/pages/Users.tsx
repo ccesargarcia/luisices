@@ -223,6 +223,7 @@ function UserFormDialog({ open, editingUser, currentUserUid, onClose, onSaved }:
   const [alexaEnabled, setAlexaEnabled] = useState(false);
   const [alexaMode, setAlexaMode] = useState<AlexaConfirmationMode>('voice_confirm');
   const [alexaDirty, setAlexaDirty] = useState(false);
+  const [alexaLoading, setAlexaLoading] = useState(false);
 
   useEffect(() => {
     if (editingUser) {
@@ -232,10 +233,14 @@ function UserFormDialog({ open, editingUser, currentUserUid, onClose, onSaved }:
       setPermissions(deepClonePermission(editingUser.permissions));
       setPassword('');
       setAlexaDirty(false);
-      // Consultar status de permissão Alexa para o usuário editado
+      // Consultar status de permissão Alexa para o usuário editado.
+      // Achado 6: usa flag cancelled para descartar resposta obsoleta quando o usuário
+      // editado muda antes da resposta chegar (race condition de carregamento).
+      let cancelled = false;
       const targetUid = editingUser.uid;
-      // Protege contra resposta obsoleta: verifica se ainda estamos editando o mesmo usuário
+      setAlexaLoading(true);
       firebaseAlexaService.getStatus(targetUid).then((st) => {
+        if (cancelled) return; // Descarta resposta de consulta anterior
         // Quando admin edita outro usuário, o backend retorna targetPermission.
         // st.userPermission pertence ao admin conectado — não usar para o alvo.
         const perm = st.targetPermission ?? st.userPermission;
@@ -246,7 +251,15 @@ function UserFormDialog({ open, editingUser, currentUserUid, onClose, onSaved }:
           setAlexaEnabled(false);
           setAlexaMode('voice_confirm');
         }
-      }).catch(() => {});
+      }).catch(() => {
+        if (!cancelled) {
+          setAlexaEnabled(false);
+          setAlexaMode('voice_confirm');
+        }
+      }).finally(() => {
+        if (!cancelled) setAlexaLoading(false);
+      });
+      return () => { cancelled = true; setAlexaLoading(false); };
     } else {
       setDisplayName('');
       setEmail('');
@@ -256,6 +269,7 @@ function UserFormDialog({ open, editingUser, currentUserUid, onClose, onSaved }:
       setAlexaEnabled(false);
       setAlexaMode('voice_confirm');
       setAlexaDirty(false);
+      setAlexaLoading(false);
     }
   }, [editingUser, open]);
 
@@ -288,8 +302,11 @@ function UserFormDialog({ open, editingUser, currentUserUid, onClose, onSaved }:
           role,
           permissions,
         });
-        if (alexaDirty) {
+        if (alexaDirty && !alexaLoading) {
           await firebaseAlexaService.setPermission(editingUser!.uid, alexaEnabled, alexaMode);
+        } else if (alexaDirty && alexaLoading) {
+          toast.error('Aguarde o carregamento das configurações Alexa antes de salvar.');
+          return;
         }
         toast.success('Usuário atualizado com sucesso. As alterações já estão ativas em tempo real.');
       } else {

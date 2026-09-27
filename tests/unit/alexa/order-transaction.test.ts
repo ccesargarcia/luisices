@@ -111,7 +111,12 @@ describe('Alexa: Transação Atômica de Pedido e Idempotência Durável', () =>
         [bindingKey]: { uid, active: true, revokedAt: null },
       },
       userProfiles: {
-        [uid]: { active: true, displayName: 'Amanda Garcia', email: 'amanda@luisices.com.br' },
+        [uid]: {
+          active: true,
+          displayName: 'Amanda Garcia',
+          email: 'amanda@luisices.com.br',
+          permissions: { orders: { create: true } }, // Achado 4: exige permissão explícita
+        },
       },
       alexaPermissions: {
         [uid]: { enabled: true, mode: 'voice_confirm' },

@@ -208,22 +208,35 @@ const alexaWebhook = onRequest(
   },
   async (req, res) => {
     // 1. Verificação criptográfica da Amazon ANTES de qualquer acesso ao Firestore.
-    // Tráfego inválido (GET, corpo ausente, assinatura errada, timestamp vencido) é
-    // rejeitado aqui sem gerar nenhuma leitura paga de configuração dinâmica.
-    // Usa apenas env vars (sem db) para obter maxRequestBodySize e allowedSkillId estático.
+    // Inclui: método POST, limite de corpo, timestamp e assinatura criptográfica.
+    // NÃO inclui verificação de Skill ID neste momento — o allowedSkillId pode ter
+    // um override no Firestore diferente do valor estático do env var (achado 7).
+    // Usa config estática (sem db) apenas para maxRequestBodySize.
     const staticConfig = await getAlexaConfig();
-    const verification = await verifyAlexaHttpRequest(req, staticConfig);
+    const verification = await verifyAlexaHttpRequest(req, { ...staticConfig, allowedSkillId: '' });
     if (!verification.valid) {
       console.warn('[alexaWebhook] Falha de verificação HTTP:', verification.error);
       return res.status(verification.statusCode || 400).json({ error: verification.error });
     }
 
-    // 2. Somente após verificação aprovada, inicializar Firestore e carregar config dinâmica.
+    // 2. Somente após verificação criptográfica aprovada, carregar config dinâmica do Firestore.
     const db = admin.firestore();
     const config = await getAlexaConfig(db);
 
+    // 3. Verificar Skill ID com a configuração ativa (pode incluir override do Firestore).
+    if (config.allowedSkillId) {
+      const envelope = verification.envelope;
+      const envelopeAppId =
+        envelope?.session?.application?.applicationId ||
+        envelope?.context?.System?.application?.applicationId;
+      if (envelopeAppId && envelopeAppId !== config.allowedSkillId) {
+        console.warn('[alexaWebhook] Skill ID não autorizado:', envelopeAppId);
+        return res.status(403).json({ error: `Skill ID não autorizada para este ambiente (${config.environment}).` });
+      }
+    }
+
     try {
-      // 3. Processar envelope verificado
+      // 4. Processar envelope verificado
       const alexaResponse = await processAlexaEnvelope(verification.envelope, { db, config });
       return res.status(200).json(alexaResponse);
     } catch (err) {
