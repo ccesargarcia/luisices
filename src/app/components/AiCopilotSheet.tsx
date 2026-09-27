@@ -430,11 +430,14 @@ export function AiCopilotSheet({
   useEffect(() => {
     if (open) {
       setTimeout(scrollToBottom, 150);
-      if (isAdmin) {
-        fetchQuota();
-      }
     }
-  }, [open, messages, loading, isAdmin]);
+  }, [open, messages, loading]);
+
+  useEffect(() => {
+    if (open && isAdmin) {
+      fetchQuota();
+    }
+  }, [open, isAdmin]);
 
   const handleImagePick = async (file: File) => {
     const validMimes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
