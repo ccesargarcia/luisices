@@ -84,6 +84,7 @@ interface PricingCalculatorTabProps {
   canDelete?: boolean;
   onRefresh?: () => void;
   onProductSynced?: () => void;
+  openAddRecipeTrigger?: number;
 }
 
 export function PricingCalculatorTab({
@@ -97,6 +98,7 @@ export function PricingCalculatorTab({
   canDelete = true,
   onRefresh,
   onProductSynced,
+  openAddRecipeTrigger,
 }: PricingCalculatorTabProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [activeSubView, setActiveSubView] = useState<'recipes' | 'kits' | 'tracking'>('recipes');
@@ -258,6 +260,12 @@ export function PricingCalculatorTab({
 
     setEditorOpen(true);
   };
+
+  useEffect(() => {
+    if (openAddRecipeTrigger && openAddRecipeTrigger > 0) {
+      openNewRecipeDialog();
+    }
+  }, [openAddRecipeTrigger]);
 
   const openEditRecipeDialog = (recipe: ProductPricingRecipe) => {
     setEditingRecipeId(recipe.id);
@@ -560,7 +568,10 @@ export function PricingCalculatorTab({
 
         {canCreate && activeSubView === 'recipes' && (
           <div className="flex items-center gap-2 w-full sm:w-auto">
-            <Button onClick={() => openNewRecipeDialog()} className="gap-2 w-full sm:w-auto">
+            <Button
+              onClick={() => openNewRecipeDialog()}
+              className="gap-2 w-full sm:w-auto rounded-xl font-semibold min-h-[40px] px-4 shadow-md hover:bg-primary/90 active:scale-95 transition-all"
+            >
               <Plus className="size-4" />
               Nova Ficha Técnica
             </Button>
@@ -1004,28 +1015,51 @@ export function PricingCalculatorTab({
                     type="button"
                     variant="outline"
                     size="sm"
-                    className="text-xs h-7 gap-1"
+                    className="text-xs h-9 px-3 rounded-xl gap-1.5 font-medium border-border/80 hover:bg-muted active:scale-95 transition-all"
                     onClick={() => setAddSupplyModalOpen(true)}
                   >
-                    <Plus className="size-3" />
+                    <Plus className="size-3.5 text-primary" />
                     Do Catálogo
                   </Button>
                   <Button
                     type="button"
-                    variant="ghost"
+                    variant="outline"
                     size="sm"
-                    className="text-xs h-7 gap-1 text-muted-foreground"
+                    className="text-xs h-9 px-3 rounded-xl gap-1.5 font-medium text-muted-foreground hover:text-foreground border-border/80 hover:bg-muted active:scale-95 transition-all"
                     onClick={() => setAddCustomModalOpen(true)}
                   >
-                    <Plus className="size-3" />
+                    <Plus className="size-3.5" />
                     Item Avulso
                   </Button>
                 </div>
               </div>
 
               {items.length === 0 ? (
-                <div className="p-6 border border-dashed rounded-lg text-center text-xs text-muted-foreground">
-                  Nenhum insumo adicionado nesta ficha ainda. Clique em "Do Catálogo" para escolher papéis, fitas e colas.
+                <div className="p-6 border border-dashed rounded-xl text-center space-y-3 bg-muted/20">
+                  <p className="text-xs text-muted-foreground">
+                    Nenhum insumo adicionado nesta ficha ainda. Escolha insumos do catálogo ou adicione um item avulso.
+                  </p>
+                  <div className="flex flex-wrap items-center justify-center gap-2">
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={() => setAddSupplyModalOpen(true)}
+                      className="text-xs h-9 px-3.5 rounded-xl gap-1.5 font-semibold bg-primary text-primary-foreground shadow-sm hover:bg-primary/90 active:scale-95 transition-all"
+                    >
+                      <Plus className="size-3.5" />
+                      Adicionar Insumo do Catálogo
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setAddCustomModalOpen(true)}
+                      className="text-xs h-9 px-3.5 rounded-xl gap-1.5 font-semibold active:scale-95 transition-all"
+                    >
+                      <Plus className="size-3.5" />
+                      Adicionar Item Avulso
+                    </Button>
+                  </div>
                 </div>
               ) : (
                 <div className="border rounded-lg overflow-hidden divide-y text-xs">

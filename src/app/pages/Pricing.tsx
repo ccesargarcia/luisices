@@ -31,6 +31,7 @@ import {
   ShieldAlert,
   Loader2,
   AlertTriangle,
+  Plus,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -54,6 +55,10 @@ export function Pricing() {
   const [loadingRecipes, setLoadingRecipes] = useState(true);
   const [loadingSupplies, setLoadingSupplies] = useState(true);
   const [loadingHistory, setLoadingHistory] = useState(true);
+
+  const [openAddSupplyTrigger, setOpenAddSupplyTrigger] = useState<number>(0);
+  const [openAddPurchaseTrigger, setOpenAddPurchaseTrigger] = useState<number>(0);
+  const [openAddRecipeTrigger, setOpenAddRecipeTrigger] = useState<number>(0);
 
   useEffect(() => {
     if (!canView) return;
@@ -156,7 +161,7 @@ export function Pricing() {
           </p>
         </div>
 
-        <div className="flex items-center gap-2 w-full sm:w-auto">
+        <div className="flex items-center gap-2 w-full sm:w-auto flex-wrap">
           <Button
             type="button"
             variant="outline"
@@ -169,6 +174,39 @@ export function Pricing() {
               <span className="hidden sm:inline">Exportar Planilha </span>Excel (.xlsx)
             </span>
           </Button>
+
+          {canCreate && activeTab === 'supplies' && (
+            <Button
+              type="button"
+              onClick={() => setOpenAddSupplyTrigger(Date.now())}
+              className="gap-2 bg-primary text-primary-foreground rounded-xl shadow-md hover:bg-primary/90 active:scale-95 transition-all text-xs h-9 font-semibold px-4 w-full sm:w-auto justify-center"
+            >
+              <Plus className="size-4" />
+              Novo Insumo
+            </Button>
+          )}
+
+          {canCreate && activeTab === 'history' && (
+            <Button
+              type="button"
+              onClick={() => setOpenAddPurchaseTrigger(Date.now())}
+              className="gap-2 bg-primary text-primary-foreground rounded-xl shadow-md hover:bg-primary/90 active:scale-95 transition-all text-xs h-9 font-semibold px-4 w-full sm:w-auto justify-center"
+            >
+              <Plus className="size-4" />
+              Lançar Compra
+            </Button>
+          )}
+
+          {canCreate && activeTab === 'recipes' && (
+            <Button
+              type="button"
+              onClick={() => setOpenAddRecipeTrigger(Date.now())}
+              className="gap-2 bg-primary text-primary-foreground rounded-xl shadow-md hover:bg-primary/90 active:scale-95 transition-all text-xs h-9 font-semibold px-4 w-full sm:w-auto justify-center"
+            >
+              <Plus className="size-4" />
+              Nova Ficha Técnica
+            </Button>
+          )}
         </div>
       </div>
 
@@ -262,6 +300,7 @@ export function Pricing() {
             canCreate={canCreate}
             canEdit={canEdit}
             canDelete={canDelete}
+            openAddSupplyTrigger={openAddSupplyTrigger}
           />
         </TabsContent>
 
@@ -273,6 +312,7 @@ export function Pricing() {
             loading={loadingHistory}
             canCreate={canCreate}
             canDelete={canDelete}
+            openAddPurchaseTrigger={openAddPurchaseTrigger}
           />
         </TabsContent>
 
@@ -288,6 +328,7 @@ export function Pricing() {
             canEdit={canEdit}
             canDelete={canDelete}
             onProductSynced={refreshProducts}
+            openAddRecipeTrigger={openAddRecipeTrigger}
           />
         </TabsContent>
 

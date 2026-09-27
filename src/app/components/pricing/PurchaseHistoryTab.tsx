@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { PurchaseHistoryItem, SupplyItem, SupplyCategory, SupplyUnit } from '../../types';
 import { firebasePricingService } from '../../../services/firebasePricingService';
 import { formatCurrency } from '../../utils/currency';
@@ -61,6 +61,7 @@ interface PurchaseHistoryTabProps {
   canCreate?: boolean;
   canDelete?: boolean;
   onRefresh?: () => void;
+  openAddPurchaseTrigger?: number;
 }
 
 const CATEGORY_LABELS: Record<SupplyCategory, string> = {
@@ -98,6 +99,7 @@ export function PurchaseHistoryTab({
   canCreate = true,
   canDelete = true,
   onRefresh,
+  openAddPurchaseTrigger,
 }: PurchaseHistoryTabProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
@@ -154,6 +156,12 @@ export function PurchaseHistoryTab({
     setNotes('');
     setDialogOpen(true);
   };
+
+  useEffect(() => {
+    if (openAddPurchaseTrigger && openAddPurchaseTrigger > 0) {
+      openAddDialog();
+    }
+  }, [openAddPurchaseTrigger]);
 
   // Ao selecionar um insumo existente do dropdown, auto-preenche a categoria, nome e fornecedor
   const handleSelectSupply = (id: string) => {
@@ -349,7 +357,10 @@ export function PurchaseHistoryTab({
             </div>
 
             {canCreate && (
-              <Button onClick={openAddDialog} className="gap-2 font-bold shadow-md w-full sm:w-auto justify-center">
+              <Button
+                onClick={openAddDialog}
+                className="gap-2 font-semibold min-h-[40px] px-4 rounded-xl shadow-md hover:bg-primary/90 active:scale-95 transition-all w-full sm:w-auto justify-center"
+              >
                 <Plus className="size-4" />
                 Lançar Nova Compra
               </Button>
