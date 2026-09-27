@@ -43,7 +43,21 @@ const ERROR_SPEECH = {
  */
 function extractAlexaIdentifiers(envelope) {
   const system = envelope?.context?.System || envelope?.session?.System || {};
-  const personId = system?.person?.personId || null;
+  const sessionAttrs = envelope?.session?.attributes || {};
+
+  // Prioriza a biometria da fala atual.
+  // Se a Alexa omitir personId no meio de uma sessão já iniciada (respostas curtas como números),
+  // recupera o personId previamente validado no início desta mesma sessão.
+  let personId = system?.person?.personId || null;
+  if (!personId && sessionAttrs.personId) {
+    personId = sessionAttrs.personId;
+  }
+
+  // Se uma biometria diferente foi detectada no meio da sessão, invalida para proteção contra hijacking
+  if (system?.person?.personId && sessionAttrs.personId && system.person.personId !== sessionAttrs.personId) {
+    personId = null;
+  }
+
   const amazonUserId = system?.user?.userId || null;
   const deviceId = system?.device?.deviceId || null;
   const appId =

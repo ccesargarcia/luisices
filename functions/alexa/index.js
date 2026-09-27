@@ -114,11 +114,16 @@ async function processAlexaEnvelope(envelope, { db, config }) {
     db,
   });
 
+  const sessionAttributes = {
+    ...(dialogRes.sessionAttributes || {}),
+    personId: identity.personId,
+  };
+
   return buildAlexaResponse({
     speech: dialogRes.speech,
     reprompt: dialogRes.reprompt,
     shouldEndSession: dialogRes.shouldEndSession,
-    sessionAttributes: dialogRes.sessionAttributes,
+    sessionAttributes,
   });
 }
 

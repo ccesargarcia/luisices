@@ -106,27 +106,90 @@ function parseAndValidateDeliveryDate(dateSlotValue, timezone = 'America/Sao_Pau
   return { valid: true, date: raw };
 }
 
+const PORTUGUESE_NUMBER_WORDS = {
+  zero: 0, um: 1, uma: 1, dois: 2, duas: 2, tres: 3, três: 3, quatro: 4, cinco: 5,
+  seis: 6, sete: 7, oito: 8, nove: 9, dez: 10, onze: 11, doze: 12, treze: 13,
+  quatorze: 14, catorze: 14, quinze: 15, dezesseis: 16, dezessete: 17, dezoito: 18,
+  dezenove: 19, vinte: 20, trinta: 30, quarenta: 40, cinquenta: 50, sessenta: 60,
+  setenta: 70, oitenta: 80, noventa: 90, cem: 100, cento: 100, duzentos: 200,
+  duzentas: 200, trezentos: 300, trezentas: 300, quatrocentos: 400, quatrocentas: 400,
+  quinhentos: 500, quinhentas: 500, seiscentos: 600, seiscentas: 600, setecentos: 700,
+  setecentas: 700, oitocentos: 800, oitocentas: 800, novecentos: 900, novecentas: 900, mil: 1000,
+};
+
+function parsePortugueseWordsToNumber(text) {
+  const tokens = String(text || '').toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^\w\s]/g, ' ')
+    .split(/\s+/).filter(Boolean);
+
+  let total = 0;
+  let current = 0;
+  let matchedAny = false;
+  const normMap = {};
+  for (const [k, v] of Object.entries(PORTUGUESE_NUMBER_WORDS)) {
+    normMap[k.normalize('NFD').replace(/[\u0300-\u036f]/g, '')] = v;
+  }
+
+  for (const token of tokens) {
+    if (token === 'e' || token === 'real' || token === 'reais' || token === 'centavo' || token === 'centavos') continue;
+    if (normMap[token] !== undefined) {
+      matchedAny = true;
+      const val = normMap[token];
+      if (val === 1000) {
+        current = (current === 0 ? 1 : current) * 1000;
+        total += current;
+        current = 0;
+      } else {
+        current += val;
+      }
+    } else if (/^\d+$/.test(token)) {
+      matchedAny = true;
+      current += parseInt(token, 10);
+    }
+  }
+  total += current;
+  return matchedAny ? total : null;
+}
+
 /**
  * Interpreta e valida valor monetário em reais (máximo R$ 10.000,00 ou 1.000.000 centavos).
+ * Suporta dígitos (100, 100,50, R$ 150) e números por extenso (cem reais, cinquenta, duzentos).
  */
 function parseAndValidatePrice(priceValue) {
   if (priceValue === null || priceValue === undefined || priceValue === '') {
     return { valid: false, error: 'Valor não informado.' };
   }
 
-  let cleaned = String(priceValue).replace(/[R$\s]/g, '').replace(',', '.');
-  const num = parseFloat(cleaned);
+  const rawStr = String(priceValue).trim().toLowerCase();
 
-  if (isNaN(num) || num < 0) {
-    return { valid: false, error: 'Valor total inválido.' };
+  if (rawStr.includes('-') || rawStr.includes('menos')) {
+    return { valid: false, error: 'Valor total não pode ser negativo.' };
   }
 
-  // Limite máximo de R$ 10.000,00
-  if (num > 10000) {
-    return { valid: false, error: 'O valor do pedido excede o limite máximo permitido de dez mil reais.' };
+  // 1. Tentar extração de números com separador decimal (ex: "R$ 150,50", "150.50", "100 reais")
+  const regexNum = /(\d+(?:[.,]\d{1,2})?)/;
+  const match = rawStr.match(regexNum);
+  if (match) {
+    const num = parseFloat(match[1].replace(',', '.'));
+    if (!isNaN(num) && num >= 0) {
+      if (num > 10000) {
+        return { valid: false, error: 'O valor do pedido excede o limite máximo permitido de dez mil reais.' };
+      }
+      return { valid: true, price: Math.round(num * 100) / 100 };
+    }
   }
 
-  return { valid: true, price: Math.round(num * 100) / 100 };
+  // 2. Se for número por extenso em português (ex: "cem reais", "duzentos e cinquenta", "cinquenta")
+  const wordNum = parsePortugueseWordsToNumber(rawStr);
+  if (wordNum !== null && wordNum >= 0) {
+    if (wordNum > 10000) {
+      return { valid: false, error: 'O valor do pedido excede o limite máximo permitido de dez mil reais.' };
+    }
+    return { valid: true, price: Math.round(wordNum * 100) / 100 };
+  }
+
+  return { valid: false, error: 'Valor total inválido. Por favor, diga o valor em reais, por exemplo: cem reais.' };
 }
 
 /**

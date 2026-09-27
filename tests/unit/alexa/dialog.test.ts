@@ -102,6 +102,11 @@ describe('Alexa: Máquina de Estados, Diálogo e Validação de Slots pt-BR', ()
 
     it('deve validar valores monetários e aplicar teto de R$ 10.000,00', () => {
       expect(parseAndValidatePrice('100')).toEqual({ valid: true, price: 100 });
+      expect(parseAndValidatePrice('100 reais')).toEqual({ valid: true, price: 100 });
+      expect(parseAndValidatePrice('cem reais')).toEqual({ valid: true, price: 100 });
+      expect(parseAndValidatePrice('cem')).toEqual({ valid: true, price: 100 });
+      expect(parseAndValidatePrice('cinquenta')).toEqual({ valid: true, price: 50 });
+      expect(parseAndValidatePrice('duzentos e cinquenta reais')).toEqual({ valid: true, price: 250 });
       expect(parseAndValidatePrice('100,50')).toEqual({ valid: true, price: 100.5 });
       expect(parseAndValidatePrice('R$ 250,00')).toEqual({ valid: true, price: 250 });
 
