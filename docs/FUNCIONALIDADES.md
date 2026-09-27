@@ -158,29 +158,59 @@ A Lojinha Online é a vitrine comercial digital voltada para o cliente final, pe
 
 ---
 
-## 10. Galeria de Artes
+## 10. Precificação, Gestão de Custos & Insumos (`/precificacao`)
+
+Módulo completo de engenharia financeira e gestão de matérias-primas para garantir margens de lucro saudáveis e proteção contra prejuízos na confecção artesanal.
+
+### 10.1. Estrutura em 4 Abas Especializadas
+1. **Aba 1: Cadastro de Custos (Insumos & Matérias-Primas):**
+   - Cadastro detalhado de papéis, vinis, botons, canecas, caixas/embalagens, fitas, colas, acrílicos e tintas (`pricingSupplies`).
+   - **Cálculo Automático de Custo Unitário:** Fórmula exata incorporando valor do produto e rateio de frete: `(Valor Pago + Frete) ÷ Quantidade do Pacote`.
+   - **Controle de Estoque e Alerta de Reposição:** Exibição clara de saldo atual vs. estoque mínimo com badge visual de reposição (`⚠️ Repor`).
+   - **Design Compacto & Responsivo:** Tabela em 6 colunas agrupadas inteligentes que elimina barras de rolagem horizontais excessivas, além de visualização em grade de cards.
+2. **Aba 2: Calculadora de Precificação Inteligente:**
+   - Composição da ficha técnica da peça selecionando múltiplos insumos cadastrados.
+   - Cálculo de mão de obra por minuto com base no valor da hora de trabalho configurado.
+   - Rateio de custos fixos do ateliê (aluguel, água, energia, internet).
+   - Simulação e aplicação de margem de lucro real.
+   - **Sincronização em 1 Clique com o Catálogo:** Atualização automática do preço sugerido no cadastro do produto (com validação prévia de existência do item).
+3. **Aba 3: Histórico de Compras & Lotes:**
+   - Registro cronológico de notas fiscais e compras de suprimentos (`pricingPurchases`).
+   - Rastreabilidade de fornecedores, links de compra e variações históricas de custo.
+4. **Aba 4: Configurações do Ateliê:**
+   - Definição dos parâmetros globais da oficina (`pricingStudioSettings`): valor da hora do artesão, horas de trabalho mensais, percentual de custos fixos e margem de lucro padrão.
+
+### 10.2. Exportação para Excel (`exportCostsExcel.ts`)
+- Geração instantânea de planilhas formatadas (`.xlsx`) com toda a listagem de insumos, custos unitários, estoques e dados de aquisição para relatórios e backup.
+
+### 10.3. Permissões Granulares (RBAC)
+- Controle refinado em `userProfiles`: permissões independentes para Visualizar, Criar, Editar e Excluir insumos e configurações de precificação, protegidas no frontend e nas regras de segurança do Firestore.
+
+---
+
+## 11. Galeria de Artes
 
 Organização de fotos de trabalhos concluídos vinculados a clientes e pedidos para portfólio e consulta rápida.
 
-## 11. Permutas e Parcerias
+## 12. Permutas e Parcerias
 
 Acompanhamento de parcerias de divulgação sem cobrança monetária convencional, com registro de produtos fornecidos e benefícios/produtos recebidos em troca.
 
-## 12. Relatórios & Inteligência Financeira
+## 13. Relatórios & Inteligência Financeira
 
 - Faturamento por período com comparação temporal automática.
 - Ticket médio real com descarte estrito de pedidos cancelados.
 - Preservação contábil (`salesLedger`) independente de exclusões operacionais de contatos.
 - Exportação dinâmica sob demanda em Excel (`xlsx`) e PDF (`jspdf`).
 
-## 13. Central de E-mails (`/emails`)
+## 14. Central de E-mails (`/emails`)
 
 - Disparo de e-mails transacionais via Resend (exclusivo para administradores).
 - Rate limit de segurança de 50 envios por hora por administrador.
 - Controle visual de cota diária (100/dia) e mensal (3.000/mês).
 - Recebimento de mensagens via Webhook com validação criptográfica Svix e proteção anti-replay.
 
-## 14. Configurações
+## 15. Configurações
 
 - **Informações do Negócio (Ateliê):** dados institucionais, endereço por CEP e WhatsApp oficial de orçamentos e documentos.
 - **Personalização da Lojinha:** WhatsApp exclusivo de vendas para a vitrine pública (`catalogWhatsappPhone`), banners e comunicados.
@@ -188,7 +218,7 @@ Acompanhamento de parcerias de divulgação sem cobrança monetária convenciona
 - **Operação Padrão:** prazos padrão de confecção, método de pagamento pré-selecionado e antecedência de alertas.
 - **Navegação:** reordenação dos módulos do menu lateral.
 
-## 15. Usuários, Permissões e Equipe (RBAC)
+## 16. Usuários, Permissões e Equipe (RBAC)
 
 - **Admin:** controle total da operação, equipe, relatórios consolidados, delegação de pedidos e auditoria geral.
 - **Funcionário:** execução da produção, acompanhamento de pedidos atribuídos e atualização de etapas.
@@ -196,14 +226,14 @@ Acompanhamento de parcerias de divulgação sem cobrança monetária convenciona
 - **Permissões Granulares:** controle individual por módulo (dashboard, pedidos, clientes, produtos, orçamentos, galeria, relatórios, permutas, precificação, lojinha, e-mails, whatsapp e copiloto de IA).
 - **Revogação em Tempo Real:** alterações de permissões ou desativação de contas são refletidas imediatamente na sessão via listeners do Firestore, ocultando rotas, menus e botões no frontend e bloqueando o backend.
 
-## 16. Central de Ajuda (`/ajuda`)
+## 17. Central de Ajuda (`/ajuda`)
 
 - Guia operacional interativo passo a passo.
 - FAQ com soluções para dúvidas comuns.
 - Catálogo de atalhos rápidos de teclado.
 - Atalhos para suporte técnico.
 
-## 17. Central de Atendimento WhatsApp (`/whatsapp`)
+## 18. Central de Atendimento WhatsApp (`/whatsapp`)
 
 - **Chat Bidirecional em Tempo Real:** comunicação direta com o cliente via Evolution API sincronizada com o Firestore (`whatsapp_chats` e `whatsapp_messages`).
 - **Modelos de Resposta Rápida (Quick Replies):** templates prontos para aviso de pedido pronto, entrada em produção, confirmação de orçamento e cobrança amigável.
@@ -211,7 +241,7 @@ Acompanhamento de parcerias de divulgação sem cobrança monetária convenciona
 - **Gestão de Mensagens:** envio direto pelo sistema, link alternativo para abrir conversa no WhatsApp Web e exclusão de mensagens com opção de apagar para todos.
 - **Controle de Acesso:** módulo com controle estrito de permissão (`whatsapp`), ocultando o menu de navegação e bloqueando a rota quando revogado.
 
-## 18. Inteligência Artificial (Copiloto Interno & Visão Computacional)
+## 19. Inteligência Artificial (Copiloto Interno & Visão Computacional)
 
 - **Copiloto Interno Multimodal (`AiCopilotSheet`):** assistente inteligente operacional acessível no cabeçalho alimentado pelos modelos modernos **Gemini 3.6 Flash** e **Gemini 3.8 Flash** (Google AI).
 - **Extração Inteligente de Pedidos:** interpretação de áudios/mensagens de clientes para preenchimento de novo pedido com 1 clique.

@@ -85,15 +85,25 @@ http://localhost:4000
 
 ---
 
-### 🤖 3. Inteligência Artificial (Google Gemini)
+### 🤖 3. Inteligência Artificial (Google Gemini & Módulos functions/ai)
+
+O subsistema de IA está modularizado dentro de `functions/ai/` com separação estrita de responsabilidades:
+- `functions/ai/authorization.js`: isolamento multiusuário estrito, cálculo de escopo de permissões (`aiCopilot`), blindagem de contexto da galeria, pedidos e clientes.
+- `functions/ai/pricing/pricingCalculator.js`: motor de precificação puro em paridade matemática centavo a centavo com o frontend.
+- `functions/ai/geminiClient.js`: cliente Gemini resiliente com timeout compartilhado cobrindo body stream, fallback controlado (máx 1 tentativa), circuit breaker por modelo e classificação de erros não-repetíveis.
+- `functions/ai/cache.js`: cache LRU com TTL, limites de memória e coalescing de requisições concorrentes (Single-Flight).
+- `functions/ai/budget.js`: gerenciador de orçamento distribuído com reserva atômica pré-chamada e reconciliação pós-execução.
+- `functions/ai/usage.js`: agregação diária/mensal atômica O(1) de telemetria sem varredura de coleções completas e conversão tarifária.
+- `functions/ai/tools.js`: execução validada e autorizada das 9 ferramentas de negócio no fuso `America/Sao_Paulo`.
+- `functions/ai/handlers.js`: handlers desacoplados e testáveis com injeção de dependências.
 
 | Função | Tipo | Descrição | Permissão |
 |---|---|---|---|
-| `aiAgentChat` | Callable v2 | Copiloto conversacional multimodal com tool calling: extração de pedidos, cálculo de precificação, sugestão de WhatsApp e consultas com isolamento de dados | Autenticado com `aiCopilot` (Rate limit: 60 req/min) |
+| `aiAgentChat` | Callable v2 | Copiloto conversacional multimodal com tool calling: extração de pedidos, cálculo de precificação, sugestão de WhatsApp e consultas com isolamento estrito de dados | Autenticado com `aiCopilot` (Rate limit: 60 req/min) |
 | `enrichGalleryItemWithAi` | Callable v2 | Visão computacional (Gemini Vision) para catalogar foto da galeria, extraindo descrição rica, tags e cores | Autenticado com `aiCopilot` e dono/admin da arte (Rate limit: 20 req/min) |
 | `enrichStoreProductWithAi` | Callable v2 | Visão computacional (Gemini Vision) para catálogo de produtos da lojinha pública, sugerindo títulos de alta conversão, categorias e descrições | Autenticado com `aiCopilot` (Rate limit: 20 req/min) |
-| `syncAllOrdersToAiView` | Callable v2 | *(Legada/No-op)* Mantida para compatibilidade retroativa; o Copiloto agora utiliza projeção em tempo real e somente-leitura em memória direta de `orders` | Apenas Admin |
-| `getAiUsage` | Callable v2 | Consulta consumo de cota e métricas de requisições do Gemini API | Apenas Admin |
+| `syncAllOrdersToAiView` | Callable v2 | *(Legada/No-op)* Mantida para compatibilidade retroativa | Apenas Admin |
+| `getAiUsage` | Callable v2 | Consulta consumo de cota e métricas de requisições a partir de agregados diários/mensais do Firestore | Apenas Admin |
 
 ---
 

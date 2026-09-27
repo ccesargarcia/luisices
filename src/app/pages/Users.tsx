@@ -92,13 +92,17 @@ const MODULES: ModuleConfig[] = [
   { key: 'settings',      label: 'Configurações',                      type: 'boolean' },
   { key: 'users',         label: 'Usuários',                           type: 'crud' },
   { key: 'emails',        label: 'Central de E-mails',                 type: 'boolean' },
-  { key: 'pricing',       label: 'Precificação & Custos',              type: 'boolean' },
+  { key: 'pricing',       label: 'Precificação & Custos de Insumos',   type: 'crud' },
 ];
 
 function deepClonePermission(p: Permission): Permission {
   const clone: Permission = JSON.parse(JSON.stringify(p || {}));
   if (!clone.storeProducts) {
     clone.storeProducts = { view: false, create: false, edit: false, delete: false };
+  }
+  if (!clone.pricing || typeof clone.pricing === 'boolean') {
+    const val = Boolean(clone.pricing);
+    clone.pricing = { view: val, create: val, edit: val, delete: val };
   }
   return clone;
 }

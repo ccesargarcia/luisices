@@ -284,11 +284,26 @@ export interface Permission {
   settings: boolean;
   users: ModulePermission;
   emails?: boolean;
-  pricing?: boolean;
+  pricing?: ModulePermission | boolean;
   store?: boolean;
   storeProducts?: ModulePermission;
   whatsapp?: boolean;
   aiCopilot?: boolean;
+}
+
+/**
+ * Utilitário de permissão para o módulo de Precificação & Custos de Insumos.
+ * Suporta perfis legados (onde pricing é boolean) e perfis detalhados (onde pricing é ModulePermission).
+ */
+export function canAccessPricing(
+  permissions?: Permission | null,
+  action: keyof ModulePermission = 'view'
+): boolean {
+  if (!permissions) return false;
+  const p = permissions.pricing;
+  if (typeof p === 'boolean') return p;
+  if (p && typeof p === 'object') return Boolean(p[action]);
+  return false;
 }
 
 export interface StoreProduct {
@@ -338,31 +353,63 @@ export interface CatalogOrder {
   priceWarning?: string;
 }
 
-// ─── Pricing & Costs (Papelaria Personalizada) ────────────────────────────────
+// ─── Pricing & Costs (Papelaria Personalizada & Ateliê Luisices) ──────────────
 
-export type SupplyUnit = 'folha' | 'metro' | 'cm' | 'unidade' | 'ml' | 'g' | 'pacote';
+export type SupplyUnit = 'folha' | 'metro' | 'cm' | 'unidade' | 'ml' | 'g' | 'pacote' | 'rolo' | 'kit' | 'par';
 
 export type SupplyCategory =
   | 'papeis'
-  | 'fitas_aviamentos'
-  | 'impressao_tintas'
+  | 'vinis'
+  | 'botons'
+  | 'canecas'
   | 'embalagens'
+  | 'fitas_aviamentos'
   | 'adesivos_colas'
+  | 'impressao_tintas'
+  | 'laminacao_foils'
+  | 'acrilicos'
+  | 'chaveiros'
   | 'outros';
 
 export interface SupplyItem {
   id: string;
   userId: string;
-  name: string;
-  category: SupplyCategory;
-  purchasePrice: number;       // Preço de compra do pacote/rolo (ex: R$ 35,00)
-  packageQuantity: number;     // Quantidade no pacote/rolo (ex: 100)
-  unit: SupplyUnit;            // Unidade fracionada (ex: 'folha', 'metro')
-  unitCost: number;            // Custo unitário = purchasePrice / packageQuantity
-  supplier?: string | null;    // Loja/fornecedor
-  notes?: string | null;
+  name: string;                   // Nome do Insumo
+  category: SupplyCategory;       // Categoria
+  brandModel?: string | null;     // Marca / Modelo
+  supplier?: string | null;       // Onde comprei / Fornecedor
+  purchaseUrl?: string | null;    // Link da compra ou contato
+  lastPurchaseDate?: string | null; // Data da última compra (YYYY-MM-DD)
+  packageQuantity: number;        // Quantidade comprada
+  unit: SupplyUnit;               // Unidade fracionada (ex: 'folha', 'unidade', 'cm')
+  purchasePrice: number;          // Valor pago (R$)
+  shippingCost?: number;          // Frete (R$)
+  totalPrice?: number;            // Custo Total = purchasePrice + shippingCost
+  unitCost: number;               // Custo unitário = totalPrice / packageQuantity
+  notes?: string | null;          // Rendimento / Observações (ex: "pacote 200 fls", "calcular por cm²")
+  currentStock?: number;          // Estoque atual
+  minStock?: number;              // Estoque mínimo
+  needsReorder?: boolean;         // "Comprar novamente?" (Status de reposição)
   createdAt: string;
   updatedAt?: string;
+}
+
+export interface PurchaseHistoryItem {
+  id: string;
+  userId: string;
+  supplyId: string;
+  supplyName: string;
+  category: SupplyCategory;
+  date: string;                   // Data da compra (YYYY-MM-DD)
+  store: string;                  // Loja / Fornecedor
+  quantity: number;               // Quantidade comprada
+  unit: SupplyUnit;
+  price: number;                  // Valor pago (R$)
+  shippingCost: number;           // Frete (R$)
+  totalPrice: number;             // Valor final com frete
+  unitCost: number;               // Custo unitário resultante
+  notes?: string | null;
+  createdAt: string;
 }
 
 export interface RecipeItem {
@@ -373,7 +420,18 @@ export interface RecipeItem {
   unitCost: number;            // Custo por unidade fracionada
   quantityUsed: number;        // Quantidade consumida por unidade do produto
   totalCost: number;           // unitCost * quantityUsed
+  piecesPerSheet?: number | null; // Rendimento: quantas peças cabem por folha/unidade inteira
+  useSheetRounding?: boolean;  // Se true, calcula folhas inteiras (Math.ceil)
+  originalUnitCost?: number | null; // Custo histórico no momento da criação da ficha
   isCustomItem?: boolean;      // Item avulso sem cadastro prévio
+}
+
+export interface KitComponentItem {
+  recipeId: string;
+  recipeName: string;
+  quantity: number;
+  unitCost: number;
+  suggestedUnitPrice: number;
 }
 
 export interface MonthlyFixedExpenses {
@@ -418,6 +476,7 @@ export interface ProductPricingRecipe {
   materialsCostWithWaste: number;
   laborMode: 'time' | 'proportional';
   productionTimeMinutes?: number;
+  setupTimeMinutes?: number;          // Tempo de preparação/arte por encomenda (min)
   hourlyRateApplied: number;
   proportionalPercent?: number;
   laborCost: number;
@@ -425,11 +484,32 @@ export interface ProductPricingRecipe {
   totalUnitCost: number;
   paymentFeePercent: number;
   profitMarginPercent: number;
+  pricingMethod?: 'margin_on_sale' | 'markup_on_cost';
+  breakevenPrice?: number;            // Preço mínimo para cobrir custos e taxas
   suggestedUnitPrice: number;
   manualUnitPrice?: number | null;
   batchTiers?: BatchTier[];
+  isKit?: boolean;
+  kitComponents?: KitComponentItem[];
   createdAt: string;
   updatedAt?: string;
+}
+
+export interface ProductionTrackingRecord {
+  id: string;
+  userId: string;
+  recipeId?: string | null;
+  productName: string;
+  orderNumber?: string | null;
+  date: string;
+  plannedQuantity: number;
+  plannedMinutes: number;
+  actualMinutes: number;
+  plannedMaterialsCost: number;
+  actualMaterialsCost: number;
+  salePrice: number;
+  notes?: string | null;
+  createdAt: string;
 }
 
 export interface UserProfile {
@@ -458,7 +538,7 @@ export const ADMIN_PERMISSIONS: Permission = {
   settings:  true,
   users:     { view: true, create: true, edit: true, delete: true },
   emails:    true,
-  pricing:   true,
+  pricing:   { view: true, create: true, edit: true, delete: true },
   store:     true,
   storeProducts: { view: true, create: true, edit: true, delete: true },
   whatsapp:  true,
@@ -477,7 +557,7 @@ export const DEFAULT_USER_PERMISSIONS: Permission = {
   settings:  true,
   users:     { view: false, create: false, edit: false, delete: false },
   emails:    false,
-  pricing:   true,
+  pricing:   { view: true, create: true, edit: true, delete: true },
   store:     true,
   storeProducts: { view: true, create: true, edit: true, delete: false },
   whatsapp:  true,
@@ -496,7 +576,7 @@ export const EMPLOYEE_PERMISSIONS: Permission = {
   settings:  false,
   users:     { view: false, create: false, edit: false, delete: false },
   emails:    false,
-  pricing:   false,
+  pricing:   { view: false, create: false, edit: false, delete: false },
   store:     false,
   storeProducts: { view: false, create: false, edit: false, delete: false },
   whatsapp:  false,
@@ -694,19 +774,20 @@ export interface AiModelQuotaItem {
   isActive: boolean;
   daily: {
     used: number;
-    limit: number;
-    percentage: number;
+    limit: number | null;
+    percentage: number | null;
   };
   rpm: {
-    used: number;
-    limit: number;
+    used: number | null;
+    limit: number | null;
   };
   monthly: {
-    used: number;
+    used: number | null;
   };
-  tpmLimit?: number;
-  liveStatus?: 'ONLINE' | 'QUOTA_EXCEEDED' | 'HIGH_DEMAND' | 'UNAVAILABLE' | 'OFFLINE';
-  liveCode?: number;
+  tpmLimit?: number | null;
+  unknownUsageAttempts?: number;
+  liveStatus?: 'ONLINE' | 'QUOTA_EXCEEDED' | 'HIGH_DEMAND' | 'UNAVAILABLE' | 'OFFLINE' | 'DADOS_REGISTRADOS' | 'SEM_DADOS' | 'METRICA_INCOMPLETA' | 'INDISPONIVEL';
+  liveCode?: number | null;
   liveMessage?: string;
 }
 
@@ -725,35 +806,36 @@ export interface AiUsageData {
   success: boolean;
   activeModel: string;
   provider: string;
-  resetsAt: string;
+  resetsAt: string | null;
   totalDaily: {
     used: number;
-    limit: number;
-    percentage: number;
+    limit: number | null;
+    percentage: number | null;
   };
   totalMonthly: {
     used: number;
-    limit: number;
-    percentage: number;
+    limit: number | null;
+    percentage: number | null;
   };
+  isAvailable?: boolean;
   models: AiModelQuotaItem[];
   recentLogs?: AiRecentLogItem[];
   totalTokensToday?: number;
   daily?: {
     used: number;
-    limit: number;
-    percentage: number;
-    resetsAt: string;
+    limit: number | null;
+    percentage: number | null;
+    resetsAt: string | null;
   };
   rpm?: {
-    used: number;
-    limit: number;
-    percentage: number;
+    used: number | null;
+    limit: number | null;
+    percentage: number | null;
   };
   monthly?: {
     used: number;
-    limit: number;
-    percentage: number;
+    limit: number | null;
+    percentage: number | null;
     resetsAt: string;
   };
 }

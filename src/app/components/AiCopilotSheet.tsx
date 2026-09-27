@@ -430,11 +430,14 @@ export function AiCopilotSheet({
   useEffect(() => {
     if (open) {
       setTimeout(scrollToBottom, 150);
-      if (isAdmin) {
-        fetchQuota();
-      }
     }
-  }, [open, messages, loading, isAdmin]);
+  }, [open, messages, loading]);
+
+  useEffect(() => {
+    if (open && isAdmin) {
+      fetchQuota();
+    }
+  }, [open, isAdmin]);
 
   const handleImagePick = async (file: File) => {
     const validMimes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
@@ -520,8 +523,12 @@ export function AiCopilotSheet({
 
     try {
       const history = messages
-        .filter(m => m.id !== 'init-1')
-        .map(m => ({ role: m.role, text: m.text }));
+        .filter(m => m.id !== 'init-1' && !m.id.startsWith('assistant-err-') && Boolean(m.text?.trim()))
+        .slice(-6)
+        .map(m => ({
+          role: m.role,
+          text: m.text.length > 2000 ? `${m.text.slice(0, 2000)}...` : m.text,
+        }));
 
       const imagePayload = currentImage
         ? { base64: currentImage.base64, mimeType: currentImage.mimeType }
@@ -686,9 +693,9 @@ export function AiCopilotSheet({
                     <Badge
                       variant="outline"
                       className="hidden xs:inline-flex text-[9px] sm:text-[10px] px-1.5 py-0 bg-muted/60 text-muted-foreground border-border gap-1 font-mono shrink-0"
-                      title={`Cota Gemini: ${quota.daily.used}/${quota.daily.limit} requisições hoje (${quota.daily.percentage}%)`}
+                      title={quota.isAvailable === false ? 'Métricas de uso indisponíveis' : `Uso registrado: ${quota.daily.used} requisições hoje${quota.daily.limit == null ? '; limite do provedor não confirmado' : ` de ${quota.daily.limit} (${quota.daily.percentage ?? 0}%)`}`}
                     >
-                      ⚡ {quota.daily.used}/{quota.daily.limit} req
+                      ⚡ {quota.isAvailable === false ? '—' : quota.daily.used}{quota.isAvailable === false || quota.daily.limit == null ? ' req' : `/${quota.daily.limit} req`}
                     </Badge>
                   )}
                 </SheetTitle>

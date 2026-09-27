@@ -19,6 +19,7 @@ import {
   ArrowRight,
   Store,
   Globe,
+  Calculator,
 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { Input } from '../components/ui/input';
@@ -344,9 +345,61 @@ const MODULE_GUIDES: GuideSection[] = [
       'Você pode atribuir tags às fotos da galeria para filtrar temas como #Aniversario, #Casamento, #Batizado.',
     ],
   },
+  {
+    id: 'pricing',
+    title: 'Precificação, Gestão de Custos & Insumos',
+    badge: 'Financeiro & Produção',
+    icon: Calculator,
+    description:
+      'Cadastro de matérias-primas e custos unitários, calculadora de formação de preços com margens protegidas, histórico de aquisição e exportação para Excel.',
+    colorClass: 'text-amber-500 bg-amber-500/10 border-amber-500/20',
+    steps: [
+      {
+        title: 'Aba 1: Cadastro de Custos (Insumos & Matérias-Primas)',
+        desc: 'Cadastre seus insumos (papéis, fitas, colas, acrílicos, vinis). O sistema calcula o custo unitário exato considerando preço pago, quantidade do pacote e rateio de frete, além de avisar quando o estoque atinge o nível mínimo de reposição.',
+      },
+      {
+        title: 'Aba 2: Calculadora de Precificação Inteligente',
+        desc: 'Monte a ficha técnica do produto: selecione os insumos consumidos, defina o tempo de confecção em minutos (mão de obra calculada por minuto) e simule a margem de lucro real. Você pode sincronizar o preço sugerido diretamente para o catálogo com 1 clique.',
+      },
+      {
+        title: 'Aba 3: Histórico de Compras & Lotes',
+        desc: 'Registre cada compra realizada com fornecedor, nota/link, quantidade adquirida e valores pagos para manter a rastreabilidade e histórico de oscilação de preços.',
+      },
+      {
+        title: 'Aba 4: Configurações do Ateliê',
+        desc: 'Defina os parâmetros mestres do seu negócio: valor da sua hora de trabalho, percentual de custos fixos do ateliê (aluguel, luz, internet) e margem de lucro padrão pretendida.',
+      },
+      {
+        title: 'Exportação Completa para Excel',
+        desc: 'Clique no botão "Exportar Excel" na aba de Custos para baixar uma planilha XLSX formatada com todos os insumos, custos unitários, estoques e vínculos de fornecedores.',
+      },
+    ],
+    tips: [
+      'Use a visualização compacta na tabela de insumos para conferir custos unitários, fornecedores e alertas de estoque sem barras de rolagem excessivas.',
+      'A sincronização de preços da calculadora valida se o produto existe e trata eventuais inconsistências de forma amigável.',
+      'Você pode limitar o acesso à criação e edição de insumos através das permissões de usuário na tela de Equipe.',
+    ],
+  },
 ];
 
 const FAQ_LIST = [
+  {
+    q: 'Como funciona a calculadora de precificação e formação de preço de venda?',
+    a: 'A calculadora calcula o custo total combinando a matéria-prima consumida (insumos), o custo da sua mão de obra por minuto trabalhado e o percentual de custos fixos do ateliê (como água, luz e internet). Em seguida, aplica a margem de lucro desejada para sugerir o preço de venda ideal com proteção contra prejuízos.',
+  },
+  {
+    q: 'Como cadastrar e calcular o custo unitário de um insumo com frete?',
+    a: 'Na tela "Precificação" > aba "Cadastro de Custos", clique em "Novo Insumo". Informe a quantidade total do pacote (ex: 100 folhas), o valor pago no produto e o frete cobrado. O sistema calcula automaticamente: (Valor Pago + Frete) ÷ Quantidade, gerando o custo unitário exato que será usado nas fichas técnicas.',
+  },
+  {
+    q: 'Como registrar o histórico de compras de insumos e exportar para Excel?',
+    a: 'Na aba "Histórico de Compras", você registra notas e lotes adquiridos com data, fornecedor e quantidade. Para gerar relatórios contábeis, clique no botão "Exportar Excel" no topo da tela para baixar a planilha estruturada em formato .XLSX.',
+  },
+  {
+    q: 'Quem tem permissão para editar insumos e alterar preços?',
+    a: 'Administradores têm acesso total. Para outros colaboradores, você pode ajustar as permissões granulares em "Usuários & Equipe" > "Permissões", definindo se o funcionário pode apenas Visualizar, Criar, Editar ou Excluir registros no módulo de Precificação.',
+  },
   {
     q: 'Como funciona a publicação e o botão de despublicar a lojinha?',
     a: 'Em "Personalizar Loja" > aba "Operação", existe o botão "Loja Publicada". Ao desligá-la e salvar, a vitrine pública entra em modo manutenção imediatamente. Os visitantes veem sua logomarca, uma mensagem explicativa personalizável e botões para falar com você no WhatsApp ou Instagram.',
