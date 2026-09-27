@@ -222,6 +222,7 @@ function UserFormDialog({ open, editingUser, currentUserUid, onClose, onSaved }:
   const [saving,      setSaving]      = useState(false);
   const [alexaEnabled, setAlexaEnabled] = useState(false);
   const [alexaMode, setAlexaMode] = useState<AlexaConfirmationMode>('voice_confirm');
+  const [alexaDirty, setAlexaDirty] = useState(false);
 
   useEffect(() => {
     if (editingUser) {
@@ -230,11 +231,17 @@ function UserFormDialog({ open, editingUser, currentUserUid, onClose, onSaved }:
       setRole(editingUser.role);
       setPermissions(deepClonePermission(editingUser.permissions));
       setPassword('');
-      // Consultar status de permissão Alexa para este usuário
-      firebaseAlexaService.getStatus().then((st) => {
-        if (st.userPermission && st.userPermission.uid === editingUser.uid) {
-          setAlexaEnabled(st.userPermission.enabled);
-          setAlexaMode(st.userPermission.mode || 'voice_confirm');
+      setAlexaDirty(false);
+      // Consultar status de permissão Alexa para o usuário editado
+      const targetUid = editingUser.uid;
+      // Protege contra resposta obsoleta: verifica se ainda estamos editando o mesmo usuário
+      firebaseAlexaService.getStatus(targetUid).then((st) => {
+        // Quando admin edita outro usuário, o backend retorna targetPermission.
+        // st.userPermission pertence ao admin conectado — não usar para o alvo.
+        const perm = st.targetPermission ?? st.userPermission;
+        if (perm && perm.uid === targetUid) {
+          setAlexaEnabled(Boolean(perm.enabled));
+          setAlexaMode(perm.mode || 'voice_confirm');
         } else {
           setAlexaEnabled(false);
           setAlexaMode('voice_confirm');
@@ -248,6 +255,7 @@ function UserFormDialog({ open, editingUser, currentUserUid, onClose, onSaved }:
       setPermissions(deepClonePermission(DEFAULT_USER_PERMISSIONS));
       setAlexaEnabled(false);
       setAlexaMode('voice_confirm');
+      setAlexaDirty(false);
     }
   }, [editingUser, open]);
 
@@ -280,7 +288,9 @@ function UserFormDialog({ open, editingUser, currentUserUid, onClose, onSaved }:
           role,
           permissions,
         });
-        await firebaseAlexaService.setPermission(editingUser!.uid, alexaEnabled, alexaMode);
+        if (alexaDirty) {
+          await firebaseAlexaService.setPermission(editingUser!.uid, alexaEnabled, alexaMode);
+        }
         toast.success('Usuário atualizado com sucesso. As alterações já estão ativas em tempo real.');
       } else {
         await firebaseUserService.createUser(email.trim(), password, displayName.trim(), role, permissions, currentUserUid);
@@ -401,14 +411,23 @@ function UserFormDialog({ open, editingUser, currentUserUid, onClose, onSaved }:
                 </div>
                 <Switch
                   checked={alexaEnabled}
-                  onCheckedChange={setAlexaEnabled}
+                  onCheckedChange={(val) => {
+                    setAlexaEnabled(val);
+                    setAlexaDirty(true);
+                  }}
                 />
               </div>
 
               {alexaEnabled && (
                 <div className="space-y-1.5 pt-2 border-t border-sky-500/15">
                   <Label className="text-xs font-medium">Modo de Confirmação</Label>
-                  <Select value={alexaMode} onValueChange={(val: any) => setAlexaMode(val)}>
+                  <Select
+                    value={alexaMode}
+                    onValueChange={(val: any) => {
+                      setAlexaMode(val);
+                      setAlexaDirty(true);
+                    }}
+                  >
                     <SelectTrigger className="h-8 text-xs bg-background">
                       <SelectValue />
                     </SelectTrigger>

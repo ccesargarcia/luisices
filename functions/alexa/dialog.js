@@ -192,7 +192,8 @@ function parseAndValidatePrice(priceValue) {
   const cleanNumStr = rawStr.replace(/r\$/gi, '').trim();
 
   // 1. Tentar extração de números com formato brasileiro de milhar e decimal: 1.500,00 ou 1.500
-  const brThousands = cleanNumStr.match(/^(\d{1,3}(?:\.\d{3})+(?:,\d{1,2})?)$/);
+  // Aceita sufixo monetário opcional: "reais" ou "real"
+  const brThousands = cleanNumStr.match(/^(\d{1,3}(?:\.\d{3})+(?:,\d{1,2})?)(?:\s*(?:reais|real))?$/);
   if (brThousands) {
     const num = parseFloat(brThousands[1].replace(/\./g, '').replace(',', '.'));
     if (!isNaN(num) && num >= 0) {
@@ -208,16 +209,23 @@ function parseAndValidatePrice(priceValue) {
     let reaisStr = '';
     let centavosStr = '';
     if (/\b(reais|real)\b/.test(rawStr)) {
-      const match = rawStr.match(/^(.*?)\b(?:reais|real)\b(?:\s+e\s+)?(.*?)\bcentavos?\b/);
+      // Formato: "<reais> reais [e] <centavos> centavos"
+      // Deve consumir a entrada inteira — rejeita conteúdo excedente após "centavos"
+      const match = rawStr.match(/^(.*?)\b(?:reais|real)\b(?:\s+e\s+)?(.*?)\bcentavos?\b\s*$/);
       if (match) {
         reaisStr = match[1].trim();
         centavosStr = match[2].trim();
       }
     } else {
-      const match = rawStr.match(/^(.*?)\bcentavos?\b/);
+      // Apenas centavos: "<centavos> centavos" — exige quantia não vazia antes
+      const match = rawStr.match(/^(.*?)\bcentavos?\b\s*$/);
       if (match) {
         centavosStr = match[1].replace(/^\s*e\s+/, '').trim();
       }
+    }
+    // Rejeita "centavos" sozinho sem quantia explícita
+    if (!centavosStr) {
+      return { valid: false, error: 'Valor total inválido. Por favor, diga o valor em reais, por exemplo: cem reais.' };
     }
     const rVal = parsePartToNumber(reaisStr);
     const cVal = parsePartToNumber(centavosStr);
@@ -549,11 +557,16 @@ async function handleAlexaDialog({ envelope, identity, config, db }) {
       };
     }
 
-    // Validação de consistência da revisão entre sessão e rascunho
+    // Validação de consistência da revisão entre sessão e rascunho:
+    // Se a sessão tem uma revisão diferente da do rascunho, os dados foram alterados
+    // concorrentemente. Reapresenta o resumo com os dados atuais antes de aceitar qualquer
+    // confirmação — não pergunta "deseja revisar?" pois o próximo "sim" seria interpretado
+    // como confirmação do pedido sem que os novos dados tenham sido apresentados (achado 6).
     if (sessionAttrs.revision !== undefined && sessionAttrs.revision !== draft.revision) {
+      const updatedSummary = buildConfirmationSpeech(draft, identity, config);
       return {
-        speech: 'Houve uma divergência nas informações do pedido. Por favor, revise os dados.',
-        reprompt: 'Deseja revisar os dados do pedido?',
+        speech: `Os dados do pedido foram atualizados. ${updatedSummary}`,
+        reprompt: 'Confirma o pedido com os dados atualizados? Diga sim para confirmar ou não para alterar.',
         shouldEndSession: false,
         sessionAttributes: { draftId, revision: draft.revision, personId: identity.personId },
       };

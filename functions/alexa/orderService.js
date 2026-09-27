@@ -5,33 +5,42 @@
 
 const admin = require('firebase-admin');
 const { COLLECTIONS, recordAuditEvent } = require('./repository');
-const { checkOrderCreationRateLimit } = require('./rateLimit');
 
 /**
  * Executa a transação atômica única para criação do pedido:
- * 1. Verifica alexaCommits/{draftId} (idempotência durável).
- * 2. Revalida permissão, perfil e binding dentro da transação para detectar revogação concorrente.
- * 3. Valida rascunho (estado awaiting_confirmation, TTL, titular).
- * 4. Incrementa o contador sequencial em users/{uid}/metadata/counters.
- * 5. Cria o documento orders/{orderId}.
- * 6. Cria o lançamento salesLedger/{orderId}.
- * 7. Atualiza o rascunho alexaDrafts/{draftId} para 'committed'.
- * 8. Grava o recibo alexaCommits/{draftId}.
+ * 1. Verifica alexaCommits/{draftId} (idempotência durável). Se já existir, devolve o resultado sem reprocessar ou gastar cota.
+ * 2. Valida canal de aprovação (channel === 'app' ou 'voice') e estado correspondente.
+ * 3. Valida revisão visualizada/apresentada se informada.
+ * 4. Revalida integração global no Firestore (integrationSettings/alexa).
+ * 5. Revalida conta Firebase Auth, perfil ativo e permissão orders.create.
+ * 6. Revalida permissão alexaPermissions e modo vigente (voice_confirm vs app_approval).
+ * 7. Revalida vínculo alexaBindings (ativo, não revogado, mesmo titular e ambiente).
+ * 8. Revalida campos obrigatórios do pedido (cliente, produto, quantidade, data, preço).
+ * 9. Valida e consome rate limit atômico do usuário (10/h e 50/dia) dentro da transação.
+ * 10. Incrementa contador em users/{uid}/metadata/counters.
+ * 11. Grava orders/{orderId}.
+ * 12. Grava salesLedger/{orderId} no contrato padronizado do web.
+ * 13. Consome rascunho alexaDrafts/{draftId} para 'committed'.
+ * 14. Grava recibo durável alexaCommits/{draftId}.
  *
  * @param {object} params
  * @param {string} params.draftId
- * @param {string} params.callerPersonId
- * @param {string} params.expectedRevision
+ * @param {string} [params.callerPersonId]
+ * @param {number} [params.expectedRevision]
+ * @param {string} [params.channel] - 'voice' | 'app' (padrão 'voice')
  * @param {object} params.config
  * @param {admin.firestore.Firestore} db
+ * @param {object} [authService] - Instância auth injetável para testes
  * @returns {Promise<{ success: boolean, orderId: string, orderNumber: string, isReplay?: boolean }>}
  */
 async function commitOrderFromDraft({
   draftId,
   callerPersonId,
   expectedRevision,
+  channel = 'voice',
   config,
   db,
+  authService = null,
 }) {
   if (!draftId) throw new Error('ID do rascunho é obrigatório.');
 
@@ -86,19 +95,27 @@ async function commitOrderFromDraft({
       throw new Error('DRAFT_ALREADY_COMMITTED: Este rascunho já foi gravado anteriormente.');
     }
 
-    // Valida se o rascunho está pronto para confirmação
-    if (draft.state !== 'awaiting_confirmation') {
-      throw new Error(`DRAFT_INVALID_STATE: Rascunho no estado '${draft.state}', esperando 'awaiting_confirmation'.`);
+    // Valida estado de acordo com o canal
+    if (channel === 'app') {
+      if (draft.state !== 'awaiting_app_approval') {
+        throw new Error(`DRAFT_INVALID_STATE: Rascunho no estado '${draft.state}', esperando 'awaiting_app_approval'.`);
+      }
+    } else {
+      if (draft.state !== 'awaiting_confirmation') {
+        throw new Error(`DRAFT_INVALID_STATE: Rascunho no estado '${draft.state}', esperando 'awaiting_confirmation'.`);
+      }
     }
 
     // Valida revisão se especificada
-    if (expectedRevision && draft.revision !== expectedRevision) {
+    if (typeof expectedRevision === 'number' && draft.revision !== expectedRevision) {
       throw new Error('DRAFT_REVISION_MISMATCH: A revisão confirmada difere da versão atual do rascunho.');
     }
 
-    // Valida se a pessoa confirmando é exatamente a mesma que criou o rascunho
-    if (callerPersonId && draft.personId && draft.personId !== callerPersonId) {
-      throw new Error('VOICE_MISMATCH: A pessoa confirmando não é a mesma que iniciou o pedido.');
+    // Valida biometria se confirmação por voz
+    if (channel === 'voice') {
+      if (!callerPersonId || (draft.personId && draft.personId !== callerPersonId)) {
+        throw new Error('VOICE_MISMATCH: A pessoa confirmando não é a mesma que iniciou o pedido.');
+      }
     }
 
     const uid = draft.uid;
@@ -108,10 +125,26 @@ async function commitOrderFromDraft({
       throw new Error('DRAFT_CORRUPTED: Dados de usuário ausentes no rascunho.');
     }
 
+    // Revalidação do interruptor global no Firestore
+    const settingsSnap = await transaction.get(db.doc('integrationSettings/alexa'));
+    if (settingsSnap.exists) {
+      const sData = settingsSnap.data() || {};
+      if (sData.enabled === false) {
+        throw new Error('INTEGRATION_DISABLED: A integração com a Alexa está desativada no momento.');
+      }
+    }
+    if (config?.isEnabled === false) {
+      throw new Error('INTEGRATION_DISABLED: A integração com a Alexa está desativada no momento.');
+    }
+
     // Revalidação concorrente de binding
     const bindingSnap = await transaction.get(db.collection(COLLECTIONS.BINDINGS).doc(bindingKey));
     if (!bindingSnap.exists || !bindingSnap.data()?.active || bindingSnap.data()?.revokedAt != null) {
       throw new Error('VOICE_NOT_ALLOWED: Vínculo de voz revogado durante o processamento.');
+    }
+    const bindingData = bindingSnap.data() || {};
+    if (bindingData.uid !== uid || (bindingData.environment && bindingData.environment !== config.environment)) {
+      throw new Error('ENVIRONMENT_MISMATCH: Vínculo incompatível com o usuário ou ambiente.');
     }
 
     // Revalidação de perfil
@@ -120,16 +153,103 @@ async function commitOrderFromDraft({
       throw new Error('USER_INACTIVE: Usuário inativo no momento do commit.');
     }
     const profile = profileSnap.data() || {};
+    const canCreate =
+      profile.role === 'admin' ||
+      profile.permissions?.orders?.create === true ||
+      (!profile.permissions && profile.role !== 'funcionario');
+    if (!canCreate) {
+      throw new Error('PERMISSION_DENIED: Seu perfil não possui permissão para criar pedidos.');
+    }
 
-    // Revalidação de permissões Alexa
+    // Revalidação de permissões Alexa e modo vigente
     const permSnap = await transaction.get(db.collection(COLLECTIONS.PERMISSIONS).doc(uid));
     if (!permSnap.exists || !permSnap.data()?.enabled) {
       throw new Error('VOICE_NOT_ALLOWED: Permissão de voz desativada durante a operação.');
     }
+    const permData = permSnap.data() || {};
+    if (channel === 'voice' && permData.mode !== 'voice_confirm') {
+      throw new Error('VOICE_NOT_ALLOWED: O modo de aprovação foi alterado para confirmação no aplicativo.');
+    }
+
+    // Revalidação de campos obrigatórios do pedido
+    const cleanCustomer = String(draft.customer || '').trim();
+    const cleanProduct = String(draft.product || '').trim();
+    const cleanQuantity = Number(draft.quantity);
+    const cleanPrice = Number(draft.price);
+    const cleanDate = String(draft.deliveryDate || '').trim();
+
+    if (!cleanCustomer || cleanCustomer.length < 2 || cleanCustomer.length > 100) {
+      throw new Error('DRAFT_INVALID_DATA: Nome do cliente inválido.');
+    }
+    if (!cleanProduct || cleanProduct.length < 1 || cleanProduct.length > 200) {
+      throw new Error('DRAFT_INVALID_DATA: Nome do produto inválido.');
+    }
+    if (!Number.isInteger(cleanQuantity) || cleanQuantity <= 0 || cleanQuantity > 10000) {
+      throw new Error('DRAFT_INVALID_DATA: Quantidade inválida.');
+    }
+    if (isNaN(cleanPrice) || cleanPrice < 0 || cleanPrice > 10000) {
+      throw new Error('DRAFT_INVALID_DATA: Preço total inválido.');
+    }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(cleanDate)) {
+      throw new Error('DRAFT_INVALID_DATA: Data de entrega inválida.');
+    }
+
+    // Revalidação da conta Firebase Auth
+    try {
+      const auth = authService || (admin.apps && admin.apps.length > 0 ? admin.auth() : null);
+      if (auth && typeof auth.getUser === 'function') {
+        const authUser = await auth.getUser(uid);
+        if (authUser.disabled) {
+          throw new Error('USER_DISABLED: Conta de usuário suspensa no momento do commit.');
+        }
+      }
+    } catch (authErr) {
+      if (authErr.message?.includes('USER_DISABLED')) throw authErr;
+      if (!admin.apps || admin.apps.length === 0) {
+        // Ambiente de testes sem app Firebase Admin inicializado
+      } else {
+        throw new Error('USER_NOT_FOUND: Conta de autenticação não localizada.');
+      }
+    }
+
+    // Ler contadores de rate limit por UID (leitura antes das escritas)
+    // Reutiliza 'now' declarado no início da transação para verificar expiração
+    const windowHour = Math.floor(now / 3600000);
+    const windowDay = Math.floor(now / 86400000);
+    const hourRef = db.collection(COLLECTIONS.RATE_LIMITS).doc(`ord_hr_${uid}_${windowHour}`);
+    const dayRef = db.collection(COLLECTIONS.RATE_LIMITS).doc(`ord_day_${uid}_${windowDay}`);
+    const [hourSnap, daySnap] = await Promise.all([
+      transaction.get(hourRef),
+      transaction.get(dayRef),
+    ]);
 
     // Ler contador sequencial do usuário: users/{uid}/metadata/counters
     const counterRef = db.doc(`users/${uid}/metadata/counters`);
     const counterSnap = await transaction.get(counterRef);
+
+    // --- FIM DAS LEITURAS — INÍCIO DAS VALIDAÇÕES E ESCRITAS ---
+
+    // Validar rate limits com os valores lidos
+    const { LIMITS } = require('./rateLimit');
+    let hourCount = 0;
+    if (hourSnap.exists) {
+      const d = hourSnap.data() || {};
+      const exp = d.expiresAt?.toDate ? d.expiresAt.toDate().getTime() : 0;
+      if (exp > now) hourCount = Number(d.count || 0);
+    }
+    let dayCount = 0;
+    if (daySnap.exists) {
+      const d = daySnap.data() || {};
+      const exp = d.expiresAt?.toDate ? d.expiresAt.toDate().getTime() : 0;
+      if (exp > now) dayCount = Number(d.count || 0);
+    }
+    if (hourCount >= LIMITS.ORDERS_PER_HOUR_PER_PERSON) {
+      throw new Error('RATE_LIMITED: Limite de pedidos por hora excedido (máximo 10 pedidos/hora).');
+    }
+    if (dayCount >= LIMITS.ORDERS_PER_DAY_PER_PERSON) {
+      throw new Error('RATE_LIMITED: Limite diário de pedidos excedido (máximo 50 pedidos/dia).');
+    }
+
     const currentCount = counterSnap.exists ? Number(counterSnap.data()?.orderCounter || 0) : 0;
     const nextCount = currentCount + 1;
     const year = new Date().getFullYear();
@@ -139,20 +259,34 @@ async function commitOrderFromDraft({
     // 1. Atualizar contador do usuário
     transaction.set(counterRef, { orderCounter: nextCount }, { merge: true });
 
-    // 2. Construir e salvar o documento de pedido (orders/{orderId})
-    const numericPrice = Number(draft.price || 0);
+    // 2. Consumir contadores de rate limit (escritas após todas as leituras)
+    const hourExpiresAt = new Date(now + 7200 * 1000);
+    const dayExpiresAt = new Date(now + 172800 * 1000);
+    transaction.set(
+      hourRef,
+      { count: hourCount + 1, expiresAt: admin.firestore.Timestamp.fromDate(hourExpiresAt), updatedAt: admin.firestore.FieldValue.serverTimestamp() },
+      { merge: true }
+    );
+    transaction.set(
+      dayRef,
+      { count: dayCount + 1, expiresAt: admin.firestore.Timestamp.fromDate(dayExpiresAt), updatedAt: admin.firestore.FieldValue.serverTimestamp() },
+      { merge: true }
+    );
+
+    // 3. Construir e salvar o documento de pedido (orders/{orderId})
+    const numericPrice = cleanPrice;
     const orderData = {
       userId: uid,
       createdByName: profile.displayName || profile.email || uid,
       orderNumber,
-      customerName: String(draft.customer || '').trim(),
+      customerName: cleanCustomer,
       customerPhone: '',
       customerId: null,
-      productName: String(draft.product || '').trim(),
-      quantity: Number(draft.quantity || 1),
+      productName: cleanProduct,
+      quantity: cleanQuantity,
       price: numericPrice,
       status: 'pending',
-      deliveryDate: String(draft.deliveryDate || '').trim(),
+      deliveryDate: cleanDate,
       notes: draft.notes ? String(draft.notes).trim() : `Pedido criado via Alexa (${config.environment})`,
       tags: [{ name: 'Alexa', color: '#0ea5e9' }],
       assignedTo: null,
@@ -196,20 +330,30 @@ async function commitOrderFromDraft({
     };
     transaction.set(orderRef, orderData);
 
-    // 3. Salvar lançamento no histórico financeiro (salesLedger/{orderId})
+    // 3. Salvar lançamento no histórico financeiro padronizado (salesLedger/{orderId})
     const ledgerRef = db.collection(COLLECTIONS.SALES_LEDGER).doc(orderId);
     const ledgerData = {
+      id: orderId,
       orderId,
       orderNumber,
-      date: admin.firestore.Timestamp.now(),
-      amount: numericPrice,
-      customerName: orderData.customerName,
-      productName: orderData.productName,
-      paymentStatus: 'pending',
-      deliveryDate: orderData.deliveryDate,
-      createdBy: uid,
       userId: uid,
+      assignedTo: null,
+      assignedToName: null,
+      customerId: null,
+      customerName: orderData.customerName,
+      customerPhone: null,
+      productName: orderData.productName,
+      quantity: orderData.quantity,
+      amount: numericPrice,
+      totalAmount: numericPrice,
+      paidAmount: 0,
+      status: 'pending',
+      paymentStatus: 'pending',
+      date: new Date().toISOString(),
+      deliveryDate: orderData.deliveryDate || null,
+      tags: ['Alexa', 'Voz'],
       source: 'alexa',
+      createdBy: uid,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
     };
@@ -237,15 +381,9 @@ async function commitOrderFromDraft({
       orderId,
       orderNumber,
       isReplay: false,
+      uid,
     };
   });
-
-  // 3. Rate limiting pós-transação e auditoria
-  try {
-    await checkOrderCreationRateLimit(db, result.uid || '');
-  } catch (rateErr) {
-    console.warn('[AlexaOrderService] Alerta de rate limit pós-commit:', rateErr.message);
-  }
 
   await recordAuditEvent(db, {
     event: 'ORDER_COMMITTED',

@@ -931,6 +931,8 @@ export interface AlexaIntegrationStatus {
   allowedSkillIdConfigured: boolean;
   timezone: string;
   userPermission?: AlexaPermission | null;
+  /** Permissão do usuário alvo quando consultada por um administrador via targetUid */
+  targetPermission?: AlexaPermission | null;
   bindings: AlexaBinding[];
   pendingDrafts: AlexaDraft[];
   recentAudit?: Array<{

@@ -18,6 +18,14 @@ const { checkPairingRateLimit } = require('./rateLimit');
  * @returns {Promise<{ speech: string, shouldEndSession: boolean, error?: string }>}
  */
 async function handleVoicePairingRequest(envelope, config, db) {
+  // 0. Integração habilitada no ambiente
+  if (config?.isEnabled === false) {
+    return {
+      speech: 'A integração com a Alexa está desativada no momento neste ambiente.',
+      shouldEndSession: true,
+    };
+  }
+
   const system = envelope?.context?.System || envelope?.session?.System || {};
   const personId = system?.person?.personId;
   const amazonUserId = system?.user?.userId;
@@ -162,6 +170,11 @@ async function approveAlexaPairingAdmin({ code, targetUid, authContext, db, conf
     const bindingRef = db.collection(COLLECTIONS.BINDINGS).doc(bindingKey);
     const permRef = db.collection(COLLECTIONS.PERMISSIONS).doc(targetUid);
 
+    // Todas as leituras antes das escritas (Firestore exige essa ordem)
+    const existingPermSnap = await transaction.get(permRef);
+    const existingMode = existingPermSnap.exists ? existingPermSnap.data()?.mode : null;
+    const finalMode = existingMode || 'voice_confirm';
+
     // Consumir o pareamento
     transaction.update(pairingRef, {
       consumedAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -187,13 +200,13 @@ async function approveAlexaPairingAdmin({ code, targetUid, authContext, db, conf
       { merge: true }
     );
 
-    // Habilitar a permissão Alexa do usuário
+    // Habilitar a permissão Alexa do usuário, preservando o modo existente se houver
     transaction.set(
       permRef,
       {
         uid: targetUid,
         enabled: true,
-        mode: 'voice_confirm',
+        mode: finalMode,
         scope: 'orders:create:self',
         approvedBy: authContext.uid,
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),

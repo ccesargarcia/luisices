@@ -5,7 +5,7 @@ import {
   DocumentData,
 } from 'firebase/firestore';
 import { useAuth } from '../contexts/AuthContext';
-import { SaleRecord, LedgerPeriod } from '../app/types';
+import { SaleRecord, LedgerPeriod, Tag } from '../app/types';
 import { firebaseLedgerService, getSalesLedgerQuery } from '../services/firebaseLedgerService';
 
 export interface DateRange {
@@ -98,7 +98,34 @@ export function useSalesLedger(options?: {
     const baseQuery = getSalesLedgerQuery(user.uid, isAdmin ? 'all' : 'own');
 
     const mapSnapshot = (snapshot: QuerySnapshot<DocumentData>): SaleRecord[] =>
-      snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as SaleRecord));
+      snapshot.docs.map((d) => {
+        const raw = d.data();
+        let dateVal = raw.date;
+        if (dateVal && typeof dateVal === 'object' && typeof dateVal.toDate === 'function') {
+          dateVal = dateVal.toDate().toISOString();
+        } else if (dateVal instanceof Date) {
+          dateVal = dateVal.toISOString();
+        } else {
+          dateVal = String(dateVal || new Date().toISOString());
+        }
+
+        // Normaliza tags mantendo o contrato Tag[] — preserva objetos com name/color,
+        // converte strings para { name: string }. Não destrói atributos de Tag de pedidos web.
+        const tags: Tag[] = Array.isArray(raw.tags)
+          ? raw.tags.map((t: unknown) => {
+              if (t && typeof t === 'object' && 'name' in t) return t as Tag;
+              if (typeof t === 'string') return { name: t } as Tag;
+              return { name: String(t) } as Tag;
+            })
+          : [];
+
+        return {
+          ...raw,
+          id: d.id,
+          date: dateVal,
+          tags,
+        } as SaleRecord;
+      });
 
     let ownSales: SaleRecord[] = [];
     let assignedSales: SaleRecord[] = [];
