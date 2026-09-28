@@ -463,7 +463,12 @@ async function findActiveDraftForUser(db, uid, bindingKey, environment) {
     const colRef = db.collection(COLLECTIONS.DRAFTS);
     if (!colRef || typeof colRef.where !== 'function') return null;
 
-    const snap = await colRef.where('uid', '==', uid).get();
+    let query = colRef.where('uid', '==', uid);
+    if (typeof query.limit === 'function') {
+      query = query.limit(10);
+    }
+
+    const snap = await query.get();
     if (!snap || snap.empty) return null;
 
     const now = Date.now();
@@ -495,6 +500,185 @@ async function findActiveDraftForUser(db, uid, bindingKey, environment) {
 }
 
 /**
+ * Constrói a próxima pergunta canônica e atributos de sessão de acordo com o estado do rascunho.
+ * Usado tanto no fluxo principal (Passo 7) quanto na retomada de sessão (LaunchRequest) e fallback.
+ */
+function buildNextPromptForDraft(draft, identity, config, draftId) {
+  if (!draft) return null;
+
+  if (draft.pendingField === 'unitPrice') {
+    return {
+      speech: 'Qual é o preço de cada unidade?',
+      reprompt: 'Qual é o preço de cada unidade?',
+      shouldEndSession: false,
+      sessionAttributes: {
+        draftId,
+        revision: draft.revision,
+        personId: identity.personId,
+        expectedInput: 'unitPrice',
+        pendingField: 'unitPrice',
+      },
+    };
+  }
+
+  if (draft.pendingField === 'total') {
+    return {
+      speech: 'Qual é o valor total do pedido?',
+      reprompt: 'Qual é o valor total do pedido?',
+      shouldEndSession: false,
+      sessionAttributes: {
+        draftId,
+        revision: draft.revision,
+        personId: identity.personId,
+        expectedInput: 'totalPrice',
+        pendingField: 'total',
+      },
+    };
+  }
+
+  if (draft.pendingField === 'deliveryDate') {
+    return {
+      speech: 'Qual é a data de entrega corrigida?',
+      reprompt: 'Para quando é a entrega?',
+      shouldEndSession: false,
+      sessionAttributes: {
+        draftId,
+        revision: draft.revision,
+        personId: identity.personId,
+        expectedInput: 'deliveryDate',
+        pendingField: 'deliveryDate',
+      },
+    };
+  }
+
+  if (draft.pendingConflict) {
+    const uStr = formatCurrencyPtBr(draft.pendingConflict.unitPriceCents / 100);
+    const tStr = formatCurrencyPtBr(draft.pendingConflict.totalPriceCents / 100);
+    const speech = draft.quantity
+      ? `O valor informado de ${uStr} cada não fecha com o total de ${tStr}. O valor é ${uStr} cada ou ${tStr} no total?`
+      : `O valor é ${uStr} cada ou ${tStr} no total?`;
+    return {
+      speech,
+      reprompt: `Informe se o valor é ${uStr} cada ou ${tStr} no total.`,
+      shouldEndSession: false,
+      sessionAttributes: {
+        draftId,
+        revision: draft.revision,
+        personId: identity.personId,
+        pendingField: 'conflict',
+        expectedInput: 'priceBasis',
+      },
+    };
+  }
+
+  if (draft.pendingPriceCents !== null && draft.pendingPriceCents !== undefined) {
+    const pVal = draft.pendingPriceCents / 100;
+    const pStr = formatCurrencyPtBr(pVal);
+    return {
+      speech: `${pStr} cada ou ${pStr} no total?`,
+      reprompt: `O valor de ${pStr} é cada ou no total?`,
+      shouldEndSession: false,
+      sessionAttributes: {
+        draftId,
+        revision: draft.revision,
+        personId: identity.personId,
+        expectedInput: 'priceBasis',
+      },
+    };
+  }
+
+  if (draft.suggestedPriceCents !== null && draft.suggestedPriceCents !== undefined && draft.price === null) {
+    const sVal = draft.suggestedPriceCents / 100;
+    const sStr = formatCurrencyPtBr(sVal);
+    const prodName = sanitizeSpeech(draft.suggestedProductName || draft.product);
+    return {
+      speech: `Encontrei ${prodName} no seu catálogo por ${sStr} cada. Deseja usar esse valor?`,
+      reprompt: `Deseja usar o valor de ${sStr} cada? Diga sim para confirmar ou diga outro valor.`,
+      shouldEndSession: false,
+      sessionAttributes: {
+        draftId,
+        revision: draft.revision,
+        personId: identity.personId,
+        expectedInput: 'suggestedPrice',
+      },
+    };
+  }
+
+  const missingCustomer = !draft.customer;
+  const missingProduct = !draft.product;
+  const missingQuantity = !draft.quantity;
+  const missingDeliveryDate = !draft.deliveryDate;
+  const missingPrice = draft.price === null || draft.price === undefined;
+
+  if (missingProduct && missingCustomer) {
+    return {
+      speech: 'Qual é o produto e o cliente do pedido?',
+      reprompt: 'Diga o produto e o nome do cliente.',
+      shouldEndSession: false,
+      sessionAttributes: { draftId, revision: draft.revision, personId: identity.personId, expectedInput: 'product' },
+    };
+  }
+
+  if (missingProduct) {
+    return {
+      speech: 'Qual é o produto do pedido?',
+      reprompt: 'Diga o produto.',
+      shouldEndSession: false,
+      sessionAttributes: { draftId, revision: draft.revision, personId: identity.personId, expectedInput: 'product' },
+    };
+  }
+
+  if (missingCustomer) {
+    return {
+      speech: 'Para qual cliente é o pedido?',
+      reprompt: 'Diga o nome do cliente.',
+      shouldEndSession: false,
+      sessionAttributes: { draftId, revision: draft.revision, personId: identity.personId, expectedInput: 'customer' },
+    };
+  }
+
+  if (missingQuantity) {
+    return {
+      speech: 'Qual é a quantidade de itens?',
+      reprompt: 'Informe a quantidade inteira.',
+      shouldEndSession: false,
+      sessionAttributes: { draftId, revision: draft.revision, personId: identity.personId, expectedInput: 'quantity' },
+    };
+  }
+
+  if (missingDeliveryDate) {
+    let speech = 'Qual é a data de entrega?';
+    if (draft.quantity && draft.price !== null && draft.price !== undefined) {
+      if (draft.pricingMode === 'unit' && draft.unitPriceCents !== null) {
+        const uStr = formatCurrencyPtBr(draft.unitPriceCents / 100);
+        const tStr = formatCurrencyPtBr(draft.price);
+        speech = `São ${draft.quantity} unidades a ${uStr} cada, total de ${tStr}. Para quando é a entrega?`;
+      } else {
+        const tStr = formatCurrencyPtBr(draft.price);
+        speech = `São ${draft.quantity} unidades por ${tStr} no total. Para quando é a entrega?`;
+      }
+    }
+    return {
+      speech,
+      reprompt: 'Para quando é a entrega?',
+      shouldEndSession: false,
+      sessionAttributes: { draftId, revision: draft.revision, personId: identity.personId, expectedInput: 'deliveryDate' },
+    };
+  }
+
+  if (missingPrice) {
+    return {
+      speech: 'Qual é o valor total do pedido?',
+      reprompt: 'Diga o valor total em reais.',
+      shouldEndSession: false,
+      sessionAttributes: { draftId, revision: draft.revision, personId: identity.personId, expectedInput: 'totalPrice' },
+    };
+  }
+
+  return null;
+}
+
+/**
  * Processador principal de diálogo da Alexa.
  *
  * @param {object} params
@@ -517,9 +701,11 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
 
   // Se a requisição não trouxe draftId na sessão e é intenção de confirmação ou repetição direta,
   // tenta recuperar um rascunho ativo não expirado em andamento para o usuário e vincula à sessão atual
+  let isDirectRecovery = false;
   if (!currentDraftId && (intentName === 'AMAZON.YesIntent' || intentName === 'RepeatOrderIntent') && db && identity?.uid) {
     const activeDraft = await findActiveDraftForUser(db, identity.uid, identity.bindingKey, config.environment);
     if (activeDraft) {
+      isDirectRecovery = true;
       if (sessionId && activeDraft.sessionId !== sessionId) {
         await db.collection(COLLECTIONS.DRAFTS).doc(activeDraft.draftId).update({
           sessionId,
@@ -577,36 +763,40 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
         };
       }
 
-      // Estado 'collecting'
-      let promptQuestion = 'Gostaria de continuar o pedido?';
-      let expectedInput = activeDraft.expectedInput || 'collecting';
-      if (!activeDraft.deliveryDate) {
-        promptQuestion = 'Para quando é a entrega?';
-        expectedInput = 'deliveryDate';
-      } else if (activeDraft.price === null || activeDraft.price === undefined) {
-        promptQuestion = 'Qual é o valor do pedido?';
-        expectedInput = 'totalPrice';
-      } else if (!activeDraft.customer) {
-        promptQuestion = 'Para qual cliente é o pedido?';
-        expectedInput = 'customer';
+      // Estado 'collecting': unificado com determineNextExpectedInput e buildNextPromptForDraft
+      const nextPrompt = buildNextPromptForDraft(activeDraft, identity, config, activeDraft.draftId);
+      const expectedInput = nextPrompt?.sessionAttributes?.expectedInput || activeDraft.expectedInput || 'collecting';
+
+      // Sincroniza expectedInput no Firestore para coerência estrita
+      if (activeDraft.expectedInput !== expectedInput) {
+        await db.collection(COLLECTIONS.DRAFTS).doc(activeDraft.draftId).update({
+          expectedInput,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        }).catch(() => {});
+        activeDraft.expectedInput = expectedInput;
       }
 
-      const prodInfo = activeDraft.product
-        ? (activeDraft.quantity ? `${activeDraft.quantity} ${activeDraft.product}` : activeDraft.product)
-        : 'itens';
-      const custInfo = activeDraft.customer ? ` para ${sanitizeSpeech(activeDraft.customer)}` : '';
+      if (nextPrompt) {
+        const prodInfo = activeDraft.quantity && activeDraft.product
+          ? `${activeDraft.quantity} ${activeDraft.product}`
+          : (activeDraft.product || '');
+        const custInfo = activeDraft.customer ? ` para ${activeDraft.customer}` : '';
+        const orderIntro = (prodInfo || custInfo)
+          ? `Você tem um pedido em andamento de ${(prodInfo + custInfo).trim()}.`
+          : 'Você tem um pedido em andamento.';
 
-      return {
-        speech: `Olá, ${name}. Você tem um pedido em andamento de ${prodInfo}${custInfo}. ${promptQuestion}`,
-        reprompt: promptQuestion,
-        shouldEndSession: false,
-        sessionAttributes: {
-          draftId: activeDraft.draftId,
-          revision: activeDraft.revision,
-          personId: identity.personId,
-          expectedInput,
-        },
-      };
+        let question = nextPrompt.speech;
+        if (question.startsWith('São ')) {
+          question = 'Para quando é a entrega?';
+        }
+
+        return {
+          speech: `Olá, ${name}. ${orderIntro} ${question}`,
+          reprompt: nextPrompt.reprompt,
+          shouldEndSession: false,
+          sessionAttributes: nextPrompt.sessionAttributes,
+        };
+      }
     }
 
     const speech = `Olá, ${name}. Ambiente de ${envLabel}. Diga criar pedido ou vincular minha voz.`;
@@ -1905,36 +2095,31 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
       };
     }
 
+    // P1: Se a requisição recuperou o rascunho diretamente (sem draftId prévio nos sessionAttributes)
+    // NUNCA fazer commit direto. Reapresenta o resumo verbal completo e devolve a sessão sem commit.
+    if (isDirectRecovery) {
+      const summary = buildConfirmationSpeech(draft, identity, config);
+      return {
+        speech: `Você tem um pedido em andamento. ${summary}`,
+        reprompt: 'Confirma o pedido? Diga sim para confirmar ou não para alterar.',
+        shouldEndSession: false,
+        sessionAttributes: {
+          draftId,
+          revision: draft.revision,
+          personId: identity.personId,
+          expectedInput: 'confirmation',
+        },
+      };
+    }
+
     // Biometria vocal no momento da confirmação final.
     const physicalPersonId =
       envelope?.context?.System?.person?.personId ||
       envelope?.session?.System?.person?.personId ||
       null;
 
-    // Se a fala atual carrega biometria explícita e difere do autor do rascunho:
+    // Se uma pessoa física diferente for detectada na fala atual, rejeita imediatamente por segurança
     if (physicalPersonId && draft.personId && draft.personId !== physicalPersonId) {
-      return {
-        speech: 'A pessoa que está confirmando não é a mesma que iniciou o pedido. Criação cancelada por segurança.',
-        shouldEndSession: true,
-        sessionAttributes: {},
-      };
-    }
-
-    // Identidade efetiva da pessoa confirmando:
-    // Prioriza biometria física da fala atual; caso a Alexa omita o personId por ser uma fala
-    // ultracurta (ex: "Sim" de ~200ms), utiliza a identidade vocal previamente autorizada na sessão,
-    // desde que nenhuma voz conflitante tenha sido detectada.
-    const effectivePersonId = physicalPersonId || identity?.personId || null;
-
-    if (!effectivePersonId) {
-      return {
-        speech: 'Não reconheci sua voz na confirmação do pedido. Por segurança, o pedido não foi confirmado.',
-        shouldEndSession: true,
-        sessionAttributes: {},
-      };
-    }
-
-    if (draft.personId && draft.personId !== effectivePersonId) {
       return {
         speech: 'A pessoa que está confirmando não é a mesma que iniciou o pedido. Criação cancelada por segurança.',
         shouldEndSession: true,
@@ -1955,6 +2140,38 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
       };
     }
 
+    // Política de Segurança Fail-Safe: sem biometria física na fala atual, não realiza commit direto por voz.
+    // Encaminha atomicamente para aprovação no aplicativo Luisices, preservando o pedido com segurança.
+    if (!physicalPersonId) {
+      await runTx(async (transaction) => {
+        const snap = await transaction.get(draftRef);
+        if (snap.exists) {
+          const dData = (typeof snap.data === 'function' ? snap.data() : snap.data) || {};
+          const isOwner = dData.uid === identity.uid;
+          const isSameBinding = !dData.bindingKey || dData.bindingKey === identity.bindingKey;
+          const isSameEnv = !dData.environment || dData.environment === config.environment;
+          const isSameRevision = dData.revision === draft.revision;
+          const isAwaiting = dData.state === 'awaiting_confirmation';
+
+          if (isOwner && isSameBinding && isSameEnv && isSameRevision && isAwaiting) {
+            transaction.update(draftRef, {
+              sessionId: sessionId || dData.sessionId,
+              state: 'awaiting_app_approval',
+              updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            });
+          }
+        }
+      }).catch((err) => {
+        console.warn('[AlexaDialog] Erro ao transicionar para app_approval sem personId:', err?.message || err);
+      });
+
+      return {
+        speech: 'Não reconheci sua voz com segurança na confirmação. Por segurança, o pedido foi enviado para aprovação no aplicativo Luisices.',
+        shouldEndSession: true,
+        sessionAttributes: {},
+      };
+    }
+
     const envLabel = config.environment === 'prod' ? 'produção' : 'teste';
 
     // Modo 1: Confirmação por voz direta
@@ -1962,7 +2179,7 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
       try {
         const commitRes = await commitOrderFromDraft({
           draftId,
-          callerPersonId: effectivePersonId,
+          callerPersonId: physicalPersonId,
           expectedRevision: draft.revision,
           callerUid: identity.uid,
           config,
@@ -2046,173 +2263,9 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
   }
 
   // 7. Verificar se há pendência de correção ativa (prioridade máxima), conflito/ambiguidade ou campos obrigatórios faltando
-  if (draft.pendingField === 'unitPrice') {
-    return {
-      speech: 'Qual é o preço de cada unidade?',
-      reprompt: 'Qual é o preço de cada unidade?',
-      shouldEndSession: false,
-      sessionAttributes: {
-        draftId,
-        revision: draft.revision,
-        personId: identity.personId,
-        expectedInput: 'unitPrice',
-        pendingField: 'unitPrice',
-      },
-    };
-  }
-
-  if (draft.pendingField === 'total') {
-    return {
-      speech: 'Qual é o valor total do pedido?',
-      reprompt: 'Qual é o valor total do pedido?',
-      shouldEndSession: false,
-      sessionAttributes: {
-        draftId,
-        revision: draft.revision,
-        personId: identity.personId,
-        expectedInput: 'totalPrice',
-        pendingField: 'total',
-      },
-    };
-  }
-
-  if (draft.pendingField === 'deliveryDate') {
-    return {
-      speech: 'Qual é a data de entrega corrigida?',
-      reprompt: 'Para quando é a entrega?',
-      shouldEndSession: false,
-      sessionAttributes: {
-        draftId,
-        revision: draft.revision,
-        personId: identity.personId,
-        expectedInput: 'deliveryDate',
-        pendingField: 'deliveryDate',
-      },
-    };
-  }
-
-  if (draft.pendingConflict) {
-    const uStr = formatCurrencyPtBr(draft.pendingConflict.unitPriceCents / 100);
-    const tStr = formatCurrencyPtBr(draft.pendingConflict.totalPriceCents / 100);
-    const speech = draft.quantity
-      ? `O valor informado de ${uStr} cada não fecha com o total de ${tStr}. O valor é ${uStr} cada ou ${tStr} no total?`
-      : `O valor é ${uStr} cada ou ${tStr} no total?`;
-    return {
-      speech,
-      reprompt: `Informe se o valor é ${uStr} cada ou ${tStr} no total.`,
-      shouldEndSession: false,
-      sessionAttributes: {
-        draftId,
-        revision: draft.revision,
-        personId: identity.personId,
-        pendingField: 'conflict',
-        expectedInput: 'priceBasis',
-      },
-    };
-  }
-
-  if (draft.pendingPriceCents !== null && draft.pendingPriceCents !== undefined) {
-    const pVal = draft.pendingPriceCents / 100;
-    const pStr = formatCurrencyPtBr(pVal);
-    return {
-      speech: `${pStr} cada ou ${pStr} no total?`,
-      reprompt: `O valor de ${pStr} é cada ou no total?`,
-      shouldEndSession: false,
-      sessionAttributes: {
-        draftId,
-        revision: draft.revision,
-        personId: identity.personId,
-        expectedInput: 'priceBasis',
-      },
-    };
-  }
-
-  if (draft.suggestedPriceCents !== null && draft.suggestedPriceCents !== undefined && draft.price === null) {
-    const sVal = draft.suggestedPriceCents / 100;
-    const sStr = formatCurrencyPtBr(sVal);
-    const prodName = sanitizeSpeech(draft.suggestedProductName || draft.product);
-    return {
-      speech: `Encontrei ${prodName} no seu catálogo por ${sStr} cada. Deseja usar esse valor?`,
-      reprompt: `Deseja usar o valor de ${sStr} cada? Diga sim para confirmar ou diga outro valor.`,
-      shouldEndSession: false,
-      sessionAttributes: {
-        draftId,
-        revision: draft.revision,
-        personId: identity.personId,
-        expectedInput: 'suggestedPrice',
-      },
-    };
-  }
-
-  const missingCustomer = !draft.customer;
-  const missingProduct = !draft.product;
-  const missingQuantity = !draft.quantity;
-  const missingDeliveryDate = !draft.deliveryDate;
-  const missingPrice = draft.price === null || draft.price === undefined;
-
-  if (missingProduct && missingCustomer) {
-    return {
-      speech: 'Qual é o produto e o cliente do pedido?',
-      reprompt: 'Diga o produto e o nome do cliente.',
-      shouldEndSession: false,
-      sessionAttributes: { draftId, revision: draft.revision, personId: identity.personId, expectedInput: 'product' },
-    };
-  }
-
-  if (missingProduct) {
-    return {
-      speech: 'Qual é o produto do pedido?',
-      reprompt: 'Diga o produto.',
-      shouldEndSession: false,
-      sessionAttributes: { draftId, revision: draft.revision, personId: identity.personId, expectedInput: 'product' },
-    };
-  }
-
-  if (missingCustomer) {
-    return {
-      speech: 'Para qual cliente é o pedido?',
-      reprompt: 'Diga o nome do cliente.',
-      shouldEndSession: false,
-      sessionAttributes: { draftId, revision: draft.revision, personId: identity.personId, expectedInput: 'customer' },
-    };
-  }
-
-  if (missingQuantity) {
-    return {
-      speech: 'Qual é a quantidade de itens?',
-      reprompt: 'Informe a quantidade inteira.',
-      shouldEndSession: false,
-      sessionAttributes: { draftId, revision: draft.revision, personId: identity.personId, expectedInput: 'quantity' },
-    };
-  }
-
-  if (missingDeliveryDate) {
-    let speech = 'Qual é a data de entrega?';
-    if (draft.quantity && draft.price !== null && draft.price !== undefined) {
-      if (draft.pricingMode === 'unit' && draft.unitPriceCents !== null) {
-        const uStr = formatCurrencyPtBr(draft.unitPriceCents / 100);
-        const tStr = formatCurrencyPtBr(draft.price);
-        speech = `São ${draft.quantity} unidades a ${uStr} cada, total de ${tStr}. Para quando é a entrega?`;
-      } else {
-        const tStr = formatCurrencyPtBr(draft.price);
-        speech = `São ${draft.quantity} unidades por ${tStr} no total. Para quando é a entrega?`;
-      }
-    }
-    return {
-      speech,
-      reprompt: 'Para quando é a entrega?',
-      shouldEndSession: false,
-      sessionAttributes: { draftId, revision: draft.revision, personId: identity.personId, expectedInput: 'deliveryDate' },
-    };
-  }
-
-  if (missingPrice) {
-    return {
-      speech: 'Qual é o valor total do pedido?',
-      reprompt: 'Diga o valor total em reais.',
-      shouldEndSession: false,
-      sessionAttributes: { draftId, revision: draft.revision, personId: identity.personId, expectedInput: 'totalPrice' },
-    };
+  const nextPrompt = buildNextPromptForDraft(draft, identity, config, draftId);
+  if (nextPrompt) {
+    return nextPrompt;
   }
 
   // 8. Todos os campos preenchidos -> Emitir resumo para confirmação

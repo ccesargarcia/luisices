@@ -2273,10 +2273,10 @@ describe('Alexa: Diálogo Natural, Contextual e Catálogo Controlado (Fases 1 a 
       expect(draft.deliveryDate).toBe('2026-10-25');
     });
 
-    it('deve confirmar pedido com sucesso quando a Alexa omite personId na resposta curta "Sim" mas a sessão possui identidade vocal autorizada', async () => {
+    it('deve encaminhar para aprovação no aplicativo quando a biometria vocal não for detectada na confirmação curta "Sim" (Fail-Safe R5)', async () => {
       const mockDb = createMockDb();
       const draftId = 'draft-short-sim';
-      const sessionId = 'session-sim-1';
+      const sessionId = 'session-short-1';
 
       mockDb.store.alexaDrafts[draftId] = {
         draftId,
@@ -2300,6 +2300,54 @@ describe('Alexa: Diálogo Natural, Contextual e Catálogo Controlado (Fases 1 a 
       const envelope = {
         session: { sessionId, attributes: { draftId, revision: 1 } },
         context: { System: {} }, // Sem biometria física nesta fala
+        request: {
+          type: 'IntentRequest',
+          intent: { name: 'AMAZON.YesIntent' },
+        },
+      };
+
+      const mockAuthService = {
+        getUser: async (u: string) => ({ uid: u, disabled: false }),
+      };
+
+      const res = await handleAlexaDialog({ envelope, identity, config: baseConfig, db: mockDb, authService: mockAuthService });
+
+      expect(res.shouldEndSession).toBe(true);
+      expect(res.speech).toContain('Por segurança, o pedido foi enviado para aprovação no aplicativo Luisices');
+      expect(mockDb.store.alexaDrafts[draftId].state).toBe('awaiting_app_approval');
+      expect(Object.keys(mockDb.store.orders).length).toBe(0);
+    });
+
+    it('deve confirmar pedido com sucesso quando biometria vocal corresponder ao autor do rascunho', async () => {
+      const mockDb = createMockDb();
+      const draftId = 'draft-voice-ok';
+      const sessionId = 'session-voice-ok-1';
+
+      mockDb.store.alexaDrafts[draftId] = {
+        draftId,
+        sessionId,
+        uid: identity.uid,
+        bindingKey: identity.bindingKey,
+        personId: identity.personId,
+        environment: 'dev',
+        mode: 'voice_confirm',
+        state: 'awaiting_confirmation',
+        customer: 'Maria',
+        product: 'caixinhas',
+        quantity: 10,
+        price: 100,
+        deliveryDate: '2026-10-25',
+        revision: 1,
+        expiresAt: { toDate: () => new Date(Date.now() + 10 * 60 * 1000) },
+      };
+
+      const envelope = {
+        session: { sessionId, attributes: { draftId, revision: 1 } },
+        context: {
+          System: {
+            person: { personId: identity.personId },
+          },
+        },
         request: {
           type: 'IntentRequest',
           intent: { name: 'AMAZON.YesIntent' },
@@ -2470,6 +2518,120 @@ describe('Alexa: Diálogo Natural, Contextual e Catálogo Controlado (Fases 1 a 
       expect(launchRes.speech).toContain('Para quando é a entrega?');
       expect(launchRes.sessionAttributes?.draftId).toBe(draftId);
       expect(launchRes.sessionAttributes?.expectedInput).toBe('deliveryDate');
+    });
+
+    it('P1 R5: YesIntent direto sem draftId reapresenta resumo verbal e exige segundo Sim consciente antes de comitar', async () => {
+      const mockDb = createMockDb();
+      const draftId = 'draft-direct-yes';
+      const sessionId = 'session-direct-yes-1';
+
+      mockDb.store.alexaDrafts[draftId] = {
+        draftId,
+        sessionId: 'old-session-id',
+        uid: identity.uid,
+        bindingKey: identity.bindingKey,
+        personId: identity.personId,
+        environment: 'dev',
+        mode: 'voice_confirm',
+        state: 'awaiting_confirmation',
+        customer: 'Maria',
+        product: 'caixinhas',
+        quantity: 10,
+        price: 100,
+        unitPriceCents: 1000,
+        totalPriceCents: 10000,
+        pricingMode: 'unit',
+        deliveryDate: '2026-10-25',
+        revision: 1,
+        expiresAt: { toDate: () => new Date(Date.now() + 10 * 60 * 1000) },
+        updatedAt: { toMillis: () => Date.now() },
+      };
+
+      // 1. Usuário diz "Sim" diretamente em nova sessão sem attributes.draftId
+      const firstYesEnvelope = {
+        session: { sessionId, attributes: {} },
+        context: { System: { person: { personId: identity.personId } } },
+        request: {
+          type: 'IntentRequest',
+          intent: { name: 'AMAZON.YesIntent' },
+        },
+      };
+
+      const firstRes = await handleAlexaDialog({ envelope: firstYesEnvelope, identity, config: baseConfig, db: mockDb });
+
+      // NUNCA fazer commit direto no primeiro "Sim" sem apresentação prévia de resumo na sessão
+      expect(firstRes.shouldEndSession).toBe(false);
+      expect(firstRes.speech).toContain('Você tem um pedido em andamento');
+      expect(firstRes.speech).toContain('10 caixinhas');
+      expect(firstRes.speech).toContain('Confirmar?');
+      expect(firstRes.sessionAttributes?.draftId).toBe(draftId);
+      expect(firstRes.sessionAttributes?.expectedInput).toBe('confirmation');
+      expect(mockDb.store.alexaDrafts[draftId].state).toBe('awaiting_confirmation'); // Não comitado!
+
+      // 2. Usuário confirma conscientemente no segundo "Sim" com contexto devolvido
+      const secondYesEnvelope = {
+        session: { sessionId, attributes: firstRes.sessionAttributes },
+        context: { System: { person: { personId: identity.personId } } },
+        request: {
+          type: 'IntentRequest',
+          intent: { name: 'AMAZON.YesIntent' },
+        },
+      };
+
+      const mockAuthService = {
+        getUser: async (u: string) => ({ uid: u, disabled: false }),
+      };
+
+      const secondRes = await handleAlexaDialog({
+        envelope: secondYesEnvelope,
+        identity,
+        config: baseConfig,
+        db: mockDb,
+        authService: mockAuthService,
+      });
+
+      expect(secondRes.shouldEndSession).toBe(true);
+      expect(secondRes.speech).toContain('com o número');
+      expect(mockDb.store.alexaDrafts[draftId].state).toBe('committed');
+      expect(Object.keys(mockDb.store.orders).length).toBe(1);
+    });
+
+    it('P2 R5: LaunchRequest com pendingField faz a pergunta prioritária de correção e persiste expectedInput', async () => {
+      const mockDb = createMockDb();
+      const draftId = 'draft-pending-unitprice';
+
+      mockDb.store.alexaDrafts[draftId] = {
+        draftId,
+        sessionId: 'old-session',
+        uid: identity.uid,
+        bindingKey: identity.bindingKey,
+        personId: identity.personId,
+        environment: 'dev',
+        mode: 'voice_confirm',
+        state: 'collecting',
+        customer: 'Maria',
+        product: 'topo de bolo',
+        quantity: 5,
+        deliveryDate: null,
+        pendingField: 'unitPrice',
+        expectedInput: 'unitPrice',
+        revision: 1,
+        expiresAt: { toDate: () => new Date(Date.now() + 10 * 60 * 1000) },
+        updatedAt: { toMillis: () => Date.now() },
+      };
+
+      const launchEnvelope = {
+        session: { sessionId: 'new-session-pf', attributes: {} },
+        request: { type: 'LaunchRequest' },
+      };
+
+      const launchRes = await handleAlexaDialog({ envelope: launchEnvelope, identity, config: baseConfig, db: mockDb });
+
+      expect(launchRes.shouldEndSession).toBe(false);
+      // Deve priorizar a pergunta de preço unitário pendente mesmo com deliveryDate ausente
+      expect(launchRes.speech).toContain('Qual é o preço de cada unidade?');
+      expect(launchRes.sessionAttributes?.expectedInput).toBe('unitPrice');
+      expect(mockDb.store.alexaDrafts[draftId].expectedInput).toBe('unitPrice');
     });
   });
 });
