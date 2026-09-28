@@ -463,12 +463,25 @@ async function findActiveDraftForUser(db, uid, bindingKey, environment) {
     const colRef = db.collection(COLLECTIONS.DRAFTS);
     if (!colRef || typeof colRef.where !== 'function') return null;
 
-    let query = colRef.where('uid', '==', uid);
-    if (typeof query.limit === 'function') {
-      query = query.limit(10);
+    let snap = null;
+    try {
+      let query = colRef.where('uid', '==', uid);
+      if (typeof query.orderBy === 'function') {
+        query = query.orderBy('updatedAt', 'desc');
+      }
+      if (typeof query.limit === 'function') {
+        query = query.limit(25);
+      }
+      snap = await query.get();
+    } catch (orderErr) {
+      // Fallback resiliente caso o índice composto não esteja disponível
+      let queryFallback = colRef.where('uid', '==', uid);
+      if (typeof queryFallback.limit === 'function') {
+        queryFallback = queryFallback.limit(50);
+      }
+      snap = await queryFallback.get();
     }
 
-    const snap = await query.get();
     if (!snap || snap.empty) return null;
 
     const now = Date.now();
@@ -919,8 +932,7 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
       currentDraft.state === 'awaiting_confirmation' &&
       !currentDraft.pendingField &&
       !currentDraft.pendingConflict &&
-      currentDraft.pendingPriceCents === null &&
-      currentDraft.pendingPriceCents === undefined
+      (currentDraft.pendingPriceCents === null || currentDraft.pendingPriceCents === undefined)
     ) {
       const confirmSpeech = buildConfirmationSpeech(currentDraft, identity, config);
       return {
@@ -2143,27 +2155,41 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
     // Política de Segurança Fail-Safe: sem biometria física na fala atual, não realiza commit direto por voz.
     // Encaminha atomicamente para aprovação no aplicativo Luisices, preservando o pedido com segurança.
     if (!physicalPersonId) {
-      await runTx(async (transaction) => {
-        const snap = await transaction.get(draftRef);
-        if (snap.exists) {
-          const dData = (typeof snap.data === 'function' ? snap.data() : snap.data) || {};
-          const isOwner = dData.uid === identity.uid;
-          const isSameBinding = !dData.bindingKey || dData.bindingKey === identity.bindingKey;
-          const isSameEnv = !dData.environment || dData.environment === config.environment;
-          const isSameRevision = dData.revision === draft.revision;
-          const isAwaiting = dData.state === 'awaiting_confirmation';
+      let transitioned = false;
+      try {
+        transitioned = await runTx(async (transaction) => {
+          const snap = await transaction.get(draftRef);
+          if (snap.exists) {
+            const dData = (typeof snap.data === 'function' ? snap.data() : snap.data) || {};
+            const isOwner = dData.uid === identity.uid;
+            const isSameBinding = !dData.bindingKey || dData.bindingKey === identity.bindingKey;
+            const isSameEnv = !dData.environment || dData.environment === config.environment;
+            const isSameRevision = dData.revision === draft.revision;
+            const isAwaiting = dData.state === 'awaiting_confirmation';
 
-          if (isOwner && isSameBinding && isSameEnv && isSameRevision && isAwaiting) {
-            transaction.update(draftRef, {
-              sessionId: sessionId || dData.sessionId,
-              state: 'awaiting_app_approval',
-              updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-            });
+            if (isOwner && isSameBinding && isSameEnv && isSameRevision && isAwaiting) {
+              transaction.update(draftRef, {
+                sessionId: sessionId || dData.sessionId,
+                state: 'awaiting_app_approval',
+                updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+              });
+              return true;
+            }
           }
-        }
-      }).catch((err) => {
+          return false;
+        });
+      } catch (err) {
         console.warn('[AlexaDialog] Erro ao transicionar para app_approval sem personId:', err?.message || err);
-      });
+        transitioned = false;
+      }
+
+      if (!transitioned) {
+        return {
+          speech: 'Não reconheci sua voz com segurança e não foi possível enviar o pedido para aprovação no aplicativo. Por favor, tente novamente ou verifique no aplicativo.',
+          shouldEndSession: true,
+          sessionAttributes: {},
+        };
+      }
 
       return {
         speech: 'Não reconheci sua voz com segurança na confirmação. Por segurança, o pedido foi enviado para aprovação no aplicativo Luisices.',

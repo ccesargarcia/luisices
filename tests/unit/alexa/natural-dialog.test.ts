@@ -107,36 +107,37 @@ describe('Alexa: Diálogo Natural, Contextual e Catálogo Controlado (Fases 1 a 
           store[col][id] = data;
           return { id };
         },
-        where: (field: string, op: string, val: any) => ({
-          limit: (n: number) => ({
+        where: (field: string, op: string, val: any) => {
+          const createQuery = (sortConfig?: { field: string; dir: 'asc' | 'desc' }, limitNum?: number) => ({
+            orderBy: (sortField: string, dir: 'asc' | 'desc' = 'asc') =>
+              createQuery({ field: sortField, dir }, limitNum),
+            limit: (n: number) => createQuery(sortConfig, n),
             get: async () => {
-              const docs: any[] = [];
+              let docs: any[] = [];
               const colStore = store[col] || {};
               for (const [id, data] of Object.entries(colStore) as any[]) {
                 if (data && data[field] === val) {
                   docs.push({ id, data: () => data });
                 }
               }
+              if (sortConfig) {
+                docs.sort((a, b) => {
+                  const dA = a.data();
+                  const dB = b.data();
+                  const vA = dA[sortConfig.field]?.toMillis ? dA[sortConfig.field].toMillis() : (dA[sortConfig.field] || 0);
+                  const vB = dB[sortConfig.field]?.toMillis ? dB[sortConfig.field].toMillis() : (dB[sortConfig.field] || 0);
+                  return sortConfig.dir === 'desc' ? vB - vA : vA - vB;
+                });
+              }
+              const finalDocs = limitNum !== undefined ? docs.slice(0, limitNum) : docs;
               return {
-                empty: docs.length === 0,
-                forEach: (cb: any) => docs.slice(0, n).forEach(cb),
+                empty: finalDocs.length === 0,
+                forEach: (cb: any) => finalDocs.forEach(cb),
               };
             },
-          }),
-          get: async () => {
-            const docs: any[] = [];
-            const colStore = store[col] || {};
-            for (const [id, data] of Object.entries(colStore) as any[]) {
-              if (data && data[field] === val) {
-                docs.push({ id, data: () => data });
-              }
-            }
-            return {
-              empty: docs.length === 0,
-              forEach: (cb: any) => docs.forEach(cb),
-            };
-          },
-        }),
+          });
+          return createQuery();
+        },
       }),
 
       runTransaction: async (cb: any) => cb({
@@ -2632,6 +2633,202 @@ describe('Alexa: Diálogo Natural, Contextual e Catálogo Controlado (Fases 1 a 
       expect(launchRes.speech).toContain('Qual é o preço de cada unidade?');
       expect(launchRes.sessionAttributes?.expectedInput).toBe('unitPrice');
       expect(mockDb.store.alexaDrafts[draftId].expectedInput).toBe('unitPrice');
+    });
+  });
+
+  describe('Revisão R6: Correções de Repetição, Consulta Ordenada e Transição Resiliente', () => {
+    it('P2.1 R6: RepeatOrderIntent em awaiting_confirmation com pendingPriceCents null repete resumo e não grava pedido', async () => {
+      const mockDb = createMockDb();
+      const draftId = 'draft-repeat-null';
+      const sessionId = 'session-repeat-1';
+
+      mockDb.store.alexaDrafts[draftId] = {
+        draftId,
+        sessionId,
+        uid: identity.uid,
+        bindingKey: identity.bindingKey,
+        personId: identity.personId,
+        environment: 'dev',
+        mode: 'voice_confirm',
+        state: 'awaiting_confirmation',
+        customer: 'Maria',
+        product: 'caixinhas',
+        quantity: 10,
+        price: 100,
+        deliveryDate: '2026-10-25',
+        pendingPriceCents: null,
+        revision: 2,
+        expiresAt: { toDate: () => new Date(Date.now() + 10 * 60 * 1000) },
+      };
+
+      const envelope = {
+        session: { sessionId, attributes: { draftId, revision: 2 } },
+        request: {
+          type: 'IntentRequest',
+          intent: { name: 'RepeatOrderIntent' },
+        },
+      };
+
+      const res = await handleAlexaDialog({ envelope, identity, config: baseConfig, db: mockDb });
+
+      expect(res.shouldEndSession).toBe(false);
+      expect(res.speech).toContain('Repetindo o pedido:');
+      expect(res.speech).toContain('10 caixinhas para Maria');
+      expect(res.speech).toContain('Confirmar?');
+      expect(res.reprompt).toContain('Você confirma o pedido?');
+      expect(res.sessionAttributes?.expectedInput).toBe('confirmation');
+      expect(Object.keys(mockDb.store.orders).length).toBe(0);
+    });
+
+    it('P2.1 R6: RepeatOrderIntent em awaiting_confirmation com pendingPriceCents undefined repete resumo e não grava pedido', async () => {
+      const mockDb = createMockDb();
+      const draftId = 'draft-repeat-undef';
+      const sessionId = 'session-repeat-2';
+
+      mockDb.store.alexaDrafts[draftId] = {
+        draftId,
+        sessionId,
+        uid: identity.uid,
+        bindingKey: identity.bindingKey,
+        personId: identity.personId,
+        environment: 'dev',
+        mode: 'voice_confirm',
+        state: 'awaiting_confirmation',
+        customer: 'Carlos',
+        product: 'topos',
+        quantity: 5,
+        price: 50,
+        deliveryDate: '2026-11-01',
+        // pendingPriceCents omitido (undefined)
+        revision: 1,
+        expiresAt: { toDate: () => new Date(Date.now() + 10 * 60 * 1000) },
+      };
+
+      const envelope = {
+        session: { sessionId, attributes: { draftId, revision: 1 } },
+        request: {
+          type: 'IntentRequest',
+          intent: { name: 'RepeatOrderIntent' },
+        },
+      };
+
+      const res = await handleAlexaDialog({ envelope, identity, config: baseConfig, db: mockDb });
+
+      expect(res.shouldEndSession).toBe(false);
+      expect(res.speech).toContain('Repetindo o pedido:');
+      expect(res.speech).toContain('5 topos para Carlos');
+      expect(res.sessionAttributes?.expectedInput).toBe('confirmation');
+      expect(Object.keys(mockDb.store.orders).length).toBe(0);
+    });
+
+    it('P2.2 R6: Retomada recupera rascunho ativo mais recente mesmo com mais de 10 rascunhos inativos/expirados no histórico', async () => {
+      const mockDb = createMockDb();
+      const now = Date.now();
+
+      // Cria 12 rascunhos antigos, expirados ou cancelados com timestamps mais antigos
+      for (let i = 1; i <= 12; i++) {
+        const id = `old-draft-${i}`;
+        mockDb.store.alexaDrafts[id] = {
+          draftId: id,
+          sessionId: `old-sess-${i}`,
+          uid: identity.uid,
+          bindingKey: identity.bindingKey,
+          personId: identity.personId,
+          environment: 'dev',
+          state: i % 2 === 0 ? 'cancelled' : 'committed',
+          customer: `Cliente Antigo ${i}`,
+          product: 'produto antigo',
+          quantity: 1,
+          price: 10,
+          updatedAt: { toMillis: () => now - (100 - i) * 60 * 1000 },
+          expiresAt: { toDate: () => new Date(now - 1000) }, // expirado
+        };
+      }
+
+      // Cria o rascunho ativo mais recente
+      const activeDraftId = 'draft-active-recent';
+      mockDb.store.alexaDrafts[activeDraftId] = {
+        draftId: activeDraftId,
+        sessionId: 'old-session-recent',
+        uid: identity.uid,
+        bindingKey: identity.bindingKey,
+        personId: identity.personId,
+        environment: 'dev',
+        mode: 'voice_confirm',
+        state: 'awaiting_confirmation',
+        customer: 'Juliana Recente',
+        product: 'convites',
+        quantity: 20,
+        price: 200,
+        deliveryDate: '2026-12-15',
+        revision: 3,
+        updatedAt: { toMillis: () => now }, // Mais recente
+        expiresAt: { toDate: () => new Date(now + 10 * 60 * 1000) }, // Válido
+      };
+
+      const launchEnvelope = {
+        session: { sessionId: 'new-session-reopen', attributes: {} },
+        request: { type: 'LaunchRequest' },
+      };
+
+      const launchRes = await handleAlexaDialog({ envelope: launchEnvelope, identity, config: baseConfig, db: mockDb });
+
+      expect(launchRes.shouldEndSession).toBe(false);
+      expect(launchRes.speech).toContain('Juliana Recente');
+      expect(launchRes.speech).toContain('20 convites');
+      expect(launchRes.sessionAttributes?.draftId).toBe(activeDraftId);
+    });
+
+    it('P2.3 R6: Transição sem personId que falha na transação reporta erro honesto e não anuncia falsamente envio ao aplicativo', async () => {
+      const mockDb = createMockDb();
+      const draftId = 'draft-failsafe-fail';
+      const sessionId = 'session-fail-1';
+
+      mockDb.store.alexaDrafts[draftId] = {
+        draftId,
+        sessionId,
+        uid: identity.uid,
+        bindingKey: identity.bindingKey,
+        personId: identity.personId,
+        environment: 'dev',
+        mode: 'voice_confirm',
+        state: 'awaiting_confirmation',
+        customer: 'Maria',
+        product: 'caixinhas',
+        quantity: 10,
+        price: 100,
+        deliveryDate: '2026-10-25',
+        revision: 2,
+        expiresAt: { toDate: () => new Date(Date.now() + 10 * 60 * 1000) },
+      };
+
+      // Simula falha na transação de transição (segunda transação do fluxo)
+      let txCount = 0;
+      const originalRunTx = mockDb.runTransaction;
+      mockDb.runTransaction = async (fn: any) => {
+        txCount++;
+        if (txCount > 1) {
+          throw new Error('Deadlock / Firestore Unavailable');
+        }
+        return originalRunTx(fn);
+      };
+
+      const envelope = {
+        session: { sessionId, attributes: { draftId, revision: 2 } },
+        context: { System: {} }, // Sem personId
+        request: {
+          type: 'IntentRequest',
+          intent: { name: 'AMAZON.YesIntent' },
+        },
+      };
+
+      const res = await handleAlexaDialog({ envelope, identity, config: baseConfig, db: mockDb });
+
+      expect(res.shouldEndSession).toBe(true);
+      // NUNCA deve afirmar que foi enviado se a transação falhou
+      expect(res.speech).not.toContain('o pedido foi enviado para aprovação no aplicativo Luisices');
+      expect(res.speech).toContain('não foi possível enviar o pedido para aprovação no aplicativo');
+      expect(mockDb.store.alexaDrafts[draftId].state).toBe('awaiting_confirmation'); // Não alterado
     });
   });
 });
