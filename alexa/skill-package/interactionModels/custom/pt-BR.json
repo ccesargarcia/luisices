@@ -71,7 +71,23 @@
             "vincular perfil",
             "vincular usuário",
             "gerar código de vinculação",
-            "gerar código"
+            "gerar o código de vinculação",
+            "gerar código",
+            "gerar o código",
+            "gerar um código",
+            "gerar código de pareamento",
+            "gerar o código de pareamento",
+            "criar código",
+            "criar código de vinculação",
+            "solicitar código",
+            "solicitar o código",
+            "pedir código",
+            "pedir o código",
+            "me dá um código",
+            "me dê o código",
+            "código de vinculação",
+            "código de pareamento",
+            "código"
           ],
           "slots": []
         },
@@ -149,7 +165,21 @@
             "o cliente é {customer}",
             "cliente {customer}",
             "é para {customer}",
-            "o nome é {customer}"
+            "o nome é {customer}",
+            "troca o cliente para {customer}",
+            "troca o cliente por {customer}",
+            "trocar o cliente para {customer}",
+            "trocar o cliente por {customer}",
+            "troca para {customer}",
+            "troca por {customer}",
+            "mudar o cliente para {customer}",
+            "alterar o cliente para {customer}",
+            "corrigir o cliente para {customer}",
+            "o nome correto é {customer}",
+            "o cliente correto é {customer}",
+            "na verdade é para {customer}",
+            "não o cliente é {customer}",
+            "não é para {customer}"
           ],
           "slots": [
             {
@@ -167,7 +197,20 @@
             "são {product}",
             "é um {product}",
             "são caixinhas",
-            "são cadernos"
+            "são cadernos",
+            "troca o produto para {product}",
+            "troca o produto por {product}",
+            "trocar o produto para {product}",
+            "trocar o produto por {product}",
+            "mudar o produto para {product}",
+            "alterar o produto para {product}",
+            "corrigir o produto para {product}",
+            "o produto correto é {product}",
+            "na verdade é {product}",
+            "não o produto é {product}",
+            "não é {product}",
+            "troca para {product}",
+            "troca por {product}"
           ],
           "slots": [
             {
@@ -184,6 +227,15 @@
             "{quantity} itens",
             "quantidade {quantity}",
             "são {quantity}",
+            "na verdade são {quantity}",
+            "na verdade são {quantity} unidades",
+            "na verdade é {quantity}",
+            "são {quantity} na verdade",
+            "não são {quantity}",
+            "não são {quantity} unidades",
+            "não é {quantity}",
+            "coloca {quantity} unidades",
+            "coloca {quantity}",
             "alterar a quantidade para {quantity}",
             "mudar a quantidade para {quantity}",
             "corrigir a quantidade para {quantity}",
@@ -209,7 +261,15 @@
             "para o dia {deliveryDate}",
             "data de entrega {deliveryDate}",
             "dia {deliveryDate}",
-            "{deliveryDate}"
+            "{deliveryDate}",
+            "a entrega fica para {deliveryDate}",
+            "a entrega é para {deliveryDate}",
+            "entrega para {deliveryDate}",
+            "troca a data para {deliveryDate}",
+            "mudar a data para {deliveryDate}",
+            "alterar a data para {deliveryDate}",
+            "na verdade é para {deliveryDate}",
+            "não a data é {deliveryDate}"
           ],
           "slots": [
             {
@@ -238,7 +298,14 @@
             "mudar o valor unitário para {unitPrice} reais",
             "corrigir para {unitPrice} reais cada",
             "mudar para {unitPrice} reais cada",
-            "alterar para {unitPrice} reais cada"
+            "alterar para {unitPrice} reais cada",
+            "mantém a quantidade mas coloca {unitPrice} reais cada",
+            "coloca {unitPrice} reais cada",
+            "coloca {unitPrice} por unidade",
+            "na verdade é {unitPrice} reais cada",
+            "na verdade são {unitPrice} reais cada",
+            "não são {unitPrice} reais cada",
+            "não é {unitPrice} cada"
           ],
           "slots": [
             {
@@ -264,7 +331,13 @@
             "mudar o total para {total} reais",
             "corrigir para {total} reais no total",
             "mudar para {total} reais no total",
-            "alterar para {total} reais no total"
+            "alterar para {total} reais no total",
+            "não o total é {total} reais",
+            "na verdade o total é {total} reais",
+            "na verdade deu {total} reais",
+            "coloca {total} reais no total",
+            "{total} reais pelo pedido inteiro",
+            "não deu {total} reais no total"
           ],
           "slots": [
             {
@@ -272,6 +345,24 @@
               "type": "AMAZON.NUMBER"
             }
           ]
+        },
+        {
+          "name": "RepeatOrderIntent",
+          "samples": [
+            "repetir",
+            "repete",
+            "repita",
+            "pode repetir",
+            "o que você entendeu",
+            "o que já informei",
+            "quais são os dados",
+            "como está o pedido",
+            "o que temos até agora",
+            "o que já temos",
+            "o que falta",
+            "quais dados faltam"
+          ],
+          "slots": []
         },
         {
           "name": "ProvidePriceIntent",

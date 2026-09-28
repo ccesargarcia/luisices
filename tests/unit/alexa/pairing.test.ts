@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 const { handleVoicePairingRequest, approveAlexaPairingAdmin } = require('../../../functions/alexa/pairing');
 const { computeCodeHash } = require('../../../functions/alexa/repository');
+const { processAlexaEnvelope } = require('../../../functions/alexa/index');
 
 describe('Alexa: Fluxo de Pareamento Supervisionado e Vinculação de Voz', () => {
   const baseConfig = {
@@ -206,5 +207,39 @@ describe('Alexa: Fluxo de Pareamento Supervisionado e Vinculação de Voz', () =
         config: baseConfig,
       })
     ).rejects.toThrow('Apenas administradores');
+  });
+
+  it('deve rotear LinkVoiceIntent e aliases (GeneratePairingCodeIntent, PairAlexaIntent) via processAlexaEnvelope', async () => {
+    const mockDb = createMockDb();
+
+    for (const intentName of ['LinkVoiceIntent', 'GeneratePairingCodeIntent', 'PairAlexaIntent']) {
+      const envelope = {
+        request: {
+          type: 'IntentRequest',
+          requestId: `edda_${intentName}_${Date.now()}`,
+          intent: { name: intentName },
+        },
+        session: {
+          application: { applicationId: 'amzn1.ask.skill.test-dev' },
+        },
+        context: {
+          System: {
+            application: { applicationId: 'amzn1.ask.skill.test-dev' },
+            person: { personId: 'amzn1.ask.person.CAIO' },
+            user: { userId: 'amzn1.ask.account.HOME' },
+            device: { deviceId: 'echo-pop-1' },
+          },
+        },
+      };
+
+      const result = await processAlexaEnvelope(envelope, {
+        db: mockDb,
+        config: baseConfig,
+      });
+
+      expect(result.response.outputSpeech.text).toContain('Seu código de vinculação é:');
+      expect(result.response.outputSpeech.text).toMatch(/\d, \d, \d, \d, \d, \d, \d, \d/);
+      expect(result.response.shouldEndSession).toBe(true);
+    }
   });
 });

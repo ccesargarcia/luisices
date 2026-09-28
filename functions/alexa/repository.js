@@ -20,6 +20,7 @@ const COLLECTIONS = {
   SALES_LEDGER: 'salesLedger',
   USERS: 'users',
   USER_PROFILES: 'userProfiles',
+  PRODUCTS: 'products',
 };
 
 /**

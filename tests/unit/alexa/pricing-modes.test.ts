@@ -196,8 +196,8 @@ describe('Alexa: Precificação Unitária, Total e Resolução de Ambiguidades',
       const mockDb = createMockDb();
       const res = await handleAlexaDialog({ envelope, identity, config: baseConfig, db: mockDb });
 
-      // Pergunta apenas a data de entrega
-      expect(res.speech).toBe('Qual é a data de entrega?');
+      // Pergunta a data de entrega com feedback contextual
+      expect(res.speech).toBe('São 10 unidades a 10 reais cada, total de 100 reais. Para quando é a entrega?');
       expect(res.shouldEndSession).toBe(false);
       const draftId = res.sessionAttributes?.draftId;
       expect(draftId).toBeDefined();
@@ -279,7 +279,7 @@ describe('Alexa: Precificação Unitária, Total e Resolução de Ambiguidades',
       expect(updatedDraft.quantity).toBe(5);
       expect(updatedDraft.totalPriceCents).toBe(5000);
       expect(updatedDraft.price).toBe(50);
-      expect(qtyRes.speech).toBe('Qual é a data de entrega?');
+      expect(qtyRes.speech).toBe('São 5 unidades a 10 reais cada, total de 50 reais. Para quando é a entrega?');
     });
   });
 
@@ -329,7 +329,7 @@ describe('Alexa: Precificação Unitária, Total e Resolução de Ambiguidades',
       expect(resolvedDraft.totalPriceCents).toBe(10000);
       expect(resolvedDraft.price).toBe(100);
       expect(resolvedDraft.pendingPriceCents).toBeNull();
-      expect(clarifyRes.speech).toBe('Qual é a data de entrega?');
+      expect(clarifyRes.speech).toBe('São 10 unidades a 10 reais cada, total de 100 reais. Para quando é a entrega?');
     });
 
     it('resolução de ambiguidade com "no total" define modo total', async () => {
@@ -1161,7 +1161,7 @@ describe('Alexa: Precificação Unitária, Total e Resolução de Ambiguidades',
       expect(updatedDraft.pendingConflict).toBeNull();
       expect(updatedDraft.pendingField).toBeNull();
       // Como faltava data de entrega, pergunta data de entrega
-      expect(res2.speech).toContain('Qual é a data de entrega?');
+      expect(res2.speech).toContain('Para quando é a entrega?');
     });
 
     it('P2: Retry de transação Firestore é isolado e não vaza estado entre tentativas', async () => {

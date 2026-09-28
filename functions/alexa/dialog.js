@@ -342,6 +342,119 @@ function buildConfirmationSpeech(draftData, identity, config) {
 }
 
 /**
+ * Normaliza texto para correspondência no catálogo (minúsculas, sem acentos ou pontuação).
+ */
+function normalizeText(text) {
+  if (!text) return '';
+  return String(text)
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
+ * Determina de forma centralizada e determinística o próximo campo esperado pelo rascunho.
+ * Usado tanto no cálculo da próxima pergunta do OrderIntent quanto no RepeatOrderIntent.
+ *
+ * @param {object} draft
+ * @returns {string|null}
+ */
+function determineNextExpectedInput(draft) {
+  if (!draft) return null;
+  // 1. Pendência ativa de correção de campo (pendingField) tem prioridade máxima sobre campos faltantes ou valores antigos (R4 P2)
+  if (draft.pendingField) {
+    if (draft.pendingField === 'unitPrice') return 'unitPrice';
+    if (draft.pendingField === 'total') return 'totalPrice';
+    if (draft.pendingField === 'deliveryDate') return 'deliveryDate';
+    if (draft.pendingField === 'conflict') return 'priceBasis';
+  }
+  // 2. Conflito ou valor aguardando esclarecimento de base de preço (cada vs total)
+  if (draft.pendingConflict || (draft.pendingPriceCents !== null && draft.pendingPriceCents !== undefined)) {
+    return 'priceBasis';
+  }
+  // 3. Preço sugerido do catálogo aguardando aceite
+  if (draft.suggestedPriceCents !== null && draft.suggestedPriceCents !== undefined && (draft.price === null || draft.price === undefined)) {
+    return 'suggestedPrice';
+  }
+  // 4. Confirmação (apenas se não houver pendência)
+  if (draft.state === 'awaiting_confirmation') {
+    return 'confirmation';
+  }
+  // 5. Campos obrigatórios faltantes
+  if (!draft.product && !draft.customer) return 'product';
+  if (!draft.product) return 'product';
+  if (!draft.customer) return 'customer';
+  if (!draft.quantity) return 'quantity';
+  if (!draft.deliveryDate) return 'deliveryDate';
+  if (draft.price === null || draft.price === undefined) return 'totalPrice';
+  return null;
+}
+
+/**
+ * Consulta controlada no catálogo de produtos do usuário.
+ *
+ * POLÍTICA DE SUPORTE RESTRITO (Fase 4 - Catálogo Controlado):
+ * 1. Escopo estrito e isolamento multilocatário: busca indexada unicamente por `userId == uid`.
+ * 2. Proteção contra latência na Alexa (< 8s) e full-scan: amostra limitada a no máximo 30 documentos.
+ * 3. Prevenção de ambiguidades e alucinações:
+ *    - Exige correspondência EXATA única entre o nome normalizado falado e o produto no catálogo.
+ *    - Se houver zero ou múltiplas correspondências exatas (ex: variações como "Topo azul" e "Topo rosa"),
+ *      ou apenas correspondências parciais por substring, o sistema NÃO escolhe arbitrariamente nenhuma variante.
+ *    - Nesses casos, o texto falado é mantido como texto livre (`product`) e a Alexa solicita o valor diretamente
+ *      ao usuário, preservando a integridade das cotações sem impor preços incorretos.
+ */
+async function searchUserCatalog(db, uid, queryText) {
+  if (!db || !uid || !queryText) return [];
+  try {
+    const normQuery = normalizeText(queryText);
+    if (!normQuery) return [];
+
+    let snap = null;
+    if (typeof db.collection === 'function') {
+      const col = db.collection(COLLECTIONS.PRODUCTS || 'products');
+      if (typeof col.where === 'function') {
+        snap = await col.where('userId', '==', uid).limit(30).get();
+      }
+    }
+    if (!snap || snap.empty || typeof snap.forEach !== 'function') return [];
+
+    const matches = [];
+    snap.forEach((doc) => {
+      const data = typeof doc.data === 'function' ? doc.data() : (doc.data || {});
+      const prodName = data.name || '';
+      const normName = normalizeText(prodName);
+      if (!normName) return;
+
+      const isExact = normName === normQuery;
+      const isSub = normName.includes(normQuery) || normQuery.includes(normName);
+      if (isExact) {
+        matches.unshift({
+          id: doc.id,
+          name: prodName,
+          unitPrice: typeof data.unitPrice === 'number' ? data.unitPrice : 0,
+          exact: true,
+        });
+      } else if (isSub) {
+        matches.push({
+          id: doc.id,
+          name: prodName,
+          unitPrice: typeof data.unitPrice === 'number' ? data.unitPrice : 0,
+          exact: false,
+        });
+      }
+    });
+
+    return matches.slice(0, 3);
+  } catch (err) {
+    console.warn('[AlexaDialog] Erro ao consultar catálogo do usuário:', err?.message || err);
+    return [];
+  }
+}
+
+/**
  * Processador principal de diálogo da Alexa.
  *
  * @param {object} params
@@ -428,11 +541,170 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
     };
   }
 
+  // 2.5 Repetir pedido / O que já informei (Fase 3)
+  if (intentName === 'RepeatOrderIntent') {
+    if (!currentDraftId || !sessionId) {
+      return {
+        speech: 'Ainda não temos dados para este pedido. Para começar, diga por exemplo: criar pedido de dez caixinhas para Maria.',
+        reprompt: 'Diga os dados do pedido para começar.',
+        shouldEndSession: false,
+        sessionAttributes: { draftId: currentDraftId, revision: sessionAttrs.revision || 1, personId: identity.personId },
+      };
+    }
+
+    const txResult = await runTx(async (transaction) => {
+      const draftRef = db.collection(COLLECTIONS.DRAFTS).doc(currentDraftId);
+      const snap = await transaction.get(draftRef);
+      if (!snap || !snap.exists) {
+        return null;
+      }
+      const d = (typeof snap.data === 'function' ? snap.data() : snap.data) || {};
+      const now = Date.now();
+      const expTime = d.expiresAt?.toDate ? d.expiresAt.toDate().getTime() : 0;
+      const isSameUser = d.uid === identity.uid;
+      const isSameBinding = !d.bindingKey || d.bindingKey === identity.bindingKey;
+      const isSameEnv = !d.environment || d.environment === config.environment;
+      const isSameSession = d.sessionId === sessionId;
+      const isNotExpired = expTime > 0 && expTime > now;
+      const isNotTerminal =
+        d.state !== 'committed' &&
+        d.state !== 'cancelled' &&
+        d.state !== 'expired' &&
+        d.state !== 'awaiting_app_approval';
+
+      if (!isSameUser || !isSameBinding || !isSameEnv || !isSameSession || !isNotExpired || !isNotTerminal) {
+        return null;
+      }
+
+      const nextExpected = determineNextExpectedInput(d);
+      if (nextExpected && nextExpected !== d.expectedInput) {
+        d.expectedInput = nextExpected;
+        d.updatedAt = admin.firestore.FieldValue.serverTimestamp();
+        transaction.set(draftRef, d, { merge: true });
+      }
+
+      return { draft: d, nextExpected };
+    }).catch((err) => {
+      console.warn('[AlexaDialog] Erro na transação do RepeatOrderIntent:', err?.message || err);
+      return null;
+    });
+
+    const currentDraft = txResult?.draft || null;
+    const nextExpected = txResult?.nextExpected || null;
+
+    if (!currentDraft || (!currentDraft.customer && !currentDraft.product && !currentDraft.quantity && currentDraft.price === null)) {
+      return {
+        speech: 'Ainda não temos dados para este pedido. Para começar, diga por exemplo: criar pedido de dez caixinhas para Maria.',
+        reprompt: 'Diga os dados do pedido para começar.',
+        shouldEndSession: false,
+        sessionAttributes: { draftId: currentDraftId, revision: sessionAttrs.revision || 1, personId: identity.personId },
+      };
+    }
+
+    if (
+      currentDraft.state === 'awaiting_confirmation' &&
+      !currentDraft.pendingField &&
+      !currentDraft.pendingConflict &&
+      currentDraft.pendingPriceCents === null &&
+      currentDraft.pendingPriceCents === undefined
+    ) {
+      const confirmSpeech = buildConfirmationSpeech(currentDraft, identity, config);
+      return {
+        speech: `Repetindo o pedido: ${confirmSpeech}`,
+        reprompt: 'Você confirma o pedido? Diga sim para confirmar ou não para alterar.',
+        shouldEndSession: false,
+        sessionAttributes: { draftId: currentDraftId, revision: currentDraft.revision, personId: identity.personId, expectedInput: 'confirmation' },
+      };
+    }
+
+    // Estado collecting: relata o que já temos e o que falta
+    const known = [];
+    if (currentDraft.customer) known.push(`cliente ${sanitizeSpeech(currentDraft.customer)}`);
+    if (currentDraft.product) known.push(`produto ${sanitizeSpeech(currentDraft.product)}`);
+    if (currentDraft.quantity) known.push(`${currentDraft.quantity} ${currentDraft.quantity === 1 ? 'unidade' : 'unidades'}`);
+    if (currentDraft.pricingMode === 'unit' && currentDraft.unitPriceCents !== null) {
+      known.push(`${formatCurrencyPtBr(currentDraft.unitPriceCents / 100)} cada, total de ${formatCurrencyPtBr(currentDraft.price)}`);
+    } else if (currentDraft.pricingMode === 'total' && currentDraft.totalPriceCents !== null) {
+      known.push(`total de ${formatCurrencyPtBr(currentDraft.price)}`);
+    }
+    if (currentDraft.deliveryDate) known.push(`entrega em ${formatDatePtBr(currentDraft.deliveryDate)}`);
+
+    let speech = `Até agora temos: ${known.join(', ')}. `;
+    let reprompt = 'O que deseja informar agora?';
+
+    if (nextExpected === 'unitPrice') {
+      speech += 'Qual é o preço de cada unidade?';
+      reprompt = 'Qual é o preço de cada unidade?';
+    } else if (nextExpected === 'suggestedPrice') {
+      const sVal = currentDraft.suggestedPriceCents / 100;
+      const sStr = formatCurrencyPtBr(sVal);
+      const prodName = sanitizeSpeech(currentDraft.suggestedProductName || currentDraft.product);
+      speech += `Encontrei ${prodName} no catálogo por ${sStr} cada. Deseja usar esse valor?`;
+      reprompt = `Deseja usar o valor de ${sStr} cada? Diga sim para confirmar ou diga outro valor.`;
+    } else if (nextExpected === 'priceBasis') {
+      if (currentDraft.pendingConflict) {
+        const uStr = formatCurrencyPtBr(currentDraft.pendingConflict.unitPriceCents / 100);
+        const tStr = formatCurrencyPtBr(currentDraft.pendingConflict.totalPriceCents / 100);
+        speech += `Temos ${uStr} cada ou ${tStr} no total. É cada ou no total?`;
+        reprompt = `O valor é ${uStr} cada ou ${tStr} no total?`;
+      } else {
+        const valCents = currentDraft.pendingPriceCents;
+        const valStr = formatCurrencyPtBr(valCents / 100);
+        speech += `Temos o valor de ${valStr}. É cada ou no total?`;
+        reprompt = `Esse valor de ${valStr} é cada ou no total?`;
+      }
+    } else if (nextExpected === 'product') {
+      if (!currentDraft.customer) {
+        speech += 'Falta informar o produto e o cliente.';
+        reprompt = 'Qual é o produto e o cliente?';
+      } else {
+        speech += 'Falta informar o produto.';
+        reprompt = 'Qual é o produto do pedido?';
+      }
+    } else if (nextExpected === 'customer') {
+      speech += 'Falta informar o cliente.';
+      reprompt = 'Para qual cliente é o pedido?';
+    } else if (nextExpected === 'quantity') {
+      speech += 'Falta informar a quantidade.';
+      reprompt = 'Qual é a quantidade de itens?';
+    } else if (nextExpected === 'deliveryDate') {
+      if (currentDraft.pendingField === 'deliveryDate') {
+        speech += 'Qual é a data de entrega corrigida?';
+        reprompt = 'Para quando é a entrega?';
+      } else {
+        speech += 'Falta informar a data de entrega. Para quando é a entrega?';
+        reprompt = 'Para quando é a entrega?';
+      }
+    } else if (nextExpected === 'totalPrice') {
+      if (currentDraft.pendingField === 'total') {
+        speech += 'Qual é o valor total do pedido?';
+        reprompt = 'Qual é o valor total do pedido?';
+      } else {
+        speech += 'Falta informar o valor.';
+        reprompt = 'Qual é o valor do pedido?';
+      }
+    }
+
+    return {
+      speech: speech.trim(),
+      reprompt,
+      shouldEndSession: false,
+      sessionAttributes: {
+        draftId: currentDraftId,
+        revision: currentDraft.revision,
+        personId: identity.personId,
+        expectedInput: nextExpected,
+        pendingField: currentDraft.pendingField || null,
+      },
+    };
+  }
+
   // 3. Fallback intent (tratamento de fala não compreendida com limite de 3 tentativas)
   if (intentName === 'AMAZON.FallbackIntent') {
     let fallbackCount = (sessionAttrs.fallbackCount || 0) + 1;
     let shouldExpire = false;
     let draftUpdated = false;
+    let fallbackExpectedInput = sessionAttrs.expectedInput || null;
 
     if (currentDraftId && sessionId) {
       await runTx(async (transaction) => {
@@ -450,6 +722,9 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
 
           if (isOwner && isSameBinding && isSameEnv && isSameSession && isModifiable) {
             draftUpdated = true;
+            if (dData.expectedInput) {
+              fallbackExpectedInput = dData.expectedInput;
+            }
             if (dData.fallbackCount !== undefined) {
               fallbackCount = Math.max(fallbackCount, dData.fallbackCount + 1);
             }
@@ -493,23 +768,55 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
       delete nextAttrs.draftId;
     }
     nextAttrs.fallbackCount = draftUpdated ? fallbackCount : 1;
+    if (fallbackExpectedInput) {
+      nextAttrs.expectedInput = fallbackExpectedInput;
+    }
+
+    let fallbackSpeech = 'Não entendi. Por favor, repita a informação do pedido.';
+    let fallbackReprompt = 'Diga os dados do pedido ou diga cancelar.';
+
+    if (fallbackExpectedInput === 'unitPrice') {
+      fallbackSpeech = 'Não entendi. Diga o preço de cada unidade, por exemplo: dez reais cada.';
+      fallbackReprompt = 'Qual é o valor unitário de cada item?';
+    } else if (fallbackExpectedInput === 'totalPrice') {
+      fallbackSpeech = 'Não entendi. Diga o valor total do pedido, por exemplo: cem reais no total.';
+      fallbackReprompt = 'Qual é o valor total do pedido?';
+    } else if (fallbackExpectedInput === 'deliveryDate') {
+      fallbackSpeech = 'Não entendi. Diga a data de entrega, por exemplo: dia quinze de outubro.';
+      fallbackReprompt = 'Qual é a data de entrega?';
+    } else if (fallbackExpectedInput === 'quantity') {
+      fallbackSpeech = 'Não entendi. Diga a quantidade inteira de itens, por exemplo: dez unidades.';
+      fallbackReprompt = 'Qual é a quantidade de itens?';
+    } else if (fallbackExpectedInput === 'customer') {
+      fallbackSpeech = 'Não entendi. Diga o nome do cliente, por exemplo: Maria.';
+      fallbackReprompt = 'Para qual cliente é o pedido?';
+    } else if (fallbackExpectedInput === 'product') {
+      fallbackSpeech = 'Não entendi. Diga o produto desejado, por exemplo: caixinhas ou topo de bolo.';
+      fallbackReprompt = 'Qual é o produto do pedido?';
+    } else if (fallbackExpectedInput === 'confirmation') {
+      fallbackSpeech = 'Não entendi. Diga sim para confirmar o pedido ou não para alterar.';
+      fallbackReprompt = 'Você confirma o pedido? Diga sim ou não.';
+    } else if (fallbackExpectedInput === 'priceBasis') {
+      fallbackSpeech = 'Não entendi. Diga se o valor informado é cada ou no total.';
+      fallbackReprompt = 'O valor é cada ou no total?';
+    }
 
     return {
-      speech: 'Não entendi. Por favor, repita a informação do pedido.',
-      reprompt: 'Diga os dados do pedido ou diga cancelar.',
+      speech: fallbackSpeech,
+      reprompt: fallbackReprompt,
       shouldEndSession: false,
       sessionAttributes: nextAttrs,
     };
   }
 
-  // 4. Pré-validação de formato dos slots recebidos neste turno
-  const incomingUpdates = {};
+  // 4. Pré-validação de formato dos slots recebidos neste turno (valores brutos imutáveis para retry transacional seguro)
+  const rawIncomingUpdates = {};
 
   const customerSlot = slots.customer?.value || slots.Customer?.value;
   if (customerSlot) {
     const cleanCust = customerSlot.trim();
     if (cleanCust.length >= 2 && cleanCust.length <= 100) {
-      incomingUpdates.customer = cleanCust;
+      rawIncomingUpdates.customer = cleanCust;
     }
   }
 
@@ -517,7 +824,7 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
   if (productSlot) {
     const cleanProd = productSlot.trim();
     if (cleanProd.length >= 1 && cleanProd.length <= 200) {
-      incomingUpdates.product = cleanProd;
+      rawIncomingUpdates.product = cleanProd;
     }
   }
 
@@ -529,7 +836,7 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
         speech: 'A quantidade de itens deve ser um número inteiro. Por exemplo: dez ou quinze.',
         reprompt: 'Qual é a quantidade inteira de itens?',
         shouldEndSession: false,
-        sessionAttributes: { draftId: currentDraftId, revision: sessionAttrs.revision || 1, personId: identity.personId },
+        sessionAttributes: { draftId: currentDraftId, revision: sessionAttrs.revision || 1, personId: identity.personId, expectedInput: 'quantity' },
       };
     }
     const q = parseInt(cleanQty, 10);
@@ -538,10 +845,10 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
         speech: 'A quantidade deve ser entre 1 e dez mil itens.',
         reprompt: 'Qual é a quantidade de itens?',
         shouldEndSession: false,
-        sessionAttributes: { draftId: currentDraftId, revision: sessionAttrs.revision || 1, personId: identity.personId },
+        sessionAttributes: { draftId: currentDraftId, revision: sessionAttrs.revision || 1, personId: identity.personId, expectedInput: 'quantity' },
       };
     }
-    incomingUpdates.quantity = q;
+    rawIncomingUpdates.quantity = q;
   }
 
   const dateSlot = slots.deliveryDate?.value || slots.DeliveryDate?.value || slots.date?.value;
@@ -549,7 +856,7 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
   if (dateSlot) {
     const dateRes = parseAndValidateDeliveryDate(dateSlot, config.timezone);
     if (dateRes.valid) {
-      incomingUpdates.deliveryDate = dateRes.date;
+      rawIncomingUpdates.deliveryDate = dateRes.date;
     } else {
       dateValidationError = dateRes.error;
     }
@@ -559,42 +866,65 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
   const totalSlot = slots.total?.value || slots.Total?.value;
   const genericPriceSlot = slots.price?.value || slots.Price?.value || slots.ambiguousPrice?.value || slots.AmbiguousPrice?.value;
 
-  let parsedUnitPrice = null;
+  let rawParsedUnitPrice = null;
   let unitPriceValidationError = null;
   if (unitPriceSlot) {
     const uRes = parseAndValidatePriceToCents(unitPriceSlot);
     if (!uRes.valid) {
       unitPriceValidationError = uRes.error;
     } else {
-      parsedUnitPrice = uRes;
+      rawParsedUnitPrice = uRes;
     }
   }
 
-  let parsedTotal = null;
+  let rawParsedTotal = null;
   let totalValidationError = null;
   if (totalSlot) {
     const tRes = parseAndValidatePriceToCents(totalSlot);
     if (!tRes.valid) {
       totalValidationError = tRes.error;
     } else {
-      parsedTotal = tRes;
+      rawParsedTotal = tRes;
     }
   }
 
-  let parsedGenericPrice = null;
+  let rawParsedGenericPrice = null;
   let genericPriceValidationError = null;
   if (genericPriceSlot) {
     const gRes = parseAndValidatePriceToCents(genericPriceSlot);
     if (!gRes.valid) {
       genericPriceValidationError = gRes.error;
     } else {
-      parsedGenericPrice = gRes;
+      rawParsedGenericPrice = gRes;
+    }
+  }
+
+  // Consulta controlada ao catálogo do usuário (Fase 4)
+  let catalogMatch = null;
+  if (rawIncomingUpdates.product && db && identity.uid) {
+    try {
+      const matches = await searchUserCatalog(db, identity.uid, rawIncomingUpdates.product);
+      const exactMatches = matches.filter((m) => m.exact);
+      // P1.2: Apenas aceitar correspondência de catálogo se houver exatamente UMA correspondência exata.
+      // Se houver múltiplas correspondências (ambiguidade de variantes como "Topo azul" e "Topo rosa")
+      // ou apenas correspondência parcial por substring, NÃO escolher arbitrariamente matches[0].
+      if (exactMatches.length === 1) {
+        catalogMatch = exactMatches[0];
+      }
+    } catch (err) {
+      console.warn('[AlexaDialog] Erro ao buscar produto no catálogo:', err?.message || err);
     }
   }
 
   // 5. Transação atômica única para carregar/modificar o rascunho com controle de concorrência
   // Todos os estados são retornados estruturados por tentativa, evitando vazamento entre retries.
   const txResult = await runTx(async (transaction) => {
+    // Cópia local e isolada de todos os slots para cada tentativa da transação (R3 P1)
+    const incomingUpdates = { ...rawIncomingUpdates };
+    let parsedUnitPrice = rawParsedUnitPrice ? { ...rawParsedUnitPrice } : null;
+    let parsedTotal = rawParsedTotal ? { ...rawParsedTotal } : null;
+    let parsedGenericPrice = rawParsedGenericPrice ? { ...rawParsedGenericPrice } : null;
+
     let txDraftId = currentDraftId;
     let txDraftRef = null;
     let txIsAppApprovalBlocked = false;
@@ -669,6 +999,11 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
         pendingPriceCents: null,
         pendingConflict: null,
         pendingField: null,
+        expectedInput: null,
+        catalogProductId: null,
+        suggestedPriceCents: null,
+        suggestedProductName: null,
+        priceSource: null,
         notes: null,
         revision: 1,
         state: 'collecting',
@@ -680,6 +1015,11 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
     } else {
       if (existingData.pendingConflict === undefined) existingData.pendingConflict = null;
       if (existingData.pendingField === undefined) existingData.pendingField = null;
+      if (existingData.expectedInput === undefined) existingData.expectedInput = null;
+      if (existingData.catalogProductId === undefined) existingData.catalogProductId = null;
+      if (existingData.suggestedPriceCents === undefined) existingData.suggestedPriceCents = null;
+      if (existingData.suggestedProductName === undefined) existingData.suggestedProductName = null;
+      if (existingData.priceSource === undefined) existingData.priceSource = null;
       // Compatibilidade retroativa para rascunhos legados
       if (!existingData.pricingMode && typeof existingData.price === 'number') {
         existingData.pricingMode = 'total';
@@ -691,9 +1031,12 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
       }
     }
 
+    const wasAwaitingConfirmation = existingData.state === 'awaiting_confirmation';
+
     // Validações de entrada que persistem pendingField no rascunho antes de responder erro
     if (dateValidationError) {
       existingData.pendingField = 'deliveryDate';
+      existingData.expectedInput = 'deliveryDate';
       existingData.state = 'collecting';
       existingData.revision = (existingData.revision || 1) + 1;
       existingData.updatedAt = admin.firestore.FieldValue.serverTimestamp();
@@ -712,6 +1055,7 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
 
     if (unitPriceValidationError) {
       existingData.pendingField = 'unitPrice';
+      existingData.expectedInput = 'unitPrice';
       existingData.state = 'collecting';
       existingData.revision = (existingData.revision || 1) + 1;
       existingData.updatedAt = admin.firestore.FieldValue.serverTimestamp();
@@ -730,6 +1074,7 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
 
     if (totalValidationError) {
       existingData.pendingField = 'total';
+      existingData.expectedInput = 'totalPrice';
       existingData.state = 'collecting';
       existingData.revision = (existingData.revision || 1) + 1;
       existingData.updatedAt = admin.firestore.FieldValue.serverTimestamp();
@@ -747,6 +1092,15 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
     }
 
     if (genericPriceValidationError) {
+      if (existingData.pendingField === 'unitPrice') {
+        existingData.expectedInput = 'unitPrice';
+      } else {
+        existingData.expectedInput = 'totalPrice';
+      }
+      existingData.state = 'collecting';
+      existingData.revision = (existingData.revision || 1) + 1;
+      existingData.updatedAt = admin.firestore.FieldValue.serverTimestamp();
+      transaction.set(txDraftRef, existingData, { merge: true });
       return {
         draft: existingData,
         draftId: txDraftId,
@@ -754,48 +1108,236 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
         isAppApprovalBlocked: false,
         transactionError: {
           speech: genericPriceValidationError,
-          reprompt: 'Qual é o valor do pedido?',
+          reprompt: existingData.pendingField === 'unitPrice' ? 'Qual é o preço de cada unidade?' : 'Qual é o valor total do pedido?',
         },
-      };
-    }
-
-    // Ações para YesIntent e NoIntent não alteram slots aqui
-    if (intentName === 'AMAZON.YesIntent') {
-      return {
-        draft: existingData,
-        draftId: txDraftId,
-        draftRef: txDraftRef,
-        isAppApprovalBlocked: false,
-        transactionError: null,
-      };
-    }
-
-    if (intentName === 'AMAZON.NoIntent') {
-      if (existingData.state === 'awaiting_confirmation') {
-        existingData.state = 'collecting';
-        existingData.updatedAt = admin.firestore.FieldValue.serverTimestamp();
-        transaction.set(txDraftRef, existingData, { merge: true });
-      }
-      return {
-        draft: existingData,
-        draftId: txDraftId,
-        draftRef: txDraftRef,
-        isAppApprovalBlocked: false,
-        transactionError: null,
       };
     }
 
     let updated = false;
 
+    let handledSuggestedPrice = false;
+    // Ações para YesIntent e NoIntent
+    if (intentName === 'AMAZON.YesIntent') {
+      const isSuggested =
+        existingData.expectedInput === 'suggestedPrice' &&
+        existingData.suggestedPriceCents !== null &&
+        existingData.suggestedPriceCents !== undefined;
+      if (isSuggested) {
+        // Revalidação do produto do catálogo se catalogProductId existir
+        if (existingData.catalogProductId && db) {
+          const prodRef = db.collection(COLLECTIONS.PRODUCTS || 'products').doc(existingData.catalogProductId);
+          const prodSnap = await transaction.get(prodRef);
+          if (!prodSnap || !prodSnap.exists) {
+            existingData.catalogProductId = null;
+            existingData.suggestedPriceCents = null;
+            existingData.suggestedProductName = null;
+            existingData.expectedInput = 'totalPrice';
+            existingData.updatedAt = admin.firestore.FieldValue.serverTimestamp();
+            transaction.set(txDraftRef, existingData, { merge: true });
+            return {
+              draft: existingData,
+              draftId: txDraftId,
+              draftRef: txDraftRef,
+              isAppApprovalBlocked: false,
+              transactionError: {
+                speech: 'O item sugerido do catálogo não está mais disponível. Por favor, diga o valor do pedido.',
+                reprompt: 'Qual é o valor do pedido?',
+              },
+            };
+          }
+          const prodData = (typeof prodSnap.data === 'function' ? prodSnap.data() : prodSnap.data) || {};
+          if (prodData.userId !== identity.uid) {
+            existingData.catalogProductId = null;
+            existingData.suggestedPriceCents = null;
+            existingData.suggestedProductName = null;
+            existingData.expectedInput = 'totalPrice';
+            existingData.updatedAt = admin.firestore.FieldValue.serverTimestamp();
+            transaction.set(txDraftRef, existingData, { merge: true });
+            return {
+              draft: existingData,
+              draftId: txDraftId,
+              draftRef: txDraftRef,
+              isAppApprovalBlocked: false,
+              transactionError: {
+                speech: 'Não foi possível confirmar o item do catálogo. Por favor, diga o valor do pedido.',
+                reprompt: 'Qual é o valor do pedido?',
+              },
+            };
+          }
+          const hasValidUnitPrice =
+            typeof prodData.unitPrice === 'number' &&
+            Number.isFinite(prodData.unitPrice) &&
+            prodData.unitPrice >= 0 &&
+            prodData.unitPrice <= 10000;
+
+          if (!hasValidUnitPrice) {
+            // Preço ausente ou inválido no catálogo: não usar sugestão antiga
+            existingData.catalogProductId = null;
+            existingData.suggestedPriceCents = null;
+            existingData.suggestedProductName = null;
+            existingData.expectedInput = 'totalPrice';
+            existingData.updatedAt = admin.firestore.FieldValue.serverTimestamp();
+            transaction.set(txDraftRef, existingData, { merge: true });
+            return {
+              draft: existingData,
+              draftId: txDraftId,
+              draftRef: txDraftRef,
+              isAppApprovalBlocked: false,
+              transactionError: {
+                speech: 'O item do catálogo não possui um preço válido configurado. Por favor, diga o valor do pedido.',
+                reprompt: 'Qual é o valor do pedido?',
+              },
+            };
+          }
+
+          const currentCents = Math.round(prodData.unitPrice * 100);
+          if (currentCents !== existingData.suggestedPriceCents) {
+            // Preço mudou no catálogo entre sugestão e confirmação (inclusive para R$ 0 / gratuito)
+            existingData.suggestedPriceCents = currentCents;
+            existingData.suggestedProductName = prodData.name || existingData.suggestedProductName;
+            existingData.expectedInput = 'suggestedPrice';
+            existingData.updatedAt = admin.firestore.FieldValue.serverTimestamp();
+            transaction.set(txDraftRef, existingData, { merge: true });
+            const sStr = formatCurrencyPtBr(prodData.unitPrice);
+            return {
+              draft: existingData,
+              draftId: txDraftId,
+              draftRef: txDraftRef,
+              isAppApprovalBlocked: false,
+              transactionError: {
+                speech: `O valor de ${sanitizeSpeech(prodData.name || existingData.product)} no catálogo foi alterado para ${sStr} cada. Deseja usar esse novo valor?`,
+                reprompt: `Deseja usar o novo valor de ${sStr} cada? Diga sim para confirmar ou diga outro valor.`,
+              },
+            };
+          }
+        }
+
+        existingData.pricingMode = 'unit';
+        existingData.unitPriceCents = existingData.suggestedPriceCents;
+        existingData.priceSource = 'catalog';
+        existingData.suggestedPriceCents = null;
+        existingData.suggestedProductName = null;
+        existingData.expectedInput = null;
+        const effQty = incomingUpdates.quantity || existingData.quantity;
+        if (typeof effQty === 'number' && effQty > 0) {
+          const tot = effQty * existingData.unitPriceCents;
+          if (tot > 1000000) {
+            return {
+              draft: existingData,
+              draftId: txDraftId,
+              draftRef: txDraftRef,
+              isAppApprovalBlocked: false,
+              transactionError: {
+                speech: 'O valor total do pedido com esse preço excede o limite máximo permitido de dez mil reais.',
+                reprompt: 'Qual é o valor do pedido?',
+              },
+            };
+          }
+          existingData.totalPriceCents = tot;
+          existingData.price = tot / 100;
+        }
+        updated = true;
+        handledSuggestedPrice = true;
+      } else {
+        return {
+          draft: existingData,
+          draftId: txDraftId,
+          draftRef: txDraftRef,
+          isAppApprovalBlocked: false,
+          transactionError: null,
+          handledSuggestedPrice: false,
+        };
+      }
+    }
+
+    if (intentName === 'AMAZON.NoIntent') {
+      const isSuggested =
+        existingData.expectedInput === 'suggestedPrice' &&
+        existingData.suggestedPriceCents !== null &&
+        existingData.suggestedPriceCents !== undefined;
+      if (isSuggested) {
+        existingData.catalogProductId = null;
+        existingData.suggestedPriceCents = null;
+        existingData.suggestedProductName = null;
+        existingData.expectedInput = 'totalPrice';
+        existingData.updatedAt = admin.firestore.FieldValue.serverTimestamp();
+        transaction.set(txDraftRef, existingData, { merge: true });
+        return {
+          draft: existingData,
+          draftId: txDraftId,
+          draftRef: txDraftRef,
+          isAppApprovalBlocked: false,
+          transactionError: {
+            speech: 'Qual é o valor do pedido?',
+            reprompt: 'Diga o valor do pedido em reais.',
+          },
+        };
+      }
+      if (wasAwaitingConfirmation) {
+        existingData.state = 'collecting';
+        existingData.expectedInput = null;
+        existingData.updatedAt = admin.firestore.FieldValue.serverTimestamp();
+        transaction.set(txDraftRef, existingData, { merge: true });
+        return {
+          draft: existingData,
+          draftId: txDraftId,
+          draftRef: txDraftRef,
+          isAppApprovalBlocked: false,
+          transactionError: {
+            speech: 'Qual dado você deseja corrigir? Diga o cliente, produto, quantidade, entrega ou valor.',
+            reprompt: 'O que deseja alterar?',
+          },
+        };
+      }
+      // Se não estava em confirmação, "Não" cancela o pedido
+      existingData.state = 'cancelled';
+      existingData.updatedAt = admin.firestore.FieldValue.serverTimestamp();
+      transaction.set(txDraftRef, existingData, { merge: true });
+      return {
+        draft: existingData,
+        draftId: txDraftId,
+        draftRef: txDraftRef,
+        isAppApprovalBlocked: false,
+        transactionError: {
+          speech: 'Pedido cancelado. Até logo.',
+          shouldEndSession: true,
+        },
+      };
+    }
+
     // Resolução de esclarecimento pendente via ClarifyPriceUnitIntent ou ClarifyPriceTotalIntent
     if (intentName === 'ClarifyPriceUnitIntent') {
+      const hasPending = Boolean(
+        existingData.pendingConflict ||
+        (existingData.pendingPriceCents !== null && existingData.pendingPriceCents !== undefined)
+      );
+      if (!hasPending) {
+        existingData.expectedInput = 'totalPrice';
+        existingData.updatedAt = admin.firestore.FieldValue.serverTimestamp();
+        transaction.set(txDraftRef, existingData, { merge: true });
+        return {
+          draft: existingData,
+          draftId: txDraftId,
+          draftRef: txDraftRef,
+          isAppApprovalBlocked: false,
+          transactionError: {
+            speech: 'Não há nenhum valor aguardando definição de unitário ou total. Por favor, diga o valor do pedido.',
+            reprompt: 'Qual é o valor do pedido?',
+          },
+        };
+      }
+
       const effQty = incomingUpdates.quantity || existingData.quantity;
       if (existingData.pendingConflict) {
         existingData.pricingMode = 'unit';
         existingData.unitPriceCents = existingData.pendingConflict.unitPriceCents;
         existingData.pendingConflict = null;
         existingData.pendingField = null;
+        existingData.expectedInput = null;
         existingData.pendingPriceCents = null;
+        existingData.suggestedPriceCents = null;
+        existingData.suggestedProductName = null;
+        existingData.priceSource = 'user';
         if (typeof effQty === 'number' && effQty > 0) {
           const tot = effQty * existingData.unitPriceCents;
           if (tot > 1000000) {
@@ -823,6 +1365,10 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
         existingData.pendingPriceCents = null;
         existingData.pendingConflict = null;
         existingData.pendingField = null;
+        existingData.expectedInput = null;
+        existingData.suggestedPriceCents = null;
+        existingData.suggestedProductName = null;
+        existingData.priceSource = 'user';
         if (typeof effQty === 'number' && effQty > 0) {
           const tot = effQty * existingData.unitPriceCents;
           if (tot > 1000000) {
@@ -846,6 +1392,26 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
         updated = true;
       }
     } else if (intentName === 'ClarifyPriceTotalIntent') {
+      const hasPending = Boolean(
+        existingData.pendingConflict ||
+        (existingData.pendingPriceCents !== null && existingData.pendingPriceCents !== undefined)
+      );
+      if (!hasPending) {
+        existingData.expectedInput = 'totalPrice';
+        existingData.updatedAt = admin.firestore.FieldValue.serverTimestamp();
+        transaction.set(txDraftRef, existingData, { merge: true });
+        return {
+          draft: existingData,
+          draftId: txDraftId,
+          draftRef: txDraftRef,
+          isAppApprovalBlocked: false,
+          transactionError: {
+            speech: 'Não há nenhum valor aguardando definição de unitário ou total. Por favor, diga o valor do pedido.',
+            reprompt: 'Qual é o valor do pedido?',
+          },
+        };
+      }
+
       if (existingData.pendingConflict) {
         existingData.pricingMode = 'total';
         existingData.totalPriceCents = existingData.pendingConflict.totalPriceCents;
@@ -853,7 +1419,11 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
         existingData.unitPriceCents = null;
         existingData.pendingConflict = null;
         existingData.pendingField = null;
+        existingData.expectedInput = null;
         existingData.pendingPriceCents = null;
+        existingData.suggestedPriceCents = null;
+        existingData.suggestedProductName = null;
+        existingData.priceSource = 'user';
         updated = true;
       } else if (existingData.pendingPriceCents !== null && existingData.pendingPriceCents !== undefined) {
         existingData.pricingMode = 'total';
@@ -862,28 +1432,63 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
         existingData.unitPriceCents = null;
         existingData.pendingConflict = null;
         existingData.pendingField = null;
+        existingData.expectedInput = null;
         existingData.pendingPriceCents = null;
+        existingData.suggestedPriceCents = null;
+        existingData.suggestedProductName = null;
+        existingData.priceSource = 'user';
         updated = true;
       }
     }
 
-    // Aplicação de contexto em valor sem qualificador (P1)
-    const activePending = existingData.pendingField || sessionAttrs.pendingField || null;
+    // Aplicação de contexto em valor sem qualificador (Fase 1 / Regras 1 e 2)
+    // O rascunho autorizado no Firestore é a autoridade única de contexto.
+    const activePending = existingData.pendingField || null;
+    const activeExpected = existingData.expectedInput || null;
+
+    // Resolução baseada no expectedInput persistido no banco para quantidade
+    if (!incomingUpdates.quantity && activeExpected === 'quantity') {
+      if (parsedGenericPrice && parsedGenericPrice.cents % 100 === 0 && !unitPriceSlot && !totalSlot) {
+        const qNum = parsedGenericPrice.cents / 100;
+        if (qNum >= 1 && qNum <= 10000) {
+          incomingUpdates.quantity = qNum;
+          parsedGenericPrice = null;
+          existingData.expectedInput = null;
+        }
+      }
+    }
+
     if (parsedTotal) {
       // Usuário forneceu total explicitamente ("no total"): sempre tem precedência e pode trocar o modo
       existingData.pendingField = null;
+      existingData.expectedInput = null;
+      existingData.suggestedPriceCents = null;
+      existingData.suggestedProductName = null;
+      existingData.priceSource = 'user';
     } else if (parsedUnitPrice) {
       // Usuário forneceu unitário explicitamente ("cada"): limpa pendingField
       existingData.pendingField = null;
+      existingData.expectedInput = null;
+      existingData.suggestedPriceCents = null;
+      existingData.suggestedProductName = null;
+      existingData.priceSource = 'user';
     } else if (parsedGenericPrice) {
-      if (activePending === 'unitPrice') {
+      if (activePending === 'unitPrice' || activeExpected === 'unitPrice') {
         parsedUnitPrice = parsedGenericPrice;
         parsedGenericPrice = null;
         existingData.pendingField = null;
-      } else if (activePending === 'total') {
+        existingData.expectedInput = null;
+        existingData.suggestedPriceCents = null;
+        existingData.suggestedProductName = null;
+        existingData.priceSource = 'user';
+      } else if (activePending === 'total' || activeExpected === 'totalPrice') {
         parsedTotal = parsedGenericPrice;
         parsedGenericPrice = null;
         existingData.pendingField = null;
+        existingData.expectedInput = null;
+        existingData.suggestedPriceCents = null;
+        existingData.suggestedProductName = null;
+        existingData.priceSource = 'user';
       }
     }
 
@@ -900,6 +1505,7 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
           existingData.pendingPriceCents = null;
           existingData.pendingConflict = null;
           existingData.pendingField = null;
+          existingData.expectedInput = null;
           updated = true;
         } else {
           // Conflito entre unitário e total: persiste ambas as alternativas e aguarda esclarecimento (P1)
@@ -908,6 +1514,7 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
             totalPriceCents: parsedTotal.cents,
           };
           existingData.pendingField = 'conflict';
+          existingData.expectedInput = 'priceBasis';
           existingData.pendingPriceCents = null;
           existingData.pricingMode = null;
           existingData.unitPriceCents = null;
@@ -922,6 +1529,7 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
           totalPriceCents: parsedTotal.cents,
         };
         existingData.pendingField = 'conflict';
+        existingData.expectedInput = 'priceBasis';
         existingData.pendingPriceCents = null;
         existingData.pricingMode = null;
         existingData.unitPriceCents = null;
@@ -936,6 +1544,7 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
       existingData.pendingPriceCents = null;
       existingData.pendingConflict = null;
       existingData.pendingField = null;
+      existingData.expectedInput = null;
       const effQty = incomingUpdates.quantity || existingData.quantity;
       if (typeof effQty === 'number' && effQty > 0) {
         const tot = effQty * parsedUnitPrice.cents;
@@ -966,6 +1575,7 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
       existingData.pendingPriceCents = null;
       existingData.pendingConflict = null;
       existingData.pendingField = null;
+      existingData.expectedInput = null;
       updated = true;
     } else if (parsedGenericPrice) {
       existingData.pendingPriceCents = parsedGenericPrice.cents;
@@ -973,8 +1583,11 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
       existingData.unitPriceCents = null;
       existingData.totalPriceCents = null;
       existingData.price = null;
+      existingData.suggestedPriceCents = null;
+      existingData.suggestedProductName = null;
       existingData.pendingConflict = null;
       existingData.pendingField = null;
+      existingData.expectedInput = 'priceBasis';
       updated = true;
     }
 
@@ -1002,11 +1615,79 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
       }
     }
 
-    // Mesclar demais slots (customer, product, deliveryDate)
+    // Processar alteração de produto e catálogo (Fase 4)
+    if (incomingUpdates.product) {
+      if (existingData.product && existingData.product !== incomingUpdates.product) {
+        // Caso produto mude, não carregar silenciosamente preço sugerido do produto anterior (Fase 2)
+        existingData.suggestedPriceCents = null;
+        existingData.suggestedProductName = null;
+        existingData.catalogProductId = null;
+        if (existingData.priceSource === 'catalog') {
+          existingData.price = null;
+          existingData.pricingMode = null;
+          existingData.unitPriceCents = null;
+          existingData.totalPriceCents = null;
+          existingData.priceSource = null;
+        }
+      }
+
+      if (catalogMatch) {
+        existingData.catalogProductId = catalogMatch.id;
+        existingData.product = catalogMatch.name;
+        // Só sugere preço do catálogo se usuário NÃO tiver informado preço
+        if (!parsedUnitPrice && !parsedTotal && !parsedGenericPrice && existingData.price === null && catalogMatch.unitPrice > 0) {
+          existingData.suggestedPriceCents = Math.round(Number(catalogMatch.unitPrice) * 100);
+          existingData.suggestedProductName = catalogMatch.name;
+          existingData.expectedInput = 'suggestedPrice';
+        }
+      } else {
+        existingData.catalogProductId = null;
+        existingData.product = incomingUpdates.product;
+      }
+      updated = true;
+    }
+
+    // Mesclar demais slots (customer, deliveryDate)
     for (const [k, v] of Object.entries(incomingUpdates)) {
-      if (k !== 'quantity' && existingData[k] !== v) {
+      if (k !== 'quantity' && k !== 'product' && existingData[k] !== v) {
         existingData[k] = v;
         updated = true;
+      }
+    }
+
+    if (incomingUpdates.deliveryDate && existingData.pendingField === 'deliveryDate') {
+      existingData.pendingField = null;
+    }
+    if (incomingUpdates.customer && existingData.pendingField === 'customer') {
+      existingData.pendingField = null;
+    }
+    if (incomingUpdates.product && existingData.pendingField === 'product') {
+      existingData.pendingField = null;
+    }
+    if (incomingUpdates.quantity && existingData.pendingField === 'quantity') {
+      existingData.pendingField = null;
+    }
+
+    // Acknowledgment de correção quando o rascunho já estava aguardando confirmação (Fase 3)
+    let correctionAcknowledgment = null;
+    const isCorrection = (wasAwaitingConfirmation || (existingData.customer && existingData.product && existingData.deliveryDate && existingData.price !== null)) && updated;
+    if (isCorrection) {
+      if (incomingUpdates.quantity) {
+        const uTotStr = formatCurrencyPtBr(existingData.price);
+        correctionAcknowledgment = `${existingData.quantity} ${existingData.quantity === 1 ? 'unidade' : 'unidades'}, total de ${uTotStr}. `;
+      } else if (incomingUpdates.customer) {
+        correctionAcknowledgment = `Cliente alterado para ${existingData.customer}. `;
+      } else if (incomingUpdates.product) {
+        correctionAcknowledgment = `Produto alterado para ${existingData.product}. `;
+      } else if (parsedUnitPrice) {
+        const uStr = formatCurrencyPtBr(existingData.unitPriceCents / 100);
+        const uTotStr = formatCurrencyPtBr(existingData.price);
+        correctionAcknowledgment = `Alterado para ${uStr} cada, total de ${uTotStr}. `;
+      } else if (parsedTotal) {
+        const uTotStr = formatCurrencyPtBr(existingData.price);
+        correctionAcknowledgment = `Alterado para total de ${uTotStr}. `;
+      } else if (incomingUpdates.deliveryDate) {
+        correctionAcknowledgment = `Entrega alterada para ${formatDatePtBr(existingData.deliveryDate)}. `;
       }
     }
 
@@ -1026,11 +1707,16 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
       existingData.price !== undefined &&
       (existingData.pendingPriceCents === null || existingData.pendingPriceCents === undefined) &&
       !existingData.pendingConflict &&
-      !existingData.pendingField;
+      !existingData.pendingField &&
+      (existingData.suggestedPriceCents === null || existingData.suggestedPriceCents === undefined);
 
     if (isComplete && (existingData.state === 'collecting' || updated)) {
       existingData.state = 'awaiting_confirmation';
+      existingData.expectedInput = 'confirmation';
       existingData.updatedAt = admin.firestore.FieldValue.serverTimestamp();
+    } else if (existingData.state === 'collecting') {
+      // Determinar e persistir atomicamente o próximo campo esperado no Firestore (P1.3)
+      existingData.expectedInput = determineNextExpectedInput(existingData);
     }
 
     transaction.set(txDraftRef, existingData, { merge: true });
@@ -1041,10 +1727,12 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
       draftRef: txDraftRef,
       isAppApprovalBlocked: false,
       transactionError: null,
+      correctionAcknowledgment,
+      handledSuggestedPrice,
     };
   });
 
-  const { draft, draftId, draftRef, isAppApprovalBlocked, transactionError } = txResult || {};
+  const { draft, draftId, draftRef, isAppApprovalBlocked, transactionError, correctionAcknowledgment, handledSuggestedPrice } = txResult || {};
 
   if (isAppApprovalBlocked) {
     return {
@@ -1056,27 +1744,40 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
   }
 
   if (transactionError) {
+    const endSession = Boolean(transactionError.shouldEndSession);
     return {
       speech: transactionError.speech,
       reprompt: transactionError.reprompt,
-      shouldEndSession: false,
-      sessionAttributes: {
+      shouldEndSession: endSession,
+      sessionAttributes: endSession ? {} : {
         draftId,
         revision: draft ? draft.revision : (sessionAttrs.revision || 1),
         personId: identity.personId,
         pendingField: draft?.pendingField || sessionAttrs.pendingField || null,
+        expectedInput: draft?.expectedInput || sessionAttrs.expectedInput || null,
       },
     };
   }
 
   // 6. Confirmação do resumo (AMAZON.YesIntent / AMAZON.NoIntent)
-  if (intentName === 'AMAZON.YesIntent') {
-    if (draft.state !== 'awaiting_confirmation') {
+  if (intentName === 'AMAZON.YesIntent' && !handledSuggestedPrice) {
+    if (
+      draft.state !== 'awaiting_confirmation' ||
+      draft.pendingField ||
+      draft.pendingConflict ||
+      (draft.pendingPriceCents !== null && draft.pendingPriceCents !== undefined)
+    ) {
       return {
         speech: 'Ainda faltam informações para concluir o pedido. O que deseja cadastrar?',
         reprompt: 'Diga os dados do pedido.',
         shouldEndSession: false,
-        sessionAttributes: { draftId, revision: draft.revision, personId: identity.personId },
+        sessionAttributes: {
+          draftId,
+          revision: draft.revision,
+          personId: identity.personId,
+          expectedInput: draft.expectedInput || null,
+          pendingField: draft.pendingField || null,
+        },
       };
     }
 
@@ -1114,7 +1815,7 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
         speech: `Os dados do pedido foram atualizados. ${updatedSummary}`,
         reprompt: 'Confirma o pedido com os dados atualizados? Diga sim para confirmar ou não para alterar.',
         shouldEndSession: false,
-        sessionAttributes: { draftId, revision: draft.revision, personId: identity.personId },
+        sessionAttributes: { draftId, revision: draft.revision, personId: identity.personId, expectedInput: 'confirmation' },
       };
     }
 
@@ -1196,7 +1897,7 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
         speech: 'Qual dado você deseja corrigir? Diga o cliente, produto, quantidade, entrega ou valor.',
         reprompt: 'O que deseja alterar?',
         shouldEndSession: false,
-        sessionAttributes: { draftId, revision: draft.revision, personId: identity.personId },
+        sessionAttributes: { draftId, revision: draft.revision, personId: identity.personId, expectedInput: null },
       };
     }
     return {
@@ -1206,7 +1907,52 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
     };
   }
 
-  // 7. Verificar se há conflito/ambiguidade pendente ou campos obrigatórios faltando
+  // 7. Verificar se há pendência de correção ativa (prioridade máxima), conflito/ambiguidade ou campos obrigatórios faltando
+  if (draft.pendingField === 'unitPrice') {
+    return {
+      speech: 'Qual é o preço de cada unidade?',
+      reprompt: 'Qual é o preço de cada unidade?',
+      shouldEndSession: false,
+      sessionAttributes: {
+        draftId,
+        revision: draft.revision,
+        personId: identity.personId,
+        expectedInput: 'unitPrice',
+        pendingField: 'unitPrice',
+      },
+    };
+  }
+
+  if (draft.pendingField === 'total') {
+    return {
+      speech: 'Qual é o valor total do pedido?',
+      reprompt: 'Qual é o valor total do pedido?',
+      shouldEndSession: false,
+      sessionAttributes: {
+        draftId,
+        revision: draft.revision,
+        personId: identity.personId,
+        expectedInput: 'totalPrice',
+        pendingField: 'total',
+      },
+    };
+  }
+
+  if (draft.pendingField === 'deliveryDate') {
+    return {
+      speech: 'Qual é a data de entrega corrigida?',
+      reprompt: 'Para quando é a entrega?',
+      shouldEndSession: false,
+      sessionAttributes: {
+        draftId,
+        revision: draft.revision,
+        personId: identity.personId,
+        expectedInput: 'deliveryDate',
+        pendingField: 'deliveryDate',
+      },
+    };
+  }
+
   if (draft.pendingConflict) {
     const uStr = formatCurrencyPtBr(draft.pendingConflict.unitPriceCents / 100);
     const tStr = formatCurrencyPtBr(draft.pendingConflict.totalPriceCents / 100);
@@ -1222,6 +1968,7 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
         revision: draft.revision,
         personId: identity.personId,
         pendingField: 'conflict',
+        expectedInput: 'priceBasis',
       },
     };
   }
@@ -1233,7 +1980,29 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
       speech: `${pStr} cada ou ${pStr} no total?`,
       reprompt: `O valor de ${pStr} é cada ou no total?`,
       shouldEndSession: false,
-      sessionAttributes: { draftId, revision: draft.revision, personId: identity.personId },
+      sessionAttributes: {
+        draftId,
+        revision: draft.revision,
+        personId: identity.personId,
+        expectedInput: 'priceBasis',
+      },
+    };
+  }
+
+  if (draft.suggestedPriceCents !== null && draft.suggestedPriceCents !== undefined && draft.price === null) {
+    const sVal = draft.suggestedPriceCents / 100;
+    const sStr = formatCurrencyPtBr(sVal);
+    const prodName = sanitizeSpeech(draft.suggestedProductName || draft.product);
+    return {
+      speech: `Encontrei ${prodName} no seu catálogo por ${sStr} cada. Deseja usar esse valor?`,
+      reprompt: `Deseja usar o valor de ${sStr} cada? Diga sim para confirmar ou diga outro valor.`,
+      shouldEndSession: false,
+      sessionAttributes: {
+        draftId,
+        revision: draft.revision,
+        personId: identity.personId,
+        expectedInput: 'suggestedPrice',
+      },
     };
   }
 
@@ -1248,7 +2017,7 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
       speech: 'Qual é o produto e o cliente do pedido?',
       reprompt: 'Diga o produto e o nome do cliente.',
       shouldEndSession: false,
-      sessionAttributes: { draftId, revision: draft.revision, personId: identity.personId },
+      sessionAttributes: { draftId, revision: draft.revision, personId: identity.personId, expectedInput: 'product' },
     };
   }
 
@@ -1257,7 +2026,7 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
       speech: 'Qual é o produto do pedido?',
       reprompt: 'Diga o produto.',
       shouldEndSession: false,
-      sessionAttributes: { draftId, revision: draft.revision, personId: identity.personId },
+      sessionAttributes: { draftId, revision: draft.revision, personId: identity.personId, expectedInput: 'product' },
     };
   }
 
@@ -1266,7 +2035,7 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
       speech: 'Para qual cliente é o pedido?',
       reprompt: 'Diga o nome do cliente.',
       shouldEndSession: false,
-      sessionAttributes: { draftId, revision: draft.revision, personId: identity.personId },
+      sessionAttributes: { draftId, revision: draft.revision, personId: identity.personId, expectedInput: 'customer' },
     };
   }
 
@@ -1275,16 +2044,27 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
       speech: 'Qual é a quantidade de itens?',
       reprompt: 'Informe a quantidade inteira.',
       shouldEndSession: false,
-      sessionAttributes: { draftId, revision: draft.revision, personId: identity.personId },
+      sessionAttributes: { draftId, revision: draft.revision, personId: identity.personId, expectedInput: 'quantity' },
     };
   }
 
   if (missingDeliveryDate) {
+    let speech = 'Qual é a data de entrega?';
+    if (draft.quantity && draft.price !== null && draft.price !== undefined) {
+      if (draft.pricingMode === 'unit' && draft.unitPriceCents !== null) {
+        const uStr = formatCurrencyPtBr(draft.unitPriceCents / 100);
+        const tStr = formatCurrencyPtBr(draft.price);
+        speech = `São ${draft.quantity} unidades a ${uStr} cada, total de ${tStr}. Para quando é a entrega?`;
+      } else {
+        const tStr = formatCurrencyPtBr(draft.price);
+        speech = `São ${draft.quantity} unidades por ${tStr} no total. Para quando é a entrega?`;
+      }
+    }
     return {
-      speech: 'Qual é a data de entrega?',
-      reprompt: 'Informe dia e mês da entrega.',
+      speech,
+      reprompt: 'Para quando é a entrega?',
       shouldEndSession: false,
-      sessionAttributes: { draftId, revision: draft.revision, personId: identity.personId },
+      sessionAttributes: { draftId, revision: draft.revision, personId: identity.personId, expectedInput: 'deliveryDate' },
     };
   }
 
@@ -1293,17 +2073,27 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
       speech: 'Qual é o valor total do pedido?',
       reprompt: 'Diga o valor total em reais.',
       shouldEndSession: false,
-      sessionAttributes: { draftId, revision: draft.revision, personId: identity.personId },
+      sessionAttributes: { draftId, revision: draft.revision, personId: identity.personId, expectedInput: 'totalPrice' },
     };
   }
 
   // 8. Todos os campos preenchidos -> Emitir resumo para confirmação
+  if (draft.state !== 'awaiting_confirmation') {
+    return {
+      speech: 'Por favor, informe os dados pendentes para concluir o pedido.',
+      reprompt: 'Diga o cliente, produto, quantidade, entrega ou valor.',
+      shouldEndSession: false,
+      sessionAttributes: { draftId, revision: draft.revision, personId: identity.personId, expectedInput: draft.expectedInput || 'collecting' },
+    };
+  }
+
   const confirmSpeech = buildConfirmationSpeech(draft, identity, config);
+  const finalSpeech = correctionAcknowledgment ? `${correctionAcknowledgment}${confirmSpeech}` : confirmSpeech;
   return {
-    speech: confirmSpeech,
+    speech: finalSpeech,
     reprompt: 'Você confirma o pedido? Diga sim para confirmar ou não para alterar.',
     shouldEndSession: false,
-    sessionAttributes: { draftId, revision: draft.revision, personId: identity.personId },
+    sessionAttributes: { draftId, revision: draft.revision, personId: identity.personId, expectedInput: 'confirmation' },
   };
 }
 
@@ -1313,6 +2103,8 @@ module.exports = {
   parseAndValidateDeliveryDate,
   parseAndValidatePrice,
   parseAndValidatePriceToCents,
+  normalizeText,
+  searchUserCatalog,
   buildConfirmationSpeech,
   handleAlexaDialog,
 };

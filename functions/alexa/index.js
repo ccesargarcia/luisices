@@ -193,8 +193,12 @@ async function processAlexaEnvelope(envelope, { db, config, authService = null }
       return await persistResponse(resp);
     }
 
-    // 2. Fluxo de Pareamento Supervisionado (LinkVoiceIntent)
-    if (intentName === 'LinkVoiceIntent') {
+    // 2. Fluxo de Pareamento Supervisionado (LinkVoiceIntent / PairAlexaIntent / GeneratePairingCodeIntent)
+    if (
+      intentName === 'LinkVoiceIntent' ||
+      intentName === 'PairAlexaIntent' ||
+      intentName === 'GeneratePairingCodeIntent'
+    ) {
       const pairingRes = await handleVoicePairingRequest(envelope, config, db);
       const resp = buildAlexaResponse({
         speech: pairingRes.speech,
