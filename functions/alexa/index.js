@@ -21,6 +21,9 @@ const {
   approveAlexaDraftHandler,
 } = require('./callables');
 
+// Janela unificada de deduplicação de requisições: 300s (5 minutos)
+const REQUEST_DEDUPE_TTL_MS = 300 * 1000;
+
 /**
  * Constrói a resposta em conformidade com o protocolo Alexa Skills Kit.
  */
@@ -91,22 +94,28 @@ async function processAlexaEnvelope(envelope, { db, config, authService = null }
   }
 
   // 0. Deduplicação e proteção contra replays HTTP (alexaRequests/{requestKey})
-  let reqRef = null;
-  let requestKey = null;
-  if (db) {
-    requestKey = computeRequestKey(appId || config?.allowedSkillId || '', requestId);
-    reqRef = db.collection(COLLECTIONS.REQUESTS).doc(requestKey);
+  // Achado Rodada 7 (P1): db e db.collection são estritamente obrigatórios para garantir reserva transacional
+  if (!db || typeof db.collection !== 'function') {
+    console.warn('[processAlexaEnvelope] db ausente ou sem suporte a Firestore (fail-closed)');
+    return buildAlexaResponse({
+      speech: 'Ocorreu uma instabilidade temporária ao processar sua solicitação. Por favor, tente novamente.',
+      shouldEndSession: true,
+    });
+  }
 
-    let cachedResponse = null;
+  const requestKey = computeRequestKey(appId || config?.allowedSkillId || '', requestId);
+  const reqRef = db.collection(COLLECTIONS.REQUESTS).doc(requestKey);
 
-    if (typeof db.runTransaction !== 'function') {
-      // Achado Rodada 6: sem db.runTransaction, falha fechado imediatamente para evitar processamento não-atômico
-      console.warn('[AlexaDeduplication] db.runTransaction indisponível (fail-closed)');
-      return buildAlexaResponse({
-        speech: 'Ocorreu uma instabilidade temporária ao processar sua solicitação. Por favor, tente novamente.',
-        shouldEndSession: true,
-      });
-    }
+  let cachedResponse = null;
+
+  if (typeof db.runTransaction !== 'function') {
+    // Achado Rodada 6: sem db.runTransaction, falha fechado imediatamente para evitar processamento não-atômico
+    console.warn('[AlexaDeduplication] db.runTransaction indisponível (fail-closed)');
+    return buildAlexaResponse({
+      speech: 'Ocorreu uma instabilidade temporária ao processar sua solicitação. Por favor, tente novamente.',
+      shouldEndSession: true,
+    });
+  }
 
     try {
       await db.runTransaction(async (transaction) => {
@@ -134,7 +143,7 @@ async function processAlexaEnvelope(envelope, { db, config, authService = null }
           }
         }
 
-        // Aquisição atômica da requisição (TTL de 300s / 5 min para cobrir janelas estendidas de retry da Amazon)
+        // Aquisição atômica da requisição (TTL unificado de 300s / 5 min)
         transaction.set(reqRef, {
           requestKey,
           requestId,
@@ -143,7 +152,7 @@ async function processAlexaEnvelope(envelope, { db, config, authService = null }
           status: 'in_progress',
           startedAt: now,
           createdAt: admin.firestore.FieldValue.serverTimestamp(),
-          expiresAt: new Date(now + 300000), // 300s TTL (Achado Rodada 6)
+          expiresAt: new Date(now + REQUEST_DEDUPE_TTL_MS),
         });
       });
     } catch (err) {
@@ -158,10 +167,8 @@ async function processAlexaEnvelope(envelope, { db, config, authService = null }
     if (cachedResponse) {
       return cachedResponse;
     }
-  }
 
-  const persistResponse = async (resp) => {
-    if (reqRef) {
+    const persistResponse = async (resp) => {
       try {
         await reqRef.set({
           requestKey,
@@ -171,14 +178,13 @@ async function processAlexaEnvelope(envelope, { db, config, authService = null }
           status: 'completed',
           response: resp,
           completedAt: admin.firestore.FieldValue.serverTimestamp(),
-          expiresAt: new Date(Date.now() + 150000),
+          expiresAt: new Date(Date.now() + REQUEST_DEDUPE_TTL_MS),
         }, { merge: true });
       } catch (err) {
         console.warn('[AlexaDeduplication] Erro ao salvar cache de requisição:', err.message);
       }
-    }
-    return resp;
-  };
+      return resp;
+    };
 
   try {
     // 1. Tratamento de SessionEndedRequest

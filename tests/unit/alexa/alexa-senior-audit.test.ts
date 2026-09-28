@@ -495,6 +495,27 @@ describe('Alexa: Validação de Regressões e Melhorias Sênior (Auditoria)', ()
       expect(res.response.outputSpeech.text).toContain('instabilidade temporária');
       expect(res.response.shouldEndSession).toBe(true);
     });
+
+    it('deve falhar fechado se db ou db.collection não estiver disponível (Achado Rodada 7 P1)', async () => {
+      const envelope = {
+        request: {
+          type: 'IntentRequest',
+          requestId: 'req-valid-12345',
+          intent: { name: 'PairAlexaIntent' },
+        },
+        session: {
+          application: { applicationId: 'amzn1.ask.skill.test-dev' },
+        },
+      };
+
+      const res = await processAlexaEnvelope(envelope, {
+        db: null, // db ausente propositalmente
+        config: { environment: 'dev', isEnabled: true, allowedSkillId: 'amzn1.ask.skill.test-dev' },
+      });
+
+      expect(res.response.outputSpeech.text).toContain('instabilidade temporária');
+      expect(res.response.shouldEndSession).toBe(true);
+    });
   });
 
   describe('8. Isolamento de Sessão e Imutabilidade de Estados Terminais (Achados 2, 3 e 4 da Rodada 5)', () => {
