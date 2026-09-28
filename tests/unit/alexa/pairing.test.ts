@@ -150,6 +150,7 @@ describe('Alexa: Fluxo de Pareamento Supervisionado e Vinculação de Voz', () =
     expect(binding.uid).toBe('amanda-uid');
     expect(binding.active).toBe(true);
     expect(binding.approvedBy).toBe('admin-uid');
+    expect(binding.allowedDeviceIds).toEqual([]);
 
     // Permissão deve ter sido criada/atualizada
     const perm = mockDb.store.alexaPermissions['amanda-uid'];

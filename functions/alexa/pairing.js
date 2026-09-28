@@ -209,7 +209,8 @@ async function approveAlexaPairingAdmin({ code, targetUid, authContext, db, conf
         approvedByEmail: authContext.email || '',
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
         revokedAt: null,
-        allowedDeviceIds: pData.deviceId ? [pData.deviceId] : [],
+        allowedDeviceIds: [],
+        lastPairingDeviceId: pData.deviceId || null,
       },
       { merge: true }
     );
