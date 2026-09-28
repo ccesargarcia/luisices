@@ -1,0 +1,134 @@
+Você é responsável por corrigir a integração Alexa do projeto Luisices.
+
+REPOSITÓRIO
+/home/caiogarcia/luisices
+
+CONTEXTO
+Leia primeiro:
+1. docs/ANALISE_ALEXA_2026-09-27.md
+2. docs/REVISAO_IMPLEMENTACAO_ALEXA_2026-09-27.md
+3. docs/REVISAO_ALEXA_RODADA_3_2026-09-27.md
+4. docs/REVISAO_ALEXA_RODADA_4_2026-09-28.md
+5. docs/REVISAO_ALEXA_RODADA_5_2026-09-28.md
+6. docs/ESPECIFICACAO_ALEXA_ANTIGRAVITY.md
+
+O commit mais recente é d79ab54. As revisões encontraram falhas reais que os testes atuais não cobrem.
+
+OBJETIVO
+Corrigir a integração Alexa com segurança, baixo custo, baixa latência e compatibilidade com o fluxo web. Não adicione LLM, serviços externos ou infraestrutura desnecessária.
+
+REGRAS
+- Preserve alterações existentes.
+- Não faça deploy, push, migração de produção ou ativação de produção.
+- Não remova validações para fazer testes passarem.
+- Leia os arquivos completos antes de editar.
+- Faça uma mudança por grupo e rode testes após cada grupo.
+- Inspecione o diff final.
+
+1. ISOLAMENTO DE SESSÃO E ESTADO
+
+Arquivos: functions/alexa/dialog.js, functions/alexa/orderService.js, functions/alexa/callables.js.
+
+- Ao reutilizar rascunho, exigir UID, bindingKey, ambiente e sessionId iguais aos da requisição.
+- Sem sessionId atual, não reutilizar rascunho existente.
+- CancelIntent só pode cancelar estados collecting ou awaiting_confirmation.
+- Nunca alterar committed, expired, cancelled ou awaiting_app_approval por fallback/cancelamento.
+- Fallback deve conferir UID, binding, ambiente, sessão e estado antes de alterar contador ou expirar.
+- Todas as mutações devem usar transação com comparação de revisão, estado e titularidade.
+- Se a pré-condição falhar, não alterar outro rascunho.
+- Não responder sucesso quando uma atualização condicional não foi aplicada.
+
+2. APROVAÇÃO PELO APLICATIVO
+
+- A transição awaiting_confirmation -> awaiting_app_approval deve conferir na mesma transação UID, sessionId, revisão e estado.
+- Cancelamento, expiração ou alteração concorrente devem retornar failed-precondition.
+- approveAlexaDraft deve exigir revisão numérica explícita e titularidade.
+- O commit pelo app aceita somente awaiting_app_approval.
+- Não alterar o estado para awaiting_confirmation antes do commit.
+
+3. DEDUPLICAÇÃO FAIL-CLOSED
+
+Arquivo: functions/alexa/index.js.
+
+- Reservar alexaRequests/{requestKey} atomicamente.
+- Se a reserva falhar, não executar pairing, diálogo ou commit; retornar erro transitório seguro.
+- Requisição in_progress recente não deve executar novamente.
+- Persistir resposta final com await.
+- Verificar requestId, Skill ID e sessionId antes da chave.
+- Não guardar código de pareamento ou dados sensíveis por mais tempo que o necessário.
+
+4. AUTENTICAÇÃO E AUTORIZAÇÃO
+
+Arquivos: functions/alexa/orderService.js, functions/alexa/authorization.js, functions/alexa/pairing.js.
+
+- Exigir role admin ou permissions.orders.create === true.
+- Falha de Firebase Auth deve falhar fechado em produção.
+- Bypass de Auth só pode existir por authService explicitamente injetado nos testes.
+- Revalidar no commit perfil ativo, Auth, permissão Alexa, modo, binding, ambiente e configuração global.
+- Aprovação administrativa de pareamento deve conferir o interruptor global antes e dentro da transação.
+- Nunca usar segredo HMAC constante de fallback.
+
+5. PARSER MONETÁRIO
+
+Arquivo: functions/alexa/dialog.js.
+
+Aceitar: 100, 100,50, 1.500,00, cem reais, dez reais e cinquenta centavos, 0 e zero reais.
+
+Rejeitar: 100,001, 1,500.00, 1.23.45, 10 20, 10/20, 10+20, 1,50 centavos e texto excedente.
+
+Nunca remover pontuação e somar fragmentos para produzir outro preço. Rejeitar ausente, NaN, infinito e acima do limite. Usar centavos internamente. Preço zero deve gerar confirmação verbal explícita e commit válido.
+
+6. INTERFACE DE USUÁRIOS
+
+Arquivos: src/app/pages/Users.tsx, src/services/firebaseAlexaService.ts.
+
+- Desabilitar controles durante carregamento.
+- Descartar respostas obsoletas quando o usuário mudar.
+- Bloquear qualquer escrita se houver erro de carregamento.
+- Validar essas pré-condições antes de atualizar o perfil web.
+- Usar a permissão do usuário alvo, nunca a do administrador.
+- Exibir erro e permitir nova tentativa.
+
+7. SKILL ID E CONFIGURAÇÃO
+
+Arquivos: functions/alexa/index.js, functions/alexa/config.js, functions/alexa/verification.js.
+
+- Verificar assinatura/timestamp antes de leituras Firestore.
+- Após carregar configuração dinâmica, exigir applicationId presente e exatamente igual ao Skill ID permitido.
+- Rejeitar ambiente desconhecido, segredo ausente ou configuração ilegível.
+
+TESTES OBRIGATÓRIOS
+
+Adicione regressões em tests/unit/alexa e, se possível, no emulador Firestore:
+
+- Falha na reserva de requestId não executa o fluxo.
+- Duas requisições iguais simultâneas geram uma execução.
+- Rascunho de outra sessão não é alterado.
+- Committed não é cancelado nem expirado por fallback.
+- Fallback de outro usuário não altera estado.
+- Cancelamento concorrente antes da aprovação app não retorna sucesso.
+- Revisão obsoleta é rejeitada.
+- Auth indisponível em produção falha fechado.
+- Perfil sem orders.create é rejeitado.
+- Todos os casos monetários acima.
+- Preço zero gera resumo gratuito e commit válido.
+- Skill ID ausente/divergente é rejeitado.
+- Replay não cria pedido nem consome cota novamente.
+
+VALIDAÇÃO FINAL
+
+Execute e registre:
+1. npm test
+2. npm run build
+3. node --check em functions/alexa/*.js
+4. git diff --check
+5. Testes de integração Firestore, se o emulador estiver disponível
+6. Playwright, se houver alteração de interface e o ambiente permitir
+
+Se o emulador não estiver disponível, informe claramente. Mocks simples não comprovam concorrência ou rollback.
+
+RELATÓRIO FINAL
+
+Informe arquivos alterados, cada correção, testes e resultados, limitações reais e o que ainda depende de emulador, Echo, produção ou configuração externa. Não declare custo, p95, segurança ou teste físico sem evidência.
+
+Implemente as correções locais e teste-as; não entregue apenas um plano.

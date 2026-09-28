@@ -1,0 +1,98 @@
+Corrija os bugs e implemente as melhorias da integração Alexa do projeto Luisices, priorizando segurança, baixo custo e velocidade, sem quebrar os fluxos existentes.
+
+REPOSITÓRIO
+/home/caiogarcia/luisices
+
+ANÁLISE OBRIGATÓRIA
+Leia docs/ANALISE_ALEXA_2026-09-27.md integralmente. Confira cada achado no código antes de corrigir. Consulte também a especificação e as instruções do repositório. Trate afirmações do relatório anterior de implementação como hipóteses até verificar sua implementação ou evidência.
+
+Execute as correções; não entregue apenas um plano.
+
+PRIORIDADES
+
+1. Segurança e autorização
+- Exigir personId reconhecido na requisição de confirmação final. Não autorizar o “sim” usando apenas a identidade armazenada na sessão.
+- Vincular rascunho, sessão, UID, binding e ambiente; verificar esses vínculos ao carregar, editar, cancelar e confirmar.
+- Aplicar o desligamento global em todos os caminhos relevantes, incluindo pareamento e aprovação pelo aplicativo.
+- Revalidar no commit perfil ativo, permissão orders.create, vínculo ativo e pertencente ao titular, ambiente e modo atual de aprovação.
+- Validar a conta Firebase Auth também no caminho de aprovação pelo app.
+- Impedir que um rascunho antigo contorne mudança para app_approval.
+- Rejeitar identidade incompleta quando houver restrição de dispositivo.
+- Falhar de forma segura se ambiente, segredo HMAC ou configuração necessária não puderem ser validados. Remover segredos constantes de fallback.
+- Preservar o modo de aprovação existente quando houver novo pareamento.
+
+2. Rate limit, estados e idempotência
+- Aplicar limites de pedidos por UID real dentro da transação de criação, antes das escritas.
+- Não consumir cota novamente em reentregas de operações já concluídas.
+- Implementar deduplicação por skillId/requestId e preservar idempotência durável por draftId.
+- Confirmar exatamente a revisão apresentada ao usuário, não a revisão recém-lida do banco.
+- Tornar as transições de estado resistentes a concorrência, requisições atrasadas e repetidas.
+- Impedir reabertura de rascunhos cancelados, expirados ou consumidos.
+- Aprovar rascunhos pelo app atomicamente, sem mudança intermediária que os faça desaparecer da lista após falha.
+- Exigir a revisão visualizada na aprovação pelo app.
+- Corrigir o fallback para preservar o ID criado e encerrar após o limite de tentativas.
+
+3. Dados e compatibilidade
+- Corrigir parsing monetário com validação integral, centavos e rejeição de ambiguidades.
+- Cobrir: “1.500,00” = 1500; “dez reais e cinquenta centavos” = 10,50; “cinquenta centavos” = 0,50; “20 ou 30” deve pedir esclarecimento.
+- Validar calendário real e quantidades inteiras, sem truncamento silencioso.
+- Informar claramente quando uma correção for inválida; evitar perda silenciosa de outros campos válidos.
+- Revalidar todos os campos obrigatórios no commit.
+- Fazer o ledger da Alexa seguir o contrato do fluxo web, incluindo datas, quantidade, status, pagamentos e tags.
+- Preservar contador sequencial e atomicidade entre pedido, ledger e recibo.
+- Avaliar compatibilidade de registros Alexa já existentes. Se necessária, preparar migração idempotente com dry-run; não executá-la em produção.
+
+4. Interface e conversa
+- Corrigir o formulário de usuários para buscar a permissão Alexa do usuário editado, com autorização administrativa.
+- Impedir que salvar nome ou outras informações sobrescreva involuntariamente a configuração Alexa.
+- Tratar carregamento e falhas sem persistir valores padrão como se fossem dados reais.
+- Eliminar recargas desnecessárias ao selecionar o usuário para pareamento.
+- Corrigir a ambiguidade entre quantidade e preço ditados como número isolado, usando contexto de diálogo/elicitação.
+- Revisar frases de exemplo que não preenchem os slots esperados.
+- Conferir a coerência entre pendências exibidas e quem pode aprová-las.
+
+5. Custo e latência
+- Manter o fluxo determinístico, sem adicionar LLM ou serviços pagos desnecessários.
+- Fazer verificações locais e criptográficas antes de leituras pagas de configuração, preservando a validação do Skill ID.
+- Paralelizar leituras independentes sem enfraquecer autorização ou revogação.
+- Evitar gravações sem alteração útil.
+- Implementar orçamento de tempo por etapa e tratamento seguro de resultado incerto do commit. Um timeout local não significa que a gravação foi cancelada.
+- Instrumentar duração, resultado e operações relevantes sem registrar códigos, tokens, slots, nomes ou IDs Amazon brutos.
+- Preparar configuração de retenção/TTL para dados temporários e auditoria; preservar recibos duráveis.
+- Não aumentar instâncias mínimas, memória ou infraestrutura sem evidência que justifique o custo.
+
+VALIDAÇÃO OBRIGATÓRIA
+
+Os 34 testes existentes passaram durante a análise, mas não cobrem os problemas encontrados. Acrescente testes de regressão significativos.
+
+Cubra:
+- Confirmação sem personId atual e troca de pessoa.
+- Desligamento global, revogação de permissão, reassociação de vínculo e mudança de modo.
+- Limites por usuário, excesso de cota e replay sem consumo adicional.
+- Confirmações simultâneas, revisão desatualizada, cancelamento concorrente e requisições repetidas.
+- Aprovação pelo app com falha preservando o estado correto.
+- Três fallbacks sem rascunho inicial.
+- Valores monetários, datas impossíveis e quantidades fracionárias.
+- Edição de outro usuário sem desabilitação involuntária.
+- Relatórios com pedidos web e Alexa.
+
+Use o emulador Firestore para validar atomicidade e concorrência; mocks simples não comprovam isolamento ou rollback. Execute testes relevantes, typecheck, build e git diff --check. Valide alterações de interface com Playwright quando o ambiente permitir.
+
+Não declare Echo físico, produção, custo mensal ou p95 validados sem executar e registrar essas verificações.
+
+RESTRIÇÕES
+- Preserve alterações preexistentes do usuário.
+- Não afrouxe regras Firebase nem remova verificações para fazer testes passarem.
+- Não faça deploy, push, migração de produção ou ativação da integração em produção.
+- Prossiga autonomamente com alterações locais e verificações reversíveis.
+- Comunique progresso, falhas e bloqueios reais durante o trabalho.
+
+ENTREGA
+- Código corrigido e testes.
+- Relatório relacionando cada achado à correção e à validação executada.
+- Arquivos alterados e decisões relevantes.
+- Resultados reais dos comandos, com falhas ou verificações não executadas.
+- Passos operacionais pendentes, incluindo TTL, eventual migração e teste físico no Echo.
+- Atualização da documentação para remover garantias de segurança, custo ou latência sem evidência.
+
+Não encerre deixando achados confirmados sem tratamento. Quando uma etapa depender de acesso externo ou produção, conclua a preparação local e documente precisamente o que falta.

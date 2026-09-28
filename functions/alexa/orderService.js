@@ -60,6 +60,26 @@ async function commitOrderFromDraft({
     };
   }
 
+  // 1.5. Validação prévia de autenticação Firebase Auth (fail-closed antes da transação)
+  const auth = authService || (admin.apps && admin.apps.length > 0 ? admin.auth() : null);
+  if (!auth || typeof auth.getUser !== 'function') {
+    throw new Error('AUTH_UNAVAILABLE: Serviço de autenticação indisponível no momento do commit.');
+  }
+
+  // Cache para o resultado de getUser(uid) contra retries transacionais (Achado Rodada 6)
+  const authUserCache = new Map();
+  async function getCachedAuthUser(targetUid) {
+    if (!authUserCache.has(targetUid)) {
+      try {
+        const u = await auth.getUser(targetUid);
+        authUserCache.set(targetUid, u);
+      } catch (err) {
+        throw new Error('USER_NOT_FOUND: Conta de autenticação não localizada.');
+      }
+    }
+    return authUserCache.get(targetUid);
+  }
+
   // 2. Transação Firestore unificada (todas as leituras antes de qualquer escrita)
   const orderRef = db.collection(COLLECTIONS.ORDERS).doc();
   const orderId = orderRef.id;
@@ -219,20 +239,10 @@ async function commitOrderFromDraft({
       throw new Error('DRAFT_INVALID_DATA: Data de entrega inválida no calendário (ex: 31 de fevereiro).');
     }
 
-    // Revalidação da conta Firebase Auth (fail-closed)
-    try {
-      const auth = authService || (admin.apps && admin.apps.length > 0 ? admin.auth() : null);
-      if (!auth || typeof auth.getUser !== 'function') {
-        throw new Error('AUTH_UNAVAILABLE: Serviço de autenticação indisponível no momento do commit.');
-      }
-      const authUser = await auth.getUser(uid);
-      if (authUser.disabled) {
-        throw new Error('USER_DISABLED: Conta de usuário suspensa no momento do commit.');
-      }
-    } catch (authErr) {
-      if (authErr.message?.includes('USER_DISABLED')) throw authErr;
-      if (authErr.message?.includes('AUTH_UNAVAILABLE')) throw authErr;
-      throw new Error('USER_NOT_FOUND: Conta de autenticação não localizada.');
+    // Revalidação da conta Firebase Auth (fail-closed, com cache contra retries transacionais)
+    const authUser = await getCachedAuthUser(uid);
+    if (authUser.disabled) {
+      throw new Error('USER_DISABLED: Conta de usuário suspensa no momento do commit.');
     }
 
     // Ler contadores de rate limit por UID (leitura antes das escritas)

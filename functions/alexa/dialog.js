@@ -300,60 +300,6 @@ function parseAndValidatePrice(priceValue) {
 }
 
 /**
- * Obtém ou inicializa rascunho de pedido no Firestore (alexaDrafts/{draftId}).
- */
-async function getOrCreateDraft(db, draftId, identity, config, envelope = null) {
-  const now = Date.now();
-  const ttlMs = (config.draftTtlMinutes || 15) * 60 * 1000;
-  const expiresAt = new Date(now + ttlMs);
-  const sessionId = envelope?.session?.sessionId || null;
-
-  if (draftId && sessionId) {
-    const snap = await db.collection(COLLECTIONS.DRAFTS).doc(draftId).get();
-    if (snap.exists) {
-      const data = snap.data() || {};
-      const expTime = data.expiresAt?.toDate ? data.expiresAt.toDate().getTime() : 0;
-      const isAllowedState = data.state === 'collecting' || data.state === 'awaiting_confirmation';
-      const isSameUser = data.uid === identity.uid;
-      const isSameBinding = !data.bindingKey || data.bindingKey === identity.bindingKey;
-      const isSameEnv = !data.environment || data.environment === config.environment;
-      const isSameSession = data.sessionId === sessionId;
-      if (expTime > now && isAllowedState && isSameUser && isSameBinding && isSameEnv && isSameSession) {
-        return { draftId, data, ref: snap.ref };
-      }
-    }
-  }
-
-  // Criar novo rascunho
-  const newDraftId = crypto.randomUUID();
-  const draftRef = db.collection(COLLECTIONS.DRAFTS).doc(newDraftId);
-  const initialData = {
-    draftId: newDraftId,
-    sessionId,
-    uid: identity.uid,
-    bindingKey: identity.bindingKey,
-    personId: identity.personId,
-    mode: identity.mode || 'voice_confirm',
-    environment: config.environment,
-    customer: null,
-    product: null,
-    quantity: null,
-    deliveryDate: null,
-    price: null,
-    notes: null,
-    revision: 1,
-    state: 'collecting', // collecting -> awaiting_confirmation -> committed
-    fallbackCount: 0,
-    expiresAt: admin.firestore.Timestamp.fromDate(expiresAt),
-    createdAt: admin.firestore.FieldValue.serverTimestamp(),
-    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-  };
-
-  await draftRef.set(initialData);
-  return { draftId: newDraftId, data: initialData, ref: draftRef };
-}
-
-/**
  * Monta o resumo verbal e avança estado para 'awaiting_confirmation'.
  * Inclui confirmação explícita de gratuidade quando price === 0.
  */
@@ -461,7 +407,8 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
   // 3. Fallback intent (tratamento de fala não compreendida com limite de 3 tentativas)
   if (intentName === 'AMAZON.FallbackIntent') {
     let fallbackCount = (sessionAttrs.fallbackCount || 0) + 1;
-    let shouldExpire = fallbackCount >= 3;
+    let shouldExpire = false;
+    let draftUpdated = false;
 
     if (currentDraftId && sessionId) {
       await runTx(async (transaction) => {
@@ -478,10 +425,12 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
           const isModifiable = dData.state === 'collecting' || dData.state === 'awaiting_confirmation';
 
           if (isOwner && isSameBinding && isSameEnv && isSameSession && isModifiable) {
+            draftUpdated = true;
             if (dData.fallbackCount !== undefined) {
               fallbackCount = Math.max(fallbackCount, dData.fallbackCount + 1);
-              shouldExpire = fallbackCount >= 3;
             }
+            shouldExpire = fallbackCount >= 3;
+
             if (shouldExpire) {
               transaction.update(draftRef, {
                 state: 'expired',
@@ -497,9 +446,13 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
           }
         }
       }).catch(() => {});
+    } else if (!currentDraftId) {
+      // Sem rascunho associado, conta tentativas da sessão normal
+      shouldExpire = fallbackCount >= 3;
+      draftUpdated = true;
     }
 
-    if (shouldExpire) {
+    if (shouldExpire && draftUpdated) {
       return {
         speech: 'Não consegui entender após três tentativas. Por favor, acesse o aplicativo Luisices para registrar o pedido.',
         shouldEndSession: true,
@@ -507,11 +460,21 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
       };
     }
 
+    // Se havia currentDraftId mas não era da sessão ou usuário, descarta draftId órfão
+    const validDraftId = draftUpdated && currentDraftId ? currentDraftId : null;
+    const nextAttrs = { ...sessionAttrs };
+    if (validDraftId) {
+      nextAttrs.draftId = validDraftId;
+    } else {
+      delete nextAttrs.draftId;
+    }
+    nextAttrs.fallbackCount = draftUpdated ? fallbackCount : 1;
+
     return {
       speech: 'Não entendi. Por favor, repita a informação do pedido.',
       reprompt: 'Diga os dados do pedido ou diga cancelar.',
       shouldEndSession: false,
-      sessionAttributes: { ...sessionAttrs, draftId: currentDraftId, fallbackCount },
+      sessionAttributes: nextAttrs,
     };
   }
 

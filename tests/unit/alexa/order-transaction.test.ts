@@ -260,6 +260,7 @@ describe('Alexa: Transação Atômica de Pedido e Idempotência Durável', () =>
         callerPersonId: 'amzn1.ask.person.AMANDA',
         config: baseConfig,
         db: mockDb,
+        authService: { getUser: async (u: string) => ({ uid: u, disabled: false }) },
       })
     ).rejects.toThrow('VOICE_NOT_ALLOWED');
 

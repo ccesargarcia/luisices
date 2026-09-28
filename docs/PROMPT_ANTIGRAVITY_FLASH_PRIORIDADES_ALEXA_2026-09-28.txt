@@ -1,0 +1,135 @@
+Você é o agente de implementação responsável pela integração Alexa do projeto Luisices.
+
+MODELO
+Gemini Flash 3.8 no Antigravity.
+
+REPOSITÓRIO
+/home/caiogarcia/luisices
+
+CONTEXTO OBRIGATÓRIO
+Leia antes de editar:
+
+1. docs/ANALISE_ALEXA_2026-09-27.md
+2. docs/REVISAO_IMPLEMENTACAO_ALEXA_2026-09-27.md
+3. docs/REVISAO_ALEXA_RODADA_3_2026-09-27.md
+4. docs/REVISAO_ALEXA_RODADA_4_2026-09-28.md
+5. docs/REVISAO_ALEXA_RODADA_5_2026-09-28.md
+6. docs/REVISAO_ALEXA_RODADA_6_2026-09-28.md
+
+O commit atual é d2154b2. Preserve as correções já existentes.
+
+OBJETIVO
+Implementar os pontos restantes da rodada 6 com foco em segurança, idempotência, baixo custo e baixa latência. Faça mudanças pequenas, compatíveis com o fluxo web e sem adicionar LLM, serviços externos ou infraestrutura desnecessária.
+
+REGRAS GERAIS
+
+- Leia os arquivos completos antes de editar.
+- Preserve contratos públicos e implementações já corrigidas.
+- Não faça deploy, push, migração de produção ou ativação de produção.
+- Não remova validações para fazer testes passarem.
+- Faça uma mudança por prioridade e rode os testes após cada grupo.
+- Não transforme avisos de build existentes em falhas artificiais.
+- Não use mocks como prova de concorrência real.
+- Inspecione o diff final e explique qualquer comportamento que não possa ser comprovado localmente.
+
+PRIORIDADE P1 — IMPLEMENTAR PRIMEIRO
+
+1. Tornar requestId obrigatório
+
+Arquivo principal: functions/alexa/index.js.
+
+- Validar requestId antes de pairing, diálogo, commit ou qualquer efeito de negócio.
+- Rejeitar requestId ausente, vazio, não string ou fora de um limite razoável de tamanho.
+- Manter a validação de assinatura/timestamp e Skill ID antes de leituras e efeitos.
+- Não gerar requestId substituto silenciosamente.
+- Retornar resposta transitória/segura sem revelar detalhes internos.
+- Garantir que toda requisição válida use a chave de deduplicação.
+
+2. Remover o caminho não transacional da deduplicação
+
+Arquivo principal: functions/alexa/index.js.
+
+- A reserva de alexaRequests/{requestKey} deve exigir db.runTransaction.
+- Se o banco não oferecer transação, falhar fechado e não executar o fluxo.
+- A reserva deve continuar atômica para duas requisições simultâneas.
+- Uma falha na reserva não pode executar pairing, diálogo ou commit.
+- Persistir a resposta final com await.
+- Não guardar código de pareamento ou dados sensíveis além do necessário.
+
+3. Rever a idempotência além do TTL
+
+Arquivos principais: functions/alexa/index.js e functions/alexa/orderService.js.
+
+- Verificar se 150 segundos cobre os retries reais do canal Alexa.
+- Se não houver evidência suficiente, escolher uma janela conservadora e documentá-la.
+- Manter uma proteção idempotente no rascunho/pedido final para impedir pedido duplicado mesmo depois da expiração do registro de deduplicação.
+- Não aumentar TTL sem avaliar custo de documentos armazenados e limpeza.
+- Não declarar a solução segura contra replay sem explicar a janela efetiva.
+
+PRIORIDADE P2 — IMPLEMENTAR DEPOIS DA P1
+
+4. Tirar chamadas externas desnecessárias de dentro da transação
+
+Arquivo principal: functions/alexa/orderService.js.
+
+- Reduzir chamadas repetíveis ao Firebase Auth durante retries do Firestore.
+- Preservar a revalidação de titularidade, perfil ativo, permissão, binding, ambiente e configuração global.
+- Nunca trocar uma checagem de segurança por cache não validado.
+- Se alguma chamada precisar permanecer na transação, documentar o motivo e o impacto de latência/custo.
+
+PRIORIDADE P3 — LIMPEZA E CONSISTÊNCIA
+
+5. Corrigir resposta de fallback
+
+Arquivo principal: functions/alexa/dialog.js.
+
+- Quando sessionId for ausente ou não corresponder ao rascunho, não alterar o rascunho.
+- Não informar que o limite de tentativas foi atingido se nenhum contador foi atualizado.
+- Manter resposta curta, segura e útil ao usuário.
+
+6. Remover ou encapsular código legado
+
+Arquivo principal: functions/alexa/dialog.js.
+
+- Verificar se getOrCreateDraft ainda é usado.
+- Se não for usado, remover sem alterar contratos.
+- Se precisar permanecer, documentar seu contrato e adicionar teste para impedir uso inseguro.
+
+TESTES OBRIGATÓRIOS
+
+Adicione ou ajuste regressões para:
+
+- requestId ausente, vazio, não string e tamanho inválido;
+- requestId válido sempre usando deduplicação;
+- db sem runTransaction falhando fechado;
+- duas requisições iguais simultâneas produzindo uma única execução;
+- retry após expiração do TTL sem criar pedido duplicado;
+- rascunho de outra sessão não sendo alterado;
+- fallback sem sessionId não alterando contador de outro rascunho;
+- Auth permanecendo autorizado e sem chamadas redundantes evitáveis;
+- helper legado não sendo usado pelo fluxo principal.
+
+VALIDAÇÃO FINAL
+
+Execute e registre:
+
+1. npm test
+2. npm run build
+3. node --check functions/alexa/*.js
+4. git diff --check
+5. testes de integração Firestore, se o emulador estiver disponível
+6. Playwright, se houver alteração de interface e o ambiente permitir
+
+Se o emulador não estiver disponível, informe claramente. Não alegue segurança contra replay, custo, latência ou concorrência real sem evidência correspondente.
+
+CRITÉRIOS DE ACEITE
+
+- Nenhum efeito de negócio ocorre sem requestId válido.
+- Nenhum efeito de negócio ocorre se a reserva transacional falhar.
+- Reentregas dentro e fora do TTL não criam pedido duplicado.
+- Rascunhos de outras sessões continuam intocados.
+- O fluxo web existente continua funcionando.
+- Todos os testes anteriores continuam passando.
+- O relatório final lista arquivos alterados, riscos restantes, comandos executados e limitações reais.
+
+Implemente as correções e valide-as no repositório. Não entregue apenas um plano.

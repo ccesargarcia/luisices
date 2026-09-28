@@ -58,6 +58,22 @@ async function processAlexaEnvelope(envelope, { db, config, authService = null }
   const reqType = envelope?.request?.type;
   const intentName = envelope?.request?.intent?.name;
   const requestId = envelope?.request?.requestId;
+
+  // Achado Rodada 6: requestId é obrigatório e com limites razoáveis de tamanho (8 a 300 chars)
+  if (
+    !requestId ||
+    typeof requestId !== 'string' ||
+    !requestId.trim() ||
+    requestId.trim().length < 8 ||
+    requestId.trim().length > 300
+  ) {
+    console.warn('[processAlexaEnvelope] requestId ausente, inválido ou fora dos limites:', requestId);
+    return buildAlexaResponse({
+      speech: 'Requisição inválida ou incompleta.',
+      shouldEndSession: true,
+    });
+  }
+
   const rawAppId =
     envelope?.session?.application?.applicationId ||
     envelope?.context?.System?.application?.applicationId;
@@ -77,71 +93,66 @@ async function processAlexaEnvelope(envelope, { db, config, authService = null }
   // 0. Deduplicação e proteção contra replays HTTP (alexaRequests/{requestKey})
   let reqRef = null;
   let requestKey = null;
-  if (requestId && db) {
+  if (db) {
     requestKey = computeRequestKey(appId || config?.allowedSkillId || '', requestId);
     reqRef = db.collection(COLLECTIONS.REQUESTS).doc(requestKey);
 
     let cachedResponse = null;
 
-    if (typeof db.runTransaction === 'function') {
-      try {
-        await db.runTransaction(async (transaction) => {
-          const snap = await transaction.get(reqRef);
-          const now = Date.now();
-          if (snap.exists) {
-            const data = snap.data() || {};
-            // 1. Resposta final já persistida (idempotência / replay)
-            if (data.status === 'completed' && data.response) {
-              cachedResponse = data.response;
-              return;
-            }
-            if (data.response) {
-              cachedResponse = data.response;
-              return;
-            }
-            // 2. Requisição concorrente ainda em processamento (janela de 15s)
-            const startedAt = data.startedAt || (data.createdAt?.toDate ? data.createdAt.toDate().getTime() : now);
-            if (data.status === 'in_progress' && (now - startedAt < 15000)) {
-              cachedResponse = buildAlexaResponse({
-                speech: 'Esta solicitação já está em processamento.',
-                shouldEndSession: true,
-              });
-              return;
-            }
-          }
+    if (typeof db.runTransaction !== 'function') {
+      // Achado Rodada 6: sem db.runTransaction, falha fechado imediatamente para evitar processamento não-atômico
+      console.warn('[AlexaDeduplication] db.runTransaction indisponível (fail-closed)');
+      return buildAlexaResponse({
+        speech: 'Ocorreu uma instabilidade temporária ao processar sua solicitação. Por favor, tente novamente.',
+        shouldEndSession: true,
+      });
+    }
 
-          // Aquisição atômica da requisição
-          transaction.set(reqRef, {
-            requestKey,
-            requestId,
-            appId,
-            environment: config?.environment || 'dev',
-            status: 'in_progress',
-            startedAt: now,
-            createdAt: admin.firestore.FieldValue.serverTimestamp(),
-            expiresAt: new Date(now + 150000), // 150s TTL
-          });
-        });
-      } catch (err) {
-        // Falha fechada: se a reserva atômica falhar, não executar efeitos; retornar erro seguro
-        console.warn('[AlexaDeduplication] Erro na reserva atômica de requisição (fail-closed):', err.message);
-        return buildAlexaResponse({
-          speech: 'Ocorreu uma instabilidade temporária ao processar sua solicitação. Por favor, tente novamente.',
-          shouldEndSession: true,
-        });
-      }
-    } else {
-      const existingSnap = await reqRef.get().catch(() => null);
-      if (existingSnap && existingSnap.exists) {
-        const data = existingSnap.data() || {};
-        if (data.response) {
-          return data.response;
+    try {
+      await db.runTransaction(async (transaction) => {
+        const snap = await transaction.get(reqRef);
+        const now = Date.now();
+        if (snap.exists) {
+          const data = snap.data() || {};
+          // 1. Resposta final já persistida (idempotência / replay)
+          if (data.status === 'completed' && data.response) {
+            cachedResponse = data.response;
+            return;
+          }
+          if (data.response) {
+            cachedResponse = data.response;
+            return;
+          }
+          // 2. Requisição concorrente ainda em processamento (janela de 15s)
+          const startedAt = data.startedAt || (data.createdAt?.toDate ? data.createdAt.toDate().getTime() : now);
+          if (data.status === 'in_progress' && (now - startedAt < 15000)) {
+            cachedResponse = buildAlexaResponse({
+              speech: 'Esta solicitação já está em processamento.',
+              shouldEndSession: true,
+            });
+            return;
+          }
         }
-        return buildAlexaResponse({
-          speech: 'Esta solicitação já está em processamento.',
-          shouldEndSession: true,
+
+        // Aquisição atômica da requisição (TTL de 300s / 5 min para cobrir janelas estendidas de retry da Amazon)
+        transaction.set(reqRef, {
+          requestKey,
+          requestId,
+          appId,
+          environment: config?.environment || 'dev',
+          status: 'in_progress',
+          startedAt: now,
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          expiresAt: new Date(now + 300000), // 300s TTL (Achado Rodada 6)
         });
-      }
+      });
+    } catch (err) {
+      // Falha fechada: se a reserva atômica falhar, não executar efeitos; retornar erro seguro
+      console.warn('[AlexaDeduplication] Erro na reserva atômica de requisição (fail-closed):', err.message);
+      return buildAlexaResponse({
+        speech: 'Ocorreu uma instabilidade temporária ao processar sua solicitação. Por favor, tente novamente.',
+        shouldEndSession: true,
+      });
     }
 
     if (cachedResponse) {
@@ -294,6 +305,14 @@ const alexaWebhook = onRequest(
         console.warn('[alexaWebhook] Skill ID ausente ou não autorizado:', envelopeAppId);
         return res.status(403).json({ error: `Skill ID não autorizada para este ambiente (${config.environment}).` });
       }
+    }
+
+    // 3.5. Exigir requestId obrigatório no envelope (Achado Rodada 6)
+    const envelope = verification.envelope;
+    const reqId = envelope?.request?.requestId;
+    if (!reqId || typeof reqId !== 'string' || !reqId.trim()) {
+      console.warn('[alexaWebhook] requestId ausente ou inválido no envelope');
+      return res.status(400).json({ error: 'requestId ausente ou inválido no envelope.' });
     }
 
     try {

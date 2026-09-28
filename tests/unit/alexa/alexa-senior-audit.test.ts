@@ -258,6 +258,10 @@ describe('Alexa: Validação de Regressões e Melhorias Sênior (Auditoria)', ()
             },
           }),
         }),
+        runTransaction: async (cb: any) => cb({
+          get: async (ref: any) => ref.get(),
+          set: (ref: any, data: any) => ref.set(data),
+        }),
       };
 
       const envelope = {
@@ -300,6 +304,10 @@ describe('Alexa: Validação de Regressões e Melhorias Sênior (Auditoria)', ()
               store[col][id] = data;
             },
           }),
+        }),
+        runTransaction: async (cb: any) => cb({
+          get: async (ref: any) => ref.get(),
+          set: (ref: any, data: any) => ref.set(data),
         }),
       };
 
@@ -434,6 +442,57 @@ describe('Alexa: Validação de Regressões e Melhorias Sênior (Auditoria)', ()
 
       expect(res.response.outputSpeech.text).toContain('instabilidade temporária');
       expect(pairingCalled).toBe(false);
+      expect(res.response.shouldEndSession).toBe(true);
+    });
+
+    it('deve rejeitar envelope com erro se requestId estiver ausente (Achado Rodada 6)', async () => {
+      const envelope = {
+        request: {
+          type: 'IntentRequest',
+          intent: { name: 'PairAlexaIntent' },
+          // requestId ausente propositalmente
+        },
+        session: {
+          application: { applicationId: 'amzn1.ask.skill.test-dev' },
+        },
+      };
+
+      const res = await processAlexaEnvelope(envelope, {
+        db: { collection: () => ({}) },
+        config: { environment: 'dev', isEnabled: true, allowedSkillId: 'amzn1.ask.skill.test-dev' },
+      });
+
+      expect(res.response.outputSpeech.text).toContain('Requisição inválida ou incompleta');
+      expect(res.response.shouldEndSession).toBe(true);
+    });
+
+    it('deve falhar fechado se db.runTransaction não for suportado na deduplicação (Achado Rodada 6)', async () => {
+      const mockDbNoTx: any = {
+        collection: (col: string) => ({
+          doc: (id: string) => ({
+            get: async () => ({ exists: false }),
+          }),
+        }),
+        // runTransaction ausente propositalmente
+      };
+
+      const envelope = {
+        request: {
+          type: 'IntentRequest',
+          requestId: 'req-no-tx-support',
+          intent: { name: 'PairAlexaIntent' },
+        },
+        session: {
+          application: { applicationId: 'amzn1.ask.skill.test-dev' },
+        },
+      };
+
+      const res = await processAlexaEnvelope(envelope, {
+        db: mockDbNoTx,
+        config: { environment: 'dev', isEnabled: true, allowedSkillId: 'amzn1.ask.skill.test-dev' },
+      });
+
+      expect(res.response.outputSpeech.text).toContain('instabilidade temporária');
       expect(res.response.shouldEndSession).toBe(true);
     });
   });
@@ -837,6 +896,156 @@ describe('Alexa: Validação de Regressões e Melhorias Sênior (Auditoria)', ()
           authService: { getUser: async (u: string) => ({ uid: u, disabled: false }) },
         })
       ).rejects.toThrow('PERMISSION_DENIED');
+    });
+  });
+
+  describe('11. Validações Estritas de requestId e Limites de Payload (Achado Rodada 6)', () => {
+    it('deve rejeitar requestId curto demais (< 8 caracteres)', async () => {
+      const envelope = {
+        request: {
+          type: 'IntentRequest',
+          requestId: 'short',
+          intent: { name: 'PairAlexaIntent' },
+        },
+        session: { application: { applicationId: 'amzn1.ask.skill.test-dev' } },
+      };
+
+      const res = await processAlexaEnvelope(envelope, {
+        db: { collection: () => ({}) },
+        config: { environment: 'dev', isEnabled: true, allowedSkillId: 'amzn1.ask.skill.test-dev' },
+      });
+
+      expect(res.response.outputSpeech.text).toContain('Requisição inválida ou incompleta');
+    });
+
+    it('deve rejeitar requestId excessivamente longo (> 300 caracteres)', async () => {
+      const envelope = {
+        request: {
+          type: 'IntentRequest',
+          requestId: 'a'.repeat(301),
+          intent: { name: 'PairAlexaIntent' },
+        },
+        session: { application: { applicationId: 'amzn1.ask.skill.test-dev' } },
+      };
+
+      const res = await processAlexaEnvelope(envelope, {
+        db: { collection: () => ({}) },
+        config: { environment: 'dev', isEnabled: true, allowedSkillId: 'amzn1.ask.skill.test-dev' },
+      });
+
+      expect(res.response.outputSpeech.text).toContain('Requisição inválida ou incompleta');
+    });
+  });
+
+  describe('12. Idempotência Pós-TTL e Consistência de Fallback (Achados Rodada 6)', () => {
+    it('deve impedir criação duplicada de pedido mesmo após expiração do TTL de deduplicação', async () => {
+      const draftId = 'draft-post-ttl-test';
+      const uid = 'uid-owner';
+      const store: any = {
+        alexaCommits: {
+          [draftId]: {
+            orderId: 'existing-order-xyz',
+            orderNumber: '#2026-0099',
+            committedAt: new Date(),
+          },
+        },
+        alexaDrafts: {
+          [draftId]: {
+            draftId,
+            uid,
+            bindingKey: 'binding-key-1',
+            state: 'committed',
+            expiresAt: { toDate: () => new Date(Date.now() + 600000) },
+          },
+        },
+      };
+
+      const mockDb: any = {
+        collection: (col: string) => ({
+          doc: (id: string) => ({
+            get: async () => ({
+              exists: Boolean(store[col]?.[id]),
+              data: () => store[col]?.[id] || null,
+            }),
+          }),
+        }),
+      };
+
+      const res = await commitOrderFromDraft({
+        draftId,
+        callerPersonId: 'amzn1.ask.person.TEST',
+        expectedRevision: 1,
+        config: { environment: 'dev', isEnabled: true },
+        db: mockDb,
+        authService: { getUser: async (u: string) => ({ uid: u, disabled: false }) },
+      });
+
+      expect(res.isReplay).toBe(true);
+      expect(res.orderNumber).toBe('#2026-0099');
+    });
+
+    it('fallback com rascunho de outra sessão não deve anunciar três tentativas e deve remover draftId órfão', async () => {
+      const draftId = 'draft-foreign-session';
+      const store: any = {
+        alexaDrafts: {
+          [draftId]: {
+            draftId,
+            sessionId: 'session-original',
+            uid: 'uid-test',
+            bindingKey: 'binding-test',
+            environment: 'dev',
+            state: 'collecting',
+            fallbackCount: 2,
+            expiresAt: { toDate: () => new Date(Date.now() + 600000) },
+          },
+        },
+      };
+
+      const mockDb: any = {
+        collection: (col: string) => ({
+          doc: (id: string) => ({
+            get: async () => ({
+              exists: Boolean(store[col]?.[id]),
+              data: () => store[col]?.[id] || null,
+            }),
+            update: async () => {},
+          }),
+        }),
+        runTransaction: async (cb: any) => cb({
+          get: async (ref: any) => ref.get(),
+          update: async () => {},
+        }),
+      };
+
+      // Sessão diferente tentando fallback sobre rascunho de outra sessão
+      const envelope = {
+        request: {
+          type: 'IntentRequest',
+          intent: { name: 'AMAZON.FallbackIntent' },
+        },
+        session: {
+          sessionId: 'session-foreign',
+          attributes: { draftId, fallbackCount: 2 },
+        },
+      };
+
+      const res = await handleAlexaDialog({
+        envelope,
+        identity: { uid: 'uid-test', bindingKey: 'binding-test', personId: 'amzn1.ask.person.TEST', displayName: 'Caio' },
+        config: { environment: 'dev', isEnabled: true },
+        db: mockDb,
+      });
+
+      // NÃO deve dizer "três tentativas"
+      expect(res.speech).not.toContain('três tentativas');
+      expect(res.shouldEndSession).toBe(false);
+      // Deve ter descartado o draftId órfão dos atributos da sessão
+      expect(res.sessionAttributes?.draftId).toBeUndefined();
+    });
+
+    it('deve confirmar que getOrCreateDraft não existe mais em dialog.js (remoção de código legado)', () => {
+      const dialogExports = require('../../../functions/alexa/dialog');
+      expect(dialogExports.getOrCreateDraft).toBeUndefined();
     });
   });
 });
