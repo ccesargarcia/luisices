@@ -1,7 +1,7 @@
 {
   "interactionModel": {
     "languageModel": {
-      "invocationName": "luisices de teste",
+      "invocationName": "papelaria de teste",
       "intents": [
         {
           "name": "AMAZON.CancelIntent",

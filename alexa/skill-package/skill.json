@@ -5,11 +5,11 @@
         "pt-BR": {
           "summary": "Criação de pedidos por voz para o ateliê Luisices.",
           "examplePhrases": [
-            "Alexa, abrir luisices de teste",
-            "Alexa, peça ao luisices de teste para criar um pedido",
+            "Alexa, abrir papelaria de teste",
+            "Alexa, peça à papelaria de teste para criar um pedido",
             "vincular minha voz"
           ],
-          "name": "Luisices de Teste",
+          "name": "Papelaria de Teste",
           "description": "Skill privada para criação rápida e segura de pedidos por comando de voz no ateliê Luisices, vinculada ao perfil de voz de pessoas autorizadas."
         }
       },
@@ -23,7 +23,7 @@
     "apis": {
       "custom": {
         "endpoint": {
-          "uri": "https://alexawebhook-g7z2w635ya-uc.a.run.app"
+          "uri": "https://us-central1-luisices-dev.cloudfunctions.net/alexaWebhook"
         },
         "interfaces": []
       }
