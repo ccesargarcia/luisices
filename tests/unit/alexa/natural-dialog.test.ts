@@ -2228,4 +2228,249 @@ describe('Alexa: Diálogo Natural, Contextual e Catálogo Controlado (Fases 1 a 
       expect(resStalePrice.speech).toContain('total de 150 reais');
     });
   });
+
+  describe('Revisão R5: One-shot com Data, Biometria em Fala Curta e Recuperação de Rascunho', () => {
+    it('deve processar pedido em frase única com produto, cliente, quantidade, preço e data (one-shot completo)', async () => {
+      const mockDb = createMockDb();
+      const sessionId = 'session-oneshot-1';
+
+      const envelope = {
+        session: { sessionId, attributes: {} },
+        context: { System: { person: { personId: identity.personId } } },
+        request: {
+          type: 'IntentRequest',
+          intent: {
+            name: 'CreateOrderIntent',
+            slots: {
+              customer: { value: 'Maria' },
+              product: { value: 'caixinhas' },
+              quantity: { value: '10' },
+              unitPrice: { value: '10' },
+              deliveryDate: { value: '2026-10-25' },
+            },
+          },
+        },
+      };
+
+      const res = await handleAlexaDialog({ envelope, identity, config: baseConfig, db: mockDb });
+
+      expect(res.shouldEndSession).toBe(false);
+      expect(res.speech).toContain('10 caixinhas');
+      expect(res.speech).toContain('Maria');
+      expect(res.speech).toContain('10 reais cada');
+      expect(res.speech).toContain('100 reais');
+      expect(res.speech).toContain('25 de outubro de 2026');
+      expect(res.speech).toContain('Confirmar?');
+      expect(res.sessionAttributes?.expectedInput).toBe('confirmation');
+
+      const createdDraftId = res.sessionAttributes?.draftId;
+      const draft = mockDb.store.alexaDrafts[createdDraftId];
+      expect(draft.state).toBe('awaiting_confirmation');
+      expect(draft.customer).toBe('Maria');
+      expect(draft.product).toBe('caixinhas');
+      expect(draft.quantity).toBe(10);
+      expect(draft.price).toBe(100);
+      expect(draft.deliveryDate).toBe('2026-10-25');
+    });
+
+    it('deve confirmar pedido com sucesso quando a Alexa omite personId na resposta curta "Sim" mas a sessão possui identidade vocal autorizada', async () => {
+      const mockDb = createMockDb();
+      const draftId = 'draft-short-sim';
+      const sessionId = 'session-sim-1';
+
+      mockDb.store.alexaDrafts[draftId] = {
+        draftId,
+        sessionId,
+        uid: identity.uid,
+        bindingKey: identity.bindingKey,
+        personId: identity.personId,
+        environment: 'dev',
+        mode: 'voice_confirm',
+        state: 'awaiting_confirmation',
+        customer: 'Maria',
+        product: 'caixinhas',
+        quantity: 10,
+        price: 100,
+        deliveryDate: '2026-10-25',
+        revision: 1,
+        expiresAt: { toDate: () => new Date(Date.now() + 10 * 60 * 1000) },
+      };
+
+      // Envelope com "Sim": Amazon omitiu envelope.context.System.person por ser fala curta
+      const envelope = {
+        session: { sessionId, attributes: { draftId, revision: 1 } },
+        context: { System: {} }, // Sem biometria física nesta fala
+        request: {
+          type: 'IntentRequest',
+          intent: { name: 'AMAZON.YesIntent' },
+        },
+      };
+
+      const mockAuthService = {
+        getUser: async (u: string) => ({ uid: u, disabled: false }),
+      };
+
+      const res = await handleAlexaDialog({ envelope, identity, config: baseConfig, db: mockDb, authService: mockAuthService });
+
+      expect(res.shouldEndSession).toBe(true);
+      expect(res.speech).toContain('com o número');
+      expect(mockDb.store.alexaDrafts[draftId].state).toBe('committed');
+      expect(Object.keys(mockDb.store.orders).length).toBe(1);
+    });
+
+    it('deve rejeitar confirmação quando uma pessoa física diferente for detectada no envelope (impostor)', async () => {
+      const mockDb = createMockDb();
+      const draftId = 'draft-impostor';
+      const sessionId = 'session-impostor-1';
+
+      mockDb.store.alexaDrafts[draftId] = {
+        draftId,
+        sessionId,
+        uid: identity.uid,
+        bindingKey: identity.bindingKey,
+        personId: identity.personId, // Iniciado por Amanda
+        environment: 'dev',
+        mode: 'voice_confirm',
+        state: 'awaiting_confirmation',
+        customer: 'Maria',
+        product: 'caixinhas',
+        quantity: 10,
+        price: 100,
+        deliveryDate: '2026-10-25',
+        revision: 1,
+        expiresAt: { toDate: () => new Date(Date.now() + 10 * 60 * 1000) },
+      };
+
+      // Impostor fala "Sim" e o hardware detecta uma biometria diferente
+      const envelope = {
+        session: { sessionId, attributes: { draftId, revision: 1 } },
+        context: {
+          System: {
+            person: { personId: 'amzn1.ask.person.IMPOSTOR' },
+          },
+        },
+        request: {
+          type: 'IntentRequest',
+          intent: { name: 'AMAZON.YesIntent' },
+        },
+      };
+
+      const res = await handleAlexaDialog({ envelope, identity, config: baseConfig, db: mockDb });
+
+      expect(res.shouldEndSession).toBe(true);
+      expect(res.speech).toContain('A pessoa que está confirmando não é a mesma que iniciou o pedido');
+      expect(mockDb.store.alexaDrafts[draftId].state).toBe('awaiting_confirmation'); // Não comitado!
+    });
+
+    it('deve recuperar rascunho em awaiting_confirmation no LaunchRequest e permitir confirmação imediata', async () => {
+      const mockDb = createMockDb();
+      const draftId = 'draft-reopen-confirm';
+      const oldSessionId = 'session-old-1';
+
+      mockDb.store.alexaDrafts[draftId] = {
+        draftId,
+        sessionId: oldSessionId,
+        uid: identity.uid,
+        bindingKey: identity.bindingKey,
+        personId: identity.personId,
+        environment: 'dev',
+        mode: 'voice_confirm',
+        state: 'awaiting_confirmation',
+        customer: 'Maria',
+        product: 'caixinhas',
+        quantity: 10,
+        price: 100,
+        unitPriceCents: 1000,
+        totalPriceCents: 10000,
+        pricingMode: 'unit',
+        deliveryDate: '2026-10-25',
+        revision: 2,
+        expiresAt: { toDate: () => new Date(Date.now() + 10 * 60 * 1000) },
+        updatedAt: { toMillis: () => Date.now() },
+      };
+
+      const newSessionId = 'session-new-2';
+      // 1. Reabertura da skill (LaunchRequest)
+      const launchEnvelope = {
+        session: { sessionId: newSessionId, attributes: {} },
+        request: { type: 'LaunchRequest' },
+      };
+
+      const launchRes = await handleAlexaDialog({ envelope: launchEnvelope, identity, config: baseConfig, db: mockDb });
+
+      expect(launchRes.shouldEndSession).toBe(false);
+      expect(launchRes.speech).toContain('Você tem um pedido em andamento');
+      expect(launchRes.speech).toContain('10 caixinhas');
+      expect(launchRes.speech).toContain('Maria');
+      expect(launchRes.speech).toContain('Confirmar?');
+      expect(launchRes.sessionAttributes?.draftId).toBe(draftId);
+      expect(launchRes.sessionAttributes?.revision).toBe(2);
+
+      // O rascunho deve ter sido reassociado à nova sessão
+      expect(mockDb.store.alexaDrafts[draftId].sessionId).toBe(newSessionId);
+
+      // 2. Usuário confirma dizendo "Sim"
+      const yesEnvelope = {
+        session: {
+          sessionId: newSessionId,
+          attributes: launchRes.sessionAttributes,
+        },
+        context: { System: { person: { personId: identity.personId } } },
+        request: {
+          type: 'IntentRequest',
+          intent: { name: 'AMAZON.YesIntent' },
+        },
+      };
+
+      const mockAuthService = {
+        getUser: async (u: string) => ({ uid: u, disabled: false }),
+      };
+
+      const yesRes = await handleAlexaDialog({ envelope: yesEnvelope, identity, config: baseConfig, db: mockDb, authService: mockAuthService });
+
+      expect(yesRes.shouldEndSession).toBe(true);
+      expect(yesRes.speech).toContain('com o número');
+      expect(mockDb.store.alexaDrafts[draftId].state).toBe('committed');
+    });
+
+    it('deve recuperar rascunho em collecting no LaunchRequest e perguntar o campo pendente', async () => {
+      const mockDb = createMockDb();
+      const draftId = 'draft-reopen-collecting';
+      const oldSessionId = 'session-old-collect';
+
+      mockDb.store.alexaDrafts[draftId] = {
+        draftId,
+        sessionId: oldSessionId,
+        uid: identity.uid,
+        bindingKey: identity.bindingKey,
+        personId: identity.personId,
+        environment: 'dev',
+        mode: 'voice_confirm',
+        state: 'collecting',
+        customer: 'Maria',
+        product: 'caixinhas',
+        quantity: 10,
+        price: 100,
+        deliveryDate: null, // Falta data de entrega
+        revision: 1,
+        expiresAt: { toDate: () => new Date(Date.now() + 10 * 60 * 1000) },
+        updatedAt: { toMillis: () => Date.now() },
+      };
+
+      const newSessionId = 'session-new-collect';
+      const launchEnvelope = {
+        session: { sessionId: newSessionId, attributes: {} },
+        request: { type: 'LaunchRequest' },
+      };
+
+      const launchRes = await handleAlexaDialog({ envelope: launchEnvelope, identity, config: baseConfig, db: mockDb });
+
+      expect(launchRes.shouldEndSession).toBe(false);
+      expect(launchRes.speech).toContain('Você tem um pedido em andamento de 10 caixinhas para Maria');
+      expect(launchRes.speech).toContain('Para quando é a entrega?');
+      expect(launchRes.sessionAttributes?.draftId).toBe(draftId);
+      expect(launchRes.sessionAttributes?.expectedInput).toBe('deliveryDate');
+    });
+  });
 });
+

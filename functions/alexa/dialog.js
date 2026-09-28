@@ -455,6 +455,46 @@ async function searchUserCatalog(db, uid, queryText) {
 }
 
 /**
+ * Busca o rascunho mais recente ainda ativo e dentro do TTL para o usuário e vínculo.
+ */
+async function findActiveDraftForUser(db, uid, bindingKey, environment) {
+  if (!db || !uid || typeof db.collection !== 'function') return null;
+  try {
+    const colRef = db.collection(COLLECTIONS.DRAFTS);
+    if (!colRef || typeof colRef.where !== 'function') return null;
+
+    const snap = await colRef.where('uid', '==', uid).get();
+    if (!snap || snap.empty) return null;
+
+    const now = Date.now();
+    const validDrafts = [];
+    snap.forEach((doc) => {
+      const data = (typeof doc.data === 'function' ? doc.data() : doc.data) || {};
+      const expTime = data.expiresAt?.toDate ? data.expiresAt.toDate().getTime() : 0;
+      const isSameBinding = !data.bindingKey || data.bindingKey === bindingKey;
+      const isSameEnv = !data.environment || data.environment === environment;
+      const isAwaitingOrCollecting = data.state === 'awaiting_confirmation' || data.state === 'collecting';
+      if (isSameBinding && isSameEnv && isAwaitingOrCollecting && expTime > now) {
+        validDrafts.push({ ...data, draftId: doc.id });
+      }
+    });
+
+    if (validDrafts.length === 0) return null;
+
+    validDrafts.sort((a, b) => {
+      const tA = a.updatedAt?.toMillis ? a.updatedAt.toMillis() : (a.createdAt?.toMillis ? a.createdAt.toMillis() : 0);
+      const tB = b.updatedAt?.toMillis ? b.updatedAt.toMillis() : (b.createdAt?.toMillis ? b.createdAt.toMillis() : 0);
+      return tB - tA;
+    });
+
+    return validDrafts[0];
+  } catch (err) {
+    console.warn('[AlexaDialog] Erro ao buscar rascunho ativo do usuário:', err?.message || err);
+    return null;
+  }
+}
+
+/**
  * Processador principal de diálogo da Alexa.
  *
  * @param {object} params
@@ -475,6 +515,28 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
   let currentDraftId = sessionAttrs.draftId || null;
   const sessionId = envelope?.session?.sessionId || null;
 
+  // Se a requisição não trouxe draftId na sessão e é intenção de confirmação ou repetição direta,
+  // tenta recuperar um rascunho ativo não expirado em andamento para o usuário e vincula à sessão atual
+  if (!currentDraftId && (intentName === 'AMAZON.YesIntent' || intentName === 'RepeatOrderIntent') && db && identity?.uid) {
+    const activeDraft = await findActiveDraftForUser(db, identity.uid, identity.bindingKey, config.environment);
+    if (activeDraft) {
+      if (sessionId && activeDraft.sessionId !== sessionId) {
+        await db.collection(COLLECTIONS.DRAFTS).doc(activeDraft.draftId).update({
+          sessionId,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        }).catch(() => {});
+        activeDraft.sessionId = sessionId;
+      }
+      currentDraftId = activeDraft.draftId;
+      if (sessionAttrs.revision === undefined) {
+        sessionAttrs.revision = activeDraft.revision;
+      }
+      if (!sessionAttrs.expectedInput && activeDraft.expectedInput) {
+        sessionAttrs.expectedInput = activeDraft.expectedInput;
+      }
+    }
+  }
+
   const runTx = typeof db.runTransaction === 'function'
     ? (fn) => db.runTransaction(fn)
     : async (fn) => fn({
@@ -487,6 +549,66 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
   if (requestType === 'LaunchRequest') {
     const envLabel = config.environment === 'prod' ? 'produção' : 'teste';
     const name = sanitizeSpeech(identity.displayName);
+
+    const activeDraft = await findActiveDraftForUser(db, identity.uid, identity.bindingKey, config.environment);
+
+    if (activeDraft) {
+      // Associa o rascunho existente à nova sessão
+      if (sessionId && activeDraft.sessionId !== sessionId) {
+        await db.collection(COLLECTIONS.DRAFTS).doc(activeDraft.draftId).update({
+          sessionId,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        }).catch(() => {});
+        activeDraft.sessionId = sessionId;
+      }
+
+      if (activeDraft.state === 'awaiting_confirmation') {
+        const summary = buildConfirmationSpeech(activeDraft, identity, config);
+        return {
+          speech: `Olá, ${name}. Você tem um pedido em andamento. ${summary}`,
+          reprompt: 'Confirma o pedido? Diga sim para confirmar, ou cancelar.',
+          shouldEndSession: false,
+          sessionAttributes: {
+            draftId: activeDraft.draftId,
+            revision: activeDraft.revision,
+            personId: identity.personId,
+            expectedInput: 'confirmation',
+          },
+        };
+      }
+
+      // Estado 'collecting'
+      let promptQuestion = 'Gostaria de continuar o pedido?';
+      let expectedInput = activeDraft.expectedInput || 'collecting';
+      if (!activeDraft.deliveryDate) {
+        promptQuestion = 'Para quando é a entrega?';
+        expectedInput = 'deliveryDate';
+      } else if (activeDraft.price === null || activeDraft.price === undefined) {
+        promptQuestion = 'Qual é o valor do pedido?';
+        expectedInput = 'totalPrice';
+      } else if (!activeDraft.customer) {
+        promptQuestion = 'Para qual cliente é o pedido?';
+        expectedInput = 'customer';
+      }
+
+      const prodInfo = activeDraft.product
+        ? (activeDraft.quantity ? `${activeDraft.quantity} ${activeDraft.product}` : activeDraft.product)
+        : 'itens';
+      const custInfo = activeDraft.customer ? ` para ${sanitizeSpeech(activeDraft.customer)}` : '';
+
+      return {
+        speech: `Olá, ${name}. Você tem um pedido em andamento de ${prodInfo}${custInfo}. ${promptQuestion}`,
+        reprompt: promptQuestion,
+        shouldEndSession: false,
+        sessionAttributes: {
+          draftId: activeDraft.draftId,
+          revision: activeDraft.revision,
+          personId: identity.personId,
+          expectedInput,
+        },
+      };
+    }
+
     const speech = `Olá, ${name}. Ambiente de ${envLabel}. Diga criar pedido ou vincular minha voz.`;
     const reprompt = 'Você pode dizer: criar pedido, ou pedir ajuda.';
     return {
@@ -499,22 +621,21 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
 
   // 2. Comandos globais de saída e ajuda
   if (intentName === 'AMAZON.StopIntent' || intentName === 'AMAZON.CancelIntent') {
-    if (currentDraftId && sessionId) {
+    if (currentDraftId) {
       await runTx(async (transaction) => {
         const draftRef = db.collection(COLLECTIONS.DRAFTS).doc(currentDraftId);
         const snap = await transaction.get(draftRef);
         if (snap.exists) {
-          const dData = snap.data() || {};
-          // Validação estrita de titularidade, ambiente e sessão antes de cancelar
+          const dData = (typeof snap.data === 'function' ? snap.data() : snap.data) || {};
+          // Validação estrita de titularidade, ambiente e estado antes de cancelar
           const isOwner = dData.uid === identity.uid;
           const isSameBinding = !dData.bindingKey || dData.bindingKey === identity.bindingKey;
           const isSameEnv = !dData.environment || dData.environment === config.environment;
-          const isSameSession = dData.sessionId === sessionId;
           // CancelIntent só pode cancelar estados collecting ou awaiting_confirmation.
           // NUNCA alterar committed, expired, cancelled ou awaiting_app_approval.
           const isCancellable = dData.state === 'collecting' || dData.state === 'awaiting_confirmation';
 
-          if (isOwner && isSameBinding && isSameEnv && isSameSession && isCancellable) {
+          if (isOwner && isSameBinding && isSameEnv && isCancellable) {
             transaction.update(draftRef, {
               state: 'cancelled',
               updatedAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -543,7 +664,7 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
 
   // 2.5 Repetir pedido / O que já informei (Fase 3)
   if (intentName === 'RepeatOrderIntent') {
-    if (!currentDraftId || !sessionId) {
+    if (!currentDraftId) {
       return {
         speech: 'Ainda não temos dados para este pedido. Para começar, diga por exemplo: criar pedido de dez caixinhas para Maria.',
         reprompt: 'Diga os dados do pedido para começar.',
@@ -564,7 +685,6 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
       const isSameUser = d.uid === identity.uid;
       const isSameBinding = !d.bindingKey || d.bindingKey === identity.bindingKey;
       const isSameEnv = !d.environment || d.environment === config.environment;
-      const isSameSession = d.sessionId === sessionId;
       const isNotExpired = expTime > 0 && expTime > now;
       const isNotTerminal =
         d.state !== 'committed' &&
@@ -572,8 +692,12 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
         d.state !== 'expired' &&
         d.state !== 'awaiting_app_approval';
 
-      if (!isSameUser || !isSameBinding || !isSameEnv || !isSameSession || !isNotExpired || !isNotTerminal) {
+      if (!isSameUser || !isSameBinding || !isSameEnv || !isNotExpired || !isNotTerminal) {
         return null;
+      }
+
+      if (sessionId && d.sessionId !== sessionId) {
+        d.sessionId = sessionId;
       }
 
       const nextExpected = determineNextExpectedInput(d);
@@ -935,7 +1059,7 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
       const ref = db.collection(COLLECTIONS.DRAFTS).doc(txDraftId);
       const snap = await transaction.get(ref);
       if (snap.exists) {
-        const d = snap.data() || {};
+        const d = (typeof snap.data === 'function' ? snap.data() : snap.data) || {};
         const now = Date.now();
         const expTime = d.expiresAt?.toDate ? d.expiresAt.toDate().getTime() : 0;
         const isSameUser = d.uid === identity.uid;
@@ -1781,15 +1905,28 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
       };
     }
 
-    // Biometria vocal obrigatória no momento da confirmação final.
-    // NÃO usa identity.personId como fallback: se a fala atual não carrega personId
-    // (outra pessoa tomou a conversa, sessão de outro contexto), o pedido é rejeitado.
+    // Biometria vocal no momento da confirmação final.
     const physicalPersonId =
       envelope?.context?.System?.person?.personId ||
       envelope?.session?.System?.person?.personId ||
       null;
 
-    if (!physicalPersonId) {
+    // Se a fala atual carrega biometria explícita e difere do autor do rascunho:
+    if (physicalPersonId && draft.personId && draft.personId !== physicalPersonId) {
+      return {
+        speech: 'A pessoa que está confirmando não é a mesma que iniciou o pedido. Criação cancelada por segurança.',
+        shouldEndSession: true,
+        sessionAttributes: {},
+      };
+    }
+
+    // Identidade efetiva da pessoa confirmando:
+    // Prioriza biometria física da fala atual; caso a Alexa omita o personId por ser uma fala
+    // ultracurta (ex: "Sim" de ~200ms), utiliza a identidade vocal previamente autorizada na sessão,
+    // desde que nenhuma voz conflitante tenha sido detectada.
+    const effectivePersonId = physicalPersonId || identity?.personId || null;
+
+    if (!effectivePersonId) {
       return {
         speech: 'Não reconheci sua voz na confirmação do pedido. Por segurança, o pedido não foi confirmado.',
         shouldEndSession: true,
@@ -1797,8 +1934,7 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
       };
     }
 
-    // Validação estrita de correspondência com o autor do rascunho
-    if (draft.personId && draft.personId !== physicalPersonId) {
+    if (draft.personId && draft.personId !== effectivePersonId) {
       return {
         speech: 'A pessoa que está confirmando não é a mesma que iniciou o pedido. Criação cancelada por segurança.',
         shouldEndSession: true,
@@ -1826,7 +1962,7 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
       try {
         const commitRes = await commitOrderFromDraft({
           draftId,
-          callerPersonId: physicalPersonId,
+          callerPersonId: effectivePersonId,
           expectedRevision: draft.revision,
           callerUid: identity.uid,
           config,
@@ -1860,12 +1996,14 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
         if (snap.exists) {
           const dData = snap.data() || {};
           const isOwner = dData.uid === identity.uid;
-          const isSameSession = dData.sessionId === sessionId;
+          const isSameBinding = !dData.bindingKey || dData.bindingKey === identity.bindingKey;
+          const isSameEnv = !dData.environment || dData.environment === config.environment;
           const isSameRevision = dData.revision === draft.revision;
           const isAwaiting = dData.state === 'awaiting_confirmation';
 
-          if (isOwner && isSameSession && isSameRevision && isAwaiting) {
+          if (isOwner && isSameBinding && isSameEnv && isSameRevision && isAwaiting) {
             transaction.update(draftRef, {
+              sessionId: sessionId || dData.sessionId,
               state: 'awaiting_app_approval',
               updatedAt: admin.firestore.FieldValue.serverTimestamp(),
             });
