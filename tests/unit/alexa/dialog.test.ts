@@ -185,10 +185,15 @@ describe('Alexa: Máquina de Estados, Diálogo e Validação de Slots pt-BR', ()
 
     it('deve rejeitar confirmação se outra pessoa disser "Sim" (troca de voz)', async () => {
       const draftId = 'draft-test-123';
+      const sessionId = 'session-test-voice-swap';
       const mockDb = createMockDb({
         alexaDrafts: {
           [draftId]: {
             draftId,
+            sessionId,
+            uid: identity.uid,
+            bindingKey: identity.bindingKey,
+            environment: baseConfig.environment,
             state: 'awaiting_confirmation',
             personId: 'amzn1.ask.person.AMANDA', // Criado por Amanda
             customer: 'Maria',
@@ -214,7 +219,7 @@ describe('Alexa: Máquina de Estados, Diálogo e Validação de Slots pt-BR', ()
           type: 'IntentRequest',
           intent: { name: 'AMAZON.YesIntent' },
         },
-        session: { attributes: { draftId } },
+        session: { sessionId, attributes: { draftId } },
         context: {
           System: {
             person: { personId: 'amzn1.ask.person.OTHER_PERSON' }, // personId físico diferente
@@ -235,10 +240,15 @@ describe('Alexa: Máquina de Estados, Diálogo e Validação de Slots pt-BR', ()
 
     it('deve encerrar a sessão com orientação após 3 falhas de entendimento no fallback', async () => {
       const draftId = 'draft-fallback-test';
+      const sessionId = 'session-test-fallback';
       const mockDb = createMockDb({
         alexaDrafts: {
           [draftId]: {
             draftId,
+            sessionId,
+            uid: identity.uid,
+            bindingKey: identity.bindingKey,
+            environment: baseConfig.environment,
             state: 'collecting',
             fallbackCount: 2, // Já falhou 2 vezes
             expiresAt: { toDate: () => new Date(Date.now() + 10 * 60 * 1000) },
@@ -251,7 +261,7 @@ describe('Alexa: Máquina de Estados, Diálogo e Validação de Slots pt-BR', ()
           type: 'IntentRequest',
           intent: { name: 'AMAZON.FallbackIntent' },
         },
-        session: { attributes: { draftId } },
+        session: { sessionId, attributes: { draftId } },
       };
 
       const res = await handleAlexaDialog({

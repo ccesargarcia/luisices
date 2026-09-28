@@ -308,16 +308,17 @@ async function getOrCreateDraft(db, draftId, identity, config, envelope = null) 
   const expiresAt = new Date(now + ttlMs);
   const sessionId = envelope?.session?.sessionId || null;
 
-  if (draftId) {
+  if (draftId && sessionId) {
     const snap = await db.collection(COLLECTIONS.DRAFTS).doc(draftId).get();
     if (snap.exists) {
       const data = snap.data() || {};
       const expTime = data.expiresAt?.toDate ? data.expiresAt.toDate().getTime() : 0;
       const isAllowedState = data.state === 'collecting' || data.state === 'awaiting_confirmation';
-      const isSameUser = !data.uid || data.uid === identity.uid;
+      const isSameUser = data.uid === identity.uid;
       const isSameBinding = !data.bindingKey || data.bindingKey === identity.bindingKey;
       const isSameEnv = !data.environment || data.environment === config.environment;
-      if (expTime > now && isAllowedState && isSameUser && isSameBinding && isSameEnv) {
+      const isSameSession = data.sessionId === sessionId;
+      if (expTime > now && isAllowedState && isSameUser && isSameBinding && isSameEnv && isSameSession) {
         return { draftId, data, ref: snap.ref };
       }
     }
@@ -380,7 +381,7 @@ function buildConfirmationSpeech(draftData, identity, config) {
  * @param {admin.firestore.Firestore} params.db
  * @returns {Promise<{ speech: string, reprompt?: string, shouldEndSession: boolean, sessionAttributes?: object }>}
  */
-async function handleAlexaDialog({ envelope, identity, config, db }) {
+async function handleAlexaDialog({ envelope, identity, config, db, authService = null }) {
   const request = envelope.request || {};
   const requestType = request.type || '';
   const intent = request.intent || {};
@@ -389,6 +390,7 @@ async function handleAlexaDialog({ envelope, identity, config, db }) {
 
   const sessionAttrs = envelope.session?.attributes || {};
   let currentDraftId = sessionAttrs.draftId || null;
+  const sessionId = envelope?.session?.sessionId || null;
 
   const runTx = typeof db.runTransaction === 'function'
     ? (fn) => db.runTransaction(fn)
@@ -414,14 +416,22 @@ async function handleAlexaDialog({ envelope, identity, config, db }) {
 
   // 2. Comandos globais de saída e ajuda
   if (intentName === 'AMAZON.StopIntent' || intentName === 'AMAZON.CancelIntent') {
-    if (currentDraftId) {
+    if (currentDraftId && sessionId) {
       await runTx(async (transaction) => {
         const draftRef = db.collection(COLLECTIONS.DRAFTS).doc(currentDraftId);
         const snap = await transaction.get(draftRef);
         if (snap.exists) {
           const dData = snap.data() || {};
-          // Validação de titularidade antes de cancelar
-          if (!dData.uid || dData.uid === identity.uid) {
+          // Validação estrita de titularidade, ambiente e sessão antes de cancelar
+          const isOwner = dData.uid === identity.uid;
+          const isSameBinding = !dData.bindingKey || dData.bindingKey === identity.bindingKey;
+          const isSameEnv = !dData.environment || dData.environment === config.environment;
+          const isSameSession = dData.sessionId === sessionId;
+          // CancelIntent só pode cancelar estados collecting ou awaiting_confirmation.
+          // NUNCA alterar committed, expired, cancelled ou awaiting_app_approval.
+          const isCancellable = dData.state === 'collecting' || dData.state === 'awaiting_confirmation';
+
+          if (isOwner && isSameBinding && isSameEnv && isSameSession && isCancellable) {
             transaction.update(draftRef, {
               state: 'cancelled',
               updatedAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -453,27 +463,37 @@ async function handleAlexaDialog({ envelope, identity, config, db }) {
     let fallbackCount = (sessionAttrs.fallbackCount || 0) + 1;
     let shouldExpire = fallbackCount >= 3;
 
-    if (currentDraftId) {
+    if (currentDraftId && sessionId) {
       await runTx(async (transaction) => {
         const draftRef = db.collection(COLLECTIONS.DRAFTS).doc(currentDraftId);
         const snap = await transaction.get(draftRef);
         if (snap.exists) {
           const dData = snap.data() || {};
-          if (dData.fallbackCount !== undefined) {
-            fallbackCount = Math.max(fallbackCount, dData.fallbackCount + 1);
-            shouldExpire = fallbackCount >= 3;
-          }
-          if (shouldExpire) {
-            transaction.update(draftRef, {
-              state: 'expired',
-              fallbackCount,
-              updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-            });
-          } else {
-            transaction.update(draftRef, {
-              fallbackCount,
-              updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-            });
+          // Fallback deve conferir UID, binding, ambiente, sessão e estado antes de alterar contador ou expirar.
+          // NUNCA alterar committed, expired, cancelled ou awaiting_app_approval.
+          const isOwner = dData.uid === identity.uid;
+          const isSameBinding = !dData.bindingKey || dData.bindingKey === identity.bindingKey;
+          const isSameEnv = !dData.environment || dData.environment === config.environment;
+          const isSameSession = dData.sessionId === sessionId;
+          const isModifiable = dData.state === 'collecting' || dData.state === 'awaiting_confirmation';
+
+          if (isOwner && isSameBinding && isSameEnv && isSameSession && isModifiable) {
+            if (dData.fallbackCount !== undefined) {
+              fallbackCount = Math.max(fallbackCount, dData.fallbackCount + 1);
+              shouldExpire = fallbackCount >= 3;
+            }
+            if (shouldExpire) {
+              transaction.update(draftRef, {
+                state: 'expired',
+                fallbackCount,
+                updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+              });
+            } else {
+              transaction.update(draftRef, {
+                fallbackCount,
+                updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+              });
+            }
           }
         }
       }).catch(() => {});
@@ -571,12 +591,12 @@ async function handleAlexaDialog({ envelope, identity, config, db }) {
   let draft = null;
   let draftId = currentDraftId;
   let draftRef = null;
-  const sessionId = envelope?.session?.sessionId || null;
 
   await runTx(async (transaction) => {
     let existingData = null;
 
-    if (draftId) {
+    // Exigir sessionId atual para reutilizar rascunho existente
+    if (draftId && sessionId) {
       const ref = db.collection(COLLECTIONS.DRAFTS).doc(draftId);
       const snap = await transaction.get(ref);
       if (snap.exists) {
@@ -584,10 +604,11 @@ async function handleAlexaDialog({ envelope, identity, config, db }) {
         const now = Date.now();
         const expTime = d.expiresAt?.toDate ? d.expiresAt.toDate().getTime() : 0;
         const isAllowedState = d.state === 'collecting' || d.state === 'awaiting_confirmation';
-        const isSameUser = !d.uid || d.uid === identity.uid;
+        const isSameUser = d.uid === identity.uid;
         const isSameBinding = !d.bindingKey || d.bindingKey === identity.bindingKey;
         const isSameEnv = !d.environment || d.environment === config.environment;
-        if (expTime > now && isAllowedState && isSameUser && isSameBinding && isSameEnv) {
+        const isSameSession = d.sessionId === sessionId;
+        if (expTime > now && isAllowedState && isSameUser && isSameBinding && isSameEnv && isSameSession) {
           existingData = { ...d };
           draftRef = ref;
         }
@@ -732,8 +753,10 @@ async function handleAlexaDialog({ envelope, identity, config, db }) {
           draftId,
           callerPersonId: physicalPersonId,
           expectedRevision: draft.revision,
+          callerUid: identity.uid,
           config,
           db,
+          authService,
         });
 
         const successSpeech = commitRes.isReplay
@@ -755,20 +778,36 @@ async function handleAlexaDialog({ envelope, identity, config, db }) {
       }
     }
 
-    // Modo 2: Aprovação pendente no aplicativo (transição atômica)
+    // Modo 2: Aprovação pendente no aplicativo (transição atômica condicional)
     if (draft.mode === 'app_approval') {
+      let transitioned = false;
       await runTx(async (transaction) => {
         const snap = await transaction.get(draftRef);
         if (snap.exists) {
           const dData = snap.data() || {};
-          if (dData.state === 'awaiting_confirmation') {
+          const isOwner = dData.uid === identity.uid;
+          const isSameSession = dData.sessionId === sessionId;
+          const isSameRevision = dData.revision === draft.revision;
+          const isAwaiting = dData.state === 'awaiting_confirmation';
+
+          if (isOwner && isSameSession && isSameRevision && isAwaiting) {
             transaction.update(draftRef, {
               state: 'awaiting_app_approval',
               updatedAt: admin.firestore.FieldValue.serverTimestamp(),
             });
+            transitioned = true;
           }
         }
       });
+
+      if (!transitioned) {
+        return {
+          speech: 'O pedido não pôde ser enviado para aprovação pois foi alterado ou cancelado. Por favor, verifique no aplicativo.',
+          shouldEndSession: true,
+          sessionAttributes: {},
+        };
+      }
+
       return {
         speech: `Pedido preparado no seu espaço de ${envLabel}. Acesse o Luisices no aplicativo para conferir e aprovar a gravação definitiva.`,
         shouldEndSession: true,

@@ -41,6 +41,7 @@ async function commitOrderFromDraft({
   config,
   db,
   authService = null,
+  callerUid = null,
 }) {
   if (!draftId) throw new Error('ID do rascunho é obrigatório.');
 
@@ -126,6 +127,10 @@ async function commitOrderFromDraft({
 
     if (!uid || !bindingKey) {
       throw new Error('DRAFT_CORRUPTED: Dados de usuário ausentes no rascunho.');
+    }
+
+    if (callerUid && uid !== callerUid) {
+      throw new Error('PERMISSION_DENIED: Rascunho não pertence ao usuário chamador.');
     }
 
     // Revalidação do interruptor global no Firestore
@@ -214,22 +219,20 @@ async function commitOrderFromDraft({
       throw new Error('DRAFT_INVALID_DATA: Data de entrega inválida no calendário (ex: 31 de fevereiro).');
     }
 
-    // Revalidação da conta Firebase Auth
+    // Revalidação da conta Firebase Auth (fail-closed)
     try {
       const auth = authService || (admin.apps && admin.apps.length > 0 ? admin.auth() : null);
-      if (auth && typeof auth.getUser === 'function') {
-        const authUser = await auth.getUser(uid);
-        if (authUser.disabled) {
-          throw new Error('USER_DISABLED: Conta de usuário suspensa no momento do commit.');
-        }
+      if (!auth || typeof auth.getUser !== 'function') {
+        throw new Error('AUTH_UNAVAILABLE: Serviço de autenticação indisponível no momento do commit.');
+      }
+      const authUser = await auth.getUser(uid);
+      if (authUser.disabled) {
+        throw new Error('USER_DISABLED: Conta de usuário suspensa no momento do commit.');
       }
     } catch (authErr) {
       if (authErr.message?.includes('USER_DISABLED')) throw authErr;
-      if (!admin.apps || admin.apps.length === 0) {
-        // Ambiente de testes sem app Firebase Admin inicializado
-      } else {
-        throw new Error('USER_NOT_FOUND: Conta de autenticação não localizada.');
-      }
+      if (authErr.message?.includes('AUTH_UNAVAILABLE')) throw authErr;
+      throw new Error('USER_NOT_FOUND: Conta de autenticação não localizada.');
     }
 
     // Ler contadores de rate limit por UID (leitura antes das escritas)

@@ -8,6 +8,7 @@ const { authorizeAlexaPerson, ERROR_CODES } = require('../../../functions/alexa/
 const { computeBindingKey, computeRequestKey, COLLECTIONS } = require('../../../functions/alexa/repository');
 const { checkAndConsumeOrderRateLimitInTransaction } = require('../../../functions/alexa/rateLimit');
 const { processAlexaEnvelope } = require('../../../functions/alexa/index');
+const { commitOrderFromDraft } = require('../../../functions/alexa/orderService');
 
 describe('Alexa: Validação de Regressões e Melhorias Sênior (Auditoria)', () => {
   describe('1. Parsing e Validação de Preços em Português Brasileiro', () => {
@@ -328,8 +329,10 @@ describe('Alexa: Validação de Regressões e Melhorias Sênior (Auditoria)', ()
         alexaDrafts: {
           [draftId]: {
             draftId,
+            sessionId: 'session-audit-zero',
             uid: 'uid-test',
             bindingKey: 'binding-test',
+            environment: 'dev',
             customer: 'Maria',
             product: 'Amostra Grátis',
             quantity: 5,
@@ -373,6 +376,7 @@ describe('Alexa: Validação de Regressões e Melhorias Sênior (Auditoria)', ()
           intent: { name: 'AMAZON.YesIntent' },
         },
         session: {
+          sessionId: 'session-audit-zero',
           attributes: { draftId, revision: 1 }, // revisão divergente para disparar reapresentação do resumo
         },
         context: {
@@ -390,6 +394,449 @@ describe('Alexa: Validação de Regressões e Melhorias Sênior (Auditoria)', ()
       });
 
       expect(res.speech).toContain('zero reais, pedido gratuito');
+    });
+  });
+
+  describe('7. Deduplicação Fail-Closed em Erros Transitórios de Transação (Achado 1 da Rodada 5)', () => {
+    it('deve abortar execução e responder erro seguro quando a reserva atômica da requisição falhar', async () => {
+      let pairingCalled = false;
+      const mockDb: any = {
+        collection: (col: string) => ({
+          doc: (id: string) => ({
+            get: async () => ({ exists: false, data: () => null }),
+            set: async () => {
+              if (col === COLLECTIONS.PAIRING_CHALLENGES) {
+                pairingCalled = true;
+              }
+            },
+          }),
+        }),
+        runTransaction: async () => {
+          throw new Error('Firestore transaction deadlock / unavailable');
+        },
+      };
+
+      const envelope = {
+        request: {
+          type: 'IntentRequest',
+          requestId: 'req-fail-closed-tx',
+          intent: { name: 'PairAlexaIntent' },
+        },
+        session: {
+          application: { applicationId: 'amzn1.ask.skill.test-dev' },
+        },
+      };
+
+      const res = await processAlexaEnvelope(envelope, {
+        db: mockDb,
+        config: { environment: 'dev', isEnabled: true, allowedSkillId: 'amzn1.ask.skill.test-dev' },
+      });
+
+      expect(res.response.outputSpeech.text).toContain('instabilidade temporária');
+      expect(pairingCalled).toBe(false);
+      expect(res.response.shouldEndSession).toBe(true);
+    });
+  });
+
+  describe('8. Isolamento de Sessão e Imutabilidade de Estados Terminais (Achados 2, 3 e 4 da Rodada 5)', () => {
+    it('não deve reutilizar nem modificar rascunho pertencente a outra sessão', async () => {
+      const draftId = 'draft-session-a';
+      const store: any = {
+        alexaDrafts: {
+          [draftId]: {
+            draftId,
+            sessionId: 'session-AAA',
+            uid: 'uid-test',
+            bindingKey: 'binding-test',
+            environment: 'dev',
+            customer: 'Maria',
+            product: 'Bolo',
+            state: 'collecting',
+            revision: 1,
+            expiresAt: { toDate: () => new Date(Date.now() + 600000) },
+          },
+        },
+      };
+
+      const mockDb: any = {
+        collection: (col: string) => ({
+          doc: (id: string) => ({
+            get: async () => ({
+              exists: Boolean(store[col]?.[id]),
+              data: () => store[col]?.[id] || null,
+            }),
+            set: async (data: any) => {
+              store[col] = store[col] || {};
+              store[col][id] = { ...(store[col][id] || {}), ...data };
+            },
+            update: async (data: any) => {
+              store[col] = store[col] || {};
+              store[col][id] = { ...(store[col][id] || {}), ...data };
+            },
+          }),
+        }),
+        runTransaction: async (cb: any) => cb({
+          get: async (ref: any) => ref.get(),
+          set: (ref: any, data: any) => ref.set(data),
+          update: (ref: any, data: any) => ref.update(data),
+        }),
+      };
+
+      // Requisição chegando com session-BBB tentando atualizar o rascunho de session-AAA
+      const envelope = {
+        request: {
+          type: 'IntentRequest',
+          intent: {
+            name: 'CreateOrderIntent',
+            slots: {
+              customer: { value: 'João Alterado' },
+            },
+          },
+        },
+        session: {
+          sessionId: 'session-BBB',
+          attributes: { draftId },
+        },
+      };
+
+      const res = await handleAlexaDialog({
+        envelope,
+        identity: { uid: 'uid-test', bindingKey: 'binding-test', personId: 'amzn1.ask.person.TEST', displayName: 'Caio' },
+        config: { environment: 'dev', isEnabled: true },
+        db: mockDb,
+      });
+
+      // O rascunho de session-AAA deve permanecer inalterado ('Maria')
+      expect(store.alexaDrafts[draftId].customer).toBe('Maria');
+      // E a resposta deve ter gerado um novo draftId diferente de draft-session-a
+      expect(res.sessionAttributes?.draftId).not.toBe(draftId);
+    });
+
+    it('AMAZON.CancelIntent não deve cancelar nem corromper rascunho em estado committed', async () => {
+      const draftId = 'draft-committed-1';
+      const store: any = {
+        alexaDrafts: {
+          [draftId]: {
+            draftId,
+            sessionId: 'session-123',
+            uid: 'uid-test',
+            bindingKey: 'binding-test',
+            environment: 'dev',
+            state: 'committed',
+            expiresAt: { toDate: () => new Date(Date.now() + 600000) },
+          },
+        },
+      };
+
+      const mockDb: any = {
+        collection: (col: string) => ({
+          doc: (id: string) => ({
+            get: async () => ({
+              exists: Boolean(store[col]?.[id]),
+              data: () => store[col]?.[id] || null,
+            }),
+            update: async (data: any) => {
+              store[col] = store[col] || {};
+              store[col][id] = { ...(store[col][id] || {}), ...data };
+            },
+          }),
+        }),
+        runTransaction: async (cb: any) => cb({
+          get: async (ref: any) => ref.get(),
+          update: (ref: any, data: any) => ref.update(data),
+        }),
+      };
+
+      const envelope = {
+        request: {
+          type: 'IntentRequest',
+          intent: { name: 'AMAZON.CancelIntent' },
+        },
+        session: {
+          sessionId: 'session-123',
+          attributes: { draftId },
+        },
+      };
+
+      await handleAlexaDialog({
+        envelope,
+        identity: { uid: 'uid-test', bindingKey: 'binding-test', personId: 'amzn1.ask.person.TEST', displayName: 'Caio' },
+        config: { environment: 'dev', isEnabled: true },
+        db: mockDb,
+      });
+
+      // O estado deve continuar committed, nunca mudando para cancelled
+      expect(store.alexaDrafts[draftId].state).toBe('committed');
+    });
+
+    it('AMAZON.FallbackIntent não deve alterar nem expirar rascunho de outro usuário ou sessão', async () => {
+      const draftId = 'draft-user-1';
+      const store: any = {
+        alexaDrafts: {
+          [draftId]: {
+            draftId,
+            sessionId: 'session-user-1',
+            uid: 'uid-1',
+            bindingKey: 'binding-1',
+            environment: 'dev',
+            state: 'collecting',
+            fallbackCount: 2,
+            expiresAt: { toDate: () => new Date(Date.now() + 600000) },
+          },
+        },
+      };
+
+      const mockDb: any = {
+        collection: (col: string) => ({
+          doc: (id: string) => ({
+            get: async () => ({
+              exists: Boolean(store[col]?.[id]),
+              data: () => store[col]?.[id] || null,
+            }),
+            update: async (data: any) => {
+              store[col] = store[col] || {};
+              store[col][id] = { ...(store[col][id] || {}), ...data };
+            },
+          }),
+        }),
+        runTransaction: async (cb: any) => cb({
+          get: async (ref: any) => ref.get(),
+          update: (ref: any, data: any) => ref.update(data),
+        }),
+      };
+
+      // Requisição vinda de outro usuário e outra sessão
+      const envelope = {
+        request: {
+          type: 'IntentRequest',
+          intent: { name: 'AMAZON.FallbackIntent' },
+        },
+        session: {
+          sessionId: 'session-user-2',
+          attributes: { draftId, fallbackCount: 2 },
+        },
+      };
+
+      await handleAlexaDialog({
+        envelope,
+        identity: { uid: 'uid-2', bindingKey: 'binding-2', personId: 'amzn1.ask.person.OTHER', displayName: 'Outro' },
+        config: { environment: 'dev', isEnabled: true },
+        db: mockDb,
+      });
+
+      // Rascunho do usuário 1 não deve ter sido expirado nem alterado
+      expect(store.alexaDrafts[draftId].state).toBe('collecting');
+      expect(store.alexaDrafts[draftId].fallbackCount).toBe(2);
+    });
+  });
+
+  describe('9. Transição Atômica e Abort em Cancelamento Concorrente na Aprovação App (Achado 5 da Rodada 5)', () => {
+    it('deve abortar e avisar o usuário se o rascunho foi cancelado antes da transição para app_approval', async () => {
+      const draftId = 'draft-app-race';
+      const store: any = {
+        alexaDrafts: {
+          [draftId]: {
+            draftId,
+            sessionId: 'session-app-1',
+            uid: 'uid-test',
+            bindingKey: 'binding-test',
+            environment: 'dev',
+            customer: 'Carlos',
+            product: 'Canecas',
+            quantity: 10,
+            deliveryDate: '2026-11-20',
+            price: 250,
+            revision: 1,
+            state: 'awaiting_confirmation',
+            mode: 'app_approval',
+            expiresAt: { toDate: () => new Date(Date.now() + 600000) },
+          },
+        },
+      };
+
+      let firstTx = true;
+      const mockDb: any = {
+        collection: (col: string) => ({
+          doc: (id: string) => ({
+            get: async () => ({
+              exists: Boolean(store[col]?.[id]),
+              data: () => store[col]?.[id] || null,
+            }),
+            update: async (data: any) => {
+              store[col] = store[col] || {};
+              store[col][id] = { ...(store[col][id] || {}), ...data };
+            },
+          }),
+        }),
+        runTransaction: async (cb: any) => {
+          // Na primeira transação (carregamento/confirmação), ocorre normal.
+          // Logo após, antes da transição para awaiting_app_approval, outra thread cancela o rascunho!
+          if (!firstTx) {
+            store.alexaDrafts[draftId].state = 'cancelled';
+          }
+          firstTx = false;
+          return cb({
+            get: async (ref: any) => ref.get(),
+            update: (ref: any, data: any) => ref.update(data),
+          });
+        },
+      };
+
+      const envelope = {
+        request: {
+          type: 'IntentRequest',
+          intent: { name: 'AMAZON.YesIntent' },
+        },
+        session: {
+          sessionId: 'session-app-1',
+          attributes: { draftId, revision: 1 },
+        },
+        context: {
+          System: {
+            person: { personId: 'amzn1.ask.person.TEST' },
+          },
+        },
+      };
+
+      const res = await handleAlexaDialog({
+        envelope,
+        identity: {
+          uid: 'uid-test',
+          bindingKey: 'binding-test',
+          personId: 'amzn1.ask.person.TEST',
+          displayName: 'Caio',
+          mode: 'app_approval',
+        },
+        config: { environment: 'dev', isEnabled: true },
+        db: mockDb,
+      });
+
+      // NÃO deve dizer que o pedido foi preparado com sucesso!
+      expect(res.speech).not.toContain('Pedido preparado');
+      expect(res.speech).toContain('foi alterado ou cancelado');
+      expect(res.shouldEndSession).toBe(true);
+    });
+  });
+
+  describe('10. Autenticação Fail-Closed e Proteção de Titularidade no Commit (Achado 7 da Rodada 5)', () => {
+    const baseConfig = {
+      environment: 'dev',
+      isEnabled: true,
+      allowedSkillId: 'amzn1.ask.skill.test-dev',
+    };
+
+    it('deve falhar fechado com AUTH_UNAVAILABLE quando authService não for fornecido e admin.apps estiver vazio', async () => {
+      const draftId = 'draft-auth-fail-closed';
+      const uid = 'uid-auth-test';
+      const store: any = {
+        alexaCommits: {},
+        alexaDrafts: {
+          [draftId]: {
+            draftId,
+            uid,
+            bindingKey: 'binding-key-1',
+            customer: 'Maria',
+            product: 'Lembrancinhas',
+            quantity: 10,
+            deliveryDate: '2026-11-20',
+            price: 150,
+            state: 'awaiting_confirmation',
+            revision: 1,
+            expiresAt: { toDate: () => new Date(Date.now() + 600000) },
+          },
+        },
+        alexaBindings: {
+          'binding-key-1': { active: true, uid, environment: 'dev' },
+        },
+        userProfiles: {
+          [uid]: { active: true, role: 'admin', permissions: { orders: { create: true } } },
+        },
+        alexaPermissions: {
+          [uid]: { enabled: true, mode: 'voice_confirm' },
+        },
+        integrationSettings: {
+          alexa: { enabled: true },
+        },
+      };
+
+      const mockDb: any = {
+        collection: (col: string) => ({
+          doc: (id: string) => ({
+            get: async () => ({
+              exists: Boolean(store[col]?.[id]),
+              data: () => store[col]?.[id] || null,
+            }),
+          }),
+        }),
+        doc: (path: string) => ({
+          get: async () => ({ exists: false, data: () => null }),
+        }),
+        runTransaction: async (cb: any) => cb({
+          get: async (ref: any) => ref.get(),
+          set: () => {},
+          update: () => {},
+        }),
+      };
+
+      await expect(
+        commitOrderFromDraft({
+          draftId,
+          callerPersonId: 'amzn1.ask.person.TEST',
+          expectedRevision: 1,
+          config: baseConfig,
+          db: mockDb,
+          // authService OMITIDO propositalmente em ambiente sem admin.apps
+        })
+      ).rejects.toThrow('AUTH_UNAVAILABLE');
+    });
+
+    it('deve rejeitar commit com PERMISSION_DENIED se callerUid diferir do titular do rascunho', async () => {
+      const draftId = 'draft-caller-check';
+      const uid = 'uid-owner';
+      const store: any = {
+        alexaCommits: {},
+        alexaDrafts: {
+          [draftId]: {
+            draftId,
+            uid,
+            bindingKey: 'binding-key-1',
+            customer: 'Maria',
+            product: 'Lembrancinhas',
+            quantity: 10,
+            deliveryDate: '2026-11-20',
+            price: 150,
+            state: 'awaiting_confirmation',
+            revision: 1,
+            expiresAt: { toDate: () => new Date(Date.now() + 600000) },
+          },
+        },
+      };
+
+      const mockDb: any = {
+        collection: (col: string) => ({
+          doc: (id: string) => ({
+            get: async () => ({
+              exists: Boolean(store[col]?.[id]),
+              data: () => store[col]?.[id] || null,
+            }),
+          }),
+        }),
+        runTransaction: async (cb: any) => cb({
+          get: async (ref: any) => ref.get(),
+        }),
+      };
+
+      await expect(
+        commitOrderFromDraft({
+          draftId,
+          callerPersonId: 'amzn1.ask.person.TEST',
+          expectedRevision: 1,
+          callerUid: 'impostor-uid', // UID divergente
+          config: baseConfig,
+          db: mockDb,
+          authService: { getUser: async (u: string) => ({ uid: u, disabled: false }) },
+        })
+      ).rejects.toThrow('PERMISSION_DENIED');
     });
   });
 });

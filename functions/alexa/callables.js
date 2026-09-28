@@ -288,6 +288,7 @@ async function approveAlexaDraftHandler(request, db) {
       draftId,
       callerPersonId: draft.personId,
       expectedRevision: revision,
+      callerUid: request.auth.uid,
       channel: 'app',
       config,
       db,

@@ -126,12 +126,17 @@ describe('Alexa: Transação Atômica de Pedido e Idempotência Durável', () =>
       },
     });
 
+    const mockAuthService = {
+      getUser: async (u: string) => ({ uid: u, disabled: false }),
+    };
+
     const result = await commitOrderFromDraft({
       draftId,
       callerPersonId,
       expectedRevision: 1,
       config: baseConfig,
       db: mockDb,
+      authService: mockAuthService,
     });
 
     expect(result.success).toBe(true);

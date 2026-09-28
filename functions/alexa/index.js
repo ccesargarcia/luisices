@@ -54,21 +54,31 @@ function buildAlexaResponse({ speech, reprompt, shouldEndSession = true, session
  * Usado pelo endpoint HTTP oficial (após validação de assinatura)
  * e também exposto para execução direta de testes de domínio com envelopes sintéticos.
  */
-async function processAlexaEnvelope(envelope, { db, config }) {
+async function processAlexaEnvelope(envelope, { db, config, authService = null } = {}) {
   const reqType = envelope?.request?.type;
   const intentName = envelope?.request?.intent?.name;
   const requestId = envelope?.request?.requestId;
-  const appId =
+  const rawAppId =
     envelope?.session?.application?.applicationId ||
-    envelope?.context?.System?.application?.applicationId ||
-    config?.allowedSkillId ||
-    '';
+    envelope?.context?.System?.application?.applicationId;
+  const appId = rawAppId || '';
+
+  // Se config.allowedSkillId estiver configurado, exige correspondência estrita no envelope
+  if (config?.allowedSkillId) {
+    if (!appId || appId !== config.allowedSkillId) {
+      console.warn('[processAlexaEnvelope] Skill ID ausente ou não autorizado:', appId);
+      return buildAlexaResponse({
+        speech: 'Esta skill não está autorizada para este ambiente.',
+        shouldEndSession: true,
+      });
+    }
+  }
 
   // 0. Deduplicação e proteção contra replays HTTP (alexaRequests/{requestKey})
   let reqRef = null;
   let requestKey = null;
   if (requestId && db) {
-    requestKey = computeRequestKey(appId, requestId);
+    requestKey = computeRequestKey(appId || config?.allowedSkillId || '', requestId);
     reqRef = db.collection(COLLECTIONS.REQUESTS).doc(requestKey);
 
     let cachedResponse = null;
@@ -113,7 +123,12 @@ async function processAlexaEnvelope(envelope, { db, config }) {
           });
         });
       } catch (err) {
-        console.warn('[AlexaDeduplication] Erro na reserva atômica de requisição:', err.message);
+        // Falha fechada: se a reserva atômica falhar, não executar efeitos; retornar erro seguro
+        console.warn('[AlexaDeduplication] Erro na reserva atômica de requisição (fail-closed):', err.message);
+        return buildAlexaResponse({
+          speech: 'Ocorreu uma instabilidade temporária ao processar sua solicitação. Por favor, tente novamente.',
+          shouldEndSession: true,
+        });
       }
     } else {
       const existingSnap = await reqRef.get().catch(() => null);
@@ -217,6 +232,7 @@ async function processAlexaEnvelope(envelope, { db, config }) {
       identity,
       config,
       db,
+      authService,
     });
 
     const sessionAttributes = {
