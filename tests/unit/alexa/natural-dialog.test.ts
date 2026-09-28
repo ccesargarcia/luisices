@@ -108,7 +108,12 @@ describe('Alexa: Diálogo Natural, Contextual e Catálogo Controlado (Fases 1 a 
           return { id };
         },
         where: (field: string, op: string, val: any) => {
+          const filters: Array<{ field: string; op: string; val: any }> = [{ field, op, val }];
           const createQuery = (sortConfig?: { field: string; dir: 'asc' | 'desc' }, limitNum?: number) => ({
+            where: (f2: string, op2: string, v2: any) => {
+              filters.push({ field: f2, op: op2, val: v2 });
+              return createQuery(sortConfig, limitNum);
+            },
             orderBy: (sortField: string, dir: 'asc' | 'desc' = 'asc') =>
               createQuery({ field: sortField, dir }, limitNum),
             limit: (n: number) => createQuery(sortConfig, n),
@@ -116,7 +121,13 @@ describe('Alexa: Diálogo Natural, Contextual e Catálogo Controlado (Fases 1 a 
               let docs: any[] = [];
               const colStore = store[col] || {};
               for (const [id, data] of Object.entries(colStore) as any[]) {
-                if (data && data[field] === val) {
+                if (!data) continue;
+                const matches = filters.every(({ field: f, op: o, val: v }) => {
+                  if (o === '==') return data[f] === v;
+                  if (o === 'in') return Array.isArray(v) && v.includes(data[f]);
+                  return data[f] === v;
+                });
+                if (matches) {
                   docs.push({ id, data: () => data });
                 }
               }
@@ -2829,6 +2840,118 @@ describe('Alexa: Diálogo Natural, Contextual e Catálogo Controlado (Fases 1 a 
       expect(res.speech).not.toContain('o pedido foi enviado para aprovação no aplicativo Luisices');
       expect(res.speech).toContain('não foi possível enviar o pedido para aprovação no aplicativo');
       expect(mockDb.store.alexaDrafts[draftId].state).toBe('awaiting_confirmation'); // Não alterado
+    });
+
+    it('P2 R7: Retomada recupera rascunho ativo mesmo com mais de 30 rascunhos inativos recentes no histórico (filtro in state)', async () => {
+      const mockDb = createMockDb();
+      const now = Date.now();
+
+      // Cria o rascunho ativo que foi atualizado há 5 minutos
+      const activeDraftId = 'draft-active-survivor';
+      mockDb.store.alexaDrafts[activeDraftId] = {
+        draftId: activeDraftId,
+        sessionId: 'old-session-survivor',
+        uid: identity.uid,
+        bindingKey: identity.bindingKey,
+        personId: identity.personId,
+        environment: 'dev',
+        mode: 'voice_confirm',
+        state: 'awaiting_confirmation',
+        customer: 'Patrícia Ativa',
+        product: 'adesivos',
+        quantity: 50,
+        price: 150,
+        deliveryDate: '2026-12-20',
+        revision: 1,
+        updatedAt: { toMillis: () => now - 5 * 60 * 1000 },
+        expiresAt: { toDate: () => new Date(now + 10 * 60 * 1000) }, // Válido
+      };
+
+      // Cria 35 rascunhos terminais (committed / cancelled) com updatedAt MAIS RECENTE que o ativo
+      for (let i = 1; i <= 35; i++) {
+        const id = `terminal-draft-${i}`;
+        mockDb.store.alexaDrafts[id] = {
+          draftId: id,
+          sessionId: `old-sess-term-${i}`,
+          uid: identity.uid,
+          bindingKey: identity.bindingKey,
+          personId: identity.personId,
+          environment: 'dev',
+          state: i % 2 === 0 ? 'committed' : 'cancelled',
+          customer: `Cliente Finalizado ${i}`,
+          product: 'produto finalizado',
+          quantity: 1,
+          price: 10,
+          updatedAt: { toMillis: () => now - (i * 2000) }, // Mais recentes que o ativo
+          expiresAt: { toDate: () => new Date(now - 1000) },
+        };
+      }
+
+      const launchEnvelope = {
+        session: { sessionId: 'new-session-r7-large', attributes: {} },
+        request: { type: 'LaunchRequest' },
+      };
+
+      const launchRes = await handleAlexaDialog({ envelope: launchEnvelope, identity, config: baseConfig, db: mockDb });
+
+      expect(launchRes.shouldEndSession).toBe(false);
+      expect(launchRes.speech).toContain('Patrícia Ativa');
+      expect(launchRes.speech).toContain('50 adesivos');
+      expect(launchRes.sessionAttributes?.draftId).toBe(activeDraftId);
+    });
+
+    it('P2 R7: Fallback sem filtro in de state recupera rascunho com ordenação resiliente', async () => {
+      const mockDb = createMockDb();
+      const now = Date.now();
+
+      const activeDraftId = 'draft-active-fallback';
+      mockDb.store.alexaDrafts[activeDraftId] = {
+        draftId: activeDraftId,
+        sessionId: 'old-session-fb',
+        uid: identity.uid,
+        bindingKey: identity.bindingKey,
+        personId: identity.personId,
+        environment: 'dev',
+        mode: 'voice_confirm',
+        state: 'awaiting_confirmation',
+        customer: 'Beatriz Fallback',
+        product: 'lembrancinhas',
+        quantity: 15,
+        price: 90,
+        deliveryDate: '2026-11-25',
+        revision: 2,
+        updatedAt: { toMillis: () => now },
+        expiresAt: { toDate: () => new Date(now + 10 * 60 * 1000) },
+      };
+
+      // Simula falha na primeira tentativa (ex: índice com 'in' indisponível), forçando fallback
+      const originalWhere = mockDb.collection('alexaDrafts').where;
+      let firstAttempt = true;
+      mockDb.collection = (col: string) => {
+        const c = {
+          doc: (id: string) => mockDb.doc(`alexaDrafts/${id}`),
+          where: (f: string, op: string, v: any) => {
+            if (op === 'in' && firstAttempt) {
+              firstAttempt = false;
+              throw new Error('Index building / in operator requires index');
+            }
+            return originalWhere(f, op, v);
+          },
+        };
+        return c as any;
+      };
+
+      const launchEnvelope = {
+        session: { sessionId: 'new-session-fb-run', attributes: {} },
+        request: { type: 'LaunchRequest' },
+      };
+
+      const launchRes = await handleAlexaDialog({ envelope: launchEnvelope, identity, config: baseConfig, db: mockDb });
+
+      expect(launchRes.shouldEndSession).toBe(false);
+      expect(launchRes.speech).toContain('Beatriz Fallback');
+      expect(launchRes.speech).toContain('15 lembrancinhas');
+      expect(launchRes.sessionAttributes?.draftId).toBe(activeDraftId);
     });
   });
 });

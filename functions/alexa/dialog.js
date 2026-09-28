@@ -464,8 +464,11 @@ async function findActiveDraftForUser(db, uid, bindingKey, environment) {
     if (!colRef || typeof colRef.where !== 'function') return null;
 
     let snap = null;
+    // 1. Tenta consulta filtrada diretamente por estados ativos no Firestore com ordenação
     try {
-      let query = colRef.where('uid', '==', uid);
+      let query = colRef
+        .where('uid', '==', uid)
+        .where('state', 'in', ['collecting', 'awaiting_confirmation']);
       if (typeof query.orderBy === 'function') {
         query = query.orderBy('updatedAt', 'desc');
       }
@@ -473,13 +476,25 @@ async function findActiveDraftForUser(db, uid, bindingKey, environment) {
         query = query.limit(25);
       }
       snap = await query.get();
-    } catch (orderErr) {
-      // Fallback resiliente caso o índice composto não esteja disponível
-      let queryFallback = colRef.where('uid', '==', uid);
-      if (typeof queryFallback.limit === 'function') {
-        queryFallback = queryFallback.limit(50);
+    } catch (inErr) {
+      // 2. Fallback resiliente: ordenação por updatedAt sem filtro in
+      try {
+        let queryFallback = colRef.where('uid', '==', uid);
+        if (typeof queryFallback.orderBy === 'function') {
+          queryFallback = queryFallback.orderBy('updatedAt', 'desc');
+        }
+        if (typeof queryFallback.limit === 'function') {
+          queryFallback = queryFallback.limit(50);
+        }
+        snap = await queryFallback.get();
+      } catch (orderErr) {
+        // 3. Fallback defensivo simples
+        let querySimple = colRef.where('uid', '==', uid);
+        if (typeof querySimple.limit === 'function') {
+          querySimple = querySimple.limit(100);
+        }
+        snap = await querySimple.get();
       }
-      snap = await queryFallback.get();
     }
 
     if (!snap || snap.empty) return null;
