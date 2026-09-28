@@ -106,7 +106,10 @@ async function commitOrderFromDraft({
       }
     }
 
-    // Valida revisão se especificada
+    // Valida revisão se especificada (obrigatória no canal app)
+    if (channel === 'app' && typeof expectedRevision !== 'number') {
+      throw new Error('DRAFT_REVISION_REQUIRED: A revisão visualizada é obrigatória para aprovação pelo aplicativo.');
+    }
     if (typeof expectedRevision === 'number' && draft.revision !== expectedRevision) {
       throw new Error('DRAFT_REVISION_MISMATCH: A revisão confirmada difere da versão atual do rascunho.');
     }
@@ -181,7 +184,7 @@ async function commitOrderFromDraft({
     const cleanCustomer = String(draft.customer || '').trim();
     const cleanProduct = String(draft.product || '').trim();
     const cleanQuantity = Number(draft.quantity);
-    // Achado 5b: price deve ser número real — null/undefined → NaN, não 0
+    // Preço deve ser número real — null/undefined → NaN; preço 0 é permitido (pedido gratuito)
     const cleanPrice = (draft.price !== null && draft.price !== undefined) ? Number(draft.price) : NaN;
     const cleanDate = String(draft.deliveryDate || '').trim();
 
@@ -194,7 +197,7 @@ async function commitOrderFromDraft({
     if (!Number.isInteger(cleanQuantity) || cleanQuantity <= 0 || cleanQuantity > 10000) {
       throw new Error('DRAFT_INVALID_DATA: Quantidade inválida.');
     }
-    if (isNaN(cleanPrice) || cleanPrice <= 0 || cleanPrice > 10000) {
+    if (isNaN(cleanPrice) || cleanPrice < 0 || cleanPrice > 10000) {
       throw new Error('DRAFT_INVALID_DATA: Preço total inválido ou ausente.');
     }
     // Achado 5c: validar data no calendário real (rejeita 2027-02-31)

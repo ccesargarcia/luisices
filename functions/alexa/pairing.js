@@ -107,6 +107,11 @@ async function approveAlexaPairingAdmin({ code, targetUid, authContext, db, conf
     throw new Error('Não autenticado.');
   }
 
+  // 0. Verificar se a integração está ativada no ambiente
+  if (config?.isEnabled === false) {
+    throw new Error('A integração com a Alexa está desativada no momento neste ambiente.');
+  }
+
   // 1. Validar se o solicitante é administrador ativo
   const adminSnap = await db.collection(COLLECTIONS.USER_PROFILES).doc(authContext.uid).get();
   if (!adminSnap.exists || adminSnap.data()?.role !== 'admin' || adminSnap.data()?.active !== true) {
@@ -142,6 +147,15 @@ async function approveAlexaPairingAdmin({ code, targetUid, authContext, db, conf
 
   // 3. Transação atômica para consumir o desafio e criar o vínculo
   return db.runTransaction(async (transaction) => {
+    // Revalidar interruptor global no Firestore
+    const settingsRef = typeof db.doc === 'function'
+      ? db.doc('integrationSettings/alexa')
+      : db.collection('integrationSettings').doc('alexa');
+    const settingsSnap = await transaction.get(settingsRef);
+    if (settingsSnap.exists && settingsSnap.data()?.enabled === false) {
+      throw new Error('A integração com a Alexa está desativada no momento.');
+    }
+
     const pSnap = await transaction.get(pairingRef);
     if (!pSnap.exists) {
       throw new Error('Código de vinculação não encontrado ou inválido.');

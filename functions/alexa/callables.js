@@ -172,6 +172,13 @@ async function getAlexaIntegrationStatusHandler(request, db) {
   const userPermSnap = await db.collection(COLLECTIONS.PERMISSIONS).doc(callerUid).get();
   const userPerm = userPermSnap.exists ? userPermSnap.data() : null;
 
+  // Permissão do usuário alvo (quando consultada por administrador)
+  let targetPermission = null;
+  if (isAdmin && request.data?.targetUid && typeof request.data.targetUid === 'string') {
+    const targetPermSnap = await db.collection(COLLECTIONS.PERMISSIONS).doc(request.data.targetUid).get();
+    targetPermission = targetPermSnap.exists ? targetPermSnap.data() : null;
+  }
+
   // Solicitações pendentes de aprovação no app (modo app_approval)
   const draftsQuery = isAdmin
     ? db.collection(COLLECTIONS.DRAFTS).where('state', '==', 'awaiting_app_approval')
@@ -233,6 +240,7 @@ async function getAlexaIntegrationStatusHandler(request, db) {
     allowedSkillIdConfigured: Boolean(config.allowedSkillId),
     timezone: config.timezone,
     userPermission: userPerm,
+    targetPermission,
     bindings,
     pendingDrafts,
     recentAudit,
@@ -243,7 +251,7 @@ async function getAlexaIntegrationStatusHandler(request, db) {
 /**
  * Callable: approveAlexaDraft
  * Aprova rascunho de pedido que estava aguardando aprovação no aplicativo (modo app_approval).
- * Apenas o titular do rascunho pode aprovar.
+ * Apenas o titular do rascunho pode aprovar, exigindo a revisão visualizada.
  */
 async function approveAlexaDraftHandler(request, db) {
   if (!request.auth?.uid) {
@@ -254,8 +262,15 @@ async function approveAlexaDraftHandler(request, db) {
   if (!draftId || typeof draftId !== 'string') {
     throw new HttpsError('invalid-argument', 'ID do rascunho é obrigatório.');
   }
+  if (typeof revision !== 'number') {
+    throw new HttpsError('invalid-argument', 'A revisão visualizada do rascunho é obrigatória.');
+  }
 
   const config = await getAlexaConfig(db);
+  if (!config.isEnabled) {
+    throw new HttpsError('failed-precondition', 'A integração com a Alexa está desativada no momento neste ambiente.');
+  }
+
   const draftRef = db.collection(COLLECTIONS.DRAFTS).doc(draftId);
   const draftSnap = await draftRef.get();
 
@@ -268,17 +283,12 @@ async function approveAlexaDraftHandler(request, db) {
     throw new HttpsError('permission-denied', 'Você só pode aprovar pedidos criados para o seu próprio usuário.');
   }
 
-  // Se o rascunho estava em 'awaiting_app_approval', alteramos temporariamente para 'awaiting_confirmation'
-  // para que commitOrderFromDraft possa processar a transação
-  if (draft.state === 'awaiting_app_approval') {
-    await draftRef.update({ state: 'awaiting_confirmation' });
-  }
-
   try {
     const result = await commitOrderFromDraft({
       draftId,
       callerPersonId: draft.personId,
-      expectedRevision: revision || draft.revision,
+      expectedRevision: revision,
+      channel: 'app',
       config,
       db,
     });

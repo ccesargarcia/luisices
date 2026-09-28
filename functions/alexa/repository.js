@@ -27,17 +27,21 @@ const COLLECTIONS = {
  * Composicão: environment + applicationId + amazonUserId + personId
  */
 function computeBindingKey(environment, skillId, amazonUserId, personId, hmacSecret) {
+  if (!hmacSecret || typeof hmacSecret !== 'string') {
+    throw new Error('HMAC_KEY_MISSING: Chave secreta HMAC não configurada para cálculo de binding.');
+  }
   const payload = `${environment || 'dev'}:${skillId || ''}:${amazonUserId || ''}:${personId || ''}`;
-  const secret = hmacSecret || 'luisices-alexa-fallback-salt';
-  return crypto.createHmac('sha256', secret).update(payload).digest('hex');
+  return crypto.createHmac('sha256', hmacSecret).update(payload).digest('hex');
 }
 
 /**
  * Calcula o hash seguro de um código de pareamento de 8 dígitos
  */
 function computeCodeHash(code, hmacSecret) {
-  const secret = hmacSecret || 'luisices-alexa-code-salt';
-  return crypto.createHmac('sha256', secret).update(String(code).trim()).digest('hex');
+  if (!hmacSecret || typeof hmacSecret !== 'string') {
+    throw new Error('HMAC_KEY_MISSING: Chave secreta HMAC não configurada para cálculo de hash de código.');
+  }
+  return crypto.createHmac('sha256', hmacSecret).update(String(code).trim()).digest('hex');
 }
 
 /**

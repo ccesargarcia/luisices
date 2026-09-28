@@ -66,134 +66,178 @@ async function processAlexaEnvelope(envelope, { db, config }) {
 
   // 0. Deduplicação e proteção contra replays HTTP (alexaRequests/{requestKey})
   let reqRef = null;
+  let requestKey = null;
   if (requestId && db) {
-    const requestKey = computeRequestKey(appId, requestId);
+    requestKey = computeRequestKey(appId, requestId);
     reqRef = db.collection(COLLECTIONS.REQUESTS).doc(requestKey);
-    const existingSnap = await reqRef.get().catch(() => null);
-    if (existingSnap && existingSnap.exists) {
-      const data = existingSnap.data() || {};
-      if (data.response) {
-        return data.response;
+
+    let cachedResponse = null;
+
+    if (typeof db.runTransaction === 'function') {
+      try {
+        await db.runTransaction(async (transaction) => {
+          const snap = await transaction.get(reqRef);
+          const now = Date.now();
+          if (snap.exists) {
+            const data = snap.data() || {};
+            // 1. Resposta final já persistida (idempotência / replay)
+            if (data.status === 'completed' && data.response) {
+              cachedResponse = data.response;
+              return;
+            }
+            if (data.response) {
+              cachedResponse = data.response;
+              return;
+            }
+            // 2. Requisição concorrente ainda em processamento (janela de 15s)
+            const startedAt = data.startedAt || (data.createdAt?.toDate ? data.createdAt.toDate().getTime() : now);
+            if (data.status === 'in_progress' && (now - startedAt < 15000)) {
+              cachedResponse = buildAlexaResponse({
+                speech: 'Esta solicitação já está em processamento.',
+                shouldEndSession: true,
+              });
+              return;
+            }
+          }
+
+          // Aquisição atômica da requisição
+          transaction.set(reqRef, {
+            requestKey,
+            requestId,
+            appId,
+            environment: config?.environment || 'dev',
+            status: 'in_progress',
+            startedAt: now,
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            expiresAt: new Date(now + 150000), // 150s TTL
+          });
+        });
+      } catch (err) {
+        console.warn('[AlexaDeduplication] Erro na reserva atômica de requisição:', err.message);
       }
-      return buildAlexaResponse({
-        speech: 'Esta solicitação já está em processamento.',
-        shouldEndSession: true,
-      });
+    } else {
+      const existingSnap = await reqRef.get().catch(() => null);
+      if (existingSnap && existingSnap.exists) {
+        const data = existingSnap.data() || {};
+        if (data.response) {
+          return data.response;
+        }
+        return buildAlexaResponse({
+          speech: 'Esta solicitação já está em processamento.',
+          shouldEndSession: true,
+        });
+      }
+    }
+
+    if (cachedResponse) {
+      return cachedResponse;
     }
   }
 
-  // 1. Tratamento de SessionEndedRequest
-  if (reqType === 'SessionEndedRequest') {
-    return buildAlexaResponse({ speech: '', shouldEndSession: true });
-  }
-
-  // 2. Fluxo de Pareamento Supervisionado (LinkVoiceIntent)
-  if (intentName === 'LinkVoiceIntent') {
-    const pairingRes = await handleVoicePairingRequest(envelope, config, db);
-    const resp = buildAlexaResponse({
-      speech: pairingRes.speech,
-      shouldEndSession: pairingRes.shouldEndSession,
-    });
+  const persistResponse = async (resp) => {
     if (reqRef) {
-      reqRef.set({
-        requestKey: computeRequestKey(appId, requestId),
-        requestId,
-        appId,
-        environment: config?.environment || 'dev',
-        response: resp,
-        createdAt: admin.firestore.FieldValue.serverTimestamp(),
-        expiresAt: new Date(Date.now() + 150000),
-      }).catch(() => {});
+      try {
+        await reqRef.set({
+          requestKey,
+          requestId,
+          appId,
+          environment: config?.environment || 'dev',
+          status: 'completed',
+          response: resp,
+          completedAt: admin.firestore.FieldValue.serverTimestamp(),
+          expiresAt: new Date(Date.now() + 150000),
+        }, { merge: true });
+      } catch (err) {
+        console.warn('[AlexaDeduplication] Erro ao salvar cache de requisição:', err.message);
+      }
     }
     return resp;
-  }
-
-  // 3. Autorização estrita de voz para pedidos (LaunchRequest, CreateOrderIntent, etc.)
-  const authRes = await authorizeAlexaPerson(envelope, config, db);
-  if (!authRes.authorized) {
-    // Se for LaunchRequest e o motivo for falta de vínculo ou reconhecimento inicial,
-    // mantém a sessão aberta para que a pessoa possa dizer "vincular minha voz".
-    let speech = authRes.speech;
-    let shouldEnd = true;
-    let reprompt = undefined;
-
-    if (reqType === 'LaunchRequest' && (authRes.code === 'VOICE_NOT_ALLOWED' || authRes.code === 'VOICE_NOT_RECOGNIZED')) {
-      speech = authRes.code === 'VOICE_NOT_ALLOWED'
-        ? 'Olá! Sua voz foi reconhecida, mas ainda não está vinculada ao Luisices. Diga: gerar código, para receber seu código de vinculação.'
-        : 'Olá! Bem-vindo ao Luisices de teste. Diga: gerar código, para receber seu código de vinculação.';
-      reprompt = 'Diga: gerar código.';
-      shouldEnd = false;
-    }
-
-    const resp = buildAlexaResponse({
-      speech,
-      reprompt,
-      shouldEndSession: shouldEnd,
-    });
-
-    if (reqRef) {
-      reqRef.set({
-        requestKey: computeRequestKey(appId, requestId),
-        requestId,
-        appId,
-        environment: config?.environment || 'dev',
-        response: resp,
-        createdAt: admin.firestore.FieldValue.serverTimestamp(),
-        expiresAt: new Date(Date.now() + 150000),
-      }).catch(() => {});
-    }
-
-    return resp;
-  }
-
-  const identity = authRes.identity;
-
-  // 4. Rate limiting distribuído por vínculo (30 req/min)
-  if (identity.bindingKey) {
-    const rateCheck = await checkBindingRequestRateLimit(db, identity.bindingKey);
-    if (!rateCheck.allowed) {
-      return buildAlexaResponse({
-        speech: 'Muitas requisições em curto período de tempo. Aguarde um minuto e tente novamente.',
-        shouldEndSession: true,
-      });
-    }
-  }
-
-  // 5. Execução do diálogo do pedido
-  const dialogRes = await handleAlexaDialog({
-    envelope,
-    identity,
-    config,
-    db,
-  });
-
-  const sessionAttributes = {
-    ...(dialogRes.sessionAttributes || {}),
-    personId: identity.personId,
   };
 
-  const finalResponse = buildAlexaResponse({
-    speech: dialogRes.speech,
-    reprompt: dialogRes.reprompt,
-    shouldEndSession: dialogRes.shouldEndSession,
-    sessionAttributes,
-  });
+  try {
+    // 1. Tratamento de SessionEndedRequest
+    if (reqType === 'SessionEndedRequest') {
+      const resp = buildAlexaResponse({ speech: '', shouldEndSession: true });
+      return await persistResponse(resp);
+    }
 
-  if (reqRef) {
-    reqRef.set({
-      requestKey: computeRequestKey(appId, requestId),
-      requestId,
-      appId,
-      environment: config?.environment || 'dev',
-      response: finalResponse,
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
-      expiresAt: new Date(Date.now() + 150000),
-    }).catch((err) => {
-      console.warn('[AlexaDeduplication] Erro ao salvar cache de requisição:', err.message);
+    // 2. Fluxo de Pareamento Supervisionado (LinkVoiceIntent)
+    if (intentName === 'LinkVoiceIntent') {
+      const pairingRes = await handleVoicePairingRequest(envelope, config, db);
+      const resp = buildAlexaResponse({
+        speech: pairingRes.speech,
+        shouldEndSession: pairingRes.shouldEndSession,
+      });
+      return await persistResponse(resp);
+    }
+
+    // 3. Autorização estrita de voz para pedidos (LaunchRequest, CreateOrderIntent, etc.)
+    const authRes = await authorizeAlexaPerson(envelope, config, db);
+    if (!authRes.authorized) {
+      // Se for LaunchRequest e o motivo for falta de vínculo ou reconhecimento inicial,
+      // mantém a sessão aberta para que a pessoa possa dizer "vincular minha voz".
+      let speech = authRes.speech;
+      let shouldEnd = true;
+      let reprompt = undefined;
+
+      if (reqType === 'LaunchRequest' && (authRes.code === 'VOICE_NOT_ALLOWED' || authRes.code === 'VOICE_NOT_RECOGNIZED')) {
+        speech = authRes.code === 'VOICE_NOT_ALLOWED'
+          ? 'Olá! Sua voz foi reconhecida, mas ainda não está vinculada ao Luisices. Diga: gerar código, para receber seu código de vinculação.'
+          : 'Olá! Bem-vindo ao Luisices de teste. Diga: gerar código, para receber seu código de vinculação.';
+        reprompt = 'Diga: gerar código.';
+        shouldEnd = false;
+      }
+
+      const resp = buildAlexaResponse({
+        speech,
+        reprompt,
+        shouldEndSession: shouldEnd,
+      });
+
+      return await persistResponse(resp);
+    }
+
+    const identity = authRes.identity;
+
+    // 4. Rate limiting distribuído por vínculo (30 req/min)
+    if (identity.bindingKey) {
+      const rateCheck = await checkBindingRequestRateLimit(db, identity.bindingKey);
+      if (!rateCheck.allowed) {
+        const resp = buildAlexaResponse({
+          speech: 'Muitas requisições em curto período de tempo. Aguarde um minuto e tente novamente.',
+          shouldEndSession: true,
+        });
+        return await persistResponse(resp);
+      }
+    }
+
+    // 5. Execução do diálogo do pedido
+    const dialogRes = await handleAlexaDialog({
+      envelope,
+      identity,
+      config,
+      db,
     });
-  }
 
-  return finalResponse;
+    const sessionAttributes = {
+      ...(dialogRes.sessionAttributes || {}),
+      personId: identity.personId,
+    };
+
+    const finalResponse = buildAlexaResponse({
+      speech: dialogRes.speech,
+      reprompt: dialogRes.reprompt,
+      shouldEndSession: dialogRes.shouldEndSession,
+      sessionAttributes,
+    });
+
+    return await persistResponse(finalResponse);
+  } catch (err) {
+    if (reqRef) {
+      reqRef.set({ status: 'failed', error: err.message }, { merge: true }).catch(() => {});
+    }
+    throw err;
+  }
 }
 
 /**
@@ -224,13 +268,14 @@ const alexaWebhook = onRequest(
     const config = await getAlexaConfig(db);
 
     // 3. Verificar Skill ID com a configuração ativa (pode incluir override do Firestore).
+    // Achado 6: se config.allowedSkillId está configurado, envelopeAppId é OBRIGATÓRIO e deve bater.
     if (config.allowedSkillId) {
       const envelope = verification.envelope;
       const envelopeAppId =
         envelope?.session?.application?.applicationId ||
         envelope?.context?.System?.application?.applicationId;
-      if (envelopeAppId && envelopeAppId !== config.allowedSkillId) {
-        console.warn('[alexaWebhook] Skill ID não autorizado:', envelopeAppId);
+      if (!envelopeAppId || envelopeAppId !== config.allowedSkillId) {
+        console.warn('[alexaWebhook] Skill ID ausente ou não autorizado:', envelopeAppId);
         return res.status(403).json({ error: `Skill ID não autorizada para este ambiente (${config.environment}).` });
       }
     }

@@ -160,17 +160,14 @@ async function authorizeAlexaPerson(envelope, config, db, authService = null) {
   }
 
   // Dispositivo autorizado (se houver lista de dispositivos no vínculo)
-  if (
-    Array.isArray(bindingData.allowedDeviceIds) &&
-    bindingData.allowedDeviceIds.length > 0 &&
-    deviceId &&
-    !bindingData.allowedDeviceIds.includes(deviceId)
-  ) {
-    return {
-      authorized: false,
-      code: ERROR_CODES.DEVICE_NOT_ALLOWED,
-      speech: ERROR_SPEECH.DEVICE_NOT_ALLOWED,
-    };
+  if (Array.isArray(bindingData.allowedDeviceIds) && bindingData.allowedDeviceIds.length > 0) {
+    if (!deviceId || !bindingData.allowedDeviceIds.includes(deviceId)) {
+      return {
+        authorized: false,
+        code: ERROR_CODES.DEVICE_NOT_ALLOWED,
+        speech: ERROR_SPEECH.DEVICE_NOT_ALLOWED,
+      };
+    }
   }
 
   const uid = bindingData.uid;
@@ -182,8 +179,26 @@ async function authorizeAlexaPerson(envelope, config, db, authService = null) {
     };
   }
 
-  // 5. Validar userProfile no Firestore
-  const profileSnap = await db.collection(COLLECTIONS.USER_PROFILES).doc(uid).get();
+  // 5. Validar paralelamente userProfile, alexaPermissions e conta no Firebase Auth
+  let authUserPromise;
+  try {
+    const auth = authService || (admin.apps && admin.apps.length > 0 ? admin.auth() : null);
+    if (auth && typeof auth.getUser === 'function') {
+      authUserPromise = auth.getUser(uid).catch((authErr) => ({ error: authErr }));
+    } else {
+      authUserPromise = Promise.resolve({ uid, disabled: false });
+    }
+  } catch {
+    authUserPromise = Promise.resolve({ uid, disabled: false });
+  }
+
+  const [profileSnap, permSnap, authUserResult] = await Promise.all([
+    db.collection(COLLECTIONS.USER_PROFILES).doc(uid).get(),
+    db.collection(COLLECTIONS.PERMISSIONS).doc(uid).get(),
+    authUserPromise,
+  ]);
+
+  // Validar userProfile no Firestore
   if (!profileSnap.exists) {
     return {
       authorized: false,
@@ -203,19 +218,9 @@ async function authorizeAlexaPerson(envelope, config, db, authService = null) {
     };
   }
 
-  // 6. Validar conta no Firebase Auth (não suspensa/desativada)
-  try {
-    const auth = authService || admin.auth();
-    const authUser = await auth.getUser(uid);
-    if (authUser.disabled) {
-      return {
-        authorized: false,
-        code: ERROR_CODES.USER_DISABLED,
-        speech: ERROR_SPEECH.USER_DISABLED,
-      };
-    }
-  } catch (authErr) {
-    console.warn(`[AlexaAuth] Erro ao consultar Firebase Auth para UID ${uid}:`, authErr.message);
+  // Validar conta no Firebase Auth (não suspensa/desativada)
+  if (authUserResult.error) {
+    console.warn(`[AlexaAuth] Erro ao consultar Firebase Auth para UID ${uid}:`, authUserResult.error.message);
     return {
       authorized: false,
       code: ERROR_CODES.USER_NOT_FOUND,
@@ -223,9 +228,15 @@ async function authorizeAlexaPerson(envelope, config, db, authService = null) {
     };
   }
 
+  if (authUserResult.disabled) {
+    return {
+      authorized: false,
+      code: ERROR_CODES.USER_DISABLED,
+      speech: ERROR_SPEECH.USER_DISABLED,
+    };
+  }
 
-  // 7. Validar alexaPermissions/{uid}
-  const permSnap = await db.collection(COLLECTIONS.PERMISSIONS).doc(uid).get();
+  // Validar alexaPermissions/{uid}
   if (!permSnap.exists) {
     return {
       authorized: false,

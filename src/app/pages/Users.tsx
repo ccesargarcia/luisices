@@ -224,6 +224,31 @@ function UserFormDialog({ open, editingUser, currentUserUid, onClose, onSaved }:
   const [alexaMode, setAlexaMode] = useState<AlexaConfirmationMode>('voice_confirm');
   const [alexaDirty, setAlexaDirty] = useState(false);
   const [alexaLoading, setAlexaLoading] = useState(false);
+  const [alexaError, setAlexaError] = useState<string | null>(null);
+
+  const loadAlexaPermission = (targetUid: string) => {
+    let cancelled = false;
+    setAlexaLoading(true);
+    setAlexaError(null);
+    firebaseAlexaService.getStatus(targetUid).then((st) => {
+      if (cancelled) return; // Descarta resposta de consulta anterior
+      const perm = st.targetPermission ?? st.userPermission;
+      if (perm && perm.uid === targetUid) {
+        setAlexaEnabled(Boolean(perm.enabled));
+        setAlexaMode(perm.mode || 'voice_confirm');
+      } else {
+        setAlexaEnabled(false);
+        setAlexaMode('voice_confirm');
+      }
+    }).catch((err) => {
+      if (!cancelled) {
+        setAlexaError('Erro ao carregar permissão Alexa deste usuário.');
+      }
+    }).finally(() => {
+      if (!cancelled) setAlexaLoading(false);
+    });
+    return () => { cancelled = true; setAlexaLoading(false); };
+  };
 
   useEffect(() => {
     if (editingUser) {
@@ -233,33 +258,8 @@ function UserFormDialog({ open, editingUser, currentUserUid, onClose, onSaved }:
       setPermissions(deepClonePermission(editingUser.permissions));
       setPassword('');
       setAlexaDirty(false);
-      // Consultar status de permissão Alexa para o usuário editado.
-      // Achado 6: usa flag cancelled para descartar resposta obsoleta quando o usuário
-      // editado muda antes da resposta chegar (race condition de carregamento).
-      let cancelled = false;
-      const targetUid = editingUser.uid;
-      setAlexaLoading(true);
-      firebaseAlexaService.getStatus(targetUid).then((st) => {
-        if (cancelled) return; // Descarta resposta de consulta anterior
-        // Quando admin edita outro usuário, o backend retorna targetPermission.
-        // st.userPermission pertence ao admin conectado — não usar para o alvo.
-        const perm = st.targetPermission ?? st.userPermission;
-        if (perm && perm.uid === targetUid) {
-          setAlexaEnabled(Boolean(perm.enabled));
-          setAlexaMode(perm.mode || 'voice_confirm');
-        } else {
-          setAlexaEnabled(false);
-          setAlexaMode('voice_confirm');
-        }
-      }).catch(() => {
-        if (!cancelled) {
-          setAlexaEnabled(false);
-          setAlexaMode('voice_confirm');
-        }
-      }).finally(() => {
-        if (!cancelled) setAlexaLoading(false);
-      });
-      return () => { cancelled = true; setAlexaLoading(false); };
+      setAlexaError(null);
+      return loadAlexaPermission(editingUser.uid);
     } else {
       setDisplayName('');
       setEmail('');
@@ -270,6 +270,7 @@ function UserFormDialog({ open, editingUser, currentUserUid, onClose, onSaved }:
       setAlexaMode('voice_confirm');
       setAlexaDirty(false);
       setAlexaLoading(false);
+      setAlexaError(null);
     }
   }, [editingUser, open]);
 
@@ -294,6 +295,16 @@ function UserFormDialog({ open, editingUser, currentUserUid, onClose, onSaved }:
       toast.error('Informe uma senha');
       return;
     }
+    // Achado 5: Validação de pré-condições ANTES de qualquer escrita no Firestore
+    if (isEdit && alexaDirty && alexaLoading) {
+      toast.error('Aguarde o carregamento das configurações da Alexa antes de salvar.');
+      return;
+    }
+    if (isEdit && alexaDirty && alexaError) {
+      toast.error('Não é possível salvar configurações da Alexa enquanto houver erro de carregamento.');
+      return;
+    }
+
     setSaving(true);
     try {
       if (isEdit) {
@@ -302,11 +313,8 @@ function UserFormDialog({ open, editingUser, currentUserUid, onClose, onSaved }:
           role,
           permissions,
         });
-        if (alexaDirty && !alexaLoading) {
+        if (alexaDirty) {
           await firebaseAlexaService.setPermission(editingUser!.uid, alexaEnabled, alexaMode);
-        } else if (alexaDirty && alexaLoading) {
-          toast.error('Aguarde o carregamento das configurações Alexa antes de salvar.');
-          return;
         }
         toast.success('Usuário atualizado com sucesso. As alterações já estão ativas em tempo real.');
       } else {
@@ -421,6 +429,9 @@ function UserFormDialog({ open, editingUser, currentUserUid, onClose, onSaved }:
                   <Label className="text-sm font-semibold flex items-center gap-1.5 text-foreground">
                     <Mic className="size-4 text-sky-500" />
                     Criação de Pedidos por Alexa
+                    {alexaLoading && (
+                      <span className="text-xs font-normal text-sky-500 animate-pulse">(Carregando...)</span>
+                    )}
                   </Label>
                   <p className="text-xs text-muted-foreground">
                     Permite que esta pessoa crie pedidos por voz na Alexa diretamente em seu espaço pessoal.
@@ -428,6 +439,7 @@ function UserFormDialog({ open, editingUser, currentUserUid, onClose, onSaved }:
                 </div>
                 <Switch
                   checked={alexaEnabled}
+                  disabled={alexaLoading || Boolean(alexaError)}
                   onCheckedChange={(val) => {
                     setAlexaEnabled(val);
                     setAlexaDirty(true);
@@ -435,11 +447,25 @@ function UserFormDialog({ open, editingUser, currentUserUid, onClose, onSaved }:
                 />
               </div>
 
-              {alexaEnabled && (
+              {alexaError && (
+                <div className="flex items-center justify-between text-xs text-rose-500 bg-rose-500/10 p-2 rounded-lg">
+                  <span>{alexaError}</span>
+                  <button
+                    type="button"
+                    className="underline hover:no-underline font-medium ml-2 cursor-pointer"
+                    onClick={() => editingUser && loadAlexaPermission(editingUser.uid)}
+                  >
+                    Tentar novamente
+                  </button>
+                </div>
+              )}
+
+              {alexaEnabled && !alexaError && (
                 <div className="space-y-1.5 pt-2 border-t border-sky-500/15">
                   <Label className="text-xs font-medium">Modo de Confirmação</Label>
                   <Select
                     value={alexaMode}
+                    disabled={alexaLoading}
                     onValueChange={(val: any) => {
                       setAlexaMode(val);
                       setAlexaDirty(true);

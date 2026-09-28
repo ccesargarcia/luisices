@@ -13,13 +13,14 @@ import {
 export class FirebaseAlexaService {
   /**
    * Obtém o status operacional, vínculos, permissões e rascunhos pendentes.
+   * Se informado targetUid (por um admin), retorna o status específico desse usuário.
    */
-  async getStatus(): Promise<AlexaIntegrationStatus> {
-    const callable = httpsCallable<void, AlexaIntegrationStatus>(
+  async getStatus(targetUid?: string): Promise<AlexaIntegrationStatus> {
+    const callable = httpsCallable<{ targetUid?: string } | undefined, AlexaIntegrationStatus>(
       functions,
       'getAlexaIntegrationStatus'
     );
-    const result = await callable();
+    const result = await callable(targetUid ? { targetUid } : undefined);
     return result.data;
   }
 

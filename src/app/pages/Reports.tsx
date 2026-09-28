@@ -110,6 +110,15 @@ function formatShortDate(iso: string) {
   return parseLocalDate(iso).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' });
 }
 
+function toSafeDate(val: any): Date {
+  if (!val) return new Date();
+  if (typeof val === 'object' && typeof val.toDate === 'function') {
+    return val.toDate();
+  }
+  const d = new Date(val);
+  return isNaN(d.getTime()) ? new Date() : d;
+}
+
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
 function CurrencyTooltip({ active, payload, label }: any) {
@@ -235,10 +244,10 @@ export function Reports() {
 
   const curSales = useMemo(() =>
     sourceSales.filter(s => {
-      const d = new Date(s.date || s.createdAt);
+      const d = toSafeDate(s.date || s.createdAt);
       if (d < curStart || d > curEnd) return false;
       if (selTags.length > 0) {
-        const t = s.tags?.map((x: any) => x.name) ?? [];
+        const t = s.tags?.map((x: any) => (typeof x === 'string' ? x : x?.name)).filter(Boolean) ?? [];
         return selTags.every(sel => t.includes(sel));
       }
       return true;
@@ -249,7 +258,7 @@ export function Reports() {
   const prevSales = useMemo(() => {
     if (period === 'all' || period === 'custom') return [];
     return sourceSales.filter(s => {
-      const d = new Date(s.date || s.createdAt);
+      const d = toSafeDate(s.date || s.createdAt);
       return d >= prevStart && d <= prevEnd;
     });
   }, [sourceSales, prevStart, prevEnd, period]);
@@ -257,8 +266,13 @@ export function Reports() {
   const allTags = useMemo(() => {
     const map = new Map<string, Tag>();
     sourceSales
-      .filter(s => { const d = new Date(s.date || s.createdAt); return d >= curStart && d <= curEnd; })
-      .forEach(s => s.tags?.forEach((t: Tag) => map.set(t.name, t)));
+      .filter(s => { const d = toSafeDate(s.date || s.createdAt); return d >= curStart && d <= curEnd; })
+      .forEach(s => s.tags?.forEach((t: any) => {
+        const name = typeof t === 'string' ? t : t?.name;
+        if (name) {
+          map.set(name, typeof t === 'string' ? { id: name, name, color: '#0284c7' } : t);
+        }
+      }));
     return Array.from(map.values());
   }, [sourceSales, curStart, curEnd]);
 
@@ -298,7 +312,7 @@ export function Reports() {
     const dailyMap = new Map<string, number>();
     curSales.forEach(o => {
       if (o.status === 'completed') {
-        const key = new Date(o.date || o.createdAt).toISOString().split('T')[0];
+        const key = toSafeDate(o.date || o.createdAt).toISOString().split('T')[0];
         dailyMap.set(key, (dailyMap.get(key) ?? 0) + (o.amount || 0));
       }
     });

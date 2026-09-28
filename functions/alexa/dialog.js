@@ -127,10 +127,22 @@ const PORTUGUESE_NUMBER_WORDS = {
 };
 
 function parsePortugueseWordsToNumber(text) {
+  if (!text || typeof text !== 'string') return null;
+  // Rejeita imediatamente pontuação, barras ou operadores matemáticos
+  if (/[.,\/+*_=]/.test(text)) {
+    return null;
+  }
+  // Rejeita dígitos misturados em parser de palavras puras
+  if (/\d/.test(text)) {
+    return null;
+  }
+
   const tokens = String(text || '').toLowerCase()
     .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^\w\s]/g, ' ')
+    .trim()
     .split(/\s+/).filter(Boolean);
+
+  if (tokens.length === 0) return null;
 
   let total = 0;
   let current = 0;
@@ -152,10 +164,8 @@ function parsePortugueseWordsToNumber(text) {
       } else {
         current += val;
       }
-    } else if (/^\d+$/.test(token)) {
-      matchedAny = true;
-      current += parseInt(token, 10);
     } else {
+      // Qualquer token não reconhecido como numeral em português invalida a interpretação
       return null;
     }
   }
@@ -165,14 +175,26 @@ function parsePortugueseWordsToNumber(text) {
 
 function parsePartToNumber(partStr) {
   if (!partStr) return 0;
-  const clean = partStr.replace(/r\$/gi, '').trim();
-  if (/^\d+$/.test(clean)) return parseInt(clean, 10);
+  const clean = String(partStr).replace(/r\$/gi, '').trim();
+  // Se contiver vírgula, ponto, barra ou operadores matemáticos, rejeita
+  if (/[.,\/+*_=]/.test(clean)) {
+    return null;
+  }
+  if (/^\d+$/.test(clean)) {
+    return parseInt(clean, 10);
+  }
+  // Se contiver dígitos misturados, não é palavra
+  if (/\d/.test(clean)) {
+    return null;
+  }
   return parsePortugueseWordsToNumber(clean);
 }
 
 /**
  * Interpreta e valida valor monetário em reais (máximo R$ 10.000,00 ou 1.000.000 centavos).
- * Suporta dígitos (100, 100,50, 1.500,00, R$ 150) e números por extenso (cem reais, cinquenta, dez reais e cinquenta centavos).
+ * Suporta dígitos (100, 100,50, 1.500,00, R$ 150), zero reais (pedido gratuito)
+ * e números por extenso (cem reais, cinquenta, dez reais e cinquenta centavos).
+ * Rejeita estritamente expressões matemáticas, ambiguidades e formatos malformados.
  */
 function parseAndValidatePrice(priceValue) {
   if (priceValue === null || priceValue === undefined || priceValue === '') {
@@ -181,12 +203,17 @@ function parseAndValidatePrice(priceValue) {
 
   const rawStr = String(priceValue).trim().toLowerCase();
 
+  // Rejeita valores negativos
   if (rawStr.includes('-') || rawStr.includes('menos')) {
     return { valid: false, error: 'Valor total não pode ser negativo.' };
   }
 
+  // Rejeita operadores matemáticos ou sinais de ambiguidade (ex: 10/20, 10+20, 20 ou 30)
   if (/\bou\b/.test(rawStr)) {
     return { valid: false, error: 'Valor ambíguo. Por favor, diga um único valor total em reais.' };
+  }
+  if (/[+\/*=]/.test(rawStr)) {
+    return { valid: false, error: 'Formato de valor não reconhecido. Por favor, diga um único valor em reais.' };
   }
 
   const cleanNumStr = rawStr.replace(/r\$/gi, '').trim();
@@ -209,7 +236,7 @@ function parseAndValidatePrice(priceValue) {
     let reaisStr = '';
     let centavosStr = '';
     if (/\b(reais|real)\b/.test(rawStr)) {
-      // Formato: "<reais> reais [e] <centavos> centavos"
+      // Formato estrito: "<reais> reais [e] <centavos> centavos"
       // Deve consumir a entrada inteira — rejeita conteúdo excedente após "centavos"
       const match = rawStr.match(/^(.*?)\b(?:reais|real)\b(?:\s+e\s+)?(.*?)\bcentavos?\b\s*$/);
       if (match) {
@@ -217,7 +244,7 @@ function parseAndValidatePrice(priceValue) {
         centavosStr = match[2].trim();
       }
     } else {
-      // Apenas centavos: "<centavos> centavos" — exige quantia não vazia antes
+      // Apenas centavos estrito: "<centavos> centavos" — exige quantia não vazia antes
       const match = rawStr.match(/^(.*?)\bcentavos?\b\s*$/);
       if (match) {
         centavosStr = match[1].replace(/^\s*e\s+/, '').trim();
@@ -239,7 +266,7 @@ function parseAndValidatePrice(priceValue) {
     return { valid: true, price: Math.round(total * 100) / 100 };
   }
 
-  // 3. Números padrão com vírgula ou ponto decimal simples: 150,50 ou 150.50 ou 150 ou "150 reais"
+  // 3. Números padrão com vírgula ou ponto decimal simples: 150,50 ou 150.50 ou 150 ou "150 reais" ou "0 reais"
   const regexNum = /^(\d+(?:[.,]\d{1,2})?)(?:\s*(?:reais|real))?$/;
   const match = cleanNumStr.match(regexNum);
   if (match) {
@@ -252,38 +279,15 @@ function parseAndValidatePrice(priceValue) {
     }
   }
 
-  // 4. Se for número por extenso em português (ex: "cem reais", "duzentos e cinquenta")
-  // ANTES de tentar o parser de palavras, rejeitar entradas que parecem números malformados:
-  // - dígitos com separadores inválidos ou ambíguos (100,001 / 1,500.00 / 1.23.45)
-  // - múltiplos números isolados sem palavras (10 20 → seria 30 por soma de fragmentos)
-  // Isso evita que o parser de palavras reinterprete fragmentos numéricos como soma.
+  // 4. Se for número por extenso em português (ex: "cem reais", "duzentos e cinquenta", "zero reais")
   const cleanWords = cleanNumStr.replace(/\b(reais|real)\b/g, '').trim();
 
-  // Rejeita se a entrada (sem "reais"/"real") contém dígitos e parece número mal-formado.
-  // Detecta: múltiplos separadores, separador decimal com mais de 2 dígitos após, etc.
-  const hasDigit = /\d/.test(cleanWords);
-  if (hasDigit) {
-    // Dígitos isolados múltiplos (ex: "10 20") — sem palavras PT entre eles
-    if (/^\d+(\s+\d+)+$/.test(cleanWords)) {
-      return { valid: false, error: 'Valor ambíguo. Por favor, diga um único valor total em reais.' };
-    }
-    // Formato numérico com separadores inválidos (mais de 2 decimais, separador duplo, etc.)
-    if (/\d[.,]\d{3,}/.test(cleanWords) || /\d\.\d+\.\d/.test(cleanWords) || /,\d+[.,]/.test(cleanWords)) {
-      return { valid: false, error: 'Formato de valor não reconhecido. Por favor, diga o valor em reais, por exemplo: cem reais.' };
-    }
-    // Dígitos misturados com texto não-português — não é extenso, não é número válido
-    const wordNum = parsePortugueseWordsToNumber(cleanWords);
-    if (wordNum !== null && wordNum >= 0) {
-      if (wordNum > 10000) {
-        return { valid: false, error: 'O valor do pedido excede o limite máximo permitido de dez mil reais.' };
-      }
-      return { valid: true, price: Math.round(wordNum * 100) / 100 };
-    }
-    // Tinha dígitos mas não parseou — formato inválido
+  // Rejeita se a entrada contém dígitos (já não casou no regexNum ou brThousands)
+  if (/\d/.test(cleanWords)) {
     return { valid: false, error: 'Formato de valor não reconhecido. Por favor, diga o valor em reais, por exemplo: cem reais.' };
   }
 
-  // Sem dígitos — tentar inteiramente como extenso em português
+  // Sem dígitos — interpretar estritamente como extenso em português
   const wordNum = parsePortugueseWordsToNumber(cleanWords);
   if (wordNum !== null && wordNum >= 0) {
     if (wordNum > 10000) {
@@ -298,10 +302,11 @@ function parseAndValidatePrice(priceValue) {
 /**
  * Obtém ou inicializa rascunho de pedido no Firestore (alexaDrafts/{draftId}).
  */
-async function getOrCreateDraft(db, draftId, identity, config) {
+async function getOrCreateDraft(db, draftId, identity, config, envelope = null) {
   const now = Date.now();
   const ttlMs = (config.draftTtlMinutes || 15) * 60 * 1000;
   const expiresAt = new Date(now + ttlMs);
+  const sessionId = envelope?.session?.sessionId || null;
 
   if (draftId) {
     const snap = await db.collection(COLLECTIONS.DRAFTS).doc(draftId).get();
@@ -323,6 +328,7 @@ async function getOrCreateDraft(db, draftId, identity, config) {
   const draftRef = db.collection(COLLECTIONS.DRAFTS).doc(newDraftId);
   const initialData = {
     draftId: newDraftId,
+    sessionId,
     uid: identity.uid,
     bindingKey: identity.bindingKey,
     personId: identity.personId,
@@ -348,6 +354,7 @@ async function getOrCreateDraft(db, draftId, identity, config) {
 
 /**
  * Monta o resumo verbal e avança estado para 'awaiting_confirmation'.
+ * Inclui confirmação explícita de gratuidade quando price === 0.
  */
 function buildConfirmationSpeech(draftData, identity, config) {
   const envLabel = config.environment === 'prod' ? 'produção' : 'teste';
@@ -356,7 +363,9 @@ function buildConfirmationSpeech(draftData, identity, config) {
   const prod = sanitizeSpeech(draftData.product);
   const cust = sanitizeSpeech(draftData.customer);
   const dateFormatted = formatDatePtBr(draftData.deliveryDate);
-  const priceFormatted = formatCurrencyPtBr(draftData.price);
+  const priceFormatted = draftData.price === 0
+    ? 'zero reais, pedido gratuito'
+    : formatCurrencyPtBr(draftData.price);
 
   return `${name}, no ambiente de ${envLabel}: ${qty} ${prod} para ${cust}, entrega em ${dateFormatted}, total de ${priceFormatted}. Confirmar?`;
 }
@@ -381,6 +390,14 @@ async function handleAlexaDialog({ envelope, identity, config, db }) {
   const sessionAttrs = envelope.session?.attributes || {};
   let currentDraftId = sessionAttrs.draftId || null;
 
+  const runTx = typeof db.runTransaction === 'function'
+    ? (fn) => db.runTransaction(fn)
+    : async (fn) => fn({
+        get: (r) => r.get(),
+        set: (r, d, o) => r.set(d, o),
+        update: (r, d) => r.update(d),
+      });
+
   // 1. Início de sessão / LaunchRequest
   if (requestType === 'LaunchRequest') {
     const envLabel = config.environment === 'prod' ? 'produção' : 'teste';
@@ -398,9 +415,19 @@ async function handleAlexaDialog({ envelope, identity, config, db }) {
   // 2. Comandos globais de saída e ajuda
   if (intentName === 'AMAZON.StopIntent' || intentName === 'AMAZON.CancelIntent') {
     if (currentDraftId) {
-      await db.collection(COLLECTIONS.DRAFTS).doc(currentDraftId).update({
-        state: 'cancelled',
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      await runTx(async (transaction) => {
+        const draftRef = db.collection(COLLECTIONS.DRAFTS).doc(currentDraftId);
+        const snap = await transaction.get(draftRef);
+        if (snap.exists) {
+          const dData = snap.data() || {};
+          // Validação de titularidade antes de cancelar
+          if (!dData.uid || dData.uid === identity.uid) {
+            transaction.update(draftRef, {
+              state: 'cancelled',
+              updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            });
+          }
+        }
       }).catch(() => {});
     }
     return {
@@ -423,36 +450,41 @@ async function handleAlexaDialog({ envelope, identity, config, db }) {
 
   // 3. Fallback intent (tratamento de fala não compreendida com limite de 3 tentativas)
   if (intentName === 'AMAZON.FallbackIntent') {
-    let prevFallbacks = sessionAttrs.fallbackCount || 0;
+    let fallbackCount = (sessionAttrs.fallbackCount || 0) + 1;
+    let shouldExpire = fallbackCount >= 3;
+
     if (currentDraftId) {
-      const snap = await db.collection(COLLECTIONS.DRAFTS).doc(currentDraftId).get().catch(() => null);
-      if (snap && snap.exists) {
-        const dData = snap.data() || {};
-        if (dData.fallbackCount !== undefined) {
-          prevFallbacks = Math.max(prevFallbacks, dData.fallbackCount);
+      await runTx(async (transaction) => {
+        const draftRef = db.collection(COLLECTIONS.DRAFTS).doc(currentDraftId);
+        const snap = await transaction.get(draftRef);
+        if (snap.exists) {
+          const dData = snap.data() || {};
+          if (dData.fallbackCount !== undefined) {
+            fallbackCount = Math.max(fallbackCount, dData.fallbackCount + 1);
+            shouldExpire = fallbackCount >= 3;
+          }
+          if (shouldExpire) {
+            transaction.update(draftRef, {
+              state: 'expired',
+              fallbackCount,
+              updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            });
+          } else {
+            transaction.update(draftRef, {
+              fallbackCount,
+              updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            });
+          }
         }
-      }
+      }).catch(() => {});
     }
-    const fallbackCount = prevFallbacks + 1;
-    if (fallbackCount >= 3) {
-      if (currentDraftId) {
-        await db.collection(COLLECTIONS.DRAFTS).doc(currentDraftId).update({
-          state: 'expired',
-          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-        }).catch(() => {});
-      }
+
+    if (shouldExpire) {
       return {
         speech: 'Não consegui entender após três tentativas. Por favor, acesse o aplicativo Luisices para registrar o pedido.',
         shouldEndSession: true,
         sessionAttributes: {},
       };
-    }
-
-    if (currentDraftId) {
-      await db.collection(COLLECTIONS.DRAFTS).doc(currentDraftId).update({
-        fallbackCount,
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-      }).catch(() => {});
     }
 
     return {
@@ -463,34 +495,25 @@ async function handleAlexaDialog({ envelope, identity, config, db }) {
     };
   }
 
-  // 4. Carregar ou criar rascunho no Firestore
-  const { draftId, data: draft, ref: draftRef } = await getOrCreateDraft(db, currentDraftId, identity, config);
+  // 4. Pré-validação de formato dos slots recebidos neste turno
+  const incomingUpdates = {};
 
-  // 5. Coleta ou atualização de slots do pedido
-  let updated = false;
-  let newRevision = (draft.revision || 1);
-
-  // Slot: cliente
   const customerSlot = slots.customer?.value || slots.Customer?.value;
   if (customerSlot) {
     const cleanCust = customerSlot.trim();
     if (cleanCust.length >= 2 && cleanCust.length <= 100) {
-      draft.customer = cleanCust;
-      updated = true;
+      incomingUpdates.customer = cleanCust;
     }
   }
 
-  // Slot: produto
   const productSlot = slots.product?.value || slots.Product?.value;
   if (productSlot) {
     const cleanProd = productSlot.trim();
     if (cleanProd.length >= 1 && cleanProd.length <= 200) {
-      draft.product = cleanProd;
-      updated = true;
+      incomingUpdates.product = cleanProd;
     }
   }
 
-  // Slot: quantidade (estritamente inteiro entre 1 e 10.000)
   const quantitySlot = slots.quantity?.value || slots.Quantity?.value;
   if (quantitySlot) {
     const cleanQty = String(quantitySlot).trim();
@@ -499,7 +522,7 @@ async function handleAlexaDialog({ envelope, identity, config, db }) {
         speech: 'A quantidade de itens deve ser um número inteiro. Por exemplo: dez ou quinze.',
         reprompt: 'Qual é a quantidade inteira de itens?',
         shouldEndSession: false,
-        sessionAttributes: { draftId, revision: draft.revision, personId: identity.personId },
+        sessionAttributes: { draftId: currentDraftId, revision: sessionAttrs.revision || 1, personId: identity.personId },
       };
     }
     const q = parseInt(cleanQty, 10);
@@ -508,46 +531,148 @@ async function handleAlexaDialog({ envelope, identity, config, db }) {
         speech: 'A quantidade deve ser entre 1 e dez mil itens.',
         reprompt: 'Qual é a quantidade de itens?',
         shouldEndSession: false,
-        sessionAttributes: { draftId, revision: draft.revision, personId: identity.personId },
+        sessionAttributes: { draftId: currentDraftId, revision: sessionAttrs.revision || 1, personId: identity.personId },
       };
     }
-    draft.quantity = q;
-    updated = true;
+    incomingUpdates.quantity = q;
   }
 
-  // Slot: data de entrega
   const dateSlot = slots.deliveryDate?.value || slots.DeliveryDate?.value || slots.date?.value;
   if (dateSlot) {
     const dateRes = parseAndValidateDeliveryDate(dateSlot, config.timezone);
     if (dateRes.valid) {
-      draft.deliveryDate = dateRes.date;
-      updated = true;
+      incomingUpdates.deliveryDate = dateRes.date;
     } else {
       return {
         speech: dateRes.error,
         reprompt: 'Qual é a data de entrega desejada?',
         shouldEndSession: false,
-        sessionAttributes: { draftId, revision: draft.revision, personId: identity.personId },
+        sessionAttributes: { draftId: currentDraftId, revision: sessionAttrs.revision || 1, personId: identity.personId },
       };
     }
   }
 
-  // Slot: preço / valor total
   const totalSlot = slots.total?.value || slots.Total?.value || slots.price?.value;
   if (totalSlot) {
     const priceRes = parseAndValidatePrice(totalSlot);
     if (priceRes.valid) {
-      draft.price = priceRes.price;
-      updated = true;
+      incomingUpdates.price = priceRes.price;
     } else {
       return {
         speech: priceRes.error,
         reprompt: 'Qual é o valor total do pedido?',
         shouldEndSession: false,
-        sessionAttributes: { draftId, revision: draft.revision, personId: identity.personId },
+        sessionAttributes: { draftId: currentDraftId, revision: sessionAttrs.revision || 1, personId: identity.personId },
       };
     }
   }
+
+  // 5. Transação atômica única para carregar/modificar o rascunho com controle de concorrência
+  let draft = null;
+  let draftId = currentDraftId;
+  let draftRef = null;
+  const sessionId = envelope?.session?.sessionId || null;
+
+  await runTx(async (transaction) => {
+    let existingData = null;
+
+    if (draftId) {
+      const ref = db.collection(COLLECTIONS.DRAFTS).doc(draftId);
+      const snap = await transaction.get(ref);
+      if (snap.exists) {
+        const d = snap.data() || {};
+        const now = Date.now();
+        const expTime = d.expiresAt?.toDate ? d.expiresAt.toDate().getTime() : 0;
+        const isAllowedState = d.state === 'collecting' || d.state === 'awaiting_confirmation';
+        const isSameUser = !d.uid || d.uid === identity.uid;
+        const isSameBinding = !d.bindingKey || d.bindingKey === identity.bindingKey;
+        const isSameEnv = !d.environment || d.environment === config.environment;
+        if (expTime > now && isAllowedState && isSameUser && isSameBinding && isSameEnv) {
+          existingData = { ...d };
+          draftRef = ref;
+        }
+      }
+    }
+
+    if (!existingData) {
+      // Criar novo rascunho
+      const newDraftId = crypto.randomUUID();
+      draftId = newDraftId;
+      draftRef = db.collection(COLLECTIONS.DRAFTS).doc(newDraftId);
+      const now = Date.now();
+      const ttlMs = (config.draftTtlMinutes || 15) * 60 * 1000;
+      const expiresAt = new Date(now + ttlMs);
+      existingData = {
+        draftId: newDraftId,
+        sessionId,
+        uid: identity.uid,
+        bindingKey: identity.bindingKey,
+        personId: identity.personId,
+        mode: identity.mode || 'voice_confirm',
+        environment: config.environment,
+        customer: null,
+        product: null,
+        quantity: null,
+        deliveryDate: null,
+        price: null,
+        notes: null,
+        revision: 1,
+        state: 'collecting',
+        fallbackCount: 0,
+        expiresAt: admin.firestore.Timestamp.fromDate(expiresAt),
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      };
+    }
+
+    // Ações para YesIntent e NoIntent não alteram slots aqui
+    if (intentName === 'AMAZON.YesIntent') {
+      draft = existingData;
+      return;
+    }
+
+    if (intentName === 'AMAZON.NoIntent') {
+      if (existingData.state === 'awaiting_confirmation') {
+        existingData.state = 'collecting';
+        existingData.updatedAt = admin.firestore.FieldValue.serverTimestamp();
+        transaction.set(draftRef, existingData, { merge: true });
+      }
+      draft = existingData;
+      return;
+    }
+
+    // Mesclar slots recebidos concorrentemente
+    let updated = false;
+    for (const [k, v] of Object.entries(incomingUpdates)) {
+      if (existingData[k] !== v) {
+        existingData[k] = v;
+        updated = true;
+      }
+    }
+
+    if (updated) {
+      existingData.revision = (existingData.revision || 1) + 1;
+      existingData.state = 'collecting';
+      existingData.updatedAt = admin.firestore.FieldValue.serverTimestamp();
+    }
+
+    // Se todos os campos estiverem preenchidos, avançar para awaiting_confirmation
+    const isComplete =
+      existingData.customer &&
+      existingData.product &&
+      existingData.quantity &&
+      existingData.deliveryDate &&
+      existingData.price !== null &&
+      existingData.price !== undefined;
+
+    if (isComplete && (existingData.state === 'collecting' || updated)) {
+      existingData.state = 'awaiting_confirmation';
+      existingData.updatedAt = admin.firestore.FieldValue.serverTimestamp();
+    }
+
+    transaction.set(draftRef, existingData, { merge: true });
+    draft = existingData;
+  });
 
   // 6. Confirmação do resumo (AMAZON.YesIntent / AMAZON.NoIntent)
   if (intentName === 'AMAZON.YesIntent') {
@@ -563,8 +688,6 @@ async function handleAlexaDialog({ envelope, identity, config, db }) {
     // Biometria vocal obrigatória no momento da confirmação final.
     // NÃO usa identity.personId como fallback: se a fala atual não carrega personId
     // (outra pessoa tomou a conversa, sessão de outro contexto), o pedido é rejeitado.
-    // identity.personId pode vir de sessionAttrs de turno anterior — não é suficiente
-    // para autorizar a confirmação definitiva (achado 2 do audit).
     const physicalPersonId =
       envelope?.context?.System?.person?.personId ||
       envelope?.session?.System?.person?.personId ||
@@ -588,11 +711,9 @@ async function handleAlexaDialog({ envelope, identity, config, db }) {
     }
 
     // Validação de consistência da revisão entre sessão e rascunho:
-    // Se a sessão tem uma revisão diferente da do rascunho, os dados foram alterados
-    // concorrentemente. Reapresenta o resumo com os dados atuais antes de aceitar qualquer
-    // confirmação — não pergunta "deseja revisar?" pois o próximo "sim" seria interpretado
-    // como confirmação do pedido sem que os novos dados tenham sido apresentados (achado 6).
-    if (sessionAttrs.revision !== undefined && sessionAttrs.revision !== draft.revision) {
+    // Se a revisão não veio nos sessionAttributes ou se for divergente,
+    // reapresenta o resumo atualizado antes de aceitar qualquer gravação (achado 6).
+    if (sessionAttrs.revision === undefined || sessionAttrs.revision !== draft.revision) {
       const updatedSummary = buildConfirmationSpeech(draft, identity, config);
       return {
         speech: `Os dados do pedido foram atualizados. ${updatedSummary}`,
@@ -634,11 +755,19 @@ async function handleAlexaDialog({ envelope, identity, config, db }) {
       }
     }
 
-    // Modo 2: Aprovação pendente no aplicativo
+    // Modo 2: Aprovação pendente no aplicativo (transição atômica)
     if (draft.mode === 'app_approval') {
-      await draftRef.update({
-        state: 'awaiting_app_approval',
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      await runTx(async (transaction) => {
+        const snap = await transaction.get(draftRef);
+        if (snap.exists) {
+          const dData = snap.data() || {};
+          if (dData.state === 'awaiting_confirmation') {
+            transaction.update(draftRef, {
+              state: 'awaiting_app_approval',
+              updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            });
+          }
+        }
       });
       return {
         speech: `Pedido preparado no seu espaço de ${envLabel}. Acesse o Luisices no aplicativo para conferir e aprovar a gravação definitiva.`,
@@ -649,11 +778,7 @@ async function handleAlexaDialog({ envelope, identity, config, db }) {
   }
 
   if (intentName === 'AMAZON.NoIntent') {
-    if (draft.state === 'awaiting_confirmation') {
-      await draftRef.update({
-        state: 'collecting',
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-      });
+    if (draft.state === 'collecting') {
       return {
         speech: 'Qual dado você deseja corrigir? Diga o cliente, produto, quantidade, entrega ou valor.',
         reprompt: 'O que deseja alterar?',
@@ -668,15 +793,7 @@ async function handleAlexaDialog({ envelope, identity, config, db }) {
     };
   }
 
-  // 7. Se houve atualização de slots, persistir no Firestore
-  if (updated) {
-    newRevision += 1;
-    draft.revision = newRevision;
-    // Se estava em awaiting_confirmation e foi alterado, exige nova confirmação
-    draft.state = 'collecting';
-  }
-
-  // 8. Verificar se todos os campos obrigatórios estão preenchidos
+  // 7. Verificar se todos os campos obrigatórios estão preenchidos
   const missingCustomer = !draft.customer;
   const missingProduct = !draft.product;
   const missingQuantity = !draft.quantity;
@@ -684,7 +801,6 @@ async function handleAlexaDialog({ envelope, identity, config, db }) {
   const missingPrice = draft.price === null || draft.price === undefined;
 
   if (missingProduct && missingCustomer) {
-    await draftRef.set(draft, { merge: true });
     return {
       speech: 'Qual é o produto e o cliente do pedido?',
       reprompt: 'Diga o produto e o nome do cliente.',
@@ -694,7 +810,6 @@ async function handleAlexaDialog({ envelope, identity, config, db }) {
   }
 
   if (missingProduct) {
-    await draftRef.set(draft, { merge: true });
     return {
       speech: 'Qual é o produto do pedido?',
       reprompt: 'Diga o produto.',
@@ -704,7 +819,6 @@ async function handleAlexaDialog({ envelope, identity, config, db }) {
   }
 
   if (missingCustomer) {
-    await draftRef.set(draft, { merge: true });
     return {
       speech: 'Para qual cliente é o pedido?',
       reprompt: 'Diga o nome do cliente.',
@@ -714,7 +828,6 @@ async function handleAlexaDialog({ envelope, identity, config, db }) {
   }
 
   if (missingQuantity) {
-    await draftRef.set(draft, { merge: true });
     return {
       speech: 'Qual é a quantidade de itens?',
       reprompt: 'Informe a quantidade inteira.',
@@ -724,7 +837,6 @@ async function handleAlexaDialog({ envelope, identity, config, db }) {
   }
 
   if (missingDeliveryDate) {
-    await draftRef.set(draft, { merge: true });
     return {
       speech: 'Qual é a data de entrega?',
       reprompt: 'Informe dia e mês da entrega.',
@@ -734,7 +846,6 @@ async function handleAlexaDialog({ envelope, identity, config, db }) {
   }
 
   if (missingPrice) {
-    await draftRef.set(draft, { merge: true });
     return {
       speech: 'Qual é o valor total do pedido?',
       reprompt: 'Diga o valor total em reais.',
@@ -743,10 +854,7 @@ async function handleAlexaDialog({ envelope, identity, config, db }) {
     };
   }
 
-  // 9. Todos os campos preenchidos -> Avançar para awaiting_confirmation e emitir resumo
-  draft.state = 'awaiting_confirmation';
-  await draftRef.set(draft, { merge: true });
-
+  // 8. Todos os campos preenchidos -> Emitir resumo para confirmação
   const confirmSpeech = buildConfirmationSpeech(draft, identity, config);
   return {
     speech: confirmSpeech,

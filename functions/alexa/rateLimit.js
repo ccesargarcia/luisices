@@ -115,10 +115,78 @@ async function checkPairingRateLimit(db, deviceOrUserId) {
   return consumeRateLimit(db, bucketKey, LIMITS.PAIRINGS_PER_HOUR_PER_DEVICE, 7200);
 }
 
+/**
+ * Verifica e consome limites de criação de pedidos DENTRO de uma transação Firestore ativa.
+ * Executa as leituras antes das escritas e lança erro seguro se exceder cota.
+ */
+async function checkAndConsumeOrderRateLimitInTransaction(transaction, db, uid) {
+  if (!db || !transaction || !uid) return { allowed: true };
+
+  const now = Date.now();
+  const windowHour = Math.floor(now / 3600000);
+  const windowDay = Math.floor(now / 86400000);
+
+  const hourRef = db.collection(COLLECTIONS.RATE_LIMITS).doc(`ord_hr_${uid}_${windowHour}`);
+  const dayRef = db.collection(COLLECTIONS.RATE_LIMITS).doc(`ord_day_${uid}_${windowDay}`);
+
+  const [hourSnap, daySnap] = await Promise.all([
+    transaction.get(hourRef),
+    transaction.get(dayRef),
+  ]);
+
+  let hourCount = 0;
+  if (hourSnap.exists) {
+    const data = hourSnap.data() || {};
+    const exp = data.expiresAt?.toDate ? data.expiresAt.toDate().getTime() : 0;
+    if (exp > now) hourCount = Number(data.count || 0);
+  }
+
+  let dayCount = 0;
+  if (daySnap.exists) {
+    const data = daySnap.data() || {};
+    const exp = data.expiresAt?.toDate ? data.expiresAt.toDate().getTime() : 0;
+    if (exp > now) dayCount = Number(data.count || 0);
+  }
+
+  if (hourCount >= LIMITS.ORDERS_PER_HOUR_PER_PERSON) {
+    throw new Error('RATE_LIMITED: Limite de pedidos por hora excedido (máximo 10 pedidos/hora).');
+  }
+
+  if (dayCount >= LIMITS.ORDERS_PER_DAY_PER_PERSON) {
+    throw new Error('RATE_LIMITED: Limite diário de pedidos excedido (máximo 50 pedidos/dia).');
+  }
+
+  const hourExpiresAt = new Date(now + 7200 * 1000);
+  const dayExpiresAt = new Date(now + 172800 * 1000);
+
+  transaction.set(
+    hourRef,
+    {
+      count: hourCount + 1,
+      expiresAt: admin.firestore.Timestamp.fromDate(hourExpiresAt),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    },
+    { merge: true }
+  );
+
+  transaction.set(
+    dayRef,
+    {
+      count: dayCount + 1,
+      expiresAt: admin.firestore.Timestamp.fromDate(dayExpiresAt),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    },
+    { merge: true }
+  );
+
+  return { allowed: true, hourCount: hourCount + 1, dayCount: dayCount + 1 };
+}
+
 module.exports = {
   LIMITS,
   consumeRateLimit,
   checkBindingRequestRateLimit,
   checkOrderCreationRateLimit,
+  checkAndConsumeOrderRateLimitInTransaction,
   checkPairingRateLimit,
 };

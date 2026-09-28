@@ -58,10 +58,13 @@ export function AlexaSettingsSection({ isAdmin }: AlexaSettingsSectionProps) {
       ]);
       setStatus(statusRes);
       setUsers(usersRes.filter((u: UserProfile) => u.active !== false));
-      if (!selectedUid && usersRes.length > 0) {
-        // Selecionar por padrão Amanda se existir ou primeiro usuário
-        const amanda = usersRes.find((u: UserProfile) => u.displayName?.toLowerCase().includes('amanda'));
-        setSelectedUid(amanda ? amanda.uid : usersRes[0].uid);
+      if (usersRes.length > 0) {
+        setSelectedUid((prev) => {
+          if (prev) return prev;
+          // Selecionar por padrão Amanda se existir ou primeiro usuário
+          const amanda = usersRes.find((u: UserProfile) => u.displayName?.toLowerCase().includes('amanda'));
+          return amanda ? amanda.uid : usersRes[0].uid;
+        });
       }
     } catch (err: any) {
       console.error('[AlexaSettings] Erro ao carregar status:', err);
@@ -70,7 +73,7 @@ export function AlexaSettingsSection({ isAdmin }: AlexaSettingsSectionProps) {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [isAdmin, selectedUid]);
+  }, [isAdmin]);
 
   useEffect(() => {
     loadData();

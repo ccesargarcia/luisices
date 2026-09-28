@@ -23,7 +23,20 @@ async function getAlexaConfig(db = null) {
   const envVar = (process.env.ALEXA_ENVIRONMENT || '').trim().toLowerCase();
   
   // Se ALEXA_ENVIRONMENT não estiver setado, inferir pelo projeto GCP
-  const environment = envVar || (gcloudProject === 'papelaria-dashboard' ? 'prod' : 'dev');
+  let environment = envVar;
+  if (!environment) {
+    if (gcloudProject === 'papelaria-dashboard') {
+      environment = 'prod';
+    } else if (gcloudProject === 'luisices-dev' || gcloudProject.startsWith('demo-')) {
+      environment = 'dev';
+    } else {
+      throw new Error(`Ambiente desconhecido ou inválido para integração Alexa: '${gcloudProject}'. Operação bloqueada por segurança.`);
+    }
+  }
+
+  if (environment !== 'dev' && environment !== 'prod') {
+    throw new Error(`Ambiente inválido para integração Alexa: '${environment}'. Operação bloqueada.`);
+  }
   
   // Skill ID padrão de desenvolvimento fornecida pelo operador
   const DEV_SKILL_ID = 'amzn1.ask.skill.1cd0031f-ada0-4da8-8721-2ad44b4b1c96';
@@ -50,7 +63,8 @@ async function getAlexaConfig(db = null) {
         }
       }
     } catch (err) {
-      console.warn('[AlexaConfig] Aviso ao ler integrationSettings/alexa:', err.message);
+      console.warn('[AlexaConfig] Erro ao ler integrationSettings/alexa. Desativando por segurança:', err.message);
+      isEnabled = false;
     }
   }
 
