@@ -225,6 +225,36 @@ async function commitOrderFromDraft({
     if (isNaN(cleanPrice) || cleanPrice < 0 || cleanPrice > 10000) {
       throw new Error('DRAFT_INVALID_DATA: Preço total inválido ou ausente.');
     }
+
+    // Revalidação estrita de consistência do modo de precificação
+    if (draft.pricingMode === 'unit') {
+      if (
+        typeof draft.unitPriceCents !== 'number' ||
+        !Number.isSafeInteger(draft.unitPriceCents) ||
+        draft.unitPriceCents < 0 ||
+        draft.unitPriceCents > 1000000
+      ) {
+        throw new Error('DRAFT_INVALID_DATA: Preço unitário inválido.');
+      }
+      const expectedTotalCents = cleanQuantity * draft.unitPriceCents;
+      if (!Number.isSafeInteger(expectedTotalCents) || expectedTotalCents > 1000000) {
+        throw new Error('DRAFT_INVALID_DATA: Valor total calculado excede o limite máximo permitido.');
+      }
+      if (draft.totalPriceCents !== expectedTotalCents) {
+        throw new Error('DRAFT_INVALID_DATA: Inconsistência entre preço unitário, quantidade e total.');
+      }
+      if (Math.round(cleanPrice * 100) !== expectedTotalCents) {
+        throw new Error('DRAFT_INVALID_DATA: Inconsistência entre preço em reais e total em centavos.');
+      }
+    } else if (draft.pricingMode === 'total') {
+      if (
+        typeof draft.totalPriceCents === 'number' &&
+        Math.round(cleanPrice * 100) !== draft.totalPriceCents
+      ) {
+        throw new Error('DRAFT_INVALID_DATA: Inconsistência no preço total do rascunho.');
+      }
+    }
+
     // Achado 5c: validar data no calendário real (rejeita 2027-02-31)
     if (!/^\d{4}-\d{2}-\d{2}$/.test(cleanDate)) {
       throw new Error('DRAFT_INVALID_DATA: Data de entrega inválida.');
@@ -318,6 +348,8 @@ async function commitOrderFromDraft({
       productName: cleanProduct,
       quantity: cleanQuantity,
       price: numericPrice,
+      pricingMode: draft.pricingMode || 'total',
+      unitPrice: typeof draft.unitPriceCents === 'number' ? draft.unitPriceCents / 100 : null,
       status: 'pending',
       deliveryDate: cleanDate,
       notes: draft.notes ? String(draft.notes).trim() : `Pedido criado via Alexa (${config.environment})`,

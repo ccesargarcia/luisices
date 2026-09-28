@@ -300,7 +300,23 @@ function parseAndValidatePrice(priceValue) {
 }
 
 /**
+ * Valida valor monetário e converte para centavos inteiros (0 a 1.000.000 centavos = R$ 10.000,00).
+ * Rejeita estritamente não-inteiros, limites excedidos ou formatos malformados.
+ */
+function parseAndValidatePriceToCents(priceValue) {
+  const res = parseAndValidatePrice(priceValue);
+  if (!res.valid) return res;
+  const cents = Math.round(res.price * 100);
+  if (!Number.isSafeInteger(cents) || cents < 0 || cents > 1000000) {
+    return { valid: false, error: 'O valor do pedido excede o limite máximo permitido de dez mil reais.' };
+  }
+  return { valid: true, cents, price: cents / 100 };
+}
+
+/**
  * Monta o resumo verbal e avança estado para 'awaiting_confirmation'.
+ * Inclui detalhamento de preço unitário e total quando pricingMode === 'unit',
+ * ou total do pedido inteiro quando pricingMode === 'total'.
  * Inclui confirmação explícita de gratuidade quando price === 0.
  */
 function buildConfirmationSpeech(draftData, identity, config) {
@@ -310,6 +326,14 @@ function buildConfirmationSpeech(draftData, identity, config) {
   const prod = sanitizeSpeech(draftData.product);
   const cust = sanitizeSpeech(draftData.customer);
   const dateFormatted = formatDatePtBr(draftData.deliveryDate);
+
+  if (draftData.pricingMode === 'unit' && draftData.unitPriceCents !== null && draftData.unitPriceCents !== undefined) {
+    const unitPriceReais = draftData.unitPriceCents / 100;
+    const unitPriceFormatted = unitPriceReais === 0 ? 'zero reais' : formatCurrencyPtBr(unitPriceReais);
+    const totalPriceFormatted = draftData.price === 0 ? 'zero reais, pedido gratuito' : formatCurrencyPtBr(draftData.price);
+    return `${name}, no ambiente de ${envLabel}: ${qty} ${prod} para ${cust} a ${unitPriceFormatted} cada, total de ${totalPriceFormatted}, entrega em ${dateFormatted}. Confirmar?`;
+  }
+
   const priceFormatted = draftData.price === 0
     ? 'zero reais, pedido gratuito'
     : formatCurrencyPtBr(draftData.price);
@@ -395,7 +419,7 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
 
   if (intentName === 'AMAZON.HelpIntent') {
     const helpSpeech =
-      'Para criar um pedido, diga por exemplo: criar pedido de vinte caixinhas para Maria. Vou perguntar a data de entrega e o valor total antes de confirmar.';
+      'Para criar um pedido, diga por exemplo: criar pedido de dez caixinhas para Maria a dez reais cada. Ou: vinte cadernos para João por cem reais no total. Vou perguntar a data de entrega antes de confirmar.';
     return {
       speech: helpSpeech,
       reprompt: 'Diga criar pedido para começar.',
@@ -521,68 +545,108 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
   }
 
   const dateSlot = slots.deliveryDate?.value || slots.DeliveryDate?.value || slots.date?.value;
+  let dateValidationError = null;
   if (dateSlot) {
     const dateRes = parseAndValidateDeliveryDate(dateSlot, config.timezone);
     if (dateRes.valid) {
       incomingUpdates.deliveryDate = dateRes.date;
     } else {
-      return {
-        speech: dateRes.error,
-        reprompt: 'Qual é a data de entrega desejada?',
-        shouldEndSession: false,
-        sessionAttributes: { draftId: currentDraftId, revision: sessionAttrs.revision || 1, personId: identity.personId },
-      };
+      dateValidationError = dateRes.error;
     }
   }
 
-  const totalSlot = slots.total?.value || slots.Total?.value || slots.price?.value;
-  if (totalSlot) {
-    const priceRes = parseAndValidatePrice(totalSlot);
-    if (priceRes.valid) {
-      incomingUpdates.price = priceRes.price;
+  const unitPriceSlot = slots.unitPrice?.value || slots.UnitPrice?.value;
+  const totalSlot = slots.total?.value || slots.Total?.value;
+  const genericPriceSlot = slots.price?.value || slots.Price?.value || slots.ambiguousPrice?.value || slots.AmbiguousPrice?.value;
+
+  let parsedUnitPrice = null;
+  let unitPriceValidationError = null;
+  if (unitPriceSlot) {
+    const uRes = parseAndValidatePriceToCents(unitPriceSlot);
+    if (!uRes.valid) {
+      unitPriceValidationError = uRes.error;
     } else {
-      return {
-        speech: priceRes.error,
-        reprompt: 'Qual é o valor total do pedido?',
-        shouldEndSession: false,
-        sessionAttributes: { draftId: currentDraftId, revision: sessionAttrs.revision || 1, personId: identity.personId },
-      };
+      parsedUnitPrice = uRes;
+    }
+  }
+
+  let parsedTotal = null;
+  let totalValidationError = null;
+  if (totalSlot) {
+    const tRes = parseAndValidatePriceToCents(totalSlot);
+    if (!tRes.valid) {
+      totalValidationError = tRes.error;
+    } else {
+      parsedTotal = tRes;
+    }
+  }
+
+  let parsedGenericPrice = null;
+  let genericPriceValidationError = null;
+  if (genericPriceSlot) {
+    const gRes = parseAndValidatePriceToCents(genericPriceSlot);
+    if (!gRes.valid) {
+      genericPriceValidationError = gRes.error;
+    } else {
+      parsedGenericPrice = gRes;
     }
   }
 
   // 5. Transação atômica única para carregar/modificar o rascunho com controle de concorrência
-  let draft = null;
-  let draftId = currentDraftId;
-  let draftRef = null;
-
-  await runTx(async (transaction) => {
+  // Todos os estados são retornados estruturados por tentativa, evitando vazamento entre retries.
+  const txResult = await runTx(async (transaction) => {
+    let txDraftId = currentDraftId;
+    let txDraftRef = null;
+    let txIsAppApprovalBlocked = false;
     let existingData = null;
 
     // Exigir sessionId atual para reutilizar rascunho existente
-    if (draftId && sessionId) {
-      const ref = db.collection(COLLECTIONS.DRAFTS).doc(draftId);
+    if (txDraftId && sessionId) {
+      const ref = db.collection(COLLECTIONS.DRAFTS).doc(txDraftId);
       const snap = await transaction.get(ref);
       if (snap.exists) {
         const d = snap.data() || {};
         const now = Date.now();
         const expTime = d.expiresAt?.toDate ? d.expiresAt.toDate().getTime() : 0;
-        const isAllowedState = d.state === 'collecting' || d.state === 'awaiting_confirmation';
         const isSameUser = d.uid === identity.uid;
         const isSameBinding = !d.bindingKey || d.bindingKey === identity.bindingKey;
         const isSameEnv = !d.environment || d.environment === config.environment;
         const isSameSession = d.sessionId === sessionId;
-        if (expTime > now && isAllowedState && isSameUser && isSameBinding && isSameEnv && isSameSession) {
-          existingData = { ...d };
-          draftRef = ref;
+
+        if (isSameUser && isSameBinding && isSameEnv && isSameSession) {
+          if (d.state === 'awaiting_app_approval') {
+            txIsAppApprovalBlocked = true;
+            return {
+              draft: null,
+              draftId: txDraftId,
+              draftRef: ref,
+              isAppApprovalBlocked: true,
+              transactionError: null,
+            };
+          }
+          const isAllowedState = d.state === 'collecting' || d.state === 'awaiting_confirmation';
+          if (expTime > now && isAllowedState) {
+            existingData = { ...d };
+            txDraftRef = ref;
+          }
         }
       }
     }
 
     if (!existingData) {
+      if (txIsAppApprovalBlocked) {
+        return {
+          draft: null,
+          draftId: txDraftId,
+          draftRef: txDraftRef,
+          isAppApprovalBlocked: true,
+          transactionError: null,
+        };
+      }
       // Criar novo rascunho
       const newDraftId = crypto.randomUUID();
-      draftId = newDraftId;
-      draftRef = db.collection(COLLECTIONS.DRAFTS).doc(newDraftId);
+      txDraftId = newDraftId;
+      txDraftRef = db.collection(COLLECTIONS.DRAFTS).doc(newDraftId);
       const now = Date.now();
       const ttlMs = (config.draftTtlMinutes || 15) * 60 * 1000;
       const expiresAt = new Date(now + ttlMs);
@@ -599,6 +663,12 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
         quantity: null,
         deliveryDate: null,
         price: null,
+        pricingMode: null,
+        unitPriceCents: null,
+        totalPriceCents: null,
+        pendingPriceCents: null,
+        pendingConflict: null,
+        pendingField: null,
         notes: null,
         revision: 1,
         state: 'collecting',
@@ -607,28 +677,334 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       };
+    } else {
+      if (existingData.pendingConflict === undefined) existingData.pendingConflict = null;
+      if (existingData.pendingField === undefined) existingData.pendingField = null;
+      // Compatibilidade retroativa para rascunhos legados
+      if (!existingData.pricingMode && typeof existingData.price === 'number') {
+        existingData.pricingMode = 'total';
+        existingData.totalPriceCents = Math.round(existingData.price * 100);
+        existingData.unitPriceCents = null;
+        existingData.pendingPriceCents = null;
+        existingData.pendingConflict = null;
+        existingData.pendingField = null;
+      }
+    }
+
+    // Validações de entrada que persistem pendingField no rascunho antes de responder erro
+    if (dateValidationError) {
+      existingData.pendingField = 'deliveryDate';
+      existingData.state = 'collecting';
+      existingData.revision = (existingData.revision || 1) + 1;
+      existingData.updatedAt = admin.firestore.FieldValue.serverTimestamp();
+      transaction.set(txDraftRef, existingData, { merge: true });
+      return {
+        draft: existingData,
+        draftId: txDraftId,
+        draftRef: txDraftRef,
+        isAppApprovalBlocked: false,
+        transactionError: {
+          speech: dateValidationError,
+          reprompt: 'Qual é a data de entrega desejada?',
+        },
+      };
+    }
+
+    if (unitPriceValidationError) {
+      existingData.pendingField = 'unitPrice';
+      existingData.state = 'collecting';
+      existingData.revision = (existingData.revision || 1) + 1;
+      existingData.updatedAt = admin.firestore.FieldValue.serverTimestamp();
+      transaction.set(txDraftRef, existingData, { merge: true });
+      return {
+        draft: existingData,
+        draftId: txDraftId,
+        draftRef: txDraftRef,
+        isAppApprovalBlocked: false,
+        transactionError: {
+          speech: unitPriceValidationError,
+          reprompt: 'Qual é o valor unitário de cada item?',
+        },
+      };
+    }
+
+    if (totalValidationError) {
+      existingData.pendingField = 'total';
+      existingData.state = 'collecting';
+      existingData.revision = (existingData.revision || 1) + 1;
+      existingData.updatedAt = admin.firestore.FieldValue.serverTimestamp();
+      transaction.set(txDraftRef, existingData, { merge: true });
+      return {
+        draft: existingData,
+        draftId: txDraftId,
+        draftRef: txDraftRef,
+        isAppApprovalBlocked: false,
+        transactionError: {
+          speech: totalValidationError,
+          reprompt: 'Qual é o valor total do pedido?',
+        },
+      };
+    }
+
+    if (genericPriceValidationError) {
+      return {
+        draft: existingData,
+        draftId: txDraftId,
+        draftRef: txDraftRef,
+        isAppApprovalBlocked: false,
+        transactionError: {
+          speech: genericPriceValidationError,
+          reprompt: 'Qual é o valor do pedido?',
+        },
+      };
     }
 
     // Ações para YesIntent e NoIntent não alteram slots aqui
     if (intentName === 'AMAZON.YesIntent') {
-      draft = existingData;
-      return;
+      return {
+        draft: existingData,
+        draftId: txDraftId,
+        draftRef: txDraftRef,
+        isAppApprovalBlocked: false,
+        transactionError: null,
+      };
     }
 
     if (intentName === 'AMAZON.NoIntent') {
       if (existingData.state === 'awaiting_confirmation') {
         existingData.state = 'collecting';
         existingData.updatedAt = admin.firestore.FieldValue.serverTimestamp();
-        transaction.set(draftRef, existingData, { merge: true });
+        transaction.set(txDraftRef, existingData, { merge: true });
       }
-      draft = existingData;
-      return;
+      return {
+        draft: existingData,
+        draftId: txDraftId,
+        draftRef: txDraftRef,
+        isAppApprovalBlocked: false,
+        transactionError: null,
+      };
     }
 
-    // Mesclar slots recebidos concorrentemente
     let updated = false;
+
+    // Resolução de esclarecimento pendente via ClarifyPriceUnitIntent ou ClarifyPriceTotalIntent
+    if (intentName === 'ClarifyPriceUnitIntent') {
+      const effQty = incomingUpdates.quantity || existingData.quantity;
+      if (existingData.pendingConflict) {
+        existingData.pricingMode = 'unit';
+        existingData.unitPriceCents = existingData.pendingConflict.unitPriceCents;
+        existingData.pendingConflict = null;
+        existingData.pendingField = null;
+        existingData.pendingPriceCents = null;
+        if (typeof effQty === 'number' && effQty > 0) {
+          const tot = effQty * existingData.unitPriceCents;
+          if (tot > 1000000) {
+            return {
+              draft: existingData,
+              draftId: txDraftId,
+              draftRef: txDraftRef,
+              isAppApprovalBlocked: false,
+              transactionError: {
+                speech: 'O valor total do pedido excede o limite máximo permitido de dez mil reais.',
+                reprompt: 'Qual é a quantidade de itens?',
+              },
+            };
+          }
+          existingData.totalPriceCents = tot;
+          existingData.price = tot / 100;
+        } else {
+          existingData.totalPriceCents = null;
+          existingData.price = null;
+        }
+        updated = true;
+      } else if (existingData.pendingPriceCents !== null && existingData.pendingPriceCents !== undefined) {
+        existingData.pricingMode = 'unit';
+        existingData.unitPriceCents = existingData.pendingPriceCents;
+        existingData.pendingPriceCents = null;
+        existingData.pendingConflict = null;
+        existingData.pendingField = null;
+        if (typeof effQty === 'number' && effQty > 0) {
+          const tot = effQty * existingData.unitPriceCents;
+          if (tot > 1000000) {
+            return {
+              draft: existingData,
+              draftId: txDraftId,
+              draftRef: txDraftRef,
+              isAppApprovalBlocked: false,
+              transactionError: {
+                speech: 'O valor total do pedido excede o limite máximo permitido de dez mil reais.',
+                reprompt: 'Qual é a quantidade de itens?',
+              },
+            };
+          }
+          existingData.totalPriceCents = tot;
+          existingData.price = tot / 100;
+        } else {
+          existingData.totalPriceCents = null;
+          existingData.price = null;
+        }
+        updated = true;
+      }
+    } else if (intentName === 'ClarifyPriceTotalIntent') {
+      if (existingData.pendingConflict) {
+        existingData.pricingMode = 'total';
+        existingData.totalPriceCents = existingData.pendingConflict.totalPriceCents;
+        existingData.price = existingData.pendingConflict.totalPriceCents / 100;
+        existingData.unitPriceCents = null;
+        existingData.pendingConflict = null;
+        existingData.pendingField = null;
+        existingData.pendingPriceCents = null;
+        updated = true;
+      } else if (existingData.pendingPriceCents !== null && existingData.pendingPriceCents !== undefined) {
+        existingData.pricingMode = 'total';
+        existingData.totalPriceCents = existingData.pendingPriceCents;
+        existingData.price = existingData.pendingPriceCents / 100;
+        existingData.unitPriceCents = null;
+        existingData.pendingConflict = null;
+        existingData.pendingField = null;
+        existingData.pendingPriceCents = null;
+        updated = true;
+      }
+    }
+
+    // Aplicação de contexto em valor sem qualificador (P1)
+    const activePending = existingData.pendingField || sessionAttrs.pendingField || null;
+    if (parsedTotal) {
+      // Usuário forneceu total explicitamente ("no total"): sempre tem precedência e pode trocar o modo
+      existingData.pendingField = null;
+    } else if (parsedUnitPrice) {
+      // Usuário forneceu unitário explicitamente ("cada"): limpa pendingField
+      existingData.pendingField = null;
+    } else if (parsedGenericPrice) {
+      if (activePending === 'unitPrice') {
+        parsedUnitPrice = parsedGenericPrice;
+        parsedGenericPrice = null;
+        existingData.pendingField = null;
+      } else if (activePending === 'total') {
+        parsedTotal = parsedGenericPrice;
+        parsedGenericPrice = null;
+        existingData.pendingField = null;
+      }
+    }
+
+    // Processar preços recebidos neste turno
+    if (parsedUnitPrice && parsedTotal) {
+      const effQty = incomingUpdates.quantity || existingData.quantity;
+      if (typeof effQty === 'number' && effQty > 0) {
+        const expectedTot = effQty * parsedUnitPrice.cents;
+        if (expectedTot === parsedTotal.cents) {
+          existingData.pricingMode = 'unit';
+          existingData.unitPriceCents = parsedUnitPrice.cents;
+          existingData.totalPriceCents = parsedTotal.cents;
+          existingData.price = parsedTotal.cents / 100;
+          existingData.pendingPriceCents = null;
+          existingData.pendingConflict = null;
+          existingData.pendingField = null;
+          updated = true;
+        } else {
+          // Conflito entre unitário e total: persiste ambas as alternativas e aguarda esclarecimento (P1)
+          existingData.pendingConflict = {
+            unitPriceCents: parsedUnitPrice.cents,
+            totalPriceCents: parsedTotal.cents,
+          };
+          existingData.pendingField = 'conflict';
+          existingData.pendingPriceCents = null;
+          existingData.pricingMode = null;
+          existingData.unitPriceCents = null;
+          existingData.totalPriceCents = null;
+          existingData.price = null;
+          existingData.state = 'collecting';
+          updated = true;
+        }
+      } else {
+        existingData.pendingConflict = {
+          unitPriceCents: parsedUnitPrice.cents,
+          totalPriceCents: parsedTotal.cents,
+        };
+        existingData.pendingField = 'conflict';
+        existingData.pendingPriceCents = null;
+        existingData.pricingMode = null;
+        existingData.unitPriceCents = null;
+        existingData.totalPriceCents = null;
+        existingData.price = null;
+        existingData.state = 'collecting';
+        updated = true;
+      }
+    } else if (parsedUnitPrice) {
+      existingData.pricingMode = 'unit';
+      existingData.unitPriceCents = parsedUnitPrice.cents;
+      existingData.pendingPriceCents = null;
+      existingData.pendingConflict = null;
+      existingData.pendingField = null;
+      const effQty = incomingUpdates.quantity || existingData.quantity;
+      if (typeof effQty === 'number' && effQty > 0) {
+        const tot = effQty * parsedUnitPrice.cents;
+        if (tot > 1000000) {
+          return {
+            draft: existingData,
+            draftId: txDraftId,
+            draftRef: txDraftRef,
+            isAppApprovalBlocked: false,
+            transactionError: {
+              speech: 'O valor total do pedido excede o limite máximo permitido de dez mil reais.',
+              reprompt: 'Qual é o valor unitário?',
+            },
+          };
+        }
+        existingData.totalPriceCents = tot;
+        existingData.price = tot / 100;
+      } else {
+        existingData.totalPriceCents = null;
+        existingData.price = null;
+      }
+      updated = true;
+    } else if (parsedTotal) {
+      existingData.pricingMode = 'total';
+      existingData.totalPriceCents = parsedTotal.cents;
+      existingData.price = parsedTotal.cents / 100;
+      existingData.unitPriceCents = null;
+      existingData.pendingPriceCents = null;
+      existingData.pendingConflict = null;
+      existingData.pendingField = null;
+      updated = true;
+    } else if (parsedGenericPrice) {
+      existingData.pendingPriceCents = parsedGenericPrice.cents;
+      existingData.pricingMode = null;
+      existingData.unitPriceCents = null;
+      existingData.totalPriceCents = null;
+      existingData.price = null;
+      existingData.pendingConflict = null;
+      existingData.pendingField = null;
+      updated = true;
+    }
+
+    // Processar quantidade e recálculo no modo unitário
+    if (incomingUpdates.quantity && incomingUpdates.quantity !== existingData.quantity) {
+      const newQty = incomingUpdates.quantity;
+      existingData.quantity = newQty;
+      updated = true;
+      if (existingData.pricingMode === 'unit' && typeof existingData.unitPriceCents === 'number') {
+        const tot = newQty * existingData.unitPriceCents;
+        if (tot > 1000000) {
+          return {
+            draft: existingData,
+            draftId: txDraftId,
+            draftRef: txDraftRef,
+            isAppApprovalBlocked: false,
+            transactionError: {
+              speech: 'A quantidade informada faz o total exceder o limite de dez mil reais.',
+              reprompt: 'Qual é a quantidade de itens?',
+            },
+          };
+        }
+        existingData.totalPriceCents = tot;
+        existingData.price = tot / 100;
+      }
+    }
+
+    // Mesclar demais slots (customer, product, deliveryDate)
     for (const [k, v] of Object.entries(incomingUpdates)) {
-      if (existingData[k] !== v) {
+      if (k !== 'quantity' && existingData[k] !== v) {
         existingData[k] = v;
         updated = true;
       }
@@ -640,23 +1016,58 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
       existingData.updatedAt = admin.firestore.FieldValue.serverTimestamp();
     }
 
-    // Se todos os campos estiverem preenchidos, avançar para awaiting_confirmation
+    // Se todos os campos estiverem preenchidos sem pendências, avançar para awaiting_confirmation
     const isComplete =
       existingData.customer &&
       existingData.product &&
       existingData.quantity &&
       existingData.deliveryDate &&
       existingData.price !== null &&
-      existingData.price !== undefined;
+      existingData.price !== undefined &&
+      (existingData.pendingPriceCents === null || existingData.pendingPriceCents === undefined) &&
+      !existingData.pendingConflict &&
+      !existingData.pendingField;
 
     if (isComplete && (existingData.state === 'collecting' || updated)) {
       existingData.state = 'awaiting_confirmation';
       existingData.updatedAt = admin.firestore.FieldValue.serverTimestamp();
     }
 
-    transaction.set(draftRef, existingData, { merge: true });
-    draft = existingData;
+    transaction.set(txDraftRef, existingData, { merge: true });
+
+    return {
+      draft: existingData,
+      draftId: txDraftId,
+      draftRef: txDraftRef,
+      isAppApprovalBlocked: false,
+      transactionError: null,
+    };
   });
+
+  const { draft, draftId, draftRef, isAppApprovalBlocked, transactionError } = txResult || {};
+
+  if (isAppApprovalBlocked) {
+    return {
+      speech: 'Este pedido já foi enviado para aprovação no aplicativo e não pode ser alterado por voz. Acesse o aplicativo Luisices para conferir.',
+      reprompt: 'Acesse o aplicativo Luisices para conferir o pedido.',
+      shouldEndSession: true,
+      sessionAttributes: {},
+    };
+  }
+
+  if (transactionError) {
+    return {
+      speech: transactionError.speech,
+      reprompt: transactionError.reprompt,
+      shouldEndSession: false,
+      sessionAttributes: {
+        draftId,
+        revision: draft ? draft.revision : (sessionAttrs.revision || 1),
+        personId: identity.personId,
+        pendingField: draft?.pendingField || sessionAttrs.pendingField || null,
+      },
+    };
+  }
 
   // 6. Confirmação do resumo (AMAZON.YesIntent / AMAZON.NoIntent)
   if (intentName === 'AMAZON.YesIntent') {
@@ -743,8 +1154,7 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
 
     // Modo 2: Aprovação pendente no aplicativo (transição atômica condicional)
     if (draft.mode === 'app_approval') {
-      let transitioned = false;
-      await runTx(async (transaction) => {
+      const transitioned = await runTx(async (transaction) => {
         const snap = await transaction.get(draftRef);
         if (snap.exists) {
           const dData = snap.data() || {};
@@ -758,9 +1168,10 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
               state: 'awaiting_app_approval',
               updatedAt: admin.firestore.FieldValue.serverTimestamp(),
             });
-            transitioned = true;
+            return true;
           }
         }
+        return false;
       });
 
       if (!transitioned) {
@@ -795,7 +1206,37 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
     };
   }
 
-  // 7. Verificar se todos os campos obrigatórios estão preenchidos
+  // 7. Verificar se há conflito/ambiguidade pendente ou campos obrigatórios faltando
+  if (draft.pendingConflict) {
+    const uStr = formatCurrencyPtBr(draft.pendingConflict.unitPriceCents / 100);
+    const tStr = formatCurrencyPtBr(draft.pendingConflict.totalPriceCents / 100);
+    const speech = draft.quantity
+      ? `O valor informado de ${uStr} cada não fecha com o total de ${tStr}. O valor é ${uStr} cada ou ${tStr} no total?`
+      : `O valor é ${uStr} cada ou ${tStr} no total?`;
+    return {
+      speech,
+      reprompt: `Informe se o valor é ${uStr} cada ou ${tStr} no total.`,
+      shouldEndSession: false,
+      sessionAttributes: {
+        draftId,
+        revision: draft.revision,
+        personId: identity.personId,
+        pendingField: 'conflict',
+      },
+    };
+  }
+
+  if (draft.pendingPriceCents !== null && draft.pendingPriceCents !== undefined) {
+    const pVal = draft.pendingPriceCents / 100;
+    const pStr = formatCurrencyPtBr(pVal);
+    return {
+      speech: `${pStr} cada ou ${pStr} no total?`,
+      reprompt: `O valor de ${pStr} é cada ou no total?`,
+      shouldEndSession: false,
+      sessionAttributes: { draftId, revision: draft.revision, personId: identity.personId },
+    };
+  }
+
   const missingCustomer = !draft.customer;
   const missingProduct = !draft.product;
   const missingQuantity = !draft.quantity;
@@ -871,5 +1312,7 @@ module.exports = {
   formatCurrencyPtBr,
   parseAndValidateDeliveryDate,
   parseAndValidatePrice,
+  parseAndValidatePriceToCents,
+  buildConfirmationSpeech,
   handleAlexaDialog,
 };

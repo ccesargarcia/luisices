@@ -917,6 +917,12 @@ export interface AlexaDraft {
   quantity: number;
   deliveryDate: string;
   price: number;
+  pricingMode?: 'unit' | 'total' | null;
+  unitPriceCents?: number | null;
+  totalPriceCents?: number | null;
+  pendingPriceCents?: number | null;
+  pendingConflict?: { unitPriceCents: number; totalPriceCents: number } | null;
+  pendingField?: 'unitPrice' | 'total' | 'conflict' | string | null;
   notes?: string | null;
   state: 'collecting' | 'awaiting_confirmation' | 'awaiting_app_approval' | 'committed' | 'cancelled' | 'expired';
   revision: number;

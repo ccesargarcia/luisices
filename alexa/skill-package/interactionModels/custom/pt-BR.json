@@ -87,7 +87,25 @@
             "criar pedido de {quantity} {product} para {customer}",
             "criar pedido para {customer}",
             "pedido de {quantity} {product} para {customer}",
-            "novo pedido de {product} para {customer}"
+            "novo pedido de {product} para {customer}",
+            "criar pedido de {product} para {customer} com {quantity} unidades a {unitPrice} reais cada",
+            "criar pedido {product} para {customer} com {quantity} unidades no valor de {unitPrice} reais cada",
+            "criar pedido de {quantity} {product} para {customer} a {unitPrice} reais cada",
+            "criar pedido de {quantity} unidades de {product} para {customer} a {unitPrice} reais cada",
+            "criar pedido {quantity} {product} para {customer} no valor de {unitPrice} reais cada",
+            "{quantity} unidades de {product} para {customer} por {unitPrice} reais a unidade",
+            "{quantity} unidades de {product} para {customer} a {unitPrice} reais cada",
+            "{quantity} {product} para {customer} por {unitPrice} reais cada",
+            "criar pedido de {quantity} {product} para {customer} por {total} reais no total",
+            "criar pedido {quantity} {product} para {customer} por {total} reais no total",
+            "criar pedido de {quantity} {product} para {customer} totalizando {total} reais",
+            "criar pedido de {quantity} {product} para {customer} com valor total de {total} reais",
+            "criar pedido de {product} para {customer} com {quantity} unidades",
+            "criar pedido {product} para {customer} com {quantity} unidades",
+            "criar pedido de {quantity} unidades de {product} para {customer}",
+            "criar pedido de {product} para {customer} no valor de {unitPrice} reais cada",
+            "criar pedido de {quantity} {product} para {customer} por {ambiguousPrice} reais",
+            "criar pedido de {quantity} {product} para {customer} no valor de {ambiguousPrice} reais"
           ],
           "slots": [
             {
@@ -108,6 +126,18 @@
             },
             {
               "name": "total",
+              "type": "AMAZON.NUMBER"
+            },
+            {
+              "name": "unitPrice",
+              "type": "AMAZON.NUMBER"
+            },
+            {
+              "name": "ambiguousPrice",
+              "type": "AMAZON.NUMBER"
+            },
+            {
+              "name": "price",
               "type": "AMAZON.NUMBER"
             }
           ]
@@ -153,7 +183,16 @@
             "{quantity} unidades",
             "{quantity} itens",
             "quantidade {quantity}",
-            "são {quantity}"
+            "são {quantity}",
+            "alterar a quantidade para {quantity}",
+            "mudar a quantidade para {quantity}",
+            "corrigir a quantidade para {quantity}",
+            "mudar para {quantity} unidades",
+            "alterar para {quantity} unidades",
+            "corrigir para {quantity} unidades",
+            "mudar para {quantity}",
+            "alterar para {quantity}",
+            "corrigir para {quantity}"
           ],
           "slots": [
             {
@@ -180,14 +219,52 @@
           ]
         },
         {
+          "name": "ProvideUnitPriceIntent",
+          "samples": [
+            "{unitPrice} reais cada",
+            "{unitPrice} reais por unidade",
+            "{unitPrice} reais a unidade",
+            "{unitPrice} cada",
+            "{unitPrice} por unidade",
+            "{unitPrice} a unidade",
+            "custa {unitPrice} reais cada",
+            "custa {unitPrice} reais por unidade",
+            "o valor unitário é {unitPrice} reais",
+            "valor unitário {unitPrice} reais",
+            "valor unitário de {unitPrice} reais",
+            "preço unitário {unitPrice} reais",
+            "corrigir o valor unitário para {unitPrice} reais",
+            "alterar o valor unitário para {unitPrice} reais",
+            "mudar o valor unitário para {unitPrice} reais",
+            "corrigir para {unitPrice} reais cada",
+            "mudar para {unitPrice} reais cada",
+            "alterar para {unitPrice} reais cada"
+          ],
+          "slots": [
+            {
+              "name": "unitPrice",
+              "type": "AMAZON.NUMBER"
+            }
+          ]
+        },
+        {
           "name": "ProvideTotalIntent",
           "samples": [
-            "{total} reais",
-            "o valor é {total} reais",
+            "o total é {total} reais",
             "total de {total} reais",
-            "deu {total} reais",
-            "valor {total}",
-            "{total}"
+            "{total} reais no total",
+            "{total} no total",
+            "o valor é {total} reais no total",
+            "o valor total é {total} reais",
+            "valor total {total}",
+            "o pedido inteiro por {total} reais",
+            "deu {total} reais no total",
+            "corrigir o total para {total} reais",
+            "alterar o total para {total} reais",
+            "mudar o total para {total} reais",
+            "corrigir para {total} reais no total",
+            "mudar para {total} reais no total",
+            "alterar para {total} reais no total"
           ],
           "slots": [
             {
@@ -195,6 +272,56 @@
               "type": "AMAZON.NUMBER"
             }
           ]
+        },
+        {
+          "name": "ProvidePriceIntent",
+          "samples": [
+            "{price} reais",
+            "o valor é {price} reais",
+            "deu {price} reais",
+            "valor {price}",
+            "{price}",
+            "corrigir o valor para {price} reais",
+            "alterar o valor para {price} reais",
+            "mudar o valor para {price} reais",
+            "corrigir para {price} reais",
+            "alterar para {price} reais",
+            "mudar para {price} reais"
+          ],
+          "slots": [
+            {
+              "name": "price",
+              "type": "AMAZON.NUMBER"
+            }
+          ]
+        },
+        {
+          "name": "ClarifyPriceUnitIntent",
+          "samples": [
+            "cada",
+            "por unidade",
+            "a unidade",
+            "é cada",
+            "é por unidade",
+            "é a unidade",
+            "valor unitário",
+            "unitário"
+          ],
+          "slots": []
+        },
+        {
+          "name": "ClarifyPriceTotalIntent",
+          "samples": [
+            "no total",
+            "total",
+            "o total",
+            "o pedido inteiro",
+            "pedido inteiro",
+            "pelo pedido inteiro",
+            "para o pedido inteiro",
+            "valor total"
+          ],
+          "slots": []
         }
       ],
       "types": [

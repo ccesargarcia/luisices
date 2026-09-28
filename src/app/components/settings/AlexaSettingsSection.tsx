@@ -351,7 +351,11 @@ export function AlexaSettingsSection({ isAdmin }: AlexaSettingsSectionProps) {
                       <span className="text-primary">{formatCurrency(draft.price)}</span>
                     </div>
                     <p className="text-xs text-muted-foreground">
-                      {draft.quantity}x {draft.product} • Entrega: {draft.deliveryDate}
+                      {draft.quantity}x {draft.product}
+                      {draft.pricingMode === 'unit' && typeof draft.unitPriceCents === 'number'
+                        ? ` (${formatCurrency(draft.unitPriceCents / 100)} cada)`
+                        : ''}
+                      {' • '}Entrega: {draft.deliveryDate}
                     </p>
                   </div>
                   <div className="pt-2 flex items-center justify-end">
