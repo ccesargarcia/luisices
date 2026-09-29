@@ -20,12 +20,13 @@ describe('Alexa: Preparação Multi-Ambiente do Pacote da Skill (DEV vs PROD)', 
     });
 
     expect(res.env).toBe('dev');
-    expect(res.endpoint).toBe('https://us-central1-luisices-dev.cloudfunctions.net/alexaWebhook');
+    expect(res.endpoint).toBe('https://api.dev.luisices.com.br/alexaWebhook');
     expect(res.invocation).toBe('papelaria de testes');
     expect(res.skillName).toBe('Papelaria de Testes');
 
     const manifest = JSON.parse(fs.readFileSync(res.manifestPath, 'utf8'));
-    expect(manifest.manifest.apis.custom.endpoint.uri).toBe('https://us-central1-luisices-dev.cloudfunctions.net/alexaWebhook');
+    expect(manifest.manifest.apis.custom.endpoint.uri).toBe('https://api.dev.luisices.com.br/alexaWebhook');
+    expect(manifest.manifest.apis.custom.endpoint.sslCertificateType).toBe('Wildcard');
     expect(manifest.manifest.publishingInformation.locales['pt-BR'].name).toBe('Papelaria de Testes');
     expect(manifest.manifest.publishingInformation.locales['pt-BR'].examplePhrases).toContain('Alexa, abrir papelaria de testes');
 

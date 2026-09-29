@@ -8,7 +8,7 @@ const path = require('path');
 
 const DEFAULTS = {
   dev: {
-    endpoint: 'https://us-central1-luisices-dev.cloudfunctions.net/alexaWebhook',
+    endpoint: 'https://api.dev.luisices.com.br/alexaWebhook',
     invocation: 'papelaria de testes',
     skillName: 'Papelaria de Testes',
     testingInstructions: 'Ambiente isolado de desenvolvimento. Requer perfil de voz ativo no aplicativo Alexa e pareamento supervisionado aprovado por administrador no Luisices.'
@@ -84,6 +84,7 @@ function prepareSkillPackage(options = {}) {
   }
   if (manifest.manifest?.apis?.custom?.endpoint) {
     manifest.manifest.apis.custom.endpoint.uri = endpoint;
+    manifest.manifest.apis.custom.endpoint.sslCertificateType = 'Wildcard';
   }
 
   // 2. Atualiza modelo de interação
