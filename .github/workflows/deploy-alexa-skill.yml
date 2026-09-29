@@ -1,0 +1,63 @@
+name: Deploy Alexa Skill (ASK SMAPI)
+
+on:
+  push:
+    branches:
+      - develop
+    paths:
+      - 'alexa/**'
+  workflow_dispatch:
+
+concurrency:
+  group: "alexa-skill-deploy"
+  cancel-in-progress: false
+
+jobs:
+  deploy-alexa:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: '20'
+
+      - name: Install ASK CLI
+        run: npm install -g ask-cli
+
+      - name: Deploy Interaction Model & Manifest
+        env:
+          ASK_REFRESH_TOKEN: ${{ secrets.ASK_REFRESH_TOKEN }}
+          ASK_ACCESS_TOKEN: ${{ secrets.ASK_ACCESS_TOKEN }}
+          ASK_DEFAULT_PROFILE: 'default'
+          SKILL_ID: ${{ secrets.ALEXA_SKILL_ID || 'amzn1.ask.skill.1cd0031f-ada0-4da8-8721-2ad44b4b1c96' }}
+        run: |
+          if [ -z "$ASK_REFRESH_TOKEN" ] && [ -z "$ASK_ACCESS_TOKEN" ]; then
+            echo "::warning ::ASK_REFRESH_TOKEN não configurado nos segredos do repositório. Pule a etapa ou configure o segredo para deploy automático."
+            exit 0
+          fi
+          
+          mkdir -p ~/.ask
+          cat <<EOF > ~/.ask/cli_config
+          {
+            "profiles": {
+              "default": {
+                "token": {
+                  "access_token": "${ASK_ACCESS_TOKEN}",
+                  "refresh_token": "${ASK_REFRESH_TOKEN}",
+                  "token_type": "bearer"
+                }
+              }
+            }
+          }
+          EOF
+          
+          echo "🚀 Atualizando modelo de interação pt-BR..."
+          ask smapi set-interaction-model -s "$SKILL_ID" -g development -l pt-BR --interaction-model "file:alexa/skill-package/interactionModels/custom/pt-BR.json"
+          
+          echo "🚀 Atualizando manifesto skill.json..."
+          ask smapi update-skill-manifest -s "$SKILL_ID" -g development --manifest "file:alexa/skill-package/skill.json"
+          
+          echo "✅ Modelo e manifesto enviados com sucesso para a Amazon Alexa!"

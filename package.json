@@ -8,6 +8,7 @@
     "typecheck": "tsc --noEmit",
     "dev": "vite",
     "deploy:functions": "firebase deploy --only functions && firebase functions:secrets:prune -f",
+    "alexa:deploy": "ask deploy --target skill-package",
     "secrets:prune": "firebase functions:secrets:prune -f",
     "emulators": "firebase emulators:start --only auth,firestore,storage,functions",
     "test:e2e:emulator": "VITE_USE_FIREBASE_EMULATOR=true playwright test",
