@@ -4,12 +4,23 @@ on:
   push:
     branches:
       - develop
+      - main
     paths:
       - 'alexa/**'
+      - '.github/workflows/deploy-alexa-skill.yml'
   workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Ambiente de destino (dev ou prod)'
+        required: true
+        default: 'dev'
+        type: choice
+        options:
+          - dev
+          - prod
 
 concurrency:
-  group: "alexa-skill-deploy"
+  group: "alexa-skill-deploy-${{ github.ref }}"
   cancel-in-progress: false
 
 jobs:
@@ -27,17 +38,43 @@ jobs:
       - name: Install ASK CLI
         run: npm install -g ask-cli
 
+      - name: Determine Target Environment
+        id: env
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            TARGET="${{ inputs.environment }}"
+          elif [ "${{ github.ref }}" = "refs/heads/main" ]; then
+            TARGET="prod"
+          else
+            TARGET="dev"
+          fi
+          echo "target=$TARGET" >> "$GITHUB_OUTPUT"
+          echo "🎯 Ambiente de deploy selecionado: $TARGET"
+
+      - name: Prepare Skill Package (Dev or Prod)
+        env:
+          TARGET_ENV: ${{ steps.env.outputs.target }}
+          ALEXA_DEV_INVOCATION_NAME: ${{ secrets.ALEXA_DEV_INVOCATION_NAME }}
+          ALEXA_PROD_INVOCATION_NAME: ${{ secrets.ALEXA_PROD_INVOCATION_NAME }}
+          ALEXA_DEV_SKILL_NAME: ${{ secrets.ALEXA_DEV_SKILL_NAME }}
+          ALEXA_PROD_SKILL_NAME: ${{ secrets.ALEXA_PROD_SKILL_NAME }}
+          ALEXA_PROD_ENDPOINT: ${{ secrets.ALEXA_PROD_ENDPOINT }}
+        run: |
+          node alexa/scripts/prepare-skill-package.cjs --env "$TARGET_ENV"
+
       - name: Deploy Interaction Model & Manifest
         env:
+          TARGET_ENV: ${{ steps.env.outputs.target }}
           ASK_CLI_CONFIG: ${{ secrets.ASK_CLI_CONFIG }}
           ASK_REFRESH_TOKEN: ${{ secrets.ASK_REFRESH_TOKEN }}
-          SKILL_ID: ${{ secrets.ALEXA_SKILL_ID || 'amzn1.ask.skill.1cd0031f-ada0-4da8-8721-2ad44b4b1c96' }}
+          DEV_SKILL_ID: ${{ secrets.ALEXA_DEV_SKILL_ID || secrets.ALEXA_SKILL_ID || 'amzn1.ask.skill.1cd0031f-ada0-4da8-8721-2ad44b4b1c96' }}
+          PROD_SKILL_ID: ${{ secrets.ALEXA_PROD_SKILL_ID }}
         run: |
           mkdir -p ~/.ask
           if [ -n "$ASK_CLI_CONFIG" ]; then
             echo "$ASK_CLI_CONFIG" > ~/.ask/cli_config
             chmod 600 ~/.ask/cli_config
-            echo "✅ Credenciais configuradas com sucesso via ASK_CLI_CONFIG."
+            echo "✅ Credenciais configuradas via ASK_CLI_CONFIG."
           elif [ -n "$ASK_REFRESH_TOKEN" ]; then
             cat <<EOF > ~/.ask/cli_config
           {
@@ -52,17 +89,28 @@ jobs:
           }
           EOF
             chmod 600 ~/.ask/cli_config
-            echo "✅ Credenciais configuradas com sucesso via ASK_REFRESH_TOKEN."
+            echo "✅ Credenciais configuradas via ASK_REFRESH_TOKEN."
           else
-            echo "::warning ::Nenhum segredo (ASK_CLI_CONFIG ou ASK_REFRESH_TOKEN) configurado no repositório. Pule a etapa ou configure o segredo no GitHub para deploy automático."
+            echo "::warning ::Nenhum segredo (ASK_CLI_CONFIG ou ASK_REFRESH_TOKEN) configurado no repositório. Deploy pulado por segurança."
             exit 0
           fi
-          
-          echo "🚀 Atualizando modelo de interação pt-BR..."
-          ask smapi set-interaction-model -s "$SKILL_ID" -g development -l pt-BR --interaction-model "file:alexa/skill-package/interactionModels/custom/pt-BR.json"
-          
-          echo "🚀 Atualizando manifesto skill.json..."
-          ask smapi update-skill-manifest -s "$SKILL_ID" -g development --manifest "file:alexa/skill-package/skill.json"
-          
-          echo "✅ Modelo e manifesto enviados com sucesso para a Amazon Alexa!"
 
+          if [ "$TARGET_ENV" = "prod" ]; then
+            SKILL_ID="$PROD_SKILL_ID"
+            if [ -z "$SKILL_ID" ]; then
+              echo "::error ::ALEXA_PROD_SKILL_ID não foi configurado nos Secrets do repositório! Crie a skill de produção no Alexa Developer Console e adicione a Secret ALEXA_PROD_SKILL_ID."
+              exit 1
+            fi
+          else
+            SKILL_ID="$DEV_SKILL_ID"
+          fi
+
+          echo "🚀 Deployando para Skill ID: $SKILL_ID (Ambiente: $TARGET_ENV)..."
+          
+          echo "📦 Atualizando modelo de interação pt-BR..."
+          ask smapi set-interaction-model -s "$SKILL_ID" -g development -l pt-BR --interaction-model "file:alexa/build/skill-package/interactionModels/custom/pt-BR.json"
+          
+          echo "📦 Atualizando manifesto skill.json..."
+          ask smapi update-skill-manifest -s "$SKILL_ID" -g development --manifest "file:alexa/build/skill-package/skill.json"
+          
+          echo "✅ Modelo e manifesto enviados com sucesso para a Amazon Alexa [$TARGET_ENV]!"

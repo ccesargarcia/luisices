@@ -4,6 +4,7 @@ node_modules/
 # Build outputs
 dist/
 build/
+alexa/build/
 *.local
 
 # Environment variables (IMPORTANT - Never commit these!)
