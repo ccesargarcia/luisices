@@ -153,7 +153,17 @@
             "crie um pedido de {quantity} {product} para {customer} para {deliveryDate}",
             "criar um pedido de {quantity} {product} para {customer} a {unitPrice} reais cada para {deliveryDate}",
             "criar um pedido de {quantity} {product} para {customer} por {total} reais no total para {deliveryDate}",
-            "criar um pedido de {quantity} {product} para {customer} para {deliveryDate}"
+            "criar um pedido de {quantity} {product} para {customer} para {deliveryDate}",
+            "criar pedido de {quantity} {product} para {customer} a {unitPrice} reais cada com entrega {deliveryDate}",
+            "{quantity} {product} para {customer} a {unitPrice} reais cada entrega {deliveryDate}",
+            "{quantity} {product} para {customer} a {unitPrice} reais cada com entrega {deliveryDate}",
+            "criar pedido de {product} para {customer} no valor de {ambiguousPrice} reais e entrega {deliveryDate}",
+            "criar pedido de {product} para {customer} no valor de {ambiguousPrice} reais com entrega {deliveryDate}",
+            "criar pedido de {product} para {customer} a {unitPrice} reais cada com entrega {deliveryDate}",
+            "pedido de {product} para {customer} no valor de {ambiguousPrice} reais e entrega {deliveryDate}",
+            "{quantity} {product} para {customer} total de {total} reais entrega {deliveryDate}",
+            "{quantity} {product} para {customer} total de {total} reais com entrega {deliveryDate}",
+            "criar pedido de {quantity} {product} para {customer} total de {total} reais com entrega {deliveryDate}"
           ],
           "slots": [
             {
@@ -302,7 +312,9 @@
             "mudar a data para {deliveryDate}",
             "alterar a data para {deliveryDate}",
             "na verdade é para {deliveryDate}",
-            "não a data é {deliveryDate}"
+            "não a data é {deliveryDate}",
+            "não {deliveryDate}",
+            "não dia {deliveryDate}"
           ],
           "slots": [
             {
