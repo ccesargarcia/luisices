@@ -27,7 +27,7 @@ const REQUEST_DEDUPE_TTL_MS = 300 * 1000;
 /**
  * Constrói a resposta em conformidade com o protocolo Alexa Skills Kit.
  */
-function buildAlexaResponse({ speech, reprompt, shouldEndSession = true, sessionAttributes = {} }) {
+function buildAlexaResponse({ speech, reprompt, shouldEndSession = true, sessionAttributes = {}, card = null }) {
   const responseObj = {
     outputSpeech: {
       type: 'PlainText',
@@ -35,6 +35,10 @@ function buildAlexaResponse({ speech, reprompt, shouldEndSession = true, session
     },
     shouldEndSession: Boolean(shouldEndSession),
   };
+
+  if (card) {
+    responseObj.card = card;
+  }
 
   if (reprompt && !shouldEndSession) {
     responseObj.reprompt = {
@@ -266,6 +270,7 @@ async function processAlexaEnvelope(envelope, { db, config, authService = null }
       reprompt: dialogRes.reprompt,
       shouldEndSession: dialogRes.shouldEndSession,
       sessionAttributes,
+      card: dialogRes.card,
     });
 
     return await persistResponse(finalResponse);

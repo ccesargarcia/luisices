@@ -35,27 +35,43 @@ describe('Alexa: Máquina de Estados, Diálogo e Validação de Slots pt-BR', ()
 
     return {
       store,
-      collection: (col: string) => ({
-        doc: (id: string) => {
-          const docRef = {
-            id,
-            get: async () => ({
-              exists: Boolean(store[col]?.[id]),
-              data: () => store[col]?.[id] || null,
-              ref: docRef,
-            }),
-            set: async (data: any, options: any) => {
-              store[col] = store[col] || {};
-              store[col][id] = options?.merge ? { ...store[col][id], ...data } : data;
-            },
-            update: async (data: any) => {
-              if (!store[col]?.[id]) throw new Error('Not found');
-              store[col][id] = { ...store[col][id], ...data };
-            },
-          };
-          return docRef;
-        },
-      }),
+      collection: (col: string) => {
+        const queryObj: any = {
+          where: () => queryObj,
+          orderBy: () => queryObj,
+          limit: () => queryObj,
+          get: async () => {
+            const items = Object.entries(store[col] || {}).map(([id, data]: [string, any]) => ({
+              id,
+              data: () => data,
+            }));
+            return {
+              empty: items.length === 0,
+              docs: items,
+            };
+          },
+          doc: (id: string) => {
+            const docRef = {
+              id,
+              get: async () => ({
+                exists: Boolean(store[col]?.[id]),
+                data: () => store[col]?.[id] || null,
+                ref: docRef,
+              }),
+              set: async (data: any, options: any) => {
+                store[col] = store[col] || {};
+                store[col][id] = options?.merge ? { ...store[col][id], ...data } : data;
+              },
+              update: async (data: any) => {
+                if (!store[col]?.[id]) throw new Error('Not found');
+                store[col][id] = { ...store[col][id], ...data };
+              },
+            };
+            return docRef;
+          },
+        };
+        return queryObj;
+      },
 
       runTransaction: async (cb: any) => cb({
         get: async (ref: any) => ref.get(),
@@ -273,6 +289,129 @@ describe('Alexa: Máquina de Estados, Diálogo e Validação de Slots pt-BR', ()
 
       expect(res.speech).toContain('três tentativas');
       expect(res.speech).toContain('aplicativo Luisices');
+      expect(res.shouldEndSession).toBe(true);
+    });
+
+    it('deve listar pedidos recentes e retornar card visual no ListRecentOrdersIntent', async () => {
+      const mockDb = createMockDb({
+        orders: {
+          'order-1': {
+            orderNumber: '#2026-0001',
+            userId: identity.uid,
+            customerName: 'Maria',
+            productName: 'cadernos',
+            quantity: 20,
+            price: 300,
+            status: 'pending',
+            createdAt: { toDate: () => new Date('2026-09-28T10:00:00Z') },
+            deletedAt: null,
+          },
+          'order-2': {
+            orderNumber: '#2026-0002',
+            userId: identity.uid,
+            customerName: 'Ana',
+            productName: 'caixinhas',
+            quantity: 10,
+            price: 50,
+            status: 'in_production',
+            createdAt: { toDate: () => new Date('2026-09-29T09:00:00Z') },
+            deletedAt: null,
+          },
+        },
+      });
+
+      const envelope = {
+        request: {
+          type: 'IntentRequest',
+          intent: { name: 'ListRecentOrdersIntent' },
+        },
+        session: { sessionId: 'session-orders-query' },
+      };
+
+      const res = await handleAlexaDialog({
+        envelope,
+        identity,
+        config: baseConfig,
+        db: mockDb,
+      });
+
+      expect(res.speech).toContain('Encontrei 2 pedidos recentes');
+      expect(res.speech).toContain('10 caixinhas para Ana');
+      expect(res.speech).toContain('20 cadernos para Maria');
+      expect(res.speech).toContain('Deseja criar um novo pedido?');
+      expect(res.shouldEndSession).toBe(false);
+
+      // Card visual
+      expect(res.card).toBeDefined();
+      expect(res.card.type).toBe('Simple');
+      expect(res.card.title).toBe('Últimos Pedidos - Luisices');
+      expect(res.card.content).toContain('Ana');
+      expect(res.card.content).toContain('Maria');
+    });
+
+    it('deve responder amigavelmente quando não houver pedidos cadastrados', async () => {
+      const mockDb = createMockDb({ orders: {} });
+
+      const envelope = {
+        request: {
+          type: 'IntentRequest',
+          intent: { name: 'ListRecentOrdersIntent' },
+        },
+        session: { sessionId: 'session-no-orders' },
+      };
+
+      const res = await handleAlexaDialog({
+        envelope,
+        identity,
+        config: baseConfig,
+        db: mockDb,
+      });
+
+      expect(res.speech).toContain('Você ainda não possui pedidos cadastrados');
+      expect(res.shouldEndSession).toBe(false);
+    });
+
+    it('deve orientar criação de pedido quando o usuário responder sim sem rascunho ativo', async () => {
+      const mockDb = createMockDb();
+
+      const envelope = {
+        request: {
+          type: 'IntentRequest',
+          intent: { name: 'AMAZON.YesIntent' },
+        },
+        session: { sessionId: 'session-yes-no-draft' },
+      };
+
+      const res = await handleAlexaDialog({
+        envelope,
+        identity,
+        config: baseConfig,
+        db: mockDb,
+      });
+
+      expect(res.speech).toContain('Para qual cliente e produto deseja criar o pedido?');
+      expect(res.shouldEndSession).toBe(false);
+    });
+
+    it('deve encerrar educadamente quando o usuário responder não sem rascunho ativo', async () => {
+      const mockDb = createMockDb();
+
+      const envelope = {
+        request: {
+          type: 'IntentRequest',
+          intent: { name: 'AMAZON.NoIntent' },
+        },
+        session: { sessionId: 'session-no-no-draft' },
+      };
+
+      const res = await handleAlexaDialog({
+        envelope,
+        identity,
+        config: baseConfig,
+        db: mockDb,
+      });
+
+      expect(res.speech).toContain('Até logo!');
       expect(res.shouldEndSession).toBe(true);
     });
   });

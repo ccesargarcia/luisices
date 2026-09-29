@@ -446,6 +446,37 @@
             "valor total"
           ],
           "slots": []
+        },
+        {
+          "name": "ListRecentOrdersIntent",
+          "samples": [
+            "meus últimos pedidos",
+            "meus pedidos",
+            "últimos pedidos",
+            "pedidos recentes",
+            "ver últimos pedidos",
+            "ver meus pedidos",
+            "ver pedidos recentes",
+            "ver os pedidos",
+            "consultar pedidos",
+            "consultar meus pedidos",
+            "consultar últimos pedidos",
+            "consultar pedidos recentes",
+            "quais são meus últimos pedidos",
+            "quais são os últimos pedidos",
+            "quais são os pedidos recentes",
+            "quais são os meus pedidos",
+            "listar pedidos",
+            "listar meus pedidos",
+            "listar últimos pedidos",
+            "listar pedidos recentes",
+            "o que tem de pedido",
+            "o que tem de pedidos",
+            "mostrar pedidos",
+            "mostrar últimos pedidos",
+            "como estão os pedidos"
+          ],
+          "slots": []
         }
       ],
       "types": [

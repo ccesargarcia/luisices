@@ -717,6 +717,152 @@ function buildNextPromptForDraft(draft, identity, config, draftId) {
 }
 
 /**
+ * Traduz o status do pedido para linguagem falada natural e amigável.
+ */
+function translateOrderStatus(status) {
+  const map = {
+    pending: 'pendente',
+    in_production: 'em produção',
+    completed: 'concluído',
+    delivered: 'entregue',
+    cancelled: 'cancelado',
+  };
+  return map[status] || status || 'em andamento';
+}
+
+/**
+ * Consulta e formata os pedidos recentes do usuário ou do ateliê.
+ */
+async function handleListRecentOrders({ identity, config, db }) {
+  if (!db || typeof db.collection !== 'function') {
+    return {
+      speech: 'Não foi possível consultar os pedidos no momento. Tente novamente mais tarde.',
+      shouldEndSession: true,
+    };
+  }
+
+  const uid = identity?.uid;
+  let orderDocs = [];
+
+  try {
+    const ordersCol = db.collection(COLLECTIONS.ORDERS);
+    let snap = null;
+
+    // 1. Tenta buscar pedidos criados pelo usuário ordenados por data decrescente
+    if (uid) {
+      try {
+        snap = await ordersCol
+          .where('userId', '==', uid)
+          .where('deletedAt', '==', null)
+          .orderBy('createdAt', 'desc')
+          .limit(5)
+          .get();
+      } catch (idxErr) {
+        // Fallback sem orderBy caso o índice composto esteja ausente no ambiente
+        console.warn('[AlexaDialog] Fallback na consulta com filtro de usuário:', idxErr?.message);
+        try {
+          snap = await ordersCol.where('userId', '==', uid).limit(10).get();
+        } catch {}
+      }
+    }
+
+    if (snap && !snap.empty) {
+      orderDocs = snap.docs.map((d) => ({ id: d.id, ...(typeof d.data === 'function' ? d.data() : d.data) }));
+      orderDocs.sort((a, b) => {
+        const tA = a.createdAt?.toDate ? a.createdAt.toDate().getTime() : (typeof a.createdAt === 'number' ? a.createdAt : 0);
+        const tB = b.createdAt?.toDate ? b.createdAt.toDate().getTime() : (typeof b.createdAt === 'number' ? b.createdAt : 0);
+        return tB - tA;
+      });
+      orderDocs = orderDocs.slice(0, 5);
+    }
+
+    // 2. Se o usuário não tiver pedidos próprios (ex: admin que gerencia o ateliê), busca os mais recentes gerais
+    if (orderDocs.length === 0) {
+      try {
+        const generalSnap = await ordersCol
+          .where('deletedAt', '==', null)
+          .orderBy('createdAt', 'desc')
+          .limit(5)
+          .get();
+        if (generalSnap && !generalSnap.empty) {
+          orderDocs = generalSnap.docs.map((d) => ({ id: d.id, ...(typeof d.data === 'function' ? d.data() : d.data) }));
+        }
+      } catch (generalErr) {
+        console.warn('[AlexaDialog] Fallback na consulta geral de pedidos:', generalErr?.message);
+        try {
+          const rawSnap = await ordersCol.limit(5).get();
+          if (rawSnap && !rawSnap.empty) {
+            orderDocs = rawSnap.docs.map((d) => ({ id: d.id, ...(typeof d.data === 'function' ? d.data() : d.data) }));
+          }
+        } catch {}
+      }
+    }
+  } catch (err) {
+    console.error('[AlexaDialog] Erro inesperado ao consultar pedidos recentes:', err);
+    return {
+      speech: 'Ocorreu um erro ao consultar seus pedidos no Luisices. Por favor, tente novamente.',
+      shouldEndSession: true,
+    };
+  }
+
+  if (orderDocs.length === 0) {
+    return {
+      speech: 'Você ainda não possui pedidos cadastrados no Luisices. Diga criar pedido para começar.',
+      reprompt: 'Diga criar pedido para começar.',
+      shouldEndSession: false,
+      sessionAttributes: {},
+    };
+  }
+
+  const ordinals = ['primeiro', 'segundo', 'terceiro', 'quarto', 'quinto'];
+  const speechParts = [];
+  const cardLines = [];
+
+  const count = orderDocs.length;
+  const countText = count === 1 ? '1 pedido recente' : `${count} pedidos recentes`;
+
+  for (let i = 0; i < count; i++) {
+    const o = orderDocs[i];
+    const customer = o.customerName || 'cliente';
+    const product = o.productName || 'produto';
+    const quantity = o.quantity || 1;
+    const priceText = typeof o.price === 'number' ? `no valor de ${formatCurrencyPtBr(o.price)}` : '';
+    const statusText = translateOrderStatus(o.status);
+    const orderNum = o.orderNumber ? `${o.orderNumber}` : '';
+
+    const ordinal = ordinals[i] || `${i + 1}º`;
+    speechParts.push(`${ordinal}: ${quantity} ${product} para ${customer} ${priceText}, com status ${statusText}`);
+
+    const cardNum = orderNum ? `${orderNum} • ` : '';
+    const cardPrice = typeof o.price === 'number' ? ` • R$ ${o.price.toFixed(2).replace('.', ',')}` : '';
+    cardLines.push(`${cardNum}${customer}\n${quantity}x ${product}${cardPrice} (${statusText})`);
+  }
+
+  let fullSpeech = `Encontrei ${countText}. `;
+  if (count === 1) {
+    fullSpeech += `${speechParts[0]}.`;
+  } else {
+    const lastPart = speechParts.pop();
+    fullSpeech += `${speechParts.join('; ')}; e ${lastPart}.`;
+  }
+  fullSpeech += ' Deseja criar um novo pedido?';
+
+  const cardContent = cardLines.join('\n\n');
+
+  return {
+    speech: fullSpeech,
+    reprompt: 'Deseja criar um novo pedido? Diga sim para começar ou não para sair.',
+    shouldEndSession: false,
+    sessionAttributes: {},
+    card: {
+      type: 'Simple',
+      title: 'Últimos Pedidos - Luisices',
+      content: cardContent,
+    },
+  };
+}
+
+/**
  * Processador principal de diálogo da Alexa.
  *
  * @param {object} params
@@ -852,8 +998,8 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
       }
     }
 
-    const speech = `Olá, ${name}. Ambiente de ${envLabel}. Diga criar pedido ou vincular minha voz.`;
-    const reprompt = 'Você pode dizer: criar pedido, ou pedir ajuda.';
+    const speech = `Olá, ${name}. Ambiente de ${envLabel}. Diga criar pedido, ver últimos pedidos ou vincular minha voz.`;
+    const reprompt = 'Você pode dizer: criar pedido, ver últimos pedidos ou pedir ajuda.';
     return {
       speech,
       reprompt,
@@ -896,16 +1042,39 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
 
   if (intentName === 'AMAZON.HelpIntent') {
     const helpSpeech =
-      'Para criar um pedido, diga por exemplo: criar pedido de dez caixinhas para Maria a dez reais cada. Ou: vinte cadernos para João por cem reais no total. Vou perguntar a data de entrega antes de confirmar.';
+      'Para criar um pedido, diga por exemplo: criar pedido de dez caixinhas para Maria a dez reais cada. Para consultar seus pedidos, diga: ver últimos pedidos. Vou perguntar a data de entrega antes de confirmar.';
     return {
       speech: helpSpeech,
-      reprompt: 'Diga criar pedido para começar.',
+      reprompt: 'Diga criar pedido ou ver últimos pedidos para começar.',
       shouldEndSession: false,
       sessionAttributes: sessionAttrs,
     };
   }
 
-  // 2.5 Repetir pedido / O que já informei (Fase 3)
+  // 2.6 Consultar últimos pedidos
+  if (intentName === 'ListRecentOrdersIntent') {
+    return await handleListRecentOrders({ identity, config, db });
+  }
+
+  // 2.7 Resposta a 'sim' ou 'não' quando não há rascunho de pedido ativo
+  if (!currentDraftId && intentName === 'AMAZON.YesIntent') {
+    return {
+      speech: 'Perfeito! Para qual cliente e produto deseja criar o pedido?',
+      reprompt: 'Por exemplo, diga: vinte cadernos para Maria.',
+      shouldEndSession: false,
+      sessionAttributes: {},
+    };
+  }
+
+  if (!currentDraftId && intentName === 'AMAZON.NoIntent') {
+    return {
+      speech: 'Tudo bem. Se precisar de algo, estarei por aqui. Até logo!',
+      shouldEndSession: true,
+      sessionAttributes: {},
+    };
+  }
+
+  // 2.8 Repetir pedido / O que já informei (Fase 3)
   if (intentName === 'RepeatOrderIntent') {
     if (!currentDraftId) {
       return {
