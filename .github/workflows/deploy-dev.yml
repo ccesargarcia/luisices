@@ -49,6 +49,7 @@ jobs:
           APP_ID: ${{ secrets.DEV_VITE_FIREBASE_APP_ID }}
           MEASUREMENT_ID: ${{ secrets.DEV_VITE_FIREBASE_MEASUREMENT_ID }}
           STORAGE_CDN_URL: ${{ secrets.DEV_VITE_STORAGE_CDN_URL || 'https://cdn-dev.luisices.com.br' }}
+          FUNCTIONS_CUSTOM_DOMAIN: ${{ secrets.DEV_VITE_FUNCTIONS_CUSTOM_DOMAIN || 'https://api.dev.luisices.com.br' }}
           SENTRY_DSN: ${{ secrets.DEV_VITE_SENTRY_DSN || secrets.VITE_SENTRY_DSN }}
         run: |
           printf 'VITE_FIREBASE_API_KEY=%s\n' "$API_KEY" >> .env.local
@@ -59,6 +60,7 @@ jobs:
           printf 'VITE_FIREBASE_APP_ID=%s\n' "$APP_ID" >> .env.local
           printf 'VITE_FIREBASE_MEASUREMENT_ID=%s\n' "$MEASUREMENT_ID" >> .env.local
           printf 'VITE_STORAGE_CDN_URL=%s\n' "$STORAGE_CDN_URL" >> .env.local
+          printf 'VITE_FUNCTIONS_CUSTOM_DOMAIN=%s\n' "$FUNCTIONS_CUSTOM_DOMAIN" >> .env.local
           printf 'VITE_SENTRY_DSN=%s\n' "${SENTRY_DSN:-https://d29ba26f91dac0c5c56b94866f16c461@o4512090827980800.ingest.us.sentry.io/4512090844626944}" >> .env.local
 
       - name: Build (dev)

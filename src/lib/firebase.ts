@@ -74,7 +74,10 @@ setPersistence(auth, browserLocalPersistence).catch(error => {
 });
 
 export const storage = getStorage(app);
-export const functions = getFunctions(app);
+const functionsCustomDomain = import.meta.env.VITE_FUNCTIONS_CUSTOM_DOMAIN || undefined;
+export const functions = functionsCustomDomain
+  ? getFunctions(app, functionsCustomDomain)
+  : getFunctions(app);
 
 // Conexão com o Firebase Local Emulator Suite quando ativado via ambiente
 if (import.meta.env.VITE_USE_FIREBASE_EMULATOR === 'true') {
