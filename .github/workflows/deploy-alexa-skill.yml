@@ -29,23 +29,21 @@ jobs:
 
       - name: Deploy Interaction Model & Manifest
         env:
+          ASK_CLI_CONFIG: ${{ secrets.ASK_CLI_CONFIG }}
           ASK_REFRESH_TOKEN: ${{ secrets.ASK_REFRESH_TOKEN }}
-          ASK_ACCESS_TOKEN: ${{ secrets.ASK_ACCESS_TOKEN }}
-          ASK_DEFAULT_PROFILE: 'default'
           SKILL_ID: ${{ secrets.ALEXA_SKILL_ID || 'amzn1.ask.skill.1cd0031f-ada0-4da8-8721-2ad44b4b1c96' }}
         run: |
-          if [ -z "$ASK_REFRESH_TOKEN" ] && [ -z "$ASK_ACCESS_TOKEN" ]; then
-            echo "::warning ::ASK_REFRESH_TOKEN não configurado nos segredos do repositório. Pule a etapa ou configure o segredo para deploy automático."
-            exit 0
-          fi
-          
           mkdir -p ~/.ask
-          cat <<EOF > ~/.ask/cli_config
+          if [ -n "$ASK_CLI_CONFIG" ]; then
+            echo "$ASK_CLI_CONFIG" > ~/.ask/cli_config
+            chmod 600 ~/.ask/cli_config
+            echo "✅ Credenciais configuradas com sucesso via ASK_CLI_CONFIG."
+          elif [ -n "$ASK_REFRESH_TOKEN" ]; then
+            cat <<EOF > ~/.ask/cli_config
           {
             "profiles": {
               "default": {
                 "token": {
-                  "access_token": "${ASK_ACCESS_TOKEN}",
                   "refresh_token": "${ASK_REFRESH_TOKEN}",
                   "token_type": "bearer"
                 }
@@ -53,6 +51,12 @@ jobs:
             }
           }
           EOF
+            chmod 600 ~/.ask/cli_config
+            echo "✅ Credenciais configuradas com sucesso via ASK_REFRESH_TOKEN."
+          else
+            echo "::warning ::Nenhum segredo (ASK_CLI_CONFIG ou ASK_REFRESH_TOKEN) configurado no repositório. Pule a etapa ou configure o segredo no GitHub para deploy automático."
+            exit 0
+          fi
           
           echo "🚀 Atualizando modelo de interação pt-BR..."
           ask smapi set-interaction-model -s "$SKILL_ID" -g development -l pt-BR --interaction-model "file:alexa/skill-package/interactionModels/custom/pt-BR.json"
@@ -61,3 +65,4 @@ jobs:
           ask smapi update-skill-manifest -s "$SKILL_ID" -g development --manifest "file:alexa/skill-package/skill.json"
           
           echo "✅ Modelo e manifesto enviados com sucesso para a Amazon Alexa!"
+
