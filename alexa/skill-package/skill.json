@@ -20,7 +20,8 @@
     "apis": {
       "custom": {
         "endpoint": {
-          "uri": "https://us-central1-luisices-dev.cloudfunctions.net/alexaWebhook"
+          "uri": "https://us-central1-luisices-dev.cloudfunctions.net/alexaWebhook",
+          "sslCertificateType": "Wildcard"
         },
         "interfaces": []
       }
