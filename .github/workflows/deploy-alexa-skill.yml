@@ -4,10 +4,8 @@ on:
   push:
     branches:
       - develop
-      - main
     paths:
       - 'alexa/**'
-      - '.github/workflows/deploy-alexa-skill.yml'
   workflow_dispatch:
     inputs:
       environment:
