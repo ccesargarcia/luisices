@@ -1,7 +1,7 @@
 {
   "interactionModel": {
     "languageModel": {
-      "invocationName": "papelaria de teste",
+      "invocationName": "caderno de pedidos",
       "intents": [
         {
           "name": "AMAZON.CancelIntent",
@@ -158,7 +158,7 @@
           "slots": [
             {
               "name": "customer",
-              "type": "AMAZON.Person"
+              "type": "AMAZON.FirstName"
             },
             {
               "name": "product",
@@ -193,6 +193,7 @@
         {
           "name": "ProvideCustomerIntent",
           "samples": [
+            "{customer}",
             "para {customer}",
             "o cliente é {customer}",
             "cliente {customer}",
@@ -216,7 +217,7 @@
           "slots": [
             {
               "name": "customer",
-              "type": "AMAZON.Person"
+              "type": "AMAZON.FirstName"
             }
           ]
         },

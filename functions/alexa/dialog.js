@@ -727,13 +727,28 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
   let currentDraftId = sessionAttrs.draftId || null;
   const sessionId = envelope?.session?.sessionId || null;
 
-  // Se a requisição não trouxe draftId na sessão e é intenção de confirmação ou repetição direta,
+  // Se a requisição não trouxe draftId na sessão e é intenção de continuação, confirmação ou repetição direta,
   // tenta recuperar um rascunho ativo não expirado em andamento para o usuário e vincula à sessão atual
   let isDirectRecovery = false;
-  if (!currentDraftId && (intentName === 'AMAZON.YesIntent' || intentName === 'RepeatOrderIntent') && db && identity?.uid) {
+  const isContinuationIntent =
+    intentName === 'AMAZON.YesIntent' ||
+    intentName === 'RepeatOrderIntent' ||
+    intentName === 'ProvideCustomerIntent' ||
+    intentName === 'ProvideProductIntent' ||
+    intentName === 'ProvideQuantityIntent' ||
+    intentName === 'ProvideDeliveryDateIntent' ||
+    intentName === 'ProvideUnitPriceIntent' ||
+    intentName === 'ProvideTotalIntent' ||
+    intentName === 'ProvidePriceIntent' ||
+    intentName === 'ClarifyPriceUnitIntent' ||
+    intentName === 'ClarifyPriceTotalIntent';
+
+  if (!currentDraftId && isContinuationIntent && db && identity?.uid) {
     const activeDraft = await findActiveDraftForUser(db, identity.uid, identity.bindingKey, config.environment);
     if (activeDraft) {
-      isDirectRecovery = true;
+      if (intentName === 'AMAZON.YesIntent' || intentName === 'RepeatOrderIntent') {
+        isDirectRecovery = true;
+      }
       if (sessionId && activeDraft.sessionId !== sessionId) {
         await db.collection(COLLECTIONS.DRAFTS).doc(activeDraft.draftId).update({
           sessionId,
@@ -1797,6 +1812,21 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
           existingData.expectedInput = null;
         }
       }
+    }
+
+    // Resolução contextual de cliente vs produto:
+    // Se o sistema está esperando o cliente (expectedInput === 'customer') e recebeu texto em product (ex: usuário disse apenas o nome),
+    // remapa para customer para evitar que o nome do cliente seja gravado como produto e o cliente continue vazio.
+    if (!incomingUpdates.customer && activeExpected === 'customer' && incomingUpdates.product) {
+      incomingUpdates.customer = incomingUpdates.product;
+      delete incomingUpdates.product;
+      existingData.expectedInput = null;
+    }
+    // Vice-versa: se esperando produto e recebeu customer sem produto
+    if (!incomingUpdates.product && activeExpected === 'product' && incomingUpdates.customer) {
+      incomingUpdates.product = incomingUpdates.customer;
+      delete incomingUpdates.customer;
+      existingData.expectedInput = null;
     }
 
     if (parsedTotal) {

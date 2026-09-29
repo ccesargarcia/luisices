@@ -1069,4 +1069,166 @@ describe('Alexa: Validação de Regressões e Melhorias Sênior (Auditoria)', ()
       expect(dialogExports.getOrCreateDraft).toBeUndefined();
     });
   });
+
+  describe('13. Resolução Contextual de Slots e Recuperação Multi-Turn (Revisão Geral)', () => {
+    it('deve remapar slot capturado como produto para cliente quando expectedInput for customer', async () => {
+      const draftId = 'draft-context-remap';
+      const store: any = {
+        alexaDrafts: {
+          [draftId]: {
+            draftId,
+            sessionId: 'session-remap-1',
+            uid: 'uid-test',
+            bindingKey: 'binding-test',
+            environment: 'dev',
+            state: 'collecting',
+            expectedInput: 'customer',
+            product: 'caixinhas',
+            quantity: 10,
+            customer: null,
+            expiresAt: { toDate: () => new Date(Date.now() + 600000) },
+          },
+        },
+      };
+
+      const mockDb: any = {
+        collection: (col: string) => ({
+          doc: (id: string) => ({
+            get: async () => ({
+              exists: Boolean(store[col]?.[id]),
+              data: () => store[col]?.[id] || null,
+            }),
+            set: async (data: any, opt: any) => {
+              store[col] = store[col] || {};
+              store[col][id] = opt?.merge ? { ...(store[col][id] || {}), ...data } : data;
+            },
+          }),
+        }),
+        runTransaction: async (cb: any) => cb({
+          get: async (ref: any) => ref.get(),
+          set: (ref: any, data: any, opt: any) => ref.set(data, opt),
+          update: (ref: any, data: any) => ref.set(data, { merge: true }),
+        }),
+      };
+
+      // Usuário diz apenas "Maria", que a Alexa pode passar no slot product
+      const envelope = {
+        request: {
+          type: 'IntentRequest',
+          intent: {
+            name: 'ProvideProductIntent',
+            slots: {
+              product: { value: 'Maria' },
+            },
+          },
+        },
+        session: {
+          sessionId: 'session-remap-1',
+          attributes: { draftId, expectedInput: 'customer' },
+        },
+      };
+
+      await handleAlexaDialog({
+        envelope,
+        identity: { uid: 'uid-test', bindingKey: 'binding-test', personId: 'amzn1.ask.person.TEST', displayName: 'Caio' },
+        config: { environment: 'dev', isEnabled: true },
+        db: mockDb,
+      });
+
+      // O cliente deve ter sido preenchido como 'Maria' e o produto original mantido como 'caixinhas'
+      expect(store.alexaDrafts[draftId].customer).toBe('Maria');
+      expect(store.alexaDrafts[draftId].product).toBe('caixinhas');
+    });
+
+    it('deve recuperar rascunho ativo quando usuário responder com slot em nova sessão (após timeout da Alexa)', async () => {
+      const draftId = 'draft-resume-slot';
+      const store: any = {
+        alexaDrafts: {
+          [draftId]: {
+            draftId,
+            sessionId: 'session-old-expired',
+            uid: 'uid-test',
+            bindingKey: 'binding-test',
+            environment: 'dev',
+            state: 'collecting',
+            expectedInput: 'deliveryDate',
+            customer: 'Juliana',
+            product: 'agendas',
+            quantity: 5,
+            price: 150,
+            pricingMode: 'total',
+            deliveryDate: null,
+            updatedAt: { toMillis: () => Date.now() },
+            expiresAt: { toDate: () => new Date(Date.now() + 600000) },
+          },
+        },
+      };
+
+      const mockDb: any = {
+        collection: (col: string) => ({
+          doc: (id: string) => ({
+            get: async () => ({
+              exists: Boolean(store[col]?.[id]),
+              data: () => store[col]?.[id] || null,
+            }),
+            set: async (data: any, opt: any) => {
+              store[col] = store[col] || {};
+              store[col][id] = opt?.merge ? { ...(store[col][id] || {}), ...data } : data;
+            },
+            update: async (data: any) => {
+              store[col] = store[col] || {};
+              store[col][id] = { ...(store[col][id] || {}), ...data };
+            },
+          }),
+          where: () => ({
+            where: () => ({
+              orderBy: () => ({
+                limit: () => ({
+                  get: async () => ({
+                    empty: false,
+                    forEach: (fn: any) => fn({ id: draftId, data: () => store.alexaDrafts[draftId] }),
+                  }),
+                }),
+              }),
+            }),
+          }),
+        }),
+        runTransaction: async (cb: any) => cb({
+          get: async (ref: any) => ref.get(),
+          set: (ref: any, data: any, opt: any) => ref.set(data, opt),
+          update: (ref: any, data: any) => ref.set(data, { merge: true }),
+        }),
+      };
+
+      // Sessão nova (sessionId novo, attributes vazio sem draftId) fornecendo a data
+      const envelope = {
+        request: {
+          type: 'IntentRequest',
+          intent: {
+            name: 'ProvideDeliveryDateIntent',
+            slots: {
+              deliveryDate: { value: '2027-11-20' },
+            },
+          },
+        },
+        session: {
+          sessionId: 'session-new-wake',
+          attributes: {},
+        },
+      };
+
+      const res = await handleAlexaDialog({
+        envelope,
+        identity: { uid: 'uid-test', bindingKey: 'binding-test', personId: 'amzn1.ask.person.TEST', displayName: 'Caio' },
+        config: { environment: 'dev', isEnabled: true, timezone: 'America/Sao_Paulo' },
+        db: mockDb,
+      });
+
+      // O rascunho recuperado deve ter recebido a data e avançado para confirmação
+      expect(store.alexaDrafts[draftId].deliveryDate).toBe('2027-11-20');
+      expect(store.alexaDrafts[draftId].state).toBe('awaiting_confirmation');
+      expect(res.speech).toContain('Juliana');
+      expect(res.speech).toContain('agendas');
+    });
+  });
 });

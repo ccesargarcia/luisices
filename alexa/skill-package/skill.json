@@ -5,20 +5,17 @@
         "pt-BR": {
           "summary": "Criação de pedidos por voz para o ateliê Luisices.",
           "examplePhrases": [
-            "Alexa, abrir papelaria de teste",
-            "Alexa, peça à papelaria de teste para criar um pedido",
+            "Alexa, abrir caderno de pedidos",
+            "Alexa, no caderno de pedidos criar um pedido",
             "vincular minha voz"
           ],
-          "name": "Papelaria de Teste",
+          "name": "Caderno de Pedidos",
           "description": "Skill privada para criação rápida e segura de pedidos por comando de voz no ateliê Luisices, vinculada ao perfil de voz de pessoas autorizadas."
         }
       },
-      "isAvailableWorldwide": false,
+      "isAvailableWorldwide": true,
       "testingInstructions": "Ambiente isolado de desenvolvimento. Requer perfil de voz ativo no aplicativo Alexa e pareamento supervisionado aprovado por administrador no Luisices.",
-      "category": "ORGANIZERS_AND_ASSISTANTS",
-      "distributionCountries": [
-        "BR"
-      ]
+      "category": "ORGANIZERS_AND_ASSISTANTS"
     },
     "apis": {
       "custom": {
