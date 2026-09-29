@@ -38,6 +38,7 @@ const RESEND_API_KEY = defineSecret('RESEND_API_KEY');
 const EVOLUTION_API_KEY = defineSecret('EVOLUTION_API_KEY');
 const RESEND_WEBHOOK_SECRET = defineSecret('RESEND_WEBHOOK_SECRET');
 const GEMINI_API_KEY = defineSecret('GEMINI_API_KEY');
+const { ORIGIN_SECRET, validateOriginSecret } = require('./originProtection');
 
 const EVOLUTION_API_URL = 'https://wa.luisices.com.br';
 const EVOLUTION_INSTANCE = 'homeassistant';
@@ -787,14 +788,23 @@ exports.getEmailUsage = onCall({ cors: true, maxInstances: 5, secrets: [RESEND_A
  * URL: https://<regiao>-<projeto>.cloudfunctions.net/resendReceivingWebhook
  * Eventos selecionados: email.received
  */
-exports.resendReceivingWebhook = onRequest({ cors: true, secrets: [RESEND_API_KEY, RESEND_WEBHOOK_SECRET] }, async (req, res) => {
-  if (req.method === 'GET' || req.method === 'OPTIONS') {
+exports.resendReceivingWebhook = onRequest({ cors: true, secrets: [RESEND_API_KEY, RESEND_WEBHOOK_SECRET, ORIGIN_SECRET] }, async (req, res) => {
+  if (req.method === 'OPTIONS') {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'POST, GET, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, svix-id, svix-timestamp, svix-signature');
-    if (req.method === 'OPTIONS') {
-      return res.status(204).send('');
-    }
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, svix-id, svix-timestamp, svix-signature, x-origin-secret, x-cf-origin-token');
+    return res.status(204).send('');
+  }
+
+  // 0. Bloqueio de acesso direto fora da Cloudflare
+  const originCheck = validateOriginSecret(req);
+  if (!originCheck.allowed) {
+    console.warn('[resendReceivingWebhook] Tentativa de acesso direto bloqueada (sem header da Cloudflare)');
+    return res.status(originCheck.statusCode || 403).json({ error: originCheck.error });
+  }
+
+  if (req.method === 'GET') {
+    res.setHeader('Access-Control-Allow-Origin', '*');
     return res.status(200).json({ status: 'active', message: 'Luisices Resend Webhook ativo e operacional' });
   }
 
@@ -1622,7 +1632,14 @@ exports.getWhatsAppInstanceStatus = onCall({ maxInstances: 5, secrets: [EVOLUTIO
 /**
  * Webhook para receber mensagens recebidas (MESSAGES_UPSERT) da API do WhatsApp em tempo real.
  */
-exports.evolutionWhatsAppWebhook = onRequest({ secrets: [EVOLUTION_API_KEY] }, async (req, res) => {
+exports.evolutionWhatsAppWebhook = onRequest({ secrets: [EVOLUTION_API_KEY, ORIGIN_SECRET] }, async (req, res) => {
+  // 0. Bloqueio de acesso direto fora da Cloudflare
+  const originCheck = validateOriginSecret(req);
+  if (!originCheck.allowed) {
+    console.warn('[evolutionWhatsAppWebhook] Tentativa de acesso direto bloqueada (sem header da Cloudflare)');
+    return res.status(originCheck.statusCode || 403).json({ error: originCheck.error });
+  }
+
   if (req.method !== 'POST') {
     res.status(405).send('Method Not Allowed');
     return;

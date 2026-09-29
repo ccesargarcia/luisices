@@ -12,6 +12,7 @@ const { checkBindingRequestRateLimit } = require('./rateLimit');
 const { handleVoicePairingRequest } = require('./pairing');
 const { handleAlexaDialog } = require('./dialog');
 const { COLLECTIONS, computeRequestKey } = require('./repository');
+const { ORIGIN_SECRET, validateOriginSecret } = require('../originProtection');
 const {
   approveAlexaPairingHandler,
   setAlexaPermissionHandler,
@@ -290,9 +291,16 @@ const alexaWebhook = onRequest(
   {
     maxInstances: 2,
     memory: '256MiB',
-    secrets: [ALEXA_IDENTITY_HMAC_KEY],
+    secrets: [ALEXA_IDENTITY_HMAC_KEY, ORIGIN_SECRET],
   },
   async (req, res) => {
+    // 0. Bloqueio de acesso direto fora da Cloudflare
+    const originCheck = validateOriginSecret(req);
+    if (!originCheck.allowed) {
+      console.warn('[alexaWebhook] Tentativa de acesso direto bloqueada (sem header da Cloudflare)');
+      return res.status(originCheck.statusCode || 403).json({ error: originCheck.error });
+    }
+
     console.log(`[alexaWebhook] Requisição recebida: method=${req.method}`);
 
     // 1. Verificação criptográfica da Amazon ANTES de qualquer acesso ao Firestore.

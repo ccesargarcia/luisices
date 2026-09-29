@@ -122,6 +122,13 @@ jobs:
             firebase functions:secrets:set ALEXA_IDENTITY_HMAC_KEY --project luisices-dev --data-file "$HOME/alexa_hmac.txt" --non-interactive --force || true
           fi
 
+          # Garante que ORIGIN_SECRET existe no Secret Manager de Dev antes do deploy
+          if ! firebase functions:secrets:get ORIGIN_SECRET --project luisices-dev --non-interactive > /dev/null 2>&1; then
+            echo "🔐 Inicializando ORIGIN_SECRET no Secret Manager (Dev)..."
+            echo "${{ secrets.ORIGIN_SECRET || '507e46b43a0947fcc63638707ea33df50938f89b2e49013c9a51ba1d95e816cc' }}" > "$HOME/origin_secret.txt"
+            firebase functions:secrets:set ORIGIN_SECRET --project luisices-dev --data-file "$HOME/origin_secret.txt" --non-interactive --force || true
+          fi
+
           # Determina se deve publicar regras e índices
           if [ "${{ inputs.deploy_rules_and_indexes }}" = "true" ]; then
             echo "📄 Publicando regras e índices do Firestore..."
@@ -193,6 +200,13 @@ jobs:
             echo "🔐 Inicializando ALEXA_IDENTITY_HMAC_KEY no Secret Manager (Prod)..."
             echo "${{ secrets.ALEXA_IDENTITY_HMAC_KEY }}" > "$HOME/alexa_hmac.txt"
             firebase functions:secrets:set ALEXA_IDENTITY_HMAC_KEY --project papelaria-dashboard --data-file "$HOME/alexa_hmac.txt" --non-interactive --force || true
+          fi
+
+          # Garante que ORIGIN_SECRET existe no Secret Manager de Prod antes do deploy se secret disponível
+          if [ -n "${{ secrets.PROD_ORIGIN_SECRET || secrets.ORIGIN_SECRET }}" ] && ! firebase functions:secrets:get ORIGIN_SECRET --project papelaria-dashboard --non-interactive > /dev/null 2>&1; then
+            echo "🔐 Inicializando ORIGIN_SECRET no Secret Manager (Prod)..."
+            echo "${{ secrets.PROD_ORIGIN_SECRET || secrets.ORIGIN_SECRET }}" > "$HOME/origin_secret_prod.txt"
+            firebase functions:secrets:set ORIGIN_SECRET --project papelaria-dashboard --data-file "$HOME/origin_secret_prod.txt" --non-interactive --force || true
           fi
 
           # Determina se deve publicar regras e índices
