@@ -520,6 +520,16 @@ async function findActiveDraftForUser(db, uid, bindingKey, environment) {
       return tB - tA;
     });
 
+    // Se houver mais de um rascunho ativo não finalizado, expira os mais antigos para evitar ambiguidades
+    if (validDrafts.length > 1) {
+      for (let i = 1; i < validDrafts.length; i++) {
+        colRef.doc(validDrafts[i].draftId).update({
+          state: 'expired',
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        }).catch(() => {});
+      }
+    }
+
     return validDrafts[0];
   } catch (err) {
     console.warn('[AlexaDialog] Erro ao buscar rascunho ativo do usuário:', err?.message || err);

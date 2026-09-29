@@ -288,6 +288,8 @@ const alexaWebhook = onRequest(
     secrets: [ALEXA_IDENTITY_HMAC_KEY],
   },
   async (req, res) => {
+    console.log(`[alexaWebhook] Requisição recebida: method=${req.method}`);
+
     // 1. Verificação criptográfica da Amazon ANTES de qualquer acesso ao Firestore.
     // Inclui: método POST, limite de corpo, timestamp e assinatura criptográfica.
     // NÃO inclui verificação de Skill ID neste momento — o allowedSkillId pode ter
@@ -300,6 +302,13 @@ const alexaWebhook = onRequest(
       return res.status(verification.statusCode || 400).json({ error: verification.error });
     }
 
+    const envelope = verification.envelope;
+    const envelopeAppId =
+      envelope?.session?.application?.applicationId ||
+      envelope?.context?.System?.application?.applicationId;
+    const reqType = envelope?.request?.type;
+    console.log(`[alexaWebhook] Requisição verificada com sucesso. Tipo: ${reqType}, AppId: ${envelopeAppId || 'indefinido'}`);
+
     // 2. Somente após verificação criptográfica aprovada, carregar config dinâmica do Firestore.
     const db = admin.firestore();
     const config = await getAlexaConfig(db);
@@ -307,18 +316,13 @@ const alexaWebhook = onRequest(
     // 3. Verificar Skill ID com a configuração ativa (pode incluir override do Firestore).
     // Achado 6: se config.allowedSkillId está configurado, envelopeAppId é OBRIGATÓRIO e deve bater.
     if (config.allowedSkillId) {
-      const envelope = verification.envelope;
-      const envelopeAppId =
-        envelope?.session?.application?.applicationId ||
-        envelope?.context?.System?.application?.applicationId;
       if (!envelopeAppId || envelopeAppId !== config.allowedSkillId) {
-        console.warn('[alexaWebhook] Skill ID ausente ou não autorizado:', envelopeAppId);
+        console.warn(`[alexaWebhook] Skill ID não autorizado. Recebido: '${envelopeAppId}', Esperado: '${config.allowedSkillId}'`);
         return res.status(403).json({ error: `Skill ID não autorizada para este ambiente (${config.environment}).` });
       }
     }
 
     // 3.5. Exigir requestId obrigatório no envelope (Achado Rodada 6)
-    const envelope = verification.envelope;
     const reqId = envelope?.request?.requestId;
     if (!reqId || typeof reqId !== 'string' || !reqId.trim()) {
       console.warn('[alexaWebhook] requestId ausente ou inválido no envelope');
