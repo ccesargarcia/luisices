@@ -1,7 +1,7 @@
 import { RouterProvider } from 'react-router';
 import { router, isCatalogSubdomain } from './routes';
 import { AuthProvider } from '../contexts/AuthContext';
-import { ThemeProvider } from '../components/ThemeProvider';
+import { ThemeProvider } from './components/common/ThemeProvider';
 import { Toaster } from './components/ui/sonner';
 
 function App() {

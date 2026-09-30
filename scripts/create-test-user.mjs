@@ -4,7 +4,7 @@
  *
  * Uso:
  *   firebase use dev
- *   node scripts/create-test-user.mjs caio.garcia@gmail.com Hexa1020**
+ *   node scripts/create-test-user.mjs teste@exemplo.com <SUA_SENHA_DE_TESTE>
  *
  * Ou use as variáveis de ambiente do .env.test:
  *   node scripts/create-test-user.mjs

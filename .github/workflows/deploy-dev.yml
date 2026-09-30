@@ -61,7 +61,9 @@ jobs:
           printf 'VITE_FIREBASE_MEASUREMENT_ID=%s\n' "$MEASUREMENT_ID" >> .env.local
           printf 'VITE_STORAGE_CDN_URL=%s\n' "$STORAGE_CDN_URL" >> .env.local
           printf 'VITE_FUNCTIONS_CUSTOM_DOMAIN=%s\n' "$FUNCTIONS_CUSTOM_DOMAIN" >> .env.local
-          printf 'VITE_SENTRY_DSN=%s\n' "${SENTRY_DSN:-https://d29ba26f91dac0c5c56b94866f16c461@o4512090827980800.ingest.us.sentry.io/4512090844626944}" >> .env.local
+          if [ -n "$SENTRY_DSN" ]; then
+            printf 'VITE_SENTRY_DSN=%s\n' "$SENTRY_DSN" >> .env.local
+          fi
 
       - name: Build (dev)
         run: npm run build

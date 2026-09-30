@@ -111,21 +111,27 @@ jobs:
             if [ -n "$GEMINI_API_KEY" ]; then
               firebase functions:secrets:set GEMINI_API_KEY --project luisices-dev --data-file "$HOME/gemini_api_key.txt" --non-interactive --force || true
             fi
-            echo "luisices-alexa-hmac-dev-secret-key-2026" > "$HOME/alexa_hmac.txt"
-            firebase functions:secrets:set ALEXA_IDENTITY_HMAC_KEY --project luisices-dev --data-file "$HOME/alexa_hmac.txt" --non-interactive --force || true
+            if [ -n "${{ secrets.DEV_ALEXA_IDENTITY_HMAC_KEY || secrets.ALEXA_IDENTITY_HMAC_KEY_DEV || secrets.ALEXA_IDENTITY_HMAC_KEY }}" ]; then
+              echo "${{ secrets.DEV_ALEXA_IDENTITY_HMAC_KEY || secrets.ALEXA_IDENTITY_HMAC_KEY_DEV || secrets.ALEXA_IDENTITY_HMAC_KEY }}" > "$HOME/alexa_hmac.txt"
+              firebase functions:secrets:set ALEXA_IDENTITY_HMAC_KEY --project luisices-dev --data-file "$HOME/alexa_hmac.txt" --non-interactive --force || true
+            fi
+            if [ -n "${{ secrets.DEV_ORIGIN_SECRET || secrets.ORIGIN_SECRET }}" ]; then
+              echo "${{ secrets.DEV_ORIGIN_SECRET || secrets.ORIGIN_SECRET }}" > "$HOME/origin_secret.txt"
+              firebase functions:secrets:set ORIGIN_SECRET --project luisices-dev --data-file "$HOME/origin_secret.txt" --non-interactive --force || true
+            fi
           fi
 
-          # Garante que ALEXA_IDENTITY_HMAC_KEY existe no Secret Manager de Dev antes do deploy
-          if ! firebase functions:secrets:get ALEXA_IDENTITY_HMAC_KEY --project luisices-dev --non-interactive > /dev/null 2>&1; then
+          # Garante que ALEXA_IDENTITY_HMAC_KEY existe no Secret Manager de Dev antes do deploy se secret disponível
+          if [ -n "${{ secrets.DEV_ALEXA_IDENTITY_HMAC_KEY || secrets.ALEXA_IDENTITY_HMAC_KEY_DEV || secrets.ALEXA_IDENTITY_HMAC_KEY }}" ] && ! firebase functions:secrets:get ALEXA_IDENTITY_HMAC_KEY --project luisices-dev --non-interactive > /dev/null 2>&1; then
             echo "🔐 Inicializando ALEXA_IDENTITY_HMAC_KEY no Secret Manager (Dev)..."
-            echo "luisices-alexa-hmac-dev-secret-key-2026" > "$HOME/alexa_hmac.txt"
+            echo "${{ secrets.DEV_ALEXA_IDENTITY_HMAC_KEY || secrets.ALEXA_IDENTITY_HMAC_KEY_DEV || secrets.ALEXA_IDENTITY_HMAC_KEY }}" > "$HOME/alexa_hmac.txt"
             firebase functions:secrets:set ALEXA_IDENTITY_HMAC_KEY --project luisices-dev --data-file "$HOME/alexa_hmac.txt" --non-interactive --force || true
           fi
 
-          # Garante que ORIGIN_SECRET existe no Secret Manager de Dev antes do deploy
-          if ! firebase functions:secrets:get ORIGIN_SECRET --project luisices-dev --non-interactive > /dev/null 2>&1; then
+          # Garante que ORIGIN_SECRET existe no Secret Manager de Dev antes do deploy se secret disponível
+          if [ -n "${{ secrets.DEV_ORIGIN_SECRET || secrets.ORIGIN_SECRET }}" ] && ! firebase functions:secrets:get ORIGIN_SECRET --project luisices-dev --non-interactive > /dev/null 2>&1; then
             echo "🔐 Inicializando ORIGIN_SECRET no Secret Manager (Dev)..."
-            echo "${{ secrets.ORIGIN_SECRET || '507e46b43a0947fcc63638707ea33df50938f89b2e49013c9a51ba1d95e816cc' }}" > "$HOME/origin_secret.txt"
+            echo "${{ secrets.DEV_ORIGIN_SECRET || secrets.ORIGIN_SECRET }}" > "$HOME/origin_secret.txt"
             firebase functions:secrets:set ORIGIN_SECRET --project luisices-dev --data-file "$HOME/origin_secret.txt" --non-interactive --force || true
           fi
 

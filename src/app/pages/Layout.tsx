@@ -19,7 +19,7 @@ import {
   DropdownMenuTrigger,
 } from '../components/ui/dropdown-menu';
 import { Avatar, AvatarFallback, AvatarImage } from '../components/ui/avatar';
-import { ThemeToggle } from '../../components/ThemeToggle';
+import { ThemeToggle } from '../components/common/ThemeToggle';
 import { NotificationBell } from '../components/NotificationBell';
 import { AdminTeamFilter } from '../components/AdminTeamFilter';
 import { Badge } from '../components/ui/badge';

@@ -303,8 +303,8 @@ Credenciais vêm de **GitHub Secrets**:
    - Acesse: https://console.firebase.google.com/
    - Selecione projeto `luisices-dev`
    - Authentication > Users > Add user
-   - Email: `caio.garcia@gmail.com` (ou o que estiver no .env.test)
-   - Password: `Hexa1020**`
+   - Email: `teste@exemplo.com` (ou o que estiver no .env.test)
+   - Password: `<SUA_SENHA_DE_TESTE>`
 
 2. **Firestore:**
    - Firestore Database > `users` collection > Add document
@@ -312,7 +312,7 @@ Credenciais vêm de **GitHub Secrets**:
    - Campos:
      ```json
      {
-       "email": "caio.garcia@gmail.com",
+       "email": "teste@exemplo.com",
        "name": "Teste E2E",
        "active": true,
        "role": "admin",

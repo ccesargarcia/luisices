@@ -20,14 +20,14 @@ firebase use dev
 
 # Listar usuários (requer Firebase CLI)
 firebase auth:export users.json --project luisices-dev
-cat users.json | grep -i "caio.garcia@gmail.com"
+cat users.json | grep -i "admin@exemplo.com"
 ```
 
 **Ou via Console:**
 1. Acesse: https://console.firebase.google.com/
 2. Selecione o projeto `luisices-dev`
 3. Authentication > Users
-4. Procure por: `caio.garcia@gmail.com`
+4. Procure por: `admin@exemplo.com`
 
 ---
 
@@ -41,7 +41,7 @@ firebase firestore:get users/{UID} --project luisices-dev
 **Campos obrigatórios:**
 ```json
 {
-  "email": "caio.garcia@gmail.com",
+  "email": "admin@exemplo.com",
   "active": true,  // ← DEVE SER TRUE
   "role": "admin" ou "user",
   "permissions": {
@@ -56,7 +56,7 @@ firebase firestore:get users/{UID} --project luisices-dev
 
 #### Opção A: Via Console Firebase
 1. Authentication > Add user
-   - Email: `caio.garcia@gmail.com`
+   - Email: `admin@exemplo.com`
    - Password: `<SUA_SENHA_DE_TESTE>`
 
 2. Firestore > users > Add document
@@ -64,7 +64,7 @@ firebase firestore:get users/{UID} --project luisices-dev
    - Campos:
      ```json
      {
-       "email": "caio.garcia@gmail.com",
+       "email": "admin@exemplo.com",
        "name": "Teste E2E",
        "active": true,
        "role": "admin",
@@ -81,7 +81,7 @@ firebase firestore:get users/{UID} --project luisices-dev
 #### Opção B: Via script (se `make-admin.mjs` suportar)
 ```bash
 # Adaptar script existente
-node scripts/make-admin.mjs caio.garcia@gmail.com
+node scripts/make-admin.mjs admin@exemplo.com
 ```
 
 ---
@@ -89,10 +89,10 @@ node scripts/make-admin.mjs caio.garcia@gmail.com
 ### 4. Verificar secrets no GitHub Actions
 
 As credenciais devem estar configuradas em:
-https://github.com/ccesargarcia/luisices/settings/secrets/actions
+`https://github.com/<SEU_USUARIO>/<SEU_REPOSITORIO>/settings/secrets/actions`
 
 **Secrets necessárias:**
-- ✅ `TEST_USER_EMAIL` = caio.garcia@gmail.com
+- ✅ `TEST_USER_EMAIL` = admin@exemplo.com
 - ✅ `TEST_USER_PASSWORD` = <SUA_SENHA_DE_TESTE>
 
 **Firebase DEV (7 secrets):**
@@ -171,7 +171,7 @@ Após criar o usuário ou ajustar credenciais, rode localmente:
 ```bash
 # 1. Configurar .env.test com credenciais do DEV
 cat > .env.test << 'EOF'
-TEST_USER_EMAIL=caio.garcia@gmail.com
+TEST_USER_EMAIL=admin@exemplo.com
 TEST_USER_PASSWORD=<SUA_SENHA_DE_TESTE>
 PLAYWRIGHT_BASE_URL=https://dev.luisices.com.br
 EOF

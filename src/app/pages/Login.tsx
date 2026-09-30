@@ -7,7 +7,7 @@ import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '../components/ui/card';
 import { Alert, AlertDescription } from '../components/ui/alert';
-import { ThemeToggle } from '../../components/ThemeToggle';
+import { ThemeToggle } from '../components/common/ThemeToggle';
 import { Loader2, LogIn, Mail, Lock, Eye, EyeOff, Package2, Store, ArrowRight } from 'lucide-react';
 
 export function Login() {

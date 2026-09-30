@@ -73,3 +73,12 @@ playwright/.auth/
 serviceAccountKey.json
 *serviceAccountKey*.json
 *service-account*.json
+
+# AI outputs and generation drafts
+output/
+
+# Raw heavy source assets (optimized versions reside in public/images/)
+assets/*.png
+assets/*.jpg
+assets/*.jpeg
+
