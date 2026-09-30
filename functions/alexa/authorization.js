@@ -73,6 +73,34 @@ function extractAlexaIdentifiers(envelope) {
   };
 }
 
+function logAlexaAuthDiagnostic(envelope, result) {
+  try {
+    const system = envelope?.context?.System || envelope?.session?.System || {};
+    const sessionAttrs = envelope?.session?.attributes || {};
+    const physicalPresent = Boolean(system?.person?.personId);
+    const sessionPresent = Boolean(sessionAttrs?.personId);
+    let comparisonResult = 'ausente';
+    if (physicalPresent) {
+      comparisonResult = sessionPresent
+        ? (system.person.personId === sessionAttrs.personId ? 'correspondente' : 'diferente')
+        : 'presente_sem_sessao';
+    } else if (sessionPresent) {
+      comparisonResult = 'somente_sessao';
+    }
+
+    console.info('[AlexaDiagnostic]', JSON.stringify({
+      timestamp: new Date().toISOString(),
+      stage: 'authorization',
+      intent: envelope?.request?.intent?.name || envelope?.request?.type || 'unknown',
+      physicalPersonPresent: physicalPresent,
+      sessionPersonPresent: sessionPresent,
+      comparisonResult,
+      authorized: Boolean(result?.authorized),
+      errorCode: result?.code || null,
+    }));
+  } catch (_) {}
+}
+
 /**
  * Resolve a identidade da pessoa reconhecida e valida todas as regras no servidor:
  * 1. Integração habilitada
@@ -90,33 +118,38 @@ function extractAlexaIdentifiers(envelope) {
  * @returns {Promise<{ authorized: boolean, identity?: object, error?: string, speech?: string, code?: string }>}
  */
 async function authorizeAlexaPerson(envelope, config, db, authService = null) {
+  const emitAndReturn = (res) => {
+    logAlexaAuthDiagnostic(envelope, res);
+    return res;
+  };
+
   // 1. Integração habilitada no ambiente
   if (!config.isEnabled) {
-    return {
+    return emitAndReturn({
       authorized: false,
       code: ERROR_CODES.INTEGRATION_DISABLED,
       speech: ERROR_SPEECH.INTEGRATION_DISABLED,
-    };
+    });
   }
 
   const { personId, amazonUserId, deviceId, appId } = extractAlexaIdentifiers(envelope);
 
   // 2. Validação obrigatória do personId (reconhecimento de voz)
   if (!personId) {
-    return {
+    return emitAndReturn({
       authorized: false,
       code: ERROR_CODES.VOICE_NOT_RECOGNIZED,
       speech: ERROR_SPEECH.VOICE_NOT_RECOGNIZED,
-    };
+    });
   }
 
   // 3. Validação do Skill ID
   if (config.allowedSkillId && appId && appId !== config.allowedSkillId) {
-    return {
+    return emitAndReturn({
       authorized: false,
       code: ERROR_CODES.ENVIRONMENT_MISMATCH,
       speech: ERROR_SPEECH.ENVIRONMENT_MISMATCH,
-    };
+    });
   }
 
   // 4. Resolver bindingKey via HMAC
@@ -132,51 +165,51 @@ async function authorizeAlexaPerson(envelope, config, db, authService = null) {
   const bindingSnap = await bindingRef.get();
 
   if (!bindingSnap.exists) {
-    return {
+    return emitAndReturn({
       authorized: false,
       code: ERROR_CODES.VOICE_NOT_ALLOWED,
       speech: ERROR_SPEECH.VOICE_NOT_ALLOWED,
-    };
+    });
   }
 
   const bindingData = bindingSnap.data() || {};
 
   // Vínculo deve estar ativo e não revogado
   if (!bindingData.active || bindingData.revokedAt != null) {
-    return {
+    return emitAndReturn({
       authorized: false,
       code: ERROR_CODES.VOICE_NOT_ALLOWED,
       speech: ERROR_SPEECH.VOICE_NOT_ALLOWED,
-    };
+    });
   }
 
   // Vínculo deve pertencer ao mesmo ambiente
   if (bindingData.environment && bindingData.environment !== config.environment) {
-    return {
+    return emitAndReturn({
       authorized: false,
       code: ERROR_CODES.ENVIRONMENT_MISMATCH,
       speech: ERROR_SPEECH.ENVIRONMENT_MISMATCH,
-    };
+    });
   }
 
   // Dispositivo autorizado (se houver lista de dispositivos no vínculo)
   if (Array.isArray(bindingData.allowedDeviceIds) && bindingData.allowedDeviceIds.length > 0) {
     if (!deviceId || !bindingData.allowedDeviceIds.includes(deviceId)) {
-      return {
+      return emitAndReturn({
         authorized: false,
         code: ERROR_CODES.DEVICE_NOT_ALLOWED,
         speech: ERROR_SPEECH.DEVICE_NOT_ALLOWED,
-      };
+      });
     }
   }
 
   const uid = bindingData.uid;
   if (!uid) {
-    return {
+    return emitAndReturn({
       authorized: false,
       code: ERROR_CODES.VOICE_NOT_ALLOWED,
       speech: ERROR_SPEECH.VOICE_NOT_ALLOWED,
-    };
+    });
   }
 
   // 5. Validar paralelamente userProfile, alexaPermissions e conta no Firebase Auth
@@ -200,58 +233,58 @@ async function authorizeAlexaPerson(envelope, config, db, authService = null) {
 
   // Validar userProfile no Firestore
   if (!profileSnap.exists) {
-    return {
+    return emitAndReturn({
       authorized: false,
       code: ERROR_CODES.USER_NOT_FOUND,
       speech: ERROR_SPEECH.USER_NOT_FOUND,
-    };
+    });
   }
 
   const profile = profileSnap.data() || {};
 
   // Perfis legados sem active explícito NÃO são aceitos para voz (exige active === true)
   if (profile.active !== true) {
-    return {
+    return emitAndReturn({
       authorized: false,
       code: ERROR_CODES.USER_INACTIVE,
       speech: ERROR_SPEECH.USER_INACTIVE,
-    };
+    });
   }
 
   // Validar conta no Firebase Auth (não suspensa/desativada)
   if (authUserResult.error) {
     console.warn(`[AlexaAuth] Erro ao consultar Firebase Auth para UID ${uid}:`, authUserResult.error.message);
-    return {
+    return emitAndReturn({
       authorized: false,
       code: ERROR_CODES.USER_NOT_FOUND,
       speech: ERROR_SPEECH.USER_NOT_FOUND,
-    };
+    });
   }
 
   if (authUserResult.disabled) {
-    return {
+    return emitAndReturn({
       authorized: false,
       code: ERROR_CODES.USER_DISABLED,
       speech: ERROR_SPEECH.USER_DISABLED,
-    };
+    });
   }
 
   // Validar alexaPermissions/{uid}
   if (!permSnap.exists) {
-    return {
+    return emitAndReturn({
       authorized: false,
       code: ERROR_CODES.VOICE_NOT_ALLOWED,
       speech: ERROR_SPEECH.VOICE_NOT_ALLOWED,
-    };
+    });
   }
 
   const alexaPerm = permSnap.data() || {};
   if (!alexaPerm.enabled) {
-    return {
+    return emitAndReturn({
       authorized: false,
       code: ERROR_CODES.VOICE_NOT_ALLOWED,
       speech: ERROR_SPEECH.VOICE_NOT_ALLOWED,
-    };
+    });
   }
 
   // 8. Validar permissão de criação de pedidos no sistema
@@ -261,16 +294,16 @@ async function authorizeAlexaPerson(envelope, config, db, authService = null) {
     profile.permissions?.orders?.create === true;
 
   if (!canCreateOrders) {
-    return {
+    return emitAndReturn({
       authorized: false,
       code: ERROR_CODES.PERMISSION_DENIED,
       speech: ERROR_SPEECH.PERMISSION_DENIED,
-    };
+    });
   }
 
   const mode = alexaPerm.mode === 'app_approval' ? 'app_approval' : 'voice_confirm';
 
-  return {
+  return emitAndReturn({
     authorized: true,
     identity: {
       uid,
@@ -282,7 +315,7 @@ async function authorizeAlexaPerson(envelope, config, db, authService = null) {
       amazonUserId,
       deviceId,
     },
-  };
+  });
 }
 
 module.exports = {

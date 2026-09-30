@@ -103,7 +103,7 @@ describe('Alexa: Validação Estrutural e Semântica do Interaction Model (pt-BR
     expect(createOrder.samples).toContain('criar pedido de {product} para {customer} no valor de {ambiguousPrice} reais e entrega {deliveryDate}');
   });
 
-  it('7. Amostras de correção com negação em ProvideDeliveryDateIntent não colidem com AMAZON.NoIntent', () => {
+  it('7. Verificação estrutural: ProvideDeliveryDateIntent possui amostras de negação e AMAZON.NoIntent é livre de slots (classificação NLU pendente do profiler da Alexa)', () => {
     const deliveryIntent = intents.find((i: any) => i.name === 'ProvideDeliveryDateIntent');
     expect(deliveryIntent).toBeDefined();
     expect(deliveryIntent.samples).toContain('não {deliveryDate}');
@@ -111,14 +111,15 @@ describe('Alexa: Validação Estrutural e Semântica do Interaction Model (pt-BR
 
     const noIntent = intents.find((i: any) => i.name === 'AMAZON.NoIntent');
     expect(noIntent).toBeDefined();
-    // AMAZON.NoIntent possui apenas negações puras sem slots
+    // Verificação estrutural: AMAZON.NoIntent possui apenas negações puras sem slots declarados
     for (const sample of noIntent.samples) {
       expect(sample).not.toContain('{deliveryDate}');
     }
   });
 
   it('8. prepareSkillPackage para DEV conserva endpoint Cloudflare, certificado Wildcard e invocação correta', () => {
-    const tmpDir = path.resolve(__dirname, '../../../alexa/build/test-validate-model');
+    const uniqueRunId = `test-validate-model-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+    const tmpDir = path.resolve(__dirname, `../../../alexa/build/${uniqueRunId}`);
     try {
       const res = prepareSkillPackage({
         env: 'dev',

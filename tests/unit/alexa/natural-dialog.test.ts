@@ -2285,7 +2285,7 @@ describe('Alexa: Diálogo Natural, Contextual e Catálogo Controlado (Fases 1 a 
       expect(draft.deliveryDate).toBe('2026-10-25');
     });
 
-    it('deve encaminhar para aprovação no aplicativo quando a biometria vocal não for detectada na confirmação curta "Sim" (Fail-Safe R5)', async () => {
+    it('deve oferecer até 2 novas tentativas por voz ao omitir biometria e encaminhar na 3ª falha (Política P1)', async () => {
       const mockDb = createMockDb();
       const draftId = 'draft-short-sim';
       const sessionId = 'session-short-1';
@@ -2305,10 +2305,11 @@ describe('Alexa: Diálogo Natural, Contextual e Catálogo Controlado (Fases 1 a 
         price: 100,
         deliveryDate: '2026-10-25',
         revision: 1,
+        voiceConfirmationFailures: 0,
         expiresAt: { toDate: () => new Date(Date.now() + 10 * 60 * 1000) },
       };
 
-      // Envelope com "Sim": Amazon omitiu envelope.context.System.person por ser fala curta
+      // 1ª tentativa: Envelope com "Sim" sem biometria física
       const envelope = {
         session: { sessionId, attributes: { draftId, revision: 1 } },
         context: { System: {} }, // Sem biometria física nesta fala
@@ -2322,11 +2323,31 @@ describe('Alexa: Diálogo Natural, Contextual e Catálogo Controlado (Fases 1 a 
         getUser: async (u: string) => ({ uid: u, disabled: false }),
       };
 
-      const res = await handleAlexaDialog({ envelope, identity, config: baseConfig, db: mockDb, authService: mockAuthService });
+      const res1 = await handleAlexaDialog({ envelope, identity, config: baseConfig, db: mockDb, authService: mockAuthService });
 
-      expect(res.shouldEndSession).toBe(true);
-      expect(res.speech).toContain('Por segurança, o pedido foi enviado para aprovação no aplicativo Luisices');
+      expect(res1.shouldEndSession).toBe(false);
+      expect(res1.speech).toContain('Não consegui reconhecer sua voz nesta resposta. Diga: pode confirmar.');
+      expect(res1.reprompt).toContain('Para confirmar o pedido, diga: pode confirmar.');
+      expect(mockDb.store.alexaDrafts[draftId].state).toBe('awaiting_confirmation');
+      expect(mockDb.store.alexaDrafts[draftId].voiceConfirmationFailures).toBe(1);
+      expect(Object.keys(mockDb.store.orders).length).toBe(0);
+
+      // 2ª tentativa: Continua sem biometria física
+      const res2 = await handleAlexaDialog({ envelope, identity, config: baseConfig, db: mockDb, authService: mockAuthService });
+
+      expect(res2.shouldEndSession).toBe(false);
+      expect(res2.speech).toContain('Não consegui reconhecer sua voz nesta resposta. Diga: pode confirmar.');
+      expect(mockDb.store.alexaDrafts[draftId].state).toBe('awaiting_confirmation');
+      expect(mockDb.store.alexaDrafts[draftId].voiceConfirmationFailures).toBe(2);
+      expect(Object.keys(mockDb.store.orders).length).toBe(0);
+
+      // 3ª tentativa: Terceira resposta afirmativa sem biometria -> Encaminhamento atômico ao app
+      const res3 = await handleAlexaDialog({ envelope, identity, config: baseConfig, db: mockDb, authService: mockAuthService });
+
+      expect(res3.shouldEndSession).toBe(true);
+      expect(res3.speech).toContain('Por segurança, o pedido foi enviado para aprovação no aplicativo Luisices');
       expect(mockDb.store.alexaDrafts[draftId].state).toBe('awaiting_app_approval');
+      expect(mockDb.store.alexaDrafts[draftId].voiceConfirmationFailures).toBe(3);
       expect(Object.keys(mockDb.store.orders).length).toBe(0);
     });
 

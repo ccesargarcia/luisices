@@ -16,6 +16,18 @@ const MONTH_NAMES = [
 ];
 
 /**
+ * Emite evento diagnóstico estruturado sem dados sensíveis (PII, tokens ou payloads brutos).
+ */
+function logAlexaDiagnostic(event) {
+  try {
+    console.info('[AlexaDiagnostic]', JSON.stringify({
+      timestamp: new Date().toISOString(),
+      ...event,
+    }));
+  } catch (_) {}
+}
+
+/**
  * Sanitiza texto dinâmico para fala segura em SSML (prevenção de injeção).
  */
 function sanitizeSpeech(text) {
@@ -331,14 +343,14 @@ function buildConfirmationSpeech(draftData, identity, config) {
     const unitPriceReais = draftData.unitPriceCents / 100;
     const unitPriceFormatted = unitPriceReais === 0 ? 'zero reais' : formatCurrencyPtBr(unitPriceReais);
     const totalPriceFormatted = draftData.price === 0 ? 'zero reais, pedido gratuito' : formatCurrencyPtBr(draftData.price);
-    return `${name}, no ambiente de ${envLabel}: ${qty} ${prod} para ${cust} a ${unitPriceFormatted} cada, total de ${totalPriceFormatted}, entrega em ${dateFormatted}. Confirmar?`;
+    return `${name}, no ambiente de ${envLabel}: ${qty} ${prod} para ${cust} a ${unitPriceFormatted} cada, total de ${totalPriceFormatted}, entrega em ${dateFormatted}. Confirmar? Diga: pode confirmar. Ou diga o que deseja corrigir.`;
   }
 
   const priceFormatted = draftData.price === 0
     ? 'zero reais, pedido gratuito'
     : formatCurrencyPtBr(draftData.price);
 
-  return `${name}, no ambiente de ${envLabel}: ${qty} ${prod} para ${cust}, entrega em ${dateFormatted}, total de ${priceFormatted}. Confirmar?`;
+  return `${name}, no ambiente de ${envLabel}: ${qty} ${prod} para ${cust}, entrega em ${dateFormatted}, total de ${priceFormatted}. Confirmar? Diga: pode confirmar. Ou diga o que deseja corrigir.`;
 }
 
 /**
@@ -952,7 +964,7 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
         const summary = buildConfirmationSpeech(activeDraft, identity, config);
         return {
           speech: `Olá, ${name}. Você tem um pedido em andamento. ${summary}`,
-          reprompt: 'Confirma o pedido? Diga sim para confirmar, ou cancelar.',
+          reprompt: 'Confirma o pedido? Diga: pode confirmar. Ou diga cancelar.',
           shouldEndSession: false,
           sessionAttributes: {
             draftId: activeDraft.draftId,
@@ -1147,7 +1159,7 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
       const confirmSpeech = buildConfirmationSpeech(currentDraft, identity, config);
       return {
         speech: `Repetindo o pedido: ${confirmSpeech}`,
-        reprompt: 'Você confirma o pedido? Diga sim para confirmar ou não para alterar.',
+        reprompt: 'Você confirma o pedido? Diga: pode confirmar. Ou diga o que deseja corrigir.',
         shouldEndSession: false,
         sessionAttributes: { draftId: currentDraftId, revision: currentDraft.revision, personId: identity.personId, expectedInput: 'confirmation' },
       };
@@ -1330,8 +1342,8 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
       fallbackSpeech = 'Não entendi. Diga o produto desejado, por exemplo: caixinhas ou topo de bolo.';
       fallbackReprompt = 'Qual é o produto do pedido?';
     } else if (fallbackExpectedInput === 'confirmation') {
-      fallbackSpeech = 'Não entendi. Diga sim para confirmar o pedido ou não para alterar.';
-      fallbackReprompt = 'Você confirma o pedido? Diga sim ou não.';
+      fallbackSpeech = 'Não entendi. Diga: pode confirmar, ou diga não para alterar.';
+      fallbackReprompt = 'Você confirma o pedido? Diga: pode confirmar. Ou diga não para alterar.';
     } else if (fallbackExpectedInput === 'priceBasis') {
       fallbackSpeech = 'Não entendi. Diga se o valor informado é cada ou no total.';
       fallbackReprompt = 'O valor é cada ou no total?';
@@ -1522,6 +1534,19 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
           },
         };
       }
+      if (intentName === 'AMAZON.YesIntent') {
+        return {
+          draft: null,
+          draftId: null,
+          draftRef: null,
+          isAppApprovalBlocked: false,
+          transactionError: {
+            speech: 'Não encontrei nenhum pedido em andamento para confirmar. Para começar, diga criar pedido.',
+            reprompt: 'Diga criar pedido para começar.',
+            shouldEndSession: true,
+          },
+        };
+      }
       // Criar novo rascunho
       const newDraftId = crypto.randomUUID();
       txDraftId = newDraftId;
@@ -1557,6 +1582,7 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
         revision: 1,
         state: 'collecting',
         fallbackCount: 0,
+        voiceConfirmationFailures: 0,
         expiresAt: admin.firestore.Timestamp.fromDate(expiresAt),
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -2351,7 +2377,7 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
       const summary = buildConfirmationSpeech(draft, identity, config);
       return {
         speech: `Você tem um pedido em andamento. ${summary}`,
-        reprompt: 'Confirma o pedido? Diga sim para confirmar ou não para alterar.',
+        reprompt: 'Confirma o pedido? Diga: pode confirmar. Ou diga não para alterar.',
         shouldEndSession: false,
         sessionAttributes: {
           draftId,
@@ -2370,6 +2396,15 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
 
     // Se uma pessoa física diferente for detectada na fala atual, rejeita imediatamente por segurança
     if (physicalPersonId && draft.personId && draft.personId !== physicalPersonId) {
+      logAlexaDiagnostic({
+        stage: 'confirmation',
+        intent: intentName,
+        sessionId: sessionId || null,
+        physicalPersonPresent: true,
+        sessionPersonPresent: Boolean(sessionAttrs?.personId),
+        comparisonResult: 'diferente',
+        outcome: 'rejeitado',
+      });
       return {
         speech: 'A pessoa que está confirmando não é a mesma que iniciou o pedido. Criação cancelada por segurança.',
         shouldEndSession: true,
@@ -2384,15 +2419,17 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
       const updatedSummary = buildConfirmationSpeech(draft, identity, config);
       return {
         speech: `Os dados do pedido foram atualizados. ${updatedSummary}`,
-        reprompt: 'Confirma o pedido com os dados atualizados? Diga sim para confirmar ou não para alterar.',
+        reprompt: 'Confirma o pedido com os dados atualizados? Diga: pode confirmar. Ou diga não para alterar.',
         shouldEndSession: false,
         sessionAttributes: { draftId, revision: draft.revision, personId: identity.personId, expectedInput: 'confirmation' },
       };
     }
 
-    // Política de Segurança Fail-Safe: sem biometria física na fala atual, não realiza commit direto por voz.
-    // Encaminha atomicamente para aprovação no aplicativo Luisices, preservando o pedido com segurança.
-    if (!physicalPersonId) {
+    const envLabel = config.environment === 'prod' ? 'produção' : 'teste';
+
+    // Modo 2: Aprovação pendente no aplicativo (transição atômica condicional)
+    // Preserva encaminhamento normal para aprovação sem exigir novas tentativas de voz
+    if (draft.mode === 'app_approval') {
       let transitioned = false;
       try {
         transitioned = await runTx(async (transaction) => {
@@ -2405,7 +2442,11 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
             const isSameRevision = dData.revision === draft.revision;
             const isAwaiting = dData.state === 'awaiting_confirmation';
 
-            if (isOwner && isSameBinding && isSameEnv && isSameRevision && isAwaiting) {
+            const now = Date.now();
+            const expiresAt = dData.expiresAt?.toDate ? dData.expiresAt.toDate().getTime() : (typeof dData.expiresAt === 'number' ? dData.expiresAt : 0);
+            const isExpired = expiresAt > 0 && expiresAt <= now;
+
+            if (isOwner && isSameBinding && isSameEnv && isSameRevision && isAwaiting && !isExpired) {
               transaction.update(draftRef, {
                 sessionId: sessionId || dData.sessionId,
                 state: 'awaiting_app_approval',
@@ -2417,81 +2458,18 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
           return false;
         });
       } catch (err) {
-        console.warn('[AlexaDialog] Erro ao transicionar para app_approval sem personId:', err?.message || err);
+        console.warn('[AlexaDialog] Erro ao transicionar para app_approval:', err?.message || err);
         transitioned = false;
       }
 
-      if (!transitioned) {
-        return {
-          speech: 'Não reconheci sua voz com segurança e não foi possível enviar o pedido para aprovação no aplicativo. Por favor, tente novamente ou verifique no aplicativo.',
-          shouldEndSession: true,
-          sessionAttributes: {},
-        };
-      }
-
-      return {
-        speech: 'Não reconheci sua voz com segurança na confirmação. Por segurança, o pedido foi enviado para aprovação no aplicativo Luisices.',
-        shouldEndSession: true,
-        sessionAttributes: {},
-      };
-    }
-
-    const envLabel = config.environment === 'prod' ? 'produção' : 'teste';
-
-    // Modo 1: Confirmação por voz direta
-    if (draft.mode === 'voice_confirm') {
-      try {
-        const commitRes = await commitOrderFromDraft({
-          draftId,
-          callerPersonId: physicalPersonId,
-          expectedRevision: draft.revision,
-          callerUid: identity.uid,
-          config,
-          db,
-          authService,
-        });
-
-        const successSpeech = commitRes.isReplay
-          ? `O pedido número ${commitRes.orderNumber} já havia sido registrado com sucesso.`
-          : `Pedido criado no seu espaço de ${envLabel} com o número ${commitRes.orderNumber}.`;
-
-        return {
-          speech: successSpeech,
-          shouldEndSession: true,
-          sessionAttributes: {},
-        };
-      } catch (commitErr) {
-        console.error('[AlexaDialog] Erro ao gravar pedido:', commitErr);
-        return {
-          speech: 'Não foi possível confirmar o pedido neste momento. Por favor, verifique o quadro no aplicativo.',
-          shouldEndSession: true,
-          sessionAttributes: {},
-        };
-      }
-    }
-
-    // Modo 2: Aprovação pendente no aplicativo (transição atômica condicional)
-    if (draft.mode === 'app_approval') {
-      const transitioned = await runTx(async (transaction) => {
-        const snap = await transaction.get(draftRef);
-        if (snap.exists) {
-          const dData = snap.data() || {};
-          const isOwner = dData.uid === identity.uid;
-          const isSameBinding = !dData.bindingKey || dData.bindingKey === identity.bindingKey;
-          const isSameEnv = !dData.environment || dData.environment === config.environment;
-          const isSameRevision = dData.revision === draft.revision;
-          const isAwaiting = dData.state === 'awaiting_confirmation';
-
-          if (isOwner && isSameBinding && isSameEnv && isSameRevision && isAwaiting) {
-            transaction.update(draftRef, {
-              sessionId: sessionId || dData.sessionId,
-              state: 'awaiting_app_approval',
-              updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-            });
-            return true;
-          }
-        }
-        return false;
+      logAlexaDiagnostic({
+        stage: 'confirmation',
+        intent: intentName,
+        sessionId: sessionId || null,
+        physicalPersonPresent: Boolean(physicalPersonId),
+        sessionPersonPresent: Boolean(sessionAttrs?.personId),
+        comparisonResult: !physicalPersonId ? 'ausente' : (draft.personId === physicalPersonId ? 'correspondente' : 'diferente'),
+        outcome: transitioned ? 'encaminhado_app' : 'falha_transicao',
       });
 
       if (!transitioned) {
@@ -2507,6 +2485,174 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
         shouldEndSession: true,
         sessionAttributes: {},
       };
+    }
+
+    // Política de 2 novas tentativas com estado persistido (P1):
+    // Sem biometria física na fala atual, oferece até 2 novas tentativas (3 tentativas no total).
+    // Na 3ª resposta afirmativa sem biometria, encaminha atomicamente para aprovação no aplicativo.
+    if (!physicalPersonId) {
+      let txResult = { status: 'error' };
+      try {
+        txResult = await runTx(async (transaction) => {
+          const snap = await transaction.get(draftRef);
+          if (snap.exists) {
+            const dData = (typeof snap.data === 'function' ? snap.data() : snap.data) || {};
+            const isOwner = dData.uid === identity.uid;
+            const isSameBinding = !dData.bindingKey || dData.bindingKey === identity.bindingKey;
+            const isSameEnv = !dData.environment || dData.environment === config.environment;
+            const isSameRevision = dData.revision === draft.revision;
+            const isAwaiting = dData.state === 'awaiting_confirmation';
+
+            const now = Date.now();
+            const expiresAt = dData.expiresAt?.toDate ? dData.expiresAt.toDate().getTime() : (typeof dData.expiresAt === 'number' ? dData.expiresAt : 0);
+            const isExpired = expiresAt > 0 && expiresAt <= now;
+
+            if (isOwner && isSameBinding && isSameEnv && isSameRevision && isAwaiting && !isExpired) {
+              const rawFailures = dData.voiceConfirmationFailures;
+              let currentFailures = 0;
+              if (typeof rawFailures === 'number' && Number.isFinite(rawFailures)) {
+                currentFailures = Math.max(0, Math.floor(rawFailures));
+              } else if (rawFailures !== undefined && rawFailures !== null) {
+                // Estado malformado não pode liberar tentativas ilimitadas; fail-closed no limite
+                currentFailures = 2;
+              }
+
+              if (currentFailures < 2) {
+                const nextFailures = currentFailures + 1;
+                transaction.update(draftRef, {
+                  sessionId: sessionId || dData.sessionId,
+                  voiceConfirmationFailures: nextFailures,
+                  updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+                });
+                return { status: 'retry', failures: nextFailures };
+              }
+
+              // 3ª tentativa afirmativa sem personId: transição atômica para awaiting_app_approval
+              transaction.update(draftRef, {
+                sessionId: sessionId || dData.sessionId,
+                voiceConfirmationFailures: currentFailures + 1,
+                state: 'awaiting_app_approval',
+                updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+              });
+              return { status: 'transitioned_app', failures: currentFailures + 1 };
+            }
+          }
+          return { status: 'aborted' };
+        });
+      } catch (err) {
+        console.warn('[AlexaDialog] Erro na transação de confirmação sem personId:', err?.message || err);
+        txResult = { status: 'error' };
+      }
+
+      if (txResult.status === 'retry') {
+        logAlexaDiagnostic({
+          stage: 'confirmation',
+          intent: intentName,
+          sessionId: sessionId || null,
+          physicalPersonPresent: false,
+          sessionPersonPresent: Boolean(sessionAttrs?.personId),
+          comparisonResult: 'ausente',
+          failureAttempt: txResult.failures,
+          outcome: 'nova_tentativa',
+        });
+        return {
+          speech: 'Não consegui reconhecer sua voz nesta resposta. Diga: pode confirmar.',
+          reprompt: 'Para confirmar o pedido, diga: pode confirmar.',
+          shouldEndSession: false,
+          sessionAttributes: {
+            draftId,
+            revision: draft.revision,
+            personId: identity.personId,
+            expectedInput: 'confirmation',
+          },
+        };
+      }
+
+      if (txResult.status === 'transitioned_app') {
+        logAlexaDiagnostic({
+          stage: 'confirmation',
+          intent: intentName,
+          sessionId: sessionId || null,
+          physicalPersonPresent: false,
+          sessionPersonPresent: Boolean(sessionAttrs?.personId),
+          comparisonResult: 'ausente',
+          failureAttempt: txResult.failures,
+          outcome: 'encaminhado_app',
+        });
+        return {
+          speech: 'Não reconheci sua voz com segurança na confirmação. Por segurança, o pedido foi enviado para aprovação no aplicativo Luisices.',
+          shouldEndSession: true,
+          sessionAttributes: {},
+        };
+      }
+
+      logAlexaDiagnostic({
+        stage: 'confirmation',
+        intent: intentName,
+        sessionId: sessionId || null,
+        physicalPersonPresent: false,
+        sessionPersonPresent: Boolean(sessionAttrs?.personId),
+        comparisonResult: 'ausente',
+        outcome: 'falha_transicao',
+      });
+      return {
+        speech: 'Não reconheci sua voz com segurança e não foi possível enviar o pedido para aprovação no aplicativo. Por favor, tente novamente ou verifique no aplicativo.',
+        shouldEndSession: true,
+        sessionAttributes: {},
+      };
+    }
+
+    // Modo 1: Confirmação por voz direta com biometria correspondente
+    if (draft.mode === 'voice_confirm') {
+      try {
+        const commitRes = await commitOrderFromDraft({
+          draftId,
+          callerPersonId: physicalPersonId,
+          expectedRevision: draft.revision,
+          callerUid: identity.uid,
+          config,
+          db,
+          authService,
+        });
+
+        logAlexaDiagnostic({
+          stage: 'confirmation',
+          intent: intentName,
+          sessionId: sessionId || null,
+          physicalPersonPresent: true,
+          sessionPersonPresent: Boolean(sessionAttrs?.personId),
+          comparisonResult: 'correspondente',
+          outcome: 'confirmado',
+          orderNumber: commitRes.orderNumber,
+          isReplay: Boolean(commitRes.isReplay),
+        });
+
+        const successSpeech = commitRes.isReplay
+          ? `O pedido número ${commitRes.orderNumber} já havia sido registrado com sucesso.`
+          : `Pedido criado no seu espaço de ${envLabel} com o número ${commitRes.orderNumber}.`;
+
+        return {
+          speech: successSpeech,
+          shouldEndSession: true,
+          sessionAttributes: {},
+        };
+      } catch (commitErr) {
+        console.error('[AlexaDialog] Erro ao gravar pedido:', commitErr);
+        logAlexaDiagnostic({
+          stage: 'confirmation',
+          intent: intentName,
+          sessionId: sessionId || null,
+          physicalPersonPresent: true,
+          sessionPersonPresent: Boolean(sessionAttrs?.personId),
+          comparisonResult: 'correspondente',
+          outcome: 'erro_commit',
+        });
+        return {
+          speech: 'Não foi possível confirmar o pedido neste momento. Por favor, verifique o quadro no aplicativo.',
+          shouldEndSession: true,
+          sessionAttributes: {},
+        };
+      }
     }
   }
 
@@ -2546,7 +2692,7 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
   const finalSpeech = correctionAcknowledgment ? `${correctionAcknowledgment}${confirmSpeech}` : confirmSpeech;
   return {
     speech: finalSpeech,
-    reprompt: 'Você confirma o pedido? Diga sim para confirmar ou não para alterar.',
+    reprompt: 'Você confirma o pedido? Diga: pode confirmar. Ou diga o que deseja corrigir.',
     shouldEndSession: false,
     sessionAttributes: { draftId, revision: draft.revision, personId: identity.personId, expectedInput: 'confirmation' },
   };
