@@ -10,7 +10,9 @@
             "vincular minha voz"
           ],
           "name": "Ateliê de Testes",
-          "description": "Skill privada para criação rápida e segura de pedidos por comando de voz no ateliê Luisices, vinculada ao perfil de voz de pessoas autorizadas."
+          "description": "Skill privada para criação rápida e segura de pedidos por comando de voz no ateliê Luisices, vinculada ao perfil de voz de pessoas autorizadas.",
+          "smallIconUri": "https://s3.amazonaws.com/CAPS-SSE/echo_developer/e685/52f9b32d8bf14eebb7877d2b1326fc3b/APP_ICON?versionId=LpjYwK9ZyzMfcVeCb7CM2Q_tqh3a7fkA&X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Date=20260930T214627Z&X-Amz-SignedHeaders=host&X-Amz-Expires=604799&X-Amz-Credential=AKIAWBV6LQ4QGZPQZQYL%2F20260930%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Signature=984b2cb5efd0247e5129241a25d7d7ce8fb0ca724f025bbd1dbe66e7bc6d8225",
+          "largeIconUri": "https://s3.amazonaws.com/CAPS-SSE/echo_developer/a5f2/57bd685482314c97907002e2474df789/APP_ICON_LARGE?versionId=Uh1_0XP67oMfwHtAFHamEp1ZvwbMU5go&X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Date=20260930T214627Z&X-Amz-SignedHeaders=host&X-Amz-Expires=604799&X-Amz-Credential=AKIAWBV6LQ4QGZPQZQYL%2F20260930%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Signature=78ea40943a6ebcf0718ba41ee0589bff2381558c7b25ca45664a2ae02e167219"
         }
       },
       "isAvailableWorldwide": true,
