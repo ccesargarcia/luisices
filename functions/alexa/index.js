@@ -208,6 +208,7 @@ async function processAlexaEnvelope(envelope, { db, config, authService = null }
       const resp = buildAlexaResponse({
         speech: pairingRes.speech,
         shouldEndSession: pairingRes.shouldEndSession,
+        card: pairingRes.card,
       });
       return await persistResponse(resp);
     }

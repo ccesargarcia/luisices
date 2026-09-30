@@ -88,12 +88,19 @@ async function handleVoicePairingRequest(envelope, config, db) {
     success: true,
   });
 
-  // 5. Falar dígitos separadamente para fácil compreensão
+  // 5. Falar dígitos separadamente e repetir pausadamente
   const spokenCode = code.split('').join(', ');
-  const speech = `Seu código de vinculação é: ${spokenCode}. Informe este código ao administrador no Luisices em até cinco minutos.`;
+  const speech = `Seu código de vinculação é: ${spokenCode}. Repetindo bem devagar: ${spokenCode}. O código também foi enviado para o seu aplicativo Alexa. Informe este código no painel do Luisices em até cinco minutos.`;
+
+  const card = {
+    type: 'Simple',
+    title: 'Código de Vinculação - Luisices',
+    content: `Seu código de vinculação é: ${code}\n\nInforme este código ao administrador no painel do Luisices em até 5 minutos.`,
+  };
 
   return {
     speech,
+    card,
     shouldEndSession: true,
   };
 }
