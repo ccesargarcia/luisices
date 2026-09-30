@@ -108,6 +108,34 @@ jobs:
           echo "📦 Atualizando modelo de interação pt-BR..."
           ask smapi set-interaction-model -s "$SKILL_ID" -g development -l pt-BR --interaction-model "file:alexa/build/skill-package/interactionModels/custom/pt-BR.json"
           
+          echo "📦 Preservando ícones e dados visuais configurados no console..."
+          node -e '
+            const fs = require("fs");
+            const { execSync } = require("child_process");
+            try {
+              const liveRaw = execSync("ask smapi get-skill-manifest -s \"'"$SKILL_ID"'\" -g development", { encoding: "utf8" });
+              const live = JSON.parse(liveRaw);
+              const buildPath = "alexa/build/skill-package/skill.json";
+              const target = JSON.parse(fs.readFileSync(buildPath, "utf8"));
+              
+              const liveLocale = live.manifest?.publishingInformation?.locales?.["pt-BR"];
+              const targetLocale = target.manifest?.publishingInformation?.locales?.["pt-BR"];
+              if (liveLocale && targetLocale) {
+                if (liveLocale.smallIconUri && !targetLocale.smallIconUri) {
+                  targetLocale.smallIconUri = liveLocale.smallIconUri;
+                  console.log("ℹ️ Preservando smallIconUri do console:", liveLocale.smallIconUri);
+                }
+                if (liveLocale.largeIconUri && !targetLocale.largeIconUri) {
+                  targetLocale.largeIconUri = liveLocale.largeIconUri;
+                  console.log("ℹ️ Preservando largeIconUri do console:", liveLocale.largeIconUri);
+                }
+              }
+              fs.writeFileSync(buildPath, JSON.stringify(target, null, 2) + "\n", "utf8");
+            } catch (err) {
+              console.warn("⚠️ Aviso ao ler manifesto remoto para preservação:", err.message);
+            }
+          '
+
           echo "📦 Atualizando manifesto skill.json..."
           ask smapi update-skill-manifest -s "$SKILL_ID" -g development --manifest "file:alexa/build/skill-package/skill.json"
           
