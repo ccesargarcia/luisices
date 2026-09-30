@@ -56,11 +56,13 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v5
         with:
-          node-version: '24'
+          node-version: '22'
           cache: 'npm'
 
       - name: Install dependencies
-        run: npm install --legacy-peer-deps
+        run: |
+          npm install --legacy-peer-deps
+          npm --prefix functions install
 
       - name: Run Unit Tests (Vitest)
         run: npm run test:unit
@@ -133,7 +135,7 @@ jobs:
 
       - name: Upload test report
         if: always()
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v4
         with:
           name: playwright-report-shard-${{ matrix.shard }}
           path: playwright-report/
@@ -141,7 +143,7 @@ jobs:
 
       - name: Upload test videos & traces
         if: always()
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v4
         with:
           name: test-results-shard-${{ matrix.shard }}
           path: test-results/
