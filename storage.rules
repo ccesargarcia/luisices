@@ -76,5 +76,11 @@ service firebase.storage {
       allow delete: if isActiveUser()
         && (isAdmin() || (resource.metadata != null && resource.metadata.userId == request.auth.uid));
     }
+
+    // Ativos e ícones estáticos públicos: leitura pública irrestrita
+    match /public/{allPaths=**} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
   }
 }
