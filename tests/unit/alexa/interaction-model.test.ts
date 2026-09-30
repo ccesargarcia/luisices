@@ -14,7 +14,7 @@ describe('Alexa: Validação Estrutural e Semântica do Interaction Model (pt-BR
   it('1. Estrutura mínima e campos obrigatórios do interaction model estão corretos', () => {
     expect(model.interactionModel).toBeDefined();
     expect(languageModel).toBeDefined();
-    expect(languageModel.invocationName).toBe('atelie de testes');
+    expect(languageModel.invocationName).toBe('ateliê de testes');
     expect(Array.isArray(intents)).toBe(true);
     expect(intents.length).toBeGreaterThan(10);
   });
@@ -56,7 +56,7 @@ describe('Alexa: Validação Estrutural e Semântica do Interaction Model (pt-BR
     expect(duplicates).toEqual([]);
   });
 
-  it('4. Nenhuma amostra de intent deve conter palavras de invocação ("atelie de testes", "luisices") ou "alexa"', () => {
+  it('4. Nenhuma amostra de intent deve conter palavras de invocação ("ateliê de testes", "luisices") ou "alexa"', () => {
     const forbidden: Array<{ intent: string; sample: string }> = [];
 
     for (const intent of intents) {
@@ -64,6 +64,8 @@ describe('Alexa: Validação Estrutural e Semântica do Interaction Model (pt-BR
         const lower = sample.toLowerCase();
         if (
           lower.includes('alexa') ||
+          lower.includes('ateliê de testes') ||
+          lower.includes('ateliê de teste') ||
           lower.includes('atelie de testes') ||
           lower.includes('atelie de teste') ||
           lower.includes('papelaria teste') ||
@@ -128,14 +130,14 @@ describe('Alexa: Validação Estrutural e Semântica do Interaction Model (pt-BR
       });
 
       expect(res.endpoint).toBe('https://api.dev.luisices.com.br/alexaWebhook');
-      expect(res.invocation).toBe('atelie de testes');
+      expect(res.invocation).toBe('ateliê de testes');
 
       const manifest = JSON.parse(fs.readFileSync(res.manifestPath, 'utf8'));
       expect(manifest.manifest.apis.custom.endpoint.sslCertificateType).toBe('Wildcard');
       expect(manifest.manifest.apis.custom.endpoint.uri).toBe('https://api.dev.luisices.com.br/alexaWebhook');
 
       const modelDev = JSON.parse(fs.readFileSync(res.interactionModelPath, 'utf8'));
-      expect(modelDev.interactionModel.languageModel.invocationName).toBe('atelie de testes');
+      expect(modelDev.interactionModel.languageModel.invocationName).toBe('ateliê de testes');
       const devIntents = modelDev.interactionModel.languageModel.intents;
       expect(devIntents.some((i: any) => i.name === 'ProvideCustomerOnlyIntent')).toBe(true);
     } finally {
