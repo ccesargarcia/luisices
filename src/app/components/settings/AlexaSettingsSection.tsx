@@ -27,6 +27,7 @@ import {
   HelpCircle,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { useAuth } from '../../../contexts/AuthContext';
 import { firebaseAlexaService } from '../../../services/firebaseAlexaService';
 import { firebaseUserService } from '../../../services/firebaseUserService';
 import { AlexaIntegrationStatus, UserProfile } from '../../types';
@@ -38,6 +39,7 @@ interface AlexaSettingsSectionProps {
 
 export function AlexaSettingsSection({ isAdmin }: AlexaSettingsSectionProps) {
   const navigate = useNavigate();
+  const { user, userProfile } = useAuth();
   const [status, setStatus] = useState<AlexaIntegrationStatus | null>(null);
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
@@ -53,30 +55,59 @@ export function AlexaSettingsSection({ isAdmin }: AlexaSettingsSectionProps) {
   const [revokingBindingId, setRevokingBindingId] = useState<string | null>(null);
   const [approvingDraftId, setApprovingDraftId] = useState<string | null>(null);
 
+  const effectiveIsAdmin = Boolean(isAdmin || status?.isAdmin || userProfile?.role === 'admin');
+
   const loadData = useCallback(async () => {
     try {
-      const [statusRes, usersRes] = await Promise.all([
-        firebaseAlexaService.getStatus(),
-        isAdmin ? firebaseUserService.listUsers() : Promise.resolve<UserProfile[]>([]),
-      ]);
-      setStatus(statusRes);
-      setUsers(usersRes.filter((u: UserProfile) => u.active !== false));
-      if (usersRes.length > 0) {
-        setSelectedUid((prev) => {
-          if (prev) return prev;
-          // Selecionar por padrão Amanda se existir ou primeiro usuário
-          const amanda = usersRes.find((u: UserProfile) => u.displayName?.toLowerCase().includes('amanda'));
-          return amanda ? amanda.uid : usersRes[0].uid;
-        });
+      // 1. Carrega status da integração Alexa via Cloud Function segura (Admin SDK no backend)
+      let statusRes: AlexaIntegrationStatus | null = null;
+      try {
+        statusRes = await firebaseAlexaService.getStatus();
+        setStatus(statusRes);
+      } catch (statusErr: any) {
+        console.error('[AlexaSettings] Erro ao carregar status da Alexa:', statusErr);
+        toast.error('Erro ao consultar integração Alexa: ' + (statusErr?.message || 'Falha de conexão.'));
       }
-    } catch (err: any) {
-      console.error('[AlexaSettings] Erro ao carregar status:', err);
-      toast.error('Erro ao consultar integração Alexa: ' + (err.message || 'Falha de conexão.'));
+
+      const canListUsers = Boolean(isAdmin || statusRes?.isAdmin || userProfile?.role === 'admin');
+
+      // 2. Se for admin, carrega a lista de usuários com tratamento de erro resiliente
+      if (canListUsers) {
+        try {
+          const usersRes = await firebaseUserService.listUsers();
+          const activeUsers = usersRes.filter((u: UserProfile) => u.active !== false);
+          setUsers(activeUsers);
+          if (activeUsers.length > 0) {
+            setSelectedUid((prev) => {
+              if (prev) return prev;
+              const amanda = activeUsers.find((u: UserProfile) => u.displayName?.toLowerCase().includes('amanda'));
+              return amanda ? amanda.uid : activeUsers[0].uid;
+            });
+          }
+        } catch (usersErr: any) {
+          console.warn('[AlexaSettings] Aviso ao consultar lista completa de usuários do Firestore:', usersErr?.message || usersErr);
+          // Fallback gracioso: popula com o próprio usuário logado caso não consiga listar os demais
+          if (user?.uid) {
+            const selfUser: UserProfile = {
+              uid: user.uid,
+              email: user.email || '',
+              displayName: user.displayName || user.email || 'Meu Usuário',
+              role: (userProfile?.role as any) || 'admin',
+              permissions: (userProfile?.permissions as any) || {},
+              active: true,
+              createdAt: new Date().toISOString(),
+              createdBy: user.uid,
+            };
+            setUsers([selfUser]);
+            setSelectedUid((prev) => prev || user.uid);
+          }
+        }
+      }
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [isAdmin]);
+  }, [isAdmin, user, userProfile]);
 
   useEffect(() => {
     loadData();
@@ -228,7 +259,7 @@ export function AlexaSettingsSection({ isAdmin }: AlexaSettingsSectionProps) {
 
       <CardContent className="space-y-6 pt-6">
         {/* Controle Global para Administrador */}
-        {isAdmin && (
+        {effectiveIsAdmin && (
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-4 rounded-xl border border-border/40 bg-muted/30">
             <div className="space-y-1">
               <div className="flex items-center gap-2">
@@ -286,7 +317,7 @@ export function AlexaSettingsSection({ isAdmin }: AlexaSettingsSectionProps) {
         </div>
 
         {/* Pareamento Supervisionado (Apenas Admin) */}
-        {isAdmin && (
+        {effectiveIsAdmin ? (
           <div className="p-4 rounded-xl border border-border/40 bg-card space-y-4">
             <div className="flex items-center gap-2">
               <Link2 className="size-4 text-primary" />
@@ -312,18 +343,29 @@ export function AlexaSettingsSection({ isAdmin }: AlexaSettingsSectionProps) {
 
               <div className="sm:col-span-5 space-y-1.5">
                 <Label htmlFor="targetUser" className="text-xs">Usuário no Luisices</Label>
-                <Select value={selectedUid} onValueChange={setSelectedUid} disabled={approvingPairing}>
-                  <SelectTrigger id="targetUser" className="text-xs h-9">
-                    <SelectValue placeholder="Selecione o usuário..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {users.map((u) => (
-                      <SelectItem key={u.uid} value={u.uid} className="text-xs">
-                        {u.displayName || u.email} ({u.role})
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                {users.length > 0 ? (
+                  <Select value={selectedUid} onValueChange={setSelectedUid} disabled={approvingPairing}>
+                    <SelectTrigger id="targetUser" className="text-xs h-9">
+                      <SelectValue placeholder="Selecione o usuário..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {users.map((u) => (
+                        <SelectItem key={u.uid} value={u.uid} className="text-xs">
+                          {u.displayName || u.email} ({u.role})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <Input
+                    id="targetUser"
+                    placeholder="UID do usuário responsável"
+                    value={selectedUid}
+                    onChange={(e) => setSelectedUid(e.target.value)}
+                    className="text-xs font-mono h-9"
+                    disabled={approvingPairing}
+                  />
+                )}
               </div>
 
               <div className="sm:col-span-3">
@@ -338,6 +380,17 @@ export function AlexaSettingsSection({ isAdmin }: AlexaSettingsSectionProps) {
                 </Button>
               </div>
             </form>
+          </div>
+        ) : (
+          <div className="p-4 rounded-xl border border-amber-500/30 bg-amber-500/10 dark:bg-amber-950/20 space-y-2">
+            <div className="flex items-center gap-2 text-amber-700 dark:text-amber-400 font-semibold text-xs">
+              <AlertCircle className="size-4 shrink-0" />
+              <span>Aprovação de Pareamento Restrita a Administradores</span>
+            </div>
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              Você está conectado como <strong>{user?.email || 'usuário atual'}</strong> com função de acesso <strong>{userProfile?.role || 'padrão'}</strong>.
+              Para aprovar códigos de vinculação de voz ou alterar configurações globais da Alexa, é necessário possuir a função <strong>admin</strong> (role: 'admin') no cadastro do sistema.
+            </p>
           </div>
         )}
 
@@ -435,7 +488,7 @@ export function AlexaSettingsSection({ isAdmin }: AlexaSettingsSectionProps) {
         </div>
 
         {/* Auditoria Recente (Apenas Admin) */}
-        {isAdmin && status?.recentAudit && status.recentAudit.length > 0 && (
+        {effectiveIsAdmin && status?.recentAudit && status.recentAudit.length > 0 && (
           <div className="space-y-2 pt-2">
             <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
               Últimos Eventos de Auditoria Alexa
