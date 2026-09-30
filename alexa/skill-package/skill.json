@@ -37,7 +37,12 @@
       "usesPersonalInfo": true,
       "isChildDirected": false,
       "isExportCompliant": true,
-      "containsAds": false
+      "containsAds": false,
+      "locales": {
+        "pt-BR": {
+          "privacyPolicyUrl": "https://dev.luisices.com.br"
+        }
+      }
     }
   }
 }

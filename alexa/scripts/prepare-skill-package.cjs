@@ -11,12 +11,14 @@ const DEFAULTS = {
     endpoint: 'https://api.dev.luisices.com.br/alexaWebhook',
     invocation: 'ateliê de testes',
     skillName: 'Ateliê de Testes',
+    privacyPolicyUrl: 'https://dev.luisices.com.br',
     testingInstructions: 'Ambiente isolado de desenvolvimento. Requer perfil de voz ativo no aplicativo Alexa e pareamento supervisionado aprovado por administrador no Luisices.'
   },
   prod: {
     endpoint: 'https://us-central1-papelaria-dashboard.cloudfunctions.net/alexaWebhook',
     invocation: 'luisices',
     skillName: 'Luisices Ateliê',
+    privacyPolicyUrl: 'https://luisices.com.br',
     testingInstructions: 'Ambiente de produção do ateliê Luisices.'
   }
 };
@@ -33,6 +35,8 @@ function parseArgs(args) {
       result.invocation = args[++i];
     } else if (arg === '--skill-name' && args[i + 1]) {
       result.skillName = args[++i];
+    } else if (arg === '--privacy-policy-url' && args[i + 1]) {
+      result.privacyPolicyUrl = args[++i];
     } else if (arg === '--output-dir' && args[i + 1]) {
       result.outputDir = args[++i];
     } else if (arg === '--source-dir' && args[i + 1]) {
@@ -52,6 +56,7 @@ function prepareSkillPackage(options = {}) {
   const endpoint = options.endpoint || process.env.ALEXA_ENDPOINT || envDefaults.endpoint;
   const invocation = options.invocation || (env === 'dev' ? process.env.ALEXA_DEV_INVOCATION_NAME : process.env.ALEXA_PROD_INVOCATION_NAME) || envDefaults.invocation;
   const skillName = options.skillName || (env === 'dev' ? process.env.ALEXA_DEV_SKILL_NAME : process.env.ALEXA_PROD_SKILL_NAME) || envDefaults.skillName;
+  const privacyPolicyUrl = options.privacyPolicyUrl || (env === 'dev' ? process.env.ALEXA_DEV_PRIVACY_POLICY_URL : process.env.ALEXA_PROD_PRIVACY_POLICY_URL) || process.env.ALEXA_PRIVACY_POLICY_URL || envDefaults.privacyPolicyUrl;
 
   const baseDir = options.sourceDir || path.resolve(__dirname, '../skill-package');
   const outDir = options.outputDir || path.resolve(__dirname, '../build/skill-package');
@@ -86,6 +91,16 @@ function prepareSkillPackage(options = {}) {
     manifest.manifest.apis.custom.endpoint.uri = endpoint;
     manifest.manifest.apis.custom.endpoint.sslCertificateType = 'Wildcard';
   }
+  if (!manifest.manifest.privacyAndCompliance) {
+    manifest.manifest.privacyAndCompliance = {};
+  }
+  if (!manifest.manifest.privacyAndCompliance.locales) {
+    manifest.manifest.privacyAndCompliance.locales = {};
+  }
+  if (!manifest.manifest.privacyAndCompliance.locales['pt-BR']) {
+    manifest.manifest.privacyAndCompliance.locales['pt-BR'] = {};
+  }
+  manifest.manifest.privacyAndCompliance.locales['pt-BR'].privacyPolicyUrl = privacyPolicyUrl;
 
   // 2. Atualiza modelo de interação
   if (interactionModel.interactionModel?.languageModel) {
@@ -107,6 +122,7 @@ function prepareSkillPackage(options = {}) {
     endpoint,
     invocation,
     skillName,
+    privacyPolicyUrl,
     manifestPath: outManifestPath,
     interactionModelPath: outModelPath,
   };
