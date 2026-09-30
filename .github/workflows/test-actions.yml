@@ -71,7 +71,7 @@ jobs:
         run: npx playwright install chromium --with-deps
 
       - name: Setup Java (for Firebase Emulators)
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: 'temurin'
           java-version: '21'
@@ -121,16 +121,16 @@ jobs:
         run: |
           npx firebase emulators:exec --project luisices-dev --only auth,firestore,storage "node scripts/seed-emulator.mjs && if [ \"\$INPUT_TARGET\" = 'security' ] || echo \"\$COMMIT_MSG\" | grep -qi '\\[test:security\\]'; then
             echo '🛡️ Executando exclusivamente testes de segurança...'
-            npx playwright test tests/e2e/security.spec.ts --project=chromium --reporter=list,html
+            npx playwright test tests/e2e/security.spec.ts --project=chromium --reporter=github,list,html
           elif [ \"\$INPUT_TARGET\" = 'critical' ] || echo \"\$COMMIT_MSG\" | grep -qiE '\\[test:critical\\]|\\[fast\\]|\\[test:fast\\]'; then
             echo '⚡ Executando testes críticos e de segurança...'
-            npx playwright test tests/e2e/critical-flows.spec.ts tests/e2e/permissions.spec.ts tests/e2e/security.spec.ts --project=chromium --reporter=list,html
+            npx playwright test tests/e2e/critical-flows.spec.ts tests/e2e/permissions.spec.ts tests/e2e/security.spec.ts --project=chromium --reporter=github,list,html
           elif [ -n \"\$INPUT_TARGET\" ] && [ \"\$INPUT_TARGET\" != 'all' ]; then
             echo \"🎯 Executando target específico: \$INPUT_TARGET...\"
-            npx playwright test tests/e2e/\${INPUT_TARGET}.spec.ts --project=chromium --reporter=list,html
+            npx playwright test tests/e2e/\${INPUT_TARGET}.spec.ts --project=chromium --reporter=github,list,html
           else
             echo '🚀 Executando suíte completa de testes E2E (Máquina ${{ matrix.shard }} de 2)...'
-            npx playwright test --shard=${{ matrix.shard }}/2 --project=chromium --reporter=list,html
+            npx playwright test --shard=${{ matrix.shard }}/2 --project=chromium --reporter=github,list,html
           fi"
 
       - name: Upload test report
@@ -148,3 +148,14 @@ jobs:
           name: test-results-shard-${{ matrix.shard }}
           path: test-results/
           retention-days: 14
+
+      - name: Report E2E failures to summary
+        if: failure()
+        run: |
+          echo "## ❌ Falhas E2E no Shard ${{ matrix.shard }}" >> "$GITHUB_STEP_SUMMARY"
+          if [ -d "test-results" ]; then
+            echo "### Testes com falha detectados em test-results:" >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+            ls -1 test-results >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+          fi
