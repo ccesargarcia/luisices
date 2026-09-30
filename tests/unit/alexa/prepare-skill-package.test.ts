@@ -21,17 +21,17 @@ describe('Alexa: Preparação Multi-Ambiente do Pacote da Skill (DEV vs PROD)', 
 
     expect(res.env).toBe('dev');
     expect(res.endpoint).toBe('https://api.dev.luisices.com.br/alexaWebhook');
-    expect(res.invocation).toBe('papelaria de testes');
-    expect(res.skillName).toBe('Papelaria de Testes');
+    expect(res.invocation).toBe('ateliê de testes');
+    expect(res.skillName).toBe('Ateliê de Testes');
 
     const manifest = JSON.parse(fs.readFileSync(res.manifestPath, 'utf8'));
     expect(manifest.manifest.apis.custom.endpoint.uri).toBe('https://api.dev.luisices.com.br/alexaWebhook');
     expect(manifest.manifest.apis.custom.endpoint.sslCertificateType).toBe('Wildcard');
-    expect(manifest.manifest.publishingInformation.locales['pt-BR'].name).toBe('Papelaria de Testes');
-    expect(manifest.manifest.publishingInformation.locales['pt-BR'].examplePhrases).toContain('Alexa, abrir papelaria de testes');
+    expect(manifest.manifest.publishingInformation.locales['pt-BR'].name).toBe('Ateliê de Testes');
+    expect(manifest.manifest.publishingInformation.locales['pt-BR'].examplePhrases).toContain('Alexa, abrir ateliê de testes');
 
     const interactionModel = JSON.parse(fs.readFileSync(res.interactionModelPath, 'utf8'));
-    expect(interactionModel.interactionModel.languageModel.invocationName).toBe('papelaria de testes');
+    expect(interactionModel.interactionModel.languageModel.invocationName).toBe('ateliê de testes');
   });
 
   it('deve preparar o pacote com parâmetros padrão de produção (PROD)', () => {
@@ -42,16 +42,16 @@ describe('Alexa: Preparação Multi-Ambiente do Pacote da Skill (DEV vs PROD)', 
 
     expect(res.env).toBe('prod');
     expect(res.endpoint).toBe('https://us-central1-papelaria-dashboard.cloudfunctions.net/alexaWebhook');
-    expect(res.invocation).toBe('luisices');
-    expect(res.skillName).toBe('Luisices Ateliê');
+    expect(res.invocation).toBe('meu ateliê');
+    expect(res.skillName).toBe('Meu Ateliê');
 
     const manifest = JSON.parse(fs.readFileSync(res.manifestPath, 'utf8'));
     expect(manifest.manifest.apis.custom.endpoint.uri).toBe('https://us-central1-papelaria-dashboard.cloudfunctions.net/alexaWebhook');
-    expect(manifest.manifest.publishingInformation.locales['pt-BR'].name).toBe('Luisices Ateliê');
-    expect(manifest.manifest.publishingInformation.locales['pt-BR'].examplePhrases).toContain('Alexa, abrir luisices');
+    expect(manifest.manifest.publishingInformation.locales['pt-BR'].name).toBe('Meu Ateliê');
+    expect(manifest.manifest.publishingInformation.locales['pt-BR'].examplePhrases).toContain('Alexa, abrir meu ateliê');
 
     const interactionModel = JSON.parse(fs.readFileSync(res.interactionModelPath, 'utf8'));
-    expect(interactionModel.interactionModel.languageModel.invocationName).toBe('luisices');
+    expect(interactionModel.interactionModel.languageModel.invocationName).toBe('meu ateliê');
   });
 
   it('deve respeitar overrides de endpoint, nome e invocação customizados', () => {
