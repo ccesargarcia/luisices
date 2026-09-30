@@ -890,6 +890,7 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
     intentName === 'AMAZON.YesIntent' ||
     intentName === 'RepeatOrderIntent' ||
     intentName === 'ProvideCustomerIntent' ||
+    intentName === 'ProvideCustomerOnlyIntent' ||
     intentName === 'ProvideProductIntent' ||
     intentName === 'ProvideQuantityIntent' ||
     intentName === 'ProvideDeliveryDateIntent' ||
@@ -1506,6 +1507,19 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
           draftRef: txDraftRef,
           isAppApprovalBlocked: true,
           transactionError: null,
+        };
+      }
+      if (intentName === 'ProvideCustomerOnlyIntent') {
+        return {
+          draft: null,
+          draftId: null,
+          draftRef: null,
+          isAppApprovalBlocked: false,
+          transactionError: {
+            speech: 'Não encontrei nenhum pedido em andamento. Para começar, diga criar pedido.',
+            reprompt: 'Diga criar pedido para começar.',
+            shouldEndSession: false,
+          },
         };
       }
       // Criar novo rascunho

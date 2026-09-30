@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 const { commitOrderFromDraft } = require('../../../functions/alexa/orderService');
 
-describe('Alexa: Transação Atômica de Pedido e Idempotência Durável', () => {
+describe('Alexa: Mapeamento de Pedido, Idempotência e Sequência de Gravação (Mock Sequencial)', () => {
   const baseConfig = {
     environment: 'dev',
     timezone: 'America/Sao_Paulo',
@@ -83,7 +83,7 @@ describe('Alexa: Transação Atômica de Pedido e Idempotência Durável', () =>
     };
   };
 
-  it('deve gravar contador, pedido, ledger, consumo de rascunho e recibo em transação única', async () => {
+  it('deve gravar contador, pedido, ledger, consumo de rascunho e recibo de acordo com o contrato', async () => {
     const draftId = 'draft-amanda-001';
     const callerPersonId = 'amzn1.ask.person.AMANDA';
     const uid = 'uid-amanda';

@@ -415,4 +415,147 @@ describe('Alexa: Máquina de Estados, Diálogo e Validação de Slots pt-BR', ()
       expect(res.shouldEndSession).toBe(true);
     });
   });
+
+  describe('ProvideCustomerOnlyIntent vs ProvideCustomerIntent', () => {
+    it('ProvideCustomerOnlyIntent preenche o cliente em rascunho ativo autorizado', async () => {
+      const draftId = 'draft-cust-only-active';
+      const sessionId = 'session-cust-only';
+      const mockDb = createMockDb({
+        alexaDrafts: {
+          [draftId]: {
+            draftId,
+            sessionId,
+            uid: identity.uid,
+            bindingKey: identity.bindingKey,
+            environment: baseConfig.environment,
+            customer: null,
+            product: 'caixinhas',
+            quantity: 10,
+            deliveryDate: '2026-10-10',
+            price: 100,
+            state: 'collecting',
+            expectedInput: 'customer',
+            revision: 1,
+            expiresAt: { toDate: () => new Date(Date.now() + 10 * 60 * 1000) },
+          },
+        },
+      });
+
+      const envelope = {
+        session: { sessionId, attributes: { draftId, revision: 1 } },
+        request: {
+          type: 'IntentRequest',
+          intent: {
+            name: 'ProvideCustomerOnlyIntent',
+            slots: { customer: { value: 'Maria' } },
+          },
+        },
+      };
+
+      const res = await handleAlexaDialog({ envelope, identity, config: baseConfig, db: mockDb });
+      const updatedDraft = mockDb.store.alexaDrafts[draftId];
+      expect(updatedDraft.customer).toBe('Maria');
+      expect(updatedDraft.state).toBe('awaiting_confirmation');
+      expect(res.speech).toContain('10 caixinhas para Maria');
+      expect(res.speech).toContain('Confirmar?');
+    });
+
+    it('ProvideCustomerOnlyIntent sem rascunho ativo não cria rascunho e responde orientando', async () => {
+      const mockDb = createMockDb();
+
+      const envelope = {
+        session: { sessionId: 'session-cust-only-no-draft' },
+        request: {
+          type: 'IntentRequest',
+          intent: {
+            name: 'ProvideCustomerOnlyIntent',
+            slots: { customer: { value: 'Maria' } },
+          },
+        },
+      };
+
+      const res = await handleAlexaDialog({ envelope, identity, config: baseConfig, db: mockDb });
+      expect(res.speech).toContain('Não encontrei nenhum pedido em andamento. Para começar, diga criar pedido.');
+      // Nenhum rascunho foi criado
+      expect(Object.keys(mockDb.store.alexaDrafts)).toHaveLength(0);
+    });
+
+    it('ProvideCustomerOnlyIntent com rascunho expirado não altera o rascunho', async () => {
+      const draftId = 'draft-cust-only-expired';
+      const sessionId = 'session-cust-expired';
+      const mockDb = createMockDb({
+        alexaDrafts: {
+          [draftId]: {
+            draftId,
+            sessionId,
+            uid: identity.uid,
+            bindingKey: identity.bindingKey,
+            environment: baseConfig.environment,
+            customer: null,
+            product: 'caixinhas',
+            quantity: 10,
+            state: 'collecting',
+            revision: 1,
+            expiresAt: { toDate: () => new Date(Date.now() - 1000) }, // Expirado!
+          },
+        },
+      });
+
+      const envelope = {
+        session: { sessionId, attributes: { draftId, revision: 1 } },
+        request: {
+          type: 'IntentRequest',
+          intent: {
+            name: 'ProvideCustomerOnlyIntent',
+            slots: { customer: { value: 'Maria' } },
+          },
+        },
+      };
+
+      const res = await handleAlexaDialog({ envelope, identity, config: baseConfig, db: mockDb });
+      expect(res.speech).toContain('Não encontrei nenhum pedido em andamento');
+      // O rascunho expirado não teve o cliente alterado
+      expect(mockDb.store.alexaDrafts[draftId].customer).toBeNull();
+    });
+
+    it('ProvideCustomerIntent com "para {customer}" continua funcionando normalmente', async () => {
+      const draftId = 'draft-cust-normal';
+      const sessionId = 'session-cust-normal';
+      const mockDb = createMockDb({
+        alexaDrafts: {
+          [draftId]: {
+            draftId,
+            sessionId,
+            uid: identity.uid,
+            bindingKey: identity.bindingKey,
+            environment: baseConfig.environment,
+            customer: null,
+            product: 'cadernos',
+            quantity: 5,
+            deliveryDate: '2026-10-10',
+            price: 50,
+            state: 'collecting',
+            expectedInput: 'customer',
+            revision: 1,
+            expiresAt: { toDate: () => new Date(Date.now() + 10 * 60 * 1000) },
+          },
+        },
+      });
+
+      const envelope = {
+        session: { sessionId, attributes: { draftId, revision: 1 } },
+        request: {
+          type: 'IntentRequest',
+          intent: {
+            name: 'ProvideCustomerIntent',
+            slots: { customer: { value: 'João' } },
+          },
+        },
+      };
+
+      const res = await handleAlexaDialog({ envelope, identity, config: baseConfig, db: mockDb });
+      expect(mockDb.store.alexaDrafts[draftId].customer).toBe('João');
+      expect(res.speech).toContain('5 cadernos para João');
+    });
+  });
 });

@@ -201,9 +201,20 @@
           ]
         },
         {
+          "name": "ProvideCustomerOnlyIntent",
+          "samples": [
+            "{customer}"
+          ],
+          "slots": [
+            {
+              "name": "customer",
+              "type": "AMAZON.FirstName"
+            }
+          ]
+        },
+        {
           "name": "ProvideCustomerIntent",
           "samples": [
-            "{customer}",
             "para {customer}",
             "o cliente é {customer}",
             "cliente {customer}",
