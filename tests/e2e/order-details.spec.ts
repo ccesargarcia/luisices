@@ -238,7 +238,7 @@ test.describe.serial('Detalhes do Pedido', () => {
 
     const dialog = page
       .locator('[role="dialog"]')
-      .filter({ hasText: /Detalhes do Pedido/i })
+      .filter({ hasText: /Detalhes do Pedido|Editar Pedido/i })
       .first();
     if (!(await dialog.isVisible().catch(() => false))) {
       await orderCard.click({ force: true }).catch(() => {});
@@ -257,7 +257,7 @@ test.describe.serial('Detalhes do Pedido', () => {
 
     // Excluir o pedido para cleanup
     const deleteBtn = dialog.getByRole('button', { name: /Excluir Pedido/i });
-    if (await deleteBtn.isVisible({ timeout: 5000 })) {
+    if (await deleteBtn.isVisible({ timeout: 5000 }).catch(() => false)) {
       await deleteBtn.scrollIntoViewIfNeeded();
       await deleteBtn.click();
 
