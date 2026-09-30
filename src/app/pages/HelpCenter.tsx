@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { useNavigate } from 'react-router';
+import { useNavigate, useSearchParams } from 'react-router';
 import {
   HelpCircle,
   Search,
@@ -20,6 +20,7 @@ import {
   Store,
   Globe,
   Calculator,
+  Mic,
 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { Input } from '../components/ui/input';
@@ -115,6 +116,43 @@ const MODULE_GUIDES: GuideSection[] = [
       'Ative a opção "Permuta / Parceria" quando o pedido for feito em troca de divulgação com influenciadores ou parcerias sem cobrança em dinheiro.',
       'Use as cores nos cartões para categorizar visualmente pedidos prioritários ou temas específicos.',
       'O sistema avisa automaticamente no Dashboard quando uma data de entrega estiver próxima ou atrasada.',
+    ],
+  },
+  {
+    id: 'alexa',
+    title: 'Integração Alexa & Comandos de Voz',
+    badge: 'Automação & Voz',
+    icon: Mic,
+    description:
+      'Crie encomendas e consulte pedidos no ateliê usando apenas a voz na sua Alexa (Echo Dot, Echo Show) ou pelo app Amazon Alexa no smartphone.',
+    colorClass: 'text-violet-500 bg-violet-500/10 border-violet-500/20',
+    steps: [
+      {
+        title: 'Passo 1: Gerar Código de Pareamento por Voz',
+        desc: 'Fale para sua Alexa: "Alexa, pedir para papelaria teste gerar o código" (em produção: "pedir para luisices..."). A Alexa falará o código de 8 dígitos pausadamente duas vezes e enviará um cartão escrito para o seu app Amazon Alexa no celular.',
+      },
+      {
+        title: 'Passo 2: Aprovar Vinculação no Painel do Sistema',
+        desc: 'Acesse "Configurações" > "Integração Alexa" no sistema Luisices (necessário perfil Administrador). Digite o código de 8 dígitos falado, selecione qual usuário do ateliê será o autor padrão dos pedidos e clique em "Aprovar Vinculação".',
+      },
+      {
+        title: 'Passo 3: Criar Encomenda Direta (Comando Completo)',
+        desc: 'Fale de uma só vez: "Alexa, pedir para papelaria teste criar um pedido de 30 caixinhas para Mariana a 5 reais cada com entrega dia 15 de outubro". A Alexa processará cliente, produto, quantidade, valor e data, pedindo sua confirmação ("Sim") antes de gravar.',
+      },
+      {
+        title: 'Passo 4: Criar Encomenda Guiada (Passo a Passo)',
+        desc: 'Se preferir, diga apenas: "Alexa, pedir para papelaria teste criar pedido". A Alexa fará perguntas uma a uma: nome do cliente, produto, quantidade, valor unitário e data de entrega.',
+      },
+      {
+        title: 'Passo 5: Consultar Últimos Pedidos',
+        desc: 'Fale: "Alexa, pedir para papelaria teste meus últimos pedidos" para ouvir um resumo das encomendas mais recentes cadastradas para o seu usuário.',
+      },
+    ],
+    tips: [
+      'Prefira sempre comandos diretos: diga "Alexa, pedir para papelaria teste [sua ação]" em vez de apenas "abrir", garantindo precisão imediata nos alto-falantes Echo.',
+      'Perdeu os números falados? Abra o aplicativo Amazon Alexa no smartphone na aba "Início" ou "Atividade" para visualizar o cartão com os 8 dígitos em texto claro.',
+      'Produtos reconhecidos no catálogo por voz: caixinhas, cadernos, bloquinhos, agendas, convites, etiquetas, adesivos, sacolas, lembrancinhas e topo de bolo.',
+      'Segurança e biometria: o sistema utiliza o perfil de voz (personId). Dispositivos ou vozes não aprovados pelo Administrador têm a criação de pedidos bloqueada.',
     ],
   },
   {
@@ -460,12 +498,35 @@ const FAQ_LIST = [
     q: 'Como o Copiloto IA da Luisices pode me ajudar na operação do dia a dia?',
     a: 'O Copiloto IA (disponível no menu superior ou lateral) atua como um assistente operacional inteligente. Ele consegue analisar o Raio-X do dia (pedidos em atraso e entregas de hoje), estimar custos e sugerir preços com margem protegida, buscar modelos e fotos no acervo da galeria por visão computacional, auditar métricas de desempenho de colaboradores (para administradores) e redigir mensagens gentis de cobrança e aviso para o WhatsApp do cliente.',
   },
+  {
+    q: 'Como conectar e parear minha Alexa (Echo Dot / Echo Show) com o sistema da Luisices?',
+    a: 'O pareamento por voz é rápido e supervisionado pelo administrador: 1) Fale para o seu dispositivo Alexa: "Alexa, pedir para papelaria teste gerar o código" (ou "pedir para luisices..."). A Alexa repetirá um código de 8 dígitos pausadamente e enviará um cartão escrito para o aplicativo Amazon Alexa no seu celular. 2) No painel web da Luisices, acesse Configurações > aba "Integração Alexa". Digite os 8 dígitos, selecione qual colaborador do ateliê será o autor dos pedidos e clique em "Aprovar Vinculação". Pronto! O dispositivo estará autorizado.',
+  },
+  {
+    q: 'Quais são os comandos de voz recomendados para criar pedidos na Alexa?',
+    a: 'Você pode usar dois formatos: • Comando Completo (em uma frase só): "Alexa, pedir para papelaria teste criar um pedido de [quantidade] [produto] para [nome do cliente] a [valor] reais cada com entrega dia [data]". Exemplo: "Alexa, pedir para papelaria teste criar um pedido de 30 caixinhas para Mariana a 5 reais cada com entrega dia 15 de outubro". • Modo Conversacional (guiado): Diga "Alexa, pedir para papelaria teste criar pedido". A Alexa fará perguntas para preencher os dados faltantes e confirmará antes de gravar.',
+  },
+  {
+    q: 'Por que a Alexa diz "não consigo abrir a papelaria de testes" ou "sua voz não está autorizada"?',
+    a: '• Se disser "não consigo abrir": Em alto-falantes físicos Echo de áudio, prefira sempre o padrão com ação direta: "Alexa, pedir para papelaria teste [sua ação]", como "Alexa, pedir para papelaria teste criar pedido" ou "Alexa, pedir para papelaria teste gerar o código". Isso garante precisão imediata sem confusão com compras da Amazon. • Se disser "sua voz não está autorizada": Por segurança, a criação de pedidos exige pareamento prévio com confirmação de um Administrador. Peça à Alexa para "gerar o código" e faça a aprovação no menu Configurações > Integração Alexa.',
+  },
+  {
+    q: 'Não consegui anotar o código falado pela Alexa. Onde posso ver os dígitos por escrito?',
+    a: 'Sempre que você pede para a Alexa gerar o código ("pedir para papelaria teste gerar o código"), além de repetir os 8 números pausadamente duas vezes, ela envia um cartão escrito (Home Card) diretamente para o aplicativo Amazon Alexa instalado no seu celular (Android ou iPhone). Basta abrir o app Amazon Alexa na aba "Início" ou na central de atividades para visualizar o código com calma.',
+  },
+  {
+    q: 'Quais produtos e encomendas a Alexa reconhece por voz?',
+    a: 'O catálogo de voz reconhece os produtos mais solicitados do ateliê: caixinhas, cadernos, bloquinhos, agendas, convites, etiquetas, adesivos, sacolas, lembrancinhas e topo de bolo. Caso precise de especificações detalhadas ou personalizações complexas de arte, você pode registrar o pedido base por voz e depois anexar fotos e notas complementares no painel do sistema.',
+  },
 ];
 
 export function HelpCenter() {
   const navigate = useNavigate();
-  const [searchQuery, setSearchQuery] = useState('');
-  const [activeTab, setActiveTab] = useState('modulos');
+  const [searchParams] = useSearchParams();
+  const initialQuery = searchParams.get('q') || searchParams.get('busca') || '';
+  const initialTab = searchParams.get('tab') || 'modulos';
+  const [searchQuery, setSearchQuery] = useState(initialQuery);
+  const [activeTab, setActiveTab] = useState(initialTab);
 
   // Filtro de busca dinâmica
   const filteredModules = useMemo(() => {

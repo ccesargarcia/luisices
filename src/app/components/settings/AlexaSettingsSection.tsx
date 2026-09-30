@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
@@ -23,6 +24,7 @@ import {
   Trash2,
   Clock,
   Check,
+  HelpCircle,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { firebaseAlexaService } from '../../../services/firebaseAlexaService';
@@ -35,6 +37,7 @@ interface AlexaSettingsSectionProps {
 }
 
 export function AlexaSettingsSection({ isAdmin }: AlexaSettingsSectionProps) {
+  const navigate = useNavigate();
   const [status, setStatus] = useState<AlexaIntegrationStatus | null>(null);
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
@@ -203,6 +206,15 @@ export function AlexaSettingsSection({ isAdmin }: AlexaSettingsSectionProps) {
             <Button
               variant="outline"
               size="sm"
+              onClick={() => navigate('/ajuda?busca=alexa')}
+              className="h-8 gap-1.5 text-xs text-violet-600 dark:text-violet-400 border-violet-500/30 hover:bg-violet-500/10"
+            >
+              <HelpCircle className="size-3.5" />
+              Guia Completo
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
               onClick={handleRefresh}
               disabled={refreshing}
               className="h-8 gap-1.5 text-xs"
@@ -248,13 +260,13 @@ export function AlexaSettingsSection({ isAdmin }: AlexaSettingsSectionProps) {
               <span>Como invocar no Echo / Alexa</span>
             </div>
             <p className="text-xs text-muted-foreground leading-relaxed">
-              Diga: <strong className="text-foreground font-semibold">“Alexa, abrir {isDev ? 'luisices de teste' : 'luisices'}”</strong>.
-              A Alexa responderá no ambiente correto e solicitará o pedido.
+              Diga com comando direto: <strong className="text-foreground font-semibold">“Alexa, pedir para {isDev ? 'papelaria teste' : 'luisices'}...”</strong>.
+              Isso garante resposta imediata e sem conflitos em alto-falantes Echo.
             </p>
             <div className="text-[11px] text-muted-foreground space-y-1 pt-1 border-t border-sky-500/10">
-              <p>• “Criar pedido de vinte caixinhas para Maria”</p>
-              <p>• Data: “Dez de outubro” | Valor: “Cem reais”</p>
-              <p>• Confirmação: “Sim” para gravar com número sequencial.</p>
+              <p>• “Alexa, pedir para {isDev ? 'papelaria teste' : 'luisices'} gerar o código” (parear)</p>
+              <p>• “Alexa, pedir para {isDev ? 'papelaria teste' : 'luisices'} criar pedido de 20 cadernos para Amanda”</p>
+              <p>• “Alexa, pedir para {isDev ? 'papelaria teste' : 'luisices'} meus últimos pedidos”</p>
             </div>
           </div>
 
@@ -264,11 +276,11 @@ export function AlexaSettingsSection({ isAdmin }: AlexaSettingsSectionProps) {
               <span>Segurança e Identidade Real</span>
             </div>
             <p className="text-xs text-muted-foreground leading-relaxed">
-              A Alexa utiliza o perfil biométrico de voz (<code className="text-[10px] bg-muted px-1 py-0.5 rounded">personId</code>).
-              Nomes ditados ou visitantes não autorizados têm a criação rejeitada imediatamente.
+              A Alexa utiliza biometria vocal (<code className="text-[10px] bg-muted px-1 py-0.5 rounded">personId</code>).
+              Dispositivos ou vozes não autorizadas pelo administrador têm a criação de pedidos bloqueada.
             </p>
             <p className="text-[11px] text-muted-foreground">
-              Para vincular uma nova pessoa, ela deve dizer <strong className="text-foreground">“vincular minha voz”</strong> na presença do administrador.
+              Para vincular uma nova voz, diga <strong className="text-foreground">“pedir para {isDev ? 'papelaria teste' : 'luisices'} gerar o código”</strong> e aprove no formulário abaixo.
             </p>
           </div>
         </div>
