@@ -21,17 +21,17 @@ describe('Alexa: Preparação Multi-Ambiente do Pacote da Skill (DEV vs PROD)', 
 
     expect(res.env).toBe('dev');
     expect(res.endpoint).toBe('https://api.dev.luisices.com.br/alexaWebhook');
-    expect(res.invocation).toBe('papelaria de testes');
-    expect(res.skillName).toBe('Papelaria de Testes');
+    expect(res.invocation).toBe('papelaria teste');
+    expect(res.skillName).toBe('Papelaria Teste');
 
     const manifest = JSON.parse(fs.readFileSync(res.manifestPath, 'utf8'));
     expect(manifest.manifest.apis.custom.endpoint.uri).toBe('https://api.dev.luisices.com.br/alexaWebhook');
     expect(manifest.manifest.apis.custom.endpoint.sslCertificateType).toBe('Wildcard');
-    expect(manifest.manifest.publishingInformation.locales['pt-BR'].name).toBe('Papelaria de Testes');
-    expect(manifest.manifest.publishingInformation.locales['pt-BR'].examplePhrases).toContain('Alexa, abrir papelaria de testes');
+    expect(manifest.manifest.publishingInformation.locales['pt-BR'].name).toBe('Papelaria Teste');
+    expect(manifest.manifest.publishingInformation.locales['pt-BR'].examplePhrases).toContain('Alexa, abrir papelaria teste');
 
     const interactionModel = JSON.parse(fs.readFileSync(res.interactionModelPath, 'utf8'));
-    expect(interactionModel.interactionModel.languageModel.invocationName).toBe('papelaria de testes');
+    expect(interactionModel.interactionModel.languageModel.invocationName).toBe('papelaria teste');
   });
 
   it('deve preparar o pacote com parâmetros padrão de produção (PROD)', () => {

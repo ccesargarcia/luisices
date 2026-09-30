@@ -9,8 +9,8 @@ const path = require('path');
 const DEFAULTS = {
   dev: {
     endpoint: 'https://api.dev.luisices.com.br/alexaWebhook',
-    invocation: 'papelaria de testes',
-    skillName: 'Papelaria de Testes',
+    invocation: 'papelaria teste',
+    skillName: 'Papelaria Teste',
     testingInstructions: 'Ambiente isolado de desenvolvimento. Requer perfil de voz ativo no aplicativo Alexa e pareamento supervisionado aprovado por administrador no Luisices.'
   },
   prod: {
