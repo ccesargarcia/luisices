@@ -291,13 +291,13 @@ export function AlexaSettingsSection({ isAdmin }: AlexaSettingsSectionProps) {
               <span>Como invocar no Echo / Alexa</span>
             </div>
             <p className="text-xs text-muted-foreground leading-relaxed">
-              Diga com comando direto: <strong className="text-foreground font-semibold">“Alexa, pedir para {isDev ? 'papelaria teste' : 'luisices'}...”</strong>.
+              Diga com comando direto: <strong className="text-foreground font-semibold">“Alexa, pedir para {isDev ? 'ateliê de testes' : 'luisices'}...”</strong>.
               Isso garante resposta imediata e sem conflitos em alto-falantes Echo.
             </p>
             <div className="text-[11px] text-muted-foreground space-y-1 pt-1 border-t border-sky-500/10">
-              <p>• “Alexa, pedir para {isDev ? 'papelaria teste' : 'luisices'} gerar o código” (parear)</p>
-              <p>• “Alexa, pedir para {isDev ? 'papelaria teste' : 'luisices'} criar pedido de 20 cadernos para Amanda”</p>
-              <p>• “Alexa, pedir para {isDev ? 'papelaria teste' : 'luisices'} meus últimos pedidos”</p>
+              <p>• “Alexa, pedir para {isDev ? 'ateliê de testes' : 'luisices'} gerar o código” (parear)</p>
+              <p>• “Alexa, pedir para {isDev ? 'ateliê de testes' : 'luisices'} criar pedido de 20 cadernos para Amanda”</p>
+              <p>• “Alexa, pedir para {isDev ? 'ateliê de testes' : 'luisices'} meus últimos pedidos”</p>
             </div>
           </div>
 
@@ -311,7 +311,7 @@ export function AlexaSettingsSection({ isAdmin }: AlexaSettingsSectionProps) {
               Dispositivos ou vozes não autorizadas pelo administrador têm a criação de pedidos bloqueada.
             </p>
             <p className="text-[11px] text-muted-foreground">
-              Para vincular uma nova voz, diga <strong className="text-foreground">“pedir para {isDev ? 'papelaria teste' : 'luisices'} gerar o código”</strong> e aprove no formulário abaixo.
+              Para vincular uma nova voz, diga <strong className="text-foreground">“pedir para {isDev ? 'ateliê de testes' : 'luisices'} gerar o código”</strong> e aprove no formulário abaixo.
             </p>
           </div>
         </div>
