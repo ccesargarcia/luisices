@@ -5,11 +5,11 @@
         "pt-BR": {
           "summary": "Criação de pedidos por voz para o ateliê Luisices.",
           "examplePhrases": [
-            "Alexa, abrir ateliê de testes",
-            "Alexa, peça ao ateliê de testes para criar um pedido",
+            "Alexa, abrir papelaria de testes",
+            "Alexa, peça à papelaria de testes para criar um pedido",
             "vincular minha voz"
           ],
-          "name": "Ateliê de Testes",
+          "name": "Papelaria de Testes",
           "description": "Skill privada para criação rápida e segura de pedidos por comando de voz no ateliê Luisices, vinculada ao perfil de voz de pessoas autorizadas."
         }
       },

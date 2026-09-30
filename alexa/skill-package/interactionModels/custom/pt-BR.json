@@ -1,7 +1,7 @@
 {
   "interactionModel": {
     "languageModel": {
-      "invocationName": "ateliê de testes",
+      "invocationName": "papelaria de testes",
       "intents": [
         {
           "name": "AMAZON.CancelIntent",
