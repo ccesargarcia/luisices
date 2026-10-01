@@ -33,6 +33,7 @@ import { useAuth } from '../../../contexts/AuthContext';
 import { FormattedDescription } from '../FormattedDescription';
 import { firebaseStoreProductService } from '../../../services/firebaseStoreProductService';
 import { StoreProduct } from '../../types';
+import { secureRandomId } from '../../../utils/random';
 import {
   parsePriceInput,
   priceInputToFloat,
@@ -170,7 +171,7 @@ export function BulkStoreProductsDialog({
     const defaultCategory = batchCategory.trim() || (existingCategories.length > 0 ? existingCategories[0] : 'Geral');
 
     const newItems: BulkItemState[] = validFiles.map((file, idx) => {
-      const itemId = `${Date.now()}_${idx}_${Math.random().toString(36).substring(2, 7)}`;
+      const itemId = `${Date.now()}_${idx}_${secureRandomId()}`;
       return {
         id: itemId,
         file,
