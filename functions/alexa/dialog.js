@@ -8,6 +8,9 @@ const admin = require('firebase-admin');
 const { escapeXmlCharacters } = require('ask-sdk-core');
 const { COLLECTIONS, recordAuditEvent } = require('./repository');
 const { commitOrderFromDraft } = require('./orderService');
+const { supportsApl, buildOrderCardAplDirective, buildWelcomeAplDirective } = require('./apl');
+const { buildDynamicEntitiesDirective, fetchCatalogProductsForDynamicEntities } = require('./dynamicEntities');
+const { findClosestProductSuggestions, buildSuggestionPrompt } = require('./fuzzySuggestions');
 
 // Meses em português para pronúncia amigável
 const MONTH_NAMES = [
@@ -949,6 +952,9 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
     const name = sanitizeSpeech(identity.displayName);
 
     const activeDraft = await findActiveDraftForUser(db, identity.uid, identity.bindingKey, config.environment);
+    const dynamicProducts = await fetchCatalogProductsForDynamicEntities(db, identity?.uid);
+    const dynDirective = buildDynamicEntitiesDirective(dynamicProducts);
+    const isApl = supportsApl(envelope);
 
     if (activeDraft) {
       // Associa o rascunho existente à nova sessão
@@ -962,6 +968,21 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
 
       if (activeDraft.state === 'awaiting_confirmation') {
         const summary = buildConfirmationSpeech(activeDraft, identity, config);
+        const directives = [
+          isApl
+            ? buildOrderCardAplDirective({
+                customer: activeDraft.customer,
+                product: activeDraft.product,
+                quantity: activeDraft.quantity,
+                deliveryDate: formatDatePtBr(activeDraft.deliveryDate),
+                totalPrice: formatCurrencyPtBr(activeDraft.price),
+                statusLabel: 'Aguardando Confirmação',
+                envLabel,
+              })
+            : null,
+          dynDirective,
+        ].filter(Boolean);
+
         return {
           speech: `Olá, ${name}. Você tem um pedido em andamento. ${summary}`,
           reprompt: 'Confirma o pedido? Diga: pode confirmar. Ou diga cancelar.',
@@ -972,6 +993,7 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
             personId: identity.personId,
             expectedInput: 'confirmation',
           },
+          directives: directives.length > 0 ? directives : undefined,
         };
       }
 
@@ -1002,22 +1024,44 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
           question = 'Para quando é a entrega?';
         }
 
+        const directives = [
+          isApl
+            ? buildOrderCardAplDirective({
+                customer: activeDraft.customer,
+                product: activeDraft.product,
+                quantity: activeDraft.quantity,
+                deliveryDate: formatDatePtBr(activeDraft.deliveryDate),
+                totalPrice: formatCurrencyPtBr(activeDraft.price),
+                statusLabel: 'Pedido em Andamento',
+                envLabel,
+              })
+            : null,
+          dynDirective,
+        ].filter(Boolean);
+
         return {
           speech: `Olá, ${name}. ${orderIntro} ${question}`,
           reprompt: nextPrompt.reprompt,
           shouldEndSession: false,
           sessionAttributes: nextPrompt.sessionAttributes,
+          directives: directives.length > 0 ? directives : undefined,
         };
       }
     }
 
     const speech = `Olá, ${name}. Ambiente de ${envLabel}. Diga criar pedido, ver últimos pedidos ou vincular minha voz.`;
     const reprompt = 'Você pode dizer: criar pedido, ver últimos pedidos ou pedir ajuda.';
+    const directives = [
+      isApl ? buildWelcomeAplDirective({ userName: name, envLabel }) : null,
+      dynDirective,
+    ].filter(Boolean);
+
     return {
       speech,
       reprompt,
       shouldEndSession: false,
       sessionAttributes: {},
+      directives: directives.length > 0 ? directives : undefined,
     };
   }
 
@@ -2480,10 +2524,26 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
         };
       }
 
+      const isApl = supportsApl(envelope);
+      const directives = isApl
+        ? [
+            buildOrderCardAplDirective({
+              customer: draft.customer,
+              product: draft.product,
+              quantity: draft.quantity,
+              deliveryDate: formatDatePtBr(draft.deliveryDate),
+              totalPrice: formatCurrencyPtBr(draft.price),
+              statusLabel: 'Aguardando Aprovação no App',
+              envLabel,
+            }),
+          ]
+        : undefined;
+
       return {
         speech: `Pedido preparado no seu espaço de ${envLabel}. Acesse o Luisices no aplicativo para conferir e aprovar a gravação definitiva.`,
         shouldEndSession: true,
         sessionAttributes: {},
+        directives,
       };
     }
 
@@ -2631,10 +2691,26 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
           ? `O pedido número ${commitRes.orderNumber} já havia sido registrado com sucesso.`
           : `Pedido criado no seu espaço de ${envLabel} com o número ${commitRes.orderNumber}.`;
 
+        const isApl = supportsApl(envelope);
+        const directives = isApl
+          ? [
+              buildOrderCardAplDirective({
+                customer: draft.customer,
+                product: draft.product,
+                quantity: draft.quantity,
+                deliveryDate: formatDatePtBr(draft.deliveryDate),
+                totalPrice: formatCurrencyPtBr(draft.price),
+                statusLabel: `Pedido #${commitRes.orderNumber} Confirmado`,
+                envLabel,
+              }),
+            ]
+          : undefined;
+
         return {
           speech: successSpeech,
           shouldEndSession: true,
           sessionAttributes: {},
+          directives,
         };
       } catch (commitErr) {
         console.error('[AlexaDialog] Erro ao gravar pedido:', commitErr);
@@ -2690,11 +2766,27 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
 
   const confirmSpeech = buildConfirmationSpeech(draft, identity, config);
   const finalSpeech = correctionAcknowledgment ? `${correctionAcknowledgment}${confirmSpeech}` : confirmSpeech;
+  const isApl = supportsApl(envelope);
+  const directives = isApl
+    ? [
+        buildOrderCardAplDirective({
+          customer: draft.customer,
+          product: draft.product,
+          quantity: draft.quantity,
+          deliveryDate: formatDatePtBr(draft.deliveryDate),
+          totalPrice: formatCurrencyPtBr(draft.price),
+          statusLabel: 'Aguardando Confirmação',
+          envLabel: config.environment === 'prod' ? 'produção' : 'teste',
+        }),
+      ]
+    : undefined;
+
   return {
     speech: finalSpeech,
     reprompt: 'Você confirma o pedido? Diga: pode confirmar. Ou diga o que deseja corrigir.',
     shouldEndSession: false,
     sessionAttributes: { draftId, revision: draft.revision, personId: identity.personId, expectedInput: 'confirmation' },
+    directives,
   };
 }
 
@@ -2708,4 +2800,6 @@ module.exports = {
   searchUserCatalog,
   buildConfirmationSpeech,
   handleAlexaDialog,
+  findClosestProductSuggestions,
+  buildSuggestionPrompt,
 };

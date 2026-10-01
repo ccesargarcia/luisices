@@ -25,7 +25,11 @@
           "uri": "https://api.dev.luisices.com.br/alexaWebhook",
           "sslCertificateType": "Wildcard"
         },
-        "interfaces": []
+        "interfaces": [
+          {
+            "type": "ALEXA_PRESENTATION_APL"
+          }
+        ]
       }
     },
     "manifestVersion": "1.0",
