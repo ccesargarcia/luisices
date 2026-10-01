@@ -290,8 +290,9 @@ async function processAlexaEnvelope(envelope, { db, config, authService = null }
  */
 const alexaWebhook = onRequest(
   {
+    minInstances: 1,
     maxInstances: 2,
-    memory: '256MiB',
+    memory: '512MiB',
     secrets: [ALEXA_IDENTITY_HMAC_KEY, ORIGIN_SECRET],
   },
   async (req, res) => {

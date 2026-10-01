@@ -8,11 +8,13 @@ const { GeminiClient } = require('../../../functions/ai/geminiClient');
 const { cleanAiOutput } = require('../../../functions/ai/handlers');
 
 describe('IA-QA: Suíte Sintética de Avaliação e Regressão (40 Casos Obrigatórios)', () => {
+  const now = new Date();
+  const currentIso = new Date(now.getTime() - 60000).toISOString();
   const syntheticOrders = [
-    { orderId: 'ord-1', orderNumber: '#101', customerName: 'Alice Mendes', customerPhone: '11999991111', productSummary: 'Topo 3D', totalPrice: 80, paidAmount: 80, remainingAmount: 0, status: 'completed', paymentStatus: 'paid', deliveryDate: '2026-09-20', createdAt: '2026-09-20T10:00:00Z', userId: 'u-admin', isDeleted: false },
-    { orderId: 'ord-2', orderNumber: '#102', customerName: 'Bruno Costa', customerPhone: '11999992222', productSummary: 'Caixa Milk 20un', totalPrice: 160, paidAmount: 60, remainingAmount: 100, status: 'in-progress', paymentStatus: 'partial', deliveryDate: '2026-09-27', createdAt: '2026-09-22T10:00:00Z', userId: 'u-admin', isDeleted: false },
-    { orderId: 'ord-3', orderNumber: '#103', customerName: 'Carla Dias', customerPhone: '11999993333', productSummary: 'Convites Luxo', totalPrice: 250, paidAmount: 0, remainingAmount: 250, status: 'pending', paymentStatus: 'pending', deliveryDate: '2026-10-01', createdAt: '2026-09-25T10:00:00Z', userId: 'u-admin', isDeleted: false },
-    { orderId: 'ord-4', orderNumber: '#104', customerName: 'Diego Ramos', customerPhone: '11999994444', productSummary: 'Lembrancinhas', totalPrice: 300, paidAmount: 0, remainingAmount: 300, status: 'cancelled', paymentStatus: 'pending', createdAt: '2026-09-10T10:00:00Z', userId: 'u-admin', isDeleted: false },
+    { orderId: 'ord-1', orderNumber: '#101', customerName: 'Alice Mendes', customerPhone: '11999991111', productSummary: 'Topo 3D', totalPrice: 80, paidAmount: 80, remainingAmount: 0, status: 'completed', paymentStatus: 'paid', deliveryDate: currentIso.split('T')[0], createdAt: currentIso, userId: 'u-admin', isDeleted: false },
+    { orderId: 'ord-2', orderNumber: '#102', customerName: 'Bruno Costa', customerPhone: '11999992222', productSummary: 'Caixa Milk 20un', totalPrice: 160, paidAmount: 60, remainingAmount: 100, status: 'in-progress', paymentStatus: 'partial', deliveryDate: currentIso.split('T')[0], createdAt: currentIso, userId: 'u-admin', isDeleted: false },
+    { orderId: 'ord-3', orderNumber: '#103', customerName: 'Carla Dias', customerPhone: '11999993333', productSummary: 'Convites Luxo', totalPrice: 250, paidAmount: 0, remainingAmount: 250, status: 'pending', paymentStatus: 'pending', deliveryDate: currentIso.split('T')[0], createdAt: currentIso, userId: 'u-admin', isDeleted: false },
+    { orderId: 'ord-4', orderNumber: '#104', customerName: 'Diego Ramos', customerPhone: '11999994444', productSummary: 'Lembrancinhas', totalPrice: 300, paidAmount: 0, remainingAmount: 300, status: 'cancelled', paymentStatus: 'pending', createdAt: currentIso, userId: 'u-admin', isDeleted: false },
   ];
 
   const syntheticCustomers = [
