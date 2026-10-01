@@ -1,5 +1,6 @@
 import { useState, useRef } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogBody, DialogFooter, DialogDescription } from '../ui/dialog';
+import { secureRandomId } from '../../utils/random';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
@@ -170,7 +171,7 @@ export function BulkStoreProductsDialog({
     const defaultCategory = batchCategory.trim() || (existingCategories.length > 0 ? existingCategories[0] : 'Geral');
 
     const newItems: BulkItemState[] = validFiles.map((file, idx) => {
-      const itemId = `${Date.now()}_${idx}_${Math.random().toString(36).substring(2, 7)}`;
+      const itemId = `${Date.now()}_${idx}_${secureRandomId()}`;
       return {
         id: itemId,
         file,

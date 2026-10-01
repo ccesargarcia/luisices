@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect } from 'react';
 import { PurchaseHistoryItem, SupplyItem, SupplyCategory, SupplyUnit } from '../../types';
 import { firebasePricingService } from '../../../services/firebasePricingService';
 import { formatCurrency } from '../../utils/currency';
+import { secureRandomId } from '../../utils/random';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../ui/card';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -163,7 +164,7 @@ export function PurchaseHistoryTab({
     setPrice(54);
     setShippingCost(0);
     setNotes('');
-    setIdempotencyKey(`purch_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`);
+    setIdempotencyKey(`purch_${Date.now()}_${secureRandomId()}`);
     setDialogOpen(true);
   };
 
@@ -230,7 +231,7 @@ export function PurchaseHistoryTab({
       }
 
       await firebasePricingService.addPurchaseRecord({
-        idempotencyKey: idempotencyKey || `purch_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
+        idempotencyKey: idempotencyKey || `purch_${Date.now()}_${secureRandomId()}`,
         supplyId: targetSupplyId,
         supplyName: supplyName.trim(),
         category,

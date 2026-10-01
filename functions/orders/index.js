@@ -181,7 +181,7 @@ const submitPublicCatalogOrder = onCall({ cors: true, maxInstances: 10 }, async 
   }
 
   // 6. Geração do código do pedido e gravação com verifiedByServer: true de forma atômica e idempotente
-  const orderCode = `LJ-${Math.floor(1000 + Math.random() * 9000)}`;
+  const orderCode = `LJ-${crypto.randomInt(1000, 10000)}`;
   const now = admin.firestore.Timestamp.now();
 
   const payloadForHash = JSON.stringify({

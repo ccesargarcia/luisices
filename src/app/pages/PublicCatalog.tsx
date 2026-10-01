@@ -55,6 +55,7 @@ import {
   InstitutionalCustomSection,
 } from '../../services/firebaseSettingsService';
 import { firebaseCatalogOrderService } from '../../services/firebaseCatalogOrderService';
+import { secureRandomId } from '../utils/random';
 import { toCdnUrl } from '../utils/cdnUtils';
 import { FormattedDescription } from '../components/FormattedDescription';
 import {
@@ -326,7 +327,7 @@ export function PublicCatalog() {
       if (!Array.isArray(parsed)) return [];
       return parsed.map((item: any, idx: number) => ({
         ...item,
-        id: item.id || `cart-${idx}-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+        id: item.id || `cart-${idx}-${Date.now()}-${secureRandomId()}`,
       }));
     } catch {
       return [];
@@ -892,7 +893,7 @@ export function PublicCatalog() {
           idx === existingIndex ? { ...item, quantity: item.quantity + quantity } : item
         );
       }
-      const newItemId = `item-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+      const newItemId = `item-${Date.now()}-${secureRandomId()}`;
       return [...prev, { id: newItemId, product, quantity, customName: trimmedCustom || undefined }];
     });
   }, []);
@@ -932,7 +933,7 @@ export function PublicCatalog() {
   }, [businessInfo.whatsapp, businessInfo.name, isAllCategories, selectedCategories]);
 
   const [checkoutIdempotencyKey, setCheckoutIdempotencyKey] = useState<string>(
-    () => `pub_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`
+    () => `pub_${Date.now()}_${secureRandomId()}`
   );
 
   // Envio de Pedido no WhatsApp com Deep Link formatado e registro no histórico
@@ -1017,7 +1018,7 @@ export function PublicCatalog() {
       }
 
       // Resetar chave de idempotência para o próximo pedido
-      setCheckoutIdempotencyKey(`pub_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`);
+      setCheckoutIdempotencyKey(`pub_${Date.now()}_${secureRandomId()}`);
     } catch (err: any) {
       console.error('Erro ao registrar pedido:', err);
       const errorMsg = err?.message || 'Erro ao registrar o pedido. Por favor, revise seu carrinho.';
