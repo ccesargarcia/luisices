@@ -37,8 +37,9 @@ on:
           - 'sendAdminPasswordReset,sendPasswordResetEmail'
           - 'createUserInvitation,validateUserInvitation,completeUserInvitation'
           - 'createUser,deleteUser'
-          - 'sendCustomEmail,getEmailUsage,resendReceivingWebhook'
-          - 'alexaWebhook,approveAlexaPairing,setAlexaPermission,revokeAlexaBinding,toggleGlobalAlexaIntegration,getAlexaIntegrationStatus,approveAlexaDraft'
+          - 'alexaWebhook,approveAlexaPairing,setAlexaPermission,revokeAlexaBinding,toggleGlobalAlexaIntegration,getAlexaIntegrationStatus,approveAlexaDraft,alexaPlusMcp'
+          - 'alexaWebhook,alexaPlusMcp'
+          - 'alexaPlusMcp'
           - 'alexaWebhook'
       deploy_rules_and_indexes:
         description: 'Publicar Firestore Rules e Indexes? (Já publicado no deploy de Hosting)'

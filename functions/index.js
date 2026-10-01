@@ -2050,3 +2050,8 @@ exports.revokeAlexaBinding = alexaModule.revokeAlexaBinding;
 exports.toggleGlobalAlexaIntegration = alexaModule.toggleGlobalAlexaIntegration;
 exports.getAlexaIntegrationStatus = alexaModule.getAlexaIntegrationStatus;
 exports.approveAlexaDraft = alexaModule.approveAlexaDraft;
+
+// ─── Integração Alexa+ (Add-on & MCP Server) ─────────────────────────────────
+const alexaPlusModule = require('./alexa-plus');
+exports.alexaPlusMcp = alexaPlusModule.alexaPlusMcp;
+
