@@ -15,6 +15,7 @@
     "test:e2e:emulator": "VITE_USE_FIREBASE_EMULATOR=true playwright test",
     "fix-negative-values": "node scripts/fix-negative-values.mjs",
     "sync:ledger": "node scripts/sync-sales-ledger.mjs",
+    "clean:disk": "bash scripts/clean-disk.sh",
     "test": "vitest run",
     "test:unit": "vitest run",
     "test:unit:watch": "vitest",
