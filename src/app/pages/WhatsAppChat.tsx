@@ -5,6 +5,7 @@ import { useOrders } from '../../contexts/OrdersContext';
 import { firebaseWhatsAppService, WhatsAppStatusResult } from '../../services/firebaseWhatsAppService';
 import { WhatsAppMessage, WhatsAppConversation, Customer } from '../types';
 import { normalizePhoneForWhatsApp, formatPhoneForDisplay } from '../utils/whatsapp';
+import { secureRandomId } from '../utils/random';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Textarea } from '../components/ui/textarea';
@@ -362,7 +363,7 @@ export function WhatsAppChat() {
     const text = (textToSend || inputText).trim();
     if (!text || !selectedPhone) return;
 
-    const tempId = `opt_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    const tempId = `opt_${Date.now()}_${secureRandomId()}`;
     const tempMsg: WhatsAppMessage = {
       id: tempId,
       chatId: selectedPhone,

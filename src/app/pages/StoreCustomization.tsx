@@ -3,6 +3,7 @@ import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { useAuth } from '../../contexts/AuthContext';
 import { useUserSettings } from '../../hooks/useUserSettings';
+import { secureRandomId } from '../utils/random';
 import { firebaseAiAgentService } from '../../services/firebaseAiAgentService';
 import { parseLlmJson } from '../../lib/robustJsonParser';
 import { Button } from '../components/ui/button';
@@ -1000,7 +1001,7 @@ export function StoreCustomization() {
     try {
       const url = await uploadCatalogBannerImage(file);
       const newBanner: CatalogBannerItem = {
-        id: `b-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+        id: `b-${Date.now()}-${secureRandomId()}`,
         imageUrl: url,
         title: '',
         linkUrl: '',

@@ -27,6 +27,7 @@ import { NewOrderPaymentSection } from './orders/NewOrderPaymentSection';
 import { NewOrderGallerySelect } from './orders/NewOrderGallerySelect';
 import { ProductItem } from './orders/OrderEditForm';
 import { AiOrderDraft } from '../types';
+import { secureRandomId } from '../utils/random';
 
 interface NewOrderDialogProps {
   open?: boolean;
@@ -365,7 +366,7 @@ export function NewOrderDialog({
 
       for (const g of pendingGallery) {
         try {
-          const tempId = `${Date.now()}_${Math.random().toString(36).slice(2)}`;
+          const tempId = `${Date.now()}_${secureRandomId()}`;
           const imageUrl = await firebaseGalleryService.uploadImage(g.file, user.uid, tempId);
           await firebaseGalleryService.createItem(user.uid, {
             title: g.title,

@@ -34,6 +34,8 @@ on:
           - 'getWhatsAppInstanceStatus'
           - 'evolutionWhatsAppWebhook'
           - 'syncAllOrdersToAiView'
+          - 'submitPublicCatalogOrder,syncAllOrdersToAiView'
+          - 'submitPublicCatalogOrder'
           - 'sendAdminPasswordReset,sendPasswordResetEmail'
           - 'createUserInvitation,validateUserInvitation,completeUserInvitation'
           - 'createUser,deleteUser'

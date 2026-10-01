@@ -5,6 +5,7 @@
  * atômica antes da chamada e reconciliação pós-execução via Firestore e memória.
  */
 
+const crypto = require('crypto');
 const { BUDGET_LIMITS, BUSINESS_TIMEZONE } = require('./config');
 
 // Estado compartilhado em memória persistente entre requisições no mesmo processo Node
@@ -44,7 +45,7 @@ class AiBudgetManager {
     const dateKey = this.getTodayDateKey();
     const reservationKey = `${uid}_${dateKey}`;
     const projectKey = `project_${dateKey}`;
-    const reservationId = `${reservationKey}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+    const reservationId = `${reservationKey}_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
 
     // Produção deve falhar fechada: um erro do Firestore nunca reduz o teto global a memória local.
     if (this.firestore) {
