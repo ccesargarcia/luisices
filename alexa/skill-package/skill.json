@@ -29,14 +29,10 @@
       }
     },
     "manifestVersion": "1.0",
-    "permissions": [
-      {
-        "name": "alexa::person_id:read"
-      }
-    ],
+    "permissions": [],
     "privacyAndCompliance": {
       "allowsPurchases": false,
-      "usesPersonalInfo": true,
+      "usesPersonalInfo": false,
       "isChildDirected": false,
       "isExportCompliant": true,
       "containsAds": false,
