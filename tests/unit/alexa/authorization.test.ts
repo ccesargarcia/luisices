@@ -305,4 +305,50 @@ describe('Alexa: Subsistema de Identidade, Vínculo de Voz e Autorização', () 
     expect(result.identity.mode).toBe('voice_confirm');
   });
 
+  it('deve autorizar com dev bypass quando requireVoiceProfile === false e sem vínculo prévio', async () => {
+    const devRelaxedConfig = {
+      ...baseConfig,
+      requireVoiceProfile: false,
+    };
+
+    const envelope = {
+      context: {
+        System: {
+          user: { userId: 'amzn1.ask.account.DEV_USER' },
+          // Sem personId!
+        },
+      },
+    };
+
+    const mockDb = createMockDb();
+    const result = await authorizeAlexaPerson(envelope, devRelaxedConfig, mockDb);
+
+    expect(result.authorized).toBe(true);
+    expect(result.identity).toBeDefined();
+    expect(result.identity.isDevBypass).toBe(true);
+    expect(result.identity.mode).toBe('voice_confirm');
+  });
+
+  it('deve autorizar com dev bypass mesmo se personId vier do Echo mas não houver vínculo no Firestore', async () => {
+    const devRelaxedConfig = {
+      ...baseConfig,
+      requireVoiceProfile: false,
+    };
+
+    const envelope = {
+      context: {
+        System: {
+          person: { personId: 'amzn1.ask.person.UNLINKED_PHYSICAL_ECHO' },
+          user: { userId: 'amzn1.ask.account.DEV_USER' },
+        },
+      },
+    };
+
+    const mockDb = createMockDb();
+    const result = await authorizeAlexaPerson(envelope, devRelaxedConfig, mockDb);
+
+    expect(result.authorized).toBe(true);
+    expect(result.identity).toBeDefined();
+    expect(result.identity.isDevBypass).toBe(true);
+  });
 });

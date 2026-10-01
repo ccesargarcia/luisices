@@ -214,29 +214,30 @@ async function authorizeAlexaPerson(envelope, config, db, authService = null) {
   // faz fallback para a conta de administrador para permitir testes diretos no hardware Echo
   if (!uid && config.requireVoiceProfile === false && config.environment === 'dev') {
     try {
-      const adminUsers = await db.collection(COLLECTIONS.USERS).where('role', '==', 'admin').where('active', '==', true).limit(1).get();
-      if (!adminUsers.empty) {
-        uid = adminUsers.docs[0].id;
+      const adminProfiles = await db.collection(COLLECTIONS.USER_PROFILES).where('role', '==', 'admin').limit(1).get();
+      if (!adminProfiles.empty) {
+        uid = adminProfiles.docs[0].id;
       } else {
-        const adminProfiles = await db.collection(COLLECTIONS.USER_PROFILES).where('role', '==', 'admin').where('active', '==', true).limit(1).get();
-        if (!adminProfiles.empty) {
-          uid = adminProfiles.docs[0].id;
+        const anyProfile = await db.collection(COLLECTIONS.USER_PROFILES).limit(1).get();
+        if (!anyProfile.empty) {
+          uid = anyProfile.docs[0].id;
+        } else {
+          uid = 'dev-admin-bypass';
         }
       }
     } catch (err) {
-      console.warn('[AlexaAuth] Erro ao buscar admin fallback em DEV:', err.message);
+      console.warn('[AlexaAuth] Erro ao buscar fallback em DEV:', err.message);
+      uid = 'dev-admin-bypass';
     }
-    if (uid) {
-      effectivePersonId = personId || 'dev-voice-any';
-      resolvedBindingKey = 'dev-relaxed-binding';
-      bindingData = {
-        uid,
-        active: true,
-        mode: 'voice_confirm',
-        isDevBypass: true,
-        bindingKey: resolvedBindingKey,
-      };
-    }
+    effectivePersonId = personId || 'dev-voice-any';
+    resolvedBindingKey = 'dev-relaxed-binding';
+    bindingData = {
+      uid,
+      active: true,
+      mode: 'voice_confirm',
+      isDevBypass: true,
+      bindingKey: resolvedBindingKey,
+    };
   }
 
   // 5. Se não encontrou UID (e em produção permanece estrito)
@@ -268,14 +269,16 @@ async function authorizeAlexaPerson(envelope, config, db, authService = null) {
     authUserPromise = Promise.resolve({ uid, disabled: false });
   }
 
+  const isBypass = Boolean(bindingData.isDevBypass);
+
   const [profileSnap, permSnap, authUserResult] = await Promise.all([
-    db.collection(COLLECTIONS.USER_PROFILES).doc(uid).get(),
-    db.collection(COLLECTIONS.PERMISSIONS).doc(uid).get(),
+    db.collection(COLLECTIONS.USER_PROFILES).doc(uid).get().catch(() => ({ exists: false })),
+    db.collection(COLLECTIONS.PERMISSIONS).doc(uid).get().catch(() => ({ exists: false })),
     authUserPromise,
   ]);
 
   // Validar userProfile no Firestore
-  if (!profileSnap.exists) {
+  if (!profileSnap.exists && !isBypass) {
     return emitAndReturn({
       authorized: false,
       code: ERROR_CODES.USER_NOT_FOUND,
@@ -283,10 +286,10 @@ async function authorizeAlexaPerson(envelope, config, db, authService = null) {
     });
   }
 
-  const profile = profileSnap.data() || {};
+  const profile = (profileSnap.exists && typeof profileSnap.data === 'function') ? (profileSnap.data() || {}) : {};
 
-  // Perfis legados sem active explícito NÃO são aceitos para voz (exige active === true)
-  if (profile.active !== true) {
+  // Perfis legados sem active explícito NÃO são aceitos para voz (exige active === true) em modo estrito
+  if (!isBypass && profile.active !== true) {
     return emitAndReturn({
       authorized: false,
       code: ERROR_CODES.USER_INACTIVE,
@@ -295,7 +298,7 @@ async function authorizeAlexaPerson(envelope, config, db, authService = null) {
   }
 
   // Validar conta no Firebase Auth (não suspensa/desativada)
-  if (authUserResult.error) {
+  if (!isBypass && authUserResult.error) {
     console.warn(`[AlexaAuth] Erro ao consultar Firebase Auth para UID ${uid}:`, authUserResult.error.message);
     return emitAndReturn({
       authorized: false,
@@ -304,7 +307,7 @@ async function authorizeAlexaPerson(envelope, config, db, authService = null) {
     });
   }
 
-  if (authUserResult.disabled) {
+  if (!isBypass && authUserResult.disabled) {
     return emitAndReturn({
       authorized: false,
       code: ERROR_CODES.USER_DISABLED,
@@ -313,7 +316,7 @@ async function authorizeAlexaPerson(envelope, config, db, authService = null) {
   }
 
   // Validar alexaPermissions/{uid}
-  if (!permSnap.exists) {
+  if (!permSnap.exists && !isBypass) {
     return emitAndReturn({
       authorized: false,
       code: ERROR_CODES.VOICE_NOT_ALLOWED,
@@ -321,8 +324,8 @@ async function authorizeAlexaPerson(envelope, config, db, authService = null) {
     });
   }
 
-  const alexaPerm = permSnap.data() || {};
-  if (!alexaPerm.enabled) {
+  const alexaPerm = (permSnap.exists && typeof permSnap.data === 'function') ? (permSnap.data() || {}) : {};
+  if (!isBypass && !alexaPerm.enabled) {
     return emitAndReturn({
       authorized: false,
       code: ERROR_CODES.VOICE_NOT_ALLOWED,
@@ -331,8 +334,9 @@ async function authorizeAlexaPerson(envelope, config, db, authService = null) {
   }
 
   // 8. Validar permissão de criação de pedidos no sistema
-  // Admin ou perfil com permissions.orders.create === true
+  // Admin ou perfil com permissions.orders.create === true (ou bypass em dev)
   const canCreateOrders =
+    isBypass ||
     profile.role === 'admin' ||
     profile.permissions?.orders?.create === true;
 
@@ -351,7 +355,7 @@ async function authorizeAlexaPerson(envelope, config, db, authService = null) {
     identity: {
       uid,
       bindingKey: resolvedBindingKey,
-      displayName: profile.displayName || profile.email || 'Usuário',
+      displayName: profile.displayName || profile.email || (isBypass ? 'Administrador Dev' : 'Usuário'),
       email: profile.email || '',
       mode,
       personId: effectivePersonId,
