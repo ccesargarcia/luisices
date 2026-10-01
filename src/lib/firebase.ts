@@ -55,12 +55,27 @@ export async function recoverFirestorePersistence(): Promise<void> {
   isRecoveringPersistence = true;
 
   try {
+    const lastAttempt = Number(sessionStorage.getItem('firestore_recovery_timestamp') || '0');
+    const now = Date.now();
+    // Cooldown de 30s para evitar loops de reload se houver falha contínua
+    if (now - lastAttempt < 30_000) {
+      console.warn('[Firebase] Cooldown de auto-cura ativo. Evitando reexecução imediata.');
+      return;
+    }
+    sessionStorage.setItem('firestore_recovery_timestamp', String(now));
+
     console.warn('[Firebase] Iniciando auto-cura do cache IndexedDB do Firestore...');
-    await terminate(db);
-    await clearIndexedDbPersistence(db);
-    console.info('[Firebase] Cache IndexedDB resetado com sucesso.');
+    try {
+      await terminate(db);
+      await clearIndexedDbPersistence(db);
+      console.info('[Firebase] Cache IndexedDB resetado com sucesso.');
+    } catch (clearErr) {
+      console.warn('[Firebase] Aviso ao limpar persistência do IndexedDB (outra aba pode estar ativa):', clearErr);
+    }
+    // Recarrega a página para restabelecer a conexão limpa com uma nova instância inicializada
+    window.location.reload();
   } catch (err) {
-    console.warn('[Firebase] Não foi possível limpar IndexedDB no momento (outra aba ativa):', err);
+    console.warn('[Firebase] Não foi possível completar o ciclo de auto-cura do Firestore:', err);
   } finally {
     isRecoveringPersistence = false;
   }

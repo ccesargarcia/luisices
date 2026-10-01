@@ -1,4 +1,3 @@
-import * as XLSX from 'xlsx';
 import { SupplyItem, PurchaseHistoryItem, ProductPricingRecipe } from '../types';
 import { formatCurrency } from './currency';
 
@@ -8,12 +7,16 @@ import { formatCurrency } from './currency';
  * 1. Cadastro de Custos de Insumos
  * 2. Histórico de Compras & Evolução
  * 3. Custo por Produto (Ficha Técnica)
+ *
+ * Utiliza carregamento dinâmico do SheetJS (xlsx) sob demanda
+ * para não sobrecarregar o carregamento inicial da página de Precificação.
  */
-export function exportCostsToExcel(
+export async function exportCostsToExcel(
   supplies: SupplyItem[],
   historyItems: PurchaseHistoryItem[],
   recipes: ProductPricingRecipe[]
-) {
+): Promise<void> {
+  const XLSX = await import('xlsx');
   const wb = XLSX.utils.book_new();
 
   // ───────────────────────────────────────────────────────────────────────────

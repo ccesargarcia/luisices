@@ -101,19 +101,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           doc(db, 'userProfiles', u.uid),
           async (snap) => {
             if (!snap.exists()) {
-              // Se o documento ainda não existir no primeiro acesso, inicializa via getUserProfile
-              try {
-                const created = await firebaseUserService.getUserProfile(
-                  u.uid,
-                  u.email ?? undefined,
-                  u.displayName ?? undefined,
-                );
-                if (created) {
-                  setUserProfile(created);
-                }
-              } catch (initErr) {
-                console.warn('Erro ao inicializar perfil de usuário:', initErr);
-              }
+              // Conta sem perfil não possui acesso operacional automático
+              setUserProfile(null);
               setLoading(false);
               return;
             }
@@ -224,14 +213,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = async (email: string, password: string) => {
     const user = await firebaseAuthService.login(email, password);
 
-    // Verificar se o usuário está ativo
+    // Verificar se o usuário possui perfil cadastrado e ativo
     const profile = await firebaseUserService.getUserProfile(
       user.uid,
       user.email ?? undefined,
       user.displayName ?? undefined
     );
 
-    if (profile && profile.active === false) {
+    if (!profile) {
+      await firebaseAuthService.logout();
+      throw new Error('Sua conta não possui permissão de acesso ou convite ativo.');
+    }
+
+    if (profile.active === false) {
       // Usuário inativo - fazer logout imediato
       await firebaseAuthService.logout();
       throw new Error('Sua conta foi desativada. Entre em contato com o administrador.');

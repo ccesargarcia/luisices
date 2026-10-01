@@ -141,10 +141,26 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
     setLoading(true);
     setError(null);
 
-    const ordersQuery = userProfile?.role === 'admin'
+    const operationalQuery = userProfile?.role === 'admin'
       ? query(
           collection(db, 'orders'),
           where('deletedAt', '==', null),
+          where('status', 'in', ['pending', 'in-progress']),
+          limit(1000)
+        )
+      : query(
+          collection(db, 'orders'),
+          where('userId', '==', user.uid),
+          where('deletedAt', '==', null),
+          where('status', 'in', ['pending', 'in-progress']),
+          limit(1000)
+        );
+
+    const historicalQuery = userProfile?.role === 'admin'
+      ? query(
+          collection(db, 'orders'),
+          where('deletedAt', '==', null),
+          where('status', 'in', ['completed', 'cancelled']),
           orderBy('createdAt', 'desc'),
           limit(200)
         )
@@ -152,6 +168,7 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
           collection(db, 'orders'),
           where('userId', '==', user.uid),
           where('deletedAt', '==', null),
+          where('status', 'in', ['completed', 'cancelled']),
           orderBy('createdAt', 'desc'),
           limit(200)
         );
@@ -194,11 +211,14 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
       } as Order;
     });
 
-    let ownOrders: Order[] = [];
+    let operationalOrders: Order[] = [];
+    let historicalOrders: Order[] = [];
     let assignedOrders: Order[] = [];
+    let isFallbackActive = false;
+
     const publish = () => {
       const ordersById = new Map<string, Order>();
-      [...ownOrders, ...assignedOrders].forEach(order => ordersById.set(order.id, order));
+      [...operationalOrders, ...historicalOrders, ...assignedOrders].forEach(order => ordersById.set(order.id, order));
       const orders = [...ordersById.values()].sort((a, b) =>
         String(b.createdAt).localeCompare(String(a.createdAt))
       );
@@ -207,20 +227,57 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
       setError(null);
     };
 
-    const unsubscribers = [onSnapshot(
-      ordersQuery,
+    const unsubscribers: Array<() => void> = [];
+
+    const handleQueryError = (queryName: string, err: any) => {
+      if (err?.code !== 'permission-denied' && !String(err?.message).includes('insufficient permissions')) {
+        console.warn(`OrdersContext: aviso ao escutar ${queryName} no Firestore:`, err?.message || err);
+      }
+      // Se houver erro de índice (ex: failed-precondition) em ambiente novo, ativa fallback unificado
+      if (err?.code === 'failed-precondition' && !isFallbackActive) {
+        isFallbackActive = true;
+        console.warn('OrdersContext: índice composto ausente. Ativando fallback para consulta unificada.');
+        const fallbackQuery = userProfile?.role === 'admin'
+          ? query(collection(db, 'orders'), where('deletedAt', '==', null), orderBy('createdAt', 'desc'), limit(200))
+          : query(collection(db, 'orders'), where('userId', '==', user.uid), where('deletedAt', '==', null), orderBy('createdAt', 'desc'), limit(200));
+
+        unsubscribers.push(onSnapshot(
+          fallbackQuery,
+          (snapshot) => {
+            operationalOrders = mapSnapshot(snapshot);
+            historicalOrders = [];
+            publish();
+          },
+          (fallbackErr) => {
+            setError(fallbackErr.message);
+            setLoading(false);
+          }
+        ));
+        return;
+      }
+      setError(err?.message || String(err));
+      setLoading(false);
+    };
+
+    // Escuta pedidos operacionais (pendentes / em produção)
+    unsubscribers.push(onSnapshot(
+      operationalQuery,
       (snapshot) => {
-        ownOrders = mapSnapshot(snapshot);
+        operationalOrders = mapSnapshot(snapshot);
         publish();
       },
-      (err) => {
-        if (err?.code !== 'permission-denied' && !String(err?.message).includes('insufficient permissions')) {
-          console.warn('OrdersContext: aviso ao escutar orders no Firestore:', err?.message || err);
-        }
-        setError(err.message);
-        setLoading(false);
-      }
-    )];
+      (err) => handleQueryError('pedidos operacionais', err)
+    ));
+
+    // Escuta histórico recente (entregues / cancelados)
+    unsubscribers.push(onSnapshot(
+      historicalQuery,
+      (snapshot) => {
+        historicalOrders = mapSnapshot(snapshot);
+        publish();
+      },
+      (err) => handleQueryError('histórico recente', err)
+    ));
 
     if (userProfile?.role === 'funcionario') {
       const assignedQuery = query(

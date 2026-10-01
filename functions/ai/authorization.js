@@ -9,8 +9,23 @@
  * Monta o escopo de autorização do solicitante a partir do ID e perfil
  */
 function getCallerScope(callerUid, callerProfile) {
-  const profile = callerProfile || {};
   const uid = String(callerUid || '');
+  if (!callerProfile) {
+    return {
+      uid,
+      role: 'none',
+      active: false,
+      isAdmin: false,
+      isEmployee: false,
+      isUser: false,
+      canAiCopilot: false,
+      permissions: {},
+      email: '',
+      displayName: '',
+    };
+  }
+
+  const profile = callerProfile;
   const role = profile.role || 'user';
   const active = profile.active !== false;
   const permissions = profile.permissions || {};

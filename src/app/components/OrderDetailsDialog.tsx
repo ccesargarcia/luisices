@@ -276,44 +276,51 @@ export function OrderDetailsDialog({ order, open, onOpenChange, onUpdateStatus, 
         .join(', ');
       const totalQuantity = editProducts.reduce((sum, p) => sum + (parseInt(p.quantity) || 0), 0);
 
+      // Preservar histórico e metadados de pagamentos anteriores
+      const existingPayment = order.payment;
       const paymentData: any = {
         status: editData.paymentStatus,
-        method: editData.paymentMethod || null,
+        method: editData.paymentMethod || existingPayment?.method || null,
         totalAmount: price,
         paidAmount: paidAmt,
         remainingAmount,
-        paymentDate: paidAmt > 0 ? new Date().toISOString() : null,
-        notes: null,
+        paymentDate: existingPayment?.paymentDate || (paidAmt > 0 ? new Date().toISOString() : null),
+        notes: existingPayment?.notes || null,
+        history: existingPayment?.history || null,
       };
 
-      await firebaseOrderService.updateOrder(order.id, {
-        customerName: editData.customerName,
-        customerPhone: editData.customerPhone,
-        productName,
-        quantity: totalQuantity,
-        price,
-        deliveryDate: editData.deliveryDate,
-        notes: editData.notes || undefined,
-        status: editData.status,
-        tags: editTags.length > 0 ? editTags : undefined,
-        payment: paymentData,
-        isExchange: editData.isExchange || undefined,
-        exchangeNotes: editData.exchangeNotes || undefined,
-        cardColor: editData.cardColor || undefined,
-        exchangeItems: editData.isExchange
-          ? editExchangeItems
-              .filter(i => i.name.trim())
-              .map(i => ({
-                name: i.name.trim(),
-                quantity: parseInt(i.quantity) || 1,
-                value: i.unitPrice ? parseFloat(i.unitPrice) : undefined,
-              } as ExchangeItem))
-          : undefined,
-      });
+      await firebaseOrderService.updateOrder(
+        order.id,
+        {
+          customerName: editData.customerName,
+          customerPhone: editData.customerPhone,
+          productName,
+          quantity: totalQuantity,
+          price,
+          deliveryDate: editData.deliveryDate,
+          notes: editData.notes?.trim() ? editData.notes.trim() : null,
+          status: editData.status,
+          tags: editTags,
+          payment: paymentData,
+          isExchange: Boolean(editData.isExchange),
+          exchangeNotes: editData.isExchange && editData.exchangeNotes?.trim() ? editData.exchangeNotes.trim() : null,
+          cardColor: editData.cardColor || null,
+          exchangeItems: editData.isExchange
+            ? editExchangeItems
+                .filter(i => i.name.trim())
+                .map(i => ({
+                  name: i.name.trim(),
+                  quantity: parseInt(i.quantity) || 1,
+                  value: i.unitPrice ? parseFloat(i.unitPrice) : undefined,
+                } as ExchangeItem))
+            : [],
+        },
+        order.version
+      );
       setIsEditing(false);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Erro ao atualizar pedido:', error);
-      toast.error('Erro ao atualizar pedido');
+      toast.error(error.message || 'Erro ao atualizar pedido');
     } finally {
       setIsSaving(false);
     }

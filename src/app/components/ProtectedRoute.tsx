@@ -17,7 +17,7 @@ export function ProtectedRoute({ children, adminOnly = false }: ProtectedRoutePr
     }
   }, [isAuthenticated, userProfile, loading, refreshUserProfile]);
 
-  if (loading || (isAuthenticated && !userProfile)) {
+  if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
@@ -28,12 +28,7 @@ export function ProtectedRoute({ children, adminOnly = false }: ProtectedRoutePr
     );
   }
 
-  if (!isAuthenticated) {
-    return <Navigate to="/login" replace />;
-  }
-
-  // Block inactive users
-  if (userProfile && userProfile.active === false) {
+  if (!isAuthenticated || !userProfile || userProfile.active === false) {
     return <Navigate to="/login" replace />;
   }
 

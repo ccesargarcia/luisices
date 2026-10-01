@@ -160,14 +160,16 @@ export class FirebaseOrderService {
 
   }
 
-  /** Grava contador, pedido, venda e vínculo de catálogo em uma única transação. */
-  async createOrder(orderData: Partial<Order>, catalogOrderId?: string): Promise<Order> {
+  /** Grava contador, pedido, venda e vínculo de catálogo/orçamento em uma única transação atômica. */
+  async createOrder(orderData: Partial<Order>, catalogOrderId?: string, quoteId?: string): Promise<Order> {
     const userId = this.getCurrentUserId();
     const orderRef = doc(collection(db, ORDERS_COLLECTION));
     const counterRef = doc(db, 'users', userId, 'metadata', 'counters');
     const catalogRef = catalogOrderId ? doc(db, 'catalogOrders', catalogOrderId) : null;
+    const quoteRef = quoteId ? doc(db, 'quotes', quoteId) : null;
 
     const savedOrderId = await runTransaction(db, async (transaction) => {
+      // 1. Idempotência e validação da lojinha
       if (catalogRef) {
         const catalogSnap = await transaction.get(catalogRef);
         if (!catalogSnap.exists()) throw new Error('Pedido da lojinha não encontrado.');
@@ -178,6 +180,29 @@ export class FirebaseOrderService {
           throw new Error('Este pedido da lojinha já foi convertido em pedido de produção anteriormente.');
         }
       }
+
+      // 2. Idempotência e validação de orçamento (Achado 8)
+      if (quoteRef) {
+        const quoteSnap = await transaction.get(quoteRef);
+        if (!quoteSnap.exists()) throw new Error('Orçamento não encontrado.');
+        const quote = quoteSnap.data();
+        const existingOrderId = quote.convertedOrderId || quote.orderId;
+        if (existingOrderId) return String(existingOrderId);
+        if (quote.status === 'approved') {
+          throw new Error('Este orçamento já foi aprovado anteriormente.');
+        }
+        if (quote.status !== 'draft' && quote.status !== 'sent') {
+          throw new Error('Apenas orçamentos em rascunho ou enviados podem ser aprovados.');
+        }
+        if (quote.validUntil) {
+          const expiration = new Date(quote.validUntil);
+          expiration.setHours(23, 59, 59, 999);
+          if (expiration < new Date()) {
+            throw new Error('Este orçamento expirou e não pode ser aprovado.');
+          }
+        }
+      }
+
       const counterSnap = await transaction.get(counterRef);
       const nextCount = (counterSnap.data()?.orderCounter || 0) + 1;
       const orderNumber = `#${new Date().getFullYear()}-${String(nextCount).padStart(4, '0')}`;
@@ -190,11 +215,25 @@ export class FirebaseOrderService {
       transaction.set(counterRef, { orderCounter: nextCount }, { merge: true });
       transaction.set(orderRef, data);
       transaction.set(doc(db, 'salesLedger', orderRef.id), sale);
+
       if (catalogRef) {
         transaction.update(catalogRef, {
           status: 'converted', convertedOrderId: orderRef.id, updatedAt: Timestamp.now(),
         });
       }
+
+      if (quoteRef) {
+        transaction.update(quoteRef, {
+          status: 'approved',
+          orderId: orderRef.id,
+          orderNumber,
+          convertedOrderId: orderRef.id,
+          convertedOrderNumber: orderNumber,
+          approvedAt: Timestamp.now(),
+          updatedAt: Timestamp.now(),
+        });
+      }
+
       return orderRef.id;
     });
     return this.getOrderById(savedOrderId);
@@ -415,86 +454,172 @@ export class FirebaseOrderService {
   }
 
   /**
-   * Atualizar status do pedido
+   * Atualizar status do pedido e sincronizar salesLedger atomicamente com concorrência otimista.
    */
-  async updateOrderStatus(orderId: string, status: OrderStatus): Promise<void> {
+  async updateOrderStatus(orderId: string, status: OrderStatus, expectedVersion?: number): Promise<void> {
     const userId = this.getCurrentUserId();
     const orderRef = doc(db, ORDERS_COLLECTION, orderId);
+    const saleRef = doc(db, 'salesLedger', orderId);
 
     // Verificar propriedade
-    const orderSnap = await getDoc(orderRef);
-    if (!orderSnap.exists() || !(await this.canAccessAssignedOrder(orderSnap.data(), userId))) {
+    const initialSnap = await getDoc(orderRef);
+    if (!initialSnap.exists() || !(await this.canAccessAssignedOrder(initialSnap.data(), userId))) {
       throw new Error('Pedido não encontrado ou sem permissão');
     }
 
-    const currentVersion = typeof orderSnap.data().version === 'number' ? orderSnap.data().version : 1;
-    await updateDoc(orderRef, {
-      status,
-      version: currentVersion + 1,
-      updatedAt: new Date().toISOString(),
-    });
+    await runTransaction(db, async (transaction) => {
+      // 1. TODAS as leituras antes de qualquer escrita (exigência estrita do Firestore)
+      const orderSnap = await transaction.get(orderRef);
+      if (!orderSnap.exists()) {
+        throw new Error('Pedido não encontrado');
+      }
+      const saleSnap = await transaction.get(saleRef);
+      const orderData = orderSnap.data();
 
-    firebaseLedgerService.syncOrderStatus(orderId, status).catch(err => {
-      console.warn('firebaseLedgerService: erro ao sincronizar status:', err);
+      const currentVersion = typeof orderData.version === 'number' ? orderData.version : 1;
+      if (expectedVersion !== undefined && typeof orderData.version === 'number' && orderData.version !== expectedVersion) {
+        throw new Error(`Conflito de concorrência: o pedido foi alterado por outro usuário (versão ${orderData.version} != esperada ${expectedVersion}).`);
+      }
+
+      const now = new Date().toISOString();
+
+      // 2. TODAS as escritas após as leituras
+      transaction.update(orderRef, {
+        status,
+        version: currentVersion + 1,
+        updatedAt: now,
+      });
+
+      if (saleSnap.exists()) {
+        transaction.update(saleRef, {
+          status,
+          updatedAt: now,
+        });
+      } else {
+        const fullOrder = { ...this.mapOrderDoc(orderSnap), status };
+        const saleRecord = firebaseLedgerService.mapOrderToSaleRecord(fullOrder as Order, userId);
+        transaction.set(saleRef, {
+          ...saleRecord,
+          isDeletedFromOrders: orderData.deletedAt != null,
+        });
+      }
     });
   }
 
   /**
-   * Atualizar dados do pedido
+   * Atualizar dados do pedido e sincronizar salesLedger atomicamente com concorrência otimista.
    */
-  async updateOrder(orderId: string, updates: Partial<Omit<Order, 'id' | 'userId' | 'createdAt' | 'orderNumber'>>): Promise<void> {
+  async updateOrder(
+    orderId: string,
+    updates: Partial<Omit<Order, 'id' | 'userId' | 'createdAt' | 'orderNumber'>>,
+    expectedVersion?: number
+  ): Promise<void> {
     const userId = this.getCurrentUserId();
     const orderRef = doc(db, ORDERS_COLLECTION, orderId);
+    const saleRef = doc(db, 'salesLedger', orderId);
 
     // Verificar propriedade
-    const orderSnap = await getDoc(orderRef);
-    if (!orderSnap.exists() || !(await this.canAccessAssignedOrder(orderSnap.data(), userId))) {
+    const initialSnap = await getDoc(orderRef);
+    if (!initialSnap.exists() || !(await this.canAccessAssignedOrder(initialSnap.data(), userId))) {
       throw new Error('Pedido não encontrado ou sem permissão');
     }
 
-    // Remover campos undefined e garantir valores positivos
-    const cleanUpdates: any = {};
-    Object.entries(updates).forEach(([key, value]) => {
-      if (value !== undefined) {
-        if (key === 'price') {
-          cleanUpdates[key] = this.ensurePositive(value as number);
-        } else if (key === 'payment' && value) {
-          const payment = value as any;
-          cleanUpdates[key] = {
-            status: payment.status || 'pending',
-            method: payment.method || null,
-            totalAmount: this.ensurePositive(payment.totalAmount),
-            paidAmount: this.ensurePositive(payment.paidAmount),
-            remainingAmount: this.ensurePositive(payment.remainingAmount),
-            paymentDate: payment.paymentDate || null,
-            notes: payment.notes || null,
-            history: payment.history?.map((h: any) => ({
-              amount: this.ensurePositive(h.amount),
-              date: h.date,
-              method: h.method,
-              notes: h.notes || null
-            })) || null
-          };
-        } else if (key === 'exchangeItems') {
-          cleanUpdates[key] = this.sanitizeExchangeItems(value as any);
-        } else {
-          cleanUpdates[key] = value;
-        }
+    await runTransaction(db, async (transaction) => {
+      // 1. TODAS as leituras antes de qualquer escrita (exigência estrita do Firestore)
+      const orderSnap = await transaction.get(orderRef);
+      if (!orderSnap.exists()) {
+        throw new Error('Pedido não encontrado');
       }
-    });
+      const saleSnap = await transaction.get(saleRef);
+      const orderData = orderSnap.data();
 
-    if (Object.keys(cleanUpdates).length > 0) {
-      const currentVersion = typeof orderSnap.data().version === 'number' ? orderSnap.data().version : 1;
-      await updateDoc(orderRef, {
+      const currentVersion = typeof orderData.version === 'number' ? orderData.version : 1;
+      if (expectedVersion !== undefined && typeof orderData.version === 'number' && orderData.version !== expectedVersion) {
+        throw new Error(`Conflito de concorrência: o pedido foi alterado por outro usuário (versão ${orderData.version} != esperada ${expectedVersion}).`);
+      }
+
+      // Remover campos undefined e garantir preservação de histórico e integridade do saldo restante
+      const cleanUpdates: any = {};
+      Object.entries(updates).forEach(([key, value]) => {
+        if (value !== undefined) {
+          if (key === 'price' && typeof value === 'number') {
+            cleanUpdates[key] = this.ensurePositive(value);
+          } else if (key === 'payment' && value) {
+            const payment = value as any;
+            const existingPayment = orderData.payment || {};
+            const totalAmount = this.ensurePositive(
+              payment.totalAmount !== undefined
+                ? payment.totalAmount
+                : (cleanUpdates.price !== undefined ? cleanUpdates.price : (orderData.price || 0))
+            );
+            const paidAmount = this.ensurePositive(
+              payment.paidAmount !== undefined
+                ? payment.paidAmount
+                : (existingPayment.paidAmount || 0)
+            );
+            const remainingAmount = this.ensurePositive(
+              payment.remainingAmount !== undefined
+                ? payment.remainingAmount
+                : (existingPayment.remainingAmount !== undefined && payment.paidAmount === undefined && payment.totalAmount === undefined && cleanUpdates.price === undefined)
+                  ? existingPayment.remainingAmount
+                  : Math.max(0, totalAmount - paidAmount)
+            );
+            cleanUpdates[key] = {
+              status: payment.status || existingPayment.status || 'pending',
+              method: payment.method !== undefined ? payment.method : (existingPayment.method || null),
+              totalAmount,
+              paidAmount,
+              remainingAmount,
+              paymentDate: payment.paymentDate !== undefined ? payment.paymentDate : (existingPayment.paymentDate || null),
+              notes: payment.notes !== undefined ? payment.notes : (existingPayment.notes || null),
+              history: payment.history !== undefined ? payment.history : (existingPayment.history || null),
+            };
+          } else if (key === 'exchangeItems') {
+            cleanUpdates[key] = this.sanitizeExchangeItems(value as any);
+          } else {
+            cleanUpdates[key] = value;
+          }
+        }
+      });
+
+      if (Object.keys(cleanUpdates).length === 0) return;
+
+      const now = new Date().toISOString();
+
+      // 2. TODAS as escritas após as leituras
+      transaction.update(orderRef, {
         ...cleanUpdates,
         version: currentVersion + 1,
-        updatedAt: new Date().toISOString(),
+        updatedAt: now,
       });
 
-      firebaseLedgerService.syncOrderUpdates(orderId, cleanUpdates).catch(err => {
-        console.warn('firebaseLedgerService: erro ao sincronizar updates:', err);
-      });
-    }
+      if (saleSnap.exists()) {
+        const salePayload: any = { updatedAt: now };
+        if (cleanUpdates.price !== undefined) salePayload.amount = cleanUpdates.price;
+        if (cleanUpdates.status !== undefined) salePayload.status = cleanUpdates.status;
+        if (cleanUpdates.customerName !== undefined) salePayload.customerName = cleanUpdates.customerName;
+        if (cleanUpdates.customerPhone !== undefined) salePayload.customerPhone = cleanUpdates.customerPhone;
+        if (cleanUpdates.customerId !== undefined) salePayload.customerId = cleanUpdates.customerId;
+        if (cleanUpdates.productName !== undefined) salePayload.productName = cleanUpdates.productName;
+        if (cleanUpdates.quantity !== undefined) salePayload.quantity = cleanUpdates.quantity;
+        if (cleanUpdates.deliveryDate !== undefined) salePayload.deliveryDate = cleanUpdates.deliveryDate;
+        if (cleanUpdates.assignedTo !== undefined) salePayload.assignedTo = cleanUpdates.assignedTo;
+        if (cleanUpdates.assignedToName !== undefined) salePayload.assignedToName = cleanUpdates.assignedToName;
+        if (cleanUpdates.payment) {
+          salePayload.paymentStatus = cleanUpdates.payment.status;
+          salePayload.paidAmount = cleanUpdates.payment.paidAmount;
+          salePayload.paymentMethod = cleanUpdates.payment.method;
+        }
+        transaction.update(saleRef, salePayload);
+      } else {
+        const fullOrder = { ...this.mapOrderDoc(orderSnap), ...cleanUpdates };
+        const saleRecord = firebaseLedgerService.mapOrderToSaleRecord(fullOrder as Order, userId);
+        transaction.set(saleRef, {
+          ...saleRecord,
+          isDeletedFromOrders: orderData.deletedAt != null,
+        });
+      }
+    });
   }
 
   /**
@@ -662,70 +787,120 @@ export class FirebaseOrderService {
   ): Promise<void> {
     const userId = this.getCurrentUserId();
     const orderRef = doc(db, ORDERS_COLLECTION, orderId);
+    const saleRef = doc(db, 'salesLedger', orderId);
 
     // Verificar propriedade
-    const orderSnap = await getDoc(orderRef);
-    if (!orderSnap.exists() || !(await this.canAccessAssignedOrder(orderSnap.data(), userId))) {
+    const initialSnap = await getDoc(orderRef);
+    if (!initialSnap.exists() || !(await this.canAccessAssignedOrder(initialSnap.data(), userId))) {
       throw new Error('Pedido não encontrado ou sem permissão');
     }
 
-    const data = orderSnap.data();
-    const workflow: ProductionWorkflow = data.productionWorkflow || {
-      currentStep: 'design',
-      steps: {
-        design: { completed: false },
-        approval: { completed: false },
-        printing: { completed: false },
-        cutting: { completed: false },
-        assembly: { completed: false },
-        'quality-check': { completed: false },
-        packaging: { completed: false },
-      },
-      startedAt: new Date().toISOString(),
-    };
+    await runTransaction(db, async (transaction) => {
+      // 1. Leituras
+      const orderSnap = await transaction.get(orderRef);
+      if (!orderSnap.exists()) {
+        throw new Error('Pedido não encontrado');
+      }
+      const saleSnap = await transaction.get(saleRef);
+      const data = orderSnap.data();
 
-    // Atualizar a etapa
-    workflow.steps[step] = {
-      completed,
-      completedAt: completed ? new Date().toISOString() : undefined,
-      completedBy: completed ? (auth.currentUser?.displayName || auth.currentUser?.email || undefined) : undefined,
-      notes,
-    };
+      const workflow: ProductionWorkflow = data.productionWorkflow || {
+        currentStep: 'design',
+        steps: {
+          design: { completed: false },
+          approval: { completed: false },
+          printing: { completed: false },
+          cutting: { completed: false },
+          assembly: { completed: false },
+          'quality-check': { completed: false },
+          packaging: { completed: false },
+        },
+        startedAt: new Date().toISOString(),
+      };
 
-    // Atualizar currentStep para a próxima etapa incompleta
-    const stepOrder: ProductionStep[] = [
-      'design',
-      'approval',
-      'printing',
-      'cutting',
-      'assembly',
-      'quality-check',
-      'packaging',
-    ];
+      // Atualizar a etapa sem passar campos com valor undefined
+      const stepUpdate: any = {
+        completed,
+      };
+      if (completed) {
+        stepUpdate.completedAt = new Date().toISOString();
+        const userName = auth.currentUser?.displayName || auth.currentUser?.email;
+        if (userName) {
+          stepUpdate.completedBy = userName;
+        }
+      }
+      if (notes !== undefined && notes !== null && notes.trim() !== '') {
+        stepUpdate.notes = notes.trim();
+      }
 
-    const nextIncompleteStep = stepOrder.find(s => !workflow.steps[s].completed);
-    if (nextIncompleteStep) {
-      workflow.currentStep = nextIncompleteStep;
-    }
+      workflow.steps[step] = {
+        ...workflow.steps[step],
+        ...stepUpdate,
+      };
 
-    // Se todas as etapas estiverem completas, atualizar status do pedido
-    const allCompleted = stepOrder.every(s => workflow.steps[s].completed);
-    const updates: any = { productionWorkflow: workflow };
+      // Atualizar currentStep para a próxima etapa incompleta
+      const stepOrder: ProductionStep[] = [
+        'design',
+        'approval',
+        'printing',
+        'cutting',
+        'assembly',
+        'quality-check',
+        'packaging',
+      ];
 
-    if (allCompleted) {
-      updates.status = 'completed';
-    } else if (completed && data.status === 'pending') {
-      // Se começou alguma etapa e ainda está pendente, mover para em produção
-      updates.status = 'in-progress';
-    }
+      const nextIncompleteStep = stepOrder.find(s => !workflow.steps[s].completed);
+      if (nextIncompleteStep) {
+        workflow.currentStep = nextIncompleteStep;
+      }
 
-    await updateDoc(orderRef, updates);
+      // Se todas as etapas estiverem completas, atualizar status do pedido
+      const allCompleted = stepOrder.every(s => workflow.steps[s].completed);
+      const now = new Date().toISOString();
+      const currentVersion = Number(data.version) || 1;
+      const updates: any = {
+        productionWorkflow: workflow,
+        version: currentVersion + 1,
+        updatedAt: now,
+      };
 
-    if (updates.status) {
-      firebaseLedgerService.syncOrderStatus(orderId, updates.status).catch(err => {
-        console.warn('firebaseLedgerService: erro ao sincronizar status do workflow no ledger:', err);
-      });
-    }
+      if (allCompleted) {
+        updates.status = 'completed';
+      } else if (completed && data.status === 'pending') {
+        // Se começou alguma etapa e ainda está pendente, mover para em produção
+        updates.status = 'in-progress';
+      }
+
+      // 2. Escritas
+      transaction.update(orderRef, updates);
+
+      if (updates.status) {
+        if (saleSnap.exists()) {
+          transaction.update(saleRef, {
+            status: updates.status,
+            updatedAt: now,
+          });
+        } else {
+          // Reconstrução contábil caso o registro de faturamento não exista (pedido legado)
+          transaction.set(saleRef, {
+            orderId,
+            orderNumber: data.orderNumber || null,
+            customerName: data.customerName || '',
+            customerPhone: data.customerPhone || null,
+            amount: data.price || 0,
+            paidAmount: data.payment?.paidAmount || (data.payment?.status === 'paid' ? data.price : 0),
+            status: updates.status,
+            date: (data.createdAt && typeof data.createdAt.toDate === 'function')
+              ? data.createdAt.toDate().toISOString().split('T')[0]
+              : (typeof data.createdAt === 'string' ? data.createdAt.split('T')[0] : now.split('T')[0]),
+            userId: data.userId || userId,
+            assignedTo: data.assignedTo || null,
+            createdAt: data.createdAt || now,
+            updatedAt: now,
+          });
+        }
+      }
+    });
   }
 
   /**

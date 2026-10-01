@@ -6,7 +6,8 @@ import {
 } from 'firebase/firestore';
 import { useAuth } from '../contexts/AuthContext';
 import { SaleRecord, LedgerPeriod, Tag } from '../app/types';
-import { firebaseLedgerService, getSalesLedgerQuery } from '../services/firebaseLedgerService';
+import { firebaseLedgerService, getSalesLedgerQuery, getSalesLedgerDateRangeQuery } from '../services/firebaseLedgerService';
+import { parseLocalDate } from '../app/utils/date';
 
 export interface DateRange {
   start: Date;
@@ -57,10 +58,12 @@ export function getLedgerDateRange(period: LedgerPeriod, customRange?: { start?:
     }
 
     case 'custom': {
-      const cStart = customRange?.start ? new Date(customRange.start) : new Date(2000, 0, 1);
-      cStart.setHours(0, 0, 0, 0);
-      const cEnd = customRange?.end ? new Date(customRange.end) : todayEnd;
-      cEnd.setHours(23, 59, 59, 999);
+      const cStart = customRange?.start
+        ? parseLocalDate(customRange.start, false)
+        : new Date(2000, 0, 1, 0, 0, 0, 0);
+      const cEnd = customRange?.end
+        ? parseLocalDate(customRange.end, true)
+        : todayEnd;
       return { start: cStart, end: cEnd };
     }
 
@@ -73,6 +76,7 @@ export function getLedgerDateRange(period: LedgerPeriod, customRange?: { start?:
 export function useSalesLedger(options?: {
   defaultPeriod?: LedgerPeriod;
   teamUserIds?: string[]; // IDs de usuários filtrados pelo AdminTeamFilter
+  dateRange?: { start: string; end: string }; // Intervalo opcional para consulta filtrada no Firestore
 }) {
   const { user, userProfile } = useAuth();
   const [allSales, setAllSales] = useState<SaleRecord[]>([]);
@@ -94,8 +98,12 @@ export function useSalesLedger(options?: {
 
     const isAdmin = userProfile?.role === 'admin';
     const isEmployee = userProfile?.role === 'funcionario';
+    const startDate = options?.dateRange?.start;
+    const endDate = options?.dateRange?.end;
 
-    const baseQuery = getSalesLedgerQuery(user.uid, isAdmin ? 'all' : 'own');
+    const baseQuery = startDate && endDate
+      ? getSalesLedgerDateRangeQuery(user.uid, isAdmin ? 'all' : 'own', startDate, endDate)
+      : getSalesLedgerQuery(user.uid, isAdmin ? 'all' : 'own');
 
     const mapSnapshot = (snapshot: QuerySnapshot<DocumentData>): SaleRecord[] =>
       snapshot.docs.map((d) => {
@@ -161,7 +169,10 @@ export function useSalesLedger(options?: {
     ];
 
     if (isEmployee) {
-      const assignedQuery = getSalesLedgerQuery(user.uid, 'assigned');
+      const assignedQuery = startDate && endDate
+        ? getSalesLedgerDateRangeQuery(user.uid, 'assigned', startDate, endDate)
+        : getSalesLedgerQuery(user.uid, 'assigned');
+
       unsubscribers.push(
         onSnapshot(
           assignedQuery,
@@ -178,7 +189,7 @@ export function useSalesLedger(options?: {
     }
 
     return () => unsubscribers.forEach((u) => u());
-  }, [user, userProfile?.role, hasAutoSynced]);
+  }, [user, userProfile?.role, hasAutoSynced, options?.dateRange?.start, options?.dateRange?.end]);
 
   // Filtro de equipe (multi-usuário)
   const teamFilteredSales = useMemo(() => {

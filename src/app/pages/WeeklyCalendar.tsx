@@ -135,8 +135,9 @@ export function WeeklyCalendar() {
 
   const handleUpdateStatus = async (orderId: string, status: OrderStatus) => {
     try {
-      await firebaseOrderService.updateOrderStatus(orderId, status);
-      if (selectedOrder) setSelectedOrder({ ...selectedOrder, status });
+      const order = orders.find((o) => o.id === orderId);
+      await firebaseOrderService.updateOrderStatus(orderId, status, order?.version);
+      if (selectedOrder) setSelectedOrder({ ...selectedOrder, status, version: (selectedOrder.version || 1) + 1 });
     } catch {
       toast.error('Erro ao atualizar status do pedido');
     }

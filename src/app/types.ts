@@ -84,24 +84,24 @@ export interface Order {
   price: number;
   status: OrderStatus;
   deliveryDate: string;
-  notes?: string;
+  notes?: string | null;
   createdAt: string;
   updatedAt?: string;
-  tags?: Tag[];
+  tags?: Tag[] | null;
   payment?: Payment;
   userId: string;
   createdByName?: string;
-  assignedTo?: string;
-  assignedToName?: string;
-  assignedAt?: string;
-  assignedBy?: string;
+  assignedTo?: string | null;
+  assignedToName?: string | null;
+  assignedAt?: string | null;
+  assignedBy?: string | null;
   productionWorkflow?: ProductionWorkflow;
   attachments?: OrderAttachment[];
   orderNumber?: string;
   isExchange?: boolean;    // Permuta / parceria
-  exchangeNotes?: string;  // Detalhes da permuta
+  exchangeNotes?: string | null;  // Detalhes da permuta
   exchangeItems?: ExchangeItem[]; // Itens recebidos na permuta
-  cardColor?: string;      // Cor de destaque do card
+  cardColor?: string | null;      // Cor de destaque do card
   realCost?: number;       // Custo real da produção
   version?: number;        // Versão para controle de concorrência
   source?: 'web' | 'alexa' | 'store' | string; // Origem do pedido (web, alexa, lojinha)
@@ -356,6 +356,8 @@ export interface CatalogOrder {
   officialSubtotal?: number;
   submittedSubtotal?: number;
   priceWarning?: string;
+  verifiedByServer?: boolean;
+  idempotencyKey?: string;
 }
 
 // ─── Pricing & Costs (Papelaria Personalizada & Ateliê Luisices) ──────────────
@@ -415,6 +417,12 @@ export interface PurchaseHistoryItem {
   unitCost: number;               // Custo unitário resultante
   notes?: string | null;
   createdAt: string;
+  idempotencyKey?: string | null;
+  status?: 'active' | 'cancelled';
+  cancelledAt?: string | null;
+  cancellationReason?: string | null;
+  revertedQuantity?: number;
+  unreversedQuantity?: number;
 }
 
 export interface RecipeItem {

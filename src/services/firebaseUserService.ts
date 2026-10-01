@@ -10,14 +10,12 @@ import {
   doc,
   getDocs,
   getDoc,
-  setDoc,
   updateDoc,
-  deleteDoc,
   query,
   orderBy,
 } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
-import { auth, db, functions } from '../lib/firebase';
+import { db, functions } from '../lib/firebase';
 import { UserProfile, UserRole, Permission, ADMIN_PERMISSIONS, DEFAULT_USER_PERMISSIONS, EMPLOYEE_PERMISSIONS } from '../app/types';
 
 const USERS_COLLECTION = 'userProfiles';
@@ -59,29 +57,11 @@ export class FirebaseUserService {
 
   /**
    * Busca o perfil de um usuário no Firestore.
-   * Se não existir, inicializa automaticamente com perfil padrão de usuário ('user') e DEFAULT_USER_PERMISSIONS.
+   * Não cria perfil automaticamente: contas novas requerem convite válido aprovado no servidor.
    */
-  async getUserProfile(uid: string, email?: string, displayName?: string): Promise<UserProfile | null> {
+  async getUserProfile(uid: string, _email?: string, _displayName?: string): Promise<UserProfile | null> {
     const snap = await getDoc(doc(db, USERS_COLLECTION, uid));
     if (snap.exists()) return snap.data() as UserProfile;
-
-    // Se o usuário está autenticado mas ainda não tem perfil salvo no Firestore,
-    // inicializa automaticamente com perfil de usuário comum e permissões padrão.
-    if (email && auth.currentUser) {
-      const profile: UserProfile = {
-        uid,
-        email,
-        displayName: displayName || email.split('@')[0],
-        role: 'user',
-        permissions: { ...DEFAULT_USER_PERMISSIONS },
-        active: true,
-        createdAt: new Date().toISOString(),
-        createdBy: uid,
-      };
-      await setDoc(doc(db, USERS_COLLECTION, uid), profile);
-      return profile;
-    }
-
     return null;
   }
 
@@ -109,16 +89,12 @@ export class FirebaseUserService {
   }
 
   /**
-   * Remove permanentemente um usuário (Firebase Auth + Firestore).
+   * Remove permanentemente um usuário (Firebase Auth + Firestore coordenados).
+   * A exclusão é realizada exclusivamente via Cloud Function administrativa para garantir atomicidade.
    */
   async deleteUser(uid: string): Promise<void> {
-    try {
-      const callable = httpsCallable<{ uid: string }, { success: boolean }>(functions, 'deleteUser');
-      await callable({ uid });
-    } catch (err) {
-      console.warn('[firebaseUserService.deleteUser] Callable failed, deleting directly from Firestore:', err);
-      await deleteDoc(doc(db, USERS_COLLECTION, uid));
-    }
+    const callable = httpsCallable<{ uid: string }, { success: boolean }>(functions, 'deleteUser');
+    await callable({ uid });
   }
 
   /**

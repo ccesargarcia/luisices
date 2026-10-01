@@ -103,9 +103,9 @@ export function Pricing() {
     }
   };
 
-  const handleExportExcel = () => {
+  const handleExportExcel = async () => {
     try {
-      exportCostsToExcel(supplies, historyItems, recipes);
+      await exportCostsToExcel(supplies, historyItems, recipes);
       toast.success('Planilha Excel de Custos gerada com sucesso!', {
         description: 'Planilha exportada com as 3 abas completas (Cadastro de Custos, Histórico de Compras e Custo por Produto).',
       });

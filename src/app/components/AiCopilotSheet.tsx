@@ -605,9 +605,9 @@ export function AiCopilotSheet({
 
   const handleUpdateStatusInSheet = async (orderId: string, status: OrderStatus) => {
     try {
-      await firebaseOrderService.updateOrderStatus(orderId, status);
+      await firebaseOrderService.updateOrderStatus(orderId, status, selectedOrderForDetails?.version);
       if (selectedOrderForDetails && selectedOrderForDetails.id === orderId) {
-        setSelectedOrderForDetails((prev) => (prev ? { ...prev, status } : null));
+        setSelectedOrderForDetails((prev) => (prev ? { ...prev, status, version: (prev.version || 1) + 1 } : null));
       }
     } catch (err) {
       console.error('Erro ao atualizar status:', err);

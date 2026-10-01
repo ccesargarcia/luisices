@@ -66,6 +66,13 @@ export default defineConfig(() => {
 
               // Firebase (separado para cache independente)
               case 'firebase':
+              case '@firebase/app':
+              case '@firebase/auth':
+              case '@firebase/firestore':
+              case '@firebase/storage':
+              case '@firebase/functions':
+              case '@firebase/analytics':
+              case '@firebase/performance':
                 return 'vendor-firebase';
 
               // Charting/visualização (carregado apenas em Reports)
@@ -89,13 +96,14 @@ export default defineConfig(() => {
                 return 'vendor-sentry';
 
               default:
+                if (pkgName.startsWith('@firebase/')) return 'vendor-firebase';
                 return;
             }
           },
         },
       },
-      // Aumentar limite para evitar warning em chunks necessariamente grandes
-      chunkSizeWarningLimit: 600,
+      // Limite consciente para chunks especializados (ex: Firebase SDK e PDF renderer sob demanda)
+      chunkSizeWarningLimit: 1000,
     },
   };
 });

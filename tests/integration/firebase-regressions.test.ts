@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { initializeTestEnvironment, assertFails, assertSucceeds, RulesTestEnvironment } from '@firebase/rules-unit-testing';
-import { doc, getDoc, setDoc, updateDoc, getDocs, collection, Timestamp } from 'firebase/firestore';
+import { doc, getDoc, setDoc, updateDoc, deleteDoc, getDocs, collection, Timestamp } from 'firebase/firestore';
 import { ref, uploadBytes, getMetadata } from 'firebase/storage';
 import { DEFAULT_USER_PERMISSIONS } from '../../src/app/types';
 
@@ -14,6 +14,7 @@ import { firebaseSettingsService } from '../../src/services/firebaseSettingsServ
 import { getSalesLedgerQuery } from '../../src/services/firebaseLedgerService';
 import { firebaseOrderService } from '../../src/services/firebaseOrderService';
 import { firebaseCatalogOrderService } from '../../src/services/firebaseCatalogOrderService';
+import { firebasePricingService } from '../../src/services/firebasePricingService';
 
 let env: RulesTestEnvironment;
 const profile = (uid: string, role = 'user', active = true) => ({
@@ -61,15 +62,22 @@ beforeEach(async () => {
 });
 
 describe('Perfis e desativação', () => {
-  it('permite o primeiro acesso padrão, mas impede autopromoção e permissões forjadas', async () => {
+  it('impede criação direta de perfil por usuário comum, mas permite admin e atualização de dados próprios', async () => {
     const db = dbFor('new-user');
+    // Usuário comum não pode criar o próprio perfil diretamente no Firestore
+    await assertFails(setDoc(doc(db as any, 'userProfiles/new-user'), profile('new-user')));
     await assertFails(setDoc(doc(db as any, 'userProfiles/new-user'), profile('new-user', 'admin')));
     await assertFails(setDoc(doc(db as any, 'userProfiles/new-user'), {
       ...profile('new-user'), permissions: { ...DEFAULT_USER_PERMISSIONS, emails: true },
     }));
-    await assertSucceeds(setDoc(doc(db as any, 'userProfiles/new-user'), profile('new-user')));
+
+    // Admin pode criar perfil
+    await assertSucceeds(setDoc(doc(dbFor('admin') as any, 'userProfiles/new-user'), profile('new-user')));
+
+    // Usuário pode atualizar seu displayName, mas não campos sensíveis
     await assertSucceeds(updateDoc(doc(db as any, 'userProfiles/new-user'), { displayName: 'Novo nome' }));
     await assertFails(updateDoc(doc(db as any, 'userProfiles/new-user'), { role: 'admin' }));
+    await assertFails(updateDoc(doc(db as any, 'userProfiles/new-user'), { active: false }));
   });
 
   it('não permite adicionar role privilegiado a um perfil legado sem role', async () => {
@@ -96,6 +104,116 @@ describe('Perfis e desativação', () => {
     await assertSucceeds(getDoc(doc(dbFor('legacy') as any, 'orders/legacy-order')));
     await seed('userProfiles/legacy', { ...withoutActive, role: 'admin' });
     await assertSucceeds(getDoc(doc(dbFor('legacy') as any, 'orders/legacy-order')));
+  });
+});
+
+describe('Permissões granulares de pedidos e soft delete (Achado 3)', () => {
+  it('impede funcionário com edit=true e delete=false de alterar deletedAt, mas permite edições comuns', async () => {
+    await seed('userProfiles/emp-editor-only', {
+      ...profile('emp-editor-only', 'funcionario'),
+      permissions: {
+        ...DEFAULT_USER_PERMISSIONS,
+        orders: { view: true, create: false, edit: true, delete: false },
+      },
+    });
+    await seed('orders/assigned-order', {
+      ...order,
+      userId: 'owner',
+      assignedTo: 'emp-editor-only',
+      deletedAt: null,
+    });
+
+    const empDb = dbFor('emp-editor-only');
+
+    // Edição legítima de campos comuns deve passar
+    await assertSucceeds(updateDoc(doc(empDb as any, 'orders/assigned-order'), {
+      customerName: 'Cliente Atualizado',
+      productName: 'Produto Atualizado',
+    }));
+
+    // Tentativa de alterar deletedAt (soft-delete) SEM permissão de exclusão DEVE FALHAR
+    await assertFails(updateDoc(doc(empDb as any, 'orders/assigned-order'), {
+      deletedAt: Timestamp.now(),
+    }));
+
+    // Tentativa de alterar userId ou assignedTo DEVE FALHAR
+    await assertFails(updateDoc(doc(empDb as any, 'orders/assigned-order'), {
+      userId: 'emp-editor-only',
+    }));
+    await assertFails(updateDoc(doc(empDb as any, 'orders/assigned-order'), {
+      assignedTo: 'other',
+    }));
+  });
+
+  it('permite que funcionário com delete=true faça soft delete em pedido atribuído', async () => {
+    await seed('userProfiles/emp-with-delete', {
+      ...profile('emp-with-delete', 'funcionario'),
+      permissions: {
+        ...DEFAULT_USER_PERMISSIONS,
+        orders: { view: true, create: false, edit: true, delete: true },
+      },
+    });
+    await seed('orders/assigned-order-del', {
+      ...order,
+      userId: 'owner',
+      assignedTo: 'emp-with-delete',
+      deletedAt: null,
+    });
+
+    const empDb = dbFor('emp-with-delete');
+    await assertSucceeds(updateDoc(doc(empDb as any, 'orders/assigned-order-del'), {
+      deletedAt: Timestamp.now(),
+    }));
+  });
+});
+
+describe('Acompanhamento de produção (productionTracking - Achado 4)', () => {
+  const trackingData = {
+    userId: 'owner',
+    recipeId: 'recipe-123',
+    productName: 'Convite Luxo',
+    plannedQuantity: 50,
+    plannedMinutes: 120,
+    actualMinutes: 110,
+    salePrice: 250,
+    createdAt: '2026-01-01',
+  };
+
+  it('permite proprietário e admin criarem, lerem, editarem e excluírem acompanhamento de produção', async () => {
+    // Owner cria
+    await assertSucceeds(setDoc(doc(dbFor('owner') as any, 'productionTracking/track-1'), trackingData));
+
+    // Owner lê
+    await assertSucceeds(getDoc(doc(dbFor('owner') as any, 'productionTracking/track-1')));
+
+    // Owner edita
+    await assertSucceeds(updateDoc(doc(dbFor('owner') as any, 'productionTracking/track-1'), {
+      actualMinutes: 105,
+    }));
+
+    // Admin lê e edita
+    await assertSucceeds(getDoc(doc(dbFor('admin') as any, 'productionTracking/track-1')));
+    await assertSucceeds(updateDoc(doc(dbFor('admin') as any, 'productionTracking/track-1'), {
+      notes: 'Verificado pela gerência',
+    }));
+
+    // Owner deleta
+    await assertSucceeds(deleteDoc(doc(dbFor('owner') as any, 'productionTracking/track-1')));
+  });
+
+  it('nega acesso de leitura e escrita para outro usuário sem permissão', async () => {
+    await seed('productionTracking/track-private', trackingData);
+
+    const otherDb = dbFor('other');
+    await assertFails(getDoc(doc(otherDb as any, 'productionTracking/track-private')));
+    await assertFails(setDoc(doc(otherDb as any, 'productionTracking/track-other'), {
+      ...trackingData,
+      userId: 'owner',
+    }));
+    await assertFails(updateDoc(doc(otherDb as any, 'productionTracking/track-private'), {
+      actualMinutes: 999,
+    }));
+    await assertFails(deleteDoc(doc(otherDb as any, 'productionTracking/track-private')));
   });
 });
 
@@ -170,6 +288,12 @@ describe('Pedidos e ledger atômicos', () => {
       items: [{ productId: 'p', productName: 'Convite', price: 100, quantity: 1, leadTimeDays: 2 }],
       createdAt: '2026-01-01',
     };
+    await seed('storeProducts/p', {
+      name: 'Convite',
+      price: 100,
+      unitPrice: 100,
+      status: 'active',
+    });
     await seed('catalogOrders/catalog', catalog);
     const results = await Promise.all(Array.from({ length: 3 }, () =>
       firebaseCatalogOrderService.convertToProductionOrder(catalog, 'Cliente', '11999999999', '2026-12-01')));
@@ -244,5 +368,153 @@ describe('Pausar e retomar vendas', () => {
     asUser('limited');
     await expect(firebaseSettingsService.updateStoreFeatureFlags('limited', { enableOnlineOrders: false })).rejects.toThrow();
     expect((await getDoc(doc(client.db, 'users/limited/settings/profile'))).data()?.featureFlags.enableOnlineOrders).toBe(true);
+  });
+});
+
+describe('Reverificação e Correções Críticas (R1, R2, R3, R11)', () => {
+  it('R1 & R11: updateOrderStatus e updateOrder executam leituras antes de escritas e preservam remainingAmount', async () => {
+    asUser('owner');
+    const created = await firebaseOrderService.createOrder({
+      ...order,
+      price: 150,
+      status: 'pending',
+      payment: { status: 'partial', totalAmount: 150, paidAmount: 50, remainingAmount: 100 },
+    });
+
+    // 1. updateOrderStatus com pedido e ledger reais no emulador (sem falhar com read-after-write)
+    await firebaseOrderService.updateOrderStatus(created.id, 'in-progress');
+    const updatedOrderSnap = await getDoc(doc(client.db, 'orders', created.id));
+    expect(updatedOrderSnap.data()?.status).toBe('in-progress');
+    const updatedSaleSnap = await getDoc(doc(client.db, 'salesLedger', created.id));
+    expect(updatedSaleSnap.data()?.status).toBe('in-progress');
+
+    // 2. updateOrder com patch parcial de notas e método sem passar remainingAmount
+    await firebaseOrderService.updateOrder(created.id, {
+      payment: {
+        method: 'pix',
+        notes: 'Pago via PIX',
+      } as any,
+    });
+    const patchedOrderSnap = await getDoc(doc(client.db, 'orders', created.id));
+    // remainingAmount não pode ser zerado indevidamente
+    expect(patchedOrderSnap.data()?.payment?.remainingAmount).toBe(100);
+    expect(patchedOrderSnap.data()?.payment?.method).toBe('pix');
+    expect(patchedOrderSnap.data()?.payment?.paidAmount).toBe(50);
+  });
+
+  it('R2: proprietário comum (role user) consegue adicionar compra de insumo com checagem de idempotência', async () => {
+    asUser('owner');
+    // Criar insumo primeiro
+    const createdSupply = await firebasePricingService.createSupply({
+      name: 'Papel Fotográfico Glossy',
+      category: 'papeis',
+      unit: 'folha',
+      packageQuantity: 50,
+      purchasePrice: 35.0,
+      unitCost: 0.70,
+      currentStock: 10,
+      minStock: 5,
+      supplier: 'Papelaria Central',
+      notes: 'Estoque inicial',
+    });
+
+    const supplyId = createdSupply.id;
+    expect(supplyId).toBeDefined();
+
+    // Adicionar registro de compra com chave de idempotência (lê purchaseHistory/{id} inexistente)
+    const purchase = await firebasePricingService.addPurchaseRecord({
+      supplyId,
+      supplyName: 'Papel Fotográfico Glossy',
+      category: 'papeis',
+      unit: 'folha',
+      quantity: 50,
+      price: 35.0,
+      shippingCost: 0,
+      totalPrice: 35.0,
+      unitCost: 0.70,
+      date: '2026-10-01',
+      store: 'Papelaria Central',
+      notes: 'Lote novo',
+      idempotencyKey: 'idemp_purchase_test_123',
+    });
+
+    expect(purchase.id).toBe('owner_idemp_purchase_test_123');
+
+    // Verifica que o estoque foi atualizado (10 + 50 = 60)
+    const supplies = await firebasePricingService.getSupplies();
+    const updatedSupply = supplies.find((s) => s.id === supplyId);
+    expect(updatedSupply?.currentStock).toBe(60);
+  });
+
+  it('Item 1: usuário autenticado comum e visitante anônimo são bloqueados ao tentar criar catalogOrders diretamente no Firestore', async () => {
+    // 1. Visitante anônimo
+    const anonDb = env.unauthenticatedContext().firestore();
+    await assertFails(setDoc(doc(anonDb as any, 'catalogOrders/direct-tampered-anon'), {
+      orderCode: 'LJ-TAMPERED-1',
+      items: [{ productId: 'p', price: 0.01, quantity: 1 }],
+      totalItems: 1,
+      subtotal: 0.01,
+      status: 'received',
+    }));
+
+    // 2. Usuário autenticado comum (não admin)
+    const userDb = dbFor('owner');
+    await assertFails(setDoc(doc(userDb as any, 'catalogOrders/direct-tampered-auth'), {
+      orderCode: 'LJ-TAMPERED-2',
+      items: [{ productId: 'p', price: 0.01, quantity: 1 }],
+      totalItems: 1,
+      subtotal: 0.01,
+      status: 'received',
+    }));
+  });
+
+  it('Item 6: updateProductionStep reconstrói salesLedger ausente quando status é alterado em pedido legado', async () => {
+    asUser('owner');
+    // Cria pedido sem ledger correspondente no Firestore (simulando dado legado ou inconsistência)
+    await seed('orders/legacy-workflow-order', {
+      ...order,
+      price: 250,
+      status: 'pending',
+      payment: { status: 'paid', totalAmount: 250, paidAmount: 250 },
+    });
+
+    // Executa updateProductionStep
+    await firebaseOrderService.updateProductionStep('legacy-workflow-order', 'packaging', true);
+
+    const updatedOrderSnap = await getDoc(doc(client.db, 'orders/legacy-workflow-order'));
+    expect(updatedOrderSnap.data()?.status).toBe('in-progress');
+    // Verifica incremento de versão
+    expect(updatedOrderSnap.data()?.version).toBeGreaterThanOrEqual(2);
+
+    // Verifica se o salesLedger foi reconstruído na mesma transação
+    const createdSaleSnap = await getDoc(doc(client.db, 'salesLedger/legacy-workflow-order'));
+    expect(createdSaleSnap.exists()).toBe(true);
+    expect(createdSaleSnap.data()).toMatchObject({
+      orderId: 'legacy-workflow-order',
+      amount: 250,
+      paidAmount: 250,
+      status: 'in-progress',
+      userId: 'owner',
+    });
+  });
+
+  it('Item 7: purchaseHistory com chave fora do escopo do usuário não permite leitura de recurso nulo por terceiros', async () => {
+    // other tenta ler chave de idempotência prefixada para o owner que ainda não existe
+    const otherDb = dbFor('other');
+    await assertFails(getDoc(doc(otherDb as any, 'purchaseHistory/owner_uncreated_idemp_key')));
+    // Mas owner consegue checar a sua própria chave prefixada
+    const ownerDb = dbFor('owner');
+    await assertSucceeds(getDoc(doc(ownerDb as any, 'purchaseHistory/owner_uncreated_idemp_key')));
+  });
+
+  it('Prioridade Alta: salesLedger com ID inexistente não associado a pedido acessível nega leitura', async () => {
+    // 1. Probing de ID inexistente aleatório por usuário comum é NEGADO
+    const otherDb = dbFor('other');
+    await assertFails(getDoc(doc(otherDb as any, 'salesLedger/random_unassociated_missing_id')));
+
+    // 2. Se o pedido existir e pertencer ao owner, a leitura transacional do salesLedger correspondente (para checagem/criação) é PERMITIDA
+    await seed('orders/owner-valid-order', { ...order, userId: 'owner' });
+    const ownerDb = dbFor('owner');
+    await assertSucceeds(getDoc(doc(ownerDb as any, 'salesLedger/owner-valid-order')));
   });
 });

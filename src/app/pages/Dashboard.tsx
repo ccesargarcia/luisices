@@ -172,9 +172,10 @@ export function Dashboard() {
 
   const handleUpdateStatus = async (orderId: string, status: OrderStatus) => {
     try {
-      await firebaseOrderService.updateOrderStatus(orderId, status);
+      const order = orders.find((o) => o.id === orderId);
+      await firebaseOrderService.updateOrderStatus(orderId, status, order?.version);
       if (selectedOrder) {
-        setSelectedOrder({ ...selectedOrder, status });
+        setSelectedOrder({ ...selectedOrder, status, version: (selectedOrder.version || 1) + 1 });
       }
     } catch (err) {
       console.error('Erro ao atualizar status:', err);

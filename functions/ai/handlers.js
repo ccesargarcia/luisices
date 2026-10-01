@@ -230,7 +230,7 @@ function createAiAgentChatHandler(deps = {}) {
     }
 
     // 1. Autorização e Escopo
-    const callerProfile = request?.authProfile || (db ? (await db.doc(`userProfiles/${callerUid}`).get().then(d => d.exists ? d.data() : { role: 'user', active: true })) : { role: 'user', active: true });
+    const callerProfile = request?.authProfile || (db ? (await db.doc(`userProfiles/${callerUid}`).get().then(d => d.exists ? d.data() : null)) : null);
     const scope = getCallerScope(callerUid, callerProfile);
     validateAiAccess(scope);
 
@@ -582,7 +582,7 @@ function createGetAiUsageHandler(deps = {}) {
       throw err;
     }
 
-    const callerProfile = request?.authProfile || (db ? (await db.doc(`userProfiles/${callerUid}`).get().then(d => d.exists ? d.data() : { role: 'user', active: true })) : { role: 'user', active: true });
+    const callerProfile = request?.authProfile || (db ? (await db.doc(`userProfiles/${callerUid}`).get().then(d => d.exists ? d.data() : null)) : null);
     const scope = getCallerScope(callerUid, callerProfile);
     if (!scope.isAdmin) {
       const err = new Error('Acesso restrito a administradores.');
@@ -608,7 +608,7 @@ function createEnrichGalleryItemHandler(deps = {}) {
       throw err;
     }
 
-    const callerProfile = request?.authProfile || (db ? (await db.doc(`userProfiles/${callerUid}`).get().then(d => d.exists ? d.data() : { role: 'user', active: true })) : { role: 'user', active: true });
+    const callerProfile = request?.authProfile || (db ? (await db.doc(`userProfiles/${callerUid}`).get().then(d => d.exists ? d.data() : null)) : null);
     const scope = getCallerScope(callerUid, callerProfile);
 
     const { itemId } = request.data || {};
@@ -760,7 +760,7 @@ function createEnrichStoreProductHandler(deps = {}) {
       throw err;
     }
 
-    const callerProfile = request?.authProfile || (db ? (await db.doc(`userProfiles/${callerUid}`).get().then(d => d.exists ? d.data() : { role: 'user', active: true })) : { role: 'user', active: true });
+    const callerProfile = request?.authProfile || (db ? (await db.doc(`userProfiles/${callerUid}`).get().then(d => d.exists ? d.data() : null)) : null);
     const scope = getCallerScope(callerUid, callerProfile);
     validateAiAccess(scope);
 

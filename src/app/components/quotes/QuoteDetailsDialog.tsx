@@ -108,26 +108,29 @@ export function QuoteDetailsDialog({
         .join(', ');
       const totalQty = quote.items.reduce((s, i) => s + i.quantity, 0);
 
-      const order = await firebaseOrderService.createOrder({
-        customerName: quote.customerName,
-        customerPhone: quote.customerPhone,
-        customerId: quote.customerId,
-        productName,
-        quantity: totalQty,
-        price: quote.totalPrice,
-        status: 'pending' as OrderStatus,
-        deliveryDate: quote.deliveryDate,
-        notes: [
-          `Gerado do orçamento ${quote.quoteNumber}`,
-          ...(quote.notes ? [quote.notes] : []),
-        ].join('\n'),
-        tags: quote.tags,
-        cardColor: quote.cardColor,
-        isExchange: quote.isExchange,
-        exchangeNotes: quote.exchangeNotes,
-      });
+      const order = await firebaseOrderService.createOrder(
+        {
+          customerName: quote.customerName,
+          customerPhone: quote.customerPhone,
+          customerId: quote.customerId,
+          productName,
+          quantity: totalQty,
+          price: quote.totalPrice,
+          status: 'pending' as OrderStatus,
+          deliveryDate: quote.deliveryDate,
+          notes: [
+            `Gerado do orçamento ${quote.quoteNumber}`,
+            ...(quote.notes ? [quote.notes] : []),
+          ].join('\n'),
+          tags: quote.tags,
+          cardColor: quote.cardColor,
+          isExchange: quote.isExchange,
+          exchangeNotes: quote.exchangeNotes,
+        },
+        undefined,
+        quote.id
+      );
 
-      await firebaseQuoteService.markApproved(quote.id, order.id, order.orderNumber!);
       toast.success(`Pedido ${order.orderNumber} criado com sucesso!`);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Erro ao aprovar orçamento');

@@ -24,6 +24,33 @@ export function getSalesLedgerQuery(userId: string, scope: 'all' | 'own' | 'assi
   return query(sales, where(scope === 'own' ? 'userId' : 'assignedTo', '==', userId), orderBy('date', 'desc'));
 }
 
+/**
+ * Consulta por intervalo de datas para o histórico contábil (evita buscar registros fora do período quando desejado).
+ */
+export function getSalesLedgerDateRangeQuery(
+  userId: string,
+  scope: 'all' | 'own' | 'assigned',
+  startDateIso: string,
+  endDateIso: string
+) {
+  const sales = collection(db, SALES_LEDGER_COLLECTION);
+  if (scope === 'all') {
+    return query(
+      sales,
+      where('date', '>=', startDateIso),
+      where('date', '<=', endDateIso),
+      orderBy('date', 'desc')
+    );
+  }
+  return query(
+    sales,
+    where(scope === 'own' ? 'userId' : 'assignedTo', '==', userId),
+    where('date', '>=', startDateIso),
+    where('date', '<=', endDateIso),
+    orderBy('date', 'desc')
+  );
+}
+
 export const firebaseLedgerService = {
   getCurrentUserId(): string {
     const user = auth.currentUser;

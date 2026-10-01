@@ -35,6 +35,7 @@ import {
   BadgePercent,
   AlertCircle, ArrowLeft,
 } from 'lucide-react';
+import { toast } from 'sonner';
 import { formatCurrency } from '../utils/currency';
 import {
   normalizePhoneForWhatsApp,
@@ -930,6 +931,10 @@ export function PublicCatalog() {
     window.open(url, '_blank', 'noopener,noreferrer');
   }, [businessInfo.whatsapp, businessInfo.name, isAllCategories, selectedCategories]);
 
+  const [checkoutIdempotencyKey, setCheckoutIdempotencyKey] = useState<string>(
+    () => `pub_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`
+  );
+
   // Envio de Pedido no WhatsApp com Deep Link formatado e registro no histórico
   const handleSendToWhatsApp = async () => {
     if (submittingOrder) return;
@@ -942,33 +947,11 @@ export function PublicCatalog() {
 
     setSubmittingOrder(true);
 
-    const orderCode = `LJ-${Math.floor(1000 + Math.random() * 9000)}`;
-
-    const msg = generateCatalogOrderWhatsAppMessage({
-      orderCode,
-      businessName: businessInfo.name,
-      items: cart.map((item) => ({
-        name: item.product.name,
-        price: item.product.price,
-        quantity: item.quantity,
-        leadTimeDays: item.product.leadTimeDays,
-        customName: item.customName,
-        category: item.product.category,
-      })),
-      subtotal,
-      customerNotes,
-      greeting: businessInfo.whatsappGreeting,
-      footer: businessInfo.whatsappFooter,
-      customizationLabel: businessInfo.whatsappCustomizationLabel,
-    });
-
-    const encoded = encodeURIComponent(msg);
-    const whatsappUrl = `https://wa.me/${cleanPhone}?text=${encoded}`;
-
-    // Registrar no histórico de pedidos do Firestore (coleção catalogOrders)
+    // Registrar no histórico de pedidos do Firestore via Cloud Function confiável
     try {
-      await firebaseCatalogOrderService.createCatalogOrder({
-        orderCode,
+      const receipt = await firebaseCatalogOrderService.createCatalogOrder({
+        orderCode: '',
+        idempotencyKey: checkoutIdempotencyKey,
         customerNotes: customerNotes.trim() || undefined,
         items: cart.map((item) => {
           const itemData: any = {
@@ -990,18 +973,60 @@ export function PublicCatalog() {
         subtotal,
         status: 'received',
       });
-      console.log('Pedido registrado no Firestore:', orderCode);
-    } catch (err) {
-      console.error('Erro ao registrar pedido no Firestore:', err);
+
+      const officialOrderCode = receipt.orderCode;
+      const officialSubtotal = typeof receipt.subtotal === 'number' ? receipt.subtotal : subtotal;
+
+      const msg = generateCatalogOrderWhatsAppMessage({
+        orderCode: officialOrderCode,
+        businessName: businessInfo.name,
+        items: cart.map((item) => ({
+          name: item.product.name,
+          price: item.product.price,
+          quantity: item.quantity,
+          leadTimeDays: item.product.leadTimeDays,
+          customName: item.customName,
+          category: item.product.category,
+        })),
+        subtotal: officialSubtotal,
+        customerNotes,
+        greeting: businessInfo.whatsappGreeting,
+        footer: businessInfo.whatsappFooter,
+        customizationLabel: businessInfo.whatsappCustomizationLabel,
+      });
+
+      const encoded = encodeURIComponent(msg);
+      const whatsappUrl = `https://wa.me/${cleanPhone}?text=${encoded}`;
+
+      // Tentar abrir o WhatsApp na nova aba; se o navegador bloquear o popup, o modal fornece o botão direto
+      let popupBlocked = false;
+      try {
+        const popup = window.open(whatsappUrl, '_blank');
+        if (!popup || popup.closed || typeof popup.closed === 'undefined') {
+          popupBlocked = true;
+        }
+      } catch {
+        popupBlocked = true;
+      }
+
+      // Abre o modal de confirmação com o código oficial retornado pelo servidor
+      setSubmittedOrderInfo({ orderCode: officialOrderCode, whatsappUrl });
+
+      if (popupBlocked) {
+        toast.info('Clique no botão abaixo para abrir a conversa no WhatsApp.', { duration: 4000 });
+      }
+
+      // Resetar chave de idempotência para o próximo pedido
+      setCheckoutIdempotencyKey(`pub_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`);
+    } catch (err: any) {
+      console.error('Erro ao registrar pedido:', err);
+      const errorMsg = err?.message || 'Erro ao registrar o pedido. Por favor, revise seu carrinho.';
+      toast.error(errorMsg);
+      // Aborta o fluxo em caso de falha: NÃO abre WhatsApp e NÃO exibe confirmação
+      return;
     } finally {
       setSubmittingOrder(false);
     }
-
-    // Abrir o WhatsApp
-    window.open(whatsappUrl, '_blank');
-
-    // Abre o modal de confirmação com o código do pedido
-    setSubmittedOrderInfo({ orderCode, whatsappUrl });
   };
 
   const handleOpenPreview = (product: CatalogProduct) => {

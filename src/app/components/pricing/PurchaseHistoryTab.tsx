@@ -51,6 +51,7 @@ import {
   ShoppingBag,
   Table as TableIcon,
   LayoutList,
+  RotateCcw,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -137,10 +138,18 @@ export function PurchaseHistoryTab({
   const [shippingCost, setShippingCost] = useState<number>(0);
   const [notes, setNotes] = useState('');
 
-  // Confirmação de Exclusão
+  // Confirmação de Exclusão Física
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [itemToDelete, setItemToDelete] = useState<PurchaseHistoryItem | null>(null);
   const [deleting, setDeleting] = useState(false);
+
+  // Cancelamento / Estorno de Movimentação
+  const [cancelConfirmOpen, setCancelConfirmOpen] = useState(false);
+  const [itemToCancel, setItemToCancel] = useState<PurchaseHistoryItem | null>(null);
+  const [cancelling, setCancelling] = useState(false);
+
+  // Chave de idempotência estável por sessão de formulário
+  const [idempotencyKey, setIdempotencyKey] = useState<string>('');
 
   // Abrir modal limpo
   const openAddDialog = () => {
@@ -154,6 +163,7 @@ export function PurchaseHistoryTab({
     setPrice(54);
     setShippingCost(0);
     setNotes('');
+    setIdempotencyKey(`purch_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`);
     setDialogOpen(true);
   };
 
@@ -220,6 +230,7 @@ export function PurchaseHistoryTab({
       }
 
       await firebasePricingService.addPurchaseRecord({
+        idempotencyKey: idempotencyKey || `purch_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
         supplyId: targetSupplyId,
         supplyName: supplyName.trim(),
         category,
@@ -237,21 +248,45 @@ export function PurchaseHistoryTab({
       toast.success('Compra lançada com sucesso no histórico!');
       setDialogOpen(false);
       if (onRefresh) onRefresh();
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      toast.error('Erro ao salvar registro de compra');
+      toast.error(err?.message || 'Erro ao salvar registro de compra');
     } finally {
       setSaving(false);
     }
   };
 
-  // Excluir registro do histórico
+  // Cancelar compra e estornar movimentação de estoque
+  const handleCancelItem = async () => {
+    if (!itemToCancel) return;
+    try {
+      setCancelling(true);
+      const res = await firebasePricingService.cancelPurchaseRecord(itemToCancel.id);
+      if (res.unreversedQuantity > 0) {
+        toast.warning(
+          `Compra cancelada! ${res.revertedQuantity} unidades estornadas no estoque. ${res.unreversedQuantity} unidades já haviam sido consumidas.`
+        );
+      } else {
+        toast.success(`Compra cancelada e ${res.revertedQuantity} unidades estornadas no estoque!`);
+      }
+      setCancelConfirmOpen(false);
+      setItemToCancel(null);
+      if (onRefresh) onRefresh();
+    } catch (err: any) {
+      console.error(err);
+      toast.error(err?.message || 'Erro ao cancelar compra');
+    } finally {
+      setCancelling(false);
+    }
+  };
+
+  // Excluir registro físico do histórico
   const handleDeleteItem = async () => {
     if (!itemToDelete) return;
     try {
       setDeleting(true);
       await firebasePricingService.deletePurchaseRecord(itemToDelete.id);
-      toast.success('Registro de compra excluído');
+      toast.success('Registro de histórico excluído com sucesso');
       setDeleteConfirmOpen(false);
       setItemToDelete(null);
       if (onRefresh) onRefresh();
@@ -457,7 +492,7 @@ export function PurchaseHistoryTab({
 
                     return (
                       <div key={item.id} className="p-3.5 space-y-2.5 transition-colors hover:bg-muted/20">
-                        {/* Top Bar: Data + Categoria + Ação */}
+                        {/* Top Bar: Data + Categoria + Status + Ação */}
                         <div className="flex items-center justify-between gap-2">
                           <div className="flex items-center gap-2 flex-wrap">
                             <span className="flex items-center gap-1 text-xs font-semibold text-foreground">
@@ -467,21 +502,46 @@ export function PurchaseHistoryTab({
                             <Badge variant="outline" className="text-[10px] font-normal">
                               {CATEGORY_LABELS[item.category] || item.category}
                             </Badge>
+                            {item.status === 'cancelled' ? (
+                              <Badge variant="outline" className="text-[10px] text-destructive border-destructive/30 bg-destructive/5 font-semibold">
+                                Cancelado {item.revertedQuantity != null ? `(${item.revertedQuantity} estornado)` : ''}
+                              </Badge>
+                            ) : (
+                              <Badge variant="outline" className="text-[10px] text-emerald-600 border-emerald-300 bg-emerald-50/50 font-normal">
+                                Ativo
+                              </Badge>
+                            )}
                           </div>
 
                           {canDelete && (
-                            <Button
-                              size="icon"
-                              variant="ghost"
-                              className="size-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-                              title="Excluir do Histórico"
-                              onClick={() => {
-                                setItemToDelete(item);
-                                setDeleteConfirmOpen(true);
-                              }}
-                            >
-                              <Trash2 className="size-3.5" />
-                            </Button>
+                            <div className="flex items-center gap-1">
+                              {item.status !== 'cancelled' && (
+                                <Button
+                                  size="icon"
+                                  variant="ghost"
+                                  className="size-8 text-muted-foreground hover:text-amber-600 hover:bg-amber-500/10"
+                                  title="Estornar compra e atualizar estoque"
+                                  onClick={() => {
+                                    setItemToCancel(item);
+                                    setCancelConfirmOpen(true);
+                                  }}
+                                >
+                                  <RotateCcw className="size-3.5" />
+                                </Button>
+                              )}
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                className="size-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                                title="Excluir permanentemente do Histórico"
+                                onClick={() => {
+                                  setItemToDelete(item);
+                                  setDeleteConfirmOpen(true);
+                                }}
+                              >
+                                <Trash2 className="size-3.5" />
+                              </Button>
+                            </div>
                           )}
                         </div>
 
@@ -557,7 +617,8 @@ export function PurchaseHistoryTab({
                       <th className="p-3 text-right">Frete</th>
                       <th className="p-3 text-right">Valor Final</th>
                       <th className="p-3 text-right">Custo Unitário</th>
-                      {canDelete && <th className="p-3 text-center">Ação</th>}
+                      <th className="p-3 text-center">Status</th>
+                      {canDelete && <th className="p-3 text-center">Ações</th>}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border/60">
@@ -612,20 +673,47 @@ export function PurchaseHistoryTab({
                           <td className="p-3 text-right font-black text-primary whitespace-nowrap bg-primary/5">
                             R$ {unitCostVal.toFixed(4)}
                           </td>
+                          <td className="p-3 text-center whitespace-nowrap">
+                            {item.status === 'cancelled' ? (
+                              <Badge variant="outline" className="text-[10px] text-destructive border-destructive/30 bg-destructive/5 font-semibold">
+                                Cancelado
+                              </Badge>
+                            ) : (
+                              <Badge variant="outline" className="text-[10px] text-emerald-600 border-emerald-300 bg-emerald-50/50 font-normal">
+                                Ativo
+                              </Badge>
+                            )}
+                          </td>
                           {canDelete && (
                             <td className="p-3 text-center whitespace-nowrap">
-                              <Button
-                                size="icon"
-                                variant="ghost"
-                                className="size-7 text-muted-foreground hover:text-destructive"
-                                title="Excluir do Histórico"
-                                onClick={() => {
-                                  setItemToDelete(item);
-                                  setDeleteConfirmOpen(true);
-                                }}
-                              >
-                                <Trash2 className="size-3.5" />
-                              </Button>
+                              <div className="flex items-center justify-center gap-1">
+                                {item.status !== 'cancelled' && (
+                                  <Button
+                                    size="icon"
+                                    variant="ghost"
+                                    className="size-7 text-muted-foreground hover:text-amber-600 hover:bg-amber-500/10"
+                                    title="Estornar compra e atualizar estoque"
+                                    onClick={() => {
+                                      setItemToCancel(item);
+                                      setCancelConfirmOpen(true);
+                                    }}
+                                  >
+                                    <RotateCcw className="size-3.5" />
+                                  </Button>
+                                )}
+                                <Button
+                                  size="icon"
+                                  variant="ghost"
+                                  className="size-7 text-muted-foreground hover:text-destructive"
+                                  title="Excluir permanentemente do Histórico"
+                                  onClick={() => {
+                                    setItemToDelete(item);
+                                    setDeleteConfirmOpen(true);
+                                  }}
+                                >
+                                  <Trash2 className="size-3.5" />
+                                </Button>
+                              </div>
                             </td>
                           )}
                         </tr>
@@ -828,13 +916,49 @@ export function PurchaseHistoryTab({
         </DialogContent>
       </Dialog>
 
-      {/* DIÁLOGO DE CONFIRMAÇÃO DE EXCLUSÃO */}
+      {/* DIÁLOGO DE ESTORNO DE COMPRA */}
+      <AlertDialog open={cancelConfirmOpen} onOpenChange={setCancelConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <RotateCcw className="size-5 text-amber-600" />
+              Estornar compra e atualizar estoque?
+            </AlertDialogTitle>
+            <AlertDialogDescription className="space-y-2 text-xs">
+              <p>
+                Deseja estornar a compra de <strong>{itemToCancel?.quantity} {itemToCancel?.unit}s</strong> de <strong>&quot;{itemToCancel?.supplyName}&quot;</strong>?
+              </p>
+              <p className="text-muted-foreground">
+                O saldo disponível em estoque será estornado atomicamente sem permitir saldo negativo. O registro permanecerá no histórico marcado como <strong>Cancelado</strong> para fins de auditoria.
+              </p>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={cancelling}>Voltar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleCancelItem}
+              disabled={cancelling}
+              className="bg-amber-600 text-white hover:bg-amber-700"
+            >
+              {cancelling && <Loader2 className="size-4 animate-spin mr-2" />}
+              Confirmar Estorno
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* DIÁLOGO DE CONFIRMAÇÃO DE EXCLUSÃO FÍSICA */}
       <AlertDialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Excluir registro de compra?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Esta ação removerá o registro do histórico ({itemToDelete?.supplyName} de {itemToDelete?.date}).
+            <AlertDialogTitle>Excluir registro do histórico?</AlertDialogTitle>
+            <AlertDialogDescription className="space-y-1.5 text-xs">
+              <p>
+                Esta ação removerá permanentemente o registro de compra ({itemToDelete?.supplyName} de {itemToDelete?.date}).
+              </p>
+              <p className="text-amber-600 font-medium">
+                Atenção: a exclusão física apenas remove o registro histórico e não altera o estoque atual. Para reverter os itens no estoque, utilize a opção de estorno.
+              </p>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

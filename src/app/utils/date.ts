@@ -7,9 +7,12 @@
  */
 
 /** Converte "YYYY-MM-DD" em Date no horário local (sem shift de UTC). */
-export function parseLocalDate(dateStr: string): Date {
+export function parseLocalDate(dateStr: string, isEndOfDay = false): Date {
   const [y, m, d] = dateStr.split('-').map(Number);
-  return new Date(y, m - 1, d);
+  if (isEndOfDay) {
+    return new Date(y, m - 1, d, 23, 59, 59, 999);
+  }
+  return new Date(y, m - 1, d, 0, 0, 0, 0);
 }
 
 /** "2026-02-23" → "23/02/2026" */
