@@ -2490,7 +2490,7 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
     // Política de 2 novas tentativas com estado persistido (P1):
     // Sem biometria física na fala atual, oferece até 2 novas tentativas (3 tentativas no total).
     // Na 3ª resposta afirmativa sem biometria, encaminha atomicamente para aprovação no aplicativo.
-    if (!physicalPersonId) {
+    if (!physicalPersonId && config.requireVoiceProfile !== false && !identity.isDevBypass) {
       let txResult = { status: 'error' };
       try {
         txResult = await runTx(async (transaction) => {

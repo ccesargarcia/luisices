@@ -45,6 +45,8 @@ async function getAlexaConfig(db = null) {
   // Em dev, ativa por padrão se houver skillId; em produção permanece explicitamente desativada
   let isEnabled = environment === 'dev' ? true : (process.env.ALEXA_ENABLED === 'true');
   let timezone = (process.env.ALEXA_TIMEZONE || '').trim() || DEFAULT_TIMEZONE;
+  // Controle de obrigatoriedade de biometria de voz: em dev é false por padrão para testes no Echo sem atrelar voz
+  let requireVoiceProfile = environment === 'prod' ? true : (process.env.ALEXA_REQUIRE_VOICE_PROFILE === 'true');
 
   // Overrides dinâmicos em Firestore (integrationSettings/alexa), caso existam
   if (db) {
@@ -60,6 +62,9 @@ async function getAlexaConfig(db = null) {
         }
         if (data.timezone && typeof data.timezone === 'string') {
           timezone = data.timezone.trim();
+        }
+        if (typeof data.requireVoiceProfile === 'boolean') {
+          requireVoiceProfile = data.requireVoiceProfile;
         }
       }
     } catch (err) {
@@ -87,6 +92,7 @@ async function getAlexaConfig(db = null) {
     allowedSkillId,
     timezone,
     hmacKey,
+    requireVoiceProfile,
     maxRequestBodySize: MAX_REQUEST_BODY_SIZE,
     maxTimestampAgeSeconds: MAX_TIMESTAMP_AGE_SECONDS,
     draftTtlMinutes: DRAFT_TTL_MINUTES,

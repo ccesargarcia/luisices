@@ -134,16 +134,7 @@ async function authorizeAlexaPerson(envelope, config, db, authService = null) {
 
   const { personId, amazonUserId, deviceId, appId } = extractAlexaIdentifiers(envelope);
 
-  // 2. Validação obrigatória do personId (reconhecimento de voz)
-  if (!personId) {
-    return emitAndReturn({
-      authorized: false,
-      code: ERROR_CODES.VOICE_NOT_RECOGNIZED,
-      speech: ERROR_SPEECH.VOICE_NOT_RECOGNIZED,
-    });
-  }
-
-  // 3. Validação do Skill ID
+  // 2. Validação do Skill ID
   if (config.allowedSkillId && appId && appId !== config.allowedSkillId) {
     return emitAndReturn({
       authorized: false,
@@ -152,59 +143,111 @@ async function authorizeAlexaPerson(envelope, config, db, authService = null) {
     });
   }
 
-  // 4. Resolver bindingKey via HMAC
-  const bindingKey = computeBindingKey(
-    config.environment,
-    config.allowedSkillId,
-    amazonUserId,
-    personId,
-    config.hmacKey
-  );
-
-  const bindingRef = db.collection(COLLECTIONS.BINDINGS).doc(bindingKey);
-  const bindingSnap = await bindingRef.get();
-
-  if (!bindingSnap.exists) {
+  // 2. Se biometria for obrigatória (padrão) e personId estiver ausente, rejeita imediatamente
+  if (config.requireVoiceProfile !== false && !personId) {
     return emitAndReturn({
       authorized: false,
-      code: ERROR_CODES.VOICE_NOT_ALLOWED,
-      speech: ERROR_SPEECH.VOICE_NOT_ALLOWED,
+      code: ERROR_CODES.VOICE_NOT_RECOGNIZED,
+      speech: ERROR_SPEECH.VOICE_NOT_RECOGNIZED,
     });
   }
 
-  const bindingData = bindingSnap.data() || {};
+  let uid = null;
+  let bindingData = {};
+  let effectivePersonId = personId;
+  let resolvedBindingKey = '';
 
-  // Vínculo deve estar ativo e não revogado
-  if (!bindingData.active || bindingData.revokedAt != null) {
-    return emitAndReturn({
-      authorized: false,
-      code: ERROR_CODES.VOICE_NOT_ALLOWED,
-      speech: ERROR_SPEECH.VOICE_NOT_ALLOWED,
-    });
-  }
+  // 3. Tentar resolver vínculo formal se personId estiver presente
+  if (personId) {
+    const bindingKey = computeBindingKey(
+      config.environment,
+      config.allowedSkillId,
+      amazonUserId,
+      personId,
+      config.hmacKey
+    );
+    resolvedBindingKey = bindingKey;
 
-  // Vínculo deve pertencer ao mesmo ambiente
-  if (bindingData.environment && bindingData.environment !== config.environment) {
-    return emitAndReturn({
-      authorized: false,
-      code: ERROR_CODES.ENVIRONMENT_MISMATCH,
-      speech: ERROR_SPEECH.ENVIRONMENT_MISMATCH,
-    });
-  }
+    const bindingRef = db.collection(COLLECTIONS.BINDINGS).doc(bindingKey);
+    const bindingSnap = await bindingRef.get();
 
-  // Dispositivo autorizado (se houver lista de dispositivos no vínculo)
-  if (Array.isArray(bindingData.allowedDeviceIds) && bindingData.allowedDeviceIds.length > 0) {
-    if (!deviceId || !bindingData.allowedDeviceIds.includes(deviceId)) {
-      return emitAndReturn({
-        authorized: false,
-        code: ERROR_CODES.DEVICE_NOT_ALLOWED,
-        speech: ERROR_SPEECH.DEVICE_NOT_ALLOWED,
-      });
+    if (bindingSnap.exists) {
+      const b = bindingSnap.data() || {};
+      if (!b.active || b.revokedAt != null) {
+        return emitAndReturn({
+          authorized: false,
+          code: ERROR_CODES.VOICE_NOT_ALLOWED,
+          speech: ERROR_SPEECH.VOICE_NOT_ALLOWED,
+        });
+      }
+      if (b.environment && b.environment !== config.environment) {
+        return emitAndReturn({
+          authorized: false,
+          code: ERROR_CODES.ENVIRONMENT_MISMATCH,
+          speech: ERROR_SPEECH.ENVIRONMENT_MISMATCH,
+        });
+      }
+      if (Array.isArray(b.allowedDeviceIds) && b.allowedDeviceIds.length > 0) {
+        if (!deviceId || !b.allowedDeviceIds.includes(deviceId)) {
+          return emitAndReturn({
+            authorized: false,
+            code: ERROR_CODES.DEVICE_NOT_ALLOWED,
+            speech: ERROR_SPEECH.DEVICE_NOT_ALLOWED,
+          });
+        }
+      }
+      uid = b.uid;
+      bindingData = b;
+    } else {
+      if (config.requireVoiceProfile !== false) {
+        return emitAndReturn({
+          authorized: false,
+          code: ERROR_CODES.VOICE_NOT_ALLOWED,
+          speech: ERROR_SPEECH.VOICE_NOT_ALLOWED,
+        });
+      }
     }
   }
 
-  const uid = bindingData.uid;
+  // 4. Modo Relaxado de Desenvolvimento (Ambiente de Teste sem obrigatoriedade de voz):
+  // Se requireVoiceProfile === false e não houver vínculo de voz cadastrado,
+  // faz fallback para a conta de administrador para permitir testes diretos no hardware Echo
+  if (!uid && config.requireVoiceProfile === false && config.environment === 'dev') {
+    try {
+      const adminUsers = await db.collection(COLLECTIONS.USERS).where('role', '==', 'admin').where('active', '==', true).limit(1).get();
+      if (!adminUsers.empty) {
+        uid = adminUsers.docs[0].id;
+      } else {
+        const adminProfiles = await db.collection(COLLECTIONS.USER_PROFILES).where('role', '==', 'admin').where('active', '==', true).limit(1).get();
+        if (!adminProfiles.empty) {
+          uid = adminProfiles.docs[0].id;
+        }
+      }
+    } catch (err) {
+      console.warn('[AlexaAuth] Erro ao buscar admin fallback em DEV:', err.message);
+    }
+    if (uid) {
+      effectivePersonId = personId || 'dev-voice-any';
+      resolvedBindingKey = 'dev-relaxed-binding';
+      bindingData = {
+        uid,
+        active: true,
+        mode: 'voice_confirm',
+        isDevBypass: true,
+        bindingKey: resolvedBindingKey,
+      };
+    }
+  }
+
+  // 5. Se não encontrou UID (e em produção permanece estrito)
   if (!uid) {
+    if (!personId) {
+      return emitAndReturn({
+        authorized: false,
+        code: ERROR_CODES.VOICE_NOT_RECOGNIZED,
+        speech: ERROR_SPEECH.VOICE_NOT_RECOGNIZED,
+      });
+    }
     return emitAndReturn({
       authorized: false,
       code: ERROR_CODES.VOICE_NOT_ALLOWED,
@@ -212,7 +255,7 @@ async function authorizeAlexaPerson(envelope, config, db, authService = null) {
     });
   }
 
-  // 5. Validar paralelamente userProfile, alexaPermissions e conta no Firebase Auth
+  // 6. Validar paralelamente userProfile, alexaPermissions e conta no Firebase Auth
   let authUserPromise;
   try {
     const auth = authService || (admin.apps && admin.apps.length > 0 ? admin.auth() : null);
@@ -307,13 +350,14 @@ async function authorizeAlexaPerson(envelope, config, db, authService = null) {
     authorized: true,
     identity: {
       uid,
-      bindingKey,
+      bindingKey: resolvedBindingKey,
       displayName: profile.displayName || profile.email || 'Usuário',
       email: profile.email || '',
       mode,
-      personId,
+      personId: effectivePersonId,
       amazonUserId,
       deviceId,
+      isDevBypass: Boolean(bindingData.isDevBypass),
     },
   });
 }
