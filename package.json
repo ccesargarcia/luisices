@@ -46,6 +46,7 @@
     "test:integration": "firebase emulators:exec --config firebase.test.json --project demo-luisices-review --only firestore,storage \"vitest run --config vitest.integration.config.ts\""
   },
   "dependencies": {
+    "@grpc/grpc-js": "^1.14.5",
     "@hookform/resolvers": "^3.10.0",
     "@radix-ui/react-accordion": "1.2.3",
     "@radix-ui/react-alert-dialog": "1.1.6",
@@ -112,9 +113,9 @@
     "@types/react-dom": "^18.3.5",
     "@vitejs/plugin-react": "4.7.0",
     "dotenv": "^17.3.1",
-    "firebase-admin": "^13.7.0",
-    "firebase-tools": "^15.31.0",
-    "sharp": "^0.34.5",
+    "firebase-admin": "^14.5.0",
+    "firebase-tools": "^14.23.0",
+    "sharp": "^0.35.5",
     "tailwindcss": "4.1.12",
     "typescript": "^5.9.3",
     "vite": "^6.4.3",

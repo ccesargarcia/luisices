@@ -44,7 +44,7 @@ class AiBudgetManager {
     const dateKey = this.getTodayDateKey();
     const reservationKey = `${uid}_${dateKey}`;
     const projectKey = `project_${dateKey}`;
-    const reservationId = `${reservationKey}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+    const reservationId = `${reservationKey}_${Date.now()}_${require('crypto').randomBytes(3).toString('hex')}`;
 
     // Produção deve falhar fechada: um erro do Firestore nunca reduz o teto global a memória local.
     if (this.firestore) {
