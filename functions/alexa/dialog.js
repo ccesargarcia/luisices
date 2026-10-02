@@ -1037,6 +1037,7 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
     intentName === 'ProvideCustomerOnlyIntent' ||
     intentName === 'ProvideProductIntent' ||
     intentName === 'ProvideQuantityIntent' ||
+    intentName === 'ProvideNumberIntent' ||
     intentName === 'ProvideDeliveryDateIntent' ||
     intentName === 'ProvideUnitPriceIntent' ||
     intentName === 'ProvideTotalIntent' ||
@@ -1568,10 +1569,33 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
     rawIncomingUpdates.product = cleanProd;
   }
 
-  const quantitySlot = slots.quantity?.value || slots.Quantity?.value;
-  const unitPriceSlot = slots.unitPrice?.value || slots.UnitPrice?.value;
-  const totalSlot = slots.total?.value || slots.Total?.value;
+
+  // Intercepta ProvideNumberIntent ou slots de centavos desvinculados
   let genericPriceSlot = slots.price?.value || slots.Price?.value || slots.ambiguousPrice?.value || slots.AmbiguousPrice?.value;
+  let unitPriceSlot = slots.unitPrice?.value || slots.UnitPrice?.value;
+  let totalSlot = slots.total?.value || slots.Total?.value;
+  let quantitySlot = slots.quantity?.value || slots.Quantity?.value;
+
+  const centsSlot = slots.cents?.value || slots.Cents?.value;
+
+  if (intentName === 'ProvideNumberIntent') {
+    const numSlot = slots.number?.value || slots.Number?.value;
+    let combinedStr = numSlot;
+    if (numSlot && centsSlot) {
+      combinedStr = `${numSlot} e ${centsSlot}`;
+    } else if (!numSlot && centsSlot) {
+      combinedStr = `${centsSlot} centavos`;
+    }
+    if (combinedStr) {
+      genericPriceSlot = combinedStr;
+    }
+  } else if (centsSlot) {
+    // Para ProvidePriceIntent e similares onde o NLU preencheu o price + cents
+    if (genericPriceSlot) genericPriceSlot = `${genericPriceSlot} e ${centsSlot}`;
+    else if (unitPriceSlot) unitPriceSlot = `${unitPriceSlot} e ${centsSlot}`;
+    else if (totalSlot) totalSlot = `${totalSlot} e ${centsSlot}`;
+    else genericPriceSlot = `${centsSlot} centavos`;
+  }
 
   if (quantitySlot) {
     const parsedQty = parseQuantity(quantitySlot);

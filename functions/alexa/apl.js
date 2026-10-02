@@ -424,11 +424,12 @@ function buildOrderCardAplDirective({
             {
               type: 'Container',
               when: WHEN_IS_RECTANGULAR,
-              direction: 'row',
+              direction: "${viewport.width > viewport.height ? 'row' : 'column'}",
               grow: 1,
-              paddingLeft: '32dp',
-              paddingRight: '32dp',
+              paddingLeft: '5vw',
+              paddingRight: '5vw',
               paddingBottom: '24dp',
+              paddingTop: '2vh',
               alignItems: 'center',
               justifyContent: 'center',
               items: [
@@ -439,11 +440,15 @@ function buildOrderCardAplDirective({
                   backgroundColor: '#231C1E',
                   borderColor: 'rgba(235, 205, 205, 0.18)',
                   borderWidth: '1dp',
+                  width: "${viewport.width > viewport.height ? '35vw' : '60vw'}",
+                  height: "${viewport.width > viewport.height ? '35vw' : '60vw'}",
+                  maxWidth: '300dp',
+                  maxHeight: '300dp',
                   item: {
                     type: 'Image',
                     source: '${payload.order.imageUrl}',
-                    width: '260dp',
-                    height: '260dp',
+                    width: '100%',
+                    height: '100%',
                     scale: 'best-fit',
                     borderRadius: '16dp',
                   },
@@ -452,8 +457,10 @@ function buildOrderCardAplDirective({
                 {
                   type: 'Container',
                   grow: 1,
-                  paddingLeft: '32dp',
+                  paddingLeft: "${viewport.width > viewport.height ? '32dp' : '0'}",
+                  paddingTop: "${viewport.width > viewport.height ? '0' : '24dp'}",
                   justifyContent: 'center',
+                  alignItems: "${viewport.width > viewport.height ? 'start' : 'center'}",
                   items: [
                     // Badge de Status
                     {
@@ -508,58 +515,30 @@ function buildOrderCardAplDirective({
                       fontWeight: 'bold',
                       paddingTop: '8dp',
                     },
-                    // Botões Interativos de Confirmação por Toque
                     {
                       type: 'Container',
                       direction: 'row',
                       paddingTop: '16dp',
                       when: '${payload.order.showActions}',
+                      spacing: '16dp',
                       items: [
                         {
-                          type: 'TouchWrapper',
-                          onPress: [{ type: 'SendEvent', arguments: ['confirmOrder', '${payload.order.draftId}', '${payload.order.revision}'] }],
-                          item: {
-                            type: 'Frame',
-                            backgroundColor: '#10B981',
-                            borderRadius: '16dp',
-                            paddingLeft: '24dp',
-                            paddingRight: '24dp',
-                            paddingTop: '10dp',
-                            paddingBottom: '10dp',
-                            marginRight: '16dp',
-                            item: {
-                              type: 'Text',
-                              text: '✅ Confirmar Pedido',
-                              color: '#FFFFFF',
-                              fontSize: '16dp',
-                              fontWeight: 'bold',
-                            },
-                          },
+                          type: 'AlexaButton',
+                          buttonText: '✅ Confirmar',
+                          primaryAction: [
+                            { type: 'SendEvent', arguments: ['confirmOrder', '${payload.order.draftId}', '${payload.order.revision}'] }
+                          ]
                         },
                         {
-                          type: 'TouchWrapper',
-                          onPress: [{ type: 'SendEvent', arguments: ['cancelOrder', '${payload.order.draftId}', '${payload.order.revision}'] }],
-                          item: {
-                            type: 'Frame',
-                            backgroundColor: '#231C1E',
-                            borderColor: 'rgba(235, 205, 205, 0.18)',
-                            borderWidth: '1dp',
-                            borderRadius: '16dp',
-                            paddingLeft: '20dp',
-                            paddingRight: '20dp',
-                            paddingTop: '10dp',
-                            paddingBottom: '10dp',
-                            item: {
-                              type: 'Text',
-                              text: '❌ Cancelar',
-                              color: '#E8E0E3',
-                              fontSize: '16dp',
-                              fontWeight: 'bold',
-                            },
-                          },
-                        },
-                      ],
-                    },
+                          type: 'AlexaButton',
+                          buttonText: '❌ Cancelar',
+                          buttonStyle: 'outlined',
+                          primaryAction: [
+                            { type: 'SendEvent', arguments: ['cancelOrder', '${payload.order.draftId}', '${payload.order.revision}'] }
+                          ]
+                        }
+                      ]
+                    }
                   ],
                 },
               ],
@@ -711,6 +690,10 @@ function buildOrderSuccessAplDirective({
                   borderColor: 'rgba(235, 205, 205, 0.18)',
                   borderWidth: '1dp',
                   borderRadius: '24dp',
+                  width: '80vw',
+                  height: '80vh',
+                  maxWidth: '800dp',
+                  maxHeight: '600dp',
                   paddingLeft: '40dp',
                   paddingRight: '40dp',
                   paddingTop: '24dp',
@@ -764,8 +747,9 @@ function buildOrderSuccessAplDirective({
                       },
                       {
                         type: 'Container',
-                        direction: 'row',
+                        direction: "${viewport.width > viewport.height ? 'row' : 'column'}",
                         paddingTop: '10dp',
+                        alignItems: 'center',
                         items: [
                           {
                             type: 'Text',

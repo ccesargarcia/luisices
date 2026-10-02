@@ -277,7 +277,6 @@
         {
           "name": "ProvideQuantityIntent",
           "samples": [
-            "{quantity}",
             "{quantity} unidades",
             "{quantity} itens",
             "{quantity} peças",
@@ -448,22 +447,26 @@
           "name": "ProvidePriceIntent",
           "samples": [
             "{price} reais",
-            "{price}",
             "o valor é {price} reais",
             "o valor é {price}",
             "deu {price} reais",
             "deu {price}",
-            "valor {price}",
             "corrigir o valor para {price} reais",
             "alterar o valor para {price} reais",
             "mudar o valor para {price} reais",
             "corrigir para {price} reais",
             "alterar para {price} reais",
-            "mudar para {price} reais"
+            "mudar para {price} reais",
+            "{price} reais e {cents}",
+            "{price} reais e {cents} centavos"
           ],
           "slots": [
             {
               "name": "price",
+              "type": "AMAZON.NUMBER"
+            },
+            {
+              "name": "cents",
               "type": "AMAZON.NUMBER"
             }
           ]
@@ -526,6 +529,25 @@
             "como estão os pedidos"
           ],
           "slots": []
+        },
+        {
+          "name": "ProvideNumberIntent",
+          "samples": [
+            "{number}",
+            "{number} e {cents}",
+            "{number} com {cents}",
+            "{cents} centavos"
+          ],
+          "slots": [
+            {
+              "name": "number",
+              "type": "AMAZON.NUMBER"
+            },
+            {
+              "name": "cents",
+              "type": "AMAZON.NUMBER"
+            }
+          ]
         }
       ],
       "types": [
