@@ -202,17 +202,45 @@ async function processAlexaEnvelope(envelope, { db, config, authService = null }
       return await persistResponse(resp);
     }
 
+    // Tratamento de eventos de toque em tela APL (Alexa.Presentation.APL.UserEvent)
+    if (reqType === 'Alexa.Presentation.APL.UserEvent') {
+      const args = Array.isArray(envelope?.request?.arguments) ? envelope.request.arguments : [];
+      const action = args[0];
+      const payload = args[1];
+
+      if (action === 'confirmOrder') {
+        envelope.request.type = 'IntentRequest';
+        envelope.request.intent = { name: 'AMAZON.YesIntent', confirmationStatus: 'NONE' };
+      } else if (action === 'cancelOrder') {
+        envelope.request.type = 'IntentRequest';
+        envelope.request.intent = { name: 'AMAZON.CancelIntent', confirmationStatus: 'NONE' };
+      } else if (action === 'selectProduct' && payload) {
+        envelope.request.type = 'IntentRequest';
+        envelope.request.intent = {
+          name: 'ProvideProductIntent',
+          confirmationStatus: 'NONE',
+          slots: { product: { name: 'product', value: String(payload) } },
+        };
+      } else if (action === 'intent' && payload) {
+        envelope.request.type = 'IntentRequest';
+        envelope.request.intent = { name: String(payload), confirmationStatus: 'NONE' };
+      }
+    }
+
+    const currentIntentName = envelope?.request?.intent?.name || intentName;
+
     // 2. Fluxo de Pareamento Supervisionado (LinkVoiceIntent / PairAlexaIntent / GeneratePairingCodeIntent)
     if (
-      intentName === 'LinkVoiceIntent' ||
-      intentName === 'PairAlexaIntent' ||
-      intentName === 'GeneratePairingCodeIntent'
+      currentIntentName === 'LinkVoiceIntent' ||
+      currentIntentName === 'PairAlexaIntent' ||
+      currentIntentName === 'GeneratePairingCodeIntent'
     ) {
       const pairingRes = await handleVoicePairingRequest(envelope, config, db);
       const resp = buildAlexaResponse({
         speech: pairingRes.speech,
         shouldEndSession: pairingRes.shouldEndSession,
         card: pairingRes.card,
+        directives: pairingRes.directives,
       });
       return await persistResponse(resp);
     }

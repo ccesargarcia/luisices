@@ -7,6 +7,7 @@ const crypto = require('crypto');
 const admin = require('firebase-admin');
 const { COLLECTIONS, computeCodeHash, computeBindingKey, recordAuditEvent } = require('./repository');
 const { checkPairingRateLimit } = require('./rateLimit');
+const { supportsApl, buildVoicePairingAplDirective } = require('./apl');
 
 /**
  * Gera desafio de 8 dígitos na presença do administrador para vincular a voz.
@@ -98,10 +99,16 @@ async function handleVoicePairingRequest(envelope, config, db) {
     content: `Seu código de vinculação é: ${code}\n\nInforme este código ao administrador no painel do Luisices em até 5 minutos.`,
   };
 
+  const isApl = supportsApl(envelope);
+  const directives = isApl
+    ? [buildVoicePairingAplDirective({ pairingCode: code, envLabel: config.environment === 'prod' ? 'produção' : 'teste' })]
+    : undefined;
+
   return {
     speech,
     card,
     shouldEndSession: true,
+    directives,
   };
 }
 

@@ -4,6 +4,9 @@ const {
   supportsApl,
   buildOrderCardAplDirective,
   buildWelcomeAplDirective,
+  buildOrderSuccessAplDirective,
+  buildFuzzySuggestionsAplDirective,
+  buildVoicePairingAplDirective,
 } = require('../../../functions/alexa/apl');
 
 const {
@@ -27,22 +30,37 @@ const {
 } = require('../../../functions/alexa/dialog');
 
 const { processAlexaEnvelope } = require('../../../functions/alexa/index');
+const { computeBindingKey } = require('../../../functions/alexa/repository');
 
 describe('Alexa Advancements: Dynamic Entities, Fuzzy Suggestions & APL', () => {
-  const baseIdentity = {
-    uid: 'uid-caiogarcia',
-    displayName: 'Caio',
-    personId: 'amzn1.ask.person.CAIO123',
-    bindingKey: 'binding-caio-123',
-    mode: 'voice_confirm',
-    allowedEnvironments: ['dev', 'test', 'prod'],
-  };
+  const amazonUserId = 'amzn1.ask.account.CAIO_USER';
+  const personId = 'amzn1.ask.person.CAIO123';
+  const hmacKey = 'test-secret-hmac-key-min-32-chars-long!';
 
   const baseConfig = {
+    isEnabled: true,
     environment: 'test',
     timezone: 'America/Sao_Paulo',
     allowedSkillId: 'amzn1.ask.skill.luisices-test',
     draftTtlMinutes: 15,
+    hmacKey,
+  };
+
+  const bindingKey = computeBindingKey(
+    baseConfig.environment,
+    baseConfig.allowedSkillId,
+    amazonUserId,
+    personId,
+    baseConfig.hmacKey
+  );
+
+  const baseIdentity = {
+    uid: 'uid-caiogarcia',
+    displayName: 'Caio',
+    personId,
+    bindingKey,
+    mode: 'voice_confirm',
+    allowedEnvironments: ['dev', 'test', 'prod'],
   };
 
   beforeEach(() => {
@@ -53,15 +71,36 @@ describe('Alexa Advancements: Dynamic Entities, Fuzzy Suggestions & APL', () => 
     const store = {
       alexaDrafts: {},
       alexaRequests: {},
+      alexaIntegrations: {
+        global: { isEnabled: true },
+      },
+      userProfiles: {
+        'uid-caiogarcia': {
+          active: true,
+          role: 'admin',
+          permissions: { 'orders.create': true },
+        },
+      },
+      alexaPermissions: {
+        'uid-caiogarcia': {
+          enabled: true,
+          mode: 'voice_confirm',
+        },
+      },
       alexaBindings: {
-        'binding-caio-123': {
+        [bindingKey]: {
           uid: 'uid-caiogarcia',
-          personId: 'amzn1.ask.person.CAIO123',
-          bindingKey: 'binding-caio-123',
+          personId,
+          bindingKey,
+          active: true,
           status: 'active',
+          environment: 'test',
           mode: 'voice_confirm',
           allowedEnvironments: ['dev', 'test', 'prod'],
         },
+      },
+      integrationSettings: {
+        alexa: { enabled: true },
       },
       products: {},
       storeProducts: {},
@@ -70,7 +109,11 @@ describe('Alexa Advancements: Dynamic Entities, Fuzzy Suggestions & APL', () => 
 
     const db = {
       store,
-      collection: (colName) => ({
+      doc: (path: string) => {
+        const parts = path.split('/');
+        return db.collection(parts[0]).doc(parts[1]);
+      },
+      collection: (colName: string) => ({
         doc: (docId) => ({
           get: async () => {
             const data = store[colName]?.[docId];
@@ -491,6 +534,99 @@ describe('Alexa Advancements: Dynamic Entities, Fuzzy Suggestions & APL', () => 
       expect(aplDir.datasources.payload.order.product).toBe('Caixa Pirâmide');
       expect(aplDir.datasources.payload.order.quantity).toBe(10);
       expect(aplDir.datasources.payload.order.statusLabel).toBe('Aguardando Confirmação');
+    });
+
+    it('suporta tela circular do Echo Spot mantendo o logo do Luisices no topo e ações circulares', () => {
+      const welcomeDir = buildWelcomeAplDirective({ userName: 'Caio', envLabel: 'teste' });
+      const orderDir = buildOrderCardAplDirective({
+        customer: 'Mariana',
+        product: 'Caixa Milk',
+        quantity: 5,
+        totalPrice: 'R$ 60,00',
+        envLabel: 'teste',
+      });
+
+      // Verifica presença de layout condicional circular (Echo Spot)
+      const welcomeItems = welcomeDir.document.mainTemplate.items[0].items;
+      const roundWelcomeContainer = welcomeItems.find((item: any) => item.when === "${viewport.shape == 'round'}");
+      expect(roundWelcomeContainer).toBeDefined();
+
+      const orderItems = orderDir.document.mainTemplate.items[0].items;
+      const roundOrderContainer = orderItems.find((item: any) => item.when === "${viewport.shape == 'round'}");
+      expect(roundOrderContainer).toBeDefined();
+    });
+
+    it('gera documento APL de Vinculação de Voz com código legível a distância e QR Code', () => {
+      const directive = buildVoicePairingAplDirective({
+        pairingCode: '749201',
+        envLabel: 'teste',
+      });
+
+      expect(directive.type).toBe('Alexa.Presentation.APL.RenderDocument');
+      expect(directive.token).toBe('luisicesPairingToken');
+      expect(directive.datasources.payload.pairing.formattedCode).toBe('749 201');
+      expect(directive.datasources.payload.pairing.pairingCode).toBe('749201');
+    });
+
+    it('processa evento de toque na tela APL (Alexa.Presentation.APL.UserEvent) para confirmação de pedido', async () => {
+      const mockDb = createMockDb();
+      const draftId = 'draft-touch-confirm';
+      const sessionId = 'sess-touch-confirm';
+
+      mockDb.store.alexaDrafts[draftId] = {
+        draftId,
+        sessionId,
+        uid: baseIdentity.uid,
+        bindingKey: baseIdentity.bindingKey,
+        personId: baseIdentity.personId,
+        mode: 'voice_confirm',
+        state: 'awaiting_confirmation',
+        customer: 'Mariana',
+        product: 'Caixa Milk',
+        quantity: 5,
+        deliveryDate: '2026-10-25',
+        price: 60,
+        pricingMode: 'total',
+        revision: 1,
+        createdAt: { toMillis: () => Date.now() },
+        expiresAt: { toDate: () => new Date(Date.now() + 600000) },
+      };
+
+      // Simula usuário tocando no botão [ Confirmar ] na tela do Echo Show
+      const userEventEnvelope = {
+        session: {
+          sessionId,
+          application: { applicationId: baseConfig.allowedSkillId },
+          user: { userId: amazonUserId },
+          attributes: { draftId, revision: 1, personId: baseIdentity.personId },
+        },
+        request: {
+          type: 'Alexa.Presentation.APL.UserEvent',
+          requestId: 'amzn1.echo-api.request.touch-confirm-1',
+          arguments: ['confirmOrder'],
+        },
+        context: {
+          System: {
+            application: { applicationId: baseConfig.allowedSkillId },
+            user: { userId: amazonUserId },
+            person: { personId: baseIdentity.personId },
+            device: { supportedInterfaces: { 'Alexa.Presentation.APL': {} } },
+          },
+        },
+      };
+
+      const mockAuthService = {
+        getUser: async (uid: string) => ({ uid, disabled: false }),
+      };
+
+      const response = await processAlexaEnvelope(userEventEnvelope, {
+        db: mockDb,
+        config: baseConfig,
+        authService: mockAuthService,
+      });
+
+      expect(response.response.outputSpeech.text).toContain('Pedido criado');
+      expect(response.response.shouldEndSession).toBe(true);
     });
   });
 });
