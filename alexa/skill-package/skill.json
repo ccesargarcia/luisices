@@ -40,6 +40,10 @@
               {
                 "mode": "TV",
                 "shape": "RECTANGLE"
+              },
+              {
+                "mode": "MOBILE",
+                "shape": "RECTANGLE"
               }
             ]
           }

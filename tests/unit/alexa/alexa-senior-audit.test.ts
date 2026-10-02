@@ -4,11 +4,12 @@ const {
   parseAndValidateDeliveryDate,
   handleAlexaDialog,
 } = require('../../../functions/alexa/dialog');
-const { authorizeAlexaPerson, ERROR_CODES } = require('../../../functions/alexa/authorization');
+const { authorizeAlexaPerson, ERROR_CODES, clearAuthUserCache } = require('../../../functions/alexa/authorization');
 const { computeBindingKey, computeRequestKey, COLLECTIONS } = require('../../../functions/alexa/repository');
 const { checkAndConsumeOrderRateLimitInTransaction } = require('../../../functions/alexa/rateLimit');
-const { processAlexaEnvelope } = require('../../../functions/alexa/index');
+const { processAlexaEnvelope, buildAlexaResponse } = require('../../../functions/alexa/index');
 const { commitOrderFromDraft } = require('../../../functions/alexa/orderService');
+const { buildVoicePairingAplDirective } = require('../../../functions/alexa/apl');
 
 describe('Alexa: Validação de Regressões e Melhorias Sênior (Auditoria)', () => {
   describe('1. Parsing e Validação de Preços em Português Brasileiro', () => {
@@ -1229,6 +1230,113 @@ describe('Alexa: Validação de Regressões e Melhorias Sênior (Auditoria)', ()
       expect(store.alexaDrafts[draftId].state).toBe('awaiting_confirmation');
       expect(res.speech).toContain('Juliana');
       expect(res.speech).toContain('agendas');
+    });
+  });
+
+  describe('12. Conformidade com Especificações AWS e Ajustes de Caça a Bugs', () => {
+    it('BUG-01: buildAlexaResponse deve omitir outputSpeech quando speech for vazio ou em branco', () => {
+      const respEmpty = buildAlexaResponse({ speech: '', shouldEndSession: true });
+      expect(respEmpty.response.outputSpeech).toBeUndefined();
+
+      const respWhitespace = buildAlexaResponse({ speech: '   ', shouldEndSession: true });
+      expect(respWhitespace.response.outputSpeech).toBeUndefined();
+
+      const respNull = buildAlexaResponse({ speech: null, shouldEndSession: true });
+      expect(respNull.response.outputSpeech).toBeUndefined();
+
+      const respValid = buildAlexaResponse({ speech: 'Olá', shouldEndSession: false });
+      expect(respValid.response.outputSpeech).toEqual({
+        type: 'PlainText',
+        text: 'Olá',
+      });
+    });
+
+    it('BUG-01: SessionEndedRequest deve retornar envelope de resposta vazio conforme padrão RFC Alexa', async () => {
+      const store: any = {
+        alexaRequests: {},
+      };
+      const mockDb: any = {
+        collection: (col: string) => ({
+          doc: (id: string) => ({
+            get: async () => ({ exists: false, data: () => null }),
+            set: async (d: any) => { store[col] = store[col] || {}; store[col][id] = d; },
+          }),
+        }),
+        runTransaction: async (fn: any) => fn({
+          get: async () => ({ exists: false, data: () => null }),
+          set: (ref: any, d: any) => {},
+        }),
+      };
+
+      const envelope = {
+        request: {
+          type: 'SessionEndedRequest',
+          requestId: 'req-session-ended-12345',
+          reason: 'USER_INITIATED',
+        },
+        session: {
+          application: { applicationId: 'amzn1.ask.skill.test-dev' },
+        },
+      };
+
+      const res = await processAlexaEnvelope(envelope, {
+        db: mockDb,
+        config: { environment: 'dev', isEnabled: true, allowedSkillId: 'amzn1.ask.skill.test-dev' },
+      });
+
+      expect(res.version).toBe('1.0');
+      expect(res.response).toEqual({});
+      expect(res.response.outputSpeech).toBeUndefined();
+    });
+
+    it('BUG-02: APL UserEvent sem personId deve solicitar confirmação vocal em vez de rejeição fatal', async () => {
+      const store: any = {
+        alexaRequests: {},
+      };
+      const mockDb: any = {
+        collection: (col: string) => ({
+          doc: (id: string) => ({
+            get: async () => ({ exists: false, data: () => null }),
+            set: async (d: any) => { store[col] = store[col] || {}; store[col][id] = d; },
+          }),
+        }),
+        runTransaction: async (fn: any) => fn({
+          get: async () => ({ exists: false, data: () => null }),
+          set: (ref: any, d: any) => {},
+        }),
+      };
+
+      const envelope = {
+        request: {
+          type: 'Alexa.Presentation.APL.UserEvent',
+          requestId: 'req-user-event-12345',
+          arguments: ['intent', 'CreateOrderIntent'],
+        },
+        session: {
+          application: { applicationId: 'amzn1.ask.skill.test-dev' },
+          attributes: {},
+        },
+      };
+
+      const res = await processAlexaEnvelope(envelope, {
+        db: mockDb,
+        config: { environment: 'dev', isEnabled: true, allowedSkillId: 'amzn1.ask.skill.test-dev' },
+      });
+
+      expect(res.response.outputSpeech.text).toContain('Para sua segurança, por favor confirme esta ação com a sua voz.');
+      expect(res.response.shouldEndSession).toBe(false);
+    });
+
+    it('BUG-07: buildVoicePairingAplDirective deve formatar código de 8 dígitos com espaço central', () => {
+      const dir8 = buildVoicePairingAplDirective({ pairingCode: '83910294', envLabel: 'Teste' });
+      expect(dir8.datasources.payload.pairing.formattedCode).toBe('8391 0294');
+
+      const dir6 = buildVoicePairingAplDirective({ pairingCode: '749201', envLabel: 'Teste' });
+      expect(dir6.datasources.payload.pairing.formattedCode).toBe('749 201');
+    });
+
+    it('BUG-04: clearAuthUserCache deve limpar cache sem erros', () => {
+      expect(() => clearAuthUserCache()).not.toThrow();
     });
   });
 });

@@ -534,7 +534,14 @@
           "name": "ProvideNumberIntent",
           "samples": [
             "{number}",
+            "é {number}",
+            "são {number}",
+            "foi {number}",
+            "deu {number}",
             "{number} e {cents}",
+            "é {number} e {cents}",
+            "são {number} e {cents}",
+            "deu {number} e {cents}",
             "{number} com {cents}",
             "{cents} centavos"
           ],

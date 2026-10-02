@@ -1169,7 +1169,7 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
                 totalPrice: formatCurrencyPtBr(activeDraft.price),
                 statusLabel: 'Pedido em Andamento',
                 envLabel,
-                showActions: true,
+                showActions: false,
               })
             : null,
           dynDirective,

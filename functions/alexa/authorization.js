@@ -6,6 +6,15 @@
 const admin = require('firebase-admin');
 const { COLLECTIONS, computeBindingKey } = require('./repository');
 
+// Cache em memória para validação de status do Firebase Auth (TTL de 60 segundos)
+// Reduz latência de rede no SLA de 8s da Alexa e evita rate limits da API do Identity Toolkit
+const AUTH_USER_CACHE = new Map();
+const AUTH_CACHE_TTL_MS = 60 * 1000;
+
+function clearAuthUserCache() {
+  AUTH_USER_CACHE.clear();
+}
+
 const ERROR_CODES = {
   VOICE_NOT_RECOGNIZED: 'VOICE_NOT_RECOGNIZED',
   VOICE_NOT_ALLOWED: 'VOICE_NOT_ALLOWED',
@@ -212,12 +221,26 @@ async function authorizeAlexaPerson(envelope, config, db, authService = null) {
     });
   }
 
-  // 5. Validar paralelamente userProfile, alexaPermissions e conta no Firebase Auth
+  // 5. Validar paralelamente userProfile, alexaPermissions e conta no Firebase Auth (com cache em memória)
   let authUserPromise;
   try {
     const auth = authService || (admin.apps && admin.apps.length > 0 ? admin.auth() : null);
     if (auth && typeof auth.getUser === 'function') {
-      authUserPromise = auth.getUser(uid).catch((authErr) => ({ error: authErr }));
+      const now = Date.now();
+      const cached = AUTH_USER_CACHE.get(uid);
+      if (cached && cached.expiresAt > now && !authService) {
+        authUserPromise = Promise.resolve(cached);
+      } else {
+        authUserPromise = auth.getUser(uid)
+          .then((u) => {
+            const res = { uid: u.uid, disabled: Boolean(u.disabled) };
+            if (!authService) {
+              AUTH_USER_CACHE.set(uid, { ...res, expiresAt: Date.now() + AUTH_CACHE_TTL_MS });
+            }
+            return res;
+          })
+          .catch((authErr) => ({ error: authErr }));
+      }
     } else {
       authUserPromise = Promise.resolve({ uid, disabled: false });
     }
@@ -323,4 +346,5 @@ module.exports = {
   ERROR_SPEECH,
   extractAlexaIdentifiers,
   authorizeAlexaPerson,
+  clearAuthUserCache,
 };

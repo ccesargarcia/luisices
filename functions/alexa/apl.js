@@ -1009,9 +1009,12 @@ function buildFuzzySuggestionsAplDirective({ spokenProduct = '', suggestions = [
  * 5. Constrói o documento APL de Vinculação de Voz com Código Gigante & QR Code (Voice Pairing).
  */
 function buildVoicePairingAplDirective({ pairingCode = '000000', qrCodeUrl = null, envLabel = 'Teste' }) {
-  // Formata o código com espaço no meio: "749 201"
   const rawCode = String(pairingCode || '').trim();
-  const formattedCode = rawCode.length === 6 ? `${rawCode.slice(0, 3)} ${rawCode.slice(3)}` : rawCode;
+  const formattedCode = rawCode.length === 8
+    ? `${rawCode.slice(0, 4)} ${rawCode.slice(4)}`
+    : rawCode.length === 6
+      ? `${rawCode.slice(0, 3)} ${rawCode.slice(3)}`
+      : rawCode;
 
   const document = {
     type: 'APL',

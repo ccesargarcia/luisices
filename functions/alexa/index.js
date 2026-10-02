@@ -30,12 +30,15 @@ const REQUEST_DEDUPE_TTL_MS = 300 * 1000;
  */
 function buildAlexaResponse({ speech, reprompt, shouldEndSession = true, sessionAttributes = {}, card = null, directives = null }) {
   const responseObj = {
-    outputSpeech: {
-      type: 'PlainText',
-      text: speech || '',
-    },
     shouldEndSession: Boolean(shouldEndSession),
   };
+
+  if (speech && typeof speech === 'string' && speech.trim().length > 0) {
+    responseObj.outputSpeech = {
+      type: 'PlainText',
+      text: speech.trim(),
+    };
+  }
 
   if (card) {
     responseObj.card = card;
@@ -45,11 +48,11 @@ function buildAlexaResponse({ speech, reprompt, shouldEndSession = true, session
     responseObj.directives = directives;
   }
 
-  if (reprompt && !shouldEndSession) {
+  if (reprompt && !shouldEndSession && typeof reprompt === 'string' && reprompt.trim().length > 0) {
     responseObj.reprompt = {
       outputSpeech: {
         type: 'PlainText',
-        text: reprompt,
+        text: reprompt.trim(),
       },
     };
   }
@@ -196,9 +199,12 @@ async function processAlexaEnvelope(envelope, { db, config, authService = null }
     };
 
   try {
-    // 1. Tratamento de SessionEndedRequest
+    // 1. Tratamento de SessionEndedRequest (resposta RFC vazia conforme especificação ASK)
     if (reqType === 'SessionEndedRequest') {
-      const resp = buildAlexaResponse({ speech: '', shouldEndSession: true });
+      const resp = {
+        version: '1.0',
+        response: {},
+      };
       return await persistResponse(resp);
     }
 
@@ -308,6 +314,10 @@ async function processAlexaEnvelope(envelope, { db, config, authService = null }
           ? 'Olá! Sua voz foi reconhecida, mas ainda não está vinculada ao Luisices. Diga: gerar código, para receber seu código de vinculação.'
           : 'Olá! Bem-vindo ao Luisices de teste. Diga: gerar código, para receber seu código de vinculação.';
         reprompt = 'Diga: gerar código.';
+        shouldEnd = false;
+      } else if (reqType === 'Alexa.Presentation.APL.UserEvent' && (authRes.code === 'VOICE_NOT_ALLOWED' || authRes.code === 'VOICE_NOT_RECOGNIZED')) {
+        speech = 'Para sua segurança, por favor confirme esta ação com a sua voz.';
+        reprompt = 'Diga o que você deseja fazer.';
         shouldEnd = false;
       }
 
