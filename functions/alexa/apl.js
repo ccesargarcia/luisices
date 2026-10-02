@@ -606,8 +606,16 @@ function buildOrderSuccessAplDirective({
   product = '',
   quantity = 1,
   totalPrice = '',
+  deliveryDate = '',
   envLabel = 'Teste',
 }) {
+  const cleanOrderNumber = String(orderNumber || '').replace(/^#+/, '').trim() || 'Confirmado';
+  const cleanCustomer = customer || 'Cliente';
+  const cleanProduct = product || 'Produto Personalizado';
+  const cleanQuantity = Number(quantity) || 1;
+  const cleanTotal = totalPrice || 'R$ 0,00';
+  const cleanDelivery = deliveryDate || '';
+
   const document = {
     type: 'APL',
     version: '1.6',
@@ -622,6 +630,14 @@ function buildOrderSuccessAplDirective({
           height: '100vh',
           backgroundColor: '#161214',
           items: [
+            // Cabeçalho Oficial para telas retangulares (Echo Show, Fire TV)
+            {
+              type: 'AlexaHeader',
+              when: WHEN_IS_RECTANGULAR,
+              headerTitle: 'Luisices • Ateliê Criativo',
+              headerSubtitle: `Ambiente de ${envLabel} • Pedido Confirmado`,
+              headerAttributionImage: DEFAULT_BRAND_LOGO,
+            },
             // Layout Circular para Echo Spot (480x480)
             {
               type: 'Container',
@@ -680,37 +696,100 @@ function buildOrderSuccessAplDirective({
               type: 'Container',
               when: WHEN_IS_RECTANGULAR,
               grow: 1,
+              paddingLeft: '40dp',
+              paddingRight: '40dp',
+              paddingBottom: '24dp',
               alignItems: 'center',
               justifyContent: 'center',
-              paddingLeft: '32dp',
-              paddingRight: '32dp',
               items: [
                 {
-                  type: 'Text',
-                  text: '🎉',
-                  fontSize: '48dp',
-                },
-                {
-                  type: 'Text',
-                  text: 'Pedido #${payload.success.orderNumber} Registrado!',
-                  color: '#34D399',
-                  fontSize: '32dp',
-                  fontWeight: 'bold',
-                  paddingTop: '12dp',
-                },
-                {
-                  type: 'Text',
-                  text: '${payload.success.quantity}x ${payload.success.product} para ${payload.success.customer}',
-                  color: '#FFFFFF',
-                  fontSize: '22dp',
-                  paddingTop: '8dp',
-                },
-                {
-                  type: 'Text',
-                  text: 'Total: ${payload.success.totalPrice} • Sincronizado no quadro de produção',
-                  color: '#E8E0E3',
-                  fontSize: '18dp',
-                  paddingTop: '6dp',
+                  type: 'Frame',
+                  backgroundColor: '#231C1E',
+                  borderColor: 'rgba(235, 205, 205, 0.18)',
+                  borderWidth: '1dp',
+                  borderRadius: '24dp',
+                  paddingLeft: '40dp',
+                  paddingRight: '40dp',
+                  paddingTop: '24dp',
+                  paddingBottom: '24dp',
+                  alignItems: 'center',
+                  item: {
+                    type: 'Container',
+                    alignItems: 'center',
+                    items: [
+                      {
+                        type: 'Text',
+                        text: '🎉',
+                        fontSize: '44dp',
+                      },
+                      {
+                        type: 'Frame',
+                        backgroundColor: 'rgba(16, 185, 129, 0.15)',
+                        borderColor: '#10B981',
+                        borderWidth: '1dp',
+                        borderRadius: '12dp',
+                        paddingLeft: '16dp',
+                        paddingRight: '16dp',
+                        paddingTop: '4dp',
+                        paddingBottom: '4dp',
+                        marginTop: '6dp',
+                        item: {
+                          type: 'Text',
+                          text: '✅ Pedido Confirmado',
+                          color: '#34D399',
+                          fontSize: '14dp',
+                          fontWeight: 'bold',
+                        },
+                      },
+                      {
+                        type: 'Text',
+                        text: 'Pedido #${payload.success.orderNumber} Registrado!',
+                        color: '#FFFFFF',
+                        fontSize: '28dp',
+                        fontWeight: 'bold',
+                        textAlign: 'center',
+                        paddingTop: '10dp',
+                      },
+                      {
+                        type: 'Text',
+                        text: '${payload.success.quantity}x ${payload.success.product}',
+                        color: '#F4B7B9',
+                        fontSize: '22dp',
+                        fontWeight: 'bold',
+                        textAlign: 'center',
+                        paddingTop: '8dp',
+                      },
+                      {
+                        type: 'Container',
+                        direction: 'row',
+                        paddingTop: '10dp',
+                        items: [
+                          {
+                            type: 'Text',
+                            text: '👤 Cliente: ${payload.success.customer}',
+                            color: '#E8E0E3',
+                            fontSize: '18dp',
+                            marginRight: '24dp',
+                          },
+                          {
+                            type: 'Text',
+                            text: '💰 Total: ${payload.success.totalPrice}',
+                            color: '#34D399',
+                            fontSize: '18dp',
+                            fontWeight: 'bold',
+                          },
+                        ],
+                      },
+                      {
+                        type: 'Text',
+                        text: '✨ Sincronizado no quadro de produção do Luisices',
+                        color: '#C9C0B8',
+                        fontSize: '14dp',
+                        paddingTop: '12dp',
+                        textAlign: 'center',
+                      },
+                    ],
+                  },
                 },
               ],
             },
@@ -723,11 +802,12 @@ function buildOrderSuccessAplDirective({
   const datasources = {
     payload: {
       success: {
-        orderNumber,
-        customer,
-        product,
-        quantity,
-        totalPrice,
+        orderNumber: cleanOrderNumber,
+        customer: cleanCustomer,
+        product: cleanProduct,
+        quantity: cleanQuantity,
+        totalPrice: cleanTotal,
+        deliveryDate: cleanDelivery,
         envLabel,
       },
     },

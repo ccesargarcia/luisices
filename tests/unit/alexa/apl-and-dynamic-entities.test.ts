@@ -536,6 +536,78 @@ describe('Alexa Advancements: Dynamic Entities, Fuzzy Suggestions & APL', () => 
       expect(aplDir.datasources.payload.order.statusLabel).toBe('Aguardando Confirmação');
     });
 
+    it('anexa OrderCard APL intermediário ao coletar campos parciais em dispositivo com tela', async () => {
+      const mockDb = createMockDb();
+      const echoShowEnvelope = {
+        session: { sessionId: 'sess-partial-collect-apl' },
+        request: {
+          type: 'IntentRequest',
+          requestId: 'amzn1.echo-api.request.partial-1',
+          intent: {
+            name: 'CreateOrderIntent',
+            slots: {
+              customer: { value: 'Fernanda' },
+              product: { value: 'Caixa Pirâmide' },
+            },
+          },
+        },
+        context: {
+          System: {
+            device: {
+              supportedInterfaces: {
+                'Alexa.Presentation.APL': {},
+              },
+            },
+          },
+        },
+      };
+
+      const res = await handleAlexaDialog({
+        envelope: echoShowEnvelope,
+        identity: baseIdentity,
+        config: baseConfig,
+        db: mockDb,
+      });
+
+      expect(res.directives).toBeDefined();
+      const aplDir = res.directives.find((d: any) => d.type === 'Alexa.Presentation.APL.RenderDocument');
+      expect(aplDir).toBeDefined();
+      expect(aplDir.datasources.payload.order.customer).toBe('Fernanda');
+      expect(aplDir.datasources.payload.order.product).toBe('Caixa Pirâmide');
+      expect(aplDir.datasources.payload.order.statusLabel).toBe('Preenchendo Pedido');
+      expect(aplDir.datasources.payload.order.showActions).toBe(false);
+    });
+
+    it('gera documento APL de Sucesso de Pedido sanitizando prefixo # e exibindo dados completos', () => {
+      const directiveWithHash = buildOrderSuccessAplDirective({
+        orderNumber: '#2026-0042',
+        customer: 'Mariana',
+        product: 'Caixa Milk',
+        quantity: 5,
+        totalPrice: '17 reais e 50 centavos',
+        deliveryDate: '25 de outubro de 2026',
+        envLabel: 'teste',
+      });
+
+      expect(directiveWithHash.type).toBe('Alexa.Presentation.APL.RenderDocument');
+      expect(directiveWithHash.token).toBe('luisicesSuccessToken');
+      expect(directiveWithHash.datasources.payload.success.orderNumber).toBe('2026-0042');
+      expect(directiveWithHash.datasources.payload.success.customer).toBe('Mariana');
+      expect(directiveWithHash.datasources.payload.success.totalPrice).toBe('17 reais e 50 centavos');
+      expect(directiveWithHash.datasources.payload.success.deliveryDate).toBe('25 de outubro de 2026');
+
+      const directiveWithoutHash = buildOrderSuccessAplDirective({
+        orderNumber: '1042',
+        customer: 'Carlos',
+      });
+      expect(directiveWithoutHash.datasources.payload.success.orderNumber).toBe('1042');
+
+      const directiveFallback = buildOrderSuccessAplDirective({
+        orderNumber: '',
+      });
+      expect(directiveFallback.datasources.payload.success.orderNumber).toBe('Confirmado');
+    });
+
     it('suporta tela circular do Echo Spot mantendo o logo do Luisices no topo e ações circulares', () => {
       const welcomeDir = buildWelcomeAplDirective({ userName: 'Caio', envLabel: 'teste' });
       const orderDir = buildOrderCardAplDirective({

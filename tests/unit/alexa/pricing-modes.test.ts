@@ -173,6 +173,28 @@ describe('Alexa: Precificação Unitária, Total e Resolução de Ambiguidades',
       expect(parseAndValidatePriceToCents('15000').valid).toBe(false);
       expect(parseAndValidatePriceToCents(0)).toEqual({ valid: true, cents: 0, price: 0 });
     });
+
+    it('interpreta com precisão valores decimais, centavos e expressões coloquiais em português (3.50, 3 e 50, três e cinquenta, 3 e meio)', () => {
+      expect(parseAndValidatePriceToCents('3.50')).toEqual({ valid: true, cents: 350, price: 3.5 });
+      expect(parseAndValidatePriceToCents('3,50')).toEqual({ valid: true, cents: 350, price: 3.5 });
+      expect(parseAndValidatePriceToCents('3.5')).toEqual({ valid: true, cents: 350, price: 3.5 });
+      expect(parseAndValidatePriceToCents('3,5')).toEqual({ valid: true, cents: 350, price: 3.5 });
+      expect(parseAndValidatePriceToCents('3 e 50')).toEqual({ valid: true, cents: 350, price: 3.5 });
+      expect(parseAndValidatePriceToCents('3 reais e 50')).toEqual({ valid: true, cents: 350, price: 3.5 });
+      expect(parseAndValidatePriceToCents('3 reais e 50 centavos')).toEqual({ valid: true, cents: 350, price: 3.5 });
+      expect(parseAndValidatePriceToCents('três e cinquenta')).toEqual({ valid: true, cents: 350, price: 3.5 });
+      expect(parseAndValidatePriceToCents('três reais e cinquenta')).toEqual({ valid: true, cents: 350, price: 3.5 });
+      expect(parseAndValidatePriceToCents('três reais e cinquenta centavos')).toEqual({ valid: true, cents: 350, price: 3.5 });
+      expect(parseAndValidatePriceToCents('3 e meio')).toEqual({ valid: true, cents: 350, price: 3.5 });
+      expect(parseAndValidatePriceToCents('três e meio')).toEqual({ valid: true, cents: 350, price: 3.5 });
+      expect(parseAndValidatePriceToCents('três reais e meio')).toEqual({ valid: true, cents: 350, price: 3.5 });
+      expect(parseAndValidatePriceToCents('dez e cinquenta')).toEqual({ valid: true, cents: 1050, price: 10.5 });
+      expect(parseAndValidatePriceToCents('vinte e cinco e cinquenta')).toEqual({ valid: true, cents: 2550, price: 25.5 });
+      expect(parseAndValidatePriceToCents('vinte e cinco')).toEqual({ valid: true, cents: 2500, price: 25 });
+      expect(parseAndValidatePriceToCents('0.50')).toEqual({ valid: true, cents: 50, price: 0.5 });
+      expect(parseAndValidatePriceToCents('cinquenta centavos')).toEqual({ valid: true, cents: 50, price: 0.5 });
+      expect(parseAndValidatePriceToCents(3.5)).toEqual({ valid: true, cents: 350, price: 3.5 });
+    });
   });
 
   describe('2. Diálogo com Preço Unitário Completo', () => {

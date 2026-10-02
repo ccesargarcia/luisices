@@ -184,6 +184,7 @@ function parsePortugueseWordsToNumber(text) {
     normMap[k.normalize('NFD').replace(/[\u0300-\u036f]/g, '')] = v;
   }
 
+  let lastVal = Infinity;
   for (const token of tokens) {
     if (token === 'e' || token === 'real' || token === 'reais' || token === 'centavo' || token === 'centavos') continue;
     if (normMap[token] !== undefined) {
@@ -193,8 +194,14 @@ function parsePortugueseWordsToNumber(text) {
         current = (current === 0 ? 1 : current) * 1000;
         total += current;
         current = 0;
+        lastVal = 1000;
       } else {
+        // Se um valor menor precede um valor maior (ex: 3 seguido de 50), não é um número inteiro válido em português
+        if (val >= 10 && val > lastVal) {
+          return null; // Não é um inteiro simples
+        }
         current += val;
+        lastVal = val;
       }
     } else {
       // Qualquer token não reconhecido como numeral em português invalida a interpretação
@@ -224,13 +231,32 @@ function parsePartToNumber(partStr) {
 
 /**
  * Interpreta e valida valor monetário em reais (máximo R$ 10.000,00 ou 1.000.000 centavos).
- * Suporta dígitos (100, 100,50, 1.500,00, R$ 150), zero reais (pedido gratuito)
- * e números por extenso (cem reais, cinquenta, dez reais e cinquenta centavos).
+ * Suporta dígitos (3.50, 3,50, 100, 100,50, 1.500,00, R$ 150), zero reais (pedido gratuito),
+ * números por extenso (cem reais, cinquenta, dez reais e cinquenta centavos),
+ * e formatos coloquiais em português (3 e 50, três e cinquenta, 3 reais e 50, 3 e meio).
  * Rejeita estritamente expressões matemáticas, ambiguidades e formatos malformados.
  */
 function parseAndValidatePrice(priceValue) {
   if (priceValue === null || priceValue === undefined || priceValue === '') {
     return { valid: false, error: 'Valor não informado.' };
+  }
+
+  // Se já for número numérico (ex: 3.5 ou 100)
+  if (typeof priceValue === 'number') {
+    if (!Number.isFinite(priceValue)) {
+      return { valid: false, error: 'Valor total inválido. Por favor, diga o valor em reais, por exemplo: cem reais.' };
+    }
+    if (priceValue < 0) {
+      return { valid: false, error: 'Valor total não pode ser negativo.' };
+    }
+    if (priceValue > 10000) {
+      return { valid: false, error: 'O valor do pedido excede o limite máximo permitido de dez mil reais.' };
+    }
+    const cents = Math.round(priceValue * 100);
+    if (Math.abs(priceValue * 100 - cents) > 1e-4) {
+      return { valid: false, error: 'Formato de valor não reconhecido. Por favor, diga um único valor em reais.' };
+    }
+    return { valid: true, price: cents / 100 };
   }
 
   const rawStr = String(priceValue).trim().toLowerCase();
@@ -248,11 +274,12 @@ function parseAndValidatePrice(priceValue) {
     return { valid: false, error: 'Formato de valor não reconhecido. Por favor, diga um único valor em reais.' };
   }
 
-  const cleanNumStr = rawStr.replace(/r\$/gi, '').trim();
+  let clean = rawStr.replace(/r\$/gi, '').trim();
+  clean = clean.replace(/\b(?:meio|meia)\b/g, '50 centavos');
 
   // 1. Tentar extração de números com formato brasileiro de milhar e decimal: 1.500,00 ou 1.500
   // Aceita sufixo monetário opcional: "reais" ou "real"
-  const brThousands = cleanNumStr.match(/^(\d{1,3}(?:\.\d{3})+(?:,\d{1,2})?)(?:\s*(?:reais|real))?$/);
+  const brThousands = clean.match(/^(\d{1,3}(?:\.\d{3})+(?:,\d{1,2})?)(?:\s*(?:reais|real))?$/);
   if (brThousands) {
     const num = parseFloat(brThousands[1].replace(/\./g, '').replace(',', '.'));
     if (!isNaN(num) && num >= 0) {
@@ -263,32 +290,38 @@ function parseAndValidatePrice(priceValue) {
     }
   }
 
-  // 2. Se contiver menção a centavos (ex: "dez reais e cinquenta centavos", "cinquenta centavos", "10 reais e 50 centavos")
-  if (/\bcentavos?\b/.test(rawStr)) {
+  // 2. Se contiver menção a centavos (ex: "dez reais e cinquenta centavos", "cinquenta centavos", "10 reais e 50 centavos", "3 e 50 centavos")
+  if (/\bcentavos?\b/.test(clean)) {
     let reaisStr = '';
     let centavosStr = '';
-    if (/\b(reais|real)\b/.test(rawStr)) {
+    if (/\b(?:reais|real)\b/.test(clean)) {
       // Formato estrito: "<reais> reais [e] <centavos> centavos"
-      // Deve consumir a entrada inteira — rejeita conteúdo excedente após "centavos"
-      const match = rawStr.match(/^(.*?)\b(?:reais|real)\b(?:\s+e\s+)?(.*?)\bcentavos?\b\s*$/);
+      const match = clean.match(/^(.*?)\b(?:reais|real)\b(?:\s+e\s+)?(.*?)\bcentavos?\b\s*$/);
       if (match) {
         reaisStr = match[1].trim();
         centavosStr = match[2].trim();
       }
     } else {
-      // Apenas centavos estrito: "<centavos> centavos" — exige quantia não vazia antes
-      const match = rawStr.match(/^(.*?)\bcentavos?\b\s*$/);
+      // Formato: "<centavos> centavos" ou "<reais> e <centavos> centavos"
+      const match = clean.match(/^(.*?)\bcentavos?\b\s*$/);
       if (match) {
-        centavosStr = match[1].replace(/^\s*e\s+/, '').trim();
+        const before = match[1].trim();
+        if (before.includes(' e ')) {
+          const lastE = before.lastIndexOf(' e ');
+          reaisStr = before.slice(0, lastE).trim();
+          centavosStr = before.slice(lastE + 3).trim();
+        } else {
+          centavosStr = before.replace(/^\s*e\s+/, '').trim();
+        }
       }
     }
     // Rejeita "centavos" sozinho sem quantia explícita
     if (!centavosStr) {
       return { valid: false, error: 'Valor total inválido. Por favor, diga o valor em reais, por exemplo: cem reais.' };
     }
-    const rVal = parsePartToNumber(reaisStr);
+    const rVal = reaisStr ? parsePartToNumber(reaisStr) : 0;
     const cVal = parsePartToNumber(centavosStr);
-    if (rVal === null || cVal === null || cVal >= 100) {
+    if (rVal === null || cVal === null || cVal >= 100 || cVal < 0) {
       return { valid: false, error: 'Valor total inválido. Por favor, diga o valor em reais, por exemplo: cem reais.' };
     }
     const total = rVal + (cVal / 100);
@@ -298,9 +331,30 @@ function parseAndValidatePrice(priceValue) {
     return { valid: true, price: Math.round(total * 100) / 100 };
   }
 
-  // 3. Números padrão com vírgula ou ponto decimal simples: 150,50 ou 150.50 ou 150 ou "150 reais" ou "0 reais"
+  // 3. Formato com palavra "reais" / "real" e centavos implícitos:
+  // Ex: "3 reais e 50", "três reais e cinquenta", "10 reais e 25", "vinte reais e noventa"
+  const reaisImplicitMatch = clean.match(/^(.*?)\b(?:reais|real)\b(?:\s+e\s+(.*?))?$/);
+  if (reaisImplicitMatch && reaisImplicitMatch[2]) {
+    const reaisStr = reaisImplicitMatch[1].trim();
+    const centavosStr = reaisImplicitMatch[2].trim();
+    const rVal = parsePartToNumber(reaisStr);
+    const cVal = parsePartToNumber(centavosStr);
+    if (rVal !== null && cVal !== null && cVal >= 0 && cVal < 100) {
+      const total = rVal + (cVal / 100);
+      if (total > 10000) {
+        return { valid: false, error: 'O valor do pedido excede o limite máximo permitido de dez mil reais.' };
+      }
+      return { valid: true, price: Math.round(total * 100) / 100 };
+    }
+  }
+
+  // 4. Números padrão com vírgula ou ponto decimal simples: 3.50, 3,50, 150,50 ou 150.50 ou 150 ou "150 reais" ou "0 reais"
+  // Rejeita mais de 2 casas decimais (ex: 10,005)
+  if (/^\d+[.,]\d{3,}$/.test(clean.replace(/\s*(?:reais|real)$/, ''))) {
+    return { valid: false, error: 'Formato de valor não reconhecido. Por favor, diga um único valor em reais.' };
+  }
   const regexNum = /^(\d+(?:[.,]\d{1,2})?)(?:\s*(?:reais|real))?$/;
-  const match = cleanNumStr.match(regexNum);
+  const match = clean.match(regexNum);
   if (match) {
     const num = parseFloat(match[1].replace(',', '.'));
     if (!isNaN(num) && num >= 0) {
@@ -311,21 +365,34 @@ function parseAndValidatePrice(priceValue) {
     }
   }
 
-  // 4. Se for número por extenso em português (ex: "cem reais", "duzentos e cinquenta", "zero reais")
-  const cleanWords = cleanNumStr.replace(/\b(reais|real)\b/g, '').trim();
+  // 5. Números por extenso em português ou split por ' e ' para decimais (ex: "3 e 50", "dez e cinquenta", "vinte e cinco e cinquenta")
+  const cleanWords = clean.replace(/\b(?:reais|real)\b/g, '').trim();
 
-  // Rejeita se a entrada contém dígitos (já não casou no regexNum ou brThousands)
-  if (/\d/.test(cleanWords)) {
-    return { valid: false, error: 'Formato de valor não reconhecido. Por favor, diga o valor em reais, por exemplo: cem reais.' };
+  // Se for extenso puro de número inteiro
+  if (!/\d/.test(cleanWords)) {
+    const wordNum = parsePortugueseWordsToNumber(cleanWords);
+    if (wordNum !== null && wordNum >= 0) {
+      if (wordNum > 10000) {
+        return { valid: false, error: 'O valor do pedido excede o limite máximo permitido de dez mil reais.' };
+      }
+      return { valid: true, price: Math.round(wordNum * 100) / 100 };
+    }
   }
 
-  // Sem dígitos — interpretar estritamente como extenso em português
-  const wordNum = parsePortugueseWordsToNumber(cleanWords);
-  if (wordNum !== null && wordNum >= 0) {
-    if (wordNum > 10000) {
-      return { valid: false, error: 'O valor do pedido excede o limite máximo permitido de dez mil reais.' };
+  // Se não foi um número inteiro puro, tentar dividir no último ' e ' como reais + centavos
+  // Ex: "3 e 50", "três e cinquenta", "dez e cinquenta", "vinte e cinco e cinquenta"
+  if (cleanWords.includes(' e ')) {
+    const lastEIdx = cleanWords.lastIndexOf(' e ');
+    const reaisPart = cleanWords.slice(0, lastEIdx).trim();
+    const centavosPart = cleanWords.slice(lastEIdx + 3).trim();
+    const rVal = parsePartToNumber(reaisPart);
+    const cVal = parsePartToNumber(centavosPart);
+    if (rVal !== null && cVal !== null && cVal >= 0 && cVal < 100) {
+      const total = rVal + (cVal / 100);
+      if (total <= 10000) {
+        return { valid: true, price: Math.round(total * 100) / 100 };
+      }
     }
-    return { valid: true, price: Math.round(wordNum * 100) / 100 };
   }
 
   return { valid: false, error: 'Valor total inválido. Por favor, diga o valor em reais, por exemplo: cem reais.' };
@@ -2744,6 +2811,7 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
                 product: draft.product,
                 quantity: draft.quantity,
                 totalPrice: formatCurrencyPtBr(draft.price),
+                deliveryDate: draft.deliveryDate ? formatDatePtBr(draft.deliveryDate) : '',
                 envLabel,
               }),
             ]
@@ -2794,6 +2862,25 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
   // 7. Verificar se há pendência de correção ativa (prioridade máxima), conflito/ambiguidade ou campos obrigatórios faltando
   const nextPrompt = buildNextPromptForDraft(draft, identity, config, draftId);
   if (nextPrompt) {
+    const isApl = supportsApl(envelope);
+    if (isApl && !nextPrompt.directives) {
+      nextPrompt.directives = [
+        buildOrderCardAplDirective({
+          draftId: draft.draftId,
+          revision: draft.revision,
+          customer: draft.customer || 'A informar',
+          product: draft.product || 'A definir',
+          quantity: draft.quantity || 1,
+          deliveryDate: draft.deliveryDate ? formatDatePtBr(draft.deliveryDate) : 'A combinar',
+          totalPrice: (draft.price !== null && draft.price !== undefined)
+            ? formatCurrencyPtBr(draft.price)
+            : (draft.pendingPriceCents ? formatCurrencyPtBr(draft.pendingPriceCents / 100) : 'A calcular'),
+          statusLabel: 'Preenchendo Pedido',
+          envLabel: config.environment === 'prod' ? 'produção' : 'teste',
+          showActions: false,
+        }),
+      ];
+    }
     return nextPrompt;
   }
 
