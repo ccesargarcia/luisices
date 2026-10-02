@@ -426,7 +426,7 @@ describe('Alexa Advancements: Dynamic Entities, Fuzzy Suggestions & APL', () => 
         totalPrice: 'R$ 30,00',
       });
 
-      expect(directive.datasources.payload.order.imageUrl).toContain('placeholder-product.png');
+      expect(directive.datasources.payload.order.imageUrl).toContain('alexa-large-icon.png');
     });
 
     it('anexa diretiva APL no LaunchRequest quando dispositivo possui tela (Echo Show)', async () => {

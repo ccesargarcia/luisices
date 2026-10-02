@@ -4,9 +4,9 @@
  * Inclui layouts responsivos, suporte completo e robusto a telas circulares (Echo Spot 480x480), Glassmorphism, e botões interativos por toque.
  */
 
-const DEFAULT_BRAND_LOGO = 'https://cdn.luisices.com.br/logo.png';
-const DEFAULT_FALLBACK_IMAGE = 'https://cdn.luisices.com.br/placeholder-product.png';
-const DEFAULT_QR_PLACEHOLDER = 'https://cdn.luisices.com.br/qr-pairing-placeholder.png';
+const DEFAULT_BRAND_LOGO = 'https://dev.luisices.com.br/images/alexa-large-icon.png';
+const DEFAULT_FALLBACK_IMAGE = 'https://dev.luisices.com.br/images/alexa-large-icon.png';
+const DEFAULT_QR_PLACEHOLDER = 'https://dev.luisices.com.br/images/alexa-large-icon.png';
 
 // Expressões condicionais universais para detecção de viewport
 // Echo Spot: viewport.shape pode ser "ROUND" ou "round", com 480x480.
