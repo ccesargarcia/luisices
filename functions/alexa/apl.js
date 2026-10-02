@@ -424,12 +424,11 @@ function buildOrderCardAplDirective({
             {
               type: 'Container',
               when: WHEN_IS_RECTANGULAR,
-              direction: "${viewport.width > viewport.height ? 'row' : 'column'}",
+              direction: 'row',
               grow: 1,
-              paddingLeft: '5vw',
-              paddingRight: '5vw',
+              paddingLeft: '32dp',
+              paddingRight: '32dp',
               paddingBottom: '24dp',
-              paddingTop: '2vh',
               alignItems: 'center',
               justifyContent: 'center',
               items: [
@@ -440,15 +439,11 @@ function buildOrderCardAplDirective({
                   backgroundColor: '#231C1E',
                   borderColor: 'rgba(235, 205, 205, 0.18)',
                   borderWidth: '1dp',
-                  width: "${viewport.width > viewport.height ? '35vw' : '60vw'}",
-                  height: "${viewport.width > viewport.height ? '35vw' : '60vw'}",
-                  maxWidth: '300dp',
-                  maxHeight: '300dp',
                   item: {
                     type: 'Image',
                     source: '${payload.order.imageUrl}',
-                    width: '100%',
-                    height: '100%',
+                    width: '260dp',
+                    height: '260dp',
                     scale: 'best-fit',
                     borderRadius: '16dp',
                   },
@@ -457,10 +452,8 @@ function buildOrderCardAplDirective({
                 {
                   type: 'Container',
                   grow: 1,
-                  paddingLeft: "${viewport.width > viewport.height ? '32dp' : '0'}",
-                  paddingTop: "${viewport.width > viewport.height ? '0' : '24dp'}",
+                  paddingLeft: '32dp',
                   justifyContent: 'center',
-                  alignItems: "${viewport.width > viewport.height ? 'start' : 'center'}",
                   items: [
                     // Badge de Status
                     {
@@ -747,9 +740,8 @@ function buildOrderSuccessAplDirective({
                       },
                       {
                         type: 'Container',
-                        direction: "${viewport.width > viewport.height ? 'row' : 'column'}",
+                        direction: 'row',
                         paddingTop: '10dp',
-                        alignItems: 'center',
                         items: [
                           {
                             type: 'Text',

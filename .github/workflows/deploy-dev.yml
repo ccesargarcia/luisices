@@ -84,3 +84,10 @@ jobs:
           export GOOGLE_APPLICATION_CREDENTIALS="$HOME/firebase-service-account.json"
           npx --yes firebase-tools deploy --only firestore:rules,firestore:indexes --project luisices-dev --non-interactive
 
+      - name: Deploy Firebase Functions (Dev)
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_DEV }}
+        run: |
+          export GOOGLE_APPLICATION_CREDENTIALS="$HOME/firebase-service-account.json"
+          npx --yes firebase-tools deploy --only functions --project luisices-dev --non-interactive
+
