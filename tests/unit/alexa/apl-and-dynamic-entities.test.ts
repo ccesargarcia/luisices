@@ -529,7 +529,7 @@ describe('Alexa Advancements: Dynamic Entities, Fuzzy Suggestions & APL', () => 
       expect(res.directives).toBeDefined();
       const aplDir = res.directives.find((d: any) => d.type === 'Alexa.Presentation.APL.RenderDocument');
       expect(aplDir).toBeDefined();
-      expect(aplDir.token).toBe('luisicesOrderToken');
+      expect(aplDir.token).toContain('luisicesOrderToken');
       expect(aplDir.datasources.payload.order.customer).toBe('Fernanda');
       expect(aplDir.datasources.payload.order.product).toBe('Caixa Pirâmide');
       expect(aplDir.datasources.payload.order.quantity).toBe(10);
@@ -603,7 +603,7 @@ describe('Alexa Advancements: Dynamic Entities, Fuzzy Suggestions & APL', () => 
         request: {
           type: 'Alexa.Presentation.APL.UserEvent',
           requestId: 'amzn1.echo-api.request.touch-confirm-1',
-          arguments: ['confirmOrder'],
+          arguments: ['confirmOrder', draftId, 1],
         },
         context: {
           System: {
@@ -627,6 +627,63 @@ describe('Alexa Advancements: Dynamic Entities, Fuzzy Suggestions & APL', () => 
 
       expect(response.response.outputSpeech.text).toContain('Pedido criado');
       expect(response.response.shouldEndSession).toBe(true);
+    });
+
+    it('rejeita evento de toque APL com draftId ou revisão desatualizada (P1 Segurança)', async () => {
+      const mockDb = createMockDb();
+      const draftId = 'draft-touch-stale';
+      const sessionId = 'sess-touch-stale';
+
+      mockDb.store.alexaDrafts[draftId] = {
+        draftId,
+        sessionId,
+        uid: baseIdentity.uid,
+        bindingKey: baseIdentity.bindingKey,
+        personId: baseIdentity.personId,
+        mode: 'voice_confirm',
+        state: 'awaiting_confirmation',
+        customer: 'Mariana',
+        product: 'Caixa Milk',
+        quantity: 5,
+        deliveryDate: '2026-10-25',
+        price: 60,
+        pricingMode: 'total',
+        revision: 2,
+        createdAt: { toMillis: () => Date.now() },
+        expiresAt: { toDate: () => new Date(Date.now() + 600000) },
+      };
+
+      // Simula toque com revisão 1 quando a tela atual já está na revisão 2
+      const userEventEnvelope = {
+        session: {
+          sessionId,
+          application: { applicationId: baseConfig.allowedSkillId },
+          user: { userId: amazonUserId },
+          attributes: { draftId, revision: 2, personId: baseIdentity.personId },
+        },
+        request: {
+          type: 'Alexa.Presentation.APL.UserEvent',
+          requestId: 'amzn1.echo-api.request.touch-stale-1',
+          arguments: ['confirmOrder', draftId, 1],
+        },
+        context: {
+          System: {
+            application: { applicationId: baseConfig.allowedSkillId },
+            user: { userId: amazonUserId },
+            person: { personId: baseIdentity.personId },
+            device: { supportedInterfaces: { 'Alexa.Presentation.APL': {} } },
+          },
+        },
+      };
+
+      const response = await processAlexaEnvelope(userEventEnvelope, {
+        db: mockDb,
+        config: baseConfig,
+        authService: { getUser: async (uid: string) => ({ uid, disabled: false }) },
+      });
+
+      expect(response.response.outputSpeech.text).toContain('atualizado');
+      expect(response.response.shouldEndSession).toBe(false);
     });
   });
 });

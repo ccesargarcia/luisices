@@ -8,7 +8,13 @@ const admin = require('firebase-admin');
 const { escapeXmlCharacters } = require('ask-sdk-core');
 const { COLLECTIONS, recordAuditEvent } = require('./repository');
 const { commitOrderFromDraft } = require('./orderService');
-const { supportsApl, buildOrderCardAplDirective, buildWelcomeAplDirective } = require('./apl');
+const {
+  supportsApl,
+  buildOrderCardAplDirective,
+  buildWelcomeAplDirective,
+  buildOrderSuccessAplDirective,
+  buildFuzzySuggestionsAplDirective,
+} = require('./apl');
 const { buildDynamicEntitiesDirective, fetchCatalogProductsForDynamicEntities } = require('./dynamicEntities');
 const { findClosestProductSuggestions, buildSuggestionPrompt } = require('./fuzzySuggestions');
 
@@ -19,13 +25,24 @@ const MONTH_NAMES = [
 ];
 
 /**
- * Emite evento diagnóstico estruturado sem dados sensíveis (PII, tokens ou payloads brutos).
+ * Emite evento diagnóstico estruturado sem dados sensíveis (PII, tokens, sessionId ou payloads brutos).
  */
 function logAlexaDiagnostic(event) {
   try {
+    const sanitized = { ...event };
+    if (sanitized.sessionId) {
+      sanitized.sessionHash = crypto.createHash('sha256').update(String(sanitized.sessionId)).digest('hex').slice(0, 12);
+      delete sanitized.sessionId;
+    }
+    if (sanitized.orderNumber !== undefined) {
+      sanitized.hasOrderNumber = Boolean(sanitized.orderNumber);
+      delete sanitized.orderNumber;
+    }
+    delete sanitized.customer;
+    delete sanitized.product;
     console.info('[AlexaDiagnostic]', JSON.stringify({
       timestamp: new Date().toISOString(),
-      ...event,
+      ...sanitized,
     }));
   } catch (_) {}
 }
@@ -971,6 +988,8 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
         const directives = [
           isApl
             ? buildOrderCardAplDirective({
+                draftId: activeDraft.draftId,
+                revision: activeDraft.revision,
                 customer: activeDraft.customer,
                 product: activeDraft.product,
                 quantity: activeDraft.quantity,
@@ -978,6 +997,7 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
                 totalPrice: formatCurrencyPtBr(activeDraft.price),
                 statusLabel: 'Aguardando Confirmação',
                 envLabel,
+                showActions: true,
               })
             : null,
           dynDirective,
@@ -1027,6 +1047,8 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
         const directives = [
           isApl
             ? buildOrderCardAplDirective({
+                draftId: activeDraft.draftId,
+                revision: activeDraft.revision,
                 customer: activeDraft.customer,
                 product: activeDraft.product,
                 quantity: activeDraft.quantity,
@@ -1034,6 +1056,7 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
                 totalPrice: formatCurrencyPtBr(activeDraft.price),
                 statusLabel: 'Pedido em Andamento',
                 envLabel,
+                showActions: true,
               })
             : null,
           dynDirective,
@@ -1412,12 +1435,25 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
     }
   }
 
-  const productSlot = slots.product?.value || slots.Product?.value;
-  if (productSlot) {
-    const cleanProd = productSlot.trim();
-    if (cleanProd.length >= 1 && cleanProd.length <= 200) {
-      rawIncomingUpdates.product = cleanProd;
+  const productSlotObj = slots.product || slots.Product;
+  let cleanProd = productSlotObj?.value ? String(productSlotObj.value).trim() : '';
+
+  // Consome resolutions do NLU da Alexa se houver resolução canônica com ER_SUCCESS_MATCH (Achado P2)
+  const resolutions = productSlotObj?.resolutions?.resolutionsPerAuthority;
+  if (Array.isArray(resolutions)) {
+    for (const res of resolutions) {
+      if (res.status?.code === 'ER_SUCCESS_MATCH' && Array.isArray(res.values) && res.values.length === 1) {
+        const canonicalName = res.values[0]?.value?.name;
+        if (canonicalName && typeof canonicalName === 'string') {
+          cleanProd = canonicalName.trim();
+          break;
+        }
+      }
     }
+  }
+
+  if (cleanProd && cleanProd.length >= 1 && cleanProd.length <= 200) {
+    rawIncomingUpdates.product = cleanProd;
   }
 
   const quantitySlot = slots.quantity?.value || slots.Quantity?.value;
@@ -1491,8 +1527,9 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
     }
   }
 
-  // Consulta controlada ao catálogo do usuário (Fase 4)
+  // Consulta controlada ao catálogo do usuário (Fase 4 & Sugestões Fuzzy)
   let catalogMatch = null;
+  let fuzzySuggestions = [];
   if (rawIncomingUpdates.product && db && identity.uid) {
     try {
       const matches = await searchUserCatalog(db, identity.uid, rawIncomingUpdates.product);
@@ -1502,6 +1539,10 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
       // ou apenas correspondência parcial por substring, NÃO escolher arbitrariamente matches[0].
       if (exactMatches.length === 1) {
         catalogMatch = exactMatches[0];
+      } else if (exactMatches.length === 0) {
+        // Se não houver correspondência exata, busca sugestões próximas no catálogo
+        const dynProducts = await fetchCatalogProductsForDynamicEntities(db, identity.uid).catch(() => []);
+        fuzzySuggestions = findClosestProductSuggestions(rawIncomingUpdates.product, dynProducts, 2);
       }
     } catch (err) {
       console.warn('[AlexaDialog] Erro ao buscar produto no catálogo:', err?.message || err);
@@ -2528,6 +2569,8 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
       const directives = isApl
         ? [
             buildOrderCardAplDirective({
+              draftId: draft.draftId,
+              revision: draft.revision,
               customer: draft.customer,
               product: draft.product,
               quantity: draft.quantity,
@@ -2535,6 +2578,7 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
               totalPrice: formatCurrencyPtBr(draft.price),
               statusLabel: 'Aguardando Aprovação no App',
               envLabel,
+              showActions: false,
             }),
           ]
         : undefined;
@@ -2694,13 +2738,12 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
         const isApl = supportsApl(envelope);
         const directives = isApl
           ? [
-              buildOrderCardAplDirective({
+              buildOrderSuccessAplDirective({
+                orderNumber: commitRes.orderNumber,
                 customer: draft.customer,
                 product: draft.product,
                 quantity: draft.quantity,
-                deliveryDate: formatDatePtBr(draft.deliveryDate),
                 totalPrice: formatCurrencyPtBr(draft.price),
-                statusLabel: `Pedido #${commitRes.orderNumber} Confirmado`,
                 envLabel,
               }),
             ]
@@ -2770,6 +2813,8 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
   const directives = isApl
     ? [
         buildOrderCardAplDirective({
+          draftId: draft.draftId,
+          revision: draft.revision,
           customer: draft.customer,
           product: draft.product,
           quantity: draft.quantity,
@@ -2777,6 +2822,7 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
           totalPrice: formatCurrencyPtBr(draft.price),
           statusLabel: 'Aguardando Confirmação',
           envLabel: config.environment === 'prod' ? 'produção' : 'teste',
+          showActions: true,
         }),
       ]
     : undefined;

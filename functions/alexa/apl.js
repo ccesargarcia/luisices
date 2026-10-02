@@ -1,7 +1,8 @@
 /**
  * Módulo de Apresentação Visual da Alexa (Alexa Presentation Language - APL 1.6+).
  * Design System oficial do Luisices para dispositivos com tela (Echo Show 5/8/10/15, Echo Spot e Fire TV).
- * Inclui layouts responsivos, suporte completo e robusto a telas circulares (Echo Spot 480x480), Glassmorphism, e botões interativos por toque.
+ * Inclui layouts responsivos, suporte completo e robusto a telas circulares (Echo Spot), Glassmorphism, e botões interativos por toque.
+ * Conformidade estrita com a especificação APL 1.6+ (uso de Frame para fundos e bordas).
  */
 
 const DEFAULT_BRAND_LOGO = 'https://dev.luisices.com.br/images/alexa-large-icon.png';
@@ -28,25 +29,27 @@ function supportsApl(envelope) {
 function getAplStyles() {
   return {
     colors: {
-      bgMain: '#1E1B2E',
-      bgCard: '#28223B',
-      bgGlass: 'rgba(40, 34, 59, 0.85)',
-      borderGlass: 'rgba(255, 255, 255, 0.12)',
+      bgMain: '#161214',
+      bgCard: '#231C1E',
+      bgGlass: 'rgba(35, 28, 30, 0.88)',
+      borderGlass: 'rgba(235, 205, 205, 0.18)',
+      primaryRose: '#F4B7B9',
+      primaryButton: '#7B4D50',
       primaryPurple: '#7C3AED',
-      primaryPurpleLight: '#9333EA',
+      secondaryText: '#E8E0E3',
       accentGreen: '#10B981',
       accentGreenLight: '#34D399',
       accentAmber: '#F59E0B',
-      accentCoral: '#EF4444',
+      accentCoral: '#E58E8E',
       textPrimary: '#FFFFFF',
-      textSecondary: '#D8B4FE',
-      textMuted: '#9CA3AF',
+      textSecondary: '#E8E0E3',
+      textMuted: '#C9C0B8',
     },
   };
 }
 
 /**
- * 1. Constrói o documento APL de Boas-Vindas no Echo Show e Echo Spot (LaunchRequest).
+ * 1. Constrói o documento APL de Boas-Vindas no Echo Show, Echo Spot e Fire TV (LaunchRequest).
  */
 function buildWelcomeAplDirective({ userName = 'Ateliê', envLabel = 'Teste' }) {
   const document = {
@@ -66,7 +69,7 @@ function buildWelcomeAplDirective({ userName = 'Ateliê', envLabel = 'Teste' }) 
           type: 'Container',
           width: '100vw',
           height: '100vh',
-          backgroundColor: '#1E1B2E',
+          backgroundColor: '#161214',
           items: [
             // Cabeçalho Oficial para telas retangulares (Echo Show 5/8/10/15, Fire TV)
             {
@@ -108,7 +111,7 @@ function buildWelcomeAplDirective({ userName = 'Ateliê', envLabel = 'Teste' }) 
                 {
                   type: 'Text',
                   text: 'Luisices • ${payload.welcome.envLabel}',
-                  color: '#D8B4FE',
+                  color: '#E8E0E3',
                   fontSize: '14dp',
                   paddingTop: '4dp',
                   paddingBottom: '12dp',
@@ -117,30 +120,26 @@ function buildWelcomeAplDirective({ userName = 'Ateliê', envLabel = 'Teste' }) 
                 {
                   type: 'TouchWrapper',
                   onPress: [{ type: 'SendEvent', arguments: ['intent', 'CreateOrderIntent'] }],
-                  items: [
-                    {
-                      type: 'Container',
-                      backgroundColor: '#7C3AED',
-                      borderRadius: '16dp',
-                      paddingLeft: '16dp',
-                      paddingRight: '16dp',
-                      paddingTop: '8dp',
-                      paddingBottom: '8dp',
-                      items: [
-                        {
-                          type: 'Text',
-                          text: '🗣️ Criar Pedido',
-                          color: '#FFFFFF',
-                          fontSize: '14dp',
-                          fontWeight: 'bold',
-                        },
-                      ],
+                  item: {
+                    type: 'Frame',
+                    backgroundColor: '#7B4D50',
+                    borderRadius: '16dp',
+                    paddingLeft: '16dp',
+                    paddingRight: '16dp',
+                    paddingTop: '8dp',
+                    paddingBottom: '8dp',
+                    item: {
+                      type: 'Text',
+                      text: '🗣️ Criar Pedido',
+                      color: '#FFFFFF',
+                      fontSize: '14dp',
+                      fontWeight: 'bold',
                     },
-                  ],
+                  },
                 },
               ],
             },
-            // Layout Principal para Echo Show (Telas Retangulares / Grandes)
+            // Layout Principal para Echo Show e Fire TV (Telas Retangulares / Grandes)
             {
               type: 'Container',
               when: WHEN_IS_RECTANGULAR,
@@ -160,7 +159,7 @@ function buildWelcomeAplDirective({ userName = 'Ateliê', envLabel = 'Teste' }) 
                 {
                   type: 'Text',
                   text: 'O que deseja fazer hoje no ateliê?',
-                  color: '#D8B4FE',
+                  color: '#E8E0E3',
                   fontSize: '20dp',
                   paddingTop: '8dp',
                   paddingBottom: '24dp',
@@ -173,76 +172,68 @@ function buildWelcomeAplDirective({ userName = 'Ateliê', envLabel = 'Teste' }) 
                     {
                       type: 'TouchWrapper',
                       onPress: [{ type: 'SendEvent', arguments: ['intent', 'CreateOrderIntent'] }],
-                      items: [
-                        {
-                          type: 'Container',
-                          backgroundColor: '#7C3AED',
-                          borderRadius: '20dp',
-                          paddingLeft: '20dp',
-                          paddingRight: '20dp',
-                          paddingTop: '12dp',
-                          paddingBottom: '12dp',
-                          marginRight: '16dp',
-                          items: [
-                            {
-                              type: 'Text',
-                              text: '🗣️ "Criar pedido"',
-                              color: '#FFFFFF',
-                              fontSize: '18dp',
-                              fontWeight: 'bold',
-                            },
-                          ],
+                      item: {
+                        type: 'Frame',
+                        backgroundColor: '#7B4D50',
+                        borderRadius: '20dp',
+                        paddingLeft: '20dp',
+                        paddingRight: '20dp',
+                        paddingTop: '12dp',
+                        paddingBottom: '12dp',
+                        marginRight: '16dp',
+                        item: {
+                          type: 'Text',
+                          text: '🗣️ "Criar pedido"',
+                          color: '#FFFFFF',
+                          fontSize: '18dp',
+                          fontWeight: 'bold',
                         },
-                      ],
+                      },
                     },
                     {
                       type: 'TouchWrapper',
-                      onPress: [{ type: 'SendEvent', arguments: ['intent', 'RecentOrdersIntent'] }],
-                      items: [
-                        {
-                          type: 'Container',
-                          backgroundColor: '#374151',
-                          borderRadius: '20dp',
-                          paddingLeft: '20dp',
-                          paddingRight: '20dp',
-                          paddingTop: '12dp',
-                          paddingBottom: '12dp',
-                          marginRight: '16dp',
-                          items: [
-                            {
-                              type: 'Text',
-                              text: '📋 "Ver últimos pedidos"',
-                              color: '#FFFFFF',
-                              fontSize: '18dp',
-                              fontWeight: 'bold',
-                            },
-                          ],
+                      onPress: [{ type: 'SendEvent', arguments: ['intent', 'ListRecentOrdersIntent'] }],
+                      item: {
+                        type: 'Frame',
+                        backgroundColor: '#231C1E',
+                        borderColor: 'rgba(235, 205, 205, 0.18)',
+                        borderWidth: '1dp',
+                        borderRadius: '20dp',
+                        paddingLeft: '20dp',
+                        paddingRight: '20dp',
+                        paddingTop: '12dp',
+                        paddingBottom: '12dp',
+                        marginRight: '16dp',
+                        item: {
+                          type: 'Text',
+                          text: '📋 "Ver últimos pedidos"',
+                          color: '#FFFFFF',
+                          fontSize: '18dp',
+                          fontWeight: 'bold',
                         },
-                      ],
+                      },
                     },
                     {
                       type: 'TouchWrapper',
                       onPress: [{ type: 'SendEvent', arguments: ['intent', 'LinkVoiceIntent'] }],
-                      items: [
-                        {
-                          type: 'Container',
-                          backgroundColor: '#374151',
-                          borderRadius: '20dp',
-                          paddingLeft: '20dp',
-                          paddingRight: '20dp',
-                          paddingTop: '12dp',
-                          paddingBottom: '12dp',
-                          items: [
-                            {
-                              type: 'Text',
-                              text: '🎙️ "Vincular voz"',
-                              color: '#FFFFFF',
-                              fontSize: '18dp',
-                              fontWeight: 'bold',
-                            },
-                          ],
+                      item: {
+                        type: 'Frame',
+                        backgroundColor: '#231C1E',
+                        borderColor: 'rgba(235, 205, 205, 0.18)',
+                        borderWidth: '1dp',
+                        borderRadius: '20dp',
+                        paddingLeft: '20dp',
+                        paddingRight: '20dp',
+                        paddingTop: '12dp',
+                        paddingBottom: '12dp',
+                        item: {
+                          type: 'Text',
+                          text: '🎙️ "Vincular voz"',
+                          color: '#FFFFFF',
+                          fontSize: '18dp',
+                          fontWeight: 'bold',
                         },
-                      ],
+                      },
                     },
                   ],
                 },
@@ -272,10 +263,12 @@ function buildWelcomeAplDirective({ userName = 'Ateliê', envLabel = 'Teste' }) 
 }
 
 /**
- * 2. Constrói o documento APL para exibição do Card Interativo de Pedido no Echo Show e Echo Spot.
- * Suporta botões tocáveis [Confirmar] e [Cancelar] e adaptação circular robusta para Echo Spot.
+ * 2. Constrói o documento APL para exibição do Card Interativo de Pedido no Echo Show, Echo Spot e Fire TV.
+ * Suporta botões tocáveis [Confirmar] e [Cancelar], vinculação de token/draftId/revision e adaptação circular para Echo Spot.
  */
 function buildOrderCardAplDirective({
+  draftId = null,
+  revision = 1,
   customer = 'Não informado',
   product = 'Produto Personalizado',
   quantity = 1,
@@ -303,7 +296,7 @@ function buildOrderCardAplDirective({
           type: 'Container',
           width: '100vw',
           height: '100vh',
-          backgroundColor: '#1E1B2E',
+          backgroundColor: '#161214',
           items: [
             // Cabeçalho Oficial para telas retangulares (Echo Show 5/8/10/15, Fire TV)
             {
@@ -334,22 +327,20 @@ function buildOrderCardAplDirective({
                   paddingBottom: '4dp',
                 },
                 {
-                  type: 'Container',
-                  backgroundColor: '#5B21B6',
+                  type: 'Frame',
+                  backgroundColor: '#7B4D50',
                   borderRadius: '6dp',
                   paddingLeft: '8dp',
                   paddingRight: '8dp',
                   paddingTop: '2dp',
                   paddingBottom: '2dp',
-                  items: [
-                    {
-                      type: 'Text',
-                      text: '${payload.order.statusLabel}',
-                      color: '#F3E8FF',
-                      fontSize: '11dp',
-                      fontWeight: 'bold',
-                    },
-                  ],
+                  item: {
+                    type: 'Text',
+                    text: '${payload.order.statusLabel}',
+                    color: '#F4B7B9',
+                    fontSize: '11dp',
+                    fontWeight: 'bold',
+                  },
                 },
                 {
                   type: 'Text',
@@ -364,7 +355,7 @@ function buildOrderCardAplDirective({
                 {
                   type: 'Text',
                   text: '👤 ${payload.order.customer}',
-                  color: '#D8B4FE',
+                  color: '#E8E0E3',
                   fontSize: '13dp',
                   paddingTop: '2dp',
                   textAlign: 'center',
@@ -385,58 +376,50 @@ function buildOrderCardAplDirective({
                   items: [
                     {
                       type: 'TouchWrapper',
-                      onPress: [{ type: 'SendEvent', arguments: ['confirmOrder'] }],
-                      items: [
-                        {
-                          type: 'Container',
-                          backgroundColor: '#10B981',
-                          borderRadius: '12dp',
-                          paddingLeft: '12dp',
-                          paddingRight: '12dp',
-                          paddingTop: '6dp',
-                          paddingBottom: '6dp',
-                          marginRight: '8dp',
-                          items: [
-                            {
-                              type: 'Text',
-                              text: '✅ Confirmar',
-                              color: '#FFFFFF',
-                              fontSize: '12dp',
-                              fontWeight: 'bold',
-                            },
-                          ],
+                      onPress: [{ type: 'SendEvent', arguments: ['confirmOrder', '${payload.order.draftId}', '${payload.order.revision}'] }],
+                      item: {
+                        type: 'Frame',
+                        backgroundColor: '#10B981',
+                        borderRadius: '12dp',
+                        paddingLeft: '12dp',
+                        paddingRight: '12dp',
+                        paddingTop: '6dp',
+                        paddingBottom: '6dp',
+                        marginRight: '8dp',
+                        item: {
+                          type: 'Text',
+                          text: '✅ Confirmar',
+                          color: '#FFFFFF',
+                          fontSize: '12dp',
+                          fontWeight: 'bold',
                         },
-                      ],
+                      },
                     },
                     {
                       type: 'TouchWrapper',
-                      onPress: [{ type: 'SendEvent', arguments: ['cancelOrder'] }],
-                      items: [
-                        {
-                          type: 'Container',
-                          backgroundColor: '#EF4444',
-                          borderRadius: '12dp',
-                          paddingLeft: '12dp',
-                          paddingRight: '12dp',
-                          paddingTop: '6dp',
-                          paddingBottom: '6dp',
-                          items: [
-                            {
-                              type: 'Text',
-                              text: '❌ Cancelar',
-                              color: '#FFFFFF',
-                              fontSize: '12dp',
-                              fontWeight: 'bold',
-                            },
-                          ],
+                      onPress: [{ type: 'SendEvent', arguments: ['cancelOrder', '${payload.order.draftId}', '${payload.order.revision}'] }],
+                      item: {
+                        type: 'Frame',
+                        backgroundColor: '#E58E8E',
+                        borderRadius: '12dp',
+                        paddingLeft: '12dp',
+                        paddingRight: '12dp',
+                        paddingTop: '6dp',
+                        paddingBottom: '6dp',
+                        item: {
+                          type: 'Text',
+                          text: '❌ Cancelar',
+                          color: '#161214',
+                          fontSize: '12dp',
+                          fontWeight: 'bold',
                         },
-                      ],
+                      },
                     },
                   ],
                 },
               ],
             },
-            // Layout Retangular Padrão para Echo Show 5 / 8 / 10 / 15
+            // Layout Retangular Padrão para Echo Show e Fire TV
             {
               type: 'Container',
               when: WHEN_IS_RECTANGULAR,
@@ -448,16 +431,21 @@ function buildOrderCardAplDirective({
               alignItems: 'center',
               justifyContent: 'center',
               items: [
-                // Coluna Esquerda: Imagem do Produto
+                // Coluna Esquerda: Imagem do Produto envolvida em Frame
                 {
-                  type: 'Image',
-                  source: '${payload.order.imageUrl}',
-                  width: '260dp',
-                  height: '260dp',
-                  scale: 'best-fit',
+                  type: 'Frame',
                   borderRadius: '16dp',
-                  backgroundColor: '#2A2438',
-                  overlayColor: 'rgba(0,0,0,0.1)',
+                  backgroundColor: '#231C1E',
+                  borderColor: 'rgba(235, 205, 205, 0.18)',
+                  borderWidth: '1dp',
+                  item: {
+                    type: 'Image',
+                    source: '${payload.order.imageUrl}',
+                    width: '260dp',
+                    height: '260dp',
+                    scale: 'best-fit',
+                    borderRadius: '16dp',
+                  },
                 },
                 // Coluna Direita: Dados do Pedido + Botões de Toque
                 {
@@ -468,23 +456,21 @@ function buildOrderCardAplDirective({
                   items: [
                     // Badge de Status
                     {
-                      type: 'Container',
-                      backgroundColor: '#5B21B6',
+                      type: 'Frame',
+                      backgroundColor: '#7B4D50',
                       borderRadius: '8dp',
                       paddingLeft: '12dp',
                       paddingRight: '12dp',
                       paddingTop: '4dp',
                       paddingBottom: '4dp',
                       alignSelf: 'start',
-                      items: [
-                        {
-                          type: 'Text',
-                          text: '${payload.order.statusLabel}',
-                          color: '#F3E8FF',
-                          fontSize: '14dp',
-                          fontWeight: 'bold',
-                        },
-                      ],
+                      item: {
+                        type: 'Text',
+                        text: '${payload.order.statusLabel}',
+                        color: '#F4B7B9',
+                        fontSize: '14dp',
+                        fontWeight: 'bold',
+                      },
                     },
                     // Nome do Produto e Quantidade
                     {
@@ -500,7 +486,7 @@ function buildOrderCardAplDirective({
                     {
                       type: 'Text',
                       text: '👤 Cliente: ${payload.order.customer}',
-                      color: '#D8B4FE',
+                      color: '#E8E0E3',
                       fontSize: '20dp',
                       paddingTop: '6dp',
                     },
@@ -508,7 +494,7 @@ function buildOrderCardAplDirective({
                     {
                       type: 'Text',
                       text: '📅 Entrega: ${payload.order.deliveryDate}',
-                      color: '#E9D5FF',
+                      color: '#C9C0B8',
                       fontSize: '18dp',
                       paddingTop: '4dp',
                     },
@@ -530,52 +516,46 @@ function buildOrderCardAplDirective({
                       items: [
                         {
                           type: 'TouchWrapper',
-                          onPress: [{ type: 'SendEvent', arguments: ['confirmOrder'] }],
-                          items: [
-                            {
-                              type: 'Container',
-                              backgroundColor: '#10B981',
-                              borderRadius: '16dp',
-                              paddingLeft: '24dp',
-                              paddingRight: '24dp',
-                              paddingTop: '10dp',
-                              paddingBottom: '10dp',
-                              marginRight: '16dp',
-                              items: [
-                                {
-                                  type: 'Text',
-                                  text: '✅ Confirmar Pedido',
-                                  color: '#FFFFFF',
-                                  fontSize: '16dp',
-                                  fontWeight: 'bold',
-                                },
-                              ],
+                          onPress: [{ type: 'SendEvent', arguments: ['confirmOrder', '${payload.order.draftId}', '${payload.order.revision}'] }],
+                          item: {
+                            type: 'Frame',
+                            backgroundColor: '#10B981',
+                            borderRadius: '16dp',
+                            paddingLeft: '24dp',
+                            paddingRight: '24dp',
+                            paddingTop: '10dp',
+                            paddingBottom: '10dp',
+                            marginRight: '16dp',
+                            item: {
+                              type: 'Text',
+                              text: '✅ Confirmar Pedido',
+                              color: '#FFFFFF',
+                              fontSize: '16dp',
+                              fontWeight: 'bold',
                             },
-                          ],
+                          },
                         },
                         {
                           type: 'TouchWrapper',
-                          onPress: [{ type: 'SendEvent', arguments: ['cancelOrder'] }],
-                          items: [
-                            {
-                              type: 'Container',
-                              backgroundColor: '#374151',
-                              borderRadius: '16dp',
-                              paddingLeft: '20dp',
-                              paddingRight: '20dp',
-                              paddingTop: '10dp',
-                              paddingBottom: '10dp',
-                              items: [
-                                {
-                                  type: 'Text',
-                                  text: '❌ Cancelar',
-                                  color: '#E5E7EB',
-                                  fontSize: '16dp',
-                                  fontWeight: 'bold',
-                                },
-                              ],
+                          onPress: [{ type: 'SendEvent', arguments: ['cancelOrder', '${payload.order.draftId}', '${payload.order.revision}'] }],
+                          item: {
+                            type: 'Frame',
+                            backgroundColor: '#231C1E',
+                            borderColor: 'rgba(235, 205, 205, 0.18)',
+                            borderWidth: '1dp',
+                            borderRadius: '16dp',
+                            paddingLeft: '20dp',
+                            paddingRight: '20dp',
+                            paddingTop: '10dp',
+                            paddingBottom: '10dp',
+                            item: {
+                              type: 'Text',
+                              text: '❌ Cancelar',
+                              color: '#E8E0E3',
+                              fontSize: '16dp',
+                              fontWeight: 'bold',
                             },
-                          ],
+                          },
                         },
                       ],
                     },
@@ -589,9 +569,13 @@ function buildOrderCardAplDirective({
     },
   };
 
+  const token = draftId ? `luisicesOrderToken_${draftId}_${revision || 1}` : 'luisicesOrderToken';
+
   const datasources = {
     payload: {
       order: {
+        draftId: draftId || '',
+        revision: revision || 1,
         customer,
         product,
         quantity,
@@ -607,7 +591,7 @@ function buildOrderCardAplDirective({
 
   return {
     type: 'Alexa.Presentation.APL.RenderDocument',
-    token: 'luisicesOrderToken',
+    token,
     document,
     datasources,
   };
@@ -636,7 +620,7 @@ function buildOrderSuccessAplDirective({
           type: 'Container',
           width: '100vw',
           height: '100vh',
-          backgroundColor: '#1E1B2E',
+          backgroundColor: '#161214',
           items: [
             // Layout Circular para Echo Spot (480x480)
             {
@@ -676,7 +660,7 @@ function buildOrderSuccessAplDirective({
                 {
                   type: 'Text',
                   text: '👤 ${payload.success.customer}',
-                  color: '#D8B4FE',
+                  color: '#E8E0E3',
                   fontSize: '13dp',
                   textAlign: 'center',
                   paddingTop: '2dp',
@@ -691,7 +675,7 @@ function buildOrderSuccessAplDirective({
                 },
               ],
             },
-            // Layout Retangular para Echo Show (Telas Grandes)
+            // Layout Retangular para Echo Show e Fire TV (Telas Grandes)
             {
               type: 'Container',
               when: WHEN_IS_RECTANGULAR,
@@ -724,7 +708,7 @@ function buildOrderSuccessAplDirective({
                 {
                   type: 'Text',
                   text: 'Total: ${payload.success.totalPrice} • Sincronizado no quadro de produção',
-                  color: '#D8B4FE',
+                  color: '#E8E0E3',
                   fontSize: '18dp',
                   paddingTop: '6dp',
                 },
@@ -773,7 +757,7 @@ function buildFuzzySuggestionsAplDirective({ spokenProduct = '', suggestions = [
           type: 'Container',
           width: '100vw',
           height: '100vh',
-          backgroundColor: '#1E1B2E',
+          backgroundColor: '#161214',
           items: [
             // Cabeçalho Oficial para telas retangulares (Echo Show 5/8/10/15, Fire TV)
             {
@@ -814,7 +798,7 @@ function buildFuzzySuggestionsAplDirective({ spokenProduct = '', suggestions = [
                 {
                   type: 'Text',
                   text: 'Toque para escolher:',
-                  color: '#D8B4FE',
+                  color: '#E8E0E3',
                   fontSize: '12dp',
                   paddingBottom: '8dp',
                   textAlign: 'center',
@@ -824,17 +808,20 @@ function buildFuzzySuggestionsAplDirective({ spokenProduct = '', suggestions = [
                   items: suggestions.slice(0, 2).map((sug) => ({
                     type: 'TouchWrapper',
                     onPress: [{ type: 'SendEvent', arguments: ['selectProduct', sug.name] }],
-                    items: [
-                      {
+                    item: {
+                      type: 'Frame',
+                      backgroundColor: '#231C1E',
+                      borderColor: 'rgba(235, 205, 205, 0.18)',
+                      borderWidth: '1dp',
+                      borderRadius: '12dp',
+                      paddingLeft: '12dp',
+                      paddingRight: '12dp',
+                      paddingTop: '6dp',
+                      paddingBottom: '6dp',
+                      marginBottom: '6dp',
+                      width: '280dp',
+                      item: {
                         type: 'Container',
-                        backgroundColor: '#28223B',
-                        borderRadius: '12dp',
-                        paddingLeft: '12dp',
-                        paddingRight: '12dp',
-                        paddingTop: '6dp',
-                        paddingBottom: '6dp',
-                        marginBottom: '6dp',
-                        width: '280dp',
                         alignItems: 'center',
                         items: [
                           {
@@ -853,12 +840,12 @@ function buildFuzzySuggestionsAplDirective({ spokenProduct = '', suggestions = [
                           },
                         ],
                       },
-                    ],
+                    },
                   })),
                 },
               ],
             },
-            // Layout Retangular para Echo Show (Telas Grandes)
+            // Layout Retangular para Echo Show e Fire TV (Telas Grandes)
             {
               type: 'Container',
               when: WHEN_IS_RECTANGULAR,
@@ -870,7 +857,7 @@ function buildFuzzySuggestionsAplDirective({ spokenProduct = '', suggestions = [
                 {
                   type: 'Text',
                   text: 'Toque ou diga o produto desejado:',
-                  color: '#D8B4FE',
+                  color: '#E8E0E3',
                   fontSize: '20dp',
                   paddingBottom: '20dp',
                 },
@@ -881,17 +868,20 @@ function buildFuzzySuggestionsAplDirective({ spokenProduct = '', suggestions = [
                   items: suggestions.slice(0, 2).map((sug, idx) => ({
                     type: 'TouchWrapper',
                     onPress: [{ type: 'SendEvent', arguments: ['selectProduct', sug.name] }],
-                    items: [
-                      {
+                    item: {
+                      type: 'Frame',
+                      backgroundColor: '#231C1E',
+                      borderColor: 'rgba(235, 205, 205, 0.18)',
+                      borderWidth: '1dp',
+                      borderRadius: '16dp',
+                      paddingLeft: '24dp',
+                      paddingRight: '24dp',
+                      paddingTop: '20dp',
+                      paddingBottom: '20dp',
+                      marginRight: idx === 0 ? '24dp' : '0dp',
+                      width: '380dp',
+                      item: {
                         type: 'Container',
-                        backgroundColor: '#28223B',
-                        borderRadius: '16dp',
-                        paddingLeft: '24dp',
-                        paddingRight: '24dp',
-                        paddingTop: '20dp',
-                        paddingBottom: '20dp',
-                        marginRight: idx === 0 ? '24dp' : '0dp',
-                        width: '380dp',
                         alignItems: 'center',
                         items: [
                           {
@@ -920,7 +910,7 @@ function buildFuzzySuggestionsAplDirective({ spokenProduct = '', suggestions = [
                           },
                         ],
                       },
-                    ],
+                    },
                   })),
                 },
               ],
@@ -967,7 +957,7 @@ function buildVoicePairingAplDirective({ pairingCode = '000000', qrCodeUrl = nul
           type: 'Container',
           width: '100vw',
           height: '100vh',
-          backgroundColor: '#1E1B2E',
+          backgroundColor: '#161214',
           items: [
             // Cabeçalho Oficial para telas retangulares (Echo Show 5/8/10/15, Fire TV)
             {
@@ -1000,13 +990,15 @@ function buildVoicePairingAplDirective({ pairingCode = '000000', qrCodeUrl = nul
                 {
                   type: 'Text',
                   text: 'Código de Pareamento:',
-                  color: '#D8B4FE',
+                  color: '#E8E0E3',
                   fontSize: '14dp',
                   textAlign: 'center',
                 },
                 {
-                  type: 'Container',
-                  backgroundColor: '#28223B',
+                  type: 'Frame',
+                  backgroundColor: '#231C1E',
+                  borderColor: 'rgba(235, 205, 205, 0.18)',
+                  borderWidth: '1dp',
                   borderRadius: '12dp',
                   paddingLeft: '18dp',
                   paddingRight: '18dp',
@@ -1014,27 +1006,25 @@ function buildVoicePairingAplDirective({ pairingCode = '000000', qrCodeUrl = nul
                   paddingBottom: '8dp',
                   marginTop: '6dp',
                   marginBottom: '6dp',
-                  items: [
-                    {
-                      type: 'Text',
-                      text: '${payload.pairing.formattedCode}',
-                      color: '#FFFFFF',
-                      fontSize: '32dp',
-                      fontWeight: 'bold',
-                      letterSpacing: '4dp',
-                    },
-                  ],
+                  item: {
+                    type: 'Text',
+                    text: '${payload.pairing.formattedCode}',
+                    color: '#FFFFFF',
+                    fontSize: '32dp',
+                    fontWeight: 'bold',
+                    letterSpacing: '4dp',
+                  },
                 },
                 {
                   type: 'Text',
                   text: 'Informe no app Luisices',
-                  color: '#9CA3AF',
+                  color: '#C9C0B8',
                   fontSize: '12dp',
                   textAlign: 'center',
                 },
               ],
             },
-            // Layout Retangular para Echo Show (Telas Grandes)
+            // Layout Retangular para Echo Show e Fire TV (Telas Grandes)
             {
               type: 'Container',
               when: WHEN_IS_RECTANGULAR,
@@ -1053,12 +1043,14 @@ function buildVoicePairingAplDirective({ pairingCode = '000000', qrCodeUrl = nul
                     {
                       type: 'Text',
                       text: 'Seu Código de Pareamento:',
-                      color: '#D8B4FE',
+                      color: '#E8E0E3',
                       fontSize: '22dp',
                     },
                     {
-                      type: 'Container',
-                      backgroundColor: '#28223B',
+                      type: 'Frame',
+                      backgroundColor: '#231C1E',
+                      borderColor: 'rgba(235, 205, 205, 0.18)',
+                      borderWidth: '1dp',
                       borderRadius: '16dp',
                       paddingLeft: '28dp',
                       paddingRight: '28dp',
@@ -1067,21 +1059,19 @@ function buildVoicePairingAplDirective({ pairingCode = '000000', qrCodeUrl = nul
                       marginTop: '12dp',
                       marginBottom: '12dp',
                       alignSelf: 'start',
-                      items: [
-                        {
-                          type: 'Text',
-                          text: '${payload.pairing.formattedCode}',
-                          color: '#FFFFFF',
-                          fontSize: '48dp',
-                          fontWeight: 'bold',
-                          letterSpacing: '8dp',
-                        },
-                      ],
+                      item: {
+                        type: 'Text',
+                        text: '${payload.pairing.formattedCode}',
+                        color: '#FFFFFF',
+                        fontSize: '48dp',
+                        fontWeight: 'bold',
+                        letterSpacing: '8dp',
+                      },
                     },
                     {
                       type: 'Text',
                       text: 'Acesse o aplicativo Luisices > Ajustes > Integração Alexa e informe este código para autorizar.',
-                      color: '#9CA3AF',
+                      color: '#C9C0B8',
                       fontSize: '16dp',
                       maxLines: 2,
                     },
@@ -1094,18 +1084,26 @@ function buildVoicePairingAplDirective({ pairingCode = '000000', qrCodeUrl = nul
                   paddingLeft: '32dp',
                   items: [
                     {
-                      type: 'Image',
-                      source: '${payload.pairing.qrCodeUrl}',
-                      width: '200dp',
-                      height: '200dp',
-                      scale: 'best-fit',
+                      type: 'Frame',
                       borderRadius: '12dp',
                       backgroundColor: '#FFFFFF',
+                      paddingLeft: '4dp',
+                      paddingRight: '4dp',
+                      paddingTop: '4dp',
+                      paddingBottom: '4dp',
+                      item: {
+                        type: 'Image',
+                        source: '${payload.pairing.qrCodeUrl}',
+                        width: '200dp',
+                        height: '200dp',
+                        scale: 'best-fit',
+                        borderRadius: '10dp',
+                      },
                     },
                     {
                       type: 'Text',
                       text: 'Escaneie com a câmera',
-                      color: '#D8B4FE',
+                      color: '#E8E0E3',
                       fontSize: '14dp',
                       paddingTop: '8dp',
                     },

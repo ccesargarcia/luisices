@@ -202,28 +202,77 @@ async function processAlexaEnvelope(envelope, { db, config, authService = null }
       return await persistResponse(resp);
     }
 
-    // Tratamento de eventos de toque em tela APL (Alexa.Presentation.APL.UserEvent)
+    // Tratamento seguro de eventos de toque em tela APL (Alexa.Presentation.APL.UserEvent)
     if (reqType === 'Alexa.Presentation.APL.UserEvent') {
       const args = Array.isArray(envelope?.request?.arguments) ? envelope.request.arguments : [];
-      const action = args[0];
-      const payload = args[1];
+      const action = String(args[0] || '').trim();
+      const sessionAttrs = envelope?.session?.attributes || {};
+
+      const ALLOWED_INTENTS = new Set([
+        'CreateOrderIntent',
+        'ListRecentOrdersIntent',
+        'LinkVoiceIntent',
+        'AMAZON.HelpIntent',
+        'AMAZON.CancelIntent',
+        'AMAZON.StopIntent',
+      ]);
 
       if (action === 'confirmOrder') {
+        const touchDraftId = args[1] ? String(args[1]).trim() : null;
+        const touchRevision = args[2] !== undefined && args[2] !== null ? Number(args[2]) : null;
+
+        // Se o evento carrega draftId/revision, valida com a sessão atual para evitar toque em tela obsoleta
+        if (touchDraftId && sessionAttrs.draftId && touchDraftId !== sessionAttrs.draftId) {
+          const resp = buildAlexaResponse({
+            speech: 'As informações na tela mudaram. Por favor, revise o pedido atual antes de confirmar.',
+            shouldEndSession: false,
+            sessionAttributes: sessionAttrs,
+          });
+          return await persistResponse(resp);
+        }
+        if (touchRevision !== null && sessionAttrs.revision !== undefined && touchRevision !== sessionAttrs.revision) {
+          const resp = buildAlexaResponse({
+            speech: 'O pedido foi atualizado. Por favor, confirme as novas informações.',
+            shouldEndSession: false,
+            sessionAttributes: sessionAttrs,
+          });
+          return await persistResponse(resp);
+        }
+
         envelope.request.type = 'IntentRequest';
         envelope.request.intent = { name: 'AMAZON.YesIntent', confirmationStatus: 'NONE' };
       } else if (action === 'cancelOrder') {
         envelope.request.type = 'IntentRequest';
         envelope.request.intent = { name: 'AMAZON.CancelIntent', confirmationStatus: 'NONE' };
-      } else if (action === 'selectProduct' && payload) {
+      } else if (action === 'selectProduct' && args[1]) {
         envelope.request.type = 'IntentRequest';
         envelope.request.intent = {
           name: 'ProvideProductIntent',
           confirmationStatus: 'NONE',
-          slots: { product: { name: 'product', value: String(payload) } },
+          slots: { product: { name: 'product', value: String(args[1]).trim() } },
         };
-      } else if (action === 'intent' && payload) {
-        envelope.request.type = 'IntentRequest';
-        envelope.request.intent = { name: String(payload), confirmationStatus: 'NONE' };
+      } else if (action === 'intent' && args[1]) {
+        const requestedIntent = String(args[1]).trim();
+        if (ALLOWED_INTENTS.has(requestedIntent)) {
+          envelope.request.type = 'IntentRequest';
+          envelope.request.intent = { name: requestedIntent, confirmationStatus: 'NONE' };
+        } else {
+          console.warn('[AlexaUserEvent] Intent solicitada por APL não permitida:', requestedIntent);
+          const resp = buildAlexaResponse({
+            speech: 'Ação não disponível no momento.',
+            shouldEndSession: false,
+            sessionAttributes: sessionAttrs,
+          });
+          return await persistResponse(resp);
+        }
+      } else {
+        console.warn('[AlexaUserEvent] Ação APL não reconhecida:', action);
+        const resp = buildAlexaResponse({
+          speech: 'Opção não reconhecida.',
+          shouldEndSession: false,
+          sessionAttributes: sessionAttrs,
+        });
+        return await persistResponse(resp);
       }
     }
 
