@@ -194,6 +194,125 @@ describe('Alexa: Precificação Unitária, Total e Resolução de Ambiguidades',
       expect(parseAndValidatePriceToCents('0.50')).toEqual({ valid: true, cents: 50, price: 0.5 });
       expect(parseAndValidatePriceToCents('cinquenta centavos')).toEqual({ valid: true, cents: 50, price: 0.5 });
       expect(parseAndValidatePriceToCents(3.5)).toEqual({ valid: true, cents: 350, price: 3.5 });
+      expect(parseAndValidatePriceToCents('3.50 cada')).toEqual({ valid: true, cents: 350, price: 3.5 });
+      expect(parseAndValidatePriceToCents('3,50 no total')).toEqual({ valid: true, cents: 350, price: 3.5 });
+      expect(parseAndValidatePriceToCents('3.50 por unidade')).toEqual({ valid: true, cents: 350, price: 3.5 });
+      expect(parseAndValidatePriceToCents('3 e 50 cada')).toEqual({ valid: true, cents: 350, price: 3.5 });
+    });
+
+    it('aceita quantidades ditas em palavras e com sufixos ("dez", "duas", "10 itens", "10 unidades")', async () => {
+      const mockDb = createMockDb();
+      const envelope = {
+        session: { sessionId: 'session-qty-words' },
+        request: {
+          type: 'IntentRequest',
+          intent: {
+            name: 'CreateOrderIntent',
+            slots: {
+              customer: { value: 'Fernanda' },
+              product: { value: 'Caixa Milk' },
+              quantity: { value: 'dez itens' },
+              total: { value: '150' },
+              deliveryDate: { value: '2026-11-20' },
+            },
+          },
+        },
+      };
+
+      const res = await handleAlexaDialog({ envelope, identity, config: baseConfig, db: mockDb });
+      expect(res.shouldEndSession).toBe(false);
+      const draftId = res.sessionAttributes?.draftId;
+      expect(draftId).toBeDefined();
+      const draft = mockDb.store.alexaDrafts[draftId];
+      expect(draft.quantity).toBe(10);
+    });
+
+    it('resolve número avulso para quantidade quando expectedInput é quantity (cross-mapping de slot)', async () => {
+      const mockDb = createMockDb();
+      // 1. Inicia pedido sem quantidade
+      const envelope1 = {
+        session: { sessionId: 'session-cross-qty' },
+        request: {
+          type: 'IntentRequest',
+          intent: {
+            name: 'CreateOrderIntent',
+            slots: {
+              customer: { value: 'Carlos' },
+              product: { value: 'Topo de Bolo' },
+            },
+          },
+        },
+      };
+      const res1 = await handleAlexaDialog({ envelope: envelope1, identity, config: baseConfig, db: mockDb });
+      expect(res1.speech).toContain('quantidade');
+      const draftId = res1.sessionAttributes?.draftId;
+      expect(res1.sessionAttributes?.expectedInput).toBe('quantity');
+
+      // 2. Usuário responde apenas "10", e a NLU da Alexa roteou como ProvidePriceIntent com slot price = "10"
+      const envelope2 = {
+        session: {
+          sessionId: 'session-cross-qty',
+          attributes: { draftId, revision: res1.sessionAttributes?.revision, expectedInput: 'quantity' },
+        },
+        request: {
+          type: 'IntentRequest',
+          intent: {
+            name: 'ProvidePriceIntent',
+            slots: {
+              price: { value: '10' },
+            },
+          },
+        },
+      };
+      const res2 = await handleAlexaDialog({ envelope: envelope2, identity, config: baseConfig, db: mockDb });
+      const draft = mockDb.store.alexaDrafts[draftId];
+      expect(draft.quantity).toBe(10);
+    });
+
+    it('resolve valor decimal quando expectedInput é totalPrice e Alexa NLU roteou como ProvideQuantityIntent ("3.50")', async () => {
+      const mockDb = createMockDb();
+      // 1. Inicia pedido faltando valor
+      const envelope1 = {
+        session: { sessionId: 'session-cross-price' },
+        request: {
+          type: 'IntentRequest',
+          intent: {
+            name: 'CreateOrderIntent',
+            slots: {
+              customer: { value: 'Mariana' },
+              product: { value: 'Caixa Bala' },
+              quantity: { value: '1' },
+              deliveryDate: { value: '2026-11-20' },
+            },
+          },
+        },
+      };
+      const res1 = await handleAlexaDialog({ envelope: envelope1, identity, config: baseConfig, db: mockDb });
+      expect(res1.speech).toContain('valor');
+      const draftId = res1.sessionAttributes?.draftId;
+      expect(res1.sessionAttributes?.expectedInput).toBe('totalPrice');
+
+      // 2. Usuário responde "3.50", e Alexa NLU enviou como quantity = "3.50"
+      const envelope2 = {
+        session: {
+          sessionId: 'session-cross-price',
+          attributes: { draftId, revision: res1.sessionAttributes?.revision, expectedInput: 'totalPrice' },
+        },
+        request: {
+          type: 'IntentRequest',
+          intent: {
+            name: 'ProvideQuantityIntent',
+            slots: {
+              quantity: { value: '3.50' },
+            },
+          },
+        },
+      };
+      const res2 = await handleAlexaDialog({ envelope: envelope2, identity, config: baseConfig, db: mockDb });
+      const draft = mockDb.store.alexaDrafts[draftId];
+      expect(draft.price).toBe(3.5);
+      expect(draft.totalPriceCents).toBe(350);
+      expect(draft.pricingMode).toBe('total');
     });
   });
 

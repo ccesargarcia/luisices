@@ -592,6 +592,7 @@ describe('Alexa Advancements: Dynamic Entities, Fuzzy Suggestions & APL', () => 
       expect(directiveWithHash.type).toBe('Alexa.Presentation.APL.RenderDocument');
       expect(directiveWithHash.token).toBe('luisicesSuccessToken');
       expect(directiveWithHash.datasources.payload.success.orderNumber).toBe('2026-0042');
+      expect(directiveWithHash.datasources.payload.success.orderHeading).toBe('Pedido #2026-0042 Registrado!');
       expect(directiveWithHash.datasources.payload.success.customer).toBe('Mariana');
       expect(directiveWithHash.datasources.payload.success.totalPrice).toBe('17 reais e 50 centavos');
       expect(directiveWithHash.datasources.payload.success.deliveryDate).toBe('25 de outubro de 2026');
@@ -601,11 +602,13 @@ describe('Alexa Advancements: Dynamic Entities, Fuzzy Suggestions & APL', () => 
         customer: 'Carlos',
       });
       expect(directiveWithoutHash.datasources.payload.success.orderNumber).toBe('1042');
+      expect(directiveWithoutHash.datasources.payload.success.orderHeading).toBe('Pedido #1042 Registrado!');
 
       const directiveFallback = buildOrderSuccessAplDirective({
         orderNumber: '',
       });
-      expect(directiveFallback.datasources.payload.success.orderNumber).toBe('Confirmado');
+      expect(directiveFallback.datasources.payload.success.orderNumber).toBe('');
+      expect(directiveFallback.datasources.payload.success.orderHeading).toBe('Pedido Confirmado!');
     });
 
     it('suporta tela circular do Echo Spot mantendo o logo do Luisices no topo e ações circulares', () => {

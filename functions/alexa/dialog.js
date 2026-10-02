@@ -230,6 +230,47 @@ function parsePartToNumber(partStr) {
 }
 
 /**
+ * Interpreta e valida quantidade inteira de itens (1 a 10.000 itens).
+ * Suporta dígitos ("10"), números por extenso ("dez", "duas", "quinze", "vinte e cinco"),
+ * e sufixos comuns em português ("10 itens", "10 unidades", "dez unidades").
+ */
+function parseQuantity(quantityValue) {
+  if (quantityValue === null || quantityValue === undefined || quantityValue === '') {
+    return null;
+  }
+  if (typeof quantityValue === 'number') {
+    if (Number.isInteger(quantityValue) && quantityValue > 0 && quantityValue <= 10000) {
+      return quantityValue;
+    }
+    return null;
+  }
+  let clean = String(quantityValue)
+    .toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/\b(?:itens|item|unidades|unidade|pecas|peca)\b/g, '')
+    .trim();
+
+  // Se contiver operadores, vírgula ou ponto
+  if (/[.,\/+*_=]/.test(clean)) {
+    return null;
+  }
+
+  // Se forem dígitos puros
+  if (/^\d+$/.test(clean)) {
+    const num = parseInt(clean, 10);
+    return (num > 0 && num <= 10000) ? num : null;
+  }
+
+  // Se forem palavras em português ("dez", "duas", "quinze")
+  const wordNum = parsePortugueseWordsToNumber(clean);
+  if (wordNum !== null && Number.isInteger(wordNum) && wordNum > 0 && wordNum <= 10000) {
+    return wordNum;
+  }
+
+  return null;
+}
+
+/**
  * Interpreta e valida valor monetário em reais (máximo R$ 10.000,00 ou 1.000.000 centavos).
  * Suporta dígitos (3.50, 3,50, 100, 100,50, 1.500,00, R$ 150), zero reais (pedido gratuito),
  * números por extenso (cem reais, cinquenta, dez reais e cinquenta centavos),
@@ -274,7 +315,11 @@ function parseAndValidatePrice(priceValue) {
     return { valid: false, error: 'Formato de valor não reconhecido. Por favor, diga um único valor em reais.' };
   }
 
-  let clean = rawStr.replace(/r\$/gi, '').trim();
+  let clean = rawStr
+    .replace(/r\$/gi, '')
+    .replace(/\b(?:cada|por unidade|a unidade|unidade|por item|item|no total|ao todo|total)\b/gi, '')
+    .replace(/\s+/g, ' ')
+    .trim();
   clean = clean.replace(/\b(?:meio|meia)\b/g, '50 centavos');
 
   // 1. Tentar extração de números com formato brasileiro de milhar e decimal: 1.500,00 ou 1.500
@@ -1524,26 +1569,38 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
   }
 
   const quantitySlot = slots.quantity?.value || slots.Quantity?.value;
+  const unitPriceSlot = slots.unitPrice?.value || slots.UnitPrice?.value;
+  const totalSlot = slots.total?.value || slots.Total?.value;
+  let genericPriceSlot = slots.price?.value || slots.Price?.value || slots.ambiguousPrice?.value || slots.AmbiguousPrice?.value;
+
   if (quantitySlot) {
-    const cleanQty = String(quantitySlot).trim();
-    if (!/^\d+$/.test(cleanQty)) {
-      return {
-        speech: 'A quantidade de itens deve ser um número inteiro. Por exemplo: dez ou quinze.',
-        reprompt: 'Qual é a quantidade inteira de itens?',
-        shouldEndSession: false,
-        sessionAttributes: { draftId: currentDraftId, revision: sessionAttrs.revision || 1, personId: identity.personId, expectedInput: 'quantity' },
-      };
+    const parsedQty = parseQuantity(quantitySlot);
+    if (parsedQty !== null) {
+      rawIncomingUpdates.quantity = parsedQty;
+    } else {
+      // Se não for um inteiro puro (ex: "3.50", "3 e 50"), verifica se é um preço válido para permitir mapeamento contextual
+      const pCandidate = parseAndValidatePriceToCents(quantitySlot);
+      if (pCandidate.valid && !genericPriceSlot && !unitPriceSlot && !totalSlot) {
+        genericPriceSlot = quantitySlot;
+      } else {
+        const cleanRawDigits = String(quantitySlot).replace(/\D/g, '');
+        const rawNum = cleanRawDigits ? parseInt(cleanRawDigits, 10) : NaN;
+        if (!isNaN(rawNum) && (rawNum <= 0 || rawNum > 10000)) {
+          return {
+            speech: 'A quantidade deve ser entre 1 e dez mil itens.',
+            reprompt: 'Qual é a quantidade de itens?',
+            shouldEndSession: false,
+            sessionAttributes: { draftId: currentDraftId, revision: sessionAttrs.revision || 1, personId: identity.personId, expectedInput: 'quantity' },
+          };
+        }
+        return {
+          speech: 'A quantidade de itens deve ser um número inteiro. Por exemplo: dez ou quinze.',
+          reprompt: 'Qual é a quantidade inteira de itens?',
+          shouldEndSession: false,
+          sessionAttributes: { draftId: currentDraftId, revision: sessionAttrs.revision || 1, personId: identity.personId, expectedInput: 'quantity' },
+        };
+      }
     }
-    const q = parseInt(cleanQty, 10);
-    if (q <= 0 || q > 10000) {
-      return {
-        speech: 'A quantidade deve ser entre 1 e dez mil itens.',
-        reprompt: 'Qual é a quantidade de itens?',
-        shouldEndSession: false,
-        sessionAttributes: { draftId: currentDraftId, revision: sessionAttrs.revision || 1, personId: identity.personId, expectedInput: 'quantity' },
-      };
-    }
-    rawIncomingUpdates.quantity = q;
   }
 
   const dateSlot = slots.deliveryDate?.value || slots.DeliveryDate?.value || slots.date?.value;
@@ -1556,10 +1613,6 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
       dateValidationError = dateRes.error;
     }
   }
-
-  const unitPriceSlot = slots.unitPrice?.value || slots.UnitPrice?.value;
-  const totalSlot = slots.total?.value || slots.Total?.value;
-  const genericPriceSlot = slots.price?.value || slots.Price?.value || slots.ambiguousPrice?.value || slots.AmbiguousPrice?.value;
 
   let rawParsedUnitPrice = null;
   let unitPriceValidationError = null;
@@ -2183,6 +2236,17 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
           existingData.expectedInput = null;
         }
       }
+    }
+
+    // Se o banco espera preço (unitário ou total) e a Alexa capturou um número avulso no slot de quantidade
+    if (activeExpected === 'totalPrice' && incomingUpdates.quantity && !parsedUnitPrice && !parsedTotal && !parsedGenericPrice) {
+      parsedTotal = { cents: incomingUpdates.quantity * 100, price: incomingUpdates.quantity };
+      delete incomingUpdates.quantity;
+      existingData.expectedInput = null;
+    } else if (activeExpected === 'unitPrice' && incomingUpdates.quantity && !parsedUnitPrice && !parsedTotal && !parsedGenericPrice) {
+      parsedUnitPrice = { cents: incomingUpdates.quantity * 100, price: incomingUpdates.quantity };
+      delete incomingUpdates.quantity;
+      existingData.expectedInput = null;
     }
 
     // Resolução contextual de cliente vs produto:

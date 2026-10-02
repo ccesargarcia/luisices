@@ -10,9 +10,10 @@ const DEFAULT_FALLBACK_IMAGE = 'https://dev.luisices.com.br/images/alexa-large-i
 const DEFAULT_QR_PLACEHOLDER = 'https://dev.luisices.com.br/images/alexa-large-icon.png';
 
 // Expressões condicionais universais para detecção de viewport
-// Echo Spot: viewport.shape pode ser "ROUND" ou "round", com 480x480.
-const WHEN_IS_ROUND = "${viewport.shape == 'ROUND' || viewport.shape == 'round' || viewport.pixelWidth <= 480}";
-const WHEN_IS_RECTANGULAR = "${viewport.shape != 'ROUND' && viewport.shape != 'round' && viewport.pixelWidth > 480}";
+// Echo Spot: viewport.shape é "ROUND" ou "round" (480x480).
+// Dispositivos retangulares (Fire TV, Echo Show 5/8/10/15, Tablets): viewport.shape != "ROUND"
+const WHEN_IS_ROUND = "${viewport.shape == 'ROUND' || viewport.shape == 'round'}";
+const WHEN_IS_RECTANGULAR = "${viewport.shape != 'ROUND' && viewport.shape != 'round'}";
 
 /**
  * Verifica se a requisição veio de um dispositivo Alexa com suporte a tela (APL).
@@ -609,7 +610,9 @@ function buildOrderSuccessAplDirective({
   deliveryDate = '',
   envLabel = 'Teste',
 }) {
-  const cleanOrderNumber = String(orderNumber || '').replace(/^#+/, '').trim() || 'Confirmado';
+  const hasNumber = Boolean(orderNumber && String(orderNumber).replace(/^#+/, '').trim());
+  const cleanOrderNumber = hasNumber ? String(orderNumber).replace(/^#+/, '').trim() : '';
+  const orderHeading = hasNumber ? `Pedido #${cleanOrderNumber} Registrado!` : 'Pedido Confirmado!';
   const cleanCustomer = customer || 'Cliente';
   const cleanProduct = product || 'Produto Personalizado';
   const cleanQuantity = Number(quantity) || 1;
@@ -656,7 +659,7 @@ function buildOrderSuccessAplDirective({
                 },
                 {
                   type: 'Text',
-                  text: 'Pedido #${payload.success.orderNumber} Registrado!',
+                  text: '${payload.success.orderHeading}',
                   color: '#34D399',
                   fontSize: '18dp',
                   fontWeight: 'bold',
@@ -743,7 +746,7 @@ function buildOrderSuccessAplDirective({
                       },
                       {
                         type: 'Text',
-                        text: 'Pedido #${payload.success.orderNumber} Registrado!',
+                        text: '${payload.success.orderHeading}',
                         color: '#FFFFFF',
                         fontSize: '28dp',
                         fontWeight: 'bold',
@@ -782,6 +785,14 @@ function buildOrderSuccessAplDirective({
                       },
                       {
                         type: 'Text',
+                        text: '📅 Entrega: ${payload.success.deliveryDate}',
+                        color: '#E8E0E3',
+                        fontSize: '16dp',
+                        paddingTop: '6dp',
+                        when: '${payload.success.deliveryDate != ""}',
+                      },
+                      {
+                        type: 'Text',
                         text: '✨ Sincronizado no quadro de produção do Luisices',
                         color: '#C9C0B8',
                         fontSize: '14dp',
@@ -802,6 +813,7 @@ function buildOrderSuccessAplDirective({
   const datasources = {
     payload: {
       success: {
+        orderHeading,
         orderNumber: cleanOrderNumber,
         customer: cleanCustomer,
         product: cleanProduct,
