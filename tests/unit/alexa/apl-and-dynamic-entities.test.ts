@@ -546,13 +546,13 @@ describe('Alexa Advancements: Dynamic Entities, Fuzzy Suggestions & APL', () => 
         envLabel: 'teste',
       });
 
-      // Verifica presença de layout condicional circular (Echo Spot)
+      // Verifica presença de layout condicional circular robusto (Echo Spot: ROUND, round ou pixelWidth <= 480)
       const welcomeItems = welcomeDir.document.mainTemplate.items[0].items;
-      const roundWelcomeContainer = welcomeItems.find((item: any) => item.when === "${viewport.shape == 'round'}");
+      const roundWelcomeContainer = welcomeItems.find((item: any) => item.when && item.when.includes('viewport.shape == \'ROUND\''));
       expect(roundWelcomeContainer).toBeDefined();
 
       const orderItems = orderDir.document.mainTemplate.items[0].items;
-      const roundOrderContainer = orderItems.find((item: any) => item.when === "${viewport.shape == 'round'}");
+      const roundOrderContainer = orderItems.find((item: any) => item.when && item.when.includes('viewport.shape == \'ROUND\''));
       expect(roundOrderContainer).toBeDefined();
     });
 
