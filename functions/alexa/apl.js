@@ -1,8 +1,8 @@
 /**
  * Módulo de Apresentação Visual da Alexa (Alexa Presentation Language - APL 1.6+).
  * Design System oficial do Luisices para dispositivos com tela (Echo Show 5/8/10/15, Echo Spot e Fire TV).
- * Inclui layouts responsivos, suporte completo e robusto a telas circulares (Echo Spot), Glassmorphism, e botões interativos por toque.
- * Conformidade estrita com a especificação APL 1.6+ (uso de Frame para fundos e bordas).
+ * Inclui layouts responsivos, suporte completo e robusto a telas circulares (Echo Spot), Glassmorphism, e botões interativos por toque e controle remoto.
+ * Conformidade estrita com a especificação APL 1.6+ (uso de Frame para fundos e bordas, multivinculação resiliente de datasources para Fire TV e Echo Show).
  */
 
 const DEFAULT_BRAND_LOGO = 'https://dev.luisices.com.br/images/alexa-large-icon.png';
@@ -64,7 +64,7 @@ function buildWelcomeAplDirective({ userName = 'Ateliê', envLabel = 'Teste' }) 
       },
     ],
     mainTemplate: {
-      parameters: ['payload'],
+      parameters: ['welcomeData', 'welcome', 'payload'],
       items: [
         {
           type: 'Container',
@@ -102,7 +102,7 @@ function buildWelcomeAplDirective({ userName = 'Ateliê', envLabel = 'Teste' }) 
                 },
                 {
                   type: 'Text',
-                  text: '👋 Olá, ${payload.welcome.userName}!',
+                  text: '👋 Olá, ${welcomeData.userName || welcome.userName || payload.welcome.userName || "Ateliê"}!',
                   color: '#FFFFFF',
                   fontSize: '20dp',
                   fontWeight: 'bold',
@@ -111,7 +111,7 @@ function buildWelcomeAplDirective({ userName = 'Ateliê', envLabel = 'Teste' }) 
                 },
                 {
                   type: 'Text',
-                  text: 'Luisices • ${payload.welcome.envLabel}',
+                  text: 'Luisices • ${welcomeData.envLabel || welcome.envLabel || payload.welcome.envLabel || "Teste"}',
                   color: '#E8E0E3',
                   fontSize: '14dp',
                   paddingTop: '4dp',
@@ -152,9 +152,9 @@ function buildWelcomeAplDirective({ userName = 'Ateliê', envLabel = 'Teste' }) 
               items: [
                 {
                   type: 'Text',
-                  text: '👋 Olá, ${payload.welcome.userName}!',
+                  text: '👋 Olá, ${welcomeData.userName || welcome.userName || payload.welcome.userName || "Ateliê"}!',
                   color: '#FFFFFF',
-                  fontSize: '32dp',
+                  fontSize: '34dp',
                   fontWeight: 'bold',
                 },
                 {
@@ -165,7 +165,7 @@ function buildWelcomeAplDirective({ userName = 'Ateliê', envLabel = 'Teste' }) 
                   paddingTop: '8dp',
                   paddingBottom: '24dp',
                 },
-                // Ações Rápidas em Pílulas Tocáveis
+                // Ações Rápidas em Pílulas Tocáveis e Navegáveis
                 {
                   type: 'Container',
                   direction: 'row',
@@ -246,13 +246,20 @@ function buildWelcomeAplDirective({ userName = 'Ateliê', envLabel = 'Teste' }) 
     },
   };
 
+  const welcomeData = {
+    userName,
+    envLabel,
+  };
+
   const datasources = {
+    welcomeData,
+    welcome: welcomeData,
     payload: {
-      welcome: {
-        userName,
-        envLabel,
-      },
+      welcome: welcomeData,
+      welcomeData,
+      ...welcomeData,
     },
+    ...welcomeData,
   };
 
   return {
@@ -280,6 +287,14 @@ function buildOrderCardAplDirective({
   imageUrl = null,
   showActions = true,
 }) {
+  const cleanCustomer = customer || 'Não informado';
+  const cleanProduct = product || 'Produto Personalizado';
+  const cleanQuantity = Number(quantity) || 1;
+  const cleanDelivery = deliveryDate || 'A combinar';
+  const cleanTotal = totalPrice || 'R$ 0,00';
+  const cleanStatus = statusLabel || 'Aguardando Confirmação';
+  const cleanImage = imageUrl || DEFAULT_FALLBACK_IMAGE;
+
   const document = {
     type: 'APL',
     version: '1.6',
@@ -291,7 +306,7 @@ function buildOrderCardAplDirective({
       },
     ],
     mainTemplate: {
-      parameters: ['payload'],
+      parameters: ['orderData', 'order', 'payload'],
       items: [
         {
           type: 'Container',
@@ -337,7 +352,7 @@ function buildOrderCardAplDirective({
                   paddingBottom: '2dp',
                   item: {
                     type: 'Text',
-                    text: '${payload.order.statusLabel}',
+                    text: '${orderData.statusLabel || order.statusLabel || payload.order.statusLabel || "Aguardando"}',
                     color: '#F4B7B9',
                     fontSize: '11dp',
                     fontWeight: 'bold',
@@ -345,7 +360,7 @@ function buildOrderCardAplDirective({
                 },
                 {
                   type: 'Text',
-                  text: '${payload.order.quantity}x ${payload.order.product}',
+                  text: '${orderData.quantity || order.quantity || payload.order.quantity || 1}x ${orderData.product || order.product || payload.order.product || "Produto"}',
                   color: '#FFFFFF',
                   fontSize: '16dp',
                   fontWeight: 'bold',
@@ -355,7 +370,7 @@ function buildOrderCardAplDirective({
                 },
                 {
                   type: 'Text',
-                  text: '👤 ${payload.order.customer}',
+                  text: '👤 ${orderData.customer || order.customer || payload.order.customer || "Cliente"}',
                   color: '#E8E0E3',
                   fontSize: '13dp',
                   paddingTop: '2dp',
@@ -363,7 +378,7 @@ function buildOrderCardAplDirective({
                 },
                 {
                   type: 'Text',
-                  text: '${payload.order.totalPrice}',
+                  text: '${orderData.totalPrice || order.totalPrice || payload.order.totalPrice || "R$ 0,00"}',
                   color: '#34D399',
                   fontSize: '18dp',
                   fontWeight: 'bold',
@@ -373,11 +388,11 @@ function buildOrderCardAplDirective({
                   type: 'Container',
                   direction: 'row',
                   paddingTop: '8dp',
-                  when: '${payload.order.showActions}',
+                  when: '${orderData.showActions || order.showActions || payload.order.showActions}',
                   items: [
                     {
                       type: 'TouchWrapper',
-                      onPress: [{ type: 'SendEvent', arguments: ['confirmOrder', '${payload.order.draftId}', '${payload.order.revision}'] }],
+                      onPress: [{ type: 'SendEvent', arguments: ['confirmOrder', '${orderData.draftId || order.draftId || payload.order.draftId}', '${orderData.revision || order.revision || payload.order.revision}'] }],
                       item: {
                         type: 'Frame',
                         backgroundColor: '#10B981',
@@ -398,7 +413,7 @@ function buildOrderCardAplDirective({
                     },
                     {
                       type: 'TouchWrapper',
-                      onPress: [{ type: 'SendEvent', arguments: ['cancelOrder', '${payload.order.draftId}', '${payload.order.revision}'] }],
+                      onPress: [{ type: 'SendEvent', arguments: ['cancelOrder', '${orderData.draftId || order.draftId || payload.order.draftId}', '${orderData.revision || order.revision || payload.order.revision}'] }],
                       item: {
                         type: 'Frame',
                         backgroundColor: '#E58E8E',
@@ -420,39 +435,45 @@ function buildOrderCardAplDirective({
                 },
               ],
             },
-            // Layout Retangular Padrão para Echo Show e Fire TV
+            // Layout Retangular Padrão Elegante para Echo Show e Fire TV
             {
               type: 'Container',
               when: WHEN_IS_RECTANGULAR,
               direction: 'row',
               grow: 1,
-              paddingLeft: '32dp',
-              paddingRight: '32dp',
+              paddingLeft: '40dp',
+              paddingRight: '40dp',
               paddingBottom: '24dp',
               alignItems: 'center',
               justifyContent: 'center',
+              spacing: '32dp',
               items: [
-                // Coluna Esquerda: Imagem do Produto envolvida em Frame
+                // Coluna Esquerda: Imagem do Produto envolvida em Frame com Fallback Garantido
                 {
                   type: 'Frame',
-                  borderRadius: '16dp',
+                  borderRadius: '20dp',
                   backgroundColor: '#231C1E',
                   borderColor: 'rgba(235, 205, 205, 0.18)',
                   borderWidth: '1dp',
+                  width: '260dp',
+                  height: '260dp',
+                  padding: '8dp',
+                  alignItems: 'center',
+                  justifyContent: 'center',
                   item: {
                     type: 'Image',
-                    source: '${payload.order.imageUrl}',
-                    width: '260dp',
-                    height: '260dp',
+                    source: '${orderData.imageUrl || order.imageUrl || payload.order.imageUrl || "' + DEFAULT_FALLBACK_IMAGE + '"}',
+                    width: '100%',
+                    height: '100%',
                     scale: 'best-fit',
-                    borderRadius: '16dp',
+                    borderRadius: '14dp',
                   },
                 },
                 // Coluna Direita: Dados do Pedido + Botões de Toque
                 {
                   type: 'Container',
                   grow: 1,
-                  paddingLeft: '32dp',
+                  maxWidth: '600dp',
                   justifyContent: 'center',
                   items: [
                     // Badge de Status
@@ -460,14 +481,14 @@ function buildOrderCardAplDirective({
                       type: 'Frame',
                       backgroundColor: '#7B4D50',
                       borderRadius: '8dp',
-                      paddingLeft: '12dp',
-                      paddingRight: '12dp',
+                      paddingLeft: '14dp',
+                      paddingRight: '14dp',
                       paddingTop: '4dp',
                       paddingBottom: '4dp',
                       alignSelf: 'start',
                       item: {
                         type: 'Text',
-                        text: '${payload.order.statusLabel}',
+                        text: '${orderData.statusLabel || order.statusLabel || payload.order.statusLabel || "Aguardando Confirmação"}',
                         color: '#F4B7B9',
                         fontSize: '14dp',
                         fontWeight: 'bold',
@@ -476,7 +497,7 @@ function buildOrderCardAplDirective({
                     // Nome do Produto e Quantidade
                     {
                       type: 'Text',
-                      text: '${payload.order.quantity}x ${payload.order.product}',
+                      text: '${orderData.quantity || order.quantity || payload.order.quantity || 1}x ${orderData.product || order.product || payload.order.product || "Produto Personalizado"}',
                       color: '#FFFFFF',
                       fontSize: '28dp',
                       fontWeight: 'bold',
@@ -486,40 +507,41 @@ function buildOrderCardAplDirective({
                     // Cliente
                     {
                       type: 'Text',
-                      text: '👤 Cliente: ${payload.order.customer}',
+                      text: '👤 Cliente: ${orderData.customer || order.customer || payload.order.customer || "A informar"}',
                       color: '#E8E0E3',
                       fontSize: '20dp',
-                      paddingTop: '6dp',
+                      paddingTop: '8dp',
                     },
                     // Data de Entrega
                     {
                       type: 'Text',
-                      text: '📅 Entrega: ${payload.order.deliveryDate}',
+                      text: '📅 Entrega: ${orderData.deliveryDate || order.deliveryDate || payload.order.deliveryDate || "A combinar"}',
                       color: '#C9C0B8',
                       fontSize: '18dp',
-                      paddingTop: '4dp',
+                      paddingTop: '6dp',
                     },
                     // Valor Total em Destaque
                     {
                       type: 'Text',
-                      text: '💰 Total: ${payload.order.totalPrice}',
+                      text: '💰 Total: ${orderData.totalPrice || order.totalPrice || payload.order.totalPrice || "A calcular"}',
                       color: '#34D399',
-                      fontSize: '26dp',
+                      fontSize: '28dp',
                       fontWeight: 'bold',
-                      paddingTop: '8dp',
+                      paddingTop: '10dp',
                     },
+                    // Botões de Ação quando em confirmação ativa
                     {
                       type: 'Container',
                       direction: 'row',
                       paddingTop: '16dp',
-                      when: '${payload.order.showActions}',
+                      when: '${orderData.showActions || order.showActions || payload.order.showActions}',
                       spacing: '16dp',
                       items: [
                         {
                           type: 'AlexaButton',
                           buttonText: '✅ Confirmar',
                           primaryAction: [
-                            { type: 'SendEvent', arguments: ['confirmOrder', '${payload.order.draftId}', '${payload.order.revision}'] }
+                            { type: 'SendEvent', arguments: ['confirmOrder', '${orderData.draftId || order.draftId || payload.order.draftId}', '${orderData.revision || order.revision || payload.order.revision}'] }
                           ]
                         },
                         {
@@ -527,10 +549,19 @@ function buildOrderCardAplDirective({
                           buttonText: '❌ Cancelar',
                           buttonStyle: 'outlined',
                           primaryAction: [
-                            { type: 'SendEvent', arguments: ['cancelOrder', '${payload.order.draftId}', '${payload.order.revision}'] }
+                            { type: 'SendEvent', arguments: ['cancelOrder', '${orderData.draftId || order.draftId || payload.order.draftId}', '${orderData.revision || order.revision || payload.order.revision}'] }
                           ]
                         }
                       ]
+                    },
+                    // Dica informativa quando ainda preenchendo dados
+                    {
+                      type: 'Text',
+                      when: '${!(orderData.showActions || order.showActions || payload.order.showActions)}',
+                      text: '🎙️ Fale os dados pendentes ou diga o que deseja corrigir',
+                      color: '#C9C0B8',
+                      fontSize: '15dp',
+                      paddingTop: '12dp',
                     }
                   ],
                 },
@@ -544,22 +575,29 @@ function buildOrderCardAplDirective({
 
   const token = draftId ? `luisicesOrderToken_${draftId}_${revision || 1}` : 'luisicesOrderToken';
 
+  const orderData = {
+    draftId: draftId || '',
+    revision: revision || 1,
+    customer: cleanCustomer,
+    product: cleanProduct,
+    quantity: cleanQuantity,
+    deliveryDate: cleanDelivery,
+    totalPrice: cleanTotal,
+    statusLabel: cleanStatus,
+    envLabel,
+    imageUrl: cleanImage,
+    showActions: Boolean(showActions),
+  };
+
   const datasources = {
+    orderData,
+    order: orderData,
     payload: {
-      order: {
-        draftId: draftId || '',
-        revision: revision || 1,
-        customer,
-        product,
-        quantity,
-        deliveryDate,
-        totalPrice,
-        statusLabel,
-        envLabel,
-        imageUrl: imageUrl || DEFAULT_FALLBACK_IMAGE,
-        showActions: Boolean(showActions),
-      },
+      order: orderData,
+      orderData,
+      ...orderData,
     },
+    ...orderData,
   };
 
   return {
@@ -572,6 +610,7 @@ function buildOrderCardAplDirective({
 
 /**
  * 3. Constrói o documento APL de Celebração de Sucesso (Order Success).
+ * Layout Widescreen equilibrado para TV (16:9) e Echo Show, eliminando colunas vazias.
  */
 function buildOrderSuccessAplDirective({
   orderNumber = '0',
@@ -597,7 +636,7 @@ function buildOrderSuccessAplDirective({
     theme: 'dark',
     import: [{ name: 'alexa-layouts', version: '1.4.0' }],
     mainTemplate: {
-      parameters: ['payload'],
+      parameters: ['successData', 'success', 'payload'],
       items: [
         {
           type: 'Container',
@@ -631,7 +670,7 @@ function buildOrderSuccessAplDirective({
                 },
                 {
                   type: 'Text',
-                  text: '${payload.success.orderHeading}',
+                  text: '${successData.orderHeading || success.orderHeading || payload.success.orderHeading || "Pedido Confirmado!"}',
                   color: '#34D399',
                   fontSize: '18dp',
                   fontWeight: 'bold',
@@ -640,7 +679,7 @@ function buildOrderSuccessAplDirective({
                 },
                 {
                   type: 'Text',
-                  text: '${payload.success.quantity}x ${payload.success.product}',
+                  text: '${successData.quantity || success.quantity || payload.success.quantity || 1}x ${successData.product || success.product || payload.success.product || "Produto"}',
                   color: '#FFFFFF',
                   fontSize: '14dp',
                   fontWeight: 'bold',
@@ -650,7 +689,7 @@ function buildOrderSuccessAplDirective({
                 },
                 {
                   type: 'Text',
-                  text: '👤 ${payload.success.customer}',
+                  text: '👤 ${successData.customer || success.customer || payload.success.customer || "Cliente"}',
                   color: '#E8E0E3',
                   fontSize: '13dp',
                   textAlign: 'center',
@@ -658,7 +697,7 @@ function buildOrderSuccessAplDirective({
                 },
                 {
                   type: 'Text',
-                  text: 'Total: ${payload.success.totalPrice}',
+                  text: 'Total: ${successData.totalPrice || success.totalPrice || payload.success.totalPrice || "R$ 0,00"}',
                   color: '#34D399',
                   fontSize: '16dp',
                   fontWeight: 'bold',
@@ -666,31 +705,28 @@ function buildOrderSuccessAplDirective({
                 },
               ],
             },
-            // Layout Retangular para Echo Show e Fire TV (Telas Grandes)
+            // Layout Widescreen Equilibrado para Echo Show e Fire TV (Duas Colunas Harmoniosas)
             {
               type: 'Container',
               when: WHEN_IS_RECTANGULAR,
+              direction: 'row',
               grow: 1,
-              paddingLeft: '40dp',
-              paddingRight: '40dp',
+              paddingLeft: '48dp',
+              paddingRight: '48dp',
               paddingBottom: '24dp',
               alignItems: 'center',
               justifyContent: 'center',
+              spacing: '24dp',
               items: [
+                // Painel Esquerdo: Celebração, Badge e Sincronização
                 {
                   type: 'Frame',
                   backgroundColor: '#231C1E',
                   borderColor: 'rgba(235, 205, 205, 0.18)',
                   borderWidth: '1dp',
                   borderRadius: '24dp',
-                  width: '80vw',
-                  height: '80vh',
-                  maxWidth: '800dp',
-                  maxHeight: '600dp',
-                  paddingLeft: '40dp',
-                  paddingRight: '40dp',
-                  paddingTop: '24dp',
-                  paddingBottom: '24dp',
+                  padding: '28dp',
+                  width: '360dp',
                   alignItems: 'center',
                   item: {
                     type: 'Container',
@@ -699,7 +735,7 @@ function buildOrderSuccessAplDirective({
                       {
                         type: 'Text',
                         text: '🎉',
-                        fontSize: '44dp',
+                        fontSize: '52dp',
                       },
                       {
                         type: 'Frame',
@@ -711,69 +747,81 @@ function buildOrderSuccessAplDirective({
                         paddingRight: '16dp',
                         paddingTop: '4dp',
                         paddingBottom: '4dp',
-                        marginTop: '6dp',
+                        marginTop: '10dp',
                         item: {
                           type: 'Text',
                           text: '✅ Pedido Confirmado',
                           color: '#34D399',
-                          fontSize: '14dp',
+                          fontSize: '15dp',
                           fontWeight: 'bold',
                         },
                       },
                       {
                         type: 'Text',
-                        text: '${payload.success.orderHeading}',
+                        text: '${successData.orderHeading || success.orderHeading || payload.success.orderHeading || "Pedido Confirmado!"}',
                         color: '#FFFFFF',
-                        fontSize: '28dp',
-                        fontWeight: 'bold',
-                        textAlign: 'center',
-                        paddingTop: '10dp',
-                      },
-                      {
-                        type: 'Text',
-                        text: '${payload.success.quantity}x ${payload.success.product}',
-                        color: '#F4B7B9',
                         fontSize: '22dp',
                         fontWeight: 'bold',
                         textAlign: 'center',
-                        paddingTop: '8dp',
-                      },
-                      {
-                        type: 'Container',
-                        direction: 'row',
-                        paddingTop: '10dp',
-                        items: [
-                          {
-                            type: 'Text',
-                            text: '👤 Cliente: ${payload.success.customer}',
-                            color: '#E8E0E3',
-                            fontSize: '18dp',
-                            marginRight: '24dp',
-                          },
-                          {
-                            type: 'Text',
-                            text: '💰 Total: ${payload.success.totalPrice}',
-                            color: '#34D399',
-                            fontSize: '18dp',
-                            fontWeight: 'bold',
-                          },
-                        ],
-                      },
-                      {
-                        type: 'Text',
-                        text: '📅 Entrega: ${payload.success.deliveryDate}',
-                        color: '#E8E0E3',
-                        fontSize: '16dp',
-                        paddingTop: '6dp',
-                        when: '${payload.success.deliveryDate != ""}',
+                        paddingTop: '12dp',
                       },
                       {
                         type: 'Text',
                         text: '✨ Sincronizado no quadro de produção do Luisices',
                         color: '#C9C0B8',
-                        fontSize: '14dp',
-                        paddingTop: '12dp',
+                        fontSize: '13dp',
+                        paddingTop: '10dp',
                         textAlign: 'center',
+                      },
+                    ],
+                  },
+                },
+                // Painel Direito: Resumo Completo e Elegante dos Dados do Pedido
+                {
+                  type: 'Frame',
+                  backgroundColor: '#231C1E',
+                  borderColor: 'rgba(235, 205, 205, 0.18)',
+                  borderWidth: '1dp',
+                  borderRadius: '24dp',
+                  paddingLeft: '36dp',
+                  paddingRight: '36dp',
+                  paddingTop: '28dp',
+                  paddingBottom: '28dp',
+                  grow: 1,
+                  maxWidth: '560dp',
+                  item: {
+                    type: 'Container',
+                    items: [
+                      {
+                        type: 'Text',
+                        text: '${successData.quantity || success.quantity || payload.success.quantity || 1}x ${successData.product || success.product || payload.success.product || "Produto Personalizado"}',
+                        color: '#F4B7B9',
+                        fontSize: '28dp',
+                        fontWeight: 'bold',
+                        maxLines: 2,
+                      },
+                      {
+                        type: 'Text',
+                        text: '👤 Cliente: ${successData.customer || success.customer || payload.success.customer || "Cliente"}',
+                        color: '#FFFFFF',
+                        fontSize: '20dp',
+                        paddingTop: '12dp',
+                      },
+                      {
+                        type: 'Text',
+                        text: '📅 Entrega: ${successData.deliveryDate || success.deliveryDate || payload.success.deliveryDate || ""}',
+                        color: '#E8E0E3',
+                        fontSize: '18dp',
+                        paddingTop: '8dp',
+                        when: '${(successData.deliveryDate || success.deliveryDate || payload.success.deliveryDate || "") != ""}',
+                      },
+                      {
+                        type: 'Text',
+                        text: '💰 Total: ${successData.totalPrice || success.totalPrice || payload.success.totalPrice || "R$ 0,00"}',
+                        color: '#34D399',
+                        fontSize: '28dp',
+                        fontWeight: 'bold',
+                        paddingTop: '14dp',
                       },
                     ],
                   },
@@ -786,19 +834,26 @@ function buildOrderSuccessAplDirective({
     },
   };
 
+  const successData = {
+    orderHeading,
+    orderNumber: cleanOrderNumber,
+    customer: cleanCustomer,
+    product: cleanProduct,
+    quantity: cleanQuantity,
+    totalPrice: cleanTotal,
+    deliveryDate: cleanDelivery,
+    envLabel,
+  };
+
   const datasources = {
+    successData,
+    success: successData,
     payload: {
-      success: {
-        orderHeading,
-        orderNumber: cleanOrderNumber,
-        customer: cleanCustomer,
-        product: cleanProduct,
-        quantity: cleanQuantity,
-        totalPrice: cleanTotal,
-        deliveryDate: cleanDelivery,
-        envLabel,
-      },
+      success: successData,
+      successData,
+      ...successData,
     },
+    ...successData,
   };
 
   return {
@@ -819,7 +874,7 @@ function buildFuzzySuggestionsAplDirective({ spokenProduct = '', suggestions = [
     theme: 'dark',
     import: [{ name: 'alexa-layouts', version: '1.4.0' }],
     mainTemplate: {
-      parameters: ['payload'],
+      parameters: ['suggestionsData', 'suggestions', 'payload'],
       items: [
         {
           type: 'Container',
@@ -905,6 +960,7 @@ function buildFuzzySuggestionsAplDirective({ spokenProduct = '', suggestions = [
                             text: sug.unitPrice ? `R$ ${sug.unitPrice.toFixed(2)} cada` : 'Catálogo',
                             color: '#34D399',
                             fontSize: '11dp',
+                            paddingTop: '2dp',
                           },
                         ],
                       },
@@ -920,20 +976,23 @@ function buildFuzzySuggestionsAplDirective({ spokenProduct = '', suggestions = [
               grow: 1,
               paddingLeft: '32dp',
               paddingRight: '32dp',
-              paddingTop: '8dp',
+              paddingBottom: '24dp',
+              alignItems: 'center',
+              justifyContent: 'center',
               items: [
                 {
                   type: 'Text',
-                  text: 'Toque ou diga o produto desejado:',
+                  text: `Não encontramos "${spokenProduct}". Você quis dizer:`,
                   color: '#E8E0E3',
-                  fontSize: '20dp',
-                  paddingBottom: '20dp',
+                  fontSize: '22dp',
+                  paddingBottom: '24dp',
+                  textAlign: 'center',
                 },
                 {
                   type: 'Container',
                   direction: 'row',
-                  justifyContent: 'center',
-                  items: suggestions.slice(0, 2).map((sug, idx) => ({
+                  spacing: '24dp',
+                  items: suggestions.map((sug) => ({
                     type: 'TouchWrapper',
                     onPress: [{ type: 'SendEvent', arguments: ['selectProduct', sug.name] }],
                     item: {
@@ -941,12 +1000,8 @@ function buildFuzzySuggestionsAplDirective({ spokenProduct = '', suggestions = [
                       backgroundColor: '#231C1E',
                       borderColor: 'rgba(235, 205, 205, 0.18)',
                       borderWidth: '1dp',
-                      borderRadius: '16dp',
-                      paddingLeft: '24dp',
-                      paddingRight: '24dp',
-                      paddingTop: '20dp',
-                      paddingBottom: '20dp',
-                      marginRight: idx === 0 ? '24dp' : '0dp',
+                      borderRadius: '20dp',
+                      padding: '24dp',
                       width: '380dp',
                       item: {
                         type: 'Container',
@@ -989,12 +1044,22 @@ function buildFuzzySuggestionsAplDirective({ spokenProduct = '', suggestions = [
     },
   };
 
+  const suggestionsData = {
+    spokenProduct,
+    suggestions,
+    envLabel,
+  };
+
   const datasources = {
+    suggestionsData,
+    suggestions: suggestionsData,
     payload: {
       spokenProduct,
       suggestions,
       envLabel,
+      suggestionsData,
     },
+    ...suggestionsData,
   };
 
   return {
@@ -1022,7 +1087,7 @@ function buildVoicePairingAplDirective({ pairingCode = '000000', qrCodeUrl = nul
     theme: 'dark',
     import: [{ name: 'alexa-layouts', version: '1.4.0' }],
     mainTemplate: {
-      parameters: ['payload'],
+      parameters: ['pairingData', 'pairing', 'payload'],
       items: [
         {
           type: 'Container',
@@ -1079,7 +1144,7 @@ function buildVoicePairingAplDirective({ pairingCode = '000000', qrCodeUrl = nul
                   marginBottom: '6dp',
                   item: {
                     type: 'Text',
-                    text: '${payload.pairing.formattedCode}',
+                    text: '${pairingData.formattedCode || pairing.formattedCode || payload.pairing.formattedCode || "' + formattedCode + '"}',
                     color: '#FFFFFF',
                     fontSize: '32dp',
                     fontWeight: 'bold',
@@ -1132,7 +1197,7 @@ function buildVoicePairingAplDirective({ pairingCode = '000000', qrCodeUrl = nul
                       alignSelf: 'start',
                       item: {
                         type: 'Text',
-                        text: '${payload.pairing.formattedCode}',
+                        text: '${pairingData.formattedCode || pairing.formattedCode || payload.pairing.formattedCode || "' + formattedCode + '"}',
                         color: '#FFFFFF',
                         fontSize: '48dp',
                         fontWeight: 'bold',
@@ -1164,7 +1229,7 @@ function buildVoicePairingAplDirective({ pairingCode = '000000', qrCodeUrl = nul
                       paddingBottom: '4dp',
                       item: {
                         type: 'Image',
-                        source: '${payload.pairing.qrCodeUrl}',
+                        source: '${pairingData.qrCodeUrl || pairing.qrCodeUrl || payload.pairing.qrCodeUrl || "' + (qrCodeUrl || DEFAULT_QR_PLACEHOLDER) + '"}',
                         width: '200dp',
                         height: '200dp',
                         scale: 'best-fit',
@@ -1188,15 +1253,22 @@ function buildVoicePairingAplDirective({ pairingCode = '000000', qrCodeUrl = nul
     },
   };
 
+  const pairingData = {
+    pairingCode: rawCode,
+    formattedCode,
+    qrCodeUrl: qrCodeUrl || DEFAULT_QR_PLACEHOLDER,
+    envLabel,
+  };
+
   const datasources = {
+    pairingData,
+    pairing: pairingData,
     payload: {
-      pairing: {
-        pairingCode: rawCode,
-        formattedCode,
-        qrCodeUrl: qrCodeUrl || DEFAULT_QR_PLACEHOLDER,
-        envLabel,
-      },
+      pairing: pairingData,
+      pairingData,
+      ...pairingData,
     },
+    ...pairingData,
   };
 
   return {
