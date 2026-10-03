@@ -1,8 +1,9 @@
 /**
  * Módulo de Apresentação Visual da Alexa (Alexa Presentation Language - APL 1.6+).
  * Design System oficial do Luisices para dispositivos com tela (Echo Show 5/8/10/15, Echo Spot e Fire TV).
- * Inclui layouts responsivos, suporte completo e robusto a telas circulares (Echo Spot), Glassmorphism, e botões interativos por toque.
- * Conformidade estrita com a especificação APL 1.6+ (uso de Frame para fundos e bordas).
+ * Inclui layouts responsivos, suporte completo e robusto a telas circulares (Echo Spot), Glassmorphism,
+ * botões interativos por toque e controle remoto de TV.
+ * Conformidade estrita com a especificação ASK e APL com injeção segura e à prova de falhas de dados.
  */
 
 const DEFAULT_BRAND_LOGO = 'https://dev.luisices.com.br/images/alexa-large-icon.png';
@@ -10,8 +11,6 @@ const DEFAULT_FALLBACK_IMAGE = 'https://dev.luisices.com.br/images/alexa-large-i
 const DEFAULT_QR_PLACEHOLDER = 'https://dev.luisices.com.br/images/alexa-large-icon.png';
 
 // Expressões condicionais universais para detecção de viewport
-// Echo Spot: viewport.shape é "ROUND" ou "round" (480x480).
-// Dispositivos retangulares (Fire TV, Echo Show 5/8/10/15, Tablets): viewport.shape != "ROUND"
 const WHEN_IS_ROUND = "${viewport.shape == 'ROUND' || viewport.shape == 'round'}";
 const WHEN_IS_RECTANGULAR = "${viewport.shape != 'ROUND' && viewport.shape != 'round'}";
 
@@ -53,6 +52,9 @@ function getAplStyles() {
  * 1. Constrói o documento APL de Boas-Vindas no Echo Show, Echo Spot e Fire TV (LaunchRequest).
  */
 function buildWelcomeAplDirective({ userName = 'Ateliê', envLabel = 'Teste' }) {
+  const cleanUserName = (userName && String(userName).trim()) || 'Ateliê';
+  const cleanEnvLabel = (envLabel && String(envLabel).trim()) || 'Teste';
+
   const document = {
     type: 'APL',
     version: '1.6',
@@ -77,7 +79,7 @@ function buildWelcomeAplDirective({ userName = 'Ateliê', envLabel = 'Teste' }) 
               type: 'AlexaHeader',
               when: WHEN_IS_RECTANGULAR,
               headerTitle: 'Luisices • Ateliê Criativo',
-              headerSubtitle: `Ambiente de ${envLabel}`,
+              headerSubtitle: `Ambiente de ${cleanEnvLabel}`,
               headerAttributionImage: DEFAULT_BRAND_LOGO,
             },
             // Layout Especial Circular para Echo Spot (480x480)
@@ -102,7 +104,7 @@ function buildWelcomeAplDirective({ userName = 'Ateliê', envLabel = 'Teste' }) 
                 },
                 {
                   type: 'Text',
-                  text: '👋 Olá, ${payload.welcome.userName}!',
+                  text: `👋 Olá, ${cleanUserName}!`,
                   color: '#FFFFFF',
                   fontSize: '20dp',
                   fontWeight: 'bold',
@@ -111,7 +113,7 @@ function buildWelcomeAplDirective({ userName = 'Ateliê', envLabel = 'Teste' }) 
                 },
                 {
                   type: 'Text',
-                  text: 'Luisices • ${payload.welcome.envLabel}',
+                  text: `Luisices • ${cleanEnvLabel}`,
                   color: '#E8E0E3',
                   fontSize: '14dp',
                   paddingTop: '4dp',
@@ -152,9 +154,9 @@ function buildWelcomeAplDirective({ userName = 'Ateliê', envLabel = 'Teste' }) 
               items: [
                 {
                   type: 'Text',
-                  text: '👋 Olá, ${payload.welcome.userName}!',
+                  text: `👋 Olá, ${cleanUserName}!`,
                   color: '#FFFFFF',
-                  fontSize: '32dp',
+                  fontSize: '34dp',
                   fontWeight: 'bold',
                 },
                 {
@@ -165,7 +167,7 @@ function buildWelcomeAplDirective({ userName = 'Ateliê', envLabel = 'Teste' }) 
                   paddingTop: '8dp',
                   paddingBottom: '24dp',
                 },
-                // Ações Rápidas em Pílulas Tocáveis
+                // Ações Rápidas em Pílulas Tocáveis e Navegáveis
                 {
                   type: 'Container',
                   direction: 'row',
@@ -246,12 +248,16 @@ function buildWelcomeAplDirective({ userName = 'Ateliê', envLabel = 'Teste' }) 
     },
   };
 
+  const welcome = {
+    userName: cleanUserName,
+    envLabel: cleanEnvLabel,
+  };
+
   const datasources = {
     payload: {
-      welcome: {
-        userName,
-        envLabel,
-      },
+      userName: cleanUserName,
+      envLabel: cleanEnvLabel,
+      welcome,
     },
   };
 
@@ -280,6 +286,17 @@ function buildOrderCardAplDirective({
   imageUrl = null,
   showActions = true,
 }) {
+  const cleanCustomer = (customer && String(customer).trim()) || 'Não informado';
+  const cleanProduct = (product && String(product).trim()) || 'Produto Personalizado';
+  const cleanQuantity = Number(quantity) || 1;
+  const cleanDelivery = (deliveryDate && String(deliveryDate).trim()) || 'A combinar';
+  const cleanTotal = (totalPrice && String(totalPrice).trim()) || 'R$ 0,00';
+  const cleanStatus = (statusLabel && String(statusLabel).trim()) || 'Aguardando Confirmação';
+  const cleanImage = (imageUrl && String(imageUrl).trim()) || DEFAULT_FALLBACK_IMAGE;
+  const cleanDraftId = draftId ? String(draftId) : '';
+  const cleanRevision = Number(revision) || 1;
+  const isActionsVisible = Boolean(showActions);
+
   const document = {
     type: 'APL',
     version: '1.6',
@@ -325,125 +342,129 @@ function buildOrderCardAplDirective({
                   height: '45dp',
                   scale: 'best-fit',
                   borderRadius: '22dp',
-                  paddingBottom: '4dp',
-                },
-                {
-                  type: 'Frame',
-                  backgroundColor: '#7B4D50',
-                  borderRadius: '6dp',
-                  paddingLeft: '8dp',
-                  paddingRight: '8dp',
-                  paddingTop: '2dp',
                   paddingBottom: '2dp',
-                  item: {
-                    type: 'Text',
-                    text: '${payload.order.statusLabel}',
-                    color: '#F4B7B9',
-                    fontSize: '11dp',
-                    fontWeight: 'bold',
-                  },
                 },
                 {
                   type: 'Text',
-                  text: '${payload.order.quantity}x ${payload.order.product}',
+                  text: cleanStatus,
+                  color: '#F4B7B9',
+                  fontSize: '11dp',
+                  fontWeight: 'bold',
+                },
+                {
+                  type: 'Text',
+                  text: `${cleanQuantity}x ${cleanProduct}`,
                   color: '#FFFFFF',
                   fontSize: '16dp',
                   fontWeight: 'bold',
-                  maxLines: 1,
-                  paddingTop: '4dp',
                   textAlign: 'center',
+                  maxLines: 1,
+                  paddingTop: '2dp',
                 },
                 {
                   type: 'Text',
-                  text: '👤 ${payload.order.customer}',
+                  text: `👤 ${cleanCustomer}`,
                   color: '#E8E0E3',
                   fontSize: '13dp',
                   paddingTop: '2dp',
-                  textAlign: 'center',
                 },
                 {
                   type: 'Text',
-                  text: '${payload.order.totalPrice}',
+                  text: cleanTotal,
                   color: '#34D399',
                   fontSize: '18dp',
                   fontWeight: 'bold',
-                  paddingTop: '4dp',
+                  paddingTop: '2dp',
                 },
-                {
-                  type: 'Container',
-                  direction: 'row',
-                  paddingTop: '8dp',
-                  when: '${payload.order.showActions}',
-                  items: [
-                    {
-                      type: 'TouchWrapper',
-                      onPress: [{ type: 'SendEvent', arguments: ['confirmOrder', '${payload.order.draftId}', '${payload.order.revision}'] }],
-                      item: {
-                        type: 'Frame',
-                        backgroundColor: '#10B981',
-                        borderRadius: '12dp',
-                        paddingLeft: '12dp',
-                        paddingRight: '12dp',
-                        paddingTop: '6dp',
-                        paddingBottom: '6dp',
-                        marginRight: '8dp',
-                        item: {
-                          type: 'Text',
-                          text: '✅ Confirmar',
-                          color: '#FFFFFF',
-                          fontSize: '12dp',
-                          fontWeight: 'bold',
-                        },
+                ...(isActionsVisible
+                  ? [
+                      {
+                        type: 'Container',
+                        direction: 'row',
+                        paddingTop: '8dp',
+                        items: [
+                          {
+                            type: 'TouchWrapper',
+                            onPress: [
+                              {
+                                type: 'SendEvent',
+                                arguments: ['confirmOrder', cleanDraftId, String(cleanRevision)],
+                              },
+                            ],
+                            item: {
+                              type: 'Frame',
+                              backgroundColor: '#10B981',
+                              borderRadius: '14dp',
+                              paddingLeft: '14dp',
+                              paddingRight: '14dp',
+                              paddingTop: '6dp',
+                              paddingBottom: '6dp',
+                              marginRight: '8dp',
+                              item: {
+                                type: 'Text',
+                                text: '✅',
+                                fontSize: '14dp',
+                              },
+                            },
+                          },
+                          {
+                            type: 'TouchWrapper',
+                            onPress: [
+                              {
+                                type: 'SendEvent',
+                                arguments: ['cancelOrder', cleanDraftId, String(cleanRevision)],
+                              },
+                            ],
+                            item: {
+                              type: 'Frame',
+                              backgroundColor: '#E58E8E',
+                              borderRadius: '14dp',
+                              paddingLeft: '14dp',
+                              paddingRight: '14dp',
+                              paddingTop: '6dp',
+                              paddingBottom: '6dp',
+                              item: {
+                                type: 'Text',
+                                text: '❌',
+                                fontSize: '14dp',
+                              },
+                            },
+                          },
+                        ],
                       },
-                    },
-                    {
-                      type: 'TouchWrapper',
-                      onPress: [{ type: 'SendEvent', arguments: ['cancelOrder', '${payload.order.draftId}', '${payload.order.revision}'] }],
-                      item: {
-                        type: 'Frame',
-                        backgroundColor: '#E58E8E',
-                        borderRadius: '12dp',
-                        paddingLeft: '12dp',
-                        paddingRight: '12dp',
-                        paddingTop: '6dp',
-                        paddingBottom: '6dp',
-                        item: {
-                          type: 'Text',
-                          text: '❌ Cancelar',
-                          color: '#161214',
-                          fontSize: '12dp',
-                          fontWeight: 'bold',
-                        },
-                      },
-                    },
-                  ],
-                },
+                    ]
+                  : []),
               ],
             },
-            // Layout Retangular Padrão para Echo Show e Fire TV
+            // Layout Retangular Widescreen Elegante para Echo Show e Fire TV
             {
               type: 'Container',
               when: WHEN_IS_RECTANGULAR,
               direction: 'row',
               grow: 1,
-              paddingLeft: '32dp',
-              paddingRight: '32dp',
-              paddingBottom: '24dp',
+              paddingLeft: '48dp',
+              paddingRight: '48dp',
+              paddingBottom: '32dp',
               alignItems: 'center',
               justifyContent: 'center',
               items: [
-                // Coluna Esquerda: Imagem do Produto envolvida em Frame
+                // Coluna Esquerda: Imagem do Produto envolvida em Frame com Fallback Garantido
                 {
                   type: 'Frame',
-                  borderRadius: '16dp',
+                  borderRadius: '24dp',
                   backgroundColor: '#231C1E',
                   borderColor: 'rgba(235, 205, 205, 0.18)',
                   borderWidth: '1dp',
+                  width: '280dp',
+                  height: '280dp',
+                  padding: '10dp',
+                  alignItems: 'center',
+                  justifyContent: 'center',
                   item: {
                     type: 'Image',
-                    source: '${payload.order.imageUrl}',
-                    width: '260dp',
-                    height: '260dp',
+                    source: cleanImage,
+                    width: '100%',
+                    height: '100%',
                     scale: 'best-fit',
                     borderRadius: '16dp',
                   },
@@ -452,7 +473,8 @@ function buildOrderCardAplDirective({
                 {
                   type: 'Container',
                   grow: 1,
-                  paddingLeft: '32dp',
+                  maxWidth: '650dp',
+                  marginLeft: '40dp',
                   justifyContent: 'center',
                   items: [
                     // Badge de Status
@@ -460,78 +482,127 @@ function buildOrderCardAplDirective({
                       type: 'Frame',
                       backgroundColor: '#7B4D50',
                       borderRadius: '8dp',
-                      paddingLeft: '12dp',
-                      paddingRight: '12dp',
-                      paddingTop: '4dp',
-                      paddingBottom: '4dp',
+                      paddingLeft: '16dp',
+                      paddingRight: '16dp',
+                      paddingTop: '6dp',
+                      paddingBottom: '6dp',
                       alignSelf: 'start',
                       item: {
                         type: 'Text',
-                        text: '${payload.order.statusLabel}',
+                        text: cleanStatus,
                         color: '#F4B7B9',
-                        fontSize: '14dp',
+                        fontSize: '15dp',
                         fontWeight: 'bold',
                       },
                     },
-                    // Nome do Produto e Quantidade
+                    // Quantidade e Produto
                     {
                       type: 'Text',
-                      text: '${payload.order.quantity}x ${payload.order.product}',
+                      text: `${cleanQuantity}x ${cleanProduct}`,
                       color: '#FFFFFF',
-                      fontSize: '28dp',
+                      fontSize: '32dp',
                       fontWeight: 'bold',
                       maxLines: 2,
-                      paddingTop: '8dp',
+                      paddingTop: '10dp',
                     },
                     // Cliente
                     {
                       type: 'Text',
-                      text: '👤 Cliente: ${payload.order.customer}',
+                      text: `👤 Cliente: ${cleanCustomer}`,
                       color: '#E8E0E3',
-                      fontSize: '20dp',
-                      paddingTop: '6dp',
+                      fontSize: '22dp',
+                      paddingTop: '8dp',
                     },
                     // Data de Entrega
                     {
                       type: 'Text',
-                      text: '📅 Entrega: ${payload.order.deliveryDate}',
+                      text: `📅 Entrega: ${cleanDelivery}`,
                       color: '#C9C0B8',
-                      fontSize: '18dp',
-                      paddingTop: '4dp',
+                      fontSize: '20dp',
+                      paddingTop: '6dp',
                     },
                     // Valor Total em Destaque
                     {
                       type: 'Text',
-                      text: '💰 Total: ${payload.order.totalPrice}',
+                      text: `💰 Total: ${cleanTotal}`,
                       color: '#34D399',
-                      fontSize: '26dp',
+                      fontSize: '32dp',
                       fontWeight: 'bold',
-                      paddingTop: '8dp',
+                      paddingTop: '12dp',
                     },
-                    {
-                      type: 'Container',
-                      direction: 'row',
-                      paddingTop: '16dp',
-                      when: '${payload.order.showActions}',
-                      spacing: '16dp',
-                      items: [
-                        {
-                          type: 'AlexaButton',
-                          buttonText: '✅ Confirmar',
-                          primaryAction: [
-                            { type: 'SendEvent', arguments: ['confirmOrder', '${payload.order.draftId}', '${payload.order.revision}'] }
-                          ]
-                        },
-                        {
-                          type: 'AlexaButton',
-                          buttonText: '❌ Cancelar',
-                          buttonStyle: 'outlined',
-                          primaryAction: [
-                            { type: 'SendEvent', arguments: ['cancelOrder', '${payload.order.draftId}', '${payload.order.revision}'] }
-                          ]
-                        }
-                      ]
-                    }
+                    // Ações ou Texto de Ajuda
+                    ...(isActionsVisible
+                      ? [
+                          {
+                            type: 'Container',
+                            direction: 'row',
+                            paddingTop: '20dp',
+                            items: [
+                              {
+                                type: 'TouchWrapper',
+                                onPress: [
+                                  {
+                                    type: 'SendEvent',
+                                    arguments: ['confirmOrder', cleanDraftId, String(cleanRevision)],
+                                  },
+                                ],
+                                item: {
+                                  type: 'Frame',
+                                  backgroundColor: '#10B981',
+                                  borderRadius: '16dp',
+                                  paddingLeft: '28dp',
+                                  paddingRight: '28dp',
+                                  paddingTop: '14dp',
+                                  paddingBottom: '14dp',
+                                  marginRight: '16dp',
+                                  item: {
+                                    type: 'Text',
+                                    text: '✅ Confirmar Pedido',
+                                    color: '#FFFFFF',
+                                    fontSize: '18dp',
+                                    fontWeight: 'bold',
+                                  },
+                                },
+                              },
+                              {
+                                type: 'TouchWrapper',
+                                onPress: [
+                                  {
+                                    type: 'SendEvent',
+                                    arguments: ['cancelOrder', cleanDraftId, String(cleanRevision)],
+                                  },
+                                ],
+                                item: {
+                                  type: 'Frame',
+                                  backgroundColor: '#231C1E',
+                                  borderColor: 'rgba(235, 205, 205, 0.18)',
+                                  borderWidth: '1dp',
+                                  borderRadius: '16dp',
+                                  paddingLeft: '24dp',
+                                  paddingRight: '24dp',
+                                  paddingTop: '14dp',
+                                  paddingBottom: '14dp',
+                                  item: {
+                                    type: 'Text',
+                                    text: '❌ Cancelar',
+                                    color: '#E8E0E3',
+                                    fontSize: '18dp',
+                                    fontWeight: 'bold',
+                                  },
+                                },
+                              },
+                            ],
+                          },
+                        ]
+                      : [
+                          {
+                            type: 'Text',
+                            text: '🎙️ Fale os dados pendentes ou diga o que deseja corrigir',
+                            color: '#C9C0B8',
+                            fontSize: '16dp',
+                            paddingTop: '16dp',
+                          },
+                        ]),
                   ],
                 },
               ],
@@ -544,21 +615,24 @@ function buildOrderCardAplDirective({
 
   const token = draftId ? `luisicesOrderToken_${draftId}_${revision || 1}` : 'luisicesOrderToken';
 
+  const order = {
+    draftId: cleanDraftId,
+    revision: cleanRevision,
+    customer: cleanCustomer,
+    product: cleanProduct,
+    quantity: cleanQuantity,
+    deliveryDate: cleanDelivery,
+    totalPrice: cleanTotal,
+    statusLabel: cleanStatus,
+    envLabel,
+    imageUrl: cleanImage,
+    showActions: isActionsVisible,
+  };
+
   const datasources = {
     payload: {
-      order: {
-        draftId: draftId || '',
-        revision: revision || 1,
-        customer,
-        product,
-        quantity,
-        deliveryDate,
-        totalPrice,
-        statusLabel,
-        envLabel,
-        imageUrl: imageUrl || DEFAULT_FALLBACK_IMAGE,
-        showActions: Boolean(showActions),
-      },
+      ...order,
+      order,
     },
   };
 
@@ -572,21 +646,24 @@ function buildOrderCardAplDirective({
 
 /**
  * 3. Constrói o documento APL de Celebração de Sucesso (Order Success).
+ * Layout Widescreen equilibrado para TV (16:9) e Echo Show, eliminando colunas vazias.
  */
 function buildOrderSuccessAplDirective({
   orderNumber = '0',
-  customer = '',
-  product = '',
+  customer = 'Cliente',
+  product = 'Produto Personalizado',
   quantity = 1,
   totalPrice = '',
   deliveryDate = '',
   envLabel = 'Teste',
+  orderHeading = null,
 }) {
   const hasNumber = Boolean(orderNumber && String(orderNumber).replace(/^#+/, '').trim());
   const cleanOrderNumber = hasNumber ? String(orderNumber).replace(/^#+/, '').trim() : '';
-  const orderHeading = hasNumber ? `Pedido #${cleanOrderNumber} Registrado!` : 'Pedido Confirmado!';
-  const cleanCustomer = customer || 'Cliente';
-  const cleanProduct = product || 'Produto Personalizado';
+  const finalOrderHeading =
+    orderHeading || (hasNumber ? `Pedido #${cleanOrderNumber} Registrado!` : 'Pedido Confirmado!');
+  const cleanCustomer = (customer && String(customer).trim()) || 'Cliente';
+  const cleanProduct = (product && String(product).trim()) || 'Produto Personalizado';
   const cleanQuantity = Number(quantity) || 1;
   const cleanTotal = totalPrice || 'R$ 0,00';
   const cleanDelivery = deliveryDate || '';
@@ -631,7 +708,7 @@ function buildOrderSuccessAplDirective({
                 },
                 {
                   type: 'Text',
-                  text: '${payload.success.orderHeading}',
+                  text: finalOrderHeading,
                   color: '#34D399',
                   fontSize: '18dp',
                   fontWeight: 'bold',
@@ -640,7 +717,7 @@ function buildOrderSuccessAplDirective({
                 },
                 {
                   type: 'Text',
-                  text: '${payload.success.quantity}x ${payload.success.product}',
+                  text: `${cleanQuantity}x ${cleanProduct}`,
                   color: '#FFFFFF',
                   fontSize: '14dp',
                   fontWeight: 'bold',
@@ -650,7 +727,7 @@ function buildOrderSuccessAplDirective({
                 },
                 {
                   type: 'Text',
-                  text: '👤 ${payload.success.customer}',
+                  text: `👤 ${cleanCustomer}`,
                   color: '#E8E0E3',
                   fontSize: '13dp',
                   textAlign: 'center',
@@ -658,7 +735,7 @@ function buildOrderSuccessAplDirective({
                 },
                 {
                   type: 'Text',
-                  text: 'Total: ${payload.success.totalPrice}',
+                  text: `Total: ${cleanTotal}`,
                   color: '#34D399',
                   fontSize: '16dp',
                   fontWeight: 'bold',
@@ -666,31 +743,27 @@ function buildOrderSuccessAplDirective({
                 },
               ],
             },
-            // Layout Retangular para Echo Show e Fire TV (Telas Grandes)
+            // Layout Widescreen Equilibrado para Echo Show e Fire TV (Duas Colunas Harmoniosas)
             {
               type: 'Container',
               when: WHEN_IS_RECTANGULAR,
+              direction: 'row',
               grow: 1,
-              paddingLeft: '40dp',
-              paddingRight: '40dp',
-              paddingBottom: '24dp',
+              paddingLeft: '56dp',
+              paddingRight: '56dp',
+              paddingBottom: '32dp',
               alignItems: 'center',
               justifyContent: 'center',
               items: [
+                // Painel Esquerdo: Celebração, Badge e Sincronização
                 {
                   type: 'Frame',
                   backgroundColor: '#231C1E',
                   borderColor: 'rgba(235, 205, 205, 0.18)',
                   borderWidth: '1dp',
                   borderRadius: '24dp',
-                  width: '80vw',
-                  height: '80vh',
-                  maxWidth: '800dp',
-                  maxHeight: '600dp',
-                  paddingLeft: '40dp',
-                  paddingRight: '40dp',
-                  paddingTop: '24dp',
-                  paddingBottom: '24dp',
+                  padding: '32dp',
+                  width: '380dp',
                   alignItems: 'center',
                   item: {
                     type: 'Container',
@@ -699,7 +772,7 @@ function buildOrderSuccessAplDirective({
                       {
                         type: 'Text',
                         text: '🎉',
-                        fontSize: '44dp',
+                        fontSize: '56dp',
                       },
                       {
                         type: 'Frame',
@@ -707,73 +780,89 @@ function buildOrderSuccessAplDirective({
                         borderColor: '#10B981',
                         borderWidth: '1dp',
                         borderRadius: '12dp',
-                        paddingLeft: '16dp',
-                        paddingRight: '16dp',
-                        paddingTop: '4dp',
-                        paddingBottom: '4dp',
-                        marginTop: '6dp',
+                        paddingLeft: '18dp',
+                        paddingRight: '18dp',
+                        paddingTop: '6dp',
+                        paddingBottom: '6dp',
+                        marginTop: '12dp',
                         item: {
                           type: 'Text',
                           text: '✅ Pedido Confirmado',
                           color: '#34D399',
-                          fontSize: '14dp',
+                          fontSize: '16dp',
                           fontWeight: 'bold',
                         },
                       },
                       {
                         type: 'Text',
-                        text: '${payload.success.orderHeading}',
+                        text: finalOrderHeading,
                         color: '#FFFFFF',
-                        fontSize: '28dp',
+                        fontSize: '24dp',
                         fontWeight: 'bold',
                         textAlign: 'center',
-                        paddingTop: '10dp',
-                      },
-                      {
-                        type: 'Text',
-                        text: '${payload.success.quantity}x ${payload.success.product}',
-                        color: '#F4B7B9',
-                        fontSize: '22dp',
-                        fontWeight: 'bold',
-                        textAlign: 'center',
-                        paddingTop: '8dp',
-                      },
-                      {
-                        type: 'Container',
-                        direction: 'row',
-                        paddingTop: '10dp',
-                        items: [
-                          {
-                            type: 'Text',
-                            text: '👤 Cliente: ${payload.success.customer}',
-                            color: '#E8E0E3',
-                            fontSize: '18dp',
-                            marginRight: '24dp',
-                          },
-                          {
-                            type: 'Text',
-                            text: '💰 Total: ${payload.success.totalPrice}',
-                            color: '#34D399',
-                            fontSize: '18dp',
-                            fontWeight: 'bold',
-                          },
-                        ],
-                      },
-                      {
-                        type: 'Text',
-                        text: '📅 Entrega: ${payload.success.deliveryDate}',
-                        color: '#E8E0E3',
-                        fontSize: '16dp',
-                        paddingTop: '6dp',
-                        when: '${payload.success.deliveryDate != ""}',
+                        paddingTop: '14dp',
                       },
                       {
                         type: 'Text',
                         text: '✨ Sincronizado no quadro de produção do Luisices',
                         color: '#C9C0B8',
                         fontSize: '14dp',
-                        paddingTop: '12dp',
+                        paddingTop: '10dp',
                         textAlign: 'center',
+                      },
+                    ],
+                  },
+                },
+                // Painel Direito: Resumo Completo e Elegante dos Dados do Pedido
+                {
+                  type: 'Frame',
+                  backgroundColor: '#231C1E',
+                  borderColor: 'rgba(235, 205, 205, 0.18)',
+                  borderWidth: '1dp',
+                  borderRadius: '24dp',
+                  marginLeft: '40dp',
+                  paddingLeft: '40dp',
+                  paddingRight: '40dp',
+                  paddingTop: '32dp',
+                  paddingBottom: '32dp',
+                  grow: 1,
+                  maxWidth: '600dp',
+                  item: {
+                    type: 'Container',
+                    items: [
+                      {
+                        type: 'Text',
+                        text: `${cleanQuantity}x ${cleanProduct}`,
+                        color: '#F4B7B9',
+                        fontSize: '32dp',
+                        fontWeight: 'bold',
+                        maxLines: 2,
+                      },
+                      {
+                        type: 'Text',
+                        text: `👤 Cliente: ${cleanCustomer}`,
+                        color: '#FFFFFF',
+                        fontSize: '22dp',
+                        paddingTop: '12dp',
+                      },
+                      ...(cleanDelivery
+                        ? [
+                            {
+                              type: 'Text',
+                              text: `📅 Entrega: ${cleanDelivery}`,
+                              color: '#E8E0E3',
+                              fontSize: '20dp',
+                              paddingTop: '8dp',
+                            },
+                          ]
+                        : []),
+                      {
+                        type: 'Text',
+                        text: `💰 Total: ${cleanTotal}`,
+                        color: '#34D399',
+                        fontSize: '32dp',
+                        fontWeight: 'bold',
+                        paddingTop: '14dp',
                       },
                     ],
                   },
@@ -786,18 +875,21 @@ function buildOrderSuccessAplDirective({
     },
   };
 
+  const success = {
+    orderHeading: finalOrderHeading,
+    orderNumber: cleanOrderNumber,
+    customer: cleanCustomer,
+    product: cleanProduct,
+    quantity: cleanQuantity,
+    totalPrice: cleanTotal,
+    deliveryDate: cleanDelivery,
+    envLabel,
+  };
+
   const datasources = {
     payload: {
-      success: {
-        orderHeading,
-        orderNumber: cleanOrderNumber,
-        customer: cleanCustomer,
-        product: cleanProduct,
-        quantity: cleanQuantity,
-        totalPrice: cleanTotal,
-        deliveryDate: cleanDelivery,
-        envLabel,
-      },
+      ...success,
+      success,
     },
   };
 
@@ -810,7 +902,7 @@ function buildOrderSuccessAplDirective({
 }
 
 /**
- * 4. Constrói o documento APL para Seleção Visual de Sugestões Fuzzy (Fuzzy Suggestions Picker).
+ * 4. Constrói o documento APL para Resolução de Ambiguidade de Produtos (Fuzzy Matching).
  */
 function buildFuzzySuggestionsAplDirective({ spokenProduct = '', suggestions = [], envLabel = 'Teste' }) {
   const document = {
@@ -865,10 +957,10 @@ function buildFuzzySuggestionsAplDirective({ spokenProduct = '', suggestions = [
                 },
                 {
                   type: 'Text',
-                  text: 'Toque para escolher:',
+                  text: 'Deseja algum destes?',
                   color: '#E8E0E3',
                   fontSize: '12dp',
-                  paddingBottom: '8dp',
+                  paddingBottom: '6dp',
                   textAlign: 'center',
                 },
                 {
@@ -886,11 +978,12 @@ function buildFuzzySuggestionsAplDirective({ spokenProduct = '', suggestions = [
                       paddingRight: '12dp',
                       paddingTop: '6dp',
                       paddingBottom: '6dp',
-                      marginBottom: '6dp',
-                      width: '280dp',
+                      marginBottom: '4dp',
+                      width: '260dp',
                       item: {
                         type: 'Container',
-                        alignItems: 'center',
+                        direction: 'row',
+                        justifyContent: 'spaceBetween',
                         items: [
                           {
                             type: 'Text',
@@ -905,6 +998,7 @@ function buildFuzzySuggestionsAplDirective({ spokenProduct = '', suggestions = [
                             text: sug.unitPrice ? `R$ ${sug.unitPrice.toFixed(2)} cada` : 'Catálogo',
                             color: '#34D399',
                             fontSize: '11dp',
+                            paddingTop: '2dp',
                           },
                         ],
                       },
@@ -913,27 +1007,29 @@ function buildFuzzySuggestionsAplDirective({ spokenProduct = '', suggestions = [
                 },
               ],
             },
-            // Layout Retangular para Echo Show e Fire TV (Telas Grandes)
+            // Layout Retangular para Echo Show e Fire TV
             {
               type: 'Container',
               when: WHEN_IS_RECTANGULAR,
               grow: 1,
               paddingLeft: '32dp',
               paddingRight: '32dp',
-              paddingTop: '8dp',
+              paddingBottom: '24dp',
+              alignItems: 'center',
+              justifyContent: 'center',
               items: [
                 {
                   type: 'Text',
-                  text: 'Toque ou diga o produto desejado:',
+                  text: `Não encontramos "${spokenProduct}". Você quis dizer:`,
                   color: '#E8E0E3',
-                  fontSize: '20dp',
-                  paddingBottom: '20dp',
+                  fontSize: '22dp',
+                  paddingBottom: '24dp',
+                  textAlign: 'center',
                 },
                 {
                   type: 'Container',
                   direction: 'row',
-                  justifyContent: 'center',
-                  items: suggestions.slice(0, 2).map((sug, idx) => ({
+                  items: suggestions.map((sug, idx) => ({
                     type: 'TouchWrapper',
                     onPress: [{ type: 'SendEvent', arguments: ['selectProduct', sug.name] }],
                     item: {
@@ -941,40 +1037,35 @@ function buildFuzzySuggestionsAplDirective({ spokenProduct = '', suggestions = [
                       backgroundColor: '#231C1E',
                       borderColor: 'rgba(235, 205, 205, 0.18)',
                       borderWidth: '1dp',
-                      borderRadius: '16dp',
-                      paddingLeft: '24dp',
-                      paddingRight: '24dp',
-                      paddingTop: '20dp',
-                      paddingBottom: '20dp',
-                      marginRight: idx === 0 ? '24dp' : '0dp',
+                      borderRadius: '20dp',
+                      padding: '24dp',
                       width: '380dp',
+                      marginLeft: idx > 0 ? '24dp' : '0dp',
                       item: {
                         type: 'Container',
-                        alignItems: 'center',
                         items: [
-                          {
-                            type: 'Image',
-                            source: DEFAULT_FALLBACK_IMAGE,
-                            width: '120dp',
-                            height: '120dp',
-                            scale: 'best-fit',
-                            borderRadius: '12dp',
-                          },
                           {
                             type: 'Text',
                             text: sug.name,
                             color: '#FFFFFF',
                             fontSize: '22dp',
                             fontWeight: 'bold',
-                            paddingTop: '12dp',
-                            textAlign: 'center',
                           },
                           {
                             type: 'Text',
-                            text: sug.unitPrice ? `R$ ${sug.unitPrice.toFixed(2)} cada` : 'Catálogo',
+                            text: sug.unitPrice
+                              ? `Preço Unitário: R$ ${sug.unitPrice.toFixed(2).replace('.', ',')} cada`
+                              : 'Item cadastrado no catálogo',
                             color: '#34D399',
-                            fontSize: '18dp',
+                            fontSize: '16dp',
                             paddingTop: '6dp',
+                          },
+                          {
+                            type: 'Text',
+                            text: 'Toque para selecionar',
+                            color: '#C9C0B8',
+                            fontSize: '14dp',
+                            paddingTop: '16dp',
                           },
                         ],
                       },
@@ -1006,15 +1097,16 @@ function buildFuzzySuggestionsAplDirective({ spokenProduct = '', suggestions = [
 }
 
 /**
- * 5. Constrói o documento APL de Vinculação de Voz com Código Gigante & QR Code (Voice Pairing).
+ * 5. Constrói o documento APL de Vinculação de Perfil de Voz (LinkVoiceIntent).
  */
 function buildVoicePairingAplDirective({ pairingCode = '000000', qrCodeUrl = null, envLabel = 'Teste' }) {
-  const rawCode = String(pairingCode || '').trim();
-  const formattedCode = rawCode.length === 8
-    ? `${rawCode.slice(0, 4)} ${rawCode.slice(4)}`
-    : rawCode.length === 6
-      ? `${rawCode.slice(0, 3)} ${rawCode.slice(3)}`
-      : rawCode;
+  const rawCode = String(pairingCode).replace(/\s+/g, '');
+  const formattedCode =
+    rawCode.length === 8
+      ? `${rawCode.slice(0, 4)} ${rawCode.slice(4)}`
+      : rawCode.length === 6
+        ? `${rawCode.slice(0, 3)} ${rawCode.slice(3)}`
+        : rawCode;
 
   const document = {
     type: 'APL',
@@ -1034,7 +1126,7 @@ function buildVoicePairingAplDirective({ pairingCode = '000000', qrCodeUrl = nul
             {
               type: 'AlexaHeader',
               when: WHEN_IS_RECTANGULAR,
-              headerTitle: 'Luisices • Vincular Voz',
+              headerTitle: 'Luisices • Vinculação de Voz',
               headerSubtitle: `Ambiente de ${envLabel}`,
               headerAttributionImage: DEFAULT_BRAND_LOGO,
             },
@@ -1050,48 +1142,41 @@ function buildVoicePairingAplDirective({ pairingCode = '000000', qrCodeUrl = nul
               paddingRight: '24dp',
               items: [
                 {
-                  type: 'Image',
-                  source: DEFAULT_BRAND_LOGO,
-                  width: '44dp',
-                  height: '44dp',
-                  scale: 'best-fit',
-                  borderRadius: '22dp',
-                  paddingBottom: '4dp',
-                },
-                {
                   type: 'Text',
-                  text: 'Código de Pareamento:',
-                  color: '#E8E0E3',
-                  fontSize: '14dp',
+                  text: '🎙️ Código de Vinculação',
+                  color: '#F4B7B9',
+                  fontSize: '13dp',
+                  fontWeight: 'bold',
                   textAlign: 'center',
+                  paddingBottom: '4dp',
                 },
                 {
                   type: 'Frame',
                   backgroundColor: '#231C1E',
                   borderColor: 'rgba(235, 205, 205, 0.18)',
                   borderWidth: '1dp',
-                  borderRadius: '12dp',
-                  paddingLeft: '18dp',
-                  paddingRight: '18dp',
-                  paddingTop: '8dp',
-                  paddingBottom: '8dp',
-                  marginTop: '6dp',
+                  borderRadius: '16dp',
+                  paddingLeft: '16dp',
+                  paddingRight: '16dp',
+                  paddingTop: '6dp',
+                  paddingBottom: '6dp',
                   marginBottom: '6dp',
                   item: {
                     type: 'Text',
-                    text: '${payload.pairing.formattedCode}',
+                    text: formattedCode,
                     color: '#FFFFFF',
                     fontSize: '32dp',
                     fontWeight: 'bold',
-                    letterSpacing: '4dp',
+                    textAlign: 'center',
                   },
                 },
                 {
                   type: 'Text',
-                  text: 'Informe no app Luisices',
-                  color: '#C9C0B8',
-                  fontSize: '12dp',
+                  text: 'Acesse o aplicativo Luisices e digite este código no menu Alexa.',
+                  color: '#E8E0E3',
+                  fontSize: '11dp',
                   textAlign: 'center',
+                  maxLines: 2,
                 },
               ],
             },
@@ -1101,84 +1186,113 @@ function buildVoicePairingAplDirective({ pairingCode = '000000', qrCodeUrl = nul
               when: WHEN_IS_RECTANGULAR,
               direction: 'row',
               grow: 1,
-              alignItems: 'center',
-              justifyContent: 'center',
               paddingLeft: '48dp',
               paddingRight: '48dp',
+              paddingBottom: '32dp',
+              alignItems: 'center',
+              justifyContent: 'center',
               items: [
-                // Coluna Esquerda: Código Numérico Gigante
+                // Coluna Esquerda: Instruções e Código
                 {
                   type: 'Container',
                   grow: 1,
+                  maxWidth: '540dp',
                   items: [
                     {
                       type: 'Text',
-                      text: 'Seu Código de Pareamento:',
+                      text: '🎙️ Vincule sua Voz ao Luisices',
+                      color: '#FFFFFF',
+                      fontSize: '32dp',
+                      fontWeight: 'bold',
+                      paddingBottom: '12dp',
+                    },
+                    {
+                      type: 'Text',
+                      text: '1. Abra o aplicativo Luisices no celular ou computador.',
                       color: '#E8E0E3',
-                      fontSize: '22dp',
+                      fontSize: '18dp',
+                      paddingBottom: '6dp',
+                    },
+                    {
+                      type: 'Text',
+                      text: '2. Vá em Configurações > Integrações > Alexa.',
+                      color: '#E8E0E3',
+                      fontSize: '18dp',
+                      paddingBottom: '6dp',
+                    },
+                    {
+                      type: 'Text',
+                      text: '3. Digite o código de 6 dígitos exibido ao lado:',
+                      color: '#E8E0E3',
+                      fontSize: '18dp',
+                      paddingBottom: '16dp',
                     },
                     {
                       type: 'Frame',
                       backgroundColor: '#231C1E',
                       borderColor: 'rgba(235, 205, 205, 0.18)',
                       borderWidth: '1dp',
-                      borderRadius: '16dp',
-                      paddingLeft: '28dp',
-                      paddingRight: '28dp',
-                      paddingTop: '14dp',
-                      paddingBottom: '14dp',
-                      marginTop: '12dp',
-                      marginBottom: '12dp',
+                      borderRadius: '20dp',
+                      paddingLeft: '32dp',
+                      paddingRight: '32dp',
+                      paddingTop: '16dp',
+                      paddingBottom: '16dp',
                       alignSelf: 'start',
                       item: {
                         type: 'Text',
-                        text: '${payload.pairing.formattedCode}',
+                        text: formattedCode,
                         color: '#FFFFFF',
                         fontSize: '48dp',
                         fontWeight: 'bold',
-                        letterSpacing: '8dp',
+                        letterSpacing: '4dp',
                       },
                     },
                     {
                       type: 'Text',
-                      text: 'Acesse o aplicativo Luisices > Ajustes > Integração Alexa e informe este código para autorizar.',
+                      text: '⏳ Este código expira em 5 minutos.',
                       color: '#C9C0B8',
-                      fontSize: '16dp',
-                      maxLines: 2,
+                      fontSize: '14dp',
+                      paddingTop: '12dp',
                     },
                   ],
                 },
-                // Coluna Direita: QR Code
+                // Coluna Direita: QR Code de Acesso Rápido
                 {
-                  type: 'Container',
+                  type: 'Frame',
+                  backgroundColor: '#231C1E',
+                  borderColor: 'rgba(235, 205, 205, 0.18)',
+                  borderWidth: '1dp',
+                  borderRadius: '24dp',
+                  padding: '24dp',
+                  marginLeft: '48dp',
                   alignItems: 'center',
-                  paddingLeft: '32dp',
-                  items: [
-                    {
-                      type: 'Frame',
-                      borderRadius: '12dp',
-                      backgroundColor: '#FFFFFF',
-                      paddingLeft: '4dp',
-                      paddingRight: '4dp',
-                      paddingTop: '4dp',
-                      paddingBottom: '4dp',
-                      item: {
-                        type: 'Image',
-                        source: '${payload.pairing.qrCodeUrl}',
-                        width: '200dp',
-                        height: '200dp',
-                        scale: 'best-fit',
-                        borderRadius: '10dp',
+                  item: {
+                    type: 'Container',
+                    alignItems: 'center',
+                    items: [
+                      {
+                        type: 'Text',
+                        text: 'Ou aponte sua câmera:',
+                        color: '#E8E0E3',
+                        fontSize: '16dp',
+                        paddingBottom: '12dp',
                       },
-                    },
-                    {
-                      type: 'Text',
-                      text: 'Escaneie com a câmera',
-                      color: '#E8E0E3',
-                      fontSize: '14dp',
-                      paddingTop: '8dp',
-                    },
-                  ],
+                      {
+                        type: 'Frame',
+                        backgroundColor: '#FFFFFF',
+                        borderRadius: '16dp',
+                        padding: '12dp',
+                        paddingBottom: '4dp',
+                        item: {
+                          type: 'Image',
+                          source: qrCodeUrl || DEFAULT_QR_PLACEHOLDER,
+                          width: '200dp',
+                          height: '200dp',
+                          scale: 'best-fit',
+                        },
+                      },
+                    ],
+                  },
                 },
               ],
             },
@@ -1188,14 +1302,17 @@ function buildVoicePairingAplDirective({ pairingCode = '000000', qrCodeUrl = nul
     },
   };
 
+  const pairing = {
+    pairingCode: rawCode,
+    formattedCode,
+    qrCodeUrl: qrCodeUrl || DEFAULT_QR_PLACEHOLDER,
+    envLabel,
+  };
+
   const datasources = {
     payload: {
-      pairing: {
-        pairingCode: rawCode,
-        formattedCode,
-        qrCodeUrl: qrCodeUrl || DEFAULT_QR_PLACEHOLDER,
-        envLabel,
-      },
+      ...pairing,
+      pairing,
     },
   };
 
