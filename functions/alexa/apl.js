@@ -9,6 +9,22 @@
 const DEFAULT_BRAND_LOGO = 'https://dev.luisices.com.br/images/alexa-large-icon.png';
 const DEFAULT_FALLBACK_IMAGE = 'https://dev.luisices.com.br/images/alexa-large-icon.png';
 const DEFAULT_QR_PLACEHOLDER = 'https://dev.luisices.com.br/images/alexa-large-icon.png';
+const DEFAULT_BACKGROUND_IMAGE = 'https://dev.luisices.com.br/images/login-bg-800.png';
+
+/**
+ * Constrói o componente padrão de plano de fundo do Luisices (AlexaBackground).
+ * Utiliza a mesma imagem fotográfica acolhedora da tela de login (versão PNG otimizada para Echo Show)
+ * com scrim protetor escuro para garantir máxima legibilidade dos textos e cartões (contraste AAA).
+ */
+function buildDefaultBackgroundComponent() {
+  return {
+    type: 'AlexaBackground',
+    backgroundImageSource: DEFAULT_BACKGROUND_IMAGE,
+    backgroundColor: '#161214',
+    backgroundBlur: false,
+    colorOverlay: true,
+  };
+}
 
 // Expressões condicionais universais para detecção de viewport
 const WHEN_IS_ROUND = "${viewport.shape == 'ROUND' || viewport.shape == 'round'}";
@@ -74,6 +90,8 @@ function buildWelcomeAplDirective({ userName = 'Ateliê', envLabel = 'Teste' }) 
           height: '100vh',
           backgroundColor: '#161214',
           items: [
+            // Fundo Oficial Luisices (mesma imagem da tela de login) com Scrim Escuro
+            buildDefaultBackgroundComponent(),
             // Cabeçalho Oficial para telas retangulares (Echo Show 5/8/10/15, Fire TV)
             {
               type: 'AlexaHeader',
@@ -126,6 +144,8 @@ function buildWelcomeAplDirective({ userName = 'Ateliê', envLabel = 'Teste' }) 
                   item: {
                     type: 'Frame',
                     backgroundColor: '#7B4D50',
+                    borderColor: 'rgba(244, 183, 185, 0.4)',
+                    borderWidth: '1dp',
                     borderRadius: '16dp',
                     paddingLeft: '16dp',
                     paddingRight: '16dp',
@@ -178,6 +198,8 @@ function buildWelcomeAplDirective({ userName = 'Ateliê', envLabel = 'Teste' }) 
                       item: {
                         type: 'Frame',
                         backgroundColor: '#7B4D50',
+                        borderColor: 'rgba(244, 183, 185, 0.35)',
+                        borderWidth: '1dp',
                         borderRadius: '20dp',
                         paddingLeft: '20dp',
                         paddingRight: '20dp',
@@ -198,8 +220,8 @@ function buildWelcomeAplDirective({ userName = 'Ateliê', envLabel = 'Teste' }) 
                       onPress: [{ type: 'SendEvent', arguments: ['intent', 'ListRecentOrdersIntent'] }],
                       item: {
                         type: 'Frame',
-                        backgroundColor: '#231C1E',
-                        borderColor: 'rgba(235, 205, 205, 0.18)',
+                        backgroundColor: 'rgba(35, 28, 30, 0.88)',
+                        borderColor: 'rgba(235, 205, 205, 0.22)',
                         borderWidth: '1dp',
                         borderRadius: '20dp',
                         paddingLeft: '20dp',
@@ -221,8 +243,8 @@ function buildWelcomeAplDirective({ userName = 'Ateliê', envLabel = 'Teste' }) 
                       onPress: [{ type: 'SendEvent', arguments: ['intent', 'LinkVoiceIntent'] }],
                       item: {
                         type: 'Frame',
-                        backgroundColor: '#231C1E',
-                        borderColor: 'rgba(235, 205, 205, 0.18)',
+                        backgroundColor: 'rgba(35, 28, 30, 0.88)',
+                        borderColor: 'rgba(235, 205, 205, 0.22)',
                         borderWidth: '1dp',
                         borderRadius: '20dp',
                         paddingLeft: '20dp',
@@ -316,6 +338,8 @@ function buildOrderCardAplDirective({
           height: '100vh',
           backgroundColor: '#161214',
           items: [
+            // Fundo Oficial Luisices (mesma imagem da tela de login) com Scrim Escuro
+            buildDefaultBackgroundComponent(),
             // Cabeçalho Oficial para telas retangulares (Echo Show 5/8/10/15, Fire TV)
             {
               type: 'AlexaHeader',
@@ -394,6 +418,8 @@ function buildOrderCardAplDirective({
                             item: {
                               type: 'Frame',
                               backgroundColor: '#10B981',
+                              borderColor: 'rgba(52, 211, 153, 0.45)',
+                              borderWidth: '1dp',
                               borderRadius: '14dp',
                               paddingLeft: '14dp',
                               paddingRight: '14dp',
@@ -417,7 +443,9 @@ function buildOrderCardAplDirective({
                             ],
                             item: {
                               type: 'Frame',
-                              backgroundColor: '#E58E8E',
+                              backgroundColor: 'rgba(70, 30, 35, 0.9)',
+                              borderColor: 'rgba(229, 142, 142, 0.45)',
+                              borderWidth: '1dp',
                               borderRadius: '14dp',
                               paddingLeft: '14dp',
                               paddingRight: '14dp',
@@ -452,8 +480,8 @@ function buildOrderCardAplDirective({
                 {
                   type: 'Frame',
                   borderRadius: '24dp',
-                  backgroundColor: '#231C1E',
-                  borderColor: 'rgba(235, 205, 205, 0.18)',
+                  backgroundColor: 'rgba(35, 28, 30, 0.88)',
+                  borderColor: 'rgba(235, 205, 205, 0.22)',
                   borderWidth: '1dp',
                   width: '280dp',
                   height: '280dp',
@@ -469,141 +497,156 @@ function buildOrderCardAplDirective({
                     borderRadius: '16dp',
                   },
                 },
-                // Coluna Direita: Dados do Pedido + Botões de Toque
+                // Coluna Direita: Dados do Pedido + Botões de Toque em Painel de Vidro
                 {
-                  type: 'Container',
+                  type: 'Frame',
+                  backgroundColor: 'rgba(35, 28, 30, 0.88)',
+                  borderColor: 'rgba(235, 205, 205, 0.22)',
+                  borderWidth: '1dp',
+                  borderRadius: '24dp',
+                  paddingLeft: '32dp',
+                  paddingRight: '32dp',
+                  paddingTop: '24dp',
+                  paddingBottom: '24dp',
+                  marginLeft: '36dp',
                   grow: 1,
                   maxWidth: '650dp',
-                  marginLeft: '40dp',
-                  justifyContent: 'center',
-                  items: [
-                    // Badge de Status
-                    {
-                      type: 'Frame',
-                      backgroundColor: '#7B4D50',
-                      borderRadius: '8dp',
-                      paddingLeft: '16dp',
-                      paddingRight: '16dp',
-                      paddingTop: '6dp',
-                      paddingBottom: '6dp',
-                      alignSelf: 'start',
-                      item: {
-                        type: 'Text',
-                        text: cleanStatus,
-                        color: '#F4B7B9',
-                        fontSize: '15dp',
-                        fontWeight: 'bold',
+                  item: {
+                    type: 'Container',
+                    justifyContent: 'center',
+                    items: [
+                      // Badge de Status
+                      {
+                        type: 'Frame',
+                        backgroundColor: '#7B4D50',
+                        borderColor: 'rgba(244, 183, 185, 0.3)',
+                        borderWidth: '1dp',
+                        borderRadius: '8dp',
+                        paddingLeft: '16dp',
+                        paddingRight: '16dp',
+                        paddingTop: '6dp',
+                        paddingBottom: '6dp',
+                        alignSelf: 'start',
+                        item: {
+                          type: 'Text',
+                          text: cleanStatus,
+                          color: '#F4B7B9',
+                          fontSize: '15dp',
+                          fontWeight: 'bold',
+                        },
                       },
-                    },
-                    // Quantidade e Produto
-                    {
-                      type: 'Text',
-                      text: `${cleanQuantity}x ${cleanProduct}`,
-                      color: '#FFFFFF',
-                      fontSize: '32dp',
-                      fontWeight: 'bold',
-                      maxLines: 2,
-                      paddingTop: '10dp',
-                    },
-                    // Cliente
-                    {
-                      type: 'Text',
-                      text: `👤 Cliente: ${cleanCustomer}`,
-                      color: '#E8E0E3',
-                      fontSize: '22dp',
-                      paddingTop: '8dp',
-                    },
-                    // Data de Entrega
-                    {
-                      type: 'Text',
-                      text: `📅 Entrega: ${cleanDelivery}`,
-                      color: '#C9C0B8',
-                      fontSize: '20dp',
-                      paddingTop: '6dp',
-                    },
-                    // Valor Total em Destaque
-                    {
-                      type: 'Text',
-                      text: `💰 Total: ${cleanTotal}`,
-                      color: '#34D399',
-                      fontSize: '32dp',
-                      fontWeight: 'bold',
-                      paddingTop: '12dp',
-                    },
-                    // Ações ou Texto de Ajuda
-                    ...(isActionsVisible
-                      ? [
-                          {
-                            type: 'Container',
-                            direction: 'row',
-                            paddingTop: '20dp',
-                            items: [
-                              {
-                                type: 'TouchWrapper',
-                                onPress: [
-                                  {
-                                    type: 'SendEvent',
-                                    arguments: ['confirmOrder', cleanDraftId, String(cleanRevision)],
-                                  },
-                                ],
-                                item: {
-                                  type: 'Frame',
-                                  backgroundColor: '#10B981',
-                                  borderRadius: '16dp',
-                                  paddingLeft: '28dp',
-                                  paddingRight: '28dp',
-                                  paddingTop: '14dp',
-                                  paddingBottom: '14dp',
-                                  marginRight: '16dp',
+                      // Quantidade e Produto
+                      {
+                        type: 'Text',
+                        text: `${cleanQuantity}x ${cleanProduct}`,
+                        color: '#FFFFFF',
+                        fontSize: '32dp',
+                        fontWeight: 'bold',
+                        maxLines: 2,
+                        paddingTop: '10dp',
+                      },
+                      // Cliente
+                      {
+                        type: 'Text',
+                        text: `👤 Cliente: ${cleanCustomer}`,
+                        color: '#E8E0E3',
+                        fontSize: '22dp',
+                        paddingTop: '8dp',
+                      },
+                      // Data de Entrega
+                      {
+                        type: 'Text',
+                        text: `📅 Entrega: ${cleanDelivery}`,
+                        color: '#C9C0B8',
+                        fontSize: '20dp',
+                        paddingTop: '6dp',
+                      },
+                      // Valor Total em Destaque
+                      {
+                        type: 'Text',
+                        text: `💰 Total: ${cleanTotal}`,
+                        color: '#34D399',
+                        fontSize: '32dp',
+                        fontWeight: 'bold',
+                        paddingTop: '12dp',
+                      },
+                      // Ações ou Texto de Ajuda
+                      ...(isActionsVisible
+                        ? [
+                            {
+                              type: 'Container',
+                              direction: 'row',
+                              paddingTop: '20dp',
+                              items: [
+                                {
+                                  type: 'TouchWrapper',
+                                  onPress: [
+                                    {
+                                      type: 'SendEvent',
+                                      arguments: ['confirmOrder', cleanDraftId, String(cleanRevision)],
+                                    },
+                                  ],
                                   item: {
-                                    type: 'Text',
-                                    text: '✅ Confirmar Pedido',
-                                    color: '#FFFFFF',
-                                    fontSize: '18dp',
-                                    fontWeight: 'bold',
+                                    type: 'Frame',
+                                    backgroundColor: '#10B981',
+                                    borderColor: 'rgba(52, 211, 153, 0.45)',
+                                    borderWidth: '1dp',
+                                    borderRadius: '16dp',
+                                    paddingLeft: '28dp',
+                                    paddingRight: '28dp',
+                                    paddingTop: '14dp',
+                                    paddingBottom: '14dp',
+                                    marginRight: '16dp',
+                                    item: {
+                                      type: 'Text',
+                                      text: '✅ Confirmar Pedido',
+                                      color: '#FFFFFF',
+                                      fontSize: '18dp',
+                                      fontWeight: 'bold',
+                                    },
                                   },
                                 },
-                              },
-                              {
-                                type: 'TouchWrapper',
-                                onPress: [
-                                  {
-                                    type: 'SendEvent',
-                                    arguments: ['cancelOrder', cleanDraftId, String(cleanRevision)],
-                                  },
-                                ],
-                                item: {
-                                  type: 'Frame',
-                                  backgroundColor: '#231C1E',
-                                  borderColor: 'rgba(235, 205, 205, 0.18)',
-                                  borderWidth: '1dp',
-                                  borderRadius: '16dp',
-                                  paddingLeft: '24dp',
-                                  paddingRight: '24dp',
-                                  paddingTop: '14dp',
-                                  paddingBottom: '14dp',
+                                {
+                                  type: 'TouchWrapper',
+                                  onPress: [
+                                    {
+                                      type: 'SendEvent',
+                                      arguments: ['cancelOrder', cleanDraftId, String(cleanRevision)],
+                                    },
+                                  ],
                                   item: {
-                                    type: 'Text',
-                                    text: '❌ Cancelar',
-                                    color: '#E8E0E3',
-                                    fontSize: '18dp',
-                                    fontWeight: 'bold',
+                                    type: 'Frame',
+                                    backgroundColor: 'rgba(45, 30, 34, 0.85)',
+                                    borderColor: 'rgba(229, 142, 142, 0.4)',
+                                    borderWidth: '1dp',
+                                    borderRadius: '16dp',
+                                    paddingLeft: '24dp',
+                                    paddingRight: '24dp',
+                                    paddingTop: '14dp',
+                                    paddingBottom: '14dp',
+                                    item: {
+                                      type: 'Text',
+                                      text: '❌ Cancelar',
+                                      color: '#F4B7B9',
+                                      fontSize: '18dp',
+                                      fontWeight: 'bold',
+                                    },
                                   },
                                 },
-                              },
-                            ],
-                          },
-                        ]
-                      : [
-                          {
-                            type: 'Text',
-                            text: '🎙️ Fale os dados pendentes ou diga o que deseja corrigir',
-                            color: '#C9C0B8',
-                            fontSize: '16dp',
-                            paddingTop: '16dp',
-                          },
-                        ]),
-                  ],
+                              ],
+                            },
+                          ]
+                        : [
+                            {
+                              type: 'Text',
+                              text: '🎙️ Fale os dados pendentes ou diga o que deseja corrigir',
+                              color: '#C9C0B8',
+                              fontSize: '16dp',
+                              paddingTop: '16dp',
+                            },
+                          ]),
+                    ],
+                  },
                 },
               ],
             },
@@ -682,6 +725,8 @@ function buildOrderSuccessAplDirective({
           height: '100vh',
           backgroundColor: '#161214',
           items: [
+            // Fundo Oficial Luisices (mesma imagem da tela de login) com Scrim Escuro
+            buildDefaultBackgroundComponent(),
             // Cabeçalho Oficial para telas retangulares (Echo Show, Fire TV)
             {
               type: 'AlexaHeader',
@@ -758,8 +803,8 @@ function buildOrderSuccessAplDirective({
                 // Painel Esquerdo: Celebração, Badge e Sincronização
                 {
                   type: 'Frame',
-                  backgroundColor: '#231C1E',
-                  borderColor: 'rgba(235, 205, 205, 0.18)',
+                  backgroundColor: 'rgba(35, 28, 30, 0.88)',
+                  borderColor: 'rgba(235, 205, 205, 0.22)',
                   borderWidth: '1dp',
                   borderRadius: '24dp',
                   padding: '32dp',
@@ -816,8 +861,8 @@ function buildOrderSuccessAplDirective({
                 // Painel Direito: Resumo Completo e Elegante dos Dados do Pedido
                 {
                   type: 'Frame',
-                  backgroundColor: '#231C1E',
-                  borderColor: 'rgba(235, 205, 205, 0.18)',
+                  backgroundColor: 'rgba(35, 28, 30, 0.88)',
+                  borderColor: 'rgba(235, 205, 205, 0.22)',
                   borderWidth: '1dp',
                   borderRadius: '24dp',
                   marginLeft: '40dp',
@@ -919,6 +964,8 @@ function buildFuzzySuggestionsAplDirective({ spokenProduct = '', suggestions = [
           height: '100vh',
           backgroundColor: '#161214',
           items: [
+            // Fundo Oficial Luisices (mesma imagem da tela de login) com Scrim Escuro
+            buildDefaultBackgroundComponent(),
             // Cabeçalho Oficial para telas retangulares (Echo Show 5/8/10/15, Fire TV)
             {
               type: 'AlexaHeader',
@@ -970,8 +1017,8 @@ function buildFuzzySuggestionsAplDirective({ spokenProduct = '', suggestions = [
                     onPress: [{ type: 'SendEvent', arguments: ['selectProduct', sug.name] }],
                     item: {
                       type: 'Frame',
-                      backgroundColor: '#231C1E',
-                      borderColor: 'rgba(235, 205, 205, 0.18)',
+                      backgroundColor: 'rgba(35, 28, 30, 0.88)',
+                      borderColor: 'rgba(235, 205, 205, 0.22)',
                       borderWidth: '1dp',
                       borderRadius: '12dp',
                       paddingLeft: '12dp',
@@ -1034,8 +1081,8 @@ function buildFuzzySuggestionsAplDirective({ spokenProduct = '', suggestions = [
                     onPress: [{ type: 'SendEvent', arguments: ['selectProduct', sug.name] }],
                     item: {
                       type: 'Frame',
-                      backgroundColor: '#231C1E',
-                      borderColor: 'rgba(235, 205, 205, 0.18)',
+                      backgroundColor: 'rgba(35, 28, 30, 0.88)',
+                      borderColor: 'rgba(235, 205, 205, 0.22)',
                       borderWidth: '1dp',
                       borderRadius: '20dp',
                       padding: '24dp',
@@ -1061,11 +1108,24 @@ function buildFuzzySuggestionsAplDirective({ spokenProduct = '', suggestions = [
                             paddingTop: '6dp',
                           },
                           {
-                            type: 'Text',
-                            text: 'Toque para selecionar',
-                            color: '#C9C0B8',
-                            fontSize: '14dp',
-                            paddingTop: '16dp',
+                            type: 'Frame',
+                            backgroundColor: '#7B4D50',
+                            borderColor: 'rgba(244, 183, 185, 0.35)',
+                            borderWidth: '1dp',
+                            borderRadius: '12dp',
+                            paddingLeft: '16dp',
+                            paddingRight: '16dp',
+                            paddingTop: '8dp',
+                            paddingBottom: '8dp',
+                            marginTop: '16dp',
+                            alignSelf: 'start',
+                            item: {
+                              type: 'Text',
+                              text: '🗣️ Selecionar este',
+                              color: '#FFFFFF',
+                              fontSize: '14dp',
+                              fontWeight: 'bold',
+                            },
                           },
                         ],
                       },
@@ -1122,6 +1182,8 @@ function buildVoicePairingAplDirective({ pairingCode = '000000', qrCodeUrl = nul
           height: '100vh',
           backgroundColor: '#161214',
           items: [
+            // Fundo Oficial Luisices (mesma imagem da tela de login) com Scrim Escuro
+            buildDefaultBackgroundComponent(),
             // Cabeçalho Oficial para telas retangulares (Echo Show 5/8/10/15, Fire TV)
             {
               type: 'AlexaHeader',
@@ -1152,8 +1214,8 @@ function buildVoicePairingAplDirective({ pairingCode = '000000', qrCodeUrl = nul
                 },
                 {
                   type: 'Frame',
-                  backgroundColor: '#231C1E',
-                  borderColor: 'rgba(235, 205, 205, 0.18)',
+                  backgroundColor: 'rgba(35, 28, 30, 0.88)',
+                  borderColor: 'rgba(235, 205, 205, 0.22)',
                   borderWidth: '1dp',
                   borderRadius: '16dp',
                   paddingLeft: '16dp',
@@ -1192,79 +1254,87 @@ function buildVoicePairingAplDirective({ pairingCode = '000000', qrCodeUrl = nul
               alignItems: 'center',
               justifyContent: 'center',
               items: [
-                // Coluna Esquerda: Instruções e Código
-                {
-                  type: 'Container',
-                  grow: 1,
-                  maxWidth: '540dp',
-                  items: [
-                    {
-                      type: 'Text',
-                      text: '🎙️ Vincule sua Voz ao Luisices',
-                      color: '#FFFFFF',
-                      fontSize: '32dp',
-                      fontWeight: 'bold',
-                      paddingBottom: '12dp',
-                    },
-                    {
-                      type: 'Text',
-                      text: '1. Abra o aplicativo Luisices no celular ou computador.',
-                      color: '#E8E0E3',
-                      fontSize: '18dp',
-                      paddingBottom: '6dp',
-                    },
-                    {
-                      type: 'Text',
-                      text: '2. Vá em Configurações > Integrações > Alexa.',
-                      color: '#E8E0E3',
-                      fontSize: '18dp',
-                      paddingBottom: '6dp',
-                    },
-                    {
-                      type: 'Text',
-                      text: '3. Digite o código de 6 dígitos exibido ao lado:',
-                      color: '#E8E0E3',
-                      fontSize: '18dp',
-                      paddingBottom: '16dp',
-                    },
-                    {
-                      type: 'Frame',
-                      backgroundColor: '#231C1E',
-                      borderColor: 'rgba(235, 205, 205, 0.18)',
-                      borderWidth: '1dp',
-                      borderRadius: '20dp',
-                      paddingLeft: '32dp',
-                      paddingRight: '32dp',
-                      paddingTop: '16dp',
-                      paddingBottom: '16dp',
-                      alignSelf: 'start',
-                      item: {
-                        type: 'Text',
-                        text: formattedCode,
-                        color: '#FFFFFF',
-                        fontSize: '48dp',
-                        fontWeight: 'bold',
-                        letterSpacing: '4dp',
-                      },
-                    },
-                    {
-                      type: 'Text',
-                      text: '⏳ Este código expira em 5 minutos.',
-                      color: '#C9C0B8',
-                      fontSize: '14dp',
-                      paddingTop: '12dp',
-                    },
-                  ],
-                },
-                // Coluna Direita: QR Code de Acesso Rápido
+                // Coluna Esquerda: Instruções e Código em Painel de Vidro
                 {
                   type: 'Frame',
-                  backgroundColor: '#231C1E',
-                  borderColor: 'rgba(235, 205, 205, 0.18)',
+                  backgroundColor: 'rgba(35, 28, 30, 0.88)',
+                  borderColor: 'rgba(235, 205, 205, 0.22)',
                   borderWidth: '1dp',
                   borderRadius: '24dp',
-                  padding: '24dp',
-                  marginLeft: '48dp',
+                  padding: '28dp',
+                  grow: 1,
+                  maxWidth: '560dp',
+                  item: {
+                    type: 'Container',
+                    items: [
+                      {
+                        type: 'Text',
+                        text: '🎙️ Vincule sua Voz ao Luisices',
+                        color: '#FFFFFF',
+                        fontSize: '32dp',
+                        fontWeight: 'bold',
+                        paddingBottom: '12dp',
+                      },
+                      {
+                        type: 'Text',
+                        text: '1. Abra o aplicativo Luisices no celular ou computador.',
+                        color: '#E8E0E3',
+                        fontSize: '18dp',
+                        paddingBottom: '6dp',
+                      },
+                      {
+                        type: 'Text',
+                        text: '2. Vá em Configurações > Integrações > Alexa.',
+                        color: '#E8E0E3',
+                        fontSize: '18dp',
+                        paddingBottom: '6dp',
+                      },
+                      {
+                        type: 'Text',
+                        text: '3. Digite o código exibido abaixo:',
+                        color: '#E8E0E3',
+                        fontSize: '18dp',
+                        paddingBottom: '16dp',
+                      },
+                      {
+                        type: 'Frame',
+                        backgroundColor: '#1E1719',
+                        borderColor: 'rgba(244, 183, 185, 0.35)',
+                        borderWidth: '1dp',
+                        borderRadius: '20dp',
+                        paddingLeft: '32dp',
+                        paddingRight: '32dp',
+                        paddingTop: '16dp',
+                        paddingBottom: '16dp',
+                        alignSelf: 'start',
+                        item: {
+                          type: 'Text',
+                          text: formattedCode,
+                          color: '#FFFFFF',
+                          fontSize: '48dp',
+                          fontWeight: 'bold',
+                          letterSpacing: '4dp',
+                        },
+                      },
+                      {
+                        type: 'Text',
+                        text: '⏳ Este código expira em 5 minutos.',
+                        color: '#C9C0B8',
+                        fontSize: '14dp',
+                        paddingTop: '12dp',
+                      },
+                    ],
+                  },
+                },
+                // Coluna Direita: QR Code de Acesso Rápido em Painel de Vidro
+                {
+                  type: 'Frame',
+                  backgroundColor: 'rgba(35, 28, 30, 0.88)',
+                  borderColor: 'rgba(235, 205, 205, 0.22)',
+                  borderWidth: '1dp',
+                  borderRadius: '24dp',
+                  padding: '28dp',
+                  marginLeft: '36dp',
                   alignItems: 'center',
                   item: {
                     type: 'Container',
