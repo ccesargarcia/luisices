@@ -1,0 +1,503 @@
+/**
+ * Módulo de Processamento de Linguagem Natural (NLP) para o Backend da Alexa (Luisices).
+ *
+ * Responsável por:
+ * 1. Interpretar e normalizar números cardinais e ordinais em português brasileiro.
+ * 2. Tratar numerais compostos orais (ex: "vinte e oito", "20 e 8", "cento e cinquenta").
+ * 3. Normalizar expressões monetárias e decimais ("X reais e Y centavos", "X reais", "X e Y", "X vírgula Y").
+ * 4. Desambiguar contextualmente slots decompostos pelo NLU da Alexa (ex: {number: 20, cents: 8} -> 28).
+ */
+
+const PORTUGUESE_NUMBER_WORDS = {
+  zero: 0,
+  um: 1, uma: 1,
+  dois: 2, duas: 2,
+  tres: 3, três: 3,
+  quatro: 4,
+  cinco: 5,
+  seis: 6,
+  sete: 7,
+  oito: 8,
+  nove: 9,
+  dez: 10,
+  onze: 11,
+  doze: 12,
+  treze: 13,
+  quatorze: 14, catorze: 14,
+  quinze: 15,
+  dezesseis: 16,
+  dezessete: 17,
+  dezoito: 18,
+  dezenove: 19,
+  vinte: 20,
+  trinta: 30,
+  quarenta: 40,
+  cinquenta: 50,
+  sessenta: 60,
+  setenta: 70,
+  oitenta: 80,
+  noventa: 90,
+  cem: 100, cento: 100,
+  duzentos: 200, duzentas: 200,
+  trezentos: 300, trezentas: 300,
+  quatrocentos: 400, quatrocentas: 400,
+  quinhentos: 500, quinhentas: 500,
+  seiscentos: 600, seiscentas: 600,
+  setecentos: 700, setecentas: 700,
+  oitocentos: 800, oitocentas: 800,
+  novecentos: 900, novecentas: 900,
+  mil: 1000,
+};
+
+const PORTUGUESE_ORDINAL_WORDS = {
+  primeiro: 1, primeira: 1, '1o': 1, '1a': 1,
+  segundo: 2, segunda: 2, '2o': 2, '2a': 2,
+  terceiro: 3, terceira: 3, '3o': 3, '3a': 3,
+  quarto: 4, quarta: 4, '4o': 4, '4a': 4,
+  quinto: 5, quinta: 5, '5o': 5, '5a': 5,
+  sexto: 6, sexta: 6, '6o': 6, '6a': 6,
+  setimo: 7, sétima: 7, setima: 7, '7o': 7, '7a': 7,
+  oitavo: 8, oitava: 8, '8o': 8, '8a': 8,
+  nono: 9, nona: 9, '9o': 9, '9a': 9,
+  decimo: 10, décima: 10, decima: 10, '10o': 10, '10a': 10,
+  vigesimo: 20, vigésima: 20, vigesima: 20, '20o': 20, '20a': 20,
+  trigesimo: 30, trigésima: 30, trigesima: 30, '30o': 30, '30a': 30,
+  quadragesimo: 40, quadragésima: 40, quadragesima: 40, '40o': 40, '40a': 40,
+  quinquagesimo: 50, quinquagésima: 50, quinquagesima: 50, '50o': 50, '50a': 50,
+  centesimo: 100, centésima: 100, centesima: 100, '100o': 100, '100a': 100,
+};
+
+/**
+ * Remove acentos e caracteres diacríticos para análise textual uniforme.
+ */
+function stripAccents(str) {
+  if (!str) return '';
+  return String(str)
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[º°]/g, 'o')
+    .replace(/[ª]/g, 'a')
+    .toLowerCase();
+}
+
+/**
+ * Resolve combinação de número composto quando a Alexa separa em dois slots
+ * (ex: { number: "20", cents: "8" } ou { price: "20", cents: "8" }).
+ *
+ * Em português:
+ * - Dezena (20, 30..90) + Unidade (1..9) = número composto (20 + 8 = 28).
+ * - Centena (100, 200..900) + Unidade/Dezena (1..99) = número composto (100 + 28 = 128).
+ *
+ * @param {string|number} part1
+ * @param {string|number} part2
+ * @returns {number|null}
+ */
+function resolveCompoundNumber(part1, part2) {
+  if (part1 === null || part1 === undefined || part2 === null || part2 === undefined) {
+    return null;
+  }
+  const n1 = typeof part1 === 'number' ? part1 : parseInt(String(part1).trim(), 10);
+  const n2 = typeof part2 === 'number' ? part2 : parseInt(String(part2).trim(), 10);
+
+  if (isNaN(n1) || isNaN(n2)) return null;
+
+  if (n1 >= 20 && n1 <= 90 && n1 % 10 === 0 && n2 >= 1 && n2 <= 9) {
+    return n1 + n2;
+  }
+  if (n1 >= 100 && n1 <= 900 && n1 % 100 === 0 && n2 >= 1 && n2 <= 99) {
+    return n1 + n2;
+  }
+  if (n1 === 1000 && n2 >= 1 && n2 <= 999) {
+    return n1 + n2;
+  }
+  return null;
+}
+
+/**
+ * Converte palavras em português (cardinais ou ordinais) em número inteiro.
+ * Suporta expressões compostas com 'e' (ex: "vinte e oito", "cento e vinte e oito", "terceiro").
+ *
+ * @param {string} text
+ * @returns {number|null}
+ */
+function parsePortugueseWordsToNumber(text) {
+  if (!text || typeof text !== 'string') return null;
+
+  // Rejeita pontuações, operadores ou barras matemáticas
+  if (/[.,\/+*_=]/.test(text)) {
+    return null;
+  }
+  // Rejeita dígitos misturados em parser de palavras puras
+  if (/\d/.test(text)) {
+    return null;
+  }
+
+  const clean = stripAccents(text).trim();
+  const tokens = clean.split(/\s+/).filter(Boolean);
+  if (tokens.length === 0) return null;
+
+  // 1. Testa se é ordinal direto ("primeiro", "segundo", "décimo")
+  if (tokens.length === 1 && PORTUGUESE_ORDINAL_WORDS[tokens[0]] !== undefined) {
+    return PORTUGUESE_ORDINAL_WORDS[tokens[0]];
+  }
+
+  // Se forem ordinais compostos (ex: "vigésimo primeiro")
+  if (tokens.length === 2 && PORTUGUESE_ORDINAL_WORDS[tokens[0]] !== undefined && PORTUGUESE_ORDINAL_WORDS[tokens[1]] !== undefined) {
+    return PORTUGUESE_ORDINAL_WORDS[tokens[0]] + PORTUGUESE_ORDINAL_WORDS[tokens[1]];
+  }
+
+  // 2. Parser de cardinais
+  let total = 0;
+  let current = 0;
+  let matchedAny = false;
+  let lastVal = Infinity;
+
+  const normMap = {};
+  for (const [k, v] of Object.entries(PORTUGUESE_NUMBER_WORDS)) {
+    normMap[stripAccents(k)] = v;
+  }
+
+  for (const token of tokens) {
+    if (token === 'e' || token === 'real' || token === 'reais' || token === 'centavo' || token === 'centavos') {
+      continue;
+    }
+    if (normMap[token] !== undefined) {
+      matchedAny = true;
+      const val = normMap[token];
+      if (val === 1000) {
+        current = (current === 0 ? 1 : current) * 1000;
+        total += current;
+        current = 0;
+        lastVal = 1000;
+      } else {
+        if (val >= 10 && val > lastVal) {
+          return null; // Expressão malformada (ex: menor precedendo maior sem ser multiplicador)
+        }
+        current += val;
+        lastVal = val;
+      }
+    } else {
+      return null; // Token não reconhecido
+    }
+  }
+
+  total += current;
+  return matchedAny ? total : null;
+}
+
+/**
+ * Converte segmento textual ou numérico para número (dígitos ou extenso).
+ *
+ * @param {string|number} partStr
+ * @returns {number|null}
+ */
+function parsePartToNumber(partStr) {
+  if (partStr === null || partStr === undefined || partStr === '') return 0;
+  if (typeof partStr === 'number') {
+    return Number.isFinite(partStr) ? partStr : null;
+  }
+  const clean = String(partStr).replace(/r\$/gi, '').trim();
+  if (/[.,\/+*_=]/.test(clean)) {
+    return null;
+  }
+  if (/^\d+$/.test(clean)) {
+    return parseInt(clean, 10);
+  }
+  if (/\d/.test(clean)) {
+    return null;
+  }
+  return parsePortugueseWordsToNumber(clean);
+}
+
+/**
+ * Normaliza e valida quantidade inteira de itens (1 a 10.000).
+ * Suporta dígitos ("28"), números por extenso ("vinte e oito", "duas"),
+ * ordinais ("primeiro", "segundo"), numerais compostos com 'e' ("20 e 8"),
+ * e sufixos orais comuns ("28 itens", "vinte e oito unidades", "3 peças").
+ *
+ * @param {any} value
+ * @returns {number|null}
+ */
+function normalizeQuantity(value) {
+  if (value === null || value === undefined || value === '') return null;
+
+  if (typeof value === 'number') {
+    if (Number.isInteger(value) && value > 0 && value <= 10000) {
+      return value;
+    }
+    return null;
+  }
+
+  let clean = stripAccents(String(value))
+    .replace(/\b(?:itens|item|unidades|unidade|pecas|peca|produtos|produto|caixas|caixa|topos|topo)\b/g, '')
+    .trim();
+
+  if (/[.,\/+*_=]/.test(clean)) return null;
+
+  // Numerais com "e" (ex: "20 e 8", "30 e 5")
+  const compoundDigitsMatch = clean.match(/^(\d+)\s+e\s+(\d+)$/);
+  if (compoundDigitsMatch) {
+    const d1 = parseInt(compoundDigitsMatch[1], 10);
+    const d2 = parseInt(compoundDigitsMatch[2], 10);
+    const sum = d1 + d2;
+    if (Number.isInteger(sum) && sum > 0 && sum <= 10000) {
+      return sum;
+    }
+  }
+
+  // Ordinais com abreviação (ex: "1o", "2a")
+  if (PORTUGUESE_ORDINAL_WORDS[clean] !== undefined) {
+    const ord = PORTUGUESE_ORDINAL_WORDS[clean];
+    return (ord > 0 && ord <= 10000) ? ord : null;
+  }
+
+  // Dígitos puros ou no início da expressão (ex: "5 topos de bolo", "28 itens")
+  const leadingDigits = clean.match(/^(\d+)\b/);
+  if (leadingDigits) {
+    const num = parseInt(leadingDigits[1], 10);
+    return (num > 0 && num <= 10000) ? num : null;
+  }
+
+  // Palavras por extenso ou ordinais por extenso
+  const wordNum = parsePortugueseWordsToNumber(clean);
+  if (wordNum !== null && Number.isInteger(wordNum) && wordNum > 0 && wordNum <= 10000) {
+    return wordNum;
+  }
+
+  return null;
+}
+
+/**
+ * Normaliza qualquer representação em linguagem natural de valor monetário
+ * ("X reais e Y centavos", "X reais", "X e Y", "X vírgula Y", "X centavos")
+ * em formato de ponto flutuante válido e centavos inteiros.
+ *
+ * @param {any} priceValue
+ * @returns {{ valid: boolean, price?: number, cents?: number, error?: string }}
+ */
+function normalizeCurrencyToFloat(priceValue) {
+  if (priceValue === null || priceValue === undefined || priceValue === '') {
+    return { valid: false, error: 'Valor não informado.' };
+  }
+
+  // Se já for número de ponto flutuante ou inteiro
+  if (typeof priceValue === 'number') {
+    if (!Number.isFinite(priceValue)) {
+      return { valid: false, error: 'Valor total inválido. Por favor, diga o valor em reais, por exemplo: cem reais.' };
+    }
+    if (priceValue < 0) {
+      return { valid: false, error: 'Valor total não pode ser negativo.' };
+    }
+    if (priceValue > 10000) {
+      return { valid: false, error: 'O valor do pedido excede o limite máximo permitido de dez mil reais.' };
+    }
+    const cents = Math.round(priceValue * 100);
+    if (Math.abs(priceValue * 100 - cents) > 1e-4) {
+      return { valid: false, error: 'Formato de valor não reconhecido. Por favor, diga um único valor em reais.' };
+    }
+    return { valid: true, price: cents / 100, cents };
+  }
+
+  const rawStr = String(priceValue).trim().toLowerCase();
+
+  // Rejeita valores negativos
+  if (rawStr.includes('-') || rawStr.includes('menos')) {
+    return { valid: false, error: 'Valor total não pode ser negativo.' };
+  }
+
+  // Rejeita operadores matemáticos ou sinais de ambiguidade (ex: 10/20, 10+20, 20 ou 30)
+  if (/\bou\b/.test(rawStr)) {
+    return { valid: false, error: 'Valor ambíguo. Por favor, diga um único valor total em reais.' };
+  }
+  if (/[+*\/=]/.test(rawStr)) {
+    return { valid: false, error: 'Formato de valor não reconhecido. Por favor, diga um único valor em reais.' };
+  }
+
+  let clean = stripAccents(rawStr)
+    .replace(/r\$/gi, '')
+    .replace(/\b(?:cada|por unidade|a unidade|unidade|por item|item|no total|ao todo|total)\b/gi, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  // Substitui gírias coloquiais de meio real
+  clean = clean.replace(/\b(?:meio|meia)\b/g, '50 centavos');
+
+  // 1. Formato com milhares no padrão brasileiro: 1.500,00 ou 1.500
+  const brThousands = clean.match(/^(\d{1,3}(?:\.\d{3})+(?:,\d{1,2})?)(?:\s*(?:reais|real))?$/);
+  if (brThousands) {
+    const num = parseFloat(brThousands[1].replace(/\./g, '').replace(',', '.'));
+    if (!isNaN(num) && num >= 0) {
+      if (num > 10000) {
+        return { valid: false, error: 'O valor do pedido excede o limite máximo permitido de dez mil reais.' };
+      }
+      const cents = Math.round(num * 100);
+      return { valid: true, price: cents / 100, cents };
+    }
+  }
+
+  // Normalização de transcrições orais de vírgula ou ponto decimal:
+  // "10 virgula 50", "10 com 50", "dez virgula cinquenta"
+  clean = clean.replace(/(\d+)\s*(?:virgula|,)\s*(\d{1,2})/g, '$1.$2');
+  clean = clean.replace(/\b(\w+)\s+(?:virgula|com)\s+(\w+)\b/g, '$1 e $2');
+
+  // 2. Se contiver menção explícita a "centavos" (ex: "20 reais e 8 centavos", "cinquenta centavos", "10 reais e 50 centavos")
+  if (/\bcentavos?\b/.test(clean)) {
+    let reaisStr = '';
+    let centavosStr = '';
+    if (/\b(?:reais|real)\b/.test(clean)) {
+      const match = clean.match(/^(.*?)\b(?:reais|real)\b(?:\s+e\s+)?(.*?)\bcentavos?\b\s*$/);
+      if (match) {
+        reaisStr = match[1].trim();
+        centavosStr = match[2].trim();
+      }
+    } else {
+      const match = clean.match(/^(.*?)\bcentavos?\b\s*$/);
+      if (match) {
+        const before = match[1].trim();
+        if (before.includes(' e ')) {
+          const lastE = before.lastIndexOf(' e ');
+          reaisStr = before.slice(0, lastE).trim();
+          centavosStr = before.slice(lastE + 3).trim();
+        } else {
+          centavosStr = before.replace(/^\s*e\s+/, '').trim();
+        }
+      }
+    }
+
+    if (!centavosStr) {
+      return { valid: false, error: 'Valor total inválido. Por favor, diga o valor em reais, por exemplo: cem reais.' };
+    }
+
+    const rVal = reaisStr ? parsePartToNumber(reaisStr) : 0;
+    const cVal = parsePartToNumber(centavosStr);
+    if (rVal === null || cVal === null || cVal >= 100 || cVal < 0) {
+      return { valid: false, error: 'Valor total inválido. Por favor, diga o valor em reais, por exemplo: cem reais.' };
+    }
+    const total = rVal + (cVal / 100);
+    if (total > 10000) {
+      return { valid: false, error: 'O valor do pedido excede o limite máximo permitido de dez mil reais.' };
+    }
+    const cents = Math.round(total * 100);
+    return { valid: true, price: cents / 100, cents };
+  }
+
+  // 3. Formato com palavra "reais" / "real" e possível parte seguinte:
+  // Ex: "28 reais", "vinte e oito reais", "3 reais e 50", "vinte reais e oito"
+  const reaisMatch = clean.match(/^(.*?)\b(?:reais|real)\b(?:\s+e\s+(.*?))?$/);
+  if (reaisMatch) {
+    const reaisPart = reaisMatch[1].trim();
+    const secondPart = reaisMatch[2] ? reaisMatch[2].trim() : null;
+
+    if (!secondPart) {
+      // "X reais" ou "X real"
+      const rVal = parsePartToNumber(reaisPart);
+      if (rVal !== null && rVal >= 0) {
+        if (rVal > 10000) {
+          return { valid: false, error: 'O valor do pedido excede o limite máximo permitido de dez mil reais.' };
+        }
+        const cents = Math.round(rVal * 100);
+        return { valid: true, price: rVal, cents };
+      }
+    } else {
+      // Há segunda parte após "reais e" sem a palavra centavos:
+      // Ex: "20 reais e 8" vs "3 reais e 50"
+      const rVal = parsePartToNumber(reaisPart);
+      const sVal = parsePartToNumber(secondPart);
+      if (rVal !== null && sVal !== null && rVal >= 0 && sVal >= 0 && sVal < 100) {
+        // Se a primeira parte for dezena (20..90) e a segunda for unidade (1..9),
+        // E NÃO HOUVE a palavra "centavos", trata-se de numeral composto falado:
+        // Ex: "vinte e oito reais" decomposto como 20 reais e 8 -> R$ 28,00!
+        const isCompound = resolveCompoundNumber(rVal, sVal);
+        if (isCompound !== null) {
+          if (isCompound > 10000) {
+            return { valid: false, error: 'O valor do pedido excede o limite máximo permitido de dez mil reais.' };
+          }
+          const cents = Math.round(isCompound * 100);
+          return { valid: true, price: isCompound, cents };
+        }
+
+        // Caso contrário, trata como centavos implícitos (ex: "3 reais e 50" -> 3.50, "10 reais e 25" -> 10.25)
+        const total = rVal + (sVal / 100);
+        if (total > 10000) {
+          return { valid: false, error: 'O valor do pedido excede o limite máximo permitido de dez mil reais.' };
+        }
+        const cents = Math.round(total * 100);
+        return { valid: true, price: cents / 100, cents };
+      }
+    }
+  }
+
+  // 4. Números padrão com vírgula ou ponto decimal simples: "3.50", "3,50", "150", "28"
+  if (/^\d+[.,]\d{3,}$/.test(clean.replace(/\s*(?:reais|real)$/, ''))) {
+    return { valid: false, error: 'Formato de valor não reconhecido. Por favor, diga um único valor em reais.' };
+  }
+  const regexNum = /^(\d+(?:[.,]\d{1,2})?)(?:\s*(?:reais|real))?$/;
+  const matchNum = clean.match(regexNum);
+  if (matchNum) {
+    const num = parseFloat(matchNum[1].replace(',', '.'));
+    if (!isNaN(num) && num >= 0) {
+      if (num > 10000) {
+        return { valid: false, error: 'O valor do pedido excede o limite máximo permitido de dez mil reais.' };
+      }
+      const cents = Math.round(num * 100);
+      return { valid: true, price: cents / 100, cents };
+    }
+  }
+
+  // 5. Numerais por extenso em português ou split por ' e ' para decimais
+  const cleanWords = clean.replace(/\b(?:reais|real)\b/g, '').trim();
+
+  // Se for extenso puro de número inteiro (ex: "vinte e oito", "cem", "trinta e cinco")
+  if (!/\d/.test(cleanWords)) {
+    const wordNum = parsePortugueseWordsToNumber(cleanWords);
+    if (wordNum !== null && wordNum >= 0) {
+      if (wordNum > 10000) {
+        return { valid: false, error: 'O valor do pedido excede o limite máximo permitido de dez mil reais.' };
+      }
+      const cents = Math.round(wordNum * 100);
+      return { valid: true, price: wordNum, cents };
+    }
+  }
+
+  // Se contiver divisão por ' e '
+  // Ex: "3 e 50", "vinte e oito", "três e cinquenta", "dez e noventa e nove"
+  if (cleanWords.includes(' e ')) {
+    const parts = cleanWords.split(/\s+e\s+/);
+    for (let i = 1; i < parts.length; i++) {
+      const reaisPart = parts.slice(0, i).join(' e ').trim();
+      const centavosPart = parts.slice(i).join(' e ').trim();
+      const rVal = parsePartToNumber(reaisPart);
+      const cVal = parsePartToNumber(centavosPart);
+      if (rVal !== null && cVal !== null && rVal >= 0 && cVal >= 0 && cVal < 100) {
+        // Se for um numeral composto em português (ex: "vinte e oito" = 28, "trinta e cinco" = 35)
+        const isCompound = resolveCompoundNumber(rVal, cVal);
+        if (isCompound !== null) {
+          if (isCompound <= 10000) {
+            const cents = Math.round(isCompound * 100);
+            return { valid: true, price: isCompound, cents };
+          }
+        }
+
+        // Senão, trata como reais e centavos (ex: "3 e 50" = 3.50)
+        const total = rVal + (cVal / 100);
+        if (total <= 10000) {
+          const cents = Math.round(total * 100);
+          return { valid: true, price: cents / 100, cents };
+        }
+      }
+    }
+  }
+
+  return { valid: false, error: 'Valor total inválido. Por favor, diga o valor em reais, por exemplo: cem reais.' };
+}
+
+module.exports = {
+  PORTUGUESE_NUMBER_WORDS,
+  PORTUGUESE_ORDINAL_WORDS,
+  stripAccents,
+  resolveCompoundNumber,
+  parsePortugueseWordsToNumber,
+  parsePartToNumber,
+  normalizeQuantity,
+  normalizeCurrencyToFloat,
+};

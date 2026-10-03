@@ -17,6 +17,15 @@ const {
 } = require('./apl');
 const { buildDynamicEntitiesDirective, fetchCatalogProductsForDynamicEntities } = require('./dynamicEntities');
 const { findClosestProductSuggestions, buildSuggestionPrompt } = require('./fuzzySuggestions');
+const {
+  PORTUGUESE_NUMBER_WORDS,
+  PORTUGUESE_ORDINAL_WORDS,
+  resolveCompoundNumber,
+  parsePortugueseWordsToNumber,
+  parsePartToNumber,
+  normalizeQuantity,
+  normalizeCurrencyToFloat,
+} = require('./nlpHelper');
 
 // Meses em português para pronúncia amigável
 const MONTH_NAMES = [
@@ -177,337 +186,25 @@ function parseAndValidateDeliveryDate(dateSlotValue, timezone = 'America/Sao_Pau
   return { valid: true, date: raw };
 }
 
-const PORTUGUESE_NUMBER_WORDS = {
-  zero: 0, um: 1, uma: 1, dois: 2, duas: 2, tres: 3, três: 3, quatro: 4, cinco: 5,
-  seis: 6, sete: 7, oito: 8, nove: 9, dez: 10, onze: 11, doze: 12, treze: 13,
-  quatorze: 14, catorze: 14, quinze: 15, dezesseis: 16, dezessete: 17, dezoito: 18,
-  dezenove: 19, vinte: 20, trinta: 30, quarenta: 40, cinquenta: 50, sessenta: 60,
-  setenta: 70, oitenta: 80, noventa: 90, cem: 100, cento: 100, duzentos: 200,
-  duzentas: 200, trezentos: 300, trezentas: 300, quatrocentos: 400, quatrocentas: 400,
-  quinhentos: 500, quinhentas: 500, seiscentos: 600, seiscentas: 600, setecentos: 700,
-  setecentas: 700, oitocentos: 800, oitocentas: 800, novecentos: 900, novecentas: 900, mil: 1000,
-};
-
-function parsePortugueseWordsToNumber(text) {
-  if (!text || typeof text !== 'string') return null;
-  // Rejeita imediatamente pontuação, barras ou operadores matemáticos
-  if (/[.,\/+*_=]/.test(text)) {
-    return null;
-  }
-  // Rejeita dígitos misturados em parser de palavras puras
-  if (/\d/.test(text)) {
-    return null;
-  }
-
-  const tokens = String(text || '').toLowerCase()
-    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-    .trim()
-    .split(/\s+/).filter(Boolean);
-
-  if (tokens.length === 0) return null;
-
-  let total = 0;
-  let current = 0;
-  let matchedAny = false;
-  const normMap = {};
-  for (const [k, v] of Object.entries(PORTUGUESE_NUMBER_WORDS)) {
-    normMap[k.normalize('NFD').replace(/[\u0300-\u036f]/g, '')] = v;
-  }
-
-  let lastVal = Infinity;
-  for (const token of tokens) {
-    if (token === 'e' || token === 'real' || token === 'reais' || token === 'centavo' || token === 'centavos') continue;
-    if (normMap[token] !== undefined) {
-      matchedAny = true;
-      const val = normMap[token];
-      if (val === 1000) {
-        current = (current === 0 ? 1 : current) * 1000;
-        total += current;
-        current = 0;
-        lastVal = 1000;
-      } else {
-        // Se um valor menor precede um valor maior (ex: 3 seguido de 50), não é um número inteiro válido em português
-        if (val >= 10 && val > lastVal) {
-          return null; // Não é um inteiro simples
-        }
-        current += val;
-        lastVal = val;
-      }
-    } else {
-      // Qualquer token não reconhecido como numeral em português invalida a interpretação
-      return null;
-    }
-  }
-  total += current;
-  return matchedAny ? total : null;
-}
-
-function parsePartToNumber(partStr) {
-  if (!partStr) return 0;
-  const clean = String(partStr).replace(/r\$/gi, '').trim();
-  // Se contiver vírgula, ponto, barra ou operadores matemáticos, rejeita
-  if (/[.,\/+*_=]/.test(clean)) {
-    return null;
-  }
-  if (/^\d+$/.test(clean)) {
-    return parseInt(clean, 10);
-  }
-  // Se contiver dígitos misturados, não é palavra
-  if (/\d/.test(clean)) {
-    return null;
-  }
-  return parsePortugueseWordsToNumber(clean);
-}
-
 /**
- * Interpreta e valida quantidade inteira de itens (1 a 10.000 itens).
- * Suporta dígitos ("10"), números por extenso ("dez", "duas", "quinze", "vinte e cinco"),
- * e sufixos comuns em português ("10 itens", "10 unidades", "dez unidades").
+ * Interpreta e valida quantidade inteira de itens (1 a 10.000 itens) usando NLP.
+ * Suporta dígitos ("28"), números por extenso ("vinte e oito", "duas"),
+ * ordinais ("primeiro", "segundo"), numerais compostos ("20 e 8"),
+ * e sufixos comuns ("28 itens", "dez unidades").
  */
 function parseQuantity(quantityValue) {
-  if (quantityValue === null || quantityValue === undefined || quantityValue === '') {
-    return null;
-  }
-  if (typeof quantityValue === 'number') {
-    if (Number.isInteger(quantityValue) && quantityValue > 0 && quantityValue <= 10000) {
-      return quantityValue;
-    }
-    return null;
-  }
-  let clean = String(quantityValue)
-    .toLowerCase()
-    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-    .replace(/\b(?:itens|item|unidades|unidade|pecas|peca)\b/g, '')
-    .trim();
-
-  // Se contiver operadores, vírgula ou ponto
-  if (/[.,\/+*_=]/.test(clean)) {
-    return null;
-  }
-
-  // Se forem dígitos puros
-  if (/^\d+$/.test(clean)) {
-    const num = parseInt(clean, 10);
-    return (num > 0 && num <= 10000) ? num : null;
-  }
-
-  // Se forem numerais com "e" (ex: "20 e 8", "30 e 5", "100 e 28")
-  const compoundDigitsMatch = clean.match(/^(\d+)\s+e\s+(\d+)$/);
-  if (compoundDigitsMatch) {
-    const d1 = parseInt(compoundDigitsMatch[1], 10);
-    const d2 = parseInt(compoundDigitsMatch[2], 10);
-    const sum = d1 + d2;
-    if (Number.isInteger(sum) && sum > 0 && sum <= 10000) {
-      return sum;
-    }
-  }
-
-  // Se forem palavras em português ("dez", "duas", "quinze")
-  const wordNum = parsePortugueseWordsToNumber(clean);
-  if (wordNum !== null && Number.isInteger(wordNum) && wordNum > 0 && wordNum <= 10000) {
-    return wordNum;
-  }
-
-  return null;
+  return normalizeQuantity(quantityValue);
 }
 
 /**
- * Interpreta e valida valor monetário em reais (máximo R$ 10.000,00 ou 1.000.000 centavos).
- * Suporta dígitos (3.50, 3,50, 100, 100,50, 1.500,00, R$ 150), zero reais (pedido gratuito),
- * números por extenso (cem reais, cinquenta, dez reais e cinquenta centavos),
- * e formatos coloquiais em português (3 e 50, três e cinquenta, 3 reais e 50, 3 e meio).
- * Rejeita estritamente expressões matemáticas, ambiguidades e formatos malformados.
+ * Interpreta e valida valor monetário em reais usando NLP.
+ * Converte strings capturadas como "X reais e Y centavos", "X reais", "X e Y",
+ * "X vírgula Y", ordinais e numerais compostos em formato de ponto flutuante válido.
  */
 function parseAndValidatePrice(priceValue) {
-  if (priceValue === null || priceValue === undefined || priceValue === '') {
-    return { valid: false, error: 'Valor não informado.' };
-  }
-
-  // Se já for número numérico (ex: 3.5 ou 100)
-  if (typeof priceValue === 'number') {
-    if (!Number.isFinite(priceValue)) {
-      return { valid: false, error: 'Valor total inválido. Por favor, diga o valor em reais, por exemplo: cem reais.' };
-    }
-    if (priceValue < 0) {
-      return { valid: false, error: 'Valor total não pode ser negativo.' };
-    }
-    if (priceValue > 10000) {
-      return { valid: false, error: 'O valor do pedido excede o limite máximo permitido de dez mil reais.' };
-    }
-    const cents = Math.round(priceValue * 100);
-    if (Math.abs(priceValue * 100 - cents) > 1e-4) {
-      return { valid: false, error: 'Formato de valor não reconhecido. Por favor, diga um único valor em reais.' };
-    }
-    return { valid: true, price: cents / 100 };
-  }
-
-  const rawStr = String(priceValue).trim().toLowerCase();
-
-  // Rejeita valores negativos
-  if (rawStr.includes('-') || rawStr.includes('menos')) {
-    return { valid: false, error: 'Valor total não pode ser negativo.' };
-  }
-
-  // Rejeita operadores matemáticos ou sinais de ambiguidade (ex: 10/20, 10+20, 20 ou 30)
-  if (/\bou\b/.test(rawStr)) {
-    return { valid: false, error: 'Valor ambíguo. Por favor, diga um único valor total em reais.' };
-  }
-  if (/[+\/*=]/.test(rawStr)) {
-    return { valid: false, error: 'Formato de valor não reconhecido. Por favor, diga um único valor em reais.' };
-  }
-
-  let clean = rawStr
-    .replace(/r\$/gi, '')
-    .replace(/\b(?:cada|por unidade|a unidade|unidade|por item|item|no total|ao todo|total)\b/gi, '')
-    .replace(/\s+/g, ' ')
-    .trim();
-  clean = clean.replace(/\b(?:meio|meia)\b/g, '50 centavos');
-
-  // Normalizar transcrições orais e coloquiais de separadores decimais:
-  // "10 vírgula 50", "10 virgula 50" -> "10,50"
-  // "dez vírgula cinquenta" -> "dez e cinquenta"
-  // "10 com 50", "dez com cinquenta" -> "10 e 50", "dez e cinquenta"
-  clean = clean
-    .replace(/(\d+)\s*(?:vírgula|virgula)\s*(\d+)/gi, '$1,$2')
-    .replace(/\b(?:vírgula|virgula)\b/gi, ' e ')
-    .replace(/\bcom\b/gi, ' e ')
-    .replace(/\s+/g, ' ')
-    .trim();
-
-  // 1. Tentar extração de números com formato brasileiro de milhar e decimal: 1.500,00 ou 1.500
-  // Aceita sufixo monetário opcional: "reais" ou "real"
-  const brThousands = clean.match(/^(\d{1,3}(?:\.\d{3})+(?:,\d{1,2})?)(?:\s*(?:reais|real))?$/);
-  if (brThousands) {
-    const num = parseFloat(brThousands[1].replace(/\./g, '').replace(',', '.'));
-    if (!isNaN(num) && num >= 0) {
-      if (num > 10000) {
-        return { valid: false, error: 'O valor do pedido excede o limite máximo permitido de dez mil reais.' };
-      }
-      return { valid: true, price: Math.round(num * 100) / 100 };
-    }
-  }
-
-  // 2. Se contiver menção a centavos (ex: "dez reais e cinquenta centavos", "cinquenta centavos", "10 reais e 50 centavos", "3 e 50 centavos")
-  if (/\bcentavos?\b/.test(clean)) {
-    let reaisStr = '';
-    let centavosStr = '';
-    if (/\b(?:reais|real)\b/.test(clean)) {
-      // Formato estrito: "<reais> reais [e] <centavos> centavos"
-      const match = clean.match(/^(.*?)\b(?:reais|real)\b(?:\s+e\s+)?(.*?)\bcentavos?\b\s*$/);
-      if (match) {
-        reaisStr = match[1].trim();
-        centavosStr = match[2].trim();
-      }
-    } else {
-      // Formato: "<centavos> centavos" ou "<reais> e <centavos> centavos"
-      const match = clean.match(/^(.*?)\bcentavos?\b\s*$/);
-      if (match) {
-        const before = match[1].trim();
-        if (before.includes(' e ')) {
-          const lastE = before.lastIndexOf(' e ');
-          reaisStr = before.slice(0, lastE).trim();
-          centavosStr = before.slice(lastE + 3).trim();
-        } else {
-          centavosStr = before.replace(/^\s*e\s+/, '').trim();
-        }
-      }
-    }
-    // Rejeita "centavos" sozinho sem quantia explícita
-    if (!centavosStr) {
-      return { valid: false, error: 'Valor total inválido. Por favor, diga o valor em reais, por exemplo: cem reais.' };
-    }
-    const rVal = reaisStr ? parsePartToNumber(reaisStr) : 0;
-    const cVal = parsePartToNumber(centavosStr);
-    if (rVal === null || cVal === null || cVal >= 100 || cVal < 0) {
-      return { valid: false, error: 'Valor total inválido. Por favor, diga o valor em reais, por exemplo: cem reais.' };
-    }
-    const total = rVal + (cVal / 100);
-    if (total > 10000) {
-      return { valid: false, error: 'O valor do pedido excede o limite máximo permitido de dez mil reais.' };
-    }
-    return { valid: true, price: Math.round(total * 100) / 100 };
-  }
-
-  // 3. Formato com palavra "reais" / "real" e centavos implícitos:
-  // Ex: "3 reais e 50", "três reais e cinquenta", "10 reais e 25", "vinte reais e noventa"
-  const reaisImplicitMatch = clean.match(/^(.*?)\b(?:reais|real)\b(?:\s+e\s+(.*?))?$/);
-  if (reaisImplicitMatch && reaisImplicitMatch[2]) {
-    const reaisStr = reaisImplicitMatch[1].trim();
-    const centavosStr = reaisImplicitMatch[2].trim();
-    const rVal = parsePartToNumber(reaisStr);
-    const cVal = parsePartToNumber(centavosStr);
-    if (rVal !== null && cVal !== null && cVal >= 0 && cVal < 100) {
-      const total = rVal + (cVal / 100);
-      if (total > 10000) {
-        return { valid: false, error: 'O valor do pedido excede o limite máximo permitido de dez mil reais.' };
-      }
-      return { valid: true, price: Math.round(total * 100) / 100 };
-    }
-  }
-
-  // 4. Números padrão com vírgula ou ponto decimal simples: 3.50, 3,50, 150,50 ou 150.50 ou 150 ou "150 reais" ou "0 reais"
-  // Rejeita mais de 2 casas decimais (ex: 10,005)
-  if (/^\d+[.,]\d{3,}$/.test(clean.replace(/\s*(?:reais|real)$/, ''))) {
-    return { valid: false, error: 'Formato de valor não reconhecido. Por favor, diga um único valor em reais.' };
-  }
-  const regexNum = /^(\d+(?:[.,]\d{1,2})?)(?:\s*(?:reais|real))?$/;
-  const match = clean.match(regexNum);
-  if (match) {
-    const num = parseFloat(match[1].replace(',', '.'));
-    if (!isNaN(num) && num >= 0) {
-      if (num > 10000) {
-        return { valid: false, error: 'O valor do pedido excede o limite máximo permitido de dez mil reais.' };
-      }
-      return { valid: true, price: Math.round(num * 100) / 100 };
-    }
-  }
-
-  // 5. Números por extenso em português ou split por ' e ' para decimais (ex: "3 e 50", "dez e cinquenta", "vinte e cinco e cinquenta")
-  const cleanWords = clean.replace(/\b(?:reais|real)\b/g, '').trim();
-
-  // Se for extenso puro de número inteiro
-  if (!/\d/.test(cleanWords)) {
-    const wordNum = parsePortugueseWordsToNumber(cleanWords);
-    if (wordNum !== null && wordNum >= 0) {
-      if (wordNum > 10000) {
-        return { valid: false, error: 'O valor do pedido excede o limite máximo permitido de dez mil reais.' };
-      }
-      return { valid: true, price: Math.round(wordNum * 100) / 100 };
-    }
-  }
-
-  // Se não foi um número inteiro puro, testar as possíveis divisões em ' e ' como reais + centavos
-  // Ex: "3 e 50", "três e cinquenta", "cinco e setenta e cinco", "dez e noventa e nove", "vinte e cinco e cinquenta"
-  if (cleanWords.includes(' e ')) {
-    const parts = cleanWords.split(/\s+e\s+/);
-    for (let i = 1; i < parts.length; i++) {
-      const reaisPart = parts.slice(0, i).join(' e ').trim();
-      const centavosPart = parts.slice(i).join(' e ').trim();
-      const rVal = parsePartToNumber(reaisPart);
-      const cVal = parsePartToNumber(centavosPart);
-      if (rVal !== null && cVal !== null && rVal >= 0 && cVal >= 0 && cVal < 100) {
-        // Se for um numeral composto em português (ex: "vinte e oito" = 28, "trinta e cinco" = 35, "cento e vinte" = 120)
-        // onde a primeira parte é dezena (20..90) ou centena (100..900) e a segunda é unidade (1..9) ou dezena (10..99):
-        const isCompoundInteger =
-          (rVal >= 20 && rVal <= 90 && rVal % 10 === 0 && cVal >= 1 && cVal <= 9) ||
-          (rVal >= 100 && rVal % 100 === 0 && cVal >= 1 && cVal <= 99);
-
-        if (isCompoundInteger) {
-          const totalInt = rVal + cVal;
-          if (totalInt <= 10000) {
-            return { valid: true, price: totalInt };
-          }
-        }
-
-        const total = rVal + (cVal / 100);
-        if (total <= 10000) {
-          return { valid: true, price: Math.round(total * 100) / 100 };
-        }
-      }
-    }
-  }
-
-  return { valid: false, error: 'Valor total inválido. Por favor, diga o valor em reais, por exemplo: cem reais.' };
+  const res = normalizeCurrencyToFloat(priceValue);
+  if (!res.valid) return { valid: false, error: res.error };
+  return { valid: true, price: res.price };
 }
 
 /**
@@ -515,7 +212,7 @@ function parseAndValidatePrice(priceValue) {
  * Rejeita estritamente não-inteiros, limites excedidos ou formatos malformados.
  */
 function parseAndValidatePriceToCents(priceValue) {
-  const res = parseAndValidatePrice(priceValue);
+  const res = normalizeCurrencyToFloat(priceValue);
   if (!res.valid) return res;
   const cents = Math.round(res.price * 100);
   if (!Number.isSafeInteger(cents) || cents < 0 || cents > 1000000) {
@@ -1645,7 +1342,49 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
 
   const centsSlot = slots.cents?.value || slots.Cents?.value;
 
-  if (intentName === 'ProvideNumberIntent') {
+  const isExpectingQuantity =
+    sessionAttrs.expectedInput === 'quantity' ||
+    sessionAttrs.pendingField === 'quantity';
+
+  if (isExpectingQuantity) {
+    const rawNumberCandidate =
+      quantitySlot ||
+      slots.number?.value ||
+      slots.Number?.value ||
+      genericPriceSlot ||
+      unitPriceSlot ||
+      totalSlot;
+
+    let resolvedQty = null;
+
+    if (rawNumberCandidate && centsSlot) {
+      // Decomposição NLU da Alexa (ex: "vinte e oito" -> number/price=20, cents=8)
+      const compound = resolveCompoundNumber(rawNumberCandidate, centsSlot);
+      if (compound !== null) {
+        resolvedQty = compound;
+      } else {
+        const n1 = parseInt(String(rawNumberCandidate), 10);
+        const n2 = parseInt(String(centsSlot), 10);
+        if (!isNaN(n1) && !isNaN(n2)) {
+          resolvedQty = n1 + n2;
+        }
+      }
+    }
+
+    if (resolvedQty === null && rawNumberCandidate) {
+      resolvedQty = normalizeQuantity(rawNumberCandidate);
+    } else if (resolvedQty === null && centsSlot) {
+      resolvedQty = normalizeQuantity(centsSlot);
+    }
+
+    if (resolvedQty !== null) {
+      quantitySlot = String(resolvedQty);
+      // Limpa os slots de preço para que o número de quantidade NUNCA seja tratado como preço!
+      genericPriceSlot = null;
+      unitPriceSlot = null;
+      totalSlot = null;
+    }
+  } else if (intentName === 'ProvideNumberIntent') {
     const numSlot = slots.number?.value || slots.Number?.value;
     let combinedStr = numSlot;
     if (numSlot && centsSlot) {
@@ -1656,33 +1395,20 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
 
     let compoundInteger = null;
     if (numSlot && centsSlot) {
-      const n1 = parseInt(numSlot, 10);
-      const n2 = parseInt(centsSlot, 10);
-      if (!isNaN(n1) && !isNaN(n2)) {
-        if ((n1 >= 20 && n1 <= 90 && n1 % 10 === 0 && n2 >= 1 && n2 <= 9) ||
-            (n1 >= 100 && n1 % 100 === 0 && n2 >= 1 && n2 <= 99)) {
-          compoundInteger = n1 + n2;
+      compoundInteger = resolveCompoundNumber(numSlot, centsSlot);
+      if (compoundInteger === null) {
+        const n1 = parseInt(numSlot, 10);
+        const n2 = parseInt(centsSlot, 10);
+        if (!isNaN(n1) && !isNaN(n2)) {
+          if ((n1 >= 20 && n1 <= 90 && n1 % 10 === 0 && n2 >= 1 && n2 <= 9) ||
+              (n1 >= 100 && n1 % 100 === 0 && n2 >= 1 && n2 <= 99)) {
+            compoundInteger = n1 + n2;
+          }
         }
       }
     }
 
-    const isExpectingQuantity =
-      sessionAttrs.expectedInput === 'quantity' ||
-      sessionAttrs.pendingField === 'quantity';
-
-    if (isExpectingQuantity) {
-      if (compoundInteger !== null) {
-        quantitySlot = String(compoundInteger);
-      } else if (numSlot && centsSlot) {
-        const n1 = parseInt(numSlot, 10);
-        const n2 = parseInt(centsSlot, 10);
-        quantitySlot = (!isNaN(n1) && !isNaN(n2)) ? String(n1 + n2) : String(numSlot);
-      } else if (numSlot) {
-        quantitySlot = String(numSlot);
-      } else if (centsSlot) {
-        quantitySlot = String(centsSlot);
-      }
-    } else if (sessionAttrs.expectedInput === 'unitPrice') {
+    if (sessionAttrs.expectedInput === 'unitPrice') {
       unitPriceSlot = compoundInteger !== null ? String(compoundInteger) : combinedStr;
     } else if (sessionAttrs.expectedInput === 'totalPrice') {
       totalSlot = compoundInteger !== null ? String(compoundInteger) : combinedStr;
@@ -1691,10 +1417,17 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
     }
   } else if (centsSlot) {
     // Para ProvidePriceIntent e similares onde o NLU preencheu o price + cents
-    if (genericPriceSlot) genericPriceSlot = `${genericPriceSlot} e ${centsSlot}`;
-    else if (unitPriceSlot) unitPriceSlot = `${unitPriceSlot} e ${centsSlot}`;
-    else if (totalSlot) totalSlot = `${totalSlot} e ${centsSlot}`;
-    else genericPriceSlot = `${centsSlot} centavos`;
+    const compound = resolveCompoundNumber(genericPriceSlot || unitPriceSlot || totalSlot, centsSlot);
+    if (compound !== null) {
+      if (genericPriceSlot) genericPriceSlot = String(compound);
+      else if (unitPriceSlot) unitPriceSlot = String(compound);
+      else if (totalSlot) totalSlot = String(compound);
+    } else {
+      if (genericPriceSlot) genericPriceSlot = `${genericPriceSlot} e ${centsSlot}`;
+      else if (unitPriceSlot) unitPriceSlot = `${unitPriceSlot} e ${centsSlot}`;
+      else if (totalSlot) totalSlot = `${totalSlot} e ${centsSlot}`;
+      else genericPriceSlot = `${centsSlot} centavos`;
+    }
   }
 
   if (quantitySlot) {
@@ -1996,27 +1729,45 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
     }
 
     // Se o rascunho existente estava aguardando quantidade (expectedInput === 'quantity' ou pendingField === 'quantity'),
-    // e o usuário respondeu apenas um número que caiu em genericPrice/parsedGenericPrice,
+    // e o usuário respondeu apenas um número que caiu em genericPrice/parsedGenericPrice/parsedTotal/parsedUnitPrice,
     // converte contextualmente para a quantidade de itens!
     const isWaitingQuantity = existingData.expectedInput === 'quantity' || existingData.pendingField === 'quantity';
     if (isWaitingQuantity && !incomingUpdates.quantity) {
-      if (parsedGenericPrice) {
-        let qVal = null;
-        if (Number.isInteger(parsedGenericPrice.price)) {
-          qVal = Math.round(parsedGenericPrice.price);
-        } else if (centsSlot && (slots.number?.value || slots.Number?.value)) {
-          const n1 = parseInt(slots.number?.value || slots.Number?.value, 10);
-          const n2 = parseInt(centsSlot, 10);
-          if (!isNaN(n1) && !isNaN(n2)) {
-            qVal = n1 + n2;
-          }
+      let qVal = null;
+      const candidatePrice = parsedGenericPrice || parsedTotal || parsedUnitPrice;
+      if (candidatePrice) {
+        if (candidatePrice.cents % 100 === 0) {
+          qVal = candidatePrice.cents / 100;
+        } else if (Number.isInteger(candidatePrice.price)) {
+          qVal = Math.round(candidatePrice.price);
+        } else {
+          const n1 = slots.price?.value || slots.Price?.value || slots.number?.value || slots.Number?.value;
+          const compound = resolveCompoundNumber(n1, centsSlot);
+          if (compound) qVal = compound;
+          else qVal = Math.round(candidatePrice.price);
         }
-        if (qVal && qVal > 0 && qVal <= 10000) {
-          incomingUpdates.quantity = qVal;
-          parsedGenericPrice = null;
-          genericPriceValidationError = null;
-          existingData.expectedInput = null;
+      } else if (centsSlot && (slots.number?.value || slots.Number?.value || slots.price?.value || slots.Price?.value)) {
+        const n1 = slots.number?.value || slots.Number?.value || slots.price?.value || slots.Price?.value;
+        const compound = resolveCompoundNumber(n1, centsSlot);
+        if (compound) qVal = compound;
+        else {
+          const p1 = parseInt(n1, 10);
+          const p2 = parseInt(centsSlot, 10);
+          if (!isNaN(p1) && !isNaN(p2)) qVal = p1 + p2;
         }
+      } else if (slots.quantity?.value || slots.Quantity?.value) {
+        qVal = normalizeQuantity(slots.quantity?.value || slots.Quantity?.value);
+      }
+
+      if (qVal && qVal > 0 && qVal <= 10000) {
+        incomingUpdates.quantity = qVal;
+        parsedGenericPrice = null;
+        parsedTotal = null;
+        parsedUnitPrice = null;
+        genericPriceValidationError = null;
+        unitPriceValidationError = null;
+        totalValidationError = null;
+        existingData.expectedInput = null;
       }
     }
 
@@ -2377,16 +2128,24 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
 
     // Resolução baseada no expectedInput persistido no banco para quantidade
     if (!incomingUpdates.quantity && (activeExpected === 'quantity' || activePending === 'quantity')) {
-      if (parsedGenericPrice && !unitPriceSlot && !totalSlot) {
+      const candidatePrice = parsedGenericPrice || parsedTotal || parsedUnitPrice;
+      if (candidatePrice) {
         let qNum = null;
-        if (parsedGenericPrice.cents % 100 === 0) {
-          qNum = parsedGenericPrice.cents / 100;
-        } else if (Number.isInteger(parsedGenericPrice.price)) {
-          qNum = parsedGenericPrice.price;
+        if (candidatePrice.cents % 100 === 0) {
+          qNum = candidatePrice.cents / 100;
+        } else if (Number.isInteger(candidatePrice.price)) {
+          qNum = candidatePrice.price;
+        } else {
+          const n1 = slots.price?.value || slots.Price?.value || slots.number?.value || slots.Number?.value;
+          const compound = resolveCompoundNumber(n1, centsSlot);
+          if (compound) qNum = compound;
+          else qNum = Math.round(candidatePrice.price);
         }
         if (qNum && qNum >= 1 && qNum <= 10000) {
           incomingUpdates.quantity = qNum;
           parsedGenericPrice = null;
+          parsedTotal = null;
+          parsedUnitPrice = null;
           existingData.expectedInput = null;
         }
       }
@@ -3147,6 +2906,10 @@ module.exports = {
   parseAndValidateDeliveryDate,
   parseAndValidatePrice,
   parseAndValidatePriceToCents,
+  parseQuantity,
+  normalizeQuantity,
+  normalizeCurrencyToFloat,
+  resolveCompoundNumber,
   normalizeText,
   searchUserCatalog,
   buildConfirmationSpeech,
