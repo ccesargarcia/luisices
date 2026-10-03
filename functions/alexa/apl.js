@@ -65,6 +65,120 @@ function getAplStyles() {
 }
 
 /**
+ * Retorna estilos dinâmicos para botões APL com suporte nativo a D-pad (Fire TV Stick) e Toque (Echo Show).
+ * Inclui estados :focused (borda branca 3dp, zoom 1.08x) e :pressed para feedback visual imediato pelo controle remoto.
+ */
+function getAplButtonStyles() {
+  return {
+    btnPrimaryStyle: {
+      values: [
+        {
+          backgroundColor: '#7B4D50',
+          borderColor: 'rgba(244, 183, 185, 0.35)',
+          borderWidth: '1dp',
+          transform: [{ scale: 1.0 }],
+        },
+        {
+          when: '${state.focused}',
+          backgroundColor: '#9E555A',
+          borderColor: '#FFFFFF',
+          borderWidth: '3dp',
+          transform: [{ scale: 1.08 }],
+        },
+        {
+          when: '${state.pressed}',
+          transform: [{ scale: 0.96 }],
+        },
+      ],
+    },
+    btnSecondaryStyle: {
+      values: [
+        {
+          backgroundColor: 'rgba(35, 28, 30, 0.88)',
+          borderColor: 'rgba(235, 205, 205, 0.22)',
+          borderWidth: '1dp',
+          transform: [{ scale: 1.0 }],
+        },
+        {
+          when: '${state.focused}',
+          backgroundColor: 'rgba(75, 50, 55, 0.98)',
+          borderColor: '#FFFFFF',
+          borderWidth: '3dp',
+          transform: [{ scale: 1.08 }],
+        },
+        {
+          when: '${state.pressed}',
+          transform: [{ scale: 0.96 }],
+        },
+      ],
+    },
+    btnConfirmStyle: {
+      values: [
+        {
+          backgroundColor: '#10B981',
+          borderColor: 'rgba(52, 211, 153, 0.45)',
+          borderWidth: '1dp',
+          transform: [{ scale: 1.0 }],
+        },
+        {
+          when: '${state.focused}',
+          backgroundColor: '#059669',
+          borderColor: '#FFFFFF',
+          borderWidth: '3dp',
+          transform: [{ scale: 1.08 }],
+        },
+        {
+          when: '${state.pressed}',
+          transform: [{ scale: 0.96 }],
+        },
+      ],
+    },
+    btnCancelStyle: {
+      values: [
+        {
+          backgroundColor: 'rgba(45, 30, 34, 0.85)',
+          borderColor: 'rgba(229, 142, 142, 0.4)',
+          borderWidth: '1dp',
+          transform: [{ scale: 1.0 }],
+        },
+        {
+          when: '${state.focused}',
+          backgroundColor: 'rgba(110, 35, 42, 0.98)',
+          borderColor: '#FFFFFF',
+          borderWidth: '3dp',
+          transform: [{ scale: 1.08 }],
+        },
+        {
+          when: '${state.pressed}',
+          transform: [{ scale: 0.96 }],
+        },
+      ],
+    },
+    btnSuggestionCardStyle: {
+      values: [
+        {
+          backgroundColor: 'rgba(35, 28, 30, 0.88)',
+          borderColor: 'rgba(235, 205, 205, 0.22)',
+          borderWidth: '1dp',
+          transform: [{ scale: 1.0 }],
+        },
+        {
+          when: '${state.focused}',
+          backgroundColor: 'rgba(55, 40, 44, 0.98)',
+          borderColor: '#FFFFFF',
+          borderWidth: '3dp',
+          transform: [{ scale: 1.04 }],
+        },
+        {
+          when: '${state.pressed}',
+          transform: [{ scale: 0.97 }],
+        },
+      ],
+    },
+  };
+}
+
+/**
  * 1. Constrói o documento APL de Boas-Vindas no Echo Show, Echo Spot e Fire TV (LaunchRequest).
  */
 function buildWelcomeAplDirective({ userName = 'Ateliê', envLabel = 'Teste' }) {
@@ -79,6 +193,14 @@ function buildWelcomeAplDirective({ userName = 'Ateliê', envLabel = 'Teste' }) 
       {
         name: 'alexa-layouts',
         version: '1.4.0',
+      },
+    ],
+    styles: getAplButtonStyles(),
+    onMount: [
+      {
+        when: "${viewport.mode == 'tv' || viewport.mode == 'TV'}",
+        type: 'SetFocus',
+        componentId: 'btnWelcomePrimary',
       },
     ],
     mainTemplate: {
@@ -194,12 +316,12 @@ function buildWelcomeAplDirective({ userName = 'Ateliê', envLabel = 'Teste' }) 
                   items: [
                     {
                       type: 'TouchWrapper',
+                      id: 'btnWelcomePrimary',
                       onPress: [{ type: 'SendEvent', arguments: ['intent', 'CreateOrderIntent'] }],
                       item: {
                         type: 'Frame',
-                        backgroundColor: '#7B4D50',
-                        borderColor: 'rgba(244, 183, 185, 0.35)',
-                        borderWidth: '1dp',
+                        inheritParentState: true,
+                        style: 'btnPrimaryStyle',
                         borderRadius: '20dp',
                         paddingLeft: '20dp',
                         paddingRight: '20dp',
@@ -217,12 +339,12 @@ function buildWelcomeAplDirective({ userName = 'Ateliê', envLabel = 'Teste' }) 
                     },
                     {
                       type: 'TouchWrapper',
+                      id: 'btnWelcomeOrders',
                       onPress: [{ type: 'SendEvent', arguments: ['intent', 'ListRecentOrdersIntent'] }],
                       item: {
                         type: 'Frame',
-                        backgroundColor: 'rgba(35, 28, 30, 0.88)',
-                        borderColor: 'rgba(235, 205, 205, 0.22)',
-                        borderWidth: '1dp',
+                        inheritParentState: true,
+                        style: 'btnSecondaryStyle',
                         borderRadius: '20dp',
                         paddingLeft: '20dp',
                         paddingRight: '20dp',
@@ -240,12 +362,12 @@ function buildWelcomeAplDirective({ userName = 'Ateliê', envLabel = 'Teste' }) 
                     },
                     {
                       type: 'TouchWrapper',
+                      id: 'btnWelcomeVoice',
                       onPress: [{ type: 'SendEvent', arguments: ['intent', 'LinkVoiceIntent'] }],
                       item: {
                         type: 'Frame',
-                        backgroundColor: 'rgba(35, 28, 30, 0.88)',
-                        borderColor: 'rgba(235, 205, 205, 0.22)',
-                        borderWidth: '1dp',
+                        inheritParentState: true,
+                        style: 'btnSecondaryStyle',
                         borderRadius: '20dp',
                         paddingLeft: '20dp',
                         paddingRight: '20dp',
@@ -329,6 +451,16 @@ function buildOrderCardAplDirective({
         version: '1.4.0',
       },
     ],
+    styles: getAplButtonStyles(),
+    onMount: isActionsVisible
+      ? [
+          {
+            when: "${viewport.mode == 'tv' || viewport.mode == 'TV'}",
+            type: 'SetFocus',
+            componentId: 'btnOrderConfirm',
+          },
+        ]
+      : undefined,
     mainTemplate: {
       parameters: ['payload'],
       items: [
@@ -580,6 +712,7 @@ function buildOrderCardAplDirective({
                               items: [
                                 {
                                   type: 'TouchWrapper',
+                                  id: 'btnOrderConfirm',
                                   onPress: [
                                     {
                                       type: 'SendEvent',
@@ -588,9 +721,8 @@ function buildOrderCardAplDirective({
                                   ],
                                   item: {
                                     type: 'Frame',
-                                    backgroundColor: '#10B981',
-                                    borderColor: 'rgba(52, 211, 153, 0.45)',
-                                    borderWidth: '1dp',
+                                    inheritParentState: true,
+                                    style: 'btnConfirmStyle',
                                     borderRadius: '16dp',
                                     paddingLeft: '28dp',
                                     paddingRight: '28dp',
@@ -608,6 +740,7 @@ function buildOrderCardAplDirective({
                                 },
                                 {
                                   type: 'TouchWrapper',
+                                  id: 'btnOrderCancel',
                                   onPress: [
                                     {
                                       type: 'SendEvent',
@@ -616,9 +749,8 @@ function buildOrderCardAplDirective({
                                   ],
                                   item: {
                                     type: 'Frame',
-                                    backgroundColor: 'rgba(45, 30, 34, 0.85)',
-                                    borderColor: 'rgba(229, 142, 142, 0.4)',
-                                    borderWidth: '1dp',
+                                    inheritParentState: true,
+                                    style: 'btnCancelStyle',
                                     borderRadius: '16dp',
                                     paddingLeft: '24dp',
                                     paddingRight: '24dp',
@@ -955,6 +1087,16 @@ function buildFuzzySuggestionsAplDirective({ spokenProduct = '', suggestions = [
     version: '1.6',
     theme: 'dark',
     import: [{ name: 'alexa-layouts', version: '1.4.0' }],
+    styles: getAplButtonStyles(),
+    onMount: suggestions.length > 0
+      ? [
+          {
+            when: "${viewport.mode == 'tv' || viewport.mode == 'TV'}",
+            type: 'SetFocus',
+            componentId: 'btnSuggestion_0',
+          },
+        ]
+      : undefined,
     mainTemplate: {
       parameters: ['payload'],
       items: [
@@ -1078,12 +1220,12 @@ function buildFuzzySuggestionsAplDirective({ spokenProduct = '', suggestions = [
                   direction: 'row',
                   items: suggestions.map((sug, idx) => ({
                     type: 'TouchWrapper',
+                    id: `btnSuggestion_${idx}`,
                     onPress: [{ type: 'SendEvent', arguments: ['selectProduct', sug.name] }],
                     item: {
                       type: 'Frame',
-                      backgroundColor: 'rgba(35, 28, 30, 0.88)',
-                      borderColor: 'rgba(235, 205, 205, 0.22)',
-                      borderWidth: '1dp',
+                      inheritParentState: true,
+                      style: 'btnSuggestionCardStyle',
                       borderRadius: '20dp',
                       padding: '24dp',
                       width: '380dp',
