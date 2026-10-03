@@ -10,6 +10,9 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'node',
+    env: {
+      NODE_PATH: path.resolve(__dirname, 'functions/node_modules'),
+    },
     include: ['tests/unit/**/*.{test,spec}.{ts,tsx}', 'src/**/*.{test,spec}.{ts,tsx}'],
     coverage: {
       provider: 'v8',
