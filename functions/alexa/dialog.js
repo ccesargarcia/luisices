@@ -114,9 +114,24 @@ function parseAndValidateDeliveryDate(dateSlotValue, timezone = 'America/Sao_Pau
     const year = parseInt(fullWeekMatch[1], 10);
     const week = parseInt(fullWeekMatch[2], 10);
     const day = parseInt(fullWeekMatch[3], 10); // 1 = Mon .. 7 = Sun
+    if (week < 1 || week > 53) {
+      return { valid: false, error: 'Semana inválida. Informe uma data exata para a entrega.' };
+    }
     const jan4 = new Date(Date.UTC(year, 0, 4));
     const jan4Day = jan4.getUTCDay() || 7;
     const targetDate = new Date(jan4.getTime() + ((week - 1) * 7 + (day - jan4Day)) * 86400000);
+    // Recalcula semana ISO do resultado para impedir que semanas inexistentes
+    // (por exemplo, semana 53 em ano com apenas 52) transbordem para outro ano.
+    const targetIsoDay = targetDate.getUTCDay() || 7;
+    const thursday = new Date(targetDate.getTime() + (4 - targetIsoDay) * 86400000);
+    const isoYear = thursday.getUTCFullYear();
+    const firstThursday = new Date(Date.UTC(isoYear, 0, 4));
+    const firstThursdayDay = firstThursday.getUTCDay() || 7;
+    firstThursday.setUTCDate(firstThursday.getUTCDate() + (4 - firstThursdayDay));
+    const isoWeek = 1 + Math.round((thursday.getTime() - firstThursday.getTime()) / (7 * 86400000));
+    if (isoYear !== year || isoWeek !== week) {
+      return { valid: false, error: 'Semana inválida para o ano informado. Informe uma data exata para a entrega.' };
+    }
     raw = targetDate.toISOString().slice(0, 10);
   } else {
     // 2. Caso XXXX-WXX-D (ex: XXXX-WXX-1 = Segunda-feira sem ano/semana explícita)
@@ -129,6 +144,7 @@ function parseAndValidateDeliveryDate(dateSlotValue, timezone = 'America/Sao_Pau
       const todayDate = new Date(Date.UTC(y, m - 1, d));
       const currentIsoDay = todayDate.getUTCDay() || 7;
       let daysAhead = targetIsoDay - currentIsoDay;
+      // O mesmo dia da semana pode ser hoje; dias já passados avançam uma semana.
       if (daysAhead < 0) {
         daysAhead += 7;
       }
@@ -1393,41 +1409,20 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
       combinedStr = `${centsSlot} centavos`;
     }
 
-    let compoundInteger = null;
-    if (numSlot && centsSlot) {
-      compoundInteger = resolveCompoundNumber(numSlot, centsSlot);
-      if (compoundInteger === null) {
-        const n1 = parseInt(numSlot, 10);
-        const n2 = parseInt(centsSlot, 10);
-        if (!isNaN(n1) && !isNaN(n2)) {
-          if ((n1 >= 20 && n1 <= 90 && n1 % 10 === 0 && n2 >= 1 && n2 <= 9) ||
-              (n1 >= 100 && n1 % 100 === 0 && n2 >= 1 && n2 <= 99)) {
-            compoundInteger = n1 + n2;
-          }
-        }
-      }
-    }
-
     if (sessionAttrs.expectedInput === 'unitPrice') {
-      unitPriceSlot = compoundInteger !== null ? String(compoundInteger) : combinedStr;
+      unitPriceSlot = combinedStr;
     } else if (sessionAttrs.expectedInput === 'totalPrice') {
-      totalSlot = compoundInteger !== null ? String(compoundInteger) : combinedStr;
+      totalSlot = combinedStr;
     } else if (combinedStr) {
-      genericPriceSlot = compoundInteger !== null ? String(compoundInteger) : combinedStr;
+      genericPriceSlot = combinedStr;
     }
   } else if (centsSlot) {
-    // Para ProvidePriceIntent e similares onde o NLU preencheu o price + cents
-    const compound = resolveCompoundNumber(genericPriceSlot || unitPriceSlot || totalSlot, centsSlot);
-    if (compound !== null) {
-      if (genericPriceSlot) genericPriceSlot = String(compound);
-      else if (unitPriceSlot) unitPriceSlot = String(compound);
-      else if (totalSlot) totalSlot = String(compound);
-    } else {
-      if (genericPriceSlot) genericPriceSlot = `${genericPriceSlot} e ${centsSlot}`;
-      else if (unitPriceSlot) unitPriceSlot = `${unitPriceSlot} e ${centsSlot}`;
-      else if (totalSlot) totalSlot = `${totalSlot} e ${centsSlot}`;
-      else genericPriceSlot = `${centsSlot} centavos`;
-    }
+    // Em contexto monetário, não combine dezena e unidade como inteiro sem
+    // confirmação: os slots também podem representar reais e centavos.
+    if (genericPriceSlot) genericPriceSlot = `${genericPriceSlot} e ${centsSlot}`;
+    else if (unitPriceSlot) unitPriceSlot = `${unitPriceSlot} e ${centsSlot}`;
+    else if (totalSlot) totalSlot = `${totalSlot} e ${centsSlot}`;
+    else genericPriceSlot = `${centsSlot} centavos`;
   }
 
   if (quantitySlot) {

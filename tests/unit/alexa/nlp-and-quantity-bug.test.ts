@@ -94,6 +94,8 @@ describe('NLP e Correção de Bug de Quantidade e Decimais na Alexa', () => {
       expect(normalizeQuantity('vinte e oito unidades')).toBe(28);
       expect(normalizeQuantity('5 topos de bolo')).toBe(5);
       expect(normalizeQuantity('10 caixas')).toBe(10);
+      expect(normalizeQuantity('30 talvez')).toBeNull();
+      expect(normalizeQuantity('30 reais e 50 centavos')).toBeNull();
     });
 
     it('interpreta numerais compostos orais com "e" (20 e 8 -> 28)', () => {
@@ -112,9 +114,10 @@ describe('NLP e Correção de Bug de Quantidade e Decimais na Alexa', () => {
       expect(normalizeCurrencyToFloat('dez reais e cinco centavos')).toEqual({ valid: true, price: 10.05, cents: 1005 });
     });
 
-    it('normaliza "vinte e oito reais" como R$ 28,00 e NUNCA 20.08', () => {
+    it('mantém cardinal por extenso, mas pede esclarecimento para valor numérico ambíguo', () => {
       expect(normalizeCurrencyToFloat('vinte e oito reais')).toEqual({ valid: true, price: 28, cents: 2800 });
-      expect(normalizeCurrencyToFloat('20 reais e 8')).toEqual({ valid: true, price: 28, cents: 2800 });
+      expect(normalizeCurrencyToFloat('20 reais e 8').error).toContain('Valor ambíguo');
+      expect(normalizeCurrencyToFloat('20 e 8').error).toContain('Valor ambíguo');
       expect(normalizeCurrencyToFloat('28 reais')).toEqual({ valid: true, price: 28, cents: 2800 });
     });
 

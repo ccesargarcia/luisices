@@ -105,6 +105,11 @@ describe('Alexa: Máquina de Estados, Diálogo e Validação de Slots pt-BR', ()
       expect(weekRes.valid).toBe(false);
       expect(weekRes.error).toContain('incompleta');
 
+      const validIsoWeekDay = parseAndValidateDeliveryDate('2026-W41-1');
+      expect(validIsoWeekDay).toMatchObject({ valid: true, date: '2026-10-05' });
+      expect(parseAndValidateDeliveryDate('2021-W53-1').valid).toBe(false);
+      expect(parseAndValidateDeliveryDate('2026-W54-1').valid).toBe(false);
+
       // Mês incompleto
       const monthRes = parseAndValidateDeliveryDate('2026-10');
       expect(monthRes.valid).toBe(false);
@@ -650,18 +655,18 @@ describe('Alexa: Máquina de Estados, Diálogo e Validação de Slots pt-BR', ()
       expect(res.speech).toContain('data de entrega');
     });
 
-    it('deve interpretar "20 e 8" e "30 e 5" como 28 e 35 reais e não centavos em parseAndValidatePrice', () => {
+    it('deve pedir esclarecimento para valor ambíguo e continuar aceitando decimais explícitos', () => {
       const res28 = parseAndValidatePrice('20 e 8');
-      expect(res28.valid).toBe(true);
-      expect(res28.price).toBe(28);
+      expect(res28.valid).toBe(false);
+      expect(res28.error).toContain('Valor ambíguo');
 
       const res35 = parseAndValidatePrice('30 e 5');
-      expect(res35.valid).toBe(true);
-      expect(res35.price).toBe(35);
+      expect(res35.valid).toBe(false);
+      expect(res35.error).toContain('Valor ambíguo');
 
       const res105 = parseAndValidatePrice('100 e 5');
-      expect(res105.valid).toBe(true);
-      expect(res105.price).toBe(105);
+      expect(res105.valid).toBe(false);
+      expect(res105.error).toContain('Valor ambíguo');
 
       // Centavos reais com decimal explícito continuam funcionando
       const res350 = parseAndValidatePrice('3 e 50');

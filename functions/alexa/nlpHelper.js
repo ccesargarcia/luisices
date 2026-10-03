@@ -228,9 +228,7 @@ function normalizeQuantity(value) {
     return null;
   }
 
-  let clean = stripAccents(String(value))
-    .replace(/\b(?:itens|item|unidades|unidade|pecas|peca|produtos|produto|caixas|caixa|topos|topo)\b/g, '')
-    .trim();
+  let clean = stripAccents(String(value)).trim();
 
   if (/[.,\/+*_=]/.test(clean)) return null;
 
@@ -251,15 +249,17 @@ function normalizeQuantity(value) {
     return (ord > 0 && ord <= 10000) ? ord : null;
   }
 
-  // Dígitos puros ou no início da expressão (ex: "5 topos de bolo", "28 itens")
-  const leadingDigits = clean.match(/^(\d+)\b/);
-  if (leadingDigits) {
-    const num = parseInt(leadingDigits[1], 10);
+  // Número isolado ou seguido de unidade/produto reconhecido. Não descarta
+  // silenciosamente texto arbitrário ou expressões monetárias após os dígitos.
+  const digitQuantity = clean.match(/^(\d+)(?:\s+(?:(?:itens?|unidades?|pecas?|produtos?|caixas?|topos?)(?:\s+de\s+bolo)?|no total|ao todo))?$/);
+  if (digitQuantity) {
+    const num = parseInt(digitQuantity[1], 10);
     return (num > 0 && num <= 10000) ? num : null;
   }
 
-  // Palavras por extenso ou ordinais por extenso
-  const wordNum = parsePortugueseWordsToNumber(clean);
+  // Sufixos conhecidos também podem vir após numeral por extenso.
+  const wordQuantity = clean.replace(/\s+(?:itens?|unidades?|pecas?|produtos?|caixas?|topos?)(?:\s+de\s+bolo)?$|\s+(?:no total|ao todo)$/, '').trim();
+  const wordNum = parsePortugueseWordsToNumber(wordQuantity);
   if (wordNum !== null && Number.isInteger(wordNum) && wordNum > 0 && wordNum <= 10000) {
     return wordNum;
   }
@@ -404,16 +404,11 @@ function normalizeCurrencyToFloat(priceValue) {
       const rVal = parsePartToNumber(reaisPart);
       const sVal = parsePartToNumber(secondPart);
       if (rVal !== null && sVal !== null && rVal >= 0 && sVal >= 0 && sVal < 100) {
-        // Se a primeira parte for dezena (20..90) e a segunda for unidade (1..9),
-        // E NÃO HOUVE a palavra "centavos", trata-se de numeral composto falado:
-        // Ex: "vinte e oito reais" decomposto como 20 reais e 8 -> R$ 28,00!
+        // Sem marcador de decimal, valores como "20 reais e 8" admitem duas
+        // leituras: R$ 28,00 ou R$ 20,08. Não escolha uma silenciosamente.
         const isCompound = resolveCompoundNumber(rVal, sVal);
         if (isCompound !== null) {
-          if (isCompound > 10000) {
-            return { valid: false, error: 'O valor do pedido excede o limite máximo permitido de dez mil reais.' };
-          }
-          const cents = Math.round(isCompound * 100);
-          return { valid: true, price: isCompound, cents };
+          return { valid: false, error: 'Valor ambíguo. Diga, por exemplo, vinte e oito reais ou vinte reais e oito centavos.' };
         }
 
         // Caso contrário, trata como centavos implícitos (ex: "3 reais e 50" -> 3.50, "10 reais e 25" -> 10.25)
@@ -469,13 +464,10 @@ function normalizeCurrencyToFloat(priceValue) {
       const rVal = parsePartToNumber(reaisPart);
       const cVal = parsePartToNumber(centavosPart);
       if (rVal !== null && cVal !== null && rVal >= 0 && cVal >= 0 && cVal < 100) {
-        // Se for um numeral composto em português (ex: "vinte e oito" = 28, "trinta e cinco" = 35)
+        // Em texto numérico com "e", a dezena e a fração podem ser ambíguas.
         const isCompound = resolveCompoundNumber(rVal, cVal);
         if (isCompound !== null) {
-          if (isCompound <= 10000) {
-            const cents = Math.round(isCompound * 100);
-            return { valid: true, price: isCompound, cents };
-          }
+          return { valid: false, error: 'Valor ambíguo. Diga, por exemplo, vinte e oito reais ou vinte reais e oito centavos.' };
         }
 
         // Senão, trata como reais e centavos (ex: "3 e 50" = 3.50)

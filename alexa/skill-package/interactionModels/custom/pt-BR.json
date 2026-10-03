@@ -295,9 +295,6 @@
         {
           "name": "ProvideQuantityIntent",
           "samples": [
-            "{quantity}",
-            "é {quantity}",
-            "deu {quantity}",
             "{quantity} no total",
             "{quantity} topos",
             "{quantity} topos de bolo",
@@ -309,7 +306,6 @@
             "{quantity} itens",
             "{quantity} peças",
             "quantidade {quantity}",
-            "são {quantity}",
             "são {quantity} itens",
             "são {quantity} unidades",
             "quero {quantity}",
@@ -328,7 +324,6 @@
             "não é {quantity}",
             "coloca {quantity} unidades",
             "coloca {quantity} itens",
-            "coloca {quantity}",
             "alterar a quantidade para {quantity}",
             "mudar a quantidade para {quantity}",
             "corrigir a quantidade para {quantity}",
@@ -485,7 +480,6 @@
             "corrigir para {price} reais",
             "alterar para {price} reais",
             "mudar para {price} reais",
-            "{price} reais e {cents}",
             "{price} reais e {cents} centavos"
           ],
           "slots": [
