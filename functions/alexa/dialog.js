@@ -291,6 +291,17 @@ function parseQuantity(quantityValue) {
     return (num > 0 && num <= 10000) ? num : null;
   }
 
+  // Se forem numerais com "e" (ex: "20 e 8", "30 e 5", "100 e 28")
+  const compoundDigitsMatch = clean.match(/^(\d+)\s+e\s+(\d+)$/);
+  if (compoundDigitsMatch) {
+    const d1 = parseInt(compoundDigitsMatch[1], 10);
+    const d2 = parseInt(compoundDigitsMatch[2], 10);
+    const sum = d1 + d2;
+    if (Number.isInteger(sum) && sum > 0 && sum <= 10000) {
+      return sum;
+    }
+  }
+
   // Se forem palavras em português ("dez", "duas", "quinze")
   const wordNum = parsePortugueseWordsToNumber(clean);
   if (wordNum !== null && Number.isInteger(wordNum) && wordNum > 0 && wordNum <= 10000) {
@@ -475,6 +486,19 @@ function parseAndValidatePrice(priceValue) {
       const rVal = parsePartToNumber(reaisPart);
       const cVal = parsePartToNumber(centavosPart);
       if (rVal !== null && cVal !== null && rVal >= 0 && cVal >= 0 && cVal < 100) {
+        // Se for um numeral composto em português (ex: "vinte e oito" = 28, "trinta e cinco" = 35, "cento e vinte" = 120)
+        // onde a primeira parte é dezena (20..90) ou centena (100..900) e a segunda é unidade (1..9) ou dezena (10..99):
+        const isCompoundInteger =
+          (rVal >= 20 && rVal <= 90 && rVal % 10 === 0 && cVal >= 1 && cVal <= 9) ||
+          (rVal >= 100 && rVal % 100 === 0 && cVal >= 1 && cVal <= 99);
+
+        if (isCompoundInteger) {
+          const totalInt = rVal + cVal;
+          if (totalInt <= 10000) {
+            return { valid: true, price: totalInt };
+          }
+        }
+
         const total = rVal + (cVal / 100);
         if (total <= 10000) {
           return { valid: true, price: Math.round(total * 100) / 100 };
@@ -1630,16 +1654,40 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
       combinedStr = `${centsSlot} centavos`;
     }
 
-    // Se o diálogo está aguardando quantidade (expectedInput === 'quantity') e não foram informados centavos,
-    // o número informado é a QUANTIDADE de itens (ex: usuário disse apenas "10", "15", "5")!
-    if (sessionAttrs.expectedInput === 'quantity' && !centsSlot && numSlot) {
-      quantitySlot = numSlot;
-    } else if (sessionAttrs.expectedInput === 'unitPrice' && combinedStr) {
-      unitPriceSlot = combinedStr;
-    } else if (sessionAttrs.expectedInput === 'totalPrice' && combinedStr) {
-      totalSlot = combinedStr;
+    let compoundInteger = null;
+    if (numSlot && centsSlot) {
+      const n1 = parseInt(numSlot, 10);
+      const n2 = parseInt(centsSlot, 10);
+      if (!isNaN(n1) && !isNaN(n2)) {
+        if ((n1 >= 20 && n1 <= 90 && n1 % 10 === 0 && n2 >= 1 && n2 <= 9) ||
+            (n1 >= 100 && n1 % 100 === 0 && n2 >= 1 && n2 <= 99)) {
+          compoundInteger = n1 + n2;
+        }
+      }
+    }
+
+    const isExpectingQuantity =
+      sessionAttrs.expectedInput === 'quantity' ||
+      sessionAttrs.pendingField === 'quantity';
+
+    if (isExpectingQuantity) {
+      if (compoundInteger !== null) {
+        quantitySlot = String(compoundInteger);
+      } else if (numSlot && centsSlot) {
+        const n1 = parseInt(numSlot, 10);
+        const n2 = parseInt(centsSlot, 10);
+        quantitySlot = (!isNaN(n1) && !isNaN(n2)) ? String(n1 + n2) : String(numSlot);
+      } else if (numSlot) {
+        quantitySlot = String(numSlot);
+      } else if (centsSlot) {
+        quantitySlot = String(centsSlot);
+      }
+    } else if (sessionAttrs.expectedInput === 'unitPrice') {
+      unitPriceSlot = compoundInteger !== null ? String(compoundInteger) : combinedStr;
+    } else if (sessionAttrs.expectedInput === 'totalPrice') {
+      totalSlot = compoundInteger !== null ? String(compoundInteger) : combinedStr;
     } else if (combinedStr) {
-      genericPriceSlot = combinedStr;
+      genericPriceSlot = compoundInteger !== null ? String(compoundInteger) : combinedStr;
     }
   } else if (centsSlot) {
     // Para ProvidePriceIntent e similares onde o NLU preencheu o price + cents
@@ -1948,16 +1996,26 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
     }
 
     // Se o rascunho existente estava aguardando quantidade (expectedInput === 'quantity' ou pendingField === 'quantity'),
-    // e o usuário respondeu apenas um número que caiu em genericPrice/parsedGenericPrice sem centavos,
+    // e o usuário respondeu apenas um número que caiu em genericPrice/parsedGenericPrice,
     // converte contextualmente para a quantidade de itens!
     const isWaitingQuantity = existingData.expectedInput === 'quantity' || existingData.pendingField === 'quantity';
-    if (isWaitingQuantity && !incomingUpdates.quantity && !centsSlot) {
-      if (parsedGenericPrice && Number.isInteger(parsedGenericPrice.price)) {
-        const qVal = Math.round(parsedGenericPrice.price);
-        if (qVal > 0 && qVal <= 10000) {
+    if (isWaitingQuantity && !incomingUpdates.quantity) {
+      if (parsedGenericPrice) {
+        let qVal = null;
+        if (Number.isInteger(parsedGenericPrice.price)) {
+          qVal = Math.round(parsedGenericPrice.price);
+        } else if (centsSlot && (slots.number?.value || slots.Number?.value)) {
+          const n1 = parseInt(slots.number?.value || slots.Number?.value, 10);
+          const n2 = parseInt(centsSlot, 10);
+          if (!isNaN(n1) && !isNaN(n2)) {
+            qVal = n1 + n2;
+          }
+        }
+        if (qVal && qVal > 0 && qVal <= 10000) {
           incomingUpdates.quantity = qVal;
           parsedGenericPrice = null;
           genericPriceValidationError = null;
+          existingData.expectedInput = null;
         }
       }
     }
@@ -2318,10 +2376,15 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
     const activeExpected = existingData.expectedInput || null;
 
     // Resolução baseada no expectedInput persistido no banco para quantidade
-    if (!incomingUpdates.quantity && activeExpected === 'quantity') {
-      if (parsedGenericPrice && parsedGenericPrice.cents % 100 === 0 && !unitPriceSlot && !totalSlot) {
-        const qNum = parsedGenericPrice.cents / 100;
-        if (qNum >= 1 && qNum <= 10000) {
+    if (!incomingUpdates.quantity && (activeExpected === 'quantity' || activePending === 'quantity')) {
+      if (parsedGenericPrice && !unitPriceSlot && !totalSlot) {
+        let qNum = null;
+        if (parsedGenericPrice.cents % 100 === 0) {
+          qNum = parsedGenericPrice.cents / 100;
+        } else if (Number.isInteger(parsedGenericPrice.price)) {
+          qNum = parsedGenericPrice.price;
+        }
+        if (qNum && qNum >= 1 && qNum <= 10000) {
           incomingUpdates.quantity = qNum;
           parsedGenericPrice = null;
           existingData.expectedInput = null;

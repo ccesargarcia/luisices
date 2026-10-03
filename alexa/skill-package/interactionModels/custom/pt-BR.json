@@ -295,6 +295,16 @@
         {
           "name": "ProvideQuantityIntent",
           "samples": [
+            "{quantity}",
+            "é {quantity}",
+            "deu {quantity}",
+            "{quantity} no total",
+            "{quantity} topos",
+            "{quantity} topos de bolo",
+            "{quantity} caixas",
+            "{quantity} lembrancinhas",
+            "{quantity} convites",
+            "{quantity} produtos",
             "{quantity} unidades",
             "{quantity} itens",
             "{quantity} peças",

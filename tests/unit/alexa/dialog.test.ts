@@ -557,5 +557,116 @@ describe('Alexa: Máquina de Estados, Diálogo e Validação de Slots pt-BR', ()
       expect(mockDb.store.alexaDrafts[draftId].customer).toBe('João');
       expect(res.speech).toContain('5 cadernos para João');
     });
+
+    it('deve interpretar "28" ou "vinte e oito" (number 20, cents 8) como quantidade 28 quando aguarda quantidade', async () => {
+      const draftId = 'draft-qty-28';
+      const sessionId = 'session-qty-28';
+      const mockDb = createMockDb({
+        alexaDrafts: {
+          [draftId]: {
+            draftId,
+            sessionId,
+            uid: identity.uid,
+            bindingKey: identity.bindingKey,
+            environment: baseConfig.environment,
+            customer: 'Luis',
+            product: 'topos de bolo',
+            quantity: null,
+            deliveryDate: null,
+            price: null,
+            state: 'collecting',
+            expectedInput: 'quantity',
+            revision: 1,
+            expiresAt: { toDate: () => new Date(Date.now() + 10 * 60 * 1000) },
+          },
+        },
+      });
+
+      // Simula a Alexa decompondo "vinte e oito" em number=20 e cents=8 em ProvideNumberIntent
+      const envelope = {
+        session: { sessionId, attributes: { draftId, revision: 1, expectedInput: 'quantity' } },
+        request: {
+          type: 'IntentRequest',
+          intent: {
+            name: 'ProvideNumberIntent',
+            slots: {
+              number: { value: '20' },
+              cents: { value: '8' },
+            },
+          },
+        },
+      };
+
+      const res = await handleAlexaDialog({ envelope, identity, config: baseConfig, db: mockDb });
+      // Deve gravar quantidade = 28 no rascunho
+      expect(mockDb.store.alexaDrafts[draftId].quantity).toBe(28);
+      // NUNCA deve perguntar se 20 reais e 8 centavos é total ou cada
+      expect(res.speech).not.toContain('20 reais');
+      expect(res.speech).not.toContain('8 centavos');
+      expect(res.speech).not.toContain('cada ou');
+      // Deve avançar para a data de entrega
+      expect(res.speech).toContain('data de entrega');
+    });
+
+    it('deve interpretar número puro em ProvideQuantityIntent com "{quantity}"', async () => {
+      const draftId = 'draft-qty-direct';
+      const sessionId = 'session-qty-direct';
+      const mockDb = createMockDb({
+        alexaDrafts: {
+          [draftId]: {
+            draftId,
+            sessionId,
+            uid: identity.uid,
+            bindingKey: identity.bindingKey,
+            environment: baseConfig.environment,
+            customer: 'Luis',
+            product: 'topos de bolo',
+            quantity: null,
+            deliveryDate: null,
+            price: null,
+            state: 'collecting',
+            expectedInput: 'quantity',
+            revision: 1,
+            expiresAt: { toDate: () => new Date(Date.now() + 10 * 60 * 1000) },
+          },
+        },
+      });
+
+      const envelope = {
+        session: { sessionId, attributes: { draftId, revision: 1, expectedInput: 'quantity' } },
+        request: {
+          type: 'IntentRequest',
+          intent: {
+            name: 'ProvideQuantityIntent',
+            slots: {
+              quantity: { value: '28' },
+            },
+          },
+        },
+      };
+
+      const res = await handleAlexaDialog({ envelope, identity, config: baseConfig, db: mockDb });
+      expect(mockDb.store.alexaDrafts[draftId].quantity).toBe(28);
+      expect(res.speech).toContain('data de entrega');
+    });
+
+    it('deve interpretar "20 e 8" e "30 e 5" como 28 e 35 reais e não centavos em parseAndValidatePrice', () => {
+      const res28 = parseAndValidatePrice('20 e 8');
+      expect(res28.valid).toBe(true);
+      expect(res28.price).toBe(28);
+
+      const res35 = parseAndValidatePrice('30 e 5');
+      expect(res35.valid).toBe(true);
+      expect(res35.price).toBe(35);
+
+      const res105 = parseAndValidatePrice('100 e 5');
+      expect(res105.valid).toBe(true);
+      expect(res105.price).toBe(105);
+
+      // Centavos reais com decimal explícito continuam funcionando
+      const res350 = parseAndValidatePrice('3 e 50');
+      expect(res350.valid).toBe(true);
+      expect(res350.price).toBe(3.5);
+    });
   });
 });
