@@ -1,9 +1,40 @@
-name: Deploy to Firebase Hosting (Dev)
+name: Deploy to Firebase (Dev)
 
 on:
   push:
     branches:
       - develop
+    paths-ignore:
+      - 'docs/**'
+      - '*.md'
+      - '.vscode/**'
+      - 'alexa-icons/**'
+      - '.github/workflows/deploy-alexa-skill.yml'
+      - '.github/workflows/deploy.yml'
+      - '.github/workflows/playwright.yml'
+      - '.github/workflows/screen-audit.yml'
+      - '.github/workflows/migrate-user.yml'
+      - '.github/workflows/deploy-indexes.yml'
+      - '.github/workflows/load-test.yml'
+      - '.github/workflows/migrate-products.yml'
+  workflow_dispatch:
+    inputs:
+      deploy_target:
+        description: 'Alvo de deploy (auto, all, functions-only, hosting-only, rules-only)'
+        required: false
+        default: 'auto'
+        type: choice
+        options:
+          - auto
+          - all
+          - functions-only
+          - hosting-only
+          - rules-only
+      run_e2e:
+        description: 'Executar testes E2E do Playwright?'
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -13,14 +44,198 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  detect-changes:
+    name: 🔍 Detectar Alterações
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      frontend: ${{ steps.targets.outputs.frontend }}
+      functions: ${{ steps.targets.outputs.functions }}
+      rules: ${{ steps.targets.outputs.rules }}
+      need_e2e: ${{ steps.targets.outputs.need_e2e }}
+      need_functions_validation: ${{ steps.targets.outputs.need_functions_validation }}
+      has_changes: ${{ steps.targets.outputs.has_changes }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Path Filter
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            frontend:
+              - 'src/**'
+              - 'public/**'
+              - 'index.html'
+              - 'vite.config.*'
+              - 'package*.json'
+              - 'tsconfig*.json'
+            functions:
+              - 'functions/**'
+            rules:
+              - 'firestore.rules'
+              - 'firestore.indexes.json'
+              - 'storage.rules'
+            e2e:
+              - 'tests/e2e/**'
+              - 'playwright.config.*'
+            unit_tests:
+              - 'tests/unit/**'
+              - 'vitest*.ts'
+            integration_tests:
+              - 'tests/integration/**'
+            ci:
+              - '.github/workflows/deploy-dev.yml'
+              - '.github/workflows/test-actions.yml'
+
+      - name: Resolver Alvos e Estratégia de Testes
+        id: targets
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_TARGET: ${{ inputs.deploy_target || 'auto' }}
+          INPUT_RUN_E2E: ${{ inputs.run_e2e || false }}
+          COMMIT_MSG: ${{ github.event.head_commit.message }}
+          FILTER_FRONTEND: ${{ steps.filter.outputs.frontend }}
+          FILTER_FUNCTIONS: ${{ steps.filter.outputs.functions }}
+          FILTER_RULES: ${{ steps.filter.outputs.rules }}
+          FILTER_E2E: ${{ steps.filter.outputs.e2e }}
+          FILTER_UNIT_TESTS: ${{ steps.filter.outputs.unit_tests }}
+          FILTER_INTEGRATION_TESTS: ${{ steps.filter.outputs.integration_tests }}
+          FILTER_CI: ${{ steps.filter.outputs.ci }}
+        run: |
+          # 1. Identificar flags na mensagem do commit
+          SKIP_TESTS=false
+          SKIP_E2E=false
+          ONLY_FUNCTIONS=false
+          ONLY_HOSTING=false
+          FORCE_ALL=false
+
+          if echo "$COMMIT_MSG" | grep -qiE '\[skip tests\]|\[skip-tests\]'; then
+            SKIP_TESTS=true
+          fi
+          if echo "$COMMIT_MSG" | grep -qiE '\[skip e2e\]|\[skip-e2e\]|\[fast\]'; then
+            SKIP_E2E=true
+          fi
+          if echo "$COMMIT_MSG" | grep -qiE '\[only functions\]|\[only-functions\]'; then
+            ONLY_FUNCTIONS=true
+          fi
+          if echo "$COMMIT_MSG" | grep -qiE '\[only hosting\]|\[only-hosting\]'; then
+            ONLY_HOSTING=true
+          fi
+          if echo "$COMMIT_MSG" | grep -qiE '\[deploy all\]|\[all\]'; then
+            FORCE_ALL=true
+          fi
+
+          # 2. Determinar alvos de deploy
+          if [ "$INPUT_TARGET" = "functions-only" ] || [ "$ONLY_FUNCTIONS" = "true" ]; then
+            DEPLOY_FRONTEND=false
+            DEPLOY_FUNCTIONS=true
+            DEPLOY_RULES=false
+          elif [ "$INPUT_TARGET" = "hosting-only" ] || [ "$ONLY_HOSTING" = "true" ]; then
+            DEPLOY_FRONTEND=true
+            DEPLOY_FUNCTIONS=false
+            DEPLOY_RULES=false
+          elif [ "$INPUT_TARGET" = "rules-only" ]; then
+            DEPLOY_FRONTEND=false
+            DEPLOY_FUNCTIONS=false
+            DEPLOY_RULES=true
+          elif [ "$INPUT_TARGET" = "all" ] || [ "$FORCE_ALL" = "true" ]; then
+            DEPLOY_FRONTEND=true
+            DEPLOY_FUNCTIONS=true
+            DEPLOY_RULES=true
+          else
+            # Modo auto baseado nas alterações detectadas
+            DEPLOY_FRONTEND="$FILTER_FRONTEND"
+            DEPLOY_FUNCTIONS="$FILTER_FUNCTIONS"
+            DEPLOY_RULES="$FILTER_RULES"
+          fi
+
+          # 3. Determinar se testes E2E do Playwright são necessários
+          NEED_E2E=false
+          if [ "$SKIP_TESTS" != "true" ] && [ "$SKIP_E2E" != "true" ] && [ "$ONLY_FUNCTIONS" != "true" ]; then
+            if [ "$INPUT_RUN_E2E" = "true" ] || [ "$FORCE_ALL" = "true" ] || [ "$DEPLOY_FRONTEND" = "true" ] || [ "$DEPLOY_RULES" = "true" ] || [ "$FILTER_E2E" = "true" ] || [ "$FILTER_INTEGRATION_TESTS" = "true" ]; then
+              NEED_E2E=true
+            fi
+          fi
+
+          # 4. Determinar se validação rápida de functions/unitária é necessária
+          # Necessária se functions ou unit_tests mudaram e os testes E2E NÃO estão rodando
+          NEED_FUNCTIONS_VALIDATION=false
+          if [ "$SKIP_TESTS" != "true" ] && [ "$NEED_E2E" != "true" ]; then
+            if [ "$DEPLOY_FUNCTIONS" = "true" ] || [ "$FILTER_UNIT_TESTS" = "true" ] || [ "$FILTER_CI" = "true" ]; then
+              NEED_FUNCTIONS_VALIDATION=true
+            fi
+          fi
+
+          # 5. Determinar se há algo para deployar
+          HAS_CHANGES=false
+          if [ "$DEPLOY_FRONTEND" = "true" ] || [ "$DEPLOY_FUNCTIONS" = "true" ] || [ "$DEPLOY_RULES" = "true" ]; then
+            HAS_CHANGES=true
+          fi
+
+          echo "frontend=$DEPLOY_FRONTEND" >> "$GITHUB_OUTPUT"
+          echo "functions=$DEPLOY_FUNCTIONS" >> "$GITHUB_OUTPUT"
+          echo "rules=$DEPLOY_RULES" >> "$GITHUB_OUTPUT"
+          echo "need_e2e=$NEED_E2E" >> "$GITHUB_OUTPUT"
+          echo "need_functions_validation=$NEED_FUNCTIONS_VALIDATION" >> "$GITHUB_OUTPUT"
+          echo "has_changes=$HAS_CHANGES" >> "$GITHUB_OUTPUT"
+
+          echo "============================================="
+          echo "🎯 Estratégia de Execução da Pipeline:"
+          echo " - Deploy Frontend: $DEPLOY_FRONTEND"
+          echo " - Deploy Functions: $DEPLOY_FUNCTIONS"
+          echo " - Deploy Rules: $DEPLOY_RULES"
+          echo " - Executar E2E (Playwright): $NEED_E2E"
+          echo " - Executar Validação Rápida: $NEED_FUNCTIONS_VALIDATION"
+          echo " - Mudanças para Deploy: $HAS_CHANGES"
+          echo "============================================="
+
+  functions-validation:
+    name: ⚡ Validação Rápida (Unit + Lint)
+    needs: detect-changes
+    if: needs.detect-changes.outputs.need_functions_validation == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Instalar dependências
+        run: |
+          npm install --legacy-peer-deps
+          npm --prefix functions install
+
+      - name: Lint Functions
+        run: npm --prefix functions run lint
+
+      - name: Executar Testes Unitários (Vitest)
+        run: npm run test:unit
+
   e2e-tests:
-    if: "!contains(github.event.head_commit.message, '[skip tests]')"
+    name: 🧪 Testes E2E Completos (Playwright)
+    needs: detect-changes
+    if: needs.detect-changes.outputs.need_e2e == 'true'
     uses: ./.github/workflows/test-actions.yml
     secrets: inherit
 
   deploy:
-    needs: e2e-tests
-    if: always() && (needs.e2e-tests.result == 'success' || needs.e2e-tests.result == 'skipped')
+    name: 🚀 Deploy Firebase (Dev)
+    needs: [detect-changes, e2e-tests, functions-validation]
+    if: |
+      always() &&
+      needs.detect-changes.result == 'success' &&
+      (needs.e2e-tests.result == 'success' || needs.e2e-tests.result == 'skipped') &&
+      (needs.functions-validation.result == 'success' || needs.functions-validation.result == 'skipped') &&
+      needs.detect-changes.outputs.has_changes == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
@@ -36,10 +251,13 @@ jobs:
           node-version: '22'
           cache: 'npm'
 
-      - name: Install dependencies
+      # --- ETAPAS DO FRONTEND (HOSTING) ---
+      - name: Instalar dependências do Frontend
+        if: needs.detect-changes.outputs.frontend == 'true'
         run: npm install --legacy-peer-deps
 
-      - name: Create .env.local with DEV secrets
+      - name: Criar .env.local com secrets de DEV
+        if: needs.detect-changes.outputs.frontend == 'true'
         env:
           API_KEY: ${{ secrets.DEV_VITE_FIREBASE_API_KEY }}
           AUTH_DOMAIN: ${{ secrets.DEV_VITE_FIREBASE_AUTH_DOMAIN }}
@@ -65,10 +283,12 @@ jobs:
             printf 'VITE_SENTRY_DSN=%s\n' "$SENTRY_DSN" >> .env.local
           fi
 
-      - name: Build (dev)
+      - name: Build Frontend (dev)
+        if: needs.detect-changes.outputs.frontend == 'true'
         run: npm run build
 
-      - name: Deploy to Firebase Hosting (dev.luisices.com.br)
+      - name: Deploy Firebase Hosting (dev.luisices.com.br)
+        if: needs.detect-changes.outputs.frontend == 'true'
         uses: FirebaseExtended/action-hosting-deploy@v0
         with:
           repoToken: ${{ secrets.GITHUB_TOKEN }}
@@ -76,7 +296,9 @@ jobs:
           projectId: luisices-dev
           channelId: live
 
+      # --- ETAPAS DO FIRESTORE (RULES & INDEXES) ---
       - name: Deploy Firestore Rules & Indexes (Dev)
+        if: needs.detect-changes.outputs.rules == 'true'
         env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_DEV }}
         run: |
@@ -84,14 +306,17 @@ jobs:
           export GOOGLE_APPLICATION_CREDENTIALS="$HOME/firebase-service-account.json"
           npx --yes firebase-tools deploy --only firestore:rules,firestore:indexes --project luisices-dev --non-interactive
 
-      - name: Install Functions Dependencies
+      # --- ETAPAS DAS CLOUD FUNCTIONS ---
+      - name: Instalar dependências de Functions
+        if: needs.detect-changes.outputs.functions == 'true'
         working-directory: functions
         run: npm ci
 
       - name: Deploy Firebase Functions (Dev)
+        if: needs.detect-changes.outputs.functions == 'true'
         env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_DEV }}
         run: |
+          echo "$FIREBASE_SERVICE_ACCOUNT" > "$HOME/firebase-service-account.json"
           export GOOGLE_APPLICATION_CREDENTIALS="$HOME/firebase-service-account.json"
           npx --yes firebase-tools deploy --only functions --project luisices-dev --non-interactive
-
