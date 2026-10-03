@@ -1,0 +1,113 @@
+name: Migrate User Data (Dev to Prod)
+
+on:
+  workflow_dispatch:
+    inputs:
+      user_email:
+        description: 'E-mail do usuário no ambiente Dev (ex: usuario@exemplo.com)'
+        required: false
+        type: string
+        default: ''
+      user_uid:
+        description: 'UID do usuário no ambiente Dev (opcional se informar e-mail)'
+        required: false
+        type: string
+        default: ''
+      dry_run:
+        description: 'Modo Simulação (Dry Run - apenas exibe sem alterar Produção)?'
+        required: true
+        type: boolean
+        default: true
+      migrate_auth:
+        description: 'Provisionar conta no Firebase Auth de Produção se não existir?'
+        required: true
+        type: boolean
+        default: true
+      migrate_orders:
+        description: 'Migrar Pedidos de Produção (orders)?'
+        required: true
+        type: boolean
+        default: true
+      migrate_customers:
+        description: 'Migrar Clientes (customers)?'
+        required: true
+        type: boolean
+        default: true
+      migrate_quotes:
+        description: 'Migrar Orçamentos (quotes)?'
+        required: true
+        type: boolean
+        default: true
+      migrate_products:
+        description: 'Migrar Catálogo de Produtos (products)?'
+        required: true
+        type: boolean
+        default: true
+      migrate_supplies:
+        description: 'Migrar Insumos, Compras e Receitas (supplies, recipes, purchase_history)?'
+        required: true
+        type: boolean
+        default: true
+      migrate_ledger:
+        description: 'Migrar Livro Caixa e Vendas (salesLedger)?'
+        required: true
+        type: boolean
+        default: true
+      migrate_gallery:
+        description: 'Migrar Imagens e Galeria (gallery)?'
+        required: true
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  migrate-user:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm install --legacy-peer-deps
+
+      - name: Run User Migration Script
+        env:
+          FIREBASE_SERVICE_ACCOUNT_DEV: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_DEV }}
+          FIREBASE_SERVICE_ACCOUNT_PROD: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_PROD || secrets.FIREBASE_SERVICE_ACCOUNT }}
+          USER_EMAIL: ${{ inputs.user_email }}
+          USER_UID: ${{ inputs.user_uid }}
+          DRY_RUN: ${{ inputs.dry_run }}
+          MIGRATE_AUTH: ${{ inputs.migrate_auth }}
+          MIGRATE_ORDERS: ${{ inputs.migrate_orders }}
+          MIGRATE_CUSTOMERS: ${{ inputs.migrate_customers }}
+          MIGRATE_QUOTES: ${{ inputs.migrate_quotes }}
+          MIGRATE_PRODUCTS: ${{ inputs.migrate_products }}
+          MIGRATE_SUPPLIES: ${{ inputs.migrate_supplies }}
+          MIGRATE_RECIPES: ${{ inputs.migrate_supplies }}
+          MIGRATE_LEDGER: ${{ inputs.migrate_ledger }}
+          MIGRATE_GALLERY: ${{ inputs.migrate_gallery }}
+        run: |
+          if [ -z "$FIREBASE_SERVICE_ACCOUNT_DEV" ]; then
+            echo "❌ ERRO: Secret FIREBASE_SERVICE_ACCOUNT_DEV não configurado no repositório."
+            exit 1
+          fi
+          if [ -z "$FIREBASE_SERVICE_ACCOUNT_PROD" ]; then
+            echo "❌ ERRO: Secret FIREBASE_SERVICE_ACCOUNT_PROD não configurado no repositório."
+            exit 1
+          fi
+          if [ -z "$USER_EMAIL" ] && [ -z "$USER_UID" ]; then
+            echo "❌ ERRO: Informe ao menos o user_email ou user_uid para executar a migração."
+            exit 1
+          fi
+
+          node scripts/migrate-user-dev-to-prod.mjs
