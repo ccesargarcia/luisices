@@ -72,7 +72,14 @@ async function fetchCatalogProductsForDynamicEntities(db, uid) {
   try {
     // 1. Tenta buscar no catálogo storeProducts (Lojinha / Vitrine)
     if (typeof db.collection === 'function') {
-      const storeSnap = await db.collection('storeProducts').limit(50).get().catch(() => null);
+      const storeCol = db.collection('storeProducts');
+      let storeSnap = null;
+      if (storeCol) {
+        const query = typeof storeCol.limit === 'function' ? storeCol.limit(50) : storeCol;
+        if (typeof query.get === 'function') {
+          storeSnap = await query.get().catch(() => null);
+        }
+      }
       if (storeSnap && !storeSnap.empty) {
         storeSnap.forEach((doc) => {
           const data = typeof doc.data === 'function' ? doc.data() : (doc.data || {});
@@ -93,7 +100,14 @@ async function fetchCatalogProductsForDynamicEntities(db, uid) {
     // 2. Se houver usuário autenticado, inclui também os produtos personalizados de products
     if (uid && typeof db.collection === 'function') {
       const userCol = db.collection(COLLECTIONS.PRODUCTS || 'products');
-      const userSnap = await userCol.where('userId', '==', uid).limit(50).get().catch(() => null);
+      let userSnap = null;
+      if (userCol && typeof userCol.where === 'function') {
+        const queryWhere = userCol.where('userId', '==', uid);
+        const query = typeof queryWhere.limit === 'function' ? queryWhere.limit(50) : queryWhere;
+        if (typeof query.get === 'function') {
+          userSnap = await query.get().catch(() => null);
+        }
+      }
       if (userSnap && !userSnap.empty) {
         userSnap.forEach((doc) => {
           const data = typeof doc.data === 'function' ? doc.data() : (doc.data || {});

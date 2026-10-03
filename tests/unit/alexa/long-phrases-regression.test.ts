@@ -108,6 +108,15 @@ describe('Etapa 3: Testes de Regressão Focados — Frases Longas e Criação de
           store[col][id] = data;
           return { id };
         },
+        limit: () => ({
+          get: async () => ({
+            empty: Object.keys(store[col] || {}).length === 0,
+            docs: Object.keys(store[col] || {}).map((k) => ({
+              id: k,
+              data: () => store[col][k],
+            })),
+          }),
+        }),
         where: () => ({
           limit: () => ({
             get: async () => ({
@@ -641,5 +650,109 @@ describe('Etapa 3: Testes de Regressão Focados — Frases Longas e Criação de
 
     // Rascunho marcado como committed
     expect(mockDb.store.alexaDrafts[draftId].state).toBe('committed');
+  });
+
+  // Cenário 11: One-Shot Direto (Frase completa contínua sem pausas)
+  // "criar pedido de 3 topos de bolo para luis para entrega segunda-feira no valor de 20 reais cada"
+  it('Cenário 11: One-Shot contínuo com dia da semana (segunda-feira) e preço unitário avança direto para confirmação', async () => {
+    const mockDb = createMockDb();
+    const sessionId = 'session-one-shot-luis';
+
+    const envelope = {
+      session: { sessionId },
+      request: {
+        type: 'IntentRequest',
+        intent: {
+          name: 'CreateOrderIntent',
+          slots: {
+            quantity: { value: '3' },
+            product: { value: 'topos de bolo' },
+            customer: { value: 'luis' },
+            deliveryDate: { value: '2026-W41-1' }, // Alexa ISO week-day para "segunda-feira"
+            unitPrice: { value: '20' },
+          },
+        },
+      },
+      context: {
+        System: {
+          person: { personId: identity.personId },
+        },
+      },
+    };
+
+    const res = await handleAlexaDialog({
+      envelope,
+      identity,
+      config: baseConfig,
+      db: mockDb,
+      authService: mockAuthService,
+    });
+
+    // Como todos os dados foram informados na frase contínua, o diálogo NÃO deve perguntar slots faltantes
+    expect(res.speech).toContain('3 topos de bolo para luis');
+    expect(res.speech).toContain('20 reais cada');
+    expect(res.speech).toContain('total de 60 reais');
+    expect(res.speech).toContain('Confirmar?');
+    expect(res.shouldEndSession).toBe(false);
+
+    // O rascunho deve estar pronto em awaiting_confirmation
+    const draftId = res.sessionAttributes?.draftId;
+    expect(draftId).toBeDefined();
+    const draft = mockDb.store.alexaDrafts[draftId];
+    expect(draft.customer).toBe('luis');
+    expect(draft.product).toBe('topos de bolo');
+    expect(draft.quantity).toBe(3);
+    expect(draft.pricingMode).toBe('unit');
+    expect(draft.unitPriceCents).toBe(2000);
+    expect(draft.price).toBe(60);
+    expect(draft.deliveryDate).toBe('2026-10-05');
+  });
+
+  it('Cenário 12: One-Shot contínuo com dia da semana e valor ambíguo (no valor de 60 reais) pergunta apenas se é cada ou total', async () => {
+    const mockDb = createMockDb();
+    const sessionId = 'session-one-shot-ambiguous';
+
+    const envelope = {
+      session: { sessionId },
+      request: {
+        type: 'IntentRequest',
+        intent: {
+          name: 'CreateOrderIntent',
+          slots: {
+            quantity: { value: '3' },
+            product: { value: 'topos de bolo' },
+            customer: { value: 'luis' },
+            deliveryDate: { value: 'XXXX-WXX-1' }, // Alexa relative week-day para "segunda-feira"
+            ambiguousPrice: { value: '60' },
+          },
+        },
+      },
+      context: {
+        System: {
+          person: { personId: identity.personId },
+        },
+      },
+    };
+
+    const res = await handleAlexaDialog({
+      envelope,
+      identity,
+      config: baseConfig,
+      db: mockDb,
+      authService: mockAuthService,
+    });
+
+    // Reconhece todos os slots e pede apenas a desambiguação cada/total
+    expect(res.speech).toContain('60 reais cada ou 60 reais no total?');
+    expect(res.shouldEndSession).toBe(false);
+
+    const draftId = res.sessionAttributes?.draftId;
+    const draft = mockDb.store.alexaDrafts[draftId];
+    expect(draft.customer).toBe('luis');
+    expect(draft.product).toBe('topos de bolo');
+    expect(draft.quantity).toBe(3);
+    expect(draft.state).toBe('collecting');
+    expect(draft.expectedInput).toBe('priceBasis');
+    expect(draft.pendingPriceCents).toBe(6000);
   });
 });

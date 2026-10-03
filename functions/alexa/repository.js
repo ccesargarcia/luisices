@@ -57,8 +57,11 @@ function computeRequestKey(skillId, requestId) {
  * Nunca registra dados sensíveis (áudio, slots brutos, telefone ou nomes completos).
  */
 async function recordAuditEvent(db, eventData) {
-  if (!db) return;
+  if (!db || typeof db.collection !== 'function') return;
   try {
+    const auditCol = db.collection(COLLECTIONS.AUDIT);
+    if (!auditCol || typeof auditCol.add !== 'function') return;
+
     const {
       event,
       uid = null,

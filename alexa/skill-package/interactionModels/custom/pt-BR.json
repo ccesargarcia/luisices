@@ -164,7 +164,25 @@
             "pedido de {product} para {customer} no valor de {ambiguousPrice} reais e entrega {deliveryDate}",
             "{quantity} {product} para {customer} total de {total} reais entrega {deliveryDate}",
             "{quantity} {product} para {customer} total de {total} reais com entrega {deliveryDate}",
-            "criar pedido de {quantity} {product} para {customer} total de {total} reais com entrega {deliveryDate}"
+            "criar pedido de {quantity} {product} para {customer} total de {total} reais com entrega {deliveryDate}",
+            "criar pedido de {quantity} {product} para {customer} para entrega {deliveryDate} no valor de {ambiguousPrice} reais",
+            "criar pedido de {quantity} {product} para {customer} para entrega {deliveryDate} no valor de {total} reais total",
+            "criar pedido de {quantity} {product} para {customer} para entrega {deliveryDate} no valor de {total} reais no total",
+            "criar pedido de {quantity} {product} para {customer} para entrega {deliveryDate} no valor de {unitPrice} reais cada",
+            "criar pedido de {quantity} {product} para {customer} para entrega {deliveryDate} por {ambiguousPrice} reais",
+            "criar pedido de {quantity} {product} para {customer} para entrega {deliveryDate} por {total} reais no total",
+            "criar pedido de {quantity} {product} para {customer} para entrega {deliveryDate} a {unitPrice} reais cada",
+            "criar pedido de {quantity} {product} para {customer} com entrega {deliveryDate} no valor de {ambiguousPrice} reais",
+            "criar pedido de {quantity} {product} para {customer} com entrega {deliveryDate} no valor de {total} reais total",
+            "criar pedido de {quantity} {product} para {customer} com entrega {deliveryDate} no valor de {total} reais no total",
+            "criar pedido de {quantity} {product} para {customer} com entrega {deliveryDate} no valor de {unitPrice} reais cada",
+            "criar pedido de {quantity} {product} para {customer} para {deliveryDate} no valor de {ambiguousPrice} reais",
+            "criar pedido de {quantity} {product} para {customer} para {deliveryDate} no valor de {total} reais total",
+            "criar pedido de {quantity} {product} para {customer} para {deliveryDate} no valor de {total} reais no total",
+            "criar pedido de {quantity} {product} para {customer} para {deliveryDate} no valor de {unitPrice} reais cada",
+            "crie um pedido de {quantity} {product} para {customer} para entrega {deliveryDate} no valor de {ambiguousPrice} reais",
+            "crie um pedido de {quantity} {product} para {customer} para entrega {deliveryDate} no valor de {unitPrice} reais cada",
+            "crie um pedido de {quantity} {product} para {customer} para entrega {deliveryDate} no valor de {total} reais total"
           ],
           "slots": [
             {

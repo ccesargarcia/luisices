@@ -198,6 +198,77 @@ describe('Alexa: Precificação Unitária, Total e Resolução de Ambiguidades',
       expect(parseAndValidatePriceToCents('3,50 no total')).toEqual({ valid: true, cents: 350, price: 3.5 });
       expect(parseAndValidatePriceToCents('3.50 por unidade')).toEqual({ valid: true, cents: 350, price: 3.5 });
       expect(parseAndValidatePriceToCents('3 e 50 cada')).toEqual({ valid: true, cents: 350, price: 3.5 });
+      // Expressões orais adicionais com vírgula, com, centavos compostos
+      expect(parseAndValidatePriceToCents('10 vírgula 50')).toEqual({ valid: true, cents: 1050, price: 10.5 });
+      expect(parseAndValidatePriceToCents('10 virgula 50')).toEqual({ valid: true, cents: 1050, price: 10.5 });
+      expect(parseAndValidatePriceToCents('dez vírgula cinquenta')).toEqual({ valid: true, cents: 1050, price: 10.5 });
+      expect(parseAndValidatePriceToCents('dez com cinquenta')).toEqual({ valid: true, cents: 1050, price: 10.5 });
+      expect(parseAndValidatePriceToCents('10 com 50')).toEqual({ valid: true, cents: 1050, price: 10.5 });
+      expect(parseAndValidatePriceToCents('cinco e setenta e cinco')).toEqual({ valid: true, cents: 575, price: 5.75 });
+      expect(parseAndValidatePriceToCents('três e setenta e cinco')).toEqual({ valid: true, cents: 375, price: 3.75 });
+      expect(parseAndValidatePriceToCents('dez e noventa e nove')).toEqual({ valid: true, cents: 1099, price: 10.99 });
+    });
+
+    it('aceita número isolado "10" como resposta direta de quantidade sem exigir "10 itens" (ProvideNumberIntent contextual)', async () => {
+      const mockDb = createMockDb();
+      const draftId = 'draft-test-isolated-number-qty';
+      const sessionId = 'session-isolated-qty-number';
+
+      // Rascunho aguardando quantidade
+      mockDb.store.alexaDrafts[draftId] = {
+        draftId,
+        sessionId,
+        uid: identity.uid,
+        bindingKey: identity.bindingKey,
+        personId: identity.personId,
+        mode: 'voice_confirm',
+        state: 'collecting',
+        customer: 'Juliana',
+        product: 'Caixa Milk',
+        quantity: null,
+        deliveryDate: '2026-11-20',
+        price: null,
+        expectedInput: 'quantity',
+        pendingField: 'quantity',
+        revision: 1,
+        expiresAt: { toDate: () => new Date(Date.now() + 600000) },
+      };
+
+      // Usuário responde apenas "10" na Alexa, o que dispara ProvideNumberIntent com { number: "10" }
+      const envelope = {
+        session: {
+          sessionId,
+          attributes: { draftId, revision: 1, expectedInput: 'quantity', personId: identity.personId },
+        },
+        request: {
+          type: 'IntentRequest',
+          intent: {
+            name: 'ProvideNumberIntent',
+            slots: {
+              number: { value: '10' },
+            },
+          },
+        },
+        context: {
+          System: {
+            person: { personId: identity.personId },
+          },
+        },
+      };
+
+      const res = await handleAlexaDialog({
+        envelope,
+        identity,
+        config: baseConfig,
+        db: mockDb,
+        authService: mockAuthService,
+      });
+
+      // Deve aceitar 10 como QUANTIDADE e não dar erro de preço inválido nem perguntar a quantidade de novo
+      const updatedDraft = mockDb.store.alexaDrafts[draftId];
+      expect(updatedDraft.quantity).toBe(10);
+      expect(res.speech).not.toContain('Valor total inválido');
+      expect(res.speech).not.toContain('Qual é a quantidade de itens');
     });
 
     it('aceita quantidades ditas em palavras e com sufixos ("dez", "duas", "10 itens", "10 unidades")', async () => {

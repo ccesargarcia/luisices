@@ -13,7 +13,7 @@ const SHARED_MODEL_FAILURES = new Map(); // model -> { count, lastFailedAt }
 
 class GeminiClient {
   constructor(options = {}) {
-    this.apiKey = options.apiKey || process.env.GEMINI_API_KEY || '';
+    this.apiKey = options.apiKey !== undefined ? options.apiKey : (process.env.GEMINI_API_KEY || '');
     this.primaryModel = options.primaryModel || MODEL_CONFIG.PRIMARY_CHAT_MODEL;
     this.fallbackModels = options.fallbackModels || (options.fallbackModel ? [options.fallbackModel] : (Array.isArray(MODEL_CONFIG.FALLBACK_CHAT_MODELS) ? MODEL_CONFIG.FALLBACK_CHAT_MODELS : [MODEL_CONFIG.FALLBACK_CHAT_MODEL, 'gemini-3.1-flash-lite'].filter(Boolean)));
     this.fallbackModel = options.fallbackModel || this.fallbackModels[0] || MODEL_CONFIG.FALLBACK_CHAT_MODEL;
@@ -62,7 +62,7 @@ class GeminiClient {
    * Executa geração de conteúdo com política estrita de fallback
    */
   async generateContent(payload, options = {}) {
-    const key = options.apiKey || this.apiKey;
+    const key = options.apiKey !== undefined ? options.apiKey : this.apiKey;
     if (!key) {
       const err = new Error('Chave GEMINI_API_KEY não configurada no ambiente.');
       err.code = 'failed-precondition';

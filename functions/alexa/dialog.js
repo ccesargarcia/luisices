@@ -96,9 +96,39 @@ function parseAndValidateDeliveryDate(dateSlotValue, timezone = 'America/Sao_Pau
     return { valid: false, error: 'Data não informada.' };
   }
 
-  const raw = dateSlotValue.trim();
+  let raw = dateSlotValue.trim();
 
-  // Verifica se é semana (ex: 2026-W41) ou mês incompleto (2026-10)
+  // Suporte a dias da semana emitidos pela Alexa (AMAZON.DATE):
+  // 1. Caso YYYY-Www-D (ex: 2026-W41-1 = Segunda-feira da semana 41)
+  const fullWeekMatch = raw.match(/^(\d{4})-W(\d{2})-([1-7])$/);
+  if (fullWeekMatch) {
+    const year = parseInt(fullWeekMatch[1], 10);
+    const week = parseInt(fullWeekMatch[2], 10);
+    const day = parseInt(fullWeekMatch[3], 10); // 1 = Mon .. 7 = Sun
+    const jan4 = new Date(Date.UTC(year, 0, 4));
+    const jan4Day = jan4.getUTCDay() || 7;
+    const targetDate = new Date(jan4.getTime() + ((week - 1) * 7 + (day - jan4Day)) * 86400000);
+    raw = targetDate.toISOString().slice(0, 10);
+  } else {
+    // 2. Caso XXXX-WXX-D (ex: XXXX-WXX-1 = Segunda-feira sem ano/semana explícita)
+    const relativeWeekDayMatch = raw.match(/^XXXX-WXX-([1-7])$/);
+    if (relativeWeekDayMatch) {
+      const targetIsoDay = parseInt(relativeWeekDayMatch[1], 10);
+      const now = new Date();
+      const todayStr = new Intl.DateTimeFormat('en-CA', { timeZone: timezone }).format(now);
+      const [y, m, d] = todayStr.split('-').map(Number);
+      const todayDate = new Date(Date.UTC(y, m - 1, d));
+      const currentIsoDay = todayDate.getUTCDay() || 7;
+      let daysAhead = targetIsoDay - currentIsoDay;
+      if (daysAhead < 0) {
+        daysAhead += 7;
+      }
+      const resolvedDate = new Date(todayDate.getTime() + daysAhead * 86400000);
+      raw = resolvedDate.toISOString().slice(0, 10);
+    }
+  }
+
+  // Verifica se é semana sem dia especificado (ex: 2026-W41, XXXX-WXX) ou mês incompleto (2026-10)
   if (raw.includes('W') || /^\d{4}-\d{2}$/.test(raw)) {
     return {
       valid: false,
@@ -322,6 +352,17 @@ function parseAndValidatePrice(priceValue) {
     .trim();
   clean = clean.replace(/\b(?:meio|meia)\b/g, '50 centavos');
 
+  // Normalizar transcrições orais e coloquiais de separadores decimais:
+  // "10 vírgula 50", "10 virgula 50" -> "10,50"
+  // "dez vírgula cinquenta" -> "dez e cinquenta"
+  // "10 com 50", "dez com cinquenta" -> "10 e 50", "dez e cinquenta"
+  clean = clean
+    .replace(/(\d+)\s*(?:vírgula|virgula)\s*(\d+)/gi, '$1,$2')
+    .replace(/\b(?:vírgula|virgula)\b/gi, ' e ')
+    .replace(/\bcom\b/gi, ' e ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
   // 1. Tentar extração de números com formato brasileiro de milhar e decimal: 1.500,00 ou 1.500
   // Aceita sufixo monetário opcional: "reais" ou "real"
   const brThousands = clean.match(/^(\d{1,3}(?:\.\d{3})+(?:,\d{1,2})?)(?:\s*(?:reais|real))?$/);
@@ -424,18 +465,20 @@ function parseAndValidatePrice(priceValue) {
     }
   }
 
-  // Se não foi um número inteiro puro, tentar dividir no último ' e ' como reais + centavos
-  // Ex: "3 e 50", "três e cinquenta", "dez e cinquenta", "vinte e cinco e cinquenta"
+  // Se não foi um número inteiro puro, testar as possíveis divisões em ' e ' como reais + centavos
+  // Ex: "3 e 50", "três e cinquenta", "cinco e setenta e cinco", "dez e noventa e nove", "vinte e cinco e cinquenta"
   if (cleanWords.includes(' e ')) {
-    const lastEIdx = cleanWords.lastIndexOf(' e ');
-    const reaisPart = cleanWords.slice(0, lastEIdx).trim();
-    const centavosPart = cleanWords.slice(lastEIdx + 3).trim();
-    const rVal = parsePartToNumber(reaisPart);
-    const cVal = parsePartToNumber(centavosPart);
-    if (rVal !== null && cVal !== null && cVal >= 0 && cVal < 100) {
-      const total = rVal + (cVal / 100);
-      if (total <= 10000) {
-        return { valid: true, price: Math.round(total * 100) / 100 };
+    const parts = cleanWords.split(/\s+e\s+/);
+    for (let i = 1; i < parts.length; i++) {
+      const reaisPart = parts.slice(0, i).join(' e ').trim();
+      const centavosPart = parts.slice(i).join(' e ').trim();
+      const rVal = parsePartToNumber(reaisPart);
+      const cVal = parsePartToNumber(centavosPart);
+      if (rVal !== null && cVal !== null && rVal >= 0 && cVal >= 0 && cVal < 100) {
+        const total = rVal + (cVal / 100);
+        if (total <= 10000) {
+          return { valid: true, price: Math.round(total * 100) / 100 };
+        }
       }
     }
   }
@@ -1586,7 +1629,16 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
     } else if (!numSlot && centsSlot) {
       combinedStr = `${centsSlot} centavos`;
     }
-    if (combinedStr) {
+
+    // Se o diálogo está aguardando quantidade (expectedInput === 'quantity') e não foram informados centavos,
+    // o número informado é a QUANTIDADE de itens (ex: usuário disse apenas "10", "15", "5")!
+    if (sessionAttrs.expectedInput === 'quantity' && !centsSlot && numSlot) {
+      quantitySlot = numSlot;
+    } else if (sessionAttrs.expectedInput === 'unitPrice' && combinedStr) {
+      unitPriceSlot = combinedStr;
+    } else if (sessionAttrs.expectedInput === 'totalPrice' && combinedStr) {
+      totalSlot = combinedStr;
+    } else if (combinedStr) {
       genericPriceSlot = combinedStr;
     }
   } else if (centsSlot) {
@@ -1893,6 +1945,21 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
           reprompt: 'Qual é o valor total do pedido?',
         },
       };
+    }
+
+    // Se o rascunho existente estava aguardando quantidade (expectedInput === 'quantity' ou pendingField === 'quantity'),
+    // e o usuário respondeu apenas um número que caiu em genericPrice/parsedGenericPrice sem centavos,
+    // converte contextualmente para a quantidade de itens!
+    const isWaitingQuantity = existingData.expectedInput === 'quantity' || existingData.pendingField === 'quantity';
+    if (isWaitingQuantity && !incomingUpdates.quantity && !centsSlot) {
+      if (parsedGenericPrice && Number.isInteger(parsedGenericPrice.price)) {
+        const qVal = Math.round(parsedGenericPrice.price);
+        if (qVal > 0 && qVal <= 10000) {
+          incomingUpdates.quantity = qVal;
+          parsedGenericPrice = null;
+          genericPriceValidationError = null;
+        }
+      }
     }
 
     if (genericPriceValidationError) {

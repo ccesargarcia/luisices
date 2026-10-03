@@ -31,6 +31,7 @@ export default defineConfig(() => {
       target: 'es2022',
       cssCodeSplit: true,
       minify: 'esbuild',
+      reportCompressedSize: false,
       rollupOptions: {
         input: {
           main: path.resolve(__dirname, 'index.html'),

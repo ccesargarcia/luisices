@@ -760,5 +760,108 @@ describe('Alexa Advancements: Dynamic Entities, Fuzzy Suggestions & APL', () => 
       expect(response.response.outputSpeech.text).toContain('atualizado');
       expect(response.response.shouldEndSession).toBe(false);
     });
+
+    it('REGRESSÃO: todas as 5 telas APL contêm o AlexaBackground oficial com scrim escuro e login-bg', () => {
+      const directives = [
+        buildWelcomeAplDirective({ userName: 'Caio', envLabel: 'teste' }),
+        buildOrderCardAplDirective({
+          customer: 'Mariana',
+          product: 'Caixa Milk',
+          quantity: 5,
+          totalPrice: 'R$ 60,00',
+        }),
+        buildOrderSuccessAplDirective({
+          orderNumber: '2026-0099',
+          customer: 'Mariana',
+          product: 'Caixa Milk',
+          quantity: 5,
+          totalPrice: 'R$ 60,00',
+        }),
+        buildFuzzySuggestionsAplDirective({
+          spokenTerm: 'caixinha',
+          suggestions: [{ id: 'p1', name: 'Caixa Milk', unitPrice: 12 }],
+        }),
+        buildVoicePairingAplDirective({
+          pairingCode: '123456',
+        }),
+      ];
+
+      for (const dir of directives) {
+        expect(dir.document).toBeDefined();
+        const mainItems = dir.document.mainTemplate.items;
+        expect(Array.isArray(mainItems)).toBe(true);
+
+        // Encontra o componente de fundo AlexaBackground no topo dos itens
+        const bgComponent = mainItems[0].items.find((item: any) => item.type === 'AlexaBackground');
+        expect(bgComponent).toBeDefined();
+        expect(bgComponent.backgroundImageSource).toContain('login-bg-800.png');
+        expect(bgComponent.backgroundColor).toBe('#161214');
+        expect(bgComponent.colorOverlay).toBe(true);
+      }
+    });
+
+    it('REGRESSÃO SCHEMA APL: nenhum componente Container possui propriedade spacing inválida', () => {
+      const directives = [
+        buildWelcomeAplDirective({ userName: 'Caio', envLabel: 'teste' }),
+        buildOrderCardAplDirective({
+          customer: 'Mariana',
+          product: 'Caixa Milk',
+          quantity: 5,
+          totalPrice: 'R$ 60,00',
+        }),
+        buildOrderSuccessAplDirective({
+          orderNumber: '2026-0099',
+          customer: 'Mariana',
+          product: 'Caixa Milk',
+          quantity: 5,
+          totalPrice: 'R$ 60,00',
+        }),
+        buildFuzzySuggestionsAplDirective({
+          spokenTerm: 'caixinha',
+          suggestions: [{ id: 'p1', name: 'Caixa Milk', unitPrice: 12 }],
+        }),
+        buildVoicePairingAplDirective({
+          pairingCode: '123456',
+        }),
+      ];
+
+      function assertNoContainerSpacing(node: any, path: string = 'root') {
+        if (!node || typeof node !== 'object') return;
+
+        if (node.type === 'Container') {
+          expect(
+            node.spacing,
+            `Componente Container em ${path} possui a propriedade inválida 'spacing' (incompatível com schema APL)`
+          ).toBeUndefined();
+        }
+
+        if (Array.isArray(node.items)) {
+          node.items.forEach((child: any, idx: number) => {
+            assertNoContainerSpacing(child, `${path}.items[${idx}]`);
+          });
+        }
+        if (node.item) {
+          assertNoContainerSpacing(node.item, `${path}.item`);
+        }
+      }
+
+      for (const dir of directives) {
+        assertNoContainerSpacing(dir.document.mainTemplate);
+      }
+    });
+
+    it('REGRESSÃO: painéis e cartões APL utilizam estilo vidro escuro com contraste legível', () => {
+      const orderDir = buildOrderCardAplDirective({
+        customer: 'Mariana',
+        product: 'Caixa Milk',
+        quantity: 5,
+        totalPrice: 'R$ 60,00',
+      });
+
+      const jsonStr = JSON.stringify(orderDir.document);
+      // Confirma que os cartões usam a cor translúcida com opacidade alta para contraste AAA
+      expect(jsonStr).toContain('rgba(35, 28, 30, 0.88)');
+      expect(jsonStr).toContain('rgba(235, 205, 205, 0.22)');
+    });
   });
 });
