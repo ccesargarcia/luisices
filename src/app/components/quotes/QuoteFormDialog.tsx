@@ -369,7 +369,11 @@ export function QuoteFormDialog({
                           className="h-8 text-sm mb-2"
                           autoFocus
                         />
-                        <div className="max-h-48 overflow-y-auto space-y-0.5">
+                        <div
+                          className="max-h-48 overflow-y-auto space-y-0.5 custom-scrollbar overscroll-contain"
+                          onWheel={(e) => e.stopPropagation()}
+                          onTouchMove={(e) => e.stopPropagation()}
+                        >
                           {catalogProducts
                             .filter(
                               (p) =>
