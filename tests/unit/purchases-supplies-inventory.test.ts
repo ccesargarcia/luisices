@@ -60,6 +60,13 @@ vi.mock('firebase/firestore', () => {
     deleteDoc: vi.fn(async (ref: any) => {
       inMemoryStore.delete(ref.path);
     }),
+    addDoc: vi.fn(async (collRef: any, data: any) => {
+      const coll = collRef.collName || collRef.path || 'collection';
+      const id = `auto_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+      const fullPath = `${coll}/${id}`;
+      inMemoryStore.set(fullPath, { ...data });
+      return { id, path: fullPath };
+    }),
     query: vi.fn((coll, ..._clauses) => coll),
     where: vi.fn(),
     orderBy: vi.fn(),
@@ -395,5 +402,45 @@ describe('Etapa 6: Compras e Estoque Transacional (Achado 9)', () => {
     expect(supply.currentStock).toBe(0);
     // Alerta de reposição acionado automaticamente pois estoque 0 <= minStock 2
     expect(supply.needsReorder).toBe(true);
+  });
+
+  it('permite cadastrar insumos com quantidades customizadas e calcula custo unitário preciso', async () => {
+    // Simula criação com quantidade comprada fracionada ou customizada (ex: 250 fls ou 50m)
+    const created = await firebasePricingService.createSupply({
+      name: 'Papel Fotográfico Glossy 180g',
+      category: 'papeis',
+      packageQuantity: 250,
+      unit: 'folha',
+      purchasePrice: 62.5,
+      shippingCost: 12.5,
+      unitCost: (62.5 + 12.5) / 250,
+      currentStock: 250,
+      minStock: 50,
+    });
+
+    expect(created.id).toBeDefined();
+    const stored = inMemoryStore.get(`supplies/${created.id}`);
+    expect(stored.packageQuantity).toBe(250);
+    expect(stored.purchasePrice).toBe(62.5);
+    expect(stored.shippingCost).toBe(12.5);
+    expect(stored.unitCost).toBe(0.3); // (62.5 + 12.5) / 250 = 75 / 250 = 0.3
+  });
+
+  it('calcula custo unitário corretamente mesmo quando frete é zero e quantidade é arbitrária', async () => {
+    const created = await firebasePricingService.createSupply({
+      name: 'Ilhós Dourado nº 54',
+      category: 'ferragens',
+      packageQuantity: 1000,
+      unit: 'unidade',
+      purchasePrice: 45.0,
+      shippingCost: 0,
+      unitCost: 45.0 / 1000,
+      currentStock: 1000,
+      minStock: 100,
+    });
+
+    const stored = inMemoryStore.get(`supplies/${created.id}`);
+    expect(stored.packageQuantity).toBe(1000);
+    expect(stored.unitCost).toBe(0.045);
   });
 });

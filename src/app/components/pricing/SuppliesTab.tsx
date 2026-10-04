@@ -160,12 +160,12 @@ export function SuppliesTab({
   const [supplier, setSupplier] = useState('');
   const [purchaseUrl, setPurchaseUrl] = useState('');
   const [lastPurchaseDate, setLastPurchaseDate] = useState('');
-  const [packageQuantity, setPackageQuantity] = useState<number>(100);
+  const [packageQuantity, setPackageQuantity] = useState<number | ''>(100);
   const [unit, setUnit] = useState<SupplyUnit>('folha');
-  const [purchasePrice, setPurchasePrice] = useState<number>(0);
-  const [shippingCost, setShippingCost] = useState<number>(0);
-  const [currentStock, setCurrentStock] = useState<number>(0);
-  const [minStock, setMinStock] = useState<number>(0);
+  const [purchasePrice, setPurchasePrice] = useState<number | ''>(35);
+  const [shippingCost, setShippingCost] = useState<number | ''>(0);
+  const [currentStock, setCurrentStock] = useState<number | ''>(100);
+  const [minStock, setMinStock] = useState<number | ''>(20);
   const [needsReorder, setNeedsReorder] = useState(false);
   const [notes, setNotes] = useState('');
 
@@ -222,10 +222,16 @@ export function SuppliesTab({
     setDialogOpen(true);
   };
 
-  const calculatedTotalCost = (purchasePrice || 0) + (shippingCost || 0);
+  const numPurchasePrice = typeof purchasePrice === 'number' ? purchasePrice : parseFloat(String(purchasePrice)) || 0;
+  const numShippingCost = typeof shippingCost === 'number' ? shippingCost : parseFloat(String(shippingCost)) || 0;
+  const numPackageQty = typeof packageQuantity === 'number' ? packageQuantity : parseFloat(String(packageQuantity)) || 0;
+  const numCurrentStock = typeof currentStock === 'number' ? currentStock : parseFloat(String(currentStock)) || 0;
+  const numMinStock = typeof minStock === 'number' ? minStock : parseFloat(String(minStock)) || 0;
+
+  const calculatedTotalCost = numPurchasePrice + numShippingCost;
   const calculatedUnitCost =
-    packageQuantity > 0
-      ? Math.round((calculatedTotalCost / packageQuantity) * 10000) / 10000
+    numPackageQty > 0
+      ? Math.round((calculatedTotalCost / numPackageQty) * 10000) / 10000
       : 0;
 
   const handleSaveSupply = async (e: React.FormEvent) => {
@@ -234,14 +240,14 @@ export function SuppliesTab({
       toast.error('Informe o nome do insumo.');
       return;
     }
-    if (purchasePrice <= 0 || packageQuantity <= 0) {
+    if (numPurchasePrice <= 0 || numPackageQty <= 0) {
       toast.error('Informe um valor pago e quantidade de pacote válidos.');
       return;
     }
 
     try {
       setSaving(true);
-      const isAutoReorder = (currentStock <= minStock && minStock > 0) || needsReorder;
+      const isAutoReorder = (numCurrentStock <= numMinStock && numMinStock > 0) || needsReorder;
 
       if (editingSupply) {
         await firebasePricingService.updateSupply(editingSupply.id, {
@@ -251,13 +257,13 @@ export function SuppliesTab({
           supplier: supplier.trim() || null,
           purchaseUrl: purchaseUrl.trim() || null,
           lastPurchaseDate: lastPurchaseDate || null,
-          packageQuantity,
+          packageQuantity: numPackageQty,
           unit,
-          purchasePrice,
-          shippingCost,
+          purchasePrice: numPurchasePrice,
+          shippingCost: numShippingCost,
           unitCost: calculatedUnitCost,
-          currentStock,
-          minStock,
+          currentStock: numCurrentStock,
+          minStock: numMinStock,
           needsReorder: isAutoReorder,
           notes: notes.trim() || null,
         });
@@ -270,13 +276,13 @@ export function SuppliesTab({
           supplier: supplier.trim() || null,
           purchaseUrl: purchaseUrl.trim() || null,
           lastPurchaseDate: lastPurchaseDate || null,
-          packageQuantity,
+          packageQuantity: numPackageQty,
           unit,
-          purchasePrice,
-          shippingCost,
+          purchasePrice: numPurchasePrice,
+          shippingCost: numShippingCost,
           unitCost: calculatedUnitCost,
-          currentStock,
-          minStock,
+          currentStock: numCurrentStock,
+          minStock: numMinStock,
           needsReorder: isAutoReorder,
           notes: notes.trim() || null,
         });
@@ -1186,9 +1192,12 @@ export function SuppliesTab({
                       type="number"
                       min="0"
                       step="0.01"
-                      placeholder="54.00"
-                      value={purchasePrice || ''}
-                      onChange={(e) => setPurchasePrice(parseFloat(e.target.value) || 0)}
+                      placeholder="0.00"
+                      value={purchasePrice}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setPurchasePrice(val === '' ? '' : parseFloat(val) || 0);
+                      }}
                       required
                       className="mt-1 text-xs font-semibold"
                     />
@@ -1204,8 +1213,11 @@ export function SuppliesTab({
                       min="0"
                       step="0.01"
                       placeholder="0.00"
-                      value={shippingCost || ''}
-                      onChange={(e) => setShippingCost(parseFloat(e.target.value) || 0)}
+                      value={shippingCost}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setShippingCost(val === '' ? '' : parseFloat(val) || 0);
+                      }}
                       className="mt-1 text-xs"
                     />
                   </div>
@@ -1217,10 +1229,14 @@ export function SuppliesTab({
                     <Input
                       id="package-qty"
                       type="number"
-                      min="1"
-                      placeholder="200"
-                      value={packageQuantity || ''}
-                      onChange={(e) => setPackageQuantity(parseFloat(e.target.value) || 1)}
+                      min="0.0001"
+                      step="any"
+                      placeholder="Ex: 100"
+                      value={packageQuantity}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setPackageQuantity(val === '' ? '' : parseFloat(val) || 0);
+                      }}
                       required
                       className="mt-1 text-xs font-semibold"
                     />
@@ -1277,8 +1293,13 @@ export function SuppliesTab({
                       id="current-stock"
                       type="number"
                       min="0"
+                      step="any"
+                      placeholder="0"
                       value={currentStock}
-                      onChange={(e) => setCurrentStock(parseFloat(e.target.value) || 0)}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setCurrentStock(val === '' ? '' : parseFloat(val) || 0);
+                      }}
                       className="mt-1 text-xs"
                     />
                   </div>
@@ -1291,8 +1312,13 @@ export function SuppliesTab({
                       id="min-stock"
                       type="number"
                       min="0"
+                      step="any"
+                      placeholder="0"
                       value={minStock}
-                      onChange={(e) => setMinStock(parseFloat(e.target.value) || 0)}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setMinStock(val === '' ? '' : parseFloat(val) || 0);
+                      }}
                       className="mt-1 text-xs"
                     />
                   </div>
@@ -1315,7 +1341,7 @@ export function SuppliesTab({
                   <input
                     type="checkbox"
                     id="needs-reorder"
-                    checked={needsReorder || (minStock > 0 && currentStock <= minStock)}
+                    checked={needsReorder || (numMinStock > 0 && numCurrentStock <= numMinStock)}
                     onChange={(e) => setNeedsReorder(e.target.checked)}
                     className="rounded border-gray-300 text-primary focus:ring-primary size-4"
                   />

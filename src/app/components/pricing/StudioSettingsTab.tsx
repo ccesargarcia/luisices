@@ -265,7 +265,10 @@ export function StudioSettingsTab({
                   max="31"
                   className="mt-1"
                   value={workingDays || ''}
-                  onChange={(e) => setWorkingDays(parseInt(e.target.value) || 1)}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setWorkingDays(val === '' ? ('' as any) : parseInt(val) || 0);
+                  }}
                 />
                 <p className="text-[11px] text-muted-foreground mt-1">
                   Ex: 20 dias (segunda a sexta)
@@ -282,7 +285,10 @@ export function StudioSettingsTab({
                   max="24"
                   className="mt-1"
                   value={workingHours || ''}
-                  onChange={(e) => setWorkingHours(parseFloat(e.target.value) || 1)}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setWorkingHours(val === '' ? ('' as any) : parseFloat(val) || 0);
+                  }}
                 />
                 <p className="text-[11px] text-muted-foreground mt-1">
                   Ex: 6 horas de foco em confecção

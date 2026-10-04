@@ -133,10 +133,10 @@ export function PurchaseHistoryTab({
   const [category, setCategory] = useState<SupplyCategory>('papeis');
   const [date, setDate] = useState<string>(new Date().toISOString().slice(0, 10));
   const [store, setStore] = useState('');
-  const [quantity, setQuantity] = useState<number>(100);
+  const [quantity, setQuantity] = useState<number | ''>(100);
   const [unit, setUnit] = useState<SupplyUnit>('folha');
-  const [price, setPrice] = useState<number>(0);
-  const [shippingCost, setShippingCost] = useState<number>(0);
+  const [price, setPrice] = useState<number | ''>(0);
+  const [shippingCost, setShippingCost] = useState<number | ''>(0);
   const [notes, setNotes] = useState('');
 
   // Confirmação de Exclusão Física
@@ -192,8 +192,12 @@ export function PurchaseHistoryTab({
   };
 
   // Cálculos automáticos do formulário
-  const totalPurchasePrice = (price || 0) + (shippingCost || 0);
-  const calculatedUnitCost = quantity > 0 ? totalPurchasePrice / quantity : 0;
+  const numPrice = typeof price === 'number' ? price : parseFloat(String(price)) || 0;
+  const numShipping = typeof shippingCost === 'number' ? shippingCost : parseFloat(String(shippingCost)) || 0;
+  const numQty = typeof quantity === 'number' ? quantity : parseFloat(String(quantity)) || 0;
+
+  const totalPurchasePrice = numPrice + numShipping;
+  const calculatedUnitCost = numQty > 0 ? totalPurchasePrice / numQty : 0;
 
   // Salvar registro de compra no histórico
   const handleSavePurchase = async (e: React.FormEvent) => {
@@ -202,7 +206,7 @@ export function PurchaseHistoryTab({
       toast.error('Informe o nome do insumo');
       return;
     }
-    if (quantity <= 0) {
+    if (numQty <= 0) {
       toast.error('A quantidade deve ser maior que zero');
       return;
     }
@@ -216,16 +220,16 @@ export function PurchaseHistoryTab({
         const created = await firebasePricingService.createSupply({
           name: supplyName.trim(),
           category,
-          purchasePrice: price,
-          shippingCost: shippingCost,
+          purchasePrice: numPrice,
+          shippingCost: numShipping,
           totalPrice: totalPurchasePrice,
-          packageQuantity: quantity,
+          packageQuantity: numQty,
           unit,
           unitCost: calculatedUnitCost,
           supplier: store.trim() || undefined,
           lastPurchaseDate: date,
           notes: notes.trim() || undefined,
-          currentStock: quantity,
+          currentStock: numQty,
         });
         targetSupplyId = created.id;
       }
@@ -237,10 +241,10 @@ export function PurchaseHistoryTab({
         category,
         date,
         store: store.trim() || 'Não especificado',
-        quantity,
+        quantity: numQty,
         unit,
-        price,
-        shippingCost,
+        price: numPrice,
+        shippingCost: numShipping,
         totalPrice: totalPurchasePrice,
         unitCost: calculatedUnitCost,
         notes: notes.trim() || undefined,
@@ -840,11 +844,15 @@ export function PurchaseHistoryTab({
                   <Label className="text-xs font-semibold">Qtd. Comprada *</Label>
                   <Input
                     type="number"
-                    min="1"
+                    min="0.0001"
                     step="any"
+                    placeholder="Ex: 100"
                     required
                     value={quantity}
-                    onChange={(e) => setQuantity(Number(e.target.value))}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setQuantity(val === '' ? '' : parseFloat(val) || 0);
+                    }}
                     className="text-xs"
                   />
                 </div>
@@ -855,9 +863,13 @@ export function PurchaseHistoryTab({
                     type="number"
                     min="0"
                     step="0.01"
+                    placeholder="0.00"
                     required
                     value={price}
-                    onChange={(e) => setPrice(Number(e.target.value))}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setPrice(val === '' ? '' : parseFloat(val) || 0);
+                    }}
                     className="text-xs"
                   />
                 </div>
@@ -868,8 +880,12 @@ export function PurchaseHistoryTab({
                     type="number"
                     min="0"
                     step="0.01"
+                    placeholder="0.00"
                     value={shippingCost}
-                    onChange={(e) => setShippingCost(Number(e.target.value))}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setShippingCost(val === '' ? '' : parseFloat(val) || 0);
+                    }}
                     className="text-xs"
                   />
                 </div>

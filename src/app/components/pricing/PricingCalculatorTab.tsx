@@ -348,7 +348,10 @@ export function PricingCalculatorTab({
   };
 
   const handleAddCustomToRecipe = () => {
-    if (!customName.trim() || customCost <= 0) {
+    const numCost = typeof customCost === 'number' ? customCost : parseFloat(String(customCost)) || 0;
+    const numQty = typeof customQty === 'number' ? customQty : parseFloat(String(customQty)) || 1;
+
+    if (!customName.trim() || numCost <= 0) {
       toast.error('Informe a descrição e o valor do item.');
       return;
     }
@@ -356,9 +359,9 @@ export function PricingCalculatorTab({
     const newItem: RecipeItem = {
       name: customName.trim(),
       unit: 'unidade',
-      unitCost: customCost,
-      quantityUsed: customQty,
-      totalCost: customCost * customQty,
+      unitCost: numCost,
+      quantityUsed: numQty,
+      totalCost: numCost * numQty,
       isCustomItem: true,
     };
 
@@ -1645,7 +1648,10 @@ export function PricingCalculatorTab({
                   step="0.01"
                   placeholder="2.50"
                   value={customCost || ''}
-                  onChange={(e) => setCustomCost(parseFloat(e.target.value) || 0)}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setCustomCost(val === '' ? ('' as any) : parseFloat(val) || 0);
+                  }}
                   className="mt-1"
                 />
               </div>
@@ -1653,10 +1659,14 @@ export function PricingCalculatorTab({
                 <Label className="text-xs">Quantidade Usada</Label>
                 <Input
                   type="number"
-                  min="0.1"
-                  step="0.1"
+                  min="0.0001"
+                  step="any"
+                  placeholder="1"
                   value={customQty}
-                  onChange={(e) => setCustomQty(parseFloat(e.target.value) || 1)}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setCustomQty(val === '' ? ('' as any) : parseFloat(val) || 0);
+                  }}
                   className="mt-1"
                 />
               </div>
