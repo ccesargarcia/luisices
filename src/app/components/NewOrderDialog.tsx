@@ -255,26 +255,43 @@ export function NewOrderDialog({
     setLoading(true);
 
     try {
-      let customerId = selectedCustomer !== 'new' && selectedCustomer !== '' ? selectedCustomer : undefined;
+      let customerId = selectedCustomer && selectedCustomer !== 'new' ? selectedCustomer : undefined;
 
       // Criar novo cliente ou auto-vincular se necessário
       const trimmedCustomerName = formData.customerName.trim();
       const trimmedCustomerPhone = formData.customerPhone.trim();
-      const trimmedCustomerEmail = formData.customerEmail.trim();
+      const trimmedCustomerEmail = formData.customerEmail?.trim() || undefined;
 
-      if (!customerId && trimmedCustomerName && trimmedCustomerPhone) {
-        const existingCustomer = await firebaseCustomerService.findCustomerByPhone(user.uid, trimmedCustomerPhone);
+      // Criar ou localizar cliente se não houver cliente existente selecionado (ou se for novo cliente/digitação direta)
+      if (!customerId && trimmedCustomerName) {
+        // 1. Tentar encontrar cliente existente pelo telefone ou dígitos limpos
+        let existingCustomer: Customer | null = null;
+        if (trimmedCustomerPhone) {
+          const cleanPhoneDigits = trimmedCustomerPhone.replace(/\D/g, '');
+          existingCustomer = customers.find((c) => {
+            if (c.phone === trimmedCustomerPhone) return true;
+            const cDigits = (c.phone || '').replace(/\D/g, '');
+            return cleanPhoneDigits.length >= 8 && cDigits === cleanPhoneDigits;
+          }) || null;
+
+          if (!existingCustomer) {
+            existingCustomer = await firebaseCustomerService.findCustomerByPhone(user.uid, trimmedCustomerPhone);
+          }
+        }
+
+        // Se encontrou cliente existente com mesmo telefone, reutiliza o ID
         if (existingCustomer) {
           customerId = existingCustomer.id;
         } else {
+          // 2. Se for novo cliente, grava no Firestore de forma garantida
           try {
             customerId = await firebaseCustomerService.createCustomer(user.uid, {
               name: trimmedCustomerName,
               phone: trimmedCustomerPhone,
-              email: trimmedCustomerEmail || undefined,
+              email: trimmedCustomerEmail,
             });
 
-            setCustomers(prev => [
+            setCustomers((prev) => [
               {
                 id: customerId,
                 name: trimmedCustomerName,
@@ -285,18 +302,13 @@ export function NewOrderDialog({
                 totalOrders: 0,
                 totalSpent: 0,
               } as Customer,
-              ...prev,
+              ...prev.filter((c) => c.id !== customerId),
             ]);
           } catch (createErr: any) {
             if (createErr?.message?.startsWith('DUPLICATE_PHONE:')) {
-              const dupCustomer = await firebaseCustomerService.findCustomerByPhone(user.uid, trimmedCustomerPhone);
-              if (dupCustomer) {
-                customerId = dupCustomer.id;
-              } else {
-                throw createErr;
-              }
+              customerId = createErr.message.split(':')[1];
             } else {
-              throw createErr;
+              console.warn('Erro ao auto-cadastrar cliente, criando pedido mesmo assim:', createErr);
             }
           }
         }
