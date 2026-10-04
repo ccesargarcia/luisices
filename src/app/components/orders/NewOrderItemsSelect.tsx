@@ -49,146 +49,150 @@ export function NewOrderItemsSelect({
         </Button>
       </div>
 
-      {/* header das colunas */}
-      <div className="grid grid-cols-[36px_1fr_56px_96px_36px] gap-2 px-1">
-        <span />
-        <span className="text-xs text-muted-foreground">Produto</span>
-        <span className="text-xs text-muted-foreground text-center">Qtd</span>
-        <span className="text-xs text-muted-foreground text-right">Valor unit.</span>
-        <span />
-      </div>
+      <div className="overflow-x-auto -mx-1 px-1">
+        <div className="min-w-[320px] space-y-2">
+          {/* header das colunas */}
+          <div className="grid grid-cols-[36px_1fr_56px_96px_36px] gap-2 px-1">
+            <span />
+            <span className="text-xs text-muted-foreground">Produto</span>
+            <span className="text-xs text-muted-foreground text-center">Qtd</span>
+            <span className="text-xs text-muted-foreground text-right">Valor unit.</span>
+            <span />
+          </div>
 
-      <div className="space-y-2">
-        {products.map((item, idx) => {
-          const sub = (parseFloat(item.quantity) || 0) * (parseFloat(item.unitPrice) || 0);
-          return (
-            <div key={idx} className="space-y-0.5">
-              <div className="grid grid-cols-[36px_1fr_56px_96px_36px] gap-2 items-center">
-                <Popover
-                  open={catalogOpenIdx === idx}
-                  onOpenChange={(v) => {
-                    onCatalogOpenIdxChange(v ? idx : null);
-                    if (v) onCatalogSearchChange('');
-                  }}
-                >
-                  <PopoverTrigger asChild>
+          <div className="space-y-2">
+            {products.map((item, idx) => {
+              const sub = (parseFloat(item.quantity) || 0) * (parseFloat(item.unitPrice) || 0);
+              return (
+                <div key={idx} className="space-y-0.5">
+                  <div className="grid grid-cols-[36px_1fr_56px_96px_36px] gap-2 items-center">
+                    <Popover
+                      open={catalogOpenIdx === idx}
+                      onOpenChange={(v) => {
+                        onCatalogOpenIdxChange(v ? idx : null);
+                        if (v) onCatalogSearchChange('');
+                      }}
+                    >
+                      <PopoverTrigger asChild>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="icon"
+                          className="size-9"
+                          title="Selecionar produto"
+                        >
+                          <BookOpen className="size-4" />
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-64 p-2" align="start">
+                        <Input
+                          placeholder="Buscar produto..."
+                          value={catalogSearch}
+                          onChange={(e) => onCatalogSearchChange(e.target.value)}
+                          className="h-8 text-sm mb-2"
+                          autoFocus
+                        />
+                        <div className="max-h-48 overflow-y-auto space-y-0.5">
+                          {catalogProducts
+                            .filter(
+                              (p) =>
+                                !catalogSearch ||
+                                p.name.toLowerCase().includes(catalogSearch.toLowerCase())
+                            )
+                            .map((p) => (
+                              <button
+                                key={p.id}
+                                type="button"
+                                className="w-full flex items-center justify-between px-2 py-1.5 rounded hover:bg-muted text-sm text-left"
+                                onClick={() => {
+                                  onProductsChange((prev) =>
+                                    prev.map((item, i) =>
+                                      i === idx
+                                        ? { ...item, name: p.name, unitPrice: String(p.unitPrice) }
+                                        : item
+                                    )
+                                  );
+                                  onCatalogOpenIdxChange(null);
+                                }}
+                              >
+                                <span className="truncate">{p.name}</span>
+                                <span className="text-xs text-muted-foreground ml-2 flex-shrink-0">
+                                  {formatCurrency(p.unitPrice)}
+                                </span>
+                              </button>
+                            ))}
+                          {catalogProducts.filter(
+                            (p) =>
+                              !catalogSearch ||
+                              p.name.toLowerCase().includes(catalogSearch.toLowerCase())
+                          ).length === 0 && (
+                            <p className="text-xs text-muted-foreground text-center py-2">
+                              Nenhum produto encontrado
+                            </p>
+                          )}
+                        </div>
+                      </PopoverContent>
+                    </Popover>
+
+                    <Input
+                      placeholder={`Produto ${idx + 1}`}
+                      value={item.name}
+                      onChange={(e) =>
+                        onProductsChange((prev) =>
+                          prev.map((p, i) => (i === idx ? { ...p, name: e.target.value } : p))
+                        )
+                      }
+                      required={idx === 0}
+                    />
+                    <Input
+                      type="number"
+                      min="1"
+                      value={item.quantity}
+                      onChange={(e) =>
+                        onProductsChange((prev) =>
+                          prev.map((p, i) => (i === idx ? { ...p, quantity: e.target.value } : p))
+                        )
+                      }
+                      className="text-center px-1"
+                      required={idx === 0}
+                    />
+                    <Input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      placeholder="0,00"
+                      value={item.unitPrice}
+                      onChange={(e) =>
+                        onProductsChange((prev) =>
+                          prev.map((p, i) => (i === idx ? { ...p, unitPrice: e.target.value } : p))
+                        )
+                      }
+                      className="text-right px-2"
+                      required={idx === 0}
+                    />
                     <Button
                       type="button"
-                      variant="outline"
+                      variant="ghost"
                       size="icon"
-                      className="size-9"
-                      title="Selecionar produto"
+                      className="size-9 text-muted-foreground hover:text-destructive"
+                      onClick={() =>
+                        onProductsChange((prev) => prev.filter((_, i) => i !== idx))
+                      }
+                      disabled={products.length === 1}
                     >
-                      <BookOpen className="size-4" />
+                      <Trash2 className="size-4" />
                     </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-64 p-2" align="start">
-                    <Input
-                      placeholder="Buscar produto..."
-                      value={catalogSearch}
-                      onChange={(e) => onCatalogSearchChange(e.target.value)}
-                      className="h-8 text-sm mb-2"
-                      autoFocus
-                    />
-                    <div className="max-h-48 overflow-y-auto space-y-0.5">
-                      {catalogProducts
-                        .filter(
-                          (p) =>
-                            !catalogSearch ||
-                            p.name.toLowerCase().includes(catalogSearch.toLowerCase())
-                        )
-                        .map((p) => (
-                          <button
-                            key={p.id}
-                            type="button"
-                            className="w-full flex items-center justify-between px-2 py-1.5 rounded hover:bg-muted text-sm text-left"
-                            onClick={() => {
-                              onProductsChange((prev) =>
-                                prev.map((item, i) =>
-                                  i === idx
-                                    ? { ...item, name: p.name, unitPrice: String(p.unitPrice) }
-                                    : item
-                                )
-                              );
-                              onCatalogOpenIdxChange(null);
-                            }}
-                          >
-                            <span className="truncate">{p.name}</span>
-                            <span className="text-xs text-muted-foreground ml-2 flex-shrink-0">
-                              {formatCurrency(p.unitPrice)}
-                            </span>
-                          </button>
-                        ))}
-                      {catalogProducts.filter(
-                        (p) =>
-                          !catalogSearch ||
-                          p.name.toLowerCase().includes(catalogSearch.toLowerCase())
-                      ).length === 0 && (
-                        <p className="text-xs text-muted-foreground text-center py-2">
-                          Nenhum produto encontrado
-                        </p>
-                      )}
-                    </div>
-                  </PopoverContent>
-                </Popover>
-
-                <Input
-                  placeholder={`Produto ${idx + 1}`}
-                  value={item.name}
-                  onChange={(e) =>
-                    onProductsChange((prev) =>
-                      prev.map((p, i) => (i === idx ? { ...p, name: e.target.value } : p))
-                    )
-                  }
-                  required={idx === 0}
-                />
-                <Input
-                  type="number"
-                  min="1"
-                  value={item.quantity}
-                  onChange={(e) =>
-                    onProductsChange((prev) =>
-                      prev.map((p, i) => (i === idx ? { ...p, quantity: e.target.value } : p))
-                    )
-                  }
-                  className="text-center px-1"
-                  required={idx === 0}
-                />
-                <Input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  placeholder="0,00"
-                  value={item.unitPrice}
-                  onChange={(e) =>
-                    onProductsChange((prev) =>
-                      prev.map((p, i) => (i === idx ? { ...p, unitPrice: e.target.value } : p))
-                    )
-                  }
-                  className="text-right px-2"
-                  required={idx === 0}
-                />
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  className="size-9 text-muted-foreground hover:text-destructive"
-                  onClick={() =>
-                    onProductsChange((prev) => prev.filter((_, i) => i !== idx))
-                  }
-                  disabled={products.length === 1}
-                >
-                  <Trash2 className="size-4" />
-                </Button>
-              </div>
-              {sub > 0 && (
-                <p className="text-xs text-muted-foreground text-right pr-10">
-                  subtotal: {formatCurrency(sub)}
-                </p>
-              )}
-            </div>
-          );
-        })}
+                  </div>
+                  {sub > 0 && (
+                    <p className="text-xs text-muted-foreground text-right pr-10">
+                      subtotal: {formatCurrency(sub)}
+                    </p>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
       </div>
 
       {totalPrice > 0 && (

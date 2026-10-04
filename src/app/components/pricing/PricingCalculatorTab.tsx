@@ -133,6 +133,7 @@ export function PricingCalculatorTab({
   // Modal para adicionar insumo do catálogo
   const [addSupplyModalOpen, setAddSupplyModalOpen] = useState(false);
   const [selectedSupplyId, setSelectedSupplyId] = useState<string>('');
+  const [supplyFilterText, setSupplyFilterText] = useState('');
   const [supplyQtyUsed, setSupplyQtyUsed] = useState<number>(1);
   const [piecesPerSheet, setPiecesPerSheet] = useState<number>(0);
   const [useSheetRounding, setUseSheetRounding] = useState<boolean>(false);
@@ -1501,8 +1502,26 @@ export function PricingCalculatorTab({
             <DialogTitle>Adicionar Insumo do Catálogo</DialogTitle>
           </DialogHeader>
           <DialogBody className="p-4 sm:p-6 space-y-4">
-            <div>
-              <Label className="text-xs">Selecione o Insumo</Label>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label className="text-xs">Selecione o Insumo</Label>
+                {supplies.length > 5 && (
+                  <span className="text-[10px] text-muted-foreground">
+                    {supplies.filter((s) => !supplyFilterText || s.name.toLowerCase().includes(supplyFilterText.toLowerCase())).length} disponíveis
+                  </span>
+                )}
+              </div>
+              {supplies.length > 5 && (
+                <div className="relative">
+                  <Search className="absolute left-2.5 top-2.5 size-3.5 text-muted-foreground" />
+                  <Input
+                    placeholder="Filtrar insumos pelo nome..."
+                    value={supplyFilterText}
+                    onChange={(e) => setSupplyFilterText(e.target.value)}
+                    className="h-8 pl-8 text-xs mb-1.5"
+                  />
+                </div>
+              )}
               <Select
                 value={selectedSupplyId}
                 onValueChange={setSelectedSupplyId}
@@ -1511,11 +1530,26 @@ export function PricingCalculatorTab({
                   <SelectValue placeholder="Escolha um insumo..." />
                 </SelectTrigger>
                 <SelectContent className="max-h-60">
-                  {supplies.map((s) => (
-                    <SelectItem key={s.id} value={s.id}>
-                      {s.name} — {formatCurrency(s.unitCost)}/{s.unit}
-                    </SelectItem>
-                  ))}
+                  {supplies
+                    .filter(
+                      (s) =>
+                        !supplyFilterText ||
+                        s.name.toLowerCase().includes(supplyFilterText.toLowerCase())
+                    )
+                    .map((s) => (
+                      <SelectItem key={s.id} value={s.id}>
+                        {s.name} — {formatCurrency(s.unitCost)}/{s.unit}
+                      </SelectItem>
+                    ))}
+                  {supplies.filter(
+                    (s) =>
+                      !supplyFilterText ||
+                      s.name.toLowerCase().includes(supplyFilterText.toLowerCase())
+                  ).length === 0 && (
+                    <div className="p-3 text-xs text-muted-foreground text-center">
+                      Nenhum insumo encontrado
+                    </div>
+                  )}
                 </SelectContent>
               </Select>
             </div>
