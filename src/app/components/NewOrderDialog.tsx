@@ -255,29 +255,51 @@ export function NewOrderDialog({
     setLoading(true);
 
     try {
-      let customerId = selectedCustomer !== 'new' ? selectedCustomer : undefined;
+      let customerId = selectedCustomer !== 'new' && selectedCustomer !== '' ? selectedCustomer : undefined;
 
-      // Criar novo cliente se necessário
-      if (isNewCustomer || selectedCustomer === 'new') {
-        customerId = await firebaseCustomerService.createCustomer(user.uid, {
-          name: formData.customerName,
-          phone: formData.customerPhone,
-          email: formData.customerEmail || undefined,
-        });
+      // Criar novo cliente ou auto-vincular se necessário
+      const trimmedCustomerName = formData.customerName.trim();
+      const trimmedCustomerPhone = formData.customerPhone.trim();
+      const trimmedCustomerEmail = formData.customerEmail.trim();
 
-        setCustomers(prev => [
-          {
-            id: customerId,
-            name: formData.customerName,
-            phone: formData.customerPhone,
-            email: formData.customerEmail || '',
-            createdAt: new Date().toISOString(),
-            userId: user.uid,
-            totalOrders: 0,
-            totalSpent: 0,
-          } as Customer,
-          ...prev,
-        ]);
+      if (!customerId && trimmedCustomerName && trimmedCustomerPhone) {
+        const existingCustomer = await firebaseCustomerService.findCustomerByPhone(user.uid, trimmedCustomerPhone);
+        if (existingCustomer) {
+          customerId = existingCustomer.id;
+        } else {
+          try {
+            customerId = await firebaseCustomerService.createCustomer(user.uid, {
+              name: trimmedCustomerName,
+              phone: trimmedCustomerPhone,
+              email: trimmedCustomerEmail || undefined,
+            });
+
+            setCustomers(prev => [
+              {
+                id: customerId,
+                name: trimmedCustomerName,
+                phone: trimmedCustomerPhone,
+                email: trimmedCustomerEmail || '',
+                createdAt: new Date().toISOString(),
+                userId: user.uid,
+                totalOrders: 0,
+                totalSpent: 0,
+              } as Customer,
+              ...prev,
+            ]);
+          } catch (createErr: any) {
+            if (createErr?.message?.startsWith('DUPLICATE_PHONE:')) {
+              const dupCustomer = await firebaseCustomerService.findCustomerByPhone(user.uid, trimmedCustomerPhone);
+              if (dupCustomer) {
+                customerId = dupCustomer.id;
+              } else {
+                throw createErr;
+              }
+            } else {
+              throw createErr;
+            }
+          }
+        }
       }
 
       const productName = products
