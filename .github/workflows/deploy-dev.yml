@@ -30,6 +30,11 @@ on:
           - functions-only
           - hosting-only
           - rules-only
+      skip_tests:
+        description: 'Pular todos os testes (E2E e Unitários)?'
+        required: false
+        default: true
+        type: boolean
       run_e2e:
         description: 'Executar testes E2E do Playwright?'
         required: false
@@ -96,6 +101,7 @@ jobs:
         env:
           EVENT_NAME: ${{ github.event_name }}
           INPUT_TARGET: ${{ inputs.deploy_target || 'auto' }}
+          INPUT_SKIP_TESTS: ${{ inputs.skip_tests }}
           INPUT_RUN_E2E: ${{ inputs.run_e2e || false }}
           COMMIT_MSG: ${{ github.event.head_commit.message }}
           FILTER_FRONTEND: ${{ steps.filter.outputs.frontend }}
@@ -106,15 +112,18 @@ jobs:
           FILTER_INTEGRATION_TESTS: ${{ steps.filter.outputs.integration_tests }}
           FILTER_CI: ${{ steps.filter.outputs.ci }}
         run: |
-          # 1. Identificar flags na mensagem do commit
+          # 1. Identificar flags na mensagem do commit e inputs
           SKIP_TESTS=false
           SKIP_E2E=false
           ONLY_FUNCTIONS=false
           ONLY_HOSTING=false
           FORCE_ALL=false
 
-          if echo "$COMMIT_MSG" | grep -qiE '\[skip tests\]|\[skip-tests\]'; then
+          if [ "$INPUT_SKIP_TESTS" = "true" ] || echo "$COMMIT_MSG" | grep -qiE '\[skip tests\]|\[skip-tests\]'; then
             SKIP_TESTS=true
+          fi
+          if [ "$INPUT_RUN_E2E" = "false" ] && [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            SKIP_E2E=true
           fi
           if echo "$COMMIT_MSG" | grep -qiE '\[skip e2e\]|\[skip-e2e\]|\[fast\]'; then
             SKIP_E2E=true
@@ -148,21 +157,32 @@ jobs:
             DEPLOY_RULES=true
           else
             # Modo auto baseado nas alterações detectadas
-            DEPLOY_FRONTEND="$FILTER_FRONTEND"
-            DEPLOY_FUNCTIONS="$FILTER_FUNCTIONS"
-            DEPLOY_RULES="$FILTER_RULES"
+            if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+              DEPLOY_FRONTEND=true
+              DEPLOY_FUNCTIONS=true
+              DEPLOY_RULES=true
+            else
+              DEPLOY_FRONTEND="$FILTER_FRONTEND"
+              DEPLOY_FUNCTIONS="$FILTER_FUNCTIONS"
+              DEPLOY_RULES="$FILTER_RULES"
+            fi
           fi
 
           # 3. Determinar se testes E2E do Playwright são necessários
           NEED_E2E=false
           if [ "$SKIP_TESTS" != "true" ] && [ "$SKIP_E2E" != "true" ] && [ "$ONLY_FUNCTIONS" != "true" ]; then
-            if [ "$INPUT_RUN_E2E" = "true" ] || [ "$FORCE_ALL" = "true" ] || [ "$DEPLOY_FRONTEND" = "true" ] || [ "$DEPLOY_RULES" = "true" ] || [ "$FILTER_E2E" = "true" ] || [ "$FILTER_INTEGRATION_TESTS" = "true" ]; then
-              NEED_E2E=true
+            if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+              if [ "$INPUT_RUN_E2E" = "true" ]; then
+                NEED_E2E=true
+              fi
+            else
+              if [ "$FORCE_ALL" = "true" ] || [ "$DEPLOY_FRONTEND" = "true" ] || [ "$DEPLOY_RULES" = "true" ] || [ "$FILTER_E2E" = "true" ] || [ "$FILTER_INTEGRATION_TESTS" = "true" ]; then
+                NEED_E2E=true
+              fi
             fi
           fi
 
           # 4. Determinar se validação rápida de functions/unitária é necessária
-          # Necessária se functions ou unit_tests mudaram e os testes E2E NÃO estão rodando
           NEED_FUNCTIONS_VALIDATION=false
           if [ "$SKIP_TESTS" != "true" ] && [ "$NEED_E2E" != "true" ]; then
             if [ "$DEPLOY_FUNCTIONS" = "true" ] || [ "$FILTER_UNIT_TESTS" = "true" ] || [ "$FILTER_CI" = "true" ]; then
@@ -172,7 +192,7 @@ jobs:
 
           # 5. Determinar se há algo para deployar
           HAS_CHANGES=false
-          if [ "$DEPLOY_FRONTEND" = "true" ] || [ "$DEPLOY_FUNCTIONS" = "true" ] || [ "$DEPLOY_RULES" = "true" ]; then
+          if [ "$DEPLOY_FRONTEND" = "true" ] || [ "$DEPLOY_FUNCTIONS" = "true" ] || [ "$DEPLOY_RULES" = "true" ] || [ "$EVENT_NAME" = "workflow_dispatch" ]; then
             HAS_CHANGES=true
           fi
 
