@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 const {
   formatDatePtBr,
   formatCurrencyPtBr,
@@ -10,6 +10,14 @@ const {
 const { commitOrderFromDraft } = require('../../../functions/alexa/orderService');
 
 describe('Etapa 3: Testes de Regressão Focados — Frases Longas e Criação de Pedidos Alexa', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-10-01T12:00:00.000Z'));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
   const baseConfig = {
     environment: 'dev',
     timezone: 'America/Sao_Paulo',

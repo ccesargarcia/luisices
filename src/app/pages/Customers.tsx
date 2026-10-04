@@ -75,13 +75,13 @@ export function Customers() {
       ? query(
           collection(db, 'customers'),
           orderBy('createdAt', 'desc'),
-          limit(200),
+          limit(1000),
         )
       : query(
           collection(db, 'customers'),
           where('userId', '==', user.uid),
           orderBy('createdAt', 'desc'),
-          limit(200),
+          limit(1000),
         );
 
     const unsub = onSnapshot(

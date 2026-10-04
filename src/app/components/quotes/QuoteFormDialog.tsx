@@ -8,6 +8,7 @@ import { firebaseCustomerService } from '../../../services/firebaseCustomerServi
 import { firebaseProductService } from '../../../services/firebaseProductService';
 import { firebaseQuoteService } from '../../../services/firebaseQuoteService';
 import { trackQuoteCreated } from '../../../services/analyticsService';
+import { NewOrderCustomerSelect } from '../orders/NewOrderCustomerSelect';
 import {
   Dialog,
   DialogContent,
@@ -193,11 +194,13 @@ export function QuoteFormDialog({
       toast.error('O desconto percentual não pode ser superior a 100%.');
       return;
     }
-    if (!form.customerName.trim()) {
+    const trimmedName = form.customerName.trim();
+    const trimmedPhone = form.customerPhone.trim();
+    if (!trimmedName) {
       toast.error('Informe o nome do cliente');
       return;
     }
-    if (!form.customerPhone.trim()) {
+    if (!trimmedPhone) {
       toast.error('Informe o telefone do cliente');
       return;
     }
@@ -212,10 +215,42 @@ export function QuoteFormDialog({
 
     setSaving(true);
     try {
+      let finalCustomerId = form.customerId;
+
+      // Se for novo cliente ou cliente sem ID salvo, auto-cadastrar/localizar na base
+      if (user?.uid && (!finalCustomerId || selectedCustomer === 'new')) {
+        try {
+          const existingCustomer = await firebaseCustomerService.findCustomerByPhoneOrDigits(
+            user.uid,
+            trimmedPhone
+          );
+
+          if (existingCustomer) {
+            finalCustomerId = existingCustomer.id;
+          } else {
+            finalCustomerId = await firebaseCustomerService.createCustomer(user.uid, {
+              name: trimmedName,
+              phone: trimmedPhone,
+              status: 'active',
+            });
+          }
+        } catch (custErr: any) {
+          if (custErr?.message?.includes('DUPLICATE_PHONE')) {
+            const fallback = await firebaseCustomerService.findCustomerByPhoneOrDigits(
+              user.uid,
+              trimmedPhone
+            );
+            if (fallback) finalCustomerId = fallback.id;
+          } else {
+            console.warn('[QuoteFormDialog] Erro não-bloqueante ao salvar cliente:', custErr);
+          }
+        }
+      }
+
       const payload: Partial<Quote> = {
-        customerName: form.customerName.trim(),
-        customerPhone: form.customerPhone.trim(),
-        customerId: form.customerId,
+        customerName: trimmedName,
+        customerPhone: trimmedPhone,
+        customerId: finalCustomerId || undefined,
         items: form.items,
         totalPrice: finalTotal,
         discount: form.discount ? parseFloat(form.discount) : undefined,
@@ -263,82 +298,24 @@ export function QuoteFormDialog({
         </DialogHeader>
 
         <DialogBody className="p-4 sm:p-6 space-y-5">
-          {/* Cliente */}
-          <div className="space-y-3">
-            <Label htmlFor="q-customer">Cliente *</Label>
-            <Select
-              value={selectedCustomer}
-              onValueChange={(val) => {
-                setSelectedCustomer(val);
-                if (val === "new") {
-                  setForm((f) => ({ ...f, customerName: "", customerPhone: "", customerId: undefined }));
-                } else if (val) {
-                  const c = customers.find((c) => c.id === val);
-                  if (c) {
-                    setForm((f) => ({
-                      ...f,
-                      customerName: c.name,
-                      customerPhone: c.phone,
-                      customerId: c.id,
-                    }));
-                  }
-                }
-              }}
-            >
-              <SelectTrigger id="q-customer" className="min-w-0">
-                <SelectValue className="truncate" placeholder="Selecione um cliente cadastrado ou insira manualmente" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="new">
-                  <div className="flex items-center gap-2">
-                    <UserPlus className="size-4" />
-                    Novo cliente (digitar manualmente)
-                  </div>
-                </SelectItem>
-                {customers.map((c) => (
-                  <SelectItem key={c.id} value={c.id}>
-                    {c.name} — {c.phone}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-
-            {/* Defaulter warning */}
-            {(() => {
-              const c = customers.find((c) => c.id === selectedCustomer);
-              return c?.status === 'defaulter' ? (
-                <Alert className="border-red-300 bg-red-50 dark:bg-red-950/20 py-2 px-3">
-                  <AlertDescription className="flex items-center gap-2 text-red-700 dark:text-red-400 text-sm">
-                    <AlertTriangle className="size-4 shrink-0" />
-                    Este cliente está marcado como <strong>Inadimplente</strong>. Verifique pendências.
-                  </AlertDescription>
-                </Alert>
-              ) : null;
-            })()}
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="q-cname">Nome do cliente *</Label>
-                <Input
-                  id="q-cname"
-                  placeholder="Nome do cliente"
-                  value={form.customerName}
-                  disabled={!!selectedCustomer && selectedCustomer !== 'new'}
-                  onChange={(e) => setForm({ ...form, customerName: e.target.value })}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="q-cphone">Telefone *</Label>
-                <Input
-                  id="q-cphone"
-                  placeholder="(11) 99999-9999"
-                  value={form.customerPhone}
-                  disabled={!!selectedCustomer && selectedCustomer !== 'new'}
-                  onChange={(e) => setForm({ ...form, customerPhone: e.target.value })}
-                />
-              </div>
-            </div>
-          </div>
+          {/* Seletor com busca e cadastro automático de Cliente */}
+          <NewOrderCustomerSelect
+            selectedCustomer={selectedCustomer}
+            onSelectCustomer={(val) => {
+              setSelectedCustomer(val);
+              if (val === 'new') {
+                setForm((f) => ({ ...f, customerId: undefined }));
+              }
+            }}
+            customers={customers}
+            isNewCustomer={selectedCustomer === 'new' || (!selectedCustomer && !!form.customerName)}
+            customerName={form.customerName}
+            onCustomerNameChange={(name) => setForm((f) => ({ ...f, customerName: name }))}
+            customerPhone={form.customerPhone}
+            onCustomerPhoneChange={(phone) => setForm((f) => ({ ...f, customerPhone: phone }))}
+            customerEmail=""
+            onCustomerEmailChange={() => {}}
+          />
 
           {/* Itens */}
           <div className="space-y-2">

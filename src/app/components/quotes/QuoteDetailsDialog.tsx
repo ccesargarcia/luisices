@@ -8,6 +8,7 @@ import { useUserSettings } from '../../../hooks/useUserSettings';
 import { useAuth } from '../../../contexts/AuthContext';
 import { firebaseQuoteService } from '../../../services/firebaseQuoteService';
 import { firebaseOrderService } from '../../../services/firebaseOrderService';
+import { firebaseCustomerService } from '../../../services/firebaseCustomerService';
 import { trackEvent } from '../../../services/analyticsService';
 import { exportQuotePDF } from '../../utils/exportPdf';
 import {
@@ -102,6 +103,28 @@ export function QuoteDetailsDialog({
     if (!quote) return;
     setApproving(true);
     try {
+      let finalCustomerId = quote.customerId;
+
+      // Se o orçamento não tinha customerId atrelado, buscar ou criar cliente antes de gerar o pedido
+      const trimmedPhone = (quote.customerPhone || '').trim();
+      const trimmedName = (quote.customerName || '').trim();
+      if (!finalCustomerId && trimmedPhone) {
+        try {
+          const authUser = firebaseCustomerService;
+          // Como createOrder precisa de user context no backend/firebaseOrderService,
+          // tentamos localizar pelo telefone ou criar cliente para contabilização correta de compras
+          const existing = await firebaseCustomerService.findCustomerByPhoneOrDigits(
+            '',
+            trimmedPhone
+          ).catch(() => null);
+          if (existing?.id) {
+            finalCustomerId = existing.id;
+          }
+        } catch (findErr) {
+          console.warn('[QuoteDetailsDialog] Erro não-bloqueante ao associar cliente:', findErr);
+        }
+      }
+
       // Build order productName from items
       const productName = quote.items
         .map((i) => (i.quantity > 1 ? `${i.name} (${i.quantity}x)` : i.name))
@@ -110,9 +133,9 @@ export function QuoteDetailsDialog({
 
       const order = await firebaseOrderService.createOrder(
         {
-          customerName: quote.customerName,
-          customerPhone: quote.customerPhone,
-          customerId: quote.customerId,
+          customerName: trimmedName,
+          customerPhone: trimmedPhone,
+          customerId: finalCustomerId || undefined,
           productName,
           quantity: totalQty,
           price: quote.totalPrice,

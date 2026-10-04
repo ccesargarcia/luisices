@@ -171,12 +171,25 @@ export function CustomerFormDialog({
     e.preventDefault();
     if (!userId) return;
 
+    const trimmedName = formData.name.trim();
+    const trimmedPhone = formData.phone.trim();
+    const trimmedEmail = formData.email.trim();
+
+    if (!trimmedName) {
+      toast.error('Informe o nome do cliente');
+      return;
+    }
+    if (!trimmedPhone) {
+      toast.error('Informe o telefone do cliente');
+      return;
+    }
+
     setLoading(true);
     try {
       if (isEditing && customer) {
         // Verificar duplicata se o telefone mudou
-        if (formData.phone !== customer.phone) {
-          const existingWithPhone = await firebaseCustomerService.findCustomerByPhone(userId, formData.phone);
+        if (trimmedPhone !== customer.phone) {
+          const existingWithPhone = await firebaseCustomerService.findCustomerByPhoneOrDigits(userId, trimmedPhone);
           if (existingWithPhone && existingWithPhone.id !== customer.id) {
             toast.error(`Telefone já cadastrado para o cliente "${existingWithPhone.name}". Utilize um número diferente.`);
             setLoading(false);
@@ -194,17 +207,17 @@ export function CustomerFormDialog({
         }
 
         await firebaseCustomerService.updateCustomer(customer.id, {
-          name: formData.name,
-          phone: formData.phone,
-          email: formData.email || undefined,
-          street: formData.street || undefined,
-          number: formData.number || undefined,
-          complement: formData.complement || undefined,
-          city: formData.city || undefined,
-          state: formData.state || undefined,
-          zipCode: formData.zipCode || undefined,
-          country: formData.country || undefined,
-          notes: formData.notes || undefined,
+          name: trimmedName,
+          phone: trimmedPhone,
+          email: trimmedEmail || undefined,
+          street: formData.street?.trim() || undefined,
+          number: formData.number?.trim() || undefined,
+          complement: formData.complement?.trim() || undefined,
+          city: formData.city?.trim() || undefined,
+          state: formData.state?.trim() || undefined,
+          zipCode: formData.zipCode?.trim() || undefined,
+          country: formData.country?.trim() || undefined,
+          notes: formData.notes?.trim() || undefined,
           birthday: formData.birthday || undefined,
           status: formData.status || undefined,
           photoUrl,
@@ -213,17 +226,17 @@ export function CustomerFormDialog({
         toast.success('Cliente atualizado com sucesso');
       } else {
         const customerId = await firebaseCustomerService.createCustomer(userId, {
-          name: formData.name,
-          phone: formData.phone,
-          email: formData.email || undefined,
-          street: formData.street || undefined,
-          number: formData.number || undefined,
-          complement: formData.complement || undefined,
-          city: formData.city || undefined,
-          state: formData.state || undefined,
-          zipCode: formData.zipCode || undefined,
-          country: formData.country || undefined,
-          notes: formData.notes || undefined,
+          name: trimmedName,
+          phone: trimmedPhone,
+          email: trimmedEmail || undefined,
+          street: formData.street?.trim() || undefined,
+          number: formData.number?.trim() || undefined,
+          complement: formData.complement?.trim() || undefined,
+          city: formData.city?.trim() || undefined,
+          state: formData.state?.trim() || undefined,
+          zipCode: formData.zipCode?.trim() || undefined,
+          country: formData.country?.trim() || undefined,
+          notes: formData.notes?.trim() || undefined,
           birthday: formData.birthday || undefined,
           status: formData.status || undefined,
         });
