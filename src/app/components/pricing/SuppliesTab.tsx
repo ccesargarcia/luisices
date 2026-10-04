@@ -1,3 +1,7 @@
+/**
+ * SuppliesTab Component
+ * Gestão e cadastro completo de insumos, matérias-primas e controle de estoque do ateliê
+ */
 import { useState, useMemo, useEffect } from 'react';
 import { SupplyItem, SupplyCategory, SupplyUnit } from '../../types';
 import { firebasePricingService } from '../../../services/firebasePricingService';
