@@ -379,12 +379,13 @@ async function processAlexaEnvelope(envelope, { db, config, authService = null }
 /**
  * Webhook oficial da Alexa exposto via HTTPS direto (Cloud Functions v2 onRequest).
  * Exige validação estrita de certificados e assinaturas da Amazon.
+ * Escala para 0 (minInstances: 0) para custo zero quando ocioso.
  */
 const alexaWebhook = onRequest(
   {
-    minInstances: 1,
+    minInstances: 0,
     maxInstances: 2,
-    memory: '512MiB',
+    memory: '256MiB',
     secrets: [ALEXA_IDENTITY_HMAC_KEY, ORIGIN_SECRET],
   },
   async (req, res) => {

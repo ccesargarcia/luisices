@@ -13,11 +13,16 @@ export default defineConfig(() => {
       tailwindcss(),
     ],
     resolve: {
-    alias: {
-      // Alias @ to the src directory
-      '@': path.resolve(__dirname, './src'),
+      alias: {
+        // Alias @ to the src directory
+        '@': path.resolve(__dirname, './src'),
+      },
     },
-  },
+
+    server: {
+      port: 3000,
+      host: '0.0.0.0',
+    },
 
     // File types to support raw imports. Never add .css, .tsx, or .ts files to this.
     assetsInclude: ['**/*.svg', '**/*.csv'],
