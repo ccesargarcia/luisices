@@ -1,5 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
-import { parseLocalDate } from '../../src/app/utils/date';
+import { parseLocalDate, formatDateShort } from '../../src/app/utils/date';
 import { getLedgerDateRange } from '../../src/hooks/useSalesLedger';
 import { getSalesLedgerDateRangeQuery, getSalesLedgerQuery } from '../../src/services/firebaseLedgerService';
 
@@ -17,6 +16,29 @@ vi.mock('firebase/firestore', () => ({
 
 describe('Etapa 8: Consultas, Fusos Horários e Paginação (Achados 10, 11 e 18)', () => {
   describe('Achado 11: Resolução de fusos horários locais em datas', () => {
+    it('formatDateShort deve formatar tanto strings YYYY-MM-DD quanto ISO timestamps sem retornar Invalid Date', () => {
+      // YYYY-MM-DD padrão
+      expect(formatDateShort('2026-10-05')).toBe('05/10/2026');
+
+      // ISO Timestamp completo (ex: createdAt do Firestore)
+      expect(formatDateShort('2026-10-05T19:28:30.123Z')).toBe('05/10/2026');
+
+      // Objeto Date
+      expect(formatDateShort(new Date(2026, 9, 5))).toBe('05/10/2026');
+
+      // Firestore Timestamp mock com toDate()
+      const mockTimestamp = {
+        toDate: () => new Date(2026, 9, 5),
+      };
+      expect(formatDateShort(mockTimestamp)).toBe('05/10/2026');
+
+      // Casos inválidos ou nulos nunca devem retornar "Invalid Date"
+      expect(formatDateShort('')).toBe('');
+      expect(formatDateShort(null)).toBe('');
+      expect(formatDateShort(undefined)).toBe('');
+      expect(formatDateShort('data-invalida')).toBe('');
+    });
+
     it('parseLocalDate deve interpretar ano, mês e dia com base no fuso local sem recuar para o dia anterior', () => {
       const start = parseLocalDate('2026-09-30', false);
       expect(start.getFullYear()).toBe(2026);

@@ -16,7 +16,7 @@ import {
   AlertTriangle,
   Package,
 } from 'lucide-react';
-import { formatDateShort } from '../utils/date';
+import { formatDateShort, parseLocalDate } from '../utils/date';
 import { formatCurrency } from '../utils/currency';
 import { openWhatsAppForOrder } from '../utils/whatsapp';
 import { cn } from './ui/utils';
@@ -86,9 +86,15 @@ export function OrderTable({
 
   const isDeliveryOverdue = (deliveryDate?: string, status?: string) => {
     if (!deliveryDate || status === 'completed' || status === 'cancelled') return false;
-    const now = new Date();
-    const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-    return deliveryDate < todayStr;
+    try {
+      const now = new Date();
+      now.setHours(0, 0, 0, 0);
+      const delivery = parseLocalDate(deliveryDate);
+      if (isNaN(delivery.getTime())) return false;
+      return delivery < now;
+    } catch {
+      return false;
+    }
   };
 
   return (
@@ -124,6 +130,8 @@ export function OrderTable({
               const isVoiceCreated = order.source === 'alexa';
               const payStatus = order.payment?.status || 'pending';
               const payConfig = paymentStatusLabels[payStatus] || paymentStatusLabels.pending;
+              const formattedCreatedAt = order.createdAt ? formatDateShort(order.createdAt) : '';
+              const formattedDelivery = order.deliveryDate ? formatDateShort(order.deliveryDate) : '';
 
               return (
                 <tr
@@ -165,11 +173,11 @@ export function OrderTable({
                         </span>
                       )}
                     </div>
-                    {order.createdAt && (
+                    {formattedCreatedAt ? (
                       <div className="text-[11px] text-muted-foreground font-normal">
-                        {formatDateShort(order.createdAt)}
+                        {formattedCreatedAt}
                       </div>
-                    )}
+                    ) : null}
                   </td>
 
                   {/* Cliente */}
@@ -231,11 +239,11 @@ export function OrderTable({
 
                   {/* Data de Entrega */}
                   <td className="px-3 py-3 whitespace-nowrap">
-                    {order.deliveryDate ? (
+                    {formattedDelivery ? (
                       <div className="flex items-center gap-1.5">
                         <Calendar className={cn('size-3.5', overdue ? 'text-destructive' : 'text-muted-foreground')} />
                         <span className={cn('text-xs font-medium', overdue && 'text-destructive font-bold')}>
-                          {formatDateShort(order.deliveryDate)}
+                          {formattedDelivery}
                         </span>
                         {overdue && (
                           <span title="Entrega atrasada">
