@@ -257,6 +257,45 @@ async function processAlexaEnvelope(envelope, { db, config, authService = null }
           confirmationStatus: 'NONE',
           slots: { product: { name: 'product', value: String(args[1]).trim() } },
         };
+      } else if (action === 'selectQuantity' && args[1] !== undefined && args[1] !== null) {
+        const qtyNum = parseInt(args[1], 10);
+        if (Number.isInteger(qtyNum) && qtyNum > 0) {
+          envelope.request.type = 'IntentRequest';
+          envelope.request.intent = {
+            name: 'ProvideQuantityIntent',
+            confirmationStatus: 'NONE',
+            slots: { quantity: { name: 'quantity', value: String(qtyNum) } },
+          };
+        } else {
+          console.warn('[AlexaUserEvent] Quantidade APL inválida:', args[1]);
+          const resp = buildAlexaResponse({
+            speech: 'Quantidade inválida.',
+            shouldEndSession: false,
+            sessionAttributes: sessionAttrs,
+          });
+          return await persistResponse(resp);
+        }
+      } else if (action === 'selectDeliveryDate' && args[1]) {
+        const dateStr = String(args[1]).trim();
+        envelope.request.type = 'IntentRequest';
+        envelope.request.intent = {
+          name: 'ProvideDeliveryDateIntent',
+          confirmationStatus: 'NONE',
+          slots: { deliveryDate: { name: 'deliveryDate', value: dateStr } },
+        };
+      } else if (action === 'selectPriceBasis') {
+        const basis = String(args[1] || '').trim();
+        envelope.request.type = 'IntentRequest';
+        envelope.request.intent = {
+          name: basis === 'unit' ? 'ClarifyPriceUnitIntent' : 'ClarifyPriceTotalIntent',
+          confirmationStatus: 'NONE',
+        };
+      } else if (action === 'confirmSuggestedPrice') {
+        envelope.request.type = 'IntentRequest';
+        envelope.request.intent = { name: 'AMAZON.YesIntent', confirmationStatus: 'NONE' };
+      } else if (action === 'rejectSuggestedPrice') {
+        envelope.request.type = 'IntentRequest';
+        envelope.request.intent = { name: 'AMAZON.NoIntent', confirmationStatus: 'NONE' };
       } else if (action === 'intent' && args[1]) {
         const requestedIntent = String(args[1]).trim();
         if (ALLOWED_INTENTS.has(requestedIntent)) {

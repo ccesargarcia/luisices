@@ -7,6 +7,8 @@ const {
   buildOrderSuccessAplDirective,
   buildFuzzySuggestionsAplDirective,
   buildVoicePairingAplDirective,
+  getQuickDeliveryDateOptions,
+  getAplButtonStyles,
 } = require('../../../functions/alexa/apl');
 
 const {
@@ -862,6 +864,169 @@ describe('Alexa Advancements: Dynamic Entities, Fuzzy Suggestions & APL', () => 
       // Confirma que os cartões usam a cor translúcida com opacidade alta para contraste AAA
       expect(jsonStr).toContain('rgba(35, 28, 30, 0.88)');
       expect(jsonStr).toContain('rgba(235, 205, 205, 0.22)');
+    });
+
+    describe('Seletores Visuais Interativos para TV e Echo Show (Opção 3)', () => {
+      it('calcula opções de datas relativas com rótulos amigáveis e ISO YYYY-MM-DD', () => {
+        const dates = getQuickDeliveryDateOptions();
+        expect(dates).toHaveLength(4);
+        expect(dates[0].label).toContain('Hoje');
+        expect(dates[0].isoDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+        expect(dates[1].label).toContain('Amanhã');
+        expect(dates[1].isoDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+        expect(dates[2].label).toContain('Sábado');
+        expect(dates[2].isoDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+        expect(dates[3].label).toContain('+7 dias');
+        expect(dates[3].isoDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+      });
+
+      it('renderiza chips de quantidade quando expectedInput é quantity e foca no D-Pad da TV', () => {
+        const directive = buildOrderCardAplDirective({
+          customer: 'Juliana',
+          product: 'Bolo Ninho',
+          quantity: 5,
+          expectedInput: 'quantity',
+          showActions: false,
+        });
+
+        const doc = directive.document;
+        expect(doc.styles.btnChipStyle).toBeDefined();
+
+        // No Fire TV, deve focar no chip correspondente à quantidade atual
+        expect(doc.onMount).toBeDefined();
+        expect(doc.onMount[0].componentId).toBe('btnQty_5');
+
+        const jsonStr = JSON.stringify(doc);
+        expect(jsonStr).toContain('btnQty_1');
+        expect(jsonStr).toContain('btnQty_2');
+        expect(jsonStr).toContain('btnQty_3');
+        expect(jsonStr).toContain('btnQty_5');
+        expect(jsonStr).toContain('btnQty_10');
+        expect(jsonStr).toContain('btnQty_20');
+        expect(jsonStr).toContain('btnQty_50');
+        expect(jsonStr).toContain('selectQuantity');
+      });
+
+      it('renderiza chips de data quando expectedInput é deliveryDate e foca no primeiro chip no Fire TV', () => {
+        const directive = buildOrderCardAplDirective({
+          customer: 'Juliana',
+          product: 'Bolo Ninho',
+          expectedInput: 'deliveryDate',
+          showActions: false,
+        });
+
+        const doc = directive.document;
+        expect(doc.onMount).toBeDefined();
+        expect(doc.onMount[0].componentId).toBe('btnDate_0');
+
+        const jsonStr = JSON.stringify(doc);
+        expect(jsonStr).toContain('btnDate_0');
+        expect(jsonStr).toContain('btnDate_1');
+        expect(jsonStr).toContain('btnDate_2');
+        expect(jsonStr).toContain('btnDate_3');
+        expect(jsonStr).toContain('selectDeliveryDate');
+      });
+
+      it('renderiza botões de base de preço (unitário vs total) quando expectedInput é priceBasis', () => {
+        const directive = buildOrderCardAplDirective({
+          customer: 'Juliana',
+          product: 'Bolo Ninho',
+          quantity: 2,
+          expectedInput: 'priceBasis',
+          showActions: false,
+        });
+
+        const doc = directive.document;
+        expect(doc.onMount).toBeDefined();
+        expect(doc.onMount[0].componentId).toBe('btnPriceUnit');
+
+        const jsonStr = JSON.stringify(doc);
+        expect(jsonStr).toContain('btnPriceUnit');
+        expect(jsonStr).toContain('btnPriceTotal');
+        expect(jsonStr).toContain('selectPriceBasis');
+      });
+
+      it('renderiza confirmação de preço de catálogo quando expectedInput é suggestedPrice', () => {
+        const directive = buildOrderCardAplDirective({
+          customer: 'Juliana',
+          product: 'Bolo Ninho',
+          expectedInput: 'suggestedPrice',
+          suggestedPriceText: 'R$ 85,00',
+          showActions: false,
+        });
+
+        const doc = directive.document;
+        expect(doc.onMount).toBeDefined();
+        expect(doc.onMount[0].componentId).toBe('btnSuggestedConfirm');
+
+        const jsonStr = JSON.stringify(doc);
+        expect(jsonStr).toContain('btnSuggestedConfirm');
+        expect(jsonStr).toContain('btnSuggestedReject');
+        expect(jsonStr).toContain('confirmSuggestedPrice');
+        expect(jsonStr).toContain('rejectSuggestedPrice');
+        expect(jsonStr).toContain('R$ 85,00 cada');
+      });
+
+      it('processa UserEvent de seleção de quantidade e atualiza rascunho de pedido', async () => {
+        const draftId = 'draft-apl-qty-test';
+        const mockDb = createMockDb({
+          alexaDrafts: {
+            [draftId]: {
+              draftId,
+              sessionId: 'session-apl-qty',
+              uid: baseIdentity.uid,
+              bindingKey,
+              personId: baseIdentity.personId,
+              state: 'collecting',
+              expectedInput: 'quantity',
+              product: 'Bolo de Chocolate',
+              customer: 'Juliana',
+              quantity: null,
+              revision: 1,
+              environment: 'test',
+              createdAt: { toMillis: () => Date.now() },
+              expiresAt: { toDate: () => new Date(Date.now() + 600000) },
+            },
+          },
+        });
+
+        const envelope = {
+          version: '1.0',
+          session: {
+            application: { applicationId: baseConfig.allowedSkillId },
+            sessionId: 'session-apl-qty',
+            user: { userId: amazonUserId },
+            attributes: { draftId, revision: 1, personId: baseIdentity.personId },
+          },
+          context: {
+            System: {
+              application: { applicationId: baseConfig.allowedSkillId },
+              user: { userId: amazonUserId },
+              person: { personId: baseIdentity.personId },
+              device: { supportedInterfaces: { 'Alexa.Presentation.APL': {} } },
+            },
+          },
+          request: {
+            type: 'Alexa.Presentation.APL.UserEvent',
+            requestId: 'req-apl-qty-12345678',
+            arguments: ['selectQuantity', 5],
+          },
+        };
+
+        const mockAuthService = {
+          getUser: async (uid: string) => ({ uid, disabled: false }),
+        };
+
+        const res = await processAlexaEnvelope(envelope, {
+          db: mockDb,
+          config: baseConfig,
+          authService: mockAuthService,
+        });
+        expect(res.response).toBeDefined();
+
+        const updatedDraft = mockDb.store.alexaDrafts[draftId];
+        expect(updatedDraft.quantity).toBe(5);
+      });
     });
   });
 });

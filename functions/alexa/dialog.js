@@ -891,6 +891,7 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
                 statusLabel: 'Aguardando Confirmação',
                 envLabel,
                 showActions: true,
+                expectedInput: 'confirmation',
               })
             : null,
           dynDirective,
@@ -937,6 +938,9 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
           question = 'Para quando é a entrega?';
         }
 
+        const expInput = nextPrompt?.sessionAttributes?.expectedInput || activeDraft.expectedInput || 'collecting';
+        const suggPrice = activeDraft.suggestedPriceCents ? formatCurrencyPtBr(activeDraft.suggestedPriceCents / 100) : null;
+
         const directives = [
           isApl
             ? buildOrderCardAplDirective({
@@ -950,6 +954,8 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
                 statusLabel: 'Pedido em Andamento',
                 envLabel,
                 showActions: false,
+                expectedInput: expInput,
+                suggestedPriceText: suggPrice,
               })
             : null,
           dynDirective,
@@ -2836,6 +2842,8 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
   if (nextPrompt) {
     const isApl = supportsApl(envelope);
     if (isApl && !nextPrompt.directives) {
+      const expInput = nextPrompt.sessionAttributes?.expectedInput || draft.expectedInput || 'collecting';
+      const suggPrice = draft.suggestedPriceCents ? formatCurrencyPtBr(draft.suggestedPriceCents / 100) : null;
       nextPrompt.directives = [
         buildOrderCardAplDirective({
           draftId: draft.draftId,
@@ -2850,6 +2858,8 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
           statusLabel: 'Preenchendo Pedido',
           envLabel: config.environment === 'prod' ? 'produção' : 'teste',
           showActions: false,
+          expectedInput: expInput,
+          suggestedPriceText: suggPrice,
         }),
       ];
     }
@@ -2882,6 +2892,7 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
           statusLabel: 'Aguardando Confirmação',
           envLabel: config.environment === 'prod' ? 'produção' : 'teste',
           showActions: true,
+          expectedInput: 'confirmation',
         }),
       ]
     : undefined;

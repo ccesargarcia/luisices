@@ -65,6 +65,57 @@ function getAplStyles() {
 }
 
 /**
+ * Retorna opções rápidas de datas de entrega relativas em pt-BR (Hoje, Amanhã, Sábado, Em 7 dias)
+ * no fuso horário America/Sao_Paulo com ISO YYYY-MM-DD e rótulos amigáveis para chips de tela.
+ */
+function getQuickDeliveryDateOptions(timezone = 'America/Sao_Paulo') {
+  const now = new Date();
+  const todayStr = new Intl.DateTimeFormat('en-CA', { timeZone: timezone }).format(now);
+  const [y, m, d] = todayStr.split('-').map(Number);
+  const baseDate = new Date(Date.UTC(y, m - 1, d));
+
+  const options = [];
+
+  // 1. Hoje
+  const todayLabel = `Hoje (${String(d).padStart(2, '0')}/${String(m).padStart(2, '0')})`;
+  options.push({ isoDate: todayStr, label: todayLabel });
+
+  // 2. Amanhã
+  const tomorrow = new Date(baseDate.getTime() + 86400000);
+  const tomY = tomorrow.getUTCFullYear();
+  const tomM = tomorrow.getUTCMonth() + 1;
+  const tomD = tomorrow.getUTCDate();
+  const tomorrowIso = `${tomY}-${String(tomM).padStart(2, '0')}-${String(tomD).padStart(2, '0')}`;
+  const tomorrowLabel = `Amanhã (${String(tomD).padStart(2, '0')}/${String(tomM).padStart(2, '0')})`;
+  options.push({ isoDate: tomorrowIso, label: tomorrowLabel });
+
+  // 3. Próximo Sábado
+  const dayOfWeek = baseDate.getUTCDay(); // 0 = Dom, 6 = Sáb
+  let daysUntilSaturday = (6 - dayOfWeek + 7) % 7;
+  if (daysUntilSaturday === 0) {
+    daysUntilSaturday = 7;
+  }
+  const saturday = new Date(baseDate.getTime() + daysUntilSaturday * 86400000);
+  const satY = saturday.getUTCFullYear();
+  const satM = saturday.getUTCMonth() + 1;
+  const satD = saturday.getUTCDate();
+  const satIso = `${satY}-${String(satM).padStart(2, '0')}-${String(satD).padStart(2, '0')}`;
+  const satLabel = `Sábado (${String(satD).padStart(2, '0')}/${String(satM).padStart(2, '0')})`;
+  options.push({ isoDate: satIso, label: satLabel });
+
+  // 4. Em 7 dias
+  const in7Days = new Date(baseDate.getTime() + 7 * 86400000);
+  const in7Y = in7Days.getUTCFullYear();
+  const in7M = in7Days.getUTCMonth() + 1;
+  const in7D = in7Days.getUTCDate();
+  const in7Iso = `${in7Y}-${String(in7M).padStart(2, '0')}-${String(in7D).padStart(2, '0')}`;
+  const in7Label = `+7 dias (${String(in7D).padStart(2, '0')}/${String(in7M).padStart(2, '0')})`;
+  options.push({ isoDate: in7Iso, label: in7Label });
+
+  return options;
+}
+
+/**
  * Retorna estilos dinâmicos para botões APL com suporte nativo a D-pad (Fire TV Stick) e Toque (Echo Show).
  * Inclui estados :focused (borda branca 3dp, zoom 1.08x) e :pressed para feedback visual imediato pelo controle remoto.
  */
@@ -172,6 +223,27 @@ function getAplButtonStyles() {
         {
           when: '${state.pressed}',
           transform: [{ scale: 0.97 }],
+        },
+      ],
+    },
+    btnChipStyle: {
+      values: [
+        {
+          backgroundColor: 'rgba(45, 34, 38, 0.92)',
+          borderColor: 'rgba(244, 183, 185, 0.3)',
+          borderWidth: '1dp',
+          transform: [{ scale: 1.0 }],
+        },
+        {
+          when: '${state.focused}',
+          backgroundColor: '#9E555A',
+          borderColor: '#FFFFFF',
+          borderWidth: '3dp',
+          transform: [{ scale: 1.10 }],
+        },
+        {
+          when: '${state.pressed}',
+          transform: [{ scale: 0.95 }],
         },
       ],
     },
@@ -414,8 +486,380 @@ function buildWelcomeAplDirective({ userName = 'Ateliê', envLabel = 'Teste' }) 
 }
 
 /**
+ * Constrói a área interativa de controles do pedido baseada no estágio atual (expectedInput).
+ * No Fire TV Stick, permite selecionar quantidade, datas rápidas, base de preço e confirmação via D-Pad ou toque.
+ */
+function buildOrderControlArea({
+  isActionsVisible,
+  expectedInput,
+  suggestedPriceText,
+  cleanDraftId,
+  cleanRevision,
+}) {
+  if (isActionsVisible) {
+    return [
+      {
+        type: 'Container',
+        direction: 'row',
+        paddingTop: '20dp',
+        items: [
+          {
+            type: 'TouchWrapper',
+            id: 'btnOrderConfirm',
+            onPress: [
+              {
+                type: 'SendEvent',
+                arguments: ['confirmOrder', cleanDraftId, String(cleanRevision)],
+              },
+            ],
+            item: {
+              type: 'Frame',
+              inheritParentState: true,
+              style: 'btnConfirmStyle',
+              borderRadius: '16dp',
+              paddingLeft: '28dp',
+              paddingRight: '28dp',
+              paddingTop: '14dp',
+              paddingBottom: '14dp',
+              marginRight: '16dp',
+              item: {
+                type: 'Text',
+                text: '✅ Confirmar Pedido',
+                color: '#FFFFFF',
+                fontSize: '18dp',
+                fontWeight: 'bold',
+              },
+            },
+          },
+          {
+            type: 'TouchWrapper',
+            id: 'btnOrderCancel',
+            onPress: [
+              {
+                type: 'SendEvent',
+                arguments: ['cancelOrder', cleanDraftId, String(cleanRevision)],
+              },
+            ],
+            item: {
+              type: 'Frame',
+              inheritParentState: true,
+              style: 'btnCancelStyle',
+              borderRadius: '16dp',
+              paddingLeft: '24dp',
+              paddingRight: '24dp',
+              paddingTop: '14dp',
+              paddingBottom: '14dp',
+              item: {
+                type: 'Text',
+                text: '❌ Cancelar',
+                color: '#F4B7B9',
+                fontSize: '18dp',
+                fontWeight: 'bold',
+              },
+            },
+          },
+        ],
+      },
+    ];
+  }
+
+  if (expectedInput === 'quantity') {
+    const qtyList = [1, 2, 3, 5, 10, 20, 50];
+    return [
+      {
+        type: 'Container',
+        paddingTop: '14dp',
+        items: [
+          {
+            type: 'Text',
+            text: '👉 Escolha a quantidade no controle ou fale o número:',
+            color: '#F4B7B9',
+            fontSize: '16dp',
+            fontWeight: 'bold',
+            paddingBottom: '10dp',
+          },
+          {
+            type: 'Container',
+            direction: 'row',
+            items: qtyList.map((qty) => ({
+              type: 'TouchWrapper',
+              id: `btnQty_${qty}`,
+              onPress: [
+                {
+                  type: 'SendEvent',
+                  arguments: ['selectQuantity', qty],
+                },
+              ],
+              item: {
+                type: 'Frame',
+                inheritParentState: true,
+                style: 'btnChipStyle',
+                borderRadius: '14dp',
+                paddingLeft: '18dp',
+                paddingRight: '18dp',
+                paddingTop: '10dp',
+                paddingBottom: '10dp',
+                marginRight: '8dp',
+                item: {
+                  type: 'Text',
+                  text: String(qty),
+                  color: '#FFFFFF',
+                  fontSize: '18dp',
+                  fontWeight: 'bold',
+                  textAlign: 'center',
+                },
+              },
+            })),
+          },
+          {
+            type: 'Text',
+            text: '🎙️ Ou diga qualquer outra quantidade desejada',
+            color: '#C9C0B8',
+            fontSize: '14dp',
+            paddingTop: '8dp',
+          },
+        ],
+      },
+    ];
+  }
+
+  if (expectedInput === 'deliveryDate') {
+    const quickDates = getQuickDeliveryDateOptions();
+    return [
+      {
+        type: 'Container',
+        paddingTop: '14dp',
+        items: [
+          {
+            type: 'Text',
+            text: '👉 Escolha a data de entrega no controle ou diga o dia:',
+            color: '#F4B7B9',
+            fontSize: '16dp',
+            fontWeight: 'bold',
+            paddingBottom: '10dp',
+          },
+          {
+            type: 'Container',
+            direction: 'row',
+            items: quickDates.map((opt, idx) => ({
+              type: 'TouchWrapper',
+              id: `btnDate_${idx}`,
+              onPress: [
+                {
+                  type: 'SendEvent',
+                  arguments: ['selectDeliveryDate', opt.isoDate],
+                },
+              ],
+              item: {
+                type: 'Frame',
+                inheritParentState: true,
+                style: 'btnChipStyle',
+                borderRadius: '14dp',
+                paddingLeft: '16dp',
+                paddingRight: '16dp',
+                paddingTop: '10dp',
+                paddingBottom: '10dp',
+                marginRight: '8dp',
+                item: {
+                  type: 'Text',
+                  text: opt.label,
+                  color: '#FFFFFF',
+                  fontSize: '15dp',
+                  fontWeight: 'bold',
+                  textAlign: 'center',
+                },
+              },
+            })),
+          },
+          {
+            type: 'Text',
+            text: '🎙️ Ou diga uma data específica (ex: "25 de outubro")',
+            color: '#C9C0B8',
+            fontSize: '14dp',
+            paddingTop: '8dp',
+          },
+        ],
+      },
+    ];
+  }
+
+  if (expectedInput === 'priceBasis') {
+    return [
+      {
+        type: 'Container',
+        paddingTop: '14dp',
+        items: [
+          {
+            type: 'Text',
+            text: '👉 Como é esse valor?',
+            color: '#F4B7B9',
+            fontSize: '16dp',
+            fontWeight: 'bold',
+            paddingBottom: '10dp',
+          },
+          {
+            type: 'Container',
+            direction: 'row',
+            items: [
+              {
+                type: 'TouchWrapper',
+                id: 'btnPriceUnit',
+                onPress: [
+                  {
+                    type: 'SendEvent',
+                    arguments: ['selectPriceBasis', 'unit'],
+                  },
+                ],
+                item: {
+                  type: 'Frame',
+                  inheritParentState: true,
+                  style: 'btnPrimaryStyle',
+                  borderRadius: '16dp',
+                  paddingLeft: '22dp',
+                  paddingRight: '22dp',
+                  paddingTop: '12dp',
+                  paddingBottom: '12dp',
+                  marginRight: '12dp',
+                  item: {
+                    type: 'Text',
+                    text: '🍰 Por Unidade (cada)',
+                    color: '#FFFFFF',
+                    fontSize: '16dp',
+                    fontWeight: 'bold',
+                  },
+                },
+              },
+              {
+                type: 'TouchWrapper',
+                id: 'btnPriceTotal',
+                onPress: [
+                  {
+                    type: 'SendEvent',
+                    arguments: ['selectPriceBasis', 'total'],
+                  },
+                ],
+                item: {
+                  type: 'Frame',
+                  inheritParentState: true,
+                  style: 'btnSecondaryStyle',
+                  borderRadius: '16dp',
+                  paddingLeft: '22dp',
+                  paddingRight: '22dp',
+                  paddingTop: '12dp',
+                  paddingBottom: '12dp',
+                  item: {
+                    type: 'Text',
+                    text: '💰 Total do Pedido',
+                    color: '#FFFFFF',
+                    fontSize: '16dp',
+                    fontWeight: 'bold',
+                  },
+                },
+              },
+            ],
+          },
+        ],
+      },
+    ];
+  }
+
+  if (expectedInput === 'suggestedPrice') {
+    const priceDisplay = suggestedPriceText ? `${suggestedPriceText} cada` : 'sugerido';
+    return [
+      {
+        type: 'Container',
+        paddingTop: '14dp',
+        items: [
+          {
+            type: 'Text',
+            text: `👉 Usar preço de catálogo (${priceDisplay})?`,
+            color: '#F4B7B9',
+            fontSize: '16dp',
+            fontWeight: 'bold',
+            paddingBottom: '10dp',
+          },
+          {
+            type: 'Container',
+            direction: 'row',
+            items: [
+              {
+                type: 'TouchWrapper',
+                id: 'btnSuggestedConfirm',
+                onPress: [
+                  {
+                    type: 'SendEvent',
+                    arguments: ['confirmSuggestedPrice'],
+                  },
+                ],
+                item: {
+                  type: 'Frame',
+                  inheritParentState: true,
+                  style: 'btnConfirmStyle',
+                  borderRadius: '16dp',
+                  paddingLeft: '22dp',
+                  paddingRight: '22dp',
+                  paddingTop: '12dp',
+                  paddingBottom: '12dp',
+                  marginRight: '12dp',
+                  item: {
+                    type: 'Text',
+                    text: '✅ Sim, usar este valor',
+                    color: '#FFFFFF',
+                    fontSize: '16dp',
+                    fontWeight: 'bold',
+                  },
+                },
+              },
+              {
+                type: 'TouchWrapper',
+                id: 'btnSuggestedReject',
+                onPress: [
+                  {
+                    type: 'SendEvent',
+                    arguments: ['rejectSuggestedPrice'],
+                  },
+                ],
+                item: {
+                  type: 'Frame',
+                  inheritParentState: true,
+                  style: 'btnSecondaryStyle',
+                  borderRadius: '16dp',
+                  paddingLeft: '22dp',
+                  paddingRight: '22dp',
+                  paddingTop: '12dp',
+                  paddingBottom: '12dp',
+                  item: {
+                    type: 'Text',
+                    text: '✏️ Informar outro valor',
+                    color: '#F4B7B9',
+                    fontSize: '16dp',
+                    fontWeight: 'bold',
+                  },
+                },
+              },
+            ],
+          },
+        ],
+      },
+    ];
+  }
+
+  // Padrão para outros inputs (ex: customer, product)
+  return [
+    {
+      type: 'Text',
+      text: '🎙️ Fale os dados pendentes ou diga o que deseja corrigir',
+      color: '#C9C0B8',
+      fontSize: '16dp',
+      paddingTop: '16dp',
+    },
+  ];
+}
+
+/**
  * 2. Constrói o documento APL para exibição do Card Interativo de Pedido no Echo Show, Echo Spot e Fire TV.
- * Suporta botões tocáveis [Confirmar] e [Cancelar], vinculação de token/draftId/revision e adaptação circular para Echo Spot.
+ * Suporta botões tocáveis [Confirmar] e [Cancelar], seletores interativos D-Pad (quantidade, data, preço),
+ * vinculação de token/draftId/revision e adaptação circular para Echo Spot.
  */
 function buildOrderCardAplDirective({
   draftId = null,
@@ -429,6 +873,8 @@ function buildOrderCardAplDirective({
   envLabel = 'Teste',
   imageUrl = null,
   showActions = true,
+  expectedInput = null,
+  suggestedPriceText = null,
 }) {
   const cleanCustomer = (customer && String(customer).trim()) || 'Não informado';
   const cleanProduct = (product && String(product).trim()) || 'Produto Personalizado';
@@ -441,6 +887,20 @@ function buildOrderCardAplDirective({
   const cleanRevision = Number(revision) || 1;
   const isActionsVisible = Boolean(showActions);
 
+  // Determina o foco inicial automático para navegação D-Pad em Fire TV Stick
+  let initialFocusId = null;
+  if (isActionsVisible) {
+    initialFocusId = 'btnOrderConfirm';
+  } else if (expectedInput === 'quantity') {
+    initialFocusId = [1, 2, 3, 5, 10, 20, 50].includes(cleanQuantity) ? `btnQty_${cleanQuantity}` : 'btnQty_1';
+  } else if (expectedInput === 'deliveryDate') {
+    initialFocusId = 'btnDate_0';
+  } else if (expectedInput === 'priceBasis') {
+    initialFocusId = 'btnPriceUnit';
+  } else if (expectedInput === 'suggestedPrice') {
+    initialFocusId = 'btnSuggestedConfirm';
+  }
+
   const document = {
     type: 'APL',
     version: '1.6',
@@ -452,12 +912,12 @@ function buildOrderCardAplDirective({
       },
     ],
     styles: getAplButtonStyles(),
-    onMount: isActionsVisible
+    onMount: initialFocusId
       ? [
           {
             when: "${viewport.mode == 'tv' || viewport.mode == 'TV'}",
             type: 'SetFocus',
-            componentId: 'btnOrderConfirm',
+            componentId: initialFocusId,
           },
         ]
       : undefined,
@@ -629,7 +1089,7 @@ function buildOrderCardAplDirective({
                     borderRadius: '16dp',
                   },
                 },
-                // Coluna Direita: Dados do Pedido + Botões de Toque em Painel de Vidro
+                // Coluna Direita: Dados do Pedido + Controles Interativos em Painel de Vidro
                 {
                   type: 'Frame',
                   backgroundColor: 'rgba(35, 28, 30, 0.88)',
@@ -702,81 +1162,14 @@ function buildOrderCardAplDirective({
                         fontWeight: 'bold',
                         paddingTop: '12dp',
                       },
-                      // Ações ou Texto de Ajuda
-                      ...(isActionsVisible
-                        ? [
-                            {
-                              type: 'Container',
-                              direction: 'row',
-                              paddingTop: '20dp',
-                              items: [
-                                {
-                                  type: 'TouchWrapper',
-                                  id: 'btnOrderConfirm',
-                                  onPress: [
-                                    {
-                                      type: 'SendEvent',
-                                      arguments: ['confirmOrder', cleanDraftId, String(cleanRevision)],
-                                    },
-                                  ],
-                                  item: {
-                                    type: 'Frame',
-                                    inheritParentState: true,
-                                    style: 'btnConfirmStyle',
-                                    borderRadius: '16dp',
-                                    paddingLeft: '28dp',
-                                    paddingRight: '28dp',
-                                    paddingTop: '14dp',
-                                    paddingBottom: '14dp',
-                                    marginRight: '16dp',
-                                    item: {
-                                      type: 'Text',
-                                      text: '✅ Confirmar Pedido',
-                                      color: '#FFFFFF',
-                                      fontSize: '18dp',
-                                      fontWeight: 'bold',
-                                    },
-                                  },
-                                },
-                                {
-                                  type: 'TouchWrapper',
-                                  id: 'btnOrderCancel',
-                                  onPress: [
-                                    {
-                                      type: 'SendEvent',
-                                      arguments: ['cancelOrder', cleanDraftId, String(cleanRevision)],
-                                    },
-                                  ],
-                                  item: {
-                                    type: 'Frame',
-                                    inheritParentState: true,
-                                    style: 'btnCancelStyle',
-                                    borderRadius: '16dp',
-                                    paddingLeft: '24dp',
-                                    paddingRight: '24dp',
-                                    paddingTop: '14dp',
-                                    paddingBottom: '14dp',
-                                    item: {
-                                      type: 'Text',
-                                      text: '❌ Cancelar',
-                                      color: '#F4B7B9',
-                                      fontSize: '18dp',
-                                      fontWeight: 'bold',
-                                    },
-                                  },
-                                },
-                              ],
-                            },
-                          ]
-                        : [
-                            {
-                              type: 'Text',
-                              text: '🎙️ Fale os dados pendentes ou diga o que deseja corrigir',
-                              color: '#C9C0B8',
-                              fontSize: '16dp',
-                              paddingTop: '16dp',
-                            },
-                          ]),
+                      // Área de Controles Interativos (Seletores D-Pad de Quantidade, Data, Preço ou Ações de Confirmação)
+                      ...buildOrderControlArea({
+                        isActionsVisible,
+                        expectedInput,
+                        suggestedPriceText,
+                        cleanDraftId,
+                        cleanRevision,
+                      }),
                     ],
                   },
                 },
@@ -802,6 +1195,8 @@ function buildOrderCardAplDirective({
     envLabel,
     imageUrl: cleanImage,
     showActions: isActionsVisible,
+    expectedInput,
+    suggestedPriceText,
   };
 
   const datasources = {
@@ -1539,6 +1934,8 @@ function buildVoicePairingAplDirective({ pairingCode = '000000', qrCodeUrl = nul
 module.exports = {
   supportsApl,
   getAplStyles,
+  getAplButtonStyles,
+  getQuickDeliveryDateOptions,
   buildWelcomeAplDirective,
   buildOrderCardAplDirective,
   buildOrderSuccessAplDirective,
