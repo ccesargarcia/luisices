@@ -33,7 +33,10 @@ import {
   Users,
   UserCheck,
   RefreshCw,
+  LayoutGrid,
+  LayoutList,
 } from 'lucide-react';
+import { OrderTable } from '../components/OrderTable';
 import { AdminTeamFilter } from '../components/AdminTeamFilter';
 import { getTextColor } from '../utils/tagColors';
 import { useFirebaseOrders } from '../../hooks/useFirebaseOrders';
@@ -124,6 +127,21 @@ export function Dashboard() {
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [showExchangeOnly, setShowExchangeOnly] = useState(false);
   const [creatorProfiles, setCreatorProfiles] = useState<UserProfile[]>([]);
+  const [viewMode, setViewMode] = useState<'grid' | 'table'>(() => {
+    try {
+      const saved = localStorage.getItem('orders_view_mode');
+      return saved === 'table' ? 'table' : 'grid';
+    } catch {
+      return 'grid';
+    }
+  });
+
+  const handleSetViewMode = (mode: 'grid' | 'table') => {
+    setViewMode(mode);
+    try {
+      localStorage.setItem('orders_view_mode', mode);
+    } catch {}
+  };
 
   useEffect(() => {
     if (userProfile?.role !== 'admin' && userProfile?.role !== 'funcionario') {
@@ -477,6 +495,34 @@ export function Dashboard() {
       activeTabOrders.forEach(order => next.add(order.id));
       return [...next];
     });
+  };
+
+  const renderOrdersList = (ordersToRender: Order[]) => {
+    if (viewMode === 'table') {
+      return (
+        <OrderTable
+          orders={ordersToRender}
+          selectedOrderIds={selectedOrderIds}
+          onToggleSelect={toggleOrderSelection}
+          onOrderClick={handleOrderClick}
+          onToggleSelectAll={toggleSelectAllVisibleOrders}
+          allSelected={allFilteredOrdersSelected}
+        />
+      );
+    }
+    return (
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        {ordersToRender.map(order => (
+          <OrderCard
+            key={order.id}
+            order={order}
+            isSelected={selectedOrderIds.includes(order.id)}
+            onToggleSelect={toggleOrderSelection}
+            onClick={() => handleOrderClick(order)}
+          />
+        ))}
+      </div>
+    );
   };
 
   const handleBulkDeleteOrders = async () => {
@@ -973,29 +1019,67 @@ export function Dashboard() {
               </TabsTrigger>
             </TabsList>
 
-            {/* Seletor de itens por página */}
-            {(filteredOrders.length > 6 || pageSize !== 12) && (
-              <div className="flex items-center gap-1.5 self-end sm:self-auto text-xs text-muted-foreground">
-                <span>Exibir:</span>
-                <div className="inline-flex items-center rounded-lg border border-border/60 bg-muted/40 p-0.5">
-                  {([6, 12, 24, 'all'] as const).map((size) => (
-                    <button
-                      key={size}
-                      type="button"
-                      onClick={() => handlePageSizeChange(size)}
-                      className={cn(
-                        'px-2.5 py-1 rounded-md transition-all font-medium',
-                        pageSize === size
-                          ? 'bg-background text-foreground shadow-xs'
-                          : 'text-muted-foreground hover:text-foreground'
-                      )}
-                    >
-                      {size === 'all' ? 'Todos' : size}
-                    </button>
-                  ))}
-                </div>
+            <div className="flex items-center gap-3 self-end sm:self-auto">
+              {/* Seletor de Modo de Exibição (Cards / Tabela) */}
+              <div
+                className="inline-flex items-center rounded-lg border border-border/60 bg-muted/40 p-0.5"
+                role="group"
+                aria-label="Modo de visualização dos pedidos"
+              >
+                <button
+                  type="button"
+                  onClick={() => handleSetViewMode('grid')}
+                  className={cn(
+                    'p-1.5 rounded-md transition-all flex items-center justify-center cursor-pointer',
+                    viewMode === 'grid'
+                      ? 'bg-background text-foreground shadow-xs'
+                      : 'text-muted-foreground hover:text-foreground'
+                  )}
+                  title="Visualização em Cards"
+                  aria-label="Visualização em Cards"
+                >
+                  <LayoutGrid className="size-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSetViewMode('table')}
+                  className={cn(
+                    'p-1.5 rounded-md transition-all flex items-center justify-center cursor-pointer',
+                    viewMode === 'table'
+                      ? 'bg-background text-foreground shadow-xs'
+                      : 'text-muted-foreground hover:text-foreground'
+                  )}
+                  title="Visualização em Tabela"
+                  aria-label="Visualização em Tabela"
+                >
+                  <LayoutList className="size-4" />
+                </button>
               </div>
-            )}
+
+              {/* Seletor de itens por página */}
+              {(filteredOrders.length > 6 || pageSize !== 12) && (
+                <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <span className="hidden sm:inline">Exibir:</span>
+                  <div className="inline-flex items-center rounded-lg border border-border/60 bg-muted/40 p-0.5">
+                    {([6, 12, 24, 'all'] as const).map((size) => (
+                      <button
+                        key={size}
+                        type="button"
+                        onClick={() => handlePageSizeChange(size)}
+                        className={cn(
+                          'px-2.5 py-1 rounded-md transition-all font-medium cursor-pointer',
+                          pageSize === size
+                            ? 'bg-background text-foreground shadow-xs'
+                            : 'text-muted-foreground hover:text-foreground'
+                        )}
+                      >
+                        {size === 'all' ? 'Todos' : size}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
 
           <TabsContent value="all" className="space-y-4">
@@ -1005,17 +1089,7 @@ export function Dashboard() {
                 hint={searchQuery || selectedTags.length > 0 || showExchangeOnly ? 'Ajuste os filtros para realizar uma nova busca.' : 'Crie seu primeiro pedido selecionando “Novo Pedido”.'}
               />
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {pagedOrders.map(order => (
-                  <OrderCard
-                    key={order.id}
-                    order={order}
-                    isSelected={selectedOrderIds.includes(order.id)}
-                    onToggleSelect={toggleOrderSelection}
-                    onClick={() => handleOrderClick(order)}
-                  />
-                ))}
-              </div>
+              renderOrdersList(pagedOrders)
             )}
           </TabsContent>
 
@@ -1023,17 +1097,7 @@ export function Dashboard() {
             {tabOrdersMap.pending.length === 0 ? (
               <EmptyState message="Nenhum pedido pendente" hint="Pedidos aguardando início aparecem aqui." />
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {pagedOrders.map(order => (
-                  <OrderCard
-                    key={order.id}
-                    order={order}
-                    isSelected={selectedOrderIds.includes(order.id)}
-                    onToggleSelect={toggleOrderSelection}
-                    onClick={() => handleOrderClick(order)}
-                  />
-                ))}
-              </div>
+              renderOrdersList(pagedOrders)
             )}
           </TabsContent>
 
@@ -1041,17 +1105,7 @@ export function Dashboard() {
             {tabOrdersMap['in-progress'].length === 0 ? (
               <EmptyState message="Nenhum pedido em produção" hint="Pedidos em andamento aparecem aqui." />
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {pagedOrders.map(order => (
-                  <OrderCard
-                    key={order.id}
-                    order={order}
-                    isSelected={selectedOrderIds.includes(order.id)}
-                    onToggleSelect={toggleOrderSelection}
-                    onClick={() => handleOrderClick(order)}
-                  />
-                ))}
-              </div>
+              renderOrdersList(pagedOrders)
             )}
           </TabsContent>
 
@@ -1059,17 +1113,7 @@ export function Dashboard() {
             {tabOrdersMap.completed.length === 0 ? (
               <EmptyState message="Nenhum pedido concluído" hint="Pedidos entregues aparecem aqui." />
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {pagedOrders.map(order => (
-                  <OrderCard
-                    key={order.id}
-                    order={order}
-                    isSelected={selectedOrderIds.includes(order.id)}
-                    onToggleSelect={toggleOrderSelection}
-                    onClick={() => handleOrderClick(order)}
-                  />
-                ))}
-              </div>
+              renderOrdersList(pagedOrders)
             )}
           </TabsContent>
 

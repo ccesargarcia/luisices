@@ -7,6 +7,7 @@ const {
   buildOrderSuccessAplDirective,
   buildFuzzySuggestionsAplDirective,
   buildVoicePairingAplDirective,
+  buildRecentOrdersAplDirective,
   getQuickDeliveryDateOptions,
   getAplButtonStyles,
 } = require('../../../functions/alexa/apl');
@@ -611,6 +612,130 @@ describe('Alexa Advancements: Dynamic Entities, Fuzzy Suggestions & APL', () => 
       });
       expect(directiveFallback.datasources.payload.success.orderNumber).toBe('');
       expect(directiveFallback.datasources.payload.success.orderHeading).toBe('Pedido Confirmado!');
+    });
+
+    it('gera documento APL de Pedidos Recentes com tabela e botão de novo pedido', () => {
+      const mockOrders = [
+        {
+          id: 'ord-1',
+          orderNumber: '00101',
+          customerName: 'Beatriz',
+          productName: 'Caixa Milk',
+          quantity: 10,
+          price: 150.0,
+          status: 'in-progress',
+          deliveryDate: '2026-10-25',
+          source: 'alexa',
+        },
+        {
+          id: 'ord-2',
+          orderNumber: '00102',
+          customerName: 'Lucas',
+          productName: 'Topo de Bolo',
+          quantity: 1,
+          price: 35.0,
+          status: 'completed',
+          deliveryDate: '2026-10-20',
+          source: 'web',
+        },
+      ];
+
+      const directive = buildRecentOrdersAplDirective({
+        orders: mockOrders,
+        envLabel: 'teste',
+        userName: 'Caio',
+      });
+
+      expect(directive.type).toBe('Alexa.Presentation.APL.RenderDocument');
+      expect(directive.token).toBe('luisicesRecentOrdersToken');
+      expect(directive.document.version).toBe('1.6');
+      expect(directive.document.theme).toBe('dark');
+      expect(directive.datasources.payload.orders).toHaveLength(2);
+      expect(directive.datasources.payload.orders[0].customerName).toBe('Beatriz');
+      expect(directive.datasources.payload.orders[0].productSummary).toBe('10x Caixa Milk');
+      expect(directive.datasources.payload.orders[0].priceText).toBe('R$ 150,00');
+      expect(directive.datasources.payload.orders[0].statusLabel).toBe('Em Produção');
+      expect(directive.datasources.payload.orders[0].isVoice).toBe(true);
+      expect(directive.datasources.payload.orders[1].isVoice).toBe(false);
+      expect(directive.datasources.payload.totalCount).toBe(2);
+    });
+
+    it('anexa diretiva APL de Pedidos Recentes ao executar ListRecentOrdersIntent em dispositivo com tela', async () => {
+      const mockOrders = [
+        {
+          id: 'ord-apl-list-1',
+          orderNumber: '1001',
+          customerName: 'Juliana',
+          productName: 'Agenda 2027',
+          quantity: 2,
+          price: 90.0,
+          status: 'pending',
+          deliveryDate: '2026-11-01',
+          userId: 'uid-caiogarcia',
+          deletedAt: null,
+          createdAt: new Date('2026-10-01T12:00:00Z'),
+        },
+      ];
+
+      const mockDb = createMockDb();
+      mockDb.collection = (colName: string) => {
+        if (colName === 'orders') {
+          return {
+            where: () => ({
+              where: () => ({
+                orderBy: () => ({
+                  limit: () => ({
+                    get: async () => ({
+                      empty: false,
+                      docs: [
+                        {
+                          id: 'ord-apl-list-1',
+                          data: () => mockOrders[0],
+                        },
+                      ],
+                    }),
+                  }),
+                }),
+              }),
+            }),
+          };
+        }
+        return (createMockDb() as any).collection(colName);
+      };
+
+      const echoShowEnvelope = {
+        session: { sessionId: 'sess-recent-orders-apl' },
+        request: {
+          type: 'IntentRequest',
+          requestId: 'amzn1.echo-api.request.recent-apl-1',
+          intent: {
+            name: 'ListRecentOrdersIntent',
+          },
+        },
+        context: {
+          System: {
+            device: {
+              supportedInterfaces: {
+                'Alexa.Presentation.APL': {},
+              },
+            },
+          },
+        },
+      };
+
+      const res = await handleAlexaDialog({
+        envelope: echoShowEnvelope,
+        identity: baseIdentity,
+        config: baseConfig,
+        db: mockDb,
+      });
+
+      expect(res.directives).toBeDefined();
+      const aplDir = res.directives.find((d: any) => d.type === 'Alexa.Presentation.APL.RenderDocument');
+      expect(aplDir).toBeDefined();
+      expect(aplDir.token).toBe('luisicesRecentOrdersToken');
+      expect(aplDir.datasources.payload.orders).toHaveLength(1);
+      expect(aplDir.datasources.payload.orders[0].customerName).toBe('Juliana');
     });
 
     it('suporta tela circular do Echo Spot mantendo o logo do Luisices no topo e ações circulares', () => {

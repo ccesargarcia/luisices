@@ -1931,6 +1931,426 @@ function buildVoicePairingAplDirective({ pairingCode = '000000', qrCodeUrl = nul
   };
 }
 
+/**
+ * Constrói o documento APL para exibição dos Pedidos Recentes em formato de Tabela / Grid
+ * para dispositivos Alexa com tela (Echo Show 5/8/10/15, Echo Spot e Fire TV).
+ */
+function buildRecentOrdersAplDirective({ orders = [], envLabel = 'Teste', userName = 'Ateliê' }) {
+  const cleanEnvLabel = (envLabel && String(envLabel).trim()) || 'Teste';
+  const cleanUserName = (userName && String(userName).trim()) || 'Ateliê';
+
+  const statusConfigMap = {
+    pending: { label: 'Pendente', bg: 'rgba(245, 158, 11, 0.22)', text: '#FBBF24', border: '#F59E0B' },
+    'in-progress': { label: 'Em Produção', bg: 'rgba(59, 130, 246, 0.22)', text: '#60A5FA', border: '#3B82F6' },
+    in_production: { label: 'Em Produção', bg: 'rgba(59, 130, 246, 0.22)', text: '#60A5FA', border: '#3B82F6' },
+    completed: { label: 'Concluído', bg: 'rgba(16, 185, 129, 0.22)', text: '#34D399', border: '#10B981' },
+    delivered: { label: 'Entregue', bg: 'rgba(16, 185, 129, 0.22)', text: '#34D399', border: '#10B981' },
+    cancelled: { label: 'Cancelado', bg: 'rgba(239, 68, 68, 0.22)', text: '#F87171', border: '#EF4444' },
+  };
+
+  const formattedOrders = (Array.isArray(orders) ? orders : []).map((o, index) => {
+    const customer = (o.customerName && String(o.customerName).trim()) || 'Cliente não informado';
+    const product = (o.productName && String(o.productName).trim()) || 'Personalizado';
+    const quantity = Number(o.quantity) || 1;
+    const priceText = typeof o.price === 'number'
+      ? `R$ ${o.price.toFixed(2).replace('.', ',')}`
+      : 'R$ 0,00';
+    const orderNum = o.orderNumber
+      ? String(o.orderNumber)
+      : `#${String(o.id || index + 1).slice(0, 6)}`;
+
+    let deliveryText = 'A combinar';
+    if (o.deliveryDate) {
+      if (typeof o.deliveryDate === 'string' && /^\d{4}-\d{2}-\d{2}/.test(o.deliveryDate)) {
+        const parts = o.deliveryDate.split('T')[0].split('-');
+        deliveryText = `${parts[2]}/${parts[1]}`;
+      } else {
+        deliveryText = String(o.deliveryDate);
+      }
+    }
+
+    const stKey = String(o.status || 'pending').toLowerCase();
+    const stConfig = statusConfigMap[stKey] || statusConfigMap.pending;
+
+    return {
+      orderNumber: orderNum,
+      customerName: customer,
+      productName: product,
+      quantity,
+      productSummary: `${quantity}x ${product}`,
+      priceText,
+      deliveryText,
+      statusLabel: stConfig.label,
+      statusBg: stConfig.bg,
+      statusText: stConfig.text,
+      statusBorder: stConfig.border,
+      isVoice: o.source === 'alexa' || o.createdVia === 'alexa',
+    };
+  });
+
+  const totalCount = formattedOrders.length;
+  const countSubtitle = totalCount === 1 ? '1 pedido recente' : `${totalCount} pedidos recentes`;
+
+  const spotSummaryText = totalCount > 0
+    ? `${formattedOrders[0].customerName}: ${formattedOrders[0].productSummary} (${formattedOrders[0].priceText})`
+    : 'Nenhum pedido recente';
+
+  const tableRows = formattedOrders.map((ord, idx) => ({
+    type: 'Container',
+    direction: 'row',
+    alignItems: 'center',
+    paddingTop: '8dp',
+    paddingBottom: '8dp',
+    paddingLeft: '12dp',
+    paddingRight: '12dp',
+    backgroundColor: idx % 2 === 0 ? 'rgba(255, 255, 255, 0.03)' : 'transparent',
+    borderRadius: '8dp',
+    items: [
+      {
+        type: 'Text',
+        text: ord.orderNumber,
+        color: '#F4B7B9',
+        fontWeight: 'bold',
+        fontSize: '14dp',
+        width: '100dp',
+        maxLines: 1,
+      },
+      {
+        type: 'Text',
+        text: ord.customerName,
+        color: '#FFFFFF',
+        fontWeight: 'bold',
+        fontSize: '15dp',
+        width: '180dp',
+        maxLines: 1,
+      },
+      {
+        type: 'Text',
+        text: ord.productSummary,
+        color: '#E8E0E3',
+        fontSize: '14dp',
+        grow: 1,
+        maxLines: 1,
+      },
+      {
+        type: 'Text',
+        text: ord.deliveryText,
+        color: '#C9C0B8',
+        fontSize: '13dp',
+        width: '90dp',
+        textAlign: 'center',
+      },
+      {
+        type: 'Text',
+        text: ord.priceText,
+        color: '#34D399',
+        fontWeight: 'bold',
+        fontSize: '15dp',
+        width: '110dp',
+        textAlign: 'right',
+      },
+      {
+        type: 'Container',
+        width: '130dp',
+        alignItems: 'center',
+        justifyContent: 'center',
+        items: [
+          {
+            type: 'Frame',
+            backgroundColor: ord.statusBg,
+            borderColor: ord.statusBorder,
+            borderWidth: '1dp',
+            borderRadius: '10dp',
+            paddingLeft: '10dp',
+            paddingRight: '10dp',
+            paddingTop: '3dp',
+            paddingBottom: '3dp',
+            item: {
+              type: 'Text',
+              text: ord.statusLabel,
+              color: ord.statusText,
+              fontSize: '11dp',
+              fontWeight: 'bold',
+              textAlign: 'center',
+            },
+          },
+        ],
+      },
+    ],
+  }));
+
+  const document = {
+    type: 'APL',
+    version: '1.6',
+    theme: 'dark',
+    import: [
+      {
+        name: 'alexa-layouts',
+        version: '1.4.0',
+      },
+    ],
+    styles: getAplButtonStyles(),
+    onMount: [
+      {
+        when: "${viewport.mode == 'tv' || viewport.mode == 'TV'}",
+        type: 'SetFocus',
+        componentId: 'btnCreateOrderFromRecent',
+      },
+    ],
+    mainTemplate: {
+      parameters: ['payload'],
+      items: [
+        {
+          type: 'Container',
+          width: '100vw',
+          height: '100vh',
+          backgroundColor: '#161214',
+          items: [
+            buildDefaultBackgroundComponent(),
+            {
+              type: 'AlexaHeader',
+              when: WHEN_IS_RECTANGULAR,
+              headerTitle: 'Luisices • Pedidos Recentes',
+              headerSubtitle: `Ambiente de ${cleanEnvLabel} • ${countSubtitle}`,
+              headerAttributionImage: DEFAULT_BRAND_LOGO,
+            },
+            // Layout Circular para Echo Spot (480x480)
+            {
+              type: 'Container',
+              when: WHEN_IS_ROUND,
+              width: '100vw',
+              height: '100vh',
+              alignItems: 'center',
+              justifyContent: 'center',
+              paddingLeft: '24dp',
+              paddingRight: '24dp',
+              items: [
+                {
+                  type: 'Text',
+                  text: '📋',
+                  fontSize: '32dp',
+                  paddingBottom: '4dp',
+                },
+                {
+                  type: 'Text',
+                  text: 'Pedidos Recentes',
+                  color: '#FFFFFF',
+                  fontSize: '18dp',
+                  fontWeight: 'bold',
+                  textAlign: 'center',
+                },
+                {
+                  type: 'Text',
+                  text: spotSummaryText,
+                  color: '#E8E0E3',
+                  fontSize: '13dp',
+                  textAlign: 'center',
+                  paddingTop: '6dp',
+                  paddingBottom: '12dp',
+                  maxLines: 2,
+                },
+                {
+                  type: 'TouchWrapper',
+                  onPress: [{ type: 'SendEvent', arguments: ['intent', 'CreateOrderIntent'] }],
+                  item: {
+                    type: 'Frame',
+                    backgroundColor: '#7B4D50',
+                    borderRadius: '16dp',
+                    paddingLeft: '16dp',
+                    paddingRight: '16dp',
+                    paddingTop: '8dp',
+                    paddingBottom: '8dp',
+                    item: {
+                      type: 'Text',
+                      text: '➕ Criar Pedido',
+                      color: '#FFFFFF',
+                      fontSize: '13dp',
+                      fontWeight: 'bold',
+                    },
+                  },
+                },
+              ],
+            },
+            // Layout Widescreen em Tabela para Echo Show e Fire TV
+            {
+              type: 'Container',
+              when: WHEN_IS_RECTANGULAR,
+              grow: 1,
+              paddingLeft: '32dp',
+              paddingRight: '32dp',
+              paddingBottom: '20dp',
+              items: [
+                {
+                  type: 'Frame',
+                  backgroundColor: 'rgba(35, 28, 30, 0.88)',
+                  borderColor: 'rgba(235, 205, 205, 0.18)',
+                  borderWidth: '1dp',
+                  borderRadius: '20dp',
+                  padding: '16dp',
+                  grow: 1,
+                  item: {
+                    type: 'Container',
+                    grow: 1,
+                    items: [
+                      // Cabeçalho da Tabela
+                      {
+                        type: 'Container',
+                        direction: 'row',
+                        alignItems: 'center',
+                        paddingBottom: '10dp',
+                        paddingLeft: '12dp',
+                        paddingRight: '12dp',
+                        borderBottomWidth: '1dp',
+                        borderColor: 'rgba(235, 205, 205, 0.2)',
+                        items: [
+                          {
+                            type: 'Text',
+                            text: 'Nº PEDIDO',
+                            color: '#C9C0B8',
+                            fontSize: '12dp',
+                            fontWeight: 'bold',
+                            width: '100dp',
+                          },
+                          {
+                            type: 'Text',
+                            text: 'CLIENTE',
+                            color: '#C9C0B8',
+                            fontSize: '12dp',
+                            fontWeight: 'bold',
+                            width: '180dp',
+                          },
+                          {
+                            type: 'Text',
+                            text: 'PRODUTO / QTD',
+                            color: '#C9C0B8',
+                            fontSize: '12dp',
+                            fontWeight: 'bold',
+                            grow: 1,
+                          },
+                          {
+                            type: 'Text',
+                            text: 'ENTREGA',
+                            color: '#C9C0B8',
+                            fontSize: '12dp',
+                            fontWeight: 'bold',
+                            width: '90dp',
+                            textAlign: 'center',
+                          },
+                          {
+                            type: 'Text',
+                            text: 'VALOR',
+                            color: '#C9C0B8',
+                            fontSize: '12dp',
+                            fontWeight: 'bold',
+                            width: '110dp',
+                            textAlign: 'right',
+                          },
+                          {
+                            type: 'Text',
+                            text: 'STATUS',
+                            color: '#C9C0B8',
+                            fontSize: '12dp',
+                            fontWeight: 'bold',
+                            width: '130dp',
+                            textAlign: 'center',
+                          },
+                        ],
+                      },
+                      // Conteúdo da Tabela / Linhas
+                      totalCount === 0
+                        ? {
+                            type: 'Container',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            grow: 1,
+                            paddingTop: '24dp',
+                            items: [
+                              {
+                                type: 'Text',
+                                text: 'Nenhum pedido recente encontrado.',
+                                color: '#C9C0B8',
+                                fontSize: '16dp',
+                              },
+                            ],
+                          }
+                        : {
+                            type: 'Container',
+                            paddingTop: '4dp',
+                            items: tableRows,
+                          },
+                      // Barra Inferior de Ação
+                      {
+                        type: 'Container',
+                        direction: 'row',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        paddingTop: '14dp',
+                        paddingLeft: '12dp',
+                        paddingRight: '12dp',
+                        items: [
+                          {
+                            type: 'Text',
+                            text: '💡 Diga "criar pedido" ou toque no botão ao lado para começar.',
+                            color: '#C9C0B8',
+                            fontSize: '14dp',
+                          },
+                          {
+                            type: 'TouchWrapper',
+                            id: 'btnCreateOrderFromRecent',
+                            onPress: [
+                              {
+                                type: 'SendEvent',
+                                arguments: ['intent', 'CreateOrderIntent'],
+                              },
+                            ],
+                            item: {
+                              type: 'Frame',
+                              inheritParentState: true,
+                              style: 'btnConfirmStyle',
+                              borderRadius: '14dp',
+                              paddingLeft: '22dp',
+                              paddingRight: '22dp',
+                              paddingTop: '10dp',
+                              paddingBottom: '10dp',
+                              item: {
+                                type: 'Text',
+                                text: '➕ Criar Novo Pedido',
+                                color: '#FFFFFF',
+                                fontSize: '15dp',
+                                fontWeight: 'bold',
+                              },
+                            },
+                          },
+                        ],
+                      },
+                    ],
+                  },
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    },
+  };
+
+  const datasources = {
+    payload: {
+      orders: formattedOrders,
+      totalCount,
+      envLabel: cleanEnvLabel,
+      userName: cleanUserName,
+    },
+  };
+
+  return {
+    type: 'Alexa.Presentation.APL.RenderDocument',
+    token: 'luisicesRecentOrdersToken',
+    document,
+    datasources,
+  };
+}
+
 module.exports = {
   supportsApl,
   getAplStyles,
@@ -1941,4 +2361,5 @@ module.exports = {
   buildOrderSuccessAplDirective,
   buildFuzzySuggestionsAplDirective,
   buildVoicePairingAplDirective,
+  buildRecentOrdersAplDirective,
 };

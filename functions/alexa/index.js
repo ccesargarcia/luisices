@@ -424,7 +424,8 @@ const alexaWebhook = onRequest(
   {
     minInstances: 0,
     maxInstances: 2,
-    memory: '256MiB',
+    memory: '512MiB',
+    cpu: 1,
     secrets: [ALEXA_IDENTITY_HMAC_KEY, ORIGIN_SECRET],
   },
   async (req, res) => {

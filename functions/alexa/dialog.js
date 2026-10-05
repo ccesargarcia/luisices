@@ -14,6 +14,7 @@ const {
   buildWelcomeAplDirective,
   buildOrderSuccessAplDirective,
   buildFuzzySuggestionsAplDirective,
+  buildRecentOrdersAplDirective,
 } = require('./apl');
 const { buildDynamicEntitiesDirective, fetchCatalogProductsForDynamicEntities } = require('./dynamicEntities');
 const { findClosestProductSuggestions, buildSuggestionPrompt } = require('./fuzzySuggestions');
@@ -657,7 +658,7 @@ function translateOrderStatus(status) {
 /**
  * Consulta e formata os pedidos recentes do usuário ou do ateliê.
  */
-async function handleListRecentOrders({ identity, config, db }) {
+async function handleListRecentOrders({ envelope, identity, config, db }) {
   if (!db || typeof db.collection !== 'function') {
     return {
       speech: 'Não foi possível consultar os pedidos no momento. Tente novamente mais tarde.',
@@ -730,12 +731,22 @@ async function handleListRecentOrders({ identity, config, db }) {
   }
 
   if (orderDocs.length === 0) {
-    return {
+    const emptyResponse = {
       speech: 'Você ainda não possui pedidos cadastrados no Luisices. Diga criar pedido para começar.',
       reprompt: 'Diga criar pedido para começar.',
       shouldEndSession: false,
       sessionAttributes: {},
     };
+    if (envelope && supportsApl(envelope)) {
+      emptyResponse.directives = [
+        buildRecentOrdersAplDirective({
+          orders: [],
+          envLabel: config?.environment || 'Produção',
+          userName: identity?.displayName || 'Ateliê',
+        }),
+      ];
+    }
+    return emptyResponse;
   }
 
   const ordinals = ['primeiro', 'segundo', 'terceiro', 'quarto', 'quinto'];
@@ -773,7 +784,7 @@ async function handleListRecentOrders({ identity, config, db }) {
 
   const cardContent = cardLines.join('\n\n');
 
-  return {
+  const result = {
     speech: fullSpeech,
     reprompt: 'Deseja criar um novo pedido? Diga sim para começar ou não para sair.',
     shouldEndSession: false,
@@ -784,6 +795,18 @@ async function handleListRecentOrders({ identity, config, db }) {
       content: cardContent,
     },
   };
+
+  if (envelope && supportsApl(envelope)) {
+    result.directives = [
+      buildRecentOrdersAplDirective({
+        orders: orderDocs,
+        envLabel: config?.environment || 'Produção',
+        userName: identity?.displayName || 'Ateliê',
+      }),
+    ];
+  }
+
+  return result;
 }
 
 /**
@@ -1032,7 +1055,7 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
 
   // 2.6 Consultar últimos pedidos
   if (intentName === 'ListRecentOrdersIntent') {
-    return await handleListRecentOrders({ identity, config, db });
+    return await handleListRecentOrders({ envelope, identity, config, db });
   }
 
   // 2.7 Resposta a 'sim' ou 'não' quando não há rascunho de pedido ativo
