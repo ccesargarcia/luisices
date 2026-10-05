@@ -9,22 +9,15 @@ const { EVOLUTION_API_KEY, ORIGIN_SECRET } = require('../common/secrets');
 const {
   EVOLUTION_API_URL,
   EVOLUTION_INSTANCE,
-  normalizeWhatsAppNumber,
 } = require('../common/helpers');
 const { validateOriginSecret } = require('../originProtection');
 
 /**
  * Validador de autorização operacional para WhatsApp (admin, user com permissão ou funcionário com permissão)
  */
+const { safeEqual, getIntegration, getScope, chatIdFor, messageIdFor, findCustomer, validateCustomer, normalizeWhatsAppNumber } = require('./security');
 const isAuthorizedForWhatsApp = async (request) => {
-  if (!request.auth) return false;
-  const profile = await admin.firestore().doc(`userProfiles/${request.auth.uid}`).get();
-  if (!profile.exists) return true;
-  const data = profile.data();
-  if (data.active === false) return false;
-  if (data.role === 'admin') return true;
-  if (data.role === 'user') return data.permissions?.whatsapp !== false;
-  return data.role === 'funcionario' && data.permissions?.whatsapp === true;
+  try { await getScope(request); return true; } catch { return false; }
 };
 
 /**
@@ -33,9 +26,7 @@ const isAuthorizedForWhatsApp = async (request) => {
 const sendWhatsAppDirectMessage = onCall(
   { maxInstances: 5, secrets: [EVOLUTION_API_KEY] },
   async (request) => {
-    if (!(await isAuthorizedForWhatsApp(request))) {
-      throw new functions.https.HttpsError('permission-denied', 'Sem permissão para utilizar o módulo de Atendimento (WhatsApp).');
-    }
+    const scope = await getScope(request);
 
     const { phone, text, customerName, customerId } = request.data || {};
     if (!phone || typeof phone !== 'string' || !phone.trim()) {
@@ -52,6 +43,8 @@ const sendWhatsAppDirectMessage = onCall(
 
     try {
       const cleanNumber = normalizeWhatsAppNumber(phone);
+      if (!/^\d{10,15}$/.test(cleanNumber)) throw new functions.https.HttpsError('invalid-argument', 'Telefone inválido.');
+      const customer = await validateCustomer(scope.ownerUid, customerId, cleanNumber);
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 10000);
 
@@ -79,30 +72,30 @@ const sendWhatsAppDirectMessage = onCall(
       const messageId = resData?.key?.id || `msg_${Date.now()}`;
       const nowIso = new Date().toISOString();
 
-      await admin.firestore().collection('whatsapp_messages').add({
-        chatId: cleanNumber,
+      await admin.firestore().collection('whatsapp_messages').doc(messageIdFor(scope.ownerUid, messageId)).set({
+        chatId: chatIdFor(scope.ownerUid, cleanNumber),
         phone: cleanNumber,
-        customerName: customerName || null,
-        customerId: customerId || null,
+        customerName: customer.customerName,
+        customerId: customer.customerId,
         sender: 'me',
         text: text.trim(),
         status: 'sent',
         timestamp: nowIso,
         evolutionMessageId: messageId,
         sentByUid: request.auth.uid,
-        userId: request.auth.uid,
+        userId: scope.ownerUid,
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
       });
 
-      await admin.firestore().collection('whatsapp_chats').doc(cleanNumber).set({
-        id: cleanNumber,
+      await admin.firestore().collection('whatsapp_chats').doc(chatIdFor(scope.ownerUid, cleanNumber)).set({
+        id: chatIdFor(scope.ownerUid, cleanNumber),
         phone: cleanNumber,
-        customerName: customerName || cleanNumber,
-        customerId: customerId || null,
+        customerName: customer.customerName,
+        customerId: customer.customerId,
         lastMessageText: text.trim(),
         lastMessageTimestamp: nowIso,
         lastMessageSender: 'me',
-        userId: request.auth.uid,
+        userId: scope.ownerUid,
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       }, { merge: true });
 
@@ -126,17 +119,23 @@ const sendWhatsAppDirectMessage = onCall(
 const deleteWhatsAppMessage = onCall(
   { maxInstances: 5, secrets: [EVOLUTION_API_KEY] },
   async (request) => {
-    if (!(await isAuthorizedForWhatsApp(request))) {
-      throw new functions.https.HttpsError('permission-denied', 'Sem permissão para utilizar o módulo de Atendimento (WhatsApp).');
-    }
+    const scope = await getScope(request);
 
-    const { messageDocId, phone, evolutionMessageId } = request.data || {};
-    if (!messageDocId && !evolutionMessageId) {
+    const { messageDocId, evolutionMessageId: requestedEvolutionId } = request.data || {};
+    const targetId = messageDocId || (typeof requestedEvolutionId === 'string' && requestedEvolutionId
+      ? messageIdFor(scope.ownerUid, requestedEvolutionId) : null);
+    if (typeof targetId !== 'string' || !targetId || targetId.includes('/')) {
       throw new functions.https.HttpsError('invalid-argument', 'Identificador da mensagem é obrigatório.');
     }
-
+    const messageRef = admin.firestore().collection('whatsapp_messages').doc(targetId);
+    const messageSnap = await messageRef.get();
+    const message = messageSnap.exists ? messageSnap.data() : null;
+    if (!message || message.userId !== scope.ownerUid) {
+      throw new functions.https.HttpsError('permission-denied', 'Mensagem não pertence à integração.');
+    }
+    const evolutionMessageId = message.evolutionMessageId;
+    const cleanNumber = normalizeWhatsAppNumber(String(message.phone || ''));
     const rawKey = (typeof EVOLUTION_API_KEY.value === 'function' ? EVOLUTION_API_KEY.value() : process.env.EVOLUTION_API_KEY) || '';
-    const cleanNumber = phone ? normalizeWhatsAppNumber(phone) : '';
 
     if (rawKey && evolutionMessageId && cleanNumber) {
       try {
@@ -171,15 +170,8 @@ const deleteWhatsAppMessage = onCall(
     }
 
     try {
-      if (messageDocId) {
-        await admin.firestore().collection('whatsapp_messages').doc(messageDocId).delete();
-      }
-      if (evolutionMessageId) {
-        const snap = await admin.firestore().collection('whatsapp_messages').where('evolutionMessageId', '==', evolutionMessageId).get();
-        for (const d of snap.docs) {
-          await d.ref.delete();
-        }
-      }
+      await messageRef.delete();
+
     } catch (err) {
       console.error('[deleteWhatsAppMessage] Erro ao deletar documento no Firestore:', err);
     }
@@ -188,21 +180,28 @@ const deleteWhatsAppMessage = onCall(
       try {
         const lastMsgSnap = await admin.firestore()
           .collection('whatsapp_messages')
-          .where('chatId', '==', cleanNumber)
+          .where('userId', '==', scope.ownerUid)
+          .where('chatId', '==', chatIdFor(scope.ownerUid, cleanNumber))
           .orderBy('timestamp', 'desc')
           .limit(1)
           .get();
 
         if (!lastMsgSnap.empty) {
           const lastMsg = lastMsgSnap.docs[0].data();
-          await admin.firestore().collection('whatsapp_chats').doc(cleanNumber).set({
+          await admin.firestore().collection('whatsapp_chats').doc(chatIdFor(scope.ownerUid, cleanNumber)).set({
+            userId: scope.ownerUid,
+            id: chatIdFor(scope.ownerUid, cleanNumber),
+            phone: cleanNumber,
             lastMessageText: lastMsg.text || '',
             lastMessageTimestamp: lastMsg.timestamp || new Date().toISOString(),
             lastMessageSender: lastMsg.sender || 'me',
             updatedAt: admin.firestore.FieldValue.serverTimestamp(),
           }, { merge: true });
         } else {
-          await admin.firestore().collection('whatsapp_chats').doc(cleanNumber).set({
+          await admin.firestore().collection('whatsapp_chats').doc(chatIdFor(scope.ownerUid, cleanNumber)).set({
+            userId: scope.ownerUid,
+            id: chatIdFor(scope.ownerUid, cleanNumber),
+            phone: cleanNumber,
             lastMessageText: '',
             lastMessageTimestamp: null,
             updatedAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -226,9 +225,7 @@ const deleteWhatsAppMessage = onCall(
 const syncWhatsAppChatMessages = onCall(
   { maxInstances: 5, secrets: [EVOLUTION_API_KEY] },
   async (request) => {
-    if (!(await isAuthorizedForWhatsApp(request))) {
-      throw new functions.https.HttpsError('permission-denied', 'Sem permissão para utilizar o módulo de Atendimento (WhatsApp).');
-    }
+    const scope = await getScope(request);
 
     const { phone } = request.data || {};
     if (!phone || typeof phone !== 'string' || !phone.trim()) {
@@ -241,6 +238,7 @@ const syncWhatsAppChatMessages = onCall(
     }
 
     const cleanPhone = normalizeWhatsAppNumber(phone);
+    if (!/^\d{10,15}$/.test(cleanPhone)) throw new functions.https.HttpsError('invalid-argument', 'Telefone inválido.');
     const remoteJid = cleanPhone.includes('@') ? cleanPhone : `${cleanPhone}@s.whatsapp.net`;
 
     try {
@@ -277,22 +275,7 @@ const syncWhatsAppChatMessages = onCall(
       const data = await response.json().catch(() => []);
       const messagesList = Array.isArray(data) ? data : data?.messages?.records || data?.records || [];
 
-      let customerName = cleanPhone;
-      let customerId = null;
-      try {
-        const custSnap = await admin.firestore().collection('customers').limit(100).get();
-        for (const d of custSnap.docs) {
-          const cData = d.data();
-          const cPhone = String(cData.phone || '').replace(/\D/g, '');
-          if (cPhone && (cleanPhone.endsWith(cPhone) || cPhone.endsWith(cleanPhone))) {
-            customerName = cData.name || customerName;
-            customerId = d.id;
-            break;
-          }
-        }
-      } catch (e) {
-        console.warn('[syncWhatsAppChatMessages] Erro ao buscar cliente:', e);
-      }
+      const { customerName, customerId } = await findCustomer(scope.ownerUid, cleanPhone);
 
       let syncedCount = 0;
       let latestMessageText = '';
@@ -318,9 +301,10 @@ const syncWhatsAppChatMessages = onCall(
         const epochSec = item.messageTimestamp || key.messageTimestamp;
         const tsIso = epochSec ? new Date(Number(epochSec) * 1000).toISOString() : new Date().toISOString();
 
-        const msgDocId = `wa_${key.id}`;
+        const msgDocId = messageIdFor(scope.ownerUid, key.id);
         await admin.firestore().collection('whatsapp_messages').doc(msgDocId).set({
-          chatId: cleanPhone,
+          userId: scope.ownerUid,
+          chatId: chatIdFor(scope.ownerUid, cleanPhone),
           phone: cleanPhone,
           customerName,
           customerId,
@@ -339,8 +323,9 @@ const syncWhatsAppChatMessages = onCall(
       }
 
       if (syncedCount > 0 && latestMessageText) {
-        await admin.firestore().collection('whatsapp_chats').doc(cleanPhone).set({
-          id: cleanPhone,
+        await admin.firestore().collection('whatsapp_chats').doc(chatIdFor(scope.ownerUid, cleanPhone)).set({
+          userId: scope.ownerUid,
+          id: chatIdFor(scope.ownerUid, cleanPhone),
           phone: cleanPhone,
           customerName,
           customerId,
@@ -369,9 +354,7 @@ const syncWhatsAppChatMessages = onCall(
 const getWhatsAppInstanceStatus = onCall(
   { maxInstances: 5, secrets: [EVOLUTION_API_KEY] },
   async (request) => {
-    if (!(await isAuthorizedForWhatsApp(request))) {
-      throw new functions.https.HttpsError('permission-denied', 'Sem permissão para utilizar o módulo de Atendimento (WhatsApp).');
-    }
+    const scope = await getScope(request);
 
     const rawKey = (typeof EVOLUTION_API_KEY.value === 'function' ? EVOLUTION_API_KEY.value() : process.env.EVOLUTION_API_KEY) || '';
     if (!rawKey) {
@@ -442,16 +425,27 @@ const evolutionWhatsAppWebhook = onRequest(
       return;
     }
 
-    const expectedApiKey = (EVOLUTION_API_KEY.value && EVOLUTION_API_KEY.value()) || process.env.EVOLUTION_API_KEY;
-    const providedApiKey = req.headers['x-api-key'] || req.headers['apikey'] || req.query.token || (req.headers.authorization ? req.headers.authorization.replace(/^Bearer\s+/i, '') : null);
-
-    if (expectedApiKey && (!providedApiKey || providedApiKey !== expectedApiKey)) {
-      console.warn('[evolutionWhatsAppWebhook] Tentativa de requisição não autorizada rejeitada.');
-      res.status(401).json({ error: 'Unauthorized webhook request' });
-      return;
-    }
-
+    let expectedApiKey;
     try {
+      expectedApiKey = (typeof EVOLUTION_API_KEY.value === 'function' ? EVOLUTION_API_KEY.value() : process.env.EVOLUTION_API_KEY);
+    } catch {
+      return res.status(503).json({ error: 'Webhook security configuration unavailable' });
+    }
+    if (typeof expectedApiKey !== 'string' || !expectedApiKey) {
+      return res.status(503).json({ error: 'Webhook security configuration unavailable' });
+    }
+    // Não aceita credenciais na URL, que podem vazar em logs.
+    const providedApiKey = req.headers['x-api-key'] || req.headers.apikey
+      || (typeof req.headers.authorization === 'string' ? req.headers.authorization.replace(/^Bearer\s+/i, '') : null);
+    if (!safeEqual(expectedApiKey, providedApiKey)) {
+      return res.status(401).json({ error: 'Unauthorized webhook request' });
+    }
+    try {
+      const config = await getIntegration();
+      const scope = { ownerUid: config.ownerUid };
+      if (req.body?.instance !== EVOLUTION_INSTANCE) {
+        return res.status(400).json({ error: 'Unexpected WhatsApp instance' });
+      }
       const event = req.body?.event;
       const data = req.body?.data;
 
@@ -474,63 +468,29 @@ const evolutionWhatsAppWebhook = onRequest(
           if (cleanPhone && messageText) {
             const nowIso = new Date().toISOString();
 
-            let customerName = cleanPhone;
-            let customerId = null;
-            try {
-              const custSnap = await admin.firestore().collection('customers').limit(100).get();
-              for (const d of custSnap.docs) {
-                const cData = d.data();
-                const cPhone = String(cData.phone || '').replace(/\D/g, '');
-                if (cPhone && (cleanPhone.endsWith(cPhone) || cPhone.endsWith(cleanPhone))) {
-                  customerName = cData.name || customerName;
-                  customerId = d.id;
-                  break;
-                }
-              }
-            } catch (e) {
-              console.warn('[evolutionWhatsAppWebhook] Erro ao buscar cliente:', e);
-            }
+            const { customerName, customerId } = await findCustomer(scope.ownerUid, cleanPhone);
 
-            const msgDocId = key?.id ? `wa_${key.id}` : null;
-            if (msgDocId) {
-              await admin.firestore().collection('whatsapp_messages').doc(msgDocId).set({
-                chatId: cleanPhone,
-                phone: cleanPhone,
-                customerName,
-                customerId,
-                sender: fromMe ? 'me' : 'customer',
-                text: messageText,
-                status: fromMe ? 'sent' : 'received',
-                timestamp: nowIso,
-                evolutionMessageId: key?.id || `inc_${Date.now()}`,
-                createdAt: admin.firestore.FieldValue.serverTimestamp(),
-              }, { merge: true });
-            } else {
-              await admin.firestore().collection('whatsapp_messages').add({
-                chatId: cleanPhone,
-                phone: cleanPhone,
-                customerName,
-                customerId,
-                sender: fromMe ? 'me' : 'customer',
-                text: messageText,
-                status: fromMe ? 'sent' : 'received',
-                timestamp: nowIso,
-                evolutionMessageId: `inc_${Date.now()}`,
-                createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            if (typeof key?.id !== 'string' || !key.id) return res.status(400).json({ error: 'Message identifier required' });
+            const messageRef = admin.firestore().collection('whatsapp_messages').doc(messageIdFor(scope.ownerUid, key.id));
+            const chatRef = admin.firestore().collection('whatsapp_chats').doc(chatIdFor(scope.ownerUid, cleanPhone));
+            await admin.firestore().runTransaction(async (transaction) => {
+              if ((await transaction.get(messageRef)).exists) return;
+              transaction.set(messageRef, {
+                userId: scope.ownerUid, chatId: chatIdFor(scope.ownerUid, cleanPhone),
+                phone: cleanPhone, customerName, customerId,
+                sender: fromMe ? 'me' : 'customer', text: messageText,
+                status: fromMe ? 'sent' : 'received', timestamp: nowIso,
+                evolutionMessageId: key.id, createdAt: admin.firestore.FieldValue.serverTimestamp(),
               });
-            }
-
-            await admin.firestore().collection('whatsapp_chats').doc(cleanPhone).set({
-              id: cleanPhone,
-              phone: cleanPhone,
-              customerName,
-              customerId,
-              lastMessageText: messageText,
-              lastMessageTimestamp: nowIso,
-              lastMessageSender: fromMe ? 'me' : 'customer',
-              unreadCount: fromMe ? 0 : admin.firestore.FieldValue.increment(1),
-              updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-            }, { merge: true });
+              transaction.set(chatRef, {
+                userId: scope.ownerUid, id: chatIdFor(scope.ownerUid, cleanPhone),
+                phone: cleanPhone, customerName, customerId,
+                lastMessageText: messageText, lastMessageTimestamp: nowIso,
+                lastMessageSender: fromMe ? 'me' : 'customer',
+                unreadCount: fromMe ? 0 : admin.firestore.FieldValue.increment(1),
+                updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+              }, { merge: true });
+            });
           }
         }
       }

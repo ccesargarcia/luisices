@@ -4,12 +4,16 @@ const { validateOriginSecret } = require('../../functions/originProtection');
 
 describe('Segurança: Proteção de Origem (Origin Secret / Cloudflare Only)', () => {
   const originalEnvSecret = process.env.ORIGIN_SECRET;
+  const originalEmulator = process.env.FUNCTIONS_EMULATOR;
 
   beforeEach(() => {
     delete process.env.ORIGIN_SECRET;
+    delete process.env.FUNCTIONS_EMULATOR;
   });
 
   afterEach(() => {
+    if (originalEmulator === undefined) delete process.env.FUNCTIONS_EMULATOR;
+    else process.env.FUNCTIONS_EMULATOR = originalEmulator;
     if (originalEnvSecret) {
       process.env.ORIGIN_SECRET = originalEnvSecret;
     } else {
@@ -17,14 +21,15 @@ describe('Segurança: Proteção de Origem (Origin Secret / Cloudflare Only)', (
     }
   });
 
-  it('deve permitir a requisição se nenhum ORIGIN_SECRET estiver configurado no ambiente (fail-open para dev/testes)', () => {
-    const req = {
-      headers: {},
-    };
+  it('rejeita ausência de segredo fora do emulador', () => {
+    const result = validateOriginSecret({ headers: {} });
+    expect(result.allowed).toBe(false);
+    expect(result.statusCode).toBe(503);
+  });
 
-    const result = validateOriginSecret(req);
-    expect(result.allowed).toBe(true);
-    expect(result.error).toBeUndefined();
+  it('permite execução local somente no emulador explicitamente identificado', () => {
+    process.env.FUNCTIONS_EMULATOR = 'true';
+    expect(validateOriginSecret({ headers: {} }).allowed).toBe(true);
   });
 
   it('deve rejeitar com 403 se ORIGIN_SECRET estiver configurado e o header estiver ausente (tentativa de acesso direto)', () => {

@@ -38,6 +38,8 @@ module.exports = {
   getWhatsAppInstanceStatus: whatsappFunctions.getWhatsAppInstanceStatus,
   evolutionWhatsAppWebhook: whatsappFunctions.evolutionWhatsAppWebhook,
 
+  uploadPrivateCustomerPhoto: require('./customerMedia').uploadPrivateCustomerPhoto,
+
   // ─── Pedidos e Vitrine Pública ─────────────────────────────────────────────
   syncAllOrdersToAiView: orderFunctions.syncAllOrdersToAiView,
   submitPublicCatalogOrder: orderFunctions.submitPublicCatalogOrder,

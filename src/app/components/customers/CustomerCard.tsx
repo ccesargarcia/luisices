@@ -1,4 +1,5 @@
 import React from 'react';
+import { PrivateCustomerImage } from './PrivateCustomerImage';
 import { formatDate } from '../../utils/date';
 import { formatCurrency } from '../../utils/currency';
 import { Customer } from '../../types';
@@ -86,7 +87,7 @@ export function CustomerCard({
             />
             <div className={`size-11 rounded-full overflow-hidden shrink-0 flex items-center justify-center border border-white/30 ${avatarAccent}`}>
               {customer.photoUrl ? (
-                <img
+                <PrivateCustomerImage
                   src={customer.photoUrl}
                   alt={customer.name}
                   className="w-full h-full object-cover"

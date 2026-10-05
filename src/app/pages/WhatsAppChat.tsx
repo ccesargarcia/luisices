@@ -160,7 +160,7 @@ export function WhatsAppChat() {
   useEffect(() => {
     const unsubscribe = firebaseWhatsAppService.subscribeConversations((chats) => {
       setConversations(chats);
-    });
+    }, () => { setConversations([]); toast.error('Sem acesso à integração WhatsApp. Verifique a configuração e sua permissão.'); });
     return () => unsubscribe();
   }, []);
 
@@ -176,7 +176,7 @@ export function WhatsAppChat() {
     const unsubscribe = firebaseWhatsAppService.subscribeMessages(selectedPhone, (msgs) => {
       setMessages(msgs);
       setTimeout(() => scrollToBottom('smooth'), 100);
-    });
+    }, () => { setMessages([]); toast.error('Sem acesso a esta conversa.'); });
 
     // Marca conversa como lida
     firebaseWhatsAppService.markChatAsRead(selectedPhone);
@@ -468,7 +468,7 @@ export function WhatsAppChat() {
       toast.error('Cliente não possui telefone válido.');
       return;
     }
-    firebaseWhatsAppService.ensureConversation(clean, c.name, c.id);
+    firebaseWhatsAppService.ensureConversation(clean, c.name, c.id).catch(() => toast.error('Não foi possível iniciar a conversa. Verifique sua permissão.'));
     handleSelectChat(clean, c.name, c.id);
     setNewChatModalOpen(false);
     setModalCustomerSearch('');
@@ -481,7 +481,7 @@ export function WhatsAppChat() {
       return;
     }
     const name = customName.trim() || formatPhoneForDisplay(clean);
-    firebaseWhatsAppService.ensureConversation(clean, name);
+    firebaseWhatsAppService.ensureConversation(clean, name).catch(() => toast.error('Não foi possível iniciar a conversa. Verifique sua permissão.'));
     handleSelectChat(clean, name);
     setNewChatModalOpen(false);
     setCustomPhone('');

@@ -1,0 +1,18 @@
+[
+  {
+    "origin": [
+      "https://luisices.com.br",
+      "https://dev.luisices.com.br",
+      "https://luisices-dev.web.app",
+      "https://luisices-dev.firebaseapp.com",
+      "https://papelaria-dashboard.web.app",
+      "https://papelaria-dashboard.firebaseapp.com",
+      "http://localhost:5173",
+      "http://localhost:3000",
+      "http://localhost:4173"
+    ],
+    "method": ["GET", "HEAD"],
+    "responseHeader": ["Content-Type", "x-goog-meta-*", "Authorization"],
+    "maxAgeSeconds": 3600
+  }
+]

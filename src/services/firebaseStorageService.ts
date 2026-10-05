@@ -1,3 +1,4 @@
+import { httpsCallable } from 'firebase/functions';
 /**
  * Firebase Storage Service
  *
@@ -12,7 +13,7 @@ import {
   deleteObject,
   UploadMetadata,
 } from 'firebase/storage';
-import { auth, storage } from '../lib/firebase';
+import { auth, storage, functions } from '../lib/firebase';
 import type { OrderAttachment } from '../app/types';
 import { optimizeImageToWebP } from '../app/utils/imageOptimizer';
 import { toCdnUrl } from '../app/utils/cdnUtils';
@@ -28,15 +29,12 @@ export class FirebaseStorageService {
     const optimizedFile = await optimizeImageToWebP(file, { maxDimension: 1200, quality: 0.85 });
     if (optimizedFile.size > 5 * 1024 * 1024) throw new Error('Imagem muito grande. Máximo: 5MB');
 
-    const timestamp = Date.now();
-    const ext = optimizedFile.name.split('.').pop() || 'webp';
-    const fileName = `customer_${customerId}_${timestamp}.${ext}`;
-    const storageRef = ref(storage, `users/${userId}/customers/${fileName}`);
-    await uploadBytes(storageRef, optimizedFile, {
-      contentType: optimizedFile.type,
-      customMetadata: { uploadedAt: new Date().toISOString() },
-    });
-    return toCdnUrl(await getDownloadURL(storageRef));
+    const bytes = new Uint8Array(await optimizedFile.arrayBuffer());
+    let binary = '';
+    for (const byte of bytes) binary += String.fromCharCode(byte);
+    const upload = httpsCallable<{ customerId: string; imageBase64: string }, { photoUrl: string }>(functions, 'uploadPrivateCustomerPhoto');
+    const result = await upload({ customerId, imageBase64: btoa(binary) });
+    return result.data.photoUrl;
   }
 
   /**

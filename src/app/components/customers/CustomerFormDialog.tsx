@@ -20,7 +20,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '../ui/select';
-import { SafeImg } from '../SafeMedia';
+import { PrivateCustomerImage } from './PrivateCustomerImage';
 import { Camera, Loader2 } from 'lucide-react';
 import { firebaseCustomerService } from '../../../services/firebaseCustomerService';
 import { firebaseStorageService } from '../../../services/firebaseStorageService';
@@ -289,7 +289,7 @@ export function CustomerFormDialog({
               <input type="file" className="sr-only" accept="image/*" onChange={handlePhotoSelect} />
               <div className="size-24 rounded-full border-2 border-dashed border-muted-foreground/40 group-hover:border-primary overflow-hidden flex items-center justify-center bg-muted transition-colors">
                 {photoPreview ? (
-                  <SafeImg src={photoPreview} alt="Foto" className="w-full h-full object-cover" />
+                  <PrivateCustomerImage src={photoPreview} alt="Foto" className="w-full h-full object-cover" />
                 ) : (
                   <Camera className="size-8 text-muted-foreground" />
                 )}

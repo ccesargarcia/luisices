@@ -1,6 +1,6 @@
-import { collection, query, where, orderBy, onSnapshot, doc, updateDoc, setDoc, serverTimestamp, getDocs, limit } from 'firebase/firestore';
+import { collection, query, where, orderBy, onSnapshot, doc, updateDoc, setDoc, serverTimestamp, getDoc, limit } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
-import { db, functions } from '../lib/firebase';
+import { db, functions, auth } from '../lib/firebase';
 import { WhatsAppMessage, WhatsAppConversation } from '../app/types';
 import { normalizePhoneForWhatsApp } from '../app/utils/whatsapp';
 
@@ -11,6 +11,45 @@ export interface WhatsAppStatusResult {
   serverUrl?: string;
   message?: string;
   error?: string;
+}
+
+async function getOwnerUid(): Promise<string> {
+  if (!auth.currentUser) throw new Error('Usuário não autenticado.');
+  const configRef = doc(db, 'integrationSettings', 'whatsapp');
+  let snapshot = await getDoc(configRef);
+
+  // Auto-provisionamento: se não existir, tenta inicializar automaticamente caso o usuário seja admin
+  if (!snapshot.exists()) {
+    try {
+      const profileSnap = await getDoc(doc(db, 'userProfiles', auth.currentUser.uid));
+      if (profileSnap.exists() && profileSnap.data()?.role === 'admin' && profileSnap.data()?.active !== false) {
+        await setDoc(configRef, { ownerUid: auth.currentUser.uid, enabled: true });
+        snapshot = await getDoc(configRef);
+      }
+    } catch (e) {
+      console.warn('[firebaseWhatsAppService] Tentativa de auto-provisionar falhou:', e);
+    }
+  }
+
+  const data = snapshot.data();
+  if (!snapshot.exists() || data?.enabled !== true || typeof data.ownerUid !== 'string') {
+    throw new Error('Integração WhatsApp não configurada.');
+  }
+  return data.ownerUid;
+}
+
+// Mantém o contrato síncrono de unsubscribe enquanto resolve o escopo protegido.
+function scopedSubscription(
+  subscribe: (ownerUid: string) => () => void,
+  onError?: (err: unknown) => void,
+): () => void {
+  let stopped = false;
+  let unsubscribe: (() => void) | undefined;
+  const uid = auth.currentUser?.uid;
+  getOwnerUid().then((ownerUid) => {
+    if (!stopped && uid === auth.currentUser?.uid) unsubscribe = subscribe(ownerUid);
+  }).catch((error) => { if (!stopped) onError?.(error); });
+  return () => { stopped = true; unsubscribe?.(); };
 }
 
 export const firebaseWhatsAppService = {
@@ -109,28 +148,14 @@ export const firebaseWhatsAppService = {
       return () => {};
     }
 
-    const messagesRef = collection(db, 'whatsapp_messages');
-    const q = query(
-      messagesRef,
-      where('chatId', '==', cleanPhone),
-      orderBy('timestamp', 'asc'),
-      limit(100)
-    );
-
-    return onSnapshot(
-      q,
-      (snapshot) => {
-        const msgs = snapshot.docs.map((d) => ({
-          id: d.id,
-          ...d.data(),
-        })) as WhatsAppMessage[];
-        onUpdate(msgs);
-      },
-      (err) => {
-        console.error('[firebaseWhatsAppService] Erro ao carregar mensagens:', err);
-        onError?.(err);
-      }
-    );
+    return scopedSubscription((ownerUid) => {
+      const q = query(collection(db, 'whatsapp_messages'),
+        where('userId', '==', ownerUid), where('chatId', '==', `${ownerUid}_${cleanPhone}`),
+        orderBy('timestamp', 'asc'), limit(100));
+      return onSnapshot(q, (snapshot) => {
+        onUpdate(snapshot.docs.map((d) => ({ id: d.id, ...d.data() })) as WhatsAppMessage[]);
+      }, onError);
+    }, onError);
   },
 
   /**
@@ -140,23 +165,13 @@ export const firebaseWhatsAppService = {
     onUpdate: (conversations: WhatsAppConversation[]) => void,
     onError?: (err: any) => void
   ) {
-    const chatsRef = collection(db, 'whatsapp_chats');
-    const q = query(chatsRef, orderBy('lastMessageTimestamp', 'desc'), limit(100));
-
-    return onSnapshot(
-      q,
-      (snapshot) => {
-        const chats = snapshot.docs.map((d) => ({
-          id: d.id,
-          ...d.data(),
-        })) as WhatsAppConversation[];
-        onUpdate(chats);
-      },
-      (err) => {
-        console.error('[firebaseWhatsAppService] Erro ao carregar conversas:', err);
-        onError?.(err);
-      }
-    );
+    return scopedSubscription((ownerUid) => {
+      const q = query(collection(db, 'whatsapp_chats'), where('userId', '==', ownerUid),
+        orderBy('lastMessageTimestamp', 'desc'), limit(100));
+      return onSnapshot(q, (snapshot) => {
+        onUpdate(snapshot.docs.map((d) => ({ id: d.id, ...d.data() })) as WhatsAppConversation[]);
+      }, onError);
+    }, onError);
   },
 
   /**
@@ -167,7 +182,8 @@ export const firebaseWhatsAppService = {
     if (!cleanPhone) return;
 
     try {
-      const chatRef = doc(db, 'whatsapp_chats', cleanPhone);
+      const ownerUid = await getOwnerUid();
+      const chatRef = doc(db, 'whatsapp_chats', `${ownerUid}_${cleanPhone}`);
       await updateDoc(chatRef, {
         unreadCount: 0,
         updatedAt: serverTimestamp(),
@@ -184,18 +200,13 @@ export const firebaseWhatsAppService = {
     const cleanPhone = normalizePhoneForWhatsApp(phone);
     if (!cleanPhone) return;
 
-    const chatRef = doc(db, 'whatsapp_chats', cleanPhone);
-    await setDoc(
-      chatRef,
-      {
-        id: cleanPhone,
-        phone: cleanPhone,
-        customerName: customerName || cleanPhone,
-        customerId: customerId || null,
-        updatedAt: serverTimestamp(),
-      },
-      { merge: true }
-    );
+    const ownerUid = await getOwnerUid();
+    const chatRef = doc(db, 'whatsapp_chats', `${ownerUid}_${cleanPhone}`);
+    if ((await getDoc(chatRef)).exists()) return;
+    await setDoc(chatRef, {
+      id: `${ownerUid}_${cleanPhone}`, userId: ownerUid, phone: cleanPhone,
+      customerName: customerName || cleanPhone, updatedAt: serverTimestamp(),
+    });
   },
 
   /**

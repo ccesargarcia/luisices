@@ -25,7 +25,7 @@ function getOriginSecretValue() {
 
 /**
  * Valida se a requisição contém o cabeçalho secreto da Cloudflare.
- * Se nenhum segredo estiver configurado no ambiente, a validação é ignorada (fail-open para dev local/testes).
+ * Se nenhum segredo estiver configurado no ambiente, a validação só é ignorada no emulador local explicitamente identificado.
  * Se o segredo estiver configurado e o cabeçalho estiver ausente ou incorreto, bloqueia imediatamente.
  *
  * @param {import('express').Request} req
@@ -34,7 +34,9 @@ function getOriginSecretValue() {
 function validateOriginSecret(req) {
   const secret = getOriginSecretValue();
   if (!secret) {
-    return { allowed: true };
+    return process.env.FUNCTIONS_EMULATOR === 'true'
+      ? { allowed: true }
+      : { allowed: false, statusCode: 503, error: 'Configuração de segurança de origem indisponível.' };
   }
 
   const provided = req?.headers?.['x-origin-secret'] || req?.headers?.['x-cf-origin-token'];

@@ -141,6 +141,9 @@ service cloud.firestore {
           && isAssignedEmployeeEditor(resource.data.assignedTo)
           && request.resource.data.userId == resource.data.userId
           && request.resource.data.assignedTo == resource.data.assignedTo
+          && !request.resource.data.diff(resource.data).affectedKeys().hasAny(
+            ['price', 'quantity', 'payment', 'totalPrice', 'paidAmount', 'remainingAmount', 'paymentStatus', 'realCost', 'isExchange', 'exchangeItems', 'exchangeNotes']
+          )
           && (
             !request.resource.data.diff(resource.data).affectedKeys().hasAny(['deletedAt'])
             || isAssignedEmployeeDeleter(resource.data.assignedTo)
@@ -170,13 +173,33 @@ service cloud.firestore {
           )
         ))
       );
-      allow create: if isOwner(request.resource.data.userId) || isAdmin();
+      function employeeLedgerCreation() {
+        let order = getAfter(/databases/$(database)/documents/orders/$(saleId)).data;
+        let payment = order.get('payment', {});
+        return isAssignedEmployeeEditor(order.assignedTo)
+          && request.resource.data.userId == order.userId
+          && request.resource.data.assignedTo == order.assignedTo
+          && request.resource.data.orderId == saleId
+          && request.resource.data.amount == order.price
+          && request.resource.data.paidAmount == payment.get('paidAmount', 0)
+          && request.resource.data.paymentStatus == payment.get('status', 'pending')
+          && request.resource.data.paymentMethod == payment.get('method', null)
+          && request.resource.data.keys().hasOnly(['id', 'orderId', 'orderNumber', 'userId', 'assignedTo', 'assignedToName',
+            'customerId', 'customerName', 'customerPhone', 'productName', 'quantity', 'amount', 'paymentStatus',
+            'paidAmount', 'paymentMethod', 'date', 'deliveryDate', 'status', 'isDeletedFromOrders', 'notes', 'tags', 'createdAt', 'updatedAt']);
+      }
+      allow create: if isOwner(request.resource.data.userId) || isAdmin() || employeeLedgerCreation();
       allow update: if isAdmin() || (
         request.resource.data.userId == resource.data.userId
         && (isOwner(resource.data.userId) || (
           'assignedTo' in resource.data
           && isAssignedEmployeeEditor(resource.data.assignedTo)
-          && request.resource.data.assignedTo == resource.data.assignedTo
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'status', 'customerName', 'customerPhone', 'customerId', 'productName', 'deliveryDate', 'updatedAt', 'isDeletedFromOrders'
+          ])
+          && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['isDeletedFromOrders'])
+            || (isAssignedEmployeeDeleter(resource.data.assignedTo)
+              && request.resource.data.isDeletedFromOrders == (getAfter(/databases/$(database)/documents/orders/$(saleId)).data.get('deletedAt', null) != null)))
         ))
       );
       allow delete: if ('userId' in resource.data && isOwner(resource.data.userId))
@@ -427,30 +450,50 @@ service cloud.firestore {
       );
     }
 
-    // Regras para Central de Atendimento WhatsApp (whatsapp_chats e whatsapp_messages)
+    // Vínculo de funcionário vem do perfil criado por admin.
+    function whatsappOwner() {
+      return get(/databases/$(database)/documents/integrationSettings/whatsapp).data.ownerUid;
+    }
     function canAccessWhatsApp() {
-      return request.auth != null
-        && exists(/databases/$(database)/documents/userProfiles/$(request.auth.uid))
-        && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.active == true
-        && (
-          isAdmin()
-          || (get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.role == 'user'
-              && (!('permissions' in get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data)
-                  || !('whatsapp' in get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.permissions)
-                  || get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.permissions.whatsapp != false))
-          || (get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.role == 'funcionario'
-              && ('permissions' in get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data)
-              && ('whatsapp' in get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.permissions)
-              && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.permissions.whatsapp == true)
-        );
+      return isActiveUser()
+        && exists(/databases/$(database)/documents/integrationSettings/whatsapp)
+        && get(/databases/$(database)/documents/integrationSettings/whatsapp).data.enabled == true
+        && exists(/databases/$(database)/documents/userProfiles/$(whatsappOwner()))
+        && get(/databases/$(database)/documents/userProfiles/$(whatsappOwner())).data.get('active', true) == true
+        && get(/databases/$(database)/documents/userProfiles/$(whatsappOwner())).data.role in ['admin', 'user']
+        && (isAdmin()
+          || (request.auth.uid == whatsappOwner()
+            && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.role == 'user'
+            && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.get('permissions', {}).get('whatsapp', true) != false)
+          || (isActiveEmployee()
+            && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.get('createdBy', '') == whatsappOwner()
+            && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.get('permissions', {}).get('whatsapp', false) == true));
     }
-
+    match /integrationSettings/whatsapp {
+      allow read: if isAdmin() || canAccessWhatsApp();
+      allow create, update: if isAdmin()
+        && request.resource.data.keys().hasOnly(['ownerUid', 'enabled'])
+        && request.resource.data.ownerUid is string
+        && request.resource.data.enabled is bool;
+      allow delete: if isAdmin();
+    }
     match /whatsapp_chats/{chatId} {
-      allow read, write: if canAccessWhatsApp();
+      // get inexistente permite inicialização segura de um contato novo.
+      allow get: if canAccessWhatsApp() && (resource == null || resource.data.userId == whatsappOwner());
+      allow list: if canAccessWhatsApp() && resource.data.userId == whatsappOwner();
+      allow create: if canAccessWhatsApp()
+        && request.resource.data.userId == whatsappOwner()
+        && chatId == whatsappOwner() + '_' + request.resource.data.phone
+        && request.resource.data.keys().hasOnly(['id', 'phone', 'userId', 'customerName', 'updatedAt']);
+      allow update: if canAccessWhatsApp() && resource.data.userId == whatsappOwner()
+        && request.resource.data.userId == resource.data.userId
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['unreadCount', 'updatedAt'])
+        && request.resource.data.unreadCount == 0;
+      allow delete: if false;
     }
-
     match /whatsapp_messages/{messageId} {
-      allow read, write: if canAccessWhatsApp();
+      allow read: if canAccessWhatsApp() && resource.data.userId == whatsappOwner();
+      allow write: if false;
     }
 
     // ─── Integração Alexa (Coleções Técnicas Internas) ────────────────────────
@@ -485,4 +528,3 @@ service cloud.firestore {
     }
   }
 }
-

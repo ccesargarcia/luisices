@@ -881,23 +881,9 @@ export class FirebaseOrderService {
             updatedAt: now,
           });
         } else {
-          // Reconstrução contábil caso o registro de faturamento não exista (pedido legado)
-          transaction.set(saleRef, {
-            orderId,
-            orderNumber: data.orderNumber || null,
-            customerName: data.customerName || '',
-            customerPhone: data.customerPhone || null,
-            amount: data.price || 0,
-            paidAmount: data.payment?.paidAmount || (data.payment?.status === 'paid' ? data.price : 0),
-            status: updates.status,
-            date: (data.createdAt && typeof data.createdAt.toDate === 'function')
-              ? data.createdAt.toDate().toISOString().split('T')[0]
-              : (typeof data.createdAt === 'string' ? data.createdAt.split('T')[0] : now.split('T')[0]),
-            userId: data.userId || userId,
-            assignedTo: data.assignedTo || null,
-            createdAt: data.createdAt || now,
-            updatedAt: now,
-          });
+          const fullOrder = { ...this.mapOrderDoc(orderSnap), status: updates.status };
+          const saleRecord = firebaseLedgerService.mapOrderToSaleRecord(fullOrder as Order, userId);
+          transaction.set(saleRef, { ...saleRecord, isDeletedFromOrders: data.deletedAt != null });
         }
       }
     });

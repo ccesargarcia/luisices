@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { initializeTestEnvironment, assertFails, assertSucceeds, RulesTestEnvironment } from '@firebase/rules-unit-testing';
-import { doc, getDoc, setDoc, updateDoc, deleteDoc, getDocs, collection, Timestamp } from 'firebase/firestore';
+import { doc, getDoc, setDoc, updateDoc, deleteDoc, getDocs, collection, query, where, Timestamp } from 'firebase/firestore';
 import { ref, uploadBytes, getMetadata } from 'firebase/storage';
 import { DEFAULT_USER_PERMISSIONS } from '../../src/app/types';
 
@@ -222,7 +222,8 @@ describe('Isolamento financeiro', () => {
     await seed('salesLedger/sale', { userId: 'owner', assignedTo: 'old-employee', amount: 100 });
     await assertFails(setDoc(doc(dbFor('other') as any, 'salesLedger/sale'), { userId: 'other', amount: 1 }));
     await assertSucceeds(updateDoc(doc(dbFor('owner') as any, 'salesLedger/sale'), { amount: 120 }));
-    await assertSucceeds(updateDoc(doc(dbFor('old-employee') as any, 'salesLedger/sale'), { amount: 130 }));
+    await assertFails(updateDoc(doc(dbFor('old-employee') as any, 'salesLedger/sale'), { amount: 130 }));
+    await assertSucceeds(updateDoc(doc(dbFor('old-employee') as any, 'salesLedger/sale'), { status: 'in-progress' }));
     await assertFails(updateDoc(doc(dbFor('old-employee') as any, 'salesLedger/sale'), { assignedTo: 'new-employee' }));
   });
 });
@@ -516,5 +517,86 @@ describe('Reverificação e Correções Críticas (R1, R2, R3, R11)', () => {
     await seed('orders/owner-valid-order', { ...order, userId: 'owner' });
     const ownerDb = dbFor('owner');
     await assertSucceeds(getDoc(doc(ownerDb as any, 'salesLedger/owner-valid-order')));
+  });
+});
+
+
+describe('Red Team: WhatsApp, mídia privada e integridade financeira', () => {
+  async function whatsapp() {
+    await seed('integrationSettings/whatsapp', { ownerUid: 'owner', enabled: true });
+    await seed('userProfiles/wa-employee', { ...profile('wa-employee', 'funcionario'), createdBy: 'owner', permissions: { ...DEFAULT_USER_PERMISSIONS, whatsapp: true } });
+    await seed('userProfiles/foreign-employee', { ...profile('foreign-employee', 'funcionario'), createdBy: 'other', permissions: { ...DEFAULT_USER_PERMISSIONS, whatsapp: true } });
+    await seed('whatsapp_chats/owner_5511999999999', { id: 'owner_5511999999999', userId: 'owner', phone: '5511999999999', unreadCount: 2 });
+    await seed('whatsapp_messages/owner_message', { userId: 'owner', chatId: 'owner_5511999999999', text: 'Privado' });
+    await seed('whatsapp_messages/other_message', { userId: 'other', chatId: 'other_5511999999999', text: 'Outro' });
+  }
+  it('preserva leitura do proprietário, admin e funcionário vinculado; nega acesso externo e anônimo', async () => {
+    await whatsapp();
+    for (const uid of ['owner', 'admin', 'wa-employee']) {
+      await assertSucceeds(getDoc(doc(dbFor(uid) as any, 'whatsapp_messages/owner_message')));
+      await assertSucceeds(getDocs(query(collection(dbFor(uid) as any, 'whatsapp_messages'), where('userId', '==', 'owner'))));
+    }
+    for (const uid of ['other', 'foreign-employee', 'missing']) await assertFails(getDoc(doc(dbFor(uid) as any, 'whatsapp_messages/owner_message')));
+    await assertFails(getDoc(doc(env.unauthenticatedContext().firestore() as any, 'whatsapp_messages/owner_message')));
+    await assertFails(getDoc(doc(dbFor('owner') as any, 'whatsapp_messages/other_message')));
+    await assertFails(getDocs(collection(dbFor('owner') as any, 'whatsapp_messages')));
+  });
+  it('nega mensagens falsas, exclusões, troca de proprietário e adulteração de chat; permite marcar como lido', async () => {
+    await whatsapp();
+    const db = dbFor('owner');
+    await assertFails(setDoc(doc(db as any, 'whatsapp_messages/fake'), { userId: 'owner', text: 'Falso' }));
+    await assertFails(updateDoc(doc(db as any, 'whatsapp_messages/owner_message'), { text: 'Falso' }));
+    await assertFails(deleteDoc(doc(db as any, 'whatsapp_messages/owner_message')));
+    await assertFails(updateDoc(doc(db as any, 'whatsapp_chats/owner_5511999999999'), { userId: 'other' }));
+    await assertFails(updateDoc(doc(db as any, 'whatsapp_chats/owner_5511999999999'), { lastMessageText: 'Falso' }));
+    await assertSucceeds(updateDoc(doc(dbFor('wa-employee') as any, 'whatsapp_chats/owner_5511999999999'), { unreadCount: 0 }));
+    await assertSucceeds(getDoc(doc(db as any, 'whatsapp_chats/owner_5511888888888')));
+    await assertSucceeds(setDoc(doc(db as any, 'whatsapp_chats/owner_5511888888888'), {
+      id: 'owner_5511888888888', userId: 'owner', phone: '5511888888888', customerName: 'Novo', updatedAt: Timestamp.now(),
+    }));
+    await assertFails(setDoc(doc(db as any, 'whatsapp_chats/other_5511888888888'), {
+      id: 'other_5511888888888', userId: 'other', phone: '5511888888888', customerName: 'Externo',
+    }));
+    await assertFails(updateDoc(doc(db as any, 'integrationSettings/whatsapp'), { ownerUid: 'other' }));
+    await seed('integrationSettings/whatsapp', { ownerUid: 'owner', enabled: false });
+    await assertFails(getDoc(doc(db as any, 'whatsapp_messages/owner_message')));
+  });
+  it('fotos de clientes exigem autenticação e vínculo; fotos de produtos continuam públicas', async () => {
+    await whatsapp();
+    const path = 'users/owner/customers/red-team.png';
+    const publicPath = 'users/owner/products/red-team.png';
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await uploadBytes(ref(ctx.storage(), path), new Uint8Array([137, 80, 78, 71]), { contentType: 'image/png' });
+      await uploadBytes(ref(ctx.storage(), publicPath), new Uint8Array([137, 80, 78, 71]), { contentType: 'image/png' });
+    });
+    for (const uid of ['owner', 'admin', 'wa-employee']) await assertSucceeds(getMetadata(ref(env.authenticatedContext(uid).storage(), path)));
+    for (const uid of ['other', 'foreign-employee']) await assertFails(getMetadata(ref(env.authenticatedContext(uid).storage(), path)));
+    await assertFails(getMetadata(ref(env.unauthenticatedContext().storage(), path)));
+    await assertSucceeds(getMetadata(ref(env.unauthenticatedContext().storage(), publicPath)));
+    await assertFails(uploadBytes(ref(env.authenticatedContext('owner').storage(), path), new Uint8Array([1]), { contentType: 'image/png' }));
+  });
+  it('funcionário edita operação e status com ledger atômico, mas não altera valores ou pagamento', async () => {
+    await seed('userProfiles/editor', { ...profile('editor', 'funcionario'), createdBy: 'owner', permissions: { ...DEFAULT_USER_PERMISSIONS, orders: { view: true, create: false, edit: true, delete: false } } });
+    await seed('orders/financial', { ...order, assignedTo: 'editor', payment: { status: 'pending', totalAmount: 100, paidAmount: 0, remainingAmount: 100 } });
+    await seed('salesLedger/financial', { userId: 'owner', assignedTo: 'editor', amount: 100, paidAmount: 0, paymentStatus: 'pending' });
+    asUser('editor');
+    await assertSucceeds(firebaseOrderService.updateOrderStatus('financial', 'in-progress'));
+    await assertSucceeds(firebaseOrderService.updateOrder('financial', { customerName: 'Atualizado' }));
+    for (const changes of [{ price: 1 }, { quantity: 99 }, { payment: { status: 'paid', paidAmount: 100 } }, { realCost: 1 }, { isExchange: true }]) {
+      await assertFails(updateDoc(doc(client.db, 'orders/financial'), changes));
+    }
+    await assertFails(updateDoc(doc(client.db, 'salesLedger/financial'), { amount: 1 }));
+    await assertFails(updateDoc(doc(client.db, 'salesLedger/financial'), { paidAmount: 100, paymentStatus: 'paid' }));
+    await assertSucceeds(updateDoc(doc(dbFor('owner') as any, 'orders/financial'), { price: 150 }));
+    await assertSucceeds(updateDoc(doc(dbFor('admin') as any, 'orders/financial'), { payment: { status: 'paid', paidAmount: 150 } }));
+  });
+  it('reconstrói ledger legado para edição operacional sem permitir criação financeira adulterada', async () => {
+    await seed('userProfiles/editor', { ...profile('editor', 'funcionario'), permissions: { ...DEFAULT_USER_PERMISSIONS, orders: { view: true, create: false, edit: true, delete: false } } });
+    await seed('orders/legacy-financial', { ...order, assignedTo: 'editor' });
+    asUser('editor');
+    await assertSucceeds(firebaseOrderService.updateOrderStatus('legacy-financial', 'in-progress'));
+    expect((await getDoc(doc(client.db, 'salesLedger/legacy-financial'))).data()?.amount).toBe(100);
+    await seed('orders/forged-ledger', { ...order, assignedTo: 'editor' });
+    await assertFails(setDoc(doc(client.db, 'salesLedger/forged-ledger'), { userId: 'owner', assignedTo: 'editor', orderId: 'forged-ledger', amount: 1, paidAmount: 0, paymentStatus: 'pending', paymentMethod: null }));
   });
 });
