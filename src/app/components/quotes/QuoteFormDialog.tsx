@@ -315,6 +315,10 @@ export function QuoteFormDialog({
             onCustomerPhoneChange={(phone) => setForm((f) => ({ ...f, customerPhone: phone }))}
             customerEmail=""
             onCustomerEmailChange={() => {}}
+            triggerId="q-customer"
+            nameInputId="q-cname"
+            phoneInputId="q-cphone"
+            hideEmailField={true}
           />
 
           {/* Itens */}

@@ -28,6 +28,10 @@ interface NewOrderCustomerSelectProps {
   onCustomerPhoneChange: (phone: string) => void;
   customerEmail: string;
   onCustomerEmailChange: (email: string) => void;
+  triggerId?: string;
+  nameInputId?: string;
+  phoneInputId?: string;
+  hideEmailField?: boolean;
 }
 
 export function NewOrderCustomerSelect({
@@ -41,6 +45,10 @@ export function NewOrderCustomerSelect({
   onCustomerPhoneChange,
   customerEmail,
   onCustomerEmailChange,
+  triggerId = 'customer',
+  nameInputId = 'customerName',
+  phoneInputId = 'customerPhone',
+  hideEmailField = false,
 }: NewOrderCustomerSelectProps) {
   const [open, setOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -137,7 +145,7 @@ export function NewOrderCustomerSelect({
       {/* Seleção e Busca de Cliente */}
       <div className="space-y-2" ref={containerRef}>
         <div className="flex items-center justify-between">
-          <Label htmlFor="customer-combobox" className="text-sm font-medium">
+          <Label htmlFor={triggerId} className="text-sm font-medium">
             Cliente *
           </Label>
           {selectedCustomer && selectedCustomer !== '' && (
@@ -155,7 +163,8 @@ export function NewOrderCustomerSelect({
 
         <div className="relative">
           <Button
-            id="customer-combobox"
+            id={triggerId}
+            data-testid="customer-combobox"
             type="button"
             variant="outline"
             role="combobox"
@@ -193,6 +202,8 @@ export function NewOrderCustomerSelect({
           {/* Painel Dropdown Ancorado no próprio container — 100% fluido e imune a bloqueios de rolagem */}
           {open && (
             <div
+              role="listbox"
+              id="customer-listbox"
               className="absolute top-full left-0 right-0 z-50 mt-1.5 rounded-lg border border-border bg-card shadow-2xl overflow-hidden animate-in fade-in-0 zoom-in-95 duration-150"
               onWheel={(e) => e.stopPropagation()}
               onTouchMove={(e) => e.stopPropagation()}
@@ -225,6 +236,8 @@ export function NewOrderCustomerSelect({
               <div className="p-1.5 border-b border-border bg-card">
                 <button
                   type="button"
+                  role="option"
+                  aria-selected={selectedCustomer === 'new'}
                   onClick={() => handleSelectNew(searchQuery.trim() || undefined)}
                   className="flex w-full items-center gap-2.5 px-3 py-2 text-sm font-medium rounded-md text-primary hover:bg-primary/10 transition-colors text-left cursor-pointer"
                 >
@@ -234,10 +247,10 @@ export function NewOrderCustomerSelect({
                   <div className="flex-1 truncate">
                     {searchQuery.trim() ? (
                       <span>
-                        Cadastrar <strong>&ldquo;{searchQuery.trim()}&rdquo;</strong> como novo cliente
+                        Novo Cliente: Cadastrar <strong>&ldquo;{searchQuery.trim()}&rdquo;</strong>
                       </span>
                     ) : (
-                      <span>Cadastrar Novo Cliente</span>
+                      <span>Novo Cliente</span>
                     )}
                   </div>
                 </button>
@@ -261,13 +274,14 @@ export function NewOrderCustomerSelect({
                     {searchQuery.trim() && (
                       <Button
                         type="button"
+                        role="option"
                         variant="outline"
                         size="sm"
                         onClick={() => handleSelectNew(searchQuery.trim())}
                         className="mt-3 gap-1.5 text-xs"
                       >
                         <UserPlus className="size-3.5" />
-                        Criar novo cliente com este nome
+                        Novo Cliente: Criar com este nome
                       </Button>
                     )}
                   </div>
@@ -284,6 +298,8 @@ export function NewOrderCustomerSelect({
                         <button
                           key={c.id}
                           type="button"
+                          role="option"
+                          aria-selected={isSelected}
                           onClick={() => handleSelectExisting(c)}
                           className={`flex w-full items-center justify-between gap-2 px-2.5 py-2 rounded-md text-left text-sm transition-colors cursor-pointer ${
                             isSelected
@@ -341,7 +357,7 @@ export function NewOrderCustomerSelect({
       {/* Dados do Cliente */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div className="space-y-2">
-          <Label htmlFor="customerName" className="flex items-center justify-between">
+          <Label htmlFor={nameInputId} className="flex items-center justify-between">
             <span>Nome do Cliente *</span>
             {selectedCustomer && selectedCustomer !== 'new' && (
               <span className="text-[11px] text-muted-foreground font-normal">
@@ -350,7 +366,8 @@ export function NewOrderCustomerSelect({
             )}
           </Label>
           <Input
-            id="customerName"
+            id={nameInputId}
+            data-testid={nameInputId}
             value={customerName}
             onChange={(e) => {
               onCustomerNameChange(e.target.value);
@@ -365,9 +382,10 @@ export function NewOrderCustomerSelect({
         </div>
 
         <div className="space-y-2">
-          <Label htmlFor="customerPhone">Telefone *</Label>
+          <Label htmlFor={phoneInputId}>Telefone *</Label>
           <Input
-            id="customerPhone"
+            id={phoneInputId}
+            data-testid={phoneInputId}
             type="tel"
             value={customerPhone}
             onChange={(e) => {
@@ -383,7 +401,7 @@ export function NewOrderCustomerSelect({
         </div>
       </div>
 
-      {(isNewCustomer || selectedCustomer === 'new' || selectedCustomer === '') && (
+      {!hideEmailField && (isNewCustomer || selectedCustomer === 'new' || selectedCustomer === '') && (
         <div className="space-y-2">
           <Label htmlFor="customerEmail">Email (opcional)</Label>
           <Input
