@@ -80,6 +80,23 @@ export interface UserSettings {
   // Preferências de exibição
   compactCards?: boolean;
 
+  // Personalização do Cabeçalho do Painel Administrativo
+  headerLogoStyle?: 'full' | 'icon' | 'hidden'; // 'full' (logo completa), 'icon' (apenas ícone), 'hidden' (apenas texto)
+  headerShowTagline?: boolean;                 // Exibir slogan no cabeçalho
+  headerShowQuickNew?: boolean;                // Exibir botão "+ Novo"
+  headerShowAiCopilot?: boolean;               // Exibir botão do Copiloto IA
+  headerShowCatalogLink?: boolean;             // Exibir atalho do Catálogo Online
+  headerShowQuickSearch?: boolean;             // Exibir barra de busca rápida global
+  headerShowHelpCenter?: boolean;              // Exibir ícone de Central de Ajuda
+  headerStyle?: 'blur' | 'solid' | 'bordered'; // Estilo visual do cabeçalho
+
+  // Personalização do Rodapé do Painel Administrativo
+  footerMode?: 'compact' | 'complete' | 'hidden'; // 'compact' (1 linha), 'complete' (3 colunas), 'hidden' (oculto)
+  footerShowSocialLinks?: boolean;             // Exibir redes sociais no rodapé
+  footerShowContactInfo?: boolean;             // Exibir dados de contato no rodapé
+  footerShowVersion?: boolean;                 // Exibir versão e status no rodapé
+  footerShowScrollToTop?: boolean;             // Exibir botão de voltar ao topo
+
   // WhatsApp template
   whatsappGreeting?: string;   // Ex: "Olá {nome}! Segue o orçamento *{numero}*:"
   whatsappSignature?: string;  // Ex: "Atenciosamente, Papelaria XYZ"

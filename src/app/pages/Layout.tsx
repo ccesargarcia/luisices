@@ -36,6 +36,7 @@ import { SidebarNavigation, NavGroup } from '../components/layout/SidebarNavigat
 import { TopHeader } from '../components/layout/TopHeader';
 import { Footer } from '../components/layout/Footer';
 import { MobileNavigation, MobileNavItem } from '../components/layout/MobileNavigation';
+import { GlobalSearchDialog } from '../components/layout/GlobalSearchDialog';
 
 /** Converte Date para string "YYYY-MM-DD" local (evita shift UTC à noite no Brasil) */
 function toLocalDateStr(d: Date): string {
@@ -52,6 +53,7 @@ export function Layout() {
   const { orders } = useOrders();
   const { settings } = useUserSettings();
 
+  const [globalSearchOpen, setGlobalSearchOpen] = useState(false);
   const [aiCopilotOpen, setAiCopilotOpen] = useState(false);
   const [aiOrderDraft, setAiOrderDraft] = useState<AiOrderDraft | null>(null);
   const [aiNewOrderModalOpen, setAiNewOrderModalOpen] = useState(false);
@@ -63,6 +65,18 @@ export function Layout() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     return window.localStorage.getItem('luisices-sidebar-collapsed') === 'true';
   });
+
+  // Atalho global Ctrl+K / Cmd+K para busca rápida
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setGlobalSearchOpen((prev) => !prev);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   // Quantidade de pedidos ativos com entrega prevista para a data atual
   const todayDeliveriesCount = useMemo(() => {
@@ -286,7 +300,12 @@ export function Layout() {
       {/* Cabeçalho Superior */}
       <header
         className={cn(
-          'min-w-0 border-b border-white/40 bg-card/85 backdrop-blur-2xl transition-[margin,width] duration-300',
+          'min-w-0 transition-[margin,width] duration-300',
+          settings?.headerStyle === 'solid'
+            ? 'border-b border-border bg-card'
+            : settings?.headerStyle === 'bordered'
+            ? 'border-b border-border/80 bg-background/95'
+            : 'border-b border-white/40 bg-card/85 backdrop-blur-2xl',
           sidebarCollapsed ? 'md:ml-20 md:w-[calc(100%-5rem)]' : 'md:ml-72 md:w-[calc(100%-18rem)]'
         )}
       >
@@ -310,6 +329,15 @@ export function Layout() {
           onOpenAiCopilot={() => setAiCopilotOpen(true)}
           onOpenAbout={() => setAboutOpen(true)}
           onLogout={handleLogout}
+          onOpenSearch={() => setGlobalSearchOpen(true)}
+          headerLogoStyle={settings?.headerLogoStyle}
+          headerShowTagline={settings?.headerShowTagline ?? true}
+          headerShowQuickNew={settings?.headerShowQuickNew ?? true}
+          headerShowAiCopilot={settings?.headerShowAiCopilot ?? true}
+          headerShowCatalogLink={settings?.headerShowCatalogLink ?? true}
+          headerShowQuickSearch={settings?.headerShowQuickSearch ?? true}
+          headerShowHelpCenter={settings?.headerShowHelpCenter ?? true}
+          headerStyle={settings?.headerStyle ?? 'blur'}
         />
       </header>
 
@@ -339,6 +367,11 @@ export function Layout() {
         appVersion={appVersion}
         aboutOpen={aboutOpen}
         onAboutOpenChange={setAboutOpen}
+        footerMode={settings?.footerMode ?? 'compact'}
+        footerShowSocialLinks={settings?.footerShowSocialLinks ?? true}
+        footerShowContactInfo={settings?.footerShowContactInfo ?? true}
+        footerShowVersion={settings?.footerShowVersion ?? true}
+        footerShowScrollToTop={settings?.footerShowScrollToTop ?? true}
       />
 
       {/* Navegação Inferior Mobile */}
@@ -347,6 +380,15 @@ export function Layout() {
         moreNav={mobileMoreNav}
         currentPath={location.pathname}
         canAccessSettings={canAccessSettings}
+      />
+
+      {/* Dialog de Busca Global (Ctrl + K) */}
+      <GlobalSearchDialog
+        open={globalSearchOpen}
+        onOpenChange={setGlobalSearchOpen}
+        onOpenNewOrder={canCreateOrder ? () => setIsNewOrderOpen(true) : undefined}
+        onOpenNewCustomer={canCreateCustomer ? () => setIsNewCustomerOpen(true) : undefined}
+        onOpenAiCopilot={canAccessAiCopilot ? () => setAiCopilotOpen(true) : undefined}
       />
 
       {/* Modais Globais & Copiloto */}

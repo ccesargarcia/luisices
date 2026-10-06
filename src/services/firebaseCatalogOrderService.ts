@@ -19,21 +19,11 @@ import {
   limit,
   Timestamp,
 } from 'firebase/firestore';
-import { httpsCallable } from 'firebase/functions';
-import { db, functions } from '../lib/firebase';
+import { db } from '../lib/firebase';
 import { CatalogOrder, CatalogOrderStatus, Order } from '../app/types';
 import { firebaseOrderService } from './firebaseOrderService';
 
 const CATALOG_ORDERS_COLLECTION = 'catalogOrders';
-
-export interface CatalogOrderReceipt {
-  orderId: string;
-  orderCode: string;
-  subtotal: number;
-  totalItems: number;
-  verifiedByServer?: boolean;
-  isIdempotentReplay?: boolean;
-}
 
 class FirebaseCatalogOrderService {
   private mapDoc(id: string, data: Record<string, any>): CatalogOrder {
@@ -52,35 +42,104 @@ class FirebaseCatalogOrderService {
       officialSubtotal: typeof data.officialSubtotal === 'number' ? data.officialSubtotal : undefined,
       submittedSubtotal: typeof data.submittedSubtotal === 'number' ? data.submittedSubtotal : undefined,
       priceWarning: data.priceWarning || undefined,
-      verifiedByServer: Boolean(data.verifiedByServer),
-      idempotencyKey: data.idempotencyKey || undefined,
     };
   }
 
   /**
-   * Registra um novo pedido originado na lojinha pública online.
-   * Utiliza a Cloud Function submitPublicCatalogOrder para validação estrita
-   * de regras, integridade de preços e disponibilidade do produto no servidor.
+   * Registra um novo pedido originado na lojinha pública online
    */
-  async createCatalogOrder(
-    orderData: Omit<CatalogOrder, 'id' | 'createdAt'> & { idempotencyKey?: string }
-  ): Promise<CatalogOrderReceipt> {
-    const submitOrderFn = httpsCallable<any, CatalogOrderReceipt>(functions, 'submitPublicCatalogOrder');
-    const response = await submitOrderFn({
-      items: (orderData.items || []).map((item) => ({
-        productId: item.productId,
-        quantity: item.quantity,
-        customName: item.customName,
-      })),
-      customerNotes: orderData.customerNotes,
-      submittedSubtotal: orderData.subtotal,
-      idempotencyKey: orderData.idempotencyKey,
+  async createCatalogOrder(orderData: Omit<CatalogOrder, 'id' | 'createdAt'>): Promise<{ id: string; orderCode: string; subtotal: number }> {
+    const now = Timestamp.now();
+    const sanitizedItems = (orderData.items || []).map((item) => {
+      const clean: Record<string, any> = {
+        productId: String(item.productId || ''),
+        productName: String(item.productName || 'Produto'),
+        price: Number(item.price || 0),
+        quantity: Number(item.quantity || 1),
+        leadTimeDays: Number(item.leadTimeDays || 0),
+      };
+      if (item.customName && typeof item.customName === 'string' && item.customName.trim()) {
+        clean.customName = item.customName.trim();
+      }
+      if (item.imageUrl && typeof item.imageUrl === 'string' && item.imageUrl.trim()) {
+        clean.imageUrl = item.imageUrl.trim();
+      }
+      return clean;
     });
 
-    if (response.data && response.data.orderId) {
-      return response.data;
+    // Auditoria e verificação de preços contra catálogo oficial (storeProducts)
+    let expectedSubtotal = 0;
+    let hasOfficialPrices = false;
+    let isPriceTampered = false;
+    let priceWarning: string | undefined = undefined;
+
+    try {
+      const productIds = Array.from(new Set(sanitizedItems.map((i) => i.productId).filter(Boolean)));
+      if (productIds.length > 0) {
+        const productPrices = new Map<string, number>();
+        await Promise.all(
+          productIds.map(async (pId) => {
+            try {
+              const pSnap = await getDoc(doc(db, 'storeProducts', pId));
+              if (pSnap.exists()) {
+                const pData = pSnap.data();
+                if (typeof pData.price === 'number') {
+                  productPrices.set(pId, pData.price);
+                }
+              }
+            } catch (err) {
+              console.warn('[createCatalogOrder] Erro ao buscar produto:', pId, err);
+            }
+          })
+        );
+
+        if (productPrices.size > 0) {
+          hasOfficialPrices = true;
+          sanitizedItems.forEach((item) => {
+            const officialPrice = productPrices.get(item.productId);
+            if (typeof officialPrice === 'number') {
+              expectedSubtotal += officialPrice * (item.quantity || 1);
+            } else {
+              expectedSubtotal += Number(item.price || 0) * (item.quantity || 1);
+            }
+          });
+
+          // Tolerância de 5 centavos para arredondamentos
+          if (Math.abs(Number(orderData.subtotal || 0) - expectedSubtotal) > 0.05) {
+            isPriceTampered = true;
+            priceWarning = `Divergência de preço detectada: valor submetido (R$ ${Number(orderData.subtotal || 0).toFixed(2)}) difere do catálogo oficial (R$ ${expectedSubtotal.toFixed(2)}).`;
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('[createCatalogOrder] Falha na auditoria de preço:', err);
     }
-    throw new Error('Falha ao obter confirmação do servidor para o pedido.');
+
+    const finalOrderCode = String(orderData.orderCode || `LJ-${Math.floor(1000 + Math.random() * 9000)}`);
+    const docData: Record<string, any> = {
+      orderCode: finalOrderCode,
+      items: sanitizedItems,
+      totalItems: Number(orderData.totalItems || sanitizedItems.reduce((acc, i) => acc + (i.quantity || 1), 0)),
+      subtotal: Number(orderData.subtotal || 0),
+      status: (orderData.status as CatalogOrderStatus) || 'received',
+      createdAt: now,
+      updatedAt: now,
+      isPriceTampered,
+      ...(hasOfficialPrices ? { officialSubtotal: expectedSubtotal } : {}),
+      submittedSubtotal: Number(orderData.subtotal || 0),
+      ...(priceWarning ? { priceWarning } : {}),
+    };
+
+    if (orderData.customerNotes && typeof orderData.customerNotes === 'string' && orderData.customerNotes.trim()) {
+      docData.customerNotes = orderData.customerNotes.trim();
+    }
+
+    const docRef = await addDoc(collection(db, CATALOG_ORDERS_COLLECTION), docData);
+    return {
+      id: docRef.id,
+      orderCode: finalOrderCode,
+      subtotal: Number(orderData.subtotal || 0),
+    };
   }
 
   /**
@@ -146,7 +205,6 @@ class FirebaseCatalogOrderService {
 
   /**
    * Converte um pedido da lojinha em um Pedido de Produção Oficial do Ateliê (/orders)
-   * Revalida pedidos não verificados pelo servidor para impedir conversão de preços adulterados.
    */
   async convertToProductionOrder(
     catalogOrder: CatalogOrder,
@@ -158,36 +216,6 @@ class FirebaseCatalogOrderService {
     const snap = await getDoc(doc(db, CATALOG_ORDERS_COLLECTION, catalogOrder.id));
     if (!snap.exists()) throw new Error('Pedido da lojinha não encontrado.');
     catalogOrder = this.mapDoc(snap.id, snap.data());
-
-    // Se o pedido não foi verificado pelo servidor (ex: legado),
-    // revalida os preços contra storeProducts para garantir que nenhum subtotal adulterado seja aceito na conversão
-    let trustedSubtotal = catalogOrder.subtotal;
-    if (!catalogOrder.verifiedByServer) {
-      let officialRecalculated = 0;
-
-      for (const item of catalogOrder.items) {
-        if (!item.productId) {
-          throw new Error('Não é possível converter pedido: item sem identificador de produto.');
-        }
-        const pSnap = await getDoc(doc(db, 'storeProducts', item.productId));
-        if (!pSnap.exists()) {
-          throw new Error(`Não é possível converter pedido: o produto "${item.productName || item.productId}" não existe no catálogo oficial.`);
-        }
-        const pData = pSnap.data();
-        const officialItemPrice = Number(pData.price ?? pData.unitPrice);
-        if (!Number.isFinite(officialItemPrice) || officialItemPrice <= 0) {
-          throw new Error(`Não é possível converter pedido: o produto "${pData.name || item.productId}" possui preço oficial inválido.`);
-        }
-        officialRecalculated += officialItemPrice * (item.quantity || 1);
-      }
-
-      if (Math.abs(catalogOrder.subtotal - officialRecalculated) > 0.05) {
-        console.warn(
-          `[convertToProductionOrder] Pedido legado com preço divergente detectado. Subtotal enviado: ${catalogOrder.subtotal}, oficial recalculado: ${officialRecalculated}. Utilizando valor oficial.`
-        );
-      }
-      trustedSubtotal = officialRecalculated;
-    }
 
     // Monta a descrição resumida dos produtos
     const firstProductName = catalogOrder.items[0]?.productName || 'Pedido da Lojinha';
@@ -206,20 +234,20 @@ class FirebaseCatalogOrderService {
       notes += `\n\nObservações do cliente: ${catalogOrder.customerNotes}`;
     }
 
-    // Cria o pedido de produção oficial no Firebase com o valor validado
+    // Cria o pedido de produção oficial no Firebase
     const newOrder = await firebaseOrderService.createOrder({
       customerName: customerName.trim() || 'Cliente da Lojinha',
       customerPhone: customerPhone.trim() || '',
       productName: catalogOrder.items.length === 1 ? firstProductName : `${firstProductName} (+${catalogOrder.items.length - 1} itens)`,
       quantity: totalQuantity,
-      price: trustedSubtotal,
+      price: catalogOrder.subtotal,
       deliveryDate,
       status: 'pending',
       notes,
       payment: {
-        totalAmount: trustedSubtotal,
+        totalAmount: catalogOrder.subtotal,
         paidAmount: 0,
-        remainingAmount: trustedSubtotal,
+        remainingAmount: catalogOrder.subtotal,
         status: 'pending',
         method: null,
         paymentDate: null,

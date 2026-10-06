@@ -30,6 +30,7 @@ import { AppearanceSection } from '../components/settings/AppearanceSection';
 import { DashboardPrefsSection } from '../components/settings/DashboardPrefsSection';
 import { NavigationOrderSection, DEFAULT_NAV_ORDER } from '../components/settings/NavigationOrderSection';
 import { CardDensitySection } from '../components/settings/CardDensitySection';
+import { HeaderFooterCustomizationSection } from '../components/settings/HeaderFooterCustomizationSection';
 import { WhatsAppTemplateSection } from '../components/settings/WhatsAppTemplateSection';
 import { AiSettingsSection } from '../components/settings/AiSettingsSection';
 import { AlexaSettingsSection } from '../components/settings/AlexaSettingsSection';
@@ -101,6 +102,23 @@ export function Settings() {
   const [autoArchiveCompletedOrders, setAutoArchiveCompletedOrders] = useState(false);
   const [customColorHex, setCustomColorHex] = useState('#7c3aed');
 
+  // Personalização de Cabeçalho & Rodapé
+  const [headerLogoStyle, setHeaderLogoStyle] = useState<'full' | 'icon' | 'hidden'>('full');
+  const [headerShowTagline, setHeaderShowTagline] = useState(true);
+  const [headerShowQuickNew, setHeaderShowQuickNew] = useState(true);
+  const [headerShowAiCopilot, setHeaderShowAiCopilot] = useState(true);
+  const [headerShowCatalogLink, setHeaderShowCatalogLink] = useState(true);
+  const [headerShowQuickSearch, setHeaderShowQuickSearch] = useState(true);
+  const [headerShowHelpCenter, setHeaderShowHelpCenter] = useState(true);
+  const [headerStyle, setHeaderStyle] = useState<'blur' | 'solid' | 'bordered'>('blur');
+
+  const [footerMode, setFooterMode] = useState<'compact' | 'complete' | 'hidden'>('compact');
+  const [footerShowSocialLinks, setFooterShowSocialLinks] = useState(true);
+  const [footerShowContactInfo, setFooterShowContactInfo] = useState(true);
+  const [footerShowVersion, setFooterShowVersion] = useState(true);
+  const [footerShowScrollToTop, setFooterShowScrollToTop] = useState(true);
+  const [savingHeaderFooter, setSavingHeaderFooter] = useState(false);
+
   const [navOrder, setNavOrder] = useState<string[]>(DEFAULT_NAV_ORDER);
   const [savingNavOrder, setSavingNavOrder] = useState(false);
   const [whatsappGreeting, setWhatsappGreeting] = useState('');
@@ -159,6 +177,22 @@ export function Settings() {
       setDefaultPaymentMethod(settings.defaultPaymentMethod ?? '');
       setAutoArchiveCompletedOrders(settings.autoArchiveCompletedOrders ?? false);
       setCustomColorHex(settings.customColorHex ?? '#7c3aed');
+
+      // Cabeçalho & Rodapé
+      setHeaderLogoStyle(settings.headerLogoStyle ?? 'full');
+      setHeaderShowTagline(settings.headerShowTagline ?? true);
+      setHeaderShowQuickNew(settings.headerShowQuickNew ?? true);
+      setHeaderShowAiCopilot(settings.headerShowAiCopilot ?? true);
+      setHeaderShowCatalogLink(settings.headerShowCatalogLink ?? true);
+      setHeaderShowQuickSearch(settings.headerShowQuickSearch ?? true);
+      setHeaderShowHelpCenter(settings.headerShowHelpCenter ?? true);
+      setHeaderStyle(settings.headerStyle ?? 'blur');
+
+      setFooterMode(settings.footerMode ?? 'compact');
+      setFooterShowSocialLinks(settings.footerShowSocialLinks ?? true);
+      setFooterShowContactInfo(settings.footerShowContactInfo ?? true);
+      setFooterShowVersion(settings.footerShowVersion ?? true);
+      setFooterShowScrollToTop(settings.footerShowScrollToTop ?? true);
     }
   }, [settings]);
 
@@ -306,6 +340,32 @@ export function Settings() {
       toast.error('Erro ao salvar template');
     } finally {
       setSavingWhatsappTemplate(false);
+    }
+  };
+
+  const handleHeaderFooterSave = async () => {
+    setSavingHeaderFooter(true);
+    try {
+      await updateSettings({
+        headerLogoStyle,
+        headerShowTagline,
+        headerShowQuickNew,
+        headerShowAiCopilot,
+        headerShowCatalogLink,
+        headerShowQuickSearch,
+        headerShowHelpCenter,
+        headerStyle,
+        footerMode,
+        footerShowSocialLinks,
+        footerShowContactInfo,
+        footerShowVersion,
+        footerShowScrollToTop,
+      });
+      toast.success('Preferências de cabeçalho e rodapé salvas com sucesso!');
+    } catch (error) {
+      toast.error('Erro ao salvar preferências de cabeçalho e rodapé');
+    } finally {
+      setSavingHeaderFooter(false);
     }
   };
 
@@ -461,6 +521,37 @@ export function Settings() {
             onCustomColorHexChange={setCustomColorHex}
             onSave={handlePersonalizationSave}
             saving={savingPersonalization}
+          />
+
+          <HeaderFooterCustomizationSection
+            headerLogoStyle={headerLogoStyle}
+            onHeaderLogoStyleChange={setHeaderLogoStyle}
+            headerShowTagline={headerShowTagline}
+            onHeaderShowTaglineChange={setHeaderShowTagline}
+            headerShowQuickNew={headerShowQuickNew}
+            onHeaderShowQuickNewChange={setHeaderShowQuickNew}
+            headerShowAiCopilot={headerShowAiCopilot}
+            onHeaderShowAiCopilotChange={setHeaderShowAiCopilot}
+            headerShowCatalogLink={headerShowCatalogLink}
+            onHeaderShowCatalogLinkChange={setHeaderShowCatalogLink}
+            headerShowQuickSearch={headerShowQuickSearch}
+            onHeaderShowQuickSearchChange={setHeaderShowQuickSearch}
+            headerShowHelpCenter={headerShowHelpCenter}
+            onHeaderShowHelpCenterChange={setHeaderShowHelpCenter}
+            headerStyle={headerStyle}
+            onHeaderStyleChange={setHeaderStyle}
+            footerMode={footerMode}
+            onFooterModeChange={setFooterMode}
+            footerShowSocialLinks={footerShowSocialLinks}
+            onFooterShowSocialLinksChange={setFooterShowSocialLinks}
+            footerShowContactInfo={footerShowContactInfo}
+            onFooterShowContactInfoChange={setFooterShowContactInfo}
+            footerShowVersion={footerShowVersion}
+            onFooterShowVersionChange={setFooterShowVersion}
+            footerShowScrollToTop={footerShowScrollToTop}
+            onFooterShowScrollToTopChange={setFooterShowScrollToTop}
+            onSave={handleHeaderFooterSave}
+            saving={savingHeaderFooter}
           />
 
           <CardDensitySection
