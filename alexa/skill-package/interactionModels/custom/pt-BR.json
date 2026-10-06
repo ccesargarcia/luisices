@@ -105,6 +105,12 @@
             "criar pedido para {customer}",
             "pedido de {quantity} {product} para {customer}",
             "novo pedido de {product} para {customer}",
+            "criar pedido de {product} para {customer}",
+            "criar pedido de {product} para o {customer}",
+            "criar pedido de {product} para a {customer}",
+            "criar pedido {product} para {customer}",
+            "criar pedido {product} para o {customer}",
+            "criar pedido {product} para a {customer}",
             "criar pedido de {product} para {customer} com {quantity} unidades a {unitPrice} reais cada",
             "criar pedido {product} para {customer} com {quantity} unidades no valor de {unitPrice} reais cada",
             "criar pedido de {quantity} {product} para {customer} a {unitPrice} reais cada",
@@ -220,6 +226,53 @@
           ]
         },
         {
+          "name": "ProvideProductAndCustomerIntent",
+          "samples": [
+            "{product} para {customer}",
+            "{product} para o {customer}",
+            "{product} para a {customer}",
+            "{product} pro {customer}",
+            "{product} pra {customer}",
+            "{product} e {customer}",
+            "o produto é {product} e o cliente é {customer}",
+            "o produto é {product} e a cliente é {customer}",
+            "o produto é {product} para o {customer}",
+            "o produto é {product} para a {customer}",
+            "produto {product} cliente {customer}",
+            "produto {product} para o cliente {customer}",
+            "produto {product} para a cliente {customer}",
+            "é {product} para {customer}",
+            "é {product} para o {customer}",
+            "é {product} para a {customer}",
+            "é um {product} para {customer}",
+            "é um {product} para o {customer}",
+            "é uma {product} para {customer}",
+            "é uma {product} para o {customer}",
+            "são {product} para {customer}",
+            "são {product} para o {customer}",
+            "são {product} para a {customer}",
+            "pedido de {product} para {customer}",
+            "pedido de {product} para o {customer}",
+            "pedido de {product} para a {customer}",
+            "pedido {product} para {customer}",
+            "pedido {product} para o {customer}",
+            "pedido {product} para a {customer}",
+            "para o {customer} {product}",
+            "para {customer} {product}",
+            "cliente {customer} produto {product}"
+          ],
+          "slots": [
+            {
+              "name": "product",
+              "type": "PRODUCT_TYPE"
+            },
+            {
+              "name": "customer",
+              "type": "AMAZON.FirstName"
+            }
+          ]
+        },
+        {
           "name": "ProvideCustomerOnlyIntent",
           "samples": [
             "{customer}"
@@ -235,10 +288,25 @@
           "name": "ProvideCustomerIntent",
           "samples": [
             "para {customer}",
+            "para o {customer}",
+            "para a {customer}",
+            "pro {customer}",
+            "pra {customer}",
+            "ao {customer}",
+            "à {customer}",
             "o cliente é {customer}",
+            "o cliente é o {customer}",
+            "a cliente é {customer}",
+            "a cliente é a {customer}",
             "cliente {customer}",
             "é para {customer}",
+            "é para o {customer}",
+            "é para a {customer}",
+            "é pro {customer}",
+            "é pra {customer}",
             "o nome é {customer}",
+            "o nome é o {customer}",
+            "o nome é a {customer}",
             "troca o cliente para {customer}",
             "troca o cliente por {customer}",
             "trocar o cliente para {customer}",
@@ -268,7 +336,13 @@
             "o produto é {product}",
             "produto {product}",
             "são {product}",
+            "é {product}",
             "é um {product}",
+            "é uma {product}",
+            "quero {product}",
+            "quero um {product}",
+            "quero uma {product}",
+            "fazer {product}",
             "são caixinhas",
             "são cadernos",
             "troca o produto para {product}",
@@ -695,6 +769,102 @@
                   "kits festa",
                   "kit festa",
                   "lembrança"
+                ]
+              }
+            },
+            {
+              "name": {
+                "value": "paper craft",
+                "synonyms": [
+                  "papercraft",
+                  "paper crafts",
+                  "papercrafts",
+                  "papel craft",
+                  "paper-craft",
+                  "dobradura",
+                  "dobraduras",
+                  "escultura de papel",
+                  "escultura em papel",
+                  "papercraft 3d",
+                  "low poly",
+                  "artesanato em papel"
+                ]
+              }
+            },
+            {
+              "name": {
+                "value": "papelaria personalizada",
+                "synonyms": [
+                  "papelaria",
+                  "personalizado",
+                  "personalizados",
+                  "itens personalizados",
+                  "kit papelaria",
+                  "papelaria criativa",
+                  "artesanato"
+                ]
+              }
+            },
+            {
+              "name": {
+                "value": "canecas",
+                "synonyms": [
+                  "caneca",
+                  "caneca personalizada",
+                  "canecas personalizadas",
+                  "copo",
+                  "copos"
+                ]
+              }
+            },
+            {
+              "name": {
+                "value": "chaveiros",
+                "synonyms": [
+                  "chaveiro",
+                  "chaveirinho",
+                  "chaveirinhos",
+                  "chaveiro personalizado",
+                  "chaveiros personalizados"
+                ]
+              }
+            },
+            {
+              "name": {
+                "value": "cartões",
+                "synonyms": [
+                  "cartão",
+                  "cartão de visita",
+                  "cartões de visita",
+                  "cartão de agradecimento",
+                  "cartões de agradecimento",
+                  "card",
+                  "cards"
+                ]
+              }
+            },
+            {
+              "name": {
+                "value": "quadros",
+                "synonyms": [
+                  "quadro",
+                  "quadro decorativo",
+                  "quadros decorativos",
+                  "plaquinha",
+                  "plaquinhas"
+                ]
+              }
+            },
+            {
+              "name": {
+                "value": "painel",
+                "synonyms": [
+                  "painéis",
+                  "painel de festa",
+                  "painel redondo",
+                  "display",
+                  "displays",
+                  "display de mesa"
                 ]
               }
             }

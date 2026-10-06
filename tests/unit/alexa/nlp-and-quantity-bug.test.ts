@@ -289,4 +289,103 @@ describe('NLP e Correção de Bug de Quantidade e Decimais na Alexa', () => {
       expect(res.speech).toContain('data de entrega');
     });
   });
+
+  describe('4. Extração e Normalização de Frases Compostas (Paper Craft para o Luiz)', () => {
+    const {
+      cleanCustomerName,
+      cleanProductName,
+      extractProductAndCustomer,
+    } = require('../../../functions/alexa/dialog.js');
+
+    it('deve extrair produto e cliente de "paper craft para luiz"', () => {
+      const res = extractProductAndCustomer('paper craft para luiz');
+      expect(res.product).toBe('paper craft');
+      expect(res.customer.toLowerCase()).toBe('luiz');
+    });
+
+    it('deve extrair produto e cliente de "PAper craft para o luiz"', () => {
+      const res = extractProductAndCustomer('PAper craft para o luiz');
+      expect(res.product).toBe('paper craft');
+      expect(res.customer.toLowerCase()).toBe('luiz');
+    });
+
+    it('deve extrair produto e cliente de "é paper craft para o luiz"', () => {
+      const res = extractProductAndCustomer('é paper craft para o luiz');
+      expect(res.product).toBe('paper craft');
+      expect(res.customer.toLowerCase()).toBe('luiz');
+    });
+
+    it('deve extrair produto e cliente de "o produto é paper craft e o cliente é luiz"', () => {
+      const res = extractProductAndCustomer('o produto é paper craft e o cliente é luiz');
+      expect(res.product).toBe('paper craft');
+      expect(res.customer.toLowerCase()).toBe('luiz');
+    });
+
+    it('deve limpar adequadamente prefixos de cliente em cleanCustomerName', () => {
+      expect(cleanCustomerName('para o Luiz')).toBe('Luiz');
+      expect(cleanCustomerName('para a Maria')).toBe('Maria');
+      expect(cleanCustomerName('pro Pedro')).toBe('Pedro');
+      expect(cleanCustomerName('pra Ana')).toBe('Ana');
+      expect(cleanCustomerName('o cliente é o João')).toBe('João');
+      expect(cleanCustomerName('é para a Mariana')).toBe('Mariana');
+    });
+
+    it('deve normalizar produto em cleanProductName', () => {
+      expect(cleanProductName('é um papercraft')).toBe('paper craft');
+      expect(cleanProductName('o produto é paper craft')).toBe('paper craft');
+      expect(cleanProductName('são cadernos')).toBe('cadernos');
+    });
+
+    it('deve preencher produto e cliente simultaneamente quando usuário responde "paper craft para o luiz" na pendência', async () => {
+      const draftId = 'draft-test-paper-craft';
+      const sessionId = 'session-paper-craft';
+      const mockDb = createMockDb({
+        alexaDrafts: {
+          [draftId]: {
+            draftId,
+            sessionId,
+            uid: identity.uid,
+            bindingKey: identity.bindingKey,
+            customer: null,
+            product: null,
+            quantity: null,
+            deliveryDate: null,
+            price: null,
+            expectedInput: 'product',
+            pendingField: null,
+            state: 'collecting',
+            revision: 1,
+            expiresAt: { toDate: () => new Date(Date.now() + 600000) },
+          },
+        },
+      });
+
+      // Simula a Alexa ativando ProvideCustomerIntent com customer="paper craft para o luiz"
+      const envelope = {
+        session: {
+          sessionId,
+          attributes: { draftId, revision: 1, expectedInput: 'product', personId: identity.personId },
+        },
+        request: {
+          type: 'IntentRequest',
+          intent: {
+            name: 'ProvideCustomerIntent',
+            slots: {
+              customer: { value: 'paper craft para o luiz' },
+            },
+          },
+        },
+      };
+
+      const res = await handleAlexaDialog({ envelope, identity, config: baseConfig, db: mockDb });
+
+      // Garante que o rascunho preencheu BOTH product e customer!
+      expect(mockDb.store.alexaDrafts[draftId].product).toBe('paper craft');
+      expect(mockDb.store.alexaDrafts[draftId].customer).toBe('luiz');
+      // E agora pergunta pelo próximo campo pendente (quantidade), sem pedir produto ou cliente novamente!
+      expect(res.speech).not.toContain('Falta informar o produto');
+      expect(res.speech).not.toContain('Falta informar o cliente');
+      expect(res.speech).toContain('quantidade');
+    });
+  });
 });

@@ -26,6 +26,9 @@ const {
   parsePartToNumber,
   normalizeQuantity,
   normalizeCurrencyToFloat,
+  cleanCustomerName,
+  cleanProductName,
+  extractProductAndCustomer,
 } = require('./nlpHelper');
 
 // Meses em português para pronúncia amigável
@@ -839,6 +842,7 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
     intentName === 'ProvideCustomerIntent' ||
     intentName === 'ProvideCustomerOnlyIntent' ||
     intentName === 'ProvideProductIntent' ||
+    intentName === 'ProvideProductAndCustomerIntent' ||
     intentName === 'ProvideQuantityIntent' ||
     intentName === 'ProvideNumberIntent' ||
     intentName === 'ProvideDeliveryDateIntent' ||
@@ -1350,13 +1354,6 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
   const rawIncomingUpdates = {};
 
   const customerSlot = slots.customer?.value || slots.Customer?.value;
-  if (customerSlot) {
-    const cleanCust = customerSlot.trim();
-    if (cleanCust.length >= 2 && cleanCust.length <= 100) {
-      rawIncomingUpdates.customer = cleanCust;
-    }
-  }
-
   const productSlotObj = slots.product || slots.Product;
   let cleanProd = productSlotObj?.value ? String(productSlotObj.value).trim() : '';
 
@@ -1372,6 +1369,35 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
         }
       }
     }
+  }
+
+  let cleanCust = customerSlot ? String(customerSlot).trim() : '';
+
+  // Processamento NLP para frases compostas de produto e cliente
+  // (ex: "paper craft para o luiz" falado em resposta à solicitação de produto/cliente)
+  if (cleanCust && !cleanProd) {
+    const extracted = extractProductAndCustomer(cleanCust);
+    if (extracted.product && extracted.customer) {
+      cleanProd = extracted.product;
+      cleanCust = extracted.customer;
+    } else {
+      cleanCust = cleanCustomerName(cleanCust);
+    }
+  } else if (cleanProd && !cleanCust) {
+    const extracted = extractProductAndCustomer(cleanProd);
+    if (extracted.product && extracted.customer) {
+      cleanProd = extracted.product;
+      cleanCust = extracted.customer;
+    } else {
+      cleanProd = cleanProductName(cleanProd);
+    }
+  } else {
+    if (cleanProd) cleanProd = cleanProductName(cleanProd);
+    if (cleanCust) cleanCust = cleanCustomerName(cleanCust);
+  }
+
+  if (cleanCust && cleanCust.length >= 2 && cleanCust.length <= 100) {
+    rawIncomingUpdates.customer = cleanCust;
   }
 
   if (cleanProd && cleanProd.length >= 1 && cleanProd.length <= 200) {
@@ -2958,4 +2984,7 @@ module.exports = {
   handleAlexaDialog,
   findClosestProductSuggestions,
   buildSuggestionPrompt,
+  cleanCustomerName,
+  cleanProductName,
+  extractProductAndCustomer,
 };

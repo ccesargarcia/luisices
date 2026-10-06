@@ -483,6 +483,126 @@ function normalizeCurrencyToFloat(priceValue) {
   return { valid: false, error: 'Valor total inválido. Por favor, diga o valor em reais, por exemplo: cem reais.' };
 }
 
+/**
+ * Normaliza e limpa nome de cliente falado em português.
+ * Remove prefixos comuns como "para o", "para a", "pro", "pra", "o", "a", "cliente", etc.
+ * Capitaliza adequadamente o nome (ex: "luiz" -> "Luiz", "maria aparecida" -> "Maria Aparecida").
+ */
+function cleanCustomerName(rawName) {
+  if (!rawName || typeof rawName !== 'string') return '';
+  let clean = rawName.trim();
+
+  // Remove pontuações e aspas
+  clean = clean.replace(/^[.,!?;:"']+|[.,!?;:"']+$/g, '').trim();
+
+  // Remove prefixos conversacionais falados
+  const prefixRegex = /^(?:é\s+para\s+o|é\s+para\s+a|é\s+para|é\s+pro|é\s+pra|é\s+do|é\s+da|na\s+verdade\s+é\s+para\s+o|na\s+verdade\s+é\s+para\s+a|na\s+verdade\s+é\s+para|na\s+verdade\s+é\s+pro|na\s+verdade\s+é\s+pra|o\s+cliente\s+é\s+o|o\s+cliente\s+é\s+a|o\s+cliente\s+é|a\s+cliente\s+é\s+a|a\s+cliente\s+é|o\s+nome\s+é\s+o|o\s+nome\s+é\s+a|o\s+nome\s+é|cliente\s+é|cliente|para\s+o|para\s+a|para|pro|pra|ao|à|do|da|de|o|a)\s+/i;
+
+  while (prefixRegex.test(clean)) {
+    clean = clean.replace(prefixRegex, '').trim();
+  }
+
+  // Se sobrou apenas palavra vazia ou muito curta
+  if (clean.length < 2) return '';
+
+  return clean;
+}
+
+/**
+ * Normaliza e limpa nome de produto falado em português.
+ * Remove prefixos de preenchimento como "é um", "é uma", "são", "o produto é", etc.
+ */
+function cleanProductName(rawProd) {
+  if (!rawProd || typeof rawProd !== 'string') return '';
+  let clean = rawProd.trim();
+
+  clean = clean.replace(/^[.,!?;:"']+|[.,!?;:"']+$/g, '').trim();
+
+  const prefixRegex = /^(?:o\s+produto\s+é\s+um|o\s+produto\s+é\s+uma|o\s+produto\s+é|produto\s+é|produto|é\s+um|é\s+uma|é\s+uns|é\s+umas|é|são\s+uns|são\s+umas|são|quero\s+um|quero\s+uma|quero|fazer\s+um|fazer\s+uma|fazer|um|uma|uns|umas|de)\s+/i;
+
+  while (prefixRegex.test(clean)) {
+    clean = clean.replace(prefixRegex, '').trim();
+  }
+
+  // Normalização de variações orais comuns
+  const lower = clean.toLowerCase();
+  if (lower === 'papercraft' || lower === 'paper craft' || lower === 'papercrafts' || lower === 'paper crafts' || lower === 'papel craft' || lower === 'paper-craft') {
+    return 'paper craft';
+  }
+
+  return clean;
+}
+
+/**
+ * Tenta separar e extrair Produto e Cliente de frases compostas.
+ * Ex: "paper craft para o luiz" -> { product: "paper craft", customer: "Luiz" }
+ * Ex: "paper craft para luiz" -> { product: "paper craft", customer: "Luiz" }
+ * Ex: "caixas para amanda" -> { product: "caixas", customer: "Amanda" }
+ * Ex: "o produto é paper craft e o cliente é luiz" -> { product: "paper craft", customer: "Luiz" }
+ * Ex: "topo de bolo pro marcos" -> { product: "topo de bolo", customer: "Marcos" }
+ */
+function extractProductAndCustomer(text) {
+  if (!text || typeof text !== 'string') {
+    return { product: null, customer: null };
+  }
+
+  let clean = text.trim();
+  if (!clean) return { product: null, customer: null };
+
+  // Remove preâmbulos comuns como "criar pedido de", "novo pedido de", "é", etc.
+  clean = clean.replace(/^(?:criar\s+pedido\s+(?:de\s+)?|novo\s+pedido\s+(?:de\s+)?|pedido\s+(?:de\s+)?|fazer\s+(?:um\s+)?pedido\s+(?:de\s+)?|é\s+um\s+|é\s+uma\s+|é\s+|são\s+)/i, '').trim();
+
+  // 1. Padrões com marcadores explícitos: "o produto é X e o cliente é Y" / "produto X cliente Y"
+  const explicitMatch = clean.match(/(?:o\s+)?produto(?:\s+é)?\s+(.+?)\s+(?:e\s+)?(?:o\s+|a\s+)?cliente(?:\s+é)?\s+(.+)/i);
+  if (explicitMatch) {
+    const prod = cleanProductName(explicitMatch[1]);
+    const cust = cleanCustomerName(explicitMatch[2]);
+    if (prod && cust) {
+      return { product: prod, customer: cust };
+    }
+  }
+
+  const explicitMatchReverse = clean.match(/(?:o\s+|a\s+)?cliente(?:\s+é)?\s+(.+?)\s+(?:e\s+)?(?:o\s+)?produto(?:\s+é)?\s+(.+)/i);
+  if (explicitMatchReverse) {
+    const cust = cleanCustomerName(explicitMatchReverse[1]);
+    const prod = cleanProductName(explicitMatchReverse[2]);
+    if (prod && cust) {
+      return { product: prod, customer: cust };
+    }
+  }
+
+  // 2. Padrão com preposição: "X para o Y", "X para a Y", "X para Y", "X pro Y", "X pra Y", "X de Y", "X do Y", "X da Y"
+  // Ex: "paper craft para o luiz", "paper craft para luiz", "10 caixas para maria", "caderno pro pedro"
+  const prepMatch = clean.match(/^(.+?)\s+(?:para\s+o|para\s+a|para|pro|pra|ao|à)\s+([a-zA-ZÀ-ÿ\s]+)$/i);
+  if (prepMatch) {
+    const rawProd = prepMatch[1].trim();
+    const rawCust = prepMatch[2].trim();
+
+    const prod = cleanProductName(rawProd);
+    const cust = cleanCustomerName(rawCust);
+
+    if (prod && cust && prod.length >= 2 && cust.length >= 2) {
+      return { product: prod, customer: cust };
+    }
+  }
+
+  // 3. Padrão com 'e': "paper craft e luiz", "caixinhas e amanda"
+  const andMatch = clean.match(/^(.+?)\s+e\s+([a-zA-ZÀ-ÿ\s]+)$/i);
+  if (andMatch) {
+    const rawProd = andMatch[1].trim();
+    const rawCust = andMatch[2].trim();
+
+    const prod = cleanProductName(rawProd);
+    const cust = cleanCustomerName(rawCust);
+
+    if (prod && cust && prod.length >= 2 && cust.length >= 2) {
+      return { product: prod, customer: cust };
+    }
+  }
+
+  return { product: null, customer: null };
+}
+
 module.exports = {
   PORTUGUESE_NUMBER_WORDS,
   PORTUGUESE_ORDINAL_WORDS,
@@ -492,4 +612,7 @@ module.exports = {
   parsePartToNumber,
   normalizeQuantity,
   normalizeCurrencyToFloat,
+  cleanCustomerName,
+  cleanProductName,
+  extractProductAndCustomer,
 };

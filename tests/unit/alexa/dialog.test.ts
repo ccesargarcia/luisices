@@ -105,8 +105,8 @@ describe('Alexa: Máquina de Estados, Diálogo e Validação de Slots pt-BR', ()
       expect(weekRes.valid).toBe(false);
       expect(weekRes.error).toContain('incompleta');
 
-      const validIsoWeekDay = parseAndValidateDeliveryDate('2026-W41-1');
-      expect(validIsoWeekDay).toMatchObject({ valid: true, date: '2026-10-05' });
+      const validIsoWeekDay = parseAndValidateDeliveryDate('2026-W45-1');
+      expect(validIsoWeekDay).toMatchObject({ valid: true, date: '2026-11-02' });
       expect(parseAndValidateDeliveryDate('2021-W53-1').valid).toBe(false);
       expect(parseAndValidateDeliveryDate('2026-W54-1').valid).toBe(false);
 
