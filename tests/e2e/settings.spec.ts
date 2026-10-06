@@ -30,7 +30,7 @@ test.describe('Configurações', () => {
     await expect(apTab).toBeVisible({ timeout: 5000 });
     await apTab.click();
     await expect(page).toHaveURL(/tab=aparencia/, { timeout: 5000 });
-    await expect(page.getByRole('heading', { name: 'Aparência e identidade visual' })).toBeVisible({ timeout: 5000 });
+    await expect(page.getByRole('heading', { name: /Aparência e Temas Visuais/i }).or(page.getByText('Aparência e Temas Visuais'))).toBeVisible({ timeout: 5000 });
   });
 
   test('deve preencher informações do negócio', async ({ page }) => {
@@ -64,14 +64,14 @@ test.describe('Configurações', () => {
   test('deve alterar tema claro/escuro na aba de aparência', async ({ page }) => {
     // Acessar diretamente ou clicar na aba aparência
     await page.goto('/configuracoes?tab=aparencia');
-    await expect(page.getByRole('heading', { name: 'Aparência e identidade visual' })).toBeVisible({ timeout: 5000 });
+    await expect(page.getByRole('heading', { name: /Aparência e Temas Visuais/i }).or(page.getByText('Aparência e Temas Visuais'))).toBeVisible({ timeout: 5000 });
 
-    const darkBtn = page.getByRole('button', { name: /Escuro/i });
+    const darkBtn = page.getByRole('button', { name: /Escuro/i }).first();
     await expect(darkBtn).toBeVisible({ timeout: 5000 });
     await darkBtn.click();
     await expect(page.locator('html')).toHaveClass(/dark/);
 
-    const lightBtn = page.getByRole('button', { name: /Claro/i });
+    const lightBtn = page.getByRole('button', { name: /Claro/i }).first();
     await expect(lightBtn).toBeVisible({ timeout: 5000 });
     await lightBtn.click();
     await expect(page.locator('html')).not.toHaveClass(/dark/);
@@ -88,11 +88,11 @@ test.describe('Configurações', () => {
 
   test('deve preservar a aba ativa ao recarregar a página', async ({ page }) => {
     await page.goto('/configuracoes?tab=aparencia');
-    await expect(page.getByRole('heading', { name: 'Aparência e identidade visual' })).toBeVisible({ timeout: 5000 });
+    await expect(page.getByRole('heading', { name: /Aparência e Temas Visuais/i }).or(page.getByText('Aparência e Temas Visuais'))).toBeVisible({ timeout: 5000 });
 
     // Recarregar a página
     await page.reload();
     await expect(page).toHaveURL(/tab=aparencia/, { timeout: 10000 });
-    await expect(page.getByRole('heading', { name: 'Aparência e identidade visual' })).toBeVisible({ timeout: 5000 });
+    await expect(page.getByRole('heading', { name: /Aparência e Temas Visuais/i }).or(page.getByText('Aparência e Temas Visuais'))).toBeVisible({ timeout: 5000 });
   });
 });

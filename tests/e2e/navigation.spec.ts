@@ -59,47 +59,61 @@ test.describe('Navegação entre Páginas', () => {
   });
 
   test('deve abrir submenu da Lojinha Online e navegar', async ({ page }) => {
-    // Procurar botão do submenu da Lojinha Online no menu lateral
-    const storeSubmenuBtn = page.getByRole('button', { name: /Lojinha Online/i }).first();
-    if (await storeSubmenuBtn.isVisible({ timeout: 5000 })) {
-      await storeSubmenuBtn.click();
-      
-      // O link de Produtos da Lojinha deve ficar visível
-      const storeProductsLink = page.locator('a[href*="produtos-lojinha"]').first();
-      await expect(storeProductsLink).toBeVisible({ timeout: 5000 });
-      await storeProductsLink.click();
-      await page.waitForURL('**/produtos-lojinha', { timeout: 5000 });
-      await expect(page.locator('main').first()).toBeVisible({ timeout: 10000 });
+    await page.goto('/dashboard');
+    await expect(page.locator('main').first()).toBeVisible({ timeout: 10000 });
+
+    // O submenu pode vir aberto por padrão ou recolhido.
+    const storeProductsLink = page.locator('aside a[href*="produtos-lojinha"], a[href*="produtos-lojinha"]').first();
+    const isLinkVisible = await storeProductsLink.isVisible().catch(() => false);
+
+    if (!isLinkVisible) {
+      const storeSubmenuBtn = page.getByRole('button', { name: /Lojinha Online/i }).first();
+      if (await storeSubmenuBtn.isVisible({ timeout: 5000 })) {
+        await storeSubmenuBtn.click();
+      }
     }
+
+    // O link de Produtos da Lojinha deve ficar visível
+    await expect(storeProductsLink).toBeVisible({ timeout: 5000 });
+    await storeProductsLink.click();
+    await page.waitForURL('**/produtos-lojinha', { timeout: 10000 });
+    await expect(page.locator('main').first()).toBeVisible({ timeout: 10000 });
   });
 
   test('deve abrir a busca global com atalho Ctrl+K', async ({ page }) => {
     await page.goto('/dashboard');
     await expect(page.locator('main').first()).toBeVisible({ timeout: 10000 });
 
+    // Fechar qualquer dialog que porventura esteja aberto
+    const openDialog = page.locator('[role="dialog"]');
+    if (await openDialog.isVisible().catch(() => false)) {
+      await page.keyboard.press('Escape');
+      await page.waitForTimeout(300);
+    }
+
     // Acionar atalho de busca global
     await page.keyboard.press('Control+k');
 
-    // Dialog de busca global deve abrir
-    const searchDialog = page.locator('[role="dialog"]').filter({ hasText: /Buscar no sistema/i }).first();
-    const isDialogOpen = await searchDialog.isVisible({ timeout: 4000 }).catch(() => false);
+    // Dialog de busca global CommandDialog (título "Busca Global" ou placeholder de busca rápida)
+    const searchDialog = page.locator('[role="dialog"]').filter({ hasText: /Busca Global|ações rápidas|atalhos/i }).first();
+    let isDialogOpen = await searchDialog.isVisible({ timeout: 3000 }).catch(() => false);
 
-    if (isDialogOpen) {
-      await expect(searchDialog).toBeVisible();
-      const input = searchDialog.locator('input').first();
-      await expect(input).toBeVisible();
-      // Fechar com Escape
-      await page.keyboard.press('Escape');
-      await expect(searchDialog).not.toBeVisible({ timeout: 3000 });
-    } else {
-      // Se não abriu via atalho no browser headless, testar via botão de busca no header
-      const searchBtn = page.locator('button[title*="Buscar"], button:has-text("Buscar"), button:has-text("Ctrl+K")').first();
+    if (!isDialogOpen) {
+      // Se atalho não abriu (ex: restrição do headless do browser), acionar pelo botão no topo
+      const searchBtn = page.locator('button[title*="Buscar"], button:has-text("Buscar"), button:has-text("Ctrl + K"), button:has-text("Ctrl+K")').first();
       if (await searchBtn.isVisible({ timeout: 3000 })) {
         await searchBtn.click();
-        await expect(page.locator('[role="dialog"]').first()).toBeVisible({ timeout: 5000 });
-        await page.keyboard.press('Escape');
+        isDialogOpen = await searchDialog.isVisible({ timeout: 5000 }).catch(() => false);
       }
     }
+
+    await expect(searchDialog).toBeVisible({ timeout: 5000 });
+    const input = searchDialog.locator('input').first();
+    await expect(input).toBeVisible({ timeout: 3000 });
+
+    // Fechar com Escape
+    await page.keyboard.press('Escape');
+    await expect(searchDialog).not.toBeVisible({ timeout: 5000 });
   });
 
   test('deve voltar ao dashboard usando logo/home', async ({ page }) => {
