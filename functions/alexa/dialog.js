@@ -2542,10 +2542,21 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
     }
 
     // Biometria vocal no momento da confirmação final.
-    const physicalPersonId =
+    // Em toques físicos na tela (APL UserEvent), a identidade da pessoa autorizada já foi validada no início da sessão do dispositivo.
+    const isTouchConfirmation = Boolean(
+      envelope?.request?.type === 'Alexa.Presentation.APL.UserEvent' ||
+      envelope?.request?.__isUserEvent === true ||
+      envelope?.request?.__touchAction === 'confirmOrder'
+    );
+
+    let physicalPersonId =
       envelope?.context?.System?.person?.personId ||
       envelope?.session?.System?.person?.personId ||
       null;
+
+    if (!physicalPersonId && isTouchConfirmation) {
+      physicalPersonId = identity?.personId || sessionAttrs?.personId || draft?.personId || null;
+    }
 
     // Se uma pessoa física diferente for detectada na fala atual, rejeita imediatamente por segurança
     if (physicalPersonId && draft.personId && draft.personId !== physicalPersonId) {

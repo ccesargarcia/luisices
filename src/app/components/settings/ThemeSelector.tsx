@@ -11,6 +11,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { THEME_PRESETS, type ThemePreset, type AppThemeId } from '../../utils/themePresets';
+import { triggerHaptic } from '../../utils/haptics';
 
 interface ThemeSelectorProps {
   currentTheme?: string;
@@ -27,6 +28,7 @@ export function ThemeSelector({
   const activeTheme = currentTheme ?? theme ?? 'system';
 
   const handleSelectTheme = (themeId: AppThemeId) => {
+    triggerHaptic('selection');
     if (onThemeChange) {
       onThemeChange(themeId);
     } else {

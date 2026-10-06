@@ -247,9 +247,13 @@ async function processAlexaEnvelope(envelope, { db, config, authService = null }
         }
 
         envelope.request.type = 'IntentRequest';
+        envelope.request.__isUserEvent = true;
+        envelope.request.__touchAction = 'confirmOrder';
         envelope.request.intent = { name: 'AMAZON.YesIntent', confirmationStatus: 'NONE' };
       } else if (action === 'cancelOrder') {
         envelope.request.type = 'IntentRequest';
+        envelope.request.__isUserEvent = true;
+        envelope.request.__touchAction = 'cancelOrder';
         envelope.request.intent = { name: 'AMAZON.CancelIntent', confirmationStatus: 'NONE' };
       } else if (action === 'selectProduct' && args[1]) {
         envelope.request.type = 'IntentRequest';

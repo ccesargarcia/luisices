@@ -10,6 +10,7 @@ import {
 import { Badge } from '../ui/badge';
 import { cn } from '../ui/utils';
 import { MoreHorizontal, HelpCircle, Settings as SettingsIcon } from 'lucide-react';
+import { triggerHaptic } from '../../utils/haptics';
 
 export interface MobileNavItem {
   name: string;
@@ -33,7 +34,7 @@ export function MobileNavigation({
   canAccessSettings,
 }: MobileNavigationProps) {
   return (
-    <nav className="fixed inset-x-0 bottom-0 z-bottom-nav flex border-t border-white/40 bg-card/90 pb-[env(safe-area-inset-bottom)] backdrop-blur-2xl md:hidden">
+    <nav className="fixed inset-x-0 bottom-0 z-bottom-nav flex border-t border-white/40 bg-card/90 pb-[env(safe-area-inset-bottom)] backdrop-blur-2xl md:hidden touch-manipulation select-none">
       {primaryNav.map((item) => {
         const isActive = currentPath === item.href;
         const badgeCount = item.badge ?? 0;
@@ -41,9 +42,10 @@ export function MobileNavigation({
           <Link
             key={item.href}
             to={item.href}
+            onClick={() => triggerHaptic('light')}
             className={cn(
-              'relative flex flex-1 flex-col items-center justify-center gap-0.5 py-2 text-[10px] font-medium transition-colors min-w-0',
-              isActive ? 'text-primary' : 'text-muted-foreground hover:text-foreground'
+              'relative flex flex-1 flex-col items-center justify-center gap-0.5 py-2 text-[10px] font-medium transition-all duration-75 min-w-0 active:scale-95 active:opacity-80 cursor-pointer',
+              isActive ? 'text-primary font-bold' : 'text-muted-foreground hover:text-foreground'
             )}
           >
             <div className="relative flex items-center justify-center">

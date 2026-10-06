@@ -332,6 +332,18 @@
     @apply border-border outline-ring/50;
   }
 
+  html,
+  body,
+  button,
+  a,
+  input,
+  select,
+  textarea,
+  [role="button"] {
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+  }
+
   body {
     @apply bg-background text-foreground;
     font-family: var(--font-family-sans);
