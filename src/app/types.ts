@@ -283,6 +283,7 @@ export interface ModulePermission {
 export interface Permission {
   dashboard: boolean;
   orders: ModulePermission;
+  archivedOrders?: ModulePermission | boolean; // Permissão granular para arquivamento de pedidos
   customers: ModulePermission;
   products: ModulePermission;
   quotes: ModulePermission;
@@ -309,6 +310,27 @@ export function canAccessPricing(
 ): boolean {
   if (!permissions) return false;
   const p = permissions.pricing;
+  if (typeof p === 'boolean') return p;
+  if (p && typeof p === 'object') return Boolean(p[action]);
+  return false;
+}
+
+/**
+ * Utilitário de permissão para a Área de Pedidos Arquivados.
+ * Ações granulares:
+ * - 'view': Acessar e visualizar pedidos arquivados (menu, rota e abas)
+ * - 'create': Arquivar pedidos concluídos (ação de arquivamento)
+ * - 'edit': Desarquivar pedidos (restaurar de volta para o painel de produção)
+ * - 'delete': Excluir pedidos arquivados permanentemente
+ *
+ * Suporta perfis legados (onde archivedOrders não está definido, herdando de orders).
+ */
+export function canAccessArchivedOrders(
+  permissions?: Permission | null,
+  action: keyof ModulePermission = 'view'
+): boolean {
+  if (!permissions) return false;
+  const p = permissions.archivedOrders ?? permissions.orders;
   if (typeof p === 'boolean') return p;
   if (p && typeof p === 'object') return Boolean(p[action]);
   return false;
@@ -545,6 +567,7 @@ export interface UserProfile {
 export const ADMIN_PERMISSIONS: Permission = {
   dashboard: true,
   orders:    { view: true, create: true, edit: true, delete: true },
+  archivedOrders: { view: true, create: true, edit: true, delete: true },
   customers: { view: true, create: true, edit: true, delete: true },
   products:  { view: true, create: true, edit: true, delete: true },
   quotes:    { view: true, create: true, edit: true, delete: true },
@@ -564,6 +587,7 @@ export const ADMIN_PERMISSIONS: Permission = {
 export const DEFAULT_USER_PERMISSIONS: Permission = {
   dashboard: true,
   orders:    { view: true, create: true, edit: true, delete: true },
+  archivedOrders: { view: true, create: true, edit: true, delete: true },
   customers: { view: true, create: true, edit: true, delete: true },
   products:  { view: true, create: true, edit: true, delete: true },
   quotes:    { view: true, create: true, edit: true, delete: true },
@@ -583,6 +607,7 @@ export const DEFAULT_USER_PERMISSIONS: Permission = {
 export const EMPLOYEE_PERMISSIONS: Permission = {
   dashboard: true,
   orders:    { view: true, create: false, edit: true, delete: false },
+  archivedOrders: { view: true, create: false, edit: false, delete: false },
   customers: { view: true, create: false, edit: false, delete: false },
   products:  { view: true, create: false, edit: false, delete: false },
   quotes:    { view: true, create: false, edit: false, delete: false },

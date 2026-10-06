@@ -3,7 +3,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
-import { Order, OrderStatus, PaymentStatus, PaymentMethod, Tag, ExchangeItem, GalleryItem, UserProfile } from '../types';
+import { Order, OrderStatus, PaymentStatus, PaymentMethod, Tag, ExchangeItem, GalleryItem, UserProfile, canAccessArchivedOrders } from '../types';
 import { Trash2, Edit, Copy, Download, Archive, ArchiveRestore } from 'lucide-react';
 import { exportOrderPDF } from '../utils/exportPdf';
 import { useUserSettings } from '../../hooks/useUserSettings';
@@ -44,9 +44,12 @@ const statusLabels = {
 };
 
 export function OrderDetailsDialog({ order, open, onOpenChange, onUpdateStatus, onDeleteOrder, onToggleArchive }: OrderDetailsDialogProps) {
-  const { user, userProfile, hasPermission } = useAuth();
+  const { user, userProfile, isAdmin, hasPermission } = useAuth();
   const { settings } = useUserSettings();
   const { teamMembers } = useOrders();
+
+  const canArchive = isAdmin || canAccessArchivedOrders(userProfile?.permissions, 'create');
+  const canUnarchive = isAdmin || canAccessArchivedOrders(userProfile?.permissions, 'edit');
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isDuplicating, setIsDuplicating] = useState(false);
@@ -459,26 +462,28 @@ export function OrderDetailsDialog({ order, open, onOpenChange, onUpdateStatus, 
                       Editar
                     </Button>
                   )}
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={handleToggleArchive}
-                    disabled={isArchiving}
-                    className="gap-1.5"
-                    title={order.isArchived ? 'Desarquivar este pedido' : 'Arquivar este pedido'}
-                  >
-                    {order.isArchived ? (
-                      <>
-                        <ArchiveRestore className="size-4 text-emerald-600 dark:text-emerald-400" />
-                        Desarquivar
-                      </>
-                    ) : (
-                      <>
-                        <Archive className="size-4 text-muted-foreground" />
-                        Arquivar
-                      </>
-                    )}
-                  </Button>
+                  {((order.isArchived && canUnarchive) || (!order.isArchived && canArchive)) && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={handleToggleArchive}
+                      disabled={isArchiving}
+                      className="gap-1.5"
+                      title={order.isArchived ? 'Desarquivar este pedido' : 'Arquivar este pedido'}
+                    >
+                      {order.isArchived ? (
+                        <>
+                          <ArchiveRestore className="size-4 text-emerald-600 dark:text-emerald-400" />
+                          Desarquivar
+                        </>
+                      ) : (
+                        <>
+                          <Archive className="size-4 text-muted-foreground" />
+                          Arquivar
+                        </>
+                      )}
+                    </Button>
+                  )}
                 </>
               )}
               {order.isArchived && (

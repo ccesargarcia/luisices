@@ -81,22 +81,23 @@ interface ModuleConfig {
 }
 
 const MODULES: ModuleConfig[] = [
-  { key: 'dashboard',     label: 'Dashboard',                          type: 'boolean' },
-  { key: 'orders',        label: 'Pedidos',                            type: 'crud' },
-  { key: 'customers',     label: 'Clientes',                           type: 'crud' },
-  { key: 'whatsapp',      label: 'Atendimento (WhatsApp)',             type: 'boolean' },
-  { key: 'aiCopilot',     label: 'Copiloto de IA',                     type: 'boolean' },
-  { key: 'products',      label: 'Produtos do Ateliê (Internos)',      type: 'crud' },
-  { key: 'storeProducts', label: 'Lojinha Online - Produtos da Vitrine', type: 'crud' },
-  { key: 'store',         label: 'Lojinha Online - Aparência & Banners', type: 'boolean' },
-  { key: 'quotes',        label: 'Orçamentos',                         type: 'crud' },
-  { key: 'gallery',       label: 'Galeria',                            type: 'gallery' },
-  { key: 'exchanges',     label: 'Permutas',                           type: 'boolean' },
-  { key: 'reports',       label: 'Relatórios',                         type: 'boolean' },
-  { key: 'settings',      label: 'Configurações',                      type: 'boolean' },
-  { key: 'users',         label: 'Usuários',                           type: 'crud' },
-  { key: 'emails',        label: 'Central de E-mails',                 type: 'boolean' },
-  { key: 'pricing',       label: 'Precificação & Custos de Insumos',   type: 'crud' },
+  { key: 'dashboard',      label: 'Dashboard',                          type: 'boolean' },
+  { key: 'orders',         label: 'Pedidos',                            type: 'crud' },
+  { key: 'archivedOrders', label: 'Pedidos Arquivados (Área de Arquivamento)', type: 'crud' },
+  { key: 'customers',      label: 'Clientes',                           type: 'crud' },
+  { key: 'whatsapp',       label: 'Atendimento (WhatsApp)',             type: 'boolean' },
+  { key: 'aiCopilot',      label: 'Copiloto de IA',                     type: 'boolean' },
+  { key: 'products',       label: 'Produtos do Ateliê (Internos)',      type: 'crud' },
+  { key: 'storeProducts',  label: 'Lojinha Online - Produtos da Vitrine', type: 'crud' },
+  { key: 'store',          label: 'Lojinha Online - Aparência & Banners', type: 'boolean' },
+  { key: 'quotes',         label: 'Orçamentos',                         type: 'crud' },
+  { key: 'gallery',        label: 'Galeria',                            type: 'gallery' },
+  { key: 'exchanges',      label: 'Permutas',                           type: 'boolean' },
+  { key: 'reports',        label: 'Relatórios',                         type: 'boolean' },
+  { key: 'settings',       label: 'Configurações',                      type: 'boolean' },
+  { key: 'users',          label: 'Usuários',                           type: 'crud' },
+  { key: 'emails',         label: 'Central de E-mails',                 type: 'boolean' },
+  { key: 'pricing',        label: 'Precificação & Custos de Insumos',   type: 'crud' },
 ];
 
 function deepClonePermission(p: Permission): Permission {
@@ -107,6 +108,15 @@ function deepClonePermission(p: Permission): Permission {
   if (!clone.pricing || typeof clone.pricing === 'boolean') {
     const val = Boolean(clone.pricing);
     clone.pricing = { view: val, create: val, edit: val, delete: val };
+  }
+  if (!clone.archivedOrders || typeof clone.archivedOrders === 'boolean') {
+    const val = typeof clone.archivedOrders === 'boolean' ? clone.archivedOrders : Boolean(clone.orders?.view);
+    clone.archivedOrders = {
+      view: val,
+      create: typeof clone.orders?.create === 'boolean' ? clone.orders.create : val,
+      edit: typeof clone.orders?.edit === 'boolean' ? clone.orders.edit : val,
+      delete: typeof clone.orders?.delete === 'boolean' ? clone.orders.delete : false,
+    };
   }
   return clone;
 }
@@ -166,18 +176,24 @@ function PermissionMatrix({ permissions, onChange }: PermissionMatrixProps) {
           )}
           {type === 'crud' && (
             <div className="flex flex-wrap gap-x-4 gap-y-1">
-              {(['view', 'create', 'edit', 'delete'] as (keyof ModulePermission)[]).map(field => (
-                <div key={field} className="flex items-center gap-1.5">
-                  <Checkbox
-                    id={`perm-${key}-${field}`}
-                    checked={Boolean((permissions[key] as ModulePermission)?.[field])}
-                    onCheckedChange={() => toggleCrudField(key, field)}
-                  />
-                  <Label htmlFor={`perm-${key}-${field}`} className="text-xs font-normal capitalize">
-                    {field === 'view' ? 'Ver' : field === 'create' ? 'Criar' : field === 'edit' ? 'Editar' : 'Excluir'}
-                  </Label>
-                </div>
-              ))}
+              {(['view', 'create', 'edit', 'delete'] as (keyof ModulePermission)[]).map(field => {
+                let actionLabel = field === 'view' ? 'Ver' : field === 'create' ? 'Criar' : field === 'edit' ? 'Editar' : 'Excluir';
+                if (key === 'archivedOrders') {
+                  actionLabel = field === 'view' ? 'Ver / Acessar' : field === 'create' ? 'Arquivar' : field === 'edit' ? 'Desarquivar' : 'Excluir';
+                }
+                return (
+                  <div key={field} className="flex items-center gap-1.5">
+                    <Checkbox
+                      id={`perm-${key}-${field}`}
+                      checked={Boolean((permissions[key as keyof Permission] as ModulePermission)?.[field])}
+                      onCheckedChange={() => toggleCrudField(key as keyof Permission, field)}
+                    />
+                    <Label htmlFor={`perm-${key}-${field}`} className="text-xs font-normal">
+                      {actionLabel}
+                    </Label>
+                  </div>
+                );
+              })}
             </div>
           )}
           {type === 'gallery' && (

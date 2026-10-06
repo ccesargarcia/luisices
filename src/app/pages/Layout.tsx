@@ -35,7 +35,7 @@ import {
 import { AiCopilotSheet } from '../components/AiCopilotSheet';
 import { NewOrderDialog } from '../components/NewOrderDialog';
 import { CustomerFormDialog } from '../components/customers/CustomerFormDialog';
-import { AiOrderDraft, canAccessPricing } from '../types';
+import { AiOrderDraft, canAccessPricing, canAccessArchivedOrders } from '../types';
 
 import { firebaseWhatsAppService } from '../../services/firebaseWhatsAppService';
 
@@ -137,7 +137,7 @@ export function Layout() {
       title: 'OPERAÇÃO DIÁRIA',
       items: [
         { name: 'Dashboard', href: '/', icon: LayoutDashboard, check: (p: any) => p.dashboard },
-        { name: 'Pedidos Arquivados', href: '/pedidos-arquivados', icon: Archive, check: (p: any) => p.orders?.view },
+        { name: 'Pedidos Arquivados', href: '/pedidos-arquivados', icon: Archive, check: (p: any) => canAccessArchivedOrders(p, 'view') },
         {
           name: 'Agenda Semanal',
           href: '/agenda',

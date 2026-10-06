@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
 import { Button } from '../ui/button';
-import { LayoutDashboard, GripVertical, Loader2, Calendar, Users, BarChart3, FileText, ShoppingBag, Images, ArrowLeftRight, UserCog, ChevronUp, ChevronDown, Coins, Mail, Store } from 'lucide-react';
+import { LayoutDashboard, GripVertical, Loader2, Calendar, Users, BarChart3, FileText, ShoppingBag, Images, ArrowLeftRight, UserCog, ChevronUp, ChevronDown, Coins, Mail, Store, Archive } from 'lucide-react';
 
 export const NAV_ITEMS = [
   { href: '/', label: 'Dashboard' },
@@ -46,6 +46,7 @@ export function NavigationOrderSection({
 
   const icons: Record<string, any> = {
     '/': LayoutDashboard,
+    '/pedidos-arquivados': Archive,
     '/agenda': Calendar,
     '/clientes': Users,
     '/relatorios': BarChart3,

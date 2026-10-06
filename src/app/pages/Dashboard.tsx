@@ -1,6 +1,6 @@
 import { useMemo, useState, useEffect, Fragment } from 'react';
 import { Link } from 'react-router';
-import { Order, OrderStatus, UserProfile } from '../types';
+import { Order, OrderStatus, UserProfile, canAccessArchivedOrders } from '../types';
 import { OrderCard } from '../components/OrderCard';
 import { OrderDetailsDialog } from '../components/OrderDetailsDialog';
 import { NewOrderDialog } from '../components/NewOrderDialog';
@@ -106,7 +106,10 @@ function getGreeting() {
 }
 
 export function Dashboard() {
-  const { user, userProfile, hasPermission } = useAuth();
+  const { user, userProfile, isAdmin, hasPermission } = useAuth();
+  const canViewArchived = isAdmin || canAccessArchivedOrders(userProfile?.permissions, 'view');
+  const canArchive = isAdmin || canAccessArchivedOrders(userProfile?.permissions, 'create');
+  const canUnarchive = isAdmin || canAccessArchivedOrders(userProfile?.permissions, 'edit');
   const {
     orders,
     loading,
@@ -206,19 +209,19 @@ export function Dashboard() {
 
       // Se foi marcado como concluído:
       if (status === 'completed') {
-        if (settings?.autoArchiveCompletedOrders) {
+        if (settings?.autoArchiveCompletedOrders && canArchive) {
           await firebaseOrderService.archiveOrder(orderId);
           if (selectedOrder && selectedOrder.id === orderId) {
             setSelectedOrder({ ...selectedOrder, status: 'completed', isArchived: true, version: (selectedOrder.version || 1) + 1 });
           }
           toast.success('Pedido marcado como concluído e arquivado automaticamente!');
-        } else {
+        } else if (canArchive) {
           const target = order || (selectedOrder?.id === orderId ? selectedOrder : null);
           if (target) {
             setOrderToPromptArchive({ ...target, status: 'completed' });
           }
         }
-      } else if (order?.isArchived) {
+      } else if (order?.isArchived && canUnarchive) {
         await firebaseOrderService.unarchiveOrder(orderId);
       }
     } catch (err) {
@@ -476,6 +479,12 @@ export function Dashboard() {
   const totalTabOrders = activeTabOrders.length;
   const effectivePageSize = typeof pageSize === 'number' ? pageSize : 12;
   const totalPages = pageSize === 'all' ? 1 : Math.max(1, Math.ceil(totalTabOrders / effectivePageSize));
+
+  useEffect(() => {
+    if (activeTab === 'archived' && !canViewArchived) {
+      setActiveTab('all');
+    }
+  }, [activeTab, canViewArchived]);
 
   useEffect(() => {
     setCurrentPage(1);
@@ -1068,7 +1077,7 @@ export function Dashboard() {
                 <span>Atribuir ({selectedOrderIds.length})</span>
               </Button>
             )}
-            {selectedOrderIds.length > 0 && activeTab === 'archived' && (
+            {selectedOrderIds.length > 0 && activeTab === 'archived' && canUnarchive && (
               <Button
                 variant="outline"
                 size="sm"
@@ -1080,7 +1089,7 @@ export function Dashboard() {
                 <span>Desarquivar ({selectedOrderIds.length})</span>
               </Button>
             )}
-            {selectedOrderIds.length > 0 && activeTab !== 'archived' && (
+            {selectedOrderIds.length > 0 && activeTab !== 'archived' && canArchive && (
               <Button
                 variant="outline"
                 size="sm"
@@ -1137,10 +1146,12 @@ export function Dashboard() {
               <TabsTrigger value="completed" className="flex-1 sm:flex-none">
                 Concluídos ({tabOrdersMap.completed.length})
               </TabsTrigger>
-              <TabsTrigger value="archived" className="flex-1 sm:flex-none gap-1.5">
-                <Archive className="size-3.5" />
-                Arquivados ({tabOrdersMap.archived.length})
-              </TabsTrigger>
+              {canViewArchived && (
+                <TabsTrigger value="archived" className="flex-1 sm:flex-none gap-1.5">
+                  <Archive className="size-3.5" />
+                  Arquivados ({tabOrdersMap.archived.length})
+                </TabsTrigger>
+              )}
             </TabsList>
 
             <div className="flex items-center gap-3 self-end sm:self-auto">
@@ -1241,30 +1252,32 @@ export function Dashboard() {
             )}
           </TabsContent>
 
-          <TabsContent value="archived" className="space-y-4">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 rounded-lg border border-border/70 bg-muted/20">
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Archive className="size-4 text-primary shrink-0" />
-                <span>
-                  Estes pedidos foram arquivados para não poluir sua esteira principal.
-                </span>
+          {canViewArchived && (
+            <TabsContent value="archived" className="space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 rounded-lg border border-border/70 bg-muted/20">
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Archive className="size-4 text-primary shrink-0" />
+                  <span>
+                    Estes pedidos foram arquivados para não poluir sua esteira principal.
+                  </span>
+                </div>
+                <Link to="/pedidos-arquivados">
+                  <Button size="sm" variant="outline" className="gap-1.5 h-8 text-xs font-medium shrink-0">
+                    <ExternalLink className="size-3.5" />
+                    Abrir Área de Arquivamento Completa
+                  </Button>
+                </Link>
               </div>
-              <Link to="/pedidos-arquivados">
-                <Button size="sm" variant="outline" className="gap-1.5 h-8 text-xs font-medium shrink-0">
-                  <ExternalLink className="size-3.5" />
-                  Abrir Área de Arquivamento Completa
-                </Button>
-              </Link>
-            </div>
-            {tabOrdersMap.archived.length === 0 ? (
-              <EmptyState
-                message="Nenhum pedido arquivado"
-                hint="Ao concluir um pedido, você pode enviá-lo para a área de arquivamento para manter a tela limpa."
-              />
-            ) : (
-              renderOrdersList(pagedOrders)
-            )}
-          </TabsContent>
+              {tabOrdersMap.archived.length === 0 ? (
+                <EmptyState
+                  message="Nenhum pedido arquivado"
+                  hint="Ao concluir um pedido, você pode enviá-lo para a área de arquivamento para manter a tela limpa."
+                />
+              ) : (
+                renderOrdersList(pagedOrders)
+              )}
+            </TabsContent>
+          )}
 
           {/* Controles de Paginação */}
           {pageSize !== 'all' && totalPages > 1 && totalTabOrders > 0 && (

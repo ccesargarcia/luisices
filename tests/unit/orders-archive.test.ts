@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { firebaseOrderService } from '../../src/services/firebaseOrderService';
-import { Order } from '../../src/app/types';
+import { Order, canAccessArchivedOrders, ADMIN_PERMISSIONS, DEFAULT_USER_PERMISSIONS, EMPLOYEE_PERMISSIONS, Permission } from '../../src/app/types';
 
 const mockUpdateDoc = vi.fn();
 const mockGetDoc = vi.fn();
@@ -219,6 +219,67 @@ describe('Área de Arquivamento e Ciclo de Vida de Pedidos Concluídos', () => {
       const pendingOnly = archived.filter((o) => !o.payment || o.payment.status === 'pending');
       expect(pendingOnly).toHaveLength(1);
       expect(pendingOnly[0].id).toBe('ord-2');
+    });
+  });
+
+  describe('Permissões Granulares para Área e Ações de Arquivamento', () => {
+    it('ADMIN_PERMISSIONS e DEFAULT_USER_PERMISSIONS devem conceder todas as permissões de arquivamento', () => {
+      expect(canAccessArchivedOrders(ADMIN_PERMISSIONS, 'view')).toBe(true);
+      expect(canAccessArchivedOrders(ADMIN_PERMISSIONS, 'create')).toBe(true);
+      expect(canAccessArchivedOrders(ADMIN_PERMISSIONS, 'edit')).toBe(true);
+      expect(canAccessArchivedOrders(ADMIN_PERMISSIONS, 'delete')).toBe(true);
+
+      expect(canAccessArchivedOrders(DEFAULT_USER_PERMISSIONS, 'view')).toBe(true);
+      expect(canAccessArchivedOrders(DEFAULT_USER_PERMISSIONS, 'create')).toBe(true);
+      expect(canAccessArchivedOrders(DEFAULT_USER_PERMISSIONS, 'edit')).toBe(true);
+      expect(canAccessArchivedOrders(DEFAULT_USER_PERMISSIONS, 'delete')).toBe(true);
+    });
+
+    it('EMPLOYEE_PERMISSIONS deve permitir apenas visualização (view=true), sem arquivar, desarquivar ou deletar', () => {
+      expect(canAccessArchivedOrders(EMPLOYEE_PERMISSIONS, 'view')).toBe(true);
+      expect(canAccessArchivedOrders(EMPLOYEE_PERMISSIONS, 'create')).toBe(false);
+      expect(canAccessArchivedOrders(EMPLOYEE_PERMISSIONS, 'edit')).toBe(false);
+      expect(canAccessArchivedOrders(EMPLOYEE_PERMISSIONS, 'delete')).toBe(false);
+    });
+
+    it('deve respeitar configuração personalizada granular por ação', () => {
+      const customPerms: Permission = {
+        ...DEFAULT_USER_PERMISSIONS,
+        archivedOrders: {
+          view: true,
+          create: true,   // pode arquivar
+          edit: false,    // não pode desarquivar
+          delete: false,  // não pode excluir
+        },
+      };
+
+      expect(canAccessArchivedOrders(customPerms, 'view')).toBe(true);
+      expect(canAccessArchivedOrders(customPerms, 'create')).toBe(true);
+      expect(canAccessArchivedOrders(customPerms, 'edit')).toBe(false);
+      expect(canAccessArchivedOrders(customPerms, 'delete')).toBe(false);
+    });
+
+    it('deve herdar de orders para perfis legados sem a chave archivedOrders', () => {
+      const legacyPerms = {
+        ...DEFAULT_USER_PERMISSIONS,
+        orders: {
+          view: true,
+          create: true,
+          edit: false,
+          delete: false,
+        },
+      };
+      delete (legacyPerms as any).archivedOrders;
+
+      expect(canAccessArchivedOrders(legacyPerms, 'view')).toBe(true);
+      expect(canAccessArchivedOrders(legacyPerms, 'create')).toBe(true);
+      expect(canAccessArchivedOrders(legacyPerms, 'edit')).toBe(false);
+      expect(canAccessArchivedOrders(legacyPerms, 'delete')).toBe(false);
+    });
+
+    it('deve retornar false quando permissions for nulo ou indefinido', () => {
+      expect(canAccessArchivedOrders(null, 'view')).toBe(false);
+      expect(canAccessArchivedOrders(undefined, 'view')).toBe(false);
     });
   });
 });

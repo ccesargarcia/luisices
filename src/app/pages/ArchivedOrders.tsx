@@ -1,6 +1,6 @@
 import React, { useMemo, useState, useEffect, Fragment } from 'react';
 import { Link } from 'react-router';
-import { Order, OrderStatus } from '../types';
+import { Order, OrderStatus, canAccessArchivedOrders } from '../types';
 import { useFirebaseOrders } from '../../hooks/useFirebaseOrders';
 import { firebaseOrderService } from '../../services/firebaseOrderService';
 import { firebaseCustomerService } from '../../services/firebaseCustomerService';
@@ -62,9 +62,12 @@ type SortOption =
   | 'customer_asc';
 
 export function ArchivedOrders() {
-  const { user, userProfile, hasPermission } = useAuth();
+  const { user, userProfile, isAdmin, hasPermission } = useAuth();
   const { orders, loading, error, refreshOrders } = useFirebaseOrders();
   const { settings } = useUserSettings();
+
+  const canUnarchive = isAdmin || canAccessArchivedOrders(userProfile?.permissions, 'edit');
+  const canDelete = isAdmin || canAccessArchivedOrders(userProfile?.permissions, 'delete');
 
   // Estados de busca e filtros
   const [searchQuery, setSearchQuery] = useState('');
@@ -702,26 +705,30 @@ export function ArchivedOrders() {
           </div>
 
           <div className="flex items-center gap-2 flex-wrap">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleBulkUnarchive}
-              disabled={unarchiving}
-              className="gap-1.5 h-8 text-xs font-medium text-emerald-600 dark:text-emerald-400 border-emerald-300 dark:border-emerald-800"
-            >
-              <ArchiveRestore className="size-3.5 shrink-0" />
-              Desarquivar ({selectedOrderIds.length})
-            </Button>
+            {canUnarchive && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleBulkUnarchive}
+                disabled={unarchiving}
+                className="gap-1.5 h-8 text-xs font-medium text-emerald-600 dark:text-emerald-400 border-emerald-300 dark:border-emerald-800"
+              >
+                <ArchiveRestore className="size-3.5 shrink-0" />
+                Desarquivar ({selectedOrderIds.length})
+              </Button>
+            )}
 
-            <Button
-              variant="destructive"
-              size="sm"
-              onClick={() => setIsBulkDeleteOpen(true)}
-              className="gap-1.5 h-8 text-xs"
-            >
-              <Trash2 className="size-3.5 shrink-0" />
-              Excluir selecionados
-            </Button>
+            {canDelete && (
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={() => setIsBulkDeleteOpen(true)}
+                className="gap-1.5 h-8 text-xs"
+              >
+                <Trash2 className="size-3.5 shrink-0" />
+                Excluir selecionados
+              </Button>
+            )}
 
             <Button
               variant="ghost"
@@ -778,21 +785,23 @@ export function ArchivedOrders() {
                 }}
               />
               {/* Botão de desarquivamento rápido no card */}
-              <div className="absolute right-3 top-3 z-10 opacity-0 group-hover:opacity-100 transition-opacity">
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  className="h-7 px-2 text-xs gap-1 shadow-md"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setOrderToUnarchive(order);
-                  }}
-                  title="Restaurar para o painel principal"
-                >
-                  <ArchiveRestore className="size-3 text-emerald-600 dark:text-emerald-400" />
-                  Desarquivar
-                </Button>
-              </div>
+              {canUnarchive && (
+                <div className="absolute right-3 top-3 z-10 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    className="h-7 px-2 text-xs gap-1 shadow-md"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setOrderToUnarchive(order);
+                    }}
+                    title="Restaurar para o painel principal"
+                  >
+                    <ArchiveRestore className="size-3 text-emerald-600 dark:text-emerald-400" />
+                    Desarquivar
+                  </Button>
+                </div>
+              )}
             </div>
           ))}
         </div>
@@ -868,7 +877,7 @@ export function ArchivedOrders() {
             toast.error('Erro ao atualizar status');
           }
         }}
-        onDeleteOrder={async (orderId) => {
+        onDeleteOrder={canDelete ? async (orderId) => {
           try {
             await firebaseOrderService.deleteOrder(orderId);
             setDetailsOpen(false);
@@ -877,7 +886,7 @@ export function ArchivedOrders() {
           } catch {
             toast.error('Erro ao excluir pedido');
           }
-        }}
+        } : undefined}
         onToggleArchive={(orderId, archive) => {
           if (selectedOrder && selectedOrder.id === orderId) {
             setSelectedOrder({ ...selectedOrder, isArchived: archive });
