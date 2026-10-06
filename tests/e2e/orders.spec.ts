@@ -272,4 +272,48 @@ test.describe('Pedidos - CRUD', () => {
     await expect(prevBtn).toBeVisible({ timeout: 5000 });
     await prevBtn.click();
   });
+
+  test('deve alternar entre abas de status na esteira de produção', async ({ page }) => {
+    await page.goto('/dashboard');
+    await page.waitForLoadState('domcontentloaded');
+
+    // Abas de status
+    const pendingTab = page.getByRole('tab', { name: /Pendentes/i });
+    const inProgressTab = page.getByRole('tab', { name: /Em Produção/i });
+    const completedTab = page.getByRole('tab', { name: /Concluídos/i });
+    const allTab = page.getByRole('tab', { name: /Todos/i });
+
+    await expect(allTab).toBeVisible({ timeout: 5000 });
+    await expect(pendingTab).toBeVisible({ timeout: 5000 });
+
+    await pendingTab.click();
+    await expect(pendingTab).toHaveAttribute('data-state', 'active');
+
+    await inProgressTab.click();
+    await expect(inProgressTab).toHaveAttribute('data-state', 'active');
+
+    await completedTab.click();
+    await expect(completedTab).toHaveAttribute('data-state', 'active');
+
+    await allTab.click();
+    await expect(allTab).toHaveAttribute('data-state', 'active');
+  });
+
+  test('deve alternar modo de exibição entre cards e tabela no dashboard', async ({ page }) => {
+    await page.goto('/dashboard');
+    await page.waitForLoadState('domcontentloaded');
+
+    const tableModeBtn = page.getByTitle('Visualização em Tabela');
+    const gridModeBtn = page.getByTitle('Visualização em Cards');
+
+    await expect(tableModeBtn).toBeVisible({ timeout: 5000 });
+    await expect(gridModeBtn).toBeVisible({ timeout: 5000 });
+
+    await tableModeBtn.click();
+    await page.waitForTimeout(300);
+
+    await gridModeBtn.click();
+    await page.waitForTimeout(300);
+  });
 });
+

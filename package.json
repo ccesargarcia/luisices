@@ -26,6 +26,7 @@
     "test:products": "playwright test tests/e2e/products.spec.ts",
     "test:quotes": "playwright test tests/e2e/quotes.spec.ts",
     "test:orders": "playwright test tests/e2e/orders.spec.ts",
+    "test:archived-orders": "playwright test tests/e2e/archived-orders.spec.ts",
     "test:lifecycle": "playwright test tests/e2e/customer-order-lifecycle.spec.ts",
     "test:navigation": "playwright test tests/e2e/navigation.spec.ts",
     "test:settings": "playwright test tests/e2e/settings.spec.ts",

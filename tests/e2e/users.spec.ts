@@ -11,7 +11,7 @@ test.beforeEach(async ({ page }) => {
 });
 
 test.describe('Gerenciamento de Usuários', () => {
-  test('deve carregar tela de usuários com cards de resumo', async ({ page }) => {
+  test('deve carregar tela de usuários com cards de resumo e abas', async ({ page }) => {
     await page.goto('/usuarios');
     await page.waitForLoadState('domcontentloaded');
 
@@ -22,16 +22,46 @@ test.describe('Gerenciamento de Usuários', () => {
     const heading = page.getByRole('heading', { name: /Usuários/i }).first();
     await expect(heading).toBeVisible({ timeout: 15000 });
 
-    // 2. Validar cards de resumo
+    // 2. Validar abas disponíveis
+    const tabMembros = page.getByRole('tab', { name: /Membros Ativos/i });
+    const tabConvites = page.getByRole('tab', { name: /Enviar Convite/i });
+    const tabPapeis = page.getByRole('tab', { name: /Perfis & Regras/i });
+
+    await expect(tabMembros).toBeVisible({ timeout: 10000 });
+    await expect(tabConvites).toBeVisible({ timeout: 10000 });
+    await expect(tabPapeis).toBeVisible({ timeout: 10000 });
+
+    // 3. Validar cards de resumo na aba de membros
     await expect(page.getByText('Total de usuários').first()).toBeVisible({ timeout: 15000 });
     await expect(page.getByText('Ativos').first()).toBeVisible({ timeout: 15000 });
 
-    // 3. Validar botões de ação
+    // 4. Validar botões de ação no cabeçalho
     const newUserBtn = page.getByRole('button', { name: /Novo usuário/i }).first();
     await expect(newUserBtn).toBeVisible({ timeout: 15000 });
 
     const inviteBtn = page.getByRole('button', { name: /Enviar convite/i }).first();
     await expect(inviteBtn).toBeVisible({ timeout: 15000 });
+  });
+
+  test('deve navegar entre as abas de usuários', async ({ page }) => {
+    await page.goto('/usuarios');
+    await page.waitForLoadState('domcontentloaded');
+
+    // Navegar para aba de convites
+    const tabConvites = page.getByRole('tab', { name: /Enviar Convite/i });
+    await tabConvites.click();
+    await expect(page).toHaveURL(/tab=convites/, { timeout: 5000 });
+
+    // Navegar para aba de papéis e regras
+    const tabPapeis = page.getByRole('tab', { name: /Perfis & Regras/i });
+    await tabPapeis.click();
+    await expect(page).toHaveURL(/tab=papeis/, { timeout: 5000 });
+    await expect(page.getByText(/Níveis de Permissão/i).or(page.getByText(/Admin/i)).first()).toBeVisible({ timeout: 5000 });
+
+    // Voltar para membros ativos
+    const tabMembros = page.getByRole('tab', { name: /Membros Ativos/i });
+    await tabMembros.click();
+    await expect(page).toHaveURL(/tab=membros/, { timeout: 5000 });
   });
 
   test('deve abrir modal de novo usuário e validar matriz de permissões', async ({ page }) => {

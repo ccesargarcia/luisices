@@ -19,6 +19,7 @@ interface RouteConfig {
 const ALL_SYSTEM_ROUTES: RouteConfig[] = [
   // Rotas Administrativas / Autenticadas
   { name: 'Dashboard Principal', path: '/dashboard' },
+  { name: 'Pedidos Arquivados', path: '/pedidos-arquivados' },
   { name: 'Agenda de Entregas', path: '/agenda' },
   { name: 'Cadastro de Clientes', path: '/clientes' },
   { name: 'Catálogo de Produtos e Insumos', path: '/produtos' },
@@ -31,6 +32,7 @@ const ALL_SYSTEM_ROUTES: RouteConfig[] = [
   { name: 'Pedidos da Lojinha Online', path: '/pedidos-lojinha' },
   { name: 'Calculadora de Precificação', path: '/precificacao' },
   { name: 'Personalização da Vitrine', path: '/personalizar-lojinha' },
+  { name: 'Gestão de Usuários e Equipe', path: '/usuarios' },
   { name: 'Central de E-mails', path: '/emails' },
   { name: 'Configurações do Ateliê', path: '/configuracoes' },
   { name: 'Central de Ajuda e FAQ', path: '/ajuda' },
