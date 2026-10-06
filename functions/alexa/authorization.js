@@ -141,7 +141,23 @@ async function authorizeAlexaPerson(envelope, config, db, authService = null) {
     });
   }
 
-  const { personId, amazonUserId, deviceId, appId } = extractAlexaIdentifiers(envelope);
+  const { personId: extractedPersonId, amazonUserId, deviceId, appId } = extractAlexaIdentifiers(envelope);
+  let personId = extractedPersonId;
+
+  // Se for evento de toque em tela (APL UserEvent) e personId não veio nos headers do toque,
+  // recupera o personId do rascunho ativo já autenticado no início da sessão do dispositivo.
+  const sessionAttrs = envelope?.session?.attributes || {};
+  if (!personId && envelope?.request?.type === 'Alexa.Presentation.APL.UserEvent' && sessionAttrs?.draftId && db) {
+    try {
+      const dSnap = await db.collection(COLLECTIONS.DRAFTS).doc(sessionAttrs.draftId).get();
+      if (dSnap.exists) {
+        const dData = (typeof dSnap.data === 'function' ? dSnap.data() : dSnap.data) || {};
+        if (dData.personId) {
+          personId = dData.personId;
+        }
+      }
+    } catch (_) {}
+  }
 
   // 2. Validação obrigatória do personId (reconhecimento de voz)
   if (!personId) {
