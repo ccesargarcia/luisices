@@ -108,6 +108,9 @@ export interface Order {
   createdByUid?: string;   // UID do criador
   voiceDraftId?: string;   // Rascunho de voz de origem
   voiceConfirmationMode?: 'voice_confirm' | 'app_approval';
+  isArchived?: boolean;    // Pedido arquivado (fora do painel principal para não poluir a tela)
+  archivedAt?: string | null; // Data/hora do arquivamento em formato ISO
+  archivedBy?: string | null; // UID do usuário que realizou o arquivamento
 }
 
 

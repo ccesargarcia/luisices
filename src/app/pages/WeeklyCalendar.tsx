@@ -100,7 +100,7 @@ export function WeeklyCalendar() {
       return {
         date: dateStr,
         dayName: date.toLocaleDateString('pt-BR', { weekday: 'long' }),
-        orders: orders.filter((o) => o.deliveryDate === dateStr),
+        orders: orders.filter((o) => o.deliveryDate === dateStr && !o.isArchived),
       };
     });
   }, [orders, currentWeekOffset]);

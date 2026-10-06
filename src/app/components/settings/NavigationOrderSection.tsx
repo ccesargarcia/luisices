@@ -5,6 +5,7 @@ import { LayoutDashboard, GripVertical, Loader2, Calendar, Users, BarChart3, Fil
 
 export const NAV_ITEMS = [
   { href: '/', label: 'Dashboard' },
+  { href: '/pedidos-arquivados', label: 'Pedidos Arquivados' },
   { href: '/agenda', label: 'Agenda Semanal' },
   { href: '/clientes', label: 'Clientes' },
   { href: '/relatorios', label: 'Relatórios' },

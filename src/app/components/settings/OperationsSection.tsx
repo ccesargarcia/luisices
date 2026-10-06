@@ -9,7 +9,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '../ui/select';
-import { Truck, Bell, CreditCard, Loader2 } from 'lucide-react';
+import { Truck, Bell, CreditCard, Loader2, Archive } from 'lucide-react';
+import { Switch } from '../ui/switch';
 
 interface OperationsSectionProps {
   deliveryAlertDays: number;
@@ -18,6 +19,8 @@ interface OperationsSectionProps {
   onDefaultDeliveryDaysChange: (days: number) => void;
   defaultPaymentMethod: string;
   onDefaultPaymentMethodChange: (method: string) => void;
+  autoArchiveCompletedOrders?: boolean;
+  onAutoArchiveCompletedOrdersChange?: (val: boolean) => void;
   onSave: () => Promise<void>;
   saving: boolean;
 }
@@ -29,6 +32,8 @@ export function OperationsSection({
   onDefaultDeliveryDaysChange,
   defaultPaymentMethod,
   onDefaultPaymentMethodChange,
+  autoArchiveCompletedOrders = false,
+  onAutoArchiveCompletedOrdersChange,
   onSave,
   saving,
 }: OperationsSectionProps) {
@@ -126,6 +131,25 @@ export function OperationsSection({
           <p className="text-xs text-muted-foreground">
             O método será pré-selecionado no formulário de novo pedido
           </p>
+        </div>
+
+        {/* Arquivamento automático de pedidos concluídos */}
+        <div className="flex items-start justify-between gap-4 p-4 rounded-lg border border-border/70 bg-card/60 backdrop-blur-sm">
+          <div className="space-y-1">
+            <Label htmlFor="auto-archive-switch" className="text-sm font-medium flex items-center gap-2 cursor-pointer">
+              <Archive className="size-4 text-primary" />
+              Arquivamento automático de pedidos concluídos
+            </Label>
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              Ao marcar um pedido como concluído, ele é enviado automaticamente para a área de arquivamento para não poluir o painel operacional diário.
+            </p>
+          </div>
+          <Switch
+            id="auto-archive-switch"
+            checked={Boolean(autoArchiveCompletedOrders)}
+            onCheckedChange={(checked) => onAutoArchiveCompletedOrdersChange?.(checked)}
+            aria-label="Arquivamento automático de pedidos concluídos"
+          />
         </div>
 
         <Button onClick={onSave} disabled={saving}>

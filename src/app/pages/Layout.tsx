@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router';
-import { LayoutDashboard, Calendar, Users, Package2, Package, LogOut, Settings as SettingsIcon, BarChart3, FileText, ShoppingBag, Images, AtSign, Globe, Phone, Mail, MapPin, MessageCircle, MessageSquare, ArrowLeftRight, UserCog, Info, PanelLeftClose, PanelLeftOpen, MoreHorizontal, HelpCircle, Coins, ExternalLink, Store, Palette, ChevronDown, ChevronRight, ClipboardList, Sparkles, Plus, PackagePlus, UserPlus } from 'lucide-react';
+import { LayoutDashboard, Calendar, Users, Package2, Package, LogOut, Settings as SettingsIcon, BarChart3, FileText, ShoppingBag, Images, AtSign, Globe, Phone, Mail, MapPin, MessageCircle, MessageSquare, ArrowLeftRight, UserCog, Info, PanelLeftClose, PanelLeftOpen, MoreHorizontal, HelpCircle, Coins, ExternalLink, Store, Palette, ChevronDown, ChevronRight, ClipboardList, Sparkles, Plus, PackagePlus, UserPlus, Archive } from 'lucide-react';
 import { cn } from '../components/ui/utils';
 import { useAuth } from '../../contexts/AuthContext';
 import { useOrders } from '../../contexts/OrdersContext';
@@ -137,6 +137,7 @@ export function Layout() {
       title: 'OPERAÇÃO DIÁRIA',
       items: [
         { name: 'Dashboard', href: '/', icon: LayoutDashboard, check: (p: any) => p.dashboard },
+        { name: 'Pedidos Arquivados', href: '/pedidos-arquivados', icon: Archive, check: (p: any) => p.orders?.view },
         {
           name: 'Agenda Semanal',
           href: '/agenda',

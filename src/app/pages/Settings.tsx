@@ -50,6 +50,7 @@ export function Settings() {
   const [deliveryAlertDays, setDeliveryAlertDays] = useState(3);
   const [defaultDeliveryDays, setDefaultDeliveryDays] = useState(0);
   const [defaultPaymentMethod, setDefaultPaymentMethod] = useState('');
+  const [autoArchiveCompletedOrders, setAutoArchiveCompletedOrders] = useState(false);
   const [customColorHex, setCustomColorHex] = useState('#7c3aed');
 
   const [navOrder, setNavOrder] = useState<string[]>(DEFAULT_NAV_ORDER);
@@ -126,6 +127,7 @@ export function Settings() {
       setDeliveryAlertDays(settings.deliveryAlertDays ?? 3);
       setDefaultDeliveryDays(settings.defaultDeliveryDays ?? 0);
       setDefaultPaymentMethod(settings.defaultPaymentMethod ?? '');
+      setAutoArchiveCompletedOrders(settings.autoArchiveCompletedOrders ?? false);
       setCustomColorHex(settings.customColorHex ?? '#7c3aed');
       setCatalogSettings({
         catalogWhatsappPhone: settings.catalogWhatsappPhone || '',
@@ -260,6 +262,7 @@ export function Settings() {
         deliveryAlertDays,
         defaultDeliveryDays,
         defaultPaymentMethod: defaultPaymentMethod || undefined,
+        autoArchiveCompletedOrders,
       });
       toast.success('Preferências de operação salvas!');
     } catch {
@@ -411,6 +414,8 @@ export function Settings() {
         onDefaultDeliveryDaysChange={setDefaultDeliveryDays}
         defaultPaymentMethod={defaultPaymentMethod}
         onDefaultPaymentMethodChange={setDefaultPaymentMethod}
+        autoArchiveCompletedOrders={autoArchiveCompletedOrders}
+        onAutoArchiveCompletedOrdersChange={setAutoArchiveCompletedOrders}
         onSave={handleOperationsSave}
         saving={savingOperations}
       />

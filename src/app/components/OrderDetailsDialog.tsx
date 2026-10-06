@@ -4,7 +4,7 @@ import { Badge } from './ui/badge';
 import { Button } from './ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Order, OrderStatus, PaymentStatus, PaymentMethod, Tag, ExchangeItem, GalleryItem, UserProfile } from '../types';
-import { Trash2, Edit, Copy, Download } from 'lucide-react';
+import { Trash2, Edit, Copy, Download, Archive, ArchiveRestore } from 'lucide-react';
 import { exportOrderPDF } from '../utils/exportPdf';
 import { useUserSettings } from '../../hooks/useUserSettings';
 import { useState, useMemo, useEffect } from 'react';
@@ -26,6 +26,7 @@ interface OrderDetailsDialogProps {
   onOpenChange: (open: boolean) => void;
   onUpdateStatus: (orderId: string, status: OrderStatus) => void;
   onDeleteOrder?: (orderId: string) => void;
+  onToggleArchive?: (orderId: string, archive: boolean) => void;
 }
 
 const statusColors = {
@@ -42,13 +43,14 @@ const statusLabels = {
   cancelled: 'Cancelado',
 };
 
-export function OrderDetailsDialog({ order, open, onOpenChange, onUpdateStatus, onDeleteOrder }: OrderDetailsDialogProps) {
+export function OrderDetailsDialog({ order, open, onOpenChange, onUpdateStatus, onDeleteOrder, onToggleArchive }: OrderDetailsDialogProps) {
   const { user, userProfile, hasPermission } = useAuth();
   const { settings } = useUserSettings();
   const { teamMembers } = useOrders();
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isDuplicating, setIsDuplicating] = useState(false);
+  const [isArchiving, setIsArchiving] = useState(false);
   const [isUploadingAttachment, setIsUploadingAttachment] = useState(false);
   const [localAttachments, setLocalAttachments] = useState<import('../types').OrderAttachment[]>([]);
   const [customerGallery, setCustomerGallery] = useState<GalleryItem[]>([]);
@@ -340,6 +342,27 @@ export function OrderDetailsDialog({ order, open, onOpenChange, onUpdateStatus, 
     }
   };
 
+  const handleToggleArchive = async () => {
+    if (!order) return;
+    setIsArchiving(true);
+    try {
+      if (order.isArchived) {
+        await firebaseOrderService.unarchiveOrder(order.id);
+        toast.success('Pedido desarquivado com sucesso!');
+        onToggleArchive?.(order.id, false);
+      } else {
+        await firebaseOrderService.archiveOrder(order.id);
+        toast.success('Pedido arquivado com sucesso!');
+        onToggleArchive?.(order.id, true);
+      }
+    } catch (error) {
+      console.error('Erro ao alterar arquivamento:', error);
+      toast.error('Não foi possível alterar o arquivamento do pedido');
+    } finally {
+      setIsArchiving(false);
+    }
+  };
+
   const handleUploadAttachment = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !order || !user) return;
@@ -436,7 +459,33 @@ export function OrderDetailsDialog({ order, open, onOpenChange, onUpdateStatus, 
                       Editar
                     </Button>
                   )}
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={handleToggleArchive}
+                    disabled={isArchiving}
+                    className="gap-1.5"
+                    title={order.isArchived ? 'Desarquivar este pedido' : 'Arquivar este pedido'}
+                  >
+                    {order.isArchived ? (
+                      <>
+                        <ArchiveRestore className="size-4 text-emerald-600 dark:text-emerald-400" />
+                        Desarquivar
+                      </>
+                    ) : (
+                      <>
+                        <Archive className="size-4 text-muted-foreground" />
+                        Arquivar
+                      </>
+                    )}
+                  </Button>
                 </>
+              )}
+              {order.isArchived && (
+                <Badge variant="outline" className="bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-300 dark:border-amber-700 flex items-center gap-1 font-medium">
+                  <Archive className="size-3" />
+                  Arquivado
+                </Badge>
               )}
               <Badge className={statusColors[order.status]}>
                 {statusLabels[order.status]}

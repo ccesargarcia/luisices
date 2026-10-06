@@ -1,4 +1,5 @@
 import { useMemo, useState, useEffect, Fragment } from 'react';
+import { Link } from 'react-router';
 import { Order, OrderStatus, UserProfile } from '../types';
 import { OrderCard } from '../components/OrderCard';
 import { OrderDetailsDialog } from '../components/OrderDetailsDialog';
@@ -14,6 +15,7 @@ import { Input } from '../components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
+import { Checkbox } from '../components/ui/checkbox';
 import {
   Package,
   Clock,
@@ -35,6 +37,9 @@ import {
   RefreshCw,
   LayoutGrid,
   LayoutList,
+  Archive,
+  ArchiveRestore,
+  ExternalLink,
 } from 'lucide-react';
 import { OrderTable } from '../components/OrderTable';
 import { AdminTeamFilter } from '../components/AdminTeamFilter';
@@ -113,11 +118,14 @@ export function Dashboard() {
     teamMembers,
     selectedUserIds,
   } = useFirebaseOrders();
-  const { settings } = useUserSettings();
+  const { settings, updateSettings } = useUserSettings();
   const { stats: ledgerStats } = useSalesLedger({ teamUserIds: selectedUserIds });
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [selectedOrderIds, setSelectedOrderIds] = useState<string[]>([]);
   const [detailsOpen, setDetailsOpen] = useState(false);
+  const [orderToPromptArchive, setOrderToPromptArchive] = useState<Order | null>(null);
+  const [alwaysAutoArchive, setAlwaysAutoArchive] = useState(false);
+  const [bulkArchiving, setBulkArchiving] = useState(false);
   const [isBulkOrderDeleteOpen, setIsBulkOrderDeleteOpen] = useState(false);
   const [bulkOrderDeleting, setBulkOrderDeleting] = useState(false);
   const [isBulkAssignOpen, setIsBulkAssignOpen] = useState(false);
@@ -194,6 +202,24 @@ export function Dashboard() {
       await firebaseOrderService.updateOrderStatus(orderId, status, order?.version);
       if (selectedOrder) {
         setSelectedOrder({ ...selectedOrder, status, version: (selectedOrder.version || 1) + 1 });
+      }
+
+      // Se foi marcado como concluído:
+      if (status === 'completed') {
+        if (settings?.autoArchiveCompletedOrders) {
+          await firebaseOrderService.archiveOrder(orderId);
+          if (selectedOrder && selectedOrder.id === orderId) {
+            setSelectedOrder({ ...selectedOrder, status: 'completed', isArchived: true, version: (selectedOrder.version || 1) + 1 });
+          }
+          toast.success('Pedido marcado como concluído e arquivado automaticamente!');
+        } else {
+          const target = order || (selectedOrder?.id === orderId ? selectedOrder : null);
+          if (target) {
+            setOrderToPromptArchive({ ...target, status: 'completed' });
+          }
+        }
+      } else if (order?.isArchived) {
+        await firebaseOrderService.unarchiveOrder(orderId);
       }
     } catch (err) {
       console.error('Erro ao atualizar status:', err);
@@ -417,7 +443,7 @@ export function Dashboard() {
   };
 
   // Paginação e controle por aba
-  const [activeTab, setActiveTab] = useState<'all' | 'pending' | 'in-progress' | 'completed'>('all');
+  const [activeTab, setActiveTab] = useState<'all' | 'pending' | 'in-progress' | 'completed' | 'archived'>('all');
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState<number | 'all'>(() => {
     try {
@@ -430,12 +456,21 @@ export function Dashboard() {
     return 12;
   });
 
+  const activeFilteredOrders = useMemo(() => {
+    return filteredOrders.filter(o => !o.isArchived);
+  }, [filteredOrders]);
+
+  const archivedFilteredOrders = useMemo(() => {
+    return filteredOrders.filter(o => Boolean(o.isArchived));
+  }, [filteredOrders]);
+
   const tabOrdersMap = useMemo(() => ({
-    all: filteredOrders,
-    pending: filteredOrders.filter((o) => o.status === 'pending'),
-    'in-progress': filteredOrders.filter((o) => o.status === 'in-progress'),
-    completed: filteredOrders.filter((o) => o.status === 'completed'),
-  }), [filteredOrders]);
+    all: activeFilteredOrders,
+    pending: activeFilteredOrders.filter((o) => o.status === 'pending'),
+    'in-progress': activeFilteredOrders.filter((o) => o.status === 'in-progress'),
+    completed: activeFilteredOrders.filter((o) => o.status === 'completed'),
+    archived: archivedFilteredOrders,
+  }), [activeFilteredOrders, archivedFilteredOrders]);
 
   const activeTabOrders = tabOrdersMap[activeTab];
   const totalTabOrders = activeTabOrders.length;
@@ -566,6 +601,36 @@ export function Dashboard() {
       toast.error('Erro ao excluir pedidos selecionados');
     } finally {
       setBulkOrderDeleting(false);
+    }
+  };
+
+  const handleBulkArchiveOrders = async () => {
+    if (selectedOrderIds.length === 0) return;
+    setBulkArchiving(true);
+    try {
+      await firebaseOrderService.archiveOrdersBulk(selectedOrderIds);
+      toast.success(`${selectedOrderIds.length} pedido${selectedOrderIds.length === 1 ? '' : 's'} arquivado${selectedOrderIds.length === 1 ? '' : 's'} com sucesso!`);
+      setSelectedOrderIds([]);
+    } catch (err) {
+      console.error('Erro ao arquivar pedidos em lote:', err);
+      toast.error('Erro ao arquivar pedidos selecionados');
+    } finally {
+      setBulkArchiving(false);
+    }
+  };
+
+  const handleBulkUnarchiveOrders = async () => {
+    if (selectedOrderIds.length === 0) return;
+    setBulkArchiving(true);
+    try {
+      await firebaseOrderService.unarchiveOrdersBulk(selectedOrderIds);
+      toast.success(`${selectedOrderIds.length} pedido${selectedOrderIds.length === 1 ? '' : 's'} restaurado${selectedOrderIds.length === 1 ? '' : 's'} para o painel principal!`);
+      setSelectedOrderIds([]);
+    } catch (err) {
+      console.error('Erro ao desarquivar pedidos em lote:', err);
+      toast.error('Erro ao desarquivar pedidos selecionados');
+    } finally {
+      setBulkArchiving(false);
     }
   };
 
@@ -1003,6 +1068,30 @@ export function Dashboard() {
                 <span>Atribuir ({selectedOrderIds.length})</span>
               </Button>
             )}
+            {selectedOrderIds.length > 0 && activeTab === 'archived' && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1.5 h-9 text-xs sm:text-sm font-medium text-emerald-600 dark:text-emerald-400 border-emerald-300 dark:border-emerald-800"
+                onClick={handleBulkUnarchiveOrders}
+                disabled={bulkArchiving}
+              >
+                <ArchiveRestore className="size-4 shrink-0" />
+                <span>Desarquivar ({selectedOrderIds.length})</span>
+              </Button>
+            )}
+            {selectedOrderIds.length > 0 && activeTab !== 'archived' && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1.5 h-9 text-xs sm:text-sm font-medium"
+                onClick={handleBulkArchiveOrders}
+                disabled={bulkArchiving}
+              >
+                <Archive className="size-4 text-primary shrink-0" />
+                <span>Arquivar ({selectedOrderIds.length})</span>
+              </Button>
+            )}
             {selectedOrderIds.length > 0 && (
               <Button variant="ghost" size="sm" className="h-9 text-xs sm:text-sm" onClick={() => setSelectedOrderIds([])}>
                 Limpar
@@ -1047,6 +1136,10 @@ export function Dashboard() {
               </TabsTrigger>
               <TabsTrigger value="completed" className="flex-1 sm:flex-none">
                 Concluídos ({tabOrdersMap.completed.length})
+              </TabsTrigger>
+              <TabsTrigger value="archived" className="flex-1 sm:flex-none gap-1.5">
+                <Archive className="size-3.5" />
+                Arquivados ({tabOrdersMap.archived.length})
               </TabsTrigger>
             </TabsList>
 
@@ -1143,6 +1236,31 @@ export function Dashboard() {
           <TabsContent value="completed" className="space-y-4">
             {tabOrdersMap.completed.length === 0 ? (
               <EmptyState message="Nenhum pedido concluído" hint="Pedidos entregues aparecem aqui." />
+            ) : (
+              renderOrdersList(pagedOrders)
+            )}
+          </TabsContent>
+
+          <TabsContent value="archived" className="space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 rounded-lg border border-border/70 bg-muted/20">
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Archive className="size-4 text-primary shrink-0" />
+                <span>
+                  Estes pedidos foram arquivados para não poluir sua esteira principal.
+                </span>
+              </div>
+              <Link to="/pedidos-arquivados">
+                <Button size="sm" variant="outline" className="gap-1.5 h-8 text-xs font-medium shrink-0">
+                  <ExternalLink className="size-3.5" />
+                  Abrir Área de Arquivamento Completa
+                </Button>
+              </Link>
+            </div>
+            {tabOrdersMap.archived.length === 0 ? (
+              <EmptyState
+                message="Nenhum pedido arquivado"
+                hint="Ao concluir um pedido, você pode enviá-lo para a área de arquivamento para manter a tela limpa."
+              />
             ) : (
               renderOrdersList(pagedOrders)
             )}
@@ -1293,7 +1411,94 @@ export function Dashboard() {
         }}
         onUpdateStatus={handleUpdateStatus}
         onDeleteOrder={handleDeleteOrder}
+        onToggleArchive={(orderId, archive) => {
+          if (selectedOrder && selectedOrder.id === orderId) {
+            setSelectedOrder({ ...selectedOrder, isArchived: archive });
+          }
+        }}
       />
+
+      {/* Diálogo de Confirmação para Arquivar Pedido Concluído */}
+      <Dialog
+        open={!!orderToPromptArchive}
+        onOpenChange={(open) => {
+          if (!open) {
+            setOrderToPromptArchive(null);
+            setAlwaysAutoArchive(false);
+          }
+        }}
+      >
+        <DialogContent size="md" noPadding className="max-h-[85dvh] flex flex-col overflow-hidden">
+          <DialogHeader className="p-4 sm:p-6 pb-3 border-b border-border">
+            <DialogTitle className="flex items-center gap-2 text-base sm:text-lg">
+              <Archive className="size-5 text-primary" />
+              Arquivar este pedido concluído?
+            </DialogTitle>
+            <DialogDescription className="text-xs sm:text-sm text-muted-foreground mt-1">
+              O pedido <strong className="text-foreground">{orderToPromptArchive?.orderNumber || orderToPromptArchive?.customerName}</strong> foi marcado como concluído.
+            </DialogDescription>
+          </DialogHeader>
+
+          <DialogBody className="p-4 sm:p-6 space-y-4">
+            <p className="text-sm text-muted-foreground leading-relaxed">
+              Deseja enviá-lo para a <strong>Área de Pedidos Arquivados</strong>? Isso remove o pedido do painel operacional para não poluir sua tela, mantendo o histórico financeiro e relatórios 100% preservados.
+            </p>
+
+            <div className="flex items-start gap-3 p-3 rounded-lg border border-border/70 bg-muted/20">
+              <Checkbox
+                id="always-auto-archive-cb"
+                checked={alwaysAutoArchive}
+                onCheckedChange={(checked) => setAlwaysAutoArchive(Boolean(checked))}
+                className="mt-0.5"
+              />
+              <label
+                htmlFor="always-auto-archive-cb"
+                className="text-xs text-muted-foreground cursor-pointer select-none leading-relaxed"
+              >
+                <strong className="text-foreground block font-medium">Sempre arquivar automaticamente</strong>
+                Não perguntar novamente nas próximas conclusões (você pode alterar isso a qualquer momento no menu de Configurações).
+              </label>
+            </div>
+          </DialogBody>
+
+          <DialogFooter className="p-4 sm:p-6 pt-3 border-t border-border flex-col-reverse sm:flex-row gap-2 sm:gap-0 justify-between">
+            <Button
+              variant="outline"
+              onClick={async () => {
+                if (alwaysAutoArchive) {
+                  await updateSettings({ autoArchiveCompletedOrders: true }).catch(() => {});
+                }
+                setOrderToPromptArchive(null);
+                setAlwaysAutoArchive(false);
+              }}
+              className="w-full sm:w-auto h-10 text-sm"
+            >
+              Manter no Painel
+            </Button>
+            <Button
+              onClick={async () => {
+                if (!orderToPromptArchive) return;
+                try {
+                  await firebaseOrderService.archiveOrder(orderToPromptArchive.id);
+                  if (alwaysAutoArchive) {
+                    await updateSettings({ autoArchiveCompletedOrders: true }).catch(() => {});
+                  }
+                  toast.success('Pedido enviado para a área de arquivamento!');
+                } catch {
+                  toast.error('Erro ao arquivar pedido');
+                } finally {
+                  setOrderToPromptArchive(null);
+                  setAlwaysAutoArchive(false);
+                }
+              }}
+              className="gap-2 w-full sm:w-auto h-10 text-sm"
+            >
+              <Archive className="size-4" />
+              Sim, Arquivar Pedido
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

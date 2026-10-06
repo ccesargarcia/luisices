@@ -136,6 +136,7 @@ const StoreCustomization = lazyWithRetry(() => import('./pages/StoreCustomizatio
 const StoreProducts      = lazyWithRetry(() => import('./pages/StoreProducts'), 'StoreProducts');
 const StoreOrders        = lazyWithRetry(() => import('./pages/StoreOrders'), 'StoreOrders');
 const WhatsAppChat       = lazyWithRetry(() => import('./pages/WhatsAppChat'), 'WhatsAppChat');
+const ArchivedOrders     = lazyWithRetry(() => import('./pages/ArchivedOrders'), 'ArchivedOrders');
 
 function PageLoader() {
   return (
@@ -263,6 +264,14 @@ export const router = isCatalogSubdomain
       {
         path: 'dashboard',
         element: <Lazy><PermissionRoute check={p => p.dashboard}><Dashboard /></PermissionRoute></Lazy>,
+      },
+      {
+        path: 'pedidos-arquivados',
+        element: <Lazy><PermissionRoute check={p => p.orders?.view ?? false}><ArchivedOrders /></PermissionRoute></Lazy>,
+      },
+      {
+        path: 'arquivados',
+        element: <Navigate to="/pedidos-arquivados" replace />,
       },
       {
         path: 'agenda',

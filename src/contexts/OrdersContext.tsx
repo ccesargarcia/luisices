@@ -24,6 +24,8 @@ export interface TeamMemberOption {
 export interface OrdersContextValue {
   orders: Order[];
   allOrders: Order[];
+  archivedOrders: Order[];
+  activeOrders: Order[];
   loading: boolean;
   error: string | null;
   refreshOrders: () => void;
@@ -55,6 +57,8 @@ function getInitialSelectedUsers(): string[] {
 const OrdersContext = createContext<OrdersContextValue>({
   orders: [],
   allOrders: [],
+  archivedOrders: [],
+  activeOrders: [],
   loading: true,
   error: null,
   refreshOrders: () => {},
@@ -208,6 +212,11 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
         exchangeItems: data.exchangeItems,
         cardColor: data.cardColor,
         userId: data.userId,
+        isArchived: Boolean(data.isArchived),
+        archivedAt: data.archivedAt?.toDate
+          ? data.archivedAt.toDate().toISOString()
+          : data.archivedAt,
+        archivedBy: data.archivedBy,
       } as Order;
     });
 
@@ -480,11 +489,16 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
     setSelectedUserIds([]);
   }, [setSelectedUserIds]);
 
+  const archivedOrders = useMemo(() => filteredOrders.filter(o => Boolean(o.isArchived)), [filteredOrders]);
+  const activeOrders = useMemo(() => filteredOrders.filter(o => !o.isArchived), [filteredOrders]);
+
   return (
     <OrdersContext.Provider
       value={{
         orders: filteredOrders,
         allOrders: enrichedOrders,
+        archivedOrders,
+        activeOrders,
         loading,
         error,
         refreshOrders,

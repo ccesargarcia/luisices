@@ -16,6 +16,7 @@ import {
   orderBy,
   Timestamp,
   runTransaction,
+  writeBatch,
 } from 'firebase/firestore';
 import { db, auth } from '../lib/firebase';
 import { Order, OrderStatus, ProductionStep, ProductionWorkflow } from '../app/types';
@@ -156,6 +157,9 @@ export class FirebaseOrderService {
       version: 1,
       createdAt: Timestamp.now(),
       deletedAt: null,
+      isArchived: Boolean(orderData.isArchived),
+      archivedAt: orderData.archivedAt || null,
+      archivedBy: orderData.archivedBy || null,
     };
 
   }
@@ -292,6 +296,9 @@ export class FirebaseOrderService {
       userId: data.userId,
       updatedAt: data.updatedAt?.toDate ? data.updatedAt.toDate().toISOString() : data.updatedAt,
       version: typeof data.version === 'number' ? data.version : 1,
+      isArchived: Boolean(data.isArchived),
+      archivedAt: data.archivedAt?.toDate ? data.archivedAt.toDate().toISOString() : data.archivedAt,
+      archivedBy: data.archivedBy,
     } as Order;
   }
 
@@ -456,7 +463,7 @@ export class FirebaseOrderService {
   /**
    * Atualizar status do pedido e sincronizar salesLedger atomicamente com concorrência otimista.
    */
-  async updateOrderStatus(orderId: string, status: OrderStatus, expectedVersion?: number): Promise<void> {
+  async updateOrderStatus(orderId: string, status: OrderStatus, expectedVersion?: number, archive?: boolean): Promise<void> {
     const userId = this.getCurrentUserId();
     const orderRef = doc(db, ORDERS_COLLECTION, orderId);
     const saleRef = doc(db, 'salesLedger', orderId);
@@ -483,12 +490,24 @@ export class FirebaseOrderService {
 
       const now = new Date().toISOString();
 
-      // 2. TODAS as escritas após as leituras
-      transaction.update(orderRef, {
+      const orderUpdates: Record<string, any> = {
         status,
         version: currentVersion + 1,
         updatedAt: now,
-      });
+      };
+
+      if (archive === true && status === 'completed') {
+        orderUpdates.isArchived = true;
+        orderUpdates.archivedAt = now;
+        orderUpdates.archivedBy = userId;
+      } else if (status !== 'completed' && orderData.isArchived) {
+        orderUpdates.isArchived = false;
+        orderUpdates.archivedAt = null;
+        orderUpdates.archivedBy = null;
+      }
+
+      // 2. TODAS as escritas após as leituras
+      transaction.update(orderRef, orderUpdates);
 
       if (saleSnap.exists()) {
         transaction.update(saleRef, {
@@ -921,6 +940,81 @@ export class FirebaseOrderService {
     const snapshot = await getDocs(q);
 
     return snapshot.docs.map(doc => this.mapOrderDoc(doc));
+  }
+
+  /**
+   * Arquivar pedido (isArchived = true)
+   */
+  async archiveOrder(orderId: string): Promise<void> {
+    const userId = this.getCurrentUserId();
+    const orderRef = doc(db, ORDERS_COLLECTION, orderId);
+    const initialSnap = await getDoc(orderRef);
+    if (!initialSnap.exists() || !(await this.canAccessAssignedOrder(initialSnap.data(), userId))) {
+      throw new Error('Pedido não encontrado ou sem permissão');
+    }
+    const now = new Date().toISOString();
+    await updateDoc(orderRef, {
+      isArchived: true,
+      archivedAt: now,
+      archivedBy: userId,
+      updatedAt: now,
+    });
+  }
+
+  /**
+   * Desarquivar pedido (isArchived = false)
+   */
+  async unarchiveOrder(orderId: string): Promise<void> {
+    const userId = this.getCurrentUserId();
+    const orderRef = doc(db, ORDERS_COLLECTION, orderId);
+    const initialSnap = await getDoc(orderRef);
+    if (!initialSnap.exists() || !(await this.canAccessAssignedOrder(initialSnap.data(), userId))) {
+      throw new Error('Pedido não encontrado ou sem permissão');
+    }
+    const now = new Date().toISOString();
+    await updateDoc(orderRef, {
+      isArchived: false,
+      archivedAt: null,
+      archivedBy: null,
+      updatedAt: now,
+    });
+  }
+
+  /**
+   * Arquivar múltiplos pedidos em lote
+   */
+  async archiveOrdersBulk(orderIds: string[]): Promise<void> {
+    const userId = this.getCurrentUserId();
+    const now = new Date().toISOString();
+    const batch = writeBatch(db);
+    for (const id of orderIds) {
+      const orderRef = doc(db, ORDERS_COLLECTION, id);
+      batch.update(orderRef, {
+        isArchived: true,
+        archivedAt: now,
+        archivedBy: userId,
+        updatedAt: now,
+      });
+    }
+    await batch.commit();
+  }
+
+  /**
+   * Desarquivar múltiplos pedidos em lote
+   */
+  async unarchiveOrdersBulk(orderIds: string[]): Promise<void> {
+    const now = new Date().toISOString();
+    const batch = writeBatch(db);
+    for (const id of orderIds) {
+      const orderRef = doc(db, ORDERS_COLLECTION, id);
+      batch.update(orderRef, {
+        isArchived: false,
+        archivedAt: null,
+        archivedBy: null,
+        updatedAt: now,
+      });
+    }
+    await batch.commit();
   }
 }
 
