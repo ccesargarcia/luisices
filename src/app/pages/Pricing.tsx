@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router';
 import {
   ProductPricingRecipe,
   SupplyItem,
@@ -44,7 +45,29 @@ export function Pricing() {
   const canEdit = isAdmin || hasPermission((p) => canAccessPricing(p, 'edit'));
   const canDelete = isAdmin || hasPermission((p) => canAccessPricing(p, 'delete'));
 
-  const [activeTab, setActiveTab] = useState<string>('supplies');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const validPricingTabs = ['supplies', 'recipes', 'history', 'studioSettings'] as const;
+  type PricingTabType = typeof validPricingTabs[number];
+
+  const tabParam = searchParams.get('tab') as PricingTabType;
+  const initialTab: PricingTabType = validPricingTabs.includes(tabParam) ? tabParam : 'supplies';
+  const [activeTab, setActiveTab] = useState<string>(initialTab);
+
+  const handleTabChange = (val: string) => {
+    setActiveTab(val);
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.set('tab', val);
+      return next;
+    }, { replace: true });
+  };
+
+  useEffect(() => {
+    const currentTab = searchParams.get('tab');
+    if (currentTab && validPricingTabs.includes(currentTab as any) && currentTab !== activeTab) {
+      setActiveTab(currentTab);
+    }
+  }, [searchParams]);
 
   const [recipes, setRecipes] = useState<ProductPricingRecipe[]>([]);
   const [supplies, setSupplies] = useState<SupplyItem[]>([]);
@@ -264,7 +287,7 @@ export function Pricing() {
       </div>
 
       {/* Navegação entre as 4 Abas Estruturadas */}
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+      <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-6">
         <TabsList className="grid grid-cols-2 md:grid-cols-4 w-full h-auto p-1 bg-muted/60 gap-1">
           <TabsTrigger value="supplies" className="text-xs sm:text-sm gap-1.5 sm:gap-2 py-2 px-2 sm:px-3">
             <Layers className="size-3.5 sm:size-4 shrink-0" />

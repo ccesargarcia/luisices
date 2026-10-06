@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { useSearchParams } from 'react-router';
 import { useAuth } from '../../contexts/AuthContext';
 import { firebaseUserService } from '../../services/firebaseUserService';
 import { firebaseAlexaService } from '../../services/firebaseAlexaService';
@@ -52,7 +53,8 @@ import {
   TableHead,
   TableCell,
 } from '../components/ui/table';
-import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '../components/ui/tabs';
 import { Separator } from '../components/ui/separator';
 import { Alert, AlertDescription, AlertTitle } from '../components/ui/alert';
 import { toast } from 'sonner';
@@ -524,6 +526,31 @@ function UserFormDialog({ open, editingUser, currentUserUid, onClose, onSaved }:
 
 export function Users() {
   const { user: currentUser, isAdmin, loading: authLoading, hasPermission } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const validTabs = ['membros', 'convites', 'papeis'] as const;
+  type UserTabType = typeof validTabs[number];
+
+  const tabParam = searchParams.get('tab') as UserTabType;
+  const initialTab: UserTabType = validTabs.includes(tabParam) ? tabParam : 'membros';
+  const [activeTab, setActiveTab] = useState<UserTabType>(initialTab);
+
+  const handleTabChange = (val: string) => {
+    const nextTab = val as UserTabType;
+    setActiveTab(nextTab);
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.set('tab', nextTab);
+      return next;
+    }, { replace: true });
+  };
+
+  useEffect(() => {
+    const currentTabParam = searchParams.get('tab') as UserTabType;
+    if (currentTabParam && validTabs.includes(currentTabParam) && currentTabParam !== activeTab) {
+      setActiveTab(currentTabParam);
+    }
+  }, [searchParams]);
+
   const [users,    setUsers]    = useState<UserProfile[]>([]);
   const [loading,  setLoading]  = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -671,206 +698,351 @@ export function Users() {
         </div>
       </div>
 
-      {/* Alert sobre logout/login */}
-      <Alert>
-        <AlertCircle className="size-4" />
-        <AlertTitle>⚠️ Importante</AlertTitle>
-        <AlertDescription>
-          Após alterar permissões de um usuário, ele precisa fazer <strong>logout e login novamente</strong> para que as mudanças tenham efeito.
-        </AlertDescription>
-      </Alert>
-
-      {/* Stats */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-        <Card>
-          <CardHeader className="pb-1 pt-3 px-4">
-            <CardTitle className="text-xs text-muted-foreground font-normal">Total de usuários</CardTitle>
-          </CardHeader>
-          <CardContent className="px-4 pb-3">
-            <p className="text-2xl font-bold flex items-center gap-2">
-              <UsersIcon className="size-5 text-primary" />
-              {users.length}
-            </p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-1 pt-3 px-4">
-            <CardTitle className="text-xs text-muted-foreground font-normal">Ativos</CardTitle>
-          </CardHeader>
-          <CardContent className="px-4 pb-3">
-            <p className="text-2xl font-bold text-green-600">{totalActive}</p>
-          </CardContent>
-        </Card>
-        <Card className="col-span-2 sm:col-span-1">
-          <CardHeader className="pb-1 pt-3 px-4">
-            <CardTitle className="text-xs text-muted-foreground font-normal">Admins / Inativos</CardTitle>
-          </CardHeader>
-          <CardContent className="px-4 pb-3">
-            <p className="text-2xl font-bold">
-              <span className="text-yellow-600">{totalAdmins}</span>
-              <span className="text-muted-foreground text-sm font-normal mx-1">/</span>
-              <span className="text-destructive">{totalInactive}</span>
-            </p>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Table — desktop */}
-      {loading ? (
-        <div className="flex items-center justify-center h-40">
-          <Loader2 className="size-7 animate-spin text-muted-foreground" />
+      {/* Navegação por Abas */}
+      <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-6">
+        <div className="overflow-x-auto pb-1 -mx-2 px-2 sm:mx-0 sm:px-0">
+          <TabsList className="h-auto p-1 gap-1 flex-wrap sm:flex-nowrap">
+            <TabsTrigger value="membros" className="gap-2 px-3.5 py-2 text-xs sm:text-sm">
+              <UsersIcon className="size-4 shrink-0" />
+              <span>Membros Ativos ({users.length})</span>
+            </TabsTrigger>
+            <TabsTrigger value="convites" className="gap-2 px-3.5 py-2 text-xs sm:text-sm">
+              <MailPlus className="size-4 shrink-0" />
+              <span>Enviar Convite</span>
+            </TabsTrigger>
+            <TabsTrigger value="papeis" className="gap-2 px-3.5 py-2 text-xs sm:text-sm">
+              <ShieldCheck className="size-4 shrink-0" />
+              <span>Perfis & Regras de Acesso</span>
+            </TabsTrigger>
+          </TabsList>
         </div>
-      ) : (
-        <>
-          {/* Desktop Table */}
-          <div className="hidden sm:block border rounded-lg overflow-hidden">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Nome</TableHead>
-                  <TableHead>E-mail</TableHead>
-                  <TableHead>Perfil</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Ações</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
+
+        {/* ─── ABA 1: MEMBROS ATIVOS ──────────────────────────────── */}
+        <TabsContent value="membros" className="space-y-6">
+          {/* Alert sobre logout/login */}
+          <Alert>
+            <AlertCircle className="size-4" />
+            <AlertTitle>⚠️ Importante</AlertTitle>
+            <AlertDescription>
+              Após alterar permissões de um usuário, ele precisa fazer <strong>logout e login novamente</strong> para que as mudanças tenham efeito.
+            </AlertDescription>
+          </Alert>
+
+          {/* Stats */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+            <Card>
+              <CardHeader className="pb-1 pt-3 px-4">
+                <CardTitle className="text-xs text-muted-foreground font-normal">Total de usuários</CardTitle>
+              </CardHeader>
+              <CardContent className="px-4 pb-3">
+                <p className="text-2xl font-bold flex items-center gap-2">
+                  <UsersIcon className="size-5 text-primary" />
+                  {users.length}
+                </p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="pb-1 pt-3 px-4">
+                <CardTitle className="text-xs text-muted-foreground font-normal">Ativos</CardTitle>
+              </CardHeader>
+              <CardContent className="px-4 pb-3">
+                <p className="text-2xl font-bold text-green-600">{totalActive}</p>
+              </CardContent>
+            </Card>
+            <Card className="col-span-2 sm:col-span-1">
+              <CardHeader className="pb-1 pt-3 px-4">
+                <CardTitle className="text-xs text-muted-foreground font-normal">Admins / Inativos</CardTitle>
+              </CardHeader>
+              <CardContent className="px-4 pb-3">
+                <p className="text-2xl font-bold">
+                  <span className="text-yellow-600">{totalAdmins}</span>
+                  <span className="text-muted-foreground text-sm font-normal mx-1">/</span>
+                  <span className="text-destructive">{totalInactive}</span>
+                </p>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Table — desktop */}
+          {loading ? (
+            <div className="flex items-center justify-center h-40">
+              <Loader2 className="size-7 animate-spin text-muted-foreground" />
+            </div>
+          ) : (
+            <>
+              {/* Desktop Table */}
+              <div className="hidden sm:block border rounded-lg overflow-hidden">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Nome</TableHead>
+                      <TableHead>E-mail</TableHead>
+                      <TableHead>Perfil</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead className="text-right">Ações</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {users.length === 0 && (
+                      <TableRow>
+                        <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
+                          Nenhum usuário encontrado
+                        </TableCell>
+                      </TableRow>
+                    )}
+                    {users.map(u => (
+                      <TableRow key={u.uid} className="group">
+                        <TableCell className="font-medium">
+                          {u.displayName}
+                          {u.uid === currentUser?.uid && (
+                            <Badge variant="outline" className="ml-2 text-xs">você</Badge>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-muted-foreground text-sm">{u.email}</TableCell>
+                        <TableCell>
+                          {u.role === 'admin' ? (
+                            <Badge className="bg-yellow-500/20 text-yellow-700 border-yellow-300 hover:bg-yellow-500/30">
+                              <ShieldCheck className="size-3 mr-1" /> Admin
+                            </Badge>
+                          ) : u.role === 'funcionario' ? (
+                            <Badge className="bg-blue-500/15 text-blue-700 border-blue-300">
+                              <User className="size-3 mr-1" /> Funcionário
+                            </Badge>
+                          ) : (
+                            <Badge variant="secondary">
+                              <User className="size-3 mr-1" /> Usuário
+                            </Badge>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-2">
+                            <Switch
+                              checked={u.active}
+                              onCheckedChange={() => toggleActive(u)}
+                              disabled={togglingUid === u.uid || u.uid === currentUser?.uid}
+                              aria-label="Ativar/desativar usuário"
+                            />
+                            <span className={`text-xs ${u.active ? 'text-green-600' : 'text-muted-foreground'}`}>
+                              {u.active ? 'Ativo' : 'Inativo'}
+                            </span>
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex items-center justify-end gap-1">
+                            <Button size="icon" variant="ghost" onClick={() => openEdit(u)} className="size-8" aria-label={`Editar ${u.displayName}`} title="Editar usuário">
+                              <Pencil className="size-3.5" />
+                            </Button>
+                            {u.uid !== currentUser?.uid && (
+                              <>
+                                <Button size="icon" variant="ghost" onClick={() => sendPasswordReset(u)} disabled={resettingUid === u.uid} className="size-8" title="Enviar redefinição de senha" aria-label={`Enviar redefinição de senha para ${u.displayName}`}>
+                                  {resettingUid === u.uid ? <Loader2 className="size-3.5 animate-spin" /> : <KeyRound className="size-3.5" />}
+                                </Button>
+                                <Button size="icon" variant="ghost" onClick={() => setDeleteUserTarget(u)} className="size-8 text-destructive hover:text-destructive hover:bg-destructive/10" title="Excluir usuário" aria-label={`Excluir ${u.displayName}`}>
+                                  <Trash2 className="size-3.5" />
+                                </Button>
+                              </>
+                            )}
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+
+              {/* Mobile Cards */}
+              <div className="sm:hidden space-y-3">
                 {users.length === 0 && (
-                  <TableRow>
-                    <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
-                      Nenhum usuário encontrado
-                    </TableCell>
-                  </TableRow>
+                  <p className="text-center text-muted-foreground py-8">Nenhum usuário encontrado</p>
                 )}
                 {users.map(u => (
-                  <TableRow key={u.uid} className="group">
-                    <TableCell className="font-medium">
-                      {u.displayName}
-                      {u.uid === currentUser?.uid && (
-                        <Badge variant="outline" className="ml-2 text-xs">você</Badge>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-muted-foreground text-sm">{u.email}</TableCell>
-                    <TableCell>
-                      {u.role === 'admin' ? (
-                        <Badge className="bg-yellow-500/20 text-yellow-700 border-yellow-300 hover:bg-yellow-500/30">
-                          <ShieldCheck className="size-3 mr-1" /> Admin
-                        </Badge>
-                      ) : u.role === 'funcionario' ? (
-                        <Badge className="bg-blue-500/15 text-blue-700 border-blue-300">
-                          <User className="size-3 mr-1" /> Funcionário
-                        </Badge>
-                      ) : (
-                        <Badge variant="secondary">
-                          <User className="size-3 mr-1" /> Usuário
-                        </Badge>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-2">
-                        <Switch
-                          checked={u.active}
-                          onCheckedChange={() => toggleActive(u)}
-                          disabled={togglingUid === u.uid || u.uid === currentUser?.uid}
-                          aria-label="Ativar/desativar usuário"
-                        />
-                        <span className={`text-xs ${u.active ? 'text-green-600' : 'text-muted-foreground'}`}>
-                          {u.active ? 'Ativo' : 'Inativo'}
-                        </span>
+                  <Card key={u.uid}>
+                    <CardContent className="p-4 space-y-2">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="font-semibold truncate">
+                            {u.displayName}
+                            {u.uid === currentUser?.uid && (
+                              <Badge variant="outline" className="ml-2 text-xs">você</Badge>
+                            )}
+                          </p>
+                          <p className="text-xs text-muted-foreground truncate">{u.email}</p>
+                        </div>
+                        <div className="flex shrink-0 gap-0.5">
+                          <Button size="icon" variant="ghost" onClick={() => openEdit(u)} className="size-8" aria-label={`Editar ${u.displayName}`} title="Editar usuário">
+                            <Pencil className="size-3.5" />
+                          </Button>
+                          {u.uid !== currentUser?.uid && (
+                            <>
+                              <Button size="icon" variant="ghost" onClick={() => sendPasswordReset(u)} disabled={resettingUid === u.uid} className="size-8" title="Enviar redefinição de senha" aria-label={`Enviar redefinição de senha para ${u.displayName}`}>
+                                {resettingUid === u.uid ? <Loader2 className="size-3.5 animate-spin" /> : <KeyRound className="size-3.5" />}
+                              </Button>
+                              <Button size="icon" variant="ghost" onClick={() => setDeleteUserTarget(u)} className="size-8 text-destructive hover:text-destructive hover:bg-destructive/10" title="Excluir usuário" aria-label={`Excluir ${u.displayName}`}>
+                                <Trash2 className="size-3.5" />
+                              </Button>
+                            </>
+                          )}
+                        </div>
                       </div>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex items-center justify-end gap-1">
-                        <Button size="icon" variant="ghost" onClick={() => openEdit(u)} className="size-8" aria-label={`Editar ${u.displayName}`} title="Editar usuário">
-                          <Pencil className="size-3.5" />
-                        </Button>
-                        {u.uid !== currentUser?.uid && (
-                          <>
-                            <Button size="icon" variant="ghost" onClick={() => sendPasswordReset(u)} disabled={resettingUid === u.uid} className="size-8" title="Enviar redefinição de senha" aria-label={`Enviar redefinição de senha para ${u.displayName}`}>
-                              {resettingUid === u.uid ? <Loader2 className="size-3.5 animate-spin" /> : <KeyRound className="size-3.5" />}
-                            </Button>
-                            <Button size="icon" variant="ghost" onClick={() => setDeleteUserTarget(u)} className="size-8 text-destructive hover:text-destructive hover:bg-destructive/10" title="Excluir usuário" aria-label={`Excluir ${u.displayName}`}>
-                              <Trash2 className="size-3.5" />
-                            </Button>
-                          </>
+                      <div className="flex items-center justify-between">
+                        {u.role === 'admin' ? (
+                          <Badge className="bg-yellow-500/20 text-yellow-700 border-yellow-300">
+                            <ShieldCheck className="size-3 mr-1" /> Admin
+                          </Badge>
+                        ) : u.role === 'funcionario' ? (
+                          <Badge className="bg-blue-500/15 text-blue-700 border-blue-300">
+                            <User className="size-3 mr-1" /> Funcionário
+                          </Badge>
+                        ) : (
+                          <Badge variant="secondary">
+                            <User className="size-3 mr-1" /> Usuário
+                          </Badge>
                         )}
+                        <div className="flex items-center gap-2">
+                          <Switch
+                            checked={u.active}
+                            onCheckedChange={() => toggleActive(u)}
+                            disabled={togglingUid === u.uid || u.uid === currentUser?.uid}
+                          />
+                          <span className={`text-xs ${u.active ? 'text-green-600' : 'text-muted-foreground'}`}>
+                            {u.active ? 'Ativo' : 'Inativo'}
+                          </span>
+                        </div>
                       </div>
-                    </TableCell>
-                  </TableRow>
+                      <div className="border-t pt-2 text-xs text-muted-foreground space-y-1">
+                        <p>Criado em: <span className="text-foreground">{formatUserDate(u.createdAt)}</span></p>
+                        <p>Último reset solicitado: <span className="text-foreground">{formatUserDate(u.lastPasswordResetRequestedAt)}</span></p>
+                      </div>
+                    </CardContent>
+                  </Card>
                 ))}
-              </TableBody>
-            </Table>
-          </div>
+              </div>
+            </>
+          )}
+        </TabsContent>
 
-          {/* Mobile Cards */}
-          <div className="sm:hidden space-y-3">
-            {users.length === 0 && (
-              <p className="text-center text-muted-foreground py-8">Nenhum usuário encontrado</p>
-            )}
-            {users.map(u => (
-              <Card key={u.uid}>
-                <CardContent className="p-4 space-y-2">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <p className="font-semibold truncate">
-                        {u.displayName}
-                        {u.uid === currentUser?.uid && (
-                          <Badge variant="outline" className="ml-2 text-xs">você</Badge>
-                        )}
-                      </p>
-                      <p className="text-xs text-muted-foreground truncate">{u.email}</p>
-                    </div>
-                    <div className="flex shrink-0 gap-0.5">
-                      <Button size="icon" variant="ghost" onClick={() => openEdit(u)} className="size-8" aria-label={`Editar ${u.displayName}`} title="Editar usuário">
-                        <Pencil className="size-3.5" />
-                      </Button>
-                      {u.uid !== currentUser?.uid && (
-                        <>
-                          <Button size="icon" variant="ghost" onClick={() => sendPasswordReset(u)} disabled={resettingUid === u.uid} className="size-8" title="Enviar redefinição de senha" aria-label={`Enviar redefinição de senha para ${u.displayName}`}>
-                            {resettingUid === u.uid ? <Loader2 className="size-3.5 animate-spin" /> : <KeyRound className="size-3.5" />}
-                          </Button>
-                          <Button size="icon" variant="ghost" onClick={() => setDeleteUserTarget(u)} className="size-8 text-destructive hover:text-destructive hover:bg-destructive/10" title="Excluir usuário" aria-label={`Excluir ${u.displayName}`}>
-                            <Trash2 className="size-3.5" />
-                          </Button>
-                        </>
-                      )}
-                    </div>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    {u.role === 'admin' ? (
-                      <Badge className="bg-yellow-500/20 text-yellow-700 border-yellow-300">
-                        <ShieldCheck className="size-3 mr-1" /> Admin
-                      </Badge>
-                    ) : u.role === 'funcionario' ? (
-                      <Badge className="bg-blue-500/15 text-blue-700 border-blue-300">
-                        <User className="size-3 mr-1" /> Funcionário
-                      </Badge>
+        {/* ─── ABA 2: ENVIAR CONVITE ──────────────────────────────── */}
+        <TabsContent value="convites" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <MailPlus className="size-5 text-primary" />
+                Convidar Novo Membro para a Equipe
+              </CardTitle>
+              <CardDescription>
+                Envie um convite direto por e-mail ou WhatsApp para novos colaboradores cadastrarem sua própria senha com segurança.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <form onSubmit={sendInvitation} className="max-w-xl space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="invite-tab-email">E-mail do novo membro</Label>
+                  <Input
+                    id="invite-tab-email"
+                    type="email"
+                    value={inviteEmail}
+                    onChange={(e) => setInviteEmail(e.target.value)}
+                    placeholder="colaborador@atelie.com"
+                    required
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="invite-tab-whatsapp">WhatsApp para envio do link (opcional)</Label>
+                  <Input
+                    id="invite-tab-whatsapp"
+                    type="tel"
+                    value={inviteWhatsapp}
+                    onChange={(e) => setInviteWhatsapp(e.target.value)}
+                    placeholder="11999999999"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    O link de ativação expira em 48 horas. A conta é criada automaticamente após o preenchimento.
+                  </p>
+                </div>
+                <div className="pt-2">
+                  <Button type="submit" disabled={inviting} className="gap-2">
+                    {inviting ? (
+                      <>
+                        <Loader2 className="size-4 animate-spin" />
+                        Enviando convite...
+                      </>
                     ) : (
-                      <Badge variant="secondary">
-                        <User className="size-3 mr-1" /> Usuário
-                      </Badge>
+                      <>
+                        <MailPlus className="size-4" />
+                        Gerar e Enviar Convite
+                      </>
                     )}
-                    <div className="flex items-center gap-2">
-                      <Switch
-                        checked={u.active}
-                        onCheckedChange={() => toggleActive(u)}
-                        disabled={togglingUid === u.uid || u.uid === currentUser?.uid}
-                      />
-                      <span className={`text-xs ${u.active ? 'text-green-600' : 'text-muted-foreground'}`}>
-                        {u.active ? 'Ativo' : 'Inativo'}
-                      </span>
-                    </div>
-                  </div>
-                  <div className="border-t pt-2 text-xs text-muted-foreground space-y-1">
-                    <p>Criado em: <span className="text-foreground">{formatUserDate(u.createdAt)}</span></p>
-                    <p>Último reset solicitado: <span className="text-foreground">{formatUserDate(u.lastPasswordResetRequestedAt)}</span></p>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
+                  </Button>
+                </div>
+              </form>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* ─── ABA 3: PERFIS & REGRAS DE ACESSO ───────────────────── */}
+        <TabsContent value="papeis" className="space-y-6">
+          <div className="grid gap-4 md:grid-cols-3">
+            <Card className="border-yellow-500/30 bg-yellow-500/5">
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <Badge className="bg-yellow-500/20 text-yellow-700 dark:text-yellow-400 border-yellow-300">
+                    <ShieldCheck className="size-3 mr-1" /> Administrador
+                  </Badge>
+                </div>
+                <CardTitle className="text-lg pt-2">Acesso Total (Master)</CardTitle>
+                <CardDescription>
+                  Controle irrestrito sobre todas as configurações, financeiro, equipe, inteligência artificial e pedidos arquivados.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="text-xs space-y-2 text-muted-foreground">
+                <p>• Gestão de usuários e envio de convites</p>
+                <p>• Precificação, receitas e custos de insumos</p>
+                <p>• Configurações da Alexa Skill e telemetria de IA</p>
+                <p>• Arquivamento, desarquivamento e exclusão</p>
+              </CardContent>
+            </Card>
+
+            <Card className="border-blue-500/30 bg-blue-500/5">
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <Badge className="bg-blue-500/15 text-blue-700 dark:text-blue-400 border-blue-300">
+                    <User className="size-3 mr-1" /> Funcionário
+                  </Badge>
+                </div>
+                <CardTitle className="text-lg pt-2">Operacional & Produção</CardTitle>
+                <CardDescription>
+                  Focado na esteira diária de pedidos, atualização de status de produção, atendimento e catálogo.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="text-xs space-y-2 text-muted-foreground">
+                <p>• Visualização e criação de pedidos e clientes</p>
+                <p>• Acesso à agenda semanal e galeria</p>
+                <p>• Sem acesso à gestão de usuários e zona de perigo</p>
+                <p>• Permissões ajustáveis individualmente</p>
+              </CardContent>
+            </Card>
+
+            <Card className="border-border">
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <Badge variant="secondary">
+                    <User className="size-3 mr-1" /> Usuário Padrão
+                  </Badge>
+                </div>
+                <CardTitle className="text-lg pt-2">Consulta Básica</CardTitle>
+                <CardDescription>
+                  Perfil com permissões padrão personalizadas conforme as regras do ateliê.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="text-xs space-y-2 text-muted-foreground">
+                <p>• Permissões customizáveis módulo por módulo</p>
+                <p>• Controle granular (Ver, Criar, Editar, Excluir)</p>
+                <p>• Acesso restrito a orçamentos e produtos</p>
+              </CardContent>
+            </Card>
           </div>
-        </>
-      )}
+        </TabsContent>
+      </Tabs>
 
       {/* Dialog */}
       <UserFormDialog
