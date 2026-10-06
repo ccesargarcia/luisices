@@ -154,6 +154,7 @@ export function TopHeader({
           <div className="hidden xl:flex items-center flex-1 min-w-0 max-w-xs mx-2">
             <button
               type="button"
+              data-testid="header-search-bar"
               onClick={onOpenSearch}
               className="w-full flex items-center justify-between gap-2 px-3 py-1.5 rounded-lg border border-border/70 bg-muted/30 hover:bg-muted/70 hover:border-primary/30 text-muted-foreground hover:text-foreground text-xs transition-all shadow-2xs group cursor-pointer"
               title="Buscar no sistema (Ctrl + K)"
@@ -176,6 +177,7 @@ export function TopHeader({
             <Button
               variant="ghost"
               size="icon"
+              data-testid="header-search-btn"
               onClick={onOpenSearch}
               className="size-8 sm:size-9 xl:hidden text-muted-foreground hover:text-foreground rounded-lg"
               title="Buscar no sistema (Ctrl + K)"

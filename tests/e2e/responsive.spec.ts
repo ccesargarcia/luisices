@@ -83,7 +83,7 @@ test.describe('Experiência Mobile e Responsividade', () => {
     await page.waitForLoadState('domcontentloaded');
 
     // Botão de busca no cabeçalho deve estar visível e utilizável
-    const searchTrigger = page.locator('header button[title*="Buscar"]').first();
+    const searchTrigger = page.locator('header button[title*="Buscar"]:visible, header [data-testid="header-search-btn"]').first();
     await expect(searchTrigger).toBeVisible({ timeout: 10000 });
 
     // Barra de busca da esteira do dashboard deve estar utilizável
