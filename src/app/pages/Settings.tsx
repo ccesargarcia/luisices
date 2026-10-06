@@ -1,12 +1,28 @@
 import { useState, useEffect } from 'react';
+import { Link } from 'react-router';
 import { useAuth } from '../../contexts/AuthContext';
 import { useUserSettings } from '../../hooks/useUserSettings';
-import { Loader2 } from 'lucide-react';
+import {
+  Loader2,
+  Building2,
+  SlidersHorizontal,
+  Palette,
+  Sparkles,
+  ShieldAlert,
+  Store,
+  ExternalLink,
+  ShieldCheck,
+  Users,
+} from 'lucide-react';
 import { toast } from 'sonner';
 import { useTheme } from 'next-themes';
 import { applyColorTheme, type ColorThemeKey } from '../utils/colorThemes';
 import { DEFAULT_DASHBOARD_CARDS } from '../utils/dashboardCards';
 import { Badge } from '../components/ui/badge';
+import { Button } from '../components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '../components/ui/tabs';
+
 import { AvatarLogoSection } from '../components/settings/AvatarLogoSection';
 import { BusinessInfoSection, type BusinessInfo } from '../components/settings/BusinessInfoSection';
 import { OperationsSection } from '../components/settings/OperationsSection';
@@ -15,10 +31,8 @@ import { DashboardPrefsSection } from '../components/settings/DashboardPrefsSect
 import { NavigationOrderSection, DEFAULT_NAV_ORDER } from '../components/settings/NavigationOrderSection';
 import { CardDensitySection } from '../components/settings/CardDensitySection';
 import { WhatsAppTemplateSection } from '../components/settings/WhatsAppTemplateSection';
-import { PermissionsSection } from '../components/settings/PermissionsSection';
 import { AiSettingsSection } from '../components/settings/AiSettingsSection';
 import { AlexaSettingsSection } from '../components/settings/AlexaSettingsSection';
-import { CatalogSettingsSection, type CatalogCustomizationSettings } from '../components/settings/CatalogSettingsSection';
 import { DangerZoneSection } from '../components/settings/DangerZoneSection';
 
 export function Settings() {
@@ -36,6 +50,8 @@ export function Settings() {
     removeBanner,
     resetToDefaults,
   } = useUserSettings();
+
+  const [activeTab, setActiveTab] = useState<'empresa' | 'operacao' | 'aparencia' | 'integracoes' | 'avancado'>('empresa');
 
   const [uploading, setUploading] = useState<'avatar' | 'logo' | 'banner' | null>(null);
   const [savingBusinessInfo, setSavingBusinessInfo] = useState(false);
@@ -74,24 +90,6 @@ export function Settings() {
     whatsappPhone: settings?.whatsappPhone || '',
   });
 
-  const [catalogSettings, setCatalogSettings] = useState<CatalogCustomizationSettings>({
-    catalogWhatsappPhone: settings?.catalogWhatsappPhone || '',
-    catalogBadge: settings?.catalogBadge || '',
-    catalogStatusText: settings?.catalogStatusText || '',
-    catalogHeroTitle: settings?.catalogHeroTitle || '',
-    catalogHeroDescription: settings?.catalogHeroDescription || '',
-    catalogAnnouncement: settings?.catalogAnnouncement || '',
-    catalogWhatsappGreeting: settings?.catalogWhatsappGreeting || '',
-    catalogWhatsappCustomizationLabel: settings?.catalogWhatsappCustomizationLabel || '',
-    catalogWhatsappFooter: settings?.catalogWhatsappFooter || '',
-    catalogFooterText: settings?.catalogFooterText || '',
-    catalogFooterLocation: settings?.catalogFooterLocation || '',
-    catalogFooterBusinessHours: settings?.catalogFooterBusinessHours || '',
-    catalogFooterCopyright: settings?.catalogFooterCopyright || '',
-    catalogFooterNotice: settings?.catalogFooterNotice || '',
-  });
-  const [savingCatalogSettings, setSavingCatalogSettings] = useState(false);
-
   // Atualizar business info quando settings carregar
   useEffect(() => {
     if (settings) {
@@ -129,22 +127,6 @@ export function Settings() {
       setDefaultPaymentMethod(settings.defaultPaymentMethod ?? '');
       setAutoArchiveCompletedOrders(settings.autoArchiveCompletedOrders ?? false);
       setCustomColorHex(settings.customColorHex ?? '#7c3aed');
-      setCatalogSettings({
-        catalogWhatsappPhone: settings.catalogWhatsappPhone || '',
-        catalogBadge: settings.catalogBadge || '',
-        catalogStatusText: settings.catalogStatusText || '',
-        catalogHeroTitle: settings.catalogHeroTitle || '',
-        catalogHeroDescription: settings.catalogHeroDescription || '',
-        catalogAnnouncement: settings.catalogAnnouncement || '',
-        catalogWhatsappGreeting: settings.catalogWhatsappGreeting || '',
-        catalogWhatsappCustomizationLabel: settings.catalogWhatsappCustomizationLabel || '',
-        catalogWhatsappFooter: settings.catalogWhatsappFooter || '',
-        catalogFooterText: settings.catalogFooterText || '',
-        catalogFooterLocation: settings.catalogFooterLocation || '',
-        catalogFooterBusinessHours: settings.catalogFooterBusinessHours || '',
-        catalogFooterCopyright: settings.catalogFooterCopyright || '',
-        catalogFooterNotice: settings.catalogFooterNotice || '',
-      });
     }
   }, [settings]);
 
@@ -202,25 +184,12 @@ export function Settings() {
     setSavingBusinessInfo(true);
     try {
       await updateSettings(businessInfo);
-      toast.success('Informações atualizadas com sucesso!');
+      toast.success('Informações da empresa salvas com sucesso!');
     } catch (error) {
       console.error('Erro ao salvar:', error);
       toast.error(error instanceof Error ? error.message : 'Erro ao atualizar informações');
     } finally {
       setSavingBusinessInfo(false);
-    }
-  };
-
-  const handleCatalogSettingsSave = async () => {
-    setSavingCatalogSettings(true);
-    try {
-      await updateSettings(catalogSettings);
-      toast.success('Personalizações da lojinha pública salvas com sucesso!');
-    } catch (error) {
-      console.error('Erro ao salvar personalizações da loja:', error);
-      toast.error('Erro ao salvar personalizações da lojinha');
-    } finally {
-      setSavingCatalogSettings(false);
     }
   };
 
@@ -352,123 +321,214 @@ export function Settings() {
   const isDevEnvironment = import.meta.env.VITE_FIREBASE_PROJECT_ID?.endsWith('-dev') ?? false;
 
   return (
-    <div className="space-y-8">
-      <div>
-        <div className="flex items-center gap-3 flex-wrap border-b border-border/60 pb-6">
-          <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">Configurações</h1>
-          {isDevEnvironment && (
-            <Badge
-              variant="outline"
-              className="bg-yellow-500/10 text-yellow-600 border-yellow-400 font-mono text-xs"
-            >
-              🚧 DEV
-            </Badge>
-          )}
+    <div className="space-y-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-border/60 pb-5">
+        <div>
+          <div className="flex items-center gap-3 flex-wrap">
+            <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">Configurações</h1>
+            {isDevEnvironment && (
+              <Badge
+                variant="outline"
+                className="bg-yellow-500/10 text-yellow-600 border-yellow-400 font-mono text-xs"
+              >
+                🚧 DEV
+              </Badge>
+            )}
+          </div>
+          <p className="text-muted-foreground mt-1 text-sm sm:text-base">
+            Gerencie identidade visual, operação, integrações e dados do ateliê
+          </p>
         </div>
-        <p className="text-muted-foreground mt-2">
-          Personalize seu dashboard com logo, cores e informações do negócio
-        </p>
       </div>
 
-      {/* Avatar e Logo */}
-      <AvatarLogoSection
-        avatarUrl={settings?.avatar}
-        logoUrl={settings?.logo}
-        userInitials={userInitials}
-        uploading={uploading}
-        onImageUpload={handleImageUpload}
-        onImageRemove={handleImageRemove}
-      />
+      {/* Navegação por Abas */}
+      <Tabs
+        value={activeTab}
+        onValueChange={(val: any) => setActiveTab(val)}
+        className="space-y-6"
+      >
+        <div className="overflow-x-auto pb-1 -mx-2 px-2 sm:mx-0 sm:px-0">
+          <TabsList className="h-auto p-1 gap-1 flex-wrap sm:flex-nowrap w-full sm:w-auto">
+            <TabsTrigger value="empresa" className="gap-2 px-3.5 py-2 text-xs sm:text-sm">
+              <Building2 className="size-4 shrink-0" />
+              <span>Empresa & Perfil</span>
+            </TabsTrigger>
+            <TabsTrigger value="operacao" className="gap-2 px-3.5 py-2 text-xs sm:text-sm">
+              <SlidersHorizontal className="size-4 shrink-0" />
+              <span>Operação & Prazos</span>
+            </TabsTrigger>
+            <TabsTrigger value="aparencia" className="gap-2 px-3.5 py-2 text-xs sm:text-sm">
+              <Palette className="size-4 shrink-0" />
+              <span>Aparência & Interface</span>
+            </TabsTrigger>
+            {isAdmin && (
+              <TabsTrigger value="integracoes" className="gap-2 px-3.5 py-2 text-xs sm:text-sm">
+                <Sparkles className="size-4 shrink-0" />
+                <span>Integrações & IA</span>
+              </TabsTrigger>
+            )}
+            <TabsTrigger value="avancado" className="gap-2 px-3.5 py-2 text-xs sm:text-sm">
+              <ShieldAlert className="size-4 shrink-0" />
+              <span>Avançado</span>
+            </TabsTrigger>
+          </TabsList>
+        </div>
 
-      {/* Informações do Negócio */}
-      <BusinessInfoSection
-        businessInfo={businessInfo}
-        onChange={setBusinessInfo}
-        onSave={handleBusinessInfoSave}
-        saving={savingBusinessInfo}
-      />
+        {/* ─── ABA 1: EMPRESA & PERFIL ────────────────────────────── */}
+        <TabsContent value="empresa" className="space-y-6">
+          <AvatarLogoSection
+            avatarUrl={settings?.avatar}
+            logoUrl={settings?.logo}
+            userInitials={userInitials}
+            uploading={uploading}
+            onImageUpload={handleImageUpload}
+            onImageRemove={handleImageRemove}
+          />
 
-      {/* Catálogo Online & Lojinha Pública */}
-      <CatalogSettingsSection
-        settings={catalogSettings}
-        onChange={setCatalogSettings}
-        onSave={handleCatalogSettingsSave}
-        saving={savingCatalogSettings}
-      />
+          <BusinessInfoSection
+            businessInfo={businessInfo}
+            onChange={setBusinessInfo}
+            onSave={handleBusinessInfoSave}
+            saving={savingBusinessInfo}
+          />
+        </TabsContent>
 
-      {/* Preferências do Dashboard */}
-      <DashboardPrefsSection
-        selectedCards={selectedCards}
-        onSelectedCardsChange={setSelectedCards}
-        defaultReportPeriod={defaultReportPeriod}
-        onDefaultReportPeriodChange={setDefaultReportPeriod}
-        onSave={handleDashboardPrefsSave}
-        saving={savingDashboardPrefs}
-      />
+        {/* ─── ABA 2: OPERAÇÃO & PRAZOS ──────────────────────────── */}
+        <TabsContent value="operacao" className="space-y-6">
+          <OperationsSection
+            deliveryAlertDays={deliveryAlertDays}
+            onDeliveryAlertDaysChange={setDeliveryAlertDays}
+            defaultDeliveryDays={defaultDeliveryDays}
+            onDefaultDeliveryDaysChange={setDefaultDeliveryDays}
+            defaultPaymentMethod={defaultPaymentMethod}
+            onDefaultPaymentMethodChange={setDefaultPaymentMethod}
+            autoArchiveCompletedOrders={autoArchiveCompletedOrders}
+            onAutoArchiveCompletedOrdersChange={setAutoArchiveCompletedOrders}
+            onSave={handleOperationsSave}
+            saving={savingOperations}
+          />
 
-      {/* Operação Padrão */}
-      <OperationsSection
-        deliveryAlertDays={deliveryAlertDays}
-        onDeliveryAlertDaysChange={setDeliveryAlertDays}
-        defaultDeliveryDays={defaultDeliveryDays}
-        onDefaultDeliveryDaysChange={setDefaultDeliveryDays}
-        defaultPaymentMethod={defaultPaymentMethod}
-        onDefaultPaymentMethodChange={setDefaultPaymentMethod}
-        autoArchiveCompletedOrders={autoArchiveCompletedOrders}
-        onAutoArchiveCompletedOrdersChange={setAutoArchiveCompletedOrders}
-        onSave={handleOperationsSave}
-        saving={savingOperations}
-      />
+          <WhatsAppTemplateSection
+            whatsappGreeting={whatsappGreeting}
+            onWhatsappGreetingChange={setWhatsappGreeting}
+            whatsappSignature={whatsappSignature}
+            onWhatsappSignatureChange={setWhatsappSignature}
+            onSave={handleWhatsappSave}
+            saving={savingWhatsappTemplate}
+          />
+        </TabsContent>
 
-      {/* Personalização / Aparência */}
-      <AppearanceSection
-        theme={theme}
-        onThemeChange={setTheme}
-        selectedColorTheme={selectedColorTheme}
-        onColorThemeChange={setSelectedColorTheme}
-        customColorHex={customColorHex}
-        onCustomColorHexChange={setCustomColorHex}
-        onSave={handlePersonalizationSave}
-        saving={savingPersonalization}
-      />
+        {/* ─── ABA 3: APARÊNCIA & TELAS ──────────────────────────── */}
+        <TabsContent value="aparencia" className="space-y-6">
+          <AppearanceSection
+            theme={theme}
+            onThemeChange={setTheme}
+            selectedColorTheme={selectedColorTheme}
+            onColorThemeChange={setSelectedColorTheme}
+            customColorHex={customColorHex}
+            onCustomColorHexChange={setCustomColorHex}
+            onSave={handlePersonalizationSave}
+            saving={savingPersonalization}
+          />
 
-      {/* Ordem de Navegação */}
-      <NavigationOrderSection
-        navOrder={navOrder}
-        onNavOrderChange={setNavOrder}
-        onSave={handleNavOrderSave}
-        saving={savingNavOrder}
-      />
+          <CardDensitySection
+            compactCards={compactCards}
+            onCompactCardsChange={setCompactCards}
+            onSave={handleDensitySave}
+            saving={savingDisplayPrefs}
+          />
 
-      {/* Densidade dos Cards */}
-      <CardDensitySection
-        compactCards={compactCards}
-        onCompactCardsChange={setCompactCards}
-        onSave={handleDensitySave}
-        saving={savingDisplayPrefs}
-      />
+          <DashboardPrefsSection
+            selectedCards={selectedCards}
+            onSelectedCardsChange={setSelectedCards}
+            defaultReportPeriod={defaultReportPeriod}
+            onDefaultReportPeriodChange={setDefaultReportPeriod}
+            onSave={handleDashboardPrefsSave}
+            saving={savingDashboardPrefs}
+          />
 
-      {/* Template WhatsApp */}
-      <WhatsAppTemplateSection
-        whatsappGreeting={whatsappGreeting}
-        onWhatsappGreetingChange={setWhatsappGreeting}
-        whatsappSignature={whatsappSignature}
-        onWhatsappSignatureChange={setWhatsappSignature}
-        onSave={handleWhatsappSave}
-        saving={savingWhatsappTemplate}
-      />
+          <NavigationOrderSection
+            navOrder={navOrder}
+            onNavOrderChange={setNavOrder}
+            onSave={handleNavOrderSave}
+            saving={savingNavOrder}
+          />
+        </TabsContent>
 
-      {/* Minhas Permissões */}
-      <PermissionsSection userProfile={userProfile} isAdmin={isAdmin} />
+        {/* ─── ABA 4: INTEGRAÇÕES & IA (ADMIN) ──────────────────── */}
+        {isAdmin && (
+          <TabsContent value="integracoes" className="space-y-6">
+            {/* Atalho para Vitrine / Catálogo Público */}
+            <Card>
+              <CardHeader>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div className="space-y-1">
+                    <CardTitle className="flex items-center gap-2">
+                      <Store className="size-5 text-primary" />
+                      Lojinha Online & Vitrine Pública
+                    </CardTitle>
+                    <CardDescription>
+                      Personalize banners rotativos, cabeçalho de destaque, avisos de entrega e rodapé da sua vitrine pública.
+                    </CardDescription>
+                  </div>
+                  <Link to="/personalizar-lojinha">
+                    <Button variant="outline" size="sm" className="gap-1.5 shrink-0">
+                      <ExternalLink className="size-4" />
+                      Abrir Personalização Completa
+                    </Button>
+                  </Link>
+                </div>
+              </CardHeader>
+            </Card>
 
-      {/* Cota e Monitoramento de IA (Gemini) - Apenas Admin */}
-      {isAdmin && <AiSettingsSection isAdmin={isAdmin} />}
+            {/* Monitoramento de IA */}
+            <AiSettingsSection isAdmin={isAdmin} />
 
-      {/* Integração de Pedidos por Alexa */}
-      <AlexaSettingsSection isAdmin={isAdmin} />
+            {/* Alexa Skill */}
+            <AlexaSettingsSection isAdmin={isAdmin} />
+          </TabsContent>
+        )}
 
-      {/* Zona de Perigo */}
-      <DangerZoneSection onReset={handleReset} />
+        {/* ─── ABA 5: AVANÇADO & SEGURANÇA ───────────────────────── */}
+        <TabsContent value="avancado" className="space-y-6">
+          {/* Informações da Conta */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <ShieldCheck className="size-5 text-primary" />
+                Minha Conta & Nível de Acesso
+              </CardTitle>
+              <CardDescription>
+                Informações da conta autenticada no sistema
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 rounded-lg border border-border/70 bg-muted/20">
+                <div className="space-y-1">
+                  <p className="text-sm font-semibold">{user?.displayName || 'Usuário do Ateliê'}</p>
+                  <p className="text-xs text-muted-foreground">{user?.email}</p>
+                </div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <Badge variant={isAdmin ? 'default' : 'secondary'} className="text-xs">
+                    {isAdmin ? 'Administrador' : 'Colaborador'}
+                  </Badge>
+                  {isAdmin && (
+                    <Link to="/usuarios">
+                      <Button variant="outline" size="sm" className="gap-1.5 text-xs h-8">
+                        <Users className="size-3.5" />
+                        Gerenciar Equipe & Permissões
+                      </Button>
+                    </Link>
+                  )}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Reset / Zona de Perigo */}
+          <DangerZoneSection onReset={handleReset} />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
