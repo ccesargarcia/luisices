@@ -4,8 +4,8 @@ import { Order, OrderStatus, UserProfile, canAccessArchivedOrders } from '../typ
 import { OrderCard } from '../components/OrderCard';
 import { OrderDetailsDialog } from '../components/OrderDetailsDialog';
 import { NewOrderDialog } from '../components/NewOrderDialog';
-import { DeliveryAlerts } from '../components/DeliveryAlerts';
-import { OverdueOrders } from '../components/OverdueOrders';
+import { DashboardHeaderMetrics } from '../components/dashboard/DashboardHeaderMetrics';
+import { DashboardBulkBar } from '../components/dashboard/DashboardBulkBar';
 import { DashboardCardSkeleton, OrderCardSkeleton } from '../components/SkeletonLoaders';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { SectionErrorBoundary } from '../components/common/SectionErrorBoundary';
@@ -56,8 +56,6 @@ import { parseLocalDate } from '../utils/date';
 import { formatCurrency } from '../utils/currency';
 import { exportOrdersToExcel } from '../utils/exportData';
 import { toast } from 'sonner';
-import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts';
-import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from '../components/ui/chart';
 import {
   Dialog,
   DialogContent,
@@ -77,14 +75,6 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '../components/ui/alert-dialog';
-
-const statusChartConfig = {
-  value: { label: 'Pedidos' },
-} satisfies ChartConfig;
-
-const weeklyChartConfig = {
-  pedidos: { label: 'Pedidos', color: 'hsl(var(--primary))' },
-} satisfies ChartConfig;
 
 function EmptyState({ message, hint }: { message: string; hint?: string }) {
   return (
@@ -168,23 +158,6 @@ export function Dashboard() {
   }, []);
 
   const visibleCards = settings?.dashboardCards ?? DEFAULT_DASHBOARD_CARDS;
-  const showCard = (id: string) => visibleCards.includes(id);
-  const firstGridCount = ['total', 'revenue', 'open', 'avgTicket'].filter(showCard).length;
-  const secondGridCount = ['inProgress', 'toReceive', 'received'].filter(showCard).length;
-  const firstGridClass = firstGridCount === 1
-    ? 'grid-cols-1'
-    : firstGridCount === 2
-      ? 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-2'
-      : firstGridCount === 3
-        ? 'grid-cols-2 lg:grid-cols-3'
-        : 'grid-cols-2 lg:grid-cols-4';
-  const secondGridClass = secondGridCount === 1
-    ? 'grid-cols-1'
-    : secondGridCount === 2
-      ? 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-2'
-      : 'grid-cols-2 lg:grid-cols-3';
-  const firstGridLastItemClass = firstGridCount === 3 ? 'col-span-2 lg:col-span-1' : '';
-  const secondGridLastItemClass = secondGridCount === 3 ? 'col-span-2 lg:col-span-1' : '';
   const handleOrderClick = (order: Order) => {
     const creatorName = (order.createdByName && order.createdByName !== 'Usuário proprietário')
       ? order.createdByName
@@ -760,214 +733,17 @@ export function Dashboard() {
         </div>
       )}
 
-      <SectionErrorBoundary title="Métricas Financeiras">
-        <div data-kpi-grid data-count={firstGridCount} className={`grid gap-4 lg:gap-6 ${firstGridClass}`}>
-        {showCard('total') && (
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Total de Pedidos</CardTitle>
-            <Package className="size-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="min-w-0 break-words text-lg font-bold leading-tight tabular-nums sm:text-2xl">{stats.total}</div>
-            <p className="text-xs text-muted-foreground mt-1">
-              {stats.completed} concluído{stats.completed !== 1 ? 's' : ''} no quadro
-            </p>
-          </CardContent>
-        </Card>
-        )}
-
-        {showCard('revenue') && (
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Receita ({currentMonthName})</CardTitle>
-            <DollarSign className="size-4 text-green-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="min-w-0 break-words text-lg font-bold leading-tight tabular-nums sm:text-2xl">{formatCurrency(stats.totalRevenue)}</div>
-            <p className="text-xs text-muted-foreground mt-1">
-              {ledgerStats.completedCount > 0
-                ? `${ledgerStats.completedCount} pedido${ledgerStats.completedCount !== 1 ? 's' : ''} concluído${ledgerStats.completedCount !== 1 ? 's' : ''} em ${currentMonthName.toLowerCase()}`
-                : `${stats.completed} pedido${stats.completed !== 1 ? 's' : ''} concluído${stats.completed !== 1 ? 's' : ''}`}
-            </p>
-          </CardContent>
-        </Card>
-        )}
-
-        {showCard('open') && (
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Total em Aberto</CardTitle>
-            <TrendingUp className="size-4 text-blue-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="min-w-0 break-words text-lg font-bold leading-tight tabular-nums sm:text-2xl">{formatCurrency(stats.expectedRevenue)}</div>
-            <p className="text-xs text-muted-foreground mt-1">
-              {stats.pending + stats.inProgress} pedido{(stats.pending + stats.inProgress) !== 1 ? 's' : ''} a entregar
-            </p>
-          </CardContent>
-        </Card>
-        )}
-
-        {showCard('avgTicket') && (
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Ticket Médio ({currentMonthName})</CardTitle>
-            <Target className="size-4 text-purple-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="min-w-0 break-words text-lg font-bold leading-tight tabular-nums sm:text-2xl">{formatCurrency(stats.averageOrderValue)}</div>
-            <p className="text-xs text-muted-foreground mt-1">
-              Média por venda em {currentMonthName.toLowerCase()}
-            </p>
-          </CardContent>
-        </Card>
-        )}
-      </div>
-
-      {/* Métricas adicionais */}
-      <div data-kpi-grid data-count={secondGridCount} className={`grid gap-4 lg:gap-6 ${secondGridClass}`}>
-        {showCard('inProgress') && (
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Em Produção</CardTitle>
-            <Clock className="size-4 text-blue-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="min-w-0 break-words text-lg font-bold leading-tight tabular-nums sm:text-2xl">{stats.inProgress}</div>
-            <p className="text-xs text-muted-foreground mt-1">
-              {stats.pending} aguardando início
-            </p>
-          </CardContent>
-        </Card>
-        )}
-
-        {showCard('toReceive') && (
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">A Receber</CardTitle>
-            <AlertCircle className="size-4 text-yellow-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="min-w-0 break-words text-lg font-bold leading-tight tabular-nums sm:text-2xl">{formatCurrency(stats.totalPending)}</div>
-            <p className="text-xs text-muted-foreground mt-1">
-              {stats.pendingPayments} {stats.pendingPayments === 1 ? 'pedido ativo pendente' : 'pedidos ativos pendentes'}
-            </p>
-          </CardContent>
-        </Card>
-        )}
-
-        {showCard('received') && (
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Recebido ({currentMonthName})</CardTitle>
-            <TrendingUp className="size-4 text-green-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="min-w-0 break-words text-lg font-bold leading-tight tabular-nums sm:text-2xl">{formatCurrency(stats.totalPaid)}</div>
-            <p className="text-xs text-muted-foreground mt-1">
-              Pagamentos em {currentMonthName.toLowerCase()}
-            </p>
-          </CardContent>
-        </Card>
-        )}
-
-        </div>
-      </SectionErrorBoundary>
-
-      {/* Gráficos */}
-      {stats.total > 0 && (showCard('statusChart') || showCard('weeklyChart')) && (
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 lg:gap-6">
-          {showCard('statusChart') && (
-          <Card className="min-w-0 overflow-hidden">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium">Distribuição de Status</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <ChartContainer config={statusChartConfig} className="h-[180px]">
-                <PieChart>
-                  <Pie
-                    data={statusChartData}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={50}
-                    outerRadius={75}
-                    paddingAngle={3}
-                    dataKey="value"
-                  >
-                    {statusChartData.map((entry) => (
-                      <Cell key={entry.status} fill={entry.fill} />
-                    ))}
-                  </Pie>
-                  <ChartTooltip content={<ChartTooltipContent nameKey="status" />} />
-                </PieChart>
-              </ChartContainer>
-              <div className="flex flex-wrap justify-center gap-x-4 gap-y-1.5 mt-1">
-                {statusChartData.map((entry) => (
-                  <div key={entry.status} className="flex items-center gap-1.5 text-xs">
-                    <div className="size-2.5 rounded-full shrink-0" style={{ backgroundColor: entry.fill }} />
-                    <span className="text-muted-foreground">{entry.status}</span>
-                    <span className="font-semibold">{entry.value}</span>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-          )}
-
-          {showCard('weeklyChart') && (
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium">Pedidos por Semana</CardTitle>
-            </CardHeader>
-            <CardContent className="min-w-0 overflow-hidden">
-              <ChartContainer config={weeklyChartConfig} className="h-[240px] w-full">
-                <BarChart data={ordersPerWeek} margin={{ top: 4, right: 8, left: 0, bottom: 24 }}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                  <XAxis dataKey="semana" interval="preserveStartEnd" tick={{ fontSize: 9 }} tickMargin={8} tickLine={false} axisLine={false} />
-                  <YAxis allowDecimals={false} tick={{ fontSize: 10 }} tickLine={false} axisLine={false} />
-                  <ChartTooltip content={<ChartTooltipContent />} />
-                  <Bar dataKey="pedidos" fill="var(--color-pedidos)" radius={[4, 4, 0, 0]} />
-                </BarChart>
-              </ChartContainer>
-            </CardContent>
-          </Card>
-          )}
-        </div>
-      )}
-
-      {/* Top produtos */}
-      {showCard('topProducts') && stats.topProducts.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Produtos Mais Vendidos</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              {stats.topProducts.map((product, index) => (
-                <div key={product.name} className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="flex items-center justify-center size-8 rounded-full bg-primary/10 text-primary font-semibold text-sm">
-                      {index + 1}
-                    </div>
-                    <div>
-                      <div className="font-medium">{product.name}</div>
-                      <div className="text-xs text-muted-foreground">{product.count} pedidos</div>
-                    </div>
-                  </div>
-                  <div className="font-semibold">{formatCurrency(product.revenue)}</div>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Alertas de Entrega */}
-      {showCard('delivery') && <DeliveryAlerts orders={orders} daysThreshold={settings?.deliveryAlertDays ?? 3} onOrderClick={handleOrderClick} />}
-
-      {/* Pedidos Atrasados */}
-      {showCard('overdue') && <OverdueOrders orders={orders} onOrderClick={handleOrderClick} />}
+      <DashboardHeaderMetrics
+        stats={stats}
+        ledgerStats={ledgerStats}
+        visibleCards={visibleCards}
+        currentMonthName={currentMonthName}
+        statusChartData={statusChartData}
+        ordersPerWeek={ordersPerWeek}
+        deliveryAlertDays={settings?.deliveryAlertDays ?? 3}
+        orders={orders}
+        onOrderClick={handleOrderClick}
+      />
 
       <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center">
         <div className="relative flex-1">
@@ -1038,89 +814,31 @@ export function Dashboard() {
         </div>
       )}
 
-      {(selectedOrderIds.length > 0 || filteredOrders.length > 0) && (
-        <div className="glass-chip flex flex-col gap-3 rounded-lg p-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-center gap-2 flex-wrap">
-            <p className="text-sm text-primary font-medium">
-              {selectedOrderIds.length} selecionado{selectedOrderIds.length === 1 ? '' : 's'}
-            </p>
-            <Button variant="outline" size="sm" onClick={toggleSelectAllVisibleOrders} className="h-8 text-xs sm:text-sm">
-              {allVisibleOrdersSelected
-                ? `Desmarcar página (${pagedOrders.length})`
-                : `Selecionar página (${pagedOrders.length})`}
-            </Button>
-            {pageSize !== 'all' && totalTabOrders > pagedOrders.length && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={toggleSelectAllTabOrders}
-                className="h-8 text-xs text-muted-foreground hover:text-foreground underline decoration-dotted"
-              >
-                {allTabOrdersSelected
-                  ? `Desmarcar todos os ${totalTabOrders} da aba`
-                  : `Selecionar todos os ${totalTabOrders} da aba`}
-              </Button>
-            )}
-          </div>
-          <div className="flex items-center gap-2 flex-wrap">
-            {selectedOrderIds.length > 0 && userProfile?.role === 'admin' && (
-              <Button
-                variant="outline"
-                size="sm"
-                className="gap-1.5 h-9 text-xs sm:text-sm font-medium"
-                onClick={() => {
-                  setBulkAssignTargetUid('__none__');
-                  setIsBulkAssignOpen(true);
-                }}
-              >
-                <UserCheck className="size-4 text-primary shrink-0" />
-                <span>Atribuir ({selectedOrderIds.length})</span>
-              </Button>
-            )}
-            {selectedOrderIds.length > 0 && activeTab === 'archived' && canUnarchive && (
-              <Button
-                variant="outline"
-                size="sm"
-                className="gap-1.5 h-9 text-xs sm:text-sm font-medium text-emerald-600 dark:text-emerald-400 border-emerald-300 dark:border-emerald-800"
-                onClick={handleBulkUnarchiveOrders}
-                disabled={bulkArchiving}
-              >
-                <ArchiveRestore className="size-4 shrink-0" />
-                <span>Desarquivar ({selectedOrderIds.length})</span>
-              </Button>
-            )}
-            {selectedOrderIds.length > 0 && activeTab !== 'archived' && canArchive && (
-              <Button
-                variant="outline"
-                size="sm"
-                className="gap-1.5 h-9 text-xs sm:text-sm font-medium"
-                onClick={handleBulkArchiveOrders}
-                disabled={bulkArchiving}
-              >
-                <Archive className="size-4 text-primary shrink-0" />
-                <span>Arquivar ({selectedOrderIds.length})</span>
-              </Button>
-            )}
-            {selectedOrderIds.length > 0 && (
-              <Button variant="ghost" size="sm" className="h-9 text-xs sm:text-sm" onClick={() => setSelectedOrderIds([])}>
-                Limpar
-              </Button>
-            )}
-            {selectedOrderIds.length > 0 && (hasPermission(p => p.orders?.delete ?? false) || userProfile?.role === 'user') && (
-              <Button
-                variant="destructive"
-                size="sm"
-                className="gap-2 h-9 text-xs sm:text-sm"
-                onClick={() => setIsBulkOrderDeleteOpen(true)}
-                disabled={bulkOrderDeleting}
-              >
-                <Trash2 className="size-4 shrink-0" />
-                Excluir selecionados
-              </Button>
-            )}
-          </div>
-        </div>
-      )}
+      <DashboardBulkBar
+        selectedOrderIds={selectedOrderIds}
+        totalTabOrders={totalTabOrders}
+        pagedOrdersLength={pagedOrders.length}
+        pageSize={pageSize}
+        allVisibleOrdersSelected={allVisibleOrdersSelected}
+        allTabOrdersSelected={allTabOrdersSelected}
+        userProfile={userProfile}
+        activeTab={activeTab}
+        canArchive={canArchive}
+        canUnarchive={canUnarchive}
+        bulkArchiving={bulkArchiving}
+        bulkOrderDeleting={bulkOrderDeleting}
+        hasDeletePermission={hasPermission((p) => p.orders?.delete ?? false) || userProfile?.role === 'user'}
+        onToggleSelectAllVisibleOrders={toggleSelectAllVisibleOrders}
+        onToggleSelectAllTabOrders={toggleSelectAllTabOrders}
+        onClearSelection={() => setSelectedOrderIds([])}
+        onOpenBulkAssign={() => {
+          setBulkAssignTargetUid('__none__');
+          setIsBulkAssignOpen(true);
+        }}
+        onBulkArchiveOrders={handleBulkArchiveOrders}
+        onBulkUnarchiveOrders={handleBulkUnarchiveOrders}
+        onOpenBulkDelete={() => setIsBulkOrderDeleteOpen(true)}
+      />
 
       <SectionErrorBoundary title="Esteira de Pedidos">
         <div id="dashboard-orders-section" className="space-y-4">
