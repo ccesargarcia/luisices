@@ -217,58 +217,66 @@ export function AlexaSettingsSection({ isAdmin }: AlexaSettingsSectionProps) {
   return (
     <Card className="glass-panel border-border/40 overflow-hidden">
       <CardHeader className="border-b border-border/40 bg-muted/20 pb-4">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-          <div className="space-y-1">
-            <div className="flex items-center gap-2">
-              <div className="p-1.5 rounded-lg bg-sky-500/10 text-sky-500 dark:bg-sky-500/20">
-                <Mic className="size-4" />
+        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+          <div className="space-y-2 min-w-0 flex-1">
+            <div className="flex items-center gap-2.5">
+              <div className="p-2 rounded-lg bg-sky-500/10 text-sky-500 dark:bg-sky-500/20 shrink-0">
+                <Mic className="size-4.5" />
               </div>
-              <CardTitle className="text-base font-semibold">Criação de Pedidos por Alexa</CardTitle>
+              <CardTitle className="text-base sm:text-lg font-semibold tracking-tight text-foreground leading-snug">
+                Criação de Pedidos por Alexa
+              </CardTitle>
+            </div>
+
+            <div className="flex items-center gap-1.5 flex-wrap pl-0 sm:pl-9">
               <Badge
                 variant="outline"
                 className={
                   isDev
-                    ? 'bg-amber-500/10 text-amber-600 border-amber-500/20 text-xs'
-                    : 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20 text-xs'
+                    ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30 text-[11px] font-medium'
+                    : 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30 text-[11px] font-medium'
                 }
               >
-                {isDev ? 'Ambiente: Desenvolvimento (luisices-dev)' : 'Ambiente: Produção'}
+                <span className={`inline-block size-1.5 rounded-full mr-1.5 ${isDev ? 'bg-amber-500' : 'bg-emerald-500'}`} />
+                {isDev ? 'Dev (luisices-dev)' : 'Produção'}
               </Badge>
               <Badge
                 variant="outline"
                 className={
                   status?.isEnabled
-                    ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20 text-xs'
-                    : 'bg-rose-500/10 text-rose-600 border-rose-500/20 text-xs'
+                    ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30 text-[11px] font-medium'
+                    : 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/30 text-[11px] font-medium'
                 }
               >
+                <span className={`inline-block size-1.5 rounded-full mr-1.5 ${status?.isEnabled ? 'bg-emerald-500' : 'bg-rose-500'}`} />
                 {status?.isEnabled ? 'Integração Ativa' : 'Desativada'}
               </Badge>
             </div>
-            <CardDescription className="text-xs">
+
+            <CardDescription className="text-xs text-muted-foreground leading-relaxed pl-0 sm:pl-9">
               Reconhecimento de voz por personalização (personId), sem inteligência generativa e com confirmação obrigatória.
             </CardDescription>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 shrink-0 pt-1 sm:pt-0">
             <Button
               variant="outline"
               size="sm"
               onClick={() => navigate('/ajuda?busca=alexa')}
-              className="h-8 gap-1.5 text-xs text-violet-600 dark:text-violet-400 border-violet-500/30 hover:bg-violet-500/10"
+              className="h-8 gap-1.5 text-xs text-violet-600 dark:text-violet-400 border-violet-500/30 hover:bg-violet-500/10 transition-colors"
             >
               <HelpCircle className="size-3.5" />
-              Guia Completo
+              <span>Guia Completo</span>
             </Button>
             <Button
               variant="outline"
               size="sm"
               onClick={handleRefresh}
               disabled={refreshing}
-              className="h-8 gap-1.5 text-xs"
+              className="h-8 gap-1.5 text-xs transition-colors"
             >
               <RefreshCw className={`size-3.5 ${refreshing ? 'animate-spin' : ''}`} />
-              Atualizar
+              <span>Atualizar</span>
             </Button>
           </div>
         </div>
