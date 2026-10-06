@@ -418,16 +418,42 @@
     color: #9b9197;
   }
 
-  html.dark [data-slot='button'][data-variant='default'] {
-    background-color: rgb(211 154 156 / 14%);
-    border-color: rgb(235 205 205 / 28%);
-    color: #e8c5c8;
+  /* ─── TOASTS E FEEDBACKS VISUAIS 100% SÓLIDOS E OPACOS ───────────── */
+  [data-sonner-toaster] {
+    z-index: var(--z-toast) !important;
   }
 
-  html.dark [data-slot='button'][data-variant='outline'] {
-    background-color: rgb(23 19 21 / 60%);
-    border-color: rgb(235 205 205 / 16%);
-    color: #c9c0b8;
+  [data-sonner-toast] {
+    background-color: var(--card) !important;
+    color: var(--card-foreground) !important;
+    border: 1px solid var(--border) !important;
+    box-shadow: 0 12px 36px -4px rgba(0, 0, 0, 0.45), 0 4px 12px rgba(0, 0, 0, 0.25) !important;
+    backdrop-filter: none !important;
+    opacity: 1 !important;
+  }
+
+  [data-sonner-toast][data-type='success'] {
+    background-color: #064e3b !important;
+    color: #ecfdf5 !important;
+    border-color: #059669 !important;
+  }
+
+  [data-sonner-toast][data-type='error'] {
+    background-color: #881337 !important;
+    color: #fff1f2 !important;
+    border-color: #e11d48 !important;
+  }
+
+  [data-sonner-toast][data-type='warning'] {
+    background-color: #78350f !important;
+    color: #fef3c7 !important;
+    border-color: #d97706 !important;
+  }
+
+  [data-sonner-toast][data-type='info'] {
+    background-color: #0f172a !important;
+    color: #f1f5f9 !important;
+    border-color: #38bdf8 !important;
   }
 
   h1 {
