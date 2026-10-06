@@ -20,6 +20,7 @@ const {
   toggleGlobalAlexaIntegrationHandler,
   getAlexaIntegrationStatusHandler,
   approveAlexaDraftHandler,
+  cancelAlexaDraftHandler,
 } = require('./callables');
 
 // Janela unificada de deduplicação de requisições: 300s (5 minutos)
@@ -522,6 +523,11 @@ const approveAlexaDraft = onCall(
   (req) => approveAlexaDraftHandler(req, admin.firestore())
 );
 
+const cancelAlexaDraft = onCall(
+  { maxInstances: 5, secrets: [ALEXA_IDENTITY_HMAC_KEY] },
+  (req) => cancelAlexaDraftHandler(req, admin.firestore())
+);
+
 module.exports = {
   alexaWebhook,
   approveAlexaPairing,
@@ -530,6 +536,7 @@ module.exports = {
   toggleGlobalAlexaIntegration,
   getAlexaIntegrationStatus,
   approveAlexaDraft,
+  cancelAlexaDraft,
   processAlexaEnvelope,
   buildAlexaResponse,
 };

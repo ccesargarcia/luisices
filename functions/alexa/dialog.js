@@ -2600,9 +2600,11 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
             const isExpired = expiresAt > 0 && expiresAt <= now;
 
             if (isOwner && isSameBinding && isSameEnv && isSameRevision && isAwaiting && !isExpired) {
+              const appExpiresAt = new Date(now + 24 * 60 * 60 * 1000);
               transaction.update(draftRef, {
                 sessionId: sessionId || dData.sessionId,
                 state: 'awaiting_app_approval',
+                expiresAt: admin.firestore.Timestamp.fromDate(appExpiresAt),
                 updatedAt: admin.firestore.FieldValue.serverTimestamp(),
               });
               return true;

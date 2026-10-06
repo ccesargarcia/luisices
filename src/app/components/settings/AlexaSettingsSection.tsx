@@ -54,6 +54,7 @@ export function AlexaSettingsSection({ isAdmin }: AlexaSettingsSectionProps) {
   const [togglingGlobal, setTogglingGlobal] = useState(false);
   const [revokingBindingId, setRevokingBindingId] = useState<string | null>(null);
   const [approvingDraftId, setApprovingDraftId] = useState<string | null>(null);
+  const [cancelingDraftId, setCancelingDraftId] = useState<string | null>(null);
 
   const effectiveIsAdmin = Boolean(isAdmin || status?.isAdmin || userProfile?.role === 'admin');
 
@@ -181,6 +182,22 @@ export function AlexaSettingsSection({ isAdmin }: AlexaSettingsSectionProps) {
       toast.error('Erro ao aprovar pedido: ' + (err.message || 'Rascunho expirado ou inválido.'));
     } finally {
       setApprovingDraftId(null);
+    }
+  };
+
+  const handleCancelDraft = async (draftId: string) => {
+    if (!confirm('Deseja realmente descartar este pedido falado da lista?')) {
+      return;
+    }
+    setCancelingDraftId(draftId);
+    try {
+      await firebaseAlexaService.cancelDraft(draftId);
+      toast.success('Rascunho de pedido falado descartado com sucesso.');
+      await loadData();
+    } catch (err: any) {
+      toast.error('Erro ao descartar rascunho: ' + (err.message || 'Falha na operação.'));
+    } finally {
+      setCancelingDraftId(null);
     }
   };
 
@@ -399,43 +416,74 @@ export function AlexaSettingsSection({ isAdmin }: AlexaSettingsSectionProps) {
           <div className="space-y-3">
             <div className="flex items-center justify-between">
               <h4 className="text-sm font-semibold flex items-center gap-1.5 text-amber-600 dark:text-amber-400">
-                <Clock className="size-4" />
-                Pedidos Falados Aguardando Sua Aprovação ({status.pendingDrafts.length})
+                <Clock className="size-4 shrink-0" />
+                <span>Pedidos Falados Aguardando Sua Aprovação ({status.pendingDrafts.length})</span>
               </h4>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              {status.pendingDrafts.map((draft) => (
-                <div
-                  key={draft.id}
-                  className="p-3.5 rounded-lg border border-amber-500/25 bg-amber-500/5 dark:bg-amber-950/20 space-y-2 flex flex-col justify-between"
-                >
-                  <div className="space-y-1">
-                    <div className="flex items-center justify-between text-xs font-semibold">
-                      <span>{draft.customer}</span>
-                      <span className="text-primary">{formatCurrency(draft.price)}</span>
+              {status.pendingDrafts.map((draft) => {
+                const now = Date.now();
+                const expTime = draft.expiresAt ? new Date(draft.expiresAt).getTime() : 0;
+                const isExpired = expTime > 0 && expTime <= now;
+
+                return (
+                  <div
+                    key={draft.id}
+                    className="p-3.5 sm:p-4 rounded-xl border border-amber-500/25 bg-amber-500/5 dark:bg-amber-950/20 space-y-3 flex flex-col justify-between transition-all"
+                  >
+                    <div className="space-y-1.5">
+                      <div className="flex items-start justify-between gap-2">
+                        <span className="font-semibold text-xs sm:text-sm text-foreground truncate block min-w-0 flex-1">
+                          {draft.customer}
+                        </span>
+                        <span className="text-xs sm:text-sm font-bold text-primary shrink-0">
+                          {formatCurrency(draft.price)}
+                        </span>
+                      </div>
+
+                      <p className="text-xs text-muted-foreground leading-relaxed">
+                        <strong className="text-foreground/90">{draft.quantity}x</strong> {draft.product}
+                        {draft.pricingMode === 'unit' && typeof draft.unitPriceCents === 'number'
+                          ? ` (${formatCurrency(draft.unitPriceCents / 100)} cada)`
+                          : ''}
+                        {' • '}Entrega: <span className="font-medium text-foreground/80">{draft.deliveryDate}</span>
+                      </p>
+
+                      {isExpired && (
+                        <div className="pt-0.5">
+                          <Badge variant="outline" className="text-[10px] py-0 px-1.5 bg-rose-500/10 text-rose-600 border-rose-500/20">
+                            Expirado (&gt; 15 min)
+                          </Badge>
+                        </div>
+                      )}
                     </div>
-                    <p className="text-xs text-muted-foreground">
-                      {draft.quantity}x {draft.product}
-                      {draft.pricingMode === 'unit' && typeof draft.unitPriceCents === 'number'
-                        ? ` (${formatCurrency(draft.unitPriceCents / 100)} cada)`
-                        : ''}
-                      {' • '}Entrega: {draft.deliveryDate}
-                    </p>
+
+                    <div className="pt-2 border-t border-border/40 flex items-center justify-end gap-2 flex-wrap sm:flex-nowrap">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleCancelDraft(draft.id)}
+                        disabled={cancelingDraftId === draft.id || approvingDraftId === draft.id}
+                        className="h-8 text-xs gap-1.5 border-rose-500/25 text-rose-600 hover:text-rose-700 hover:bg-rose-500/10 dark:hover:bg-rose-950/30 shrink-0 transition-colors"
+                      >
+                        <Trash2 className="size-3.5" />
+                        <span>{cancelingDraftId === draft.id ? 'Descartando...' : 'Descartar'}</span>
+                      </Button>
+
+                      <Button
+                        size="sm"
+                        onClick={() => handleApproveDraft(draft.id, draft.revision)}
+                        disabled={approvingDraftId === draft.id || cancelingDraftId === draft.id}
+                        className="h-8 text-xs gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-medium shrink-0 transition-colors"
+                      >
+                        <Check className="size-3.5" />
+                        <span>{approvingDraftId === draft.id ? 'Gravando...' : 'Aprovar e Criar Pedido'}</span>
+                      </Button>
+                    </div>
                   </div>
-                  <div className="pt-2 flex items-center justify-end">
-                    <Button
-                      size="sm"
-                      onClick={() => handleApproveDraft(draft.id, draft.revision)}
-                      disabled={approvingDraftId === draft.id}
-                      className="h-7 text-xs gap-1 bg-emerald-600 hover:bg-emerald-700 text-white"
-                    >
-                      <Check className="size-3" />
-                      {approvingDraftId === draft.id ? 'Gravando...' : 'Aprovar e Criar Pedido'}
-                    </Button>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         )}
@@ -443,8 +491,8 @@ export function AlexaSettingsSection({ isAdmin }: AlexaSettingsSectionProps) {
         {/* Vínculos Ativos */}
         <div className="space-y-3">
           <h4 className="text-sm font-semibold flex items-center gap-1.5">
-            <CheckCircle2 className="size-4 text-emerald-500" />
-            Vínculos de Voz Ativos ({status?.bindings?.length || 0})
+            <CheckCircle2 className="size-4 text-emerald-500 shrink-0" />
+            <span>Vínculos de Voz Ativos ({status?.bindings?.length || 0})</span>
           </h4>
 
           {(!status?.bindings || status.bindings.length === 0) ? (
@@ -455,30 +503,37 @@ export function AlexaSettingsSection({ isAdmin }: AlexaSettingsSectionProps) {
             <div className="divide-y divide-border/40 border border-border/40 rounded-xl overflow-hidden bg-card">
               {status.bindings.map((b) => {
                 const targetUser = users.find((u) => u.uid === b.uid);
-                const userName = targetUser?.displayName || targetUser?.email || b.uid;
+                const userName =
+                  targetUser?.displayName ||
+                  targetUser?.email ||
+                  (b.uid === user?.uid ? (user?.displayName || user?.email) : null) ||
+                  b.uid;
+
                 return (
                   <div key={b.id} className="p-3.5 flex items-center justify-between gap-3 text-xs">
-                    <div className="space-y-0.5">
-                      <div className="flex items-center gap-2">
-                        <span className="font-semibold text-foreground">{userName}</span>
-                        <Badge variant="outline" className="text-[10px] py-0 px-1.5 bg-emerald-500/10 text-emerald-600 border-emerald-500/20">
+                    <div className="space-y-1 min-w-0 flex-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-semibold text-foreground truncate max-w-[200px] sm:max-w-xs" title={userName}>
+                          {userName}
+                        </span>
+                        <Badge variant="outline" className="text-[10px] py-0 px-1.5 bg-emerald-500/10 text-emerald-600 border-emerald-500/20 shrink-0">
                           Voz Ativa
                         </Badge>
                       </div>
-                      <p className="text-[11px] text-muted-foreground">
+                      <p className="text-[11px] text-muted-foreground truncate">
                         Ambiente: {b.environment} {b.approvedByEmail ? `• Aprovado por: ${b.approvedByEmail}` : ''}
                       </p>
                     </div>
 
                     <Button
-                      variant="ghost"
+                      variant="outline"
                       size="sm"
                       onClick={() => handleRevokeBinding(b.id)}
                       disabled={revokingBindingId === b.id}
-                      className="text-rose-600 hover:text-rose-700 hover:bg-rose-50 dark:hover:bg-rose-950/30 h-7 px-2.5 text-xs gap-1"
+                      className="border-rose-500/25 text-rose-600 hover:text-rose-700 hover:bg-rose-500/10 dark:hover:bg-rose-950/30 h-8 px-3 text-xs gap-1.5 shrink-0 transition-colors"
                     >
-                      <Trash2 className="size-3" />
-                      {revokingBindingId === b.id ? 'Revogando...' : 'Revogar'}
+                      <Trash2 className="size-3.5" />
+                      <span>{revokingBindingId === b.id ? 'Revogando...' : 'Revogar'}</span>
                     </Button>
                   </div>
                 );

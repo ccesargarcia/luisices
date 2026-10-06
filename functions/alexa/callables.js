@@ -299,6 +299,62 @@ async function approveAlexaDraftHandler(request, db) {
   }
 }
 
+/**
+ * Callable: cancelAlexaDraft
+ * Cancela ou descarta um rascunho de pedido pendente ou expirado (modo app_approval ou voz).
+ * Permitido para o titular do rascunho ou administrador ativo.
+ */
+async function cancelAlexaDraftHandler(request, db) {
+  if (!request.auth?.uid) {
+    throw new HttpsError('unauthenticated', 'Usuário não autenticado.');
+  }
+
+  const { draftId } = request.data || {};
+  if (!draftId || typeof draftId !== 'string') {
+    throw new HttpsError('invalid-argument', 'ID do rascunho é obrigatório.');
+  }
+
+  const draftRef = db.collection(COLLECTIONS.DRAFTS).doc(draftId);
+  const draftSnap = await draftRef.get();
+
+  if (!draftSnap.exists) {
+    throw new HttpsError('not-found', 'Rascunho não encontrado.');
+  }
+
+  const draft = draftSnap.data() || {};
+  const callerUid = request.auth.uid;
+
+  // Verificar autorização: administrador ou o titular do rascunho
+  const callerProfileSnap = await db.collection(COLLECTIONS.USER_PROFILES).doc(callerUid).get();
+  const isAdmin = callerProfileSnap.exists && callerProfileSnap.data()?.role === 'admin' && callerProfileSnap.data()?.active === true;
+  const isOwner = draft.uid === callerUid;
+
+  if (!isAdmin && !isOwner) {
+    throw new HttpsError('permission-denied', 'Você não tem permissão para cancelar este rascunho.');
+  }
+
+  if (draft.state === 'committed') {
+    throw new HttpsError('failed-precondition', 'Não é possível cancelar um pedido que já foi gravado/aprovado.');
+  }
+
+  await draftRef.update({
+    state: 'cancelled',
+    cancelledAt: admin.firestore.FieldValue.serverTimestamp(),
+    cancelledBy: callerUid,
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  });
+
+  await recordAuditEvent(db, {
+    event: 'DRAFT_CANCELLED',
+    uid: draft.uid,
+    draftId,
+    reason: `Rascunho descartado/cancelado via app por ${callerUid}`,
+    success: true,
+  });
+
+  return { success: true, draftId };
+}
+
 module.exports = {
   approveAlexaPairingHandler,
   setAlexaPermissionHandler,
@@ -306,4 +362,5 @@ module.exports = {
   toggleGlobalAlexaIntegrationHandler,
   getAlexaIntegrationStatusHandler,
   approveAlexaDraftHandler,
+  cancelAlexaDraftHandler,
 };

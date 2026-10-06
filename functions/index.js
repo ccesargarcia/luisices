@@ -56,4 +56,5 @@ module.exports = {
   toggleGlobalAlexaIntegration: alexaFunctions.toggleGlobalAlexaIntegration,
   getAlexaIntegrationStatus: alexaFunctions.getAlexaIntegrationStatus,
   approveAlexaDraft: alexaFunctions.approveAlexaDraft,
+  cancelAlexaDraft: alexaFunctions.cancelAlexaDraft,
 };

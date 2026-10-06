@@ -83,6 +83,18 @@ export class FirebaseAlexaService {
     const result = await callable({ draftId, revision });
     return result.data;
   }
+
+  /**
+   * Cancela ou descarta um rascunho de pedido pendente/expirado (apenas titular ou admin).
+   */
+  async cancelDraft(draftId: string): Promise<{ success: boolean; draftId: string }> {
+    const callable = httpsCallable<{ draftId: string }, { success: boolean; draftId: string }>(
+      functions,
+      'cancelAlexaDraft'
+    );
+    const result = await callable({ draftId });
+    return result.data;
+  }
 }
 
 export const firebaseAlexaService = new FirebaseAlexaService();

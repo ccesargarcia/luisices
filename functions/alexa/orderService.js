@@ -106,9 +106,12 @@ async function commitOrderFromDraft({
 
     // Valida expiração do rascunho
     const now = Date.now();
-    const expiresAt = draft.expiresAt?.toDate ? draft.expiresAt.toDate().getTime() : 0;
-    if (expiresAt <= now) {
-      throw new Error('DRAFT_EXPIRED: O rascunho do pedido expirou (limite de 15 minutos).');
+    const expiresAt = draft.expiresAt?.toDate ? draft.expiresAt.toDate().getTime() : (typeof draft.expiresAt === 'number' ? draft.expiresAt : 0);
+    const createdAtMs = draft.createdAt?.toDate ? draft.createdAt.toDate().getTime() : 0;
+    // Para aprovação no app, permite janela de até 48h a partir da criação para acomodar revisão assíncrona
+    const isWithinAppWindow = channel === 'app' && ((createdAtMs > 0 && (now - createdAtMs) < 48 * 60 * 60 * 1000) || !expiresAt);
+    if (expiresAt > 0 && expiresAt <= now && !isWithinAppWindow) {
+      throw new Error('DRAFT_EXPIRED: O rascunho do pedido expirou. Por favor, descarte-o no painel ou crie um novo.');
     }
 
     // Valida se o rascunho já foi consumido
