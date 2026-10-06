@@ -480,12 +480,29 @@ export function Dashboard() {
     }
   };
 
-  const allFilteredOrdersSelected =
+  const allVisibleOrdersSelected =
+    pagedOrders.length > 0 &&
+    pagedOrders.every(order => selectedOrderIds.includes(order.id));
+
+  const allTabOrdersSelected =
     activeTabOrders.length > 0 &&
     activeTabOrders.every(order => selectedOrderIds.includes(order.id));
 
   const toggleSelectAllVisibleOrders = () => {
-    if (allFilteredOrdersSelected) {
+    if (allVisibleOrdersSelected) {
+      setSelectedOrderIds(prev => prev.filter(id => !pagedOrders.some(order => order.id === id)));
+      return;
+    }
+
+    setSelectedOrderIds(prev => {
+      const next = new Set(prev);
+      pagedOrders.forEach(order => next.add(order.id));
+      return [...next];
+    });
+  };
+
+  const toggleSelectAllTabOrders = () => {
+    if (allTabOrdersSelected) {
       setSelectedOrderIds(prev => prev.filter(id => !activeTabOrders.some(order => order.id === id)));
       return;
     }
@@ -506,7 +523,7 @@ export function Dashboard() {
           onToggleSelect={toggleOrderSelection}
           onOrderClick={handleOrderClick}
           onToggleSelectAll={toggleSelectAllVisibleOrders}
-          allSelected={allFilteredOrdersSelected}
+          allSelected={allVisibleOrdersSelected}
         />
       );
     }
@@ -950,12 +967,26 @@ export function Dashboard() {
       {(selectedOrderIds.length > 0 || filteredOrders.length > 0) && (
         <div className="glass-chip flex flex-col gap-3 rounded-lg p-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-2 flex-wrap">
-            <p className="text-sm text-primary">
+            <p className="text-sm text-primary font-medium">
               {selectedOrderIds.length} selecionado{selectedOrderIds.length === 1 ? '' : 's'}
             </p>
-            <Button variant="outline" size="sm" onClick={toggleSelectAllVisibleOrders}>
-              {allFilteredOrdersSelected ? 'Desmarcar todos' : 'Selecionar todos'}
+            <Button variant="outline" size="sm" onClick={toggleSelectAllVisibleOrders} className="h-8 text-xs sm:text-sm">
+              {allVisibleOrdersSelected
+                ? `Desmarcar página (${pagedOrders.length})`
+                : `Selecionar página (${pagedOrders.length})`}
             </Button>
+            {pageSize !== 'all' && totalTabOrders > pagedOrders.length && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={toggleSelectAllTabOrders}
+                className="h-8 text-xs text-muted-foreground hover:text-foreground underline decoration-dotted"
+              >
+                {allTabOrdersSelected
+                  ? `Desmarcar todos os ${totalTabOrders} da aba`
+                  : `Selecionar todos os ${totalTabOrders} da aba`}
+              </Button>
+            )}
           </div>
           <div className="flex items-center gap-2 flex-wrap">
             {selectedOrderIds.length > 0 && userProfile?.role === 'admin' && (

@@ -178,4 +178,19 @@ describe('Funcionalidade: Visualização em Tabela de Pedidos (OrderTable)', () 
 
     expect(html).toContain('bg-primary/5');
   });
+
+  it('deve refletir o estado de seleção da página no checkbox do cabeçalho', () => {
+    const htmlUnselected = renderToStaticMarkup(
+      <OrderTable
+        orders={[baseOrder]}
+        selectedOrderIds={[]}
+        onToggleSelect={vi.fn()}
+        onOrderClick={vi.fn()}
+        onToggleSelectAll={vi.fn()}
+        allSelected={false}
+      />
+    );
+
+    expect(htmlUnselected).toContain('aria-label="Selecionar todos os pedidos da página"');
+  });
 });
