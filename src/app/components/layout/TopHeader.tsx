@@ -109,7 +109,7 @@ export function TopHeader({
     >
       <div className="flex items-center justify-between gap-1.5 sm:gap-3">
         {/* Identificação / Logo no Topo */}
-        <div className="flex items-center gap-2 sm:gap-2.5 min-w-0 flex-1">
+        <div className="flex items-center gap-2 sm:gap-2.5 min-w-0 shrink-0 max-w-[180px] xs:max-w-[220px] sm:max-w-[280px] xl:max-w-none">
           {hasLogo && !showIconOnly ? (
             <img
               src={logo}
@@ -149,9 +149,9 @@ export function TopHeader({
           </div>
         </div>
 
-        {/* Barra / Atalho de Busca Rápida (Global Search) */}
+        {/* Barra / Atalho de Busca Rápida (Global Search) - Apenas em telas amplas (xl+) */}
         {headerShowQuickSearch && onOpenSearch && (
-          <div className="hidden md:flex items-center flex-1 max-w-xs mx-1 lg:mx-2">
+          <div className="hidden xl:flex items-center flex-1 min-w-0 max-w-xs mx-2">
             <button
               type="button"
               onClick={onOpenSearch}
@@ -162,7 +162,7 @@ export function TopHeader({
                 <Search className="size-3.5 text-muted-foreground group-hover:text-primary transition-colors shrink-0" />
                 <span className="truncate">Buscar páginas, clientes, pedidos...</span>
               </div>
-              <kbd className="hidden lg:inline-flex items-center px-1.5 py-0.5 text-[10px] font-mono font-semibold bg-background/90 border rounded text-muted-foreground group-hover:text-foreground shrink-0 shadow-2xs">
+              <kbd className="inline-flex items-center px-1.5 py-0.5 text-[10px] font-mono font-semibold bg-background/90 border rounded text-muted-foreground group-hover:text-foreground shrink-0 shadow-2xs">
                 Ctrl K
               </kbd>
             </button>
@@ -171,14 +171,14 @@ export function TopHeader({
 
         {/* Ações do Cabeçalho */}
         <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
-          {/* Botão de Busca Mobile/Tablet */}
+          {/* Botão de Busca Mobile/Tablet/Landscape (< xl) */}
           {headerShowQuickSearch && onOpenSearch && (
             <Button
               variant="ghost"
               size="icon"
               onClick={onOpenSearch}
-              className="size-8 sm:size-9 md:hidden text-muted-foreground hover:text-foreground rounded-lg"
-              title="Buscar no sistema"
+              className="size-8 sm:size-9 xl:hidden text-muted-foreground hover:text-foreground rounded-lg"
+              title="Buscar no sistema (Ctrl + K)"
               aria-label="Buscar no sistema"
             >
               <Search className="size-4" />
@@ -253,7 +253,7 @@ export function TopHeader({
               title="Abrir Copiloto de IA Interno"
             >
               <Sparkles className="size-3.5 sm:size-4 text-amber-500 shrink-0" />
-              <span className="hidden md:inline">Copiloto</span>
+              <span className="hidden xl:inline">Copiloto</span>
             </Button>
           )}
 
@@ -263,7 +263,7 @@ export function TopHeader({
               href="/catalogo"
               target="_blank"
               rel="noopener noreferrer"
-              className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium border border-primary/20 text-primary bg-primary/5 hover:bg-primary/10 transition-colors shrink-0"
+              className="hidden xl:inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium border border-primary/20 text-primary bg-primary/5 hover:bg-primary/10 transition-colors shrink-0"
               title="Abrir Catálogo Online público em nova aba"
             >
               <Globe className="size-3.5" />
@@ -272,7 +272,7 @@ export function TopHeader({
             </a>
           )}
 
-          <AdminTeamFilter variant="header" className="hidden md:inline-flex" />
+          <AdminTeamFilter variant="header" className="hidden xl:inline-flex" />
           <NotificationBell />
 
           <div className="hidden sm:inline-flex shrink-0">

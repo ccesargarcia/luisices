@@ -87,7 +87,7 @@ export function GlobalSearchDialog({
         value={search}
         onValueChange={setSearch}
       />
-      <CommandList className="max-h-80 overflow-y-auto">
+      <CommandList className="max-h-[min(55vh,20rem)] overflow-y-auto">
         <CommandEmpty>Nenhum resultado encontrado.</CommandEmpty>
 
         {/* Ações Rápidas */}

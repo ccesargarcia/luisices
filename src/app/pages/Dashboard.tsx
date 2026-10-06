@@ -745,19 +745,29 @@ export function Dashboard() {
         onOrderClick={handleOrderClick}
       />
 
-      <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+      <div className="flex flex-col sm:flex-row gap-2.5 sm:gap-3 items-stretch sm:items-center">
+        <div className="relative flex-1 min-w-0">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground pointer-events-none" />
           <Input
             placeholder="Buscar por cliente, produto ou telefone..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-10"
+            className="pl-10 pr-9 h-10 w-full"
           />
+          {searchQuery && (
+            <button
+              type="button"
+              onClick={() => setSearchQuery('')}
+              className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-muted-foreground hover:text-foreground cursor-pointer rounded-sm"
+              title="Limpar busca"
+            >
+              <X className="size-3.5" />
+            </button>
+          )}
         </div>
         {userProfile?.role === 'admin' && (
-          <div className="shrink-0">
-            <AdminTeamFilter variant="inline" />
+          <div className="shrink-0 w-full sm:w-auto">
+            <AdminTeamFilter variant="inline" className="w-full sm:w-auto" />
           </div>
         )}
       </div>

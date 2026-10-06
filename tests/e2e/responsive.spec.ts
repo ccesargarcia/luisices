@@ -74,4 +74,26 @@ test.describe('Experiência Mobile e Responsividade', () => {
 
     await incognito.close();
   });
+
+  test('modo paisagem (landscape mobile) deve renderizar cabeçalho e busca sem overflow horizontal', async ({ page }) => {
+    // Simular smartphone em modo paisagem (ex: iPhone 844x390)
+    await page.setViewportSize({ width: 844, height: 390 });
+    await ensureAuthenticated(page);
+    await page.goto('/dashboard');
+    await page.waitForLoadState('domcontentloaded');
+
+    // Botão de busca no cabeçalho deve estar visível e utilizável
+    const searchTrigger = page.locator('header button[title*="Buscar"]').first();
+    await expect(searchTrigger).toBeVisible({ timeout: 10000 });
+
+    // Barra de busca da esteira do dashboard deve estar utilizável
+    const dashboardSearch = page.getByPlaceholder(/Buscar por cliente, produto ou telefone/i);
+    await expect(dashboardSearch).toBeVisible({ timeout: 5000 });
+
+    // Sem overflow horizontal no modo paisagem
+    const hasHorizontalOverflow = await page.evaluate(() => {
+      return document.documentElement.scrollWidth > window.innerWidth;
+    });
+    expect(hasHorizontalOverflow).toBe(false);
+  });
 });
