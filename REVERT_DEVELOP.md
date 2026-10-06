@@ -8,7 +8,7 @@ Este documento consolida os pontos de restauração (checkpoints), commits de re
 
 | Checkpoint | Hash de Referência | Descrição / Estado da Plataforma |
 |---|---|---|
-| **Ponto Atual (Mais Recente)** | `09154c4` + melhorias atuais | Configurações organizadas em abas (Empresa, Operação, Aparência, Integrações, Avançado) com sincronização de URL (`?tab=...`), template interativo de WhatsApp, Arquivamento com Permissões Granulares e Dashboard Modular. |
+| **Ponto Atual (Mais Recente)** | `b2c85d1` | Configurações organizadas em abas (Empresa, Operação, Aparência, Integrações, Avançado) com sincronização de URL (`?tab=...`), template interativo de WhatsApp com preview e tags, Arquivamento com Permissões Granulares e Dashboard Modular. |
 | **Checkpoint 1 — Antes do Refactor de Settings & Dashboard** | `9454458` | Funcionalidade completa de Arquivamento de Pedidos e Permissões Granulares ativas; telas anteriores sem refatoração de abas. |
 | **Checkpoint 2 — Antes da Área de Pedidos Arquivados** | `510026b` | Dashboard com paginação corrigida, sem o módulo de arquivamento separado. |
 | **Checkpoint 3 — Base Estável de Testes Unitários** | `671dbad` | Suíte de testes unitários consolidada e alocações de CPU das cloud functions estabilizadas. |
