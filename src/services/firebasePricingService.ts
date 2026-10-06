@@ -19,6 +19,7 @@ import {
   where,
   orderBy,
   writeBatch,
+  runTransaction,
   Unsubscribe,
 } from 'firebase/firestore';
 import { db, auth } from '../lib/firebase';
@@ -412,6 +413,12 @@ class FirebasePricingService {
       unitCost,
       notes: data.notes || undefined,
       createdAt: data.createdAt?.toDate?.()?.toISOString() || data.createdAt || new Date().toISOString(),
+      idempotencyKey: data.idempotencyKey || id,
+      status: (data.status as 'active' | 'cancelled') || 'active',
+      cancelledAt: data.cancelledAt || null,
+      cancellationReason: data.cancellationReason || null,
+      revertedQuantity: data.revertedQuantity != null ? Number(data.revertedQuantity) : undefined,
+      unreversedQuantity: data.unreversedQuantity != null ? Number(data.unreversedQuantity) : undefined,
     };
   }
 
@@ -450,42 +457,58 @@ class FirebasePricingService {
   }
 
   /**
-   * Grava uma nova compra no histórico E atualiza automaticamente o insumo correspondente na Aba 1
+   * Grava uma nova compra no histórico E atualiza atomicamente o insumo correspondente
+   * via transação Firestore com suporte a chave de idempotência para evitar duplicidade em concorrência/retries.
    */
   async addPurchaseRecord(
-    record: Omit<PurchaseHistoryItem, 'id' | 'userId' | 'createdAt'>
+    record: Omit<PurchaseHistoryItem, 'id' | 'userId' | 'createdAt'> & { idempotencyKey?: string }
   ): Promise<PurchaseHistoryItem> {
     const userId = this.getCurrentUserId();
-    const price = Number(record.price) || 0;
+    const price = Number(record.price);
     const shippingCost = Number(record.shippingCost) || 0;
-    const quantity = Number(record.quantity) || 1;
+    const quantity = Number(record.quantity);
+
+    if (!Number.isFinite(quantity) || quantity <= 0) {
+      throw new Error('A quantidade da compra deve ser um número positivo.');
+    }
+    if (!Number.isFinite(price) || price < 0) {
+      throw new Error('O valor pago da compra não pode ser negativo.');
+    }
+    if (!Number.isFinite(shippingCost) || shippingCost < 0) {
+      throw new Error('O frete não pode ser negativo.');
+    }
+
     const totalPrice = price + shippingCost;
-    const calculatedUnitCost = quantity > 0 ? totalPrice / quantity : 0;
+    const calculatedUnitCost = quantity > 0 ? Math.round((totalPrice / quantity) * 10000) / 10000 : 0;
 
-    const payload = sanitizeForFirestore({
-      ...record,
-      price,
-      shippingCost,
-      totalPrice,
-      unitCost: calculatedUnitCost,
-      userId,
-      createdAt: new Date().toISOString(),
-    });
+    const scopedDocId = record.idempotencyKey
+      ? (record.idempotencyKey.startsWith(`${userId}_`) ? record.idempotencyKey : `${userId}_${record.idempotencyKey}`)
+      : undefined;
 
-    const docRef = await addDoc(collection(db, PURCHASE_HISTORY_COLLECTION), payload);
-    const createdRecord = { id: docRef.id, ...payload };
+    const purchaseDocRef = scopedDocId
+      ? doc(db, PURCHASE_HISTORY_COLLECTION, scopedDocId)
+      : doc(collection(db, PURCHASE_HISTORY_COLLECTION));
 
-    // Se houver um insumo vinculado, atualiza preço, frete, quantidade, última compra e soma estoque
-    if (record.supplyId) {
-      try {
+    return await runTransaction(db, async (transaction) => {
+      // 1. Idempotência: se já existe documento com essa chave (ex: retry), retorna o existente sem duplicar
+      const existingSnap = await transaction.get(purchaseDocRef);
+      if (existingSnap.exists()) {
+        return this.mapPurchaseHistoryDoc(existingSnap.id, existingSnap.data());
+      }
+
+      // 2. Se houver um insumo vinculado, lê e atualiza estoque e custos atomicamente
+      if (record.supplyId) {
         const supplyDocRef = doc(db, SUPPLIES_COLLECTION, record.supplyId);
-        const supplySnap = await getDoc(supplyDocRef);
+        const supplySnap = await transaction.get(supplyDocRef);
 
         if (supplySnap.exists()) {
           const currentSupplyData = supplySnap.data();
           const oldStock = Number(currentSupplyData.currentStock) || 0;
+          const newStock = oldStock + quantity;
+          const minStock = Number(currentSupplyData.minStock) || 0;
+          const isReorder = minStock > 0 ? newStock <= minStock : false;
 
-          await updateDoc(
+          transaction.update(
             supplyDocRef,
             sanitizeForFirestore({
               lastPurchaseDate: record.date,
@@ -495,56 +518,128 @@ class FirebasePricingService {
               totalPrice: totalPrice,
               packageQuantity: quantity,
               unitCost: calculatedUnitCost,
-              currentStock: oldStock + quantity,
-              needsReorder: false, // desmarca alerta de reposição
+              currentStock: newStock,
+              needsReorder: isReorder,
               updatedAt: new Date().toISOString(),
             })
           );
         }
-      } catch (err) {
-        console.warn('Não foi possível atualizar o insumo automaticamente ao gravar compra:', err);
       }
-    }
 
-    return createdRecord;
+      // 3. Grava o histórico de compras na mesma transação atômica
+      const payload = sanitizeForFirestore({
+        ...record,
+        idempotencyKey: record.idempotencyKey || purchaseDocRef.id,
+        price,
+        shippingCost,
+        totalPrice,
+        unitCost: calculatedUnitCost,
+        userId,
+        status: 'active' as const,
+        createdAt: new Date().toISOString(),
+      });
+
+      transaction.set(purchaseDocRef, payload);
+
+      return {
+        id: purchaseDocRef.id,
+        ...payload,
+      };
+    });
   }
 
-  async deletePurchaseRecord(id: string): Promise<void> {
-    await deleteDoc(doc(db, PURCHASE_HISTORY_COLLECTION, id));
-  }
+  /**
+   * Cancela uma compra e estorna o estoque correspondente atomicamente.
+   * - Preserva o registro histórico como 'cancelled' para auditoria.
+   * - Suporta cancelamento repetido idempotente.
+   * - Trata estoques parcialmente consumidos: estorna até o limite disponível sem deixar saldo negativo.
+   * - Não restaura nem corrompe custos unitários de fichas em uso cegamente.
+   */
+  async cancelPurchaseRecord(
+    id: string,
+    options?: { reason?: string }
+  ): Promise<{ success: boolean; purchase: PurchaseHistoryItem; revertedQuantity: number; unreversedQuantity: number }> {
+    const purchaseDocRef = doc(db, PURCHASE_HISTORY_COLLECTION, id);
 
-  async cancelPurchaseRecord(id: string): Promise<{ revertedQuantity: number; unreversedQuantity: number }> {
-    const docRef = doc(db, PURCHASE_HISTORY_COLLECTION, id);
-    const snap = await getDoc(docRef);
-    let revertedQuantity = 0;
-    let unreversedQuantity = 0;
+    return await runTransaction(db, async (transaction) => {
+      const purchaseSnap = await transaction.get(purchaseDocRef);
+      if (!purchaseSnap.exists()) {
+        throw new Error('Registro de compra não encontrado.');
+      }
 
-    if (snap.exists()) {
-      const data = snap.data();
-      const qty = Number(data.quantity) || 0;
-      if (data.supplyId && qty > 0) {
-        try {
-          const supplyRef = doc(db, SUPPLIES_COLLECTION, data.supplyId);
-          const supplySnap = await getDoc(supplyRef);
-          if (supplySnap.exists()) {
-            const currentStock = Number(supplySnap.data().currentStock) || 0;
-            revertedQuantity = Math.min(currentStock, qty);
-            unreversedQuantity = Math.max(0, qty - currentStock);
-            const newStock = Math.max(0, currentStock - qty);
-            await updateDoc(supplyRef, {
+      const purchaseData = purchaseSnap.data();
+
+      // Idempotência: se já foi cancelado anteriormente, retorna sem alterar saldo novamente
+      if (purchaseData.status === 'cancelled') {
+        return {
+          success: true,
+          purchase: this.mapPurchaseHistoryDoc(purchaseSnap.id, purchaseData),
+          revertedQuantity: Number(purchaseData.revertedQuantity) || 0,
+          unreversedQuantity: Number(purchaseData.unreversedQuantity) || 0,
+        };
+      }
+
+      const purchaseQuantity = Number(purchaseData.quantity) || 0;
+      let revertedQuantity = 0;
+      let unreversedQuantity = 0;
+
+      // Se houver insumo vinculado, ajusta o estoque atomicamente
+      if (purchaseData.supplyId) {
+        const supplyDocRef = doc(db, SUPPLIES_COLLECTION, purchaseData.supplyId);
+        const supplySnap = await transaction.get(supplyDocRef);
+
+        if (supplySnap.exists()) {
+          const supplyData = supplySnap.data();
+          const currentStock = Number(supplyData.currentStock) || 0;
+
+          // Se a compra foi consumida total ou parcialmente, estorna apenas a quantidade ainda disponível
+          revertedQuantity = Math.min(Math.max(0, currentStock), purchaseQuantity);
+          unreversedQuantity = purchaseQuantity - revertedQuantity;
+          const newStock = Math.max(0, currentStock - revertedQuantity);
+
+          const minStock = Number(supplyData.minStock) || 0;
+          const isReorder = minStock > 0 ? newStock <= minStock : (supplyData.needsReorder || false);
+
+          transaction.update(
+            supplyDocRef,
+            sanitizeForFirestore({
               currentStock: newStock,
+              needsReorder: isReorder,
               updatedAt: new Date().toISOString(),
-            });
-          }
-        } catch (err) {
-          console.warn('Erro ao estornar estoque no cancelamento da compra:', err);
+            })
+          );
         }
-      } else {
-        revertedQuantity = qty;
       }
-      await deleteDoc(docRef);
+
+      const updatedPurchase = {
+        ...purchaseData,
+        status: 'cancelled' as const,
+        cancelledAt: new Date().toISOString(),
+        cancellationReason: options?.reason || 'Cancelamento/estorno de compra',
+        revertedQuantity,
+        unreversedQuantity,
+        updatedAt: new Date().toISOString(),
+      };
+
+      transaction.update(purchaseDocRef, sanitizeForFirestore(updatedPurchase));
+
+      return {
+        success: true,
+        purchase: this.mapPurchaseHistoryDoc(purchaseSnap.id, updatedPurchase),
+        revertedQuantity,
+        unreversedQuantity,
+      };
+    });
+  }
+
+  /**
+   * Exclusão física de registro de compra (com opção de estornar estoque antes caso ainda esteja ativo).
+   */
+  async deletePurchaseRecord(id: string, options?: { revertStock?: boolean }): Promise<void> {
+    if (options?.revertStock) {
+      await this.cancelPurchaseRecord(id);
     }
-    return { revertedQuantity, unreversedQuantity };
+    await deleteDoc(doc(db, PURCHASE_HISTORY_COLLECTION, id));
   }
 
   /**

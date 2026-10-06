@@ -157,43 +157,53 @@ export const firebaseCustomerService = {
   },
 
   /**
-   * Buscar cliente por telefone
+   * Buscar cliente por telefone (com suporte a comparação exata e por dígitos limpos)
    */
   async findCustomerByPhone(userId: string, phone: string): Promise<Customer | null> {
+    if (!phone) return null;
+    const trimmedPhone = phone.trim();
+    const cleanPhoneDigits = trimmedPhone.replace(/\D/g, '');
+
     const customersRef = collection(db, 'customers');
     const q = query(
       customersRef,
       where('userId', '==', userId),
-      where('phone', '==', phone)
+      where('phone', '==', trimmedPhone)
     );
 
     const snapshot = await getDocs(q);
-    if (snapshot.empty) return null;
+    if (!snapshot.empty) {
+      const doc = snapshot.docs[0];
+      return {
+        id: doc.id,
+        ...doc.data(),
+      } as Customer;
+    }
 
-    const doc = snapshot.docs[0];
-    return {
-      id: doc.id,
-      ...doc.data(),
-    } as Customer;
+    // Se não encontrou por correspondência exata de string e tem dígitos suficientes, busca nos clientes do usuário
+    if (cleanPhoneDigits.length >= 8) {
+      const allUserCustomersSnap = await getDocs(
+        query(customersRef, where('userId', '==', userId))
+      );
+      for (const docSnap of allUserCustomersSnap.docs) {
+        const data = docSnap.data();
+        const custDigits = (data.phone || '').replace(/\D/g, '');
+        if (custDigits && custDigits === cleanPhoneDigits) {
+          return {
+            ...data,
+            id: docSnap.id,
+          } as Customer;
+        }
+      }
+    }
+
+    return null;
   },
 
   /**
-   * Buscar cliente por telefone ou dígitos numéricos
+   * Buscar cliente por telefone ou dígitos limpos (alias conveniente)
    */
   async findCustomerByPhoneOrDigits(userId: string, phone: string): Promise<Customer | null> {
-    if (!phone) return null;
-    const direct = await firebaseCustomerService.findCustomerByPhone(userId, phone);
-    if (direct) return direct;
-
-    const rawDigits = phone.replace(/\D/g, '');
-    if (!rawDigits) return null;
-
-    const customers = await firebaseCustomerService.getCustomers(userId);
-    return (
-      customers.find((c) => {
-        const cDigits = (c.phone || '').replace(/\D/g, '');
-        return cDigits === rawDigits || cDigits.endsWith(rawDigits) || rawDigits.endsWith(cDigits);
-      }) || null
-    );
+    return this.findCustomerByPhone(userId, phone);
   },
 };
