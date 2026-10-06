@@ -48,6 +48,7 @@ import {
   CheckCircle,
 } from 'lucide-react';
 import { cn } from '../components/ui/utils';
+import { PaginationControls } from '../components/common/PaginationControls';
 import { toast } from 'sonner';
 
 type DateFilterType = 'archivedAt' | 'deliveryDate' | 'createdAt';
@@ -808,53 +809,18 @@ export function ArchivedOrders() {
       )}
 
       {/* Paginação */}
-      {pageSize !== 'all' && totalPages > 1 && totalItems > 0 && (
-        <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-4 border-t border-border/50">
-          <p className="text-xs sm:text-sm text-muted-foreground">
-            Mostrando {totalItems === 0 ? 0 : (currentPage - 1) * effectivePageSize + 1}–
-            {Math.min(currentPage * effectivePageSize, totalItems)} de {totalItems} pedido{totalItems !== 1 ? 's' : ''} — Página{' '}
-            <strong className="text-foreground">{currentPage}</strong> de <strong>{totalPages}</strong>
-          </p>
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-              disabled={currentPage === 1}
-            >
-              Anterior
-            </Button>
-            <div className="flex items-center gap-1">
-              {Array.from({ length: totalPages }, (_, i) => i + 1)
-                .filter((page) => totalPages <= 5 || page === 1 || page === totalPages || Math.abs(page - currentPage) <= 1)
-                .map((page, index, array) => {
-                  const prev = array[index - 1];
-                  const hasGap = prev && page - prev > 1;
-                  return (
-                    <Fragment key={page}>
-                      {hasGap && <span className="px-1 text-xs text-muted-foreground">…</span>}
-                      <Button
-                        variant={currentPage === page ? 'default' : 'outline'}
-                        size="sm"
-                        className="size-8 p-0 text-xs"
-                        onClick={() => setCurrentPage(page)}
-                      >
-                        {page}
-                      </Button>
-                    </Fragment>
-                  );
-                })}
-            </div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-              disabled={currentPage === totalPages}
-            >
-              Próxima
-            </Button>
-          </div>
-        </div>
+      {filteredArchivedOrders.length > 0 && (
+        <PaginationControls
+          currentPage={currentPage}
+          totalPages={totalPages}
+          totalItems={filteredArchivedOrders.length}
+          pageSize={pageSize}
+          onPageChange={setCurrentPage}
+          onPageSizeChange={setPageSize}
+          pageSizeOptions={[12, 24, 48, 'all']}
+          itemName="pedido arquivado"
+          itemPluralName="pedidos arquivados"
+        />
       )}
 
       {/* Modal de Detalhes do Pedido */}

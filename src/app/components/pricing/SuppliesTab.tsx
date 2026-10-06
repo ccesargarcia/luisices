@@ -54,9 +54,8 @@ import {
   Truck,
   CheckCircle2,
   Filter,
-  ChevronLeft,
-  ChevronRight,
 } from 'lucide-react';
+import { PaginationControls } from '../common/PaginationControls';
 import { toast } from 'sonner';
 
 interface SuppliesTabProps {
@@ -391,13 +390,14 @@ export function SuppliesTab({
               </CardDescription>
             </div>
             <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
-              {canCreate && supplies.length === 0 && (
+              {canCreate && (
                 <Button
                   variant="outline"
                   size="sm"
                   onClick={() => setPresetConfirmOpen(true)}
                   disabled={loadingPresets}
-                  className="gap-1.5 text-xs h-9 sm:h-10 rounded-xl flex-1 sm:flex-initial"
+                  className="gap-1.5 text-xs h-9 sm:h-10 rounded-xl flex-1 sm:flex-initial border-primary/30 text-primary hover:bg-primary/10 font-medium"
+                  title="Carregar insumos pré-configurados de papelaria"
                 >
                   <Sparkles className="size-3.5 text-primary" />
                   <span>Sugerir Insumos</span>
@@ -406,7 +406,7 @@ export function SuppliesTab({
               {canCreate && (
                 <Button
                   onClick={openAddDialog}
-                  className="gap-2 text-xs font-semibold h-9 sm:h-10 px-4 rounded-xl shadow-xs flex-1 sm:flex-initial justify-center"
+                  className="gap-2 text-xs font-semibold h-9 sm:h-10 px-4 rounded-xl shadow-xs flex-1 sm:flex-initial justify-center bg-primary text-primary-foreground hover:bg-primary/90"
                 >
                   <Plus className="size-4" />
                   <span>Novo Insumo</span>
@@ -539,15 +539,15 @@ export function SuppliesTab({
                 <Button
                   onClick={() => setPresetConfirmOpen(true)}
                   disabled={loadingPresets}
-                  className="gap-2 h-11 px-5 rounded-xl font-semibold shadow-md bg-primary text-primary-foreground hover:bg-primary/90 w-full sm:w-auto"
+                  className="gap-2.5 h-11 px-6 rounded-xl font-bold shadow-md bg-primary text-primary-foreground hover:bg-primary/90 active:scale-95 transition-all w-full sm:w-auto text-xs sm:text-sm"
                 >
                   <Sparkles className="size-4 shrink-0" />
-                  <span>Carregar Insumos Sugeridos da Luisices</span>
+                  <span>Carregar Insumos Sugeridos</span>
                 </Button>
                 <Button
                   variant="outline"
                   onClick={openAddDialog}
-                  className="gap-2 h-11 px-5 rounded-xl font-medium w-full sm:w-auto"
+                  className="gap-2 h-11 px-5 rounded-xl font-medium w-full sm:w-auto text-xs sm:text-sm"
                 >
                   <Plus className="size-4 shrink-0" />
                   <span>Cadastrar Manualmente</span>
@@ -1014,79 +1014,17 @@ export function SuppliesTab({
 
       {/* Controles de Paginação */}
       {filteredSupplies.length > 0 && (
-        <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2 bg-card p-3 rounded-xl border border-border/80 text-xs shadow-xs">
-          <div className="flex items-center gap-2 text-muted-foreground">
-            <span>
-              Exibindo{' '}
-              <strong className="text-foreground font-semibold">
-                {pageSize === 'all'
-                  ? `1–${filteredSupplies.length}`
-                  : `${(validCurrentPage - 1) * pageSize + 1}–${Math.min(
-                      validCurrentPage * pageSize,
-                      filteredSupplies.length
-                    )}`}
-              </strong>{' '}
-              de <strong className="text-foreground font-semibold">{filteredSupplies.length}</strong> insumos
-            </span>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-3">
-            {/* Seletor de Itens por Página */}
-            <div className="flex items-center gap-1.5 text-muted-foreground">
-              <span>Por página:</span>
-              <div className="inline-flex rounded-lg border bg-muted/40 p-0.5">
-                {([12, 24, 48, 'all'] as const).map((size) => (
-                  <button
-                    key={size}
-                    type="button"
-                    onClick={() => handleSetPageSize(size)}
-                    className={`px-2 py-0.5 text-[11px] font-medium rounded-md transition-colors ${
-                      pageSize === size
-                        ? 'bg-background text-foreground shadow-xs'
-                        : 'text-muted-foreground hover:text-foreground'
-                    }`}
-                  >
-                    {size === 'all' ? 'Todos' : size}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Navegação entre páginas */}
-            {totalPages > 1 && (
-              <div className="flex items-center gap-1.5">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                  disabled={validCurrentPage === 1}
-                  className="h-7 px-2 text-xs gap-1"
-                >
-                  <ChevronLeft className="size-3.5" />
-                  <span className="hidden sm:inline">Anterior</span>
-                </Button>
-                
-                <span className="text-[11px] font-medium text-muted-foreground px-1">
-                  Pág. <strong className="text-foreground">{validCurrentPage}</strong> de{' '}
-                  <strong className="text-foreground">{totalPages}</strong>
-                </span>
-
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                  disabled={validCurrentPage === totalPages}
-                  className="h-7 px-2 text-xs gap-1"
-                >
-                  <span className="hidden sm:inline">Próxima</span>
-                  <ChevronRight className="size-3.5" />
-                </Button>
-              </div>
-            )}
-          </div>
-        </div>
+        <PaginationControls
+          currentPage={validCurrentPage}
+          totalPages={totalPages}
+          totalItems={filteredSupplies.length}
+          pageSize={pageSize}
+          onPageChange={setCurrentPage}
+          onPageSizeChange={handleSetPageSize}
+          pageSizeOptions={[12, 24, 48, 'all']}
+          itemName="insumo"
+          itemPluralName="insumos"
+        />
       )}
 
       {/* Modal: Adicionar / Editar Insumo */}
@@ -1431,7 +1369,11 @@ export function SuppliesTab({
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={loadingPresets}>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={handleLoadPresets} disabled={loadingPresets}>
+            <AlertDialogAction
+              onClick={handleLoadPresets}
+              disabled={loadingPresets}
+              className="bg-primary text-primary-foreground font-semibold hover:bg-primary/90 px-4"
+            >
               {loadingPresets ? 'Carregando...' : 'Sim, Carregar Insumos'}
             </AlertDialogAction>
           </AlertDialogFooter>

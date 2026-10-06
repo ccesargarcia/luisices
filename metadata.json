@@ -1,0 +1,6 @@
+{
+  "name": "Luisices - Estúdio de Criação",
+  "description": "Estúdio interno de assistência e geração de topos de bolo 3D e papelaria para Silhouette Portrait 3.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

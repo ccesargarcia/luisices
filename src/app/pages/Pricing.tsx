@@ -348,7 +348,7 @@ export function Pricing() {
         </TabsContent>
 
         {/* Aba 4: Custos do Ateliê & Hora */}
-        <TabsContent value="settings" className="space-y-4 focus-visible:outline-none">
+        <TabsContent value="studioSettings" className="space-y-4 focus-visible:outline-none">
           <StudioSettingsTab
             initialSettings={studioSettings}
             canEdit={canEdit}

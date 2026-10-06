@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { Link } from 'react-router';
 import { formatCurrency } from '../utils/currency';
 import { Product } from '../types';
@@ -49,6 +49,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '../components/ui/utils';
+import { PaginationControls } from '../components/common/PaginationControls';
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
@@ -421,6 +422,9 @@ export function Products() {
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Product | null>(null);
 
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState<number | 'all'>(12);
+
   // Real-time subscription via onSnapshot
   useEffect(() => {
     if (!user) return;
@@ -455,18 +459,32 @@ export function Products() {
     new Set(products.map((p) => p.category).filter(Boolean) as string[])
   ).sort((a, b) => a.localeCompare(b, 'pt-BR'));
 
-  const filtered = products.filter((p) => {
-    const matchSearch =
-      !search.trim() ||
-      p.name.toLowerCase().includes(search.toLowerCase()) ||
-      (p.category ?? '').toLowerCase().includes(search.toLowerCase()) ||
-      (p.description ?? '').toLowerCase().includes(search.toLowerCase());
-    const matchCat = !filterCategory || (p.category || 'Sem categoria') === filterCategory;
-    return matchSearch && matchCat;
-  });
+  const filtered = useMemo<Product[]>(() => {
+    return products.filter((p: Product) => {
+      const matchSearch =
+        !search.trim() ||
+        p.name.toLowerCase().includes(search.toLowerCase()) ||
+        (p.category ?? '').toLowerCase().includes(search.toLowerCase()) ||
+        (p.description ?? '').toLowerCase().includes(search.toLowerCase());
+      const matchCat = !filterCategory || (p.category || 'Sem categoria') === filterCategory;
+      return matchSearch && matchCat;
+    });
+  }, [products, search, filterCategory]);
 
-  const displayCategories = Array.from(new Set(filtered.map((p) => p.category || 'Sem categoria')))
-    .sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [search, filterCategory, pageSize]);
+
+  const effectivePageSize = pageSize === 'all' ? filtered.length : pageSize;
+  const totalPages = Math.ceil(filtered.length / (effectivePageSize || 1));
+  const paginatedProducts = useMemo<Product[]>(() => {
+    if (pageSize === 'all') return filtered;
+    const start = (currentPage - 1) * pageSize;
+    return filtered.slice(start, start + pageSize);
+  }, [filtered, currentPage, pageSize]);
+
+  const displayCategories = Array.from(new Set(paginatedProducts.map((p: Product) => p.category || 'Sem categoria')))
+    .sort((a: string, b: string) => a.localeCompare(b, 'pt-BR'));
 
   const prices = products.map((p) => p.unitPrice);
   const minPrice = prices.length ? Math.min(...prices) : null;
@@ -628,7 +646,7 @@ export function Products() {
         /* ── Grid view ────────────────────────────────────────────── */
         <div className="space-y-6">
           {displayCategories.map((cat) => {
-            const items = filtered.filter((p) => (p.category || 'Sem categoria') === cat);
+            const items = paginatedProducts.filter((p) => (p.category || 'Sem categoria') === cat);
             return (
               <div key={cat}>
                 <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">
@@ -734,7 +752,7 @@ export function Products() {
               </tr>
             </thead>
             <tbody>
-              {filtered.map((product, i) => (
+              {paginatedProducts.map((product, i) => (
                 <tr key={product.id}
                   className={cn('border-b last:border-0 hover:bg-muted/30 transition-colors', i % 2 !== 0 && 'bg-muted/10')}>
                   <td className="px-4 py-2.5">
@@ -801,6 +819,21 @@ export function Products() {
             </tbody>
           </table>
         </div>
+      )}
+
+      {/* Controles de Paginação */}
+      {filtered.length > 0 && (
+        <PaginationControls
+          currentPage={currentPage}
+          totalPages={totalPages}
+          totalItems={filtered.length}
+          pageSize={pageSize}
+          onPageChange={setCurrentPage}
+          onPageSizeChange={setPageSize}
+          pageSizeOptions={[12, 24, 48, 'all']}
+          itemName="produto"
+          itemPluralName="produtos"
+        />
       )}
 
       {/* Form dialog */}

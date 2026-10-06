@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, Fragment } from 'react';
+import { useState, useEffect, useMemo, useRef, Fragment } from 'react';
 import { formatCurrency } from '../utils/currency';
 import { parseLocalDate } from '../utils/date';
 import { Order } from '../types';
@@ -28,6 +28,7 @@ import { firebaseOrderService } from '../../services/firebaseOrderService';
 import { firebaseCustomerService } from '../../services/firebaseCustomerService';
 import { useUserSettings } from '../../hooks/useUserSettings';
 import { openWhatsAppForExchange, generateExchangeSummaryMessage, openWhatsApp } from '../utils/whatsapp';
+import { PaginationControls } from '../components/common/PaginationControls';
 import { toast } from 'sonner';
 import { OrderStatus } from '../types';
 
@@ -74,6 +75,8 @@ export function Exchanges() {
   const [search, setSearch] = useState('');
   const [customerFilter, setCustomerFilter] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState<number | 'all'>(10);
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
@@ -134,6 +137,18 @@ export function Exchanges() {
     }
     return Array.from(map.values());
   }, [exchangeOrders]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [period, search, customerFilter, statusFilter, pageSize]);
+
+  const effectivePageSize = pageSize === 'all' ? groupedOrders.length : pageSize;
+  const totalPages = Math.ceil(groupedOrders.length / (effectivePageSize || 1));
+  const paginatedGroupedOrders = useMemo(() => {
+    if (pageSize === 'all') return groupedOrders;
+    const start = (currentPage - 1) * pageSize;
+    return groupedOrders.slice(start, start + pageSize);
+  }, [groupedOrders, currentPage, pageSize]);
 
   const stats = useMemo(() => {
     const totalDelivered = exchangeOrders.reduce((s, o) => s + (o.price || 0), 0);
@@ -541,7 +556,7 @@ export function Exchanges() {
                   </tr>
                 </thead>
                 <tbody className="divide-y">
-                  {groupedOrders.map(group => {
+                  {paginatedGroupedOrders.map(group => {
                     const groupTotal = group.orders.reduce((s, o) => s + (o.price || 0), 0);
                     return (
                       <Fragment key={group.key}>
@@ -651,7 +666,7 @@ export function Exchanges() {
 
             {/* Mobile cards */}
             <div className="md:hidden divide-y">
-              {groupedOrders.map(group => {
+              {paginatedGroupedOrders.map(group => {
                 const groupTotal = group.orders.reduce((s, o) => s + (o.price || 0), 0);
                 return (
                   <div key={group.key}>

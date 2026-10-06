@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useSearchParams } from 'react-router';
 import { useAuth } from '../../contexts/AuthContext';
 import { firebaseUserService } from '../../services/firebaseUserService';
@@ -57,6 +57,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../co
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../components/ui/tabs';
 import { Separator } from '../components/ui/separator';
 import { Alert, AlertDescription, AlertTitle } from '../components/ui/alert';
+import { PaginationControls } from '../components/common/PaginationControls';
 import { toast } from 'sonner';
 import {
   UserPlus,
@@ -71,6 +72,7 @@ import {
   KeyRound,
   Trash2,
   Mic,
+  Search,
 } from 'lucide-react';
 
 
@@ -553,6 +555,10 @@ export function Users() {
 
   const [users,    setUsers]    = useState<UserProfile[]>([]);
   const [loading,  setLoading]  = useState(true);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [roleFilter, setRoleFilter] = useState<string>('all');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState<number | 'all'>(10);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<UserProfile | null>(null);
   const [togglingUid, setTogglingUid] = useState<string | null>(null);
@@ -657,6 +663,24 @@ export function Users() {
   const totalActive   = users.filter(u => u.active).length;
   const totalAdmins   = users.filter(u => u.role === 'admin').length;
   const totalInactive = users.filter(u => !u.active).length;
+
+  const filteredUsers = useMemo<UserProfile[]>(() => {
+    return users.filter((u: UserProfile) => {
+      const matchSearch =
+        u.displayName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        u.email.toLowerCase().includes(searchTerm.toLowerCase());
+      const matchRole = roleFilter === 'all' || u.role === roleFilter;
+      return matchSearch && matchRole;
+    });
+  }, [users, searchTerm, roleFilter]);
+
+  const effectivePageSize = pageSize === 'all' ? filteredUsers.length : pageSize;
+  const totalPages = Math.ceil(filteredUsers.length / (effectivePageSize || 1));
+  const paginatedUsers = useMemo<UserProfile[]>(() => {
+    if (pageSize === 'all') return filteredUsers;
+    const start = (currentPage - 1) * pageSize;
+    return filteredUsers.slice(start, start + pageSize);
+  }, [filteredUsers, currentPage, pageSize]);
 
   if (authLoading) {
     return (
@@ -763,6 +787,41 @@ export function Users() {
             </Card>
           </div>
 
+          {/* Barra de Filtros e Busca */}
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-card p-3 rounded-xl border border-border/70 shadow-xs">
+            <div className="relative w-full sm:flex-1 sm:max-w-md">
+              <Search className="size-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                placeholder="Buscar usuário por nome ou e-mail..."
+                value={searchTerm}
+                onChange={(e) => {
+                  setSearchTerm(e.target.value);
+                  setCurrentPage(1);
+                }}
+                className="pl-9 h-9 text-xs w-full"
+              />
+            </div>
+            <div className="flex items-center gap-2 w-full sm:w-auto">
+              <Select
+                value={roleFilter}
+                onValueChange={(val) => {
+                  setRoleFilter(val);
+                  setCurrentPage(1);
+                }}
+              >
+                <SelectTrigger className="w-full sm:w-40 h-9 text-xs">
+                  <SelectValue placeholder="Todos os Perfis" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos os Perfis</SelectItem>
+                  <SelectItem value="admin">Administradores</SelectItem>
+                  <SelectItem value="funcionario">Funcionários</SelectItem>
+                  <SelectItem value="usuario">Usuários Padrão</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
           {/* Table — desktop */}
           {loading ? (
             <div className="flex items-center justify-center h-40">
@@ -783,14 +842,14 @@ export function Users() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {users.length === 0 && (
+                    {filteredUsers.length === 0 && (
                       <TableRow>
                         <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
                           Nenhum usuário encontrado
                         </TableCell>
                       </TableRow>
                     )}
-                    {users.map(u => (
+                    {paginatedUsers.map(u => (
                       <TableRow key={u.uid} className="group">
                         <TableCell className="font-medium">
                           {u.displayName}
@@ -852,10 +911,10 @@ export function Users() {
 
               {/* Mobile Cards */}
               <div className="sm:hidden space-y-3">
-                {users.length === 0 && (
+                {filteredUsers.length === 0 && (
                   <p className="text-center text-muted-foreground py-8">Nenhum usuário encontrado</p>
                 )}
-                {users.map(u => (
+                {paginatedUsers.map(u => (
                   <Card key={u.uid}>
                     <CardContent className="p-4 space-y-2">
                       <div className="flex items-start justify-between gap-2">
@@ -917,6 +976,19 @@ export function Users() {
                   </Card>
                 ))}
               </div>
+
+              {/* Controles de Paginação */}
+              <PaginationControls
+                currentPage={currentPage}
+                totalPages={totalPages}
+                totalItems={filteredUsers.length}
+                pageSize={pageSize}
+                onPageChange={setCurrentPage}
+                onPageSizeChange={setPageSize}
+                pageSizeOptions={[10, 25, 50, 'all']}
+                itemName="usuário"
+                itemPluralName="usuários"
+              />
             </>
           )}
         </TabsContent>

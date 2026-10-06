@@ -26,9 +26,8 @@ import {
 } from '../components/customers/CustomerDeleteDialogs';
 import { CustomerStatsCards } from '../components/customers/CustomerStatsCards';
 import { useSalesLedger } from '../../hooks/useSalesLedger';
+import { PaginationControls } from '../components/common/PaginationControls';
 import { toast } from 'sonner';
-
-const PAGE_SIZE = 12;
 
 export function Customers() {
   const { user, userProfile, hasPermission } = useAuth();
@@ -39,6 +38,7 @@ export function Customers() {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState<number | 'all'>(12);
   const [orderFilter, setOrderFilter] = useState<'all' | 'open' | 'no_orders'>('all');
   const [profileFilter, setProfileFilter] = useState<Customer['status'] | 'all'>('all');
   const [selectedCustomerIds, setSelectedCustomerIds] = useState<string[]>([]);
@@ -150,16 +150,18 @@ export function Customers() {
     );
   }, [customers, searchQuery, orderFilter, profileFilter, openOrdersMap, totalOrdersMap]);
 
-  // Resetar página ao filtrar
+  // Resetar página ao filtrar ou mudar tamanho
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery, orderFilter, profileFilter]);
+  }, [searchQuery, orderFilter, profileFilter, pageSize]);
 
-  const totalPages = Math.ceil(filteredCustomers.length / PAGE_SIZE);
-  const pagedCustomers = filteredCustomers.slice(
-    (currentPage - 1) * PAGE_SIZE,
-    currentPage * PAGE_SIZE,
-  );
+  const effectivePageSize = pageSize === 'all' ? filteredCustomers.length : pageSize;
+  const totalPages = Math.ceil(filteredCustomers.length / (effectivePageSize || 1));
+  const pagedCustomers = useMemo(() => {
+    if (pageSize === 'all') return filteredCustomers;
+    const start = (currentPage - 1) * pageSize;
+    return filteredCustomers.slice(start, start + pageSize);
+  }, [filteredCustomers, currentPage, pageSize]);
 
   const allFilteredCustomersSelected =
     filteredCustomers.length > 0 &&
@@ -444,31 +446,18 @@ export function Customers() {
       </div>
 
       {/* Pagination */}
-      {totalPages > 1 && (
-        <div className="flex items-center justify-between pt-2">
-          <p className="text-sm text-muted-foreground">
-            {filteredCustomers.length} cliente{filteredCustomers.length !== 1 ? 's' : ''} — página{' '}
-            {currentPage} de {totalPages}
-          </p>
-          <div className="flex gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-              disabled={currentPage === 1}
-            >
-              Anterior
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-              disabled={currentPage === totalPages}
-            >
-              Próxima
-            </Button>
-          </div>
-        </div>
+      {filteredCustomers.length > 0 && (
+        <PaginationControls
+          currentPage={currentPage}
+          totalPages={totalPages}
+          totalItems={filteredCustomers.length}
+          pageSize={pageSize}
+          onPageChange={setCurrentPage}
+          onPageSizeChange={setPageSize}
+          pageSizeOptions={[12, 24, 48, 'all']}
+          itemName="cliente"
+          itemPluralName="clientes"
+        />
       )}
 
       {/* Empty State */}

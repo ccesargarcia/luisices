@@ -45,12 +45,15 @@ import {
   Globe,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { PaginationControls } from '../components/common/PaginationControls';
 
 export function StoreOrders() {
   const [orders, setOrders] = useState<CatalogOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedStatus, setSelectedStatus] = useState<string>('all');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState<number | 'all'>(10);
 
   // Detalhes do pedido
   const [detailOrder, setDetailOrder] = useState<CatalogOrder | null>(null);
@@ -230,6 +233,19 @@ export function StoreOrders() {
       return matchesCode || matchesNotes || matchesItems;
     });
   }, [orders, selectedStatus, searchQuery]);
+
+  // Resetar página ao filtrar
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, selectedStatus, pageSize]);
+
+  const effectivePageSize = pageSize === 'all' ? filteredOrders.length : pageSize;
+  const totalPages = Math.ceil(filteredOrders.length / (effectivePageSize || 1));
+  const paginatedOrders = useMemo(() => {
+    if (pageSize === 'all') return filteredOrders;
+    const start = (currentPage - 1) * pageSize;
+    return filteredOrders.slice(start, start + pageSize);
+  }, [filteredOrders, currentPage, pageSize]);
 
   // Renderizador do badge de status
   const renderStatusBadge = (status: CatalogOrderStatus) => {
@@ -507,7 +523,7 @@ export function StoreOrders() {
         </div>
       ) : (
         <div className="space-y-4">
-          {filteredOrders.map((order) => {
+          {paginatedOrders.map((order) => {
             const isConverted = order.status === 'converted';
 
             return (
@@ -671,6 +687,21 @@ export function StoreOrders() {
             );
           })}
         </div>
+      )}
+
+      {/* Controles de Paginação */}
+      {filteredOrders.length > 0 && (
+        <PaginationControls
+          currentPage={currentPage}
+          totalPages={totalPages}
+          totalItems={filteredOrders.length}
+          pageSize={pageSize}
+          onPageChange={setCurrentPage}
+          onPageSizeChange={setPageSize}
+          pageSizeOptions={[10, 25, 50, 'all']}
+          itemName="pedido"
+          itemPluralName="pedidos"
+        />
       )}
 
       {/* DIALOG: DETALHES DO PEDIDO */}

@@ -9,6 +9,7 @@ import { firebaseStoreProductService } from '../../services/firebaseStoreProduct
 import { firebaseProductService } from '../../services/firebaseProductService';
 import { useAuth } from '../../contexts/AuthContext';
 import { useUserSettings } from '../../hooks/useUserSettings';
+import { PaginationControls } from '../components/common/PaginationControls';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -1767,57 +1768,18 @@ export function StoreProducts() {
       )}
 
       {/* Controles de Paginação */}
-      {pageSize !== 'all' && totalPages > 1 && totalProducts > 0 && (
-        <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-4 border-t border-border/50">
-          <p className="text-xs sm:text-sm text-muted-foreground">
-            Mostrando {startItem}–{endItem} de {totalProducts} produto{totalProducts !== 1 ? 's' : ''} — Página{' '}
-            <strong className="text-foreground">{currentPage}</strong> de <strong>{totalPages}</strong>
-          </p>
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => handlePageChange(Math.max(1, currentPage - 1))}
-              disabled={currentPage === 1}
-              className="text-xs h-8 cursor-pointer"
-            >
-              Anterior
-            </Button>
-            <div className="flex items-center gap-1">
-              {Array.from({ length: totalPages }, (_, i) => i + 1)
-                .filter((page) => {
-                  if (totalPages <= 5) return true;
-                  return page === 1 || page === totalPages || Math.abs(page - currentPage) <= 1;
-                })
-                .map((page, index, array) => {
-                  const prevPage = array[index - 1];
-                  const hasGap = prevPage && page - prevPage > 1;
-                  return (
-                    <Fragment key={page}>
-                      {hasGap && <span className="px-1 text-xs text-muted-foreground select-none">…</span>}
-                      <Button
-                        variant={currentPage === page ? 'default' : 'outline'}
-                        size="sm"
-                        className="size-8 p-0 text-xs cursor-pointer"
-                        onClick={() => handlePageChange(page)}
-                      >
-                        {page}
-                      </Button>
-                    </Fragment>
-                  );
-                })}
-            </div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => handlePageChange(Math.min(totalPages, currentPage + 1))}
-              disabled={currentPage === totalPages}
-              className="text-xs h-8 cursor-pointer"
-            >
-              Próxima
-            </Button>
-          </div>
-        </div>
+      {filteredProducts.length > 0 && (
+        <PaginationControls
+          currentPage={currentPage}
+          totalPages={totalPages}
+          totalItems={filteredProducts.length}
+          pageSize={pageSize}
+          onPageChange={handlePageChange}
+          onPageSizeChange={handlePageSizeChange}
+          pageSizeOptions={[12, 24, 48, 96, 'all']}
+          itemName="produto"
+          itemPluralName="produtos"
+        />
       )}
 
       {/* Modal de Formulário */}

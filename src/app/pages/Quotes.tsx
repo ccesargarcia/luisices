@@ -23,12 +23,16 @@ import { QuoteCard } from '../components/quotes/QuoteCard';
 import { QuoteStatsCards } from '../components/quotes/QuoteStatsCards';
 import { QuoteFormDialog } from '../components/quotes/QuoteFormDialog';
 import { QuoteDetailsDialog } from '../components/quotes/QuoteDetailsDialog';
+import { PaginationControls } from '../components/common/PaginationControls';
 
 export function Quotes() {
   const [searchParams, setSearchParams] = useSearchParams();
   const { user, hasPermission } = useAuth();
   const { quotes, loading, error } = useFirebaseQuotes();
   const { settings } = useUserSettings();
+  const [activeTab, setActiveTab] = useState('all');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState<number | 'all'>(12);
   const [search, setSearch] = useState('');
   const [filterDateFrom, setFilterDateFrom] = useState('');
   const [filterDateTo, setFilterDateTo] = useState('');
