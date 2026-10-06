@@ -6,8 +6,7 @@ service cloud.firestore {
     function isActiveUser() {
       return request.auth != null
         && exists(/databases/$(database)/documents/userProfiles/$(request.auth.uid))
-        && (!('active' in get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data)
-            || get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.active == true);
+        && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.get('active', true) == true;
     }
 
     // Helper function para verificar se o usuário é o dono do recurso
@@ -17,138 +16,114 @@ service cloud.firestore {
 
     function isAdmin() {
       return isActiveUser()
-        && exists(/databases/$(database)/documents/userProfiles/$(request.auth.uid))
-        && ('role' in get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data)
-        && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.role == 'admin';
+        && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.get('role', '') == 'admin';
     }
 
     function isActiveEmployee() {
-      return request.auth != null
-        && exists(/databases/$(database)/documents/userProfiles/$(request.auth.uid))
-        && ('role' in get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data)
-        && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.role == 'funcionario'
-        && (!('active' in get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data)
-            || get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.active == true);
+      return isActiveUser()
+        && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.get('role', '') == 'funcionario';
     }
 
     function isAssignedEmployee(assignedTo) {
       return assignedTo == request.auth.uid && isActiveEmployee();
     }
 
+    function getEmployeePermissions() {
+      return get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.get('permissions', {});
+    }
+
+    function hasPerm(permField, action) {
+      return (permField is map && permField.get(action, false) == true)
+        || (permField is bool && permField == true);
+    }
+
     function isAssignedEmployeeEditor(assignedTo) {
       return isAssignedEmployee(assignedTo)
-        && ('permissions' in get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data)
-        && (
-          ('orders' in get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.permissions
-           && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.permissions.orders == true)
-          || (
-            'orders' in get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.permissions
-            && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.permissions.orders is map
-            && 'edit' in get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.permissions.orders
-            && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.permissions.orders.edit == true
-          )
-        );
+        && ('orders' in getEmployeePermissions())
+        && hasPerm(getEmployeePermissions().orders, 'edit');
     }
 
     function isAssignedEmployeeDeleter(assignedTo) {
       return isAssignedEmployee(assignedTo)
-        && ('permissions' in get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data)
-        && (
-          ('orders' in get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.permissions
-           && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.permissions.orders == true)
-          || (
-            'orders' in get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.permissions
-            && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.permissions.orders is map
-            && 'delete' in get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.permissions.orders
-            && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.permissions.orders.delete == true
-          )
-        );
+        && ('orders' in getEmployeePermissions())
+        && hasPerm(getEmployeePermissions().orders, 'delete');
     }
 
     function employeeHasPricingView() {
       return isActiveEmployee()
-        && ('permissions' in get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data)
-        && (
-          ('pricing' in get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.permissions
-           && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.permissions.pricing == true)
-          || (
-            'pricing' in get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.permissions
-            && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.permissions.pricing is map
-            && 'view' in get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.permissions.pricing
-            && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.permissions.pricing.view == true
-          )
-        );
+        && ('pricing' in getEmployeePermissions())
+        && hasPerm(getEmployeePermissions().pricing, 'view');
     }
 
     function employeeHasPricingCreate() {
       return isActiveEmployee()
-        && ('permissions' in get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data)
-        && (
-          ('pricing' in get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.permissions
-           && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.permissions.pricing == true)
-          || (
-            'pricing' in get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.permissions
-            && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.permissions.pricing is map
-            && 'create' in get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.permissions.pricing
-            && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.permissions.pricing.create == true
-          )
-        );
+        && ('pricing' in getEmployeePermissions())
+        && hasPerm(getEmployeePermissions().pricing, 'create');
     }
 
     function employeeHasPricingEdit() {
       return isActiveEmployee()
-        && ('permissions' in get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data)
-        && (
-          ('pricing' in get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.permissions
-           && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.permissions.pricing == true)
-          || (
-            'pricing' in get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.permissions
-            && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.permissions.pricing is map
-            && 'edit' in get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.permissions.pricing
-            && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.permissions.pricing.edit == true
-          )
-        );
+        && ('pricing' in getEmployeePermissions())
+        && hasPerm(getEmployeePermissions().pricing, 'edit');
     }
 
     function employeeHasPricingDelete() {
       return isActiveEmployee()
-        && ('permissions' in get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data)
-        && (
-          ('pricing' in get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.permissions
-           && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.permissions.pricing == true)
-          || (
-            'pricing' in get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.permissions
-            && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.permissions.pricing is map
-            && 'delete' in get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.permissions.pricing
-            && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.permissions.pricing.delete == true
-          )
-        );
+        && ('pricing' in getEmployeePermissions())
+        && hasPerm(getEmployeePermissions().pricing, 'delete');
+    }
+
+    function employeeHasCustomersPerm(action) {
+      return isActiveEmployee()
+        && ('customers' in getEmployeePermissions())
+        && hasPerm(getEmployeePermissions().customers, action);
+    }
+
+    function employeeHasQuotesPerm(action) {
+      return isActiveEmployee()
+        && ('quotes' in getEmployeePermissions())
+        && hasPerm(getEmployeePermissions().quotes, action);
+    }
+
+    function employeeHasProductsPerm(action) {
+      return isActiveEmployee()
+        && ('products' in getEmployeePermissions())
+        && hasPerm(getEmployeePermissions().products, action);
+    }
+
+    function employeeHasGalleryPerm(action) {
+      return isActiveEmployee()
+        && ('gallery' in getEmployeePermissions())
+        && hasPerm(getEmployeePermissions().gallery, action);
     }
 
     // Regras para pedidos (orders)
     match /orders/{orderId} {
-      allow read: if ('userId' in resource.data && isOwner(resource.data.userId))
+      allow read: if (resource != null && 'userId' in resource.data && isOwner(resource.data.userId))
         || isAdmin()
-        || ('assignedTo' in resource.data && isAssignedEmployee(resource.data.assignedTo));
-      allow create: if isOwner(request.resource.data.userId) || isAdmin();
+        || (resource != null && 'assignedTo' in resource.data && isAssignedEmployee(resource.data.assignedTo));
+      allow create: if ('userId' in request.resource.data && isOwner(request.resource.data.userId)) || isAdmin();
       allow update: if isAdmin()
         || (
-          'userId' in resource.data && isOwner(resource.data.userId)
-          && request.resource.data.userId == resource.data.userId
+          resource != null
+          && 'userId' in resource.data
+          && isOwner(resource.data.userId)
+          && ('userId' in request.resource.data && request.resource.data.userId == resource.data.userId)
         )
         || (
-          'assignedTo' in resource.data
+          resource != null
+          && 'assignedTo' in resource.data
           && isAssignedEmployeeEditor(resource.data.assignedTo)
-          && request.resource.data.userId == resource.data.userId
-          && request.resource.data.assignedTo == resource.data.assignedTo
+          && ('userId' in request.resource.data && 'userId' in resource.data && request.resource.data.userId == resource.data.userId)
+          && ('assignedTo' in request.resource.data && request.resource.data.assignedTo == resource.data.assignedTo)
           && (
             !request.resource.data.diff(resource.data).affectedKeys().hasAny(['deletedAt'])
             || isAssignedEmployeeDeleter(resource.data.assignedTo)
           )
         );
-      allow delete: if ('userId' in resource.data && isOwner(resource.data.userId))
+      allow delete: if (resource != null && 'userId' in resource.data && isOwner(resource.data.userId))
         || isAdmin()
-        || ('assignedTo' in resource.data && isAssignedEmployeeDeleter(resource.data.assignedTo));
+        || (resource != null && 'assignedTo' in resource.data && isAssignedEmployeeDeleter(resource.data.assignedTo));
     }
 
     // Regras para histórico financeiro de vendas (salesLedger)
@@ -164,79 +139,82 @@ service cloud.firestore {
           || (
             exists(/databases/$(database)/documents/orders/$(saleId))
             && (
-              isOwner(get(/databases/$(database)/documents/orders/$(saleId)).data.userId)
+              isOwner(get(/databases/$(database)/documents/orders/$(saleId)).data.get('userId', ''))
               || ('assignedTo' in get(/databases/$(database)/documents/orders/$(saleId)).data && isAssignedEmployee(get(/databases/$(database)/documents/orders/$(saleId)).data.assignedTo))
             )
           )
         ))
       );
-      allow create: if isOwner(request.resource.data.userId) || isAdmin();
+      allow create: if ('userId' in request.resource.data && isOwner(request.resource.data.userId)) || isAdmin();
       allow update: if isAdmin() || (
-        request.resource.data.userId == resource.data.userId
+        resource != null
+        && 'userId' in resource.data
+        && 'userId' in request.resource.data
+        && request.resource.data.userId == resource.data.userId
         && (isOwner(resource.data.userId) || (
           'assignedTo' in resource.data
           && isAssignedEmployeeEditor(resource.data.assignedTo)
-          && request.resource.data.assignedTo == resource.data.assignedTo
+          && ('assignedTo' in request.resource.data && request.resource.data.assignedTo == resource.data.assignedTo)
         ))
       );
-      allow delete: if ('userId' in resource.data && isOwner(resource.data.userId))
+      allow delete: if (resource != null && 'userId' in resource.data && isOwner(resource.data.userId))
         || isAdmin();
     }
 
     // Regras para clientes (customers)
     match /customers/{customerId} {
-      allow read: if isOwner(resource.data.userId)
+      allow read: if (resource != null && 'userId' in resource.data && isOwner(resource.data.userId))
         || isAdmin()
-        || (isActiveEmployee() && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.permissions.customers.view == true);
-      allow create: if isOwner(request.resource.data.userId) || isAdmin();
-      allow update: if isOwner(resource.data.userId)
+        || employeeHasCustomersPerm('view');
+      allow create: if ('userId' in request.resource.data && isOwner(request.resource.data.userId)) || isAdmin();
+      allow update: if (resource != null && 'userId' in resource.data && isOwner(resource.data.userId))
         || isAdmin()
-        || (isActiveEmployee() && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.permissions.customers.edit == true);
-      allow delete: if isOwner(resource.data.userId)
+        || employeeHasCustomersPerm('edit');
+      allow delete: if (resource != null && 'userId' in resource.data && isOwner(resource.data.userId))
         || isAdmin()
-        || (isActiveEmployee() && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.permissions.customers.delete == true);
+        || employeeHasCustomersPerm('delete');
     }
 
     // Regras para orçamentos (quotes)
     match /quotes/{quoteId} {
-      allow read: if isOwner(resource.data.userId)
+      allow read: if (resource != null && 'userId' in resource.data && isOwner(resource.data.userId))
         || isAdmin()
-        || (isActiveEmployee() && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.permissions.quotes.view == true);
-      allow create: if isOwner(request.resource.data.userId) || isAdmin();
-      allow update: if isOwner(resource.data.userId)
+        || employeeHasQuotesPerm('view');
+      allow create: if ('userId' in request.resource.data && isOwner(request.resource.data.userId)) || isAdmin();
+      allow update: if (resource != null && 'userId' in resource.data && isOwner(resource.data.userId))
         || isAdmin()
-        || (isActiveEmployee() && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.permissions.quotes.edit == true);
-      allow delete: if isOwner(resource.data.userId)
+        || employeeHasQuotesPerm('edit');
+      allow delete: if (resource != null && 'userId' in resource.data && isOwner(resource.data.userId))
         || isAdmin()
-        || (isActiveEmployee() && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.permissions.quotes.delete == true);
+        || employeeHasQuotesPerm('delete');
     }
 
     // Regras para produtos (products)
     match /products/{productId} {
-      allow read: if resource.data.isPublic == true
-        || isOwner(resource.data.userId)
+      allow read: if (resource != null && 'isPublic' in resource.data && resource.data.isPublic == true)
+        || (resource != null && 'userId' in resource.data && isOwner(resource.data.userId))
         || isAdmin()
-        || (isActiveEmployee() && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.permissions.products.view == true);
-      allow create: if isOwner(request.resource.data.userId) || isAdmin();
-      allow update: if isOwner(resource.data.userId)
+        || employeeHasProductsPerm('view');
+      allow create: if ('userId' in request.resource.data && isOwner(request.resource.data.userId)) || isAdmin();
+      allow update: if (resource != null && 'userId' in resource.data && isOwner(resource.data.userId))
         || isAdmin()
-        || (isActiveEmployee() && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.permissions.products.edit == true);
-      allow delete: if isOwner(resource.data.userId)
+        || employeeHasProductsPerm('edit');
+      allow delete: if (resource != null && 'userId' in resource.data && isOwner(resource.data.userId))
         || isAdmin()
-        || (isActiveEmployee() && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.permissions.products.delete == true);
+        || employeeHasProductsPerm('delete');
     }
 
     // Regras para galeria de artes (gallery)
     match /gallery/{itemId} {
-      allow read: if isOwner(resource.data.userId)
+      allow read: if (resource != null && 'userId' in resource.data && isOwner(resource.data.userId))
         || isAdmin()
-        || (isActiveEmployee() && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.permissions.gallery.view == true);
-      allow create: if isOwner(request.resource.data.userId)
+        || employeeHasGalleryPerm('view');
+      allow create: if ('userId' in request.resource.data && isOwner(request.resource.data.userId))
         || isAdmin()
-        || (isActiveEmployee() && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.permissions.gallery.create == true);
-      allow update, delete: if isOwner(resource.data.userId)
+        || employeeHasGalleryPerm('create');
+      allow update, delete: if (resource != null && 'userId' in resource.data && isOwner(resource.data.userId))
         || isAdmin()
-        || (isActiveEmployee() && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.permissions.gallery.delete == true);
+        || employeeHasGalleryPerm('delete');
     }
 
     // Regras para configurações de usuário (users)
@@ -249,11 +227,11 @@ service cloud.firestore {
       allow read: if request.auth != null && (
         isAdmin()
         || employeeHasPricingView()
-        || (resource != null && isOwner(resource.data.userId))
+        || (resource != null && 'userId' in resource.data && isOwner(resource.data.userId))
       );
-      allow create: if isOwner(request.resource.data.userId) || isAdmin() || employeeHasPricingCreate();
-      allow update: if isOwner(resource.data.userId) || isAdmin() || employeeHasPricingEdit();
-      allow delete: if isOwner(resource.data.userId) || isAdmin() || employeeHasPricingDelete();
+      allow create: if ('userId' in request.resource.data && isOwner(request.resource.data.userId)) || isAdmin() || employeeHasPricingCreate();
+      allow update: if (resource != null && 'userId' in resource.data && isOwner(resource.data.userId)) || isAdmin() || employeeHasPricingEdit();
+      allow delete: if (resource != null && 'userId' in resource.data && isOwner(resource.data.userId)) || isAdmin() || employeeHasPricingDelete();
     }
 
     // Regras para histórico de compras de insumos (purchaseHistory)
@@ -261,12 +239,12 @@ service cloud.firestore {
       allow read: if request.auth != null && (
         isAdmin()
         || employeeHasPricingView()
-        || (resource != null && isOwner(resource.data.userId))
+        || (resource != null && 'userId' in resource.data && isOwner(resource.data.userId))
         || (resource == null && purchaseId.matches('^' + request.auth.uid + '_.*'))
       );
-      allow create: if isOwner(request.resource.data.userId) || isAdmin() || employeeHasPricingCreate();
-      allow update: if isOwner(resource.data.userId) || isAdmin() || employeeHasPricingEdit();
-      allow delete: if isOwner(resource.data.userId) || isAdmin() || employeeHasPricingDelete();
+      allow create: if ('userId' in request.resource.data && isOwner(request.resource.data.userId)) || isAdmin() || employeeHasPricingCreate();
+      allow update: if (resource != null && 'userId' in resource.data && isOwner(resource.data.userId)) || isAdmin() || employeeHasPricingEdit();
+      allow delete: if (resource != null && 'userId' in resource.data && isOwner(resource.data.userId)) || isAdmin() || employeeHasPricingDelete();
     }
 
     // Regras para fichas técnicas de precificação (pricingRecipes)
@@ -274,11 +252,11 @@ service cloud.firestore {
       allow read: if request.auth != null && (
         isAdmin()
         || employeeHasPricingView()
-        || (resource != null && isOwner(resource.data.userId))
+        || (resource != null && 'userId' in resource.data && isOwner(resource.data.userId))
       );
-      allow create: if isOwner(request.resource.data.userId) || isAdmin() || employeeHasPricingCreate();
-      allow update: if isOwner(resource.data.userId) || isAdmin() || employeeHasPricingEdit();
-      allow delete: if isOwner(resource.data.userId) || isAdmin() || employeeHasPricingDelete();
+      allow create: if ('userId' in request.resource.data && isOwner(request.resource.data.userId)) || isAdmin() || employeeHasPricingCreate();
+      allow update: if (resource != null && 'userId' in resource.data && isOwner(resource.data.userId)) || isAdmin() || employeeHasPricingEdit();
+      allow delete: if (resource != null && 'userId' in resource.data && isOwner(resource.data.userId)) || isAdmin() || employeeHasPricingDelete();
     }
 
     // Regras para configurações do ateliê (pricingSettings)
@@ -289,21 +267,26 @@ service cloud.firestore {
 
     // Regras para acompanhamento de produção (productionTracking)
     match /productionTracking/{trackingId} {
-      allow read: if ('userId' in resource.data && isOwner(resource.data.userId))
+      allow read: if (resource != null && 'userId' in resource.data && isOwner(resource.data.userId))
         || isAdmin()
         || employeeHasPricingView();
-      allow create: if (isOwner(request.resource.data.userId) || isAdmin() || employeeHasPricingCreate())
+      allow create: if ('userId' in request.resource.data && 'recipeId' in request.resource.data)
         && request.resource.data.userId is string
-        && request.resource.data.recipeId is string;
-      allow update: if ('userId' in resource.data && isOwner(resource.data.userId) && request.resource.data.userId == resource.data.userId)
+        && request.resource.data.recipeId is string
+        && (isOwner(request.resource.data.userId) || isAdmin() || employeeHasPricingCreate());
+      allow update: if resource != null && 'userId' in resource.data && (
+        ('userId' in request.resource.data && request.resource.data.userId == resource.data.userId && isOwner(resource.data.userId))
         || isAdmin()
         || (
-          'userId' in resource.data && employeeHasPricingEdit()
-          && request.resource.data.userId == resource.data.userId
-        );
-      allow delete: if ('userId' in resource.data && isOwner(resource.data.userId))
+          'userId' in request.resource.data && request.resource.data.userId == resource.data.userId
+          && employeeHasPricingEdit()
+        )
+      );
+      allow delete: if resource != null && (
+        ('userId' in resource.data && isOwner(resource.data.userId))
         || isAdmin()
-        || employeeHasPricingDelete();
+        || employeeHasPricingDelete()
+      );
     }
 
     // Perfis de usuário do sistema de permissões
@@ -320,6 +303,7 @@ service cloud.firestore {
         isAdmin()
         || (
           request.auth.uid == uid && isActiveUser()
+          && resource != null
           && !request.resource.data.diff(resource.data).affectedKeys()
             .hasAny(['uid', 'role', 'active', 'permissions', 'createdBy', 'createdAt'])
         )
@@ -344,56 +328,64 @@ service cloud.firestore {
       // Escrita restrita a administradores ou usuários ativos com permissão explícita de loja ou configurações
       allow write: if request.auth != null && (
         isAdmin()
-        || (exists(/databases/$(database)/documents/userProfiles/$(request.auth.uid))
-            && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.active == true
-            && (
-              get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.role == 'admin'
-              || get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.permissions.store == true
-              || get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.permissions.settings == true
-            ))
+        || (
+          exists(/databases/$(database)/documents/userProfiles/$(request.auth.uid))
+          && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.get('active', true) == true
+          && (
+            get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.get('role', '') == 'admin'
+            || getEmployeePermissions().get('store', false) == true
+            || getEmployeePermissions().get('settings', false) == true
+          )
+        )
       );
     }
 
-    // Regras para produtos da vitrine da lojinha pública online (storeProducts)
+    // Regras para catálogo de produtos da lojinha pública (storeProducts)
     match /storeProducts/{productId} {
-      // Leitura pública irrestrita para catálogo online (/catalogo)
       allow read: if true;
 
       // Criação permitida para administradores ou usuários ativos com permissão de criação em loja
       allow create: if request.auth != null && (
         isAdmin()
-        || (exists(/databases/$(database)/documents/userProfiles/$(request.auth.uid))
-            && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.active == true
-            && (
-              get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.role == 'admin'
-              || get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.permissions.storeProducts.create == true
-              || get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.permissions.store == true
-            ))
+        || (
+          exists(/databases/$(database)/documents/userProfiles/$(request.auth.uid))
+          && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.get('active', true) == true
+          && (
+            get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.get('role', '') == 'admin'
+            || ('storeProducts' in getEmployeePermissions() && hasPerm(getEmployeePermissions().storeProducts, 'create'))
+            || getEmployeePermissions().get('store', false) == true
+          )
+        )
       );
 
       // Atualização permitida para administradores, donos do produto ou usuários com permissão
       allow update: if request.auth != null && (
         isAdmin()
-        || (exists(/databases/$(database)/documents/userProfiles/$(request.auth.uid))
-            && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.active == true
-            && (
-              get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.role == 'admin'
-              || (isOwner(resource.data.userId) && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.permissions.storeProducts.edit != false)
-              || get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.permissions.storeProducts.edit == true
-              || get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.permissions.store == true
-            ))
+        || (
+          exists(/databases/$(database)/documents/userProfiles/$(request.auth.uid))
+          && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.get('active', true) == true
+          && (
+            get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.get('role', '') == 'admin'
+            || (resource != null && 'userId' in resource.data && isOwner(resource.data.userId))
+            || ('storeProducts' in getEmployeePermissions() && hasPerm(getEmployeePermissions().storeProducts, 'edit'))
+            || getEmployeePermissions().get('store', false) == true
+          )
+        )
       );
 
       // Exclusão permitida para administradores, donos do produto ou usuários ativos com permissão de exclusão
       allow delete: if request.auth != null && (
         isAdmin()
-        || (exists(/databases/$(database)/documents/userProfiles/$(request.auth.uid))
-            && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.active == true
-            && (
-              get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.role == 'admin'
-              || (isOwner(resource.data.userId) && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.permissions.storeProducts.delete != false)
-              || get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.permissions.storeProducts.delete == true
-            ))
+        || (
+          exists(/databases/$(database)/documents/userProfiles/$(request.auth.uid))
+          && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.get('active', true) == true
+          && (
+            get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.get('role', '') == 'admin'
+            || (resource != null && 'userId' in resource.data && isOwner(resource.data.userId))
+            || ('storeProducts' in getEmployeePermissions() && hasPerm(getEmployeePermissions().storeProducts, 'delete'))
+            || getEmployeePermissions().get('store', false) == true
+          )
+        )
       );
     }
 
@@ -406,24 +398,28 @@ service cloud.firestore {
       // Leitura permitida para administradores ou membros autorizados
       allow read: if request.auth != null && (
         isAdmin()
-        || (exists(/databases/$(database)/documents/userProfiles/$(request.auth.uid))
-            && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.active == true
-            && (
-              get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.role == 'admin'
-              || get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.permissions.store == true
-              || get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.permissions.orders.view == true
-            ))
+        || (
+          exists(/databases/$(database)/documents/userProfiles/$(request.auth.uid))
+          && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.get('active', true) == true
+          && (
+            get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.get('role', '') == 'admin'
+            || getEmployeePermissions().get('store', false) == true
+            || ('orders' in getEmployeePermissions() && hasPerm(getEmployeePermissions().orders, 'view'))
+          )
+        )
       );
 
       // Atualização e exclusão restritas a administradores ou gestores da loja
       allow update, delete: if request.auth != null && (
         isAdmin()
-        || (exists(/databases/$(database)/documents/userProfiles/$(request.auth.uid))
-            && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.active == true
-            && (
-              get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.role == 'admin'
-              || get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.permissions.store == true
-            ))
+        || (
+          exists(/databases/$(database)/documents/userProfiles/$(request.auth.uid))
+          && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.get('active', true) == true
+          && (
+            get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.get('role', '') == 'admin'
+            || getEmployeePermissions().get('store', false) == true
+          )
+        )
       );
     }
 
@@ -431,17 +427,17 @@ service cloud.firestore {
     function canAccessWhatsApp() {
       return request.auth != null
         && exists(/databases/$(database)/documents/userProfiles/$(request.auth.uid))
-        && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.active == true
+        && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.get('active', true) == true
         && (
           isAdmin()
-          || (get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.role == 'user'
-              && (!('permissions' in get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data)
-                  || !('whatsapp' in get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.permissions)
-                  || get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.permissions.whatsapp != false))
-          || (get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.role == 'funcionario'
-              && ('permissions' in get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data)
-              && ('whatsapp' in get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.permissions)
-              && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.permissions.whatsapp == true)
+          || (
+            get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.get('role', 'user') == 'user'
+            && getEmployeePermissions().get('whatsapp', true) != false
+          )
+          || (
+            get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.get('role', '') == 'funcionario'
+            && getEmployeePermissions().get('whatsapp', false) == true
+          )
         );
     }
 
@@ -485,4 +481,3 @@ service cloud.firestore {
     }
   }
 }
-
