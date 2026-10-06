@@ -24,7 +24,7 @@ import { cn } from '../components/ui/utils';
 import { useAuth } from '../../contexts/AuthContext';
 import { useOrders } from '../../contexts/OrdersContext';
 import { useUserSettings } from '../../hooks/useUserSettings';
-import { applyColorTheme } from '../utils/colorThemes';
+import { applyColorTheme, type ColorThemeKey } from '../utils/colorThemes';
 import { trackPageView } from '../../services/analyticsService';
 import { AiCopilotSheet } from '../components/AiCopilotSheet';
 import { NewOrderDialog } from '../components/NewOrderDialog';
@@ -109,7 +109,7 @@ export function Layout() {
 
   // Apply color theme CSS vars whenever settings change
   useEffect(() => {
-    applyColorTheme(settings?.colorTheme ?? 'default', settings?.customColorHex);
+    applyColorTheme((settings?.colorTheme as ColorThemeKey) ?? 'default', settings?.customColorHex);
   }, [settings?.colorTheme, settings?.customColorHex]);
 
   // Track page views with Firebase Analytics

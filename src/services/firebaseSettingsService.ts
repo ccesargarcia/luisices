@@ -74,7 +74,19 @@ export interface UserSettings {
   // Tema e cores
   primaryColor?: string;
   accentColor?: string;
-  colorTheme?: 'default' | 'rose' | 'purple' | 'blue' | 'green' | 'orange' | 'custom';
+  colorTheme?:
+    | 'default'
+    | 'rose'
+    | 'purple'
+    | 'blue'
+    | 'green'
+    | 'orange'
+    | 'coral'
+    | 'indigo'
+    | 'slate'
+    | 'emerald'
+    | 'custom'
+    | string;
   customColorHex?: string;       // Cor hex personalizada quando colorTheme === 'custom'
 
   // Preferências de exibição
