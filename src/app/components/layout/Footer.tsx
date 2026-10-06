@@ -76,6 +76,7 @@ export function Footer({
           appVersion={appVersion}
           open={aboutOpen}
           onOpenChange={onAboutOpenChange}
+          showTrigger={false}
         />
       </>
     );

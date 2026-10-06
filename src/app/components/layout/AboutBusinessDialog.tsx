@@ -13,6 +13,7 @@ interface AboutBusinessDialogProps {
   appVersion: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  showTrigger?: boolean;
 }
 
 export function AboutBusinessDialog({
@@ -25,15 +26,18 @@ export function AboutBusinessDialog({
   appVersion,
   open,
   onOpenChange,
+  showTrigger = true,
 }: AboutBusinessDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogTrigger asChild>
-        <button className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors cursor-pointer">
-          <Info className="size-3" />
-          v{appVersion} · © {new Date().getFullYear()} {businessName}
-        </button>
-      </DialogTrigger>
+      {showTrigger && (
+        <DialogTrigger asChild>
+          <button className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors cursor-pointer">
+            <Info className="size-3" />
+            v{appVersion} · © {new Date().getFullYear()} {businessName}
+          </button>
+        </DialogTrigger>
+      )}
       <DialogContent size="md" noPadding className="max-h-[90dvh] flex flex-col overflow-hidden">
         <DialogHeader className="p-4 sm:p-6 pb-3 border-b border-border">
           <DialogTitle className="flex items-center gap-2">
