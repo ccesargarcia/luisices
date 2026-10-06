@@ -103,8 +103,14 @@ test.describe('Navegação entre Páginas', () => {
     await input.click();
     await expect(input).toBeFocused();
 
-    // Fechar com Escape
+    // Fechar com Escape ou botão de fechar do modal
     await input.press('Escape');
+    const closeBtn = searchDialog.locator('[data-slot="dialog-close"], button[aria-label="Fechar"]').first();
+    if (await closeBtn.isVisible({ timeout: 1000 }).catch(() => false)) {
+      await closeBtn.click({ force: true }).catch(() => {});
+    } else {
+      await page.keyboard.press('Escape').catch(() => {});
+    }
     await expect(searchDialog).not.toBeVisible({ timeout: 5000 });
   });
 

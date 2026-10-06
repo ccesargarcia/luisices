@@ -7,43 +7,35 @@ import { ensureAuthenticated } from './utils/auth.util';
 
 async function closeAnyOpenDialog(page: Page) {
   const dialog = page.locator('[role="dialog"]').first();
-  if (!(await dialog.isVisible().catch(() => false))) return;
-
-  const closeSelectors = [
-    '[data-slot="dialog-close"]',
-    'button[aria-label="Close"]',
-    'button[aria-label="Fechar"]',
-    'button:has(svg.lucide-x)',
-    'button:has-text("Close")',
-    'button:has-text("Fechar")',
-    'button:has-text("Cancelar")',
-    'button:has-text("X")',
-  ];
-
-  for (const selector of closeSelectors) {
-    const closeBtn = dialog.locator(selector).first();
-    if (!(await closeBtn.isVisible().catch(() => false))) continue;
-    if (!(await closeBtn.isEnabled().catch(() => false))) continue;
-
-    try {
-      await closeBtn.click({ timeout: 1000, force: true });
-    } catch {
-      continue;
+  if (!(await dialog.isVisible().catch(() => false))) {
+    const overlay = page.locator('[data-slot="dialog-overlay"]').first();
+    if (await overlay.isVisible().catch(() => false)) {
+      await page.keyboard.press('Escape').catch(() => {});
+      await overlay.click({ force: true }).catch(() => {});
     }
-
-    await page.waitForTimeout(200);
-    if (!(await dialog.isVisible().catch(() => false))) return;
+    return;
   }
 
-  const overlay = page.locator('[data-slot="dialog-overlay"]').first();
-  if (await overlay.isVisible().catch(() => false)) {
-    await overlay.click({ force: true, timeout: 1000 }).catch(() => {});
-    await page.waitForTimeout(200);
-    if (!(await dialog.isVisible().catch(() => false))) return;
+  const closeBtn = dialog.locator('[data-slot="dialog-close"], button[aria-label="Close"], button[aria-label="Fechar"], button:has(svg.lucide-x)').first();
+  if (await closeBtn.isVisible().catch(() => false)) {
+    await closeBtn.click({ force: true, timeout: 1500 }).catch(() => {});
+  } else {
+    const footerBtn = dialog.getByRole('button', { name: /^Fechar$|^Cancelar$/i }).first();
+    if (await footerBtn.isVisible().catch(() => false)) {
+      await footerBtn.click({ force: true, timeout: 1500 }).catch(() => {});
+    } else {
+      await page.keyboard.press('Escape').catch(() => {});
+    }
   }
 
-  await page.keyboard.press('Escape').catch(() => {});
-  await expect(dialog).not.toBeVisible({ timeout: 3000 }).catch(() => {});
+  await page.waitForTimeout(150);
+  if (await dialog.isVisible().catch(() => false)) {
+    await page.keyboard.press('Escape').catch(() => {});
+  }
+
+  await expect(dialog).not.toBeVisible({ timeout: 5000 }).catch(() => {});
+  const overlay = page.locator('[data-slot="dialog-overlay"]');
+  await expect(overlay).not.toBeVisible({ timeout: 3000 }).catch(() => {});
 }
 
 test.beforeEach(async ({ page }) => {

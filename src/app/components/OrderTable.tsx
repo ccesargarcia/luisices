@@ -136,6 +136,7 @@ export function OrderTable({
               return (
                 <tr
                   key={order.id}
+                  data-testid="order-card"
                   onClick={() => onOrderClick(order)}
                   className={cn(
                     'cursor-pointer transition-colors group hover:bg-muted/40',

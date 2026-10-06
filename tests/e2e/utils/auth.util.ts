@@ -56,6 +56,14 @@ export async function restoreIndexedDB(page: Page) {
  * Caso contrário, executa o login pelo formulário como fallback seguro.
  */
 export async function ensureAuthenticated(page: Page) {
+  // Se já estiver logado no dashboard com layout carregado, retornar imediatamente
+  if (page.url().includes('/dashboard')) {
+    const main = page.locator('main').first();
+    if (await main.isVisible({ timeout: 1000 }).catch(() => false)) {
+      return;
+    }
+  }
+
   await restoreIndexedDB(page);
 
   await page.goto('/dashboard');
