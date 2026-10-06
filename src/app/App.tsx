@@ -4,12 +4,14 @@ import { AuthProvider } from '../contexts/AuthContext';
 import { ThemeProvider } from './components/common/ThemeProvider';
 import { Toaster } from './components/ui/sonner';
 
+const THEME_OPTIONS = ['light', 'dark', 'system', 'deep-ocean', 'forest-glow', 'sunset-amber'];
+
 function App() {
   // Se for vitrine pública por subdomínio ou ?view=loja, opera em isolamento total
   // sem carregar providers administrativos ou listeners de sessão do Firestore
   if (isCatalogSubdomain) {
     return (
-      <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
+      <ThemeProvider attribute="class" defaultTheme="system" enableSystem themes={THEME_OPTIONS}>
         <RouterProvider router={router} />
         <Toaster richColors closeButton position="top-right" />
       </ThemeProvider>
@@ -17,7 +19,7 @@ function App() {
   }
 
   return (
-    <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
+    <ThemeProvider attribute="class" defaultTheme="system" enableSystem themes={THEME_OPTIONS}>
       <AuthProvider>
         <RouterProvider router={router} />
       </AuthProvider>

@@ -278,13 +278,14 @@ export function Settings() {
     try {
       await updateSettings({
         colorTheme: selectedColorTheme,
+        themeMode: theme,
         ...(selectedColorTheme === 'custom' ? { customColorHex } : {}),
       });
       applyColorTheme(
         selectedColorTheme,
         selectedColorTheme === 'custom' ? customColorHex : undefined
       );
-      toast.success('Aparência salva com sucesso!');
+      toast.success('Aparência e tema salvos com sucesso!');
     } catch (error) {
       toast.error('Erro ao salvar personalização');
     } finally {

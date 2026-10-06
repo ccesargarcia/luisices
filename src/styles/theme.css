@@ -1,4 +1,4 @@
-@custom-variant dark (&:is(.dark *));
+@custom-variant dark (&:is(.dark *, [data-theme="dark"] *, .deep-ocean *, [data-theme="deep-ocean"] *, .forest-glow *, [data-theme="forest-glow"] *, .sunset-amber *, [data-theme="sunset-amber"] *));
 
 :root {
   --font-size: 16px;
@@ -61,7 +61,9 @@
   --z-tooltip: 90;       /* Tooltips e dicas flutuantes */
 }
 
-.dark {
+/* ─── TEMA PADRÃO ESCURO: MIDNIGHT VELVET ───────────────────────────── */
+.dark,
+[data-theme="dark"] {
   --background: #161214;
   --foreground: #e8e0e3;
   --card: rgb(31 25 27 / 86%);
@@ -80,6 +82,8 @@
   --destructive-foreground: #321114;
   --border: rgb(235 205 205 / 16%);
   --input: rgb(18 14 16 / 70%);
+  --input-background: rgb(18 14 16 / 70%);
+  --switch-background: #534150;
   --ring: #d8bfd1;
   --font-weight-medium: 500;
   --font-weight-normal: 400;
@@ -104,6 +108,153 @@
   --atmospheric-blush: rgb(91 50 52 / 22%);
   --atmospheric-lavender: rgb(40 25 45 / 28%);
   --atmospheric-blue: rgb(18 28 32 / 30%);
+}
+
+/* ─── TEMA CUSTOMIZADO 1: DEEP OCEAN ────────────────────────────────── */
+.deep-ocean,
+[data-theme="deep-ocean"] {
+  --background: #080e1a;
+  --foreground: #e2e8f0;
+  --card: rgb(15 23 42 / 85%);
+  --card-foreground: #f1f5f9;
+  --popover: rgb(15 23 42 / 92%);
+  --popover-foreground: #f1f5f9;
+  --primary: #06b6d4;
+  --primary-foreground: #080e1a;
+  --secondary: #38bdf8;
+  --secondary-foreground: #080e1a;
+  --muted: rgb(30 41 59 / 85%);
+  --muted-foreground: #94a3b8;
+  --accent: #1e293b;
+  --accent-foreground: #38bdf8;
+  --destructive: #f43f5e;
+  --destructive-foreground: #ffffff;
+  --border: rgb(56 189 248 / 20%);
+  --input: rgb(15 23 42 / 70%);
+  --input-background: rgb(15 23 42 / 70%);
+  --switch-background: #1e293b;
+  --font-weight-medium: 500;
+  --font-weight-normal: 400;
+  --ring: #06b6d4;
+  --chart-1: #06b6d4;
+  --chart-2: #38bdf8;
+  --chart-3: #6366f1;
+  --chart-4: #0ea5e9;
+  --chart-5: #14b8a6;
+  --sidebar: rgb(11 19 38 / 92%);
+  --sidebar-foreground: #e2e8f0;
+  --sidebar-primary: #06b6d4;
+  --sidebar-primary-foreground: #080e1a;
+  --sidebar-accent: rgb(6 182 212 / 14%);
+  --sidebar-accent-foreground: #38bdf8;
+  --sidebar-border: rgb(56 189 248 / 20%);
+  --sidebar-ring: #06b6d4;
+  --glass-border: rgb(56 189 248 / 22%);
+  --glass-shadow: 0 16px 40px -8px rgb(0 15 35 / 75%);
+  --button-glass-bg: rgb(6 182 212 / 14%);
+  --button-glass-hover: rgb(6 182 212 / 24%);
+  --button-glass-text: #67e8f9;
+  --atmospheric-blush: rgb(6 182 212 / 18%);
+  --atmospheric-lavender: rgb(37 99 235 / 20%);
+  --atmospheric-blue: rgb(13 148 136 / 15%);
+}
+
+/* ─── TEMA CUSTOMIZADO 2: FOREST GLOW ───────────────────────────────── */
+.forest-glow,
+[data-theme="forest-glow"] {
+  --background: #07150e;
+  --foreground: #ecfdf5;
+  --card: rgb(10 31 22 / 85%);
+  --card-foreground: #ecfdf5;
+  --popover: rgb(10 31 22 / 92%);
+  --popover-foreground: #ecfdf5;
+  --primary: #10b981;
+  --primary-foreground: #062817;
+  --secondary: #34d399;
+  --secondary-foreground: #062817;
+  --muted: rgb(19 46 34 / 85%);
+  --muted-foreground: #a7f3d0;
+  --accent: #133827;
+  --accent-foreground: #6ee7b7;
+  --destructive: #f87171;
+  --destructive-foreground: #2b0b0b;
+  --border: rgb(52 211 153 / 20%);
+  --input: rgb(9 26 19 / 70%);
+  --input-background: rgb(9 26 19 / 70%);
+  --switch-background: #133827;
+  --font-weight-medium: 500;
+  --font-weight-normal: 400;
+  --ring: #10b981;
+  --chart-1: #10b981;
+  --chart-2: #34d399;
+  --chart-3: #84cc16;
+  --chart-4: #059669;
+  --chart-5: #6ee7b7;
+  --sidebar: rgb(8 24 17 / 92%);
+  --sidebar-foreground: #ecfdf5;
+  --sidebar-primary: #10b981;
+  --sidebar-primary-foreground: #062817;
+  --sidebar-accent: rgb(16 185 129 / 14%);
+  --sidebar-accent-foreground: #34d399;
+  --sidebar-border: rgb(52 211 153 / 20%);
+  --sidebar-ring: #10b981;
+  --glass-border: rgb(52 211 153 / 22%);
+  --glass-shadow: 0 16px 40px -8px rgb(2 20 12 / 75%);
+  --button-glass-bg: rgb(16 185 129 / 14%);
+  --button-glass-hover: rgb(16 185 129 / 24%);
+  --button-glass-text: #6ee7b7;
+  --atmospheric-blush: rgb(16 185 129 / 18%);
+  --atmospheric-lavender: rgb(13 148 136 / 20%);
+  --atmospheric-blue: rgb(132 204 22 / 12%);
+}
+
+/* ─── TEMA CUSTOMIZADO 3: SUNSET AMBER ──────────────────────────────── */
+.sunset-amber,
+[data-theme="sunset-amber"] {
+  --background: #170f0b;
+  --foreground: #fef3c7;
+  --card: rgb(35 22 17 / 85%);
+  --card-foreground: #fef3c7;
+  --popover: rgb(35 22 17 / 92%);
+  --popover-foreground: #fef3c7;
+  --primary: #f59e0b;
+  --primary-foreground: #2b1402;
+  --secondary: #fb923c;
+  --secondary-foreground: #2b1402;
+  --muted: rgb(48 29 22 / 85%);
+  --muted-foreground: #fcd34d;
+  --accent: #3f2419;
+  --accent-foreground: #fde68a;
+  --destructive: #f87171;
+  --destructive-foreground: #2b0b0b;
+  --border: rgb(245 158 11 / 22%);
+  --input: rgb(26 16 12 / 70%);
+  --input-background: rgb(26 16 12 / 70%);
+  --switch-background: #3f2419;
+  --font-weight-medium: 500;
+  --font-weight-normal: 400;
+  --ring: #f59e0b;
+  --chart-1: #f59e0b;
+  --chart-2: #fb923c;
+  --chart-3: #ea580c;
+  --chart-4: #f97316;
+  --chart-5: #fde68a;
+  --sidebar: rgb(28 17 13 / 92%);
+  --sidebar-foreground: #fef3c7;
+  --sidebar-primary: #f59e0b;
+  --sidebar-primary-foreground: #2b1402;
+  --sidebar-accent: rgb(245 158 11 / 14%);
+  --sidebar-accent-foreground: #fbbf24;
+  --sidebar-border: rgb(245 158 11 / 22%);
+  --sidebar-ring: #f59e0b;
+  --glass-border: rgb(245 158 11 / 24%);
+  --glass-shadow: 0 16px 40px -8px rgb(25 10 4 / 75%);
+  --button-glass-bg: rgb(245 158 11 / 15%);
+  --button-glass-hover: rgb(245 158 11 / 26%);
+  --button-glass-text: #fde68a;
+  --atmospheric-blush: rgb(245 158 11 / 22%);
+  --atmospheric-lavender: rgb(225 29 72 / 18%);
+  --atmospheric-blue: rgb(180 83 9 / 18%);
 }
 
 @theme inline {
@@ -197,6 +348,42 @@
       radial-gradient(circle at 52% 38%, rgb(48 42 69 / 24%) 0, transparent 38%),
       radial-gradient(circle at 92% 82%, rgb(33 49 61 / 20%) 0, transparent 36%),
       #131112;
+  }
+
+  .deep-ocean body,
+  html.deep-ocean body,
+  body.deep-ocean,
+  [data-theme="deep-ocean"] body {
+    background-color: #060b14;
+    background: #080e1a;
+    background-image: radial-gradient(circle at 15% 10%, rgb(6 182 212 / 16%) 0, transparent 45%),
+      radial-gradient(circle at 85% 25%, rgb(37 99 235 / 18%) 0, transparent 50%),
+      radial-gradient(circle at 50% 80%, rgb(13 148 136 / 14%) 0, transparent 60%);
+    color: #e2e8f0;
+  }
+
+  .forest-glow body,
+  html.forest-glow body,
+  body.forest-glow,
+  [data-theme="forest-glow"] body {
+    background-color: #040e08;
+    background: #07150e;
+    background-image: radial-gradient(circle at 15% 10%, rgb(16 185 129 / 16%) 0, transparent 45%),
+      radial-gradient(circle at 85% 25%, rgb(13 148 136 / 18%) 0, transparent 50%),
+      radial-gradient(circle at 50% 80%, rgb(132 204 22 / 10%) 0, transparent 60%);
+    color: #ecfdf5;
+  }
+
+  .sunset-amber body,
+  html.sunset-amber body,
+  body.sunset-amber,
+  [data-theme="sunset-amber"] body {
+    background-color: #110a07;
+    background: #170f0b;
+    background-image: radial-gradient(circle at 15% 10%, rgb(245 158 11 / 18%) 0, transparent 45%),
+      radial-gradient(circle at 85% 25%, rgb(225 29 72 / 15%) 0, transparent 50%),
+      radial-gradient(circle at 50% 80%, rgb(180 83 9 / 14%) 0, transparent 60%);
+    color: #fef3c7;
   }
 
   /**

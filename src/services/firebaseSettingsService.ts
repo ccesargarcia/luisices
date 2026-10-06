@@ -74,6 +74,14 @@ export interface UserSettings {
   // Tema e cores
   primaryColor?: string;
   accentColor?: string;
+  themeMode?:
+    | 'light'
+    | 'dark'
+    | 'deep-ocean'
+    | 'forest-glow'
+    | 'sunset-amber'
+    | 'system'
+    | string;
   colorTheme?:
     | 'default'
     | 'rose'

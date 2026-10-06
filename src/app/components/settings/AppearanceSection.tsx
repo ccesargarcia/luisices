@@ -6,17 +6,15 @@ import { Label } from '../ui/label';
 import { Badge } from '../ui/badge';
 import {
   Palette,
-  Sun,
-  Moon,
-  Monitor,
   Check,
   Loader2,
   Sparkles,
-  Layers,
   Star,
   Package,
 } from 'lucide-react';
 import { COLOR_THEMES, type ColorThemeKey } from '../../utils/colorThemes';
+import { ThemeSelector } from './ThemeSelector';
+import { getThemePreset } from '../../utils/themePresets';
 
 interface AppearanceSectionProps {
   theme: string | undefined;
@@ -40,101 +38,47 @@ export function AppearanceSection({
   saving,
 }: AppearanceSectionProps) {
   const currentThemeObj = COLOR_THEMES.find((t) => t.key === selectedColorTheme);
+  const activePreset = getThemePreset(theme);
 
   return (
     <Card className="shadow-xs">
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Palette className="size-5 text-primary" />
-          Aparência e Identidade Visual
+          Aparência e Temas Visuais
         </CardTitle>
         <CardDescription>
-          Escolha o ambiente de trabalho (Claro ou Escuro) e a paleta de cores dos destaques do sistema.
+          Escolha o tema visual do sistema e personalize a atmosfera de trabalho do ateliê.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-8">
-        {/* ─── MODO DE EXIBIÇÃO (CLARO / ESCURO / SISTEMA) ────────────────── */}
-        <div className="space-y-3">
-          <div className="flex items-center justify-between">
-            <div>
-              <Label className="text-sm font-semibold">Modo de Exibição</Label>
-              <p className="mt-0.5 text-xs text-muted-foreground">
-                O padrão original do sistema é o modo claro <strong>Warm Paper</strong> e o modo escuro <strong>Midnight Velvet</strong>.
-              </p>
-            </div>
+        {/* ─── SELETOR DE TEMAS MODERNO COM TAILWIND ─────────────────────── */}
+        <div className="space-y-4">
+          <div>
+            <Label className="text-sm font-semibold">Seletor de Temas do Sistema</Label>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              Alterne instantaneamente entre os temas clássicos ou atmosféricos modernos com variáveis de CSS dedicadas.
+            </p>
           </div>
-          <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-3">
-            <Button
-              type="button"
-              variant={theme === 'light' ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => onThemeChange('light')}
-              className="h-11 justify-start px-3.5 gap-2.5 cursor-pointer relative"
-            >
-              <div className="size-6 rounded-md bg-amber-500/15 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
-                <Sun className="size-3.5" />
-              </div>
-              <div className="flex flex-col items-start leading-tight">
-                <span className="font-semibold text-xs">Claro (Warm Paper)</span>
-                <span className="text-[10px] opacity-75">Tons suaves de papel</span>
-              </div>
-              {theme === 'light' && (
-                <Check className="size-3.5 ml-auto text-primary-foreground" />
-              )}
-            </Button>
 
-            <Button
-              type="button"
-              variant={theme === 'dark' ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => onThemeChange('dark')}
-              className="h-11 justify-start px-3.5 gap-2.5 cursor-pointer relative"
-            >
-              <div className="size-6 rounded-md bg-indigo-500/15 text-indigo-400 flex items-center justify-center shrink-0">
-                <Moon className="size-3.5" />
-              </div>
-              <div className="flex flex-col items-start leading-tight">
-                <span className="font-semibold text-xs">Escuro (Midnight)</span>
-                <span className="text-[10px] opacity-75">Camadas de alto contraste</span>
-              </div>
-              {theme === 'dark' && (
-                <Check className="size-3.5 ml-auto text-primary-foreground" />
-              )}
-            </Button>
-
-            <Button
-              type="button"
-              variant={theme === 'system' ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => onThemeChange('system')}
-              className="h-11 justify-start px-3.5 gap-2.5 cursor-pointer relative"
-            >
-              <div className="size-6 rounded-md bg-muted text-muted-foreground flex items-center justify-center shrink-0">
-                <Monitor className="size-3.5" />
-              </div>
-              <div className="flex flex-col items-start leading-tight">
-                <span className="font-semibold text-xs">Automático (Sistema)</span>
-                <span className="text-[10px] opacity-75">Sincroniza com o SO</span>
-              </div>
-              {theme === 'system' && (
-                <Check className="size-3.5 ml-auto text-primary-foreground" />
-              )}
-            </Button>
-          </div>
+          <ThemeSelector
+            currentTheme={theme}
+            onThemeChange={onThemeChange}
+          />
         </div>
 
-        {/* ─── COLEÇÃO DE PALETAS DE CORES ────────────────────────────────── */}
-        <div className="space-y-4">
+        {/* ─── COLEÇÃO DE PALETAS DE CORES DE DESTAQUE ────────────────────── */}
+        <div className="space-y-4 pt-4 border-t border-border/70">
           <div className="flex items-center justify-between">
             <div>
-              <Label className="text-sm font-semibold">Paleta de Destaques</Label>
+              <Label className="text-sm font-semibold">Paleta de Destaques (Botões & Foco)</Label>
               <p className="mt-0.5 text-xs text-muted-foreground">
-                Selecione o tema de cores que será aplicado nos botões, badges, links e foco.
+                Ajuste fino opcional da tonalidade primária aplicada a botões de ação e anéis de foco.
               </p>
             </div>
             {selectedColorTheme === 'default' && (
               <Badge variant="outline" className="text-[10px] gap-1 bg-primary/10 text-primary border-primary/30">
-                <Star className="size-2.5" /> Padrão Original
+                <Star className="size-2.5" /> Padrão do Tema
               </Badge>
             )}
           </div>
@@ -242,14 +186,20 @@ export function AppearanceSection({
         </div>
 
         {/* ─── PRÉ-VISUALIZAÇÃO EM TEMPO REAL ─────────────────────────────── */}
-        <div className="space-y-2">
-          <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-            Pré-visualização do Tema no Sistema
-          </Label>
+        <div className="space-y-2 pt-2 border-t border-border/70">
+          <div className="flex items-center justify-between">
+            <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+              Pré-visualização Ativa
+            </Label>
+            <span className="text-[11px] font-medium text-primary">
+              {activePreset.name} • {selectedColorTheme === 'default' ? 'Destaque Original' : currentThemeObj?.label || 'Custom'}
+            </span>
+          </div>
+
           <div className="rounded-xl border border-border/80 bg-card p-4 shadow-xs space-y-3">
             <div className="flex items-start justify-between gap-3">
               <div className="flex items-center gap-2.5">
-                <div className="size-8 rounded-lg bg-primary text-primary-foreground flex items-center justify-center shrink-0 shadow-xs">
+                <div className="size-9 rounded-lg bg-primary text-primary-foreground flex items-center justify-center shrink-0 shadow-xs">
                   <Package className="size-4" />
                 </div>
                 <div>
@@ -257,7 +207,7 @@ export function AppearanceSection({
                     Exemplo de Pedido • Topo de Bolo 3D
                   </h4>
                   <p className="text-xs text-muted-foreground mt-1">
-                    Tema selecionado: <strong>{currentThemeObj?.label || 'Personalizado'}</strong>
+                    Tema: <strong>{activePreset.name}</strong> ({activePreset.subtitle})
                   </p>
                 </div>
               </div>
