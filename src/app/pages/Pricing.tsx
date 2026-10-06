@@ -291,27 +291,19 @@ export function Pricing() {
         <TabsList className="grid grid-cols-2 md:grid-cols-4 w-full h-auto p-1 bg-muted/60 gap-1">
           <TabsTrigger value="supplies" className="text-xs sm:text-sm gap-1.5 sm:gap-2 py-2 px-2 sm:px-3">
             <Layers className="size-3.5 sm:size-4 shrink-0" />
-            <span className="truncate">
-              <span className="hidden sm:inline">Aba 1 — </span>Insumos & Custos
-            </span>
+            <span className="truncate">Insumos & Custos</span>
           </TabsTrigger>
           <TabsTrigger value="history" className="text-xs sm:text-sm gap-1.5 sm:gap-2 py-2 px-2 sm:px-3">
             <History className="size-3.5 sm:size-4 shrink-0" />
-            <span className="truncate">
-              <span className="hidden sm:inline">Aba 2 — </span>Histórico
-            </span>
+            <span className="truncate">Histórico de Compras</span>
           </TabsTrigger>
           <TabsTrigger value="recipes" className="text-xs sm:text-sm gap-1.5 sm:gap-2 py-2 px-2 sm:px-3">
             <Calculator className="size-3.5 sm:size-4 shrink-0" />
-            <span className="truncate">
-              <span className="hidden sm:inline">Aba 3 — </span>Fichas & Preço
-            </span>
+            <span className="truncate">Fichas & Precificação</span>
           </TabsTrigger>
-          <TabsTrigger value="settings" className="text-xs sm:text-sm gap-1.5 sm:gap-2 py-2 px-2 sm:px-3">
+          <TabsTrigger value="studioSettings" className="text-xs sm:text-sm gap-1.5 sm:gap-2 py-2 px-2 sm:px-3">
             <Settings2 className="size-3.5 sm:size-4 shrink-0" />
-            <span className="truncate">
-              <span className="hidden sm:inline">Custos do </span>Ateliê & Hora
-            </span>
+            <span className="truncate">Custos Fixos & Hora</span>
           </TabsTrigger>
         </TabsList>
 

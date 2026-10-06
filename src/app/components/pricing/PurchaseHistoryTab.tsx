@@ -387,9 +387,9 @@ export function PurchaseHistoryTab({
         <CardHeader className="pb-3 border-b border-border/60">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
-              <CardTitle className="text-lg font-bold flex items-center gap-2">
-                <History className="size-5 text-primary" />
-                Aba 2 — Histórico de Compras de Insumos
+              <CardTitle className="text-base sm:text-lg font-bold flex items-center gap-2">
+                <History className="size-5 text-primary shrink-0" />
+                <span>Histórico de Compras de Insumos</span>
               </CardTitle>
               <CardDescription className="text-xs text-muted-foreground mt-0.5">
                 Acompanhe as oscilações de preço dos materiais e lance novas compras para atualizar seus custos automaticamente.

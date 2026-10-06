@@ -377,39 +377,39 @@ export function SuppliesTab({
 
   return (
     <div className="space-y-4">
-      {/* Cabeçalho da Aba 1 - Luisices Design System */}
-      <Card className="luisices-glass bg-card/60 backdrop-blur-md border-border/80 shadow-sm rounded-2xl">
+      {/* Cabeçalho da Gestão de Insumos - Luisices Design System */}
+      <Card className="luisices-glass bg-card/70 backdrop-blur-md border-border/80 shadow-sm rounded-2xl">
         <CardHeader className="p-4 sm:p-5">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
             <div>
-              <CardTitle className="text-lg font-bold flex items-center gap-2">
-                <Layers className="size-5 text-primary" />
-                Aba 1 — Cadastro & Gestão de Insumos
+              <CardTitle className="text-base sm:text-lg font-bold flex items-center gap-2">
+                <Layers className="size-5 text-primary shrink-0" />
+                <span>Cadastro & Gestão de Insumos</span>
               </CardTitle>
               <CardDescription className="text-xs text-muted-foreground mt-1">
                 Cadastre e precifique papéis, tintas, vinis, lamicotes e matérias-primas com custos unitários calculados automaticamente.
               </CardDescription>
             </div>
-            <div className="flex items-center gap-2 w-full sm:w-auto">
+            <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
               {canCreate && supplies.length === 0 && (
                 <Button
                   variant="outline"
                   size="sm"
                   onClick={() => setPresetConfirmOpen(true)}
                   disabled={loadingPresets}
-                  className="gap-1.5 text-xs h-10 rounded-xl flex-1 sm:flex-initial"
+                  className="gap-1.5 text-xs h-9 sm:h-10 rounded-xl flex-1 sm:flex-initial"
                 >
                   <Sparkles className="size-3.5 text-primary" />
-                  Sugerir Insumos
+                  <span>Sugerir Insumos</span>
                 </Button>
               )}
               {canCreate && (
                 <Button
                   onClick={openAddDialog}
-                  className="gap-2 text-xs font-semibold min-h-[40px] px-4 rounded-xl shadow-md hover:bg-primary/90 active:scale-95 transition-all w-full sm:w-auto justify-center"
+                  className="gap-2 text-xs font-semibold h-9 sm:h-10 px-4 rounded-xl shadow-xs flex-1 sm:flex-initial justify-center"
                 >
                   <Plus className="size-4" />
-                  Novo Insumo
+                  <span>Novo Insumo</span>
                 </Button>
               )}
             </div>
@@ -418,9 +418,9 @@ export function SuppliesTab({
       </Card>
 
       {/* Barra de Filtros e Visualização */}
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 bg-card p-3 sm:p-4 rounded-xl border shadow-sm">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 bg-card p-3 sm:p-4 rounded-xl border shadow-sm">
         <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-2 flex-1 w-full">
-          <div className="relative w-full sm:w-auto sm:min-w-[200px] sm:flex-1 sm:max-w-xs">
+          <div className="relative w-full sm:min-w-[200px] sm:flex-1 sm:max-w-xs">
             <Search className="size-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
             <Input
               placeholder="Buscar por insumo, marca ou loja..."
@@ -441,7 +441,7 @@ export function SuppliesTab({
                 setCurrentPage(1);
               }}
             >
-              <SelectTrigger className="flex-1 sm:flex-initial sm:w-[180px] h-9 text-xs min-w-[130px]">
+              <SelectTrigger className="flex-1 sm:flex-initial sm:w-[180px] h-9 text-xs min-w-[140px]">
                 <SelectValue placeholder="Todas as Categorias" />
               </SelectTrigger>
               <SelectContent>
@@ -523,27 +523,34 @@ export function SuppliesTab({
           <Loader2 className="size-8 animate-spin text-primary" />
         </div>
       ) : filteredSupplies.length === 0 ? (
-        <Card className="border-dashed">
-          <CardContent className="flex flex-col items-center justify-center p-12 text-center">
-            <Layers className="size-12 text-muted-foreground/40 mb-4" />
-            <h3 className="text-base font-bold">Nenhum insumo encontrado</h3>
-            <p className="text-xs text-muted-foreground max-w-md mt-1 mb-6">
+        <Card className="border-dashed border-2 bg-muted/15">
+          <CardContent className="flex flex-col items-center justify-center p-8 sm:p-12 text-center">
+            <div className="size-16 rounded-2xl bg-primary/10 flex items-center justify-center mb-4 text-primary">
+              <Layers className="size-8" />
+            </div>
+            <h3 className="text-base sm:text-lg font-bold text-foreground">Nenhum insumo encontrado</h3>
+            <p className="text-xs sm:text-sm text-muted-foreground max-w-md mt-1.5 mb-6 leading-relaxed">
               {supplies.length === 0
                 ? 'Comece cadastrando suas matérias-primas (papéis, bótons, adesivos, vinis, canecas) ou carregue nossa lista com insumos pré-configurados do Ateliê Luisices.'
                 : 'Nenhum insumo corresponde aos filtros selecionados.'}
             </p>
             {supplies.length === 0 && canCreate && (
-              <div className="flex flex-wrap gap-3 justify-center">
+              <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto justify-center max-w-md">
                 <Button
                   onClick={() => setPresetConfirmOpen(true)}
-                  className="gap-2 bg-gradient-to-r from-primary to-primary/80"
+                  disabled={loadingPresets}
+                  className="gap-2 h-11 px-5 rounded-xl font-semibold shadow-md bg-primary text-primary-foreground hover:bg-primary/90 w-full sm:w-auto"
                 >
-                  <Sparkles className="size-4" />
-                  Carregar Insumos Sugeridos da Luisices
+                  <Sparkles className="size-4 shrink-0" />
+                  <span>Carregar Insumos Sugeridos da Luisices</span>
                 </Button>
-                <Button variant="outline" onClick={openAddDialog} className="gap-2">
-                  <Plus className="size-4" />
-                  Cadastrar Manualmente
+                <Button
+                  variant="outline"
+                  onClick={openAddDialog}
+                  className="gap-2 h-11 px-5 rounded-xl font-medium w-full sm:w-auto"
+                >
+                  <Plus className="size-4 shrink-0" />
+                  <span>Cadastrar Manualmente</span>
                 </Button>
               </div>
             )}
