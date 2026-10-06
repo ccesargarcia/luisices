@@ -1396,8 +1396,17 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
     if (cleanCust) cleanCust = cleanCustomerName(cleanCust);
   }
 
+  const centsSlot = slots.cents?.value || slots.Cents?.value;
+
+  const isExpectingQuantity =
+    sessionAttrs.expectedInput === 'quantity' ||
+    sessionAttrs.pendingField === 'quantity';
+
   if (cleanCust && cleanCust.length >= 2 && cleanCust.length <= 100) {
-    rawIncomingUpdates.customer = cleanCust;
+    const isNum = normalizeQuantity(cleanCust) !== null;
+    if (!(isExpectingQuantity && isNum)) {
+      rawIncomingUpdates.customer = cleanCust;
+    }
   }
 
   if (cleanProd && cleanProd.length >= 1 && cleanProd.length <= 200) {
@@ -1411,12 +1420,6 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
   let totalSlot = slots.total?.value || slots.Total?.value;
   let quantitySlot = slots.quantity?.value || slots.Quantity?.value;
 
-  const centsSlot = slots.cents?.value || slots.Cents?.value;
-
-  const isExpectingQuantity =
-    sessionAttrs.expectedInput === 'quantity' ||
-    sessionAttrs.pendingField === 'quantity';
-
   if (isExpectingQuantity) {
     const rawNumberCandidate =
       quantitySlot ||
@@ -1424,7 +1427,8 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
       slots.Number?.value ||
       genericPriceSlot ||
       unitPriceSlot ||
-      totalSlot;
+      totalSlot ||
+      (cleanCust && normalizeQuantity(cleanCust) !== null ? cleanCust : null);
 
     let resolvedQty = null;
 
@@ -1779,9 +1783,12 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
     }
 
     // Se o rascunho existente estava aguardando quantidade (expectedInput === 'quantity' ou pendingField === 'quantity'),
-    // e o usuário respondeu apenas um número que caiu em genericPrice/parsedGenericPrice/parsedTotal/parsedUnitPrice,
+    // e o usuário respondeu apenas um número que caiu em genericPrice/parsedGenericPrice/parsedTotal/parsedUnitPrice/customer/number,
     // converte contextualmente para a quantidade de itens!
-    const isWaitingQuantity = existingData.expectedInput === 'quantity' || existingData.pendingField === 'quantity';
+    const isWaitingQuantity =
+      existingData.expectedInput === 'quantity' ||
+      existingData.pendingField === 'quantity' ||
+      (!existingData.quantity && existingData.product && existingData.customer);
     if (isWaitingQuantity && !incomingUpdates.quantity) {
       let qVal = null;
       const candidatePrice = parsedGenericPrice || parsedTotal || parsedUnitPrice;
@@ -1807,6 +1814,10 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
         }
       } else if (slots.quantity?.value || slots.Quantity?.value) {
         qVal = normalizeQuantity(slots.quantity?.value || slots.Quantity?.value);
+      } else if (slots.number?.value || slots.Number?.value) {
+        qVal = normalizeQuantity(slots.number?.value || slots.Number?.value);
+      } else if (slots.customer?.value || slots.Customer?.value) {
+        qVal = normalizeQuantity(slots.customer?.value || slots.Customer?.value);
       }
 
       if (qVal && qVal > 0 && qVal <= 10000) {

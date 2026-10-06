@@ -387,5 +387,103 @@ describe('NLP e Correção de Bug de Quantidade e Decimais na Alexa', () => {
       expect(res.speech).not.toContain('Falta informar o cliente');
       expect(res.speech).toContain('quantidade');
     });
+
+    it('deve aceitar número puro "7" quando a Alexa pergunta a quantidade (via ProvideNumberIntent)', async () => {
+      const draftId = 'draft-test-quantity-7';
+      const sessionId = 'session-quantity-7';
+      const mockDb = createMockDb({
+        alexaDrafts: {
+          [draftId]: {
+            draftId,
+            sessionId,
+            uid: identity.uid,
+            bindingKey: identity.bindingKey,
+            customer: 'Luiz',
+            product: 'paper craft',
+            quantity: null,
+            deliveryDate: null,
+            price: null,
+            expectedInput: 'quantity',
+            pendingField: null,
+            state: 'collecting',
+            revision: 1,
+            expiresAt: { toDate: () => new Date(Date.now() + 600000) },
+          },
+        },
+      });
+
+      // Usuário responde apenas "7"
+      const envelope = {
+        session: {
+          sessionId,
+          attributes: { draftId, revision: 1, expectedInput: 'quantity', personId: identity.personId },
+        },
+        request: {
+          type: 'IntentRequest',
+          intent: {
+            name: 'ProvideNumberIntent',
+            slots: {
+              number: { value: '7' },
+            },
+          },
+        },
+      };
+
+      const res = await handleAlexaDialog({ envelope, identity, config: baseConfig, db: mockDb });
+
+      expect(mockDb.store.alexaDrafts[draftId].quantity).toBe(7);
+      expect(res.speech).toContain('data de entrega');
+      expect(res.speech).not.toContain('quantidade');
+    });
+
+    it('deve aceitar número puro "sete" mesmo se o NLU da Alexa classificar como ProvideCustomerOnlyIntent', async () => {
+      const draftId = 'draft-test-quantity-sete';
+      const sessionId = 'session-quantity-sete';
+      const mockDb = createMockDb({
+        alexaDrafts: {
+          [draftId]: {
+            draftId,
+            sessionId,
+            uid: identity.uid,
+            bindingKey: identity.bindingKey,
+            customer: 'Luiz',
+            product: 'paper craft',
+            quantity: null,
+            deliveryDate: null,
+            price: null,
+            expectedInput: 'quantity',
+            pendingField: null,
+            state: 'collecting',
+            revision: 1,
+            expiresAt: { toDate: () => new Date(Date.now() + 600000) },
+          },
+        },
+      });
+
+      // Usuário disse "sete" e NLU mapeou para slot customer
+      const envelope = {
+        session: {
+          sessionId,
+          attributes: { draftId, revision: 1, expectedInput: 'quantity', personId: identity.personId },
+        },
+        request: {
+          type: 'IntentRequest',
+          intent: {
+            name: 'ProvideCustomerOnlyIntent',
+            slots: {
+              customer: { value: 'sete' },
+            },
+          },
+        },
+      };
+
+      const res = await handleAlexaDialog({ envelope, identity, config: baseConfig, db: mockDb });
+
+      // O cliente continua sendo Luiz e a quantidade foi definida como 7!
+      expect(mockDb.store.alexaDrafts[draftId].customer).toBe('Luiz');
+      expect(mockDb.store.alexaDrafts[draftId].quantity).toBe(7);
+      expect(res.speech).toContain('data de entrega');
+      expect(res.speech).not.toContain('quantidade');
+    });
   });
 });
