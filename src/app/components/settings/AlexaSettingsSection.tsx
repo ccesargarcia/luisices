@@ -479,15 +479,17 @@ export function AlexaSettingsSection({ isAdmin }: AlexaSettingsSectionProps) {
                         <span>{cancelingDraftId === draft.id ? 'Descartando...' : 'Descartar'}</span>
                       </Button>
 
-                      <Button
-                        size="sm"
-                        onClick={() => handleApproveDraft(draft.id, draft.revision)}
-                        disabled={approvingDraftId === draft.id || cancelingDraftId === draft.id}
-                        className="h-8 text-xs gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-medium shrink-0 transition-colors"
-                      >
-                        <Check className="size-3.5" />
-                        <span>{approvingDraftId === draft.id ? 'Gravando...' : 'Aprovar e Criar Pedido'}</span>
-                      </Button>
+                      {!isExpired && (
+                        <Button
+                          size="sm"
+                          onClick={() => handleApproveDraft(draft.id, draft.revision)}
+                          disabled={approvingDraftId === draft.id || cancelingDraftId === draft.id}
+                          className="h-8 text-xs gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-medium shrink-0 transition-colors"
+                        >
+                          <Check className="size-3.5" />
+                          <span>{approvingDraftId === draft.id ? 'Gravando...' : 'Aprovar e Criar Pedido'}</span>
+                        </Button>
+                      )}
                     </div>
                   </div>
                 );
