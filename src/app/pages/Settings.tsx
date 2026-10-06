@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Link } from 'react-router';
+import { Link, useSearchParams } from 'react-router';
 import { useAuth } from '../../contexts/AuthContext';
 import { useUserSettings } from '../../hooks/useUserSettings';
 import {
@@ -51,7 +51,39 @@ export function Settings() {
     resetToDefaults,
   } = useUserSettings();
 
-  const [activeTab, setActiveTab] = useState<'empresa' | 'operacao' | 'aparencia' | 'integracoes' | 'avancado'>('empresa');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const validTabs = ['empresa', 'operacao', 'aparencia', 'integracoes', 'avancado'] as const;
+  type TabType = typeof validTabs[number];
+
+  const tabParam = searchParams.get('tab') as TabType;
+  const initialTab: TabType = validTabs.includes(tabParam)
+    ? tabParam === 'integracoes' && !isAdmin
+      ? 'empresa'
+      : tabParam
+    : 'empresa';
+
+  const [activeTab, setActiveTab] = useState<TabType>(initialTab);
+
+  const handleTabChange = (val: string) => {
+    const nextTab = val as TabType;
+    setActiveTab(nextTab);
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.set('tab', nextTab);
+      return next;
+    }, { replace: true });
+  };
+
+  useEffect(() => {
+    const currentTabParam = searchParams.get('tab') as TabType;
+    if (currentTabParam && validTabs.includes(currentTabParam) && currentTabParam !== activeTab) {
+      if (currentTabParam === 'integracoes' && !isAdmin) {
+        setActiveTab('empresa');
+      } else {
+        setActiveTab(currentTabParam);
+      }
+    }
+  }, [searchParams, isAdmin]);
 
   const [uploading, setUploading] = useState<'avatar' | 'logo' | 'banner' | null>(null);
   const [savingBusinessInfo, setSavingBusinessInfo] = useState(false);
@@ -344,7 +376,7 @@ export function Settings() {
       {/* Navegação por Abas */}
       <Tabs
         value={activeTab}
-        onValueChange={(val: any) => setActiveTab(val)}
+        onValueChange={handleTabChange}
         className="space-y-6"
       >
         <div className="overflow-x-auto pb-1 -mx-2 px-2 sm:mx-0 sm:px-0">
