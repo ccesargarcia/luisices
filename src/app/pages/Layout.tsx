@@ -301,6 +301,7 @@ export function Layout() {
       <header
         className={cn(
           'min-w-0 transition-[margin,width] duration-300',
+          (settings?.headerSticky ?? true) ? 'sticky top-0 z-30' : 'relative z-20',
           settings?.headerStyle === 'solid'
             ? 'border-b border-border bg-card'
             : settings?.headerStyle === 'bordered'

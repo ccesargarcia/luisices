@@ -148,12 +148,12 @@ export function NotificationBell() {
     <Popover>
       <PopoverTrigger asChild>
         <button
-          className="relative inline-flex items-center justify-center size-10 rounded-full hover:bg-muted transition-colors"
+          className="relative inline-flex items-center justify-center size-8 sm:size-9 rounded-full hover:bg-muted text-muted-foreground hover:text-foreground transition-colors cursor-pointer shrink-0"
           aria-label="Notificações"
         >
-          <Bell className="size-5" />
+          <Bell className="size-4" />
           {urgentCount > 0 && (
-            <span className="absolute top-1.5 right-1.5 size-4 rounded-full bg-destructive text-destructive-foreground text-[10px] font-bold flex items-center justify-center leading-none">
+            <span className="absolute top-0.5 right-0.5 size-3.5 sm:size-4 rounded-full bg-destructive text-destructive-foreground text-[9px] sm:text-[10px] font-bold flex items-center justify-center leading-none ring-2 ring-background">
               {urgentCount > 9 ? '9+' : urgentCount}
             </span>
           )}

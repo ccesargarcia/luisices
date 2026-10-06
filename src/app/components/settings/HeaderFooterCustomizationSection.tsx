@@ -22,6 +22,8 @@ import {
 
 export interface HeaderFooterCustomizationProps {
   // Header
+  headerSticky: boolean;
+  onHeaderStickyChange: (val: boolean) => void;
   headerLogoStyle: 'full' | 'icon' | 'hidden';
   onHeaderLogoStyleChange: (val: 'full' | 'icon' | 'hidden') => void;
   headerShowTagline: boolean;
@@ -56,6 +58,8 @@ export interface HeaderFooterCustomizationProps {
 }
 
 export function HeaderFooterCustomizationSection({
+  headerSticky,
+  onHeaderStickyChange,
   headerLogoStyle,
   onHeaderLogoStyleChange,
   headerShowTagline,
@@ -104,6 +108,27 @@ export function HeaderFooterCustomizationSection({
             <h3 className="text-sm font-semibold uppercase tracking-wider text-foreground">
               Barra Superior (Cabeçalho)
             </h3>
+          </div>
+
+          {/* Chave de Cabeçalho Fixo (Sticky) */}
+          <div className="flex items-center justify-between p-3.5 rounded-lg border border-primary/20 bg-primary/5">
+            <div className="space-y-0.5 pr-2">
+              <div className="flex items-center gap-1.5">
+                <Label className="text-xs font-semibold text-foreground cursor-pointer">
+                  Cabeçalho Fixo ao Rolar a Página (Sticky)
+                </Label>
+                <span className="text-[10px] font-medium bg-primary/10 text-primary px-1.5 py-0.2 rounded">
+                  Recomendado
+                </span>
+              </div>
+              <p className="text-[11px] text-muted-foreground">
+                Mantém a barra de navegação superior, atalhos rápidos e busca sempre visíveis no topo enquanto você rola a tela.
+              </p>
+            </div>
+            <Switch
+              checked={headerSticky}
+              onCheckedChange={onHeaderStickyChange}
+            />
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

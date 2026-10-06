@@ -107,14 +107,14 @@ export function TopHeader({
         headerStyle === 'bordered' && 'bg-background/95 border-b border-border/80'
       )}
     >
-      <div className="flex items-center justify-between gap-2 sm:gap-3">
+      <div className="flex items-center justify-between gap-1.5 sm:gap-3">
         {/* Identificação / Logo no Topo */}
         <div className="flex items-center gap-2 sm:gap-2.5 min-w-0 flex-1">
           {hasLogo && !showIconOnly ? (
             <img
               src={logo}
               alt={businessName}
-              className="h-8 sm:h-9 max-h-8 sm:max-h-9 max-w-[85px] sm:max-w-[140px] object-contain shrink-0 rounded-md"
+              className="h-8 sm:h-9 max-h-8 sm:max-h-9 max-w-[70px] xs:max-w-[100px] sm:max-w-[140px] object-contain shrink-0 rounded-md"
             />
           ) : headerLogoStyle !== 'hidden' ? (
             <div className="flex items-center justify-center size-8 sm:size-9 bg-primary text-primary-foreground rounded-lg shrink-0 shadow-xs">
@@ -125,7 +125,7 @@ export function TopHeader({
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-1.5 sm:gap-2">
               <h1
-                className="font-bold text-sm sm:text-base md:text-lg line-clamp-1 truncate text-foreground leading-tight tracking-tight"
+                className="font-bold text-xs xs:text-sm sm:text-base md:text-lg line-clamp-1 truncate text-foreground leading-tight tracking-tight max-w-[110px] xs:max-w-[160px] sm:max-w-none"
                 title={businessName}
               >
                 {businessName}

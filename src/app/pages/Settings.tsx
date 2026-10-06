@@ -103,6 +103,7 @@ export function Settings() {
   const [customColorHex, setCustomColorHex] = useState('#7c3aed');
 
   // Personalização de Cabeçalho & Rodapé
+  const [headerSticky, setHeaderSticky] = useState(true);
   const [headerLogoStyle, setHeaderLogoStyle] = useState<'full' | 'icon' | 'hidden'>('full');
   const [headerShowTagline, setHeaderShowTagline] = useState(true);
   const [headerShowQuickNew, setHeaderShowQuickNew] = useState(true);
@@ -179,6 +180,7 @@ export function Settings() {
       setCustomColorHex(settings.customColorHex ?? '#7c3aed');
 
       // Cabeçalho & Rodapé
+      setHeaderSticky(settings.headerSticky ?? true);
       setHeaderLogoStyle(settings.headerLogoStyle ?? 'full');
       setHeaderShowTagline(settings.headerShowTagline ?? true);
       setHeaderShowQuickNew(settings.headerShowQuickNew ?? true);
@@ -347,6 +349,7 @@ export function Settings() {
     setSavingHeaderFooter(true);
     try {
       await updateSettings({
+        headerSticky,
         headerLogoStyle,
         headerShowTagline,
         headerShowQuickNew,
@@ -524,6 +527,8 @@ export function Settings() {
           />
 
           <HeaderFooterCustomizationSection
+            headerSticky={headerSticky}
+            onHeaderStickyChange={setHeaderSticky}
             headerLogoStyle={headerLogoStyle}
             onHeaderLogoStyleChange={setHeaderLogoStyle}
             headerShowTagline={headerShowTagline}

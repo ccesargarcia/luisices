@@ -81,6 +81,7 @@ export interface UserSettings {
   compactCards?: boolean;
 
   // Personalização do Cabeçalho do Painel Administrativo
+  headerSticky?: boolean;                      // Cabeçalho fixo no topo ao rolar a página (sticky header)
   headerLogoStyle?: 'full' | 'icon' | 'hidden'; // 'full' (logo completa), 'icon' (apenas ícone), 'hidden' (apenas texto)
   headerShowTagline?: boolean;                 // Exibir slogan no cabeçalho
   headerShowQuickNew?: boolean;                // Exibir botão "+ Novo"
