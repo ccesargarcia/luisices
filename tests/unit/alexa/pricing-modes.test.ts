@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { beforeEach, describe, it, expect } from 'vitest';
 const {
   formatCurrencyPtBr,
   parseAndValidatePrice,
@@ -7,8 +7,10 @@ const {
   handleAlexaDialog,
 } = require('../../../functions/alexa/dialog');
 const { commitOrderFromDraft } = require('../../../functions/alexa/orderService');
+const { clearDynamicEntitiesCache, fetchCatalogProductsForDynamicEntities } = require('../../../functions/alexa/dynamicEntities');
 
 describe('Alexa: Precificação Unitária, Total e Resolução de Ambiguidades', () => {
+  beforeEach(() => clearDynamicEntitiesCache());
   const baseConfig = {
     environment: 'dev',
     timezone: 'America/Sao_Paulo',
@@ -96,9 +98,25 @@ describe('Alexa: Precificação Unitária, Total e Resolução de Ambiguidades',
       };
     };
 
+    const queryFor = (col: string, filters: Array<[string, any]> = [], max = Infinity): any => ({
+      where: (field: string, operator: string, value: any) => {
+        if (operator !== '==') throw new Error(`Unsupported mock query operator: ${operator}`);
+        return queryFor(col, [...filters, [field, value]], max);
+      },
+      limit: (count: number) => queryFor(col, filters, count),
+      get: async () => {
+        const docs = Object.entries(store[col] || {})
+          .filter(([, data]: [string, any]) => filters.every(([field, value]) => data[field] === value))
+          .slice(0, max)
+          .map(([id, data]) => ({ id, data: () => data }));
+        return { docs, empty: docs.length === 0, size: docs.length, forEach: (callback: any) => docs.forEach(callback) };
+      },
+    });
+
     return {
       store,
       collection: (col: string) => ({
+        ...queryFor(col),
         doc: (id: string) => docGetter(col, id),
         add: async (data: any) => {
           store[col] = store[col] || {};
@@ -106,16 +124,6 @@ describe('Alexa: Precificação Unitária, Total e Resolução de Ambiguidades',
           store[col][id] = data;
           return { id };
         },
-        where: () => ({
-          limit: () => ({
-            get: async () => ({
-              docs: Object.keys(store[col] || {}).map((k) => ({
-                id: k,
-                data: () => store[col][k],
-              })),
-            }),
-          }),
-        }),
       }),
       doc: (path: string) => docGetter(path),
       runTransaction: async (cb: any) => cb({
@@ -129,6 +137,21 @@ describe('Alexa: Precificação Unitária, Total e Resolução de Ambiguidades',
   const mockAuthService = {
     getUser: async (uid: string) => ({ uid, disabled: false }),
   };
+
+  it('carrega entidades dinâmicas do catálogo e dos produtos do usuário sem incluir produtos de outro usuário', async () => {
+    const db = createMockDb({
+      storeProducts: { public: { name: 'Convite', price: 10 }, hidden: { name: 'Oculto', status: 'hidden' } },
+      products: {
+        own: { name: 'Adesivo', unitPrice: 2, userId: identity.uid },
+        other: { name: 'Produto de outro usuário', unitPrice: 3, userId: 'other' },
+      },
+    });
+    const products = await fetchCatalogProductsForDynamicEntities(db, identity.uid);
+    expect(products.map(({ id, name, unitPrice }: any) => ({ id, name, unitPrice }))).toEqual([
+      { id: 'public', name: 'Convite', unitPrice: 10 },
+      { id: 'own', name: 'Adesivo', unitPrice: 2 },
+    ]);
+  });
 
   describe('1. Cálculos de Centavos e Validação de Preço', () => {
     it('10 unidades a R$ 10 cada -> total R$ 100 (10000 centavos)', () => {

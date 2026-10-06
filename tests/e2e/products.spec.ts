@@ -21,32 +21,29 @@ test.describe('Produtos - CRUD', () => {
     await page.getByRole('button', { name: /Novo Produto/i }).click();
 
     // Aguardar dialog
-    const dialog = page.locator('[role="dialog"]').first();
+    const dialog = page.getByRole('dialog', { name: 'Novo Produto', exact: true });
     await expect(dialog).toBeVisible({ timeout: 5000 });
 
     // Preencher nome (id="p-name")
     await dialog.locator('#p-name').fill(productName);
 
     // Preencher preço (id="p-price")
-    await dialog.locator('#p-price').fill('50');
+    await dialog.locator('#p-price').fill('50,00');
 
     // Preencher descrição (id="p-desc")
     const descField = dialog.locator('#p-desc');
-        await expect(descField).toBeVisible({ timeout: 5000 });
-        await descField.fill('Produto criado por teste automatizado');
+    await expect(descField).toBeVisible({ timeout: 5000 });
+    await descField.fill('Produto criado por teste automatizado');
+    await expect(dialog.locator('#p-name')).toHaveValue(productName);
+    await expect(dialog.locator('#p-price')).toHaveValue('50,00');
 
     // Salvar - botão "Cadastrar"
     await dialog.getByRole('button', { name: /Cadastrar/i }).click();
     await expect(dialog).not.toBeVisible({ timeout: 10000 });
 
-    // Verificar que o produto aparece
-    await page.waitForTimeout(1000);
-    await expect(page.getByText(productName)).toBeVisible({ timeout: 5000 });
-
     // CLEANUP: Excluir o produto criado
     const searchInput = page.getByPlaceholder(/Buscar por nome, categoria ou descrição/i);
     await searchInput.fill(productName);
-    await page.waitForTimeout(500);
 
     const productCard = page.locator('[data-slot="card"]').filter({ hasText: productName }).first();
     await expect(productCard).toBeVisible({ timeout: 5000 });
@@ -64,10 +61,9 @@ test.describe('Produtos - CRUD', () => {
     await expect(searchInput).toBeVisible({ timeout: 5000 });
 
     await searchInput.fill('Produto Inexistente XYZ123');
-    await page.waitForTimeout(500);
 
     const noResults = page.getByText(/Nenhum produto/i);
-        await expect(noResults).toBeVisible({ timeout: 5000 });
+    await expect(noResults).toBeVisible({ timeout: 5000 });
   });
 
   test('deve excluir um produto', async ({ page }) => {
@@ -75,18 +71,18 @@ test.describe('Produtos - CRUD', () => {
 
     // Criar produto
     await page.getByRole('button', { name: /Novo Produto/i }).click();
-    const dialog = page.locator('[role="dialog"]').first();
+    const dialog = page.getByRole('dialog', { name: 'Novo Produto', exact: true });
     await expect(dialog).toBeVisible({ timeout: 5000 });
     await dialog.locator('#p-name').fill(productName);
-    await dialog.locator('#p-price').fill('10');
+    await dialog.locator('#p-price').fill('10,00');
+    await expect(dialog.locator('#p-name')).toHaveValue(productName);
+    await expect(dialog.locator('#p-price')).toHaveValue('10,00');
     await dialog.getByRole('button', { name: /Cadastrar/i }).click();
     await expect(dialog).not.toBeVisible({ timeout: 10000 });
 
     // Buscar o produto
-    await page.waitForTimeout(1000);
     const searchInput = page.getByPlaceholder(/Buscar por nome, categoria ou descrição/i);
     await searchInput.fill(productName);
-    await page.waitForTimeout(500);
 
     // Localizar card e clicar no botão de excluir (button com classe text-destructive)
     const productCard = page.locator('[data-slot="card"]').filter({ hasText: productName }).first();
@@ -102,7 +98,6 @@ test.describe('Produtos - CRUD', () => {
     await expect(alertDialog).not.toBeVisible({ timeout: 10000 });
 
     // Verificar remoção
-    await page.waitForTimeout(1000);
     await expect(page.getByText(productName)).toHaveCount(0, { timeout: 5000 });
   });
 });

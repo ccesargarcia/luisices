@@ -88,31 +88,23 @@ test.describe('Navegação entre Páginas', () => {
     const openDialog = page.locator('[role="dialog"]');
     if (await openDialog.isVisible().catch(() => false)) {
       await page.keyboard.press('Escape');
-      await page.waitForTimeout(300);
+      await expect(openDialog).not.toBeVisible();
     }
 
     // Acionar atalho de busca global
     await page.keyboard.press('Control+k');
 
     // Dialog de busca global CommandDialog (título "Busca Global" ou placeholder de busca rápida)
-    const searchDialog = page.locator('[role="dialog"]').filter({ hasText: /Busca Global|ações rápidas|atalhos/i }).first();
-    let isDialogOpen = await searchDialog.isVisible({ timeout: 3000 }).catch(() => false);
-
-    if (!isDialogOpen) {
-      // Se atalho não abriu (ex: restrição do headless do browser), acionar pelo botão no topo
-      const searchBtn = page.locator('button[title*="Buscar"], button:has-text("Buscar"), button:has-text("Ctrl + K"), button:has-text("Ctrl+K")').first();
-      if (await searchBtn.isVisible({ timeout: 3000 })) {
-        await searchBtn.click();
-        isDialogOpen = await searchDialog.isVisible({ timeout: 5000 }).catch(() => false);
-      }
-    }
+    const searchDialog = page.getByRole('dialog', { name: 'Busca Global', exact: true });
 
     await expect(searchDialog).toBeVisible({ timeout: 5000 });
     const input = searchDialog.locator('input').first();
     await expect(input).toBeVisible({ timeout: 3000 });
+    await input.click();
+    await expect(input).toBeFocused();
 
     // Fechar com Escape
-    await page.keyboard.press('Escape');
+    await input.press('Escape');
     await expect(searchDialog).not.toBeVisible({ timeout: 5000 });
   });
 

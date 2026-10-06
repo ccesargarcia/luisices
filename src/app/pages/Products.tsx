@@ -119,26 +119,30 @@ function ProductFormDialog({ open, onOpenChange, editing, existingCategories, us
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const [isCustomCategory, setIsCustomCategory] = useState<boolean>(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const existingCategoriesRef = useRef(existingCategories);
+  existingCategoriesRef.current = existingCategories;
 
   useEffect(() => {
     if (open) {
       const initial = editing ? formFromProduct(editing) : emptyForm();
-      if (!editing && existingCategories.length > 0 && !initial.category) {
-        initial.category = existingCategories[0];
+      // Capture categories when opening; live catalog updates must preserve entered fields.
+      const categories = existingCategoriesRef.current;
+      if (!editing && categories.length > 0 && !initial.category) {
+        initial.category = categories[0];
       }
       setForm(initial);
       setPhotoFile(null);
       setPhotoPreview(editing?.photoUrl ?? null);
 
-      if (existingCategories.length === 0) {
+      if (categories.length === 0) {
         setIsCustomCategory(true);
-      } else if (editing?.category && !existingCategories.includes(editing.category)) {
+      } else if (editing?.category && !categories.includes(editing.category)) {
         setIsCustomCategory(true);
       } else {
         setIsCustomCategory(false);
       }
     }
-  }, [open, editing, existingCategories]);
+  }, [open, editing]);
 
   function handlePhotoSelect(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
