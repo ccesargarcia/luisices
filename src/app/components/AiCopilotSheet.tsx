@@ -74,6 +74,7 @@ const PROGRESS_STEPS = [
 
 const SUGGESTIONS = [
   '📋 Raio-X do Dia (Briefing de produção e prazos)',
+  '🎙️ Como criar pedidos e vincular minha voz pela Alexa?',
   '📸 Como publicar produtos em lote por fotos na lojinha?',
   '👥 Quais pedidos estão atribuídos à minha equipe?',
   '💬 Gerar mensagem de cobrança amigável para cliente',
