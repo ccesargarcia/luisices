@@ -1,0 +1,40 @@
+name: Diagnosticar conta Firebase Dev
+
+on:
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  identificar-conta:
+    name: Identificar conta de deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Identificar conta de deploy
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_DEV }}
+        run: |
+          node <<'NODE'
+          let credentials;
+          try {
+            credentials = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT || '');
+          } catch {
+            console.error('FIREBASE_SERVICE_ACCOUNT_DEV ausente ou com JSON inválido.');
+            process.exit(1);
+          }
+          const accounts = {
+            'firebase-adminsdk-fbsvc@luisices-dev.iam.gserviceaccount.com': 'Firebase Admin SDK (fbsvc)',
+            'luisices-dev-automation@luisices-dev.iam.gserviceaccount.com': 'Automação do projeto dev',
+            'luisices-dev@appspot.gserviceaccount.com': 'Conta padrão do App Engine',
+            '998962751129-compute@developer.gserviceaccount.com': 'Conta padrão do Compute Engine',
+          };
+          const email = credentials?.client_email;
+          if (typeof email !== 'string' || !/^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.gserviceaccount\.com$/.test(email)) {
+            console.error('O secret não contém um client_email válido de conta de serviço.');
+            process.exit(1);
+          }
+          console.log('Identidade do deploy: ' + (accounts[email] || 'Outra conta de serviço'));
+          console.log('E-mail da conta: ' + email);
+          NODE
+
