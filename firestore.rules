@@ -325,13 +325,19 @@ service cloud.firestore {
         && request.resource.data.get('read', false) is bool
         && request.resource.data.get('starred', false) is bool
         && request.resource.data.get('archived', false) is bool
-        && request.resource.data.get('trashed', false) is bool;
+        && request.resource.data.get('trashed', false) is bool
+        && (request.resource.data.get('trashed', false) == false
+          ? request.resource.data.get('trashedAt', null) == null
+          : request.resource.data.get('trashedAt', null) is timestamp);
     }
 
     function validSentEmailStatusUpdate() {
       return request.resource.data.diff(resource.data).affectedKeys()
           .hasOnly(['trashed', 'trashedAt'])
-        && request.resource.data.get('trashed', false) is bool;
+        && request.resource.data.get('trashed', false) is bool
+        && (request.resource.data.get('trashed', false) == false
+          ? request.resource.data.get('trashedAt', null) == null
+          : request.resource.data.get('trashedAt', null) is timestamp);
     }
 
     match /receivedEmails/{emailId} {

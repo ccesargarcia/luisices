@@ -71,7 +71,7 @@ export class EmailService {
     const ref = doc(db, collectionName, emailId);
     await updateDoc(ref, {
       trashed: true,
-      trashedAt: new Date().toISOString(),
+      trashedAt: serverTimestamp(),
     });
   }
 

@@ -13,6 +13,28 @@ const { validateOriginSecret } = require('../originProtection');
 const { prepareAttachments } = require('./attachments');
 const { cleanupEmailDrafts } = require('./cleanup');
 
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const MAX_CC_BCC = 20;
+const MAX_HEADER_LENGTH = 320;
+const MAX_WEBHOOK_BYTES = 1024 * 1024;
+
+function normalizeEmailList(value, fieldName, max = MAX_CC_BCC) {
+  if (value == null) return [];
+  if (!Array.isArray(value) || value.length > max) {
+    throw new functions.https.HttpsError('invalid-argument', `${fieldName} deve conter no máximo ${max} endereços.`);
+  }
+  return value.map((entry) => {
+    if (typeof entry !== 'string' || entry.length > MAX_HEADER_LENGTH || /[\r\n]/.test(entry)) {
+      throw new functions.https.HttpsError('invalid-argument', `${fieldName} contém um endereço inválido.`);
+    }
+    const email = entry.trim();
+    if (!EMAIL_REGEX.test(email)) {
+      throw new functions.https.HttpsError('invalid-argument', `${fieldName} contém um endereço inválido.`);
+    }
+    return email;
+  });
+}
+
 /**
  * Cloud Function para envio de e-mails via Resend pela plataforma Luisices.
  * Salva o histórico de envios na coleção 'sentEmails'.
@@ -68,9 +90,8 @@ const sendCustomEmail = onCall(
       throw new functions.https.HttpsError('invalid-argument', 'O número máximo de destinatários por envio é 50.');
     }
 
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     for (const email of recipientList) {
-      if (!emailRegex.test(email)) {
+      if (email.length > MAX_HEADER_LENGTH || /[\r\n]/.test(email) || !EMAIL_REGEX.test(email)) {
         throw new functions.https.HttpsError('invalid-argument', `Endereço de e-mail inválido: "${email}"`);
       }
     }
@@ -81,6 +102,10 @@ const sendCustomEmail = onCall(
 
     if (subject.trim().length > 200) {
       throw new functions.https.HttpsError('invalid-argument', 'O assunto do e-mail não pode ultrapassar 200 caracteres.');
+    }
+
+    if ((html != null && typeof html !== 'string') || (text != null && typeof text !== 'string')) {
+      throw new functions.https.HttpsError('invalid-argument', 'O conteúdo da mensagem deve ser texto.');
     }
 
     if (!html && !text) {
@@ -103,7 +128,10 @@ const sendCustomEmail = onCall(
       : 'Luisices <contato@luisices.com.br>';
 
     let senderEmail = defaultSender;
-    if (from && from.trim()) {
+    if (from != null && (typeof from !== 'string' || from.length > MAX_HEADER_LENGTH || /[\r\n]/.test(from))) {
+      throw new functions.https.HttpsError('invalid-argument', 'Remetente inválido.');
+    }
+    if (typeof from === 'string' && from.trim()) {
       const trimmedFrom = from.trim();
       const domainMatch = trimmedFrom.match(/@([a-zA-Z0-9.-]+)>?$/);
       const domain = domainMatch ? domainMatch[1].toLowerCase() : '';
@@ -138,19 +166,29 @@ const sendCustomEmail = onCall(
 
       if (html) payload.html = html;
       if (text) payload.text = text;
-      if (replyTo) payload.reply_to = replyTo.trim();
-      if (cc && Array.isArray(cc) && cc.length > 0) {
-        payload.cc = cc.map((c) => String(c).trim()).filter(Boolean);
+      if (replyTo != null) {
+        if (typeof replyTo !== 'string' || replyTo.length > MAX_HEADER_LENGTH || /[\r\n]/.test(replyTo)) {
+          throw new functions.https.HttpsError('invalid-argument', 'Responder para inválido.');
+        }
+        const normalizedReplyTo = replyTo.trim();
+        if (!EMAIL_REGEX.test(normalizedReplyTo)) {
+          throw new functions.https.HttpsError('invalid-argument', 'Responder para inválido.');
+        }
+        payload.reply_to = normalizedReplyTo;
       }
-      if (bcc && Array.isArray(bcc) && bcc.length > 0) {
-        payload.bcc = bcc.map((b) => String(b).trim()).filter(Boolean);
-      }
+      const normalizedCc = normalizeEmailList(cc, 'Cópia');
+      const normalizedBcc = normalizeEmailList(bcc, 'Cópia oculta');
+      if (normalizedCc.length) payload.cc = normalizedCc;
+      if (normalizedBcc.length) payload.bcc = normalizedBcc;
 
-      console.log(`[sendCustomEmail] Enviando e-mail para: ${recipientList.join(', ')} - Assunto: ${subject}`);
+      console.log(`[sendCustomEmail] Enviando e-mail: uid=${request.auth.uid}, recipients=${recipientList.length}, attachments=${preparedAttachments.length}`);
       const { data: resendData, error: resendError } = await resend.emails.send(payload);
 
       if (resendError) {
-        console.error('[sendCustomEmail] Erro retornado pela API Resend:', JSON.stringify(resendError));
+        console.error('[sendCustomEmail] Resend rejeitou o envio:', {
+          name: resendError.name || 'ResendError',
+          statusCode: resendError.statusCode || null,
+        });
         throw new functions.https.HttpsError(
           'internal',
           resendError.message || 'Falha ao disparar o e-mail via Resend.'
@@ -229,13 +267,15 @@ const getEmailUsage = onCall(
       const [todaySnap, monthSnap] = await Promise.all([
         admin.firestore().collection('sentEmails')
           .where('sentAt', '>=', startOfTodayUtc.toISOString())
+          .count()
           .get(),
         admin.firestore().collection('sentEmails')
           .where('sentAt', '>=', startOfMonthUtc.toISOString())
+          .count()
           .get(),
       ]);
-      firestoreTodayCount = todaySnap.size;
-      firestoreMonthCount = monthSnap.size;
+      firestoreTodayCount = todaySnap.data().count;
+      firestoreMonthCount = monthSnap.data().count;
     } catch (fsErr) {
       console.warn('[getEmailUsage] Erro ao consultar sentEmails no Firestore:', fsErr);
     }
@@ -339,7 +379,15 @@ const resendReceivingWebhook = onRequest(
       return res.status(405).json({ error: 'Method Not Allowed' });
     }
 
+    let webhookClaimRef = null;
+    let webhookClaimed = false;
     try {
+      const rawLength = Buffer.isBuffer(req.rawBody)
+        ? req.rawBody.length
+        : Buffer.byteLength(JSON.stringify(req.body || {}), 'utf8');
+      if (rawLength > MAX_WEBHOOK_BYTES) {
+        return res.status(413).json({ error: 'Payload do webhook excede o limite permitido' });
+      }
       const webhookSecret = RESEND_WEBHOOK_SECRET.value() || process.env.RESEND_WEBHOOK_SECRET;
       if (!webhookSecret) {
         console.error('[resendReceivingWebhook] ERRO: RESEND_WEBHOOK_SECRET não configurado no Cloud Functions Secrets.');
@@ -394,7 +442,7 @@ const resendReceivingWebhook = onRequest(
       }
 
       const event = req.body;
-      console.log('[resendReceivingWebhook] Recebido evento:', event?.type);
+      console.log('[resendReceivingWebhook] Evento recebido:', event?.type);
 
       if (!event || event.type !== 'email.received') {
         console.log('[resendReceivingWebhook] Evento não é email.received, ignorado:', event?.type);
@@ -407,6 +455,22 @@ const resendReceivingWebhook = onRequest(
       if (!emailId) {
         console.warn('[resendReceivingWebhook] Nenhum email_id no payload:', eventData);
         return res.status(400).json({ error: 'Payload sem email_id' });
+      }
+
+      webhookClaimRef = admin.firestore().collection('processedEmailWebhooks').doc(String(svixId));
+      await admin.firestore().runTransaction(async (transaction) => {
+        webhookClaimed = false;
+        const existing = await transaction.get(webhookClaimRef);
+        if (existing.exists) return;
+        transaction.create(webhookClaimRef, {
+          emailId: String(emailId),
+          eventType: event.type,
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+        webhookClaimed = true;
+      });
+      if (!webhookClaimed) {
+        return res.status(200).json({ status: 'duplicate', id: emailId });
       }
 
       const allowedMailboxPrefixes = [
@@ -438,7 +502,7 @@ const resendReceivingWebhook = onRequest(
 
       const initialRecipients = Array.isArray(eventData.to) ? eventData.to : [eventData.to].filter(Boolean);
       if (initialRecipients.length > 0 && !checkAllowedRecipient(initialRecipients)) {
-        console.log(`[resendReceivingWebhook] E-mail para destinatário não autorizado ignorado e descartado: ${initialRecipients.join(', ')}`);
+        console.log(`[resendReceivingWebhook] Evento descartado: destinatario_nao_autorizado, count=${initialRecipients.length}`);
         return res.status(200).json({
           status: 'discarded',
           reason: 'recipient_not_allowed',
@@ -500,6 +564,9 @@ const resendReceivingWebhook = onRequest(
 
       return res.status(200).json({ ok: true, id: emailId });
     } catch (error) {
+      if (webhookClaimed && webhookClaimRef) {
+        await webhookClaimRef.delete().catch(() => {});
+      }
       console.error('[resendReceivingWebhook] Falha ao processar webhook:', error);
       return res.status(500).json({ error: 'Erro interno ao processar webhook de recebimento' });
     }

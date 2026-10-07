@@ -34,7 +34,10 @@ function getOriginSecretValue() {
 function validateOriginSecret(req) {
   const secret = getOriginSecretValue();
   if (!secret) {
-    return { allowed: true };
+    const isLocal = process.env.FUNCTIONS_EMULATOR === 'true' || process.env.NODE_ENV === 'test';
+    return isLocal
+      ? { allowed: true }
+      : { allowed: false, statusCode: 503, error: 'Proteção de origem não configurada.' };
   }
 
   const provided = req?.headers?.['x-origin-secret'] || req?.headers?.['x-cf-origin-token'];
