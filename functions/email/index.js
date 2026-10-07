@@ -11,6 +11,7 @@ const { customEmailLimiter } = require('../common/rateLimiters');
 const { getResend, isAdminRequest } = require('../common/helpers');
 const { validateOriginSecret } = require('../originProtection');
 const { prepareAttachments } = require('./attachments');
+const { cleanupEmailDrafts } = require('./cleanup');
 
 /**
  * Cloud Function para envio de e-mails via Resend pela plataforma Luisices.
@@ -131,7 +132,9 @@ const sendCustomEmail = onCall(
         subject: subject.trim(),
       };
 
-      if (preparedAttachments.length) payload.attachments = preparedAttachments;
+      if (preparedAttachments.length) {
+        payload.attachments = preparedAttachments.map(({ filename, content }) => ({ filename, content }));
+      }
 
       if (html) payload.html = html;
       if (text) payload.text = text;
@@ -172,6 +175,11 @@ const sendCustomEmail = onCall(
       };
 
       const docRef = await admin.firestore().collection('sentEmails').add(emailRecord);
+
+      // O Resend já recebeu uma cópia; o arquivo temporário não precisa permanecer no Storage.
+      await Promise.allSettled(
+        preparedAttachments.map(({ path }) => admin.storage().bucket().file(path).delete({ ignoreNotFound: true }))
+      );
 
       return {
         success: true,
@@ -502,4 +510,5 @@ module.exports = {
   sendCustomEmail,
   getEmailUsage,
   resendReceivingWebhook,
+  cleanupEmailDrafts,
 };

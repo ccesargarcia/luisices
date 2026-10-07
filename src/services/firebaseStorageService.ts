@@ -234,6 +234,9 @@ export class FirebaseStorageService {
         originalName: file.name,
         uploadedAt: new Date().toISOString(),
         userId: currentUid,
+        ...(orderId === 'email_draft'
+          ? { emailDraft: 'true', uploadedAtMs: String(Date.now()) }
+          : {}),
       },
     };
 

@@ -30,6 +30,7 @@ module.exports = {
   sendCustomEmail: emailFunctions.sendCustomEmail,
   getEmailUsage: emailFunctions.getEmailUsage,
   resendReceivingWebhook: emailFunctions.resendReceivingWebhook,
+  cleanupEmailDrafts: emailFunctions.cleanupEmailDrafts,
 
   // ─── WhatsApp (Evolution API e Webhooks) ───────────────────────────────────
   sendWhatsAppDirectMessage: whatsappFunctions.sendWhatsAppDirectMessage,

@@ -17,7 +17,7 @@ describe('anexos privados enviados pelo backend', () => {
     const f = fixture();
     const path = 'users/owner/orders/email_draft/file.pdf';
     expect(await prepareAttachments({ ...f, attachments: [{ name: 'file.pdf', url: url(path) }] }))
-      .toEqual([{ filename: 'file.pdf', content: Buffer.from('PDF').toString('base64') }]);
+      .toEqual([{ filename: 'file.pdf', path, content: Buffer.from('PDF').toString('base64') }]);
     expect(f.bucket.file).toHaveBeenCalledWith(path, { generation: '123' });
   });
   it('não aceita token ou CDN como autorização para ler rascunho de outro usuário', async () => {

@@ -45,7 +45,7 @@ async function prepareAttachments({ attachments = [], bucket, db, uid, profile, 
     totalBytes += content.length;
     if (totalBytes > MAX_ATTACHMENT_BYTES) throw new Error('Os anexos juntos não podem ultrapassar 18 MB.');
     const filename = attachment.name.replace(/[\r\n/\\]/g, '_').slice(0, 200) || 'anexo';
-    result.push({ filename, content: content.toString('base64') });
+    result.push({ filename, path, content: content.toString('base64') });
   }
   return result;
 }
