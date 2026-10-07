@@ -35,6 +35,7 @@ import {
   SelectValue,
 } from '../components/ui/select';
 import { Checkbox } from '../components/ui/checkbox';
+import { PaginationControls } from '../components/common/PaginationControls';
 import {
   ContextMenu,
   ContextMenuTrigger,
@@ -341,6 +342,9 @@ export function Emails() {
     setArchived,
     deleteReceived,
     deleteSent,
+    canCreate,
+    canEdit,
+    canDelete,
   } = useEmails();
 
   // Informações do negócio dinamizadas das Configurações
@@ -488,6 +492,33 @@ export function Emails() {
       .map((e) => ({ ...e, _type: 'received' as const }));
   }, [receivedEmails, sentEmails, activeFolder, filterMode, searchQuery]);
 
+  // Paginação da lista de e-mails
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState<number | 'all'>(10);
+
+  // Resetar página quando a pasta ou filtro de busca mudar
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [activeFolder, searchQuery, filterMode]);
+
+  const totalPages = useMemo(() => {
+    if (pageSize === 'all' || displayedEmails.length === 0) return 1;
+    return Math.ceil(displayedEmails.length / pageSize);
+  }, [displayedEmails.length, pageSize]);
+
+  // Garantir que a página atual não exceda o total de páginas
+  useEffect(() => {
+    if (currentPage > totalPages && totalPages > 0) {
+      setCurrentPage(totalPages);
+    }
+  }, [currentPage, totalPages]);
+
+  const paginatedEmails = useMemo(() => {
+    if (pageSize === 'all') return displayedEmails;
+    const startIndex = (currentPage - 1) * pageSize;
+    return displayedEmails.slice(startIndex, startIndex + pageSize);
+  }, [displayedEmails, currentPage, pageSize]);
+
   // Mensagem atualmente aberta no painel de leitura
   const currentReceivedEmail = useMemo(() => {
     if (selectedEmailType !== 'received' || !selectedEmailId) return null;
@@ -546,24 +577,24 @@ export function Emails() {
 
   // ─── Ações de Seleção Múltipla & Exclusão em Massa ──────────────────────────
   const isAllDisplayedSelected = useMemo(() => {
-    return displayedEmails.length > 0 && displayedEmails.every((e) => selectedEmailIds.has(e.id));
-  }, [displayedEmails, selectedEmailIds]);
+    return paginatedEmails.length > 0 && paginatedEmails.every((e) => selectedEmailIds.has(e.id));
+  }, [paginatedEmails, selectedEmailIds]);
 
   const isSomeDisplayedSelected = useMemo(() => {
-    return displayedEmails.some((e) => selectedEmailIds.has(e.id));
-  }, [displayedEmails, selectedEmailIds]);
+    return paginatedEmails.some((e) => selectedEmailIds.has(e.id));
+  }, [paginatedEmails, selectedEmailIds]);
 
   const handleToggleSelectAll = () => {
     if (isAllDisplayedSelected) {
       setSelectedEmailIds((prev) => {
         const next = new Set(prev);
-        displayedEmails.forEach((e) => next.delete(e.id));
+        paginatedEmails.forEach((e) => next.delete(e.id));
         return next;
       });
     } else {
       setSelectedEmailIds((prev) => {
         const next = new Set(prev);
-        displayedEmails.forEach((e) => next.add(e.id));
+        paginatedEmails.forEach((e) => next.add(e.id));
         return next;
       });
     }
@@ -994,20 +1025,22 @@ export function Emails() {
             </button>
           </div>
 
-          <Button
-            onClick={() => {
-              setRecipient('');
-              setSelectedCustomerId('');
-              setSubject('');
-              setBody('');
-              setAttachments([]);
-              setIsComposeOpen(true);
-            }}
-            className="gap-2 shadow-sm"
-          >
-            <Plus className="size-4" />
-            <span>Nova Mensagem</span>
-          </Button>
+          {canCreate && (
+            <Button
+              onClick={() => {
+                setRecipient('');
+                setSelectedCustomerId('');
+                setSubject('');
+                setBody('');
+                setAttachments([]);
+                setIsComposeOpen(true);
+              }}
+              className="gap-2 shadow-sm"
+            >
+              <Plus className="size-4" />
+              <span>Nova Mensagem</span>
+            </Button>
+          )}
         </div>
       </div>
 
@@ -1127,7 +1160,7 @@ export function Emails() {
 
         {/* ── Coluna 2: Lista de Mensagens / Master (md: 4 ou 5 colunas) ── */}
         <div
-          className={`col-span-1 md:col-span-4 lg:col-span-4 border-r border-border/60 flex flex-col bg-background ${
+          className={`col-span-1 md:col-span-4 lg:col-span-4 border-r border-border/60 flex flex-col bg-background min-h-0 h-full overflow-hidden ${
             selectedEmailId ? 'hidden md:flex' : 'flex'
           }`}
         >
@@ -1268,7 +1301,7 @@ export function Emails() {
           )}
 
           {/* Lista com Rolagem e Delimitação Nítida */}
-          <div className="flex-1 overflow-y-auto divide-y divide-border/80 dark:divide-zinc-800 bg-background">
+          <div className="flex-1 min-h-0 overflow-y-auto divide-y divide-border/80 dark:divide-zinc-800 bg-background custom-scrollbar">
             {loading ? (
               <div className="flex flex-col items-center justify-center p-12 text-muted-foreground">
                 <Loader2 className="size-6 animate-spin text-primary mb-2" />
@@ -1283,7 +1316,7 @@ export function Emails() {
                 </p>
               </div>
             ) : (
-              displayedEmails.map((email) => {
+              paginatedEmails.map((email) => {
                 const isSelected = selectedEmailId === email.id;
                 const isChecked = selectedEmailIds.has(email.id);
                 const isUnread = email._type === 'received' && !email.read;
@@ -1723,6 +1756,27 @@ export function Emails() {
               })
             )}
           </div>
+
+          {/* Paginação Fixada no Rodapé da Lista */}
+          {displayedEmails.length > 0 && (
+            <div className="p-2 sm:p-2.5 border-t border-border/80 dark:border-zinc-800 bg-muted/20 dark:bg-zinc-900/50 shrink-0">
+              <PaginationControls
+                currentPage={currentPage}
+                totalPages={totalPages}
+                totalItems={displayedEmails.length}
+                pageSize={pageSize}
+                onPageChange={setCurrentPage}
+                onPageSizeChange={(newSize) => {
+                  setPageSize(newSize);
+                  setCurrentPage(1);
+                }}
+                pageSizeOptions={[5, 10, 25, 50, 'all']}
+                itemName="e-mail"
+                itemPluralName="e-mails"
+                className="pt-0 border-t-0 gap-2 flex-wrap"
+              />
+            </div>
+          )}
         </div>
 
         {/* ── Coluna 3: Leitura da Mensagem / Detail (md: 5 ou 6 colunas) ── */}
@@ -1900,7 +1954,7 @@ export function Emails() {
               </div>
 
               {/* Corpo da Mensagem com Rolagem Fluida */}
-              <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-4 sm:p-6 space-y-4 select-text">
+              <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-4 sm:p-6 space-y-4 select-text custom-scrollbar">
                 {currentReceivedEmail ? (
                   <EmailHtmlViewer
                     html={currentReceivedEmail.html}
@@ -1957,15 +2011,17 @@ export function Emails() {
               <p className="text-xs text-muted-foreground max-w-xs mt-1">
                 Escolha um e-mail na lista ao lado para ler o conteúdo ou redija uma nova mensagem para seus clientes.
               </p>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setIsComposeOpen(true)}
-                className="mt-4 gap-2 text-xs"
-              >
-                <Plus className="size-3.5" />
-                Nova Mensagem
-              </Button>
+              {canCreate && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setIsComposeOpen(true)}
+                  className="mt-4 gap-2 text-xs"
+                >
+                  <Plus className="size-3.5" />
+                  Nova Mensagem
+                </Button>
+              )}
             </div>
           )}
         </div>

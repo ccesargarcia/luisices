@@ -22,8 +22,20 @@ const sendCustomEmail = onCall(
       throw new functions.https.HttpsError('unauthenticated', 'Usuário não autenticado.');
     }
 
-    if (!(await isAdminRequest(request))) {
-      throw new functions.https.HttpsError('permission-denied', 'Apenas administradores podem disparar e-mails pelo sistema.');
+    // Validação de permissões: admin ou funcionário com permissão de envio (emails.create === true ou emails === true)
+    const profile = await admin.firestore().doc(`userProfiles/${request.auth.uid}`).get();
+    const profileData = profile.exists ? profile.data() : null;
+    const isActive = profileData?.active !== false;
+    const isUserAdmin = profileData?.role === 'admin';
+    const emailsPerm = profileData?.permissions?.emails;
+    const canSend = isActive && (
+      isUserAdmin ||
+      emailsPerm === true ||
+      (typeof emailsPerm === 'object' && emailsPerm !== null && Boolean(emailsPerm.create))
+    );
+
+    if (!canSend) {
+      throw new functions.https.HttpsError('permission-denied', 'Você não possui permissão para disparar e-mails pelo sistema.');
     }
 
     // Rate Limiting: proteção contra abusos, loops e exaustão de cota
@@ -172,7 +184,14 @@ const getEmailUsage = onCall(
 
     const profile = await admin.firestore().doc(`userProfiles/${request.auth.uid}`).get();
     const profileData = profile.exists ? profile.data() : null;
-    const hasEmailPerm = profileData?.role === 'admin' || profileData?.permissions?.emails === true;
+    const isActive = profileData?.active !== false;
+    const isUserAdmin = profileData?.role === 'admin';
+    const emailsPerm = profileData?.permissions?.emails;
+    const hasEmailPerm = isActive && (
+      isUserAdmin ||
+      emailsPerm === true ||
+      (typeof emailsPerm === 'object' && emailsPerm !== null && Boolean(emailsPerm.view || emailsPerm.create))
+    );
     if (!hasEmailPerm) {
       throw new functions.https.HttpsError('permission-denied', 'Sem permissão para consultar a cota de e-mails.');
     }

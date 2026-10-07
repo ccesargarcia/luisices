@@ -8,6 +8,7 @@ import {
   SelectValue,
 } from '../ui/select';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { cn } from '../ui/utils';
 
 interface PaginationControlsProps {
   currentPage: number;
@@ -32,6 +33,7 @@ export function PaginationControls({
   pageSizeOptions = [10, 25, 50, 'all'],
   itemName = 'item',
   itemPluralName = 'itens',
+  className,
 }: PaginationControlsProps) {
   if (totalItems === 0) return null;
 
@@ -40,7 +42,7 @@ export function PaginationControls({
   const endItem = Math.min(currentPage * effectivePageSize, totalItems);
 
   return (
-    <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-4 border-t border-border/60">
+    <div className={cn("flex flex-col sm:flex-row items-center justify-between gap-3 pt-4 border-t border-border/60", className)}>
       <div className="flex items-center gap-3 text-xs sm:text-sm text-muted-foreground">
         <span>
           Mostrando <strong>{startItem}–{endItem}</strong> de <strong>{totalItems}</strong> {totalItems === 1 ? itemName : itemPluralName}
