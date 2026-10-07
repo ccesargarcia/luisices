@@ -100,142 +100,46 @@ export interface ComposeAttachment {
   size?: number;
 }
 
+export interface ReplyQuoteData {
+  from: string;
+  date: string;
+  subject: string;
+  html?: string;
+  text?: string;
+  attachments?: { filename?: string; name?: string; downloadUrl?: string; url?: string }[];
+}
+
 /**
- * Visualizador de E-mail HTML com auto-ajuste dinâmico, repasse de rolagem do mouse e suporte a texto puro
+ * Visualizador de E-mail HTML com renderização rica, rolagem nativa suave e alternador de texto
  */
 function EmailHtmlViewer({ html, text }: { html?: string; text?: string }) {
-  const iframeRef = useRef<HTMLIFrameElement>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const [iframeHeight, setIframeHeight] = useState<number>(380);
   const [viewMode, setViewMode] = useState<'html' | 'text'>('html');
 
-  const preparedHtml = useMemo(() => {
+  // Prepara o HTML seguro garantindo links externos com target="_blank"
+  const sanitizedHtml = useMemo(() => {
     if (!html) return '';
-    const resetStyles = `
-      <style>
-        html, body {
-          margin: 0 !important;
-          padding: 16px !important;
-          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif !important;
-          color: #1e293b !important;
-          background-color: #ffffff !important;
-          overflow-y: visible !important;
-          height: auto !important;
-          min-height: auto !important;
-          word-break: break-word;
-          line-height: 1.6;
-        }
-        img { max-width: 100% !important; height: auto !important; }
-        table { max-width: 100% !important; }
-        a { color: #4f46e5 !important; }
-        * { box-sizing: border-box; }
-      </style>
-    `;
+    let processed = html.replace(/<a\s+(?:[^>]*?\s+)?href="([^"]*)"([^>]*)>/gi, (match, href, rest) => {
+      if (!match.includes('target=')) {
+        return `<a href="${href}" target="_blank" rel="noopener noreferrer"${rest}>`;
+      }
+      return match;
+    });
 
-    if (html.includes('<head>')) {
-      return html.replace('<head>', `<head>${resetStyles}`);
-    }
-    if (html.includes('<html>')) {
-      return html.replace('<html>', `<html><head>${resetStyles}</head>`);
-    }
-    return `<head>${resetStyles}</head>${html}`;
+    return processed;
   }, [html]);
-
-  const updateHeight = () => {
-    try {
-      const doc = iframeRef.current?.contentDocument;
-      if (doc) {
-        const bodyH = doc.body?.scrollHeight || 0;
-        const bodyOffsetH = doc.body?.offsetHeight || 0;
-        const docH = doc.documentElement?.scrollHeight || 0;
-        const calculated = Math.max(bodyH, bodyOffsetH, docH, 200);
-        setIframeHeight(calculated + 35);
-      }
-    } catch {
-      // Fallback
-    }
-  };
-
-  useEffect(() => {
-    const t1 = setTimeout(updateHeight, 100);
-    const t2 = setTimeout(updateHeight, 400);
-    const t3 = setTimeout(updateHeight, 1200);
-    return () => {
-      clearTimeout(t1);
-      clearTimeout(t2);
-      clearTimeout(t3);
-    };
-  }, [preparedHtml, viewMode]);
-
-  // Pass-through de rolagem (wheel event) e ResizeObserver para carregar imagens assíncronas
-  useEffect(() => {
-    const iframe = iframeRef.current;
-    if (!iframe) return;
-
-    let cleanupListeners: (() => void) | undefined;
-
-    const setupIframeInteractions = () => {
-      try {
-        const doc = iframe.contentDocument;
-        const win = iframe.contentWindow;
-        if (!doc || !win) return;
-
-        // Repasse de evento de rolagem para o contêiner pai
-        const handleWheel = (e: WheelEvent) => {
-          const scrollParent = iframe.closest('.overflow-y-auto') as HTMLElement | null;
-          if (scrollParent) {
-            scrollParent.scrollBy({
-              top: e.deltaY,
-              left: e.deltaX,
-              behavior: 'auto',
-            });
-          }
-        };
-
-        win.addEventListener('wheel', handleWheel, { passive: true });
-
-        // ResizeObserver no body do iframe para recalcular altura quando imagens carregarem
-        let ro: ResizeObserver | null = null;
-        if (doc.body && typeof ResizeObserver !== 'undefined') {
-          ro = new ResizeObserver(() => {
-            updateHeight();
-          });
-          ro.observe(doc.body);
-        }
-
-        cleanupListeners = () => {
-          win.removeEventListener('wheel', handleWheel);
-          if (ro) {
-            ro.disconnect();
-          }
-        };
-      } catch {
-        // Ignora erros de cross-origin se houver
-      }
-    };
-
-    const timeout = setTimeout(setupIframeInteractions, 150);
-
-    return () => {
-      clearTimeout(timeout);
-      if (cleanupListeners) {
-        cleanupListeners();
-      }
-    };
-  }, [preparedHtml, viewMode]);
 
   if (!html || viewMode === 'text') {
     return (
       <div className="w-full space-y-2">
         {html && (
           <div className="flex items-center justify-between text-xs pb-1 border-b border-border/40">
-            <span className="text-muted-foreground text-[11px]">Exibindo em modo de texto puro</span>
+            <span className="text-muted-foreground text-[11px]">Exibindo em modo texto simples</span>
             <button
               type="button"
               onClick={() => setViewMode('html')}
               className="text-primary hover:underline font-semibold text-xs"
             >
-              Exibir Formatado (HTML)
+              Exibir Formatado (HTML/Mídia)
             </button>
           </div>
         )}
@@ -247,7 +151,7 @@ function EmailHtmlViewer({ html, text }: { html?: string; text?: string }) {
   }
 
   return (
-    <div ref={containerRef} className="w-full space-y-2">
+    <div className="w-full space-y-2">
       {text && (
         <div className="flex items-center justify-end text-xs pb-1">
           <button
@@ -259,17 +163,10 @@ function EmailHtmlViewer({ html, text }: { html?: string; text?: string }) {
           </button>
         </div>
       )}
-      <div className="w-full bg-white rounded-lg border border-border/70 shadow-2xs overflow-hidden">
-        <iframe
-          ref={iframeRef}
-          title="Conteúdo do E-mail"
-          srcDoc={preparedHtml}
-          sandbox="allow-popups allow-popups-to-escape-sandbox allow-same-origin"
-          onLoad={() => {
-            updateHeight();
-          }}
-          style={{ height: `${iframeHeight}px`, minHeight: '250px' }}
-          className="w-full border-0 block"
+      <div className="w-full bg-white text-slate-900 rounded-lg border border-border/70 p-4 sm:p-6 shadow-2xs overflow-x-auto select-text">
+        <div
+          className="prose prose-sm sm:prose max-w-none prose-img:rounded-md prose-img:max-w-full prose-a:text-indigo-600 hover:prose-a:underline prose-table:max-w-full break-words [&_table]:max-w-full [&_img]:max-w-full [&_img]:h-auto"
+          dangerouslySetInnerHTML={{ __html: sanitizedHtml }}
         />
       </div>
     </div>
@@ -507,6 +404,7 @@ export function Emails() {
   const [bcc, setBcc] = useState('');
   const [showCcBcc, setShowCcBcc] = useState(false);
   const [attachments, setAttachments] = useState<ComposeAttachment[]>([]);
+  const [replyQuote, setReplyQuote] = useState<ReplyQuoteData | null>(null);
   const [isUploadingAttachment, setIsUploadingAttachment] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const [composeMode, setComposeMode] = useState<'write' | 'preview'>('write');
@@ -617,21 +515,28 @@ export function Emails() {
     );
   }, [matchedCustomer, orders]);
 
-  // Auto-selecionar o primeiro e-mail se nada estiver selecionado no desktop
-  useEffect(() => {
-    if (!selectedEmailId && displayedEmails.length > 0 && typeof window !== 'undefined' && window.innerWidth >= 1024) {
-      const first = displayedEmails[0];
-      setSelectedEmailId(first.id);
-      setSelectedEmailType(first._type);
+  // Selecionar e abrir um e-mail da lista (marca como lido apenas no clique inicial do usuário)
+  const handleSelectEmail = (id: string, type: 'received' | 'sent', shouldMarkRead = true) => {
+    setSelectedEmailId(id);
+    setSelectedEmailType(type);
+    if (type === 'received' && shouldMarkRead) {
+      const item = receivedEmails.find((e) => e.id === id);
+      if (item && !item.read) {
+        markAsRead(id, true).catch(() => {});
+      }
     }
-  }, [displayedEmails, selectedEmailId]);
+  };
 
-  // Marcar como lido automaticamente ao abrir e-mail recebido
-  useEffect(() => {
-    if (currentReceivedEmail && !currentReceivedEmail.read) {
-      markAsRead(currentReceivedEmail.id, true).catch(() => {});
+  // Alternar explicitamente status de lido / não lido
+  const handleToggleRead = async (id: string, currentRead: boolean) => {
+    const nextRead = !currentRead;
+    try {
+      await markAsRead(id, nextRead);
+      toast.success(nextRead ? 'Mensagem marcada como lida' : 'Mensagem marcada como não lida');
+    } catch {
+      toast.error('Não foi possível alterar o status da mensagem.');
     }
-  }, [currentReceivedEmail, markAsRead]);
+  };
 
   // Substituição de tags dinâmicas
   const replaceDynamicTags = (content: string, customName?: string, customEmail?: string) => {
@@ -760,13 +665,32 @@ export function Emails() {
     }
   };
 
-  // Montar HTML dinâmico com identidade visual da loja e anexos
+  // Montar HTML dinâmico com identidade visual da loja, anexos e histórico de resposta
   const generateFormattedHtml = (messageBody: string): string => {
     const escaped = messageBody
       .replace(/&/g, '&amp;')
       .replace(/</g, '&lt;')
       .replace(/>/g, '&gt;')
       .replace(/\n/g, '<br />');
+
+    const quoteHtml = replyQuote
+      ? `
+      <div style="margin-top: 28px; padding-top: 18px; border-top: 1px solid #cbd5e1;">
+        <div style="font-size: 12px; font-weight: 600; color: #64748b; margin-bottom: 8px;">
+          Em ${replyQuote.date}, <strong>${replyQuote.from}</strong> escreveu:
+        </div>
+        <blockquote style="margin: 0; padding: 14px 16px; border-left: 3px solid #6366f1; background-color: #f8fafc; border-radius: 6px; color: #334155; font-size: 13px; line-height: 1.6;">
+          ${
+            replyQuote.html
+              ? replyQuote.html
+                  .replace(/<html[^>]*>|<\/html>|<body[^>]*>|<\/body>|<head[^>]*>[\s\S]*?<\/head>/gi, '')
+                  .trim()
+              : replyQuote.text?.replace(/\n/g, '<br />') || '(Mensagem original)'
+          }
+        </blockquote>
+      </div>
+    `
+      : '';
 
     const attachmentsHtml =
       attachments.length > 0
@@ -799,7 +723,7 @@ export function Emails() {
   <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color: #f8fafc; padding: 15px;">
     <tr>
       <td align="center">
-        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="max-width: 600px; background-color: #ffffff; border-radius: 12px; overflow: hidden; border: 1px solid #e2e8f0; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="max-width: 620px; background-color: #ffffff; border-radius: 12px; overflow: hidden; border: 1px solid #e2e8f0; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
           <!-- Header -->
           <tr>
             <td style="background-color: #4f46e5; padding: 24px 28px; text-align: left;">
@@ -815,6 +739,7 @@ export function Emails() {
           <tr>
             <td style="padding: 28px; font-size: 15px; line-height: 1.65; color: #334155;">
               ${escaped}
+              ${quoteHtml}
               ${attachmentsHtml}
             </td>
           </tr>
@@ -871,11 +796,15 @@ export function Emails() {
       const activeSender = isCustomSender && customSender.trim() ? customSender.trim() : sender;
       const htmlContent = generateFormattedHtml(body);
 
+      const plainText = replyQuote
+        ? `${body}\n\n--- Mensagem Original ---\nDe: ${replyQuote.from}\nData: ${replyQuote.date}\nAssunto: ${replyQuote.subject}\n\n${replyQuote.text || ''}`
+        : body;
+
       const payload: SendEmailPayload = {
         from: activeSender,
         to: recipientList,
         subject: subject.trim(),
-        text: body,
+        text: plainText,
         html: htmlContent,
       };
 
@@ -897,6 +826,7 @@ export function Emails() {
       setCc('');
       setBcc('');
       setAttachments([]);
+      setReplyQuote(null);
       setShowCcBcc(false);
       setIsComposeOpen(false);
       setActiveFolder('sent');
@@ -908,16 +838,25 @@ export function Emails() {
     }
   };
 
-  // Ação de Responder
+  // Ação de Responder preservando mídia, links e HTML da mensagem original
   const handleStartReply = (email: ReceivedEmail) => {
-    setRecipient(email.from);
-    setSubject(email.subject.startsWith('Re:') ? email.subject : `Re: ${email.subject}`);
-    const originalText = email.text || email.subject;
-    setBody(
-      `\n\n--- Mensagem Original ---\nDe: ${email.from}\nData: ${new Date(email.receivedAt).toLocaleString('pt-BR')}\nAssunto: ${email.subject}\n\n${originalText}`
-    );
+    const cleanEmail = email.from.match(/<([^>]+)>/)?.[1] || email.from.trim();
+    setRecipient(cleanEmail);
+    const cleanSubject = email.subject.replace(/^Re:\s*/i, '');
+    setSubject(`Re: ${cleanSubject}`);
+    setBody('');
+    setReplyQuote({
+      from: email.from,
+      date: new Date(email.receivedAt).toLocaleString('pt-BR'),
+      subject: email.subject,
+      html: email.html,
+      text: email.text,
+      attachments: email.attachments || [],
+    });
     setAttachments([]);
+    setComposeMode('write');
     setIsComposeOpen(true);
+    toast.info('Modo de resposta ativado: mídia, links e imagens originais preservados.');
   };
 
   // Copiar conteúdo da mensagem atual
@@ -1199,10 +1138,7 @@ export function Emails() {
                   <ContextMenu key={email.id}>
                     <ContextMenuTrigger asChild>
                       <div
-                        onClick={() => {
-                          setSelectedEmailId(email.id);
-                          setSelectedEmailType(email._type);
-                        }}
+                        onClick={() => handleSelectEmail(email.id, email._type)}
                         className={`group p-3 cursor-pointer transition-colors relative border-l-2 select-none ${
                           isSelected
                             ? 'bg-primary/5 border-primary'
@@ -1265,10 +1201,7 @@ export function Emails() {
                                 {email._type === 'received' ? (
                                   <>
                                     <DropdownMenuItem
-                                      onClick={() => {
-                                        setSelectedEmailId(email.id);
-                                        setSelectedEmailType('received');
-                                      }}
+                                      onClick={() => handleSelectEmail(email.id, 'received')}
                                       className="gap-2 cursor-pointer"
                                     >
                                       <MailOpen className="size-3.5" />
@@ -1282,7 +1215,7 @@ export function Emails() {
                                       <span>Responder</span>
                                     </DropdownMenuItem>
                                     <DropdownMenuItem
-                                      onClick={() => markAsRead(email.id, !email.read)}
+                                      onClick={() => handleToggleRead(email.id, email.read)}
                                       className="gap-2 cursor-pointer"
                                     >
                                       <MailCheck className="size-3.5" />
@@ -1436,10 +1369,7 @@ export function Emails() {
                             {senderDisplayName}
                           </ContextMenuLabel>
                           <ContextMenuItem
-                            onClick={() => {
-                              setSelectedEmailId(email.id);
-                              setSelectedEmailType('received');
-                            }}
+                            onClick={() => handleSelectEmail(email.id, 'received')}
                             className="gap-2 cursor-pointer"
                           >
                             <MailOpen className="size-3.5 text-primary" />
@@ -1453,7 +1383,7 @@ export function Emails() {
                             <span>Responder E-mail</span>
                           </ContextMenuItem>
                           <ContextMenuItem
-                            onClick={() => markAsRead(email.id, !email.read)}
+                            onClick={() => handleToggleRead(email.id, email.read)}
                             className="gap-2 cursor-pointer"
                           >
                             <MailCheck className="size-3.5" />
@@ -1654,7 +1584,7 @@ export function Emails() {
                       <Button
                         size="sm"
                         variant="outline"
-                        onClick={() => markAsRead(currentReceivedEmail.id, !currentReceivedEmail.read)}
+                        onClick={() => handleToggleRead(currentReceivedEmail.id, currentReceivedEmail.read)}
                         className="h-8 gap-1 text-xs"
                         title={currentReceivedEmail.read ? 'Marcar como não lido' : 'Marcar como lido'}
                       >
@@ -2059,6 +1989,29 @@ export function Emails() {
                   />
                 </div>
 
+                {/* Banner de citação quando estiver respondendo */}
+                {replyQuote && (
+                  <div className="flex items-center justify-between p-2.5 rounded-lg border bg-primary/5 border-primary/20 text-xs">
+                    <div className="flex items-center gap-2 truncate">
+                      <Reply className="size-4 text-primary shrink-0" />
+                      <span className="truncate">
+                        Respondendo a <strong className="text-foreground">{replyQuote.from}</strong> (Mídia, imagens e links originais preservados no envio)
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setReplyQuote(null);
+                        toast.info('Citação da mensagem original removida.');
+                      }}
+                      className="text-xs text-muted-foreground hover:text-destructive font-medium shrink-0 ml-2"
+                      title="Remover citação da mensagem original"
+                    >
+                      Remover citação
+                    </button>
+                  </div>
+                )}
+
                 {/* Tags Dinâmicas Rápidas */}
                 <div className="space-y-1.5">
                   <div className="flex items-center justify-between">
@@ -2082,10 +2035,10 @@ export function Emails() {
 
                   <Textarea
                     ref={textareaRef}
-                    placeholder="Escreva sua mensagem aqui..."
+                    placeholder={replyQuote ? "Digite sua resposta aqui..." : "Escreva sua mensagem aqui..."}
                     value={body}
                     onChange={(e) => setBody(e.target.value)}
-                    className="min-h-[200px] font-sans text-xs leading-relaxed"
+                    className="min-h-[180px] font-sans text-xs leading-relaxed"
                     required
                   />
                 </div>
