@@ -140,12 +140,8 @@ export function SendEmailDialog({
       let uploadedUrl: string;
       const isPdf = file.type === 'application/pdf';
 
-      if (file.type.startsWith('image/')) {
-        uploadedUrl = await firebaseStorageService.uploadImage(file, user.uid, 'banner');
-      } else {
-        const orderAtt = await firebaseStorageService.uploadOrderAttachment(file, user.uid, 'email_draft');
-        uploadedUrl = orderAtt.url;
-      }
+      const orderAtt = await firebaseStorageService.uploadOrderAttachment(file, user.uid, 'email_draft');
+      uploadedUrl = orderAtt.url;
 
       const item: EmailAttachmentItem = {
         name: file.name,

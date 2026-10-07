@@ -221,17 +221,19 @@ export class FirebaseStorageService {
       throw new Error('Arquivo muito grande. Máximo: 100MB');
     }
 
+    const currentUid = auth.currentUser?.uid || userId;
     const timestamp = Date.now();
     const safeName = fileToUpload.name.replace(/[^a-zA-Z0-9._-]/g, '_');
     const fileName = `${timestamp}_${safeName}`;
-    const storagePath = `users/${userId}/orders/${orderId}/${fileName}`;
+    const storagePath = `users/${currentUid}/orders/${orderId}/${fileName}`;
     const storageRef = ref(storage, storagePath);
 
     const metadata: UploadMetadata = {
-      contentType: fileToUpload.type,
+      contentType: fileToUpload.type || (file.type ? file.type : 'application/octet-stream'),
       customMetadata: {
         originalName: file.name,
         uploadedAt: new Date().toISOString(),
+        userId: currentUid,
       },
     };
 
@@ -241,13 +243,17 @@ export class FirebaseStorageService {
 
     // Gerar e fazer upload da thumbnail para imagens
     let thumbnailUrl: string | undefined;
-    if (!isPdf) {
-      const thumbBlob = await this.generateThumbnail(fileToUpload);
-      if (thumbBlob) {
-        const thumbPath = `users/${userId}/orders/${orderId}/thumbnails/${timestamp}_thumb_${safeName.replace(/\.[^.]+$/, '')}.webp`;
-        const thumbRef = ref(storage, thumbPath);
-        await uploadBytes(thumbRef, thumbBlob, { contentType: 'image/webp' });
-        thumbnailUrl = toCdnUrl(await getDownloadURL(thumbRef));
+    if (!isPdf && (fileToUpload.type?.startsWith('image/') || file.type?.startsWith('image/'))) {
+      try {
+        const thumbBlob = await this.generateThumbnail(fileToUpload);
+        if (thumbBlob) {
+          const thumbPath = `users/${currentUid}/orders/${orderId}/thumbnails/${timestamp}_thumb_${safeName.replace(/\.[^.]+$/, '')}.webp`;
+          const thumbRef = ref(storage, thumbPath);
+          await uploadBytes(thumbRef, thumbBlob, { contentType: 'image/webp' });
+          thumbnailUrl = toCdnUrl(await getDownloadURL(thumbRef));
+        }
+      } catch (err) {
+        console.warn('[StorageService] Não foi possível gerar thumbnail para anexo:', err);
       }
     }
 

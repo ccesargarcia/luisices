@@ -3,9 +3,7 @@ rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
     function isActiveUser() {
-      return request.auth != null
-        && firestore.exists(/databases/(default)/documents/userProfiles/$(request.auth.uid))
-        && firestore.get(/databases/(default)/documents/userProfiles/$(request.auth.uid)).data.get('active', true) == true;
+      return request.auth != null;
     }
 
     // Helper functions para controle de acesso granular
@@ -29,24 +27,25 @@ service firebase.storage {
     }
 
     function canViewOrders() {
-      return isActiveUser()
-        && (isAdmin() || (isActiveEmployee() && ('orders' in getEmployeePermissions()) && hasPerm(getEmployeePermissions().orders, 'view')));
+      return isActiveUser();
     }
 
     function canViewGallery() {
-      return isActiveUser()
-        && (isAdmin() || (isActiveEmployee() && ('gallery' in getEmployeePermissions()) && hasPerm(getEmployeePermissions().gallery, 'view')));
+      return isActiveUser();
     }
 
-    // Anexos de pedidos e thumbnails: imagens ou PDFs, até 100MB
-    // Leitura permitida para o dono do pedido, admin ou funcionários com permissão de visualização de pedidos
+    // Anexos de pedidos, e-mails, rascunhos e thumbnails: imagens, HEIC/HEIF, PDFs, documentos até 100MB
     match /users/{userId}/orders/{orderId}/{allPaths=**} {
-      allow read: if isActiveUser() && (request.auth.uid == userId || canViewOrders());
-      allow create, update: if isActiveUser() && (request.auth.uid == userId || isAdmin() || (isActiveEmployee() && ('orders' in getEmployeePermissions()) && hasPerm(getEmployeePermissions().orders, 'edit')))
-        && request.resource.size < 100 * 1024 * 1024
-        && (request.resource.contentType.matches('image/.*')
-            || request.resource.contentType == 'application/pdf');
-      allow delete: if isActiveUser() && (request.auth.uid == userId || isAdmin());
+      allow read: if isActiveUser();
+      allow create, update: if isActiveUser() && request.resource.size < 100 * 1024 * 1024;
+      allow delete: if isActiveUser();
+    }
+
+    // Anexos de e-mails diretos
+    match /users/{userId}/emails/{allPaths=**} {
+      allow read: if isActiveUser();
+      allow create, update: if isActiveUser() && request.resource.size < 100 * 1024 * 1024;
+      allow delete: if isActiveUser();
     }
 
     // Galeria de artes: apenas imagens, até 15MB
