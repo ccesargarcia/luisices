@@ -183,11 +183,15 @@ export function SendEmailDialog({
           <div style="display: flex; flex-wrap: wrap; gap: 8px;">
             ${attachments
               .map(
-                (att) => `
-              <a href="${att.url}" target="_blank" style="display: inline-block; background-color: #f8fafc; border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px 14px; font-size: 13px; color: #4f46e5; text-decoration: none; font-weight: 500; margin-right: 8px; margin-bottom: 8px;">
-                ⬇️ ${att.name}
+                (att) => {
+                  const safeUrl = att.url.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                  const safeName = att.name.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+                  return `
+              <a href="${safeUrl}" target="_blank" rel="noopener noreferrer" style="display: inline-block; background-color: #f8fafc; border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px 14px; font-size: 13px; color: #4f46e5; text-decoration: none; font-weight: 500; margin-right: 8px; margin-bottom: 8px;">
+                ⬇️ ${safeName}
               </a>
-            `
+            `;
+                }
               )
               .join('')}
           </div>

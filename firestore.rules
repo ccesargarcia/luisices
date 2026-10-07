@@ -328,19 +328,29 @@ service cloud.firestore {
       );
     }
 
-    function canManageEmailsCentral() {
+    function canEditEmailsCentral() {
       return isActiveUser() && (
         isAdmin()
-        || ('emails' in getEmployeePermissions() && (
-          hasPerm(getEmployeePermissions().emails, 'edit')
-          || hasPerm(getEmployeePermissions().emails, 'delete')
-          || hasPerm(getEmployeePermissions().emails, 'create')
-        ))
+        || ('emails' in getEmployeePermissions() && hasPerm(getEmployeePermissions().emails, 'edit'))
         || (
           get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.get('role', 'user') == 'user'
           && (
             getEmployeePermissions().get('emails', true) == true
-            || ('emails' in getEmployeePermissions() && hasPerm(getEmployeePermissions().emails, 'create'))
+            || ('emails' in getEmployeePermissions() && hasPerm(getEmployeePermissions().emails, 'edit'))
+          )
+        )
+      );
+    }
+
+    function canDeleteEmailsCentral() {
+      return isActiveUser() && (
+        isAdmin()
+        || ('emails' in getEmployeePermissions() && hasPerm(getEmployeePermissions().emails, 'delete'))
+        || (
+          get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.get('role', 'user') == 'user'
+          && (
+            getEmployeePermissions().get('emails', true) == true
+            || ('emails' in getEmployeePermissions() && hasPerm(getEmployeePermissions().emails, 'delete'))
           )
         )
       );
@@ -348,12 +358,16 @@ service cloud.firestore {
 
     match /receivedEmails/{emailId} {
       allow read: if canViewEmailsCentral();
-      allow write: if canManageEmailsCentral();
+      allow create: if false; // Criado exclusivamente pelo Webhook via Admin SDK (Cloud Functions)
+      allow update: if canEditEmailsCentral();
+      allow delete: if canDeleteEmailsCentral();
     }
 
     match /sentEmails/{emailId} {
       allow read: if canViewEmailsCentral();
-      allow write: if canManageEmailsCentral();
+      allow create: if false; // Gravado exclusivamente pelo sendCustomEmail via Admin SDK (Cloud Functions)
+      allow update: if canEditEmailsCentral();
+      allow delete: if canDeleteEmailsCentral();
     }
 
     // Regras para configurações públicas da loja / catálogo online

@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
+import DOMPurify from 'isomorphic-dompurify';
 import { useAuth } from '../../contexts/AuthContext';
 import { useEmails } from '../../hooks/useEmails';
 import { useFirebaseCustomers } from '../../hooks/useFirebaseCustomers';
@@ -117,17 +118,20 @@ export interface ReplyQuoteData {
 function EmailHtmlViewer({ html, text }: { html?: string; text?: string }) {
   const [viewMode, setViewMode] = useState<'html' | 'text'>('html');
 
-  // Prepara o HTML seguro garantindo links externos com target="_blank"
+  // Prepara o HTML seguro garantindo sanitização robusta (anti-XSS) e links externos com target="_blank"
   const sanitizedHtml = useMemo(() => {
     if (!html) return '';
-    let processed = html.replace(/<a\s+(?:[^>]*?\s+)?href="([^"]*)"([^>]*)>/gi, (match, href, rest) => {
+    const clean = DOMPurify.sanitize(html, {
+      ADD_ATTR: ['target', 'rel'],
+      FORBID_TAGS: ['script', 'iframe', 'object', 'embed', 'form'],
+    });
+
+    return clean.replace(/<a\s+(?:[^>]*?\s+)?href="([^"]*)"([^>]*)>/gi, (match, href, rest) => {
       if (!match.includes('target=')) {
         return `<a href="${href}" target="_blank" rel="noopener noreferrer"${rest}>`;
       }
       return match;
     });
-
-    return processed;
   }, [html]);
 
   if (!html || viewMode === 'text') {

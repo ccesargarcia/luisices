@@ -142,4 +142,41 @@ describe('Funcionalidade: Comunicação e Mensageria por E-mail (emailService)',
       );
     });
   });
+
+  describe('4. Sanitização e Segurança Anti-XSS do Visualizador de E-mails', () => {
+    it('deve neutralizar scripts maliciosos, iframes e atributos de evento inline', async () => {
+      const DOMPurify = (await import('isomorphic-dompurify')).default;
+      const maliciousHtml = '<p>Olá</p><script>alert("XSS")</script><img src="x" onerror="alert(1)" /><iframe src="https://evil.com"></iframe>';
+
+      const cleaned = DOMPurify.sanitize(maliciousHtml, {
+        ADD_ATTR: ['target', 'rel'],
+        FORBID_TAGS: ['script', 'iframe', 'object', 'embed', 'form'],
+      });
+
+      expect(cleaned).not.toContain('<script>');
+      expect(cleaned).not.toContain('onerror');
+      expect(cleaned).not.toContain('<iframe');
+      expect(cleaned).toContain('<p>Olá</p>');
+    });
+
+    it('deve transformar links para abrir com segurança em nova aba (target="_blank" e rel="noopener noreferrer")', async () => {
+      const DOMPurify = (await import('isomorphic-dompurify')).default;
+      const rawHtml = '<p>Acesse nosso site <a href="https://luisices.com.br">clicando aqui</a></p>';
+
+      const cleaned = DOMPurify.sanitize(rawHtml, {
+        ADD_ATTR: ['target', 'rel'],
+        FORBID_TAGS: ['script', 'iframe', 'object', 'embed', 'form'],
+      });
+
+      const withSafeLinks = cleaned.replace(/<a\s+(?:[^>]*?\s+)?href="([^"]*)"([^>]*)>/gi, (match, href, rest) => {
+        if (!match.includes('target=')) {
+          return `<a href="${href}" target="_blank" rel="noopener noreferrer"${rest}>`;
+        }
+        return match;
+      });
+
+      expect(withSafeLinks).toContain('target="_blank"');
+      expect(withSafeLinks).toContain('rel="noopener noreferrer"');
+    });
+  });
 });
