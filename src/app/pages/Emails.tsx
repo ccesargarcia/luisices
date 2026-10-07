@@ -2,7 +2,9 @@ import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useEmails } from '../../hooks/useEmails';
 import { useFirebaseCustomers } from '../../hooks/useFirebaseCustomers';
+import { useFirebaseOrders } from '../../hooks/useFirebaseOrders';
 import { useUserSettings } from '../../hooks/useUserSettings';
+import { firebaseStorageService } from '../../services/firebaseStorageService';
 import { ReceivedEmail, SentEmail, SendEmailPayload } from '../types';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -60,6 +62,9 @@ import {
   Tag,
   BookmarkPlus,
   Info,
+  User,
+  ShoppingBag,
+  ExternalLink,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -70,6 +75,13 @@ export interface EmailTemplate {
   subject: string;
   body: string;
   isCustom?: boolean;
+}
+
+export interface ComposeAttachment {
+  name: string;
+  url: string;
+  isPdf?: boolean;
+  size?: number;
 }
 
 const DEFAULT_TEMPLATES: EmailTemplate[] = [
@@ -223,6 +235,7 @@ function formatRelativeDate(isoString?: string): string {
 export function Emails() {
   const { user } = useAuth();
   const { customers } = useFirebaseCustomers();
+  const { orders } = useFirebaseOrders();
   const { settings } = useUserSettings();
   const {
     receivedEmails,
@@ -301,9 +314,13 @@ export function Emails() {
   const [cc, setCc] = useState('');
   const [bcc, setBcc] = useState('');
   const [showCcBcc, setShowCcBcc] = useState(false);
+  const [attachments, setAttachments] = useState<ComposeAttachment[]>([]);
+  const [isUploadingAttachment, setIsUploadingAttachment] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const [composeMode, setComposeMode] = useState<'write' | 'preview'>('write');
   const [copiedText, setCopiedText] = useState(false);
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Modelos customizados do usuário
   const [customTemplates, setCustomTemplates] = useState<EmailTemplate[]>(() => {
@@ -386,6 +403,28 @@ export function Emails() {
     return sentEmails.find((e) => e.id === selectedEmailId) ?? null;
   }, [sentEmails, selectedEmailType, selectedEmailId]);
 
+  // Detecção inteligente de cliente e pedidos vinculados
+  const matchedCustomer = useMemo(() => {
+    if (!currentReceivedEmail) return null;
+    const fromClean = currentReceivedEmail.from.toLowerCase();
+    return (
+      customers.find(
+        (c) =>
+          (c.email && fromClean.includes(c.email.toLowerCase())) ||
+          (c.name && fromClean.includes(c.name.toLowerCase()))
+      ) || null
+    );
+  }, [currentReceivedEmail, customers]);
+
+  const matchedCustomerOrders = useMemo(() => {
+    if (!matchedCustomer) return [];
+    return orders.filter(
+      (o) =>
+        (o.customerId && o.customerId === matchedCustomer.id) ||
+        (o.customerName && o.customerName.toLowerCase() === matchedCustomer.name.toLowerCase())
+    );
+  }, [matchedCustomer, orders]);
+
   // Auto-selecionar o primeiro e-mail se nada estiver selecionado no desktop
   useEffect(() => {
     if (!selectedEmailId && displayedEmails.length > 0 && typeof window !== 'undefined' && window.innerWidth >= 1024) {
@@ -436,6 +475,52 @@ export function Emails() {
     }, 50);
   };
 
+  // Upload de anexos na composição
+  const handleUploadAttachment = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !user) return;
+
+    if (file.size > 25 * 1024 * 1024) {
+      toast.error('Arquivo muito grande. Máximo: 25MB');
+      return;
+    }
+
+    setIsUploadingAttachment(true);
+    try {
+      let uploadedUrl: string;
+      const isPdf = file.type === 'application/pdf';
+
+      if (file.type.startsWith('image/')) {
+        uploadedUrl = await firebaseStorageService.uploadImage(file, user.uid, 'banner');
+      } else {
+        const orderAtt = await firebaseStorageService.uploadOrderAttachment(file, user.uid, 'email_draft');
+        uploadedUrl = orderAtt.url;
+      }
+
+      const item: ComposeAttachment = {
+        name: file.name,
+        url: uploadedUrl,
+        isPdf,
+        size: file.size,
+      };
+
+      setAttachments((prev) => [...prev, item]);
+      toast.success(`Arquivo "${file.name}" anexado.`);
+    } catch (err: any) {
+      console.error('Erro ao anexar arquivo:', err);
+      toast.error(err.message || 'Falha ao anexar arquivo.');
+    } finally {
+      setIsUploadingAttachment(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
+  };
+
+  const handleRemoveAttachment = (url: string) => {
+    setAttachments((prev) => prev.filter((a) => a.url !== url));
+  };
+
   // Selecionar cliente cadastrado
   const handleSelectCustomer = (customerId: string) => {
     setSelectedCustomerId(customerId);
@@ -483,13 +568,33 @@ export function Emails() {
     }
   };
 
-  // Montar HTML dinâmico com identidade visual da loja
+  // Montar HTML dinâmico com identidade visual da loja e anexos
   const generateFormattedHtml = (messageBody: string): string => {
     const escaped = messageBody
       .replace(/&/g, '&amp;')
       .replace(/</g, '&lt;')
       .replace(/>/g, '&gt;')
       .replace(/\n/g, '<br />');
+
+    const attachmentsHtml =
+      attachments.length > 0
+        ? `
+        <div style="margin-top: 24px; padding-top: 16px; border-top: 1px dashed #cbd5e1;">
+          <div style="font-size: 13px; font-weight: 600; color: #475569; margin-bottom: 10px;">📎 Arquivos & Documentos Anexados:</div>
+          <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+            ${attachments
+              .map(
+                (att) => `
+              <a href="${att.url}" target="_blank" style="display: inline-block; background-color: #f8fafc; border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px 14px; font-size: 13px; color: #4f46e5; text-decoration: none; font-weight: 500; margin-right: 8px; margin-bottom: 8px;">
+                ⬇️ ${att.name}
+              </a>
+            `
+              )
+              .join('')}
+          </div>
+        </div>
+      `
+        : '';
 
     return `
 <!DOCTYPE html>
@@ -518,6 +623,7 @@ export function Emails() {
           <tr>
             <td style="padding: 28px; font-size: 15px; line-height: 1.65; color: #334155;">
               ${escaped}
+              ${attachmentsHtml}
             </td>
           </tr>
           <!-- Signature & Footer -->
@@ -598,6 +704,7 @@ export function Emails() {
       setBody('');
       setCc('');
       setBcc('');
+      setAttachments([]);
       setShowCcBcc(false);
       setIsComposeOpen(false);
       setActiveFolder('sent');
@@ -617,6 +724,7 @@ export function Emails() {
     setBody(
       `\n\n--- Mensagem Original ---\nDe: ${email.from}\nData: ${new Date(email.receivedAt).toLocaleString('pt-BR')}\nAssunto: ${email.subject}\n\n${originalText}`
     );
+    setAttachments([]);
     setIsComposeOpen(true);
   };
 
@@ -677,6 +785,7 @@ export function Emails() {
               setSelectedCustomerId('');
               setSubject('');
               setBody('');
+              setAttachments([]);
               setIsComposeOpen(true);
             }}
             className="gap-2 shadow-sm"
@@ -1066,6 +1175,38 @@ export function Emails() {
                 </Button>
               </div>
 
+              {/* Informação do Cliente & Pedidos Vinculados */}
+              {matchedCustomer && (
+                <div className="mx-4 sm:mx-6 mt-3 p-2.5 rounded-lg border bg-primary/5 border-primary/20 flex flex-wrap items-center justify-between gap-2 text-xs">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <User className="size-4 text-primary shrink-0" />
+                    <div className="truncate">
+                      <span className="font-semibold text-foreground">{matchedCustomer.name}</span>
+                      {matchedCustomerOrders.length > 0 ? (
+                        <span className="text-muted-foreground ml-1.5">
+                          · {matchedCustomerOrders.length} pedido(s) cadastrado(s)
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground ml-1.5">· Cliente cadastrado no sistema</span>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 shrink-0">
+                    {matchedCustomer.phone && (
+                      <a
+                        href={`https://wa.me/${matchedCustomer.phone.replace(/\D/g, '')}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-1 rounded-md border border-emerald-200 dark:border-emerald-800 hover:bg-emerald-100 transition-colors"
+                      >
+                        <span>WhatsApp</span>
+                      </a>
+                    )}
+                  </div>
+                </div>
+              )}
+
               {/* Cabeçalho da Mensagem */}
               <div className="p-4 sm:p-5 border-b border-border/60 space-y-3 shrink-0">
                 <h2 className="text-lg sm:text-xl font-bold text-foreground leading-tight">
@@ -1422,9 +1563,70 @@ export function Emails() {
                     placeholder="Escreva sua mensagem aqui..."
                     value={body}
                     onChange={(e) => setBody(e.target.value)}
-                    className="min-h-[220px] font-sans text-xs leading-relaxed"
+                    className="min-h-[200px] font-sans text-xs leading-relaxed"
                     required
                   />
+                </div>
+
+                {/* Anexos na Composição */}
+                <div className="space-y-2 pt-2 border-t border-border/60">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-semibold text-muted-foreground flex items-center gap-1.5">
+                      <Paperclip className="size-3.5" />
+                      <span>Anexos ({attachments.length}):</span>
+                    </label>
+
+                    <div>
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        onChange={handleUploadAttachment}
+                        className="hidden"
+                        id="compose-file-input"
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => fileInputRef.current?.click()}
+                        disabled={isUploadingAttachment}
+                        className="h-7 text-xs gap-1.5"
+                      >
+                        {isUploadingAttachment ? (
+                          <>
+                            <Loader2 className="size-3 animate-spin" />
+                            <span>Enviando...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Paperclip className="size-3" />
+                            <span>Adicionar Arquivo</span>
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                  </div>
+
+                  {attachments.length > 0 && (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {attachments.map((att) => (
+                        <div
+                          key={att.url}
+                          className="flex items-center justify-between p-2 rounded-lg border bg-muted/20 text-xs"
+                        >
+                          <span className="font-medium truncate mr-2">{att.name}</span>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveAttachment(att.url)}
+                            className="text-muted-foreground hover:text-destructive p-1 rounded transition-colors"
+                            title="Remover anexo"
+                          >
+                            <Trash2 className="size-3.5" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </>
             ) : (
@@ -1433,7 +1635,7 @@ export function Emails() {
                 <div className="flex items-center gap-2 p-2.5 rounded-lg bg-primary/5 text-primary text-xs">
                   <Info className="size-4 shrink-0" />
                   <span>
-                    Pré-visualização fiel de como a mensagem chegará na caixa de entrada com a identidade da sua loja.
+                    Pré-visualização fiel de como a mensagem chegará na caixa de entrada com a identidade da sua loja e links de anexos.
                   </span>
                 </div>
 
@@ -1476,7 +1678,7 @@ export function Emails() {
 
                 <Button
                   type="submit"
-                  disabled={isSending || dailyRemaining === 0}
+                  disabled={isSending || dailyRemaining === 0 || isUploadingAttachment}
                   className="gap-2 text-xs h-8 px-4"
                 >
                   {isSending ? (

@@ -4,9 +4,11 @@ import { Badge } from './ui/badge';
 import { Button } from './ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Order, OrderStatus, PaymentStatus, PaymentMethod, Tag, ExchangeItem, GalleryItem, UserProfile, canAccessArchivedOrders } from '../types';
-import { Trash2, Edit, Copy, Download, Archive, ArchiveRestore } from 'lucide-react';
+import { Trash2, Edit, Copy, Download, Archive, ArchiveRestore, Mail } from 'lucide-react';
 import { exportOrderPDF } from '../utils/exportPdf';
 import { useUserSettings } from '../../hooks/useUserSettings';
+import { useFirebaseCustomers } from '../../hooks/useFirebaseCustomers';
+import { SendEmailDialog } from './emails/SendEmailDialog';
 import { useState, useMemo, useEffect } from 'react';
 import { firebaseOrderService } from '../../services/firebaseOrderService';
 import { firebaseUserService } from '../../services/firebaseUserService';
@@ -47,6 +49,7 @@ export function OrderDetailsDialog({ order, open, onOpenChange, onUpdateStatus, 
   const { user, userProfile, isAdmin, hasPermission } = useAuth();
   const { settings } = useUserSettings();
   const { teamMembers } = useOrders();
+  const { customers } = useFirebaseCustomers();
 
   const canArchive = isAdmin || canAccessArchivedOrders(userProfile?.permissions, 'create');
   const canUnarchive = isAdmin || canAccessArchivedOrders(userProfile?.permissions, 'edit');
@@ -54,6 +57,7 @@ export function OrderDetailsDialog({ order, open, onOpenChange, onUpdateStatus, 
   const [isSaving, setIsSaving] = useState(false);
   const [isDuplicating, setIsDuplicating] = useState(false);
   const [isArchiving, setIsArchiving] = useState(false);
+  const [emailDialogOpen, setEmailDialogOpen] = useState(false);
   const [isUploadingAttachment, setIsUploadingAttachment] = useState(false);
   const [localAttachments, setLocalAttachments] = useState<import('../types').OrderAttachment[]>([]);
   const [customerGallery, setCustomerGallery] = useState<GalleryItem[]>([]);
@@ -85,6 +89,43 @@ export function OrderDetailsDialog({ order, open, onOpenChange, onUpdateStatus, 
       return sum + qty * unit;
     }, 0);
   }, [editProducts]);
+
+  const customerEmail = useMemo(() => {
+    if (!order) return '';
+    const match = customers.find(
+      (c) =>
+        (order.customerId && c.id === order.customerId) ||
+        (c.name && order.customerName && c.name.toLowerCase() === order.customerName.toLowerCase())
+    );
+    return match?.email || '';
+  }, [order, customers]);
+
+  const orderEmailBody = useMemo(() => {
+    if (!order) return '';
+    const firstName = (order.customerName || 'Cliente').split(' ')[0];
+    const itemsText = order.productName
+      ? `- ${order.productName} (Qtd: ${order.quantity})`
+      : '- Itens personalizados sob encomenda';
+    const deliveryText = order.deliveryDate
+      ? new Date(order.deliveryDate).toLocaleDateString('pt-BR')
+      : 'A combinar';
+    const totalText = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(order.price || 0);
+
+    return `Olá, ${firstName}!
+
+Segue a atualização sobre o seu Pedido ${order.orderNumber || '#' + order.id}:
+
+📦 Resumo do Pedido:
+${itemsText}
+- Valor Total: ${totalText}
+- Data Prevista de Entrega: ${deliveryText}
+- Status Atual: ${statusLabels[order.status] || order.status}
+
+Qualquer dúvida ou ajuste, estamos à total disposição por aqui ou via WhatsApp.
+
+Com carinho,
+Equipe ${settings?.businessName || 'Luisices'}`;
+  }, [order, settings?.businessName]);
 
   const formatCurrencyEdit = (v: number) =>
     new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
@@ -439,6 +480,16 @@ export function OrderDetailsDialog({ order, open, onOpenChange, onUpdateStatus, 
                     <Download className="size-4" />
                     PDF
                   </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setEmailDialogOpen(true)}
+                    className="gap-2"
+                    title="Enviar detalhes por e-mail"
+                  >
+                    <Mail className="size-4 text-primary" />
+                    E-mail
+                  </Button>
                   {hasPermission(p => p.orders?.create ?? false) && (
                     <Button
                       size="sm"
@@ -628,6 +679,18 @@ export function OrderDetailsDialog({ order, open, onOpenChange, onUpdateStatus, 
           </>
         )}
       </DialogContent>
+
+      {order && (
+        <SendEmailDialog
+          open={emailDialogOpen}
+          onOpenChange={setEmailDialogOpen}
+          contextTitle={`Pedido ${order.orderNumber || '#' + order.id}`}
+          contextSubtitle={`Enviar atualização para ${order.customerName}`}
+          defaultRecipient={customerEmail}
+          defaultSubject={`Atualização do seu Pedido ${order.orderNumber || '#' + order.id} - ${settings?.businessName || 'Luisices'}`}
+          defaultBody={orderEmailBody}
+        />
+      )}
     </Dialog>
   );
 }

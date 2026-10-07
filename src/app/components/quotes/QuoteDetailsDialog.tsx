@@ -1,16 +1,18 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Quote, OrderStatus } from '../../types';
 import { formatCurrency } from '../../utils/currency';
 import { formatDateTime as formatDateTimeUtil } from '../../utils/date';
 import { normalizePhoneForWhatsApp, formatPhoneForDisplay } from '../../utils/whatsapp';
 import { getTextColor } from '../../utils/tagColors';
 import { useUserSettings } from '../../../hooks/useUserSettings';
+import { useFirebaseCustomers } from '../../../hooks/useFirebaseCustomers';
 import { useAuth } from '../../../contexts/AuthContext';
 import { firebaseQuoteService } from '../../../services/firebaseQuoteService';
 import { firebaseOrderService } from '../../../services/firebaseOrderService';
 import { firebaseCustomerService } from '../../../services/firebaseCustomerService';
 import { trackEvent } from '../../../services/analyticsService';
 import { exportQuotePDF } from '../../utils/exportPdf';
+import { SendEmailDialog } from '../emails/SendEmailDialog';
 import {
   Dialog,
   DialogContent,
@@ -49,6 +51,7 @@ import {
   XCircle,
   CheckCircle,
   Loader2,
+  Mail,
 } from 'lucide-react';
 import {
   STATUS_LABELS,
@@ -74,6 +77,7 @@ export function QuoteDetailsDialog({
   onRefresh,
 }: QuoteDetailsDialogProps) {
   const { settings } = useUserSettings();
+  const { customers } = useFirebaseCustomers();
   const { hasPermission } = useAuth();
   const [approving, setApproving] = useState(false);
   const [rejecting, setRejecting] = useState(false);
@@ -82,6 +86,44 @@ export function QuoteDetailsDialog({
   const [exportingPdf, setExportingPdf] = useState(false);
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   const [duplicating, setDuplicating] = useState(false);
+  const [emailDialogOpen, setEmailDialogOpen] = useState(false);
+
+  const customerEmail = useMemo(() => {
+    if (!quote) return '';
+    if (quote.customerEmail) return quote.customerEmail;
+    const match = customers.find(
+      (c) =>
+        (quote.customerId && c.id === quote.customerId) ||
+        (c.name && quote.customerName && c.name.toLowerCase() === quote.customerName.toLowerCase())
+    );
+    return match?.email || '';
+  }, [quote, customers]);
+
+  const quoteEmailBody = useMemo(() => {
+    if (!quote) return '';
+    const firstName = (quote.customerName || 'Cliente').split(' ')[0];
+    const itemsSummary = quote.items
+      .map((item) => `- ${item.name} (${item.quantity}x) — ${new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(item.quantity * item.unitPrice)}`)
+      .join('\n');
+    const totalFormatted = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(quote.totalPrice);
+    const validUntilFormatted = quote.validUntil ? new Date(quote.validUntil).toLocaleDateString('pt-BR') : '15 dias';
+
+    return `Olá, ${firstName}!
+
+Agradecemos o seu contato! Segue a proposta detalhada para o seu orçamento ${quote.quoteNumber}:
+
+📋 Itens do Orçamento:
+${itemsSummary}
+
+💰 Valor Total: ${totalFormatted}
+${quote.paymentCondition ? `💳 Condições de Pagamento: ${quote.paymentCondition}` : ''}
+📅 Validade desta Proposta: ${validUntilFormatted}
+
+Ficamos à total disposição para esclarecer qualquer dúvida ou ajustar os itens do projeto.
+
+Atenciosamente,
+Equipe ${settings?.businessName || 'Luisices'}`;
+  }, [quote, settings?.businessName]);
 
   function handleExportPdf() {
     if (!quote) return;
@@ -477,6 +519,14 @@ export function QuoteDetailsDialog({
               <Download className="size-4 mr-2" />
               {exportingPdf ? 'Gerando...' : 'Exportar PDF'}
             </Button>
+            <Button
+              variant="outline"
+              onClick={() => setEmailDialogOpen(true)}
+              title="Enviar orçamento por e-mail"
+            >
+              <Mail className="size-4 mr-2 text-primary" />
+              E-mail
+            </Button>
             {canEdit && hasPermission((p) => p.quotes?.edit ?? false) && (
               <Button
                 variant="outline"
@@ -535,6 +585,23 @@ export function QuoteDetailsDialog({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {quote && (
+        <SendEmailDialog
+          open={emailDialogOpen}
+          onOpenChange={setEmailDialogOpen}
+          contextTitle={`Orçamento ${quote.quoteNumber}`}
+          contextSubtitle={`Enviar proposta para ${quote.customerName}`}
+          defaultRecipient={customerEmail}
+          defaultSubject={`Orçamento ${quote.quoteNumber} - ${settings?.businessName || 'Luisices Papelaria Personalizada'}`}
+          defaultBody={quoteEmailBody}
+          onSuccess={() => {
+            if (quote.status === 'draft') {
+              firebaseQuoteService.updateStatus(quote.id, 'sent').catch(() => {});
+            }
+          }}
+        />
+      )}
     </>
   );
 }
