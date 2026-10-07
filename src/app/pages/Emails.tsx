@@ -1,19 +1,17 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useEmails } from '../../hooks/useEmails';
 import { useFirebaseCustomers } from '../../hooks/useFirebaseCustomers';
+import { useUserSettings } from '../../hooks/useUserSettings';
 import { ReceivedEmail, SentEmail, SendEmailPayload } from '../types';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Textarea } from '../components/ui/textarea';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
 import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogBody,
   DialogHeader,
   DialogTitle,
 } from '../components/ui/dialog';
@@ -48,97 +46,184 @@ import {
   Sparkles,
   Clock,
   Archive,
+  ArchiveRestore,
   MailCheck,
   Loader2,
   Plus,
   SendHorizontal,
   MailOpen,
-  ArrowDownLeft,
   Gauge,
   RefreshCw,
+  ArrowLeft,
+  Copy,
+  Check,
+  Tag,
+  BookmarkPlus,
+  Info,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
-const EMAIL_TEMPLATES = [
+export interface EmailTemplate {
+  id: string;
+  name: string;
+  description?: string;
+  subject: string;
+  body: string;
+  isCustom?: boolean;
+}
+
+const DEFAULT_TEMPLATES: EmailTemplate[] = [
   {
     id: 'blank',
     name: 'Mensagem em Branco',
+    description: 'Iniciar com mensagem vazia',
     subject: '',
     body: '',
   },
   {
     id: 'quote',
     name: 'Orçamento de Papelaria',
-    subject: 'Orçamento Personalizado - Luisices',
-    body: `Olá, [Nome do Cliente]!
+    description: 'Proposta detalhada de itens, valores e prazos',
+    subject: 'Orçamento Personalizado - {{nome_loja}}',
+    body: `Olá, {{cliente_primeiro_nome}}!
 
-Agradecemos o seu interesse na Luisices Papelaria Personalizada.
+Agradecemos o seu interesse na {{nome_loja}}! ✨
 
-Conforme conversamos, segue a proposta para o seu projeto:
-- Itens: [Descrever itens]
-- Prazo de Produção: [Ex: 5 a 7 dias úteis após aprovação da arte]
+Conforme conversamos, preparamos a proposta para o seu projeto:
+
+📋 Detalhes da Encomenda:
+- Itens: [Descrever itens e quantidades]
+- Tema / Personalização: [Tema escolhido]
+- Prazo de Produção: {{prazo_producao}} (após aprovação da arte digital)
 - Valor Total: R$ 0,00
-- Condições de Pagamento: Chave Pix ou Cartão de Crédito
 
-Ficamos à disposição para tirar qualquer dúvida ou realizar ajustes no pedido.
+💳 Condições de Pagamento:
+- Chave Pix: {{chave_pix}}
+- 50% de entrada para início do design e restante na finalização.
 
-Atenciosamente,
-Equipe Luisices
-contato@luisices.com.br`,
-  },
-  {
-    id: 'ready',
-    name: 'Pedido Pronto para Retirada / Envio',
-    subject: 'Seu pedido está pronto! 🎉 - Luisices',
-    body: `Olá, [Nome do Cliente]!
-
-Temos uma ótima notícia: o seu pedido personalizado foi finalizado com muito carinho e já está pronto! ✂️✨
-
-[Se for retirada]:
-Você já pode retirar no nosso endereço de atendimento no horário combinado.
-
-[Se for envio/entrega]:
-Seu pacote será despachado em breve e enviaremos o código de rastreio/comprovante assim que coletado.
-
-Muito obrigado por escolher a Luisices!
+Ficamos à total disposição para tirar qualquer dúvida ou realizar ajustes.
 
 Com carinho,
-Equipe Luisices`,
+Equipe {{nome_loja}}`,
   },
   {
-    id: 'production',
+    id: 'art_approval',
+    name: 'Aprovação de Arte Digital',
+    description: 'Envio da amostra para validação antes do corte',
+    subject: 'Sua Arte Digital está Pronta para Aprovação! 🎨 - {{nome_loja}}',
+    body: `Olá, {{cliente_primeiro_nome}}!
+
+A arte do seu pedido personalizado foi finalizada com todo carinho! ✂️🎨
+
+Por favor, confira com atenção os seguintes pontos:
+1. Grafia do nome e idade/data;
+2. Cores e elementos gráficos;
+3. Formato e disposição dos itens.
+
+Assim que você nos der o "OK", iniciaremos imediatamente a impressão e montagem artesanal.
+
+Qualquer ajuste que desejar, é só nos responder por aqui ou pelo WhatsApp: {{whatsapp}}.
+
+Aguardamos seu retorno para darmos andamento!
+
+Com carinho,
+Equipe {{nome_loja}}`,
+  },
+  {
+    id: 'in_production',
     name: 'Pedido em Produção',
-    subject: 'Pedido em Produção ✂️ - Luisices',
-    body: `Olá, [Nome do Cliente]!
+    description: 'Aviso de início da produção artesanal',
+    subject: 'Seu pedido entrou em produção! ✂️ - {{nome_loja}}',
+    body: `Olá, {{cliente_primeiro_nome}}!
 
-Confirmamos o recebimento dos detalhes do seu pedido e o mesmo já entrou na nossa fila de produção!
+Passando para avisar que a arte foi aprovada e o seu pedido já entrou na nossa bancada de produção! 🪄
 
-Estamos cuidando de cada detalhe com toda dedicação para que sua papelaria fique perfeita.
-Qualquer novidade entraremos em contato.
+Estamos cuidando da impressão em alta resolução, laminação e corte de cada detalhe com toda dedicação.
+
+Prazo estimado de produção: {{prazo_producao}}.
+
+Assim que tudo estiver pronto e embalado, avisaremos você!
 
 Atenciosamente,
-Equipe Luisices`,
+Equipe {{nome_loja}}`,
+  },
+  {
+    id: 'ready_delivery',
+    name: 'Pedido Pronto para Retirada / Envio',
+    description: 'Encomenda finalizada e embalada com carinho',
+    subject: 'Seu pedido está prontinho! 🎉📦 - {{nome_loja}}',
+    body: `Olá, {{cliente_primeiro_nome}}!
+
+Temos uma ótima notícia: o seu pedido personalizado está pronto e embalado com todo cuidado! ✨🎉
+
+📍 [Se for retirada no ateliê]:
+Você já pode combinar o melhor horário para retirada conosco através do WhatsApp: {{whatsapp}}.
+
+🚚 [Se o pedido for via envio/entrega]:
+Seu pacote será despachado em breve e enviaremos o código de rastreio assim que postado.
+
+Muito obrigado por escolher e confiar na {{nome_loja}}!
+
+Com carinho,
+Equipe {{nome_loja}}`,
   },
   {
     id: 'thank_you',
-    name: 'Agradecimento ao Cliente',
-    subject: 'Obrigado por escolher a Luisices! 💖',
-    body: `Olá, [Nome do Cliente]!
+    name: 'Agradecimento & Avaliação',
+    description: 'Pós-venda e convite para postar fotos nas redes',
+    subject: 'Obrigado por escolher a {{nome_loja}}! 💖',
+    body: `Olá, {{cliente_primeiro_nome}}!
 
-Esperamos que você tenha adorado os seus personalizados tanto quanto nós amamos criá-los!
+Esperamos que você tenha amado os seus personalizados tanto quanto nós amamos criá-los para você! 🥰
 
-Sua opinião é fundamental para nós. Se puder, marque nosso perfil nas redes sociais ou nos dê um feedback com fotos do resultado!
+A sua opinião significa muito para nós.
+Se puder tirar fotos do resultado e nos marcar nas redes sociais, ficaremos muito felizes! Isso nos ajuda a continuar criando com amor.
 
 Esperamos te ver em breve para novas criações!
 
 Com carinho,
-Equipe Luisices`,
+Equipe {{nome_loja}}`,
   },
 ];
+
+const DYNAMIC_TAGS = [
+  { tag: '{{cliente_nome}}', label: 'Nome Completo' },
+  { tag: '{{cliente_primeiro_nome}}', label: '1º Nome' },
+  { tag: '{{cliente_email}}', label: 'E-mail Cliente' },
+  { tag: '{{nome_loja}}', label: 'Nome da Loja' },
+  { tag: '{{whatsapp}}', label: 'WhatsApp' },
+  { tag: '{{chave_pix}}', label: 'Chave Pix' },
+  { tag: '{{prazo_producao}}', label: 'Prazo Produção' },
+];
+
+const STORAGE_CUSTOM_TEMPLATES_KEY = 'luisices_custom_email_templates';
+
+function formatRelativeDate(isoString?: string): string {
+  if (!isoString) return '';
+  const date = new Date(isoString);
+  if (Number.isNaN(date.getTime())) return '';
+  const now = new Date();
+  const isToday =
+    date.getDate() === now.getDate() &&
+    date.getMonth() === now.getMonth() &&
+    date.getFullYear() === now.getFullYear();
+
+  if (isToday) {
+    return date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+  }
+
+  const isThisYear = date.getFullYear() === now.getFullYear();
+  if (isThisYear) {
+    return date.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' });
+  }
+
+  return date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit' });
+}
 
 export function Emails() {
   const { user } = useAuth();
   const { customers } = useFirebaseCustomers();
+  const { settings } = useUserSettings();
   const {
     receivedEmails,
     sentEmails,
@@ -147,7 +232,6 @@ export function Emails() {
     loadingUsage,
     refreshUsage,
     loading,
-    error,
     sendEmail,
     markAsRead,
     toggleStar,
@@ -156,15 +240,13 @@ export function Emails() {
     deleteSent,
   } = useEmails();
 
-  const sentTodayCount = useMemo(() => {
-    const today = new Date().toISOString().split('T')[0];
-    return sentEmails.filter((e) => e.sentAt && e.sentAt.startsWith(today)).length;
-  }, [sentEmails]);
-
-  const dailyUsed = Math.max(usage?.daily.used ?? 0, sentTodayCount);
-  const dailyLimit = usage?.daily.limit ?? 100;
-  const dailyRemaining = Math.max(0, dailyLimit - dailyUsed);
-  const dailyPercent = Math.min(100, Math.round((dailyUsed / dailyLimit) * 100));
+  // Informações do negócio dinamizadas das Configurações
+  const businessName = settings?.businessName?.trim() || 'Luisices Personalizados';
+  const businessPhone = settings?.whatsappPhone?.trim() || settings?.businessPhone?.trim() || '(11) 97060-6433';
+  const businessEmail = settings?.businessEmail?.trim() || '';
+  const instagramUrl = settings?.instagramUrl?.trim() || '';
+  const websiteUrl = settings?.websiteUrl?.trim() || '';
+  const businessLogo = settings?.logo || '';
 
   const isDev = useMemo(() => {
     return (
@@ -177,36 +259,40 @@ export function Emails() {
     );
   }, []);
 
-  const defaultSender = isDev
-    ? 'Luisices Dev <contato@dev.luisices.com.br>'
-    : 'Luisices <contato@luisices.com.br>';
+  const defaultSender = useMemo(() => {
+    if (businessEmail) {
+      return `${businessName} <${businessEmail}>`;
+    }
+    return isDev
+      ? 'Luisices Dev <contato@dev.luisices.com.br>'
+      : 'Luisices <contato@luisices.com.br>';
+  }, [businessName, businessEmail, isDev]);
 
-  const [activeTab, setActiveTab] = useState<'inbox' | 'sent' | 'compose'>('inbox');
+  // Cota de envio
+  const sentTodayCount = useMemo(() => {
+    const today = new Date().toISOString().split('T')[0];
+    return sentEmails.filter((e) => e.sentAt && e.sentAt.startsWith(today)).length;
+  }, [sentEmails]);
+
+  const dailyUsed = Math.max(usage?.daily.used ?? 0, sentTodayCount);
+  const dailyLimit = usage?.daily.limit ?? 100;
+  const dailyRemaining = Math.max(0, dailyLimit - dailyUsed);
+  const dailyPercent = Math.min(100, Math.round((dailyUsed / dailyLimit) * 100));
+
+  // Pastas & Navegação Master-Detail
+  type FolderType = 'inbox' | 'sent' | 'starred' | 'archived';
+  const [activeFolder, setActiveFolder] = useState<FolderType>('inbox');
   const [searchQuery, setSearchQuery] = useState('');
-  const [filterType, setFilterType] = useState<'all' | 'unread' | 'starred' | 'archived'>('all');
+  const [filterMode, setFilterMode] = useState<'all' | 'unread'>('all');
 
-  // Selected email IDs (derivados em tempo real)
-  const [selectedReceivedEmailId, setSelectedReceivedEmailId] = useState<string | null>(null);
-  const [selectedSentEmailId, setSelectedSentEmailId] = useState<string | null>(null);
-  const [emailToDelete, setEmailToDelete] = useState<{
-    type: 'received' | 'sent';
-    id: string;
-    subject: string;
-  } | null>(null);
+  // Seleção de mensagem ativa no painel de leitura
+  const [selectedEmailType, setSelectedEmailType] = useState<'received' | 'sent' | null>('received');
+  const [selectedEmailId, setSelectedEmailId] = useState<string | null>(null);
 
-  const selectedReceivedEmail = useMemo(
-    () => (selectedReceivedEmailId ? receivedEmails.find((e) => e.id === selectedReceivedEmailId) ?? null : null),
-    [receivedEmails, selectedReceivedEmailId]
-  );
-
-  const selectedSentEmail = useMemo(
-    () => (selectedSentEmailId ? sentEmails.find((e) => e.id === selectedSentEmailId) ?? null : null),
-    [sentEmails, selectedSentEmailId]
-  );
-
-  // Compose form
+  // Modal de composição (Nova Mensagem / Resposta)
+  const [isComposeOpen, setIsComposeOpen] = useState(false);
   const [recipient, setRecipient] = useState('');
-  const [selectedCustomer, setSelectedCustomer] = useState<string>('');
+  const [selectedCustomerId, setSelectedCustomerId] = useState('');
   const [sender, setSender] = useState(defaultSender);
   const [customSender, setCustomSender] = useState('');
   const [isCustomSender, setIsCustomSender] = useState(false);
@@ -216,86 +302,259 @@ export function Emails() {
   const [bcc, setBcc] = useState('');
   const [showCcBcc, setShowCcBcc] = useState(false);
   const [isSending, setIsSending] = useState(false);
-  const [previewMode, setPreviewMode] = useState<'edit' | 'preview'>('edit');
+  const [composeMode, setComposeMode] = useState<'write' | 'preview'>('write');
+  const [copiedText, setCopiedText] = useState(false);
 
-  // Statistics
-  const starredCount = useMemo(() => receivedEmails.filter((e) => e.starred && !e.archived).length, [receivedEmails]);
-  const totalInbox = useMemo(() => receivedEmails.filter((e) => !e.archived).length, [receivedEmails]);
+  // Modelos customizados do usuário
+  const [customTemplates, setCustomTemplates] = useState<EmailTemplate[]>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_CUSTOM_TEMPLATES_KEY);
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
 
-  // Filtered received emails
-  const filteredReceived = useMemo(() => {
-    return receivedEmails.filter((email) => {
-      if (filterType === 'unread' && email.read) return false;
-      if (filterType === 'starred' && !email.starred) return false;
-      if (filterType === 'archived' && !email.archived) return false;
-      if (filterType !== 'archived' && email.archived) return false;
+  const allTemplates = useMemo(() => {
+    return [...DEFAULT_TEMPLATES, ...customTemplates];
+  }, [customTemplates]);
 
-      if (searchQuery.trim()) {
-        const query = searchQuery.toLowerCase();
-        const matchSubject = email.subject?.toLowerCase().includes(query);
-        const matchFrom = email.from?.toLowerCase().includes(query);
-        const matchText = email.text?.toLowerCase().includes(query);
-        return matchSubject || matchFrom || matchText;
-      }
+  // Exclusão
+  const [emailToDelete, setEmailToDelete] = useState<{
+    type: 'received' | 'sent';
+    id: string;
+    subject: string;
+  } | null>(null);
 
-      return true;
-    });
-  }, [receivedEmails, filterType, searchQuery]);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  // Filtered sent emails
-  const filteredSent = useMemo(() => {
-    return sentEmails.filter((email) => {
-      if (searchQuery.trim()) {
-        const query = searchQuery.toLowerCase();
-        const matchSubject = email.subject?.toLowerCase().includes(query);
-        const matchTo = email.to?.some((t) => t.toLowerCase().includes(query));
-        const matchText = (email.text || email.html)?.toLowerCase().includes(query);
-        return matchSubject || matchTo || matchText;
-      }
-      return true;
-    });
-  }, [sentEmails, searchQuery]);
+  // Contagens para badges de navegação
+  const inboxCount = useMemo(() => receivedEmails.filter((e) => !e.archived).length, [receivedEmails]);
+  const starredCount = useMemo(
+    () => receivedEmails.filter((e) => e.starred && !e.archived).length,
+    [receivedEmails]
+  );
+  const archivedCount = useMemo(() => receivedEmails.filter((e) => e.archived).length, [receivedEmails]);
 
-  // Handle customer selection
+  // Mensagens filtradas de acordo com a pasta atual
+  const displayedEmails = useMemo(() => {
+    const q = searchQuery.toLowerCase().trim();
+
+    if (activeFolder === 'sent') {
+      return sentEmails
+        .filter((email) => {
+          if (!q) return true;
+          const matchSub = email.subject?.toLowerCase().includes(q);
+          const matchTo = email.to?.some((t) => t.toLowerCase().includes(q));
+          const matchTxt = (email.text || email.html)?.toLowerCase().includes(q);
+          return matchSub || matchTo || matchTxt;
+        })
+        .map((e) => ({ ...e, _type: 'sent' as const }));
+    }
+
+    return receivedEmails
+      .filter((email) => {
+        if (activeFolder === 'inbox') {
+          if (email.archived) return false;
+          if (filterMode === 'unread' && email.read) return false;
+        } else if (activeFolder === 'starred') {
+          if (email.archived || !email.starred) return false;
+          if (filterMode === 'unread' && email.read) return false;
+        } else if (activeFolder === 'archived') {
+          if (!email.archived) return false;
+        }
+
+        if (q) {
+          const matchSub = email.subject?.toLowerCase().includes(q);
+          const matchFrom = email.from?.toLowerCase().includes(q);
+          const matchTxt = email.text?.toLowerCase().includes(q);
+          return matchSub || matchFrom || matchTxt;
+        }
+        return true;
+      })
+      .map((e) => ({ ...e, _type: 'received' as const }));
+  }, [receivedEmails, sentEmails, activeFolder, filterMode, searchQuery]);
+
+  // Mensagem atualmente aberta no painel de leitura
+  const currentReceivedEmail = useMemo(() => {
+    if (selectedEmailType !== 'received' || !selectedEmailId) return null;
+    return receivedEmails.find((e) => e.id === selectedEmailId) ?? null;
+  }, [receivedEmails, selectedEmailType, selectedEmailId]);
+
+  const currentSentEmail = useMemo(() => {
+    if (selectedEmailType !== 'sent' || !selectedEmailId) return null;
+    return sentEmails.find((e) => e.id === selectedEmailId) ?? null;
+  }, [sentEmails, selectedEmailType, selectedEmailId]);
+
+  // Auto-selecionar o primeiro e-mail se nada estiver selecionado no desktop
+  useEffect(() => {
+    if (!selectedEmailId && displayedEmails.length > 0 && typeof window !== 'undefined' && window.innerWidth >= 1024) {
+      const first = displayedEmails[0];
+      setSelectedEmailId(first.id);
+      setSelectedEmailType(first._type);
+    }
+  }, [displayedEmails, selectedEmailId]);
+
+  // Marcar como lido automaticamente ao abrir e-mail recebido
+  useEffect(() => {
+    if (currentReceivedEmail && !currentReceivedEmail.read) {
+      markAsRead(currentReceivedEmail.id, true).catch(() => {});
+    }
+  }, [currentReceivedEmail, markAsRead]);
+
+  // Substituição de tags dinâmicas
+  const replaceDynamicTags = (content: string, customName?: string, customEmail?: string) => {
+    const cust = selectedCustomerId ? customers.find((c) => c.id === selectedCustomerId) : null;
+    const name = customName || cust?.name || '';
+    const firstName = name.split(' ')[0] || '';
+    const emailAddr = customEmail || cust?.email || recipient || '';
+
+    return content
+      .replace(/\{\{cliente_nome\}\}/g, name || 'Cliente')
+      .replace(/\{\{cliente_primeiro_nome\}\}/g, firstName || 'Cliente')
+      .replace(/\{\{cliente_email\}\}/g, emailAddr)
+      .replace(/\{\{nome_loja\}\}/g, businessName)
+      .replace(/\{\{whatsapp\}\}/g, businessPhone)
+      .replace(/\{\{chave_pix\}\}/g, businessPhone)
+      .replace(/\{\{prazo_producao\}\}/g, '5 a 7 dias úteis');
+  };
+
+  // Inserir tag dinâmica na posição atual do cursor
+  const handleInsertTag = (tag: string) => {
+    if (!textareaRef.current) {
+      setBody((prev) => prev + ' ' + tag);
+      return;
+    }
+    const el = textareaRef.current;
+    const start = el.selectionStart;
+    const end = el.selectionEnd;
+    const newText = body.substring(0, start) + tag + body.substring(end);
+    setBody(newText);
+    setTimeout(() => {
+      el.focus();
+      el.setSelectionRange(start + tag.length, start + tag.length);
+    }, 50);
+  };
+
+  // Selecionar cliente cadastrado
   const handleSelectCustomer = (customerId: string) => {
-    setSelectedCustomer(customerId);
+    setSelectedCustomerId(customerId);
     const found = customers.find((c) => c.id === customerId);
     if (found && found.email) {
       setRecipient(found.email);
-      if (body.includes('[Nome do Cliente]')) {
-        setBody((prev) => prev.replace(/\[Nome do Cliente\]/g, found.name));
-      }
+      setSubject((prev) => replaceDynamicTags(prev, found.name, found.email));
+      setBody((prev) => replaceDynamicTags(prev, found.name, found.email));
     }
   };
 
-  // Handle template selection
+  // Selecionar modelo
   const handleSelectTemplate = (templateId: string) => {
-    const tpl = EMAIL_TEMPLATES.find((t) => t.id === templateId);
+    const tpl = allTemplates.find((t) => t.id === templateId);
     if (!tpl) return;
-    setSubject(tpl.subject);
-    let newBody = tpl.body;
-    if (selectedCustomer) {
-      const found = customers.find((c) => c.id === selectedCustomer);
-      if (found) {
-        newBody = newBody.replace(/\[Nome do Cliente\]/g, found.name);
-      }
-    }
-    setBody(newBody);
+    setSubject(replaceDynamicTags(tpl.subject));
+    setBody(replaceDynamicTags(tpl.body));
   };
 
-  // Handle send email
+  // Salvar mensagem atual como novo modelo customizado
+  const handleSaveAsTemplate = () => {
+    if (!subject.trim() || !body.trim()) {
+      toast.error('Preencha o assunto e o corpo para salvar como modelo.');
+      return;
+    }
+    const templateName = window.prompt('Dê um nome para este novo modelo de e-mail:', subject.slice(0, 30));
+    if (!templateName || !templateName.trim()) return;
+
+    const newTpl: EmailTemplate = {
+      id: `custom_${Date.now()}`,
+      name: templateName.trim(),
+      description: 'Modelo salvo pelo ateliê',
+      subject,
+      body,
+      isCustom: true,
+    };
+
+    const updated = [...customTemplates, newTpl];
+    setCustomTemplates(updated);
+    try {
+      localStorage.setItem(STORAGE_CUSTOM_TEMPLATES_KEY, JSON.stringify(updated));
+      toast.success('Modelo salvo com sucesso!');
+    } catch {
+      toast.error('Não foi possível gravar no armazenamento local.');
+    }
+  };
+
+  // Montar HTML dinâmico com identidade visual da loja
+  const generateFormattedHtml = (messageBody: string): string => {
+    const escaped = messageBody
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/\n/g, '<br />');
+
+    return `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="margin: 0; padding: 20px 0; background-color: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #1e293b;">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color: #f8fafc; padding: 15px;">
+    <tr>
+      <td align="center">
+        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="max-width: 600px; background-color: #ffffff; border-radius: 12px; overflow: hidden; border: 1px solid #e2e8f0; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+          <!-- Header -->
+          <tr>
+            <td style="background-color: #4f46e5; padding: 24px 28px; text-align: left;">
+              ${
+                businessLogo
+                  ? `<img src="${businessLogo}" alt="${businessName}" style="max-height: 44px; margin-bottom: 8px; border-radius: 6px; display: block;" />`
+                  : ''
+              }
+              <h1 style="margin: 0; color: #ffffff; font-size: 19px; font-weight: 700; letter-spacing: -0.02em;">${businessName}</h1>
+            </td>
+          </tr>
+          <!-- Body -->
+          <tr>
+            <td style="padding: 28px; font-size: 15px; line-height: 1.65; color: #334155;">
+              ${escaped}
+            </td>
+          </tr>
+          <!-- Signature & Footer -->
+          <tr>
+            <td style="background-color: #f1f5f9; padding: 20px 28px; border-top: 1px solid #e2e8f0; font-size: 13px; color: #64748b; line-height: 1.5;">
+              <div style="font-weight: 700; color: #0f172a; font-size: 14px;">${businessName}</div>
+              ${businessPhone ? `<div style="margin-top: 3px;">WhatsApp: <strong>${businessPhone}</strong></div>` : ''}
+              ${businessEmail ? `<div style="margin-top: 2px;">E-mail: <a href="mailto:${businessEmail}" style="color: #4f46e5; text-decoration: none;">${businessEmail}</a></div>` : ''}
+              ${instagramUrl ? `<div style="margin-top: 2px;">Instagram: <a href="${instagramUrl}" target="_blank" style="color: #4f46e5; text-decoration: none;">${instagramUrl.replace(/^https?:\/\/(www\.)?instagram\.com\/?/, '@')}</a></div>` : ''}
+              ${websiteUrl ? `<div style="margin-top: 2px;">Site: <a href="${websiteUrl.startsWith('http') ? websiteUrl : `https://${websiteUrl}`}" target="_blank" style="color: #4f46e5; text-decoration: none;">${websiteUrl.replace(/^https?:\/\//, '')}</a></div>` : ''}
+              <div style="margin-top: 10px; font-size: 11px; color: #94a3b8; border-top: 1px solid #e2e8f0; padding-top: 8px;">
+                Ateliê de Papelaria Personalizada & Presentes Criativos
+              </div>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+    `.trim();
+  };
+
+  // Envio do formulário
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!recipient.trim()) {
-      toast.error('Informe ao menos um destinatário.');
+      toast.error('Informe ao menos um destinatário válido.');
       return;
     }
     if (!subject.trim()) {
-      toast.error('Informe o assunto do e-mail.');
+      toast.error('Informe o assunto da mensagem.');
       return;
     }
     if (!body.trim()) {
-      toast.error('Escreva a mensagem do e-mail.');
+      toast.error('Escreva o conteúdo da mensagem.');
       return;
     }
 
@@ -305,35 +564,21 @@ export function Emails() {
       .filter((r) => r.includes('@'));
 
     if (recipientList.length === 0) {
-      toast.error('Informe um endereço de e-mail válido.');
+      toast.error('Informe um e-mail de destinatário válido.');
       return;
     }
 
     setIsSending(true);
     try {
       const activeSender = isCustomSender && customSender.trim() ? customSender.trim() : sender;
-
-      const formattedHtml = `
-        <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; color: #2d3748; max-width: 600px; margin: 0 auto; padding: 20px;">
-          <div style="background-color: #f7fafc; border-left: 4px solid #4f46e5; padding: 15px 20px; border-radius: 4px; margin-bottom: 25px;">
-            <h2 style="margin: 0; color: #1a202c; font-size: 18px;">Luisices Papelaria Personalizada</h2>
-          </div>
-          <div style="font-size: 15px; white-space: pre-wrap; margin-bottom: 30px;">${body}</div>
-          <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 25px 0;" />
-          <div style="font-size: 12px; color: #718096; line-height: 1.5;">
-            <p style="margin: 0;"><strong>Luisices Personalizados</strong></p>
-            <p style="margin: 3px 0 0 0;">WhatsApp: (11) 97060-6433 | ${isDev ? 'contato@dev.luisices.com.br' : 'contato@luisices.com.br'}</p>
-            <p style="margin: 3px 0 0 0;"><a href="${isDev ? 'https://dev.luisices.com.br' : 'https://luisices.com.br'}" style="color: #4f46e5; text-decoration: none;">${isDev ? 'dev.luisices.com.br' : 'luisices.com.br'}</a></p>
-          </div>
-        </div>
-      `;
+      const htmlContent = generateFormattedHtml(body);
 
       const payload: SendEmailPayload = {
         from: activeSender,
         to: recipientList,
         subject: subject.trim(),
         text: body,
-        html: formattedHtml,
+        html: htmlContent,
       };
 
       if (cc.trim()) {
@@ -346,15 +591,16 @@ export function Emails() {
       await sendEmail(payload);
       toast.success('E-mail enviado com sucesso!');
 
-      // Reset form
+      // Reset
       setRecipient('');
-      setSelectedCustomer('');
+      setSelectedCustomerId('');
       setSubject('');
       setBody('');
       setCc('');
       setBcc('');
       setShowCcBcc(false);
-      setActiveTab('sent');
+      setIsComposeOpen(false);
+      setActiveFolder('sent');
     } catch (err: any) {
       console.error('Erro ao enviar e-mail:', err);
       toast.error(err.message || 'Falha ao enviar e-mail.');
@@ -363,888 +609,551 @@ export function Emails() {
     }
   };
 
-  // Reply
-  const handleReply = (email: ReceivedEmail) => {
-    setSelectedReceivedEmailId(null);
+  // Ação de Responder
+  const handleStartReply = (email: ReceivedEmail) => {
     setRecipient(email.from);
     setSubject(email.subject.startsWith('Re:') ? email.subject : `Re: ${email.subject}`);
     const originalText = email.text || email.subject;
-    setBody(`\n\n--- Mensagem Original ---\nDe: ${email.from}\nData: ${new Date(email.receivedAt).toLocaleString('pt-BR')}\nAssunto: ${email.subject}\n\n${originalText}`);
-    setActiveTab('compose');
+    setBody(
+      `\n\n--- Mensagem Original ---\nDe: ${email.from}\nData: ${new Date(email.receivedAt).toLocaleString('pt-BR')}\nAssunto: ${email.subject}\n\n${originalText}`
+    );
+    setIsComposeOpen(true);
   };
 
-  // Safe date formatter
-  const formatDate = (isoString?: string) => {
-    if (!isoString) return '';
-    const date = new Date(isoString);
-    if (Number.isNaN(date.getTime())) return '';
-    const now = new Date();
-    const isToday =
-      date.getDate() === now.getDate() &&
-      date.getMonth() === now.getMonth() &&
-      date.getFullYear() === now.getFullYear();
+  // Copiar conteúdo da mensagem atual
+  const handleCopyMessageText = () => {
+    const textToCopy = currentReceivedEmail
+      ? currentReceivedEmail.text || currentReceivedEmail.subject
+      : currentSentEmail
+      ? currentSentEmail.text || currentSentEmail.subject
+      : '';
 
-    if (isToday) {
-      return date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-    }
-    return date.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' });
+    if (!textToCopy) return;
+    navigator.clipboard.writeText(textToCopy);
+    setCopiedText(true);
+    toast.success('Conteúdo copiado!');
+    setTimeout(() => setCopiedText(false), 2000);
   };
 
   return (
-    <div className="space-y-8">
-      {/* Header */}
-      <div className="flex flex-col items-start justify-between gap-4 border-b border-border/60 pb-6 sm:flex-row sm:items-center">
+    <div className="space-y-6">
+      {/* ─── Top Header ────────────────────────────────────────── */}
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-border/60 pb-5">
         <div>
-          <div className="flex items-center gap-2">
-            <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">Central de E-mails</h1>
+          <div className="flex items-center gap-2.5">
+            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Central de E-mails</h1>
             {isDev && (
-              <Badge variant="outline" className="bg-yellow-500/10 text-yellow-600 border-yellow-400 font-mono text-[10px] px-1.5 py-0 h-5">
+              <Badge variant="outline" className="bg-amber-500/10 text-amber-600 border-amber-300 font-mono text-[10px] px-1.5 py-0 h-5">
                 DEV
               </Badge>
             )}
           </div>
-          <p className="text-muted-foreground mt-1">
-            Gerenciamento, envio e recebimento de e-mails corporativos
+          <p className="text-muted-foreground text-xs sm:text-sm mt-1">
+            Gestão profissional de mensagens, orçamentos e notificações do ateliê
           </p>
         </div>
 
-        <div className="flex w-full flex-wrap gap-2 sm:w-auto">
-          <Button onClick={() => setActiveTab('compose')} className="gap-2">
+        <div className="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-end">
+          {/* Cota Compacta */}
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg border bg-card text-xs">
+            <Gauge className="size-4 text-primary shrink-0" />
+            <div className="flex items-center gap-1.5">
+              <span className="font-semibold">{dailyUsed}/{dailyLimit}</span>
+              <span className="text-muted-foreground hidden sm:inline">envios hoje</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => refreshUsage()}
+              title="Atualizar cota"
+              className="text-muted-foreground hover:text-foreground transition-colors ml-1 p-0.5 rounded"
+            >
+              <RefreshCw className={`size-3 ${loadingUsage ? 'animate-spin' : ''}`} />
+            </button>
+          </div>
+
+          <Button
+            onClick={() => {
+              setRecipient('');
+              setSelectedCustomerId('');
+              setSubject('');
+              setBody('');
+              setIsComposeOpen(true);
+            }}
+            className="gap-2 shadow-sm"
+          >
             <Plus className="size-4" />
-            <span>Novo E-mail</span>
+            <span>Nova Mensagem</span>
           </Button>
         </div>
       </div>
 
-      {/* Summary Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground flex items-center justify-between">
-              <span>Caixa de Entrada</span>
-              <Inbox className="size-4 text-muted-foreground/70" />
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{totalInbox}</div>
-            <p className="text-xs text-muted-foreground mt-1">mensagens recebidas</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground flex items-center justify-between">
-              <span>Não Lidos</span>
-              <MailOpen className="size-4 text-primary" />
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className={`text-2xl font-bold ${unreadCount > 0 ? 'text-primary' : 'text-foreground'}`}>
-              {unreadCount}
+      {/* ─── Master-Detail Layout Principal ────────────────────────── */}
+      <div className="grid grid-cols-1 md:grid-cols-12 rounded-xl border border-border/60 bg-card overflow-hidden shadow-xs min-h-[640px] h-[calc(100vh-13.5rem)] max-h-[880px]">
+        {/* ── Coluna 1: Pastas & Navegação (md: 3 colunas) ── */}
+        <div className="hidden md:flex md:col-span-3 lg:col-span-2 border-r border-border/60 flex-col justify-between bg-muted/20 p-3">
+          <div className="space-y-1">
+            <div className="px-2 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+              Pastas
             </div>
-            <p className="text-xs text-muted-foreground mt-1">
-              {unreadCount === 1 ? 'mensagem aguardando' : 'mensagens aguardando'}
-            </p>
-          </CardContent>
-        </Card>
 
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground flex items-center justify-between">
-              <span>Enviados</span>
-              <Send className="size-4 text-emerald-600" />
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-emerald-600">{sentEmails.length}</div>
-            <p className="text-xs text-muted-foreground mt-1">mensagens disparadas</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground flex items-center justify-between">
-              <span>Favoritos</span>
-              <Star className="size-4 text-amber-500 fill-amber-500" />
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-amber-600">{starredCount}</div>
-            <p className="text-xs text-muted-foreground mt-1">marcados com estrela</p>
-          </CardContent>
-        </Card>
-
-        <Card className="col-span-2 md:col-span-1 border-primary/20 bg-primary/5">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground flex items-center justify-between">
-              <span>Cota Diária</span>
-              <div className="flex items-center gap-1.5">
-                <Gauge className="size-4 text-primary" />
-                <button
-                  type="button"
-                  onClick={() => refreshUsage()}
-                  title="Atualizar dados de cota"
-                  className="text-muted-foreground hover:text-foreground transition-colors p-0.5 rounded"
+            <button
+              type="button"
+              onClick={() => {
+                setActiveFolder('inbox');
+                setSelectedEmailId(null);
+              }}
+              className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs font-medium transition-colors ${
+                activeFolder === 'inbox'
+                  ? 'bg-primary text-primary-foreground shadow-xs'
+                  : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+              }`}
+            >
+              <div className="flex items-center gap-2.5">
+                <Inbox className="size-4" />
+                <span>Caixa de Entrada</span>
+              </div>
+              {unreadCount > 0 && (
+                <span
+                  className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
+                    activeFolder === 'inbox' ? 'bg-primary-foreground text-primary' : 'bg-primary/10 text-primary'
+                  }`}
                 >
-                  <RefreshCw className={`size-3 ${loadingUsage ? 'animate-spin' : ''}`} />
-                </button>
+                  {unreadCount}
+                </span>
+              )}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setActiveFolder('sent');
+                setSelectedEmailId(null);
+              }}
+              className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs font-medium transition-colors ${
+                activeFolder === 'sent'
+                  ? 'bg-primary text-primary-foreground shadow-xs'
+                  : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+              }`}
+            >
+              <div className="flex items-center gap-2.5">
+                <Send className="size-4" />
+                <span>Enviados</span>
               </div>
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-baseline justify-between">
-              <div className="text-2xl font-bold">
-                {dailyUsed} <span className="text-sm font-normal text-muted-foreground">/ {dailyLimit}</span>
+              <span className="text-[11px] opacity-75">{sentEmails.length}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setActiveFolder('starred');
+                setSelectedEmailId(null);
+              }}
+              className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs font-medium transition-colors ${
+                activeFolder === 'starred'
+                  ? 'bg-primary text-primary-foreground shadow-xs'
+                  : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+              }`}
+            >
+              <div className="flex items-center gap-2.5">
+                <Star className="size-4" />
+                <span>Favoritos</span>
               </div>
-              <span
-                className={`text-xs font-semibold ${
-                  dailyPercent >= 90
-                    ? 'text-destructive'
-                    : dailyPercent >= 75
-                    ? 'text-amber-600'
-                    : 'text-emerald-600'
-                }`}
-              >
+              {starredCount > 0 && <span className="text-[11px] opacity-75">{starredCount}</span>}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setActiveFolder('archived');
+                setSelectedEmailId(null);
+              }}
+              className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs font-medium transition-colors ${
+                activeFolder === 'archived'
+                  ? 'bg-primary text-primary-foreground shadow-xs'
+                  : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+              }`}
+            >
+              <div className="flex items-center gap-2.5">
+                <Archive className="size-4" />
+                <span>Arquivados</span>
+              </div>
+              {archivedCount > 0 && <span className="text-[11px] opacity-75">{archivedCount}</span>}
+            </button>
+          </div>
+
+          {/* Mini Card de Cota Resend */}
+          <div className="p-2.5 rounded-lg border bg-background/80 space-y-1.5 text-[11px]">
+            <div className="flex items-center justify-between font-medium">
+              <span className="text-muted-foreground">Cota Diária</span>
+              <span className={dailyPercent >= 80 ? 'text-destructive font-semibold' : 'text-primary'}>
                 {dailyRemaining} restam
               </span>
             </div>
-            {/* Progress bar */}
-            <div className="w-full bg-muted/60 rounded-full h-1.5 mt-2.5 overflow-hidden">
+            <div className="w-full bg-muted rounded-full h-1.5 overflow-hidden">
               <div
-                className={`h-full transition-all duration-500 rounded-full ${
-                  dailyPercent >= 90
-                    ? 'bg-destructive'
-                    : dailyPercent >= 75
-                    ? 'bg-amber-500'
-                    : 'bg-emerald-500'
+                className={`h-full transition-all duration-300 ${
+                  dailyPercent >= 90 ? 'bg-destructive' : dailyPercent >= 75 ? 'bg-amber-500' : 'bg-primary'
                 }`}
                 style={{ width: `${dailyPercent}%` }}
               />
             </div>
-            <p className="text-[11px] text-muted-foreground mt-1.5 flex items-center justify-between">
-              <span>{dailyPercent}% consumido</span>
-              <span className="text-[10px] text-muted-foreground/80">reset às 21h</span>
-            </p>
-          </CardContent>
-        </Card>
-      </div>
+            <p className="text-[10px] text-muted-foreground">Reinicia às 21h</p>
+          </div>
+        </div>
 
-      {/* Main Tabs Container */}
-      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)} className="w-full space-y-6">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <TabsList className="glass-chip h-10 p-1 flex">
-            <TabsTrigger value="inbox" className="gap-2 text-xs sm:text-sm">
-              <Inbox className="size-4" />
-              <span>Caixa de Entrada</span>
-              {unreadCount > 0 && (
-                <Badge variant="destructive" className="size-5 p-0 flex items-center justify-center text-[10px]">
-                  {unreadCount}
-                </Badge>
-              )}
-            </TabsTrigger>
-
-            <TabsTrigger value="sent" className="gap-2 text-xs sm:text-sm">
-              <Send className="size-4" />
-              <span>Enviados</span>
-              <span className="text-xs text-muted-foreground">({sentEmails.length})</span>
-            </TabsTrigger>
-
-            <TabsTrigger value="compose" className="gap-2 text-xs sm:text-sm">
-              <SendHorizontal className="size-4" />
-              <span>Nova Mensagem</span>
-            </TabsTrigger>
-          </TabsList>
-
-          {/* Search & Filter Bar for List Views */}
-          {(activeTab === 'inbox' || activeTab === 'sent') && (
-            <div className="relative w-full sm:w-72">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+        {/* ── Coluna 2: Lista de Mensagens / Master (md: 4 ou 5 colunas) ── */}
+        <div
+          className={`col-span-1 md:col-span-4 lg:col-span-4 border-r border-border/60 flex flex-col bg-background ${
+            selectedEmailId ? 'hidden md:flex' : 'flex'
+          }`}
+        >
+          {/* Barra de Busca & Filtros Rápidos */}
+          <div className="p-3 border-b border-border/60 space-y-2">
+            <div className="relative">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
               <Input
-                placeholder="Pesquisar e-mails..."
+                placeholder="Pesquisar por assunto ou contato..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className={`pl-9 h-10 ${searchQuery ? 'pr-9' : ''}`}
+                className="pl-8 h-8 text-xs bg-muted/40"
               />
               {searchQuery && (
                 <button
                   type="button"
                   onClick={() => setSearchQuery('')}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
                 >
-                  <X className="size-4" />
+                  <X className="size-3.5" />
                 </button>
               )}
             </div>
-          )}
-        </div>
 
-        {/* ─── TAB: CAIXA DE ENTRADA ────────────────────────────────── */}
-        <TabsContent value="inbox" className="space-y-4 m-0">
-          {/* Filter Chips */}
-          <div className="flex items-center gap-2 overflow-x-auto pb-1">
-            <Button
-              variant={filterType === 'all' ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => setFilterType('all')}
-              className="text-xs h-8"
-            >
-              Todos ({totalInbox})
-            </Button>
-            <Button
-              variant={filterType === 'unread' ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => setFilterType('unread')}
-              className="text-xs h-8 gap-1.5"
-            >
-              Não lidos
-              {unreadCount > 0 && (
-                <Badge variant="secondary" className="px-1 py-0 text-[10px]">
-                  {unreadCount}
-                </Badge>
+            {/* Abas mobile e filtro unread */}
+            <div className="flex items-center justify-between gap-2 pt-0.5">
+              {/* Pasta no mobile */}
+              <div className="md:hidden">
+                <Select value={activeFolder} onValueChange={(v) => setActiveFolder(v as FolderType)}>
+                  <SelectTrigger className="h-7 text-xs w-[130px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="inbox">Caixa de Entrada</SelectItem>
+                    <SelectItem value="sent">Enviados</SelectItem>
+                    <SelectItem value="starred">Favoritos</SelectItem>
+                    <SelectItem value="archived">Arquivados</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {activeFolder !== 'sent' && (
+                <div className="flex items-center gap-1 bg-muted/60 p-0.5 rounded-md text-[11px] ml-auto">
+                  <button
+                    type="button"
+                    onClick={() => setFilterMode('all')}
+                    className={`px-2 py-0.5 rounded transition-colors ${
+                      filterMode === 'all' ? 'bg-background font-semibold text-foreground shadow-xs' : 'text-muted-foreground'
+                    }`}
+                  >
+                    Todos
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setFilterMode('unread')}
+                    className={`px-2 py-0.5 rounded transition-colors ${
+                      filterMode === 'unread' ? 'bg-background font-semibold text-foreground shadow-xs' : 'text-muted-foreground'
+                    }`}
+                  >
+                    Não lidos
+                  </button>
+                </div>
               )}
-            </Button>
-            <Button
-              variant={filterType === 'starred' ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => setFilterType('starred')}
-              className="text-xs h-8 gap-1"
-            >
-              <Star className="size-3 text-amber-500 fill-amber-500" />
-              Favoritos ({starredCount})
-            </Button>
-            <Button
-              variant={filterType === 'archived' ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => setFilterType('archived')}
-              className="text-xs h-8 gap-1"
-            >
-              <Archive className="size-3" />
-              Arquivados
-            </Button>
+            </div>
           </div>
 
-          {/* Received Emails List */}
-          <Card className="border shadow-xs overflow-hidden">
+          {/* Lista com Rolagem */}
+          <div className="flex-1 overflow-y-auto divide-y divide-border/50">
             {loading ? (
               <div className="flex flex-col items-center justify-center p-12 text-muted-foreground">
-                <Loader2 className="size-8 animate-spin text-primary mb-2" />
-                <p className="text-sm">Sincronizando mensagens...</p>
+                <Loader2 className="size-6 animate-spin text-primary mb-2" />
+                <p className="text-xs">Sincronizando e-mails...</p>
               </div>
-            ) : filteredReceived.length === 0 ? (
-              <div className="flex flex-col items-center justify-center p-12 text-center">
-                <div className="size-14 rounded-full bg-muted flex items-center justify-center mb-3">
-                  <Inbox className="size-7 text-muted-foreground" />
-                </div>
-                <h3 className="font-semibold text-lg">Nenhum e-mail nesta caixa</h3>
-                <p className="text-sm text-muted-foreground max-w-md mt-1">
-                  {searchQuery
-                    ? 'Nenhuma mensagem corresponde aos critérios de pesquisa.'
-                    : 'Os e-mails recebidos aparecerão aqui automaticamente.'}
+            ) : displayedEmails.length === 0 ? (
+              <div className="flex flex-col items-center justify-center p-10 text-center text-muted-foreground">
+                <Inbox className="size-8 stroke-[1.5] mb-2 opacity-50" />
+                <p className="text-xs font-medium text-foreground">Nenhuma mensagem encontrada</p>
+                <p className="text-[11px] text-muted-foreground mt-0.5">
+                  {searchQuery ? 'Tente outros termos na busca.' : 'Esta pasta está vazia no momento.'}
                 </p>
               </div>
             ) : (
-              <div className="divide-y divide-border">
-                {filteredReceived.map((email) => (
+              displayedEmails.map((email) => {
+                const isSelected = selectedEmailId === email.id;
+                const isUnread = email._type === 'received' && !email.read;
+                const isStarred = email._type === 'received' && email.starred;
+
+                return (
                   <div
                     key={email.id}
                     onClick={() => {
-                      setSelectedReceivedEmailId(email.id);
-                      if (!email.read) {
-                        markAsRead(email.id, true);
-                      }
+                      setSelectedEmailId(email.id);
+                      setSelectedEmailType(email._type);
                     }}
-                    className={`flex items-center gap-3 p-4 cursor-pointer transition-colors hover:bg-muted/50 ${
-                      !email.read ? 'bg-primary/5 font-medium' : ''
+                    className={`p-3 cursor-pointer transition-colors relative border-l-2 ${
+                      isSelected
+                        ? 'bg-primary/5 border-primary'
+                        : isUnread
+                        ? 'bg-muted/30 border-transparent hover:bg-muted/50'
+                        : 'border-transparent hover:bg-muted/30'
                     }`}
                   >
-                    {/* Star Button */}
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        toggleStar(email.id, !email.starred);
-                      }}
-                      className="text-muted-foreground hover:text-amber-500 transition-colors p-1"
-                      title={email.starred ? 'Remover dos favoritos' : 'Marcar como favorito'}
-                    >
-                      <Star
-                        className={`size-4 ${
-                          email.starred ? 'text-amber-500 fill-amber-500' : 'text-muted-foreground/30'
-                        }`}
-                      />
-                    </button>
-
-                    {/* Unread Status Dot */}
-                    <div className="flex items-center justify-center size-2">
-                      {!email.read && <div className="size-2 rounded-full bg-primary" />}
-                    </div>
-
-                    {/* Sender Initial Avatar */}
-                    <div className="size-9 rounded-full bg-primary/10 text-primary flex items-center justify-center font-bold text-xs shrink-0">
-                      {email.from ? email.from[0].toUpperCase() : '?'}
-                    </div>
-
-                    {/* Content Preview */}
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between gap-2 mb-0.5">
-                        <span className={`text-sm truncate ${!email.read ? 'font-bold text-foreground' : 'text-foreground/90'}`}>
-                          {email.from}
-                        </span>
-                        <span className="text-xs text-muted-foreground shrink-0">
-                          {formatDate(email.receivedAt)}
+                    <div className="flex items-center justify-between gap-1 mb-1">
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        {isUnread && <span className="size-2 rounded-full bg-primary shrink-0" />}
+                        <span
+                          className={`text-xs truncate ${
+                            isUnread ? 'font-bold text-foreground' : 'font-medium text-foreground/90'
+                          }`}
+                        >
+                          {email._type === 'sent'
+                            ? `Para: ${email.to.join(', ')}`
+                            : email.from.replace(/<.*?>/, '').trim() || email.from}
                         </span>
                       </div>
 
-                      <div className="flex items-center gap-2">
-                        <span className={`text-sm truncate ${!email.read ? 'font-semibold text-foreground' : 'text-muted-foreground'}`}>
-                          {email.subject || '(Sem assunto)'}
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <span className="text-[11px] text-muted-foreground">
+                          {formatRelativeDate(email._type === 'sent' ? email.sentAt : email.receivedAt)}
                         </span>
-                        {email.attachments && email.attachments.length > 0 && (
-                          <Paperclip className="size-3.5 text-muted-foreground shrink-0" />
+                        {email._type === 'received' && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              toggleStar(email.id, !email.starred);
+                            }}
+                            className="text-muted-foreground hover:text-amber-500 transition-colors p-0.5"
+                          >
+                            <Star
+                              className={`size-3.5 ${
+                                isStarred ? 'text-amber-500 fill-amber-500' : 'text-muted-foreground/60'
+                              }`}
+                            />
+                          </button>
                         )}
                       </div>
-
-                      <p className="text-xs text-muted-foreground truncate max-w-xl">
-                        {email.text || '(Sem prévia de texto)'}
-                      </p>
                     </div>
 
-                    {/* Actions */}
-                    <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="size-8 text-muted-foreground hover:text-foreground"
-                        title={email.read ? 'Marcar como não lido' : 'Marcar como lido'}
-                        onClick={() => markAsRead(email.id, !email.read)}
-                      >
-                        <MailCheck className="size-4" />
-                      </Button>
-
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="size-8 text-muted-foreground hover:text-foreground"
-                        title={email.archived ? 'Desarquivar' : 'Arquivar'}
-                        onClick={() => setArchived(email.id, !email.archived)}
-                      >
-                        <Archive className="size-4" />
-                      </Button>
-
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="size-8 text-muted-foreground hover:text-destructive"
-                        title="Excluir"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setEmailToDelete({
-                            type: 'received',
-                            id: email.id,
-                            subject: email.subject || '(Sem assunto)',
-                          });
-                        }}
-                      >
-                        <Trash2 className="size-4" />
-                      </Button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </Card>
-        </TabsContent>
-
-        {/* ─── TAB: ENVIADOS ────────────────────────────────────────── */}
-        <TabsContent value="sent" className="space-y-4 m-0">
-          <Card className="border shadow-xs overflow-hidden">
-            {loading ? (
-              <div className="flex flex-col items-center justify-center p-12 text-muted-foreground">
-                <Loader2 className="size-8 animate-spin text-primary mb-2" />
-                <p className="text-sm">Carregando histórico de enviados...</p>
-              </div>
-            ) : filteredSent.length === 0 ? (
-              <div className="flex flex-col items-center justify-center p-12 text-center">
-                <div className="size-14 rounded-full bg-muted flex items-center justify-center mb-3">
-                  <Send className="size-7 text-muted-foreground" />
-                </div>
-                <h3 className="font-semibold text-lg">
-                  {searchQuery ? 'Nenhum e-mail encontrado' : 'Nenhum e-mail enviado'}
-                </h3>
-                <p className="text-sm text-muted-foreground max-w-md mt-1">
-                  {searchQuery
-                    ? 'Nenhum disparo corresponde aos critérios de pesquisa.'
-                    : 'Os e-mails disparados pelo sistema ficarão registrados aqui com confirmação de entrega.'}
-                </p>
-                {!searchQuery && (
-                  <Button
-                    size="sm"
-                    onClick={() => setActiveTab('compose')}
-                    className="mt-4 gap-2"
-                  >
-                    <Plus className="size-4" />
-                    Escrever primeira mensagem
-                  </Button>
-                )}
-              </div>
-            ) : (
-              <div className="divide-y divide-border">
-                {filteredSent.map((email) => (
-                  <div
-                    key={email.id}
-                    onClick={() => setSelectedSentEmailId(email.id)}
-                    className="flex items-center gap-3 p-4 cursor-pointer transition-colors hover:bg-muted/50"
-                  >
-                    <div className="size-9 rounded-full bg-emerald-500/10 text-emerald-600 flex items-center justify-center font-bold text-xs shrink-0">
-                      <Send className="size-4" />
+                    <div
+                      className={`text-xs truncate mb-1 ${
+                        isUnread ? 'font-semibold text-foreground' : 'text-foreground/80'
+                      }`}
+                    >
+                      {email.subject || '(Sem assunto)'}
                     </div>
 
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between gap-2 mb-0.5">
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm font-medium truncate">
-                            Para: {email.to.join(', ')}
-                          </span>
-                          <Badge variant="outline" className="text-[10px] text-emerald-600 border-emerald-200 bg-emerald-50">
-                            Enviado
-                          </Badge>
-                        </div>
-                        <span className="text-xs text-muted-foreground shrink-0">
-                          {formatDate(email.sentAt)}
-                        </span>
+                    <p className="text-[11px] text-muted-foreground line-clamp-1">
+                      {email.text ? email.text.replace(/\s+/g, ' ') : '(Mensagem formatada em HTML)'}
+                    </p>
+
+                    {email._type === 'received' && email.attachments && email.attachments.length > 0 && (
+                      <div className="flex items-center gap-1 text-[10px] text-muted-foreground mt-1.5">
+                        <Paperclip className="size-3" />
+                        <span>{email.attachments.length} anexo(s)</span>
                       </div>
-
-                      <div className="text-sm text-foreground/90 font-medium truncate">
-                        {email.subject || '(Sem assunto)'}
-                      </div>
-
-                      <p className="text-xs text-muted-foreground truncate max-w-xl">
-                        {email.text || '(Conteúdo formatado em HTML)'}
-                      </p>
-                    </div>
-
-                    <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="size-8 text-muted-foreground hover:text-destructive"
-                        title="Excluir do histórico"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setEmailToDelete({
-                            type: 'sent',
-                            id: email.id,
-                            subject: email.subject || '(Sem assunto)',
-                          });
-                        }}
-                      >
-                        <Trash2 className="size-4" />
-                      </Button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </Card>
-        </TabsContent>
-
-        {/* ─── TAB: NOVA MENSAGEM (COMPOR) ─────────────────────────── */}
-        <TabsContent value="compose" className="space-y-6 m-0">
-          <Card className="border shadow-xs">
-            <CardHeader className="pb-4 border-b border-border/60">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                <div>
-                  <CardTitle className="text-lg flex items-center gap-2">
-                    <SendHorizontal className="size-5 text-primary" />
-                    Nova Mensagem
-                  </CardTitle>
-                  <CardDescription>
-                    Envie e-mails para clientes e fornecedores
-                  </CardDescription>
-                </div>
-
-                {/* Templates Selector */}
-                <div className="flex items-center gap-2">
-                  <Sparkles className="size-4 text-amber-500 shrink-0" />
-                  <Select onValueChange={handleSelectTemplate}>
-                    <SelectTrigger className="w-[220px] h-9 text-xs">
-                      <SelectValue placeholder="Modelos Rápidos..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {EMAIL_TEMPLATES.map((tpl) => (
-                        <SelectItem key={tpl.id} value={tpl.id} className="text-xs">
-                          {tpl.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-            </CardHeader>
-
-            <CardContent className="pt-5">
-              <form onSubmit={handleSend} className="space-y-4">
-                {/* Remetente & Cliente */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {/* Sender */}
-                  <div className="space-y-1.5">
-                    <div className="flex items-center justify-between">
-                      <label className="text-xs font-semibold text-muted-foreground">Remetente (From):</label>
-                      <button
-                        type="button"
-                        onClick={() => setIsCustomSender(!isCustomSender)}
-                        className="text-[11px] text-primary hover:underline"
-                      >
-                        {isCustomSender ? 'Selecionar da Lista' : 'Digitar Manual'}
-                      </button>
-                    </div>
-
-                    {isCustomSender ? (
-                      <Input
-                        placeholder="Ex: Luisices <contato@luisices.com.br>"
-                        value={customSender}
-                        onChange={(e) => setCustomSender(e.target.value)}
-                        className="h-10 text-sm"
-                      />
-                    ) : (
-                      <Select value={sender} onValueChange={setSender}>
-                        <SelectTrigger className="h-10 text-sm">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {isDev ? (
-                            <>
-                              <SelectItem value="Luisices Dev <contato@dev.luisices.com.br>">
-                                Luisices Dev &lt;contato@dev.luisices.com.br&gt;
-                              </SelectItem>
-                              <SelectItem value="Luisices Dev <noreply@dev.luisices.com.br>">
-                                Luisices Dev &lt;noreply@dev.luisices.com.br&gt;
-                              </SelectItem>
-                              <SelectItem value="Atendimento Dev <suporte@dev.luisices.com.br>">
-                                Atendimento Dev &lt;suporte@dev.luisices.com.br&gt;
-                              </SelectItem>
-                              <SelectItem value="Luisices Prod <contato@luisices.com.br>">
-                                Luisices Prod &lt;contato@luisices.com.br&gt;
-                              </SelectItem>
-                            </>
-                          ) : (
-                            <>
-                              <SelectItem value="Luisices <contato@luisices.com.br>">
-                                Luisices &lt;contato@luisices.com.br&gt;
-                              </SelectItem>
-                              <SelectItem value="Luisices <noreply@luisices.com.br>">
-                                Luisices &lt;noreply@luisices.com.br&gt;
-                              </SelectItem>
-                              <SelectItem value="Atendimento Luisices <suporte@luisices.com.br>">
-                                Atendimento &lt;suporte@luisices.com.br&gt;
-                              </SelectItem>
-                            </>
-                          )}
-                        </SelectContent>
-                      </Select>
                     )}
                   </div>
+                );
+              })
+            )}
+          </div>
+        </div>
 
-                  {/* Customer Quick Selector */}
-                  <div className="space-y-1.5">
-                    <div className="flex items-center justify-between">
-                      <label className="text-xs font-semibold text-muted-foreground">Preencher com Cliente Cadastrado:</label>
-                      {selectedCustomer && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setSelectedCustomer('');
-                            setRecipient('');
-                          }}
-                          className="text-[11px] text-primary hover:underline"
-                        >
-                          Limpar
-                        </button>
-                      )}
-                    </div>
-                    <Select value={selectedCustomer} onValueChange={handleSelectCustomer}>
-                      <SelectTrigger className="h-10 text-sm">
-                        <SelectValue placeholder="Selecione um cliente cadastrado..." />
-                      </SelectTrigger>
-                      <SelectContent className="max-h-60">
-                        {customers
-                          .filter((c) => !!c.email)
-                          .map((c) => (
-                            <SelectItem key={c.id} value={c.id} className="text-sm">
-                              {c.name} ({c.email})
-                            </SelectItem>
-                          ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-
-                {/* Recipient */}
-                <div className="space-y-1.5">
-                  <div className="flex items-center justify-between">
-                    <label className="text-xs font-semibold text-muted-foreground">Destinatário (Para):</label>
-                    <button
-                      type="button"
-                      onClick={() => setShowCcBcc(!showCcBcc)}
-                      className="text-xs text-primary hover:underline"
-                    >
-                      {showCcBcc ? 'Ocultar Cc/Cco' : 'Adicionar Cc/Cco'}
-                    </button>
-                  </div>
-                  <Input
-                    placeholder="cliente@exemplo.com.br (separe múltiplos com vírgula)"
-                    value={recipient}
-                    onChange={(e) => setRecipient(e.target.value)}
-                    required
-                  />
-                </div>
-
-                {/* CC & BCC */}
-                {showCcBcc && (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-1">
-                    <div className="space-y-1.5">
-                      <label className="text-xs font-semibold text-muted-foreground">Com Cópia (Cc):</label>
-                      <Input
-                        placeholder="copia@dominio.com"
-                        value={cc}
-                        onChange={(e) => setCc(e.target.value)}
-                      />
-                    </div>
-                    <div className="space-y-1.5">
-                      <label className="text-xs font-semibold text-muted-foreground">Cópia Oculta (Cco/Bcc):</label>
-                      <Input
-                        placeholder="copiaoculta@dominio.com"
-                        value={bcc}
-                        onChange={(e) => setBcc(e.target.value)}
-                      />
-                    </div>
-                  </div>
-                )}
-
-                {/* Subject */}
-                <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-muted-foreground">Assunto:</label>
-                  <Input
-                    placeholder="Ex: Seu orçamento personalizado - Luisices"
-                    value={subject}
-                    onChange={(e) => setSubject(e.target.value)}
-                    required
-                  />
-                </div>
-
-                {/* Message Body & Preview Toggle */}
-                <div className="space-y-1.5">
-                  <div className="flex items-center justify-between">
-                    <label className="text-xs font-semibold text-muted-foreground">Mensagem:</label>
-                    <div className="flex items-center gap-1 bg-muted rounded-md p-0.5 text-xs">
-                      <button
-                        type="button"
-                        onClick={() => setPreviewMode('edit')}
-                        className={`px-2.5 py-1 rounded transition-colors ${
-                          previewMode === 'edit' ? 'bg-background shadow-xs font-semibold' : 'text-muted-foreground'
-                        }`}
-                      >
-                        Escrever
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setPreviewMode('preview')}
-                        className={`px-2.5 py-1 rounded transition-colors flex items-center gap-1 ${
-                          previewMode === 'preview' ? 'bg-background shadow-xs font-semibold' : 'text-muted-foreground'
-                        }`}
-                      >
-                        <Eye className="size-3.5" />
-                        Prévia
-                      </button>
-                    </div>
-                  </div>
-
-                  {previewMode === 'edit' ? (
-                    <Textarea
-                      placeholder="Escreva sua mensagem aqui..."
-                      value={body}
-                      onChange={(e) => setBody(e.target.value)}
-                      className="min-h-[220px] font-sans text-sm leading-relaxed"
-                      required
-                    />
-                  ) : (
-                    <div className="border rounded-md p-5 bg-white text-gray-900 min-h-[220px] max-h-[450px] overflow-y-auto">
-                      <div className="max-w-[550px] mx-auto">
-                        <div className="bg-gray-50 border-l-4 border-indigo-600 p-3 rounded mb-4">
-                          <h3 className="text-sm font-bold text-gray-800 m-0">Luisices Papelaria Personalizada</h3>
-                        </div>
-                        <div className="whitespace-pre-wrap text-sm leading-relaxed mb-6">
-                          {body || '(Nenhum conteúdo digitado)'}
-                        </div>
-                        <hr className="border-t border-gray-200 my-4" />
-                        <div className="text-xs text-gray-500">
-                          <p className="m-0 font-bold">Luisices Personalizados</p>
-                          <p className="m-0">WhatsApp: (11) 97060-6433 | {isDev ? 'contato@dev.luisices.com.br' : 'contato@luisices.com.br'}</p>
-                          <p className="m-0 text-indigo-600">{isDev ? 'dev.luisices.com.br' : 'luisices.com.br'}</p>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {/* Action Buttons & Daily Quota Status */}
-                <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 pt-3 border-t border-border/60">
-                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                    <Gauge className="size-4 text-primary shrink-0" />
-                    <span>
-                      Cota diária: <strong>{dailyUsed} de {dailyLimit}</strong> envios hoje ({dailyRemaining} disponíveis)
-                    </span>
-                  </div>
-
-                  <div className="flex items-center justify-end gap-3">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() => {
-                        setBody('');
-                        setSubject('');
-                        setRecipient('');
-                        setSelectedCustomer('');
-                      }}
-                    >
-                      Limpar
-                    </Button>
-
-                    <Button
-                      type="submit"
-                      disabled={isSending || dailyRemaining === 0}
-                      className="gap-2 px-6"
-                    >
-                      {isSending ? (
-                        <>
-                          <Loader2 className="size-4 animate-spin" />
-                          Enviando...
-                        </>
-                      ) : (
-                        <>
-                          <Send className="size-4" />
-                          Enviar E-mail
-                        </>
-                      )}
-                    </Button>
-                  </div>
-                </div>
-              </form>
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
-
-      {/* ─── MODAL: DETALHES DO E-MAIL RECEBIDO ─────────────────────── */}
-      <Dialog
-        open={!!selectedReceivedEmailId}
-        onOpenChange={(open) => !open && setSelectedReceivedEmailId(null)}
-      >
-        <DialogContent
-          size="3xl"
-          noPadding
-          className="max-h-[85dvh] flex flex-col overflow-hidden"
-          aria-describedby={undefined}
+        {/* ── Coluna 3: Leitura da Mensagem / Detail (md: 5 ou 6 colunas) ── */}
+        <div
+          className={`col-span-1 md:col-span-5 lg:col-span-6 flex flex-col bg-background min-w-0 ${
+            !selectedEmailId ? 'hidden md:flex' : 'flex'
+          }`}
         >
-          <DialogDescription className="sr-only">
-            Detalhes e visualização do e-mail recebido
-          </DialogDescription>
-          {selectedReceivedEmail && (
-            <>
-              {/* Modal Header */}
-              <div className="p-4 sm:p-6 pb-4 border-b border-border/60 space-y-3">
-                <DialogTitle className="text-xl font-bold leading-tight">
-                  {selectedReceivedEmail.subject || '(Sem assunto)'}
-                </DialogTitle>
+          {currentReceivedEmail || currentSentEmail ? (
+            <div className="flex flex-col h-full min-w-0">
+              {/* Barra de Ações Superior */}
+              <div className="p-3 border-b border-border/60 flex items-center justify-between gap-2 bg-muted/10 shrink-0">
+                <div className="flex items-center gap-1">
+                  {/* Botão voltar no mobile */}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setSelectedEmailId(null)}
+                    className="md:hidden h-8 px-2 gap-1 text-xs"
+                  >
+                    <ArrowLeft className="size-4" />
+                    <span>Lista</span>
+                  </Button>
 
-                <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground pt-1">
-                  <div className="space-y-1">
+                  {currentReceivedEmail && (
+                    <>
+                      <Button
+                        size="sm"
+                        variant="default"
+                        onClick={() => handleStartReply(currentReceivedEmail)}
+                        className="h-8 gap-1 text-xs shadow-xs"
+                      >
+                        <Reply className="size-3.5" />
+                        <span>Responder</span>
+                      </Button>
+
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => markAsRead(currentReceivedEmail.id, !currentReceivedEmail.read)}
+                        className="h-8 gap-1 text-xs"
+                        title={currentReceivedEmail.read ? 'Marcar como não lido' : 'Marcar como lido'}
+                      >
+                        <MailCheck className="size-3.5" />
+                        <span className="hidden sm:inline">
+                          {currentReceivedEmail.read ? 'Não lido' : 'Lido'}
+                        </span>
+                      </Button>
+
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setArchived(currentReceivedEmail.id, !currentReceivedEmail.archived)}
+                        className="h-8 gap-1 text-xs"
+                        title={currentReceivedEmail.archived ? 'Desarquivar' : 'Arquivar'}
+                      >
+                        {currentReceivedEmail.archived ? (
+                          <ArchiveRestore className="size-3.5" />
+                        ) : (
+                          <Archive className="size-3.5" />
+                        )}
+                        <span className="hidden sm:inline">
+                          {currentReceivedEmail.archived ? 'Desarquivar' : 'Arquivar'}
+                        </span>
+                      </Button>
+                    </>
+                  )}
+
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={handleCopyMessageText}
+                    className="h-8 gap-1 text-xs"
+                    title="Copiar texto da mensagem"
+                  >
+                    {copiedText ? <Check className="size-3.5 text-emerald-600" /> : <Copy className="size-3.5" />}
+                    <span className="hidden sm:inline">Copiar</span>
+                  </Button>
+                </div>
+
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => {
+                    const isRec = Boolean(currentReceivedEmail);
+                    const item = currentReceivedEmail || currentSentEmail;
+                    if (!item) return;
+                    setEmailToDelete({
+                      type: isRec ? 'received' : 'sent',
+                      id: item.id,
+                      subject: item.subject || '(Sem assunto)',
+                    });
+                  }}
+                  className="h-8 px-2 text-destructive hover:text-destructive hover:bg-destructive/10"
+                  title="Excluir mensagem"
+                >
+                  <Trash2 className="size-3.5" />
+                </Button>
+              </div>
+
+              {/* Cabeçalho da Mensagem */}
+              <div className="p-4 sm:p-5 border-b border-border/60 space-y-3 shrink-0">
+                <h2 className="text-lg sm:text-xl font-bold text-foreground leading-tight">
+                  {(currentReceivedEmail || currentSentEmail)?.subject || '(Sem assunto)'}
+                </h2>
+
+                <div className="flex items-start justify-between gap-3 text-xs text-muted-foreground">
+                  <div className="space-y-1 min-w-0">
                     <div>
                       <span className="font-semibold text-foreground">De:</span>{' '}
-                      <span className="text-primary font-mono">{selectedReceivedEmail.from}</span>
+                      <span className="font-mono text-primary">
+                        {currentReceivedEmail ? currentReceivedEmail.from : currentSentEmail?.from}
+                      </span>
                     </div>
                     <div>
                       <span className="font-semibold text-foreground">Para:</span>{' '}
-                      <span className="font-mono">{selectedReceivedEmail.to.join(', ')}</span>
+                      <span className="font-mono">
+                        {currentReceivedEmail
+                          ? currentReceivedEmail.to.join(', ')
+                          : currentSentEmail?.to.join(', ')}
+                      </span>
                     </div>
+                    {((currentReceivedEmail?.cc && currentReceivedEmail.cc.length > 0) ||
+                      (currentSentEmail?.cc && currentSentEmail.cc.length > 0)) && (
+                      <div>
+                        <span className="font-semibold text-foreground">Cc:</span>{' '}
+                        <span>
+                          {(currentReceivedEmail?.cc || currentSentEmail?.cc)?.join(', ')}
+                        </span>
+                      </div>
+                    )}
                   </div>
 
-                  <div className="flex items-center gap-1 text-muted-foreground">
+                  <div className="flex items-center gap-1 shrink-0 text-muted-foreground text-[11px]">
                     <Clock className="size-3.5" />
-                    <span>{new Date(selectedReceivedEmail.receivedAt).toLocaleString('pt-BR')}</span>
+                    <span>
+                      {new Date(
+                        currentReceivedEmail ? currentReceivedEmail.receivedAt : currentSentEmail?.sentAt || ''
+                      ).toLocaleString('pt-BR')}
+                    </span>
                   </div>
-                </div>
-
-                {/* Modal Actions */}
-                <div className="flex items-center gap-2 pt-2">
-                  <Button
-                    size="sm"
-                    onClick={() => handleReply(selectedReceivedEmail)}
-                    className="gap-1.5 h-8 text-xs"
-                  >
-                    <Reply className="size-3.5" />
-                    Responder
-                  </Button>
-
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      markAsRead(selectedReceivedEmail.id, !selectedReceivedEmail.read);
-                    }}
-                    className="gap-1.5 h-8 text-xs"
-                  >
-                    <MailCheck className="size-3.5" />
-                    {selectedReceivedEmail.read ? 'Marcar como não lido' : 'Marcar como lido'}
-                  </Button>
-
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      setEmailToDelete({
-                        type: 'received',
-                        id: selectedReceivedEmail.id,
-                        subject: selectedReceivedEmail.subject || '(Sem assunto)',
-                      });
-                    }}
-                    className="gap-1.5 h-8 text-xs text-destructive hover:text-destructive"
-                  >
-                    <Trash2 className="size-3.5" />
-                    Excluir
-                  </Button>
                 </div>
               </div>
 
-              {/* Modal Body */}
-              <DialogBody className="p-4 sm:p-6">
-                {selectedReceivedEmail.html ? (
-                  <div className="w-full bg-white rounded-md border p-2">
+              {/* Corpo da Mensagem com Rolagem */}
+              <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4">
+                {currentReceivedEmail ? (
+                  currentReceivedEmail.html ? (
+                    <div className="w-full bg-white rounded-lg border p-1 shadow-2xs">
+                      <iframe
+                        title="Conteúdo da Mensagem"
+                        srcDoc={currentReceivedEmail.html}
+                        sandbox="allow-popups"
+                        className="w-full min-h-[380px] border-0"
+                      />
+                    </div>
+                  ) : (
+                    <div className="whitespace-pre-wrap font-sans text-sm leading-relaxed p-4 bg-muted/20 rounded-lg">
+                      {currentReceivedEmail.text || '(Mensagem sem texto)'}
+                    </div>
+                  )
+                ) : currentSentEmail?.html ? (
+                  <div className="w-full bg-white rounded-lg border p-1 shadow-2xs">
                     <iframe
-                      title="Conteúdo do e-mail"
-                      srcDoc={selectedReceivedEmail.html}
+                      title="Conteúdo da Mensagem Enviada"
+                      srcDoc={currentSentEmail.html}
                       sandbox="allow-popups"
-                      className="w-full min-h-[350px] border-0"
+                      className="w-full min-h-[380px] border-0"
                     />
                   </div>
                 ) : (
-                  <div className="whitespace-pre-wrap font-sans text-sm leading-relaxed p-4 bg-muted/30 rounded-md">
-                    {selectedReceivedEmail.text || '(Mensagem sem texto)'}
+                  <div className="whitespace-pre-wrap font-sans text-sm leading-relaxed p-4 bg-muted/20 rounded-lg">
+                    {currentSentEmail?.text || '(Mensagem sem texto)'}
                   </div>
                 )}
 
-                {/* Attachments */}
-                {selectedReceivedEmail.attachments && selectedReceivedEmail.attachments.length > 0 && (
-                  <div className="mt-6 pt-4 border-t space-y-2">
-                    <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                {/* Anexos */}
+                {currentReceivedEmail?.attachments && currentReceivedEmail.attachments.length > 0 && (
+                  <div className="pt-4 border-t space-y-2">
+                    <div className="text-xs font-semibold text-muted-foreground flex items-center gap-1.5">
                       <Paperclip className="size-3.5" />
-                      Anexos ({selectedReceivedEmail.attachments.length})
-                    </h4>
+                      <span>Anexos ({currentReceivedEmail.attachments.length})</span>
+                    </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                      {selectedReceivedEmail.attachments.map((att, idx) => (
+                      {currentReceivedEmail.attachments.map((att, idx) => (
                         <div
                           key={att.id || idx}
-                          className="flex items-center justify-between p-2.5 rounded-lg border bg-muted/20 text-xs"
+                          className="flex items-center justify-between p-2.5 rounded-lg border bg-card text-xs shadow-2xs"
                         >
                           <div className="flex items-center gap-2 truncate">
                             <Paperclip className="size-3.5 text-muted-foreground shrink-0" />
@@ -1255,7 +1164,7 @@ export function Emails() {
                               href={att.downloadUrl}
                               target="_blank"
                               rel="noreferrer"
-                              className="text-primary hover:underline ml-2 shrink-0"
+                              className="text-primary hover:underline font-semibold ml-2 shrink-0"
                             >
                               Baixar
                             </a>
@@ -1265,85 +1174,330 @@ export function Emails() {
                     </div>
                   </div>
                 )}
-              </DialogBody>
-            </>
+              </div>
+            </div>
+          ) : (
+            /* Estado Vazio quando nenhuma mensagem está selecionada */
+            <div className="flex-1 flex flex-col items-center justify-center p-8 text-center text-muted-foreground">
+              <div className="size-14 rounded-full bg-muted/50 flex items-center justify-center mb-3">
+                <Mail className="size-7 text-muted-foreground/60" />
+              </div>
+              <h3 className="font-semibold text-sm text-foreground">Nenhuma mensagem selecionada</h3>
+              <p className="text-xs text-muted-foreground max-w-xs mt-1">
+                Escolha um e-mail na lista ao lado para ler o conteúdo ou redija uma nova mensagem para seus clientes.
+              </p>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setIsComposeOpen(true)}
+                className="mt-4 gap-2 text-xs"
+              >
+                <Plus className="size-3.5" />
+                Nova Mensagem
+              </Button>
+            </div>
           )}
-        </DialogContent>
-      </Dialog>
+        </div>
+      </div>
 
-      {/* ─── MODAL: DETALHES DO E-MAIL ENVIADO ──────────────────────── */}
-      <Dialog
-        open={!!selectedSentEmailId}
-        onOpenChange={(open) => !open && setSelectedSentEmailId(null)}
-      >
-        <DialogContent
-          size="2xl"
-          noPadding
-          className="max-h-[80dvh] flex flex-col overflow-hidden"
-          aria-describedby={undefined}
-        >
-          <DialogDescription className="sr-only">
-            Detalhes e visualização do e-mail enviado
-          </DialogDescription>
-          {selectedSentEmail && (
-            <>
-              <div className="p-4 sm:p-6 pb-4 border-b border-border/60 space-y-3">
-                <div className="flex items-start justify-between gap-4">
-                  <DialogTitle className="text-lg font-bold">
-                    {selectedSentEmail.subject || '(Sem assunto)'}
-                  </DialogTitle>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      setEmailToDelete({
-                        type: 'sent',
-                        id: selectedSentEmail.id,
-                        subject: selectedSentEmail.subject || '(Sem assunto)',
-                      });
-                    }}
-                    className="gap-1.5 h-8 text-xs text-destructive hover:text-destructive shrink-0"
-                  >
-                    <Trash2 className="size-3.5" />
-                    Excluir
-                  </Button>
-                </div>
-                <div className="text-xs text-muted-foreground space-y-1 pt-1">
-                  <div>
-                    <span className="font-semibold text-foreground">Para:</span> {selectedSentEmail.to.join(', ')}
-                  </div>
-                  <div>
-                    <span className="font-semibold text-foreground">De:</span> {selectedSentEmail.from}
-                  </div>
-                  <div>
-                    <span className="font-semibold text-foreground">Data de Envio:</span>{' '}
-                    {new Date(selectedSentEmail.sentAt).toLocaleString('pt-BR')}
-                  </div>
-                </div>
+      {/* ─── Modal de Composição / Nova Mensagem ───────────────────── */}
+      <Dialog open={isComposeOpen} onOpenChange={setIsComposeOpen}>
+        <DialogContent size="3xl" className="max-h-[92dvh] flex flex-col p-0 overflow-hidden">
+          <DialogHeader className="p-4 sm:p-5 pb-3 border-b border-border/60">
+            <div className="flex items-center justify-between">
+              <div>
+                <DialogTitle className="text-lg flex items-center gap-2">
+                  <SendHorizontal className="size-5 text-primary" />
+                  <span>Nova Mensagem</span>
+                </DialogTitle>
+                <DialogDescription className="text-xs mt-0.5">
+                  Envie e-mails profissionais com a assinatura oficial do ateliê
+                </DialogDescription>
               </div>
 
-              <DialogBody className="p-4 sm:p-6">
-                {selectedSentEmail.html ? (
-                  <div className="w-full bg-white rounded-md border p-2">
-                    <iframe
-                      title="Visualização do e-mail enviado"
-                      srcDoc={selectedSentEmail.html}
-                      sandbox="allow-popups"
-                      className="w-full min-h-[300px] border-0"
+              {/* Alternador Escrever / Prévia */}
+              <div className="flex items-center gap-1 bg-muted p-0.5 rounded-lg text-xs">
+                <button
+                  type="button"
+                  onClick={() => setComposeMode('write')}
+                  className={`px-3 py-1 rounded-md transition-colors ${
+                    composeMode === 'write' ? 'bg-background shadow-xs font-semibold text-foreground' : 'text-muted-foreground'
+                  }`}
+                >
+                  Escrever
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setComposeMode('preview')}
+                  className={`px-3 py-1 rounded-md transition-colors flex items-center gap-1 ${
+                    composeMode === 'preview' ? 'bg-background shadow-xs font-semibold text-foreground' : 'text-muted-foreground'
+                  }`}
+                >
+                  <Eye className="size-3.5" />
+                  <span>Prévia Real</span>
+                </button>
+              </div>
+            </div>
+          </DialogHeader>
+
+          <form onSubmit={handleSend} className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4">
+            {composeMode === 'write' ? (
+              <>
+                {/* Linha 1: Modelos Prontos & Cliente Cadastrado */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3 rounded-lg border bg-muted/20">
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-semibold text-muted-foreground flex items-center gap-1.5">
+                      <Sparkles className="size-3 text-amber-500" />
+                      <span>Modelos de Papelaria:</span>
+                    </label>
+                    <Select onValueChange={handleSelectTemplate}>
+                      <SelectTrigger className="h-8 text-xs bg-background">
+                        <SelectValue placeholder="Escolher modelo rápido..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {allTemplates.map((tpl) => (
+                          <SelectItem key={tpl.id} value={tpl.id} className="text-xs">
+                            {tpl.name} {tpl.isCustom ? '⭐' : ''}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-semibold text-muted-foreground flex items-center gap-1.5">
+                      <Tag className="size-3 text-primary" />
+                      <span>Preencher com Cliente:</span>
+                    </label>
+                    <Select value={selectedCustomerId} onValueChange={handleSelectCustomer}>
+                      <SelectTrigger className="h-8 text-xs bg-background">
+                        <SelectValue placeholder="Selecionar cliente cadastrado..." />
+                      </SelectTrigger>
+                      <SelectContent className="max-h-56">
+                        {customers
+                          .filter((c) => !!c.email)
+                          .map((c) => (
+                            <SelectItem key={c.id} value={c.id} className="text-xs">
+                              {c.name} ({c.email})
+                            </SelectItem>
+                          ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                {/* Linha 2: Remetente & Destinatário */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-semibold text-muted-foreground">Remetente (De):</label>
+                      <button
+                        type="button"
+                        onClick={() => setIsCustomSender(!isCustomSender)}
+                        className="text-[11px] text-primary hover:underline"
+                      >
+                        {isCustomSender ? 'Lista Padrão' : 'Digitar Manual'}
+                      </button>
+                    </div>
+                    {isCustomSender ? (
+                      <Input
+                        placeholder="Ex: Minha Loja <contato@meudominio.com>"
+                        value={customSender}
+                        onChange={(e) => setCustomSender(e.target.value)}
+                        className="h-9 text-xs"
+                      />
+                    ) : (
+                      <Select value={sender} onValueChange={setSender}>
+                        <SelectTrigger className="h-9 text-xs">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value={defaultSender} className="text-xs">
+                            {defaultSender} (Padrão)
+                          </SelectItem>
+                          {isDev ? (
+                            <>
+                              <SelectItem value="Luisices Dev <noreply@dev.luisices.com.br>" className="text-xs">
+                                Luisices Dev &lt;noreply@dev.luisices.com.br&gt;
+                              </SelectItem>
+                              <SelectItem value="Atendimento Dev <suporte@dev.luisices.com.br>" className="text-xs">
+                                Atendimento Dev &lt;suporte@dev.luisices.com.br&gt;
+                              </SelectItem>
+                            </>
+                          ) : (
+                            <>
+                              <SelectItem value="Luisices <noreply@luisices.com.br>" className="text-xs">
+                                Luisices &lt;noreply@luisices.com.br&gt;
+                              </SelectItem>
+                              <SelectItem value="Atendimento Luisices <suporte@luisices.com.br>" className="text-xs">
+                                Atendimento &lt;suporte@luisices.com.br&gt;
+                              </SelectItem>
+                            </>
+                          )}
+                        </SelectContent>
+                      </Select>
+                    )}
+                  </div>
+
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-semibold text-muted-foreground">Destinatário (Para):</label>
+                      <button
+                        type="button"
+                        onClick={() => setShowCcBcc(!showCcBcc)}
+                        className="text-[11px] text-primary hover:underline"
+                      >
+                        {showCcBcc ? 'Ocultar Cc/Cco' : '+ Adicionar Cc/Cco'}
+                      </button>
+                    </div>
+                    <Input
+                      placeholder="cliente@exemplo.com.br (vírgula para múltiplos)"
+                      value={recipient}
+                      onChange={(e) => setRecipient(e.target.value)}
+                      className="h-9 text-xs"
+                      required
                     />
                   </div>
-                ) : (
-                  <div className="whitespace-pre-wrap text-sm p-4 bg-muted/30 rounded-md">
-                    {selectedSentEmail.text}
+                </div>
+
+                {/* Cc e Cco colapsáveis */}
+                {showCcBcc && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                    <div className="space-y-1">
+                      <label className="text-xs font-semibold text-muted-foreground">Com Cópia (Cc):</label>
+                      <Input
+                        placeholder="copia@dominio.com"
+                        value={cc}
+                        onChange={(e) => setCc(e.target.value)}
+                        className="h-8 text-xs"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-semibold text-muted-foreground">Cópia Oculta (Cco):</label>
+                      <Input
+                        placeholder="copiaoculta@dominio.com"
+                        value={bcc}
+                        onChange={(e) => setBcc(e.target.value)}
+                        className="h-8 text-xs"
+                      />
+                    </div>
                   </div>
                 )}
-              </DialogBody>
-            </>
-          )}
+
+                {/* Assunto */}
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-muted-foreground">Assunto:</label>
+                  <Input
+                    placeholder="Ex: Seu Orçamento Personalizado - Luisices"
+                    value={subject}
+                    onChange={(e) => setSubject(e.target.value)}
+                    className="h-9 text-xs"
+                    required
+                  />
+                </div>
+
+                {/* Tags Dinâmicas Rápidas */}
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-semibold text-muted-foreground">Mensagem:</label>
+                    <span className="text-[10px] text-muted-foreground">Clique numa tag para inserir:</span>
+                  </div>
+
+                  <div className="flex flex-wrap gap-1.5 pb-1">
+                    {DYNAMIC_TAGS.map((t) => (
+                      <button
+                        key={t.tag}
+                        type="button"
+                        onClick={() => handleInsertTag(t.tag)}
+                        className="text-[10px] font-mono px-2 py-0.5 rounded border bg-muted/40 hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                        title={`Inserir ${t.label}`}
+                      >
+                        {t.tag}
+                      </button>
+                    ))}
+                  </div>
+
+                  <Textarea
+                    ref={textareaRef}
+                    placeholder="Escreva sua mensagem aqui..."
+                    value={body}
+                    onChange={(e) => setBody(e.target.value)}
+                    className="min-h-[220px] font-sans text-xs leading-relaxed"
+                    required
+                  />
+                </div>
+              </>
+            ) : (
+              /* Prévia ao vivo */
+              <div className="space-y-3">
+                <div className="flex items-center gap-2 p-2.5 rounded-lg bg-primary/5 text-primary text-xs">
+                  <Info className="size-4 shrink-0" />
+                  <span>
+                    Pré-visualização fiel de como a mensagem chegará na caixa de entrada com a identidade da sua loja.
+                  </span>
+                </div>
+
+                <div className="border rounded-xl overflow-hidden bg-white shadow-2xs">
+                  <iframe
+                    title="Prévia do E-mail"
+                    srcDoc={generateFormattedHtml(body || 'Sua mensagem aparecerá aqui.')}
+                    className="w-full min-h-[380px] border-0"
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* Rodapé do Formulário */}
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 pt-3 border-t border-border/60">
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={handleSaveAsTemplate}
+                  className="gap-1.5 text-xs h-8"
+                  title="Salvar texto atual como modelo personalizado"
+                >
+                  <BookmarkPlus className="size-3.5" />
+                  <span>Salvar como Modelo</span>
+                </Button>
+              </div>
+
+              <div className="flex items-center justify-end gap-2">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setIsComposeOpen(false)}
+                  className="text-xs h-8"
+                >
+                  Cancelar
+                </Button>
+
+                <Button
+                  type="submit"
+                  disabled={isSending || dailyRemaining === 0}
+                  className="gap-2 text-xs h-8 px-4"
+                >
+                  {isSending ? (
+                    <>
+                      <Loader2 className="size-3.5 animate-spin" />
+                      <span>Enviando...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Send className="size-3.5" />
+                      <span>Enviar E-mail</span>
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
+          </form>
         </DialogContent>
       </Dialog>
 
-      {/* ─── MODAL DE CONFIRMAÇÃO DE EXCLUSÃO ─────────────────────── */}
+      {/* ─── Modal de Confirmação de Exclusão ───────────────────── */}
       <AlertDialog
         open={Boolean(emailToDelete)}
         onOpenChange={(open) => {
@@ -1355,35 +1509,35 @@ export function Emails() {
             <AlertDialogTitle>
               {emailToDelete?.type === 'received' ? 'Excluir e-mail' : 'Remover do histórico'}
             </AlertDialogTitle>
-            <AlertDialogDescription>
+            <AlertDialogDescription className="text-xs">
               {emailToDelete?.type === 'received'
-                ? `Tem certeza que deseja excluir o e-mail "${emailToDelete?.subject}"? Esta ação não poderá ser desfeita.`
+                ? `Tem certeza que deseja excluir o e-mail "${emailToDelete?.subject}"? Esta ação não pode ser desfeita.`
                 : `Tem certeza que deseja remover o registro "${emailToDelete?.subject}" do histórico de disparos?`}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter className="flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogCancel className="text-xs h-8">Cancelar</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => {
                 if (!emailToDelete) return;
                 if (emailToDelete.type === 'received') {
                   deleteReceived(emailToDelete.id);
-                  if (selectedReceivedEmailId === emailToDelete.id) {
-                    setSelectedReceivedEmailId(null);
+                  if (selectedEmailId === emailToDelete.id) {
+                    setSelectedEmailId(null);
                   }
-                  toast.success('E-mail excluído.');
+                  toast.success('E-mail excluído com sucesso.');
                 } else {
                   deleteSent(emailToDelete.id);
-                  if (selectedSentEmailId === emailToDelete.id) {
-                    setSelectedSentEmailId(null);
+                  if (selectedEmailId === emailToDelete.id) {
+                    setSelectedEmailId(null);
                   }
                   toast.success('Registro removido do histórico.');
                 }
                 setEmailToDelete(null);
               }}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90 text-xs h-8"
             >
-              Excluir definitivamente
+              Excluir
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
