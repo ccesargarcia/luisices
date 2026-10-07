@@ -35,6 +35,21 @@ import {
   SelectValue,
 } from '../components/ui/select';
 import {
+  ContextMenu,
+  ContextMenuTrigger,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuLabel,
+} from '../components/ui/context-menu';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '../components/ui/dropdown-menu';
+import {
   Mail,
   Send,
   Inbox,
@@ -63,6 +78,9 @@ import {
   BookmarkPlus,
   Info,
   User,
+  MoreVertical,
+  ExternalLink,
+  MessageCircle,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -83,11 +101,13 @@ export interface ComposeAttachment {
 }
 
 /**
- * Visualizador de E-mail HTML com auto-ajuste de altura para rolagem fluida e unificada
+ * Visualizador de E-mail HTML com auto-ajuste dinâmico, repasse de rolagem do mouse e suporte a texto puro
  */
 function EmailHtmlViewer({ html, text }: { html?: string; text?: string }) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
-  const [iframeHeight, setIframeHeight] = useState<number>(450);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [iframeHeight, setIframeHeight] = useState<number>(380);
+  const [viewMode, setViewMode] = useState<'html' | 'text'>('html');
 
   const preparedHtml = useMemo(() => {
     if (!html) return '';
@@ -95,7 +115,7 @@ function EmailHtmlViewer({ html, text }: { html?: string; text?: string }) {
       <style>
         html, body {
           margin: 0 !important;
-          padding: 14px !important;
+          padding: 16px !important;
           font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif !important;
           color: #1e293b !important;
           background-color: #ffffff !important;
@@ -103,10 +123,12 @@ function EmailHtmlViewer({ html, text }: { html?: string; text?: string }) {
           height: auto !important;
           min-height: auto !important;
           word-break: break-word;
+          line-height: 1.6;
         }
         img { max-width: 100% !important; height: auto !important; }
         table { max-width: 100% !important; }
         a { color: #4f46e5 !important; }
+        * { box-sizing: border-box; }
       </style>
     `;
 
@@ -124,9 +146,10 @@ function EmailHtmlViewer({ html, text }: { html?: string; text?: string }) {
       const doc = iframeRef.current?.contentDocument;
       if (doc) {
         const bodyH = doc.body?.scrollHeight || 0;
+        const bodyOffsetH = doc.body?.offsetHeight || 0;
         const docH = doc.documentElement?.scrollHeight || 0;
-        const calculated = Math.max(bodyH, docH, 350);
-        setIframeHeight(calculated + 30);
+        const calculated = Math.max(bodyH, bodyOffsetH, docH, 200);
+        setIframeHeight(calculated + 35);
       }
     } catch {
       // Fallback
@@ -134,35 +157,121 @@ function EmailHtmlViewer({ html, text }: { html?: string; text?: string }) {
   };
 
   useEffect(() => {
-    const t1 = setTimeout(updateHeight, 150);
-    const t2 = setTimeout(updateHeight, 600);
-    const t3 = setTimeout(updateHeight, 1500);
+    const t1 = setTimeout(updateHeight, 100);
+    const t2 = setTimeout(updateHeight, 400);
+    const t3 = setTimeout(updateHeight, 1200);
     return () => {
       clearTimeout(t1);
       clearTimeout(t2);
       clearTimeout(t3);
     };
-  }, [preparedHtml]);
+  }, [preparedHtml, viewMode]);
 
-  if (!html) {
+  // Pass-through de rolagem (wheel event) e ResizeObserver para carregar imagens assíncronas
+  useEffect(() => {
+    const iframe = iframeRef.current;
+    if (!iframe) return;
+
+    let cleanupListeners: (() => void) | undefined;
+
+    const setupIframeInteractions = () => {
+      try {
+        const doc = iframe.contentDocument;
+        const win = iframe.contentWindow;
+        if (!doc || !win) return;
+
+        // Repasse de evento de rolagem para o contêiner pai
+        const handleWheel = (e: WheelEvent) => {
+          const scrollParent = iframe.closest('.overflow-y-auto') as HTMLElement | null;
+          if (scrollParent) {
+            scrollParent.scrollBy({
+              top: e.deltaY,
+              left: e.deltaX,
+              behavior: 'auto',
+            });
+          }
+        };
+
+        win.addEventListener('wheel', handleWheel, { passive: true });
+
+        // ResizeObserver no body do iframe para recalcular altura quando imagens carregarem
+        let ro: ResizeObserver | null = null;
+        if (doc.body && typeof ResizeObserver !== 'undefined') {
+          ro = new ResizeObserver(() => {
+            updateHeight();
+          });
+          ro.observe(doc.body);
+        }
+
+        cleanupListeners = () => {
+          win.removeEventListener('wheel', handleWheel);
+          if (ro) {
+            ro.disconnect();
+          }
+        };
+      } catch {
+        // Ignora erros de cross-origin se houver
+      }
+    };
+
+    const timeout = setTimeout(setupIframeInteractions, 150);
+
+    return () => {
+      clearTimeout(timeout);
+      if (cleanupListeners) {
+        cleanupListeners();
+      }
+    };
+  }, [preparedHtml, viewMode]);
+
+  if (!html || viewMode === 'text') {
     return (
-      <div className="whitespace-pre-wrap font-sans text-sm leading-relaxed p-4 bg-muted/20 rounded-lg">
-        {text || '(Mensagem sem texto)'}
+      <div className="w-full space-y-2">
+        {html && (
+          <div className="flex items-center justify-between text-xs pb-1 border-b border-border/40">
+            <span className="text-muted-foreground text-[11px]">Exibindo em modo de texto puro</span>
+            <button
+              type="button"
+              onClick={() => setViewMode('html')}
+              className="text-primary hover:underline font-semibold text-xs"
+            >
+              Exibir Formatado (HTML)
+            </button>
+          </div>
+        )}
+        <div className="whitespace-pre-wrap font-sans text-xs sm:text-sm leading-relaxed p-4 bg-muted/20 rounded-lg border border-border/60 select-text overflow-x-auto">
+          {text || '(Mensagem sem texto)'}
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="w-full bg-white rounded-lg border border-border/70 shadow-2xs overflow-hidden">
-      <iframe
-        ref={iframeRef}
-        title="Conteúdo do E-mail"
-        srcDoc={preparedHtml}
-        sandbox="allow-popups allow-popups-to-escape-sandbox allow-same-origin"
-        onLoad={updateHeight}
-        style={{ height: `${iframeHeight}px`, minHeight: '350px' }}
-        className="w-full border-0 block"
-      />
+    <div ref={containerRef} className="w-full space-y-2">
+      {text && (
+        <div className="flex items-center justify-end text-xs pb-1">
+          <button
+            type="button"
+            onClick={() => setViewMode('text')}
+            className="text-muted-foreground hover:text-foreground text-[11px] hover:underline"
+          >
+            Ver apenas texto
+          </button>
+        </div>
+      )}
+      <div className="w-full bg-white rounded-lg border border-border/70 shadow-2xs overflow-hidden">
+        <iframe
+          ref={iframeRef}
+          title="Conteúdo do E-mail"
+          srcDoc={preparedHtml}
+          sandbox="allow-popups allow-popups-to-escape-sandbox allow-same-origin"
+          onLoad={() => {
+            updateHeight();
+          }}
+          style={{ height: `${iframeHeight}px`, minHeight: '250px' }}
+          className="w-full border-0 block"
+        />
+      </div>
     </div>
   );
 }
@@ -1082,78 +1191,426 @@ export function Emails() {
                 const isSelected = selectedEmailId === email.id;
                 const isUnread = email._type === 'received' && !email.read;
                 const isStarred = email._type === 'received' && email.starred;
+                const rawSender = email._type === 'received' ? email.from : '';
+                const senderAddress = rawSender.match(/<([^>]+)>/)?.[1] || rawSender.trim();
+                const senderDisplayName = rawSender.replace(/<.*?>/, '').trim() || rawSender;
 
                 return (
-                  <div
-                    key={email.id}
-                    onClick={() => {
-                      setSelectedEmailId(email.id);
-                      setSelectedEmailType(email._type);
-                    }}
-                    className={`p-3 cursor-pointer transition-colors relative border-l-2 ${
-                      isSelected
-                        ? 'bg-primary/5 border-primary'
-                        : isUnread
-                        ? 'bg-muted/30 border-transparent hover:bg-muted/50'
-                        : 'border-transparent hover:bg-muted/30'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between gap-1 mb-1">
-                      <div className="flex items-center gap-1.5 min-w-0">
-                        {isUnread && <span className="size-2 rounded-full bg-primary shrink-0" />}
-                        <span
-                          className={`text-xs truncate ${
-                            isUnread ? 'font-bold text-foreground' : 'font-medium text-foreground/90'
+                  <ContextMenu key={email.id}>
+                    <ContextMenuTrigger asChild>
+                      <div
+                        onClick={() => {
+                          setSelectedEmailId(email.id);
+                          setSelectedEmailType(email._type);
+                        }}
+                        className={`group p-3 cursor-pointer transition-colors relative border-l-2 select-none ${
+                          isSelected
+                            ? 'bg-primary/5 border-primary'
+                            : isUnread
+                            ? 'bg-muted/30 border-transparent hover:bg-muted/50'
+                            : 'border-transparent hover:bg-muted/30'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between gap-1 mb-1">
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            {isUnread && <span className="size-2 rounded-full bg-primary shrink-0" />}
+                            <span
+                              className={`text-xs truncate ${
+                                isUnread ? 'font-bold text-foreground' : 'font-medium text-foreground/90'
+                              }`}
+                            >
+                              {email._type === 'sent'
+                                ? `Para: ${email.to.join(', ')}`
+                                : senderDisplayName}
+                            </span>
+                          </div>
+
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <span className="text-[11px] text-muted-foreground">
+                              {formatRelativeDate(email._type === 'sent' ? email.sentAt : email.receivedAt)}
+                            </span>
+                            {email._type === 'received' && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  toggleStar(email.id, !email.starred);
+                                }}
+                                className="text-muted-foreground hover:text-amber-500 transition-colors p-0.5"
+                                title={isStarred ? 'Remover dos favoritos' : 'Favoritar'}
+                              >
+                                <Star
+                                  className={`size-3.5 ${
+                                    isStarred ? 'text-amber-500 fill-amber-500' : 'text-muted-foreground/60'
+                                  }`}
+                                />
+                              </button>
+                            )}
+
+                            {/* Menu de 3 pontinhos para clique direto no item */}
+                            <DropdownMenu>
+                              <DropdownMenuTrigger
+                                asChild
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <button
+                                  type="button"
+                                  className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-opacity"
+                                  title="Opções da mensagem"
+                                >
+                                  <MoreVertical className="size-3.5" />
+                                </button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end" className="w-56 text-xs">
+                                {email._type === 'received' ? (
+                                  <>
+                                    <DropdownMenuItem
+                                      onClick={() => {
+                                        setSelectedEmailId(email.id);
+                                        setSelectedEmailType('received');
+                                      }}
+                                      className="gap-2 cursor-pointer"
+                                    >
+                                      <MailOpen className="size-3.5" />
+                                      <span>Abrir Mensagem</span>
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem
+                                      onClick={() => handleStartReply(email)}
+                                      className="gap-2 cursor-pointer"
+                                    >
+                                      <Reply className="size-3.5" />
+                                      <span>Responder</span>
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem
+                                      onClick={() => markAsRead(email.id, !email.read)}
+                                      className="gap-2 cursor-pointer"
+                                    >
+                                      <MailCheck className="size-3.5" />
+                                      <span>{email.read ? 'Marcar como Não Lido' : 'Marcar como Lido'}</span>
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem
+                                      onClick={() => toggleStar(email.id, !email.starred)}
+                                      className="gap-2 cursor-pointer"
+                                    >
+                                      <Star className="size-3.5 text-amber-500" />
+                                      <span>{email.starred ? 'Remover Favorito' : 'Favoritar'}</span>
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem
+                                      onClick={() => setArchived(email.id, !email.archived)}
+                                      className="gap-2 cursor-pointer"
+                                    >
+                                      {email.archived ? <ArchiveRestore className="size-3.5" /> : <Archive className="size-3.5" />}
+                                      <span>{email.archived ? 'Desarquivar' : 'Arquivar'}</span>
+                                    </DropdownMenuItem>
+                                    <DropdownMenuSeparator />
+                                    <DropdownMenuItem
+                                      onClick={() => {
+                                        navigator.clipboard.writeText(senderAddress);
+                                        toast.success('E-mail do remetente copiado!');
+                                      }}
+                                      className="gap-2 cursor-pointer"
+                                    >
+                                      <Copy className="size-3.5" />
+                                      <span>Copiar E-mail</span>
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem
+                                      onClick={() => {
+                                        navigator.clipboard.writeText(email.subject || '');
+                                        toast.success('Assunto copiado!');
+                                      }}
+                                      className="gap-2 cursor-pointer"
+                                    >
+                                      <Copy className="size-3.5" />
+                                      <span>Copiar Assunto</span>
+                                    </DropdownMenuItem>
+                                    <DropdownMenuSeparator />
+                                    <DropdownMenuItem
+                                      variant="destructive"
+                                      onClick={() => {
+                                        setEmailToDelete({
+                                          type: 'received',
+                                          id: email.id,
+                                          subject: email.subject || '(Sem assunto)',
+                                        });
+                                      }}
+                                      className="gap-2 cursor-pointer text-destructive focus:text-destructive"
+                                    >
+                                      <Trash2 className="size-3.5" />
+                                      <span>Excluir Mensagem</span>
+                                    </DropdownMenuItem>
+                                  </>
+                                ) : (
+                                  <>
+                                    <DropdownMenuItem
+                                      onClick={() => {
+                                        setSelectedEmailId(email.id);
+                                        setSelectedEmailType('sent');
+                                      }}
+                                      className="gap-2 cursor-pointer"
+                                    >
+                                      <MailOpen className="size-3.5" />
+                                      <span>Abrir Mensagem</span>
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem
+                                      onClick={() => {
+                                        setRecipient(email.to.join(', '));
+                                        setSubject(email.subject || '');
+                                        setBody(email.text || email.html?.replace(/<[^>]+>/g, ' ') || '');
+                                        setIsComposeOpen(true);
+                                        toast.info('Dados carregados no editor de mensagem');
+                                      }}
+                                      className="gap-2 cursor-pointer"
+                                    >
+                                      <Send className="size-3.5" />
+                                      <span>Reenviar / Usar como Base</span>
+                                    </DropdownMenuItem>
+                                    <DropdownMenuSeparator />
+                                    <DropdownMenuItem
+                                      onClick={() => {
+                                        navigator.clipboard.writeText(email.to.join(', '));
+                                        toast.success('Destinatário copiado!');
+                                      }}
+                                      className="gap-2 cursor-pointer"
+                                    >
+                                      <Copy className="size-3.5" />
+                                      <span>Copiar Destinatário</span>
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem
+                                      onClick={() => {
+                                        navigator.clipboard.writeText(email.subject || '');
+                                        toast.success('Assunto copiado!');
+                                      }}
+                                      className="gap-2 cursor-pointer"
+                                    >
+                                      <Copy className="size-3.5" />
+                                      <span>Copiar Assunto</span>
+                                    </DropdownMenuItem>
+                                    <DropdownMenuSeparator />
+                                    <DropdownMenuItem
+                                      variant="destructive"
+                                      onClick={() => {
+                                        setEmailToDelete({
+                                          type: 'sent',
+                                          id: email.id,
+                                          subject: email.subject || '(Sem assunto)',
+                                        });
+                                      }}
+                                      className="gap-2 cursor-pointer text-destructive focus:text-destructive"
+                                    >
+                                      <Trash2 className="size-3.5" />
+                                      <span>Excluir do Histórico</span>
+                                    </DropdownMenuItem>
+                                  </>
+                                )}
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </div>
+                        </div>
+
+                        <div
+                          className={`text-xs truncate mb-1 ${
+                            isUnread ? 'font-semibold text-foreground' : 'text-foreground/80'
                           }`}
                         >
-                          {email._type === 'sent'
-                            ? `Para: ${email.to.join(', ')}`
-                            : email.from.replace(/<.*?>/, '').trim() || email.from}
-                        </span>
-                      </div>
+                          {email.subject || '(Sem assunto)'}
+                        </div>
 
-                      <div className="flex items-center gap-1.5 shrink-0">
-                        <span className="text-[11px] text-muted-foreground">
-                          {formatRelativeDate(email._type === 'sent' ? email.sentAt : email.receivedAt)}
-                        </span>
-                        {email._type === 'received' && (
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              toggleStar(email.id, !email.starred);
-                            }}
-                            className="text-muted-foreground hover:text-amber-500 transition-colors p-0.5"
-                          >
-                            <Star
-                              className={`size-3.5 ${
-                                isStarred ? 'text-amber-500 fill-amber-500' : 'text-muted-foreground/60'
-                              }`}
-                            />
-                          </button>
+                        <p className="text-[11px] text-muted-foreground line-clamp-1">
+                          {email.text ? email.text.replace(/\s+/g, ' ') : '(Mensagem formatada em HTML)'}
+                        </p>
+
+                        {email._type === 'received' && email.attachments && email.attachments.length > 0 && (
+                          <div className="flex items-center gap-1 text-[10px] text-muted-foreground mt-1.5">
+                            <Paperclip className="size-3" />
+                            <span>{email.attachments.length} anexo(s)</span>
+                          </div>
                         )}
                       </div>
-                    </div>
+                    </ContextMenuTrigger>
 
-                    <div
-                      className={`text-xs truncate mb-1 ${
-                        isUnread ? 'font-semibold text-foreground' : 'text-foreground/80'
-                      }`}
-                    >
-                      {email.subject || '(Sem assunto)'}
-                    </div>
-
-                    <p className="text-[11px] text-muted-foreground line-clamp-1">
-                      {email.text ? email.text.replace(/\s+/g, ' ') : '(Mensagem formatada em HTML)'}
-                    </p>
-
-                    {email._type === 'received' && email.attachments && email.attachments.length > 0 && (
-                      <div className="flex items-center gap-1 text-[10px] text-muted-foreground mt-1.5">
-                        <Paperclip className="size-3" />
-                        <span>{email.attachments.length} anexo(s)</span>
-                      </div>
-                    )}
-                  </div>
+                    {/* Menu de Contexto completo acionado com o Botão Direito */}
+                    <ContextMenuContent className="w-60 text-xs">
+                      {email._type === 'received' ? (
+                        <>
+                          <ContextMenuLabel className="text-[11px] text-muted-foreground truncate max-w-[220px]">
+                            {senderDisplayName}
+                          </ContextMenuLabel>
+                          <ContextMenuItem
+                            onClick={() => {
+                              setSelectedEmailId(email.id);
+                              setSelectedEmailType('received');
+                            }}
+                            className="gap-2 cursor-pointer"
+                          >
+                            <MailOpen className="size-3.5 text-primary" />
+                            <span>Abrir Mensagem</span>
+                          </ContextMenuItem>
+                          <ContextMenuItem
+                            onClick={() => handleStartReply(email)}
+                            className="gap-2 cursor-pointer"
+                          >
+                            <Reply className="size-3.5 text-primary" />
+                            <span>Responder E-mail</span>
+                          </ContextMenuItem>
+                          <ContextMenuItem
+                            onClick={() => markAsRead(email.id, !email.read)}
+                            className="gap-2 cursor-pointer"
+                          >
+                            <MailCheck className="size-3.5" />
+                            <span>{email.read ? 'Marcar como Não Lido' : 'Marcar como Lido'}</span>
+                          </ContextMenuItem>
+                          <ContextMenuItem
+                            onClick={() => toggleStar(email.id, !email.starred)}
+                            className="gap-2 cursor-pointer"
+                          >
+                            <Star className="size-3.5 text-amber-500" />
+                            <span>{email.starred ? 'Remover dos Favoritos' : 'Adicionar aos Favoritos'}</span>
+                          </ContextMenuItem>
+                          <ContextMenuItem
+                            onClick={() => setArchived(email.id, !email.archived)}
+                            className="gap-2 cursor-pointer"
+                          >
+                            {email.archived ? <ArchiveRestore className="size-3.5" /> : <Archive className="size-3.5" />}
+                            <span>{email.archived ? 'Desarquivar Mensagem' : 'Arquivar Mensagem'}</span>
+                          </ContextMenuItem>
+                          <ContextMenuSeparator />
+                          <ContextMenuItem
+                            onClick={() => {
+                              navigator.clipboard.writeText(senderAddress);
+                              toast.success('Endereço de e-mail copiado!');
+                            }}
+                            className="gap-2 cursor-pointer"
+                          >
+                            <Copy className="size-3.5" />
+                            <span>Copiar E-mail ({senderAddress})</span>
+                          </ContextMenuItem>
+                          <ContextMenuItem
+                            onClick={() => {
+                              navigator.clipboard.writeText(email.subject || '');
+                              toast.success('Assunto do e-mail copiado!');
+                            }}
+                            className="gap-2 cursor-pointer"
+                          >
+                            <Copy className="size-3.5" />
+                            <span>Copiar Assunto</span>
+                          </ContextMenuItem>
+                          <ContextMenuItem
+                            onClick={() => {
+                              const content = email.text || email.html?.replace(/<[^>]+>/g, ' ') || '';
+                              navigator.clipboard.writeText(content);
+                              toast.success('Conteúdo de texto copiado!');
+                            }}
+                            className="gap-2 cursor-pointer"
+                          >
+                            <Copy className="size-3.5" />
+                            <span>Copiar Texto da Mensagem</span>
+                          </ContextMenuItem>
+                          <ContextMenuItem
+                            onClick={() => {
+                              setRecipient(senderAddress);
+                              setSubject(`Novo Contato - Ateliê`);
+                              setIsComposeOpen(true);
+                            }}
+                            className="gap-2 cursor-pointer"
+                          >
+                            <Plus className="size-3.5 text-primary" />
+                            <span>Nova Mensagem para este Contato</span>
+                          </ContextMenuItem>
+                          <ContextMenuSeparator />
+                          <ContextMenuItem
+                            variant="destructive"
+                            onClick={() => {
+                              setEmailToDelete({
+                                type: 'received',
+                                id: email.id,
+                                subject: email.subject || '(Sem assunto)',
+                              });
+                            }}
+                            className="gap-2 cursor-pointer text-destructive focus:text-destructive"
+                          >
+                            <Trash2 className="size-3.5" />
+                            <span>Excluir Mensagem</span>
+                          </ContextMenuItem>
+                        </>
+                      ) : (
+                        <>
+                          <ContextMenuLabel className="text-[11px] text-muted-foreground truncate max-w-[220px]">
+                            Para: {email.to.join(', ')}
+                          </ContextMenuLabel>
+                          <ContextMenuItem
+                            onClick={() => {
+                              setSelectedEmailId(email.id);
+                              setSelectedEmailType('sent');
+                            }}
+                            className="gap-2 cursor-pointer"
+                          >
+                            <MailOpen className="size-3.5 text-primary" />
+                            <span>Abrir Mensagem</span>
+                          </ContextMenuItem>
+                          <ContextMenuItem
+                            onClick={() => {
+                              setRecipient(email.to.join(', '));
+                              setSubject(email.subject || '');
+                              setBody(email.text || email.html?.replace(/<[^>]+>/g, ' ') || '');
+                              setIsComposeOpen(true);
+                              toast.info('Dados carregados no editor de mensagem');
+                            }}
+                            className="gap-2 cursor-pointer"
+                          >
+                            <Send className="size-3.5 text-primary" />
+                            <span>Reenviar / Usar como Modelo</span>
+                          </ContextMenuItem>
+                          <ContextMenuSeparator />
+                          <ContextMenuItem
+                            onClick={() => {
+                              navigator.clipboard.writeText(email.to.join(', '));
+                              toast.success('Destinatário(s) copiado(s)!');
+                            }}
+                            className="gap-2 cursor-pointer"
+                          >
+                            <Copy className="size-3.5" />
+                            <span>Copiar Destinatário(s)</span>
+                          </ContextMenuItem>
+                          <ContextMenuItem
+                            onClick={() => {
+                              navigator.clipboard.writeText(email.subject || '');
+                              toast.success('Assunto do e-mail copiado!');
+                            }}
+                            className="gap-2 cursor-pointer"
+                          >
+                            <Copy className="size-3.5" />
+                            <span>Copiar Assunto</span>
+                          </ContextMenuItem>
+                          <ContextMenuItem
+                            onClick={() => {
+                              const content = email.text || email.html?.replace(/<[^>]+>/g, ' ') || '';
+                              navigator.clipboard.writeText(content);
+                              toast.success('Texto copiado!');
+                            }}
+                            className="gap-2 cursor-pointer"
+                          >
+                            <Copy className="size-3.5" />
+                            <span>Copiar Texto Enviado</span>
+                          </ContextMenuItem>
+                          <ContextMenuSeparator />
+                          <ContextMenuItem
+                            variant="destructive"
+                            onClick={() => {
+                              setEmailToDelete({
+                                type: 'sent',
+                                id: email.id,
+                                subject: email.subject || '(Sem assunto)',
+                              });
+                            }}
+                            className="gap-2 cursor-pointer text-destructive focus:text-destructive"
+                          >
+                            <Trash2 className="size-3.5" />
+                            <span>Excluir do Histórico</span>
+                          </ContextMenuItem>
+                        </>
+                      )}
+                    </ContextMenuContent>
+                  </ContextMenu>
                 );
               })
             )}
@@ -1335,7 +1792,7 @@ export function Emails() {
               </div>
 
               {/* Corpo da Mensagem com Rolagem Fluida */}
-              <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4">
+              <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-4 sm:p-6 space-y-4 select-text">
                 {currentReceivedEmail ? (
                   <EmailHtmlViewer
                     html={currentReceivedEmail.html}
