@@ -3,7 +3,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
-import { Order, OrderStatus, PaymentStatus, PaymentMethod, Tag, ExchangeItem, GalleryItem, UserProfile, canAccessArchivedOrders } from '../types';
+import { Order, OrderStatus, PaymentStatus, PaymentMethod, Tag, ExchangeItem, GalleryItem, UserProfile, canAccessArchivedOrders, canAccessEmails } from '../types';
 import { Trash2, Edit, Copy, Download, Archive, ArchiveRestore, Mail } from 'lucide-react';
 import { exportOrderPDF } from '../utils/exportPdf';
 import { useUserSettings } from '../../hooks/useUserSettings';
@@ -480,7 +480,7 @@ Equipe ${settings?.businessName || 'Luisices'}`;
                     <Download className="size-4" />
                     PDF
                   </Button>
-                  {hasPermission(p => p.emails ?? false) && (
+                  {hasPermission(p => canAccessEmails(p, 'create')) && (
                     <Button
                       size="sm"
                       variant="outline"

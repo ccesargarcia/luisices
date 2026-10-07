@@ -292,12 +292,33 @@ export interface Permission {
   exchanges: boolean;
   settings: boolean;
   users: ModulePermission;
-  emails?: boolean;
+  emails?: ModulePermission | boolean;
   pricing?: ModulePermission | boolean;
   store?: boolean;
   storeProducts?: ModulePermission;
   whatsapp?: boolean;
   aiCopilot?: boolean;
+}
+
+/**
+ * Utilitário de permissão para o módulo de E-mails (Central e Envio de E-mails).
+ * Ações granulares:
+ * - 'view': Acessar e visualizar a Central de E-mails (inbox, enviados, histórico)
+ * - 'create': Enviar e-mails (a partir de pedidos, orçamentos ou avulso)
+ * - 'edit': Alterar status de e-mails (lido, favorito, arquivado)
+ * - 'delete': Excluir e-mails (da caixa de entrada ou enviados)
+ *
+ * Suporta perfis legados (onde emails é boolean) e perfis detalhados (onde emails é ModulePermission).
+ */
+export function canAccessEmails(
+  permissions?: Permission | null,
+  action: keyof ModulePermission = 'view'
+): boolean {
+  if (!permissions) return false;
+  const p = permissions.emails;
+  if (typeof p === 'boolean') return p;
+  if (p && typeof p === 'object') return Boolean(p[action]);
+  return false;
 }
 
 /**
@@ -576,7 +597,7 @@ export const ADMIN_PERMISSIONS: Permission = {
   exchanges: true,
   settings:  true,
   users:     { view: true, create: true, edit: true, delete: true },
-  emails:    true,
+  emails:    { view: true, create: true, edit: true, delete: true },
   pricing:   { view: true, create: true, edit: true, delete: true },
   store:     true,
   storeProducts: { view: true, create: true, edit: true, delete: true },
@@ -596,7 +617,7 @@ export const DEFAULT_USER_PERMISSIONS: Permission = {
   exchanges: true,
   settings:  true,
   users:     { view: false, create: false, edit: false, delete: false },
-  emails:    false,
+  emails:    { view: false, create: false, edit: false, delete: false },
   pricing:   { view: true, create: true, edit: true, delete: true },
   store:     true,
   storeProducts: { view: true, create: true, edit: true, delete: false },
@@ -616,7 +637,7 @@ export const EMPLOYEE_PERMISSIONS: Permission = {
   exchanges: false,
   settings:  false,
   users:     { view: false, create: false, edit: false, delete: false },
-  emails:    false,
+  emails:    { view: false, create: false, edit: false, delete: false },
   pricing:   { view: false, create: false, edit: false, delete: false },
   store:     false,
   storeProducts: { view: false, create: false, edit: false, delete: false },

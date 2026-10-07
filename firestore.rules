@@ -314,29 +314,46 @@ service cloud.firestore {
     }
 
     // Regras para Central de E-mails Resend
-    function canAccessEmails() {
-      return request.auth != null
-        && exists(/databases/$(database)/documents/userProfiles/$(request.auth.uid))
-        && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.get('active', true) == true
-        && (
-          isAdmin()
-          || (
-            get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.get('role', 'user') == 'user'
-            && getEmployeePermissions().get('emails', true) != false
+    function canViewEmailsCentral() {
+      return isActiveUser() && (
+        isAdmin()
+        || ('emails' in getEmployeePermissions() && hasPerm(getEmployeePermissions().emails, 'view'))
+        || (
+          get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.get('role', 'user') == 'user'
+          && (
+            getEmployeePermissions().get('emails', true) == true
+            || ('emails' in getEmployeePermissions() && hasPerm(getEmployeePermissions().emails, 'view'))
           )
-          || (
-            get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.get('role', '') == 'funcionario'
-            && getEmployeePermissions().get('emails', false) == true
+        )
+      );
+    }
+
+    function canManageEmailsCentral() {
+      return isActiveUser() && (
+        isAdmin()
+        || ('emails' in getEmployeePermissions() && (
+          hasPerm(getEmployeePermissions().emails, 'edit')
+          || hasPerm(getEmployeePermissions().emails, 'delete')
+          || hasPerm(getEmployeePermissions().emails, 'create')
+        ))
+        || (
+          get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.get('role', 'user') == 'user'
+          && (
+            getEmployeePermissions().get('emails', true) == true
+            || ('emails' in getEmployeePermissions() && hasPerm(getEmployeePermissions().emails, 'create'))
           )
-        );
+        )
+      );
     }
 
     match /receivedEmails/{emailId} {
-      allow read, write: if canAccessEmails();
+      allow read: if canViewEmailsCentral();
+      allow write: if canManageEmailsCentral();
     }
 
     match /sentEmails/{emailId} {
-      allow read, write: if canAccessEmails();
+      allow read: if canViewEmailsCentral();
+      allow write: if canManageEmailsCentral();
     }
 
     // Regras para configurações públicas da loja / catálogo online

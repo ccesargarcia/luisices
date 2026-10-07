@@ -11,7 +11,7 @@ import { ResetPassword } from './pages/ResetPassword';
 import { AuthAction } from './pages/AuthAction';
 import { OrdersProvider } from '../contexts/OrdersContext';
 import { UserSettingsProvider } from '../contexts/UserSettingsContext';
-import { canAccessPricing, canAccessArchivedOrders } from './types';
+import { canAccessPricing, canAccessArchivedOrders, canAccessEmails } from './types';
 
 /**
  * Carregador lazy resiliente a falhas de rede e descompasso de chunks pós-deploy.
@@ -347,7 +347,7 @@ export const router = isCatalogSubdomain
       },
       {
         path: 'emails',
-        element: <Lazy><PermissionRoute check={p => p.emails ?? false}><Emails /></PermissionRoute></Lazy>,
+        element: <Lazy><PermissionRoute check={p => canAccessEmails(p, 'view')}><Emails /></PermissionRoute></Lazy>,
       },
       {
         path: 'ajuda',

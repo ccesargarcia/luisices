@@ -1,13 +1,16 @@
 import { useState, useEffect, useCallback } from 'react';
 import { collection, query, orderBy, onSnapshot, limit } from 'firebase/firestore';
 import { db } from '../lib/firebase';
-import { ReceivedEmail, SentEmail, SendEmailPayload, EmailUsage } from '../app/types';
+import { ReceivedEmail, SentEmail, SendEmailPayload, EmailUsage, canAccessEmails } from '../app/types';
 import { emailService } from '../services/emailService';
 import { useAuth } from '../contexts/AuthContext';
 
 export function useEmails() {
   const { user, isAdmin, hasPermission, loading: authLoading } = useAuth();
-  const canAccess = Boolean(user && (isAdmin || hasPermission((p) => p.emails ?? false)));
+  const canView = Boolean(user && (isAdmin || hasPermission((p) => canAccessEmails(p, 'view'))));
+  const canCreate = Boolean(user && (isAdmin || hasPermission((p) => canAccessEmails(p, 'create'))));
+  const canEdit = Boolean(user && (isAdmin || hasPermission((p) => canAccessEmails(p, 'edit'))));
+  const canDelete = Boolean(user && (isAdmin || hasPermission((p) => canAccessEmails(p, 'delete'))));
 
   const [receivedEmails, setReceivedEmails] = useState<ReceivedEmail[]>([]);
   const [sentEmails, setSentEmails] = useState<SentEmail[]>([]);
@@ -17,7 +20,7 @@ export function useEmails() {
   const [error, setError] = useState<string | null>(null);
 
   const refreshUsage = useCallback(async () => {
-    if (!canAccess) {
+    if (!canView && !canCreate) {
       setUsage(null);
       setLoadingUsage(false);
       return;
@@ -31,21 +34,21 @@ export function useEmails() {
     } finally {
       setLoadingUsage(false);
     }
-  }, [canAccess]);
+  }, [canView, canCreate]);
 
   useEffect(() => {
-    if (canAccess) {
+    if (canView || canCreate) {
       refreshUsage();
     } else {
       setUsage(null);
       setLoadingUsage(false);
     }
-  }, [canAccess, refreshUsage]);
+  }, [canView, canCreate, refreshUsage]);
 
   useEffect(() => {
     if (authLoading) return;
 
-    if (!user || !canAccess) {
+    if (!user || !canView) {
       setReceivedEmails([]);
       setSentEmails([]);
       setLoading(false);
@@ -133,42 +136,42 @@ export function useEmails() {
       unsubReceived();
       unsubSent();
     };
-  }, [user, canAccess, authLoading]);
+  }, [user, canView, authLoading]);
 
   const sendEmail = useCallback(async (payload: SendEmailPayload) => {
-    if (!canAccess) {
+    if (!canCreate) {
       throw new Error('Você não possui permissão para enviar e-mails pelo sistema.');
     }
     const res = await emailService.sendEmail(payload);
     // Atualiza cota após envio
     refreshUsage().catch(() => {});
     return res;
-  }, [canAccess, refreshUsage]);
+  }, [canCreate, refreshUsage]);
 
   const markAsRead = useCallback(async (id: string, read: boolean) => {
-    if (!canAccess) return;
+    if (!canEdit && !canView) return;
     await emailService.markAsRead(id, read);
-  }, [canAccess]);
+  }, [canEdit, canView]);
 
   const toggleStar = useCallback(async (id: string, starred: boolean) => {
-    if (!canAccess) return;
+    if (!canEdit && !canView) return;
     await emailService.toggleStar(id, starred);
-  }, [canAccess]);
+  }, [canEdit, canView]);
 
   const setArchived = useCallback(async (id: string, archived: boolean) => {
-    if (!canAccess) return;
+    if (!canEdit && !canView) return;
     await emailService.setArchived(id, archived);
-  }, [canAccess]);
+  }, [canEdit, canView]);
 
   const deleteReceived = useCallback(async (id: string) => {
-    if (!canAccess) return;
+    if (!canDelete) return;
     await emailService.deleteReceivedEmail(id);
-  }, [canAccess]);
+  }, [canDelete]);
 
   const deleteSent = useCallback(async (id: string) => {
-    if (!canAccess) return;
+    if (!canDelete) return;
     await emailService.deleteSentEmail(id);
-  }, [canAccess]);
+  }, [canDelete]);
 
   const unreadCount = receivedEmails.filter((e) => !e.read && !e.archived).length;
 
@@ -187,6 +190,10 @@ export function useEmails() {
     setArchived,
     deleteReceived,
     deleteSent,
-    canAccess,
+    canAccess: canView,
+    canView,
+    canCreate,
+    canEdit,
+    canDelete,
   };
 }

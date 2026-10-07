@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Quote, OrderStatus } from '../../types';
+import { Quote, OrderStatus, canAccessEmails } from '../../types';
 import { formatCurrency } from '../../utils/currency';
 import { formatDateTime as formatDateTimeUtil } from '../../utils/date';
 import { normalizePhoneForWhatsApp, formatPhoneForDisplay } from '../../utils/whatsapp';
@@ -519,7 +519,7 @@ Equipe ${settings?.businessName || 'Luisices'}`;
               <Download className="size-4 mr-2" />
               {exportingPdf ? 'Gerando...' : 'Exportar PDF'}
             </Button>
-            {hasPermission((p) => p.emails ?? false) && (
+            {hasPermission((p) => canAccessEmails(p, 'create')) && (
               <Button
                 variant="outline"
                 onClick={() => setEmailDialogOpen(true)}

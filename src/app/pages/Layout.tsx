@@ -29,7 +29,7 @@ import { trackPageView } from '../../services/analyticsService';
 import { AiCopilotSheet } from '../components/AiCopilotSheet';
 import { NewOrderDialog } from '../components/NewOrderDialog';
 import { CustomerFormDialog } from '../components/customers/CustomerFormDialog';
-import { AiOrderDraft, canAccessPricing, canAccessArchivedOrders } from '../types';
+import { AiOrderDraft, canAccessPricing, canAccessArchivedOrders, canAccessEmails } from '../types';
 import { firebaseWhatsAppService } from '../../services/firebaseWhatsAppService';
 
 import { SidebarNavigation, NavGroup } from '../components/layout/SidebarNavigation';
@@ -225,7 +225,7 @@ export function Layout() {
       title: 'GESTÃO & AJUSTES',
       items: [
         { name: 'Relatórios', href: '/relatorios', icon: BarChart3, check: (p) => Boolean(p?.reports) },
-        { name: 'Central de E-mails', href: '/emails', icon: Mail, check: (p) => p.emails ?? false },
+        { name: 'Central de E-mails', href: '/emails', icon: Mail, check: (p) => canAccessEmails(p, 'view') },
         { name: 'Equipe & Usuários', href: '/usuarios', icon: UserCog, check: (p) => p.users?.view },
         { name: 'Configurações', href: '/configuracoes', icon: SettingsIcon, check: (p) => Boolean(p?.settings) || userProfile?.role === 'admin' },
       ],

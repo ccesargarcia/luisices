@@ -100,7 +100,7 @@ const MODULES: ModuleConfig[] = [
   { key: 'reports',        label: 'Relatórios',                         type: 'boolean' },
   { key: 'settings',       label: 'Configurações',                      type: 'boolean' },
   { key: 'users',          label: 'Usuários',                           type: 'crud' },
-  { key: 'emails',         label: 'Central de E-mails',                 type: 'boolean' },
+  { key: 'emails',         label: 'E-mails (Central & Envio)',          type: 'crud' },
   { key: 'pricing',        label: 'Precificação & Custos de Insumos',   type: 'crud' },
 ];
 
@@ -112,6 +112,10 @@ function deepClonePermission(p: Permission): Permission {
   if (!clone.pricing || typeof clone.pricing === 'boolean') {
     const val = Boolean(clone.pricing);
     clone.pricing = { view: val, create: val, edit: val, delete: val };
+  }
+  if (!clone.emails || typeof clone.emails === 'boolean') {
+    const val = Boolean(clone.emails);
+    clone.emails = { view: val, create: val, edit: val, delete: val };
   }
   if (!clone.archivedOrders || typeof clone.archivedOrders === 'boolean') {
     const val = typeof clone.archivedOrders === 'boolean' ? clone.archivedOrders : Boolean(clone.orders?.view);
@@ -184,6 +188,8 @@ function PermissionMatrix({ permissions, onChange }: PermissionMatrixProps) {
                 let actionLabel = field === 'view' ? 'Ver' : field === 'create' ? 'Criar' : field === 'edit' ? 'Editar' : 'Excluir';
                 if (key === 'archivedOrders') {
                   actionLabel = field === 'view' ? 'Ver / Acessar' : field === 'create' ? 'Arquivar' : field === 'edit' ? 'Desarquivar' : 'Excluir';
+                } else if (key === 'emails') {
+                  actionLabel = field === 'view' ? 'Ver Central' : field === 'create' ? 'Enviar E-mails' : field === 'edit' ? 'Alterar Status' : 'Excluir';
                 }
                 return (
                   <div key={field} className="flex items-center gap-1.5">

@@ -3,7 +3,7 @@ import { useAuth } from '../../../contexts/AuthContext';
 import { useEmails } from '../../../hooks/useEmails';
 import { useUserSettings } from '../../../hooks/useUserSettings';
 import { firebaseStorageService } from '../../../services/firebaseStorageService';
-import { SendEmailPayload } from '../../types';
+import { SendEmailPayload, canAccessEmails } from '../../types';
 import {
   Dialog,
   DialogContent,
@@ -65,7 +65,7 @@ export function SendEmailDialog({
   onSuccess,
 }: SendEmailDialogProps) {
   const { user, isAdmin, hasPermission } = useAuth();
-  const canSendEmail = Boolean(user && (isAdmin || hasPermission((p) => p.emails ?? false)));
+  const canSendEmail = Boolean(user && (isAdmin || hasPermission((p) => canAccessEmails(p, 'create'))));
   const { settings } = useUserSettings();
   const { sendEmail } = useEmails();
 
