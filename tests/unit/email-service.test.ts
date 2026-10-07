@@ -141,6 +141,58 @@ describe('Funcionalidade: Comunicação e Mensageria por E-mail (emailService)',
         expect.objectContaining({ path: 'sentEmails/email-sent-999' })
       );
     });
+
+    it('moveToTrash deve marcar e-mail recebido com trashed: true e trashedAt em receivedEmails', async () => {
+      await emailService.moveToTrash('email-xyz', 'received');
+
+      expect(doc).toHaveBeenCalledWith(expect.anything(), 'receivedEmails', 'email-xyz');
+      expect(updateDoc).toHaveBeenCalledWith(
+        expect.objectContaining({ path: 'receivedEmails/email-xyz' }),
+        expect.objectContaining({
+          trashed: true,
+          trashedAt: expect.any(String),
+        })
+      );
+    });
+
+    it('moveToTrash deve marcar e-mail enviado com trashed: true e trashedAt em sentEmails', async () => {
+      await emailService.moveToTrash('email-sent-123', 'sent');
+
+      expect(doc).toHaveBeenCalledWith(expect.anything(), 'sentEmails', 'email-sent-123');
+      expect(updateDoc).toHaveBeenCalledWith(
+        expect.objectContaining({ path: 'sentEmails/email-sent-123' }),
+        expect.objectContaining({
+          trashed: true,
+          trashedAt: expect.any(String),
+        })
+      );
+    });
+
+    it('restoreFromTrash deve restaurar e-mail recebido com trashed: false e trashedAt: null', async () => {
+      await emailService.restoreFromTrash('email-xyz', 'received');
+
+      expect(doc).toHaveBeenCalledWith(expect.anything(), 'receivedEmails', 'email-xyz');
+      expect(updateDoc).toHaveBeenCalledWith(
+        expect.objectContaining({ path: 'receivedEmails/email-xyz' }),
+        {
+          trashed: false,
+          trashedAt: null,
+        }
+      );
+    });
+
+    it('restoreFromTrash deve restaurar e-mail enviado com trashed: false e trashedAt: null', async () => {
+      await emailService.restoreFromTrash('email-sent-123', 'sent');
+
+      expect(doc).toHaveBeenCalledWith(expect.anything(), 'sentEmails', 'email-sent-123');
+      expect(updateDoc).toHaveBeenCalledWith(
+        expect.objectContaining({ path: 'sentEmails/email-sent-123' }),
+        {
+          trashed: false,
+          trashedAt: null,
+        }
+      );
+    });
   });
 
   describe('4. Sanitização e Segurança Anti-XSS do Visualizador de E-mails', () => {

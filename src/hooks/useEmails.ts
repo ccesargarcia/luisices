@@ -87,6 +87,8 @@ export function useEmails({ subscribe = true } = {}) {
             read: !!data.read,
             starred: !!data.starred,
             archived: !!data.archived,
+            trashed: Boolean(data.trashed || data.deleted),
+            trashedAt: data.trashedAt || null,
             receivedAt: data.receivedAt || new Date().toISOString(),
             createdAt: data.createdAt?.toDate?.()?.toISOString() || null,
           } as ReceivedEmail;
@@ -118,6 +120,8 @@ export function useEmails({ subscribe = true } = {}) {
             status: data.status || 'sent',
             senderUid: data.senderUid || '',
             senderEmail: data.senderEmail || '',
+            trashed: Boolean(data.trashed || data.deleted),
+            trashedAt: data.trashedAt || null,
             sentAt: data.sentAt || new Date().toISOString(),
             createdAt: data.createdAt?.toDate?.()?.toISOString() || null,
           } as SentEmail;
@@ -192,7 +196,17 @@ export function useEmails({ subscribe = true } = {}) {
     await emailService.deleteSentEmail(id);
   }, [canDelete]);
 
-  const unreadCount = receivedEmails.filter((e) => !e.read && !e.archived).length;
+  const moveToTrash = useCallback(async (id: string, type: 'received' | 'sent') => {
+    if (!canEdit && !canDelete) throw new Error('Você não possui permissão para mover e-mails para a lixeira.');
+    await emailService.moveToTrash(id, type);
+  }, [canEdit, canDelete]);
+
+  const restoreFromTrash = useCallback(async (id: string, type: 'received' | 'sent') => {
+    if (!canEdit && !canDelete) throw new Error('Você não possui permissão para restaurar e-mails da lixeira.');
+    await emailService.restoreFromTrash(id, type);
+  }, [canEdit, canDelete]);
+
+  const unreadCount = receivedEmails.filter((e) => !e.read && !e.archived && !e.trashed).length;
 
   return {
     receivedEmails,
@@ -208,6 +222,8 @@ export function useEmails({ subscribe = true } = {}) {
     markAsRead,
     toggleStar,
     setArchived,
+    moveToTrash,
+    restoreFromTrash,
     deleteReceived,
     deleteSent,
     canAccess: canView,

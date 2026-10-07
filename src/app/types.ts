@@ -692,6 +692,8 @@ export interface ReceivedEmail {
   read: boolean;
   starred: boolean;
   archived?: boolean;
+  trashed?: boolean;
+  trashedAt?: string | null;
   receivedAt: string;
   createdAt?: any;
 }
@@ -709,6 +711,8 @@ export interface SentEmail {
   status: 'sent' | 'failed' | 'pending';
   senderUid: string;
   senderEmail: string;
+  trashed?: boolean;
+  trashedAt?: string | null;
   sentAt: string;
   createdAt?: any;
 }

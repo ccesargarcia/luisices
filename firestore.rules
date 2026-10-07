@@ -321,22 +321,30 @@ service cloud.firestore {
 
     function validEmailStatusUpdate() {
       return request.resource.data.diff(resource.data).affectedKeys()
-          .hasOnly(['read', 'starred', 'archived'])
+          .hasOnly(['read', 'starred', 'archived', 'trashed', 'trashedAt'])
         && request.resource.data.get('read', false) is bool
         && request.resource.data.get('starred', false) is bool
-        && request.resource.data.get('archived', false) is bool;
+        && request.resource.data.get('archived', false) is bool
+        && request.resource.data.get('trashed', false) is bool;
+    }
+
+    function validSentEmailStatusUpdate() {
+      return request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['trashed', 'trashedAt'])
+        && request.resource.data.get('trashed', false) is bool;
     }
 
     match /receivedEmails/{emailId} {
       allow read: if canAccessEmails('view');
       allow create: if false;
-      allow update: if canAccessEmails('edit') && validEmailStatusUpdate();
+      allow update: if (canAccessEmails('edit') || canAccessEmails('delete')) && validEmailStatusUpdate();
       allow delete: if canAccessEmails('delete');
     }
 
     match /sentEmails/{emailId} {
       allow read: if canAccessEmails('view');
-      allow create, update: if false;
+      allow create: if false;
+      allow update: if (canAccessEmails('edit') || canAccessEmails('delete')) && validSentEmailStatusUpdate();
       allow delete: if canAccessEmails('delete');
     }
 

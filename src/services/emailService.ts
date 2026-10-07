@@ -64,7 +64,31 @@ export class EmailService {
   }
 
   /**
-   * Exclui um e-mail recebido
+   * Move um e-mail recebido ou enviado para a lixeira
+   */
+  async moveToTrash(emailId: string, type: 'received' | 'sent'): Promise<void> {
+    const collectionName = type === 'received' ? 'receivedEmails' : 'sentEmails';
+    const ref = doc(db, collectionName, emailId);
+    await updateDoc(ref, {
+      trashed: true,
+      trashedAt: new Date().toISOString(),
+    });
+  }
+
+  /**
+   * Restaura um e-mail da lixeira de volta para sua pasta de origem
+   */
+  async restoreFromTrash(emailId: string, type: 'received' | 'sent'): Promise<void> {
+    const collectionName = type === 'received' ? 'receivedEmails' : 'sentEmails';
+    const ref = doc(db, collectionName, emailId);
+    await updateDoc(ref, {
+      trashed: false,
+      trashedAt: null,
+    });
+  }
+
+  /**
+   * Exclui um e-mail recebido definitivamente
    */
   async deleteReceivedEmail(emailId: string): Promise<void> {
     const ref = doc(db, 'receivedEmails', emailId);
@@ -72,7 +96,7 @@ export class EmailService {
   }
 
   /**
-   * Exclui um e-mail do histórico de enviados
+   * Exclui um e-mail do histórico de enviados definitivamente
    */
   async deleteSentEmail(emailId: string): Promise<void> {
     const ref = doc(db, 'sentEmails', emailId);

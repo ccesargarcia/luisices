@@ -347,6 +347,8 @@ export function Emails() {
     setArchived,
     deleteReceived,
     deleteSent,
+    moveToTrash,
+    restoreFromTrash,
     canCreate,
     canEdit,
     canDelete,
@@ -393,7 +395,7 @@ export function Emails() {
   const dailyPercent = Math.min(100, Math.round((dailyUsed / dailyLimit) * 100));
 
   // Pastas & Navegação Master-Detail
-  type FolderType = 'inbox' | 'sent' | 'starred' | 'archived';
+  type FolderType = 'inbox' | 'sent' | 'starred' | 'archived' | 'trash';
   const [activeFolder, setActiveFolder] = useState<FolderType>('inbox');
   const [searchQuery, setSearchQuery] = useState('');
   const [filterMode, setFilterMode] = useState<'all' | 'unread'>('all');
@@ -442,30 +444,64 @@ export function Emails() {
     type: 'received' | 'sent';
     id: string;
     subject: string;
+    isPermanent?: boolean;
   } | null>(null);
 
   // Seleção múltipla de e-mails para ações em lote (Select All e Bulk Delete)
   const [selectedEmailIds, setSelectedEmailIds] = useState<Set<string>>(new Set());
   const [isBulkDeleting, setIsBulkDeleting] = useState(false);
   const [isBulkDeleteDialogOpen, setIsBulkDeleteDialogOpen] = useState(false);
+  const [isEmptyTrashDialogOpen, setIsEmptyTrashDialogOpen] = useState(false);
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Contagens para badges de navegação
-  const inboxCount = useMemo(() => receivedEmails.filter((e) => !e.archived).length, [receivedEmails]);
+  const inboxCount = useMemo(() => receivedEmails.filter((e) => !e.archived && !e.trashed).length, [receivedEmails]);
+  const sentCount = useMemo(() => sentEmails.filter((e) => !e.trashed).length, [sentEmails]);
   const starredCount = useMemo(
-    () => receivedEmails.filter((e) => e.starred && !e.archived).length,
+    () => receivedEmails.filter((e) => e.starred && !e.archived && !e.trashed).length,
     [receivedEmails]
   );
-  const archivedCount = useMemo(() => receivedEmails.filter((e) => e.archived).length, [receivedEmails]);
+  const archivedCount = useMemo(() => receivedEmails.filter((e) => e.archived && !e.trashed).length, [receivedEmails]);
+  const trashCount = useMemo(
+    () => receivedEmails.filter((e) => e.trashed).length + sentEmails.filter((e) => e.trashed).length,
+    [receivedEmails, sentEmails]
+  );
 
   // Mensagens filtradas de acordo com a pasta atual
   const displayedEmails = useMemo(() => {
     const q = searchQuery.toLowerCase().trim();
 
+    if (activeFolder === 'trash') {
+      const trashedRec = receivedEmails
+        .filter((e) => e.trashed)
+        .map((e) => ({ ...e, _type: 'received' as const }));
+      const trashedSent = sentEmails
+        .filter((e) => e.trashed)
+        .map((e) => ({ ...e, _type: 'sent' as const }));
+      const combined = [...trashedRec, ...trashedSent].sort((a, b) => {
+        const timeA = a.trashedAt ? new Date(a.trashedAt).getTime() : 0;
+        const timeB = b.trashedAt ? new Date(b.trashedAt).getTime() : 0;
+        return timeB - timeA;
+      });
+
+      return combined.filter((email) => {
+        if (filterMode === 'unread' && email._type === 'received' && email.read) return false;
+        if (q) {
+          const matchSub = email.subject?.toLowerCase().includes(q);
+          const matchTxt = (email.text || (email as any).html)?.toLowerCase().includes(q);
+          const matchFrom = email._type === 'received' ? email.from?.toLowerCase().includes(q) : false;
+          const matchTo = email._type === 'sent' ? email.to?.some((t) => t.toLowerCase().includes(q)) : false;
+          return matchSub || matchTxt || matchFrom || matchTo;
+        }
+        return true;
+      });
+    }
+
     if (activeFolder === 'sent') {
       return sentEmails
         .filter((email) => {
+          if (email.trashed) return false;
           if (!q) return true;
           const matchSub = email.subject?.toLowerCase().includes(q);
           const matchTo = email.to?.some((t) => t.toLowerCase().includes(q));
@@ -477,6 +513,8 @@ export function Emails() {
 
     return receivedEmails
       .filter((email) => {
+        if (email.trashed) return false;
+
         if (activeFolder === 'inbox') {
           if (email.archived) return false;
           if (filterMode === 'unread' && email.read) return false;
@@ -529,7 +567,7 @@ export function Emails() {
   const hasMoreHistory = historyType === 'sent' ? hasMoreSent : hasMoreReceived;
   useEffect(() => {
     if (loading || !hasMoreHistory) return;
-    if (searchQuery.trim() || activeFolder === 'archived' || activeFolder === 'starred' || filterMode === 'unread' || pageSize === 'all') {
+    if (searchQuery.trim() || activeFolder === 'archived' || activeFolder === 'starred' || activeFolder === 'trash' || filterMode === 'unread' || pageSize === 'all') {
       void loadHistory(historyType, true).catch(() => {});
     }
   }, [activeFolder, searchQuery, filterMode, pageSize, historyType, loading, loadHistory]);
@@ -664,18 +702,163 @@ export function Emails() {
     } finally { setIsBulkDeleting(false); }
   };
 
+  const handleRestoreSingle = async (id: string, type: 'received' | 'sent') => {
+    if (!canEdit && !canDelete) return;
+    try {
+      await restoreFromTrash(id, type);
+      toast.success('Mensagem restaurada para a pasta de origem.', {
+        action: {
+          label: 'Desfazer',
+          onClick: () => {
+            void moveToTrash(id, type).then(() => {
+              toast.success('Mensagem movida novamente para a lixeira.');
+            }).catch(() => toast.error('Não foi possível mover para a lixeira.'));
+          },
+        },
+        duration: 8000,
+      });
+    } catch {
+      toast.error('Não foi possível restaurar a mensagem.');
+    }
+  };
+
   const handleConfirmBulkDelete = async () => {
-    if (!canDelete) return;
-    await runBulk(activeFolder === 'sent' ? deleteSent : deleteReceived, 'excluído(s)');
+    if (!canDelete || !selectedEmailIds.size || isBulkDeleting) return;
+    setIsBulkDeleting(true);
+    const folder = activeFolder;
+    try {
+      const ids = [...selectedEmailIds];
+      if (folder === 'trash') {
+        const results = await Promise.allSettled(
+          ids.map((id) => {
+            const isRec = receivedEmails.some((e) => e.id === id);
+            return isRec ? deleteReceived(id) : deleteSent(id);
+          })
+        );
+        const succeeded = ids.filter((_, idx) => results[idx].status === 'fulfilled');
+        const failed = ids.filter((_, idx) => results[idx].status === 'rejected');
+        if (succeeded.length) toast.success(`${succeeded.length} e-mail(s) excluído(s) definitivamente.`);
+        if (failed.length) toast.error(`${failed.length} e-mail(s) não foram excluídos.`);
+        if (folderRef.current === folder) {
+          setSelectedEmailIds(new Set(failed));
+          if (!failed.length) setIsBulkDeleteDialogOpen(false);
+          if (selectedEmailId && succeeded.includes(selectedEmailId)) {
+            setSelectedEmailId(null);
+          }
+        }
+      } else {
+        const isSent = folder === 'sent';
+        const results = await Promise.allSettled(
+          ids.map((id) => moveToTrash(id, isSent ? 'sent' : 'received'))
+        );
+        const succeeded = ids.filter((_, idx) => results[idx].status === 'fulfilled');
+        const failed = ids.filter((_, idx) => results[idx].status === 'rejected');
+        if (succeeded.length) {
+          toast.success(`${succeeded.length} e-mail(s) movido(s) para a lixeira.`, {
+            action: {
+              label: 'Desfazer',
+              onClick: () => {
+                void (async () => {
+                  const restoreResults = await Promise.allSettled(
+                    succeeded.map((id) => restoreFromTrash(id, isSent ? 'sent' : 'received'))
+                  );
+                  const restored = restoreResults.filter((r) => r.status === 'fulfilled').length;
+                  toast.success(`${restored} e-mail(s) restaurado(s).`);
+                })();
+              },
+            },
+            duration: 8000,
+          });
+        }
+        if (failed.length) toast.error(`${failed.length} e-mail(s) não foram movidos.`);
+        if (folderRef.current === folder) {
+          setSelectedEmailIds(new Set(failed));
+          if (!failed.length) setIsBulkDeleteDialogOpen(false);
+          if (selectedEmailId && succeeded.includes(selectedEmailId)) {
+            setSelectedEmailId(null);
+          }
+        }
+      }
+    } finally {
+      setIsBulkDeleting(false);
+    }
+  };
+
+  const handleBulkRestore = async () => {
+    if ((!canEdit && !canDelete) || !selectedEmailIds.size || isBulkDeleting) return;
+    setIsBulkDeleting(true);
+    const folder = activeFolder;
+    try {
+      const ids = [...selectedEmailIds];
+      const results = await Promise.allSettled(
+        ids.map((id) => {
+          const isRec = receivedEmails.some((e) => e.id === id);
+          return restoreFromTrash(id, isRec ? 'received' : 'sent');
+        })
+      );
+      const succeeded = ids.filter((_, idx) => results[idx].status === 'fulfilled');
+      const failed = ids.filter((_, idx) => results[idx].status === 'rejected');
+      if (succeeded.length) {
+        toast.success(`${succeeded.length} e-mail(s) restaurado(s).`, {
+          action: {
+            label: 'Desfazer',
+            onClick: () => {
+              void (async () => {
+                const moveResults = await Promise.allSettled(
+                  succeeded.map((id) => {
+                    const isRec = receivedEmails.some((e) => e.id === id);
+                    return moveToTrash(id, isRec ? 'received' : 'sent');
+                  })
+                );
+                const reTrashed = moveResults.filter((r) => r.status === 'fulfilled').length;
+                toast.success(`${reTrashed} e-mail(s) movido(s) novamente para a lixeira.`);
+              })();
+            },
+          },
+          duration: 8000,
+        });
+      }
+      if (failed.length) toast.error(`${failed.length} e-mail(s) não foram restaurados.`);
+      if (folderRef.current === folder) {
+        setSelectedEmailIds(new Set(failed));
+        if (selectedEmailId && succeeded.includes(selectedEmailId)) {
+          setSelectedEmailId(null);
+        }
+      }
+    } finally {
+      setIsBulkDeleting(false);
+    }
+  };
+
+  const handleEmptyTrash = async () => {
+    if (!canDelete || isBulkDeleting) return;
+    const allTrashed = [
+      ...receivedEmails.filter((e) => e.trashed).map((e) => ({ id: e.id, type: 'received' as const })),
+      ...sentEmails.filter((e) => e.trashed).map((e) => ({ id: e.id, type: 'sent' as const })),
+    ];
+    if (allTrashed.length === 0) return;
+    setIsBulkDeleting(true);
+    try {
+      const results = await Promise.allSettled(
+        allTrashed.map((item) => (item.type === 'received' ? deleteReceived(item.id) : deleteSent(item.id)))
+      );
+      const succeeded = results.filter((r) => r.status === 'fulfilled').length;
+      toast.success(`Lixeira esvaziada (${succeeded} e-mail(s) excluído(s)).`);
+      setSelectedEmailId(null);
+      setSelectedEmailIds(new Set());
+      setIsEmptyTrashDialogOpen(false);
+    } finally {
+      setIsBulkDeleting(false);
+    }
   };
 
   const handleBulkMarkRead = async (read: boolean) => {
-    if (!canEdit || activeFolder === 'sent') return;
+    if (!canEdit || activeFolder === 'sent' || activeFolder === 'trash') return;
     await runBulk(id => markAsRead(id, read), read ? 'marcado(s) como lido(s)' : 'marcado(s) como não lido(s)');
   };
 
   const handleBulkArchive = async (archived: boolean) => {
-    if (!canEdit || activeFolder === 'sent') return;
+    if (!canEdit || activeFolder === 'sent' || activeFolder === 'trash') return;
     await runBulk(id => setArchived(id, archived), archived ? 'arquivado(s)' : 'desarquivado(s)');
   };
 
@@ -1110,7 +1293,7 @@ export function Emails() {
                 <Send className="size-4" />
                 <span>Enviados</span>
               </div>
-              <span className="text-[11px] opacity-75">{sentEmails.length}</span>
+              <span className="text-[11px] opacity-75">{sentCount}</span>
             </button>
 
             <button
@@ -1149,6 +1332,25 @@ export function Emails() {
                 <span>Arquivados</span>
               </div>
               {archivedCount > 0 && <span className="text-[11px] opacity-75">{archivedCount}</span>}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setActiveFolder('trash');
+                setSelectedEmailId(null);
+              }}
+              className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs font-medium transition-colors ${
+                activeFolder === 'trash'
+                  ? 'bg-primary text-primary-foreground shadow-xs'
+                  : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+              }`}
+            >
+              <div className="flex items-center gap-2.5">
+                <Trash2 className="size-4" />
+                <span>Lixeira</span>
+              </div>
+              {trashCount > 0 && <span className="text-[11px] opacity-75">{trashCount}</span>}
             </button>
           </div>
 
@@ -1212,11 +1414,12 @@ export function Emails() {
                     <SelectItem value="sent">Enviados</SelectItem>
                     <SelectItem value="starred">Favoritos</SelectItem>
                     <SelectItem value="archived">Arquivados</SelectItem>
+                    <SelectItem value="trash">Lixeira</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
 
-              {activeFolder !== 'sent' && (
+              {activeFolder !== 'sent' && activeFolder !== 'trash' && (
                 <div className="flex items-center gap-1 bg-muted/60 p-0.5 rounded-md text-[11px] ml-auto">
                   <button
                     type="button"
@@ -1264,45 +1467,88 @@ export function Emails() {
                 </label>
               </div>
 
+              {selectedEmailIds.size === 0 && activeFolder === 'trash' && (
+                <Button
+                  disabled={!canDelete || isBulkDeleting}
+                  size="sm"
+                  variant="ghost"
+                  className="h-7 px-2 text-[11px] gap-1 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                  onClick={() => setIsEmptyTrashDialogOpen(true)}
+                  title="Esvaziar lixeira definitivamente"
+                >
+                  <Trash2 className="size-3.5" />
+                  <span>Esvaziar Lixeira</span>
+                </Button>
+              )}
+
               {selectedEmailIds.size > 0 && (
                 <div className="flex items-center gap-1">
-                  {activeFolder !== 'sent' && (
+                  {activeFolder === 'trash' ? (
                     <>
                       <Button
-                  disabled={!canEdit || isBulkDeleting}
+                        disabled={(!canEdit && !canDelete) || isBulkDeleting}
                         size="sm"
-                        variant="ghost"
-                        className="h-7 px-2 text-[11px] gap-1 text-muted-foreground hover:text-foreground"
-                        onClick={() => handleBulkMarkRead(true)}
-                        title="Marcar selecionados como lidos"
+                        variant="outline"
+                        className="h-7 px-2 text-[11px] gap-1 text-primary hover:text-primary font-medium"
+                        onClick={handleBulkRestore}
+                        title="Restaurar e-mails selecionados para as pastas de origem"
                       >
-                        <MailCheck className="size-3.5 text-primary" />
-                        <span className="hidden sm:inline">Lido</span>
+                        <ArchiveRestore className="size-3.5" />
+                        <span className="hidden sm:inline">Restaurar</span>
                       </Button>
                       <Button
-                  disabled={!canEdit || isBulkDeleting}
+                        disabled={!canDelete || isBulkDeleting}
                         size="sm"
-                        variant="ghost"
-                        className="h-7 px-2 text-[11px] gap-1 text-muted-foreground hover:text-foreground"
-                        onClick={() => handleBulkArchive(activeFolder !== 'archived')}
-                        title={activeFolder === 'archived' ? "Desarquivar selecionados" : "Arquivar selecionados"}
+                        variant="destructive"
+                        className="h-7 px-2.5 text-[11px] gap-1 shadow-xs font-medium"
+                        onClick={() => setIsBulkDeleteDialogOpen(true)}
+                        title="Excluir e-mails selecionados definitivamente"
                       >
-                        <Archive className="size-3.5" />
-                        <span className="hidden sm:inline">{activeFolder === 'archived' ? 'Desarquivar' : 'Arquivar'}</span>
+                        <Trash2 className="size-3.5" />
+                        <span>Excluir definitivamente ({selectedEmailIds.size})</span>
+                      </Button>
+                    </>
+                  ) : (
+                    <>
+                      {activeFolder !== 'sent' && (
+                        <>
+                          <Button
+                            disabled={!canEdit || isBulkDeleting}
+                            size="sm"
+                            variant="ghost"
+                            className="h-7 px-2 text-[11px] gap-1 text-muted-foreground hover:text-foreground"
+                            onClick={() => handleBulkMarkRead(true)}
+                            title="Marcar selecionados como lidos"
+                          >
+                            <MailCheck className="size-3.5 text-primary" />
+                            <span className="hidden sm:inline">Lido</span>
+                          </Button>
+                          <Button
+                            disabled={!canEdit || isBulkDeleting}
+                            size="sm"
+                            variant="ghost"
+                            className="h-7 px-2 text-[11px] gap-1 text-muted-foreground hover:text-foreground"
+                            onClick={() => handleBulkArchive(activeFolder !== 'archived')}
+                            title={activeFolder === 'archived' ? "Desarquivar selecionados" : "Arquivar selecionados"}
+                          >
+                            <Archive className="size-3.5" />
+                            <span className="hidden sm:inline">{activeFolder === 'archived' ? 'Desarquivar' : 'Arquivar'}</span>
+                          </Button>
+                        </>
+                      )}
+                      <Button
+                        disabled={!canDelete || isBulkDeleting}
+                        size="sm"
+                        variant="destructive"
+                        className="h-7 px-2.5 text-[11px] gap-1 shadow-xs font-medium"
+                        onClick={() => setIsBulkDeleteDialogOpen(true)}
+                        title="Mover e-mails selecionados para a lixeira"
+                      >
+                        <Trash2 className="size-3.5" />
+                        <span>Excluir ({selectedEmailIds.size})</span>
                       </Button>
                     </>
                   )}
-                  <Button
-                  disabled={!canDelete || isBulkDeleting}
-                    size="sm"
-                    variant="destructive"
-                    className="h-7 px-2.5 text-[11px] gap-1 shadow-xs font-medium"
-                    onClick={() => setIsBulkDeleteDialogOpen(true)}
-                    title="Excluir e-mails selecionados em massa"
-                  >
-                    <Trash2 className="size-3.5" />
-                    <span>Excluir ({selectedEmailIds.size})</span>
-                  </Button>
                   <Button
                     size="sm"
                     variant="ghost"
@@ -1399,9 +1645,15 @@ export function Emails() {
 
                               <div className="flex items-center gap-1.5 shrink-0">
                                 <span className="text-[11px] text-muted-foreground whitespace-nowrap">
-                                  {formatRelativeDate(email._type === 'sent' ? email.sentAt : email.receivedAt)}
+                                  {formatRelativeDate(
+                                    email.trashed
+                                      ? email.trashedAt || (email._type === 'sent' ? email.sentAt : email.receivedAt)
+                                      : email._type === 'sent'
+                                      ? email.sentAt
+                                      : email.receivedAt
+                                  )}
                                 </span>
-                                {email._type === 'received' && (
+                                {email._type === 'received' && !email.trashed && (
                                   <button
                   disabled={!canEdit || isBulkDeleting}
                                     type="button"
@@ -1435,7 +1687,53 @@ export function Emails() {
                                     </button>
                                   </DropdownMenuTrigger>
                                   <DropdownMenuContent align="end" className="w-56 text-xs">
-                                    {email._type === 'received' ? (
+                                    {email.trashed ? (
+                                      <>
+                                        <DropdownMenuItem
+                                          onClick={() => handleSelectEmail(email.id, email._type)}
+                                          className="gap-2 cursor-pointer"
+                                        >
+                                          <MailOpen className="size-3.5" />
+                                          <span>Abrir Mensagem</span>
+                                        </DropdownMenuItem>
+                                        <DropdownMenuItem
+                                          disabled={(!canEdit && !canDelete) || isBulkDeleting}
+                                          onClick={() => handleRestoreSingle(email.id, email._type)}
+                                          className="gap-2 cursor-pointer text-primary focus:text-primary"
+                                        >
+                                          <ArchiveRestore className="size-3.5" />
+                                          <span>Restaurar Mensagem</span>
+                                        </DropdownMenuItem>
+                                        <DropdownMenuSeparator />
+                                        <DropdownMenuItem
+                                          onClick={() => {
+                                            navigator.clipboard.writeText(email.subject || '');
+                                            toast.success('Assunto copiado!');
+                                          }}
+                                          className="gap-2 cursor-pointer"
+                                        >
+                                          <Copy className="size-3.5" />
+                                          <span>Copiar Assunto</span>
+                                        </DropdownMenuItem>
+                                        <DropdownMenuSeparator />
+                                        <DropdownMenuItem
+                  disabled={!canDelete || isBulkDeleting}
+                                          variant="destructive"
+                                          onClick={() => {
+                                            setEmailToDelete({
+                                              type: email._type,
+                                              id: email.id,
+                                              subject: email.subject || '(Sem assunto)',
+                                              isPermanent: true,
+                                            });
+                                          }}
+                                          className="gap-2 cursor-pointer text-destructive focus:text-destructive"
+                                        >
+                                          <Trash2 className="size-3.5" />
+                                          <span>Excluir Definitivamente</span>
+                                        </DropdownMenuItem>
+                                      </>
+                                    ) : email._type === 'received' ? (
                                       <>
                                         <DropdownMenuItem
                                           onClick={() => handleSelectEmail(email.id, 'received')}
@@ -1506,12 +1804,13 @@ export function Emails() {
                                               type: 'received',
                                               id: email.id,
                                               subject: email.subject || '(Sem assunto)',
+                                              isPermanent: false,
                                             });
                                           }}
                                           className="gap-2 cursor-pointer text-destructive focus:text-destructive"
                                         >
                                           <Trash2 className="size-3.5" />
-                                          <span>Excluir Mensagem</span>
+                                          <span>Mover para a Lixeira</span>
                                         </DropdownMenuItem>
                                       </>
                                     ) : (
@@ -1570,12 +1869,13 @@ export function Emails() {
                                               type: 'sent',
                                               id: email.id,
                                               subject: email.subject || '(Sem assunto)',
+                                              isPermanent: false,
                                             });
                                           }}
                                           className="gap-2 cursor-pointer text-destructive focus:text-destructive"
                                         >
                                           <Trash2 className="size-3.5" />
-                                          <span>Excluir do Histórico</span>
+                                          <span>Mover para a Lixeira</span>
                                         </DropdownMenuItem>
                                       </>
                                     )}
@@ -1609,7 +1909,67 @@ export function Emails() {
 
                     {/* Menu de Contexto completo acionado com o Botão Direito */}
                     <ContextMenuContent className="w-60 text-xs">
-                      {email._type === 'received' ? (
+                      {email.trashed ? (
+                        <>
+                          <ContextMenuLabel className="text-[11px] text-muted-foreground truncate max-w-[220px]">
+                            {email._type === 'sent' ? `Para: ${email.to.join(', ')}` : senderDisplayName}
+                          </ContextMenuLabel>
+                          <ContextMenuItem
+                            onClick={() => handleSelectEmail(email.id, email._type)}
+                            className="gap-2 cursor-pointer"
+                          >
+                            <MailOpen className="size-3.5 text-primary" />
+                            <span>Abrir Mensagem</span>
+                          </ContextMenuItem>
+                          <ContextMenuItem
+                            disabled={(!canEdit && !canDelete) || isBulkDeleting}
+                            onClick={() => handleRestoreSingle(email.id, email._type)}
+                            className="gap-2 cursor-pointer text-primary focus:text-primary"
+                          >
+                            <ArchiveRestore className="size-3.5" />
+                            <span>Restaurar Mensagem</span>
+                          </ContextMenuItem>
+                          <ContextMenuSeparator />
+                          <ContextMenuItem
+                            onClick={() => {
+                              navigator.clipboard.writeText(email.subject || '');
+                              toast.success('Assunto do e-mail copiado!');
+                            }}
+                            className="gap-2 cursor-pointer"
+                          >
+                            <Copy className="size-3.5" />
+                            <span>Copiar Assunto</span>
+                          </ContextMenuItem>
+                          <ContextMenuItem
+                            onClick={() => {
+                              const content = email.text || (email as any).html?.replace(/<[^>]+>/g, ' ') || '';
+                              navigator.clipboard.writeText(content);
+                              toast.success('Conteúdo de texto copiado!');
+                            }}
+                            className="gap-2 cursor-pointer"
+                          >
+                            <Copy className="size-3.5" />
+                            <span>Copiar Texto da Mensagem</span>
+                          </ContextMenuItem>
+                          <ContextMenuSeparator />
+                          <ContextMenuItem
+                            disabled={!canDelete || isBulkDeleting}
+                            variant="destructive"
+                            onClick={() => {
+                              setEmailToDelete({
+                                type: email._type,
+                                id: email.id,
+                                subject: email.subject || '(Sem assunto)',
+                                isPermanent: true,
+                              });
+                            }}
+                            className="gap-2 cursor-pointer text-destructive focus:text-destructive"
+                          >
+                            <Trash2 className="size-3.5" />
+                            <span>Excluir Definitivamente</span>
+                          </ContextMenuItem>
+                        </>
+                      ) : email._type === 'received' ? (
                         <>
                           <ContextMenuLabel className="text-[11px] text-muted-foreground truncate max-w-[220px]">
                             {senderDisplayName}
@@ -1706,12 +2066,13 @@ export function Emails() {
                                 type: 'received',
                                 id: email.id,
                                 subject: email.subject || '(Sem assunto)',
+                                isPermanent: false,
                               });
                             }}
                             className="gap-2 cursor-pointer text-destructive focus:text-destructive"
                           >
                             <Trash2 className="size-3.5" />
-                            <span>Excluir Mensagem</span>
+                            <span>Mover para a Lixeira</span>
                           </ContextMenuItem>
                         </>
                       ) : (
@@ -1784,12 +2145,13 @@ export function Emails() {
                                 type: 'sent',
                                 id: email.id,
                                 subject: email.subject || '(Sem assunto)',
+                                isPermanent: false,
                               });
                             }}
                             className="gap-2 cursor-pointer text-destructive focus:text-destructive"
                           >
                             <Trash2 className="size-3.5" />
-                            <span>Excluir do Histórico</span>
+                            <span>Mover para a Lixeira</span>
                           </ContextMenuItem>
                         </>
                       )}
@@ -1844,51 +2206,69 @@ export function Emails() {
                     <span>Lista</span>
                   </Button>
 
-                  {currentReceivedEmail && (
-                    <>
-                      <Button
+                  {Boolean(currentReceivedEmail?.trashed || currentSentEmail?.trashed) ? (
+                    <Button
+                      disabled={(!canEdit && !canDelete) || isBulkDeleting}
+                      size="sm"
+                      variant="default"
+                      onClick={() => {
+                        const isRec = Boolean(currentReceivedEmail);
+                        const item = currentReceivedEmail || currentSentEmail;
+                        if (!item) return;
+                        handleRestoreSingle(item.id, isRec ? 'received' : 'sent');
+                      }}
+                      className="h-8 gap-1 text-xs shadow-xs"
+                    >
+                      <ArchiveRestore className="size-3.5" />
+                      <span>Restaurar</span>
+                    </Button>
+                  ) : (
+                    currentReceivedEmail && (
+                      <>
+                        <Button
                   disabled={!canCreate || isBulkDeleting}
-                        size="sm"
-                        variant="default"
-                        onClick={() => handleStartReply(currentReceivedEmail)}
-                        className="h-8 gap-1 text-xs shadow-xs"
-                      >
-                        <Reply className="size-3.5" />
-                        <span>Responder</span>
-                      </Button>
+                          size="sm"
+                          variant="default"
+                          onClick={() => handleStartReply(currentReceivedEmail)}
+                          className="h-8 gap-1 text-xs shadow-xs"
+                        >
+                          <Reply className="size-3.5" />
+                          <span>Responder</span>
+                        </Button>
 
-                      <Button
+                        <Button
                   disabled={!canEdit || isBulkDeleting}
-                        size="sm"
-                        variant="outline"
-                        onClick={() => handleToggleRead(currentReceivedEmail.id, currentReceivedEmail.read)}
-                        className="h-8 gap-1 text-xs"
-                        title={currentReceivedEmail.read ? 'Marcar como não lido' : 'Marcar como lido'}
-                      >
-                        <MailCheck className="size-3.5" />
-                        <span className="hidden sm:inline">
-                          {currentReceivedEmail.read ? 'Não lido' : 'Lido'}
-                        </span>
-                      </Button>
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleToggleRead(currentReceivedEmail.id, currentReceivedEmail.read)}
+                          className="h-8 gap-1 text-xs"
+                          title={currentReceivedEmail.read ? 'Marcar como não lido' : 'Marcar como lido'}
+                        >
+                          <MailCheck className="size-3.5" />
+                          <span className="hidden sm:inline">
+                            {currentReceivedEmail.read ? 'Não lido' : 'Lido'}
+                          </span>
+                        </Button>
 
-                      <Button
+                        <Button
                   disabled={!canEdit || isBulkDeleting}
-                        size="sm"
-                        variant="outline"
-                        onClick={() => void handleStatusChange(() => setArchived(currentReceivedEmail.id, !currentReceivedEmail.archived))}
-                        className="h-8 gap-1 text-xs"
-                        title={currentReceivedEmail.archived ? 'Desarquivar' : 'Arquivar'}
-                      >
-                        {currentReceivedEmail.archived ? (
-                          <ArchiveRestore className="size-3.5" />
-                        ) : (
-                          <Archive className="size-3.5" />
-                        )}
-                        <span className="hidden sm:inline">
-                          {currentReceivedEmail.archived ? 'Desarquivar' : 'Arquivar'}
-                        </span>
-                      </Button>
-                    </>
+                          size="sm"
+                          variant="outline"
+                          onClick={() => void handleStatusChange(() => setArchived(currentReceivedEmail.id, !currentReceivedEmail.archived))}
+                          className="h-8 gap-1 text-xs"
+                          title={currentReceivedEmail.archived ? 'Desarquivar' : 'Arquivar'}
+                        >
+                          {currentReceivedEmail.archived ? (
+                            <ArchiveRestore className="size-3.5" />
+                          ) : (
+                            <Archive className="size-3.5" />
+                          )}
+                          <span className="hidden sm:inline">
+                            {currentReceivedEmail.archived ? 'Desarquivar' : 'Arquivar'}
+                          </span>
+                        </Button>
+                      </>
+                    )
                   )}
 
                   <Button
@@ -1911,18 +2291,48 @@ export function Emails() {
                     const isRec = Boolean(currentReceivedEmail);
                     const item = currentReceivedEmail || currentSentEmail;
                     if (!item) return;
+                    const isTrashed = Boolean(item.trashed);
                     setEmailToDelete({
                       type: isRec ? 'received' : 'sent',
                       id: item.id,
                       subject: item.subject || '(Sem assunto)',
+                      isPermanent: isTrashed,
                     });
                   }}
                   className="h-8 px-2 text-destructive hover:text-destructive hover:bg-destructive/10"
-                  title="Excluir mensagem"
+                  title={
+                    currentReceivedEmail?.trashed || currentSentEmail?.trashed
+                      ? 'Excluir definitivamente'
+                      : 'Mover para a lixeira'
+                  }
                 >
                   <Trash2 className="size-3.5" />
                 </Button>
               </div>
+
+              {/* Banner informativo quando a mensagem está na lixeira */}
+              {(currentReceivedEmail?.trashed || currentSentEmail?.trashed) && (
+                <div className="bg-amber-500/10 border-b border-amber-500/20 px-4 py-2 flex items-center justify-between text-xs text-amber-900 dark:text-amber-200 shrink-0">
+                  <div className="flex items-center gap-2">
+                    <Trash2 className="size-3.5 text-amber-600 dark:text-amber-400" />
+                    <span>Esta mensagem está na lixeira.</span>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    disabled={(!canEdit && !canDelete) || isBulkDeleting}
+                    onClick={() => {
+                      const isRec = Boolean(currentReceivedEmail);
+                      const item = currentReceivedEmail || currentSentEmail;
+                      if (!item) return;
+                      handleRestoreSingle(item.id, isRec ? 'received' : 'sent');
+                    }}
+                    className="h-6 px-2 text-xs text-amber-800 dark:text-amber-300 hover:text-amber-950 font-medium"
+                  >
+                    Restaurar agora
+                  </Button>
+                </div>
+              )}
 
               {/* Informação do Cliente & Pedidos Vinculados */}
               {matchedCustomer && (
@@ -2462,37 +2872,65 @@ export function Emails() {
         <AlertDialogContent className="sm:max-w-md">
           <AlertDialogHeader>
             <AlertDialogTitle>
-              {emailToDelete?.type === 'received' ? 'Excluir e-mail' : 'Remover do histórico'}
+              {emailToDelete?.isPermanent
+                ? 'Excluir definitivamente'
+                : emailToDelete?.type === 'received'
+                ? 'Mover e-mail para a lixeira?'
+                : 'Mover registro para a lixeira?'}
             </AlertDialogTitle>
             <AlertDialogDescription className="text-xs">
-              {emailToDelete?.type === 'received'
-                ? `Tem certeza que deseja excluir o e-mail "${emailToDelete?.subject}"? Esta ação não pode ser desfeita.`
-                : `Tem certeza que deseja remover o registro "${emailToDelete?.subject}" do histórico de disparos?`}
+              {emailToDelete?.isPermanent
+                ? `Tem certeza que deseja excluir o e-mail "${emailToDelete?.subject}" definitivamente? Esta ação não pode ser desfeita.`
+                : `Deseja mover o e-mail "${emailToDelete?.subject}" para a lixeira? Você poderá restaurá-lo a qualquer momento.`}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter className="flex-col-reverse gap-2 sm:flex-row sm:justify-end">
             <AlertDialogCancel className="text-xs h-8">Cancelar</AlertDialogCancel>
             <AlertDialogAction
-              onClick={() => {
+              onClick={async () => {
                 if (!emailToDelete) return;
-                if (emailToDelete.type === 'received') {
-                  deleteReceived(emailToDelete.id);
-                  if (selectedEmailId === emailToDelete.id) {
-                    setSelectedEmailId(null);
-                  }
-                  toast.success('E-mail excluído com sucesso.');
-                } else {
-                  deleteSent(emailToDelete.id);
-                  if (selectedEmailId === emailToDelete.id) {
-                    setSelectedEmailId(null);
-                  }
-                  toast.success('Registro removido do histórico.');
-                }
+                const target = emailToDelete;
                 setEmailToDelete(null);
+
+                if (target.isPermanent) {
+                  try {
+                    if (target.type === 'received') {
+                      await deleteReceived(target.id);
+                    } else {
+                      await deleteSent(target.id);
+                    }
+                    if (selectedEmailId === target.id) {
+                      setSelectedEmailId(null);
+                    }
+                    toast.success('E-mail excluído definitivamente.');
+                  } catch {
+                    toast.error('Não foi possível excluir o e-mail.');
+                  }
+                } else {
+                  try {
+                    await moveToTrash(target.id, target.type);
+                    if (selectedEmailId === target.id) {
+                      setSelectedEmailId(null);
+                    }
+                    toast.success('E-mail movido para a lixeira.', {
+                      action: {
+                        label: 'Desfazer',
+                        onClick: () => {
+                          void restoreFromTrash(target.id, target.type)
+                            .then(() => toast.success('E-mail restaurado.'))
+                            .catch(() => toast.error('Não foi possível restaurar o e-mail.'));
+                        },
+                      },
+                      duration: 8000,
+                    });
+                  } catch {
+                    toast.error('Não foi possível mover o e-mail para a lixeira.');
+                  }
+                }
               }}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90 text-xs h-8"
             >
-              Excluir
+              {emailToDelete?.isPermanent ? 'Excluir definitivamente' : 'Mover para a lixeira'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -2507,10 +2945,14 @@ export function Emails() {
           <AlertDialogHeader>
             <AlertDialogTitle className="flex items-center gap-2 text-destructive text-base">
               <Trash2 className="size-4 text-destructive" />
-              Excluir {selectedEmailIds.size} e-mail(s) selecionado(s)?
+              {activeFolder === 'trash'
+                ? `Excluir ${selectedEmailIds.size} e-mail(s) definitivamente?`
+                : `Mover ${selectedEmailIds.size} e-mail(s) para a lixeira?`}
             </AlertDialogTitle>
             <AlertDialogDescription className="text-xs leading-relaxed">
-              Esta ação removerá permanentemente os <strong className="text-foreground">{selectedEmailIds.size}</strong> e-mails selecionados {activeFolder === 'sent' ? 'do histórico de disparos' : 'da caixa de mensagens'}. Esta ação não pode ser desfeita.
+              {activeFolder === 'trash'
+                ? `Esta ação removerá permanentemente os ${selectedEmailIds.size} e-mails da lixeira. Esta ação não pode ser desfeita.`
+                : `Os ${selectedEmailIds.size} e-mails selecionados serão movidos para a lixeira. Você poderá restaurá-los se precisar.`}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter className="flex-col-reverse gap-2 sm:flex-row sm:justify-end">
@@ -2525,12 +2967,56 @@ export function Emails() {
               {isBulkDeleting ? (
                 <>
                   <Loader2 className="size-3.5 animate-spin" />
-                  <span>Excluindo...</span>
+                  <span>{activeFolder === 'trash' ? 'Excluindo...' : 'Movendo...'}</span>
                 </>
               ) : (
                 <>
                   <Trash2 className="size-3.5" />
-                  <span>Excluir {selectedEmailIds.size} e-mail(s)</span>
+                  <span>
+                    {activeFolder === 'trash'
+                      ? `Excluir definitivamente (${selectedEmailIds.size})`
+                      : `Mover para a lixeira (${selectedEmailIds.size})`}
+                  </span>
+                </>
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* ─── Modal de Confirmação para Esvaziar a Lixeira ─────────────── */}
+      <AlertDialog
+        open={isEmptyTrashDialogOpen}
+        onOpenChange={setIsEmptyTrashDialogOpen}
+      >
+        <AlertDialogContent className="sm:max-w-md">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2 text-destructive text-base">
+              <Trash2 className="size-4 text-destructive" />
+              Esvaziar lixeira?
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-xs leading-relaxed">
+              Todos os e-mails na lixeira serão excluídos definitivamente. Esta ação não pode ser desfeita.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <AlertDialogCancel disabled={isBulkDeleting} className="text-xs h-8">
+              Cancelar
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleEmptyTrash}
+              disabled={isBulkDeleting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90 text-xs h-8 gap-1.5"
+            >
+              {isBulkDeleting ? (
+                <>
+                  <Loader2 className="size-3.5 animate-spin" />
+                  <span>Esvaziando...</span>
+                </>
+              ) : (
+                <>
+                  <Trash2 className="size-3.5" />
+                  <span>Esvaziar Lixeira</span>
                 </>
               )}
             </AlertDialogAction>
