@@ -313,13 +313,30 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
-    // Regras para Central de E-mails Resend (estritamente restrito a administradores)
+    // Regras para Central de E-mails Resend
+    function canAccessEmails() {
+      return request.auth != null
+        && exists(/databases/$(database)/documents/userProfiles/$(request.auth.uid))
+        && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.get('active', true) == true
+        && (
+          isAdmin()
+          || (
+            get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.get('role', 'user') == 'user'
+            && getEmployeePermissions().get('emails', true) != false
+          )
+          || (
+            get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.get('role', '') == 'funcionario'
+            && getEmployeePermissions().get('emails', false) == true
+          )
+        );
+    }
+
     match /receivedEmails/{emailId} {
-      allow read, write: if isAdmin();
+      allow read, write: if canAccessEmails();
     }
 
     match /sentEmails/{emailId} {
-      allow read, write: if isAdmin();
+      allow read, write: if canAccessEmails();
     }
 
     // Regras para configurações públicas da loja / catálogo online

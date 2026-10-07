@@ -519,14 +519,16 @@ Equipe ${settings?.businessName || 'Luisices'}`;
               <Download className="size-4 mr-2" />
               {exportingPdf ? 'Gerando...' : 'Exportar PDF'}
             </Button>
-            <Button
-              variant="outline"
-              onClick={() => setEmailDialogOpen(true)}
-              title="Enviar orçamento por e-mail"
-            >
-              <Mail className="size-4 mr-2 text-primary" />
-              E-mail
-            </Button>
+            {hasPermission((p) => p.emails ?? false) && (
+              <Button
+                variant="outline"
+                onClick={() => setEmailDialogOpen(true)}
+                title="Enviar orçamento por e-mail"
+              >
+                <Mail className="size-4 mr-2 text-primary" />
+                E-mail
+              </Button>
+            )}
             {canEdit && hasPermission((p) => p.quotes?.edit ?? false) && (
               <Button
                 variant="outline"

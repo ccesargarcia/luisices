@@ -480,16 +480,18 @@ Equipe ${settings?.businessName || 'Luisices'}`;
                     <Download className="size-4" />
                     PDF
                   </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => setEmailDialogOpen(true)}
-                    className="gap-2"
-                    title="Enviar detalhes por e-mail"
-                  >
-                    <Mail className="size-4 text-primary" />
-                    E-mail
-                  </Button>
+                  {hasPermission(p => p.emails ?? false) && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setEmailDialogOpen(true)}
+                      className="gap-2"
+                      title="Enviar detalhes por e-mail"
+                    >
+                      <Mail className="size-4 text-primary" />
+                      E-mail
+                    </Button>
+                  )}
                   {hasPermission(p => p.orders?.create ?? false) && (
                     <Button
                       size="sm"

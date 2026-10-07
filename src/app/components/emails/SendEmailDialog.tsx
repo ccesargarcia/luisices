@@ -64,9 +64,10 @@ export function SendEmailDialog({
   initialAttachments = [],
   onSuccess,
 }: SendEmailDialogProps) {
-  const { user } = useAuth();
+  const { user, isAdmin, hasPermission } = useAuth();
+  const canSendEmail = Boolean(user && (isAdmin || hasPermission((p) => p.emails ?? false)));
   const { settings } = useUserSettings();
-  const { sendEmail, usage, refreshUsage } = useEmails();
+  const { sendEmail } = useEmails();
 
   const businessName = settings?.businessName?.trim() || 'Luisices Personalizados';
   const businessPhone = settings?.whatsappPhone?.trim() || settings?.businessPhone?.trim() || '(11) 97060-6433';
@@ -107,17 +108,21 @@ export function SendEmailDialog({
   const [mode, setMode] = useState<'write' | 'preview'>('write');
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const prevOpenRef = useRef(false);
 
-  // Sincroniza valores iniciais quando o diálogo é aberto
+  // Sincroniza valores iniciais APENAS no momento em que o diálogo é aberto (evita apagar digitação do usuário)
   useEffect(() => {
-    if (open) {
-      setRecipient(defaultRecipient);
-      setSubject(defaultSubject);
-      setBody(defaultBody);
+    if (open && !prevOpenRef.current) {
+      setRecipient(defaultRecipient || '');
+      setSubject(defaultSubject || '');
+      setBody(defaultBody || '');
       setSender(defaultSender);
       setAttachments(initialAttachments || []);
       setMode('write');
+      setShowCc(false);
+      setCc('');
     }
+    prevOpenRef.current = open;
   }, [open, defaultRecipient, defaultSubject, defaultBody, defaultSender, initialAttachments]);
 
   // Upload de anexo
@@ -248,6 +253,10 @@ export function SendEmailDialog({
 
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!canSendEmail) {
+      toast.error('Você não tem permissão para enviar e-mails pelo sistema.');
+      return;
+    }
     if (!recipient.trim()) {
       toast.error('Informe o destinatário do e-mail.');
       return;
@@ -341,6 +350,15 @@ export function SendEmailDialog({
         </DialogHeader>
 
         <form onSubmit={handleSend} className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-3.5">
+          {!canSendEmail && (
+            <div className="p-3 bg-amber-500/10 border border-amber-500/20 text-amber-900 dark:text-amber-200 rounded-lg text-xs flex items-start gap-2">
+              <Info className="size-4 shrink-0 text-amber-600 mt-0.5" />
+              <div>
+                <strong>Acesso Restrito:</strong> Você não possui permissão para enviar e-mails pelo sistema. Contate um administrador para liberar seu acesso.
+              </div>
+            </div>
+          )}
+
           {mode === 'write' ? (
             <>
               {/* Remetente e Destinatário */}
@@ -521,7 +539,7 @@ export function SendEmailDialog({
               </Button>
               <Button
                 type="submit"
-                disabled={isSending || isUploading}
+                disabled={isSending || isUploading || !canSendEmail}
                 className="h-8 text-xs gap-1.5 px-4"
               >
                 {isSending ? (

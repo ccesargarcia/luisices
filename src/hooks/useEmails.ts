@@ -1,10 +1,14 @@
 import { useState, useEffect, useCallback } from 'react';
 import { collection, query, orderBy, onSnapshot, limit } from 'firebase/firestore';
-import { db, auth } from '../lib/firebase';
+import { db } from '../lib/firebase';
 import { ReceivedEmail, SentEmail, SendEmailPayload, EmailUsage } from '../app/types';
 import { emailService } from '../services/emailService';
+import { useAuth } from '../contexts/AuthContext';
 
 export function useEmails() {
+  const { user, isAdmin, hasPermission, loading: authLoading } = useAuth();
+  const canAccess = Boolean(user && (isAdmin || hasPermission((p) => p.emails ?? false)));
+
   const [receivedEmails, setReceivedEmails] = useState<ReceivedEmail[]>([]);
   const [sentEmails, setSentEmails] = useState<SentEmail[]>([]);
   const [usage, setUsage] = useState<EmailUsage | null>(null);
@@ -13,28 +17,43 @@ export function useEmails() {
   const [error, setError] = useState<string | null>(null);
 
   const refreshUsage = useCallback(async () => {
+    if (!canAccess) {
+      setUsage(null);
+      setLoadingUsage(false);
+      return;
+    }
     try {
       setLoadingUsage(true);
       const data = await emailService.getEmailUsage();
-      console.log('[useEmails] Cota consultada:', data);
       setUsage(data);
     } catch (err) {
       console.warn('[useEmails] Não foi possível consultar cota de e-mail:', err);
     } finally {
       setLoadingUsage(false);
     }
-  }, []);
+  }, [canAccess]);
 
   useEffect(() => {
-    refreshUsage();
-  }, [refreshUsage]);
+    if (canAccess) {
+      refreshUsage();
+    } else {
+      setUsage(null);
+      setLoadingUsage(false);
+    }
+  }, [canAccess, refreshUsage]);
 
   useEffect(() => {
-    const user = auth.currentUser;
-    if (!user) {
+    if (authLoading) return;
+
+    if (!user || !canAccess) {
+      setReceivedEmails([]);
+      setSentEmails([]);
       setLoading(false);
+      setError(null);
       return;
     }
+
+    setLoading(true);
 
     const qReceived = query(
       collection(db, 'receivedEmails'),
@@ -114,34 +133,42 @@ export function useEmails() {
       unsubReceived();
       unsubSent();
     };
-  }, []);
+  }, [user, canAccess, authLoading]);
 
   const sendEmail = useCallback(async (payload: SendEmailPayload) => {
+    if (!canAccess) {
+      throw new Error('Você não possui permissão para enviar e-mails pelo sistema.');
+    }
     const res = await emailService.sendEmail(payload);
     // Atualiza cota após envio
     refreshUsage().catch(() => {});
     return res;
-  }, [refreshUsage]);
+  }, [canAccess, refreshUsage]);
 
   const markAsRead = useCallback(async (id: string, read: boolean) => {
+    if (!canAccess) return;
     await emailService.markAsRead(id, read);
-  }, []);
+  }, [canAccess]);
 
   const toggleStar = useCallback(async (id: string, starred: boolean) => {
+    if (!canAccess) return;
     await emailService.toggleStar(id, starred);
-  }, []);
+  }, [canAccess]);
 
   const setArchived = useCallback(async (id: string, archived: boolean) => {
+    if (!canAccess) return;
     await emailService.setArchived(id, archived);
-  }, []);
+  }, [canAccess]);
 
   const deleteReceived = useCallback(async (id: string) => {
+    if (!canAccess) return;
     await emailService.deleteReceivedEmail(id);
-  }, []);
+  }, [canAccess]);
 
   const deleteSent = useCallback(async (id: string) => {
+    if (!canAccess) return;
     await emailService.deleteSentEmail(id);
-  }, []);
+  }, [canAccess]);
 
   const unreadCount = receivedEmails.filter((e) => !e.read && !e.archived).length;
 
@@ -160,5 +187,6 @@ export function useEmails() {
     setArchived,
     deleteReceived,
     deleteSent,
+    canAccess,
   };
 }
