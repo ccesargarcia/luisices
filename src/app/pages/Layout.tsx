@@ -278,7 +278,7 @@ export function Layout() {
   const mobilePrimaryNav = flatNavForMobile.slice(0, 4);
   const mobileMoreNav = flatNavForMobile.slice(4);
 
-  const businessName = settings?.businessName || 'Papelaria Personalizada';
+  const businessName = settings?.businessName || '';
   const isDevEnvironment = import.meta.env.VITE_FIREBASE_PROJECT_ID?.endsWith('-dev') ?? false;
   const appVersion = __APP_VERSION__ || '0.0.0';
 

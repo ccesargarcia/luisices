@@ -82,7 +82,7 @@ export function Exchanges() {
   const [detailsOpen, setDetailsOpen] = useState(false);
   const printRef = useRef<HTMLDivElement>(null);
 
-  const businessName = settings?.businessName || 'Papelaria Personalizada';
+  const businessName = settings?.businessName || '';
 
   // Stats computed from ALL exchange orders (ignoring filters) — for the alert card
   const openStats = useMemo(() => {

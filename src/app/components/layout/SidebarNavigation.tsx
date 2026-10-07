@@ -102,7 +102,9 @@ export function SidebarNavigation({
             sidebarCollapsed ? 'w-0 opacity-0' : 'opacity-100'
           )}
         >
-          <h2 className="truncate text-base font-bold tracking-tight text-primary leading-tight">{businessName}</h2>
+          {businessName ? (
+            <h2 className="truncate text-base font-bold tracking-tight text-primary leading-tight">{businessName}</h2>
+          ) : null}
           <p className="truncate text-xs text-muted-foreground">{businessTagline || 'Sistema de Gestão'}</p>
         </div>
       </div>

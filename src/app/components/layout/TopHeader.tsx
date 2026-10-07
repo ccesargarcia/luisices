@@ -116,7 +116,7 @@ export function TopHeader({
               alt={businessName}
               className="h-8 sm:h-9 max-h-8 sm:max-h-9 max-w-[70px] xs:max-w-[100px] sm:max-w-[140px] object-contain shrink-0 rounded-md"
             />
-          ) : headerLogoStyle !== 'hidden' ? (
+          ) : headerLogoStyle !== 'hidden' && businessName ? (
             <div className="flex items-center justify-center size-8 sm:size-9 bg-primary text-primary-foreground rounded-lg shrink-0 shadow-xs">
               <Package2 className="size-4 sm:size-5" />
             </div>
@@ -124,12 +124,14 @@ export function TopHeader({
 
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-1.5 sm:gap-2">
-              <h1
-                className="font-bold text-xs xs:text-sm sm:text-base md:text-lg line-clamp-1 truncate text-foreground leading-tight tracking-tight max-w-[110px] xs:max-w-[160px] sm:max-w-none"
-                title={businessName}
-              >
-                {businessName}
-              </h1>
+              {businessName ? (
+                <h1
+                  className="font-bold text-xs xs:text-sm sm:text-base md:text-lg line-clamp-1 truncate text-foreground leading-tight tracking-tight max-w-[110px] xs:max-w-[160px] sm:max-w-none"
+                  title={businessName}
+                >
+                  {businessName}
+                </h1>
+              ) : null}
               {isDevEnvironment && (
                 <Badge
                   variant="outline"

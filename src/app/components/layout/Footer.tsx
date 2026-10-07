@@ -104,10 +104,12 @@ export function Footer({
             <div className="flex items-center gap-2 min-w-0 flex-wrap justify-center sm:justify-start">
               {logo ? (
                 <img src={logo} alt={businessName} className="h-5 object-contain flex-shrink-0 opacity-80" />
-              ) : (
+              ) : businessName ? (
                 <Package2 className="size-3.5 text-primary shrink-0" />
-              )}
-              <span className="font-semibold text-foreground text-xs">{businessName}</span>
+              ) : null}
+              {businessName ? (
+                <span className="font-semibold text-foreground text-xs">{businessName}</span>
+              ) : null}
               {footerShowVersion && (
                 <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-muted text-muted-foreground">
                   v{appVersion} {isDevEnvironment && '• DEV'}
@@ -193,13 +195,13 @@ export function Footer({
               <div className="flex items-center gap-3 min-w-0">
                 {logo ? (
                   <img src={logo} alt={businessName} className="h-8 object-contain flex-shrink-0 opacity-80" />
-                ) : (
+                ) : businessName ? (
                   <div className="flex items-center justify-center size-8 bg-primary text-primary-foreground rounded-md flex-shrink-0">
                     <Package2 className="size-4" />
                   </div>
-                )}
+                ) : null}
                 <div className="min-w-0">
-                  <p className="font-semibold text-sm truncate text-foreground">{businessName}</p>
+                  {businessName ? <p className="font-semibold text-sm truncate text-foreground">{businessName}</p> : null}
                   {businessTagline && (
                     <p className="text-xs text-muted-foreground truncate">{businessTagline}</p>
                   )}
