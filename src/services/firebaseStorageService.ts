@@ -261,6 +261,19 @@ export class FirebaseStorageService {
   }
 
   /**
+   * Upload de anexo de e-mail (salvo em users/${userId}/orders/email_draft/ com permissão de leitura pública)
+   * @param file - Arquivo a enviar
+   * @param userId - ID do usuário
+   * @returns OrderAttachment com url CDN pública e thumbnail (se imagem)
+   */
+  async uploadEmailAttachment(
+    file: File,
+    userId: string
+  ): Promise<OrderAttachment> {
+    return this.uploadOrderAttachment(file, userId, 'email_draft');
+  }
+
+  /**
    * Deletar imagem
    * @param imageUrl - URL completa da imagem
    */

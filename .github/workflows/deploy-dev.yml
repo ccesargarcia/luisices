@@ -316,15 +316,15 @@ jobs:
           export GOOGLE_APPLICATION_CREDENTIALS="$HOME/firebase-service-account.json"
           npx --yes firebase-tools deploy --only hosting --project luisices-dev --non-interactive
 
-      # --- ETAPAS DO FIRESTORE (RULES & INDEXES) ---
-      - name: Deploy Firestore Rules & Indexes (Dev)
+      # --- ETAPAS DE REGRAS (FIRESTORE & STORAGE) ---
+      - name: Deploy Firestore & Storage Rules (Dev)
         if: needs.detect-changes.outputs.rules == 'true'
         env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_DEV }}
         run: |
           echo "$FIREBASE_SERVICE_ACCOUNT" > "$HOME/firebase-service-account.json"
           export GOOGLE_APPLICATION_CREDENTIALS="$HOME/firebase-service-account.json"
-          npx --yes firebase-tools deploy --only firestore:rules,firestore:indexes --project luisices-dev --non-interactive
+          npx --yes firebase-tools deploy --only firestore:rules,firestore:indexes,storage --project luisices-dev --non-interactive
 
       # --- ETAPAS DAS CLOUD FUNCTIONS ---
       - name: Instalar dependências de Functions

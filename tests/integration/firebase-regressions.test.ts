@@ -229,13 +229,15 @@ describe('Isolamento financeiro', () => {
 });
 
 describe('Storage', () => {
-  it('mantém galeria privada e imagens de apresentação públicas', async () => {
+  it('mantém galeria privada e imagens de apresentação públicas e anexos de e-mail acessíveis', async () => {
     const ownerStorage = env.authenticatedContext('owner').storage();
     await assertSucceeds(uploadBytes(ref(ownerStorage as any, 'users/owner/gallery/art.png'), new Uint8Array([1]), { contentType: 'image/png' }));
     await assertSucceeds(uploadBytes(ref(ownerStorage as any, 'users/owner/logo/logo.png'), new Uint8Array([1]), { contentType: 'image/png' }));
+    await assertSucceeds(uploadBytes(ref(ownerStorage as any, 'users/owner/orders/email_draft/file.pdf'), new Uint8Array([1]), { contentType: 'application/pdf' }));
     const publicStorage = env.unauthenticatedContext().storage();
     await assertPermissionDenied(() => getMetadata(ref(publicStorage as any, 'users/owner/gallery/art.png')));
     await assertSucceeds(getMetadata(ref(publicStorage as any, 'users/owner/logo/logo.png')));
+    await assertSucceeds(getMetadata(ref(publicStorage as any, 'users/owner/orders/email_draft/file.pdf')));
     await assertSucceeds(getMetadata(ref(ownerStorage as any, 'users/owner/gallery/art.png')));
     await seed('userProfiles/owner', profile('owner', 'user', false));
     await assertPermissionDenied(() => getMetadata(ref(ownerStorage as any, 'users/owner/gallery/art.png')));

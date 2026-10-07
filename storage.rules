@@ -34,15 +34,29 @@ service firebase.storage {
       return isActiveUser();
     }
 
-    // Anexos de pedidos, e-mails, rascunhos e thumbnails: imagens, HEIC/HEIF, PDFs, documentos até 100MB
-    match /users/{userId}/orders/{orderId}/{allPaths=**} {
-      allow read: if isActiveUser();
+    // Anexos de e-mails e rascunhos de envio: leitura pública para que o destinatário do e-mail e a CDN acessem os arquivos sem exigir login
+    match /users/{userId}/orders/email_draft/{allPaths=**} {
+      allow read: if true;
       allow create, update: if isActiveUser() && request.resource.size < 100 * 1024 * 1024;
       allow delete: if isActiveUser();
     }
 
     // Anexos de e-mails diretos
     match /users/{userId}/emails/{allPaths=**} {
+      allow read: if true;
+      allow create, update: if isActiveUser() && request.resource.size < 100 * 1024 * 1024;
+      allow delete: if isActiveUser();
+    }
+
+    // Anexos de e-mails na raiz
+    match /emails/{allPaths=**} {
+      allow read: if true;
+      allow create, update: if isActiveUser() && request.resource.size < 100 * 1024 * 1024;
+      allow delete: if isActiveUser();
+    }
+
+    // Anexos de pedidos gerais e thumbnails: imagens, HEIC/HEIF, PDFs, documentos até 100MB
+    match /users/{userId}/orders/{orderId}/{allPaths=**} {
       allow read: if isActiveUser();
       allow create, update: if isActiveUser() && request.resource.size < 100 * 1024 * 1024;
       allow delete: if isActiveUser();
