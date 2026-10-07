@@ -10,6 +10,7 @@ const { RESEND_API_KEY, RESEND_WEBHOOK_SECRET, ORIGIN_SECRET } = require('../com
 const { customEmailLimiter } = require('../common/rateLimiters');
 const { getResend, isAdminRequest } = require('../common/helpers');
 const { validateOriginSecret } = require('../originProtection');
+const { prepareAttachments } = require('./attachments');
 
 /**
  * Cloud Function para envio de e-mails via Resend pela plataforma Luisices.
@@ -48,7 +49,7 @@ const sendCustomEmail = onCall(
       );
     }
 
-    const { to, subject, html, text, from, replyTo, cc, bcc } = request.data || {};
+    const { to, subject, html, text, from, replyTo, cc, bcc, attachments } = request.data || {};
 
     if (!to || (Array.isArray(to) && to.length === 0)) {
       throw new functions.https.HttpsError('invalid-argument', 'Pelo menos um destinatário é obrigatório.');
@@ -114,11 +115,23 @@ const sendCustomEmail = onCall(
     }
 
     try {
+      let preparedAttachments;
+      try {
+        preparedAttachments = await prepareAttachments({
+          attachments, bucket: admin.storage().bucket(), db: admin.firestore(),
+          uid: request.auth.uid, profile: profileData,
+          projectId: process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT,
+        });
+      } catch (error) {
+        throw new functions.https.HttpsError('invalid-argument', error.message);
+      }
       const payload = {
         from: senderEmail,
         to: recipientList,
         subject: subject.trim(),
       };
+
+      if (preparedAttachments.length) payload.attachments = preparedAttachments;
 
       if (html) payload.html = html;
       if (text) payload.text = text;
@@ -153,6 +166,7 @@ const sendCustomEmail = onCall(
         status: 'sent',
         senderUid: request.auth.uid,
         senderEmail: request.auth.token.email || '',
+        attachments: preparedAttachments.map(({ filename }) => ({ filename })),
         sentAt: new Date().toISOString(),
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
       };

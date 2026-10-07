@@ -1,3 +1,4 @@
+import { runEmailBulkAction } from '../utils/emailBulkActions';
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import DOMPurify from 'isomorphic-dompurify';
 import { useAuth } from '../../contexts/AuthContext';
@@ -349,6 +350,7 @@ export function Emails() {
     canCreate,
     canEdit,
     canDelete,
+    hasMoreReceived, hasMoreSent, loadingHistory, loadHistory, error,
   } = useEmails();
 
   // Informações do negócio dinamizadas das Configurações
@@ -523,6 +525,15 @@ export function Emails() {
     return displayedEmails.slice(startIndex, startIndex + pageSize);
   }, [displayedEmails, currentPage, pageSize]);
 
+  const historyType = activeFolder === 'sent' ? 'sent' : 'received';
+  const hasMoreHistory = historyType === 'sent' ? hasMoreSent : hasMoreReceived;
+  useEffect(() => {
+    if (loading || !hasMoreHistory) return;
+    if (searchQuery.trim() || activeFolder === 'archived' || activeFolder === 'starred' || filterMode === 'unread' || pageSize === 'all') {
+      void loadHistory(historyType, true).catch(() => {});
+    }
+  }, [activeFolder, searchQuery, filterMode, pageSize, historyType, loading, loadHistory]);
+
   // Mensagem atualmente aberta no painel de leitura
   const currentReceivedEmail = useMemo(() => {
     if (selectedEmailType !== 'received' || !selectedEmailId) return null;
@@ -560,16 +571,23 @@ export function Emails() {
   const handleSelectEmail = (id: string, type: 'received' | 'sent', shouldMarkRead = true) => {
     setSelectedEmailId(id);
     setSelectedEmailType(type);
-    if (type === 'received' && shouldMarkRead) {
+    if (type === 'received' && shouldMarkRead && canEdit) {
       const item = receivedEmails.find((e) => e.id === id);
       if (item && !item.read) {
-        markAsRead(id, true).catch(() => {});
+        markAsRead(id, true).catch(() => toast.error('Não foi possível marcar a mensagem como lida.'));
       }
     }
   };
 
   // Alternar explicitamente status de lido / não lido
+  const handleStatusChange = async (action: () => Promise<void>) => {
+    if (!canEdit) return;
+    try { await action(); }
+    catch { toast.error('Não foi possível atualizar a mensagem.'); }
+  };
+
   const handleToggleRead = async (id: string, currentRead: boolean) => {
+    if (!canEdit) return;
     const nextRead = !currentRead;
     try {
       await markAsRead(id, nextRead);
@@ -621,44 +639,44 @@ export function Emails() {
     setSelectedEmailIds(new Set());
   };
 
-  const handleConfirmBulkDelete = async () => {
-    if (selectedEmailIds.size === 0) return;
+  const folderRef = useRef(activeFolder);
+  folderRef.current = activeFolder;
+  useEffect(() => {
+    setSelectedEmailIds(new Set());
+    setIsBulkDeleteDialogOpen(false);
+  }, [activeFolder, searchQuery, filterMode]);
+
+  const runBulk = async (action: (id: string) => Promise<void>, message: string) => {
+    if (!selectedEmailIds.size || isBulkDeleting) return;
+    const folder = activeFolder;
     setIsBulkDeleting(true);
-    const idsToDelete = Array.from(selectedEmailIds);
     try {
-      if (activeFolder === 'sent') {
-        await Promise.allSettled(idsToDelete.map((id) => deleteSent(id)));
-      } else {
-        await Promise.allSettled(idsToDelete.map((id) => deleteReceived(id)));
+      const { succeeded, failed } = await runEmailBulkAction([...selectedEmailIds], action);
+      if (succeeded.length) toast.success(`${succeeded.length} e-mail(s) ${message}.`);
+      if (failed.length) toast.error(`${failed.length} e-mail(s) não foram atualizados. Tente novamente.`);
+      if (folderRef.current === folder) {
+        setSelectedEmailIds(new Set(failed));
+        if (!failed.length) setIsBulkDeleteDialogOpen(false);
+        if (message === 'excluído(s)' && selectedEmailId && succeeded.includes(selectedEmailId)) {
+          setSelectedEmailId(null);
+        }
       }
-      toast.success(`${idsToDelete.length} e-mail(s) excluído(s) com sucesso!`);
-      if (selectedEmailId && selectedEmailIds.has(selectedEmailId)) {
-        setSelectedEmailId(null);
-      }
-      setSelectedEmailIds(new Set());
-      setIsBulkDeleteDialogOpen(false);
-    } catch (err) {
-      console.error('Erro na exclusão em massa:', err);
-      toast.error('Ocorreu um erro ao excluir alguns e-mails.');
-    } finally {
-      setIsBulkDeleting(false);
-    }
+    } finally { setIsBulkDeleting(false); }
+  };
+
+  const handleConfirmBulkDelete = async () => {
+    if (!canDelete) return;
+    await runBulk(activeFolder === 'sent' ? deleteSent : deleteReceived, 'excluído(s)');
   };
 
   const handleBulkMarkRead = async (read: boolean) => {
-    if (selectedEmailIds.size === 0 || activeFolder === 'sent') return;
-    const ids = Array.from(selectedEmailIds);
-    await Promise.allSettled(ids.map((id) => markAsRead(id, read)));
-    toast.success(`${ids.length} e-mail(s) marcado(s) como ${read ? 'lido(s)' : 'não lido(s)'}!`);
-    setSelectedEmailIds(new Set());
+    if (!canEdit || activeFolder === 'sent') return;
+    await runBulk(id => markAsRead(id, read), read ? 'marcado(s) como lido(s)' : 'marcado(s) como não lido(s)');
   };
 
   const handleBulkArchive = async (archived: boolean) => {
-    if (selectedEmailIds.size === 0 || activeFolder === 'sent') return;
-    const ids = Array.from(selectedEmailIds);
-    await Promise.allSettled(ids.map((id) => setArchived(id, archived)));
-    toast.success(`${ids.length} e-mail(s) ${archived ? 'arquivado(s)' : 'desarquivado(s)'}!`);
-    setSelectedEmailIds(new Set());
+    if (!canEdit || activeFolder === 'sent') return;
+    await runBulk(id => setArchived(id, archived), archived ? 'arquivado(s)' : 'desarquivado(s)');
   };
 
   // Substituição de tags dinâmicas
@@ -700,8 +718,8 @@ export function Emails() {
     const file = e.target.files?.[0];
     if (!file || !user) return;
 
-    if (file.size > 25 * 1024 * 1024) {
-      toast.error('Arquivo muito grande. Máximo: 25MB');
+    if (file.size > 18 * 1024 * 1024) {
+      toast.error('Arquivo muito grande. Máximo: 18MB');
       return;
     }
 
@@ -799,37 +817,25 @@ export function Emails() {
           Em ${replyQuote.date}, <strong>${replyQuote.from}</strong> escreveu:
         </div>
         <blockquote style="margin: 0; padding: 14px 16px; border-left: 3px solid #6366f1; background-color: #f8fafc; border-radius: 6px; color: #334155; font-size: 13px; line-height: 1.6;">
-          ${
-            replyQuote.html
-              ? replyQuote.html
-                  .replace(/<html[^>]*>|<\/html>|<body[^>]*>|<\/body>|<head[^>]*>[\s\S]*?<\/head>/gi, '')
-                  .trim()
-              : replyQuote.text?.replace(/\n/g, '<br />') || '(Mensagem original)'
-          }
+          ${replyQuote.html
+            ? DOMPurify.sanitize(replyQuote.html, {
+                ADD_ATTR: ['target', 'rel'],
+                FORBID_TAGS: ['script', 'iframe', 'object', 'embed', 'form'],
+              })
+            : (replyQuote.text || '(Mensagem original)')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/\n/g, '<br />')}
         </blockquote>
       </div>
     `
       : '';
 
-    const attachmentsHtml =
-      attachments.length > 0
-        ? `
-        <div style="margin-top: 24px; padding-top: 16px; border-top: 1px dashed #cbd5e1;">
-          <div style="font-size: 13px; font-weight: 600; color: #475569; margin-bottom: 10px;">📎 Arquivos & Documentos Anexados:</div>
-          <div style="display: flex; flex-wrap: wrap; gap: 8px;">
-            ${attachments
-              .map(
-                (att) => `
-              <a href="${att.url}" target="_blank" style="display: inline-block; background-color: #f8fafc; border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px 14px; font-size: 13px; color: #4f46e5; text-decoration: none; font-weight: 500; margin-right: 8px; margin-bottom: 8px;">
-                ⬇️ ${att.name}
-              </a>
-            `
-              )
-              .join('')}
-          </div>
-        </div>
-      `
-        : '';
+    const attachmentsHtml = attachments.length
+      ? `<p>Arquivos anexados à mensagem: ${attachments.map(att => att.name
+          .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')).join(', ')}</p>`
+      : '';
 
     return `
 <!DOCTYPE html>
@@ -887,6 +893,7 @@ export function Emails() {
   // Envio do formulário
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!canCreate) return;
     if (!recipient.trim()) {
       toast.error('Informe ao menos um destinatário válido.');
       return;
@@ -925,6 +932,7 @@ export function Emails() {
         subject: subject.trim(),
         text: plainText,
         html: htmlContent,
+        attachments: attachments.map(({ name, url }) => ({ name, url })),
       };
 
       if (cc.trim()) {
@@ -959,6 +967,7 @@ export function Emails() {
 
   // Ação de Responder preservando mídia, links e HTML da mensagem original
   const handleStartReply = (email: ReceivedEmail) => {
+    if (!canCreate) return;
     const cleanEmail = email.from.match(/<([^>]+)>/)?.[1] || email.from.trim();
     setRecipient(cleanEmail);
     const cleanSubject = email.subject.replace(/^Re:\s*/i, '');
@@ -1031,6 +1040,7 @@ export function Emails() {
 
           {canCreate && (
             <Button
+                  disabled={!canCreate || isBulkDeleting}
               onClick={() => {
                 setRecipient('');
                 setSelectedCustomerId('');
@@ -1259,6 +1269,7 @@ export function Emails() {
                   {activeFolder !== 'sent' && (
                     <>
                       <Button
+                  disabled={!canEdit || isBulkDeleting}
                         size="sm"
                         variant="ghost"
                         className="h-7 px-2 text-[11px] gap-1 text-muted-foreground hover:text-foreground"
@@ -1269,6 +1280,7 @@ export function Emails() {
                         <span className="hidden sm:inline">Lido</span>
                       </Button>
                       <Button
+                  disabled={!canEdit || isBulkDeleting}
                         size="sm"
                         variant="ghost"
                         className="h-7 px-2 text-[11px] gap-1 text-muted-foreground hover:text-foreground"
@@ -1281,6 +1293,7 @@ export function Emails() {
                     </>
                   )}
                   <Button
+                  disabled={!canDelete || isBulkDeleting}
                     size="sm"
                     variant="destructive"
                     className="h-7 px-2.5 text-[11px] gap-1 shadow-xs font-medium"
@@ -1301,6 +1314,16 @@ export function Emails() {
                   </Button>
                 </div>
               )}
+            </div>
+          )}
+
+          {(error || hasMoreHistory || loadingHistory) && (
+            <div className="p-2 border-b text-xs flex items-center justify-between gap-2" role="status">
+              <span>{error || (loadingHistory ? 'Carregando histórico…' : 'Há mensagens anteriores. Os totais abaixo incluem as mensagens carregadas.')}</span>
+              <Button size="sm" variant="outline" disabled={loadingHistory || loading}
+                onClick={() => void loadHistory(historyType, Boolean(searchQuery.trim()) || activeFolder !== 'inbox' && activeFolder !== 'sent' || pageSize === 'all').catch(() => {})}>
+                {error ? 'Tentar novamente' : 'Carregar anteriores'}
+              </Button>
             </div>
           )}
 
@@ -1380,10 +1403,11 @@ export function Emails() {
                                 </span>
                                 {email._type === 'received' && (
                                   <button
+                  disabled={!canEdit || isBulkDeleting}
                                     type="button"
                                     onClick={(e) => {
                                       e.stopPropagation();
-                                      toggleStar(email.id, !email.starred);
+                                      void handleStatusChange(() => toggleStar(email.id, !email.starred));
                                     }}
                                     className="text-muted-foreground hover:text-amber-500 transition-colors p-0.5"
                                     title={isStarred ? 'Remover dos favoritos' : 'Favoritar'}
@@ -1421,6 +1445,7 @@ export function Emails() {
                                           <span>Abrir Mensagem</span>
                                         </DropdownMenuItem>
                                         <DropdownMenuItem
+                  disabled={!canCreate || isBulkDeleting}
                                           onClick={() => handleStartReply(email)}
                                           className="gap-2 cursor-pointer"
                                         >
@@ -1428,6 +1453,7 @@ export function Emails() {
                                           <span>Responder</span>
                                         </DropdownMenuItem>
                                         <DropdownMenuItem
+                  disabled={!canEdit || isBulkDeleting}
                                           onClick={() => handleToggleRead(email.id, email.read)}
                                           className="gap-2 cursor-pointer"
                                         >
@@ -1435,14 +1461,16 @@ export function Emails() {
                                           <span>{email.read ? 'Marcar como Não Lido' : 'Marcar como Lido'}</span>
                                         </DropdownMenuItem>
                                         <DropdownMenuItem
-                                          onClick={() => toggleStar(email.id, !email.starred)}
+                  disabled={!canEdit || isBulkDeleting}
+                                          onClick={() => void handleStatusChange(() => toggleStar(email.id, !email.starred))}
                                           className="gap-2 cursor-pointer"
                                         >
                                           <Star className="size-3.5 text-amber-500" />
                                           <span>{email.starred ? 'Remover Favorito' : 'Favoritar'}</span>
                                         </DropdownMenuItem>
                                         <DropdownMenuItem
-                                          onClick={() => setArchived(email.id, !email.archived)}
+                  disabled={!canEdit || isBulkDeleting}
+                                          onClick={() => void handleStatusChange(() => setArchived(email.id, !email.archived))}
                                           className="gap-2 cursor-pointer"
                                         >
                                           {email.archived ? <ArchiveRestore className="size-3.5" /> : <Archive className="size-3.5" />}
@@ -1471,6 +1499,7 @@ export function Emails() {
                                         </DropdownMenuItem>
                                         <DropdownMenuSeparator />
                                         <DropdownMenuItem
+                  disabled={!canDelete || isBulkDeleting}
                                           variant="destructive"
                                           onClick={() => {
                                             setEmailToDelete({
@@ -1498,6 +1527,7 @@ export function Emails() {
                                           <span>Abrir Mensagem</span>
                                         </DropdownMenuItem>
                                         <DropdownMenuItem
+                  disabled={!canCreate || isBulkDeleting}
                                           onClick={() => {
                                             setRecipient(email.to.join(', '));
                                             setSubject(email.subject || '');
@@ -1533,6 +1563,7 @@ export function Emails() {
                                         </DropdownMenuItem>
                                         <DropdownMenuSeparator />
                                         <DropdownMenuItem
+                  disabled={!canDelete || isBulkDeleting}
                                           variant="destructive"
                                           onClick={() => {
                                             setEmailToDelete({
@@ -1591,6 +1622,7 @@ export function Emails() {
                             <span>Abrir Mensagem</span>
                           </ContextMenuItem>
                           <ContextMenuItem
+                  disabled={!canCreate || isBulkDeleting}
                             onClick={() => handleStartReply(email)}
                             className="gap-2 cursor-pointer"
                           >
@@ -1598,6 +1630,7 @@ export function Emails() {
                             <span>Responder E-mail</span>
                           </ContextMenuItem>
                           <ContextMenuItem
+                  disabled={!canEdit || isBulkDeleting}
                             onClick={() => handleToggleRead(email.id, email.read)}
                             className="gap-2 cursor-pointer"
                           >
@@ -1605,14 +1638,16 @@ export function Emails() {
                             <span>{email.read ? 'Marcar como Não Lido' : 'Marcar como Lido'}</span>
                           </ContextMenuItem>
                           <ContextMenuItem
-                            onClick={() => toggleStar(email.id, !email.starred)}
+                  disabled={!canEdit || isBulkDeleting}
+                            onClick={() => void handleStatusChange(() => toggleStar(email.id, !email.starred))}
                             className="gap-2 cursor-pointer"
                           >
                             <Star className="size-3.5 text-amber-500" />
                             <span>{email.starred ? 'Remover dos Favoritos' : 'Adicionar aos Favoritos'}</span>
                           </ContextMenuItem>
                           <ContextMenuItem
-                            onClick={() => setArchived(email.id, !email.archived)}
+                  disabled={!canEdit || isBulkDeleting}
+                            onClick={() => void handleStatusChange(() => setArchived(email.id, !email.archived))}
                             className="gap-2 cursor-pointer"
                           >
                             {email.archived ? <ArchiveRestore className="size-3.5" /> : <Archive className="size-3.5" />}
@@ -1651,6 +1686,7 @@ export function Emails() {
                             <span>Copiar Texto da Mensagem</span>
                           </ContextMenuItem>
                           <ContextMenuItem
+                  disabled={!canCreate || isBulkDeleting}
                             onClick={() => {
                               setRecipient(senderAddress);
                               setSubject(`Novo Contato - Ateliê`);
@@ -1663,6 +1699,7 @@ export function Emails() {
                           </ContextMenuItem>
                           <ContextMenuSeparator />
                           <ContextMenuItem
+                  disabled={!canDelete || isBulkDeleting}
                             variant="destructive"
                             onClick={() => {
                               setEmailToDelete({
@@ -1693,6 +1730,7 @@ export function Emails() {
                             <span>Abrir Mensagem</span>
                           </ContextMenuItem>
                           <ContextMenuItem
+                  disabled={!canCreate || isBulkDeleting}
                             onClick={() => {
                               setRecipient(email.to.join(', '));
                               setSubject(email.subject || '');
@@ -1739,6 +1777,7 @@ export function Emails() {
                           </ContextMenuItem>
                           <ContextMenuSeparator />
                           <ContextMenuItem
+                  disabled={!canDelete || isBulkDeleting}
                             variant="destructive"
                             onClick={() => {
                               setEmailToDelete({
@@ -1808,6 +1847,7 @@ export function Emails() {
                   {currentReceivedEmail && (
                     <>
                       <Button
+                  disabled={!canCreate || isBulkDeleting}
                         size="sm"
                         variant="default"
                         onClick={() => handleStartReply(currentReceivedEmail)}
@@ -1818,6 +1858,7 @@ export function Emails() {
                       </Button>
 
                       <Button
+                  disabled={!canEdit || isBulkDeleting}
                         size="sm"
                         variant="outline"
                         onClick={() => handleToggleRead(currentReceivedEmail.id, currentReceivedEmail.read)}
@@ -1831,9 +1872,10 @@ export function Emails() {
                       </Button>
 
                       <Button
+                  disabled={!canEdit || isBulkDeleting}
                         size="sm"
                         variant="outline"
-                        onClick={() => setArchived(currentReceivedEmail.id, !currentReceivedEmail.archived)}
+                        onClick={() => void handleStatusChange(() => setArchived(currentReceivedEmail.id, !currentReceivedEmail.archived))}
                         className="h-8 gap-1 text-xs"
                         title={currentReceivedEmail.archived ? 'Desarquivar' : 'Arquivar'}
                       >
@@ -1862,6 +1904,7 @@ export function Emails() {
                 </div>
 
                 <Button
+                  disabled={!canDelete || isBulkDeleting}
                   size="sm"
                   variant="ghost"
                   onClick={() => {
@@ -2017,6 +2060,7 @@ export function Emails() {
               </p>
               {canCreate && (
                 <Button
+                  disabled={!canCreate || isBulkDeleting}
                   variant="outline"
                   size="sm"
                   onClick={() => setIsComposeOpen(true)}

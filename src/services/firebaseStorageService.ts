@@ -239,7 +239,7 @@ export class FirebaseStorageService {
 
     await uploadBytes(storageRef, fileToUpload, metadata);
     const rawUrl = await getDownloadURL(storageRef);
-    const url = toCdnUrl(rawUrl);
+    const url = orderId === 'email_draft' ? rawUrl : toCdnUrl(rawUrl);
 
     // Gerar e fazer upload da thumbnail para imagens
     let thumbnailUrl: string | undefined;
@@ -250,7 +250,8 @@ export class FirebaseStorageService {
           const thumbPath = `users/${currentUid}/orders/${orderId}/thumbnails/${timestamp}_thumb_${safeName.replace(/\.[^.]+$/, '')}.webp`;
           const thumbRef = ref(storage, thumbPath);
           await uploadBytes(thumbRef, thumbBlob, { contentType: 'image/webp' });
-          thumbnailUrl = toCdnUrl(await getDownloadURL(thumbRef));
+          const rawThumbnail = await getDownloadURL(thumbRef);
+          thumbnailUrl = orderId === 'email_draft' ? rawThumbnail : toCdnUrl(rawThumbnail);
         }
       } catch (err) {
         console.warn('[StorageService] Não foi possível gerar thumbnail para anexo:', err);
@@ -261,10 +262,10 @@ export class FirebaseStorageService {
   }
 
   /**
-   * Upload de anexo de e-mail (salvo em users/${userId}/orders/email_draft/ com permissão de leitura pública)
+   * Upload de anexo de e-mail (salvo em users/${userId}/orders/email_draft/ com leitura restrita ao dono/admin)
    * @param file - Arquivo a enviar
    * @param userId - ID do usuário
-   * @returns OrderAttachment com url CDN pública e thumbnail (se imagem)
+   * @returns OrderAttachment com URL individual autenticada por token para a prévia
    */
   async uploadEmailAttachment(
     file: File,

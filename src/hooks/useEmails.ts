@@ -1,11 +1,11 @@
-import { useState, useEffect, useCallback } from 'react';
-import { collection, query, orderBy, onSnapshot, limit } from 'firebase/firestore';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { createEmailHistory } from '../services/emailHistory';
 import { db } from '../lib/firebase';
 import { ReceivedEmail, SentEmail, SendEmailPayload, EmailUsage, canAccessEmails } from '../app/types';
 import { emailService } from '../services/emailService';
 import { useAuth } from '../contexts/AuthContext';
 
-export function useEmails() {
+export function useEmails({ subscribe = true } = {}) {
   const { user, isAdmin, hasPermission, loading: authLoading } = useAuth();
   const canView = Boolean(user && (isAdmin || hasPermission((p) => canAccessEmails(p, 'view'))));
   const canCreate = Boolean(user && (isAdmin || hasPermission((p) => canAccessEmails(p, 'create'))));
@@ -17,6 +17,10 @@ export function useEmails() {
   const [usage, setUsage] = useState<EmailUsage | null>(null);
   const [loadingUsage, setLoadingUsage] = useState(false);
   const [loading, setLoading] = useState(true);
+  const histories = useRef<Partial<Record<'received' | 'sent', ReturnType<typeof createEmailHistory>>>>({});
+  const [hasMoreReceived, setHasMoreReceived] = useState(true);
+  const [hasMoreSent, setHasMoreSent] = useState(true);
+  const [loadingHistory, setLoadingHistory] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const refreshUsage = useCallback(async () => {
@@ -48,7 +52,7 @@ export function useEmails() {
   useEffect(() => {
     if (authLoading) return;
 
-    if (!user || !canView) {
+    if (!user || !canView || !subscribe) {
       setReceivedEmails([]);
       setSentEmails([]);
       setLoading(false);
@@ -58,21 +62,15 @@ export function useEmails() {
 
     setLoading(true);
 
-    const qReceived = query(
-      collection(db, 'receivedEmails'),
-      orderBy('receivedAt', 'desc'),
-      limit(50)
-    );
-    const qSent = query(
-      collection(db, 'sentEmails'),
-      orderBy('sentAt', 'desc'),
-      limit(50)
-    );
-
-    const unsubReceived = onSnapshot(
-      qReceived,
-      (snapshot) => {
-        const list = snapshot.docs.map((doc) => {
+    setError(null);
+    setReceivedEmails([]);
+    setSentEmails([]);
+    setHasMoreReceived(true);
+    setHasMoreSent(true);
+    let cancelled = false;
+    const received = createEmailHistory(db, 'receivedEmails', (docs, hasMore) => {
+        setHasMoreReceived(hasMore);
+        const list = docs.map((doc) => {
           const data = doc.data();
           return {
             id: doc.id,
@@ -103,10 +101,9 @@ export function useEmails() {
       }
     );
 
-    const unsubSent = onSnapshot(
-      qSent,
-      (snapshot) => {
-        const list = snapshot.docs.map((doc) => {
+    const sent = createEmailHistory(db, 'sentEmails', (docs, hasMore) => {
+        setHasMoreSent(hasMore);
+        const list = docs.map((doc) => {
           const data = doc.data();
           return {
             id: doc.id,
@@ -129,14 +126,36 @@ export function useEmails() {
       },
       (err) => {
         console.warn('[useEmails] Erro ao carregar emails enviados:', err);
+        setError('Não foi possível sincronizar os e-mails enviados.');
       }
     );
 
+    histories.current = { received, sent };
+    Promise.all([received.loadMore(), sent.loadMore()])
+      .catch(() => { if (!cancelled) setError('Não foi possível carregar o histórico de e-mails.'); })
+      .finally(() => { if (!cancelled) setLoading(false); });
     return () => {
-      unsubReceived();
-      unsubSent();
+      cancelled = true;
+      received.close();
+      sent.close();
+      histories.current = {};
     };
-  }, [user, canView, authLoading]);
+  }, [user?.uid, canView, authLoading, subscribe]);
+
+  const loadHistory = useCallback(async (type: 'received' | 'sent', all = false) => {
+    setLoadingHistory(true);
+    setError(null);
+    try {
+      const history = histories.current[type];
+      if (all) await history?.loadAll();
+      else await history?.loadMore();
+    } catch (err) {
+      setError('Não foi possível carregar mais e-mails. Tente novamente.');
+      throw err;
+    } finally {
+      setLoadingHistory(false);
+    }
+  }, []);
 
   const sendEmail = useCallback(async (payload: SendEmailPayload) => {
     if (!canCreate) {
@@ -149,27 +168,27 @@ export function useEmails() {
   }, [canCreate, refreshUsage]);
 
   const markAsRead = useCallback(async (id: string, read: boolean) => {
-    if (!canEdit && !canView) return;
+    if (!canEdit) throw new Error('Você não possui permissão para editar e-mails.');
     await emailService.markAsRead(id, read);
-  }, [canEdit, canView]);
+  }, [canEdit]);
 
   const toggleStar = useCallback(async (id: string, starred: boolean) => {
-    if (!canEdit && !canView) return;
+    if (!canEdit) throw new Error('Você não possui permissão para editar e-mails.');
     await emailService.toggleStar(id, starred);
-  }, [canEdit, canView]);
+  }, [canEdit]);
 
   const setArchived = useCallback(async (id: string, archived: boolean) => {
-    if (!canEdit && !canView) return;
+    if (!canEdit) throw new Error('Você não possui permissão para editar e-mails.');
     await emailService.setArchived(id, archived);
-  }, [canEdit, canView]);
+  }, [canEdit]);
 
   const deleteReceived = useCallback(async (id: string) => {
-    if (!canDelete) return;
+    if (!canDelete) throw new Error('Você não possui permissão para excluir e-mails.');
     await emailService.deleteReceivedEmail(id);
   }, [canDelete]);
 
   const deleteSent = useCallback(async (id: string) => {
-    if (!canDelete) return;
+    if (!canDelete) throw new Error('Você não possui permissão para excluir e-mails.');
     await emailService.deleteSentEmail(id);
   }, [canDelete]);
 
@@ -178,6 +197,7 @@ export function useEmails() {
   return {
     receivedEmails,
     sentEmails,
+    hasMoreReceived, hasMoreSent, loadingHistory, loadHistory,
     unreadCount,
     usage,
     loadingUsage,

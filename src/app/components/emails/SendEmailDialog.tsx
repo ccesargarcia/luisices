@@ -67,7 +67,7 @@ export function SendEmailDialog({
   const { user, isAdmin, hasPermission } = useAuth();
   const canSendEmail = Boolean(user && (isAdmin || hasPermission((p) => canAccessEmails(p, 'create'))));
   const { settings } = useUserSettings();
-  const { sendEmail } = useEmails();
+  const { sendEmail } = useEmails({ subscribe: false });
 
   const businessName = settings?.businessName?.trim() || 'Luisices Personalizados';
   const businessPhone = settings?.whatsappPhone?.trim() || settings?.businessPhone?.trim() || '(11) 97060-6433';
@@ -130,8 +130,8 @@ export function SendEmailDialog({
     const file = e.target.files?.[0];
     if (!file || !user) return;
 
-    if (file.size > 25 * 1024 * 1024) {
-      toast.error('O arquivo não pode ultrapassar 25MB.');
+    if (file.size > 18 * 1024 * 1024) {
+      toast.error('O arquivo não pode ultrapassar 18MB.');
       return;
     }
 
@@ -175,29 +175,10 @@ export function SendEmailDialog({
       .replace(/>/g, '&gt;')
       .replace(/\n/g, '<br />');
 
-    const attachmentsHtml =
-      attachments.length > 0
-        ? `
-        <div style="margin-top: 24px; padding-top: 16px; border-top: 1px dashed #cbd5e1;">
-          <div style="font-size: 13px; font-weight: 600; color: #475569; margin-bottom: 10px;">📎 Arquivos & Documentos Anexados:</div>
-          <div style="display: flex; flex-wrap: wrap; gap: 8px;">
-            ${attachments
-              .map(
-                (att) => {
-                  const safeUrl = att.url.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-                  const safeName = att.name.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-                  return `
-              <a href="${safeUrl}" target="_blank" rel="noopener noreferrer" style="display: inline-block; background-color: #f8fafc; border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px 14px; font-size: 13px; color: #4f46e5; text-decoration: none; font-weight: 500; margin-right: 8px; margin-bottom: 8px;">
-                ⬇️ ${safeName}
-              </a>
-            `;
-                }
-              )
-              .join('')}
-          </div>
-        </div>
-      `
-        : '';
+    const attachmentsHtml = attachments.length
+      ? `<p>Arquivos anexados à mensagem: ${attachments.map(att => att.name
+          .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')).join(', ')}</p>`
+      : '';
 
     return `
 <!DOCTYPE html>
@@ -289,6 +270,7 @@ export function SendEmailDialog({
         subject: subject.trim(),
         text: body,
         html: htmlContent,
+        attachments: attachments.map(({ name, url }) => ({ name, url })),
       };
 
       if (cc.trim()) {

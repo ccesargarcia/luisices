@@ -714,6 +714,7 @@ export interface SentEmail {
 }
 
 export interface SendEmailPayload {
+  attachments?: { name: string; url: string }[];
   to: string[];
   subject: string;
   html?: string;
@@ -1010,4 +1011,3 @@ export interface AlexaIntegrationStatus {
   }>;
   isAdmin: boolean;
 }
-

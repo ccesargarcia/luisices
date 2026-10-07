@@ -3,7 +3,8 @@ rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
     function isActiveUser() {
-      return request.auth != null;
+      return request.auth != null
+        && firestore.get(/databases/(default)/documents/userProfiles/$(request.auth.uid)).data.get('active', true) == true;
     }
 
     // Helper functions para controle de acesso granular
@@ -34,32 +35,40 @@ service firebase.storage {
       return isActiveUser();
     }
 
-    // Anexos de e-mails e rascunhos de envio: leitura pública para que o destinatário do e-mail e a CDN acessem os arquivos sem exigir login
+    function canAccessEmailAttachments(action) {
+      return isActiveUser() && (isAdmin()
+        || hasPerm(getEmployeePermissions().get('emails', false), action));
+    }
+
+    // Rascunhos privados. O backend envia cópias como anexos reais da mensagem.
     match /users/{userId}/orders/email_draft/{allPaths=**} {
-      allow read: if true;
-      allow create, update: if isActiveUser() && request.resource.size < 100 * 1024 * 1024;
-      allow delete: if isActiveUser();
+      allow read: if isActiveUser() && (request.auth.uid == userId || isAdmin());
+      allow create, update: if canAccessEmailAttachments('create')
+        && (request.auth.uid == userId || isAdmin())
+        && request.resource.size < 25 * 1024 * 1024;
+      allow delete: if isActiveUser() && (request.auth.uid == userId || isAdmin());
     }
 
-    // Anexos de e-mails diretos
     match /users/{userId}/emails/{allPaths=**} {
-      allow read: if true;
-      allow create, update: if isActiveUser() && request.resource.size < 100 * 1024 * 1024;
-      allow delete: if isActiveUser();
+      allow read: if isActiveUser() && (request.auth.uid == userId || isAdmin());
+      allow create, update: if canAccessEmailAttachments('create')
+        && (request.auth.uid == userId || isAdmin())
+        && request.resource.size < 25 * 1024 * 1024;
+      allow delete: if isActiveUser() && (request.auth.uid == userId || isAdmin());
     }
 
-    // Anexos de e-mails na raiz
+    // Anexos recebidos/legados: escrita exclusivamente pelo backend.
     match /emails/{allPaths=**} {
-      allow read: if true;
-      allow create, update: if isActiveUser() && request.resource.size < 100 * 1024 * 1024;
-      allow delete: if isActiveUser();
+      allow read: if canAccessEmailAttachments('view');
+      allow write: if false;
     }
 
-    // Anexos de pedidos gerais e thumbnails: imagens, HEIC/HEIF, PDFs, documentos até 100MB
+    // A regra genérica não pode reabrir os rascunhos: regras sobrepostas usam OR.
     match /users/{userId}/orders/{orderId}/{allPaths=**} {
-      allow read: if isActiveUser();
-      allow create, update: if isActiveUser() && request.resource.size < 100 * 1024 * 1024;
-      allow delete: if isActiveUser();
+      allow read: if orderId != 'email_draft' && isActiveUser();
+      allow create, update: if orderId != 'email_draft' && isActiveUser()
+        && request.resource.size < 100 * 1024 * 1024;
+      allow delete: if orderId != 'email_draft' && isActiveUser();
     }
 
     // Galeria de artes: apenas imagens, até 15MB
