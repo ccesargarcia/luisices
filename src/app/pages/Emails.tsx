@@ -36,6 +36,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '../components/ui/select';
+import { Popover, PopoverContent, PopoverTrigger } from '../components/ui/popover';
 import { Checkbox } from '../components/ui/checkbox';
 import { PaginationControls } from '../components/common/PaginationControls';
 import {
@@ -408,6 +409,8 @@ export function Emails() {
   const [isComposeOpen, setIsComposeOpen] = useState(false);
   const [recipient, setRecipient] = useState('');
   const [selectedCustomerId, setSelectedCustomerId] = useState('');
+  const [customerPickerOpen, setCustomerPickerOpen] = useState(false);
+  const [customerSearch, setCustomerSearch] = useState('');
   const [sender, setSender] = useState(defaultSender);
   const [customSender, setCustomSender] = useState('');
   const [isCustomSender, setIsCustomSender] = useState(false);
@@ -947,6 +950,8 @@ export function Emails() {
       setSubject((prev) => replaceDynamicTags(prev, found.name, found.email));
       setBody((prev) => replaceDynamicTags(prev, found.name, found.email));
     }
+    setCustomerPickerOpen(false);
+    setCustomerSearch('');
   };
 
   // Selecionar modelo
@@ -2554,20 +2559,80 @@ export function Emails() {
                       <Tag className="size-3 text-primary" />
                       <span>Preencher com Cliente:</span>
                     </label>
-                    <Select value={selectedCustomerId} onValueChange={handleSelectCustomer}>
-                      <SelectTrigger className="h-8 text-xs bg-background">
-                        <SelectValue placeholder="Selecionar cliente cadastrado..." />
-                      </SelectTrigger>
-                      <SelectContent className="max-h-56">
-                        {customers
-                          .filter((c) => !!c.email)
-                          .map((c) => (
-                            <SelectItem key={c.id} value={c.id} className="text-xs">
-                              {c.name} ({c.email})
-                            </SelectItem>
-                          ))}
-                      </SelectContent>
-                    </Select>
+                    <Popover
+                      open={customerPickerOpen}
+                      onOpenChange={(open) => {
+                        setCustomerPickerOpen(open);
+                        if (!open) setCustomerSearch('');
+                      }}
+                    >
+                      <PopoverTrigger asChild>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          role="combobox"
+                          aria-expanded={customerPickerOpen}
+                          className="h-8 w-full justify-between bg-background px-3 text-xs font-normal"
+                        >
+                          <span className="truncate">
+                            {selectedCustomerId
+                              ? (() => {
+                                  const selected = customers.find((c) => c.id === selectedCustomerId);
+                                  return selected ? `${selected.name} (${selected.email})` : 'Selecionar cliente cadastrado...';
+                                })()
+                              : 'Selecionar cliente cadastrado...'}
+                          </span>
+                          <Search className="ml-2 size-3.5 shrink-0 text-muted-foreground" />
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-[min(26rem,calc(100vw-2rem))] p-2" align="start">
+                        <div className="relative">
+                          <Search className="absolute left-2.5 top-2 size-3.5 text-muted-foreground" />
+                          <Input
+                            autoFocus
+                            value={customerSearch}
+                            onChange={(event) => setCustomerSearch(event.target.value)}
+                            placeholder="Buscar por nome ou e-mail..."
+                            className="h-8 pl-8 text-xs"
+                          />
+                        </div>
+                        <div
+                          className="mt-2 max-h-56 overflow-y-auto space-y-0.5 custom-scrollbar overscroll-contain"
+                          onWheel={(event) => event.stopPropagation()}
+                          onTouchMove={(event) => event.stopPropagation()}
+                        >
+                          {customers
+                            .filter((customer) => Boolean(customer.email))
+                            .filter((customer) => {
+                              const query = customerSearch.trim().toLowerCase();
+                              return !query
+                                || customer.name.toLowerCase().includes(query)
+                                || (customer.email || '').toLowerCase().includes(query);
+                            })
+                            .map((customer) => (
+                              <button
+                                key={customer.id}
+                                type="button"
+                                className={`w-full rounded px-2 py-1.5 text-left text-xs hover:bg-muted ${selectedCustomerId === customer.id ? 'bg-muted' : ''}`}
+                                onClick={() => handleSelectCustomer(customer.id)}
+                              >
+                                <span className="block truncate font-medium">{customer.name}</span>
+                                <span className="block truncate text-[11px] text-muted-foreground">{customer.email}</span>
+                              </button>
+                            ))}
+                          {customers.filter((customer) => {
+                            const query = customerSearch.trim().toLowerCase();
+                            return Boolean(customer.email) && (!query
+                              || customer.name.toLowerCase().includes(query)
+                              || (customer.email || '').toLowerCase().includes(query));
+                          }).length === 0 && (
+                            <p className="px-2 py-4 text-center text-xs text-muted-foreground">
+                              Nenhum cliente encontrado.
+                            </p>
+                          )}
+                        </div>
+                      </PopoverContent>
+                    </Popover>
                   </div>
                 </div>
 
