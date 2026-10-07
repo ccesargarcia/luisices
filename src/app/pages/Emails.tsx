@@ -63,8 +63,6 @@ import {
   BookmarkPlus,
   Info,
   User,
-  ShoppingBag,
-  ExternalLink,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -82,6 +80,91 @@ export interface ComposeAttachment {
   url: string;
   isPdf?: boolean;
   size?: number;
+}
+
+/**
+ * Visualizador de E-mail HTML com auto-ajuste de altura para rolagem fluida e unificada
+ */
+function EmailHtmlViewer({ html, text }: { html?: string; text?: string }) {
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+  const [iframeHeight, setIframeHeight] = useState<number>(450);
+
+  const preparedHtml = useMemo(() => {
+    if (!html) return '';
+    const resetStyles = `
+      <style>
+        html, body {
+          margin: 0 !important;
+          padding: 14px !important;
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif !important;
+          color: #1e293b !important;
+          background-color: #ffffff !important;
+          overflow-y: visible !important;
+          height: auto !important;
+          min-height: auto !important;
+          word-break: break-word;
+        }
+        img { max-width: 100% !important; height: auto !important; }
+        table { max-width: 100% !important; }
+        a { color: #4f46e5 !important; }
+      </style>
+    `;
+
+    if (html.includes('<head>')) {
+      return html.replace('<head>', `<head>${resetStyles}`);
+    }
+    if (html.includes('<html>')) {
+      return html.replace('<html>', `<html><head>${resetStyles}</head>`);
+    }
+    return `<head>${resetStyles}</head>${html}`;
+  }, [html]);
+
+  const updateHeight = () => {
+    try {
+      const doc = iframeRef.current?.contentDocument;
+      if (doc) {
+        const bodyH = doc.body?.scrollHeight || 0;
+        const docH = doc.documentElement?.scrollHeight || 0;
+        const calculated = Math.max(bodyH, docH, 350);
+        setIframeHeight(calculated + 30);
+      }
+    } catch {
+      // Fallback
+    }
+  };
+
+  useEffect(() => {
+    const t1 = setTimeout(updateHeight, 150);
+    const t2 = setTimeout(updateHeight, 600);
+    const t3 = setTimeout(updateHeight, 1500);
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+      clearTimeout(t3);
+    };
+  }, [preparedHtml]);
+
+  if (!html) {
+    return (
+      <div className="whitespace-pre-wrap font-sans text-sm leading-relaxed p-4 bg-muted/20 rounded-lg">
+        {text || '(Mensagem sem texto)'}
+      </div>
+    );
+  }
+
+  return (
+    <div className="w-full bg-white rounded-lg border border-border/70 shadow-2xs overflow-hidden">
+      <iframe
+        ref={iframeRef}
+        title="Conteúdo do E-mail"
+        srcDoc={preparedHtml}
+        sandbox="allow-popups allow-popups-to-escape-sandbox allow-same-origin"
+        onLoad={updateHeight}
+        style={{ height: `${iframeHeight}px`, minHeight: '350px' }}
+        className="w-full border-0 block"
+      />
+    </div>
+  );
 }
 
 const DEFAULT_TEMPLATES: EmailTemplate[] = [
@@ -1079,12 +1162,12 @@ export function Emails() {
 
         {/* ── Coluna 3: Leitura da Mensagem / Detail (md: 5 ou 6 colunas) ── */}
         <div
-          className={`col-span-1 md:col-span-5 lg:col-span-6 flex flex-col bg-background min-w-0 ${
+          className={`col-span-1 md:col-span-5 lg:col-span-6 flex flex-col bg-background min-w-0 h-full overflow-hidden ${
             !selectedEmailId ? 'hidden md:flex' : 'flex'
           }`}
         >
           {currentReceivedEmail || currentSentEmail ? (
-            <div className="flex flex-col h-full min-w-0">
+            <div className="flex flex-col h-full min-w-0 overflow-hidden">
               {/* Barra de Ações Superior */}
               <div className="p-3 border-b border-border/60 flex items-center justify-between gap-2 bg-muted/10 shrink-0">
                 <div className="flex items-center gap-1">
@@ -1177,7 +1260,7 @@ export function Emails() {
 
               {/* Informação do Cliente & Pedidos Vinculados */}
               {matchedCustomer && (
-                <div className="mx-4 sm:mx-6 mt-3 p-2.5 rounded-lg border bg-primary/5 border-primary/20 flex flex-wrap items-center justify-between gap-2 text-xs">
+                <div className="mx-4 sm:mx-6 mt-3 p-2.5 rounded-lg border bg-primary/5 border-primary/20 flex flex-wrap items-center justify-between gap-2 text-xs shrink-0">
                   <div className="flex items-center gap-2 min-w-0">
                     <User className="size-4 text-primary shrink-0" />
                     <div className="truncate">
@@ -1251,36 +1334,18 @@ export function Emails() {
                 </div>
               </div>
 
-              {/* Corpo da Mensagem com Rolagem */}
+              {/* Corpo da Mensagem com Rolagem Fluida */}
               <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4">
                 {currentReceivedEmail ? (
-                  currentReceivedEmail.html ? (
-                    <div className="w-full bg-white rounded-lg border p-1 shadow-2xs">
-                      <iframe
-                        title="Conteúdo da Mensagem"
-                        srcDoc={currentReceivedEmail.html}
-                        sandbox="allow-popups"
-                        className="w-full min-h-[380px] border-0"
-                      />
-                    </div>
-                  ) : (
-                    <div className="whitespace-pre-wrap font-sans text-sm leading-relaxed p-4 bg-muted/20 rounded-lg">
-                      {currentReceivedEmail.text || '(Mensagem sem texto)'}
-                    </div>
-                  )
-                ) : currentSentEmail?.html ? (
-                  <div className="w-full bg-white rounded-lg border p-1 shadow-2xs">
-                    <iframe
-                      title="Conteúdo da Mensagem Enviada"
-                      srcDoc={currentSentEmail.html}
-                      sandbox="allow-popups"
-                      className="w-full min-h-[380px] border-0"
-                    />
-                  </div>
+                  <EmailHtmlViewer
+                    html={currentReceivedEmail.html}
+                    text={currentReceivedEmail.text}
+                  />
                 ) : (
-                  <div className="whitespace-pre-wrap font-sans text-sm leading-relaxed p-4 bg-muted/20 rounded-lg">
-                    {currentSentEmail?.text || '(Mensagem sem texto)'}
-                  </div>
+                  <EmailHtmlViewer
+                    html={currentSentEmail?.html}
+                    text={currentSentEmail?.text}
+                  />
                 )}
 
                 {/* Anexos */}
@@ -1639,13 +1704,9 @@ export function Emails() {
                   </span>
                 </div>
 
-                <div className="border rounded-xl overflow-hidden bg-white shadow-2xs">
-                  <iframe
-                    title="Prévia do E-mail"
-                    srcDoc={generateFormattedHtml(body || 'Sua mensagem aparecerá aqui.')}
-                    className="w-full min-h-[380px] border-0"
-                  />
-                </div>
+                <EmailHtmlViewer
+                  html={generateFormattedHtml(body || 'Sua mensagem aparecerá aqui.')}
+                />
               </div>
             )}
 
