@@ -634,8 +634,14 @@ export function Users() {
     setInviting(true);
     try {
       const result = await firebaseUserService.createUserInvitation(inviteEmail.trim(), inviteWhatsapp.trim() || undefined);
-      const expiresAt = new Date(result.expiresAt).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
-      toast.success(`Convite enviado. Válido até ${expiresAt}.`);
+      if (result.repairedExistingAccount) {
+        toast.success('Conta existente recuperada. O perfil e as permissões foram criados.');
+      } else if (result.verificationSent) {
+        toast.success(`Enviamos um novo link de confirmação para ${inviteEmail.trim()}.`);
+      } else if (result.expiresAt) {
+        const expiresAt = new Date(result.expiresAt).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
+        toast.success(`Convite enviado. Válido até ${expiresAt}.`);
+      }
       setInviteEmail('');
       setInviteWhatsapp('');
       setInviteOpen(false);

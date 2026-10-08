@@ -25,8 +25,15 @@ export class FirebaseUserService {
     await callable({ email });
   }
 
-  async createUserInvitation(email: string, whatsappPhone?: string): Promise<{ expiresAt: string }> {
-    const callable = httpsCallable<{ email: string; whatsappPhone?: string }, { success: boolean; expiresAt: string }>(
+  async createUserInvitation(email: string, whatsappPhone?: string): Promise<{
+    expiresAt?: string;
+    repairedExistingAccount?: boolean;
+    verificationSent?: boolean;
+  }> {
+    const callable = httpsCallable<
+      { email: string; whatsappPhone?: string },
+      { success: boolean; expiresAt?: string; repairedExistingAccount?: boolean; verificationSent?: boolean }
+    >(
       functions,
       'createUserInvitation',
     );

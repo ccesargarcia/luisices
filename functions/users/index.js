@@ -40,6 +40,71 @@ function writeUserAudit(action, actorUid, targetUid, details = {}) {
   });
 }
 
+async function activateInvitedAccount(invitationRef, invitationData, authUser) {
+  if (!authUser.email || authUser.email.toLowerCase() !== invitationData.email.toLowerCase()) {
+    throw new functions.https.HttpsError('permission-denied', 'O e-mail da conta não corresponde ao convite.');
+  }
+  if (authUser.emailVerified !== true) {
+    throw new functions.https.HttpsError('failed-precondition', 'Confirme o e-mail antes de concluir o cadastro.');
+  }
+
+  await admin.firestore().runTransaction(async (transaction) => {
+    const invitationSnapshot = await transaction.get(invitationRef);
+    const profileRef = admin.firestore().doc(`userProfiles/${authUser.uid}`);
+    const profileSnapshot = await transaction.get(profileRef);
+    if (!invitationSnapshot.exists) {
+      throw new functions.https.HttpsError('not-found', 'Convite inválido ou expirado.');
+    }
+
+    const currentInvitation = invitationSnapshot.data();
+    if (currentInvitation.status === 'accepted' && currentInvitation.acceptedBy === authUser.uid) return;
+    if (currentInvitation.status !== 'pending' || currentInvitation.expiresAt.toDate() <= new Date()) {
+      throw new functions.https.HttpsError('failed-precondition', 'Convite inválido ou expirado.');
+    }
+
+    if (profileSnapshot.exists) {
+      const profileEmail = profileSnapshot.data().email;
+      if (!profileEmail || profileEmail.toLowerCase() !== authUser.email.toLowerCase()) {
+        throw new functions.https.HttpsError('already-exists', 'Esta conta já possui outro perfil.');
+      }
+    } else {
+      transaction.set(profileRef, {
+        uid: authUser.uid,
+        email: authUser.email,
+        displayName: authUser.displayName || invitationData.email.split('@')[0],
+        whatsappPhone: invitationData.whatsappPhone || null,
+        role: 'user',
+        permissions: {
+          orders: { view: true, create: true, edit: false, delete: false },
+          customers: { view: true, create: true, edit: false, delete: false },
+          products: { view: true, create: false, edit: false, delete: false },
+          finances: { view: false, create: false, edit: false, delete: false },
+          reports: { view: false },
+          settings: { view: false, edit: false },
+        },
+        invitedBy: invitationData.invitedBy,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+    }
+
+    transaction.update(invitationRef, {
+      status: 'accepted',
+      acceptedBy: authUser.uid,
+      acceptedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+  });
+}
+
+async function createCustomVerificationLink(email, inviteToken) {
+  const continueUrl = `${getAppUrl()}/action?mode=verifyEmail&invite=${encodeURIComponent(inviteToken)}`;
+  const rawLink = await admin.auth().generateEmailVerificationLink(email, { url: continueUrl });
+  const customLink = formatActionLink(rawLink, 'verifyEmail');
+  const verificationUrl = new URL(customLink);
+  verificationUrl.searchParams.set('invite', inviteToken);
+  return verificationUrl.toString();
+}
+
 /** Envia ao administrador um link seguro para redefinir a senha de outro usuário. */
 const sendAdminPasswordReset = onCall(
   { maxInstances: 5, secrets: [RESEND_API_KEY, EVOLUTION_API_KEY] },
@@ -111,23 +176,54 @@ const createUserInvitation = onCall(
       throw new functions.https.HttpsError('invalid-argument', 'E-mail do convite é obrigatório.');
     }
     const normalizedEmail = email.trim().toLowerCase();
-    const resend = getResend(RESEND_API_KEY.value());
-    if (!resend) throw new functions.https.HttpsError('failed-precondition', 'Resend não configurado.');
 
     try {
       const existing = await admin.auth().getUserByEmail(normalizedEmail).catch(() => null);
-      if (existing) throw new functions.https.HttpsError('already-exists', 'Este e-mail já possui uma conta.');
-
       const token = crypto.randomBytes(32).toString('hex');
       const expiresAt = new Date(Date.now() + 48 * 60 * 60 * 1000);
-      await admin.firestore().collection('invitations').doc(hashToken(token)).set({
+      const invitationRef = admin.firestore().collection('invitations').doc(hashToken(token));
+      const invitationData = {
         email: normalizedEmail,
         whatsappPhone: whatsappPhone || null,
         invitedBy: request.auth.uid,
         status: 'pending',
         expiresAt: admin.firestore.Timestamp.fromDate(expiresAt),
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
-      });
+      };
+
+      if (existing) {
+        const existingProfile = await admin.firestore().doc(`userProfiles/${existing.uid}`).get();
+        if (existingProfile.exists) {
+          throw new functions.https.HttpsError('already-exists', 'Este e-mail já possui uma conta ativa.');
+        }
+
+        await invitationRef.set(invitationData);
+        if (existing.emailVerified) {
+          await activateInvitedAccount(invitationRef, invitationData, existing);
+          await writeUserAudit('ORPHANED_USER_ACCOUNT_REPAIRED', request.auth.uid, existing.uid, { email: normalizedEmail });
+          return { success: true, repairedExistingAccount: true };
+        }
+
+        const resend = getResend(RESEND_API_KEY.value());
+        if (!resend) throw new functions.https.HttpsError('failed-precondition', 'Resend não configurado.');
+        const verificationLink = await createCustomVerificationLink(normalizedEmail, token);
+        const { error } = await resend.emails.send({
+          from: 'Luisices <noreply@luisices.com.br>',
+          to: [normalizedEmail],
+          subject: 'Confirme seu e-mail - Luisices',
+          html: `<p>Já encontramos uma conta Luisices vinculada a este e-mail.</p><p>Confirme o endereço para concluir a ativação do seu acesso:</p><p><a href="${verificationLink}">Confirmar e ativar minha conta</a></p><p>Se não reconhece este cadastro, ignore esta mensagem.</p>`,
+        });
+        if (error) {
+          console.error('[createUserInvitation] Falha ao reenviar confirmação:', JSON.stringify(error));
+          throw new functions.https.HttpsError('internal', 'Não foi possível enviar o link de confirmação.');
+        }
+        await writeUserAudit('ORPHANED_USER_VERIFICATION_RESENT', request.auth.uid, existing.uid, { email: normalizedEmail });
+        return { success: true, verificationSent: true, expiresAt: expiresAt.toISOString() };
+      }
+
+      const resend = getResend(RESEND_API_KEY.value());
+      if (!resend) throw new functions.https.HttpsError('failed-precondition', 'Resend não configurado.');
+      await invitationRef.set(invitationData);
 
       const inviteLink = `${getAppUrl()}/registrar?invite=${token}`;
       const emailPromise = resend.emails.send({
@@ -202,40 +298,7 @@ const completeUserInvitation = onCall(async (request) => {
     );
   }
 
-  await admin.firestore().runTransaction(async (transaction) => {
-    const invSnap = await transaction.get(invitationRef);
-    if (!invSnap.exists || invSnap.data().status !== 'pending') {
-      throw new functions.https.HttpsError('already-exists', 'Este convite já foi utilizado.');
-    }
-    const userProfileRef = admin.firestore().doc(`userProfiles/${authUser.uid}`);
-    const existingProfile = await transaction.get(userProfileRef);
-    if (existingProfile.exists) {
-      throw new functions.https.HttpsError('already-exists', 'Esta conta já possui um perfil ativo.');
-    }
-    transaction.set(userProfileRef, {
-      uid: authUser.uid,
-      email: authUser.email,
-      displayName: authUser.displayName || invData.email.split('@')[0],
-      whatsappPhone: invData.whatsappPhone || null,
-      role: 'user',
-      permissions: {
-        orders: { view: true, create: true, edit: false, delete: false },
-        customers: { view: true, create: true, edit: false, delete: false },
-        products: { view: true, create: false, edit: false, delete: false },
-        finances: { view: false, create: false, edit: false, delete: false },
-        reports: { view: false },
-        settings: { view: false, edit: false },
-      },
-      invitedBy: invData.invitedBy,
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
-      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-    });
-    transaction.update(invitationRef, {
-      status: 'accepted',
-      acceptedBy: authUser.uid,
-      acceptedAt: admin.firestore.FieldValue.serverTimestamp(),
-    });
-  });
+  await activateInvitedAccount(invitationRef, invData, authUser);
   return { success: true };
 });
 
