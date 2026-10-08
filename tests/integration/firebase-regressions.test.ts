@@ -106,6 +106,27 @@ describe('Perfis e desativação', () => {
     await seed('userProfiles/legacy', { ...withoutActive, role: 'admin' });
     await assertSucceeds(getDoc(doc(dbFor('legacy') as any, 'orders/legacy-order')));
   });
+
+  it('barreira temporal: rejeita requisições com auth_time anterior ou igual a tokensValidAfterTime, aceita posteriores', async () => {
+    const barrier = 1700000050; // segundo 50
+    await seed('userProfiles/revoked-user', {
+      ...profile('revoked-user'),
+      tokensValidAfterTime: barrier,
+    });
+    await seed('orders/revoked-order', { ...order, userId: 'revoked-user' });
+
+    // 1. Token com auth_time anterior à revogação (segundo 49) -> NEGADO
+    const dbAnterior = env.authenticatedContext('revoked-user', { auth_time: 1700000049 }).firestore();
+    await assertPermissionDenied(() => getDoc(doc(dbAnterior as any, 'orders/revoked-order')));
+
+    // 2. Token com auth_time no mesmo segundo da revogação (segundo 50) -> NEGADO
+    const dbMesmoSegundo = env.authenticatedContext('revoked-user', { auth_time: 1700000050 }).firestore();
+    await assertPermissionDenied(() => getDoc(doc(dbMesmoSegundo as any, 'orders/revoked-order')));
+
+    // 3. Token com auth_time estritamente posterior (segundo 51) -> PERMITIDO
+    const dbPosterior = env.authenticatedContext('revoked-user', { auth_time: 1700000051 }).firestore();
+    await assertSucceeds(getDoc(doc(dbPosterior as any, 'orders/revoked-order')));
+  });
 });
 
 describe('Permissões granulares de pedidos e soft delete (Achado 3)', () => {

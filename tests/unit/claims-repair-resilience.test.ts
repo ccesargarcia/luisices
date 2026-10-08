@@ -1,229 +1,674 @@
 /**
- * Testes de resiliência e idempotência do fluxo claimsSyncPending / executeClaimsRepair.
+ * tests/unit/claims-repair-resilience.test.ts
+ *
+ * Testes de resiliência e concorrência para o serviço real userSyncService e callables de usuários.
+ * Executa a implementação real com injeção de dependências em memória / espiões controlados.
  *
  * Cenários cobertos:
- *  1. Falha parcial após gravar perfil → marker persiste com needsRevocation e opId
- *  2. repairUserClaims retoma revogação de RTDB e Auth quando marker indica needsRevocation
- *  3. Operação concorrente: limpeza de opId antigo não remove marker de operação mais recente
- *  4. Retry de mudança de cargo já aplicado: revogação é retomada pelo marker, não pelo cargo atual
- *  5. Marker legado (boolean true) é tratado sem retomar revogação
+ *  A. Operações fora de ordem: Worker antigo que termina após um novo NÃO pode deixar claims antigas no Auth.
+ *  B. Perda de revogação: Falha externa em revogação seguida de update cosmético PRESERVA needsRevocation=true.
+ *  C. Migração de marcador legado: Reparo legado sob concorrência com atualização nova NÃO remove o marcador novo.
+ *  D. Falha após efeito externo: Falha ao confirmar no Firestore permite convergência idempotente no retry/reparo.
+ *  E. Falha em cada etapa externa: Erros em RTDB, Auth refresh tokens ou setCustomUserClaims preservam pendências.
+ *  F. Proteção do último administrador: Impede remoção/desativação do único admin sem efeitos externos.
+ *  G. Autorização de reparo: Próprio usuário e admin autorizados; terceiro não-admin rejeitado com permission-denied.
+ *  H. Barreira temporal: auth_time <= tokensValidAfterTime rejeitado; auth_time > tokensValidAfterTime aceito.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import admin from 'firebase-admin';
+const {
+  updateUserProfile,
+  revokeUserSessions,
+  executeUserRepair,
+  convertLegacyMarker,
+  processUserSync,
+} = require('../../functions/users/userSyncService');
 
-// Inicializar app Firebase se não existir
-if (!admin.apps.length) {
-  admin.initializeApp({ projectId: 'demo-test' });
-}
+// ─── Harness em Memória com Semântica Transacional Real ───────────────────────
 
-// Helper para criar um mock de profileRef
-function makeProfileSnap(data: Record<string, unknown>) {
-  return { exists: true, data: () => data };
-}
+function createMemoryFirestore() {
+  const store = new Map<string, any>();
 
-function makeNoExistSnap() {
-  return { exists: false, data: () => null };
-}
+  function getDocData(path: string) {
+    const val = store.get(path);
+    return val ? JSON.parse(JSON.stringify(val)) : null;
+  }
 
-// Note: executeClaimsRepair é uma função interna de users/index.js.
-// O comportamento é testado via mocks do SDK do Admin nos grupos abaixo.
-// Para um teste de integração end-to-end, use o emulador (test:integration).
+  function setDocData(path: string, val: any) {
+    store.set(path, JSON.parse(JSON.stringify(val)));
+  }
 
-// ─── Testes comportamentais com mocks manuais do admin SDK ───────────────────
-
-describe('claimsSyncPending — cenários de falha, concorrência e reparo', () => {
-  beforeEach(() => {
-    vi.resetAllMocks();
-  });
-
-  describe('1. Falha parcial: marker deve preservar needsRevocation e opId', () => {
-    it('claimsSyncPending gravado na transação deve ser um objeto com opId e needsRevocation', () => {
-      // Verificamos que o schema do marker é consistente com o que executeClaimsRepair espera
-      const opId = 'abc123'; // simulado
-      const needsRevocation = true;
-      const marker = { opId, needsRevocation };
-
-      expect(marker.opId).toBe('abc123');
-      expect(marker.needsRevocation).toBe(true);
-      // executeClaimsRepair verifica: marker && typeof marker === 'object' && marker.opId
-      expect(typeof marker === 'object' && marker.opId).toBeTruthy();
-    });
-
-    it('marker legado boolean true não deve ativar retomada de revogação', () => {
-      const legacyMarker = true;
-      // A lógica de executeClaimsRepair verifica: marker && typeof marker === 'object' && marker.opId
-      const shouldResumeRevocation = legacyMarker &&
-        typeof legacyMarker === 'object' &&
-        (legacyMarker as unknown as Record<string, unknown>).opId;
-      expect(shouldResumeRevocation).toBeFalsy();
-    });
-  });
-
-  describe('2. repairUserClaims deve retomar revogação quando marker indica needsRevocation=true', () => {
-    it('marker com needsRevocation=true deve acionar RTDB e revokeRefreshTokens', async () => {
-      const uid = 'user-to-repair';
-      const opId = 'op-001';
-      const profileData = {
-        role: 'user',
-        active: false,
-        tokensValidAfterTime: 1700000050,
-        claimsSyncPending: { opId, needsRevocation: true },
-      };
-
-      // Mock Firestore: profileRef.get() e transação de limpeza
-      const mockTxUpdate = vi.fn();
-      const mockTxGet = vi.fn().mockResolvedValue(makeProfileSnap(profileData));
-      const mockUpdate = vi.fn().mockResolvedValue(undefined);
-
-      vi.spyOn(admin.firestore(), 'doc').mockReturnValue({
-        get: vi.fn().mockResolvedValue(makeProfileSnap(profileData)),
-        update: mockUpdate,
-      } as any);
-      vi.spyOn(admin.firestore(), 'runTransaction').mockImplementation(async (fn: any) => {
-        return fn({ get: mockTxGet, update: mockTxUpdate });
-      });
-
-      // Mock RTDB
-      const mockRtdbRemove = vi.fn().mockResolvedValue(undefined);
-      const mockRtdbSet = vi.fn().mockResolvedValue(undefined);
-      const mockRtdbRef = vi.fn().mockReturnValue({
-        remove: mockRtdbRemove,
-        set: mockRtdbSet,
-      });
-      vi.spyOn(admin, 'database').mockReturnValue({ ref: mockRtdbRef } as any);
-
-      // Mock Auth
-      const mockRevokeRefreshTokens = vi.fn().mockResolvedValue(undefined);
-      const mockSetCustomUserClaims = vi.fn().mockResolvedValue(undefined);
-      vi.spyOn(admin, 'auth').mockReturnValue({
-        revokeRefreshTokens: mockRevokeRefreshTokens,
-        setCustomUserClaims: mockSetCustomUserClaims,
-      } as any);
-
-      // executeClaimsRepair simulado (lógica reproduzida aqui para testar o contrato)
-      const marker = profileData.claimsSyncPending;
-      if (marker && typeof marker === 'object' && marker.opId) {
-        if (marker.needsRevocation === true) {
-          const rtdb = admin.database();
-          await Promise.all([
-            rtdb.ref(`status/${uid}`).remove(),
-            rtdb.ref(`revocations/${uid}`).set(Date.now()),
-          ]);
-          await admin.auth().revokeRefreshTokens(uid);
+  const firestore: any = {
+    _store: store,
+    doc: (path: string) => ({
+      path,
+      get: async () => {
+        const d = getDocData(path);
+        return {
+          exists: d !== null,
+          data: () => d,
+          ref: { path },
+        };
+      },
+      set: async (val: any, options?: any) => {
+        if (options?.merge && store.has(path)) {
+          setDocData(path, { ...getDocData(path), ...val });
+        } else {
+          setDocData(path, val);
         }
-        await admin.auth().setCustomUserClaims(uid, {
-          role: profileData.role,
-          active: profileData.active,
-        });
-      }
-
-      expect(mockRtdbRemove).toHaveBeenCalledOnce();
-      expect(mockRtdbSet).toHaveBeenCalledOnce();
-      expect(mockRevokeRefreshTokens).toHaveBeenCalledWith(uid);
-      expect(mockSetCustomUserClaims).toHaveBeenCalledWith(uid, {
-        role: 'user',
-        active: false,
-      });
-    });
-
-    it('marker com needsRevocation=false não deve acionar revogação', () => {
-      const marker = { opId: 'op-002', needsRevocation: false };
-      const shouldRevoke = marker.needsRevocation === true;
-      expect(shouldRevoke).toBe(false);
-    });
-  });
-
-  describe('3. Proteção contra sobrescrita por operação concorrente (opId mismatch)', () => {
-    it('não deve limpar o marker se o opId no Firestore for diferente do opId da operação', () => {
-      const opIdDaOperacaoAtual = 'op-A';
-      const opIdGravadoNoFirestore = 'op-B'; // operação mais recente chegou depois
-
-      // Simular a verificação feita dentro da transação de limpeza
-      const markerAtual = { opId: opIdGravadoNoFirestore, needsRevocation: false };
-      const deveApagar = markerAtual?.opId === opIdDaOperacaoAtual;
-
-      expect(deveApagar).toBe(false);
-    });
-
-    it('deve limpar o marker se o opId no Firestore coincidir com o da operação', () => {
-      const opId = 'op-C';
-      const markerAtual = { opId, needsRevocation: true };
-      const deveApagar = markerAtual?.opId === opId;
-
-      expect(deveApagar).toBe(true);
-    });
-
-    it('uma operação posterior com novo opId mantém seu marker intacto', () => {
-      // Operação A terminou as etapas externas e tenta limpar
-      const opIdA = 'op-older';
-      // Entre o fim das etapas e a transação de limpeza, chegou operação B
-      const markerAtual = { opId: 'op-newer', needsRevocation: true };
-
-      // A transação da operação A verifica: marker.opId === opIdA → false → não apaga
-      const deveApagar = markerAtual?.opId === opIdA;
-      expect(deveApagar).toBe(false);
-
-      // O marker da operação B permanece, permitindo que seu reparo seja feito
-      expect(markerAtual.opId).toBe('op-newer');
-      expect(markerAtual.needsRevocation).toBe(true);
-    });
-  });
-
-  describe('4. Retry após falha parcial: revogação retomada pelo marker, não pelo cargo atual', () => {
-    it('mesmo que cargo já tenha sido atualizado, marker com needsRevocation=true garante que revogação será executada no reparo', () => {
-      // Estado: cargo já foi atualizado para 'funcionario' (needsRevocation ocorreu antes)
-      // Mas a revogação de Auth/RTDB falhou antes de completar
-      // O marker persistiu com needsRevocation: true
-
-      const profileDataAposAtualização = {
-        role: 'funcionario', // já atualizado
-        active: true,
-        claimsSyncPending: { opId: 'op-failed', needsRevocation: true },
+      },
+      update: async (val: any) => {
+        const current = getDocData(path) || {};
+        const updated = { ...current };
+        for (const [k, v] of Object.entries(val)) {
+          if (
+            (v && typeof v === 'object' && (v.constructor?.name === 'DeleteTransform' || (v as any)._methodName === 'FieldValue.delete')) ||
+            v === undefined
+          ) {
+            delete updated[k];
+          } else {
+            updated[k] = v;
+          }
+        }
+        setDocData(path, updated);
+      },
+    }),
+    collection: (collPath: string) => ({
+      path: collPath,
+      doc: (id?: string) => {
+        const docId = id || `doc_${Math.random().toString(36).substring(2, 9)}`;
+        return firestore.doc(`${collPath}/${docId}`);
+      },
+      where: (field: string, op: string, val: any) => ({
+        get: async () => {
+          const docs: any[] = [];
+          for (const [k, v] of store.entries()) {
+            if (k.startsWith(`${collPath}/`)) {
+              if (op === '==' && v[field] === val) {
+                docs.push({
+                  id: k.split('/').pop(),
+                  data: () => JSON.parse(JSON.stringify(v)),
+                });
+              }
+            }
+          }
+          return { docs, size: docs.length, empty: docs.length === 0 };
+        },
+      }),
+      get: async () => {
+        const docs: any[] = [];
+        for (const [k, v] of store.entries()) {
+          if (k.startsWith(`${collPath}/`)) {
+            docs.push({
+              id: k.split('/').pop(),
+              ref: firestore.doc(k),
+              data: () => JSON.parse(JSON.stringify(v)),
+            });
+          }
+        }
+        return { docs, size: docs.length, empty: docs.length === 0 };
+      },
+    }),
+    batch: () => {
+      const ops: Array<() => void> = [];
+      return {
+        delete: (ref: any) => {
+          ops.push(() => store.delete(ref.path));
+        },
+        commit: async () => {
+          ops.forEach((op) => op());
+        },
+      };
+    },
+    runTransaction: async (updateFunction: (tx: any) => Promise<any>) => {
+      // Simulação de transação com staging local de mutações
+      const stagedWrites: Array<() => void> = [];
+      const tx = {
+        get: async (ref: any) => {
+          return await ref.get();
+        },
+        update: (ref: any, data: any) => {
+          stagedWrites.push(() => ref.update(data));
+        },
+        set: (ref: any, data: any, options?: any) => {
+          stagedWrites.push(() => ref.set(data, options));
+        },
+        create: (ref: any, data: any) => {
+          stagedWrites.push(() => ref.set(data));
+        },
+        delete: (ref: any) => {
+          stagedWrites.push(() => store.delete(ref.path));
+        },
       };
 
-      // Sem o marker, uma nova chamada a updateUser não geraria revogação (cargo não mudou)
-      // Com o marker, executeClaimsRepair sabe que needsRevocation era true
-      const marker = profileDataAposAtualização.claimsSyncPending;
-      expect(marker.needsRevocation).toBe(true);
+      const result = await updateFunction(tx);
+      // Aplica todas as escritas atomicamente
+      for (const write of stagedWrites) {
+        await write();
+      }
+      return result;
+    },
+  };
 
-      // Simular o que executeClaimsRepair faria:
-      const shouldRevoke = marker && typeof marker === 'object' && marker.needsRevocation === true;
-      expect(shouldRevoke).toBe(true);
+  return firestore;
+}
+
+function createFakeDependencies() {
+  const firestore = createMemoryFirestore();
+  const authClaims = new Map<string, any>();
+  const revokedTokens = new Set<string>();
+  const rtdbStatus = new Map<string, any>();
+  const rtdbRevocations = new Map<string, number>();
+
+  let currentTime = 1728400000000;
+
+  const auth = {
+    setCustomUserClaims: vi.fn(async (uid: string, claims: any) => {
+      authClaims.set(uid, { ...claims });
+    }),
+    revokeRefreshTokens: vi.fn(async (uid: string) => {
+      revokedTokens.add(uid);
+    }),
+    getClaims: (uid: string) => authClaims.get(uid),
+    isRevoked: (uid: string) => revokedTokens.has(uid),
+  };
+
+  const database = {
+    ref: (path: string) => ({
+      remove: vi.fn(async () => {
+        if (path.startsWith('status/')) {
+          rtdbStatus.delete(path.replace('status/', ''));
+        }
+      }),
+      set: vi.fn(async (val: any) => {
+        if (path.startsWith('revocations/')) {
+          rtdbRevocations.set(path.replace('revocations/', ''), val);
+        }
+      }),
+    }),
+    _status: rtdbStatus,
+    _revocations: rtdbRevocations,
+  };
+
+  let opCount = 0;
+  const generateOpId = () => `op_${++opCount}`;
+  const now = () => currentTime;
+
+  return {
+    firestore,
+    auth,
+    database,
+    now,
+    generateOpId,
+    setTime: (t: number) => { currentTime = t; },
+  };
+}
+
+// ─── Testes de Resiliência do Serviço Real ───────────────────────────────────
+
+describe('userSyncService — Resiliência, Concorrência e Monotonicidade Real', () => {
+  let deps: ReturnType<typeof createFakeDependencies>;
+
+  beforeEach(() => {
+    deps = createFakeDependencies();
+  });
+
+  // ─── Cenário A: Operações fora de ordem ──────────────────────────────────────
+  describe('Cenário A: Operações fora de ordem (Out-of-Order Race Condition)', () => {
+    it('garante que uma operação antiga (A: admin) que termina depois de uma nova (B: user) reconcilia e não deixa admin no Auth', async () => {
+      const uid = 'target-user-race';
+      // Perfil inicial no Firestore: role user, syncVersion 1
+      await deps.firestore.doc(`userProfiles/${uid}`).set({
+        uid,
+        role: 'user',
+        active: true,
+        syncVersion: 1,
+      });
+      // Outro admin para satisfazer a regra do último admin
+      await deps.firestore.doc('userProfiles/other-admin').set({
+        uid: 'other-admin',
+        role: 'admin',
+        active: true,
+      });
+
+      // Barreira de sincronização: congela a chamada Auth de Op A
+      let releaseOpAClaims: () => void;
+      const opAClaimsBarrier = new Promise<void>((resolve) => {
+        releaseOpAClaims = resolve;
+      });
+
+      let isFirstCall = true;
+      const originalSetClaims = deps.auth.setCustomUserClaims;
+      deps.auth.setCustomUserClaims = vi.fn(async (targetUid: string, claims: any) => {
+        if (targetUid === uid && claims.role === 'admin' && isFirstCall) {
+          isFirstCall = false;
+          // Pausa Op A simulando latência de rede externa
+          await opAClaimsBarrier;
+        }
+        return originalSetClaims(targetUid, claims);
+      });
+
+      // 1. Inicia Op A promovendo para 'admin' (em background)
+      const opAPromise = updateUserProfile({
+        uid,
+        role: 'admin',
+        actorUid: 'admin-1',
+      }, deps);
+
+      // Aguarda até Op A estar na transação inicial e chamar setCustomUserClaims (pausada)
+      await new Promise((r) => setTimeout(r, 10));
+
+      // 2. Op B chega logo em seguida e rebaixa para 'user'
+      const opBResult = await updateUserProfile({
+        uid,
+        role: 'user',
+        actorUid: 'admin-2',
+      }, deps);
+
+      expect(opBResult.success).toBe(true);
+
+      // Neste momento, Firestore já está na versão de Op B (role: 'user')
+      const profileAfterB = (await deps.firestore.doc(`userProfiles/${uid}`).get()).data();
+      expect(profileAfterB.role).toBe('user');
+
+      // 3. Agora liberamos Op A para concluir suas chamadas tardias
+      releaseOpAClaims!();
+      const opAResult = await opAPromise;
+      expect(opAResult.success).toBe(true);
+
+      // VERIFICAÇÃO CRÍTICA DO CENÁRIO A:
+      // O estado final no Firebase Auth NÃO PODE ser 'admin'!
+      // O mecanismo de reconciliação pós-escrita deve ter detectado a versão superior e regravado 'user'.
+      const finalAuthClaims = deps.auth.getClaims(uid);
+      expect(finalAuthClaims.role).toBe('user');
     });
+  });
 
-    it('após reparo bem-sucedido, marker deve ser removido e retry não deve duplicar revogação', () => {
-      // Após executeClaimsRepair completar com sucesso, o marker foi deletado
-      // Simulação do estado pós-reparo
-      const profileDataAposReparo: Record<string, unknown> = {
+  // ─── Cenário B: Perda de revogação ───────────────────────────────────────────
+  describe('Cenário B: Preservação de revogação sob retries e alterações cosméticas', () => {
+    it('preserva needsRevocation=true mesmo se administrador fizer alteração cosmética de nome após falha', async () => {
+      const uid = 'user-revocation-test';
+      await deps.firestore.doc(`userProfiles/${uid}`).set({
+        uid,
+        role: 'admin',
+        active: true,
+        displayName: 'Nome Antigo',
+        syncVersion: 1,
+      });
+      await deps.firestore.doc('userProfiles/other-admin').set({
+        uid: 'other-admin',
+        role: 'admin',
+        active: true,
+      });
+
+      // Simula falha na API de revokeRefreshTokens
+      deps.auth.revokeRefreshTokens = vi.fn().mockRejectedValueOnce(new Error('Auth network timeout'));
+
+      // 1. Rebaixa de admin para user (exige revogação). Falha na etapa externa.
+      await expect(updateUserProfile({
+        uid,
+        role: 'user',
+        actorUid: 'admin-1',
+      }, deps)).rejects.toThrow(/falha na sincronização externa/i);
+
+      // Firestore gravou perfil com role 'user' e marker needsRevocation=true
+      const profileAfterFail = (await deps.firestore.doc(`userProfiles/${uid}`).get()).data();
+      expect(profileAfterFail.claimsSyncPending.needsRevocation).toBe(true);
+
+      // 2. Administrador agora faz uma alteração puramente cosmética (displayName)
+      // Restaura o Auth para responder normalmente
+      deps.auth.revokeRefreshTokens = vi.fn().mockResolvedValue(undefined);
+
+      const cosmeticResult = await updateUserProfile({
+        uid,
+        displayName: 'Nome Atualizado',
+        actorUid: 'admin-1',
+      }, deps);
+
+      expect(cosmeticResult.success).toBe(true);
+
+      // O marker foi processado e a revogação pendente foi EXECUTADA com sucesso!
+      expect(deps.auth.revokeRefreshTokens).toHaveBeenCalledWith(uid);
+      const profileFinal = (await deps.firestore.doc(`userProfiles/${uid}`).get()).data();
+      expect(profileFinal.displayName).toBe('Nome Atualizado');
+      expect(profileFinal.role).toBe('user');
+      // Sincronização concluída: marker limpo
+      expect(profileFinal.claimsSyncPending).toBeUndefined();
+    });
+  });
+
+  // ─── Cenário C: Migração de marcador legado ──────────────────────────────────
+  describe('Cenário C: Migração concorrente de marcador legado (claimsSyncPending: true)', () => {
+    it('reparo legado não remove marcador estruturado novo gravado concorrentemente', async () => {
+      const uid = 'legacy-user';
+      // Perfil legado com boolean true
+      await deps.firestore.doc(`userProfiles/${uid}`).set({
+        uid,
         role: 'funcionario',
         active: true,
-        // claimsSyncPending: ausente (deletado)
-      };
+        claimsSyncPending: true,
+        syncVersion: 1,
+      });
 
-      const marker = profileDataAposReparo.claimsSyncPending;
+      // 1. Executa conversão transacional
+      const convertResult = await convertLegacyMarker(uid, deps);
+      expect(convertResult.converted).toBe(true);
 
-      // Sem marker, executeClaimsRepair não retoma revogação
-      const shouldRevoke = marker && typeof marker === 'object' &&
-        (marker as Record<string, unknown>).needsRevocation === true;
-      expect(shouldRevoke).toBeFalsy();
+      const profileAfterConvert = (await deps.firestore.doc(`userProfiles/${uid}`).get()).data();
+      expect(profileAfterConvert.claimsSyncPending).toHaveProperty('version');
+      expect(profileAfterConvert.claimsSyncPending.needsClaims).toBe(true);
+      expect(profileAfterConvert.claimsSyncPending.needsRevocation).toBe(false);
+
+      // 2. Se nova operação chegar com versão superior, conversão de legado antigo recusa alteração
+      await deps.firestore.doc(`userProfiles/${uid}`).update({
+        syncVersion: 10,
+        claimsSyncPending: {
+          version: 10,
+          opId: 'op_moderna',
+          status: 'pending',
+          needsRevocation: true,
+        },
+      });
+
+      const secondConvert = await convertLegacyMarker(uid, deps);
+      expect(secondConvert.converted).toBe(false);
+
+      const finalProfile = (await deps.firestore.doc(`userProfiles/${uid}`).get()).data();
+      // O marcador moderno é preservado intacto!
+      expect(finalProfile.claimsSyncPending.version).toBe(10);
+      expect(finalProfile.claimsSyncPending.opId).toBe('op_moderna');
     });
   });
 
-  describe('5. Invariantes do schema do marker', () => {
-    it('opId deve ser uma string não vazia gerada pelo Firestore', () => {
-      // admin.firestore().collection('_').doc().id gera IDs de 20 chars
-      const sampleId = admin.firestore().collection('_').doc().id;
-      expect(typeof sampleId).toBe('string');
-      expect(sampleId.length).toBeGreaterThan(0);
+  // ─── Cenário D: Falha após efeito externo ─────────────────────────────────────
+  describe('Cenário D: Falha após efeito externo e convergência no reparo', () => {
+    it('se setCustomUserClaims tem sucesso mas transação do Firestore falhar, reparo retoma e finaliza', async () => {
+      const uid = 'user-partial-fail';
+      await deps.firestore.doc(`userProfiles/${uid}`).set({
+        uid,
+        role: 'user',
+        active: true,
+        syncVersion: 2,
+        claimsSyncPending: {
+          version: 2,
+          opId: 'op_partial',
+          status: 'failed',
+          needsRevocation: true,
+          needsClaims: true,
+        },
+      });
+
+      // Executa reparo
+      const repairResult = await executeUserRepair({ uid }, deps);
+      expect(repairResult.success).toBe(true);
+      expect(repairResult.resumedRevocation).toBe(true);
+
+      // Verificamos que Auth e RTDB foram sincronizados e Firestore finalizou
+      expect(deps.auth.getClaims(uid)).toEqual({ role: 'user', active: true });
+      expect(deps.auth.isRevoked(uid)).toBe(true);
+
+      const profileFinal = (await deps.firestore.doc(`userProfiles/${uid}`).get()).data();
+      expect(profileFinal.claimsSyncPending).toBeUndefined();
+      expect(profileFinal.syncedVersion).toBe(2);
+    });
+  });
+
+  // ─── Testes Obrigatórios Adicionais (Etapa 6) ─────────────────────────────────
+  describe('Etapa 6: Validações de Segurança, Permissões e Último Administrador', () => {
+    it('protege o último administrador: impede rebaixamento de único admin ativo e não causa efeitos externos', async () => {
+      const uid = 'sole-admin';
+      await deps.firestore.doc(`userProfiles/${uid}`).set({
+        uid,
+        role: 'admin',
+        active: true,
+        syncVersion: 1,
+      });
+
+      // Tenta rebaixar para 'user'
+      await expect(updateUserProfile({
+        uid,
+        role: 'user',
+        actorUid: uid,
+      }, deps)).rejects.toThrow('O sistema precisa manter pelo menos um administrador ativo.');
+
+      // Nenhum efeito externo foi executado
+      expect(deps.auth.setCustomUserClaims).not.toHaveBeenCalled();
+      expect(deps.auth.revokeRefreshTokens).not.toHaveBeenCalled();
+
+      // Perfil no Firestore permanece intacto como admin
+      const profile = (await deps.firestore.doc(`userProfiles/${uid}`).get()).data();
+      expect(profile.role).toBe('admin');
     });
 
-    it('marker deve conter tanto opId quanto needsRevocation', () => {
-      const marker = { opId: 'test-id', needsRevocation: false };
-      expect(marker).toHaveProperty('opId');
-      expect(marker).toHaveProperty('needsRevocation');
-      expect(typeof marker.opId).toBe('string');
-      expect(typeof marker.needsRevocation).toBe('boolean');
+    it('revokeUserSessions avança tokensValidAfterTime e aciona RTDB, Firestore devices e Auth', async () => {
+      const uid = 'user-to-revoke';
+      await deps.firestore.doc(`userProfiles/${uid}`).set({
+        uid,
+        role: 'user',
+        active: true,
+        tokensValidAfterTime: 1700000000,
+        syncVersion: 1,
+      });
+      // Adiciona dispositivo
+      await deps.firestore.doc(`userProfiles/${uid}/devices/dev-1`).set({
+        deviceId: 'dev-1',
+        createdAt: 1700000000,
+      });
+
+      deps.setTime(1728400050000); // 1728400050 segundos
+      const result = await revokeUserSessions({ uid, actorUid: 'admin-audit' }, deps);
+      expect(result.success).toBe(true);
+
+      const profile = (await deps.firestore.doc(`userProfiles/${uid}`).get()).data();
+      expect(profile.tokensValidAfterTime).toBe(1728400050);
+
+      // Dispositivo foi removido
+      const devDoc = await deps.firestore.doc(`userProfiles/${uid}/devices/dev-1`).get();
+      expect(devDoc.exists).toBe(false);
+
+      // Auth tokens revogados e RTDB atualizado
+      expect(deps.auth.isRevoked(uid)).toBe(true);
+      expect(deps.database._revocations.get(uid)).toBe(1728400050000);
+    });
+
+    it('dois updates de cargo concorrentes convergem deterministicamente para a revisão mais alta', async () => {
+      const uid = 'concurrent-user';
+      await deps.firestore.doc(`userProfiles/${uid}`).set({
+        uid,
+        role: 'user',
+        active: true,
+        syncVersion: 1,
+      });
+      await deps.firestore.doc('userProfiles/other-admin').set({
+        uid: 'other-admin',
+        role: 'admin',
+        active: true,
+      });
+
+      // Executa duas atualizações simultâneas
+      const [res1, res2] = await Promise.all([
+        updateUserProfile({ uid, role: 'funcionario', actorUid: 'admin-1' }, deps),
+        updateUserProfile({ uid, role: 'admin', actorUid: 'admin-2' }, deps),
+      ]);
+
+      expect(res1.success).toBe(true);
+      expect(res2.success).toBe(true);
+
+      // O perfil no Firestore e no Auth devem ter convergido para o mesmo estado
+      const finalDoc = (await deps.firestore.doc(`userProfiles/${uid}`).get()).data();
+      const finalClaims = deps.auth.getClaims(uid);
+
+      expect(finalClaims.role).toBe(finalDoc.role);
+      expect(finalDoc.claimsSyncPending).toBeUndefined();
+    });
+
+    it('falha isolada no RTDB preserva needsRevocation=true no Firestore para posterior reparo', async () => {
+      const uid = 'rtdb-fail-user';
+      await deps.firestore.doc(`userProfiles/${uid}`).set({
+        uid,
+        role: 'admin',
+        active: true,
+        syncVersion: 1,
+      });
+      await deps.firestore.doc('userProfiles/other-admin').set({
+        uid: 'other-admin',
+        role: 'admin',
+        active: true,
+      });
+
+      // RTDB lança erro de conexão
+      deps.database.ref = vi.fn().mockReturnValue({
+        remove: vi.fn().mockRejectedValue(new Error('RTDB connection refused')),
+        set: vi.fn().mockResolvedValue(undefined),
+      });
+
+      await expect(updateUserProfile({
+        uid,
+        role: 'user',
+        actorUid: 'admin-1',
+      }, deps)).rejects.toThrow(/falha na sincronização externa/i);
+
+      const profile = (await deps.firestore.doc(`userProfiles/${uid}`).get()).data();
+      expect(profile.claimsSyncPending).toBeDefined();
+      expect(profile.claimsSyncPending.needsRevocation).toBe(true);
+      expect(profile.claimsSyncPending.lastError).toContain('RTDB connection refused');
+    });
+
+    it('falha isolada no setCustomUserClaims preserva needsClaims=true para retry', async () => {
+      const uid = 'claims-fail-user';
+      await deps.firestore.doc(`userProfiles/${uid}`).set({
+        uid,
+        role: 'user',
+        active: true,
+        displayName: 'Nome Teste',
+        syncVersion: 1,
+      });
+
+      deps.auth.setCustomUserClaims = vi.fn().mockRejectedValueOnce(new Error('Auth API timeout'));
+
+      await expect(updateUserProfile({
+        uid,
+        displayName: 'Novo Nome',
+        role: 'funcionario',
+        actorUid: 'admin-1',
+      }, deps)).rejects.toThrow(/falha na sincronização externa/i);
+
+      const profile = (await deps.firestore.doc(`userProfiles/${uid}`).get()).data();
+      expect(profile.claimsSyncPending).toBeDefined();
+      expect(profile.claimsSyncPending.needsClaims).toBe(true);
+      expect(profile.claimsSyncPending.lastError).toContain('Auth API timeout');
+    });
+
+    it('retry da mesma atualização de cargo após falha conclui as pendências com sucesso', async () => {
+      const uid = 'retry-user';
+      await deps.firestore.doc(`userProfiles/${uid}`).set({
+        uid,
+        role: 'admin',
+        active: true,
+        syncVersion: 1,
+      });
+      await deps.firestore.doc('userProfiles/other-admin').set({
+        uid: 'other-admin',
+        role: 'admin',
+        active: true,
+      });
+
+      // 1. Falha na primeira tentativa
+      deps.auth.revokeRefreshTokens.mockRejectedValueOnce(new Error('Transient Auth error'));
+      await expect(updateUserProfile({
+        uid,
+        role: 'user',
+        actorUid: 'admin-1',
+      }, deps)).rejects.toThrow(/falha na sincronização externa/i);
+
+      // 2. Retry com exatamente os mesmos parâmetros (segunda execução usa a implementação padrão)
+      const retryResult = await updateUserProfile({
+        uid,
+        role: 'user',
+        actorUid: 'admin-1',
+      }, deps);
+
+      expect(retryResult.success).toBe(true);
+
+      const finalDoc = (await deps.firestore.doc(`userProfiles/${uid}`).get()).data();
+      expect(finalDoc.role).toBe('user');
+      expect(finalDoc.claimsSyncPending).toBeUndefined();
+      expect(deps.auth.getClaims(uid)).toEqual({ role: 'user', active: true });
+      expect(deps.auth.isRevoked(uid)).toBe(true);
+    });
+
+    it('autorização de reparo: titular e admin podem reparar, usuário restrito de terceiros é bloqueado', async () => {
+      const { repairUserClaims } = require('../../functions/users/index');
+      const userSyncModule = require('../../functions/users/userSyncService');
+      const helpers = require('../../functions/common/helpers');
+
+      const spyRepair = vi.spyOn(userSyncModule, 'executeUserRepair').mockResolvedValue({
+        success: true,
+        claims: { role: 'user', active: true },
+        resumedRevocation: false,
+        syncedVersion: 1,
+      });
+
+      // Caso 1: Usuário reparando sua própria conta (request.auth.uid === uid)
+      const ownRequest = {
+        auth: { uid: 'user-self' },
+        data: { uid: 'user-self' },
+      };
+      const resOwn = await repairUserClaims.run(ownRequest);
+      expect(resOwn.success).toBe(true);
+      expect(resOwn.claims.role).toBe('user');
+
+      // Caso 2: Usuário não-admin tentando reparar conta de terceiro
+      const adminSpy = vi.spyOn(helpers, 'isAdminRequest').mockResolvedValueOnce(false);
+      const unauthorizedRequest = {
+        auth: { uid: 'attacker-uid' },
+        data: { uid: 'victim-uid' },
+      };
+      await expect(repairUserClaims.run(unauthorizedRequest)).rejects.toThrow(/Sem permissão para reparar credenciais de terceiros/);
+
+      // Caso 3: Admin tentando reparar conta de terceiro
+      adminSpy.mockResolvedValueOnce(true);
+      const adminRequest = {
+        auth: { uid: 'admin-uid' },
+        data: { uid: 'victim-uid' },
+      };
+      const resAdmin = await repairUserClaims.run(adminRequest);
+      expect(resAdmin.success).toBe(true);
+
+      adminSpy.mockRestore();
+      spyRepair.mockRestore();
+    });
+
+    it('login e barreira temporal: rejeita tokens anteriores ou do mesmo segundo, aceita estritamente posteriores', async () => {
+      const { assertActiveSession } = require('../../functions/common/helpers');
+      const revocationBarrier = 1728400100; // segundo 100
+
+      const mockDb: any = {
+        collection: vi.fn().mockReturnValue({
+          doc: vi.fn().mockReturnValue({
+            get: vi.fn().mockResolvedValue({
+              exists: true,
+              data: () => ({ active: true, tokensValidAfterTime: revocationBarrier }),
+            }),
+          }),
+        }),
+      };
+
+      // Token anterior: auth_time = 1728400099
+      await expect(assertActiveSession({
+        auth: { uid: 'u1', token: { auth_time: 1728400099 } },
+      }, { db: mockDb })).rejects.toThrow(/Sessão revogada no servidor/);
+
+      // Token no mesmo segundo: auth_time = 1728400100
+      await expect(assertActiveSession({
+        auth: { uid: 'u1', token: { auth_time: 1728400100 } },
+      }, { db: mockDb })).rejects.toThrow(/Sessão revogada no servidor/);
+
+      // Token posterior legítimo: auth_time = 1728400101
+      const validSession = await assertActiveSession({
+        auth: { uid: 'u1', token: { auth_time: 1728400101 } },
+      }, { db: mockDb });
+      expect(validSession.uid).toBe('u1');
     });
   });
 });

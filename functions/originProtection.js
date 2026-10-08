@@ -34,7 +34,7 @@ function getOriginSecretValue() {
 function validateOriginSecret(req) {
   const secret = getOriginSecretValue();
   if (!secret) {
-    const isLocal = process.env.FUNCTIONS_EMULATOR === 'true' || process.env.NODE_ENV === 'test';
+    const isLocal = process.env.FUNCTIONS_EMULATOR === 'true' || process.env.NODE_ENV === 'test' || Boolean(process.env.VITEST);
     return isLocal
       ? { allowed: true }
       : { allowed: false, statusCode: 503, error: 'Proteção de origem não configurada.' };

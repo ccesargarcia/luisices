@@ -48,3 +48,25 @@ Documento de rastreamento de progresso conforme especificado em `antigravity-pla
 - [x] Hotfix: frontend (`AuthContext`) atualizado para usar a instância correta e conectada de `functions` para invocar o reparo de claims.
 - [x] Refatoração de `updateUser` para usar padrão transacional de 3 fases (Transação -> Efeitos colaterais -> Limpeza), garantindo consistência com `last admin` e recuperação de custom claims (`claimsSyncPending`).
 - [x] Expansão da barreira temporal (`assertActiveSession`) para **todos** os Callables da Alexa, substituindo autorização própria por barreira temporal unificada.
+- [x] Implementação de `functions/users/userSyncService.js`: serviço centralizado e transacional de sincronização com lease de processamento (15s), versão monotônica (`syncVersion`), reconciliação pós-escrita que impede race conditions (Cenário A), preservação estrita de revogações em mutações cosméticas e retries (Cenário B), migração atômica de marcadores legados (Cenário C) e convergência idempotente após falhas parciais (Cenário D).
+- [x] Refatoração dos callables `updateUser`, `revokeAllSessions` e `repairUserClaims` em `functions/users/index.js` como adaptadores finos delegando para `userSyncService`.
+- [x] Criação de `tests/unit/claims-repair-resilience.test.ts` com 12 testes que exercitam o código real com injeção de dependências transacionais em memória, barreiras de promises para ordem estrita e validação de todas as etapas de falha externa.
+- [x] Criação de `scripts/migrate-legacy-claims-markers.mjs` com `--dry-run`, lotes seguros, logs sem PII e estimativa oficial de custos de Firestore.
+- [x] Documentação técnica completa em `docs/ARQUITETURA_SINCRONIZACAO_SESSOES.md` e `docs/ANALISE_CUSTOS_E_OBSERVABILIDADE_SINCRONIZACAO.md`.
+- [x] Validação integral da base: `npm run typecheck`, `npm run lint:functions`, `npm run test:unit` (601 testes aprovados) e `compile_applet`.
+
+---
+
+## Matriz de Rastreabilidade e Status por Fato
+
+| Componente / Cenário | Status | Evidência / Arquivo |
+| :--- | :--- | :--- |
+| **Cenário A (Race conditions)** | Testado em unidade | `tests/unit/claims-repair-resilience.test.ts` (reconciliação pós-escrita) |
+| **Cenário B (Preservação de revogação)** | Testado em unidade | `tests/unit/claims-repair-resilience.test.ts` (needsRevocation sobrevive a alteração cosmética) |
+| **Cenário C (Migração de legado)** | Testado em unidade | `tests/unit/claims-repair-resilience.test.ts` (transação condicional preserva versão nova) |
+| **Cenário D (Convergência pós-falha)** | Testado em unidade | `tests/unit/claims-repair-resilience.test.ts` (reparo retoma e sincroniza com sucesso) |
+| **Proteção Último Admin** | Testado em unidade | `tests/unit/claims-repair-resilience.test.ts` (impede rebaixamento sem efeitos externos) |
+| **Regras Firestore / Storage** | Testado em emulador | `tests/integration/firebase-regressions.test.ts` (barreira tokensValidAfterTime) |
+| **Migração Real em Produção** | Pendente | Não executada por design de segurança (execução controlada pós-revisão) |
+| **Deploy / Merge** | Pendente | Bloqueado por instrução estrita do usuário |
+

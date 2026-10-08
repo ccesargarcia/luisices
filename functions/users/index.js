@@ -8,6 +8,8 @@ const admin = require('firebase-admin');
 const crypto = require('crypto');
 const { RESEND_API_KEY, EVOLUTION_API_KEY } = require('../common/secrets');
 const { passwordResetLimiter, adminUserActionLimiter } = require('../common/rateLimiters');
+const userSyncService = require('./userSyncService');
+const helpers = require('../common/helpers');
 const {
   getResend,
   sendWhatsAppMessage,
@@ -16,7 +18,7 @@ const {
   assertActiveSession,
   isAdminRequest,
   hashToken,
-} = require('../common/helpers');
+} = helpers;
 
 const INVITED_USER_PERMISSIONS = {
   dashboard: true,
@@ -549,78 +551,13 @@ const syncUserClaims = async (uid) => {
 
 /**
  * Executa todas as etapas de sincronização pendentes registradas em claimsSyncPending.
- * Protegido contra execução fora de ordem pelo campo opId:
- *   - Só remove o marker se o opId do marker ainda bater com o que foi lido antes do reparo.
- *   - Retoma revogação de RTDB e Auth se needsRevocation === true no marker.
- *   - Atualiza custom claims a partir do estado atual do Firestore.
- * 
- * @param {string} uid - UID do usuário
- * @returns {{ claims, resumed }} 
+ * Delega para userSyncService para garantir monotonicidade, lease e reconciliação.
  */
 const executeClaimsRepair = async (uid) => {
-  const profileRef = admin.firestore().doc(`userProfiles/${uid}`);
-  const profileDoc = await profileRef.get();
-
-  if (!profileDoc.exists) return { claims: null, resumed: false };
-
-  const data = profileDoc.data();
-  const marker = data.claimsSyncPending;
-
-  // Derivar claims do estado atual do Firestore (fonte de verdade)
-  const claims = {
-    role: data.role || 'user',
-    active: data.active !== false,
-  };
-
-  let revokedSessions = false;
-
-  // Se o marker for um objeto estruturado com opId, retomar etapas pendentes
-  if (marker && typeof marker === 'object' && marker.opId) {
-    const { opId, needsRevocation } = marker;
-
-    // Retomar revogação se indicada no marker
-    if (needsRevocation === true) {
-      try {
-        const rtdb = admin.database();
-        await Promise.all([
-          rtdb.ref(`status/${uid}`).remove(),
-          rtdb.ref(`revocations/${uid}`).set(Date.now()),
-        ]);
-        await admin.auth().revokeRefreshTokens(uid);
-        revokedSessions = true;
-      } catch (rtdbErr) {
-        console.error(`[executeClaimsRepair] Falha ao revogar sessões do RTDB/Auth para ${uid}:`, rtdbErr);
-        throw rtdbErr;
-      }
-    }
-
-    // Atualizar custom claims
-    await admin.auth().setCustomUserClaims(uid, claims);
-
-    // Limpar o marker SOMENTE se o opId ainda bate (i.e., não houve outra operação concorrente)
-    await admin.firestore().runTransaction(async (tx) => {
-      const snap = await tx.get(profileRef);
-      if (!snap.exists) return;
-      const current = snap.data();
-      // Se o marker mudou (opId diferente), significa que outra operação foi iniciada — não limpar
-      if (current.claimsSyncPending?.opId === opId) {
-        tx.update(profileRef, { claimsSyncPending: admin.firestore.FieldValue.delete() });
-      }
-    });
-  } else {
-    // Marker legado (boolean true) ou ausente: apenas sincronizar claims
-    await admin.auth().setCustomUserClaims(uid, claims);
-
-    // Limpar marker legado incondicionalmente se ainda for true
-    if (marker === true) {
-      await profileRef.update({ claimsSyncPending: admin.firestore.FieldValue.delete() });
-    }
-  }
-
-  return { claims, resumed: revokedSessions };
+  return await userSyncService.executeUserRepair({ uid });
 };
 
-/** Callable administrativa para reparo e sincronização de custom claims legadas ou divergentes. */
+/** Callable para reparo e sincronização de custom claims e revogações pendentes. */
 const repairUserClaims = onCall(async (request) => {
   if (!request.auth) {
     throw new functions.https.HttpsError('unauthenticated', 'Requer autenticação.');
@@ -633,13 +570,26 @@ const repairUserClaims = onCall(async (request) => {
 
   // Permite que o próprio usuário repare suas claims, ou que um admin repare de terceiros
   if (request.auth.uid !== uid) {
-    if (!(await isAdminRequest(request))) {
+    if (!(await helpers.isAdminRequest(request))) {
       throw new functions.https.HttpsError('permission-denied', 'Sem permissão para reparar credenciais de terceiros.');
     }
   }
 
-  const { claims, resumed } = await executeClaimsRepair(uid);
-  return { success: true, claims, resumedRevocation: resumed };
+  try {
+    const result = await userSyncService.executeUserRepair({
+      uid,
+      actorUid: request.auth.uid,
+    });
+    return {
+      success: true,
+      claims: result.claims,
+      resumedRevocation: result.resumedRevocation,
+      syncedVersion: result.syncedVersion,
+    };
+  } catch (err) {
+    console.error(`[repairUserClaims] Falha no reparo do usuário ${uid}:`, err);
+    throw new functions.https.HttpsError('internal', 'Não foi possível concluir o reparo das credenciais.');
+  }
 });
 
 /** Registra a troca de senha concluída pelo próprio usuário. */
@@ -807,7 +757,7 @@ const createUser = onCall(async (request) => {
   }
 });
 
-/** Atualiza perfil e status de usuário com proteção contra perda do último admin. */
+/** Atualiza perfil e status de usuário com proteção contra perda do último admin e reconciliação monotônica. */
 const updateUser = onCall(async (request) => {
   if (!(await isAdminRequest(request))) {
     throw new functions.https.HttpsError('permission-denied', 'Apenas administradores podem atualizar usuários.');
@@ -834,93 +784,29 @@ const updateUser = onCall(async (request) => {
     throw new functions.https.HttpsError('invalid-argument', 'Permissões inválidas.');
   }
 
-  const profileRef = admin.firestore().doc(`userProfiles/${uid}`);
-  const auditRef = admin.firestore().collection('userAuditLogs').doc();
-
-  // 1. Transaction: valida regras, define estado futuro e marca claimsSyncPending
-  const result = await admin.firestore().runTransaction(async (transaction) => {
-    const [profileSnap, adminsSnap] = await Promise.all([
-      transaction.get(profileRef),
-      transaction.get(admin.firestore().collection('userProfiles').where('role', '==', 'admin')),
-    ]);
-    if (!profileSnap.exists) {
-      throw new functions.https.HttpsError('not-found', 'Perfil do usuário não encontrado.');
-    }
-    const current = profileSnap.data();
-    const nextRole = role ?? current.role;
-    const nextActive = active ?? current.active !== false;
-    
-    if (current.role === 'admin' && (nextRole !== 'admin' || nextActive !== true)) {
-      const activeAdmins = adminsSnap.docs.filter((doc) => doc.data().active !== false);
-      if (activeAdmins.length <= 1) {
-        throw new functions.https.HttpsError('failed-precondition', 'O sistema precisa manter pelo menos um administrador ativo.');
-      }
-    }
-    
-    const needsRevocation = nextActive === false || nextRole !== current.role;
-
-    // Gerar opId único para esta operação — protege contra limpeza fora de ordem
-    const opId = admin.firestore().collection('_').doc().id;
-
-    const update = {
-      ...(displayName !== undefined ? { displayName: displayName.trim() } : {}),
-      ...(role !== undefined ? { role } : {}),
-      ...(permissions !== undefined ? { permissions } : {}),
-      ...(active !== undefined ? { active } : {}),
-      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-      updatedBy: request.auth.uid,
-      // Marker estruturado: preserva etapas pendentes e identifica a operação
-      claimsSyncPending: { opId, needsRevocation },
-    };
-
-    if (needsRevocation) {
-      update.tokensValidAfterTime = Math.floor(Date.now() / 1000);
-    }
-
-    transaction.update(profileRef, update);
-    transaction.create(auditRef, {
-      action: 'USER_PROFILE_UPDATED',
-      targetUid: uid,
-      actorUid: request.auth.uid,
-      changes: Object.keys(update).filter((key) => !['updatedAt', 'updatedBy', 'claimsSyncPending'].includes(key)),
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
-    });
-
-    return { role: nextRole, active: nextActive, needsRevocation, opId };
-  });
-
-  // 2. Operações Externas (Pós-Transação): idempotentes via executeClaimsRepair
   try {
-    if (result.needsRevocation) {
-      const rtdb = admin.database();
-      await Promise.all([
-        rtdb.ref(`status/${uid}`).remove(),
-        rtdb.ref(`revocations/${uid}`).set(Date.now()),
-      ]);
-      await admin.auth().revokeRefreshTokens(uid);
-    }
-
-    await admin.auth().setCustomUserClaims(uid, { role: result.role, active: result.active });
-
-    // 3. Limpa o marker de divergência verificando opId para evitar sobrescrita de operação mais recente
-    await admin.firestore().runTransaction(async (tx) => {
-      const snap = await tx.get(profileRef);
-      if (!snap.exists) return;
-      const current = snap.data();
-      // Só limpa se o opId ainda bate com o desta operação
-      if (current.claimsSyncPending?.opId === result.opId) {
-        tx.update(profileRef, { claimsSyncPending: admin.firestore.FieldValue.delete() });
-      }
+    const result = await userSyncService.updateUserProfile({
+      uid,
+      displayName,
+      role,
+      permissions,
+      active,
+      actorUid: request.auth.uid,
     });
-
+    return { success: true, version: result.version };
   } catch (err) {
-    console.error(`[updateUser] Erro ao sincronizar estado externo do usuário ${uid}:`, err);
-    // O marker claimsSyncPending persiste no Firestore com opId e needsRevocation
-    // para que repairUserClaims possa retomar exatamente as etapas que faltam.
-    throw new functions.https.HttpsError('internal', 'O perfil foi atualizado, mas houve falha na sincronização de credenciais/sessões. Reparo pendente.');
+    if (err.code === 'failed-precondition') {
+      throw new functions.https.HttpsError('failed-precondition', err.message);
+    }
+    if (err.code === 'not-found') {
+      throw new functions.https.HttpsError('not-found', err.message);
+    }
+    console.error(`[updateUser] Erro ao atualizar usuário ${uid}:`, err);
+    throw new functions.https.HttpsError(
+      'internal',
+      err.message || 'O perfil foi atualizado, mas houve falha na sincronização de credenciais/sessões. Reparo pendente.'
+    );
   }
-
-  return { success: true };
 });
 
 /** Registra o dispositivo e captura o IP e Localização do usuário. */
@@ -1057,53 +943,19 @@ const revokeAllSessions = onCall(async (request) => {
     throw new functions.https.HttpsError('invalid-argument', 'UID é obrigatório.');
   }
 
-  const revocationTimeSeconds = Math.floor(Date.now() / 1000);
-
-  // 1. Marca tokensValidAfterTime no Firestore para barreira nas regras de segurança
-  const profileRef = admin.firestore().doc(`userProfiles/${uid}`);
-  await profileRef.set({
-    tokensValidAfterTime: revocationTimeSeconds,
-    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-    updatedBy: request.auth.uid,
-  }, { merge: true });
-
-  // 2. Remove todos os dispositivos cadastrados no Firestore
-  const devicesRef = admin.firestore().collection(`userProfiles/${uid}/devices`);
-  const snapshot = await devicesRef.get();
-  if (!snapshot.empty) {
-    const batch = admin.firestore().batch();
-    snapshot.docs.forEach((doc) => {
-      batch.delete(doc.ref);
+  try {
+    await userSyncService.revokeUserSessions({
+      uid,
+      actorUid: request.auth.uid,
     });
-    await batch.commit();
-  }
-
-  // 3. Limpa presença do RTDB e registra revokedAt para bloquear recriação de presença por token antigo
-  try {
-    const rtdb = admin.database();
-    await Promise.all([
-      rtdb.ref(`status/${uid}`).remove(),
-      rtdb.ref(`revocations/${uid}`).set(Date.now()),
-    ]);
-  } catch (rtdbErr) {
-    console.error(`[revokeAllSessions] Falha ao sincronizar revogação no RTDB para o usuário ${uid}:`, rtdbErr);
-    throw new functions.https.HttpsError('internal', 'Falha ao revogar presença em tempo real. Operação abortada.');
-  }
-
-  // 4. Revoga refresh tokens no Firebase Auth (Não engole erro para evitar anúncio falso de sucesso)
-  try {
-    await admin.auth().revokeRefreshTokens(uid);
+    return { success: true };
   } catch (err) {
-    console.error(`[revokeAllSessions] Erro crítico ao revogar refresh tokens do usuário ${uid}:`, err);
+    if (err.code === 'not-found') {
+      throw new functions.https.HttpsError('not-found', err.message);
+    }
+    console.error(`[revokeAllSessions] Erro crítico ao revogar sessões do usuário ${uid}:`, err);
     throw new functions.https.HttpsError('internal', 'Falha ao revogar credenciais de autenticação no servidor.');
   }
-
-  // 5. Auditoria de segurança
-  await writeUserAudit('ALL_SESSIONS_REVOKED', request.auth.uid, uid, {
-    revocationTimeSeconds,
-  });
-  
-  return { success: true };
 });
 
 module.exports = {
@@ -1121,4 +973,6 @@ module.exports = {
   registerDeviceSession,
   revokeAllSessions,
   repairUserClaims,
+  userSyncService,
+  executeClaimsRepair,
 };
