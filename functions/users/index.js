@@ -580,11 +580,15 @@ const repairUserClaims = onCall(async (request) => {
       uid,
       actorUid: request.auth.uid,
     });
+    const isSynced = (result.synced !== undefined ? result.synced : result.success) ?? true;
     return {
-      success: true,
+      success: isSynced,
+      synced: isSynced,
+      status: result.status,
       claims: result.claims,
       resumedRevocation: result.resumedRevocation,
       syncedVersion: result.syncedVersion,
+      pendingSteps: result.pendingSteps,
     };
   } catch (err) {
     console.error(`[repairUserClaims] Falha no reparo do usuário ${uid}:`, err);
@@ -793,7 +797,13 @@ const updateUser = onCall(async (request) => {
       active,
       actorUid: request.auth.uid,
     });
-    return { success: true, version: result.version };
+    return {
+      success: true,
+      synced: result.synced,
+      status: result.status,
+      version: result.version,
+      pendingSteps: result.pendingSteps,
+    };
   } catch (err) {
     if (err.code === 'failed-precondition') {
       throw new functions.https.HttpsError('failed-precondition', err.message);
@@ -944,11 +954,17 @@ const revokeAllSessions = onCall(async (request) => {
   }
 
   try {
-    await userSyncService.revokeUserSessions({
+    const result = await userSyncService.revokeUserSessions({
       uid,
       actorUid: request.auth.uid,
     });
-    return { success: true };
+    return {
+      success: true,
+      synced: result.synced,
+      status: result.status,
+      pendingSteps: result.pendingSteps,
+      version: result.version,
+    };
   } catch (err) {
     if (err.code === 'not-found') {
       throw new functions.https.HttpsError('not-found', err.message);

@@ -34,15 +34,27 @@ export interface DeviceSession {
   createdAt: any;
 }
 
+export interface UserSyncResult {
+  success: boolean;
+  synced: boolean;
+  status: string;
+  version?: number;
+  pendingSteps?: {
+    revocation?: boolean;
+    claims?: boolean;
+  };
+}
+
 export class FirebaseUserService {
   async registerDeviceSession(deviceId: string, userAgent: string): Promise<void> {
     const callable = httpsCallable(functions, 'registerDeviceSession');
     await callable({ deviceId, userAgent });
   }
 
-  async revokeAllSessions(uid: string): Promise<void> {
-    const callable = httpsCallable(functions, 'revokeAllSessions');
-    await callable({ uid });
+  async revokeAllSessions(uid: string): Promise<UserSyncResult> {
+    const callable = httpsCallable<{ uid: string }, UserSyncResult>(functions, 'revokeAllSessions');
+    const result = await callable({ uid });
+    return result.data;
   }
 
   async getUserDevices(uid: string): Promise<DeviceSession[]> {
@@ -150,17 +162,19 @@ export class FirebaseUserService {
   /**
    * Atualiza dados do perfil (role, permissions, displayName, active).
    */
-  async updateUserProfile(uid: string, data: Partial<Omit<UserProfile, 'uid' | 'createdAt' | 'createdBy'>>): Promise<void> {
-    const callable = httpsCallable(functions, 'updateUser');
-    await callable({ uid, ...data });
+  async updateUserProfile(uid: string, data: Partial<Omit<UserProfile, 'uid' | 'createdAt' | 'createdBy'>>): Promise<UserSyncResult> {
+    const callable = httpsCallable<Record<string, any>, UserSyncResult>(functions, 'updateUser');
+    const result = await callable({ uid, ...data });
+    return result.data;
   }
 
   /**
    * Ativa ou desativa um usuário (soft-delete).
    */
-  async setUserActive(uid: string, active: boolean): Promise<void> {
-    const callable = httpsCallable(functions, 'updateUser');
-    await callable({ uid, active });
+  async setUserActive(uid: string, active: boolean): Promise<UserSyncResult> {
+    const callable = httpsCallable<{ uid: string; active: boolean }, UserSyncResult>(functions, 'updateUser');
+    const result = await callable({ uid, active });
+    return result.data;
   }
 
   /**

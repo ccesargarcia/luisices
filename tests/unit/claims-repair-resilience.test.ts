@@ -670,5 +670,236 @@ describe('userSyncService — Resiliência, Concorrência e Monotonicidade Real'
       }, { db: mockDb });
       expect(validSession.uid).toBe('u1');
     });
+
+    // ─── Verificação Específica dos 5 Problemas Identificados ───────────────────
+
+    it('Problema 1: Reconciliação em cadeia — terceira atualização (C) durante reconciliação de (A) não deixa claims antigas no Auth', async () => {
+      const uid = 'chain-race-user';
+      await deps.firestore.doc(`userProfiles/${uid}`).set({
+        uid,
+        role: 'user',
+        active: true,
+        syncVersion: 1,
+      });
+      await deps.firestore.doc('userProfiles/other-admin').set({
+        uid: 'other-admin',
+        role: 'admin',
+        active: true,
+      });
+
+      // Barreira para pausar Op A durante sua 1ª chamada de claims
+      let releaseOpAFirstCall: () => void;
+      const opAFirstCallBarrier = new Promise<void>((r) => { releaseOpAFirstCall = r; });
+
+      let callCount = 0;
+      const originalSetClaims = deps.auth.setCustomUserClaims;
+      deps.auth.setCustomUserClaims = vi.fn(async (targetUid: string, claims: any) => {
+        if (targetUid === uid) {
+          callCount++;
+          if (callCount === 1) {
+            // Pausa a 1ª chamada de Op A (tentando setar 'admin')
+            await opAFirstCallBarrier;
+          }
+        }
+        return originalSetClaims(targetUid, claims);
+      });
+
+      // 1. Inicia Op A promovendo para 'admin' (Versão 2)
+      const opAPromise = updateUserProfile({
+        uid,
+        role: 'admin',
+        actorUid: 'admin-1',
+      }, deps);
+
+      await new Promise((r) => setTimeout(r, 10));
+
+      // 2. Op B chega e altera para 'user' (Versão 3)
+      const opBResult = await updateUserProfile({
+        uid,
+        role: 'user',
+        actorUid: 'admin-2',
+      }, deps);
+      expect(opBResult.success).toBe(true);
+
+      // 3. Op C chega e altera para 'funcionario' (Versão 4)
+      const opCResult = await updateUserProfile({
+        uid,
+        role: 'funcionario',
+        actorUid: 'admin-3',
+      }, deps);
+      expect(opCResult.success).toBe(true);
+
+      // 4. Libera Op A para continuar sua finalização e reconciliação
+      releaseOpAFirstCall!();
+      const opAResult = await opAPromise;
+      expect(opAResult.success).toBe(true);
+
+      // O estado final no Firebase Auth DEVE ser 'funcionario' (Op C), e NUNCA 'admin' (Op A) nem 'user' (Op B)
+      const finalClaims = deps.auth.getClaims(uid);
+      expect(finalClaims.role).toBe('funcionario');
+    });
+
+    it('Problema 2: revokeUserSessions preserva claims pendentes (inclusive de marcador legado) sem descartar needsClaims', async () => {
+      const uid = 'revoke-preserves-claims-user';
+      // Perfil com marcador legado claimsSyncPending: true
+      await deps.firestore.doc(`userProfiles/${uid}`).set({
+        uid,
+        role: 'funcionario',
+        active: true,
+        claimsSyncPending: true,
+        syncVersion: 1,
+      });
+
+      // Chama revokeUserSessions
+      const revokeRes = await revokeUserSessions({
+        uid,
+        actorUid: 'admin-1',
+      }, deps);
+
+      expect(revokeRes.success).toBe(true);
+      expect(revokeRes.synced).toBe(true);
+
+      // Verifica se Auth recebeu tanto a revogação de tokens quanto as claims de funcionário
+      expect(deps.auth.isRevoked(uid)).toBe(true);
+      expect(deps.auth.getClaims(uid)).toEqual({ role: 'funcionario', active: true });
+    });
+
+    it('Problema 3: estados locked e superseded retornam synced: false com status explícito sem falso sucesso', async () => {
+      const uid = 'locked-user';
+      deps.setTime(1728400000000);
+      await deps.firestore.doc(`userProfiles/${uid}`).set({
+        uid,
+        role: 'user',
+        active: true,
+        syncVersion: 1,
+        claimsSyncPending: {
+          version: 2,
+          opId: 'existing_op',
+          status: 'processing',
+          needsRevocation: false,
+          needsClaims: true,
+          lease: {
+            workerId: 'other_worker',
+            expiresAt: 1728400015000, // Lease ativo por mais 15s
+          },
+        },
+      });
+
+      // Chamada a executeUserRepair concorrente:
+      const repairResult = await executeUserRepair({ uid }, deps);
+      expect(repairResult.synced).toBe(false);
+      expect(repairResult.success).toBe(false);
+      expect(repairResult.status).toBe('locked');
+
+      // Chamada a processUserSync com expectedVersion menor (superseded):
+      const supersededResult = await processUserSync(uid, {
+        workerId: 'old_worker',
+        expectedVersion: 1, // marker está na versão 2!
+        force: false,
+      }, deps);
+      expect(supersededResult.status).toBe('superseded');
+    });
+
+    it('Problema 4: executeUserRepair utiliza force=false e não atropela lease ativo de outro worker', async () => {
+      const uid = 'active-lease-user';
+      const nowMs = 1728400000000;
+      deps.setTime(nowMs);
+
+      await deps.firestore.doc(`userProfiles/${uid}`).set({
+        uid,
+        role: 'user',
+        active: true,
+        syncVersion: 5,
+        claimsSyncPending: {
+          version: 5,
+          opId: 'worker_active_op',
+          status: 'processing',
+          needsRevocation: true,
+          needsClaims: true,
+          lease: {
+            workerId: 'running_worker',
+            expiresAt: nowMs + 10000,
+          },
+          attempts: 1,
+        },
+      });
+
+      // executeUserRepair não deve passar force=true
+      const result = await executeUserRepair({ uid }, deps);
+      expect(result.status).toBe('locked');
+      expect(result.synced).toBe(false);
+
+      // O documento no Firestore manteve o lease do worker original inalterado
+      const snap = (await deps.firestore.doc(`userProfiles/${uid}`).get()).data();
+      expect(snap.claimsSyncPending.lease.workerId).toBe('running_worker');
+    });
+
+    it('Problema 5: retries de revogação preservam originalRevocationTimeMs no RTDB e não invalidam logins posteriores ao evento', async () => {
+      const uid = 'revocation-timestamp-user';
+      const T1_SECONDS = 1728400100;
+      const T1_MS = T1_SECONDS * 1000;
+
+      deps.setTime(T1_MS);
+      await deps.firestore.doc(`userProfiles/${uid}`).set({
+        uid,
+        role: 'admin',
+        active: true,
+        syncVersion: 1,
+      });
+      await deps.firestore.doc('userProfiles/other-admin').set({
+        uid: 'other-admin',
+        role: 'admin',
+        active: true,
+      });
+
+      // 1. Simula falha no RTDB em T1
+      deps.database.ref = vi.fn().mockReturnValue({
+        remove: vi.fn().mockRejectedValue(new Error('RTDB transient timeout')),
+        set: vi.fn().mockResolvedValue(undefined),
+      });
+
+      await expect(updateUserProfile({
+        uid,
+        role: 'user',
+        actorUid: 'admin-1',
+      }, deps)).rejects.toThrow();
+
+      // Perfil registrou barreira T1 e marker com originalRevocationTimeMs = T1_MS
+      const docAfterFail = (await deps.firestore.doc(`userProfiles/${uid}`).get()).data();
+      expect(docAfterFail.tokensValidAfterTime).toBe(T1_SECONDS);
+      expect(docAfterFail.claimsSyncPending.originalRevocationTimeMs).toBe(T1_MS);
+
+      // 2. Em T2 (> T1), o usuário realiza novo login legítimo
+      const T2_SECONDS = T1_SECONDS + 5; // +5s
+      const userLoginAuthTime = T2_SECONDS;
+
+      // 3. Em T3 (> T2), o administrador executa retry da mesma atualização
+      const T3_SECONDS = T1_SECONDS + 10; // +10s
+      deps.setTime(T3_SECONDS * 1000);
+
+      // Restaura o RTDB para responder normalmente
+      let rtdbRevocationWrittenTime = 0;
+      deps.database.ref = vi.fn().mockReturnValue({
+        remove: vi.fn().mockResolvedValue(undefined),
+        set: vi.fn().mockImplementation(async (val: number) => {
+          rtdbRevocationWrittenTime = val;
+        }),
+      });
+
+      const retryResult = await updateUserProfile({
+        uid,
+        role: 'user',
+        actorUid: 'admin-1',
+      }, deps);
+
+      expect(retryResult.success).toBe(true);
+
+      // O valor gravado no RTDB deve ser T1_MS (o evento original) e NÃO T3_MS!
+      expect(rtdbRevocationWrittenTime).toBe(T1_MS);
+
+      // Regra de segurança do RTDB: auth.token.auth_time * 1000 > revocations.val()
+      const isLoginValidInRtdb = (userLoginAuthTime * 1000) > rtdbRevocationWrittenTime;
+      expect(isLoginValidInRtdb).toBe(true);
+    });
   });
 });

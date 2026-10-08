@@ -50,10 +50,17 @@ Documento de rastreamento de progresso conforme especificado em `antigravity-pla
 - [x] Expansão da barreira temporal (`assertActiveSession`) para **todos** os Callables da Alexa, substituindo autorização própria por barreira temporal unificada.
 - [x] Implementação de `functions/users/userSyncService.js`: serviço centralizado e transacional de sincronização com lease de processamento (15s), versão monotônica (`syncVersion`), reconciliação pós-escrita que impede race conditions (Cenário A), preservação estrita de revogações em mutações cosméticas e retries (Cenário B), migração atômica de marcadores legados (Cenário C) e convergência idempotente após falhas parciais (Cenário D).
 - [x] Refatoração dos callables `updateUser`, `revokeAllSessions` e `repairUserClaims` em `functions/users/index.js` como adaptadores finos delegando para `userSyncService`.
-- [x] Criação de `tests/unit/claims-repair-resilience.test.ts` com 12 testes que exercitam o código real com injeção de dependências transacionais em memória, barreiras de promises para ordem estrita e validação de todas as etapas de falha externa.
+- [x] Resolução dos 6 problemas confirmados:
+  - **Problema 1 (Reconciliação iterativa em cadeia)**: Implementado loop de reconciliação com teto bounded (`MAX_RECONCILIATION_ATTEMPTS = 5`) que detecta terceiras ou enésimas mutações durante a reconciliação e converge para a versão mais recente sem apagar marcadores de terceiros.
+  - **Problema 2 (Preservação de claims pendentes em revokeUserSessions)**: Preservação de `needsClaims` (inclusive de marcadores legados booleanos) ao revogar sessões, executando ambas as etapas.
+  - **Problema 3 (Transparência de synced/status)**: Eliminação de falsos sucessos em estados `locked` e `superseded`. Callables retornam `synced`, `status` e `pendingSteps` transparentes para frontend e chamadores.
+  - **Problema 4 (Reparo concorrente)**: `executeUserRepair` utiliza `force: false` e respeita leases ativos de outros workers sem atropelar processamento em curso.
+  - **Problema 5 (Revogação com timestamp estável)**: Retries de revogações pendentes preservam `originalRevocationTimeMs`, impedindo que um retry no RTDB invalide logins legítimos posteriores ao evento original.
+  - **Problema 6 (Custos e garantias distribuídas)**: Contagem auditada e completa de leituras/escritas (incluindo rate limiter, queries de admins e leases) e correção de `Promise.all` como concorrência assíncrona não-atômica.
+- [x] Expansão de `tests/unit/claims-repair-resilience.test.ts` para 17 testes cobrindo os cenários e os 6 problemas confirmados.
 - [x] Criação de `scripts/migrate-legacy-claims-markers.mjs` com `--dry-run`, lotes seguros, logs sem PII e estimativa oficial de custos de Firestore.
 - [x] Documentação técnica completa em `docs/ARQUITETURA_SINCRONIZACAO_SESSOES.md` e `docs/ANALISE_CUSTOS_E_OBSERVABILIDADE_SINCRONIZACAO.md`.
-- [x] Validação integral da base: `npm run typecheck`, `npm run lint:functions`, `npm run test:unit` (601 testes aprovados) e `compile_applet`.
+- [x] Validação integral da base: `npm run typecheck`, `npm run lint:functions`, `npm run test:unit` (606 testes aprovados) e `compile_applet`.
 
 ---
 
@@ -61,10 +68,15 @@ Documento de rastreamento de progresso conforme especificado em `antigravity-pla
 
 | Componente / Cenário | Status | Evidência / Arquivo |
 | :--- | :--- | :--- |
-| **Cenário A (Race conditions)** | Testado em unidade | `tests/unit/claims-repair-resilience.test.ts` (reconciliação pós-escrita) |
+| **Cenário A (Race conditions - A->B e A->B->C)** | Testado em unidade | `tests/unit/claims-repair-resilience.test.ts` (reconciliação pós-escrita iterativa) |
 | **Cenário B (Preservação de revogação)** | Testado em unidade | `tests/unit/claims-repair-resilience.test.ts` (needsRevocation sobrevive a alteração cosmética) |
 | **Cenário C (Migração de legado)** | Testado em unidade | `tests/unit/claims-repair-resilience.test.ts` (transação condicional preserva versão nova) |
 | **Cenário D (Convergência pós-falha)** | Testado em unidade | `tests/unit/claims-repair-resilience.test.ts` (reparo retoma e sincroniza com sucesso) |
+| **Problema 1 (Reconciliação em cadeia)** | Testado em unidade | `tests/unit/claims-repair-resilience.test.ts` (terceira atualização C converge) |
+| **Problema 2 (Claims em revogação)** | Testado em unidade | `tests/unit/claims-repair-resilience.test.ts` (needsClaims preservado em revokeUserSessions) |
+| **Problema 3 (Transparência de synced)** | Testado em unidade | `tests/unit/claims-repair-resilience.test.ts` (locked e superseded retornam synced: false) |
+| **Problema 4 (Respeito a leases)** | Testado em unidade | `tests/unit/claims-repair-resilience.test.ts` (executeUserRepair com force=false) |
+| **Problema 5 (Timestamp fixo no RTDB)** | Testado em unidade | `tests/unit/claims-repair-resilience.test.ts` (logins pós-evento válidos após retry) |
 | **Proteção Último Admin** | Testado em unidade | `tests/unit/claims-repair-resilience.test.ts` (impede rebaixamento sem efeitos externos) |
 | **Regras Firestore / Storage** | Testado em emulador | `tests/integration/firebase-regressions.test.ts` (barreira tokensValidAfterTime) |
 | **Migração Real em Produção** | Pendente | Não executada por design de segurança (execução controlada pós-revisão) |

@@ -8,30 +8,41 @@
 
 ---
 
-## 2. Comparativo de Operações (Antes vs. Depois)
+## 2. Comparativo Detalhado de Operações (Antes vs. Depois)
 
 ### Atualização Normal de Perfil (sem alteração de cargo/status)
 - **Antes**:
-  - Firestore: 1 leitura de perfil, 1 leitura de admins, 1 update de perfil, 1 criação de auditoria, 1 leitura pós-transação, 1 update para limpar marker. (Total: 3 leituras, 3 escritas).
+  - Firestore (incompleto na análise anterior): 1 leitura de perfil, 1 leitura de admins, 1 update de perfil, 1 criação de auditoria, 1 leitura pós-transação, 1 update para limpar marker. (Total simplificado: ~3 a 4 leituras, 3 escritas).
   - Auth: 1 chamada a `setCustomUserClaims`.
   - RTDB: 0 chamadas.
-- **Depois**:
-  - Firestore: 1 leitura de perfil, 1 leitura de admins, 1 update de perfil, 1 criação de auditoria. Lease e finalização reutilizam a transação de perfil (Total: 3 leituras, 3 escritas).
-  - Auth: 1 chamada a `setCustomUserClaims`.
-  - RTDB: 0 chamadas.
-- **Conclusão**: Custo operacional idêntico ao anterior para o caminho feliz, com o benefício fundamental de versionamento monotônico e proteção contra race conditions.
+  - **Problema**: Omitia leituras de autorização de admin, rate limit (`consumeAdminUserAction`), leitura da query de todos os admins (`where role == admin`), além de não garantir versionamento monotônico nem proteção contra concorrência tardia.
+- **Depois (Contagem Completa e Auditada de Leituras e Escritas)**:
+  - **Firestore**:
+    1. Autorização/Rate Limit: 1 leitura de perfil do admin solicitante (se claims não em cache) + 1 leitura e 1 escrita de rate limit (`consumeAdminUserAction`).
+    2. Transação de Perfil: 1 leitura do perfil alvo + N leituras de admins na query (`where('role', '==', 'admin')`, sendo N >= 1, tipicamente 1 a 3 docs) + 1 escrita no perfil (syncVersion + marker) + 1 escrita no log de auditoria.
+    3. Fase 1 do Processador (`processUserSync`): 1 leitura transacional para aquisição de lease + 1 escrita de lease ativo (`status: 'processing'`).
+    4. Fase 3 do Processador (Finalização): 1 leitura transacional de verificação de versão + 1 escrita de remoção do marker (`FieldValue.delete()`) e atualização de `syncedVersion`.
+    - **Total Real no Caminho Feliz**: **(4 + N) leituras** (tipicamente 5 a 7 leituras) e **5 escritas**.
+  - **Auth**: 1 chamada a `setCustomUserClaims`.
+  - **RTDB**: 0 chamadas.
+- **Conclusão**: O acréscimo operacional é mínimo (2 leituras e 2 escritas adicionadas pelo ciclo de lease/finalização transacional), proporcionando em contrapartida imunidade contra race conditions e reversão silenciosa de autorizações.
 
 ### Atualização com Mudança de Cargo ou Desativação (com revogação)
 - **Antes**:
-  - Firestore: 3 leituras, 3 escritas (dispositivos não eram limpos em `updateUser`).
-  - RTDB: 1 remove em `status/`, 1 set em `revocations/`.
+  - Firestore: Leituras e escritas sem contabilização de dispositivos ou rate limiting. Dispositivos cadastrados em `userProfiles/{uid}/devices` não eram limpos.
+  - RTDB: 1 remoção em `status/`, 1 gravação em `revocations/`.
   - Auth: 1 `revokeRefreshTokens`, 1 `setCustomUserClaims`.
-  - **Problema do modelo anterior**: Não limpava dispositivos cadastrados no Firestore nem protegia contra race conditions de workers tardios.
-- **Depois**:
-  - Firestore: 3 leituras, 3 escritas + limpeza em batch da subcoleção de dispositivos (média de 1 a 2 docs).
-  - RTDB: 1 remove em `status/`, 1 set em `revocations/` (atômico via `Promise.all`).
-  - Auth: 1 `revokeRefreshTokens`, 1 `setCustomUserClaims`.
-  - **Diferencial de Resiliência**: Em caso de falha externa em qualquer etapa, a pendência é preservada intacta (`needsRevocation: true`) e retomada deterministicamente sem duplicar chamadas desnecessárias.
+  - **Problemas**: Descrevia incorretamente chamadas concorrentes como atômicas, omitia a limpeza de dispositivos físicos no Firestore e não possuía recuperação de etapas parciais.
+- **Depois (Contagem Completa e Semântica Distribuída Real)**:
+  - **Firestore**:
+    - As mesmas (4 + N) leituras e 5 escritas da atualização normal.
+    - Mais: 1 consulta à subcoleção `devices` (retorna D documentos de dispositivos, onde D varia de 0 a 10) + D exclusões em batch (`batch.delete()`).
+    - **Total Real**: **(5 + N + D) leituras** (tipicamente 6 a 9 leituras) e **(5 + D) escritas** (tipicamente 6 a 8 escritas).
+  - **Realtime Database**:
+    - 1 remoção em `status/{uid}` e 1 gravação em `revocations/{uid}` com o timestamp fixado do evento original de corte (`originalRevocationTimeMs`).
+    - **Semântica Distribuída Real**: Essas chamadas são disparadas em paralelo via `Promise.all` para reduzir latência de rede, mas **NÃO constituem uma transação atômica distribuída (2PC)**. O Firebase RTDB e o Auth não compartilham transações. Portanto, a resiliência é garantida pelo rastreador `completedSteps` no `claimsSyncPending`: se o RTDB falhar após a remoção ou o Auth falhar posteriormente, o estado pendente persiste e um retry ou reparo retoma exclusivamente as etapas incompletas sem avançar o timestamp de revogação.
+  - **Auth**: 1 `revokeRefreshTokens` + 1 `setCustomUserClaims`.
+  - **Diferencial de Resiliência**: Em caso de falha externa em qualquer etapa, a pendência é preservada intacta (`needsRevocation: true`) com o timestamp original, e a reconciliação pós-escrita iterativa impede que workers concorrentes deixem claims obsoletas.
 
 ---
 

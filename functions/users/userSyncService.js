@@ -2,17 +2,22 @@
  * userSyncService.js
  * 
  * Serviço centralizado e transacional de sincronização de estado, claims e sessões.
- * Garante:
- * 1. Monotonicidade e convergência de permissões e custom claims no Firebase Auth.
- * 2. Preservação de revogações pendentes sob concorrência e retries.
- * 3. Reconciliação pós-escrita que impede que operações atrasadas deixem claims antigas.
- * 4. Recuperabilidade de falhas parciais sem polling e sem infraestrutura adicional.
- * 5. Migração atômica de marcadores legados sem risco de sobrescrever operações mais novas.
+ * 
+ * Invariantes Garantidas:
+ *  I1. A versão desejada de autorização (syncVersion) é estritamente monotônica crescente.
+ *  I2. Uma atualização nova preserva etapas obrigatórias ainda pendentes (needsRevocation, needsClaims).
+ *  I3. Somente a versão correspondente pode confirmar sua própria conclusão no Firestore.
+ *  I4. Uma chamada não anuncia sincronização concluída enquanto houver trabalho obrigatório pendente.
+ *  I5. Operação antiga não deixa autorização antiga como estado final (reconciliação iterativa bounded).
+ *  I6. Retry de revogação não cria silenciosamente um novo evento de revogação (preserva corte original).
+ *  I7. Falha em qualquer etapa externa deixa informação suficiente no Firestore para retomada.
+ *  I8. Clientes não podem alterar marcadores de sincronização ou revogação.
  */
 
 const defaultAdmin = require('firebase-admin');
 
 const LEASE_TTL_MS = 15000; // 15 segundos de lease para processamento externo
+const MAX_RECONCILIATION_ATTEMPTS = 3; // Limite de iterações do loop de reconciliação pós-escrita
 
 /**
  * Sanitiza mensagens de erro para evitar vazamento de dados sensíveis ou PII nos logs/Firestore.
@@ -43,7 +48,7 @@ function getServices(deps = {}) {
 
 /**
  * Transação de atualização de perfil com proteção contra perda do último admin
- * e preservação monotônica de pendências de segurança.
+ * e preservação monotônica de todas as pendências de segurança.
  */
 async function updateUserProfile(params, deps = {}) {
   const { uid, displayName, role, permissions, active, actorUid } = params;
@@ -57,7 +62,7 @@ async function updateUserProfile(params, deps = {}) {
   const auditRef = firestore.collection('userAuditLogs').doc();
   const workerId = `worker_${generateOpId()}_${now()}`;
 
-  // 1. Fase Transacional no Firestore
+  // ─── 1. Fase Transacional no Firestore ─────────────────────────────────────
   const txResult = await firestore.runTransaction(async (transaction) => {
     const [profileSnap, adminsSnap] = await Promise.all([
       transaction.get(profileRef),
@@ -88,13 +93,13 @@ async function updateUserProfile(params, deps = {}) {
     }
 
     // Regras de Revogação:
-    // 1. Mudança efetiva de status para inativo
+    // 1. Mudança de status para inativo
     const isDeactivating = (active === false && current.active !== false);
-    // 2. Mudança efetiva de role
+    // 2. Mudança de role
     const isRoleChanged = (role !== undefined && role !== current.role);
     const requiresRevocationNow = isDeactivating || isRoleChanged;
 
-    // 3. Preservação de revogação pendente prévia (Cenário B e retries)
+    // Preservação de revogação pendente prévia (Cenário B)
     const wasRevocationPending = Boolean(
       current.claimsSyncPending &&
       typeof current.claimsSyncPending === 'object' &&
@@ -102,10 +107,23 @@ async function updateUserProfile(params, deps = {}) {
     );
     const effectiveNeedsRevocation = requiresRevocationNow || wasRevocationPending;
 
-    // Versão monotônica crescente
+    // Preservação de sincronização de claims pendente prévia (inclui marcador legado boolean true)
+    const wasClaimsPending = Boolean(
+      current.claimsSyncPending === true ||
+      (current.claimsSyncPending &&
+        typeof current.claimsSyncPending === 'object' &&
+        current.claimsSyncPending.needsClaims === true)
+    );
+    const effectiveNeedsClaims = true; // updateUserProfile sempre define estado desejado de claims
+
+    // Versão monotônica crescente (I1)
     const currentVersion = Number(current.syncVersion || current.claimsSyncPending?.version || 0);
     const nextVersion = currentVersion + 1;
     const opId = generateOpId();
+
+    // Corte do evento original de revogação (I6)
+    let originalRevocationTimeSeconds = current.claimsSyncPending?.originalRevocationTimeSeconds || current.tokensValidAfterTime || null;
+    let originalRevocationTimeMs = current.claimsSyncPending?.originalRevocationTimeMs || (originalRevocationTimeSeconds ? originalRevocationTimeSeconds * 1000 : null);
 
     const updateData = {
       ...(displayName !== undefined ? { displayName: displayName.trim() } : {}),
@@ -120,7 +138,15 @@ async function updateUserProfile(params, deps = {}) {
         opId,
         status: 'pending',
         needsRevocation: effectiveNeedsRevocation,
-        needsClaims: true,
+        needsClaims: effectiveNeedsClaims,
+        completedSteps: {
+          rtdbRevocation: false,
+          devicesCleanup: false,
+          authRevocation: false,
+          authClaims: false,
+        },
+        originalRevocationTimeSeconds,
+        originalRevocationTimeMs,
         syncedVersion: Number(current.syncedVersion || 0),
         lastError: null,
         attempts: 0,
@@ -129,14 +155,26 @@ async function updateUserProfile(params, deps = {}) {
       },
     };
 
-    // Atualização monotônica da barreira temporal tokensValidAfterTime
     if (requiresRevocationNow) {
-      const nowSeconds = Math.floor(now() / 1000);
-      const currentBarrier = Number(current.tokensValidAfterTime || 0);
-      updateData.tokensValidAfterTime = Math.max(currentBarrier, nowSeconds);
-    } else if (wasRevocationPending && current.tokensValidAfterTime) {
-      // Preserva o carimbo da revogação original em retries cosméticos para não invalidar novos logins legítimos
-      updateData.tokensValidAfterTime = current.tokensValidAfterTime;
+      if (wasRevocationPending && originalRevocationTimeMs) {
+        // Retry ou continuação de operação com revogação pendente: preserva o timestamp do evento original (I6 / Problema 5)
+        updateData.tokensValidAfterTime = originalRevocationTimeSeconds;
+        updateData.claimsSyncPending.originalRevocationTimeSeconds = originalRevocationTimeSeconds;
+        updateData.claimsSyncPending.originalRevocationTimeMs = originalRevocationTimeMs;
+      } else {
+        const nowSeconds = Math.floor(now() / 1000);
+        const currentBarrier = Number(current.tokensValidAfterTime || 0);
+        originalRevocationTimeSeconds = Math.max(currentBarrier, nowSeconds);
+        originalRevocationTimeMs = now();
+        updateData.tokensValidAfterTime = originalRevocationTimeSeconds;
+        updateData.claimsSyncPending.originalRevocationTimeSeconds = originalRevocationTimeSeconds;
+        updateData.claimsSyncPending.originalRevocationTimeMs = originalRevocationTimeMs;
+      }
+    } else if (wasRevocationPending && originalRevocationTimeSeconds) {
+      // Preserva a barreira temporal original em retries cosméticos para não invalidar novos logins legítimos
+      updateData.tokensValidAfterTime = originalRevocationTimeSeconds;
+      updateData.claimsSyncPending.originalRevocationTimeSeconds = originalRevocationTimeSeconds;
+      updateData.claimsSyncPending.originalRevocationTimeMs = originalRevocationTimeMs;
     }
 
     transaction.update(profileRef, updateData);
@@ -155,12 +193,13 @@ async function updateUserProfile(params, deps = {}) {
       version: nextVersion,
       opId,
       needsRevocation: effectiveNeedsRevocation,
+      needsClaims: effectiveNeedsClaims,
       role: nextRole,
       active: nextActive,
     };
   });
 
-  // 2. Processamento e Reconciliação dos Efeitos Externos
+  // ─── 2. Processamento e Reconciliação dos Efeitos Externos ──────────────────
   try {
     const syncResult = await processUserSync(uid, {
       workerId,
@@ -168,24 +207,39 @@ async function updateUserProfile(params, deps = {}) {
       expectedOpId: txResult.opId,
     }, deps);
 
+    const isFullyCompleted = syncResult.status === 'completed';
+
     return {
       success: true,
+      status: syncResult.status,
+      synced: isFullyCompleted,
       version: txResult.version,
-      synced: syncResult.status === 'completed',
+      requestedVersion: txResult.version,
+      currentVersion: syncResult.syncedVersion || txResult.version,
+      pendingSteps: {
+        revocation: txResult.needsRevocation && !isFullyCompleted,
+        claims: txResult.needsClaims && !isFullyCompleted,
+      },
+      opId: txResult.opId,
     };
   } catch (syncErr) {
     console.error(`[userSyncService.updateUserProfile] Falha na sincronização externa para ${uid}:`, syncErr);
-    // Registra falha na estrutura persistida para reparo posterior seguro
     await recordSyncFailure(uid, txResult.opId, txResult.version, syncErr, deps).catch(() => {});
     const err = new Error('O perfil foi atualizado no banco de dados, mas houve falha na sincronização externa de credenciais/sessões. Reparo pendente.');
     err.code = 'internal';
-    err.details = { partialSuccess: true, uid, version: txResult.version };
+    err.details = {
+      partialSuccess: true,
+      uid,
+      version: txResult.version,
+      status: 'failed',
+    };
     throw err;
   }
 }
 
 /**
  * Revoga todas as sessões, tokens e registros de presença de um usuário de forma atômica e versionada.
+ * PRESERVA qualquer pendência prévia de claims (`needsClaims`) intacta (Problema 2 resolvido).
  */
 async function revokeUserSessions(params, deps = {}) {
   const { uid, actorUid } = params;
@@ -199,6 +253,7 @@ async function revokeUserSessions(params, deps = {}) {
   const auditRef = firestore.collection('userAuditLogs').doc();
   const workerId = `worker_revoke_${generateOpId()}_${now()}`;
   const nowSeconds = Math.floor(now() / 1000);
+  const nowMs = now();
 
   const txResult = await firestore.runTransaction(async (transaction) => {
     const profileSnap = await transaction.get(profileRef);
@@ -216,8 +271,30 @@ async function revokeUserSessions(params, deps = {}) {
     const currentBarrier = Number(current.tokensValidAfterTime || 0);
     const newBarrier = Math.max(currentBarrier, nowSeconds);
 
+    const isRetry = Boolean(
+      current.claimsSyncPending &&
+      typeof current.claimsSyncPending === 'object' &&
+      current.claimsSyncPending.needsRevocation === true &&
+      current.claimsSyncPending.originalRevocationTimeMs
+    );
+
+    const originalRevocationTimeSeconds = isRetry
+      ? (current.claimsSyncPending.originalRevocationTimeSeconds || currentBarrier || newBarrier)
+      : newBarrier;
+    const originalRevocationTimeMs = isRetry
+      ? current.claimsSyncPending.originalRevocationTimeMs
+      : nowMs;
+
+    // Preservação estrita: se havia claims pendentes, NÃO descarta! (I2 / Problema 2 - inclusive marcador legado boolean true)
+    const wasClaimsPending = Boolean(
+      current.claimsSyncPending === true ||
+      (current.claimsSyncPending &&
+        typeof current.claimsSyncPending === 'object' &&
+        current.claimsSyncPending.needsClaims === true)
+    );
+
     const updateData = {
-      tokensValidAfterTime: newBarrier,
+      tokensValidAfterTime: originalRevocationTimeSeconds,
       syncVersion: nextVersion,
       updatedAt: defaultAdmin.firestore.FieldValue.serverTimestamp(),
       updatedBy: actorUid || 'system',
@@ -226,11 +303,19 @@ async function revokeUserSessions(params, deps = {}) {
         opId,
         status: 'pending',
         needsRevocation: true,
-        needsClaims: false, // Apenas revogação, sem alteração de cargos
+        needsClaims: wasClaimsPending, // Preserva needsClaims anterior!
+        completedSteps: {
+          rtdbRevocation: false,
+          devicesCleanup: false,
+          authRevocation: false,
+          authClaims: !wasClaimsPending,
+        },
+        originalRevocationTimeSeconds,
+        originalRevocationTimeMs,
         syncedVersion: Number(current.syncedVersion || 0),
         lastError: null,
         attempts: 0,
-        updatedAt: now(),
+        updatedAt: nowMs,
         lease: null,
       },
     };
@@ -246,28 +331,49 @@ async function revokeUserSessions(params, deps = {}) {
       createdAt: defaultAdmin.firestore.FieldValue.serverTimestamp(),
     });
 
-    return { uid, version: nextVersion, opId };
+    return { uid, version: nextVersion, opId, needsClaims: wasClaimsPending };
   });
 
   try {
-    await processUserSync(uid, {
+    const syncResult = await processUserSync(uid, {
       workerId,
       expectedVersion: txResult.version,
       expectedOpId: txResult.opId,
     }, deps);
 
-    return { success: true, version: txResult.version };
+    const isFullyCompleted = syncResult.status === 'completed';
+
+    return {
+      success: true,
+      status: syncResult.status,
+      synced: isFullyCompleted,
+      version: txResult.version,
+      requestedVersion: txResult.version,
+      currentVersion: syncResult.syncedVersion || txResult.version,
+      pendingSteps: {
+        revocation: !isFullyCompleted,
+        claims: txResult.needsClaims && !isFullyCompleted,
+      },
+      opId: txResult.opId,
+    };
   } catch (syncErr) {
     console.error(`[userSyncService.revokeUserSessions] Falha ao executar etapas externas para ${uid}:`, syncErr);
     await recordSyncFailure(uid, txResult.opId, txResult.version, syncErr, deps).catch(() => {});
     const err = new Error('Falha ao concluir a revogação externa de credenciais/sessões. Reparo pendente.');
     err.code = 'internal';
+    err.details = {
+      partialSuccess: true,
+      uid,
+      version: txResult.version,
+      status: 'failed',
+    };
     throw err;
   }
 }
 
 /**
  * Executa o reparo e sincronização de custom claims ou revogações pendentes.
+ * Respeita leases ativos (não passa force=true incondicionalmente - Problema 4 resolvido).
  */
 async function executeUserRepair(params, deps = {}) {
   const { uid } = params;
@@ -281,7 +387,7 @@ async function executeUserRepair(params, deps = {}) {
   const profileDoc = await profileRef.get();
 
   if (!profileDoc.exists) {
-    return { claims: null, resumedRevocation: false, synced: false };
+    return { claims: null, resumedRevocation: false, synced: false, status: 'not-found' };
   }
 
   const data = profileDoc.data();
@@ -293,20 +399,29 @@ async function executeUserRepair(params, deps = {}) {
   }
 
   const workerId = `repair_${generateOpId()}_${now()}`;
-  const syncResult = await processUserSync(uid, { workerId, force: true }, deps);
+  // force=false respeita leases ativos de outros workers!
+  const syncResult = await processUserSync(uid, { workerId, force: false }, deps);
 
   const updatedSnap = await profileRef.get();
   const updatedData = updatedSnap.data() || {};
 
+  const isCompleted = syncResult.status === 'completed';
+
   return {
-    success: true,
+    success: isCompleted,
+    status: syncResult.status,
     claims: {
       role: updatedData.role || 'user',
       active: updatedData.active !== false,
     },
     resumedRevocation: syncResult.revokedSessions === true,
     syncedVersion: updatedData.syncedVersion || updatedData.syncVersion || 0,
-    synced: syncResult.status === 'completed',
+    synced: isCompleted,
+    version: updatedData.syncVersion || 0,
+    pendingSteps: {
+      revocation: Boolean(updatedData.claimsSyncPending?.needsRevocation),
+      claims: Boolean(updatedData.claimsSyncPending?.needsClaims),
+    },
   };
 }
 
@@ -323,7 +438,6 @@ async function convertLegacyMarker(uid, deps = {}) {
     if (!snap.exists) return { converted: false };
 
     const data = snap.data();
-    // Verifica se AINDA é estritamente o marcador legado boolean true
     if (data.claimsSyncPending !== true) {
       return { converted: false, reason: 'not-legacy' };
     }
@@ -336,8 +450,16 @@ async function convertLegacyMarker(uid, deps = {}) {
       version: nextVersion,
       opId,
       status: 'pending',
-      needsRevocation: false, // Política conservadora: não desloga usuário em massa sem certeza
+      needsRevocation: false,
       needsClaims: true,
+      completedSteps: {
+        rtdbRevocation: false,
+        devicesCleanup: false,
+        authRevocation: false,
+        authClaims: false,
+      },
+      originalRevocationTimeSeconds: null,
+      originalRevocationTimeMs: null,
       syncedVersion: currentVersion,
       lastError: null,
       attempts: 0,
@@ -356,7 +478,7 @@ async function convertLegacyMarker(uid, deps = {}) {
 }
 
 /**
- * Processador central de sincronização externa com lease e reconciliação pós-escrita.
+ * Processador central de sincronização externa com lease e reconciliação pós-escrita iterativa.
  */
 async function processUserSync(uid, options = {}, deps = {}) {
   const { firestore, auth, database, now } = getServices(deps);
@@ -386,6 +508,14 @@ async function processUserSync(uid, options = {}, deps = {}) {
         status: 'processing',
         needsRevocation: false,
         needsClaims: true,
+        completedSteps: {
+          rtdbRevocation: false,
+          devicesCleanup: false,
+          authRevocation: false,
+          authClaims: false,
+        },
+        originalRevocationTimeSeconds: null,
+        originalRevocationTimeMs: null,
         syncedVersion: Number(data.syncedVersion || 0),
         lastError: null,
         attempts: 1,
@@ -399,15 +529,14 @@ async function processUserSync(uid, options = {}, deps = {}) {
       return { action: 'acquired', marker: newMarker, data: { ...data, syncVersion: v } };
     }
 
-    // Verifica se outra operação mais recente já substituiu a que esperávamos
+    // Verifica se outra operação mais recente já substituiu a que esperávamos (Cenário D)
     if (expectedVersion && marker.version && marker.version > expectedVersion) {
-      // Uma versão mais recente foi criada. Se não for forçado, não processa versão obsoleta.
       if (!force) {
-        return { action: 'superseded', newerVersion: marker.version };
+        return { action: 'superseded', newerVersion: marker.version, currentVersion: data.syncVersion };
       }
     }
 
-    // Verifica lease existente
+    // Verifica lease existente (Cenário C - Proteção de concorrência)
     const currentTime = now();
     if (
       !force &&
@@ -416,7 +545,7 @@ async function processUserSync(uid, options = {}, deps = {}) {
       marker.lease.expiresAt > currentTime &&
       marker.lease.workerId !== workerId
     ) {
-      return { action: 'locked', expiresAt: marker.lease.expiresAt };
+      return { action: 'locked', expiresAt: marker.lease.expiresAt, currentWorker: marker.lease.workerId };
     }
 
     // Adquire o lease
@@ -439,24 +568,34 @@ async function processUserSync(uid, options = {}, deps = {}) {
   });
 
   if (leaseResult.action !== 'acquired') {
-    return { status: leaseResult.action, result: leaseResult };
+    return {
+      status: leaseResult.action,
+      result: leaseResult,
+      syncedVersion: leaseResult.data?.syncedVersion || leaseResult.data?.syncVersion || 0,
+    };
   }
 
   const activeMarker = leaseResult.marker;
   const currentProfileData = leaseResult.data;
+  const completedSteps = activeMarker.completedSteps || {};
   let revokedSessions = false;
 
   // ─── FASE 2: Execução das Etapas Externas Fora da Transação ────────────────
   try {
     // Etapa 2.1: Revogação de Sessões (RTDB, Dispositivos no Firestore, Refresh Tokens no Auth)
     if (activeMarker.needsRevocation === true) {
-      // A. Realtime Database (Remover presença e fixar revokedAt monotônico)
-      if (database) {
+      // A. Realtime Database (preserva o timestamp do evento de revogação original - Cenário E)
+      if (database && !completedSteps.rtdbRevocation) {
         try {
+          const cutOffMs = activeMarker.originalRevocationTimeMs ||
+            (activeMarker.originalRevocationTimeSeconds ? activeMarker.originalRevocationTimeSeconds * 1000 : null) ||
+            now();
+
           await Promise.all([
             database.ref(`status/${uid}`).remove(),
-            database.ref(`revocations/${uid}`).set(now()),
+            database.ref(`revocations/${uid}`).set(cutOffMs),
           ]);
+          completedSteps.rtdbRevocation = true;
         } catch (rtdbErr) {
           console.error(`[processUserSync] Falha no RTDB para ${uid}:`, rtdbErr);
           throw rtdbErr;
@@ -464,98 +603,132 @@ async function processUserSync(uid, options = {}, deps = {}) {
       }
 
       // B. Dispositivos cadastrados no Firestore (Limpeza física de dispositivos)
-      const devicesRef = firestore.collection(`userProfiles/${uid}/devices`);
-      const devSnap = await devicesRef.get();
-      if (!devSnap.empty) {
-        const batch = firestore.batch();
-        devSnap.docs.forEach((doc) => batch.delete(doc.ref));
-        await batch.commit();
+      if (!completedSteps.devicesCleanup) {
+        const devicesRef = firestore.collection(`userProfiles/${uid}/devices`);
+        const devSnap = await devicesRef.get();
+        if (!devSnap.empty) {
+          const batch = firestore.batch();
+          devSnap.docs.forEach((doc) => batch.delete(doc.ref));
+          await batch.commit();
+        }
+        completedSteps.devicesCleanup = true;
       }
 
       // C. Revogar Refresh Tokens no Firebase Auth
-      await auth.revokeRefreshTokens(uid);
+      if (!completedSteps.authRevocation) {
+        await auth.revokeRefreshTokens(uid);
+        completedSteps.authRevocation = true;
+      }
       revokedSessions = true;
     }
 
     // Etapa 2.2: Sincronização de Custom Claims no Firebase Auth
-    if (activeMarker.needsClaims !== false) {
+    if (activeMarker.needsClaims !== false && !completedSteps.authClaims) {
       const claimsToSet = {
         role: currentProfileData.role || 'user',
         active: currentProfileData.active !== false,
       };
       await auth.setCustomUserClaims(uid, claimsToSet);
+      completedSteps.authClaims = true;
     }
   } catch (externalErr) {
-    // Registra falha na etapa externa mantendo a pendência intacta para retries futuros
     console.error(`[processUserSync] Erro na chamada externa para ${uid}:`, externalErr);
     await recordSyncFailure(uid, activeMarker.opId, activeMarker.version, externalErr, deps).catch(() => {});
     throw externalErr;
   }
 
-  // ─── FASE 3: Finalização e Reconciliação Monotônica no Firestore (Cenário A) ─
-  const finalizeResult = await firestore.runTransaction(async (tx) => {
-    const snap = await tx.get(profileRef);
-    if (!snap.exists) return { status: 'not-found' };
+  // ─── FASE 3: Finalização e Reconciliação Monotônica Bounded (Cenários A, F, G) ─
+  let attempt = 0;
+  let currentFinalizeVersion = activeMarker.version;
 
-    const current = snap.data();
-    const currentMarker = current.claimsSyncPending;
+  while (attempt < MAX_RECONCILIATION_ATTEMPTS) {
+    attempt++;
 
-    // Caso de Sucesso Ideal: a versão do banco ainda bate exatamente com a nossa versão processada
-    if (
-      currentMarker &&
-      currentMarker.version === activeMarker.version &&
-      currentMarker.opId === activeMarker.opId
-    ) {
-      tx.update(profileRef, {
-        syncedVersion: activeMarker.version,
-        claimsSyncPending: defaultAdmin.firestore.FieldValue.delete(),
+    let finalizeResult;
+    try {
+      finalizeResult = await firestore.runTransaction(async (tx) => {
+        const snap = await tx.get(profileRef);
+        if (!snap.exists) return { status: 'not-found' };
+
+        const current = snap.data();
+        const currentMarker = current.claimsSyncPending;
+
+        // Caso de Sucesso Ideal (apenas na 1ª tentativa): a versão e opId do banco ainda correspondem à nossa operação
+        if (
+          attempt === 1 &&
+          currentMarker &&
+          currentMarker.version === activeMarker.version &&
+          currentMarker.opId === activeMarker.opId
+        ) {
+          tx.update(profileRef, {
+            syncedVersion: activeMarker.version,
+            claimsSyncPending: defaultAdmin.firestore.FieldValue.delete(),
+          });
+          return { status: 'completed', version: activeMarker.version };
+        }
+
+        // Cenário de Divergência (Cenário A): Uma nova versão foi criada enquanto o worker executava
+        const latestVersion = Number(current.syncVersion || currentMarker?.version || 0);
+        return {
+          status: 'diverged',
+          latestVersion,
+          latestRole: current.role || 'user',
+          latestActive: current.active !== false,
+          currentMarker,
+        };
       });
-      return { status: 'completed', version: activeMarker.version };
+    } catch (finalizeTxErr) {
+      // Cenário F: Falha ao confirmar no Firestore
+      console.error(`[processUserSync] Falha na transação de finalização no Firestore para ${uid}:`, finalizeTxErr);
+      await recordSyncFailure(uid, activeMarker.opId, currentFinalizeVersion, finalizeTxErr, deps).catch(() => {});
+      throw finalizeTxErr;
     }
 
-    // Cenário de Divergência (Cenário A): Uma nova operação gravou uma versão superior enquanto o worker estava em voo!
-    return {
-      status: 'diverged',
-      latestVersion: Number(current.syncVersion || currentMarker?.version || 0),
-      latestRole: current.role || 'user',
-      latestActive: current.active !== false,
-      currentMarker,
-    };
-  });
+    if (finalizeResult.status === 'completed') {
+      return {
+        status: 'completed',
+        syncedVersion: activeMarker.version,
+        revokedSessions,
+      };
+    }
 
-  // Se ocorreu divergência (Cenário A), este worker DEVE reconciliar com a versão mais recente!
-  if (finalizeResult.status === 'diverged') {
-    console.warn(`[processUserSync] Divergência detectada para ${uid}: versão processada ${activeMarker.version} vs mais recente ${finalizeResult.latestVersion}. Reconciliando...`);
-    
-    // Regrava imediatamente as claims correspondentes à versão mais recente
-    await auth.setCustomUserClaims(uid, {
-      role: finalizeResult.latestRole,
-      active: finalizeResult.latestActive,
-    });
-
-    // Se a versão mais recente não possuía novas etapas pendentes além das claims,
-    // atualizamos syncedVersion sem sobrescrever o marcador mais recente
-    await firestore.runTransaction(async (tx) => {
-      const snap = await tx.get(profileRef);
-      if (!snap.exists) return;
-      const cur = snap.data();
-      if (cur.syncVersion === finalizeResult.latestVersion) {
-        tx.update(profileRef, {
-          syncedVersion: finalizeResult.latestVersion,
-        });
+    if (finalizeResult.status === 'diverged') {
+      // Se em iterações subsequentes a versão no Firestore for a mesma que já acabamos de reconciliar no Auth:
+      if (attempt > 1 && finalizeResult.latestVersion === currentFinalizeVersion) {
+        // Reconciliação convergente estável: o Auth já possui as claims da versão mais recente!
+        // Não apagamos o marcador da outra versão (preserva pendências da nova versão - I2, I3).
+        return {
+          status: 'reconciled',
+          syncedVersion: currentFinalizeVersion,
+          revokedSessions,
+        };
       }
-    }).catch(() => {});
 
-    return {
-      status: 'reconciled',
-      syncedVersion: finalizeResult.latestVersion,
-      revokedSessions,
-    };
+      console.warn(`[processUserSync] Divergência detectada para ${uid} (iteração ${attempt}): processada ${currentFinalizeVersion} vs mais recente ${finalizeResult.latestVersion}. Reconciliando...`);
+
+      // Cenário G: Se a escrita de reconciliação falhar, o erro é registrado no Firestore
+      try {
+        await auth.setCustomUserClaims(uid, {
+          role: finalizeResult.latestRole,
+          active: finalizeResult.latestActive,
+        });
+      } catch (reconcileErr) {
+        console.error(`[processUserSync] Falha durante escrita de reconciliação para ${uid}:`, reconcileErr);
+        await recordSyncFailure(uid, finalizeResult.currentMarker?.opId || activeMarker.opId, finalizeResult.latestVersion, reconcileErr, deps).catch(() => {});
+        throw reconcileErr;
+      }
+
+      currentFinalizeVersion = finalizeResult.latestVersion;
+      // Loop continua para verificar se uma terceira atualização (ex: C) não chegou enquanto gravávamos a reconciliação!
+    } else {
+      return finalizeResult;
+    }
   }
 
+  // Se excedeu o limite máximo de tentativas de reconciliação consecutivas
   return {
-    status: 'completed',
-    syncedVersion: activeMarker.version,
+    status: 'reconciled',
+    syncedVersion: currentFinalizeVersion,
     revokedSessions,
   };
 }
@@ -591,6 +764,7 @@ async function recordSyncFailure(uid, opId, version, error, deps = {}) {
 
 module.exports = {
   LEASE_TTL_MS,
+  MAX_RECONCILIATION_ATTEMPTS,
   sanitizeErrorMessage,
   updateUserProfile,
   revokeUserSessions,

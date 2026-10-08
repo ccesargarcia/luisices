@@ -11,6 +11,22 @@ Este documento especifica a arquitetura de sincronização resiliente de permiss
 4. **Custo Proporcional ao Uso**: Processamento reativo coordenado diretamente pelo Firestore, sem necessidade de filas pesadas (Cloud Tasks), sem polling e sem instâncias mínimas permanentes.
 5. **Testabilidade Real**: Lógica desacoplada em serviço testável com injeção de dependências, permitindo testes unitários e de integração que executam o código real.
 
+### Invariantes do Sistema (I1 — I8):
+- **I1**: A versão desejada de autorização (`syncVersion`) nunca diminui (estritamente monotônica crescente).
+- **I2**: Uma atualização nova preserva etapas obrigatórias ainda pendentes (`needsRevocation`, `needsClaims`, mesmo originadas de marcadores legados).
+- **I3**: Somente a versão correspondente pode confirmar sua própria conclusão e remover seu marcador descritor.
+- **I4**: Uma chamada não anuncia sincronização concluída (`synced: true`) enquanto houver trabalho obrigatório pendente. Estados `locked` e `superseded` retornam `synced: false`.
+- **I5**: Operação antiga não pode deixar autorização antiga como estado final (garantido pela reconciliação pós-escrita iterativa com teto bounded).
+- **I6**: Retry de revogação não cria silenciosamente um novo evento de revogação; preserva `originalRevocationTimeMs` no RTDB para não invalidar logins legítimos posteriores.
+- **I7**: Falha em qualquer etapa externa deixa informação sanitizada suficiente (`completedSteps`, `lastError`, `attempts`) para recuperação idempotente.
+- **I8**: Clientes não podem alterar marcadores de sincronização ou revogação diretamente (regras de segurança protegem campos administrativos).
+
+### Garantias Reais e Limites Distribuídos:
+O Firebase Auth, Realtime Database e Firestore são sistemas distribuídos desacoplados que **não suportam transações distribuídas atômicas de duas fases (2PC)**. `Promise.all` em Node.js é apenas um utilitário de concorrência que executa requisições de rede em paralelo, **não uma transação atômica**. Portanto:
+- O Firestore atua como a única fonte da verdade e coordenador de autorização.
+- Se uma chamada ao Auth ou RTDB falhar após outra ter sido concluída, o estado pendente permanece gravado no Firestore com etapas parciais rastreadas (`completedSteps`).
+- Workers subsequentes ou callables de reparo executam exclusivamente as etapas faltantes de forma idempotente, sem duplicar efeitos já realizados.
+
 ---
 
 ## 2. Schema de Sincronização Persistida e Versionada
