@@ -235,6 +235,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       throw error;
     }
 
+    // Garante que o Firestore receba o token de autenticação antes da leitura
+    await user.getIdToken(true);
+
     // Verificar se o usuário possui perfil cadastrado e ativo
     const profile = await firebaseUserService.getUserProfile(
       user.uid,
