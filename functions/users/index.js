@@ -172,9 +172,6 @@ const validateUserInvitation = onCall(async (request) => {
 
 /** Conclui o cadastro convidado e inicializa o perfil do usuário. */
 const completeUserInvitation = onCall(async (request) => {
-  if (!request.auth) {
-    throw new functions.https.HttpsError('unauthenticated', 'Usuário não autenticado.');
-  }
   const { token } = request.data || {};
   if (!token || typeof token !== 'string') {
     throw new functions.https.HttpsError('invalid-argument', 'Convite inválido.');
@@ -185,14 +182,19 @@ const completeUserInvitation = onCall(async (request) => {
     throw new functions.https.HttpsError('not-found', 'Convite inválido ou expirado.');
   }
   const invData = invitation.data();
+  if (invData.status === 'accepted' && invData.acceptedBy) {
+    const acceptedUser = await admin.auth().getUser(invData.acceptedBy);
+    if (acceptedUser.emailVerified && acceptedUser.email.toLowerCase() === invData.email.toLowerCase()) {
+      return { success: true };
+    }
+  }
   if (invData.status !== 'pending' || invData.expiresAt.toDate() <= new Date()) {
     throw new functions.https.HttpsError('failed-precondition', 'Convite inválido ou expirado.');
   }
 
-  const authUser = await admin.auth().getUser(request.auth.uid);
-  if (authUser.email.toLowerCase() !== invData.email.toLowerCase()) {
-    throw new functions.https.HttpsError('permission-denied', 'O e-mail autenticado não corresponde ao convite.');
-  }
+  // O token do convite prova o acesso ao convite; o Admin Auth confirma que o
+  // endereço correspondente já foi verificado, mesmo em outro navegador.
+  const authUser = await admin.auth().getUserByEmail(invData.email);
   if (authUser.emailVerified !== true) {
     throw new functions.https.HttpsError(
       'failed-precondition',
@@ -205,9 +207,13 @@ const completeUserInvitation = onCall(async (request) => {
     if (!invSnap.exists || invSnap.data().status !== 'pending') {
       throw new functions.https.HttpsError('already-exists', 'Este convite já foi utilizado.');
     }
-    const userProfileRef = admin.firestore().doc(`userProfiles/${request.auth.uid}`);
+    const userProfileRef = admin.firestore().doc(`userProfiles/${authUser.uid}`);
+    const existingProfile = await transaction.get(userProfileRef);
+    if (existingProfile.exists) {
+      throw new functions.https.HttpsError('already-exists', 'Esta conta já possui um perfil ativo.');
+    }
     transaction.set(userProfileRef, {
-      uid: request.auth.uid,
+      uid: authUser.uid,
       email: authUser.email,
       displayName: authUser.displayName || invData.email.split('@')[0],
       whatsappPhone: invData.whatsappPhone || null,
@@ -226,12 +232,69 @@ const completeUserInvitation = onCall(async (request) => {
     });
     transaction.update(invitationRef, {
       status: 'accepted',
-      acceptedBy: request.auth.uid,
+      acceptedBy: authUser.uid,
       acceptedAt: admin.firestore.FieldValue.serverTimestamp(),
     });
   });
   return { success: true };
 });
+
+/** Envia confirmação de e-mail pela marca Luisices com ação válida do Firebase Auth. */
+const sendVerificationEmail = onCall(
+  { maxInstances: 5, secrets: [RESEND_API_KEY] },
+  async (request) => {
+    if (!request.auth) {
+      throw new functions.https.HttpsError('unauthenticated', 'Faça login para solicitar a confirmação do e-mail.');
+    }
+    const { inviteToken } = request.data || {};
+    if (!inviteToken || typeof inviteToken !== 'string') {
+      throw new functions.https.HttpsError('invalid-argument', 'Convite inválido.');
+    }
+
+    const resend = getResend(RESEND_API_KEY.value());
+    if (!resend) throw new functions.https.HttpsError('failed-precondition', 'Resend não configurado.');
+
+    try {
+      const authUser = await admin.auth().getUser(request.auth.uid);
+      if (!authUser.email) throw new functions.https.HttpsError('failed-precondition', 'A conta não possui e-mail.');
+      if (authUser.emailVerified) return { success: true };
+
+      const invitation = await admin.firestore().collection('invitations').doc(hashToken(inviteToken)).get();
+      if (!invitation.exists) throw new functions.https.HttpsError('not-found', 'Convite inválido ou expirado.');
+      const invitationData = invitation.data();
+      if (
+        invitationData.status !== 'pending' ||
+        invitationData.expiresAt.toDate() <= new Date() ||
+        invitationData.email.toLowerCase() !== authUser.email.toLowerCase()
+      ) {
+        throw new functions.https.HttpsError('failed-precondition', 'Convite inválido ou expirado.');
+      }
+
+      const continueUrl = `${getAppUrl()}/action?mode=verifyEmail&invite=${encodeURIComponent(inviteToken)}`;
+      const rawLink = await admin.auth().generateEmailVerificationLink(authUser.email, { url: continueUrl });
+      const firebaseLink = new URL(rawLink);
+      const oobCode = firebaseLink.searchParams.get('oobCode');
+      if (!oobCode) throw new Error('Firebase não retornou o código de confirmação.');
+      const verificationLink = `${getAppUrl()}/action?mode=verifyEmail&oobCode=${encodeURIComponent(oobCode)}&invite=${encodeURIComponent(inviteToken)}`;
+
+      const { error } = await resend.emails.send({
+        from: 'Luisices <noreply@luisices.com.br>',
+        to: [authUser.email],
+        subject: 'Confirme seu e-mail - Luisices',
+        html: `<!DOCTYPE html><html><body style="font-family:Arial,sans-serif;line-height:1.6;color:#333"><div style="max-width:600px;margin:auto;padding:24px"><h1 style="color:#667eea">Confirme seu e-mail</h1><p>Olá!</p><p>Confirme seu endereço de e-mail para concluir seu cadastro na Luisices.</p><p style="text-align:center;margin:32px 0"><a href="${verificationLink}" style="background:#667eea;color:#fff;padding:14px 28px;border-radius:6px;text-decoration:none;font-weight:bold">Confirmar meu e-mail</a></p><p>Se o botão não funcionar, copie este endereço no navegador:</p><p style="word-break:break-all"><a href="${verificationLink}">${verificationLink}</a></p><p>Se você não solicitou este cadastro, ignore esta mensagem.</p><hr><p style="font-size:12px;color:#666">Luisices · contato@luisices.com.br</p></div></body></html>`,
+      });
+      if (error) {
+        console.error('[sendVerificationEmail] Resend:', JSON.stringify(error));
+        throw new Error('Falha ao enviar e-mail de confirmação.');
+      }
+      return { success: true };
+    } catch (error) {
+      if (error instanceof functions.https.HttpsError) throw error;
+      console.error('[sendVerificationEmail]', error);
+      throw new functions.https.HttpsError('internal', 'Não foi possível enviar o e-mail de confirmação.');
+    }
+  }
+);
 
 /** Envia email de recuperação de senha via Resend */
 const sendPasswordResetEmail = onCall(
@@ -576,6 +639,7 @@ module.exports = {
   createUserInvitation,
   validateUserInvitation,
   completeUserInvitation,
+  sendVerificationEmail,
   sendPasswordResetEmail,
   deleteUser,
   createUser,

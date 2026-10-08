@@ -163,7 +163,7 @@ export function AuthAction() {
     );
   }
 
-  // Sucesso - senha alterada
+  // Sucesso - confirmação de e-mail ou redefinição de senha
   if (success) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary/5 via-background to-secondary/5 p-4">
@@ -171,14 +171,16 @@ export function AuthAction() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-green-600">
               <CheckCircle className="size-5" />
-              Senha Alterada!
+              {mode === 'verifyEmail' ? 'E-mail Confirmado!' : 'Senha Alterada!'}
             </CardTitle>
           </CardHeader>
           <CardContent>
             <Alert>
               <CheckCircle className="size-4" />
               <AlertDescription>
-                Sua senha foi alterada com sucesso. Você será redirecionado para a página de login em instantes...
+                {mode === 'verifyEmail'
+                  ? 'Seu e-mail foi confirmado com sucesso. Você já pode acessar sua conta.'
+                  : 'Sua senha foi alterada com sucesso. Você será redirecionado para a página de login em instantes...'}
               </AlertDescription>
             </Alert>
           </CardContent>

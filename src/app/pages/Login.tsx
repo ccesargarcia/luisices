@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate, Link } from 'react-router';
+import { useNavigate, Link, useSearchParams } from 'react-router';
 import { useAuth } from '../../contexts/AuthContext';
 import { trackLogin } from '../../services/analyticsService';
 import { Button } from '../components/ui/button';
@@ -18,6 +18,9 @@ export function Login() {
   const [loading, setLoading] = useState(false);
   const { login, isAuthenticated, loading: authLoading, userProfile } = useAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const verificationSent = searchParams.get('verificationSent');
+  const verificationEmail = searchParams.get('email');
 
   // Se o usuário já estiver autenticado e ativo e tentar acessar /login, redireciona para o dashboard com replace
   useEffect(() => {
@@ -41,6 +44,8 @@ export function Login() {
       // Mensagens específicas para diferentes tipos de erro
       if (err.message?.includes('desativada')) {
         setError('🚫 Sua conta foi desativada. Entre em contato com o administrador para reativar seu acesso.');
+      } else if (err.code === 'auth/email-not-verified') {
+        setError('Seu acesso está aguardando a confirmação do e-mail. Abra a mensagem enviada para confirmar o endereço e depois tente entrar novamente.');
       } else if (err.code === 'auth/invalid-credential' || err.code === 'auth/wrong-password' || err.code === 'auth/user-not-found') {
         setError('E-mail ou senha incorretos. Verifique suas credenciais.');
       } else if (err.code === 'auth/too-many-requests') {
@@ -83,6 +88,13 @@ export function Login() {
               {error && (
                 <Alert variant="destructive">
                   <AlertDescription>{error}</AlertDescription>
+                </Alert>
+              )}
+              {verificationSent && !error && (
+                <Alert>
+                  <AlertDescription>
+                    Enviamos um e-mail de confirmação{verificationEmail ? ` para ${verificationEmail}` : ''}. Confirme o endereço para ativar seu acesso e, em seguida, entre na sua conta.
+                  </AlertDescription>
                 </Alert>
               )}
 

@@ -61,15 +61,12 @@ export function Register() {
       if (inviteToken && inviteEmail && email.toLowerCase() !== inviteEmail.toLowerCase()) {
         throw new Error('Use o mesmo e-mail do convite.');
       }
-      const verificationUrl = inviteToken
-        ? `${window.location.origin}/action?mode=verifyEmail&invite=${encodeURIComponent(inviteToken)}`
-        : undefined;
-      await firebaseAuthService.register(email, password, name, verificationUrl);
+      await firebaseAuthService.register(email, password, name, inviteToken);
       if (inviteToken) {
         await firebaseAuthService.reloadCurrentUser();
       }
       trackSignUp('email');
-      navigate(`/login?verificationSent=${inviteToken ? 'invite' : 'signup'}`);
+      navigate(`/login?verificationSent=${inviteToken ? 'invite' : 'signup'}&email=${encodeURIComponent(email)}`);
     } catch (err: any) {
       console.error('Erro ao criar conta:', err);
       setError(err.message || 'Erro ao criar conta. Tente novamente.');

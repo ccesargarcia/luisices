@@ -17,7 +17,7 @@ interface AuthContextType {
   isAdmin: boolean;
   hasPermission: (check: (p: UserProfile['permissions']) => boolean) => boolean;
   login: (email: string, password: string) => Promise<void>;
-  register: (email: string, password: string, displayName?: string) => Promise<void>;
+  register: (email: string, password: string, displayName?: string, inviteToken?: string) => Promise<void>;
   logout: () => Promise<void>;
   resetPassword: (email: string) => Promise<void>;
   refreshUserProfile: () => Promise<void>;
@@ -188,6 +188,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = async (email: string, password: string) => {
     const user = await firebaseAuthService.login(email, password);
 
+    // O e-mail só pode ser usado para acessar o sistema depois da confirmação.
+    await user.reload();
+    if (!user.emailVerified) {
+      await firebaseAuthService.logout();
+      const error = new Error('Confirme seu e-mail para liberar o acesso. O cadastro está aguardando a confirmação do endereço enviado por e-mail.');
+      (error as Error & { code: string }).code = 'auth/email-not-verified';
+      throw error;
+    }
+
     // Verificar se o usuário possui perfil cadastrado e ativo
     const profile = await firebaseUserService.getUserProfile(
       user.uid,
@@ -207,8 +216,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const register = async (email: string, password: string, displayName?: string) => {
-    await firebaseAuthService.register(email, password, displayName);
+  const register = async (email: string, password: string, displayName?: string, inviteToken?: string) => {
+    await firebaseAuthService.register(email, password, displayName, inviteToken);
   };
 
   const logout = async () => {

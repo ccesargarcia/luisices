@@ -22,6 +22,7 @@ module.exports = {
   createUserInvitation: userFunctions.createUserInvitation,
   validateUserInvitation: userFunctions.validateUserInvitation,
   completeUserInvitation: userFunctions.completeUserInvitation,
+  sendVerificationEmail: userFunctions.sendVerificationEmail,
   sendPasswordResetEmail: userFunctions.sendPasswordResetEmail,
   deleteUser: userFunctions.deleteUser,
   createUser: userFunctions.createUser,

@@ -11,7 +11,6 @@ import {
   onAuthStateChanged,
   User,
   updateProfile,
-  sendEmailVerification,
   reload,
 } from 'firebase/auth';
 import { httpsCallable } from 'firebase/functions';
@@ -20,8 +19,12 @@ import { auth, functions } from '../lib/firebase';
 export class FirebaseAuthService {
   /**
    * Registrar novo usuário
-   */
-  async register(email: string, password: string, displayName?: string, verificationContinueUrl?: string): Promise<User> {
+  */
+  async register(email: string, password: string, displayName?: string, inviteToken?: string): Promise<User> {
+    if (!inviteToken) {
+      throw new Error('Este cadastro só pode ser concluído por meio de um convite válido.');
+    }
+
     const userCredential = await createUserWithEmailAndPassword(
       auth,
       email,
@@ -33,10 +36,8 @@ export class FirebaseAuthService {
       await updateProfile(userCredential.user, { displayName });
     }
 
-    await sendEmailVerification(userCredential.user, {
-      url: verificationContinueUrl || `${window.location.origin}/action?mode=verifyEmail`,
-      handleCodeInApp: true,
-    });
+    const sendVerification = httpsCallable(functions, 'sendVerificationEmail');
+    await sendVerification({ inviteToken });
 
     return userCredential.user;
   }
