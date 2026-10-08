@@ -93,9 +93,6 @@ const functionsCustomDomain = import.meta.env.VITE_FUNCTIONS_CUSTOM_DOMAIN || un
 export const functions = functionsCustomDomain
   ? getFunctions(app, functionsCustomDomain)
   : getFunctions(app);
-// A consulta de metadados usa o endpoint regional do Firebase para evitar que
-// o proxy do domínio customizado descarte ou invalide o token de autenticação.
-export const regionalFunctions = getFunctions(app, 'us-central1');
 
 // Conexão com o Firebase Local Emulator Suite quando ativado via ambiente
 if (import.meta.env.VITE_USE_FIREBASE_EMULATOR === 'true') {
@@ -105,7 +102,6 @@ if (import.meta.env.VITE_USE_FIREBASE_EMULATOR === 'true') {
     connectAuthEmulator(auth, `http://${host}:9099`, { disableWarnings: true });
     connectStorageEmulator(storage, host, 9199);
     connectFunctionsEmulator(functions, host, 5001);
-    connectFunctionsEmulator(regionalFunctions, host, 5001);
     console.info('[Firebase] Modo Emulator Suite Ativo (0 leituras na nuvem)');
   } catch (emulatorErr) {
     console.warn('[Firebase] Aviso ao conectar aos emuladores:', emulatorErr);

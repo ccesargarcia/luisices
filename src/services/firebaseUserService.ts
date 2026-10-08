@@ -14,7 +14,7 @@ import {
   orderBy,
 } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
-import { auth, db, functions, regionalFunctions } from '../lib/firebase';
+import { auth, db, functions } from '../lib/firebase';
 import { UserProfile, UserRole, Permission, ADMIN_PERMISSIONS, DEFAULT_USER_PERMISSIONS, EMPLOYEE_PERMISSIONS } from '../app/types';
 
 const USERS_COLLECTION = 'userProfiles';
@@ -103,7 +103,7 @@ export class FirebaseUserService {
     for (let index = 0; index < uids.length; index += 100) batches.push(uids.slice(index, index + 100));
     const results = await Promise.all(batches.map(async (batch) => {
       const callable = httpsCallable<{ uids: string[] }, { users: Array<{ uid: string; authCreatedAt?: string; lastSignInAt?: string }> }>(
-        regionalFunctions,
+        functions,
         'getUserAccountMetadata',
       );
       const result = await callable({ uids: batch });
