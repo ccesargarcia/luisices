@@ -101,23 +101,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           await u.getIdToken();
           
           let deviceId = localStorage.getItem('luisices_device_id');
+          const isNewDevice = !deviceId;
           if (!deviceId) {
             deviceId = crypto.randomUUID();
             localStorage.setItem('luisices_device_id', deviceId);
           }
           
-          const lastReg = Number(localStorage.getItem('luisices_device_last_reg') || '0');
-          if (Date.now() - lastReg > 60 * 60 * 1000) {
-            firebaseUserService.registerDeviceSession(deviceId, navigator.userAgent).then(() => {
-              localStorage.setItem('luisices_device_last_reg', String(Date.now()));
-            }).catch(err => console.warn('[AuthContext] Erro ao registrar sessão do dispositivo', err));
-          }
-
+          let deviceWasRegistered = false;
           deviceUnsub = onSnapshot(doc(db, 'userProfiles', u.uid, 'devices', deviceId), (snap) => {
-            // O documento deve existir se a conta foi recém-registrada; se sumir, foi revogado
-            if (!snap.exists() && Date.now() - lastReg > 10000) {
-              toast.error('Esta sessão foi revogada remotamente.');
-              firebaseAuthService.logout().catch(() => {});
+            if (snap.exists()) {
+              deviceWasRegistered = true;
+              const lastReg = Number(localStorage.getItem('luisices_device_last_reg') || '0');
+              if (Date.now() - lastReg > 60 * 60 * 1000) {
+                firebaseUserService.registerDeviceSession(deviceId, navigator.userAgent).then(() => {
+                  localStorage.setItem('luisices_device_last_reg', String(Date.now()));
+                }).catch(err => console.warn('[AuthContext] Erro ao atualizar sessão do dispositivo', err));
+              }
+            } else {
+              if (deviceWasRegistered || !isNewDevice) {
+                toast.error('Esta sessão foi revogada remotamente.');
+                firebaseAuthService.logout().catch(() => {});
+              } else {
+                deviceWasRegistered = true;
+                firebaseUserService.registerDeviceSession(deviceId, navigator.userAgent).then(() => {
+                  localStorage.setItem('luisices_device_last_reg', String(Date.now()));
+                }).catch(err => console.warn('[AuthContext] Erro ao registrar sessão do dispositivo', err));
+              }
             }
           }, (err) => console.warn('[AuthContext] Aviso ao escutar dispositivo:', err));
 
