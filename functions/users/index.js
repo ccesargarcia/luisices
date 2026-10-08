@@ -506,7 +506,14 @@ const sendPasswordResetEmail = onCall(
 );
 
 /** Retorna datas de criação e último acesso do Firebase Auth para a lista administrativa. */
-const getUserAccountMetadata = onCall({ invoker: 'public' }, async (request) => {
+const getUserAccountMetadata = onCall({
+  invoker: 'public',
+  cors: [
+    'https://dev.luisices.com.br',
+    'https://luisices.com.br',
+    'https://www.luisices.com.br',
+  ],
+}, async (request) => {
   if (!(await isAdminRequest(request))) {
     throw new functions.https.HttpsError('permission-denied', 'Apenas administradores podem consultar os dados das contas.');
   }
