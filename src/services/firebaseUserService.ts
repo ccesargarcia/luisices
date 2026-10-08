@@ -44,14 +44,13 @@ export class FirebaseUserService {
     displayName: string,
     role: UserRole,
     permissions: Permission,
-    createdBy: string,
   ): Promise<UserProfile> {
     const callable = httpsCallable<
-      { email: string; password: string; displayName: string; role: string; permissions: Permission; createdBy: string },
+      { email: string; password: string; displayName: string; role: string; permissions: Permission },
       { success: boolean; uid: string; profile: UserProfile }
     >(functions, 'createUser');
 
-    const result = await callable({ email, password, displayName, role, permissions, createdBy });
+    const result = await callable({ email, password, displayName, role, permissions });
     return result.data.profile;
   }
 

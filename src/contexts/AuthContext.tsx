@@ -167,35 +167,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             if (!isStoreRoute() && err?.code !== 'permission-denied' && !String(err?.message).includes('insufficient permissions')) {
               console.warn('[AuthContext] Aviso ao escutar perfil do usuário no Firestore:', err?.message || err);
             }
-            // Nunca efetua logout forçado por falha transitória de listener (evita deslogar o usuário em oscilações de rede/token)
-            const fallbackProfile: UserProfile = {
-              uid: u.uid,
-              email: u.email || '',
-              displayName: u.displayName || u.email?.split('@')[0] || 'Usuário',
-              role: 'user',
-              permissions: { ...DEFAULT_USER_PERMISSIONS },
-              active: true,
-              createdAt: new Date().toISOString(),
-              createdBy: u.uid,
-            };
-
-            // Mantém perfil existente caso já carregado, ou aplica perfil de contingência para não travar a aplicação
-            setUserProfile((prev) => prev ?? fallbackProfile);
+            // Falha ao validar o perfil deve bloquear o acesso até que a identidade
+            // seja confirmada novamente; nunca assumir um perfil ativo por fallback.
+            setUserProfile(null);
             setLoading(false);
-
-            // Tenta recuperação silenciosa em background renovando o token do Firebase
-            if (err?.code === 'permission-denied' || String(err?.message).includes('insufficient permissions')) {
-              u.getIdToken(true)
-                .then(() => firebaseUserService.getUserProfile(u.uid, u.email ?? undefined, u.displayName ?? undefined))
-                .then((fresh) => {
-                  if (fresh && fresh.active !== false) {
-                    setUserProfile(fresh);
-                  }
-                })
-                .catch(() => {
-                  // Fallback de contingência permanece ativo
-                });
-            }
           }
         );
       } else {

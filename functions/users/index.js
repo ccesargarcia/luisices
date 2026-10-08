@@ -166,6 +166,12 @@ const completeUserInvitation = onCall(async (request) => {
   if (authUser.email.toLowerCase() !== invData.email.toLowerCase()) {
     throw new functions.https.HttpsError('permission-denied', 'O e-mail autenticado não corresponde ao convite.');
   }
+  if (authUser.emailVerified !== true) {
+    throw new functions.https.HttpsError(
+      'failed-precondition',
+      'Confirme o e-mail da conta antes de concluir o cadastro.'
+    );
+  }
 
   await admin.firestore().runTransaction(async (transaction) => {
     const invSnap = await transaction.get(invitationRef);
@@ -394,7 +400,7 @@ const createUser = onCall(async (request) => {
     throw new functions.https.HttpsError('permission-denied', 'Apenas administradores podem criar usuários.');
   }
 
-  const { email, password, displayName, role, permissions, createdBy } = request.data || {};
+  const { email, password, displayName, role, permissions } = request.data || {};
 
   if (!email || typeof email !== 'string') {
     throw new functions.https.HttpsError('invalid-argument', 'E-mail é obrigatório.');
@@ -426,7 +432,7 @@ const createUser = onCall(async (request) => {
       permissions: permissions || {},
       active: true,
       createdAt: new Date().toISOString(),
-      createdBy: createdBy || request.auth.uid,
+      createdBy: request.auth.uid,
     };
 
     await admin.firestore().doc(`userProfiles/${userRecord.uid}`).set(profile);

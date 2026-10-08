@@ -233,12 +233,11 @@ function PermissionMatrix({ permissions, onChange }: PermissionMatrixProps) {
 interface UserFormDialogProps {
   open: boolean;
   editingUser: UserProfile | null;
-  currentUserUid: string;
   onClose: () => void;
   onSaved: () => void;
 }
 
-function UserFormDialog({ open, editingUser, currentUserUid, onClose, onSaved }: UserFormDialogProps) {
+function UserFormDialog({ open, editingUser, onClose, onSaved }: UserFormDialogProps) {
   const isEdit = !!editingUser;
   const [displayName, setDisplayName] = useState('');
   const [email,       setEmail]       = useState('');
@@ -344,7 +343,7 @@ function UserFormDialog({ open, editingUser, currentUserUid, onClose, onSaved }:
         }
         toast.success('Usuário atualizado com sucesso. As alterações já estão ativas em tempo real.');
       } else {
-        await firebaseUserService.createUser(email.trim(), password, displayName.trim(), role, permissions, currentUserUid);
+        await firebaseUserService.createUser(email.trim(), password, displayName.trim(), role, permissions);
         toast.success('Usuário criado com sucesso');
       }
       onSaved();
@@ -1126,7 +1125,6 @@ export function Users() {
       <UserFormDialog
         open={dialogOpen}
         editingUser={editingUser}
-        currentUserUid={currentUser?.uid ?? ''}
         onClose={() => setDialogOpen(false)}
         onSaved={fetchUsers}
       />
