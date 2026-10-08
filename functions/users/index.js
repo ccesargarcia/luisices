@@ -769,7 +769,7 @@ const updateUser = onCall(async (request) => {
 });
 
 /** Registra o dispositivo e captura o IP e Localização do usuário. */
-const registerDeviceSession = onCall(async (request) => {
+const registerDeviceSession = onCall({ memory: '512MiB' }, async (request) => {
   if (!request.auth) throw new functions.https.HttpsError('unauthenticated', 'Requer autenticação.');
   
   const { deviceId, userAgent } = request.data || {};
@@ -797,7 +797,16 @@ const registerDeviceSession = onCall(async (request) => {
     console.warn('[registerDeviceSession] Falha ao buscar localização do IP:', error);
   }
 
-  const deviceRef = admin.firestore().doc(`userProfiles/${request.auth.uid}/devices/${deviceId}`);
+  const userDevicesRef = admin.firestore().collection(`userProfiles/${request.auth.uid}/devices`);
+  const devicesSnap = await userDevicesRef.get();
+  if (devicesSnap.size >= 10) {
+    // Remove o dispositivo mais antigo
+    const sorted = devicesSnap.docs.map(d => ({ id: d.id, time: d.data().createdAt?.toMillis() || 0 })).sort((a, b) => a.time - b.time);
+    const oldest = sorted[0];
+    await userDevicesRef.doc(oldest.id).delete();
+  }
+
+  const deviceRef = userDevicesRef.doc(deviceId);
   
   // Usamos set com merge para criar ou atualizar sem perder o createdAt original
   await deviceRef.set({
@@ -824,6 +833,13 @@ const revokeDeviceSession = onCall(async (request) => {
   }
 
   await admin.firestore().doc(`userProfiles/${uid}/devices/${deviceId}`).delete();
+  
+  try {
+    await admin.auth().revokeRefreshTokens(uid);
+  } catch (err) {
+    console.warn(`[revokeDeviceSession] Aviso ao revogar tokens do usuário ${uid}:`, err);
+  }
+
   await writeUserAudit('DEVICE_SESSION_REVOKED', request.auth.uid, uid, { deviceId });
   
   return { success: true };
