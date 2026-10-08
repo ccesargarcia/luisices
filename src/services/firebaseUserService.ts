@@ -10,7 +10,6 @@ import {
   doc,
   getDocs,
   getDoc,
-  updateDoc,
   query,
   orderBy,
 } from 'firebase/firestore';
@@ -77,14 +76,16 @@ export class FirebaseUserService {
    * Atualiza dados do perfil (role, permissions, displayName, active).
    */
   async updateUserProfile(uid: string, data: Partial<Omit<UserProfile, 'uid' | 'createdAt' | 'createdBy'>>): Promise<void> {
-    await updateDoc(doc(db, USERS_COLLECTION, uid), data as Record<string, unknown>);
+    const callable = httpsCallable(functions, 'updateUser');
+    await callable({ uid, ...data });
   }
 
   /**
    * Ativa ou desativa um usuário (soft-delete).
    */
   async setUserActive(uid: string, active: boolean): Promise<void> {
-    await updateDoc(doc(db, USERS_COLLECTION, uid), { active });
+    const callable = httpsCallable(functions, 'updateUser');
+    await callable({ uid, active });
   }
 
   /**

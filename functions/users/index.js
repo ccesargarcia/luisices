@@ -7,7 +7,7 @@ const { onCall } = require('firebase-functions/v2/https');
 const admin = require('firebase-admin');
 const crypto = require('crypto');
 const { RESEND_API_KEY, EVOLUTION_API_KEY } = require('../common/secrets');
-const { passwordResetLimiter } = require('../common/rateLimiters');
+const { passwordResetLimiter, adminUserActionLimiter } = require('../common/rateLimiters');
 const {
   getResend,
   sendWhatsAppMessage,
@@ -17,6 +17,29 @@ const {
   hashToken,
 } = require('../common/helpers');
 
+async function consumeAdminUserAction(uid) {
+  try {
+    await adminUserActionLimiter.consume(uid);
+  } catch {
+    throw new functions.https.HttpsError(
+      'resource-exhausted',
+      'Limite de operações administrativas atingido. Tente novamente mais tarde.'
+    );
+  }
+}
+
+function writeUserAudit(action, actorUid, targetUid, details = {}) {
+  return admin.firestore().collection('userAuditLogs').add({
+    action,
+    actorUid,
+    ...(targetUid ? { targetUid } : {}),
+    ...details,
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+  }).catch((error) => {
+    console.error('[users] Falha ao registrar auditoria:', error);
+  });
+}
+
 /** Envia ao administrador um link seguro para redefinir a senha de outro usuário. */
 const sendAdminPasswordReset = onCall(
   { maxInstances: 5, secrets: [RESEND_API_KEY, EVOLUTION_API_KEY] },
@@ -24,6 +47,7 @@ const sendAdminPasswordReset = onCall(
     if (!(await isAdminRequest(request))) {
       throw new functions.https.HttpsError('permission-denied', 'Apenas administradores podem redefinir senhas.');
     }
+    await consumeAdminUserAction(request.auth.uid);
     const { email } = request.data || {};
     if (!email || typeof email !== 'string') {
       throw new functions.https.HttpsError('invalid-argument', 'E-mail do usuário é obrigatório.');
@@ -62,6 +86,7 @@ const sendAdminPasswordReset = onCall(
           console.error('[sendAdminPasswordReset] Evolution API:', error);
         }),
       ]);
+      await writeUserAudit('ADMIN_PASSWORD_RESET_REQUESTED', request.auth.uid, authUser.uid);
       return { success: true };
     } catch (error) {
       if (error.code === 'auth/user-not-found') {
@@ -80,6 +105,7 @@ const createUserInvitation = onCall(
     if (!(await isAdminRequest(request))) {
       throw new functions.https.HttpsError('permission-denied', 'Apenas administradores podem enviar convites.');
     }
+    await consumeAdminUserAction(request.auth.uid);
     const { email, whatsappPhone } = request.data || {};
     if (!email || typeof email !== 'string') {
       throw new functions.https.HttpsError('invalid-argument', 'E-mail do convite é obrigatório.');
@@ -119,6 +145,7 @@ const createUserInvitation = onCall(
           console.error('[createUserInvitation] Evolution API:', error);
         }),
       ]);
+      await writeUserAudit('USER_INVITATION_CREATED', request.auth.uid, null, { email: normalizedEmail });
       return { success: true, expiresAt: expiresAt.toISOString() };
     } catch (error) {
       if (error instanceof functions.https.HttpsError) throw error;
@@ -329,6 +356,7 @@ const deleteUser = onCall(async (request) => {
   if (!(await isAdminRequest(request))) {
     throw new functions.https.HttpsError('permission-denied', 'Apenas administradores podem remover usuários.');
   }
+  await consumeAdminUserAction(request.auth.uid);
   const { uid } = request.data || {};
   if (!uid || typeof uid !== 'string') {
     throw new functions.https.HttpsError('invalid-argument', 'UID do usuário é obrigatório.');
@@ -339,6 +367,14 @@ const deleteUser = onCall(async (request) => {
 
   const profileRef = admin.firestore().doc(`userProfiles/${uid}`);
   const profileSnap = await profileRef.get();
+
+  if (profileSnap.exists && profileSnap.data()?.role === 'admin' && profileSnap.data()?.active !== false) {
+    const admins = await admin.firestore().collection('userProfiles').where('role', '==', 'admin').get();
+    const activeAdmins = admins.docs.filter((doc) => doc.data().active !== false);
+    if (activeAdmins.length <= 1) {
+      throw new functions.https.HttpsError('failed-precondition', 'O sistema precisa manter pelo menos um administrador ativo.');
+    }
+  }
 
   if (profileSnap.exists) {
     try {
@@ -387,6 +423,7 @@ const deleteUser = onCall(async (request) => {
 
   try {
     await profileRef.delete();
+    await writeUserAudit('USER_DELETED', request.auth.uid, uid);
     return { success: true };
   } catch (firestoreError) {
     console.error('[deleteUser] Erro ao deletar perfil do Firestore:', firestoreError);
@@ -399,16 +436,17 @@ const createUser = onCall(async (request) => {
   if (!(await isAdminRequest(request))) {
     throw new functions.https.HttpsError('permission-denied', 'Apenas administradores podem criar usuários.');
   }
+  await consumeAdminUserAction(request.auth.uid);
 
   const { email, password, displayName, role, permissions } = request.data || {};
 
-  if (!email || typeof email !== 'string') {
+  if (!email || typeof email !== 'string' || email.trim().length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
     throw new functions.https.HttpsError('invalid-argument', 'E-mail é obrigatório.');
   }
-  if (!password || typeof password !== 'string' || password.length < 6) {
-    throw new functions.https.HttpsError('invalid-argument', 'Senha deve ter pelo menos 6 caracteres.');
+  if (!password || typeof password !== 'string' || password.length < 8 || password.length > 128) {
+    throw new functions.https.HttpsError('invalid-argument', 'Senha deve ter entre 8 e 128 caracteres.');
   }
-  if (!displayName || typeof displayName !== 'string') {
+  if (!displayName || typeof displayName !== 'string' || displayName.trim().length < 2 || displayName.trim().length > 120) {
     throw new functions.https.HttpsError('invalid-argument', 'Nome é obrigatório.');
   }
 
@@ -416,18 +454,24 @@ const createUser = onCall(async (request) => {
   if (!role || !allowedRoles.includes(role)) {
     throw new functions.https.HttpsError('invalid-argument', 'Role inválido.');
   }
+  if (permissions != null && (typeof permissions !== 'object' || Array.isArray(permissions))) {
+    throw new functions.https.HttpsError('invalid-argument', 'Permissões inválidas.');
+  }
+
+  const normalizedEmail = email.trim().toLowerCase();
+  const normalizedName = displayName.trim();
 
   try {
     const userRecord = await admin.auth().createUser({
-      email: email.trim(),
+      email: normalizedEmail,
       password,
-      displayName: displayName.trim(),
+      displayName: normalizedName,
     });
 
     const profile = {
       uid: userRecord.uid,
-      email: email.trim(),
-      displayName: displayName.trim(),
+      email: normalizedEmail,
+      displayName: normalizedName,
       role,
       permissions: permissions || {},
       active: true,
@@ -435,7 +479,15 @@ const createUser = onCall(async (request) => {
       createdBy: request.auth.uid,
     };
 
-    await admin.firestore().doc(`userProfiles/${userRecord.uid}`).set(profile);
+    try {
+      await admin.firestore().doc(`userProfiles/${userRecord.uid}`).set(profile);
+    } catch (profileError) {
+      await admin.auth().deleteUser(userRecord.uid).catch((rollbackError) => {
+        console.error('[createUser] Falha ao reverter usuário órfão:', rollbackError);
+      });
+      throw profileError;
+    }
+    await writeUserAudit('USER_CREATED', request.auth.uid, userRecord.uid, { role });
 
     return { success: true, uid: userRecord.uid, profile };
   } catch (error) {
@@ -453,6 +505,72 @@ const createUser = onCall(async (request) => {
   }
 });
 
+/** Atualiza perfil e status de usuário com proteção contra perda do último admin. */
+const updateUser = onCall(async (request) => {
+  if (!(await isAdminRequest(request))) {
+    throw new functions.https.HttpsError('permission-denied', 'Apenas administradores podem atualizar usuários.');
+  }
+  await consumeAdminUserAction(request.auth.uid);
+
+  const { uid, displayName, role, permissions, active } = request.data || {};
+  if (!uid || typeof uid !== 'string' || uid.length > 128) {
+    throw new functions.https.HttpsError('invalid-argument', 'UID do usuário é obrigatório.');
+  }
+  if (uid === request.auth.uid && (role !== undefined || active !== undefined)) {
+    throw new functions.https.HttpsError('failed-precondition', 'Você não pode alterar seu próprio perfil administrativo.');
+  }
+  if (displayName !== undefined && (typeof displayName !== 'string' || displayName.trim().length < 2 || displayName.trim().length > 120)) {
+    throw new functions.https.HttpsError('invalid-argument', 'Nome inválido.');
+  }
+  if (role !== undefined && !['admin', 'funcionario', 'user'].includes(role)) {
+    throw new functions.https.HttpsError('invalid-argument', 'Role inválido.');
+  }
+  if (active !== undefined && typeof active !== 'boolean') {
+    throw new functions.https.HttpsError('invalid-argument', 'Status inválido.');
+  }
+  if (permissions !== undefined && (typeof permissions !== 'object' || permissions === null || Array.isArray(permissions))) {
+    throw new functions.https.HttpsError('invalid-argument', 'Permissões inválidas.');
+  }
+
+  const profileRef = admin.firestore().doc(`userProfiles/${uid}`);
+  const auditRef = admin.firestore().collection('userAuditLogs').doc();
+  await admin.firestore().runTransaction(async (transaction) => {
+    const [profileSnap, adminsSnap] = await Promise.all([
+      transaction.get(profileRef),
+      transaction.get(admin.firestore().collection('userProfiles').where('role', '==', 'admin')),
+    ]);
+    if (!profileSnap.exists) {
+      throw new functions.https.HttpsError('not-found', 'Perfil do usuário não encontrado.');
+    }
+    const current = profileSnap.data();
+    const nextRole = role ?? current.role;
+    const nextActive = active ?? current.active !== false;
+    if (current.role === 'admin' && (nextRole !== 'admin' || nextActive !== true)) {
+      const activeAdmins = adminsSnap.docs.filter((doc) => doc.data().active !== false);
+      if (activeAdmins.length <= 1) {
+        throw new functions.https.HttpsError('failed-precondition', 'O sistema precisa manter pelo menos um administrador ativo.');
+      }
+    }
+    const update = {
+      ...(displayName !== undefined ? { displayName: displayName.trim() } : {}),
+      ...(role !== undefined ? { role } : {}),
+      ...(permissions !== undefined ? { permissions } : {}),
+      ...(active !== undefined ? { active } : {}),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedBy: request.auth.uid,
+    };
+    transaction.update(profileRef, update);
+    transaction.create(auditRef, {
+      action: 'USER_PROFILE_UPDATED',
+      targetUid: uid,
+      actorUid: request.auth.uid,
+      changes: Object.keys(update).filter((key) => !['updatedAt', 'updatedBy'].includes(key)),
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+  });
+  return { success: true };
+});
+
 module.exports = {
   sendAdminPasswordReset,
   createUserInvitation,
@@ -461,4 +579,5 @@ module.exports = {
   sendPasswordResetEmail,
   deleteUser,
   createUser,
+  updateUser,
 };

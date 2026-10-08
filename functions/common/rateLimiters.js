@@ -10,6 +10,12 @@ const passwordResetLimiter = new RateLimiterMemory({
   duration: 3600, // 1 hora em segundos
 });
 
+// Operações administrativas de usuários: limita abuso de convites, resets e alterações.
+const adminUserActionLimiter = new RateLimiterMemory({
+  points: 30,
+  duration: 900,
+});
+
 // Rate limiter para envio customizado de e-mails: máximo de 50 disparos por hora por usuário admin
 const customEmailLimiter = new RateLimiterMemory({
   points: 50,
@@ -42,6 +48,7 @@ const publicCatalogOrderLimiter = new RateLimiterMemory({
 
 module.exports = {
   passwordResetLimiter,
+  adminUserActionLimiter,
   customEmailLimiter,
   whatsappMessageLimiter,
   aiAgentLimiter,

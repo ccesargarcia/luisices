@@ -25,6 +25,7 @@ module.exports = {
   sendPasswordResetEmail: userFunctions.sendPasswordResetEmail,
   deleteUser: userFunctions.deleteUser,
   createUser: userFunctions.createUser,
+  updateUser: userFunctions.updateUser,
 
   // ─── E-mail (Resend API e Webhooks) ────────────────────────────────────────
   sendCustomEmail: emailFunctions.sendCustomEmail,

@@ -294,23 +294,20 @@ service cloud.firestore {
       // Leitura: usuário lê apenas o próprio perfil; admin e funcionários ativos leem todos para colaboração na equipe
       allow read: if request.auth != null && (request.auth.uid == uid || isAdmin() || isActiveEmployee());
 
-      // Criação: somente administradores (convites criam perfis server-side via Admin SDK)
-      allow create: if isAdmin();
+      // Criação: somente Cloud Functions (Admin SDK).
+      allow create: if false;
 
-      // Atualização: admin pode alterar tudo;
-      // usuário comum pode atualizar seus dados (nome, etc), mas não pode mudar seu role, permissions nem seu active (evita auto-promoção)
+      // Alterações administrativas passam pela callable updateUser, que valida
+      // o último administrador e registra auditoria.
       allow update: if request.auth != null && (
-        isAdmin()
-        || (
-          request.auth.uid == uid && isActiveUser()
-          && resource != null
-          && !request.resource.data.diff(resource.data).affectedKeys()
-            .hasAny(['uid', 'role', 'active', 'permissions', 'createdBy', 'createdAt'])
-        )
+        request.auth.uid == uid && isActiveUser()
+        && resource != null
+        && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['displayName', 'whatsappPhone'])
       );
 
-      // Deleção: somente admins
-      allow delete: if isAdmin();
+      // Deleção: somente Cloud Functions (Admin SDK).
+      allow delete: if false;
     }
 
     // Permissões explícitas; perfis legados sem emails não recebem acesso.

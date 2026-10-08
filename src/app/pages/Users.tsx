@@ -403,8 +403,8 @@ function UserFormDialog({ open, editingUser, onClose, onSaved }: UserFormDialogP
                 type="password"
                 value={password}
                 onChange={e => setPassword(e.target.value)}
-                placeholder="Mínimo 6 caracteres"
-                minLength={6}
+                placeholder="Mínimo 8 caracteres"
+                minLength={8}
                 required
               />
             </div>
@@ -753,7 +753,7 @@ export function Users() {
             <AlertCircle className="size-4" />
             <AlertTitle>⚠️ Importante</AlertTitle>
             <AlertDescription>
-              Após alterar permissões de um usuário, ele precisa fazer <strong>logout e login novamente</strong> para que as mudanças tenham efeito.
+              Alterações de permissões e status são aplicadas em tempo real. Se o usuário estiver em uma tela aberta, ela será bloqueada assim que a nova regra for recebida.
             </AlertDescription>
           </Alert>
 
@@ -821,7 +821,7 @@ export function Users() {
                   <SelectItem value="all">Todos os Perfis</SelectItem>
                   <SelectItem value="admin">Administradores</SelectItem>
                   <SelectItem value="funcionario">Funcionários</SelectItem>
-                  <SelectItem value="usuario">Usuários Padrão</SelectItem>
+                  <SelectItem value="user">Usuários Padrão</SelectItem>
                 </SelectContent>
               </Select>
             </div>
