@@ -46,3 +46,5 @@ Documento de rastreamento de progresso conforme especificado em `antigravity-pla
 - [x] Hotfix: Correção de importação ausente (`assertActiveSession`) em `sendCustomEmail` e expansão de segurança para `getEmailUsage`.
 - [x] Hotfix: Reordenação em `updateUser` para revogar RTDB/Auth antes de consolidar claims no Firestore (garante retry em caso de falha da API).
 - [x] Hotfix: frontend (`AuthContext`) atualizado para usar a instância correta e conectada de `functions` para invocar o reparo de claims.
+- [x] Refatoração de `updateUser` para usar padrão transacional de 3 fases (Transação -> Efeitos colaterais -> Limpeza), garantindo consistência com `last admin` e recuperação de custom claims (`claimsSyncPending`).
+- [x] Expansão da barreira temporal (`assertActiveSession`) para **todos** os Callables da Alexa, substituindo autorização própria por barreira temporal unificada.
