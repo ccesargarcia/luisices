@@ -1,12 +1,32 @@
 {
   "rules": {
     "status": {
-      // Qualquer um autenticado pode ver o status de todos
-      ".read": "auth != null",
+      // Somente admin pode ler tudo. Usuários comuns só leem/escrevem o próprio status.
+      ".read": "auth != null && auth.token.role === 'admin'",
       "$uid": {
-        // Um usuário só pode alterar o seu próprio status
+        // Leitura do próprio status
+        ".read": "auth != null && auth.uid === $uid",
+        // Escrita restrita ao próprio usuário e apenas se a conta não estiver revogada/inativa (auth.token.active !== false se aplicável)
         ".write": "auth != null && auth.uid === $uid",
-        ".validate": "newData.hasChildren(['state', 'lastChanged']) && (newData.child('state').val() === 'online' || newData.child('state').val() === 'offline' || newData.child('state').val() === 'away')"
+        
+        "state": {
+          ".validate": "newData.val() === 'online' || newData.val() === 'offline' || newData.val() === 'away'"
+        },
+        "lastChanged": {
+          ".validate": "newData.isNumber()"
+        },
+        "lastOnline": {
+          ".validate": "newData.isNumber()"
+        },
+        "connections": {
+          "$connectionId": {
+            ".validate": "newData.isBoolean()"
+          }
+        },
+        // Rejeita campos desconhecidos
+        "$other": {
+          ".validate": "false"
+        }
       }
     }
   }

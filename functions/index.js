@@ -30,7 +30,7 @@ module.exports = {
   createUser: userFunctions.createUser,
   updateUser: userFunctions.updateUser,
   registerDeviceSession: userFunctions.registerDeviceSession,
-  revokeDeviceSession: userFunctions.revokeDeviceSession,
+  revokeAllSessions: userFunctions.revokeAllSessions,
 
   // ─── E-mail (Resend API e Webhooks) ────────────────────────────────────────
   sendCustomEmail: emailFunctions.sendCustomEmail,

@@ -663,6 +663,8 @@ const createUser = onCall(async (request) => {
       password,
       displayName: normalizedName,
     });
+    
+    await admin.auth().setCustomUserClaims(userRecord.uid, { role, active: true });
 
     const profile = {
       uid: userRecord.uid,
@@ -731,7 +733,7 @@ const updateUser = onCall(async (request) => {
 
   const profileRef = admin.firestore().doc(`userProfiles/${uid}`);
   const auditRef = admin.firestore().collection('userAuditLogs').doc();
-  await admin.firestore().runTransaction(async (transaction) => {
+  const nextClaims = await admin.firestore().runTransaction(async (transaction) => {
     const [profileSnap, adminsSnap] = await Promise.all([
       transaction.get(profileRef),
       transaction.get(admin.firestore().collection('userProfiles').where('role', '==', 'admin')),
@@ -764,7 +766,12 @@ const updateUser = onCall(async (request) => {
       changes: Object.keys(update).filter((key) => !['updatedAt', 'updatedBy'].includes(key)),
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
     });
+    
+    return { role: nextRole, active: nextActive };
   });
+
+  await admin.auth().setCustomUserClaims(uid, { role: nextClaims.role, active: nextClaims.active });
+  
   return { success: true };
 });
 

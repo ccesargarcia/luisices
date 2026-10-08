@@ -1087,7 +1087,7 @@ export function Users() {
                         <TableCell className="text-xs text-muted-foreground min-w-64">
                           <div>Último acesso: <span className="text-foreground">{formatLastSignIn(u.lastSignInAt, u.accountMetadataLoaded)}</span></div>
                           <div>Criada em: <span className="text-foreground">{formatAccountDate(u.authCreatedAt || u.createdAt)}</span></div>
-                          <div>Senha alterada: <span className="text-foreground">{formatAccountDate(u.passwordChangedAt)}</span></div>
+                          <div>Senha alterada (Declarada): <span className="text-foreground">{formatAccountDate(u.passwordChangedAt)}</span></div>
                           <div>Perfil atualizado: <span className="text-foreground">{formatAccountDate(u.updatedAt)}</span></div>
                           {u.lastPasswordResetRequestedAt && <div>Redefinição solicitada: <span className="text-foreground">{formatUserDate(u.lastPasswordResetRequestedAt)}</span></div>}
                         </TableCell>
@@ -1182,7 +1182,7 @@ export function Users() {
                       <div className="border-t pt-2 text-xs text-muted-foreground space-y-1">
                         <p>Último acesso: <span className="text-foreground">{formatLastSignIn(u.lastSignInAt, u.accountMetadataLoaded)}</span></p>
                         <p>Conta criada em: <span className="text-foreground">{formatAccountDate(u.authCreatedAt || u.createdAt)}</span></p>
-                        <p>Senha alterada: <span className="text-foreground">{formatAccountDate(u.passwordChangedAt)}</span></p>
+                        <p>Senha alterada (Declarada pelo cliente): <span className="text-foreground">{formatAccountDate(u.passwordChangedAt)}</span></p>
                         <p>Perfil atualizado: <span className="text-foreground">{formatAccountDate(u.updatedAt)}</span></p>
                         {u.lastPasswordResetRequestedAt && <p>Última redefinição solicitada: <span className="text-foreground">{formatUserDate(u.lastPasswordResetRequestedAt)}</span></p>}
                       </div>
