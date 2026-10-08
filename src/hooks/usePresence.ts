@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { ref, onValue, onDisconnect, set, serverTimestamp } from 'firebase/database';
+import { ref, onValue, onDisconnect, set, serverTimestamp, push, remove } from 'firebase/database';
 import { database } from '../lib/firebase';
 import { User } from 'firebase/auth';
 
@@ -10,50 +10,46 @@ export function usePresence(user: User | null) {
     if (!user) return;
 
     const uid = user.uid;
-    const userStatusDatabaseRef = ref(database, `/status/${uid}`);
     const connectedRef = ref(database, '.info/connected');
+    const myConnectionsRef = ref(database, `/status/${uid}/connections`);
+    const lastOnlineRef = ref(database, `/status/${uid}/lastOnline`);
+    let connectionRef: any = null;
 
     const unsubscribe = onValue(connectedRef, (snap) => {
       if (snap.val() === true) {
-        // We're connected (or reconnected)! Set up the disconnect hook.
-        // The onDisconnect() call is sent to the server. If the client disconnects,
-        // the server will write this data.
-        onDisconnect(userStatusDatabaseRef)
-          .set({
-            state: 'offline',
-            lastChanged: serverTimestamp(),
-          })
-          .then(() => {
-            // Once the disconnect hook is established on the server,
-            // we can confidently set ourselves to online.
-            set(userStatusDatabaseRef, {
-              state: 'online',
-              lastChanged: serverTimestamp(),
-            });
-          });
+        // We're connected (or reconnected)!
+        connectionRef = push(myConnectionsRef);
+
+        // When I disconnect, remove this device
+        onDisconnect(connectionRef).remove();
+
+        // When I disconnect, update the last time I was seen online
+        onDisconnect(lastOnlineRef).set(serverTimestamp());
+
+        // Add this device to my connections list
+        set(connectionRef, true);
       }
     });
 
-    // Provide a way to manually go offline (e.g., on logout)
     presenceRef.current = {
       setOffline: () => {
-        return set(userStatusDatabaseRef, {
-          state: 'offline',
-          lastChanged: serverTimestamp(),
-        });
+        if (connectionRef) {
+          return remove(connectionRef).then(() => {
+            return set(lastOnlineRef, serverTimestamp());
+          });
+        }
       }
     };
 
     return () => {
       unsubscribe();
-      // Optionally set offline when component unmounts (though onDisconnect handles closing tab)
-      // but we shouldn't set offline on every unmount unless they actually logged out,
-      // because React StrictMode or route changes might unmount this if it wasn't strictly at the root.
-      // But since it's going to be used in AuthContext (root), it's safe.
+      if (connectionRef) {
+        remove(connectionRef);
+        set(lastOnlineRef, serverTimestamp());
+      }
     };
   }, [user]);
 
-  // Expose a function to set offline manually (e.g., during logout)
   return {
     setOffline: () => presenceRef.current?.setOffline()
   };

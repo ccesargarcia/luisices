@@ -773,8 +773,13 @@ const registerDeviceSession = onCall({ memory: '512MiB' }, async (request) => {
   if (!request.auth) throw new functions.https.HttpsError('unauthenticated', 'Requer autenticação.');
   
   const { deviceId, userAgent } = request.data || {};
-  if (!deviceId || typeof deviceId !== 'string') {
-    throw new functions.https.HttpsError('invalid-argument', 'deviceId é obrigatório.');
+  if (!deviceId || typeof deviceId !== 'string' || deviceId.length < 5 || deviceId.length > 200) {
+    throw new functions.https.HttpsError('invalid-argument', 'deviceId inválido.');
+  }
+
+  let safeUserAgent = userAgent || 'Desconhecido';
+  if (typeof safeUserAgent === 'string' && safeUserAgent.length > 300) {
+    safeUserAgent = safeUserAgent.substring(0, 300) + '...';
   }
 
   // Obter IP (x-forwarded-for pode conter múltiplos IPs)
@@ -799,50 +804,90 @@ const registerDeviceSession = onCall({ memory: '512MiB' }, async (request) => {
     console.warn('[registerDeviceSession] Falha ao buscar localização do IP:', error);
   }
 
-  const userDevicesRef = admin.firestore().collection(`userProfiles/${request.auth.uid}/devices`);
-  const devicesSnap = await userDevicesRef.get();
-  if (devicesSnap.size >= 10) {
-    // Remove o dispositivo mais antigo
-    const sorted = devicesSnap.docs.map(d => ({ id: d.id, time: d.data().createdAt?.toMillis() || 0 })).sort((a, b) => a.time - b.time);
-    const oldest = sorted[0];
-    await userDevicesRef.doc(oldest.id).delete();
-  }
-
-  const deviceRef = userDevicesRef.doc(deviceId);
+  const uid = request.auth.uid;
+  const db = admin.firestore();
   
-  // Usamos set com merge para criar ou atualizar sem perder o createdAt original
-  await deviceRef.set({
-    deviceId,
-    userAgent: userAgent || 'Desconhecido',
-    ip: ip || 'Desconhecido',
-    location: locationString,
-    lastActiveAt: admin.firestore.FieldValue.serverTimestamp(),
-    createdAt: admin.firestore.FieldValue.serverTimestamp(),
-  }, { merge: true });
+  await db.runTransaction(async (transaction) => {
+    const profileRef = db.doc(`userProfiles/${uid}`);
+    const profileSnap = await transaction.get(profileRef);
+    
+    if (!profileSnap.exists || profileSnap.data().active === false) {
+      throw new functions.https.HttpsError('permission-denied', 'Perfil de usuário inativo ou inexistente.');
+    }
+
+    const userDevicesRef = db.collection(`userProfiles/${uid}/devices`);
+    const devicesSnap = await transaction.get(userDevicesRef);
+    const deviceRef = userDevicesRef.doc(deviceId);
+    
+    let existingDevice = null;
+    let deviceCount = 0;
+    let oldestDevice = null;
+    
+    devicesSnap.forEach(doc => {
+      deviceCount++;
+      if (doc.id === deviceId) {
+        existingDevice = doc;
+      }
+      const data = doc.data();
+      const time = data.createdAt?.toMillis ? data.createdAt.toMillis() : 0;
+      if (!oldestDevice || time < oldestDevice.time) {
+        oldestDevice = { id: doc.id, time };
+      }
+    });
+
+    if (existingDevice) {
+      transaction.update(deviceRef, {
+        userAgent: safeUserAgent,
+        ip: ip || 'Desconhecido',
+        location: locationString,
+        lastActiveAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+    } else {
+      if (deviceCount >= 10 && oldestDevice) {
+        transaction.delete(userDevicesRef.doc(oldestDevice.id));
+      }
+      transaction.set(deviceRef, {
+        deviceId,
+        userAgent: safeUserAgent,
+        ip: ip || 'Desconhecido',
+        location: locationString,
+        lastActiveAt: admin.firestore.FieldValue.serverTimestamp(),
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+    }
+  });
 
   return { success: true };
 });
 
 /** Remove a sessão de um dispositivo específico (Apenas Admin). */
-const revokeDeviceSession = onCall(async (request) => {
+/** Revoga todas as sessões e tokens de um usuário. (Apenas Admin). */
+const revokeAllSessions = onCall(async (request) => {
   if (!(await isAdminRequest(request))) {
     throw new functions.https.HttpsError('permission-denied', 'Apenas administradores podem revogar sessões.');
   }
   
-  const { uid, deviceId } = request.data || {};
-  if (!uid || typeof uid !== 'string' || !deviceId || typeof deviceId !== 'string') {
-    throw new functions.https.HttpsError('invalid-argument', 'UID e deviceId são obrigatórios.');
+  const { uid } = request.data || {};
+  if (!uid || typeof uid !== 'string') {
+    throw new functions.https.HttpsError('invalid-argument', 'UID é obrigatório.');
   }
 
-  await admin.firestore().doc(`userProfiles/${uid}/devices/${deviceId}`).delete();
+  // Deletar todos os devices do Firestore
+  const devicesRef = admin.firestore().collection(`userProfiles/${uid}/devices`);
+  const snapshot = await devicesRef.get();
+  const batch = admin.firestore().batch();
+  snapshot.docs.forEach(doc => {
+    batch.delete(doc.ref);
+  });
+  await batch.commit();
   
   try {
     await admin.auth().revokeRefreshTokens(uid);
   } catch (err) {
-    console.warn(`[revokeDeviceSession] Aviso ao revogar tokens do usuário ${uid}:`, err);
+    console.warn(`[revokeAllSessions] Aviso ao revogar tokens do usuário ${uid}:`, err);
   }
 
-  await writeUserAudit('DEVICE_SESSION_REVOKED', request.auth.uid, uid, { deviceId });
+  await writeUserAudit('ALL_SESSIONS_REVOKED', request.auth.uid, uid, {});
   
   return { success: true };
 });
@@ -860,5 +905,5 @@ module.exports = {
   createUser,
   updateUser,
   registerDeviceSession,
-  revokeDeviceSession,
+  revokeAllSessions,
 };

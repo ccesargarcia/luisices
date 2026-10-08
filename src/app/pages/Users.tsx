@@ -578,15 +578,15 @@ function UserDevicesDialog({ open, user, onClose }: UserDevicesDialogProps) {
     }
   }
 
-  async function handleRevoke(deviceId: string) {
+  async function handleRevokeAll() {
     if (!user) return;
-    setRevoking(deviceId);
+    setRevoking('all');
     try {
-      await firebaseUserService.revokeDeviceSession(user.uid, deviceId);
-      toast.success('Sessão encerrada com sucesso');
+      await firebaseUserService.revokeAllSessions(user.uid);
+      toast.success('Todas as sessões encerradas com sucesso');
       await loadDevices(); // Recarrega a lista
     } catch (err) {
-      toast.error('Erro ao encerrar sessão do dispositivo');
+      toast.error('Erro ao encerrar sessões');
     } finally {
       setRevoking(null);
     }
@@ -598,7 +598,7 @@ function UserDevicesDialog({ open, user, onClose }: UserDevicesDialogProps) {
         <DialogHeader className="p-4 sm:p-6 pb-3 border-b border-border">
           <DialogTitle>Dispositivos Ativos</DialogTitle>
           <DialogDescription className="text-xs text-muted-foreground">
-            Monitoramento de sessões para {user?.displayName}. Você pode desconectar remotamente dispositivos desconhecidos.
+            Monitoramento de sessões para {user?.displayName}. Você pode desconectar remotamente todos os dispositivos.
           </DialogDescription>
         </DialogHeader>
 
@@ -616,21 +616,21 @@ function UserDevicesDialog({ open, user, onClose }: UserDevicesDialogProps) {
               {devices.map(device => (
                 <Card key={device.deviceId} className="overflow-hidden">
                   <CardContent className="p-4 sm:p-5">
-                    <div className="flex flex-col sm:flex-row gap-4 justify-between items-start">
-                      <div className="space-y-1.5 flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <MonitorSmartphone className="size-4 text-primary shrink-0" />
-                          <h4 className="font-medium text-sm line-clamp-2 break-all">{device.userAgent || 'Dispositivo Desconhecido'}</h4>
+                    <div className="flex flex-col gap-2">
+                      <div className="flex items-center gap-2">
+                        <MonitorSmartphone className="size-4 text-primary shrink-0" />
+                        <h4 className="font-medium text-sm line-clamp-2 break-all">{device.userAgent || 'Dispositivo Desconhecido'}</h4>
+                      </div>
+                      <div className="flex flex-col gap-2 text-xs text-muted-foreground mt-2">
+                        <div className="flex flex-col">
+                          <span className="font-medium text-foreground/80">Endereço IP:</span>
+                          <span className="break-all">{device.ip || 'Não detectado'}</span>
                         </div>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1 text-xs text-muted-foreground mt-2">
-                          <div className="flex flex-col">
-                            <span className="font-medium text-foreground/80">Endereço IP:</span>
-                            <span className="break-all">{device.ip || 'Não detectado'}</span>
-                          </div>
-                          <div className="flex flex-col">
-                            <span className="font-medium text-foreground/80">Localização (Aprox.):</span>
-                            <span>{device.location || 'Não detectada'}</span>
-                          </div>
+                        <div className="flex flex-col">
+                          <span className="font-medium text-foreground/80">Localização (Aprox.):</span>
+                          <span className="break-words">{device.location || 'Não detectada'}</span>
+                        </div>
+                        <div className="flex flex-col sm:flex-row gap-4 sm:gap-8 mt-1">
                           <div className="flex flex-col">
                             <span className="font-medium text-foreground/80">Última Atividade:</span>
                             <span>{formatUserDate(device.lastActiveAt)}</span>
@@ -641,19 +641,6 @@ function UserDevicesDialog({ open, user, onClose }: UserDevicesDialogProps) {
                           </div>
                         </div>
                       </div>
-                      <Button 
-                        variant="destructive" 
-                        size="sm"
-                        className="w-full sm:w-auto shrink-0 mt-2 sm:mt-0"
-                        disabled={revoking === device.deviceId}
-                        onClick={() => handleRevoke(device.deviceId)}
-                      >
-                        {revoking === device.deviceId ? (
-                          <><Loader2 className="size-3.5 mr-2 animate-spin" /> Removendo...</>
-                        ) : (
-                          <><Trash2 className="size-3.5 mr-2" /> Desconectar</>
-                        )}
-                      </Button>
                     </div>
                   </CardContent>
                 </Card>
@@ -662,8 +649,22 @@ function UserDevicesDialog({ open, user, onClose }: UserDevicesDialogProps) {
           )}
         </DialogBody>
 
-        <DialogFooter className="p-4 sm:p-6 pt-3 border-t border-border bg-background">
-          <Button type="button" variant="outline" onClick={onClose}>
+        <DialogFooter className="p-4 sm:p-6 pt-3 border-t border-border bg-background sm:justify-between items-center flex-col sm:flex-row gap-3">
+          {devices.length > 0 && (
+            <Button 
+              variant="destructive" 
+              onClick={handleRevokeAll}
+              disabled={revoking === 'all'}
+              className="w-full sm:w-auto"
+            >
+              {revoking === 'all' ? (
+                <><Loader2 className="size-3.5 mr-2 animate-spin" /> Revogando...</>
+              ) : (
+                <><Trash2 className="size-3.5 mr-2" /> Revogar Todas as Sessões</>
+              )}
+            </Button>
+          )}
+          <Button type="button" variant="outline" onClick={onClose} className="w-full sm:w-auto">
             Fechar
           </Button>
         </DialogFooter>
@@ -684,7 +685,7 @@ export function Users() {
   const tabParam = searchParams.get('tab') as UserTabType;
   const initialTab: UserTabType = validTabs.includes(tabParam) ? tabParam : 'membros';
   const [activeTab, setActiveTab] = useState<UserTabType>(initialTab);
-  const [presenceData, setPresenceData] = useState<Record<string, { state: string, lastChanged: number }>>({});
+  const [presenceData, setPresenceData] = useState<Record<string, any>>({});
 
   useEffect(() => {
     if (!isAdmin) return;
@@ -710,7 +711,8 @@ export function Users() {
   };
 
   const renderPresence = (uid: string) => {
-    const isOnline = presenceData[uid]?.state === 'online';
+    const data = presenceData[uid];
+    const isOnline = data?.state === 'online' || (data?.connections && Object.keys(data.connections).length > 0);
     return (
       <span
         title={isOnline ? 'Online agora' : 'Offline'}
@@ -1071,17 +1073,16 @@ export function Users() {
                           )}
                         </TableCell>
                         <TableCell>
-                          <div className="flex items-center gap-2">
-                            <Switch
-                              checked={u.active}
-                              onCheckedChange={() => toggleActive(u)}
-                              disabled={togglingUid === u.uid || u.uid === currentUser?.uid}
-                              aria-label="Ativar/desativar usuário"
-                            />
-                            <span className={`text-xs ${u.active ? 'text-green-600' : 'text-muted-foreground'}`}>
-                              {u.active ? 'Ativo' : 'Inativo'}
-                            </span>
-                          </div>
+                          <Button
+                            variant={u.active ? 'default' : 'secondary'}
+                            size="sm"
+                            className={`h-7 px-3 text-xs w-20 flex justify-center ${u.active ? 'bg-green-600 hover:bg-green-700 text-white' : 'text-muted-foreground'}`}
+                            onClick={() => toggleActive(u)}
+                            disabled={togglingUid === u.uid || u.uid === currentUser?.uid}
+                            title={u.active ? 'Clique para desativar' : 'Clique para ativar'}
+                          >
+                            {togglingUid === u.uid ? <Loader2 className="size-3 animate-spin" /> : (u.active ? 'Ativo' : 'Inativo')}
+                          </Button>
                         </TableCell>
                         <TableCell className="text-xs text-muted-foreground min-w-64">
                           <div>Último acesso: <span className="text-foreground">{formatLastSignIn(u.lastSignInAt, u.accountMetadataLoaded)}</span></div>
@@ -1167,16 +1168,16 @@ export function Users() {
                             <User className="size-3 mr-1" /> Usuário
                           </Badge>
                         )}
-                        <div className="flex items-center gap-2">
-                          <Switch
-                            checked={u.active}
-                            onCheckedChange={() => toggleActive(u)}
-                            disabled={togglingUid === u.uid || u.uid === currentUser?.uid}
-                          />
-                          <span className={`text-xs ${u.active ? 'text-green-600' : 'text-muted-foreground'}`}>
-                            {u.active ? 'Ativo' : 'Inativo'}
-                          </span>
-                        </div>
+                        <Button
+                          variant={u.active ? 'default' : 'secondary'}
+                          size="sm"
+                          className={`h-7 px-3 text-xs w-20 flex justify-center ${u.active ? 'bg-green-600 hover:bg-green-700 text-white' : 'text-muted-foreground'}`}
+                          onClick={() => toggleActive(u)}
+                          disabled={togglingUid === u.uid || u.uid === currentUser?.uid}
+                          title={u.active ? 'Clique para desativar' : 'Clique para ativar'}
+                        >
+                          {togglingUid === u.uid ? <Loader2 className="size-3 animate-spin" /> : (u.active ? 'Ativo' : 'Inativo')}
+                        </Button>
                       </div>
                       <div className="border-t pt-2 text-xs text-muted-foreground space-y-1">
                         <p>Último acesso: <span className="text-foreground">{formatLastSignIn(u.lastSignInAt, u.accountMetadataLoaded)}</span></p>

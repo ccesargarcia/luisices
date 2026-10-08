@@ -40,9 +40,9 @@ export class FirebaseUserService {
     await callable({ deviceId, userAgent });
   }
 
-  async revokeDeviceSession(uid: string, deviceId: string): Promise<void> {
-    const callable = httpsCallable(functions, 'revokeDeviceSession');
-    await callable({ uid, deviceId });
+  async revokeAllSessions(uid: string): Promise<void> {
+    const callable = httpsCallable(functions, 'revokeAllSessions');
+    await callable({ uid });
   }
 
   async getUserDevices(uid: string): Promise<DeviceSession[]> {

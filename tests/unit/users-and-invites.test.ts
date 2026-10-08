@@ -91,3 +91,11 @@ describe('Etapa 2: Convites e Ciclo de Vida de Usuários (Achados 1 e 2)', () =>
     });
   });
 });
+
+describe('revokeAllSessions', () => {
+  it('deve chamar a funcao revokeAllSessions com o uid correto', async () => {
+    const { firebaseUserService } = await import('../../src/services/firebaseUserService');
+    await firebaseUserService.revokeAllSessions('test-uid-123');
+    expect(mockCallable).toHaveBeenCalled();
+  });
+});

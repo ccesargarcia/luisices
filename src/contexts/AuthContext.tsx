@@ -240,6 +240,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     return () => {
       if (profileUnsub) profileUnsub();
+      if (deviceUnsub) deviceUnsub();
       authUnsubscribe();
     };
   }, []);
