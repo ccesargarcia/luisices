@@ -101,7 +101,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           await u.getIdToken();
           
           let deviceId = localStorage.getItem('luisices_device_id');
-          const isNewDevice = !deviceId;
+
           if (!deviceId) {
             deviceId = crypto.randomUUID();
             localStorage.setItem('luisices_device_id', deviceId);
@@ -118,11 +118,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 }).catch(err => console.warn('[AuthContext] Erro ao atualizar sessão do dispositivo', err));
               }
             } else {
-              if (deviceWasRegistered || !isNewDevice) {
+              const regKey = `luisices_device_reg_${u.uid}`;
+              if (deviceWasRegistered || localStorage.getItem(regKey) === 'true') {
+                localStorage.removeItem(regKey);
                 toast.error('Esta sessão foi revogada remotamente.');
                 firebaseAuthService.logout().catch(() => {});
               } else {
                 deviceWasRegistered = true;
+                localStorage.setItem(regKey, 'true');
                 firebaseUserService.registerDeviceSession(deviceId, navigator.userAgent).then(() => {
                   localStorage.setItem('luisices_device_last_reg', String(Date.now()));
                 }).catch(err => console.warn('[AuthContext] Erro ao registrar sessão do dispositivo', err));
@@ -263,6 +266,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = async () => {
     presence.setOffline();
+    if (user) {
+      localStorage.removeItem(`luisices_device_reg_${user.uid}`);
+    }
     await firebaseAuthService.logout();
     setUserProfile(null);
   };
