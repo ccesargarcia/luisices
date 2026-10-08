@@ -104,29 +104,32 @@ const MODULES: ModuleConfig[] = [
   { key: 'pricing',        label: 'Precificação & Custos de Insumos',   type: 'crud' },
 ];
 
-function deepClonePermission(p: Permission): Permission {
-  const clone: Permission = JSON.parse(JSON.stringify(p || {}));
-  if (!clone.storeProducts) {
-    clone.storeProducts = { view: false, create: false, edit: false, delete: false };
+function deepClonePermission(p?: Permission | null): Permission {
+  const source = p && typeof p === 'object' ? p as unknown as Record<string, any> : {};
+  const clone = JSON.parse(JSON.stringify(DEFAULT_USER_PERMISSIONS)) as Record<string, any>;
+  const crudKeys = ['orders', 'archivedOrders', 'customers', 'products', 'quotes', 'users', 'emails', 'pricing', 'storeProducts'];
+  const booleanKeys = ['dashboard', 'reports', 'exchanges', 'settings', 'store', 'whatsapp', 'aiCopilot'];
+
+  for (const key of crudKeys) {
+    const value = source[key];
+    if (typeof value === 'boolean') {
+      clone[key] = { view: value, create: value, edit: value, delete: value };
+    } else if (value && typeof value === 'object') {
+      clone[key] = { ...(clone[key] || {}), ...value };
+    }
   }
-  if (!clone.pricing || typeof clone.pricing === 'boolean') {
-    const val = Boolean(clone.pricing);
-    clone.pricing = { view: val, create: val, edit: val, delete: val };
+
+  if (source.gallery && typeof source.gallery === 'object') {
+    clone.gallery = { ...clone.gallery, ...source.gallery };
   }
-  if (!clone.emails || typeof clone.emails === 'boolean') {
-    const val = Boolean(clone.emails);
-    clone.emails = { view: val, create: val, edit: val, delete: val };
+
+  for (const key of booleanKeys) {
+    const value = source[key];
+    if (typeof value === 'boolean') clone[key] = value;
+    else if (value && typeof value === 'object' && typeof value.view === 'boolean') clone[key] = value.view;
   }
-  if (!clone.archivedOrders || typeof clone.archivedOrders === 'boolean') {
-    const val = typeof clone.archivedOrders === 'boolean' ? clone.archivedOrders : Boolean(clone.orders?.view);
-    clone.archivedOrders = {
-      view: val,
-      create: typeof clone.orders?.create === 'boolean' ? clone.orders.create : val,
-      edit: typeof clone.orders?.edit === 'boolean' ? clone.orders.edit : val,
-      delete: typeof clone.orders?.delete === 'boolean' ? clone.orders.delete : false,
-    };
-  }
-  return clone;
+
+  return clone as Permission;
 }
 
 function formatUserDate(value?: string) {
@@ -212,7 +215,7 @@ function PermissionMatrix({ permissions, onChange }: PermissionMatrixProps) {
                 <div key={field} className="flex items-center gap-1.5">
                   <Checkbox
                     id={`perm-gallery-${field}`}
-                    checked={permissions.gallery[field]}
+                    checked={Boolean(permissions.gallery?.[field])}
                     onCheckedChange={() => toggleGalleryField(field)}
                   />
                   <Label htmlFor={`perm-gallery-${field}`} className="text-xs font-normal">

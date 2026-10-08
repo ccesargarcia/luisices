@@ -17,6 +17,26 @@ const {
   hashToken,
 } = require('../common/helpers');
 
+const INVITED_USER_PERMISSIONS = {
+  dashboard: true,
+  orders: { view: true, create: true, edit: false, delete: false },
+  archivedOrders: { view: true, create: true, edit: true, delete: true },
+  customers: { view: true, create: true, edit: false, delete: false },
+  whatsapp: true,
+  aiCopilot: true,
+  products: { view: true, create: false, edit: false, delete: false },
+  storeProducts: { view: true, create: true, edit: true, delete: false },
+  store: true,
+  quotes: { view: true, create: true, edit: true, delete: true },
+  gallery: { view: true, create: true, delete: true },
+  exchanges: true,
+  reports: false,
+  settings: false,
+  users: { view: false, create: false, edit: false, delete: false },
+  emails: { view: false, create: false, edit: false, delete: false },
+  pricing: { view: true, create: true, edit: true, delete: true },
+};
+
 async function consumeAdminUserAction(uid) {
   try {
     await adminUserActionLimiter.consume(uid);
@@ -75,14 +95,7 @@ async function activateInvitedAccount(invitationRef, invitationData, authUser) {
         whatsappPhone: invitationData.whatsappPhone || null,
         role: 'user',
         active: true,
-        permissions: {
-          orders: { view: true, create: true, edit: false, delete: false },
-          customers: { view: true, create: true, edit: false, delete: false },
-          products: { view: true, create: false, edit: false, delete: false },
-          finances: { view: false, create: false, edit: false, delete: false },
-          reports: { view: false },
-          settings: { view: false, edit: false },
-        },
+        permissions: INVITED_USER_PERMISSIONS,
         invitedBy: invitationData.invitedBy,
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
