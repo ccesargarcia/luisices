@@ -25,7 +25,42 @@ function normalizeDate(value: any): string | undefined {
   return undefined;
 }
 
+export interface DeviceSession {
+  deviceId: string;
+  userAgent: string;
+  ip: string;
+  location: string;
+  lastActiveAt: any;
+  createdAt: any;
+}
+
 export class FirebaseUserService {
+  async registerDeviceSession(deviceId: string, userAgent: string): Promise<void> {
+    const callable = httpsCallable(functions, 'registerDeviceSession');
+    await callable({ deviceId, userAgent });
+  }
+
+  async revokeDeviceSession(uid: string, deviceId: string): Promise<void> {
+    const callable = httpsCallable(functions, 'revokeDeviceSession');
+    await callable({ uid, deviceId });
+  }
+
+  async getUserDevices(uid: string): Promise<DeviceSession[]> {
+    const q = query(collection(db, USERS_COLLECTION, uid, 'devices'), orderBy('lastActiveAt', 'desc'));
+    const snap = await getDocs(q);
+    return snap.docs.map((d) => {
+      const data = d.data();
+      return {
+        deviceId: d.id,
+        userAgent: data.userAgent || '',
+        ip: data.ip || '',
+        location: data.location || '',
+        lastActiveAt: normalizeDate(data.lastActiveAt),
+        createdAt: normalizeDate(data.createdAt),
+      } as DeviceSession;
+    });
+  }
+
   async sendAdminPasswordReset(email: string): Promise<void> {
     const callable = httpsCallable(functions, 'sendAdminPasswordReset');
     await callable({ email });

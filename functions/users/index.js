@@ -768,6 +768,65 @@ const updateUser = onCall(async (request) => {
   return { success: true };
 });
 
+/** Registra o dispositivo e captura o IP e Localização do usuário. */
+const registerDeviceSession = onCall(async (request) => {
+  if (!request.auth) throw new functions.https.HttpsError('unauthenticated', 'Requer autenticação.');
+  
+  const { deviceId, userAgent } = request.data || {};
+  if (!deviceId || typeof deviceId !== 'string') {
+    throw new functions.https.HttpsError('invalid-argument', 'deviceId é obrigatório.');
+  }
+
+  // Obter IP (x-forwarded-for pode conter múltiplos IPs)
+  let ip = request.rawRequest?.headers?.['x-forwarded-for'] || request.rawRequest?.socket?.remoteAddress;
+  if (ip && typeof ip === 'string' && ip.includes(',')) ip = ip.split(',')[0].trim();
+  
+  let locationString = 'Localização Desconhecida';
+  try {
+    // API pública gratuita (ip-api.com) - limite 45 req/min
+    if (ip && ip !== '127.0.0.1' && ip !== '::1') {
+      const response = await fetch(`http://ip-api.com/json/${ip}`);
+      const geo = await response.json();
+      if (geo.status === 'success') {
+        locationString = `${geo.city}, ${geo.region} - ${geo.countryCode}`;
+      }
+    }
+  } catch (error) {
+    console.warn('[registerDeviceSession] Falha ao buscar localização do IP:', error);
+  }
+
+  const deviceRef = admin.firestore().doc(`userProfiles/${request.auth.uid}/devices/${deviceId}`);
+  
+  // Usamos set com merge para criar ou atualizar sem perder o createdAt original
+  await deviceRef.set({
+    deviceId,
+    userAgent: userAgent || 'Desconhecido',
+    ip: ip || 'Desconhecido',
+    location: locationString,
+    lastActiveAt: admin.firestore.FieldValue.serverTimestamp(),
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+  }, { merge: true });
+
+  return { success: true };
+});
+
+/** Remove a sessão de um dispositivo específico (Apenas Admin). */
+const revokeDeviceSession = onCall(async (request) => {
+  if (!(await isAdminRequest(request))) {
+    throw new functions.https.HttpsError('permission-denied', 'Apenas administradores podem revogar sessões.');
+  }
+  
+  const { uid, deviceId } = request.data || {};
+  if (!uid || typeof uid !== 'string' || !deviceId || typeof deviceId !== 'string') {
+    throw new functions.https.HttpsError('invalid-argument', 'UID e deviceId são obrigatórios.');
+  }
+
+  await admin.firestore().doc(`userProfiles/${uid}/devices/${deviceId}`).delete();
+  await writeUserAudit('DEVICE_SESSION_REVOKED', request.auth.uid, uid, { deviceId });
+  
+  return { success: true };
+});
+
 module.exports = {
   sendAdminPasswordReset,
   createUserInvitation,
@@ -780,4 +839,6 @@ module.exports = {
   deleteUser,
   createUser,
   updateUser,
+  registerDeviceSession,
+  revokeDeviceSession,
 };

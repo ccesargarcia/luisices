@@ -74,11 +74,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let profileUnsub: (() => void) | null = null;
+    let deviceUnsub: (() => void) | null = null;
 
     const authUnsubscribe = firebaseAuthService.onAuthChange(async (u) => {
       if (profileUnsub) {
         profileUnsub();
         profileUnsub = null;
+      }
+      if (deviceUnsub) {
+        deviceUnsub();
+        deviceUnsub = null;
       }
 
       setLoading(true);
@@ -94,6 +99,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         try {
           // Garante que o token de autenticação está válido antes de conectar os listeners do Firestore
           await u.getIdToken();
+          
+          let deviceId = localStorage.getItem('luisices_device_id');
+          if (!deviceId) {
+            deviceId = crypto.randomUUID();
+            localStorage.setItem('luisices_device_id', deviceId);
+          }
+          
+          const lastReg = Number(localStorage.getItem('luisices_device_last_reg') || '0');
+          if (Date.now() - lastReg > 60 * 60 * 1000) {
+            firebaseUserService.registerDeviceSession(deviceId, navigator.userAgent).then(() => {
+              localStorage.setItem('luisices_device_last_reg', String(Date.now()));
+            }).catch(err => console.warn('[AuthContext] Erro ao registrar sessão do dispositivo', err));
+          }
+
+          deviceUnsub = onSnapshot(doc(db, 'userProfiles', u.uid, 'devices', deviceId), (snap) => {
+            // O documento deve existir se a conta foi recém-registrada; se sumir, foi revogado
+            if (!snap.exists() && Date.now() - lastReg > 10000) {
+              toast.error('Esta sessão foi revogada remotamente.');
+              firebaseAuthService.logout().catch(() => {});
+            }
+          }, (err) => console.warn('[AuthContext] Aviso ao escutar dispositivo:', err));
+
         } catch (tokenErr) {
           console.warn('[AuthContext] Falha ao renovar token de autenticação inicial (possível offline):', tokenErr);
         }

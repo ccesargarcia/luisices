@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useSearchParams } from 'react-router';
 import { useAuth } from '../../contexts/AuthContext';
-import { firebaseUserService } from '../../services/firebaseUserService';
+import { firebaseUserService, DeviceSession } from '../../services/firebaseUserService';
 import { firebaseAlexaService } from '../../services/firebaseAlexaService';
 import { database } from '../../lib/firebase';
 import { ref, onValue, off } from 'firebase/database';
@@ -75,6 +75,7 @@ import {
   Trash2,
   Mic,
   Search,
+  MonitorSmartphone,
 } from 'lucide-react';
 
 
@@ -543,7 +544,136 @@ function UserFormDialog({ open, editingUser, onClose, onSaved }: UserFormDialogP
   );
 }
 
+// ─── User Devices Dialog ────────────────────────────────────────────────────────
+
+interface UserDevicesDialogProps {
+  open: boolean;
+  user: UserProfile | null;
+  onClose: () => void;
+}
+
+function UserDevicesDialog({ open, user, onClose }: UserDevicesDialogProps) {
+  const [devices, setDevices] = useState<DeviceSession[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [revoking, setRevoking] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (open && user) {
+      loadDevices();
+    } else {
+      setDevices([]);
+    }
+  }, [open, user]);
+
+  async function loadDevices() {
+    if (!user) return;
+    setLoading(true);
+    try {
+      const list = await firebaseUserService.getUserDevices(user.uid);
+      setDevices(list);
+    } catch (err) {
+      toast.error('Erro ao carregar dispositivos');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleRevoke(deviceId: string) {
+    if (!user) return;
+    setRevoking(deviceId);
+    try {
+      await firebaseUserService.revokeDeviceSession(user.uid, deviceId);
+      toast.success('Sessão encerrada com sucesso');
+      await loadDevices(); // Recarrega a lista
+    } catch (err) {
+      toast.error('Erro ao encerrar sessão do dispositivo');
+    } finally {
+      setRevoking(null);
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={v => { if (!v) onClose(); }}>
+      <DialogContent size="lg" noPadding className="max-h-[90dvh] flex flex-col overflow-hidden">
+        <DialogHeader className="p-4 sm:p-6 pb-3 border-b border-border">
+          <DialogTitle>Dispositivos Ativos</DialogTitle>
+          <DialogDescription className="text-xs text-muted-foreground">
+            Monitoramento de sessões para {user?.displayName}. Você pode desconectar remotamente dispositivos desconhecidos.
+          </DialogDescription>
+        </DialogHeader>
+
+        <DialogBody className="p-4 sm:p-6 overflow-y-auto space-y-4 bg-muted/10">
+          {loading ? (
+            <div className="flex items-center justify-center h-40">
+              <Loader2 className="size-6 animate-spin text-muted-foreground" />
+            </div>
+          ) : devices.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground text-sm">
+              Nenhum dispositivo ativo registrado.
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {devices.map(device => (
+                <Card key={device.deviceId} className="overflow-hidden">
+                  <CardContent className="p-4 sm:p-5">
+                    <div className="flex flex-col sm:flex-row gap-4 justify-between items-start">
+                      <div className="space-y-1.5 flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <MonitorSmartphone className="size-4 text-primary" />
+                          <h4 className="font-medium text-sm truncate">{device.userAgent || 'Dispositivo Desconhecido'}</h4>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1 text-xs text-muted-foreground mt-2">
+                          <div className="flex flex-col">
+                            <span className="font-medium text-foreground/80">Endereço IP:</span>
+                            <span>{device.ip || 'Não detectado'}</span>
+                          </div>
+                          <div className="flex flex-col">
+                            <span className="font-medium text-foreground/80">Localização (Aprox.):</span>
+                            <span>{device.location || 'Não detectada'}</span>
+                          </div>
+                          <div className="flex flex-col">
+                            <span className="font-medium text-foreground/80">Última Atividade:</span>
+                            <span>{formatUserDate(device.lastActiveAt)}</span>
+                          </div>
+                          <div className="flex flex-col">
+                            <span className="font-medium text-foreground/80">Conectado em:</span>
+                            <span>{formatUserDate(device.createdAt)}</span>
+                          </div>
+                        </div>
+                      </div>
+                      <Button 
+                        variant="destructive" 
+                        size="sm"
+                        className="w-full sm:w-auto shrink-0 mt-2 sm:mt-0"
+                        disabled={revoking === device.deviceId}
+                        onClick={() => handleRevoke(device.deviceId)}
+                      >
+                        {revoking === device.deviceId ? (
+                          <><Loader2 className="size-3.5 mr-2 animate-spin" /> Removendo...</>
+                        ) : (
+                          <><Trash2 className="size-3.5 mr-2" /> Desconectar</>
+                        )}
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
+        </DialogBody>
+
+        <DialogFooter className="p-4 sm:p-6 pt-3 border-t border-border bg-background">
+          <Button type="button" variant="outline" onClick={onClose}>
+            Fechar
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
+
 
 export function Users() {
   const { user: currentUser, isAdmin, loading: authLoading, hasPermission } = useAuth();
@@ -616,6 +746,7 @@ export function Users() {
   const [resettingUid, setResettingUid] = useState<string | null>(null);
   const [deleteUserTarget, setDeleteUserTarget] = useState<UserProfile | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [viewDevicesUser, setViewDevicesUser] = useState<UserProfile | null>(null);
 
   const fetchUsers = useCallback(async () => {
     setLoading(true);
@@ -961,6 +1092,9 @@ export function Users() {
                         </TableCell>
                         <TableCell className="text-right">
                           <div className="flex items-center justify-end gap-1">
+                            <Button size="icon" variant="ghost" onClick={() => setViewDevicesUser(u)} className="size-8 text-sky-600 hover:text-sky-700 hover:bg-sky-500/10" aria-label={`Ver dispositivos de ${u.displayName}`} title="Dispositivos Ativos">
+                              <MonitorSmartphone className="size-3.5" />
+                            </Button>
                             <Button size="icon" variant="ghost" onClick={() => openEdit(u)} className="size-8" aria-label={`Editar ${u.displayName}`} title="Editar usuário">
                               <Pencil className="size-3.5" />
                             </Button>
@@ -1001,6 +1135,9 @@ export function Users() {
                           <p className="text-xs text-muted-foreground truncate">{u.email}</p>
                         </div>
                         <div className="flex shrink-0 gap-0.5">
+                          <Button size="icon" variant="ghost" onClick={() => setViewDevicesUser(u)} className="size-8 text-sky-600 hover:text-sky-700 hover:bg-sky-500/10" aria-label={`Ver dispositivos de ${u.displayName}`} title="Dispositivos Ativos">
+                            <MonitorSmartphone className="size-3.5" />
+                          </Button>
                           <Button size="icon" variant="ghost" onClick={() => openEdit(u)} className="size-8" aria-label={`Editar ${u.displayName}`} title="Editar usuário">
                             <Pencil className="size-3.5" />
                           </Button>
@@ -1198,6 +1335,12 @@ export function Users() {
         editingUser={editingUser}
         onClose={() => setDialogOpen(false)}
         onSaved={fetchUsers}
+      />
+      
+      <UserDevicesDialog
+        open={Boolean(viewDevicesUser)}
+        user={viewDevicesUser}
+        onClose={() => setViewDevicesUser(null)}
       />
 
       <Dialog open={inviteOpen} onOpenChange={setInviteOpen}>

@@ -308,6 +308,12 @@ service cloud.firestore {
 
       // Deleção: somente Cloud Functions (Admin SDK).
       allow delete: if false;
+
+      match /devices/{deviceId} {
+        // Leitura para monitorar a própria sessão (kicks) e para admins verem a lista
+        allow read: if request.auth != null && (request.auth.uid == uid || isAdmin());
+        allow write: if false; // Criação/Deleção via Cloud Functions
+      }
     }
 
     // Permissões explícitas; perfis legados sem emails não recebem acesso.
