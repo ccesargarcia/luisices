@@ -1,51 +1,73 @@
 import { useEffect, useRef } from 'react';
-import { ref, onValue, onDisconnect, set, serverTimestamp, push, remove } from 'firebase/database';
+import { ref, onValue, onDisconnect, set, serverTimestamp, push, remove, DatabaseReference } from 'firebase/database';
 import { database } from '../lib/firebase';
 import { User } from 'firebase/auth';
 
 export function usePresence(user: User | null) {
-  const presenceRef = useRef<{ setOffline: () => Promise<void> | void } | null>(null);
+  const presenceRef = useRef<{ setOffline: () => Promise<void> } | null>(null);
 
   useEffect(() => {
     if (!user) return;
 
+    let isCleanedUp = false;
     const uid = user.uid;
     const connectedRef = ref(database, '.info/connected');
     const myConnectionsRef = ref(database, `/status/${uid}/connections`);
     const lastOnlineRef = ref(database, `/status/${uid}/lastOnline`);
-    let connectionRef: any = null;
+    let activeConnectionRef: DatabaseReference | null = null;
 
-    const unsubscribe = onValue(connectedRef, (snap) => {
-      if (snap.val() === true) {
-        // We're connected (or reconnected)!
-        connectionRef = push(myConnectionsRef);
+    const unsubscribe = onValue(connectedRef, async (snap) => {
+      if (snap.val() === true && !isCleanedUp) {
+        try {
+          const connRef = push(myConnectionsRef);
+          activeConnectionRef = connRef;
 
-        // When I disconnect, remove this device
-        onDisconnect(connectionRef).remove();
+          // Aguarda o registro atômico do onDisconnect no servidor antes de publicar a conexão
+          await Promise.all([
+            onDisconnect(connRef).remove(),
+            onDisconnect(lastOnlineRef).set(serverTimestamp()),
+          ]);
 
-        // When I disconnect, update the last time I was seen online
-        onDisconnect(lastOnlineRef).set(serverTimestamp());
+          // Se a aba foi desmontada durante a espera da promise, aborta o registro
+          if (isCleanedUp) {
+            await remove(connRef).catch(() => {});
+            return;
+          }
 
-        // Add this device to my connections list
-        set(connectionRef, true);
+          await set(connRef, true);
+        } catch (err) {
+          console.warn('[usePresence] Falha ao configurar presença no RTDB:', err);
+        }
       }
+    }, (err) => {
+      console.warn('[usePresence] Erro ao escutar conexão no RTDB:', err);
     });
 
     presenceRef.current = {
-      setOffline: () => {
-        if (connectionRef) {
-          return remove(connectionRef).then(() => {
-            return set(lastOnlineRef, serverTimestamp());
-          });
+      setOffline: async () => {
+        if (activeConnectionRef) {
+          const refToClean = activeConnectionRef;
+          activeConnectionRef = null;
+          try {
+            await onDisconnect(refToClean).cancel();
+            await remove(refToClean);
+            await set(lastOnlineRef, serverTimestamp());
+          } catch (err) {
+            console.warn('[usePresence] Erro ao desativar presença:', err);
+          }
         }
       }
     };
 
     return () => {
+      isCleanedUp = true;
       unsubscribe();
-      if (connectionRef) {
-        remove(connectionRef);
-        set(lastOnlineRef, serverTimestamp());
+      if (activeConnectionRef) {
+        const refToClean = activeConnectionRef;
+        activeConnectionRef = null;
+        onDisconnect(refToClean).cancel().catch(() => {});
+        remove(refToClean).catch(() => {});
+        set(lastOnlineRef, serverTimestamp()).catch(() => {});
       }
     };
   }, [user]);

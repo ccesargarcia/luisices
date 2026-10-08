@@ -780,83 +780,114 @@ const registerDeviceSession = onCall({ memory: '512MiB' }, async (request) => {
   if (!request.auth) throw new functions.https.HttpsError('unauthenticated', 'Requer autenticação.');
   
   const { deviceId, userAgent } = request.data || {};
-  if (!deviceId || typeof deviceId !== 'string' || deviceId.length < 5 || deviceId.length > 200) {
-    throw new functions.https.HttpsError('invalid-argument', 'deviceId inválido.');
+  // Validação estrita de deviceId: apenas caracteres alfanuméricos, hífen e underscore (impede path traversal)
+  if (!deviceId || typeof deviceId !== 'string' || !/^[a-zA-Z0-9_-]{5,100}$/.test(deviceId)) {
+    throw new functions.https.HttpsError('invalid-argument', 'deviceId inválido. Deve ter entre 5 e 100 caracteres alfanuméricos.');
   }
 
-  let safeUserAgent = userAgent || 'Desconhecido';
-  if (typeof safeUserAgent === 'string' && safeUserAgent.length > 300) {
+  if (userAgent !== undefined && typeof userAgent !== 'string') {
+    throw new functions.https.HttpsError('invalid-argument', 'userAgent deve ser uma string.');
+  }
+
+  let safeUserAgent = (typeof userAgent === 'string' && userAgent.trim().length > 0) ? userAgent.trim() : 'Desconhecido';
+  if (safeUserAgent.length > 300) {
     safeUserAgent = safeUserAgent.substring(0, 300) + '...';
   }
 
   // Obter IP (x-forwarded-for pode conter múltiplos IPs)
   let ip = request.rawRequest?.headers?.['x-forwarded-for'] || request.rawRequest?.socket?.remoteAddress;
   if (ip && typeof ip === 'string' && ip.includes(',')) ip = ip.split(',')[0].trim();
-  
-  let locationString = 'Localização Desconhecida';
-  try {
-    if (ip && ip !== '127.0.0.1' && ip !== '::1') {
-      // Lazy load geoip-lite para evitar aumento de memória nas outras funções
-      const geoip = require('geoip-lite');
-      const geo = geoip.lookup(ip);
-      if (geo) {
-        const parts = [geo.city, geo.region].filter(Boolean);
-        locationString = parts.length > 0 ? parts.join(', ') : 'Região Desconhecida';
-        if (geo.country) {
-          locationString = parts.length > 0 ? `${locationString} - ${geo.country}` : `${geo.country}`;
-        }
-      }
-    }
-  } catch (error) {
-    console.warn('[registerDeviceSession] Falha ao buscar localização do IP:', error);
-  }
+  ip = (ip && typeof ip === 'string') ? ip : 'Desconhecido';
 
   const uid = request.auth.uid;
   const db = admin.firestore();
-  
+  const profileRef = db.doc(`userProfiles/${uid}`);
+  const userDevicesRef = db.collection(`userProfiles/${uid}/devices`);
+  const deviceRef = userDevicesRef.doc(deviceId);
+
   await db.runTransaction(async (transaction) => {
-    const profileRef = db.doc(`userProfiles/${uid}`);
-    const profileSnap = await transaction.get(profileRef);
+    const [profileSnap, deviceSnap] = await Promise.all([
+      transaction.get(profileRef),
+      transaction.get(deviceRef),
+    ]);
     
     if (!profileSnap.exists || profileSnap.data().active === false) {
       throw new functions.https.HttpsError('permission-denied', 'Perfil de usuário inativo ou inexistente.');
     }
 
-    const userDevicesRef = db.collection(`userProfiles/${uid}/devices`);
-    const devicesSnap = await transaction.get(userDevicesRef);
-    const deviceRef = userDevicesRef.doc(deviceId);
-    
-    let existingDevice = null;
-    let deviceCount = 0;
-    let oldestDevice = null;
-    
-    devicesSnap.forEach(doc => {
-      deviceCount++;
-      if (doc.id === deviceId) {
-        existingDevice = doc;
-      }
-      const data = doc.data();
-      const time = data.createdAt?.toMillis ? data.createdAt.toMillis() : 0;
-      if (!oldestDevice || time < oldestDevice.time) {
-        oldestDevice = { id: doc.id, time };
-      }
-    });
+    const profileData = profileSnap.data();
+    // Barreira de revogação: rejeita ID token emitido antes da última revogação
+    const authTime = request.auth.token.auth_time;
+    if (profileData.tokensValidAfterTime && typeof authTime === 'number' && authTime < profileData.tokensValidAfterTime) {
+      throw new functions.https.HttpsError('unauthenticated', 'Sessão revogada. Faça login novamente.');
+    }
 
-    if (existingDevice) {
+    let locationString = 'Localização Desconhecida';
+
+    if (deviceSnap.exists) {
+      // Dispositivo existente: atualiza sem consultar toda a coleção (Otimização C1)
+      const existingData = deviceSnap.data();
+      if (existingData.ip === ip && existingData.location) {
+        locationString = existingData.location;
+      } else if (ip !== 'Desconhecido' && ip !== '127.0.0.1' && ip !== '::1') {
+        try {
+          const geoip = require('geoip-lite');
+          const geo = geoip.lookup(ip);
+          if (geo) {
+            const parts = [geo.city, geo.region].filter(Boolean);
+            locationString = parts.length > 0 ? parts.join(', ') : 'Região Desconhecida';
+            if (geo.country) {
+              locationString = parts.length > 0 ? `${locationString} - ${geo.country}` : `${geo.country}`;
+            }
+          }
+        } catch (error) {
+          console.warn('[registerDeviceSession] Falha ao buscar localização do IP:', error);
+        }
+      }
+
       transaction.update(deviceRef, {
         userAgent: safeUserAgent,
-        ip: ip || 'Desconhecido',
+        ip,
         location: locationString,
         lastActiveAt: admin.firestore.FieldValue.serverTimestamp(),
       });
     } else {
-      if (deviceCount >= 10 && oldestDevice) {
-        transaction.delete(userDevicesRef.doc(oldestDevice.id));
+      // Novo dispositivo: agora sim consulta a coleção para garantir o teto de 10 dispositivos
+      if (ip !== 'Desconhecido' && ip !== '127.0.0.1' && ip !== '::1') {
+        try {
+          const geoip = require('geoip-lite');
+          const geo = geoip.lookup(ip);
+          if (geo) {
+            const parts = [geo.city, geo.region].filter(Boolean);
+            locationString = parts.length > 0 ? parts.join(', ') : 'Região Desconhecida';
+            if (geo.country) {
+              locationString = parts.length > 0 ? `${locationString} - ${geo.country}` : `${geo.country}`;
+            }
+          }
+        } catch (error) {
+          console.warn('[registerDeviceSession] Falha ao buscar localização do IP:', error);
+        }
       }
+
+      const devicesSnap = await transaction.get(userDevicesRef);
+      if (devicesSnap.size >= 10) {
+        let oldestDevice = null;
+        devicesSnap.forEach((doc) => {
+          const data = doc.data();
+          const time = data.createdAt?.toMillis ? data.createdAt.toMillis() : 0;
+          if (!oldestDevice || time < oldestDevice.time) {
+            oldestDevice = { id: doc.id, time };
+          }
+        });
+        if (oldestDevice) {
+          transaction.delete(userDevicesRef.doc(oldestDevice.id));
+        }
+      }
+
       transaction.set(deviceRef, {
         deviceId,
         userAgent: safeUserAgent,
-        ip: ip || 'Desconhecido',
+        ip,
         location: locationString,
         lastActiveAt: admin.firestore.FieldValue.serverTimestamp(),
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -867,34 +898,58 @@ const registerDeviceSession = onCall({ memory: '512MiB' }, async (request) => {
   return { success: true };
 });
 
-/** Remove a sessão de um dispositivo específico (Apenas Admin). */
-/** Revoga todas as sessões e tokens de um usuário. (Apenas Admin). */
+/** Revoga todas as sessões e tokens de um usuário (Apenas Admin). */
 const revokeAllSessions = onCall(async (request) => {
   if (!(await isAdminRequest(request))) {
     throw new functions.https.HttpsError('permission-denied', 'Apenas administradores podem revogar sessões.');
   }
   
   const { uid } = request.data || {};
-  if (!uid || typeof uid !== 'string') {
+  if (!uid || typeof uid !== 'string' || uid.length > 128) {
     throw new functions.https.HttpsError('invalid-argument', 'UID é obrigatório.');
   }
 
-  // Deletar todos os devices do Firestore
+  const revocationTimeSeconds = Math.floor(Date.now() / 1000);
+
+  // 1. Marca tokensValidAfterTime no Firestore para barreira nas regras de segurança
+  const profileRef = admin.firestore().doc(`userProfiles/${uid}`);
+  await profileRef.set({
+    tokensValidAfterTime: revocationTimeSeconds,
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    updatedBy: request.auth.uid,
+  }, { merge: true });
+
+  // 2. Remove todos os dispositivos cadastrados no Firestore
   const devicesRef = admin.firestore().collection(`userProfiles/${uid}/devices`);
   const snapshot = await devicesRef.get();
-  const batch = admin.firestore().batch();
-  snapshot.docs.forEach(doc => {
-    batch.delete(doc.ref);
-  });
-  await batch.commit();
-  
+  if (!snapshot.empty) {
+    const batch = admin.firestore().batch();
+    snapshot.docs.forEach((doc) => {
+      batch.delete(doc.ref);
+    });
+    await batch.commit();
+  }
+
+  // 3. Limpa presença do RTDB e marca revokedAt
+  try {
+    const rtdb = admin.database();
+    await rtdb.ref(`status/${uid}`).remove();
+  } catch (rtdbErr) {
+    console.warn(`[revokeAllSessions] Aviso ao limpar status no RTDB do usuário ${uid}:`, rtdbErr);
+  }
+
+  // 4. Revoga refresh tokens no Firebase Auth (Não engole erro para evitar anúncio falso de sucesso)
   try {
     await admin.auth().revokeRefreshTokens(uid);
   } catch (err) {
-    console.warn(`[revokeAllSessions] Aviso ao revogar tokens do usuário ${uid}:`, err);
+    console.error(`[revokeAllSessions] Erro crítico ao revogar refresh tokens do usuário ${uid}:`, err);
+    throw new functions.https.HttpsError('internal', 'Falha ao revogar credenciais de autenticação no servidor.');
   }
 
-  await writeUserAudit('ALL_SESSIONS_REVOKED', request.auth.uid, uid, {});
+  // 5. Auditoria de segurança
+  await writeUserAudit('ALL_SESSIONS_REVOKED', request.auth.uid, uid, {
+    revocationTimeSeconds,
+  });
   
   return { success: true };
 });

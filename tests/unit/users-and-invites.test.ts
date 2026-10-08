@@ -23,8 +23,12 @@ vi.mock('firebase/firestore', () => ({
   orderBy: vi.fn(),
 }));
 
+const mockHttpsCallable = vi.fn((_functions, name) => {
+  return (...args: any[]) => mockCallable(name, ...args);
+});
+
 vi.mock('firebase/functions', () => ({
-  httpsCallable: vi.fn(() => mockCallable),
+  httpsCallable: (...args: any[]) => mockHttpsCallable(args[0], args[1]),
 }));
 
 import { firebaseUserService } from '../../src/services/firebaseUserService';
@@ -86,16 +90,25 @@ describe('Etapa 2: Convites e Ciclo de Vida de Usuários (Achados 1 e 2)', () =>
       mockCallable.mockResolvedValueOnce({ data: { success: true } });
 
       await expect(firebaseUserService.deleteUser('user-to-delete')).resolves.toBeUndefined();
-      expect(mockCallable).toHaveBeenCalledWith({ uid: 'user-to-delete' });
+      expect(mockCallable).toHaveBeenCalledWith('deleteUser', { uid: 'user-to-delete' });
       expect(mockDeleteDoc).not.toHaveBeenCalled();
     });
   });
 });
 
-describe('revokeAllSessions', () => {
-  it('deve chamar a funcao revokeAllSessions com o uid correto', async () => {
-    const { firebaseUserService } = await import('../../src/services/firebaseUserService');
-    await firebaseUserService.revokeAllSessions('test-uid-123');
-    expect(mockCallable).toHaveBeenCalled();
+describe('Sessões e Dispositivos (Contratos de Callables)', () => {
+  it('revokeAllSessions deve chamar a Cloud Function com nome exato e payload { uid }', async () => {
+    mockCallable.mockResolvedValueOnce({ data: { success: true } });
+    await firebaseUserService.revokeAllSessions('target-user-456');
+    expect(mockCallable).toHaveBeenCalledWith('revokeAllSessions', { uid: 'target-user-456' });
+  });
+
+  it('registerDeviceSession deve chamar a Cloud Function com nome exato e payload { deviceId, userAgent }', async () => {
+    mockCallable.mockResolvedValueOnce({ data: { success: true } });
+    await firebaseUserService.registerDeviceSession('device-valid-123', 'CustomUserAgent/1.0');
+    expect(mockCallable).toHaveBeenCalledWith('registerDeviceSession', {
+      deviceId: 'device-valid-123',
+      userAgent: 'CustomUserAgent/1.0',
+    });
   });
 });

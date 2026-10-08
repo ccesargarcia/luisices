@@ -76,6 +76,7 @@ import {
   Mic,
   Search,
   MonitorSmartphone,
+  ShieldAlert,
 } from 'lucide-react';
 
 
@@ -578,83 +579,86 @@ function UserDevicesDialog({ open, user, onClose }: UserDevicesDialogProps) {
     }
   }
 
+  const [confirmRevoke, setConfirmRevoke] = useState(false);
+
   async function handleRevokeAll() {
     if (!user) return;
     setRevoking('all');
     try {
       await firebaseUserService.revokeAllSessions(user.uid);
-      toast.success('Todas as sessões encerradas com sucesso');
+      toast.success('Todas as sessões e tokens foram revogados com sucesso');
+      setConfirmRevoke(false);
       await loadDevices(); // Recarrega a lista
-    } catch (err) {
-      toast.error('Erro ao encerrar sessões');
+    } catch (err: any) {
+      toast.error(err?.message || 'Erro ao revogar sessões do usuário');
     } finally {
       setRevoking(null);
     }
   }
 
   return (
-    <Dialog open={open} onOpenChange={v => { if (!v) onClose(); }}>
-      <DialogContent size="lg" noPadding className="max-h-[90dvh] flex flex-col overflow-hidden">
-        <DialogHeader className="p-4 sm:p-6 pb-3 border-b border-border">
-          <DialogTitle>Dispositivos Ativos</DialogTitle>
-          <DialogDescription className="text-xs text-muted-foreground">
-            Monitoramento de sessões para {user?.displayName}. Você pode desconectar remotamente todos os dispositivos.
-          </DialogDescription>
-        </DialogHeader>
+    <>
+      <Dialog open={open} onOpenChange={v => { if (!v) onClose(); }}>
+        <DialogContent size="lg" noPadding className="max-h-[90dvh] flex flex-col overflow-hidden">
+          <DialogHeader className="p-4 sm:p-6 pb-3 border-b border-border">
+            <DialogTitle>Dispositivos e Sessões Ativas</DialogTitle>
+            <DialogDescription className="text-xs text-muted-foreground">
+              Monitoramento de sessões para {user?.displayName}. A revogação desconecta todos os aparelhos vinculados à conta.
+            </DialogDescription>
+          </DialogHeader>
 
-        <DialogBody className="p-4 sm:p-6 overflow-y-auto space-y-4 bg-muted/10">
-          {loading ? (
-            <div className="flex items-center justify-center h-40">
-              <Loader2 className="size-6 animate-spin text-muted-foreground" />
-            </div>
-          ) : devices.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground text-sm">
-              Nenhum dispositivo ativo registrado.
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {devices.map(device => (
-                <Card key={device.deviceId} className="overflow-hidden">
-                  <CardContent className="p-4 sm:p-5">
-                    <div className="flex flex-col gap-2">
-                      <div className="flex items-center gap-2">
-                        <MonitorSmartphone className="size-4 text-primary shrink-0" />
-                        <h4 className="font-medium text-sm line-clamp-2 break-all">{device.userAgent || 'Dispositivo Desconhecido'}</h4>
-                      </div>
-                      <div className="flex flex-col gap-2 text-xs text-muted-foreground mt-2">
-                        <div className="flex flex-col">
-                          <span className="font-medium text-foreground/80">Endereço IP:</span>
-                          <span className="break-all">{device.ip || 'Não detectado'}</span>
+          <DialogBody className="p-4 sm:p-6 overflow-y-auto space-y-4 bg-muted/10">
+            {loading ? (
+              <div className="flex items-center justify-center h-40">
+                <Loader2 className="size-6 animate-spin text-muted-foreground" />
+              </div>
+            ) : devices.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground text-sm">
+                Nenhum dispositivo ativo registrado no Firestore. (Ainda é possível revogar tokens pendentes).
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {devices.map(device => (
+                  <Card key={device.deviceId} className="overflow-hidden">
+                    <CardContent className="p-4 sm:p-5">
+                      <div className="flex flex-col gap-2">
+                        <div className="flex items-center gap-2">
+                          <MonitorSmartphone className="size-4 text-primary shrink-0" />
+                          <h4 className="font-medium text-sm line-clamp-2 break-all">{device.userAgent || 'Dispositivo Desconhecido'}</h4>
                         </div>
-                        <div className="flex flex-col">
-                          <span className="font-medium text-foreground/80">Localização (Aprox.):</span>
-                          <span className="break-words">{device.location || 'Não detectada'}</span>
-                        </div>
-                        <div className="flex flex-col sm:flex-row gap-4 sm:gap-8 mt-1">
+                        <div className="flex flex-col gap-2 text-xs text-muted-foreground mt-2">
                           <div className="flex flex-col">
-                            <span className="font-medium text-foreground/80">Última Atividade:</span>
-                            <span>{formatUserDate(device.lastActiveAt)}</span>
+                            <span className="font-medium text-foreground/80">Endereço IP:</span>
+                            <span className="break-all">{device.ip || 'Não detectado'}</span>
                           </div>
                           <div className="flex flex-col">
-                            <span className="font-medium text-foreground/80">Conectado em:</span>
-                            <span>{formatUserDate(device.createdAt)}</span>
+                            <span className="font-medium text-foreground/80">Localização (Aprox.):</span>
+                            <span className="break-words">{device.location || 'Não detectada'}</span>
+                          </div>
+                          <div className="flex flex-col sm:flex-row gap-4 sm:gap-8 mt-1">
+                            <div className="flex flex-col">
+                              <span className="font-medium text-foreground/80">Última atualização do dispositivo:</span>
+                              <span>{formatUserDate(device.lastActiveAt)}</span>
+                            </div>
+                            <div className="flex flex-col">
+                              <span className="font-medium text-foreground/80">Conectado em:</span>
+                              <span>{formatUserDate(device.createdAt)}</span>
+                            </div>
                           </div>
                         </div>
                       </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          )}
-        </DialogBody>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </DialogBody>
 
-        <DialogFooter className="p-4 sm:p-6 pt-3 border-t border-border bg-background sm:justify-between items-center flex-col sm:flex-row gap-3">
-          {devices.length > 0 && (
+          <DialogFooter className="p-4 sm:p-6 pt-3 border-t border-border bg-background sm:justify-between items-center flex-col sm:flex-row gap-3">
             <Button 
               variant="destructive" 
-              onClick={handleRevokeAll}
-              disabled={revoking === 'all'}
+              onClick={() => setConfirmRevoke(true)}
+              disabled={revoking === 'all' || loading}
               className="w-full sm:w-auto"
             >
               {revoking === 'all' ? (
@@ -663,13 +667,34 @@ function UserDevicesDialog({ open, user, onClose }: UserDevicesDialogProps) {
                 <><Trash2 className="size-3.5 mr-2" /> Revogar Todas as Sessões</>
               )}
             </Button>
-          )}
-          <Button type="button" variant="outline" onClick={onClose} className="w-full sm:w-auto">
-            Fechar
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+            <Button type="button" variant="outline" onClick={onClose} className="w-full sm:w-auto">
+              Fechar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Confirmação explícita do impacto global da revogação */}
+      <Dialog open={confirmRevoke} onOpenChange={setConfirmRevoke}>
+        <DialogContent size="sm">
+          <DialogHeader>
+            <DialogTitle>Confirmar Revogação Global</DialogTitle>
+            <DialogDescription className="text-xs text-muted-foreground">
+              Esta ação revogará imediatamente as credenciais de autenticação (refresh tokens) e desconectará <strong>todos os dispositivos e abas</strong> de <strong>{user?.displayName}</strong>.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:justify-end">
+            <Button variant="outline" size="sm" onClick={() => setConfirmRevoke(false)} disabled={revoking === 'all'}>
+              Cancelar
+            </Button>
+            <Button variant="destructive" size="sm" onClick={handleRevokeAll} disabled={revoking === 'all'}>
+              {revoking === 'all' ? <Loader2 className="size-3.5 mr-1.5 animate-spin" /> : <ShieldAlert className="size-3.5 mr-1.5" />}
+              Confirmar Desconexão Total
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 
