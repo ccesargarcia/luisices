@@ -610,7 +610,9 @@ export function Users() {
     }
   }, []);
 
-  useEffect(() => { fetchUsers(); }, [fetchUsers]);
+  useEffect(() => {
+    if (!authLoading && currentUser?.uid) void fetchUsers();
+  }, [authLoading, currentUser?.uid, fetchUsers]);
 
   async function toggleActive(u: UserProfile) {
     if (u.uid === currentUser?.uid) {
