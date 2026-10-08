@@ -788,9 +788,11 @@ const registerDeviceSession = onCall({ memory: '512MiB' }, async (request) => {
       const geoip = require('geoip-lite');
       const geo = geoip.lookup(ip);
       if (geo) {
-        // geo.city, geo.region, geo.country (e.g. "São Paulo, SP - BR")
-        locationString = [geo.city, geo.region].filter(Boolean).join(', ');
-        if (geo.country) locationString += ` - ${geo.country}`;
+        const parts = [geo.city, geo.region].filter(Boolean);
+        locationString = parts.length > 0 ? parts.join(', ') : 'Região Desconhecida';
+        if (geo.country) {
+          locationString = parts.length > 0 ? `${locationString} - ${geo.country}` : `${geo.country}`;
+        }
       }
     }
   } catch (error) {

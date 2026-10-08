@@ -619,13 +619,13 @@ function UserDevicesDialog({ open, user, onClose }: UserDevicesDialogProps) {
                     <div className="flex flex-col sm:flex-row gap-4 justify-between items-start">
                       <div className="space-y-1.5 flex-1 min-w-0">
                         <div className="flex items-center gap-2">
-                          <MonitorSmartphone className="size-4 text-primary" />
-                          <h4 className="font-medium text-sm truncate">{device.userAgent || 'Dispositivo Desconhecido'}</h4>
+                          <MonitorSmartphone className="size-4 text-primary shrink-0" />
+                          <h4 className="font-medium text-sm line-clamp-2 break-all">{device.userAgent || 'Dispositivo Desconhecido'}</h4>
                         </div>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1 text-xs text-muted-foreground mt-2">
                           <div className="flex flex-col">
                             <span className="font-medium text-foreground/80">Endereço IP:</span>
-                            <span>{device.ip || 'Não detectado'}</span>
+                            <span className="break-all">{device.ip || 'Não detectado'}</span>
                           </div>
                           <div className="flex flex-col">
                             <span className="font-medium text-foreground/80">Localização (Aprox.):</span>
@@ -714,7 +714,7 @@ export function Users() {
     return (
       <span
         title={isOnline ? 'Online agora' : 'Offline'}
-        className={`inline-block w-2 h-2 rounded-full mr-2 transition-colors ${
+        className={`inline-block w-2 h-2 shrink-0 rounded-full mr-2 transition-colors ${
           isOnline
             ? 'bg-emerald-500 shadow-[0_0_6px_rgba(16,185,129,0.5)]'
             : 'bg-muted-foreground/30 dark:bg-muted-foreground/20'
