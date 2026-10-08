@@ -1,4 +1,4 @@
-import { collection, query, where, orderBy, onSnapshot, doc, updateDoc, setDoc, serverTimestamp, getDocs, limit } from 'firebase/firestore';
+import { collection, query, where, orderBy, onSnapshot, limit } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import { db, functions } from '../lib/firebase';
 import { WhatsAppMessage, WhatsAppConversation } from '../app/types';
@@ -27,8 +27,11 @@ export const firebaseWhatsAppService = {
     if (!cleanPhone) throw new Error('Número de WhatsApp inválido.');
     if (!text.trim()) throw new Error('Mensagem não pode estar vazia.');
 
+    const requestId = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+      ? crypto.randomUUID()
+      : `wa_${Date.now()}_${Math.random().toString(36).slice(2, 12)}`;
     const sendCallable = httpsCallable<
-      { phone: string; text: string; customerName?: string; customerId?: string },
+      { phone: string; text: string; customerName?: string; customerId?: string; requestId: string },
       { success: boolean; message: string; data: any }
     >(functions, 'sendWhatsAppDirectMessage');
 
@@ -37,6 +40,7 @@ export const firebaseWhatsAppService = {
       text: text.trim(),
       customerName: customerName || undefined,
       customerId: customerId || undefined,
+      requestId,
     });
 
     return {
@@ -166,15 +170,8 @@ export const firebaseWhatsAppService = {
     const cleanPhone = normalizePhoneForWhatsApp(phone);
     if (!cleanPhone) return;
 
-    try {
-      const chatRef = doc(db, 'whatsapp_chats', cleanPhone);
-      await updateDoc(chatRef, {
-        unreadCount: 0,
-        updatedAt: serverTimestamp(),
-      });
-    } catch {
-      // Ignore if chat doc does not exist yet
-    }
+    const callable = httpsCallable<{ phone: string }, { success: boolean }>(functions, 'markWhatsAppChatRead');
+    await callable({ phone: cleanPhone });
   },
 
   /**
@@ -184,18 +181,11 @@ export const firebaseWhatsAppService = {
     const cleanPhone = normalizePhoneForWhatsApp(phone);
     if (!cleanPhone) return;
 
-    const chatRef = doc(db, 'whatsapp_chats', cleanPhone);
-    await setDoc(
-      chatRef,
-      {
-        id: cleanPhone,
-        phone: cleanPhone,
-        customerName: customerName || cleanPhone,
-        customerId: customerId || null,
-        updatedAt: serverTimestamp(),
-      },
-      { merge: true }
-    );
+    const callable = httpsCallable<
+      { phone: string; customerName: string; customerId?: string },
+      { success: boolean }
+    >(functions, 'ensureWhatsAppConversation');
+    await callable({ phone: cleanPhone, customerName: customerName || cleanPhone, customerId });
   },
 
   /**

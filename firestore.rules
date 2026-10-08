@@ -464,7 +464,7 @@ service cloud.firestore {
           isAdmin()
           || (
             get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.get('role', 'user') == 'user'
-            && getEmployeePermissions().get('whatsapp', true) != false
+            && getEmployeePermissions().get('whatsapp', false) == true
           )
           || (
             get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.get('role', '') == 'funcionario'
@@ -474,11 +474,18 @@ service cloud.firestore {
     }
 
     match /whatsapp_chats/{chatId} {
-      allow read, write: if canAccessWhatsApp();
+      allow read: if canAccessWhatsApp();
+      allow write: if false;
     }
 
     match /whatsapp_messages/{messageId} {
-      allow read, write: if canAccessWhatsApp();
+      allow read: if canAccessWhatsApp();
+      allow write: if false;
+    }
+
+    // Chaves de idempotência: somente Cloud Functions (Admin SDK) acessa esta coleção.
+    match /whatsappSendRequests/{requestKey} {
+      allow read, write: if false;
     }
 
     // ─── Integração Alexa (Coleções Técnicas Internas) ────────────────────────

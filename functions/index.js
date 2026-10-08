@@ -37,6 +37,8 @@ module.exports = {
   deleteWhatsAppMessage: whatsappFunctions.deleteWhatsAppMessage,
   syncWhatsAppChatMessages: whatsappFunctions.syncWhatsAppChatMessages,
   getWhatsAppInstanceStatus: whatsappFunctions.getWhatsAppInstanceStatus,
+  markWhatsAppChatRead: whatsappFunctions.markWhatsAppChatRead,
+  ensureWhatsAppConversation: whatsappFunctions.ensureWhatsAppConversation,
   evolutionWhatsAppWebhook: whatsappFunctions.evolutionWhatsAppWebhook,
 
   // ─── Pedidos e Vitrine Pública ─────────────────────────────────────────────

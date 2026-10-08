@@ -16,6 +16,12 @@ const customEmailLimiter = new RateLimiterMemory({
   duration: 3600, // 1 hora em segundos
 });
 
+// Rate limiter para envio de WhatsApp: 20 mensagens por 15 minutos por usuário.
+const whatsappMessageLimiter = new RateLimiterMemory({
+  points: 20,
+  duration: 900,
+});
+
 // Rate limiter para o Agente de IA interno: 60 requisições por minuto por usuário
 const aiAgentLimiter = new RateLimiterMemory({
   points: 60,
@@ -37,6 +43,7 @@ const publicCatalogOrderLimiter = new RateLimiterMemory({
 module.exports = {
   passwordResetLimiter,
   customEmailLimiter,
+  whatsappMessageLimiter,
   aiAgentLimiter,
   galleryAiLimiter,
   publicCatalogOrderLimiter,

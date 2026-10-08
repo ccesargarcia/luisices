@@ -94,6 +94,8 @@ export function WhatsAppChat() {
   const { orders } = useOrders();
 
   const [conversations, setConversations] = useState<WhatsAppConversation[]>([]);
+  const [loadingConversations, setLoadingConversations] = useState(true);
+  const [conversationError, setConversationError] = useState<string | null>(null);
   const [selectedPhone, setSelectedPhone] = useState<string | null>(null);
   const [activeCustomer, setActiveCustomer] = useState<{
     name: string;
@@ -158,9 +160,18 @@ export function WhatsAppChat() {
 
   // Escuta conversas em tempo real
   useEffect(() => {
-    const unsubscribe = firebaseWhatsAppService.subscribeConversations((chats) => {
-      setConversations(chats);
-    });
+    setLoadingConversations(true);
+    setConversationError(null);
+    const unsubscribe = firebaseWhatsAppService.subscribeConversations(
+      (chats) => {
+        setConversations(chats);
+        setLoadingConversations(false);
+      },
+      () => {
+        setLoadingConversations(false);
+        setConversationError('Não foi possível carregar as conversas.');
+      }
+    );
     return () => unsubscribe();
   }, []);
 
@@ -538,7 +549,13 @@ export function WhatsAppChat() {
                   }`}
                 />
                 <span className="hidden sm:inline">WHATSAPP </span>
-                <span>{instanceStatus?.connected ? 'CONECTADO' : 'INTEGRADO'}</span>
+                <span>
+                  {instanceStatus == null
+                    ? 'VERIFICANDO...'
+                    : instanceStatus.connected
+                      ? 'CONECTADO'
+                      : 'DESCONECTADO'}
+                </span>
               </Badge>
             </div>
             <p className="text-xs text-muted-foreground hidden sm:block truncate">
@@ -652,7 +669,20 @@ export function WhatsAppChat() {
 
           {/* Lista de Chats */}
           <div className="flex-1 overflow-y-auto divide-y divide-border/40">
-            {mergedConversations.length === 0 ? (
+            {loadingConversations ? (
+              <div className="p-8 text-center text-muted-foreground space-y-3" role="status" aria-live="polite">
+                <Loader2 className="size-7 mx-auto animate-spin text-emerald-600" />
+                <p className="text-xs">Carregando conversas...</p>
+              </div>
+            ) : conversationError ? (
+              <div className="p-8 text-center text-muted-foreground space-y-3" role="alert">
+                <AlertCircle className="size-8 mx-auto text-destructive/70" />
+                <p className="text-xs">{conversationError}</p>
+                <Button size="sm" variant="outline" className="text-xs h-8" onClick={() => window.location.reload()}>
+                  Tentar novamente
+                </Button>
+              </div>
+            ) : mergedConversations.length === 0 ? (
               <div className="p-8 text-center text-muted-foreground space-y-3">
                 <MessageSquare className="size-8 mx-auto opacity-30" />
                 <p className="text-xs">Nenhuma conversa encontrada.</p>
@@ -945,13 +975,15 @@ export function WhatsAppChat() {
                       }
                     }}
                     rows={1}
+                    maxLength={4096}
+                    aria-label="Mensagem para o cliente"
                     placeholder="Digite uma mensagem para o cliente... (Enter envia)"
                     className="text-xs sm:text-sm bg-background min-h-[42px] max-h-32 resize-none py-2.5 leading-tight flex-1"
                   />
 
                   <Button
                     type="submit"
-                    disabled={!inputText.trim()}
+                    disabled={sending || !inputText.trim() || inputText.length > 4096}
                     className="h-[42px] px-4 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold gap-1.5 shrink-0 shadow-xs active:scale-95 cursor-pointer"
                   >
                     {sending ? (
@@ -965,9 +997,14 @@ export function WhatsAppChat() {
                   </Button>
                 </form>
 
-                <p className="text-[10px] text-center text-muted-foreground hidden sm:block">
-                  💡 Pressione <kbd className="px-1 py-0.5 text-[9px] bg-muted border rounded font-mono">Enter</kbd> para enviar ou <kbd className="px-1 py-0.5 text-[9px] bg-muted border rounded font-mono">Shift+Enter</kbd> para pular linha.
-                </p>
+                <div className="flex items-center justify-between gap-2 text-[10px] text-muted-foreground hidden sm:flex">
+                  <p>
+                    💡 <kbd className="px-1 py-0.5 text-[9px] bg-muted border rounded font-mono">Enter</kbd> envia · <kbd className="px-1 py-0.5 text-[9px] bg-muted border rounded font-mono">Shift+Enter</kbd> quebra linha
+                  </p>
+                  <span className={inputText.length > 3800 ? 'text-amber-600 font-medium' : ''}>
+                    {inputText.length}/4096
+                  </span>
+                </div>
               </div>
             </>
           ) : (
@@ -1082,7 +1119,12 @@ export function WhatsAppChat() {
                 </div>
 
                 <div className="max-h-56 sm:max-h-64 overflow-y-auto border rounded-lg divide-y divide-border/60 bg-card/40">
-                  {filteredModalCustomers.length === 0 ? (
+                  {customersLoading ? (
+                    <div className="p-6 text-center text-xs text-muted-foreground space-y-2" role="status">
+                      <Loader2 className="size-5 mx-auto animate-spin text-emerald-600" />
+                      <p>Carregando clientes...</p>
+                    </div>
+                  ) : filteredModalCustomers.length === 0 ? (
                     <div className="p-6 text-center text-xs text-muted-foreground space-y-2">
                       <p>Nenhum cliente cadastrado encontrado para a busca.</p>
                       <Button
