@@ -138,8 +138,42 @@ const sendWhatsAppDirectMessage = onCall(
 
       if (!response.ok) {
         const errBody = await response.text();
-        console.error('[sendWhatsAppDirectMessage] Evolution API erro:', response.status, errBody);
-        throw new functions.https.HttpsError('internal', `Evolution API retornou erro ${response.status}: ${errBody}`);
+        let errData = null;
+        try {
+          errData = JSON.parse(errBody);
+        } catch {
+          // Algumas versões da Evolution retornam texto puro.
+        }
+        const messages = Array.isArray(errData?.response?.message) ? errData.response.message : [];
+        const numberNotRegistered = messages.some((item) => item && item.exists === false);
+        console.error('[sendWhatsAppDirectMessage] Evolution API erro:', response.status, {
+          numberNotRegistered,
+          providerError: errData?.error || errData?.message || 'unknown',
+        });
+
+        if (numberNotRegistered) {
+          throw new functions.https.HttpsError(
+            'failed-precondition',
+            'Este número não possui uma conta WhatsApp ativa ou não está disponível para receber mensagens.'
+          );
+        }
+        const statusCode = response.status === 400
+          ? 'invalid-argument'
+          : response.status === 401 || response.status === 403
+            ? 'failed-precondition'
+            : response.status === 404
+              ? 'not-found'
+              : response.status === 429
+                ? 'resource-exhausted'
+                : response.status >= 500
+                  ? 'unavailable'
+                  : 'internal';
+        throw new functions.https.HttpsError(
+          statusCode,
+          response.status === 429
+            ? 'A Evolution API está limitando os envios. Aguarde alguns instantes e tente novamente.'
+            : 'Não foi possível enviar a mensagem pela Evolution API.'
+        );
       }
 
       const resData = await response.json().catch(() => ({}));
