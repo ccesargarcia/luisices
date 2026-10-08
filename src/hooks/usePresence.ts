@@ -4,7 +4,7 @@ import { database } from '../lib/firebase';
 import { User } from 'firebase/auth';
 
 export function usePresence(user: User | null) {
-  const presenceRef = useRef<{ setOffline: () => void } | null>(null);
+  const presenceRef = useRef<{ setOffline: () => Promise<void> | void } | null>(null);
 
   useEffect(() => {
     if (!user) return;
@@ -37,7 +37,7 @@ export function usePresence(user: User | null) {
     // Provide a way to manually go offline (e.g., on logout)
     presenceRef.current = {
       setOffline: () => {
-        set(userStatusDatabaseRef, {
+        return set(userStatusDatabaseRef, {
           state: 'offline',
           lastChanged: serverTimestamp(),
         });

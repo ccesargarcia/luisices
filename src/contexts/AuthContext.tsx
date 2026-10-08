@@ -58,6 +58,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading]         = useState(true);
   const presence = usePresence(user);
 
+  const handleLogout = useCallback(async (clearReg = false, uUid?: string) => {
+    try {
+      if (presence.setOffline) {
+        await Promise.race([
+          presence.setOffline(),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 1500))
+        ]);
+      }
+    } catch (e) {
+      console.warn('[AuthContext] Timeout ao ficar offline:', e);
+    }
+    const uidToClear = uUid || user?.uid;
+    if (clearReg && uidToClear) {
+      localStorage.removeItem(`luisices_device_reg_${uidToClear}`);
+    }
+    await firebaseAuthService.logout().catch(() => {});
+    setUserProfile(null);
+  }, [presence, user]);
+
   const loadProfile = useCallback(async (u: User) => {
     const profile = await firebaseUserService.getUserProfile(
       u.uid,
@@ -122,7 +141,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               if (deviceWasRegistered || localStorage.getItem(regKey) === 'true') {
                 localStorage.removeItem(regKey);
                 toast.error('Esta sessão foi revogada remotamente.');
-                firebaseAuthService.logout().catch(() => {});
+                handleLogout(true, u.uid);
               } else {
                 deviceWasRegistered = true;
                 localStorage.setItem(regKey, 'true');
@@ -153,8 +172,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             // Se o administrador desativar a conta, efetua logout imediatamente
             if (data.active === false) {
               toast.error('Sua conta foi desativada pelo administrador.');
-              firebaseAuthService.logout().catch(() => {});
-              setUserProfile(null);
+              handleLogout(true, u.uid);
               setLoading(false);
               return;
             }
@@ -232,7 +250,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // O e-mail só pode ser usado para acessar o sistema depois da confirmação.
     await user.reload();
     if (!user.emailVerified) {
-      await firebaseAuthService.logout();
+      await handleLogout(true, user.uid);
       const error = new Error('Confirme seu e-mail para liberar o acesso. O cadastro está aguardando a confirmação do endereço enviado por e-mail.');
       (error as Error & { code: string }).code = 'auth/email-not-verified';
       throw error;
@@ -249,13 +267,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     );
 
     if (!profile) {
-      await firebaseAuthService.logout();
+      await handleLogout(true, user.uid);
       throw new Error('Sua conta não possui permissão de acesso ou convite ativo.');
     }
 
     if (profile.active === false) {
       // Usuário inativo - fazer logout imediato
-      await firebaseAuthService.logout();
+      await handleLogout(true, user.uid);
       throw new Error('Sua conta foi desativada. Entre em contato com o administrador.');
     }
   };
@@ -265,12 +283,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const logout = async () => {
-    presence.setOffline();
-    if (user) {
-      localStorage.removeItem(`luisices_device_reg_${user.uid}`);
-    }
-    await firebaseAuthService.logout();
-    setUserProfile(null);
+    return handleLogout(true);
   };
 
   const resetPassword = async (email: string) => {
