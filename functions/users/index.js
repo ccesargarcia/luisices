@@ -783,12 +783,14 @@ const registerDeviceSession = onCall(async (request) => {
   
   let locationString = 'Localização Desconhecida';
   try {
-    // API pública gratuita (ip-api.com) - limite 45 req/min
     if (ip && ip !== '127.0.0.1' && ip !== '::1') {
-      const response = await fetch(`http://ip-api.com/json/${ip}`);
-      const geo = await response.json();
-      if (geo.status === 'success') {
-        locationString = `${geo.city}, ${geo.region} - ${geo.countryCode}`;
+      // Lazy load geoip-lite para evitar aumento de memória nas outras funções
+      const geoip = require('geoip-lite');
+      const geo = geoip.lookup(ip);
+      if (geo) {
+        // geo.city, geo.region, geo.country (e.g. "São Paulo, SP - BR")
+        locationString = [geo.city, geo.region].filter(Boolean).join(', ');
+        if (geo.country) locationString += ` - ${geo.country}`;
       }
     }
   } catch (error) {

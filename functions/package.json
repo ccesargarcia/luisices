@@ -19,6 +19,7 @@
     "ask-sdk-express-adapter": "^2.14.0",
     "firebase-admin": "^12.7.0",
     "firebase-functions": "^4.5.0",
+    "geoip-lite": "^1.4.10",
     "rate-limiter-flexible": "^9.1.1",
     "resend": "^6.9.3"
   },
