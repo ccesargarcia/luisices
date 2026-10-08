@@ -193,8 +193,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               const profileActive = Boolean(data.active);
               if (idTokenResult.claims.role !== data.role || claimActive !== profileActive) {
                 try {
-                  const { getFunctions, httpsCallable } = await import('firebase/functions');
-                  const functions = getFunctions();
+                  const { httpsCallable } = await import('firebase/functions');
+                  const { functions } = await import('../lib/firebase');
                   const repairClaims = httpsCallable(functions, 'repairUserClaims');
                   await repairClaims({ uid: u.uid });
                 } catch (repairErr) {

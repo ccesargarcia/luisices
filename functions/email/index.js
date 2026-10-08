@@ -8,7 +8,7 @@ const admin = require('firebase-admin');
 const crypto = require('crypto');
 const { RESEND_API_KEY, RESEND_WEBHOOK_SECRET, ORIGIN_SECRET } = require('../common/secrets');
 const { customEmailLimiter } = require('../common/rateLimiters');
-const { getResend, isAdminRequest } = require('../common/helpers');
+const { getResend, isAdminRequest, assertActiveSession } = require('../common/helpers');
 const { validateOriginSecret } = require('../originProtection');
 const { prepareAttachments } = require('./attachments');
 const { cleanupEmailDrafts } = require('./cleanup');
@@ -234,12 +234,8 @@ const sendCustomEmail = onCall(
 const getEmailUsage = onCall(
   { cors: true, maxInstances: 5, secrets: [RESEND_API_KEY] },
   async (request) => {
-    if (!request.auth) {
-      throw new functions.https.HttpsError('unauthenticated', 'Usuário não autenticado.');
-    }
-
-    const profile = await admin.firestore().doc(`userProfiles/${request.auth.uid}`).get();
-    const profileData = profile.exists ? profile.data() : null;
+    const { profile: profileData } = await assertActiveSession(request);
+    
     const isActive = profileData?.active !== false;
     const isUserAdmin = profileData?.role === 'admin';
     const emailsPerm = profileData?.permissions?.emails;

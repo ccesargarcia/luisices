@@ -763,55 +763,19 @@ const updateUser = onCall(async (request) => {
 
   const profileRef = admin.firestore().doc(`userProfiles/${uid}`);
   const auditRef = admin.firestore().collection('userAuditLogs').doc();
-  const nextClaims = await admin.firestore().runTransaction(async (transaction) => {
-    const [profileSnap, adminsSnap] = await Promise.all([
-      transaction.get(profileRef),
-      transaction.get(admin.firestore().collection('userProfiles').where('role', '==', 'admin')),
-    ]);
-    if (!profileSnap.exists) {
-      throw new functions.https.HttpsError('not-found', 'Perfil do usuário não encontrado.');
-    }
-    const current = profileSnap.data();
-    const nextRole = role ?? current.role;
-    const nextActive = active ?? current.active !== false;
-    if (current.role === 'admin' && (nextRole !== 'admin' || nextActive !== true)) {
-      const activeAdmins = adminsSnap.docs.filter((doc) => doc.data().active !== false);
-      if (activeAdmins.length <= 1) {
-        throw new functions.https.HttpsError('failed-precondition', 'O sistema precisa manter pelo menos um administrador ativo.');
-      }
-    }
-    const update = {
-      ...(displayName !== undefined ? { displayName: displayName.trim() } : {}),
-      ...(role !== undefined ? { role } : {}),
-      ...(permissions !== undefined ? { permissions } : {}),
-      ...(active !== undefined ? { active } : {}),
-      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-      updatedBy: request.auth.uid,
-    };
-    transaction.update(profileRef, update);
-    transaction.create(auditRef, {
-      action: 'USER_PROFILE_UPDATED',
-      targetUid: uid,
-      actorUid: request.auth.uid,
-      changes: Object.keys(update).filter((key) => !['updatedAt', 'updatedBy'].includes(key)),
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
-    });
-    
-    return { role: nextRole, active: nextActive, currentRole: current.role, currentActive: current.active };
-  });
 
-  await admin.auth().setCustomUserClaims(uid, { role: nextClaims.role, active: nextClaims.active });
-
-  // Se o usuário foi desativado ou rebaixado de cargo, força a revogação imediata de todas as sessões
-  if (nextClaims.active === false || nextClaims.role !== nextClaims.currentRole) {
-    const revocationTimeSeconds = Math.floor(Date.now() / 1000);
-    
-    await admin.firestore().doc(`userProfiles/${uid}`).set({
-      tokensValidAfterTime: revocationTimeSeconds,
-      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-      updatedBy: request.auth.uid,
-    }, { merge: true });
-
+  // Lê o estado atual para decidir se a revogação é necessária antes da transação
+  const initialSnap = await profileRef.get();
+  if (!initialSnap.exists) {
+    throw new functions.https.HttpsError('not-found', 'Perfil do usuário não encontrado.');
+  }
+  const currentData = initialSnap.data();
+  const projectedRole = role ?? currentData.role;
+  const projectedActive = active ?? currentData.active !== false;
+  
+  // Executa revogações críticas antes de gravar no Firestore
+  const needsRevocation = projectedActive === false || projectedRole !== currentData.role;
+  if (needsRevocation) {
     try {
       const rtdb = admin.database();
       await Promise.all([
@@ -830,6 +794,51 @@ const updateUser = onCall(async (request) => {
       throw new functions.https.HttpsError('internal', 'Falha ao revogar credenciais de autenticação no servidor.');
     }
   }
+
+  const nextClaims = await admin.firestore().runTransaction(async (transaction) => {
+    const [profileSnap, adminsSnap] = await Promise.all([
+      transaction.get(profileRef),
+      transaction.get(admin.firestore().collection('userProfiles').where('role', '==', 'admin')),
+    ]);
+    if (!profileSnap.exists) {
+      throw new functions.https.HttpsError('not-found', 'Perfil do usuário não encontrado (concorrência).');
+    }
+    const current = profileSnap.data();
+    const nextRole = role ?? current.role;
+    const nextActive = active ?? current.active !== false;
+    
+    if (current.role === 'admin' && (nextRole !== 'admin' || nextActive !== true)) {
+      const activeAdmins = adminsSnap.docs.filter((doc) => doc.data().active !== false);
+      if (activeAdmins.length <= 1) {
+        throw new functions.https.HttpsError('failed-precondition', 'O sistema precisa manter pelo menos um administrador ativo.');
+      }
+    }
+    const update = {
+      ...(displayName !== undefined ? { displayName: displayName.trim() } : {}),
+      ...(role !== undefined ? { role } : {}),
+      ...(permissions !== undefined ? { permissions } : {}),
+      ...(active !== undefined ? { active } : {}),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedBy: request.auth.uid,
+    };
+    
+    if (needsRevocation) {
+      update.tokensValidAfterTime = Math.floor(Date.now() / 1000);
+    }
+    
+    transaction.update(profileRef, update);
+    transaction.create(auditRef, {
+      action: 'USER_PROFILE_UPDATED',
+      targetUid: uid,
+      actorUid: request.auth.uid,
+      changes: Object.keys(update).filter((key) => !['updatedAt', 'updatedBy'].includes(key)),
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+    
+    return { role: nextRole, active: nextActive };
+  });
+
+  await admin.auth().setCustomUserClaims(uid, { role: nextClaims.role, active: nextClaims.active });
   
   return { success: true };
 });

@@ -43,3 +43,6 @@ Documento de rastreamento de progresso conforme especificado em `antigravity-pla
 - [x] Expansão da barreira temporal `assertActiveSession` para `sendCustomEmail`, `isAuthorizedForWhatsApp` e todos os callables de Inteligência Artificial (`aiAgentChat`, etc).
 - [x] Callable `repairUserClaims` liberada para auto-reparo do próprio usuário (chamada automaticamente no frontend quando as claims divergem).
 - [x] Rebaixamento e desativação em `updateUser` agora invocam obrigatoriamente a lógica completa de revogação de tokens e RTDB.
+- [x] Hotfix: Correção de importação ausente (`assertActiveSession`) em `sendCustomEmail` e expansão de segurança para `getEmailUsage`.
+- [x] Hotfix: Reordenação em `updateUser` para revogar RTDB/Auth antes de consolidar claims no Firestore (garante retry em caso de falha da API).
+- [x] Hotfix: frontend (`AuthContext`) atualizado para usar a instância correta e conectada de `functions` para invocar o reparo de claims.
