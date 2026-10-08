@@ -17,6 +17,7 @@ import {
   Firestore,
 } from 'firebase/firestore';
 import { getStorage, connectStorageEmulator } from 'firebase/storage';
+import { getDatabase, connectDatabaseEmulator } from 'firebase/database';
 import { getFunctions, connectFunctionsEmulator } from 'firebase/functions';
 import { connectAuthEmulator } from 'firebase/auth';
 import { getAnalytics, isSupported, Analytics } from 'firebase/analytics';
@@ -89,6 +90,7 @@ setPersistence(auth, browserLocalPersistence).catch(error => {
 });
 
 export const storage = getStorage(app);
+export const database = getDatabase(app);
 const functionsCustomDomain = import.meta.env.VITE_FUNCTIONS_CUSTOM_DOMAIN || undefined;
 export const functions = functionsCustomDomain
   ? getFunctions(app, functionsCustomDomain)
@@ -99,6 +101,7 @@ if (import.meta.env.VITE_USE_FIREBASE_EMULATOR === 'true') {
   const host = import.meta.env.VITE_FIREBASE_EMULATOR_HOST || 'localhost';
   try {
     connectFirestoreEmulator(db, host, 8080);
+    connectDatabaseEmulator(database, host, 9000);
     connectAuthEmulator(auth, `http://${host}:9099`, { disableWarnings: true });
     connectStorageEmulator(storage, host, 9199);
     connectFunctionsEmulator(functions, host, 5001);

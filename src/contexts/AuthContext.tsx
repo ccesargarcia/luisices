@@ -8,6 +8,7 @@ import { firebaseUserService } from '../services/firebaseUserService';
 import { UserProfile, ADMIN_PERMISSIONS, DEFAULT_USER_PERMISSIONS, EMPLOYEE_PERMISSIONS } from '../app/types';
 import { setUserAnalytics } from '../services/analyticsService';
 import { toast } from 'sonner';
+import { usePresence } from '../hooks/usePresence';
 
 interface AuthContextType {
   user: User | null;
@@ -55,6 +56,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser]               = useState<User | null>(null);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading]         = useState(true);
+  const presence = usePresence(user);
 
   const loadProfile = useCallback(async (u: User) => {
     const profile = await firebaseUserService.getUserProfile(
@@ -221,6 +223,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const logout = async () => {
+    presence.setOffline();
     await firebaseAuthService.logout();
     setUserProfile(null);
   };

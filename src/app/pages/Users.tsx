@@ -3,6 +3,8 @@ import { useSearchParams } from 'react-router';
 import { useAuth } from '../../contexts/AuthContext';
 import { firebaseUserService } from '../../services/firebaseUserService';
 import { firebaseAlexaService } from '../../services/firebaseAlexaService';
+import { database } from '../../lib/firebase';
+import { ref, onValue, off } from 'firebase/database';
 import {
   UserProfile,
   UserRole,
@@ -552,6 +554,20 @@ export function Users() {
   const tabParam = searchParams.get('tab') as UserTabType;
   const initialTab: UserTabType = validTabs.includes(tabParam) ? tabParam : 'membros';
   const [activeTab, setActiveTab] = useState<UserTabType>(initialTab);
+  const [presenceData, setPresenceData] = useState<Record<string, { state: string, lastChanged: number }>>({});
+
+  useEffect(() => {
+    if (!isAdmin) return;
+    const statusRef = ref(database, '/status');
+    const unsubscribe = onValue(statusRef, (snap) => {
+      if (snap.exists()) {
+        setPresenceData(snap.val());
+      } else {
+        setPresenceData({});
+      }
+    });
+    return () => unsubscribe();
+  }, [isAdmin]);
 
   const handleTabChange = (val: string) => {
     const nextTab = val as UserTabType;
@@ -561,6 +577,20 @@ export function Users() {
       next.set('tab', nextTab);
       return next;
     }, { replace: true });
+  };
+
+  const renderPresence = (uid: string) => {
+    const isOnline = presenceData[uid]?.state === 'online';
+    return (
+      <span
+        title={isOnline ? 'Online agora' : 'Offline'}
+        className={`inline-block w-2 h-2 rounded-full mr-2 transition-colors ${
+          isOnline
+            ? 'bg-emerald-500 shadow-[0_0_6px_rgba(16,185,129,0.5)]'
+            : 'bg-muted-foreground/30 dark:bg-muted-foreground/20'
+        }`}
+      />
+    );
   };
 
   useEffect(() => {
@@ -891,7 +921,7 @@ export function Users() {
                     {paginatedUsers.map(u => (
                       <TableRow key={u.uid} className="group">
                         <TableCell className="font-medium">
-                          <div>{u.displayName}{u.uid === currentUser?.uid && <Badge variant="outline" className="ml-2 text-xs">você</Badge>}</div>
+                          <div className="flex items-center">{renderPresence(u.uid)} {u.displayName}{u.uid === currentUser?.uid && <Badge variant="outline" className="ml-2 text-xs">você</Badge>}</div>
                           <div className="text-muted-foreground text-xs font-normal">{u.email}</div>
                         </TableCell>
                         <TableCell>
@@ -962,8 +992,8 @@ export function Users() {
                     <CardContent className="p-4 space-y-2">
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0">
-                          <p className="font-semibold truncate">
-                            {u.displayName}
+                          <p className="font-semibold truncate flex items-center">
+                            {renderPresence(u.uid)} {u.displayName}
                             {u.uid === currentUser?.uid && (
                               <Badge variant="outline" className="ml-2 text-xs">você</Badge>
                             )}

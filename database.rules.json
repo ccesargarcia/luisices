@@ -1,0 +1,13 @@
+{
+  "rules": {
+    "status": {
+      // Qualquer um autenticado pode ver o status de todos
+      ".read": "auth != null",
+      "$uid": {
+        // Um usuário só pode alterar o seu próprio status
+        ".write": "auth != null && auth.uid === $uid",
+        ".validate": "newData.hasChildren(['state', 'lastChanged']) && (newData.child('state').val() === 'online' || newData.child('state').val() === 'offline' || newData.child('state').val() === 'away')"
+      }
+    }
+  }
+}
