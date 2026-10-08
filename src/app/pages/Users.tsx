@@ -138,6 +138,14 @@ function formatUserDate(value?: string) {
   return Number.isNaN(date.getTime()) ? 'Indisponível' : date.toLocaleString('pt-BR');
 }
 
+function formatAccountDate(value?: string) {
+  return value ? formatUserDate(value) : 'Sem registro';
+}
+
+function formatLastSignIn(value?: string) {
+  return value ? formatUserDate(value) : 'Nunca';
+}
+
 // ─── Permission Matrix Component ─────────────────────────────────────────────
 
 interface PermissionMatrixProps {
@@ -582,7 +590,17 @@ export function Users() {
     setLoading(true);
     try {
       const list = await firebaseUserService.listUsers();
-      setUsers(list);
+      try {
+        const metadata = await firebaseUserService.getAccountMetadata(list.map((user) => user.uid));
+        const metadataByUid = new Map(metadata.map((item) => [item.uid, item]));
+        setUsers(list.map((user) => ({
+          ...user,
+          ...metadataByUid.get(user.uid),
+        })));
+      } catch (error) {
+        console.warn('[Users] Não foi possível carregar os dados de acesso das contas:', error);
+        setUsers(list);
+      }
     } catch {
       toast.error('Erro ao carregar usuários');
     } finally {
@@ -600,7 +618,7 @@ export function Users() {
     setTogglingUid(u.uid);
     try {
       await firebaseUserService.setUserActive(u.uid, !u.active);
-      setUsers(prev => prev.map(x => x.uid === u.uid ? { ...x, active: !u.active } : x));
+      setUsers(prev => prev.map(x => x.uid === u.uid ? { ...x, active: !u.active, updatedAt: new Date().toISOString() } : x));
       toast.success(u.active ? 'Usuário desativado' : 'Usuário ativado');
     } catch {
       toast.error('Erro ao alterar status');
@@ -623,6 +641,9 @@ export function Users() {
     setResettingUid(u.uid);
     try {
       await firebaseUserService.sendAdminPasswordReset(u.email);
+      setUsers((prev) => prev.map((user) => user.uid === u.uid
+        ? { ...user, lastPasswordResetRequestedAt: new Date().toISOString() }
+        : user));
       toast.success(`Link de redefinição enviado para ${u.email}`);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Não foi possível enviar o link de redefinição');
@@ -848,10 +869,10 @@ export function Users() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Nome</TableHead>
-                      <TableHead>E-mail</TableHead>
+                      <TableHead>Usuário</TableHead>
                       <TableHead>Perfil</TableHead>
                       <TableHead>Status</TableHead>
+                      <TableHead>Atividade da conta</TableHead>
                       <TableHead className="text-right">Ações</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -866,12 +887,9 @@ export function Users() {
                     {paginatedUsers.map(u => (
                       <TableRow key={u.uid} className="group">
                         <TableCell className="font-medium">
-                          {u.displayName}
-                          {u.uid === currentUser?.uid && (
-                            <Badge variant="outline" className="ml-2 text-xs">você</Badge>
-                          )}
+                          <div>{u.displayName}{u.uid === currentUser?.uid && <Badge variant="outline" className="ml-2 text-xs">você</Badge>}</div>
+                          <div className="text-muted-foreground text-xs font-normal">{u.email}</div>
                         </TableCell>
-                        <TableCell className="text-muted-foreground text-sm">{u.email}</TableCell>
                         <TableCell>
                           {u.role === 'admin' ? (
                             <Badge className="bg-yellow-500/20 text-yellow-700 border-yellow-300 hover:bg-yellow-500/30">
@@ -899,6 +917,13 @@ export function Users() {
                               {u.active ? 'Ativo' : 'Inativo'}
                             </span>
                           </div>
+                        </TableCell>
+                        <TableCell className="text-xs text-muted-foreground min-w-64">
+                          <div>Último acesso: <span className="text-foreground">{formatLastSignIn(u.lastSignInAt)}</span></div>
+                          <div>Criada em: <span className="text-foreground">{formatAccountDate(u.authCreatedAt || u.createdAt)}</span></div>
+                          <div>Senha alterada: <span className="text-foreground">{formatAccountDate(u.passwordChangedAt)}</span></div>
+                          <div>Perfil atualizado: <span className="text-foreground">{formatAccountDate(u.updatedAt)}</span></div>
+                          {u.lastPasswordResetRequestedAt && <div>Redefinição solicitada: <span className="text-foreground">{formatUserDate(u.lastPasswordResetRequestedAt)}</span></div>}
                         </TableCell>
                         <TableCell className="text-right">
                           <div className="flex items-center justify-end gap-1">
@@ -983,8 +1008,11 @@ export function Users() {
                         </div>
                       </div>
                       <div className="border-t pt-2 text-xs text-muted-foreground space-y-1">
-                        <p>Criado em: <span className="text-foreground">{formatUserDate(u.createdAt)}</span></p>
-                        <p>Último reset solicitado: <span className="text-foreground">{formatUserDate(u.lastPasswordResetRequestedAt)}</span></p>
+                        <p>Último acesso: <span className="text-foreground">{formatLastSignIn(u.lastSignInAt)}</span></p>
+                        <p>Conta criada em: <span className="text-foreground">{formatAccountDate(u.authCreatedAt || u.createdAt)}</span></p>
+                        <p>Senha alterada: <span className="text-foreground">{formatAccountDate(u.passwordChangedAt)}</span></p>
+                        <p>Perfil atualizado: <span className="text-foreground">{formatAccountDate(u.updatedAt)}</span></p>
+                        {u.lastPasswordResetRequestedAt && <p>Última redefinição solicitada: <span className="text-foreground">{formatUserDate(u.lastPasswordResetRequestedAt)}</span></p>}
                       </div>
                     </CardContent>
                   </Card>

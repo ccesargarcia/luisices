@@ -98,6 +98,7 @@ async function activateInvitedAccount(invitationRef, invitationData, authUser) {
         permissions: INVITED_USER_PERMISSIONS,
         invitedBy: invitationData.invitedBy,
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        passwordChangedAt: authUser.metadata.creationTime,
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       });
     }
@@ -504,6 +505,41 @@ const sendPasswordResetEmail = onCall(
   }
 );
 
+/** Retorna datas de criação e último acesso do Firebase Auth para a lista administrativa. */
+const getUserAccountMetadata = onCall(async (request) => {
+  if (!(await isAdminRequest(request))) {
+    throw new functions.https.HttpsError('permission-denied', 'Apenas administradores podem consultar os dados das contas.');
+  }
+  const { uids } = request.data || {};
+  if (!Array.isArray(uids) || uids.length > 100 || uids.some((uid) => typeof uid !== 'string' || uid.length > 128)) {
+    throw new functions.https.HttpsError('invalid-argument', 'Lista de usuários inválida.');
+  }
+  if (uids.length === 0) return { users: [] };
+
+  const result = await admin.auth().getUsers(uids.map((uid) => ({ uid })));
+  return {
+    users: result.users.map((user) => ({
+      uid: user.uid,
+      authCreatedAt: user.metadata.creationTime || null,
+      lastSignInAt: user.metadata.lastSignInTime || null,
+    })),
+  };
+});
+
+/** Registra a troca de senha concluída pelo próprio usuário. */
+const recordUserPasswordChange = onCall(async (request) => {
+  if (!request.auth?.uid) {
+    throw new functions.https.HttpsError('unauthenticated', 'Faça login para registrar a alteração de senha.');
+  }
+  const profileRef = admin.firestore().doc(`userProfiles/${request.auth.uid}`);
+  const profile = await profileRef.get();
+  if (!profile.exists) {
+    throw new functions.https.HttpsError('not-found', 'Perfil do usuário não encontrado.');
+  }
+  await profileRef.set({ passwordChangedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+  return { success: true };
+});
+
 /** Remove um usuário do Firebase Auth e do Firestore (apenas admin). */
 const deleteUser = onCall(async (request) => {
   if (!(await isAdminRequest(request))) {
@@ -630,6 +666,7 @@ const createUser = onCall(async (request) => {
       active: true,
       createdAt: new Date().toISOString(),
       createdBy: request.auth.uid,
+      passwordChangedAt: userRecord.metadata.creationTime,
     };
 
     try {
@@ -731,6 +768,8 @@ module.exports = {
   completeUserInvitation,
   sendVerificationEmail,
   sendPasswordResetEmail,
+  getUserAccountMetadata,
+  recordUserPasswordChange,
   deleteUser,
   createUser,
   updateUser,

@@ -581,6 +581,11 @@ export interface UserProfile {
   status?: 'active' | 'paused' | 'hidden';
   createdAt: string;
   createdBy: string;
+  updatedAt?: string;
+  updatedBy?: string;
+  authCreatedAt?: string;
+  lastSignInAt?: string;
+  passwordChangedAt?: string;
   lastPasswordResetRequestedAt?: string;
   whatsappPhone?: string;
 }

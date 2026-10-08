@@ -19,6 +19,12 @@ import { UserProfile, UserRole, Permission, ADMIN_PERMISSIONS, DEFAULT_USER_PERM
 
 const USERS_COLLECTION = 'userProfiles';
 
+function normalizeDate(value: any): string | undefined {
+  if (typeof value === 'string') return value;
+  if (value && typeof value.toDate === 'function') return value.toDate().toISOString();
+  return undefined;
+}
+
 export class FirebaseUserService {
   async sendAdminPasswordReset(email: string): Promise<void> {
     const callable = httpsCallable(functions, 'sendAdminPasswordReset');
@@ -76,7 +82,30 @@ export class FirebaseUserService {
   async listUsers(): Promise<UserProfile[]> {
     const q = query(collection(db, USERS_COLLECTION), orderBy('createdAt', 'asc'));
     const snap = await getDocs(q);
-    return snap.docs.map(d => d.data() as UserProfile);
+    return snap.docs.map((d) => {
+      const data = d.data();
+      return {
+        ...data,
+        createdAt: normalizeDate(data.createdAt) || '',
+        updatedAt: normalizeDate(data.updatedAt),
+        passwordChangedAt: normalizeDate(data.passwordChangedAt),
+        lastPasswordResetRequestedAt: normalizeDate(data.lastPasswordResetRequestedAt),
+      } as UserProfile;
+    });
+  }
+
+  async getAccountMetadata(uids: string[]): Promise<Array<{ uid: string; authCreatedAt?: string; lastSignInAt?: string }>> {
+    const batches: string[][] = [];
+    for (let index = 0; index < uids.length; index += 100) batches.push(uids.slice(index, index + 100));
+    const results = await Promise.all(batches.map(async (batch) => {
+      const callable = httpsCallable<{ uids: string[] }, { users: Array<{ uid: string; authCreatedAt?: string; lastSignInAt?: string }> }>(
+        functions,
+        'getUserAccountMetadata',
+      );
+      const result = await callable({ uids: batch });
+      return result.data.users;
+    }));
+    return results.flat();
   }
 
   /**

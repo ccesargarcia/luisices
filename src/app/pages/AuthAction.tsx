@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
-import { applyActionCode, confirmPasswordReset, verifyPasswordResetCode } from 'firebase/auth';
+import { applyActionCode, confirmPasswordReset, signInWithEmailAndPassword, signOut, verifyPasswordResetCode } from 'firebase/auth';
 import { auth } from '../../lib/firebase';
 import { httpsCallable } from 'firebase/functions';
 import { functions } from '../../lib/firebase';
@@ -98,6 +98,15 @@ export function AuthAction() {
 
     try {
       await confirmPasswordReset(auth, oobCode!, newPassword);
+      try {
+        await signInWithEmailAndPassword(auth, email, newPassword);
+        const recordPasswordChange = httpsCallable(functions, 'recordUserPasswordChange');
+        await recordPasswordChange({});
+        await signOut(auth);
+      } catch (metadataError) {
+        console.warn('[AuthAction] Não foi possível registrar a data da troca de senha:', metadataError);
+        await signOut(auth).catch(() => undefined);
+      }
       setSuccess(true);
 
       // Redirecionar para login após 3 segundos
