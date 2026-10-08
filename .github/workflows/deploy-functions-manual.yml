@@ -140,7 +140,7 @@ jobs:
           # Determina se deve publicar regras e índices
           if [ "${{ inputs.deploy_rules_and_indexes }}" = "true" ]; then
             echo "📄 Publicando regras e índices do Firestore..."
-            firebase deploy --only firestore:rules,firestore:indexes --project luisices-dev --non-interactive --force
+            firebase deploy --only firestore:rules,firestore:indexes,database --project luisices-dev --non-interactive --force
           fi
 
           # Determina quais funções publicar via seleção
@@ -220,7 +220,7 @@ jobs:
           # Determina se deve publicar regras e índices
           if [ "${{ inputs.deploy_rules_and_indexes }}" = "true" ]; then
             echo "📄 Publicando regras, índices e storage..."
-            firebase deploy --only firestore:rules,firestore:indexes,storage --project papelaria-dashboard --non-interactive --force
+            firebase deploy --only firestore:rules,firestore:indexes,database,storage --project papelaria-dashboard --non-interactive --force
           fi
 
           # Determina quais funções publicar via seleção
