@@ -14,7 +14,7 @@ import {
   orderBy,
 } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
-import { db, functions } from '../lib/firebase';
+import { auth, db, functions, regionalFunctions } from '../lib/firebase';
 import { UserProfile, UserRole, Permission, ADMIN_PERMISSIONS, DEFAULT_USER_PERMISSIONS, EMPLOYEE_PERMISSIONS } from '../app/types';
 
 const USERS_COLLECTION = 'userProfiles';
@@ -95,11 +95,15 @@ export class FirebaseUserService {
   }
 
   async getAccountMetadata(uids: string[]): Promise<Array<{ uid: string; authCreatedAt?: string; lastSignInAt?: string }>> {
+    const signedInUser = auth.currentUser;
+    if (!signedInUser) throw new Error('Sua sessão expirou. Entre novamente para consultar os acessos.');
+    await signedInUser.getIdToken(true);
+
     const batches: string[][] = [];
     for (let index = 0; index < uids.length; index += 100) batches.push(uids.slice(index, index + 100));
     const results = await Promise.all(batches.map(async (batch) => {
       const callable = httpsCallable<{ uids: string[] }, { users: Array<{ uid: string; authCreatedAt?: string; lastSignInAt?: string }> }>(
-        functions,
+        regionalFunctions,
         'getUserAccountMetadata',
       );
       const result = await callable({ uids: batch });
