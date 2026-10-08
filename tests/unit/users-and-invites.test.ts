@@ -126,12 +126,13 @@ describe('Barreira Temporal e Segurança de Sessões (assertActiveSession)', () 
   });
 
   it('rejeita tokens emitidos no mesmo segundo ou antes da revogação (auth_time <= tokensValidAfterTime)', async () => {
-    const mockDoc = vi.spyOn(admin.firestore(), 'doc').mockReturnValue({
-      get: vi.fn().mockResolvedValue({
-        exists: true,
-        data: () => ({ active: true, tokensValidAfterTime: 1700000050 }),
-      }),
+    const mockGet = vi.fn().mockResolvedValue({
+      exists: true,
+      data: () => ({ active: true, tokensValidAfterTime: 1700000050 }),
     });
+    const mockCollection = vi.spyOn(admin.firestore(), 'collection').mockReturnValue({
+      doc: vi.fn().mockReturnValue({ get: mockGet }),
+    } as any);
 
     const requestNoMesmoSegundo = {
       auth: {
@@ -150,16 +151,17 @@ describe('Barreira Temporal e Segurança de Sessões (assertActiveSession)', () 
     };
 
     await expect(assertActiveSession(requestAnterior)).rejects.toThrow('Sessão revogada no servidor.');
-    mockDoc.mockRestore();
+    mockCollection.mockRestore();
   });
 
   it('permite autenticações legítimas ocorridas estritamente após a revogação (auth_time > tokensValidAfterTime)', async () => {
-    const mockDoc = vi.spyOn(admin.firestore(), 'doc').mockReturnValue({
-      get: vi.fn().mockResolvedValue({
-        exists: true,
-        data: () => ({ active: true, tokensValidAfterTime: 1700000050 }),
-      }),
+    const mockGet = vi.fn().mockResolvedValue({
+      exists: true,
+      data: () => ({ active: true, tokensValidAfterTime: 1700000050 }),
     });
+    const mockCollection = vi.spyOn(admin.firestore(), 'collection').mockReturnValue({
+      doc: vi.fn().mockReturnValue({ get: mockGet }),
+    } as any);
 
     const requestNovoLogin = {
       auth: {
@@ -170,6 +172,6 @@ describe('Barreira Temporal e Segurança de Sessões (assertActiveSession)', () 
 
     const session = await assertActiveSession(requestNovoLogin);
     expect(session.uid).toBe('user-revoked');
-    mockDoc.mockRestore();
+    mockCollection.mockRestore();
   });
 });

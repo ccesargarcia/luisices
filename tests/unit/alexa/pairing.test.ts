@@ -134,7 +134,7 @@ describe('Alexa: Fluxo de Pareamento Supervisionado e Vinculação de Voz', () =
     const approvalResult = await approveAlexaPairingAdmin({
       code: rawCode,
       targetUid: 'amanda-uid',
-      authContext: { uid: 'admin-uid', email: 'admin@luisices.com.br' },
+      request: { auth: { uid: 'admin-uid', token: { email: 'admin@luisices.com.br' } } },
       db: mockDb,
       config: baseConfig,
     });
@@ -183,7 +183,7 @@ describe('Alexa: Fluxo de Pareamento Supervisionado e Vinculação de Voz', () =
       approveAlexaPairingAdmin({
         code: rawCode,
         targetUid: 'amanda-uid',
-        authContext: { uid: 'admin-uid' },
+        request: { auth: { uid: 'admin-uid' } },
         db: mockDb,
         config: baseConfig,
       })
@@ -202,11 +202,11 @@ describe('Alexa: Fluxo de Pareamento Supervisionado e Vinculação de Voz', () =
       approveAlexaPairingAdmin({
         code: rawCode,
         targetUid: 'amanda-uid',
-        authContext: { uid: 'user-not-admin' },
+        request: { auth: { uid: 'user-not-admin' } },
         db: mockDb,
         config: baseConfig,
       })
-    ).rejects.toThrow('Apenas administradores');
+    ).rejects.toThrow('Acesso restrito');
   });
 
   it('deve rotear LinkVoiceIntent e aliases (GeneratePairingCodeIntent, PairAlexaIntent) via processAlexaEnvelope', async () => {

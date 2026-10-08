@@ -8,6 +8,7 @@ const admin = require('firebase-admin');
 const { COLLECTIONS, computeCodeHash, computeBindingKey, recordAuditEvent } = require('./repository');
 const { checkPairingRateLimit } = require('./rateLimit');
 const { supportsApl, buildVoicePairingAplDirective } = require('./apl');
+const { assertActiveSession } = require('../common/helpers');
 
 /**
  * Gera desafio de 8 dígitos na presença do administrador para vincular a voz.
@@ -116,20 +117,13 @@ async function handleVoicePairingRequest(envelope, config, db) {
  * Callable administrativo para aprovar o código de vinculação e associar ao UID desejado.
  * Somente administradores autenticados e ativos podem executar.
  */
-async function approveAlexaPairingAdmin({ code, targetUid, authContext, db, config }) {
-  if (!authContext || !authContext.uid) {
-    throw new Error('Não autenticado.');
-  }
+async function approveAlexaPairingAdmin({ code, targetUid, request, db, config }) {
+  // 1. Validar se o solicitante é administrador ativo e não revogado
+  const session = await assertActiveSession(request, { requiredRole: 'admin', db });
 
   // 0. Verificar se a integração está ativada no ambiente
   if (config?.isEnabled === false) {
     throw new Error('A integração com a Alexa está desativada no momento neste ambiente.');
-  }
-
-  // 1. Validar se o solicitante é administrador ativo
-  const adminSnap = await db.collection(COLLECTIONS.USER_PROFILES).doc(authContext.uid).get();
-  if (!adminSnap.exists || adminSnap.data()?.role !== 'admin' || adminSnap.data()?.active !== true) {
-    throw new Error('Apenas administradores ativos podem aprovar a vinculação de voz.');
   }
 
   if (!code || typeof code !== 'string' || !/^\d{8}$/.test(code.trim())) {
@@ -206,7 +200,7 @@ async function approveAlexaPairingAdmin({ code, targetUid, authContext, db, conf
     // Consumir o pareamento
     transaction.update(pairingRef, {
       consumedAt: admin.firestore.FieldValue.serverTimestamp(),
-      consumedBy: authContext.uid,
+      consumedBy: request.auth.uid,
       assignedUid: targetUid,
     });
 
@@ -219,8 +213,8 @@ async function approveAlexaPairingAdmin({ code, targetUid, authContext, db, conf
         active: true,
         environment: config.environment,
         allowedSkillId: config.allowedSkillId || null,
-        approvedBy: authContext.uid,
-        approvedByEmail: authContext.email || '',
+        approvedBy: request.auth.uid,
+        approvedByEmail: request.auth.token?.email || '',
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
         revokedAt: null,
         allowedDeviceIds: [],
@@ -237,7 +231,7 @@ async function approveAlexaPairingAdmin({ code, targetUid, authContext, db, conf
         enabled: true,
         mode: finalMode,
         scope: 'orders:create:self',
-        approvedBy: authContext.uid,
+        approvedBy: request.auth.uid,
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       },
       { merge: true }

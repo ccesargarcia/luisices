@@ -31,7 +31,7 @@ async function approveAlexaPairingHandler(request, db) {
     const result = await approveAlexaPairingAdmin({
       code,
       targetUid,
-      authContext: request.auth,
+      request,
       db,
       config,
     });

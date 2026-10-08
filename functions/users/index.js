@@ -764,44 +764,14 @@ const updateUser = onCall(async (request) => {
   const profileRef = admin.firestore().doc(`userProfiles/${uid}`);
   const auditRef = admin.firestore().collection('userAuditLogs').doc();
 
-  // Lê o estado atual para decidir se a revogação é necessária antes da transação
-  const initialSnap = await profileRef.get();
-  if (!initialSnap.exists) {
-    throw new functions.https.HttpsError('not-found', 'Perfil do usuário não encontrado.');
-  }
-  const currentData = initialSnap.data();
-  const projectedRole = role ?? currentData.role;
-  const projectedActive = active ?? currentData.active !== false;
-  
-  // Executa revogações críticas antes de gravar no Firestore
-  const needsRevocation = projectedActive === false || projectedRole !== currentData.role;
-  if (needsRevocation) {
-    try {
-      const rtdb = admin.database();
-      await Promise.all([
-        rtdb.ref(`status/${uid}`).remove(),
-        rtdb.ref(`revocations/${uid}`).set(Date.now()),
-      ]);
-    } catch (rtdbErr) {
-      console.error(`[updateUser] Falha ao sincronizar revogação no RTDB para o usuário ${uid}:`, rtdbErr);
-      throw new functions.https.HttpsError('internal', 'Falha ao revogar presença em tempo real. Operação abortada.');
-    }
-
-    try {
-      await admin.auth().revokeRefreshTokens(uid);
-    } catch (err) {
-      console.error(`[updateUser] Erro crítico ao revogar refresh tokens do usuário ${uid}:`, err);
-      throw new functions.https.HttpsError('internal', 'Falha ao revogar credenciais de autenticação no servidor.');
-    }
-  }
-
-  const nextClaims = await admin.firestore().runTransaction(async (transaction) => {
+  // 1. Transaction: valida regras, define estado futuro e marca claimsSyncPending
+  const result = await admin.firestore().runTransaction(async (transaction) => {
     const [profileSnap, adminsSnap] = await Promise.all([
       transaction.get(profileRef),
       transaction.get(admin.firestore().collection('userProfiles').where('role', '==', 'admin')),
     ]);
     if (!profileSnap.exists) {
-      throw new functions.https.HttpsError('not-found', 'Perfil do usuário não encontrado (concorrência).');
+      throw new functions.https.HttpsError('not-found', 'Perfil do usuário não encontrado.');
     }
     const current = profileSnap.data();
     const nextRole = role ?? current.role;
@@ -813,6 +783,9 @@ const updateUser = onCall(async (request) => {
         throw new functions.https.HttpsError('failed-precondition', 'O sistema precisa manter pelo menos um administrador ativo.');
       }
     }
+    
+    const needsRevocation = nextActive === false || nextRole !== current.role;
+    
     const update = {
       ...(displayName !== undefined ? { displayName: displayName.trim() } : {}),
       ...(role !== undefined ? { role } : {}),
@@ -820,6 +793,7 @@ const updateUser = onCall(async (request) => {
       ...(active !== undefined ? { active } : {}),
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       updatedBy: request.auth.uid,
+      claimsSyncPending: true, // Marker persistente de divergência
     };
     
     if (needsRevocation) {
@@ -831,15 +805,35 @@ const updateUser = onCall(async (request) => {
       action: 'USER_PROFILE_UPDATED',
       targetUid: uid,
       actorUid: request.auth.uid,
-      changes: Object.keys(update).filter((key) => !['updatedAt', 'updatedBy'].includes(key)),
+      changes: Object.keys(update).filter((key) => !['updatedAt', 'updatedBy', 'claimsSyncPending'].includes(key)),
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
     });
     
-    return { role: nextRole, active: nextActive };
+    return { role: nextRole, active: nextActive, needsRevocation };
   });
 
-  await admin.auth().setCustomUserClaims(uid, { role: nextClaims.role, active: nextClaims.active });
-  
+  // 2. Operações Externas (Pós-Transação)
+  try {
+    if (result.needsRevocation) {
+      const rtdb = admin.database();
+      await Promise.all([
+        rtdb.ref(`status/${uid}`).remove(),
+        rtdb.ref(`revocations/${uid}`).set(Date.now()),
+      ]);
+      await admin.auth().revokeRefreshTokens(uid);
+    }
+
+    await admin.auth().setCustomUserClaims(uid, { role: result.role, active: result.active });
+
+    // 3. Limpa o marker de divergência em caso de sucesso absoluto
+    await profileRef.update({ claimsSyncPending: admin.firestore.FieldValue.delete() });
+
+  } catch (err) {
+    console.error(`[updateUser] Erro ao sincronizar estado externo do usuário ${uid}:`, err);
+    // Erro reportado ao admin para ciência, mas a alteração no perfil já foi efetivada
+    throw new functions.https.HttpsError('internal', 'O perfil foi atualizado, mas houve falha na sincronização de credenciais/sessões. Reparo pendente.');
+  }
+
   return { success: true };
 });
 

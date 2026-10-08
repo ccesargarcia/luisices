@@ -90,7 +90,8 @@ const assertActiveSession = async (request, options = {}) => {
     throw new HttpsError('unauthenticated', 'Requer autenticação.');
   }
 
-  const profileSnap = await admin.firestore().doc(`userProfiles/${request.auth.uid}`).get();
+  const db = options.db || admin.firestore();
+  const profileSnap = await db.collection('userProfiles').doc(request.auth.uid).get();
   if (!profileSnap.exists || profileSnap.data().active === false) {
     throw new HttpsError('permission-denied', 'Perfil de usuário inativo ou inexistente.');
   }

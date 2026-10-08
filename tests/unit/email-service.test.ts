@@ -150,7 +150,7 @@ describe('Funcionalidade: Comunicação e Mensageria por E-mail (emailService)',
         expect.objectContaining({ path: 'receivedEmails/email-xyz' }),
         expect.objectContaining({
           trashed: true,
-          trashedAt: expect.any(String),
+          trashedAt: expect.any(Date),
         })
       );
     });
@@ -163,7 +163,7 @@ describe('Funcionalidade: Comunicação e Mensageria por E-mail (emailService)',
         expect.objectContaining({ path: 'sentEmails/email-sent-123' }),
         expect.objectContaining({
           trashed: true,
-          trashedAt: expect.any(String),
+          trashedAt: expect.any(Date),
         })
       );
     });
