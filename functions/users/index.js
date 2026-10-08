@@ -547,6 +547,79 @@ const syncUserClaims = async (uid) => {
   return claims;
 };
 
+/**
+ * Executa todas as etapas de sincronização pendentes registradas em claimsSyncPending.
+ * Protegido contra execução fora de ordem pelo campo opId:
+ *   - Só remove o marker se o opId do marker ainda bater com o que foi lido antes do reparo.
+ *   - Retoma revogação de RTDB e Auth se needsRevocation === true no marker.
+ *   - Atualiza custom claims a partir do estado atual do Firestore.
+ * 
+ * @param {string} uid - UID do usuário
+ * @returns {{ claims, resumed }} 
+ */
+const executeClaimsRepair = async (uid) => {
+  const profileRef = admin.firestore().doc(`userProfiles/${uid}`);
+  const profileDoc = await profileRef.get();
+
+  if (!profileDoc.exists) return { claims: null, resumed: false };
+
+  const data = profileDoc.data();
+  const marker = data.claimsSyncPending;
+
+  // Derivar claims do estado atual do Firestore (fonte de verdade)
+  const claims = {
+    role: data.role || 'user',
+    active: data.active !== false,
+  };
+
+  let revokedSessions = false;
+
+  // Se o marker for um objeto estruturado com opId, retomar etapas pendentes
+  if (marker && typeof marker === 'object' && marker.opId) {
+    const { opId, needsRevocation } = marker;
+
+    // Retomar revogação se indicada no marker
+    if (needsRevocation === true) {
+      try {
+        const rtdb = admin.database();
+        await Promise.all([
+          rtdb.ref(`status/${uid}`).remove(),
+          rtdb.ref(`revocations/${uid}`).set(Date.now()),
+        ]);
+        await admin.auth().revokeRefreshTokens(uid);
+        revokedSessions = true;
+      } catch (rtdbErr) {
+        console.error(`[executeClaimsRepair] Falha ao revogar sessões do RTDB/Auth para ${uid}:`, rtdbErr);
+        throw rtdbErr;
+      }
+    }
+
+    // Atualizar custom claims
+    await admin.auth().setCustomUserClaims(uid, claims);
+
+    // Limpar o marker SOMENTE se o opId ainda bate (i.e., não houve outra operação concorrente)
+    await admin.firestore().runTransaction(async (tx) => {
+      const snap = await tx.get(profileRef);
+      if (!snap.exists) return;
+      const current = snap.data();
+      // Se o marker mudou (opId diferente), significa que outra operação foi iniciada — não limpar
+      if (current.claimsSyncPending?.opId === opId) {
+        tx.update(profileRef, { claimsSyncPending: admin.firestore.FieldValue.delete() });
+      }
+    });
+  } else {
+    // Marker legado (boolean true) ou ausente: apenas sincronizar claims
+    await admin.auth().setCustomUserClaims(uid, claims);
+
+    // Limpar marker legado incondicionalmente se ainda for true
+    if (marker === true) {
+      await profileRef.update({ claimsSyncPending: admin.firestore.FieldValue.delete() });
+    }
+  }
+
+  return { claims, resumed: revokedSessions };
+};
+
 /** Callable administrativa para reparo e sincronização de custom claims legadas ou divergentes. */
 const repairUserClaims = onCall(async (request) => {
   if (!request.auth) {
@@ -565,8 +638,8 @@ const repairUserClaims = onCall(async (request) => {
     }
   }
 
-  const claims = await syncUserClaims(uid);
-  return { success: true, claims };
+  const { claims, resumed } = await executeClaimsRepair(uid);
+  return { success: true, claims, resumedRevocation: resumed };
 });
 
 /** Registra a troca de senha concluída pelo próprio usuário. */
@@ -785,7 +858,10 @@ const updateUser = onCall(async (request) => {
     }
     
     const needsRevocation = nextActive === false || nextRole !== current.role;
-    
+
+    // Gerar opId único para esta operação — protege contra limpeza fora de ordem
+    const opId = admin.firestore().collection('_').doc().id;
+
     const update = {
       ...(displayName !== undefined ? { displayName: displayName.trim() } : {}),
       ...(role !== undefined ? { role } : {}),
@@ -793,13 +869,14 @@ const updateUser = onCall(async (request) => {
       ...(active !== undefined ? { active } : {}),
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       updatedBy: request.auth.uid,
-      claimsSyncPending: true, // Marker persistente de divergência
+      // Marker estruturado: preserva etapas pendentes e identifica a operação
+      claimsSyncPending: { opId, needsRevocation },
     };
-    
+
     if (needsRevocation) {
       update.tokensValidAfterTime = Math.floor(Date.now() / 1000);
     }
-    
+
     transaction.update(profileRef, update);
     transaction.create(auditRef, {
       action: 'USER_PROFILE_UPDATED',
@@ -808,11 +885,11 @@ const updateUser = onCall(async (request) => {
       changes: Object.keys(update).filter((key) => !['updatedAt', 'updatedBy', 'claimsSyncPending'].includes(key)),
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
     });
-    
-    return { role: nextRole, active: nextActive, needsRevocation };
+
+    return { role: nextRole, active: nextActive, needsRevocation, opId };
   });
 
-  // 2. Operações Externas (Pós-Transação)
+  // 2. Operações Externas (Pós-Transação): idempotentes via executeClaimsRepair
   try {
     if (result.needsRevocation) {
       const rtdb = admin.database();
@@ -825,12 +902,21 @@ const updateUser = onCall(async (request) => {
 
     await admin.auth().setCustomUserClaims(uid, { role: result.role, active: result.active });
 
-    // 3. Limpa o marker de divergência em caso de sucesso absoluto
-    await profileRef.update({ claimsSyncPending: admin.firestore.FieldValue.delete() });
+    // 3. Limpa o marker de divergência verificando opId para evitar sobrescrita de operação mais recente
+    await admin.firestore().runTransaction(async (tx) => {
+      const snap = await tx.get(profileRef);
+      if (!snap.exists) return;
+      const current = snap.data();
+      // Só limpa se o opId ainda bate com o desta operação
+      if (current.claimsSyncPending?.opId === result.opId) {
+        tx.update(profileRef, { claimsSyncPending: admin.firestore.FieldValue.delete() });
+      }
+    });
 
   } catch (err) {
     console.error(`[updateUser] Erro ao sincronizar estado externo do usuário ${uid}:`, err);
-    // Erro reportado ao admin para ciência, mas a alteração no perfil já foi efetivada
+    // O marker claimsSyncPending persiste no Firestore com opId e needsRevocation
+    // para que repairUserClaims possa retomar exatamente as etapas que faltam.
     throw new functions.https.HttpsError('internal', 'O perfil foi atualizado, mas houve falha na sincronização de credenciais/sessões. Reparo pendente.');
   }
 
