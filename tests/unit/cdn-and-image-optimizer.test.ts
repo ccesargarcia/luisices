@@ -58,14 +58,13 @@ describe('Funcionalidade: Otimização de Mídias e CDN de Armazenamento', () =>
     });
 
     it('deve retornar a URL original caso a variável VITE_STORAGE_CDN_URL não esteja definida', () => {
-      const currentCdnEnv = (import.meta.env as any).VITE_STORAGE_CDN_URL;
-      delete (import.meta.env as any).VITE_STORAGE_CDN_URL;
+      vi.stubEnv('VITE_STORAGE_CDN_URL', '');
 
       const firebaseUrl =
         'https://firebasestorage.googleapis.com/v0/b/luisices-app.appspot.com/o/users%2Fart.png?alt=media';
       expect(toCdnUrl(firebaseUrl)).toBe(firebaseUrl);
 
-      (import.meta.env as any).VITE_STORAGE_CDN_URL = currentCdnEnv;
+      vi.unstubAllEnvs();
     });
   });
 
