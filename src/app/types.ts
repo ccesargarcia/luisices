@@ -585,6 +585,7 @@ export interface UserProfile {
   updatedBy?: string;
   authCreatedAt?: string;
   lastSignInAt?: string;
+  accountMetadataLoaded?: boolean;
   passwordChangedAt?: string;
   lastPasswordResetRequestedAt?: string;
   whatsappPhone?: string;

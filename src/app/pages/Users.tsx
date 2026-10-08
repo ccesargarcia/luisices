@@ -142,8 +142,9 @@ function formatAccountDate(value?: string) {
   return value ? formatUserDate(value) : 'Sem registro';
 }
 
-function formatLastSignIn(value?: string) {
-  return value ? formatUserDate(value) : 'Nunca';
+function formatLastSignIn(value?: string, metadataLoaded?: boolean) {
+  if (value) return formatUserDate(value);
+  return metadataLoaded ? 'Nunca' : 'Indisponível';
 }
 
 // ─── Permission Matrix Component ─────────────────────────────────────────────
@@ -596,10 +597,11 @@ export function Users() {
         setUsers(list.map((user) => ({
           ...user,
           ...metadataByUid.get(user.uid),
+          accountMetadataLoaded: true,
         })));
       } catch (error) {
         console.warn('[Users] Não foi possível carregar os dados de acesso das contas:', error);
-        setUsers(list);
+        setUsers(list.map((user) => ({ ...user, accountMetadataLoaded: false })));
       }
     } catch {
       toast.error('Erro ao carregar usuários');
@@ -919,7 +921,7 @@ export function Users() {
                           </div>
                         </TableCell>
                         <TableCell className="text-xs text-muted-foreground min-w-64">
-                          <div>Último acesso: <span className="text-foreground">{formatLastSignIn(u.lastSignInAt)}</span></div>
+                          <div>Último acesso: <span className="text-foreground">{formatLastSignIn(u.lastSignInAt, u.accountMetadataLoaded)}</span></div>
                           <div>Criada em: <span className="text-foreground">{formatAccountDate(u.authCreatedAt || u.createdAt)}</span></div>
                           <div>Senha alterada: <span className="text-foreground">{formatAccountDate(u.passwordChangedAt)}</span></div>
                           <div>Perfil atualizado: <span className="text-foreground">{formatAccountDate(u.updatedAt)}</span></div>
@@ -1008,7 +1010,7 @@ export function Users() {
                         </div>
                       </div>
                       <div className="border-t pt-2 text-xs text-muted-foreground space-y-1">
-                        <p>Último acesso: <span className="text-foreground">{formatLastSignIn(u.lastSignInAt)}</span></p>
+                        <p>Último acesso: <span className="text-foreground">{formatLastSignIn(u.lastSignInAt, u.accountMetadataLoaded)}</span></p>
                         <p>Conta criada em: <span className="text-foreground">{formatAccountDate(u.authCreatedAt || u.createdAt)}</span></p>
                         <p>Senha alterada: <span className="text-foreground">{formatAccountDate(u.passwordChangedAt)}</span></p>
                         <p>Perfil atualizado: <span className="text-foreground">{formatAccountDate(u.updatedAt)}</span></p>
