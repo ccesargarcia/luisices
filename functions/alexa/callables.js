@@ -9,19 +9,14 @@ const { COLLECTIONS, recordAuditEvent } = require('./repository');
 const { getAlexaConfig } = require('./config');
 const { approveAlexaPairingAdmin } = require('./pairing');
 const { commitOrderFromDraft } = require('./orderService');
+const { assertActiveSession } = require('../common/helpers');
 
 /**
  * Helper para verificar se a requisição provém de um administrador ativo.
  */
-async function assertActiveAdmin(authUid, db) {
-  if (!authUid) {
-    throw new HttpsError('unauthenticated', 'Usuário não autenticado.');
-  }
-  const snap = await db.collection(COLLECTIONS.USER_PROFILES).doc(authUid).get();
-  if (!snap.exists || snap.data()?.role !== 'admin' || snap.data()?.active !== true) {
-    throw new HttpsError('permission-denied', 'Apenas administradores ativos têm acesso a esta operação.');
-  }
-  return snap.data();
+async function assertActiveAdmin(request) {
+  const session = await assertActiveSession(request, { requiredRole: 'admin' });
+  return session.profile;
 }
 
 /**
@@ -51,7 +46,7 @@ async function approveAlexaPairingHandler(request, db) {
  * Configura ou altera permissão e modo de voz para um usuário (apenas admin).
  */
 async function setAlexaPermissionHandler(request, db) {
-  await assertActiveAdmin(request.auth?.uid, db);
+  await assertActiveAdmin(request);
   const { uid, enabled, mode } = request.data || {};
 
   if (!uid || typeof uid !== 'string') {
@@ -87,9 +82,7 @@ async function setAlexaPermissionHandler(request, db) {
  * Revoga um vínculo ativo de voz. Permitido para administradores ou para o próprio titular.
  */
 async function revokeAlexaBindingHandler(request, db) {
-  if (!request.auth?.uid) {
-    throw new HttpsError('unauthenticated', 'Usuário não autenticado.');
-  }
+  const session = await assertActiveSession(request);
 
   const { bindingId } = request.data || {};
   if (!bindingId || typeof bindingId !== 'string') {
@@ -104,11 +97,11 @@ async function revokeAlexaBindingHandler(request, db) {
   }
 
   const data = snap.data() || {};
-  const callerUid = request.auth.uid;
+  const callerUid = session.uid;
 
   // Verificar autorização: administrador ou o próprio titular do vínculo
-  const callerProfile = await db.collection(COLLECTIONS.USER_PROFILES).doc(callerUid).get();
-  const isAdmin = callerProfile.exists && callerProfile.data()?.role === 'admin' && callerProfile.data()?.active === true;
+  const callerProfile = session.profile;
+  const isAdmin = callerProfile.role === 'admin' && callerProfile.active === true;
   const isOwner = data.uid === callerUid;
 
   if (!isAdmin && !isOwner) {
@@ -137,7 +130,7 @@ async function revokeAlexaBindingHandler(request, db) {
  * Ativa ou desativa a integração global da Alexa (apenas admin).
  */
 async function toggleGlobalAlexaIntegrationHandler(request, db) {
-  await assertActiveAdmin(request.auth?.uid, db);
+  const adminProfile = await assertActiveAdmin(request);
   const { enabled } = request.data || {};
 
   await db.doc(COLLECTIONS.SETTINGS).set(
@@ -157,15 +150,12 @@ async function toggleGlobalAlexaIntegrationHandler(request, db) {
  * Retorna estado operacional da integração, vínculos ativos e solicitações pendentes.
  */
 async function getAlexaIntegrationStatusHandler(request, db) {
-  if (!request.auth?.uid) {
-    throw new HttpsError('unauthenticated', 'Usuário não autenticado.');
-  }
+  const session = await assertActiveSession(request);
 
-  const callerUid = request.auth.uid;
+  const callerUid = session.uid;
   const config = await getAlexaConfig(db);
 
-  const callerProfileSnap = await db.collection(COLLECTIONS.USER_PROFILES).doc(callerUid).get();
-  const callerProfile = callerProfileSnap.exists ? callerProfileSnap.data() : {};
+  const callerProfile = session.profile;
   const isAdmin = callerProfile.role === 'admin' && callerProfile.active === true;
 
   // Permissão do próprio usuário
@@ -254,9 +244,7 @@ async function getAlexaIntegrationStatusHandler(request, db) {
  * Apenas o titular do rascunho pode aprovar, exigindo a revisão visualizada.
  */
 async function approveAlexaDraftHandler(request, db) {
-  if (!request.auth?.uid) {
-    throw new HttpsError('unauthenticated', 'Usuário não autenticado.');
-  }
+  const session = await assertActiveSession(request);
 
   const { draftId, revision } = request.data || {};
   if (!draftId || typeof draftId !== 'string') {
@@ -279,7 +267,7 @@ async function approveAlexaDraftHandler(request, db) {
   }
 
   const draft = draftSnap.data() || {};
-  if (draft.uid !== request.auth.uid) {
+  if (draft.uid !== session.uid) {
     throw new HttpsError('permission-denied', 'Você só pode aprovar pedidos criados para o seu próprio usuário.');
   }
 
@@ -288,7 +276,7 @@ async function approveAlexaDraftHandler(request, db) {
       draftId,
       callerPersonId: draft.personId,
       expectedRevision: revision,
-      callerUid: request.auth.uid,
+      callerUid: session.uid,
       channel: 'app',
       config,
       db,
@@ -305,9 +293,7 @@ async function approveAlexaDraftHandler(request, db) {
  * Permitido para o titular do rascunho ou administrador ativo.
  */
 async function cancelAlexaDraftHandler(request, db) {
-  if (!request.auth?.uid) {
-    throw new HttpsError('unauthenticated', 'Usuário não autenticado.');
-  }
+  const session = await assertActiveSession(request);
 
   const { draftId } = request.data || {};
   if (!draftId || typeof draftId !== 'string') {
@@ -322,11 +308,11 @@ async function cancelAlexaDraftHandler(request, db) {
   }
 
   const draft = draftSnap.data() || {};
-  const callerUid = request.auth.uid;
+  const callerUid = session.uid;
 
   // Verificar autorização: administrador ou o titular do rascunho
-  const callerProfileSnap = await db.collection(COLLECTIONS.USER_PROFILES).doc(callerUid).get();
-  const isAdmin = callerProfileSnap.exists && callerProfileSnap.data()?.role === 'admin' && callerProfileSnap.data()?.active === true;
+  const callerProfile = session.profile;
+  const isAdmin = callerProfile.role === 'admin' && callerProfile.active === true;
   const isOwner = draft.uid === callerUid;
 
   if (!isAdmin && !isOwner) {
