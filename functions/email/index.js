@@ -42,13 +42,9 @@ function normalizeEmailList(value, fieldName, max = MAX_CC_BCC) {
 const sendCustomEmail = onCall(
   { cors: true, maxInstances: 5, secrets: [RESEND_API_KEY] },
   async (request) => {
-    if (!request.auth) {
-      throw new functions.https.HttpsError('unauthenticated', 'Usuário não autenticado.');
-    }
-
+    const { profile: profileData } = await assertActiveSession(request);
+    
     // Validação de permissões: admin ou funcionário com permissão de envio (emails.create === true ou emails === true)
-    const profile = await admin.firestore().doc(`userProfiles/${request.auth.uid}`).get();
-    const profileData = profile.exists ? profile.data() : null;
     const isActive = profileData?.active !== false;
     const isUserAdmin = profileData?.role === 'admin';
     const emailsPerm = profileData?.permissions?.emails;

@@ -39,3 +39,7 @@ Documento de rastreamento de progresso conforme especificado em `antigravity-pla
 - [x] Eliminação de todos os contornos a `isActiveUser` em `firestore.rules` (`storeSettings`, `storeProducts`, `catalogOrders`, `whatsapp_chats`, `userProfiles`).
 - [x] Comparação estrita `auth_time > tokensValidAfterTime` no Firestore, Storage, RTDB e Functions, eliminando a brecha de login e revogação no mesmo segundo.
 - [x] Implementação de auto-recuperação de custom claims no `AuthContext` e callable administrativa `repairUserClaims`.
+- [x] Correção de exceção engolida no RTDB durante revogação (`revokeAllSessions` agora lança erro se RTDB falhar).
+- [x] Expansão da barreira temporal `assertActiveSession` para `sendCustomEmail`, `isAuthorizedForWhatsApp` e todos os callables de Inteligência Artificial (`aiAgentChat`, etc).
+- [x] Callable `repairUserClaims` liberada para auto-reparo do próprio usuário (chamada automaticamente no frontend quando as claims divergem).
+- [x] Rebaixamento e desativação em `updateUser` agora invocam obrigatoriamente a lógica completa de revogação de tokens e RTDB.

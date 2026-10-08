@@ -6,6 +6,7 @@ const functions = require('firebase-functions');
 const { onCall } = require('firebase-functions/v2/https');
 const admin = require('firebase-admin');
 const { GEMINI_API_KEY } = require('../common/secrets');
+const { assertActiveSession } = require('../common/helpers');
 const { createAiServices } = require('./index');
 
 const mapToHttpsError = (err) => {
@@ -35,6 +36,8 @@ const aiAgentChat = onCall(
       (typeof GEMINI_API_KEY?.value === 'function' ? GEMINI_API_KEY.value() : process.env.GEMINI_API_KEY) || '';
     const aiServices = createAiServices(admin, rawKey);
     try {
+      const { profile } = await assertActiveSession(request);
+      request.authProfile = profile;
       return await aiServices.handlers.aiAgentChat(request);
     } catch (err) {
       throw mapToHttpsError(err);
@@ -52,6 +55,8 @@ const getAiUsage = onCall(
       (typeof GEMINI_API_KEY?.value === 'function' ? GEMINI_API_KEY.value() : process.env.GEMINI_API_KEY) || '';
     const aiServices = createAiServices(admin, rawKey);
     try {
+      const { profile } = await assertActiveSession(request);
+      request.authProfile = profile;
       return await aiServices.handlers.getAiUsage(request);
     } catch (err) {
       throw mapToHttpsError(err);
@@ -69,6 +74,8 @@ const enrichGalleryItemWithAi = onCall(
       (typeof GEMINI_API_KEY?.value === 'function' ? GEMINI_API_KEY.value() : process.env.GEMINI_API_KEY) || '';
     const aiServices = createAiServices(admin, rawKey);
     try {
+      const { profile } = await assertActiveSession(request);
+      request.authProfile = profile;
       return await aiServices.handlers.enrichGalleryItemWithAi(request);
     } catch (err) {
       throw mapToHttpsError(err);
@@ -86,6 +93,8 @@ const enrichStoreProductWithAi = onCall(
       (typeof GEMINI_API_KEY?.value === 'function' ? GEMINI_API_KEY.value() : process.env.GEMINI_API_KEY) || '';
     const aiServices = createAiServices(admin, rawKey);
     try {
+      const { profile } = await assertActiveSession(request);
+      request.authProfile = profile;
       return await aiServices.handlers.enrichStoreProductWithAi(request);
     } catch (err) {
       throw mapToHttpsError(err);

@@ -549,13 +549,22 @@ const syncUserClaims = async (uid) => {
 
 /** Callable administrativa para reparo e sincronização de custom claims legadas ou divergentes. */
 const repairUserClaims = onCall(async (request) => {
-  if (!(await isAdminRequest(request))) {
-    throw new functions.https.HttpsError('permission-denied', 'Apenas administradores podem reparar credenciais.');
+  if (!request.auth) {
+    throw new functions.https.HttpsError('unauthenticated', 'Requer autenticação.');
   }
+
   const { uid } = request.data || {};
   if (!uid || typeof uid !== 'string') {
     throw new functions.https.HttpsError('invalid-argument', 'UID do usuário é obrigatório.');
   }
+
+  // Permite que o próprio usuário repare suas claims, ou que um admin repare de terceiros
+  if (request.auth.uid !== uid) {
+    if (!(await isAdminRequest(request))) {
+      throw new functions.https.HttpsError('permission-denied', 'Sem permissão para reparar credenciais de terceiros.');
+    }
+  }
+
   const claims = await syncUserClaims(uid);
   return { success: true, claims };
 });
@@ -788,10 +797,39 @@ const updateUser = onCall(async (request) => {
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
     });
     
-    return { role: nextRole, active: nextActive };
+    return { role: nextRole, active: nextActive, currentRole: current.role, currentActive: current.active };
   });
 
   await admin.auth().setCustomUserClaims(uid, { role: nextClaims.role, active: nextClaims.active });
+
+  // Se o usuário foi desativado ou rebaixado de cargo, força a revogação imediata de todas as sessões
+  if (nextClaims.active === false || nextClaims.role !== nextClaims.currentRole) {
+    const revocationTimeSeconds = Math.floor(Date.now() / 1000);
+    
+    await admin.firestore().doc(`userProfiles/${uid}`).set({
+      tokensValidAfterTime: revocationTimeSeconds,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedBy: request.auth.uid,
+    }, { merge: true });
+
+    try {
+      const rtdb = admin.database();
+      await Promise.all([
+        rtdb.ref(`status/${uid}`).remove(),
+        rtdb.ref(`revocations/${uid}`).set(Date.now()),
+      ]);
+    } catch (rtdbErr) {
+      console.error(`[updateUser] Falha ao sincronizar revogação no RTDB para o usuário ${uid}:`, rtdbErr);
+      throw new functions.https.HttpsError('internal', 'Falha ao revogar presença em tempo real. Operação abortada.');
+    }
+
+    try {
+      await admin.auth().revokeRefreshTokens(uid);
+    } catch (err) {
+      console.error(`[updateUser] Erro crítico ao revogar refresh tokens do usuário ${uid}:`, err);
+      throw new functions.https.HttpsError('internal', 'Falha ao revogar credenciais de autenticação no servidor.');
+    }
+  }
   
   return { success: true };
 });
@@ -959,7 +997,8 @@ const revokeAllSessions = onCall(async (request) => {
       rtdb.ref(`revocations/${uid}`).set(Date.now()),
     ]);
   } catch (rtdbErr) {
-    console.warn(`[revokeAllSessions] Aviso ao sincronizar revogação no RTDB para o usuário ${uid}:`, rtdbErr);
+    console.error(`[revokeAllSessions] Falha ao sincronizar revogação no RTDB para o usuário ${uid}:`, rtdbErr);
+    throw new functions.https.HttpsError('internal', 'Falha ao revogar presença em tempo real. Operação abortada.');
   }
 
   // 4. Revoga refresh tokens no Firebase Auth (Não engole erro para evitar anúncio falso de sucesso)

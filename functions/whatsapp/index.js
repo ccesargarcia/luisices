@@ -10,6 +10,7 @@ const {
   EVOLUTION_API_URL,
   EVOLUTION_INSTANCE,
   normalizeWhatsAppNumber,
+  assertActiveSession,
 } = require('../common/helpers');
 const { validateOriginSecret } = require('../originProtection');
 const { whatsappMessageLimiter } = require('../common/rateLimiters');
@@ -20,14 +21,14 @@ const MAX_WEBHOOK_BYTES = 1024 * 1024;
  * Validador de autorização operacional para WhatsApp (admin, user com permissão ou funcionário com permissão)
  */
 const isAuthorizedForWhatsApp = async (request) => {
-  if (!request.auth) return false;
-  const profile = await admin.firestore().doc(`userProfiles/${request.auth.uid}`).get();
-  if (!profile.exists) return false;
-  const data = profile.data();
-  if (data.active === false) return false;
-  if (data.role === 'admin') return true;
-  if (data.role === 'user') return data.permissions?.whatsapp === true;
-  return data.role === 'funcionario' && data.permissions?.whatsapp === true;
+  try {
+    const { profile: data } = await assertActiveSession(request);
+    if (data.role === 'admin') return true;
+    if (data.role === 'user') return data.permissions?.whatsapp === true;
+    return data.role === 'funcionario' && data.permissions?.whatsapp === true;
+  } catch {
+    return false;
+  }
 };
 
 /**

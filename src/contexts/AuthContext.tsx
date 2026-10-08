@@ -192,6 +192,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               const claimActive = Boolean(idTokenResult.claims.active);
               const profileActive = Boolean(data.active);
               if (idTokenResult.claims.role !== data.role || claimActive !== profileActive) {
+                try {
+                  const { getFunctions, httpsCallable } = await import('firebase/functions');
+                  const functions = getFunctions();
+                  const repairClaims = httpsCallable(functions, 'repairUserClaims');
+                  await repairClaims({ uid: u.uid });
+                } catch (repairErr) {
+                  console.warn('[AuthContext] Falha ao acionar reparo administrativo de claims:', repairErr);
+                }
                 await u.getIdToken(true);
               }
             } catch (claimErr) {
