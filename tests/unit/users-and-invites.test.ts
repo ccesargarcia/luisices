@@ -112,3 +112,64 @@ describe('Sessões e Dispositivos (Contratos de Callables)', () => {
     });
   });
 });
+
+describe('Barreira Temporal e Segurança de Sessões (assertActiveSession)', () => {
+  const admin = require('../../functions/node_modules/firebase-admin');
+  const { assertActiveSession } = require('../../functions/common/helpers');
+
+  if (!admin.apps.length) {
+    admin.initializeApp({ projectId: 'demo-test' });
+  }
+
+  it('rejeita chamadas sem autenticação com unauthenticated', async () => {
+    await expect(assertActiveSession({})).rejects.toThrow('Requer autenticação.');
+  });
+
+  it('rejeita tokens emitidos no mesmo segundo ou antes da revogação (auth_time <= tokensValidAfterTime)', async () => {
+    const mockDoc = vi.spyOn(admin.firestore(), 'doc').mockReturnValue({
+      get: vi.fn().mockResolvedValue({
+        exists: true,
+        data: () => ({ active: true, tokensValidAfterTime: 1700000050 }),
+      }),
+    });
+
+    const requestNoMesmoSegundo = {
+      auth: {
+        uid: 'user-revoked',
+        token: { auth_time: 1700000050 }, // exatamente o mesmo segundo da revogação
+      },
+    };
+
+    await expect(assertActiveSession(requestNoMesmoSegundo)).rejects.toThrow('Sessão revogada no servidor.');
+
+    const requestAnterior = {
+      auth: {
+        uid: 'user-revoked',
+        token: { auth_time: 1700000049 }, // segundo anterior
+      },
+    };
+
+    await expect(assertActiveSession(requestAnterior)).rejects.toThrow('Sessão revogada no servidor.');
+    mockDoc.mockRestore();
+  });
+
+  it('permite autenticações legítimas ocorridas estritamente após a revogação (auth_time > tokensValidAfterTime)', async () => {
+    const mockDoc = vi.spyOn(admin.firestore(), 'doc').mockReturnValue({
+      get: vi.fn().mockResolvedValue({
+        exists: true,
+        data: () => ({ active: true, tokensValidAfterTime: 1700000050 }),
+      }),
+    });
+
+    const requestNovoLogin = {
+      auth: {
+        uid: 'user-revoked',
+        token: { auth_time: 1700000051 }, // 1 segundo após revogação
+      },
+    };
+
+    const session = await assertActiveSession(requestNovoLogin);
+    expect(session.uid).toBe('user-revoked');
+    mockDoc.mockRestore();
+  });
+});

@@ -589,6 +589,7 @@ export interface UserProfile {
   passwordChangedAt?: string;
   lastPasswordResetRequestedAt?: string;
   whatsappPhone?: string;
+  tokensValidAfterTime?: number;
 }
 
 export const ADMIN_PERMISSIONS: Permission = {

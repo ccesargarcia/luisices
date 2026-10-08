@@ -34,3 +34,8 @@ Documento de rastreamento de progresso conforme especificado em `antigravity-pla
 - [x] Renomeado rótulo técnico para "Última atualização do dispositivo".
 - [x] Expandidos testes unitários para validar contratos de chamada e payloads exatos (`revokeAllSessions`, `registerDeviceSession`, `deleteUser`).
 - [x] `npm run typecheck` e `npm run lint:functions` validados com sucesso.
+- [x] RTDB com barreira temporal contra tokens revogados (`root.child('revocations').child($uid)`) e validação de conta ativa (`auth.token.active !== false`).
+- [x] Verificação temporal estrita (`assertActiveSession`) expandida para TODAS as Cloud Functions administrativas e operacionais (via `isAdminRequest` e `assertActiveSession`).
+- [x] Eliminação de todos os contornos a `isActiveUser` em `firestore.rules` (`storeSettings`, `storeProducts`, `catalogOrders`, `whatsapp_chats`, `userProfiles`).
+- [x] Comparação estrita `auth_time > tokensValidAfterTime` no Firestore, Storage, RTDB e Functions, eliminando a brecha de login e revogação no mesmo segundo.
+- [x] Implementação de auto-recuperação de custom claims no `AuthContext` e callable administrativa `repairUserClaims`.

@@ -8,7 +8,7 @@ service cloud.firestore {
         && exists(/databases/$(database)/documents/userProfiles/$(request.auth.uid))
         && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.get('active', true) == true
         && (!('tokensValidAfterTime' in get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data)
-            || request.auth.token.auth_time >= get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.tokensValidAfterTime);
+            || request.auth.token.auth_time > get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.tokensValidAfterTime);
     }
 
     // Helper function para verificar se o usuário é o dono do recurso
@@ -294,26 +294,25 @@ service cloud.firestore {
     // Perfis de usuário do sistema de permissões
     match /userProfiles/{uid} {
       // Leitura: usuário lê apenas o próprio perfil; admin e funcionários ativos leem todos para colaboração na equipe
-      allow read: if request.auth != null && (request.auth.uid == uid || isAdmin() || isActiveEmployee());
+      allow read: if isActiveUser() && (request.auth.uid == uid || isAdmin() || isActiveEmployee());
 
       // Criação: somente Cloud Functions (Admin SDK).
       allow create: if false;
 
       // Alterações administrativas passam pela callable updateUser, que valida
       // o último administrador e registra auditoria.
-      allow update: if request.auth != null && (
-        request.auth.uid == uid && isActiveUser()
+      allow update: if isActiveUser()
+        && request.auth.uid == uid
         && resource != null
         && request.resource.data.diff(resource.data).affectedKeys()
-          .hasOnly(['displayName', 'whatsappPhone'])
-      );
+          .hasOnly(['displayName', 'whatsappPhone']);
 
       // Deleção: somente Cloud Functions (Admin SDK).
       allow delete: if false;
 
       match /devices/{deviceId} {
         // Leitura para monitorar a própria sessão (kicks) e para admins verem a lista
-        allow read: if request.auth != null && (request.auth.uid == uid || isAdmin());
+        allow read: if isActiveUser() && (request.auth.uid == uid || isAdmin());
         allow write: if false; // Criação/Deleção via Cloud Functions
       }
     }
@@ -363,17 +362,10 @@ service cloud.firestore {
     match /storeSettings/{docId} {
       allow read: if true;
       // Escrita restrita a administradores ou usuários ativos com permissão explícita de loja ou configurações
-      allow write: if request.auth != null && (
+      allow write: if isActiveUser() && (
         isAdmin()
-        || (
-          exists(/databases/$(database)/documents/userProfiles/$(request.auth.uid))
-          && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.get('active', true) == true
-          && (
-            get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.get('role', '') == 'admin'
-            || getEmployeePermissions().get('store', false) == true
-            || getEmployeePermissions().get('settings', false) == true
-          )
-        )
+        || getEmployeePermissions().get('store', false) == true
+        || getEmployeePermissions().get('settings', false) == true
       );
     }
 
@@ -382,47 +374,26 @@ service cloud.firestore {
       allow read: if true;
 
       // Criação permitida para administradores ou usuários ativos com permissão de criação em loja
-      allow create: if request.auth != null && (
+      allow create: if isActiveUser() && (
         isAdmin()
-        || (
-          exists(/databases/$(database)/documents/userProfiles/$(request.auth.uid))
-          && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.get('active', true) == true
-          && (
-            get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.get('role', '') == 'admin'
-            || ('storeProducts' in getEmployeePermissions() && hasPerm(getEmployeePermissions().storeProducts, 'create'))
-            || getEmployeePermissions().get('store', false) == true
-          )
-        )
+        || ('storeProducts' in getEmployeePermissions() && hasPerm(getEmployeePermissions().storeProducts, 'create'))
+        || getEmployeePermissions().get('store', false) == true
       );
 
       // Atualização permitida para administradores, donos do produto ou usuários com permissão
-      allow update: if request.auth != null && (
+      allow update: if isActiveUser() && (
         isAdmin()
-        || (
-          exists(/databases/$(database)/documents/userProfiles/$(request.auth.uid))
-          && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.get('active', true) == true
-          && (
-            get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.get('role', '') == 'admin'
-            || (resource != null && 'userId' in resource.data && isOwner(resource.data.userId))
-            || ('storeProducts' in getEmployeePermissions() && hasPerm(getEmployeePermissions().storeProducts, 'edit'))
-            || getEmployeePermissions().get('store', false) == true
-          )
-        )
+        || (resource != null && 'userId' in resource.data && isOwner(resource.data.userId))
+        || ('storeProducts' in getEmployeePermissions() && hasPerm(getEmployeePermissions().storeProducts, 'edit'))
+        || getEmployeePermissions().get('store', false) == true
       );
 
       // Exclusão permitida para administradores, donos do produto ou usuários ativos com permissão de exclusão
-      allow delete: if request.auth != null && (
+      allow delete: if isActiveUser() && (
         isAdmin()
-        || (
-          exists(/databases/$(database)/documents/userProfiles/$(request.auth.uid))
-          && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.get('active', true) == true
-          && (
-            get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.get('role', '') == 'admin'
-            || (resource != null && 'userId' in resource.data && isOwner(resource.data.userId))
-            || ('storeProducts' in getEmployeePermissions() && hasPerm(getEmployeePermissions().storeProducts, 'delete'))
-            || getEmployeePermissions().get('store', false) == true
-          )
-        )
+        || (resource != null && 'userId' in resource.data && isOwner(resource.data.userId))
+        || ('storeProducts' in getEmployeePermissions() && hasPerm(getEmployeePermissions().storeProducts, 'delete'))
+        || getEmployeePermissions().get('store', false) == true
       );
     }
 
@@ -433,49 +404,32 @@ service cloud.firestore {
       allow create: if false;
 
       // Leitura permitida para administradores ou membros autorizados
-      allow read: if request.auth != null && (
+      allow read: if isActiveUser() && (
         isAdmin()
-        || (
-          exists(/databases/$(database)/documents/userProfiles/$(request.auth.uid))
-          && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.get('active', true) == true
-          && (
-            get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.get('role', '') == 'admin'
-            || getEmployeePermissions().get('store', false) == true
-            || ('orders' in getEmployeePermissions() && hasPerm(getEmployeePermissions().orders, 'view'))
-          )
-        )
+        || getEmployeePermissions().get('store', false) == true
+        || ('orders' in getEmployeePermissions() && hasPerm(getEmployeePermissions().orders, 'view'))
       );
 
       // Atualização e exclusão restritas a administradores ou gestores da loja
-      allow update, delete: if request.auth != null && (
+      allow update, delete: if isActiveUser() && (
         isAdmin()
-        || (
-          exists(/databases/$(database)/documents/userProfiles/$(request.auth.uid))
-          && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.get('active', true) == true
-          && (
-            get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.get('role', '') == 'admin'
-            || getEmployeePermissions().get('store', false) == true
-          )
-        )
+        || getEmployeePermissions().get('store', false) == true
       );
     }
 
     // Regras para Central de Atendimento WhatsApp (whatsapp_chats e whatsapp_messages)
     function canAccessWhatsApp() {
-      return request.auth != null
-        && exists(/databases/$(database)/documents/userProfiles/$(request.auth.uid))
-        && get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.get('active', true) == true
-        && (
-          isAdmin()
-          || (
-            get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.get('role', 'user') == 'user'
-            && getEmployeePermissions().get('whatsapp', false) == true
-          )
-          || (
-            get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.get('role', '') == 'funcionario'
-            && getEmployeePermissions().get('whatsapp', false) == true
-          )
-        );
+      return isActiveUser() && (
+        isAdmin()
+        || (
+          get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.get('role', 'user') == 'user'
+          && getEmployeePermissions().get('whatsapp', false) == true
+        )
+        || (
+          get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.get('role', '') == 'funcionario'
+          && getEmployeePermissions().get('whatsapp', false) == true
+        )
+      );
     }
 
     match /whatsapp_chats/{chatId} {

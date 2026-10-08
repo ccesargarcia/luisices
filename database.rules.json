@@ -1,13 +1,18 @@
 {
   "rules": {
+    "revocations": {
+      // Bloqueado para clientes. Apenas o Admin SDK (Cloud Functions) grava carimbos de revogação.
+      ".read": false,
+      ".write": false
+    },
     "status": {
-      // Somente admin pode ler tudo. Usuários comuns só leem/escrevem o próprio status.
-      ".read": "auth != null && auth.token.role === 'admin'",
+      // Somente admin ativo e não-revogado pode listar o status global
+      ".read": "auth != null && auth.token.role === 'admin' && (auth.token.active == null || auth.token.active === true) && (!root.child('revocations').child(auth.uid).exists() || auth.token.auth_time * 1000 > root.child('revocations').child(auth.uid).val())",
       "$uid": {
-        // Leitura do próprio status
-        ".read": "auth != null && auth.uid === $uid",
-        // Escrita restrita ao próprio usuário e apenas se a conta não estiver revogada/inativa (auth.token.active !== false se aplicável)
-        ".write": "auth != null && auth.uid === $uid",
+        // Usuário comum só lê o próprio status se ativo e não-revogado
+        ".read": "auth != null && auth.uid === $uid && (auth.token.active == null || auth.token.active === true) && (!root.child('revocations').child($uid).exists() || auth.token.auth_time * 1000 > root.child('revocations').child($uid).val())",
+        // Escrita restrita ao próprio usuário, bloqueada se a conta for inativa ou se o token foi revogado
+        ".write": "auth != null && auth.uid === $uid && (auth.token.active == null || auth.token.active === true) && (!root.child('revocations').child($uid).exists() || auth.token.auth_time * 1000 > root.child('revocations').child($uid).val())",
         
         "state": {
           ".validate": "newData.val() === 'online' || newData.val() === 'offline' || newData.val() === 'away'"

@@ -32,6 +32,7 @@ module.exports = {
   registerDeviceSession: userFunctions.registerDeviceSession,
   revokeAllSessions: userFunctions.revokeAllSessions,
   revokeDeviceSession: userFunctions.revokeAllSessions, // Alias de compatibilidade com mesma política global
+  repairUserClaims: userFunctions.repairUserClaims,
 
   // ─── E-mail (Resend API e Webhooks) ────────────────────────────────────────
   sendCustomEmail: emailFunctions.sendCustomEmail,

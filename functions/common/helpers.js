@@ -79,10 +79,45 @@ const formatActionLink = (rawFirebaseLink, fallbackMode = 'resetPassword') => {
   return rawFirebaseLink;
 };
 
+const { HttpsError } = require('firebase-functions/v2/https');
+
+/**
+ * Valida a autenticidade da sessão com barreira temporal estrita contra revogação de tokens
+ * e verificação de perfil ativo no Firestore.
+ */
+const assertActiveSession = async (request, options = {}) => {
+  if (!request.auth?.uid) {
+    throw new HttpsError('unauthenticated', 'Requer autenticação.');
+  }
+
+  const profileSnap = await admin.firestore().doc(`userProfiles/${request.auth.uid}`).get();
+  if (!profileSnap.exists || profileSnap.data().active === false) {
+    throw new HttpsError('permission-denied', 'Perfil de usuário inativo ou inexistente.');
+  }
+
+  const profile = profileSnap.data();
+  const authTime = request.auth.token?.auth_time;
+
+  // Barreira temporal estrita: auth_time DEVE ser estritamente maior que tokensValidAfterTime.
+  // Rejeita qualquer sessão emitida no mesmo segundo ou antes da revogação.
+  if (profile.tokensValidAfterTime && typeof authTime === 'number' && authTime <= profile.tokensValidAfterTime) {
+    throw new HttpsError('unauthenticated', 'Sessão revogada no servidor. Faça login novamente.');
+  }
+
+  if (options.requiredRole && profile.role !== options.requiredRole) {
+    throw new HttpsError('permission-denied', `Acesso restrito a ${options.requiredRole}.`);
+  }
+
+  return { uid: request.auth.uid, profile };
+};
+
 const isAdminRequest = async (request) => {
-  if (!request.auth) return false;
-  const profile = await admin.firestore().doc(`userProfiles/${request.auth.uid}`).get();
-  return profile.exists && profile.data().role === 'admin' && profile.data().active !== false;
+  try {
+    await assertActiveSession(request, { requiredRole: 'admin' });
+    return true;
+  } catch {
+    return false;
+  }
 };
 
 const hashToken = (token) => crypto.createHash('sha256').update(token).digest('hex');
@@ -96,6 +131,7 @@ module.exports = {
   getAppUrl,
   toCdnUrl,
   formatActionLink,
+  assertActiveSession,
   isAdminRequest,
   hashToken,
 };

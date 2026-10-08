@@ -177,6 +177,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               return;
             }
 
+            // Se o token for anterior à última revogação no servidor, encerra a sessão
+            try {
+              const idTokenResult = await u.getIdTokenResult();
+              const authTime = Math.floor(new Date(idTokenResult.authTime).getTime() / 1000);
+              if (data.tokensValidAfterTime && authTime <= data.tokensValidAfterTime) {
+                toast.error('Esta sessão foi revogada remotamente.');
+                handleLogout(true, u.uid);
+                setLoading(false);
+                return;
+              }
+
+              // Auto-recuperação de claims: sincroniza se divergir do perfil do Firestore
+              const claimActive = Boolean(idTokenResult.claims.active);
+              const profileActive = Boolean(data.active);
+              if (idTokenResult.claims.role !== data.role || claimActive !== profileActive) {
+                await u.getIdToken(true);
+              }
+            } catch (claimErr) {
+              console.warn('[AuthContext] Falha ao verificar/atualizar claims do token:', claimErr);
+            }
+
             const fallbackPermissions = data.role === 'admin'
               ? ADMIN_PERMISSIONS
               : data.role === 'funcionario'

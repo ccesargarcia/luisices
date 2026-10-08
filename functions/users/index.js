@@ -13,6 +13,7 @@ const {
   sendWhatsAppMessage,
   getAppUrl,
   formatActionLink,
+  assertActiveSession,
   isAdminRequest,
   hashToken,
 } = require('../common/helpers');
@@ -533,16 +534,36 @@ const getUserAccountMetadata = onCall({
   };
 });
 
+/** Sincroniza e recupera custom claims de um usuário para garantir paridade com o Firestore. */
+const syncUserClaims = async (uid) => {
+  const profileDoc = await admin.firestore().doc(`userProfiles/${uid}`).get();
+  if (!profileDoc.exists) return null;
+  const data = profileDoc.data();
+  const claims = {
+    role: data.role || 'user',
+    active: data.active !== false,
+  };
+  await admin.auth().setCustomUserClaims(uid, claims);
+  return claims;
+};
+
+/** Callable administrativa para reparo e sincronização de custom claims legadas ou divergentes. */
+const repairUserClaims = onCall(async (request) => {
+  if (!(await isAdminRequest(request))) {
+    throw new functions.https.HttpsError('permission-denied', 'Apenas administradores podem reparar credenciais.');
+  }
+  const { uid } = request.data || {};
+  if (!uid || typeof uid !== 'string') {
+    throw new functions.https.HttpsError('invalid-argument', 'UID do usuário é obrigatório.');
+  }
+  const claims = await syncUserClaims(uid);
+  return { success: true, claims };
+});
+
 /** Registra a troca de senha concluída pelo próprio usuário. */
 const recordUserPasswordChange = onCall(async (request) => {
-  if (!request.auth?.uid) {
-    throw new functions.https.HttpsError('unauthenticated', 'Faça login para registrar a alteração de senha.');
-  }
+  await assertActiveSession(request);
   const profileRef = admin.firestore().doc(`userProfiles/${request.auth.uid}`);
-  const profile = await profileRef.get();
-  if (!profile.exists) {
-    throw new functions.https.HttpsError('not-found', 'Perfil do usuário não encontrado.');
-  }
   await profileRef.set({ passwordChangedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
   return { success: true };
 });
@@ -816,9 +837,9 @@ const registerDeviceSession = onCall({ memory: '512MiB' }, async (request) => {
     }
 
     const profileData = profileSnap.data();
-    // Barreira de revogação: rejeita ID token emitido antes da última revogação
+    // Barreira de revogação: rejeita ID token emitido antes ou no mesmo segundo da última revogação
     const authTime = request.auth.token.auth_time;
-    if (profileData.tokensValidAfterTime && typeof authTime === 'number' && authTime < profileData.tokensValidAfterTime) {
+    if (profileData.tokensValidAfterTime && typeof authTime === 'number' && authTime <= profileData.tokensValidAfterTime) {
       throw new functions.https.HttpsError('unauthenticated', 'Sessão revogada. Faça login novamente.');
     }
 
@@ -930,12 +951,15 @@ const revokeAllSessions = onCall(async (request) => {
     await batch.commit();
   }
 
-  // 3. Limpa presença do RTDB e marca revokedAt
+  // 3. Limpa presença do RTDB e registra revokedAt para bloquear recriação de presença por token antigo
   try {
     const rtdb = admin.database();
-    await rtdb.ref(`status/${uid}`).remove();
+    await Promise.all([
+      rtdb.ref(`status/${uid}`).remove(),
+      rtdb.ref(`revocations/${uid}`).set(Date.now()),
+    ]);
   } catch (rtdbErr) {
-    console.warn(`[revokeAllSessions] Aviso ao limpar status no RTDB do usuário ${uid}:`, rtdbErr);
+    console.warn(`[revokeAllSessions] Aviso ao sincronizar revogação no RTDB para o usuário ${uid}:`, rtdbErr);
   }
 
   // 4. Revoga refresh tokens no Firebase Auth (Não engole erro para evitar anúncio falso de sucesso)
@@ -968,4 +992,5 @@ module.exports = {
   updateUser,
   registerDeviceSession,
   revokeAllSessions,
+  repairUserClaims,
 };
