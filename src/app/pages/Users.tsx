@@ -635,7 +635,7 @@ export function Users() {
     try {
       const result = await firebaseUserService.createUserInvitation(inviteEmail.trim(), inviteWhatsapp.trim() || undefined);
       if (result.repairedExistingAccount) {
-        toast.success('Conta existente recuperada. O perfil e as permissões foram criados.');
+        toast.success('Conta recuperada e ativa. O acesso já pode ser usado.');
       } else if (result.verificationSent) {
         toast.success(`Enviamos um novo link de confirmação para ${inviteEmail.trim()}.`);
       } else if (result.expiresAt) {

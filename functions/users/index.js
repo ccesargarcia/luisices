@@ -74,6 +74,7 @@ async function activateInvitedAccount(invitationRef, invitationData, authUser) {
         displayName: authUser.displayName || invitationData.email.split('@')[0],
         whatsappPhone: invitationData.whatsappPhone || null,
         role: 'user',
+        active: true,
         permissions: {
           orders: { view: true, create: true, edit: false, delete: false },
           customers: { view: true, create: true, edit: false, delete: false },
@@ -194,6 +195,19 @@ const createUserInvitation = onCall(
       if (existing) {
         const existingProfile = await admin.firestore().doc(`userProfiles/${existing.uid}`).get();
         if (existingProfile.exists) {
+          const profile = existingProfile.data();
+          if (
+            profile.email?.toLowerCase() === normalizedEmail &&
+            profile.role === 'user' &&
+            profile.active === undefined
+          ) {
+            await existingProfile.ref.update({
+              active: true,
+              updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            });
+            await writeUserAudit('ORPHANED_USER_ACCOUNT_ACTIVATED', request.auth.uid, existing.uid, { email: normalizedEmail });
+            return { success: true, repairedExistingAccount: true };
+          }
           throw new functions.https.HttpsError('already-exists', 'Este e-mail já possui uma conta ativa.');
         }
 
