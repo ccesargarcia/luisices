@@ -58,6 +58,11 @@ export class FirebaseUserService {
     return result.data;
   }
 
+  async revokeDeviceSession(uid: string, deviceId: string): Promise<void> {
+    const callable = httpsCallable<{ uid: string; deviceId: string }, { success: boolean }>(functions, 'revokeDeviceSession');
+    await callable({ uid, deviceId });
+  }
+
   async getUserDevices(uid: string): Promise<DeviceSession[]> {
     const q = query(collection(db, USERS_COLLECTION, uid, 'devices'), orderBy('lastActiveAt', 'desc'));
     const snap = await getDocs(q);

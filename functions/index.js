@@ -31,7 +31,7 @@ module.exports = {
   updateUser: userFunctions.updateUser,
   registerDeviceSession: userFunctions.registerDeviceSession,
   revokeAllSessions: userFunctions.revokeAllSessions,
-  revokeDeviceSession: userFunctions.revokeAllSessions, // Alias de compatibilidade com mesma política global
+  revokeDeviceSession: userFunctions.revokeDeviceSession,
   repairUserClaims: userFunctions.repairUserClaims,
 
   // ─── E-mail (Resend API e Webhooks) ────────────────────────────────────────

@@ -76,6 +76,7 @@ import {
   Search,
   MonitorSmartphone,
   ShieldAlert,
+  LogOut,
 } from 'lucide-react';
 
 
@@ -580,6 +581,20 @@ function UserDevicesDialog({ open, user, onClose }: UserDevicesDialogProps) {
 
   const [confirmRevoke, setConfirmRevoke] = useState(false);
 
+  async function handleRevokeSingleDevice(deviceId: string) {
+    if (!user) return;
+    setRevoking(deviceId);
+    try {
+      await firebaseUserService.revokeDeviceSession(user.uid, deviceId);
+      toast.success('Dispositivo desconectado com sucesso!');
+      await loadDevices();
+    } catch (err: any) {
+      toast.error(err?.message || 'Erro ao revogar o dispositivo');
+    } finally {
+      setRevoking(null);
+    }
+  }
+
   async function handleRevokeAll() {
     if (!user) return;
     setRevoking('all');
@@ -602,7 +617,7 @@ function UserDevicesDialog({ open, user, onClose }: UserDevicesDialogProps) {
           <DialogHeader className="p-4 sm:p-6 pb-3 border-b border-border">
             <DialogTitle>Dispositivos e Sessões Ativas</DialogTitle>
             <DialogDescription className="text-xs text-muted-foreground">
-              Monitoramento de sessões para {user?.displayName}. A revogação desconecta todos os aparelhos vinculados à conta.
+              Monitoramento de sessões para {user?.displayName}. Você pode desconectar dispositivos individualmente ou revogar todos de uma vez.
             </DialogDescription>
           </DialogHeader>
 
@@ -621,9 +636,26 @@ function UserDevicesDialog({ open, user, onClose }: UserDevicesDialogProps) {
                   <Card key={device.deviceId} className="overflow-hidden">
                     <CardContent className="p-4 sm:p-5">
                       <div className="flex flex-col gap-2">
-                        <div className="flex items-center gap-2">
-                          <MonitorSmartphone className="size-4 text-primary shrink-0" />
-                          <h4 className="font-medium text-sm line-clamp-2 break-all">{device.userAgent || 'Dispositivo Desconhecido'}</h4>
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <MonitorSmartphone className="size-4 text-primary shrink-0" />
+                            <h4 className="font-medium text-sm line-clamp-2 break-all">{device.userAgent || 'Dispositivo Desconhecido'}</h4>
+                          </div>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="text-destructive hover:bg-destructive/10 border-destructive/30 shrink-0 h-8 text-xs font-medium"
+                            disabled={revoking === device.deviceId || loading}
+                            onClick={() => handleRevokeSingleDevice(device.deviceId)}
+                          >
+                            {revoking === device.deviceId ? (
+                              <Loader2 className="size-3.5 animate-spin mr-1" />
+                            ) : (
+                              <LogOut className="size-3.5 mr-1" />
+                            )}
+                            Desconectar
+                          </Button>
                         </div>
                         <div className="flex flex-col gap-2 text-xs text-muted-foreground mt-2">
                           <div className="flex flex-col">
