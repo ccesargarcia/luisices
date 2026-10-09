@@ -554,9 +554,12 @@ interface UserDevicesDialogProps {
 }
 
 function UserDevicesDialog({ open, user, onClose }: UserDevicesDialogProps) {
+  const { user: currentUser } = useAuth();
   const [devices, setDevices] = useState<DeviceSession[]>([]);
   const [loading, setLoading] = useState(false);
   const [revoking, setRevoking] = useState<string | null>(null);
+
+  const currentDeviceId = typeof window !== 'undefined' ? localStorage.getItem('luisices_device_id') : null;
 
   useEffect(() => {
     if (open && user) {
@@ -578,6 +581,16 @@ function UserDevicesDialog({ open, user, onClose }: UserDevicesDialogProps) {
       setLoading(false);
     }
   }
+
+  const sortedDevices = useMemo(() => {
+    return [...devices].sort((a, b) => {
+      const isACurrent = currentUser?.uid === user?.uid && !!currentDeviceId && a.deviceId === currentDeviceId;
+      const isBCurrent = currentUser?.uid === user?.uid && !!currentDeviceId && b.deviceId === currentDeviceId;
+      if (isACurrent && !isBCurrent) return -1;
+      if (!isACurrent && isBCurrent) return 1;
+      return (b.lastActiveAt || 0) - (a.lastActiveAt || 0);
+    });
+  }, [devices, currentUser?.uid, user?.uid, currentDeviceId]);
 
   const [confirmRevoke, setConfirmRevoke] = useState(false);
 
@@ -626,61 +639,88 @@ function UserDevicesDialog({ open, user, onClose }: UserDevicesDialogProps) {
               <div className="flex items-center justify-center h-40">
                 <Loader2 className="size-6 animate-spin text-muted-foreground" />
               </div>
-            ) : devices.length === 0 ? (
+            ) : sortedDevices.length === 0 ? (
               <div className="text-center py-8 text-muted-foreground text-sm">
                 Nenhum dispositivo ativo registrado no Firestore. (Ainda é possível revogar tokens pendentes).
               </div>
             ) : (
               <div className="space-y-3">
-                {devices.map(device => (
-                  <Card key={device.deviceId} className="overflow-hidden">
-                    <CardContent className="p-4 sm:p-5">
-                      <div className="flex flex-col gap-2">
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="flex items-center gap-2 min-w-0">
-                            <MonitorSmartphone className="size-4 text-primary shrink-0" />
-                            <h4 className="font-medium text-sm line-clamp-2 break-all">{device.userAgent || 'Dispositivo Desconhecido'}</h4>
+                {sortedDevices.map(device => {
+                  const isCurrentSession = currentUser?.uid === user?.uid && !!currentDeviceId && device.deviceId === currentDeviceId;
+                  return (
+                    <Card
+                      key={device.deviceId}
+                      className={`overflow-hidden transition-all ${
+                        isCurrentSession
+                          ? 'border-emerald-500/50 bg-emerald-500/[0.04] dark:bg-emerald-500/[0.06] ring-1 ring-emerald-500/30'
+                          : ''
+                      }`}
+                    >
+                      <CardContent className="p-4 sm:p-5">
+                        <div className="flex flex-col gap-2">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="flex flex-col gap-1 min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <MonitorSmartphone
+                                  className={`size-4 shrink-0 ${
+                                    isCurrentSession ? 'text-emerald-600 dark:text-emerald-400' : 'text-primary'
+                                  }`}
+                                />
+                                <h4 className="font-semibold text-sm line-clamp-2 break-all text-foreground">
+                                  {device.userAgent || 'Dispositivo Desconhecido'}
+                                </h4>
+                                {isCurrentSession && (
+                                  <Badge className="bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/40 gap-1.5 text-[11px] shrink-0 font-medium py-0.5 px-2.5 rounded-full shadow-2xs">
+                                    <span className="relative flex size-2 shrink-0">
+                                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75"></span>
+                                      <span className="relative inline-flex size-2 rounded-full bg-emerald-500"></span>
+                                    </span>
+                                    Sessão Atual (Este dispositivo)
+                                  </Badge>
+                                )}
+                              </div>
+                            </div>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="text-destructive hover:bg-destructive/10 border-destructive/30 shrink-0 h-8 text-xs font-medium"
+                              disabled={revoking === device.deviceId || loading}
+                              onClick={() => handleRevokeSingleDevice(device.deviceId)}
+                            >
+                              {revoking === device.deviceId ? (
+                                <Loader2 className="size-3.5 animate-spin mr-1" />
+                              ) : (
+                                <LogOut className="size-3.5 mr-1" />
+                              )}
+                              Desconectar
+                            </Button>
                           </div>
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            className="text-destructive hover:bg-destructive/10 border-destructive/30 shrink-0 h-8 text-xs font-medium"
-                            disabled={revoking === device.deviceId || loading}
-                            onClick={() => handleRevokeSingleDevice(device.deviceId)}
-                          >
-                            {revoking === device.deviceId ? (
-                              <Loader2 className="size-3.5 animate-spin mr-1" />
-                            ) : (
-                              <LogOut className="size-3.5 mr-1" />
-                            )}
-                            Desconectar
-                          </Button>
-                        </div>
-                        <div className="flex flex-col gap-2 text-xs text-muted-foreground mt-2">
-                          <div className="flex flex-col">
-                            <span className="font-medium text-foreground/80">Endereço IP:</span>
-                            <span className="break-all">{device.ip || 'Não detectado'}</span>
-                          </div>
-                          <div className="flex flex-col">
-                            <span className="font-medium text-foreground/80">Localização (Aprox.):</span>
-                            <span className="break-words">{device.location || 'Não detectada'}</span>
-                          </div>
-                          <div className="flex flex-col sm:flex-row gap-4 sm:gap-8 mt-1">
+                          <div className="flex flex-col gap-2 text-xs text-muted-foreground mt-2">
                             <div className="flex flex-col">
-                              <span className="font-medium text-foreground/80">Última atualização do dispositivo:</span>
-                              <span>{formatUserDate(device.lastActiveAt)}</span>
+                              <span className="font-medium text-foreground/80">Endereço IP:</span>
+                              <span className="break-all">{device.ip || 'Não detectado'}</span>
                             </div>
                             <div className="flex flex-col">
-                              <span className="font-medium text-foreground/80">Conectado em:</span>
-                              <span>{formatUserDate(device.createdAt)}</span>
+                              <span className="font-medium text-foreground/80">Localização (Aprox.):</span>
+                              <span className="break-words">{device.location || 'Não detectada'}</span>
+                            </div>
+                            <div className="flex flex-col sm:flex-row gap-4 sm:gap-8 mt-1">
+                              <div className="flex flex-col">
+                                <span className="font-medium text-foreground/80">Última atualização do dispositivo:</span>
+                                <span>{formatUserDate(device.lastActiveAt)}</span>
+                              </div>
+                              <div className="flex flex-col">
+                                <span className="font-medium text-foreground/80">Conectado em:</span>
+                                <span>{formatUserDate(device.createdAt)}</span>
+                              </div>
                             </div>
                           </div>
                         </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
+                      </CardContent>
+                    </Card>
+                  );
+                })}
               </div>
             )}
           </DialogBody>
