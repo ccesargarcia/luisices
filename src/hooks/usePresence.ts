@@ -70,7 +70,7 @@ export function usePresence(user: User | null) {
         set(lastOnlineRef, serverTimestamp()).catch(() => {});
       }
     };
-  }, [user]);
+  }, [user?.uid]);
 
   return {
     setOffline: () => presenceRef.current?.setOffline()
