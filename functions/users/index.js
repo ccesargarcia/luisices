@@ -846,9 +846,26 @@ const registerDeviceSession = onCall({ memory: '512MiB' }, async (request) => {
   let resolvedLocationString = null;
   if (ip !== 'Desconhecido' && ip !== '127.0.0.1' && ip !== '::1') {
     try {
-      const response = await fetch(`https://ipinfo.io/${ip}/json`);
+      const response = await fetch(`https://ipinfo.io/${ip}/json`, { signal: AbortSignal.timeout(3000) });
       if (response.ok) {
         const geo = await response.json();
+        if (geo && (geo.city || geo.region || geo.country)) {
+          const parts = [geo.city, geo.region].filter(Boolean);
+          resolvedLocationString = parts.length > 0 ? parts.join(', ') : 'Região Desconhecida';
+          if (geo.country) {
+            resolvedLocationString = parts.length > 0 ? `${resolvedLocationString} - ${geo.country}` : `${geo.country}`;
+          }
+        } else {
+          throw new Error('ipinfo não retornou dados úteis de localização');
+        }
+      } else {
+        throw new Error(`ipinfo HTTP error: ${response.status}`);
+      }
+    } catch (error) {
+      console.warn('[registerDeviceSession] Falha ao buscar localização via ipinfo. Usando fallback (geoip-lite):', error.message);
+      try {
+        const geoip = require('geoip-lite');
+        const geo = geoip.lookup(ip);
         if (geo) {
           const parts = [geo.city, geo.region].filter(Boolean);
           resolvedLocationString = parts.length > 0 ? parts.join(', ') : 'Região Desconhecida';
@@ -856,9 +873,9 @@ const registerDeviceSession = onCall({ memory: '512MiB' }, async (request) => {
             resolvedLocationString = parts.length > 0 ? `${resolvedLocationString} - ${geo.country}` : `${geo.country}`;
           }
         }
+      } catch (fallbackError) {
+        console.warn('[registerDeviceSession] Falha ao buscar localização no fallback:', fallbackError.message);
       }
-    } catch (error) {
-      console.warn('[registerDeviceSession] Falha ao buscar localização do IP via ipinfo:', error);
     }
   }
 
