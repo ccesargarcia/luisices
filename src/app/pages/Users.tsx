@@ -723,7 +723,7 @@ export function Users() {
       }
     });
     return () => unsubscribe();
-  }, [isAdmin]);
+  }, [isAdmin, currentUser]);
 
   const handleTabChange = (val: string) => {
     const nextTab = val as UserTabType;
@@ -737,7 +737,7 @@ export function Users() {
 
   const renderPresence = (uid: string) => {
     const data = presenceData[uid];
-    const isOnline = data?.state === 'online' || (data?.connections && Object.keys(data.connections).length > 0);
+    const isOnline = uid === currentUser?.uid || data?.state === 'online' || (data?.connections && Object.keys(data.connections).length > 0);
     return (
       <span
         title={isOnline ? 'Online agora' : 'Offline'}

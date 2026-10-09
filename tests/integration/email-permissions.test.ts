@@ -10,7 +10,7 @@ let env: RulesTestEnvironment;
 const seed = (path: string, data: object) => env.withSecurityRulesDisabled(async context => {
   await context.firestore().doc(path).set(data);
 });
-const dbFor = (uid: string) => env.authenticatedContext(uid).firestore();
+const dbFor = (uid: string) => env.authenticatedContext(uid, { email_verified: true }).firestore();
 const email = { from: 'sender@example.test', to: ['owner@example.test'], subject: 'Original', html: '<p>Original</p>', read: false, starred: false, archived: false, receivedAt: '2026-10-01T00:00:00Z' };
 beforeAll(async () => {
   if (!process.env.FIRESTORE_EMULATOR_HOST || !process.env.FIREBASE_STORAGE_EMULATOR_HOST) throw new Error('Use os emuladores.');

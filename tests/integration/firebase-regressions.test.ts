@@ -28,7 +28,7 @@ const order = {
   deliveryDate: '2026-12-01', deletedAt: null, createdAt: Timestamp.fromDate(new Date('2026-01-01')),
   assignedTo: 'old-employee', assignedToName: 'Anterior',
 };
-const dbFor = (uid: string) => env.authenticatedContext(uid).firestore();
+const dbFor = (uid: string) => env.authenticatedContext(uid, { email_verified: true }).firestore();
 function asUser(uid: string) {
   client.db = dbFor(uid);
   client.auth.currentUser = { uid, displayName: uid, email: `${uid}@example.test` };
