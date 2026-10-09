@@ -86,6 +86,22 @@ describe('Auditoria de Integridade 2026: Arredondamento e Normalização', () =>
     expect(normalizePhone('11987654321')).toBe('11987654321');
     expect(normalizePhone('')).toBe('');
   });
+
+  it('valida que firestore.indexes.json possui o índice composto para userId + phoneDigits', async () => {
+    const fs = await import('fs');
+    const indexesRaw = fs.readFileSync('firestore.indexes.json', 'utf-8');
+    const indexesConfig = JSON.parse(indexesRaw);
+
+    const hasPhoneDigitsIndex = indexesConfig.indexes.some((idx: any) => {
+      return (
+        idx.collectionGroup === 'customers' &&
+        idx.fields.some((f: any) => f.fieldPath === 'userId') &&
+        idx.fields.some((f: any) => f.fieldPath === 'phoneDigits')
+      );
+    });
+
+    expect(hasPhoneDigitsIndex).toBe(true);
+  });
 });
 
 // ----------------------------------------------------------------------------

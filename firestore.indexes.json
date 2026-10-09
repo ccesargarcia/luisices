@@ -25,6 +25,14 @@
       ]
     },
     {
+      "collectionGroup": "customers",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "userId", "order": "ASCENDING" },
+        { "fieldPath": "phoneDigits", "order": "ASCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "gallery",
       "queryScope": "COLLECTION",
       "fields": [

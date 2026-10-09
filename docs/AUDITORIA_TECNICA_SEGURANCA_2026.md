@@ -236,8 +236,12 @@ Todas as correções das Etapas 1, 2 e 3 foram reimplementadas e verificadas no 
    * **Resultado:** Estatísticas de clientes (`totalOrders` e `totalSpent`) sempre sincronizadas.
 5. **Arredondamento Monetário e Ponto Flutuante (`firebaseOrderService.ts`):**
    * **Implementado:** Método `ensurePositive` agora aplica arredondamento explícito de 2 casas decimais (`Math.round(val * 100) / 100`), garantindo que `price`, `paidAmount` e `remainingAmount` não gerem dízimas de ponto flutuante.
-6. **Bateria de Testes:**
+6. **Atualização do Catálogo de Índices do Firestore (`firestore.indexes.json`):**
+   * **Implementado:** Adicionado o índice composto `{ userId: ASC, phoneDigits: ASC }` na coleção `customers` em `firestore.indexes.json`.
+   * **Resultado:** O job de deploy de índices do CI/CD (`.github/workflows/deploy-indexes.yml`) e o comando `firebase deploy --only firestore:indexes` agora provisionam automaticamente o novo índice para suportar buscas diretas de clientes por dígitos limpos.
+7. **Bateria de Testes:**
    * **62 arquivos de teste executados** via Vitest.
-   * **647 testes unitários e de regressão aprovados com 100% de sucesso**.
+   * **648 testes unitários e de regressão aprovados com 100% de sucesso**.
    * Teste específico de validação das correções adicionado em `tests/unit/security-audit-fixes-verification.test.ts`.
+
 
