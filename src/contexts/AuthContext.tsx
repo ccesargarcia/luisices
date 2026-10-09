@@ -203,10 +203,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               const profileActive = Boolean(data.active);
               if (idTokenResult.claims.role !== data.role || claimActive !== profileActive) {
                 try {
-                  const { getFunctions, httpsCallable } = await import('firebase/functions');
-                  const { default: app } = await import('../lib/firebase');
-                  // Forçamos o uso do domínio padrão do Firebase para contornar bloqueios (401) no API Gateway/Custom Domain
-                  const repairClaims = httpsCallable(getFunctions(app), 'repairUserClaims');
+                  const { httpsCallable } = await import('firebase/functions');
+                  const { functions } = await import('../lib/firebase');
+                  const repairClaims = httpsCallable(functions, 'repairUserClaims');
                   await repairClaims({ uid: u.uid });
                 } catch (repairErr) {
                   console.warn('[AuthContext] Falha ao acionar reparo administrativo de claims:', repairErr);
