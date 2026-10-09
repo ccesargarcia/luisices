@@ -721,6 +721,8 @@ export function Users() {
       } else {
         setPresenceData({});
       }
+    }, (err) => {
+      console.warn('[Users] Falha ao ler /status do RTDB:', err);
     });
     return () => unsubscribe();
   }, [isAdmin, currentUser]);
