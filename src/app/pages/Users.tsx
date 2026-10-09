@@ -714,17 +714,32 @@ export function Users() {
 
   useEffect(() => {
     if (!isAdmin) return;
-    const statusRef = ref(database, '/status');
-    const unsubscribe = onValue(statusRef, (snap) => {
-      if (snap.exists()) {
-        setPresenceData(snap.val());
-      } else {
-        setPresenceData({});
-      }
-    }, (err) => {
-      console.warn('[Users] Falha ao ler /status do RTDB:', err);
+    let unsubscribe: (() => void) | null = null;
+    let isCancelled = false;
+
+    // Garante que o ID token esteja com claims atualizadas antes de conectar a assinatura no RTDB
+    currentUser?.getIdTokenResult().then((idTokenResult) => {
+      if (isCancelled) return;
+      if (idTokenResult.claims.role !== 'admin') return;
+
+      const statusRef = ref(database, '/status');
+      unsubscribe = onValue(statusRef, (snap) => {
+        if (snap.exists()) {
+          setPresenceData(snap.val());
+        } else {
+          setPresenceData({});
+        }
+      }, (err) => {
+        console.warn('[Users] Falha ao ler /status do RTDB:', err);
+      });
+    }).catch((err) => {
+      console.warn('[Users] Erro ao obter token para presenças:', err);
     });
-    return () => unsubscribe();
+
+    return () => {
+      isCancelled = true;
+      if (unsubscribe) unsubscribe();
+    };
   }, [isAdmin, currentUser]);
 
   const handleTabChange = (val: string) => {
