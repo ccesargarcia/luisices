@@ -4,7 +4,7 @@ import "./styles/index.css";
 import { initSentry } from "./lib/sentry";
 import { recoverFirestorePersistence } from "./lib/firebase";
 
-// Inicializa monitoramento de erros e performance do Sentry
+// Inicializa monitoramento de erros e performance do Sentry (Build: 2026-10-09)
 initSentry();
 
 // Desregistra proativamente qualquer Service Worker legado e limpa CacheStorage do navegador
