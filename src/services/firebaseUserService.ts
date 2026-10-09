@@ -33,6 +33,7 @@ export interface DeviceSession {
   location: string;
   lastActiveAt: any;
   createdAt: any;
+  status?: string;
 }
 
 export interface UserSyncResult {
@@ -66,17 +67,20 @@ export class FirebaseUserService {
   async getUserDevices(uid: string): Promise<DeviceSession[]> {
     const q = query(collection(db, USERS_COLLECTION, uid, 'devices'), orderBy('lastActiveAt', 'desc'));
     const snap = await getDocs(q);
-    return snap.docs.map((d) => {
-      const data = d.data();
-      return {
-        deviceId: d.id,
-        userAgent: data.userAgent || '',
-        ip: data.ip || '',
-        location: data.location || '',
-        lastActiveAt: normalizeDate(data.lastActiveAt),
-        createdAt: normalizeDate(data.createdAt),
-      } as DeviceSession;
-    });
+    return snap.docs
+      .map((d) => {
+        const data = d.data();
+        return {
+          deviceId: d.id,
+          userAgent: data.userAgent || '',
+          ip: data.ip || '',
+          location: data.location || '',
+          lastActiveAt: normalizeDate(data.lastActiveAt),
+          createdAt: normalizeDate(data.createdAt),
+          status: data.status || 'active',
+        } as DeviceSession;
+      })
+      .filter((d) => d.status !== 'revoked');
   }
 
   async sendAdminPasswordReset(email: string): Promise<void> {

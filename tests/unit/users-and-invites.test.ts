@@ -21,6 +21,7 @@ vi.mock('firebase/firestore', () => ({
   updateDoc: vi.fn(),
   query: vi.fn(),
   orderBy: vi.fn(),
+  where: vi.fn(),
 }));
 
 const mockHttpsCallable = vi.fn((_functions, name) => {
@@ -109,6 +110,15 @@ describe('Sessões e Dispositivos (Contratos de Callables)', () => {
     expect(mockCallable).toHaveBeenCalledWith('registerDeviceSession', {
       deviceId: 'device-valid-123',
       userAgent: 'CustomUserAgent/1.0',
+    });
+  });
+
+  it('revokeDeviceSession deve chamar a Cloud Function com nome exato e payload { uid, deviceId }', async () => {
+    mockCallable.mockResolvedValueOnce({ data: { success: true } });
+    await firebaseUserService.revokeDeviceSession('target-user-456', 'device-789');
+    expect(mockCallable).toHaveBeenCalledWith('revokeDeviceSession', {
+      uid: 'target-user-456',
+      deviceId: 'device-789',
     });
   });
 });

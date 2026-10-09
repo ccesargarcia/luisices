@@ -907,6 +907,9 @@ const registerDeviceSession = onCall({ memory: '512MiB' }, async (request) => {
     if (deviceSnap.exists) {
       // Dispositivo existente: atualiza sem consultar toda a coleção (Otimização C1)
       const existingData = deviceSnap.data();
+      if (existingData.status === 'revoked') {
+        throw new functions.https.HttpsError('permission-denied', 'Esta sessão de dispositivo foi revogada remotamente.');
+      }
       if (existingData.ip === ip && existingData.location) {
         locationString = existingData.location;
       } else if (resolvedLocationString) {
@@ -917,6 +920,7 @@ const registerDeviceSession = onCall({ memory: '512MiB' }, async (request) => {
         userAgent: safeUserAgent,
         ip,
         location: locationString,
+        status: 'active',
         lastActiveAt: admin.firestore.FieldValue.serverTimestamp(),
       });
     } else {
@@ -945,6 +949,7 @@ const registerDeviceSession = onCall({ memory: '512MiB' }, async (request) => {
         userAgent: safeUserAgent,
         ip,
         location: locationString,
+        status: 'active',
         lastActiveAt: admin.firestore.FieldValue.serverTimestamp(),
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
       });
@@ -1007,11 +1012,14 @@ const revokeDeviceSession = onCall(async (request) => {
 
   try {
     const deviceRef = admin.firestore().doc(`userProfiles/${uid}/devices/${deviceId}`);
-    const snap = await deviceRef.get();
-    if (!snap.exists) {
-      return { success: true, message: 'Dispositivo já removido.' };
-    }
-    await deviceRef.delete();
+    // Marca como revogado explicitamente no Firestore para evitar que o dispositivo
+    // offline se registre novamente no futuro (impede bypass de revogação).
+    await deviceRef.set({
+      deviceId,
+      status: 'revoked',
+      revokedAt: admin.firestore.FieldValue.serverTimestamp(),
+      revokedBy: callerUid,
+    }, { merge: true });
     return { success: true };
   } catch (err) {
     console.error(`[revokeDeviceSession] Erro ao revogar dispositivo ${deviceId} do usuário ${uid}:`, err);

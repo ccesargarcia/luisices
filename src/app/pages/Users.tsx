@@ -554,7 +554,7 @@ interface UserDevicesDialogProps {
 }
 
 function UserDevicesDialog({ open, user, onClose }: UserDevicesDialogProps) {
-  const { user: currentUser } = useAuth();
+  const { user: currentUser, logout } = useAuth();
   const [devices, setDevices] = useState<DeviceSession[]>([]);
   const [loading, setLoading] = useState(false);
   const [revoking, setRevoking] = useState<string | null>(null);
@@ -600,6 +600,12 @@ function UserDevicesDialog({ open, user, onClose }: UserDevicesDialogProps) {
     try {
       await firebaseUserService.revokeDeviceSession(user.uid, deviceId);
       toast.success('Dispositivo desconectado com sucesso!');
+      if (currentUser?.uid === user?.uid && deviceId === currentDeviceId) {
+        localStorage.removeItem('luisices_device_id');
+        localStorage.removeItem('luisices_device_last_reg');
+        await logout();
+        return;
+      }
       await loadDevices();
     } catch (err: any) {
       toast.error(err?.message || 'Erro ao revogar o dispositivo');
