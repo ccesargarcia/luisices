@@ -843,6 +843,25 @@ const registerDeviceSession = onCall({ memory: '512MiB' }, async (request) => {
   if (ip && typeof ip === 'string' && ip.includes(',')) ip = ip.split(',')[0].trim();
   ip = (ip && typeof ip === 'string') ? ip : 'Desconhecido';
 
+  let resolvedLocationString = null;
+  if (ip !== 'Desconhecido' && ip !== '127.0.0.1' && ip !== '::1') {
+    try {
+      const response = await fetch(`https://ipinfo.io/${ip}/json`);
+      if (response.ok) {
+        const geo = await response.json();
+        if (geo) {
+          const parts = [geo.city, geo.region].filter(Boolean);
+          resolvedLocationString = parts.length > 0 ? parts.join(', ') : 'Região Desconhecida';
+          if (geo.country) {
+            resolvedLocationString = parts.length > 0 ? `${resolvedLocationString} - ${geo.country}` : `${geo.country}`;
+          }
+        }
+      }
+    } catch (error) {
+      console.warn('[registerDeviceSession] Falha ao buscar localização do IP via ipinfo:', error);
+    }
+  }
+
   const uid = request.auth.uid;
   const db = admin.firestore();
   const profileRef = db.doc(`userProfiles/${uid}`);
@@ -873,20 +892,8 @@ const registerDeviceSession = onCall({ memory: '512MiB' }, async (request) => {
       const existingData = deviceSnap.data();
       if (existingData.ip === ip && existingData.location) {
         locationString = existingData.location;
-      } else if (ip !== 'Desconhecido' && ip !== '127.0.0.1' && ip !== '::1') {
-        try {
-          const geoip = require('geoip-lite');
-          const geo = geoip.lookup(ip);
-          if (geo) {
-            const parts = [geo.city, geo.region].filter(Boolean);
-            locationString = parts.length > 0 ? parts.join(', ') : 'Região Desconhecida';
-            if (geo.country) {
-              locationString = parts.length > 0 ? `${locationString} - ${geo.country}` : `${geo.country}`;
-            }
-          }
-        } catch (error) {
-          console.warn('[registerDeviceSession] Falha ao buscar localização do IP:', error);
-        }
+      } else if (resolvedLocationString) {
+        locationString = resolvedLocationString;
       }
 
       transaction.update(deviceRef, {
@@ -897,20 +904,8 @@ const registerDeviceSession = onCall({ memory: '512MiB' }, async (request) => {
       });
     } else {
       // Novo dispositivo: agora sim consulta a coleção para garantir o teto de 10 dispositivos
-      if (ip !== 'Desconhecido' && ip !== '127.0.0.1' && ip !== '::1') {
-        try {
-          const geoip = require('geoip-lite');
-          const geo = geoip.lookup(ip);
-          if (geo) {
-            const parts = [geo.city, geo.region].filter(Boolean);
-            locationString = parts.length > 0 ? parts.join(', ') : 'Região Desconhecida';
-            if (geo.country) {
-              locationString = parts.length > 0 ? `${locationString} - ${geo.country}` : `${geo.country}`;
-            }
-          }
-        } catch (error) {
-          console.warn('[registerDeviceSession] Falha ao buscar localização do IP:', error);
-        }
+      if (resolvedLocationString) {
+        locationString = resolvedLocationString;
       }
 
       const devicesSnap = await transaction.get(userDevicesRef);
