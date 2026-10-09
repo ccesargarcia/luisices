@@ -329,7 +329,7 @@ export function Dashboard() {
       deliveriesThisWeek,
       overdue,
     };
-  }, [orders]);
+  }, [orders, ledgerStats]);
 
   const statusChartData = useMemo(() => [
     { status: 'Pendente', value: stats.pending, fill: '#f59e0b' },

@@ -115,7 +115,9 @@ export function DashboardHeaderMetrics({
                 <DollarSign className="size-4 text-green-600" />
               </CardHeader>
               <CardContent>
-                <div className="min-w-0 break-words text-lg font-bold leading-tight tabular-nums sm:text-2xl">{formatCurrency(stats.totalRevenue)}</div>
+                <div className="min-w-0 break-words text-lg font-bold leading-tight tabular-nums sm:text-2xl">
+                  {formatCurrency(ledgerStats.completedRevenue > 0 ? ledgerStats.completedRevenue : stats.totalRevenue)}
+                </div>
                 <p className="text-xs text-muted-foreground mt-1">
                   {ledgerStats.completedCount > 0
                     ? `${ledgerStats.completedCount} pedido${ledgerStats.completedCount !== 1 ? 's' : ''} concluído${ledgerStats.completedCount !== 1 ? 's' : ''} em ${currentMonthName.toLowerCase()}`
@@ -147,7 +149,9 @@ export function DashboardHeaderMetrics({
                 <Target className="size-4 text-purple-600" />
               </CardHeader>
               <CardContent>
-                <div className="min-w-0 break-words text-lg font-bold leading-tight tabular-nums sm:text-2xl">{formatCurrency(stats.averageOrderValue)}</div>
+                <div className="min-w-0 break-words text-lg font-bold leading-tight tabular-nums sm:text-2xl">
+                  {formatCurrency(ledgerStats.averageTicket > 0 ? ledgerStats.averageTicket : stats.averageOrderValue)}
+                </div>
                 <p className="text-xs text-muted-foreground mt-1">
                   Média por venda em {currentMonthName.toLowerCase()}
                 </p>
@@ -195,7 +199,9 @@ export function DashboardHeaderMetrics({
                 <TrendingUp className="size-4 text-green-600" />
               </CardHeader>
               <CardContent>
-                <div className="min-w-0 break-words text-lg font-bold leading-tight tabular-nums sm:text-2xl">{formatCurrency(stats.totalPaid)}</div>
+                <div className="min-w-0 break-words text-lg font-bold leading-tight tabular-nums sm:text-2xl">
+                  {formatCurrency(ledgerStats.totalPaid > 0 ? ledgerStats.totalPaid : stats.totalPaid)}
+                </div>
                 <p className="text-xs text-muted-foreground mt-1">
                   Pagamentos em {currentMonthName.toLowerCase()}
                 </p>

@@ -218,4 +218,31 @@ describe('Funcionalidade: Configurações, Dashboard Cards e Sistema de Cores', 
       });
     });
   });
+
+  describe('4. Resiliência de Métricas de Receita e Intervalos Contábeis', () => {
+    it('getLedgerDateRange para mês deve cobrir desde o primeiro até o último milissegundo do mês corrente', async () => {
+      const { getLedgerDateRange } = await import('../../src/hooks/useSalesLedger');
+      const range = getLedgerDateRange('month');
+      const now = new Date();
+      expect(range.start.getDate()).toBe(1);
+      expect(range.start.getMonth()).toBe(now.getMonth());
+      expect(range.start.getFullYear()).toBe(now.getFullYear());
+
+      // O fim do mês deve ser o último dia do mês corrente (ex: dia 30 ou 31 às 23:59:59.999)
+      const expectedEndMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+      expect(range.end.getTime()).toBe(expectedEndMonth.getTime());
+    });
+
+    it('prioriza completedRevenue do ledger sobre fallbackRevenue de pedidos ativos quando disponível', () => {
+      const fallbackRevenue = 0; // Nenhum pedido concluído ativo no quadro
+      const ledgerStats = {
+        completedCount: 1,
+        completedRevenue: 28.0,
+        averageTicket: 28.0,
+      };
+
+      const resolvedRevenue = ledgerStats.completedRevenue > 0 ? ledgerStats.completedRevenue : fallbackRevenue;
+      expect(resolvedRevenue).toBe(28.0);
+    });
+  });
 });

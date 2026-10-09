@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   onSnapshot,
   QuerySnapshot,
@@ -39,9 +39,10 @@ export function getLedgerDateRange(period: LedgerPeriod, customRange?: { start?:
     }
 
     case 'month': {
-      // Do primeiro dia do mês atual até agora
+      // Do primeiro dia do mês atual até o último momento do mês atual
       const mStart = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
-      return { start: mStart, end: todayEnd };
+      const mEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+      return { start: mStart, end: mEnd };
     }
 
     case 'quarter': {
@@ -84,7 +85,7 @@ export function useSalesLedger(options?: {
   const [period, setPeriod] = useState<LedgerPeriod>(options?.defaultPeriod || 'month');
   const [customStart, setCustomStart] = useState<string>('');
   const [customEnd, setCustomEnd] = useState<string>('');
-  const [hasAutoSynced, setHasAutoSynced] = useState(false);
+  const hasAutoSyncedRef = useRef(false);
 
   // Escuta o ledger do Firestore
   useEffect(() => {
@@ -146,8 +147,8 @@ export function useSalesLedger(options?: {
       setLoading(false);
 
       // Se o ledger estiver vazio e ainda não tiver feito sync, sincroniza pedidos existentes
-      if (list.length === 0 && !hasAutoSynced) {
-        setHasAutoSynced(true);
+      if (list.length === 0 && !hasAutoSyncedRef.current) {
+        hasAutoSyncedRef.current = true;
         firebaseLedgerService.syncExistingOrdersToLedger(user.uid, isAdmin).catch((err) => {
           console.warn('Erro ao sincronizar pedidos existentes com o ledger:', err);
         });
@@ -189,7 +190,7 @@ export function useSalesLedger(options?: {
     }
 
     return () => unsubscribers.forEach((u) => u());
-  }, [user, userProfile?.role, hasAutoSynced, options?.dateRange?.start, options?.dateRange?.end]);
+  }, [user, userProfile?.role, options?.dateRange?.start, options?.dateRange?.end]);
 
   // Filtro de equipe (multi-usuário)
   const teamFilteredSales = useMemo(() => {
