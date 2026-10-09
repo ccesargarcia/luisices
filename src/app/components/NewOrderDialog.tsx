@@ -371,10 +371,6 @@ export function NewOrderDialog({
 
       trackOrderCreated(createdOrder.id, totalAmount, formData.status);
 
-      if (customerId) {
-        await firebaseCustomerService.incrementCustomerStats(customerId, totalAmount);
-      }
-
       if (pendingFiles.length > 0) {
         setIsUploadingAttachment(true);
         try {

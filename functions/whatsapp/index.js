@@ -700,14 +700,26 @@ const evolutionWhatsAppWebhook = onRequest(
             let customerName = cleanPhone;
             let customerId = null;
             try {
-              const custSnap = await admin.firestore().collection('customers').limit(100).get();
-              for (const d of custSnap.docs) {
-                const cData = d.data();
-                const cPhone = String(cData.phone || '').replace(/\D/g, '');
-                if (cPhone && (cleanPhone.endsWith(cPhone) || cPhone.endsWith(cleanPhone))) {
-                  customerName = cData.name || customerName;
-                  customerId = d.id;
-                  break;
+              // 1. Busca rápida indexada direta por phoneDigits ou phone com limite 1
+              let custSnap = await admin.firestore().collection('customers').where('phoneDigits', '==', cleanPhone).limit(1).get();
+              if (custSnap.empty) {
+                custSnap = await admin.firestore().collection('customers').where('phone', '==', cleanPhone).limit(1).get();
+              }
+              if (!custSnap.empty) {
+                const cData = custSnap.docs[0].data();
+                customerName = cData.name || customerName;
+                customerId = custSnap.docs[0].id;
+              } else {
+                // Fallback com limite reduzido para casos com máscara não normalizada
+                const fallbackSnap = await admin.firestore().collection('customers').limit(25).get();
+                for (const d of fallbackSnap.docs) {
+                  const cData = d.data();
+                  const cPhone = String(cData.phoneDigits || cData.phone || '').replace(/\D/g, '');
+                  if (cPhone && (cleanPhone.endsWith(cPhone) || cPhone.endsWith(cleanPhone))) {
+                    customerName = cData.name || customerName;
+                    customerId = d.id;
+                    break;
+                  }
                 }
               }
             } catch (e) {
@@ -716,7 +728,11 @@ const evolutionWhatsAppWebhook = onRequest(
 
             const msgDocId = key?.id ? `wa_${key.id}` : null;
             if (msgDocId) {
-              await admin.firestore().collection('whatsapp_messages').doc(msgDocId).set({
+              const msgRef = admin.firestore().collection('whatsapp_messages').doc(msgDocId);
+              const msgSnap = await msgRef.get();
+              const isNewMessage = !msgSnap.exists;
+
+              await msgRef.set({
                 chatId: cleanPhone,
                 phone: cleanPhone,
                 customerName,
@@ -726,24 +742,32 @@ const evolutionWhatsAppWebhook = onRequest(
                 status: fromMe ? 'sent' : 'received',
                 timestamp: nowIso,
                 evolutionMessageId: key?.id || `inc_${Date.now()}`,
-                createdAt: admin.firestore.FieldValue.serverTimestamp(),
+                createdAt: isNewMessage ? admin.firestore.FieldValue.serverTimestamp() : (msgSnap.data()?.createdAt || admin.firestore.FieldValue.serverTimestamp()),
               }, { merge: true });
+
+              const chatUpdatePayload = {
+                id: cleanPhone,
+                phone: cleanPhone,
+                customerName,
+                customerId,
+                lastMessageText: messageText,
+                lastMessageTimestamp: nowIso,
+                lastMessageSender: fromMe ? 'me' : 'customer',
+                updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+              };
+
+              // Idempotência estrita: só incrementa unreadCount se a mensagem for inédita no Firestore
+              if (fromMe) {
+                chatUpdatePayload.unreadCount = 0;
+              } else if (isNewMessage) {
+                chatUpdatePayload.unreadCount = admin.firestore.FieldValue.increment(1);
+              }
+
+              await admin.firestore().collection('whatsapp_chats').doc(cleanPhone).set(chatUpdatePayload, { merge: true });
             } else {
               console.warn('[evolutionWhatsAppWebhook] Evento sem message key.id ignorado.');
               return res.status(200).json({ received: true, ignored: 'missing_message_id' });
             }
-
-            await admin.firestore().collection('whatsapp_chats').doc(cleanPhone).set({
-              id: cleanPhone,
-              phone: cleanPhone,
-              customerName,
-              customerId,
-              lastMessageText: messageText,
-              lastMessageTimestamp: nowIso,
-              lastMessageSender: fromMe ? 'me' : 'customer',
-              unreadCount: fromMe ? 0 : admin.firestore.FieldValue.increment(1),
-              updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-            }, { merge: true });
           }
         }
       }

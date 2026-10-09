@@ -21,6 +21,7 @@ import {
 import { db, auth } from '../lib/firebase';
 import { Order, OrderStatus, ProductionStep, ProductionWorkflow } from '../app/types';
 import { firebaseLedgerService } from './firebaseLedgerService';
+import { firebaseCustomerService } from './firebaseCustomerService';
 
 const ORDERS_COLLECTION = 'orders';
 
@@ -72,10 +73,11 @@ export class FirebaseOrderService {
   }
 
   /**
-   * Garantir que um valor monetário nunca seja negativo
+   * Garantir que um valor monetário nunca seja negativo e tenha precisão estrita de 2 casas decimais
    */
   private ensurePositive(value: number | undefined | null): number {
-    return Math.max(0, value ?? 0);
+    const num = Math.max(0, value ?? 0);
+    return Math.round(num * 100) / 100;
   }
 
   /**
@@ -240,6 +242,17 @@ export class FirebaseOrderService {
 
       return orderRef.id;
     });
+
+    // Atualizar estatísticas do cliente de forma centralizada (pedidos manuais, orçamentos, lojinha pública, etc.)
+    if (orderData.customerId) {
+      try {
+        const orderAmount = Number(orderData.price || orderData.payment?.totalAmount || 0);
+        await firebaseCustomerService.incrementCustomerStats(orderData.customerId, orderAmount);
+      } catch (err) {
+        console.warn('[firebaseOrderService] Não foi possível atualizar estatísticas do cliente:', err);
+      }
+    }
+
     return this.getOrderById(savedOrderId);
   }
 

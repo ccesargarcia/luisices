@@ -169,9 +169,11 @@ service cloud.firestore {
         || isAdmin()
         || employeeHasCustomersPerm('view');
       allow create: if ('userId' in request.resource.data && isOwner(request.resource.data.userId)) || isAdmin();
-      allow update: if (resource != null && 'userId' in resource.data && isOwner(resource.data.userId))
+      allow update: if (
+        (resource != null && 'userId' in resource.data && isOwner(resource.data.userId))
         || isAdmin()
-        || employeeHasCustomersPerm('edit');
+        || employeeHasCustomersPerm('edit')
+      ) && (!('userId' in request.resource.data) || request.resource.data.userId == resource.data.userId);
       allow delete: if (resource != null && 'userId' in resource.data && isOwner(resource.data.userId))
         || isAdmin()
         || employeeHasCustomersPerm('delete');
@@ -183,9 +185,11 @@ service cloud.firestore {
         || isAdmin()
         || employeeHasQuotesPerm('view');
       allow create: if ('userId' in request.resource.data && isOwner(request.resource.data.userId)) || isAdmin();
-      allow update: if (resource != null && 'userId' in resource.data && isOwner(resource.data.userId))
+      allow update: if (
+        (resource != null && 'userId' in resource.data && isOwner(resource.data.userId))
         || isAdmin()
-        || employeeHasQuotesPerm('edit');
+        || employeeHasQuotesPerm('edit')
+      ) && (!('userId' in request.resource.data) || request.resource.data.userId == resource.data.userId);
       allow delete: if (resource != null && 'userId' in resource.data && isOwner(resource.data.userId))
         || isAdmin()
         || employeeHasQuotesPerm('delete');
@@ -198,9 +202,11 @@ service cloud.firestore {
         || isAdmin()
         || employeeHasProductsPerm('view');
       allow create: if ('userId' in request.resource.data && isOwner(request.resource.data.userId)) || isAdmin();
-      allow update: if (resource != null && 'userId' in resource.data && isOwner(resource.data.userId))
+      allow update: if (
+        (resource != null && 'userId' in resource.data && isOwner(resource.data.userId))
         || isAdmin()
-        || employeeHasProductsPerm('edit');
+        || employeeHasProductsPerm('edit')
+      ) && (!('userId' in request.resource.data) || request.resource.data.userId == resource.data.userId);
       allow delete: if (resource != null && 'userId' in resource.data && isOwner(resource.data.userId))
         || isAdmin()
         || employeeHasProductsPerm('delete');
@@ -214,7 +220,12 @@ service cloud.firestore {
       allow create: if ('userId' in request.resource.data && isOwner(request.resource.data.userId))
         || isAdmin()
         || employeeHasGalleryPerm('create');
-      allow update, delete: if (resource != null && 'userId' in resource.data && isOwner(resource.data.userId))
+      allow update: if (
+        (resource != null && 'userId' in resource.data && isOwner(resource.data.userId))
+        || isAdmin()
+        || employeeHasGalleryPerm('delete')
+      ) && (!('userId' in request.resource.data) || request.resource.data.userId == resource.data.userId);
+      allow delete: if (resource != null && 'userId' in resource.data && isOwner(resource.data.userId))
         || isAdmin()
         || employeeHasGalleryPerm('delete');
     }

@@ -15,10 +15,14 @@ export const firebaseCustomerService = {
       throw new Error(`DUPLICATE_PHONE:${existing.name}`);
     }
 
+    // Chave de dígitos normalizada para indexação e consultas rápidas
+    const cleanPhoneDigits = customerData.phone ? customerData.phone.replace(/\D/g, '') : '';
+
     // Remover campos undefined (Firestore não aceita undefined)
     const cleanData: any = {
       name: customerData.name,
       phone: customerData.phone,
+      phoneDigits: cleanPhoneDigits,
       userId,
       createdAt: new Date().toISOString(),
       totalOrders: 0,
@@ -90,6 +94,10 @@ export const firebaseCustomerService = {
       }
     });
 
+    if (updates.phone !== undefined) {
+      cleanUpdates.phoneDigits = updates.phone ? updates.phone.replace(/\D/g, '') : '';
+    }
+
     if (Object.keys(cleanUpdates).length > 0) {
       await updateDoc(customerRef, cleanUpdates);
     }
@@ -104,21 +112,23 @@ export const firebaseCustomerService = {
   },
 
   /**
-   * Incrementar estatísticas do cliente (ao criar pedido)
+   * Incrementar estatísticas do cliente (ao criar pedido) com arredondamento monetário
    */
   async incrementCustomerStats(customerId: string, orderValue: number = 0): Promise<void> {
     const customerRef = doc(db, 'customers', customerId);
+    const roundedValue = Math.round(Math.max(0, Number(orderValue || 0)) * 100) / 100;
     await updateDoc(customerRef, {
       totalOrders: increment(1),
-      totalSpent: increment(orderValue),
+      totalSpent: increment(roundedValue),
     });
   },
 
   /**
-   * Decrementar estatísticas do cliente (ao deletar pedido) de forma atômica
+   * Decrementar estatísticas do cliente (ao deletar pedido) de forma atômica com arredondamento monetário
    */
   async decrementCustomerStats(customerId: string, orderValue: number = 0): Promise<void> {
     const customerRef = doc(db, 'customers', customerId);
+    const roundedValue = Math.round(Math.max(0, Number(orderValue || 0)) * 100) / 100;
 
     await runTransaction(db, async (transaction) => {
       const customerSnap = await transaction.get(customerRef);
@@ -129,7 +139,7 @@ export const firebaseCustomerService = {
       const currentSpent = currentData.totalSpent || 0;
 
       const newTotalOrders = Math.max(0, currentOrders - 1);
-      const newTotalSpent = Math.max(0, currentSpent - orderValue);
+      const newTotalSpent = Math.max(0, Math.round((currentSpent - roundedValue) * 100) / 100);
 
       transaction.update(customerRef, {
         totalOrders: newTotalOrders,
@@ -180,14 +190,29 @@ export const firebaseCustomerService = {
       } as Customer;
     }
 
-    // Se não encontrou por correspondência exata de string e tem dígitos suficientes, busca nos clientes do usuário
+    // Se não encontrou por correspondência exata de string e tem dígitos suficientes, busca primeiro pelo campo indexado phoneDigits
     if (cleanPhoneDigits.length >= 8) {
+      const qDigits = query(
+        customersRef,
+        where('userId', '==', userId),
+        where('phoneDigits', '==', cleanPhoneDigits)
+      );
+      const digitsSnap = await getDocs(qDigits);
+      if (!digitsSnap.empty) {
+        const doc = digitsSnap.docs[0];
+        return {
+          id: doc.id,
+          ...doc.data(),
+        } as Customer;
+      }
+
+      // Fallback para registros legados sem phoneDigits
       const allUserCustomersSnap = await getDocs(
         query(customersRef, where('userId', '==', userId))
       );
       for (const docSnap of allUserCustomersSnap.docs) {
         const data = docSnap.data();
-        const custDigits = (data.phone || '').replace(/\D/g, '');
+        const custDigits = (data.phoneDigits || data.phone || '').replace(/\D/g, '');
         if (custDigits && custDigits === cleanPhoneDigits) {
           return {
             ...data,
