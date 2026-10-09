@@ -161,7 +161,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 }).catch(err => console.warn('[AuthContext] Erro ao registrar sessão do dispositivo', err));
               }
             }
-          }, (err) => console.warn('[AuthContext] Aviso ao escutar dispositivo:', err));
+          }, (err) => {
+            if (err?.code !== 'permission-denied' && !String(err?.message).includes('insufficient permissions')) {
+              console.warn('[AuthContext] Aviso ao escutar dispositivo:', err);
+            }
+          });
 
         } catch (tokenErr) {
           console.warn('[AuthContext] Falha ao renovar token de autenticação inicial (possível offline):', tokenErr);

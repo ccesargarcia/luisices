@@ -293,10 +293,11 @@ service cloud.firestore {
 
     // Perfis de usuário do sistema de permissões
     match /userProfiles/{uid} {
-      // Leitura: usuário lê sempre o próprio perfil (mesmo inativo) para ver status de desativação ou revogação;
+      // Leitura: usuário lê sempre o próprio perfil (mesmo inativo ou por e-mail correspondente);
       // admin e funcionários ativos leem todos para colaboração na equipe
       allow read: if request.auth != null && (
         request.auth.uid == uid
+        || (resource != null && 'email' in resource.data && resource.data.email == request.auth.token.email)
         || (isActiveUser() && (isAdmin() || isActiveEmployee()))
       );
 
@@ -316,7 +317,7 @@ service cloud.firestore {
 
       match /devices/{deviceId} {
         // Leitura para monitorar a própria sessão (kicks) e para admins verem a lista
-        allow read: if isActiveUser() && (request.auth.uid == uid || isAdmin());
+        allow read: if request.auth != null && (request.auth.uid == uid || isAdmin());
         allow write: if false; // Criação/Deleção via Cloud Functions
       }
     }

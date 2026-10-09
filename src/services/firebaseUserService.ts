@@ -11,6 +11,7 @@ import {
   getDocs,
   getDoc,
   query,
+  where,
   orderBy,
 } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
@@ -120,6 +121,19 @@ export class FirebaseUserService {
   async getUserProfile(uid: string, _email?: string, _displayName?: string): Promise<UserProfile | null> {
     const snap = await getDoc(doc(db, USERS_COLLECTION, uid));
     if (snap.exists()) return snap.data() as UserProfile;
+
+    if (_email) {
+      try {
+        const q = query(collection(db, USERS_COLLECTION), where('email', '==', _email.trim().toLowerCase()));
+        const querySnap = await getDocs(q);
+        if (!querySnap.empty) {
+          return querySnap.docs[0].data() as UserProfile;
+        }
+      } catch (err) {
+        console.warn('[getUserProfile] Falha ao consultar perfil por e-mail:', err);
+      }
+    }
+
     return null;
   }
 
