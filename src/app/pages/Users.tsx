@@ -3,8 +3,7 @@ import { useSearchParams } from 'react-router';
 import { useAuth } from '../../contexts/AuthContext';
 import { firebaseUserService, DeviceSession } from '../../services/firebaseUserService';
 import { firebaseAlexaService } from '../../services/firebaseAlexaService';
-import { database } from '../../lib/firebase';
-import { ref, onValue, off } from 'firebase/database';
+import { subscribeAdminPresence, AdminPresenceSnapshot } from '../../services/adminPresenceService';
 import {
   UserProfile,
   UserRole,
@@ -710,37 +709,13 @@ export function Users() {
   const tabParam = searchParams.get('tab') as UserTabType;
   const initialTab: UserTabType = validTabs.includes(tabParam) ? tabParam : 'membros';
   const [activeTab, setActiveTab] = useState<UserTabType>(initialTab);
-  const [presenceData, setPresenceData] = useState<Record<string, any>>({});
+  const [presence, setPresence] = useState<AdminPresenceSnapshot>({ state: 'loading', data: {} });
 
   useEffect(() => {
-    if (!isAdmin) return;
-    let unsubscribe: (() => void) | null = null;
-    let isCancelled = false;
-
-    // Garante que o ID token esteja com claims atualizadas antes de conectar a assinatura no RTDB
-    currentUser?.getIdTokenResult().then((idTokenResult) => {
-      if (isCancelled) return;
-      if (idTokenResult.claims.role !== 'admin') return;
-
-      const statusRef = ref(database, '/status');
-      unsubscribe = onValue(statusRef, (snap) => {
-        if (snap.exists()) {
-          setPresenceData(snap.val());
-        } else {
-          setPresenceData({});
-        }
-      }, (err) => {
-        console.warn('[Users] Falha ao ler /status do RTDB:', err);
-      });
-    }).catch((err) => {
-      console.warn('[Users] Erro ao obter token para presenças:', err);
-    });
-
-    return () => {
-      isCancelled = true;
-      if (unsubscribe) unsubscribe();
-    };
-  }, [isAdmin, currentUser]);
+    setPresence({ state: 'loading', data: {} });
+    if (!isAdmin || !currentUser?.uid) return;
+    return subscribeAdminPresence(currentUser.uid, setPresence);
+  }, [isAdmin, currentUser?.uid]);
 
   const handleTabChange = (val: string) => {
     const nextTab = val as UserTabType;
@@ -753,11 +728,12 @@ export function Users() {
   };
 
   const renderPresence = (uid: string) => {
-    const data = presenceData[uid];
-    const isOnline = uid === currentUser?.uid || data?.state === 'online' || (data?.connections && Object.keys(data.connections).length > 0);
+    const data = presence.data[uid];
+    const isKnown = isAdmin && presence.state === 'ready';
+    const isOnline = isKnown && (data?.state === 'online' || (data?.connections && Object.keys(data.connections).length > 0));
     return (
       <span
-        title={isOnline ? 'Online agora' : 'Offline'}
+        title={!isKnown ? 'Presença indisponível' : isOnline ? 'Online agora' : 'Offline'}
         className={`inline-block w-2 h-2 shrink-0 rounded-full mr-2 transition-colors ${
           isOnline
             ? 'bg-emerald-500 shadow-[0_0_6px_rgba(16,185,129,0.5)]'
@@ -987,6 +963,17 @@ export function Users() {
 
         {/* ─── ABA 1: MEMBROS ATIVOS ──────────────────────────────── */}
         <TabsContent value="membros" className="space-y-6">
+          {isAdmin && (presence.state === 'claims-pending' || presence.state === 'unavailable') && (
+            <Alert>
+              <AlertCircle className="size-4" />
+              <AlertTitle>Presença indisponível</AlertTitle>
+              <AlertDescription>
+                {presence.state === 'claims-pending'
+                  ? 'As credenciais administrativas ainda não foram sincronizadas. O status será atualizado quando a sincronização concluir.'
+                  : 'Não foi possível consultar quem está online. Tente atualizar; se persistir, verifique a configuração de acesso no servidor.'}
+              </AlertDescription>
+            </Alert>
+          )}
           {/* Alert sobre logout/login */}
           <Alert>
             <AlertCircle className="size-4" />

@@ -47,7 +47,8 @@
     "test:responsive": "playwright test tests/e2e/responsive.spec.ts",
     "test:audit": "playwright test tests/e2e/screen-audit.spec.ts",
     "test:critical": "playwright test tests/e2e/critical-flows.spec.ts tests/e2e/permissions.spec.ts tests/e2e/security.spec.ts",
-    "test:integration": "firebase emulators:exec --config firebase.test.json --project demo-luisices-review --only firestore,storage \"vitest run --config vitest.integration.config.ts\""
+    "test:integration": "firebase emulators:exec --config firebase.test.json --project demo-luisices-review --only firestore,storage \"vitest run --config vitest.integration.config.ts\"",
+    "test:presence": "firebase emulators:exec --config firebase.presence.test.json --project demo-luisices-presence --only database \"vitest run --config vitest.integration.config.ts tests/integration/rtdb-presence.test.ts\""
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",

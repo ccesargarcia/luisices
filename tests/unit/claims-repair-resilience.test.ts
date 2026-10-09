@@ -163,6 +163,7 @@ function createFakeDependencies() {
   let currentTime = 1728400000000;
 
   const auth = {
+    getUser: vi.fn(async (uid: string) => ({ uid, customClaims: authClaims.get(uid) || {} })),
     setCustomUserClaims: vi.fn(async (uid: string, claims: any) => {
       authClaims.set(uid, { ...claims });
     }),
@@ -219,6 +220,51 @@ describe('userSyncService — Resiliência, Concorrência e Monotonicidade Real'
 
   beforeEach(() => {
     deps = createFakeDependencies();
+  });
+
+  describe('Reparo de claims sem marcador', () => {
+    it('repara admin legado sem claimsSyncPending antes de anunciar sincronização', async () => {
+      await deps.firestore.doc('userProfiles/legacy-admin').set({ role: 'admin', active: true });
+      const result = await executeUserRepair({ uid: 'legacy-admin' }, deps);
+      expect(deps.auth.getClaims('legacy-admin')).toEqual({ role: 'admin', active: true });
+      expect(result.synced).toBe(true);
+      expect(deps.auth.revokeRefreshTokens).not.toHaveBeenCalled();
+    });
+
+    it('retorna no-op saudável sem regravar claims já corretas', async () => {
+      await deps.firestore.doc('userProfiles/current-admin').set({ role: 'admin', active: true });
+      await deps.auth.setCustomUserClaims('current-admin', { role: 'admin', active: true });
+      deps.auth.setCustomUserClaims.mockClear();
+      const result = await executeUserRepair({ uid: 'current-admin' }, deps);
+      expect(result).toMatchObject({ synced: true, status: 'already-synced' });
+      expect(deps.auth.setCustomUserClaims).not.toHaveBeenCalled();
+      expect((await deps.firestore.doc('userProfiles/current-admin').get()).data().claimsSyncPending).toBeUndefined();
+    });
+
+    it('mantém reparo pendente quando o Auth falha, permitindo retomada', async () => {
+      await deps.firestore.doc('userProfiles/repair-failure').set({ role: 'admin', active: true });
+      deps.auth.setCustomUserClaims.mockRejectedValueOnce(new Error('Auth indisponível'));
+      await expect(executeUserRepair({ uid: 'repair-failure' }, deps)).rejects.toThrow('Auth indisponível');
+      const data = (await deps.firestore.doc('userProfiles/repair-failure').get()).data();
+      expect(data.claimsSyncPending).toMatchObject({ needsClaims: true, needsRevocation: false, status: 'failed' });
+      await executeUserRepair({ uid: 'repair-failure' }, deps);
+      expect(deps.auth.getClaims('repair-failure')).toEqual({ role: 'admin', active: true });
+    });
+
+    it('preserva operação concorrente criada durante leitura das claims', async () => {
+      const profileRef = deps.firestore.doc('userProfiles/concurrent-repair');
+      await profileRef.set({ role: 'admin', active: true });
+      const marker = { version: 2, opId: 'new-op', status: 'processing', needsClaims: true,
+        needsRevocation: true, lease: { workerId: 'new-worker', expiresAt: deps.now() + 15000 } };
+      deps.auth.getUser.mockImplementationOnce(async (uid) => {
+        await profileRef.set({ role: 'user', active: false, syncVersion: 2, claimsSyncPending: marker });
+        return { uid, customClaims: {} };
+      });
+      const result = await executeUserRepair({ uid: 'concurrent-repair' }, deps);
+      expect(result).toMatchObject({ synced: false, status: 'locked' });
+      expect((await profileRef.get()).data().claimsSyncPending).toEqual(marker);
+      expect(deps.auth.setCustomUserClaims).not.toHaveBeenCalled();
+    });
   });
 
   // ─── Cenário A: Operações fora de ordem ──────────────────────────────────────

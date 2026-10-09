@@ -377,7 +377,7 @@ async function revokeUserSessions(params, deps = {}) {
  */
 async function executeUserRepair(params, deps = {}) {
   const { uid } = params;
-  const { firestore, now, generateOpId } = getServices(deps);
+  const { firestore, auth, now, generateOpId } = getServices(deps);
 
   if (!uid || typeof uid !== 'string') {
     throw new Error('UID inválido para reparo.');
@@ -396,6 +396,52 @@ async function executeUserRepair(params, deps = {}) {
   // Se for marcador legado boolean true, converte transacionalmente antes de processar
   if (marker === true) {
     await convertLegacyMarker(uid, deps);
+  } else if (!marker) {
+    // Ausência de marcador não prova que contas legadas possuem claims corretas.
+    // Compare o Auth com o perfil atual; crie trabalho durável sem atropelar
+    // uma atualização/lease que tenha surgido durante a chamada ao Auth.
+    const authUser = await auth.getUser(uid);
+    const preparation = await firestore.runTransaction(async (tx) => {
+      const currentSnap = await tx.get(profileRef);
+      if (!currentSnap.exists) return { status: 'not-found' };
+      const current = currentSnap.data();
+      if (current.claimsSyncPending) return { status: 'pending' };
+      const desired = { role: current.role || 'user', active: current.active !== false };
+      if (authUser.customClaims?.role === desired.role && authUser.customClaims?.active === desired.active) {
+        return { status: 'already-synced', claims: desired, version: Number(current.syncVersion || 0) };
+      }
+
+      const version = Number(current.syncVersion || 0) + 1;
+      tx.update(profileRef, {
+        syncVersion: version,
+        claimsSyncPending: {
+          version,
+          opId: `repair_${generateOpId()}`,
+          status: 'pending',
+          needsClaims: true,
+          needsRevocation: false,
+          completedSteps: { rtdbRevocation: false, devicesCleanup: false, authRevocation: false, authClaims: false },
+          originalRevocationTimeSeconds: null,
+          originalRevocationTimeMs: null,
+          attempts: 0,
+          updatedAt: now(),
+          lease: null,
+        },
+      });
+      return { status: 'pending' };
+    });
+
+    if (preparation.status === 'not-found') {
+      return { claims: null, resumedRevocation: false, synced: false, status: 'not-found' };
+    }
+    if (preparation.status === 'already-synced') {
+      return {
+        success: true, synced: true, status: 'already-synced',
+        claims: preparation.claims, resumedRevocation: false,
+        version: preparation.version, syncedVersion: preparation.version,
+        pendingSteps: { revocation: false, claims: false },
+      };
+    }
   }
 
   const workerId = `repair_${generateOpId()}_${now()}`;

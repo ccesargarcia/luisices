@@ -9,7 +9,6 @@ import { UserProfile, ADMIN_PERMISSIONS, DEFAULT_USER_PERMISSIONS, EMPLOYEE_PERM
 import { setUserAnalytics } from '../services/analyticsService';
 import { toast } from 'sonner';
 import { usePresence } from '../hooks/usePresence';
-import { repairClaimsIfNeeded } from '../services/claimsRepairService';
 
 interface AuthContextType {
   user: User | null;
@@ -200,13 +199,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               }
 
               // Auto-recuperação de claims: sincroniza se divergir do perfil do Firestore
-              if (idTokenResult.claims.role !== data.role || idTokenResult.claims.active !== true) {
+              const claimActive = Boolean(idTokenResult.claims.active);
+              const profileActive = Boolean(data.active);
+              if (idTokenResult.claims.role !== data.role || claimActive !== profileActive) {
                 try {
-                  const repair = await repairClaimsIfNeeded(u, data);
-                  if (!repair.synced) console.warn('[AuthContext] Claims ainda pendentes:', repair.status);
+                  const { httpsCallable } = await import('firebase/functions');
+                  const { functions } = await import('../lib/firebase');
+                  const repairClaims = httpsCallable(functions, 'repairUserClaims');
+                  await repairClaims({ uid: u.uid });
                 } catch (repairErr) {
                   console.warn('[AuthContext] Falha ao acionar reparo administrativo de claims:', repairErr);
                 }
+                await u.getIdToken(true);
               }
             } catch (claimErr) {
               console.warn('[AuthContext] Falha ao verificar/atualizar claims do token:', claimErr);
