@@ -293,8 +293,12 @@ service cloud.firestore {
 
     // Perfis de usuário do sistema de permissões
     match /userProfiles/{uid} {
-      // Leitura: usuário lê apenas o próprio perfil; admin e funcionários ativos leem todos para colaboração na equipe
-      allow read: if isActiveUser() && (request.auth.uid == uid || isAdmin() || isActiveEmployee());
+      // Leitura: usuário lê sempre o próprio perfil (mesmo inativo) para ver status de desativação ou revogação;
+      // admin e funcionários ativos leem todos para colaboração na equipe
+      allow read: if request.auth != null && (
+        request.auth.uid == uid
+        || (isActiveUser() && (isAdmin() || isActiveEmployee()))
+      );
 
       // Criação: somente Cloud Functions (Admin SDK).
       allow create: if false;
