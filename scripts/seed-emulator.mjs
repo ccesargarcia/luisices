@@ -54,16 +54,22 @@ async function seed() {
     try {
       const user = await auth.getUserByEmail(email);
       uid = user.uid;
-      console.log(`ℹ️ Usuário já existente no Auth Emulator (UID: ${uid})`);
+      if (!user.emailVerified) {
+        await auth.updateUser(uid, { emailVerified: true });
+        console.log(`✅ Usuário existente atualizado com emailVerified: true no Auth Emulator (UID: ${uid})`);
+      } else {
+        console.log(`ℹ️ Usuário já existente com e-mail verificado no Auth Emulator (UID: ${uid})`);
+      }
     } catch (err) {
       if (err?.code === 'auth/user-not-found') {
         const newUser = await auth.createUser({
           email,
           password,
           displayName: 'Admin Teste',
+          emailVerified: true,
         });
         uid = newUser.uid;
-        console.log(`✅ Usuário criado no Auth Emulator (UID: ${uid})`);
+        console.log(`✅ Usuário criado com emailVerified: true no Auth Emulator (UID: ${uid})`);
       } else {
         throw err;
       }
