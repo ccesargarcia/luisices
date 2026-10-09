@@ -5,6 +5,7 @@ import { DeliveryAlerts } from '../DeliveryAlerts';
 import { OverdueOrders } from '../OverdueOrders';
 import { formatCurrency } from '../../utils/currency';
 import { Order } from '../../types';
+import { Skeleton } from '../ui/skeleton';
 import {
   Package,
   Clock,
@@ -45,9 +46,18 @@ export interface DashboardLedgerStats {
   averageTicket: number;
 }
 
+export interface DashboardMonthlyStats {
+  revenue: number;
+  completedCount: number;
+  avgTicket: number;
+  totalPaid: number;
+}
+
 interface DashboardHeaderMetricsProps {
   stats: DashboardMetricsStats;
   ledgerStats: DashboardLedgerStats;
+  currentMonthStats?: DashboardMonthlyStats;
+  ledgerLoading?: boolean;
   visibleCards: string[];
   currentMonthName: string;
   statusChartData: { status: string; value: number; fill: string }[];
@@ -60,6 +70,8 @@ interface DashboardHeaderMetricsProps {
 export function DashboardHeaderMetrics({
   stats,
   ledgerStats,
+  currentMonthStats,
+  ledgerLoading = false,
   visibleCards,
   currentMonthName,
   statusChartData,
@@ -89,6 +101,23 @@ export function DashboardHeaderMetrics({
         ? 'grid-cols-1 sm:grid-cols-2'
         : 'grid-cols-1 sm:grid-cols-3';
 
+  // Valores canônicos do mês atual
+  const monthlyRevenue = currentMonthStats
+    ? currentMonthStats.revenue
+    : (ledgerStats.completedRevenue > 0 ? ledgerStats.completedRevenue : 0);
+
+  const monthlyCompletedCount = currentMonthStats
+    ? currentMonthStats.completedCount
+    : ledgerStats.completedCount;
+
+  const monthlyAvgTicket = currentMonthStats
+    ? currentMonthStats.avgTicket
+    : (ledgerStats.averageTicket > 0 ? ledgerStats.averageTicket : 0);
+
+  const monthlyTotalPaid = currentMonthStats
+    ? currentMonthStats.totalPaid
+    : (ledgerStats.totalPaid > 0 ? ledgerStats.totalPaid : 0);
+
   return (
     <div className="space-y-6">
       <SectionErrorBoundary title="Métricas Financeiras">
@@ -115,14 +144,23 @@ export function DashboardHeaderMetrics({
                 <DollarSign className="size-4 text-green-600" />
               </CardHeader>
               <CardContent>
-                <div className="min-w-0 break-words text-lg font-bold leading-tight tabular-nums sm:text-2xl">
-                  {formatCurrency(ledgerStats.completedRevenue > 0 ? ledgerStats.completedRevenue : stats.totalRevenue)}
-                </div>
-                <p className="text-xs text-muted-foreground mt-1">
-                  {ledgerStats.completedCount > 0
-                    ? `${ledgerStats.completedCount} pedido${ledgerStats.completedCount !== 1 ? 's' : ''} concluído${ledgerStats.completedCount !== 1 ? 's' : ''} em ${currentMonthName.toLowerCase()}`
-                    : `${stats.completed} pedido${stats.completed !== 1 ? 's' : ''} concluído${stats.completed !== 1 ? 's' : ''}`}
-                </p>
+                {ledgerLoading ? (
+                  <div className="space-y-1.5 py-1">
+                    <Skeleton className="h-7 w-32" />
+                    <Skeleton className="h-3 w-40" />
+                  </div>
+                ) : (
+                  <>
+                    <div className="min-w-0 break-words text-lg font-bold leading-tight tabular-nums sm:text-2xl">
+                      {formatCurrency(monthlyRevenue)}
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {monthlyCompletedCount > 0
+                        ? `${monthlyCompletedCount} pedido${monthlyCompletedCount !== 1 ? 's' : ''} concluído${monthlyCompletedCount !== 1 ? 's' : ''} em ${currentMonthName.toLowerCase()}`
+                        : `Nenhum pedido concluído em ${currentMonthName.toLowerCase()}`}
+                    </p>
+                  </>
+                )}
               </CardContent>
             </Card>
           )}
@@ -149,12 +187,21 @@ export function DashboardHeaderMetrics({
                 <Target className="size-4 text-purple-600" />
               </CardHeader>
               <CardContent>
-                <div className="min-w-0 break-words text-lg font-bold leading-tight tabular-nums sm:text-2xl">
-                  {formatCurrency(ledgerStats.averageTicket > 0 ? ledgerStats.averageTicket : stats.averageOrderValue)}
-                </div>
-                <p className="text-xs text-muted-foreground mt-1">
-                  Média por venda em {currentMonthName.toLowerCase()}
-                </p>
+                {ledgerLoading ? (
+                  <div className="space-y-1.5 py-1">
+                    <Skeleton className="h-7 w-28" />
+                    <Skeleton className="h-3 w-36" />
+                  </div>
+                ) : (
+                  <>
+                    <div className="min-w-0 break-words text-lg font-bold leading-tight tabular-nums sm:text-2xl">
+                      {formatCurrency(monthlyAvgTicket)}
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Média por venda em {currentMonthName.toLowerCase()}
+                    </p>
+                  </>
+                )}
               </CardContent>
             </Card>
           )}
@@ -199,12 +246,21 @@ export function DashboardHeaderMetrics({
                 <TrendingUp className="size-4 text-green-600" />
               </CardHeader>
               <CardContent>
-                <div className="min-w-0 break-words text-lg font-bold leading-tight tabular-nums sm:text-2xl">
-                  {formatCurrency(ledgerStats.totalPaid > 0 ? ledgerStats.totalPaid : stats.totalPaid)}
-                </div>
-                <p className="text-xs text-muted-foreground mt-1">
-                  Pagamentos em {currentMonthName.toLowerCase()}
-                </p>
+                {ledgerLoading ? (
+                  <div className="space-y-1.5 py-1">
+                    <Skeleton className="h-7 w-28" />
+                    <Skeleton className="h-3 w-36" />
+                  </div>
+                ) : (
+                  <>
+                    <div className="min-w-0 break-words text-lg font-bold leading-tight tabular-nums sm:text-2xl">
+                      {formatCurrency(monthlyTotalPaid)}
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Pagamentos em {currentMonthName.toLowerCase()}
+                    </p>
+                  </>
+                )}
               </CardContent>
             </Card>
           )}

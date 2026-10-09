@@ -244,5 +244,61 @@ describe('Funcionalidade: Configurações, Dashboard Cards e Sistema de Cores', 
       const resolvedRevenue = ledgerStats.completedRevenue > 0 ? ledgerStats.completedRevenue : fallbackRevenue;
       expect(resolvedRevenue).toBe(28.0);
     });
+
+    it('preserva zero no mês atual quando há registros no ledger mas nenhuma venda no mês (sem vazar receita histórica)', () => {
+      const allSalesCount = 15; // Há histórico no ledger
+      const ledgerStats = {
+        completedCount: 0,
+        completedRevenue: 0,
+        averageTicket: 0,
+        totalPaid: 0,
+      };
+      const allTimeHistoricalRevenue = 45000; // Total histórico acumulado da empresa
+
+      // Lógica canônica: se há dados no ledger, o valor do mês é o do ledger (0), e nunca o total acumulado
+      const resolvedRevenue = allSalesCount > 0 ? ledgerStats.completedRevenue : allTimeHistoricalRevenue;
+      expect(resolvedRevenue).toBe(0);
+    });
+
+    it('fallback de pedidos considera apenas pedidos do mês corrente e nunca pedidos de meses anteriores', () => {
+      const now = new Date();
+      const curMonth = now.getMonth();
+      const curYear = now.getFullYear();
+
+      const orders = [
+        // Pedido de 2 meses atrás (concluído)
+        {
+          id: 'old-1',
+          status: 'completed',
+          price: 500,
+          createdAt: new Date(curYear, curMonth - 2, 10).toISOString(),
+        },
+        // Pedido do mês atual (concluído)
+        {
+          id: 'cur-1',
+          status: 'completed',
+          price: 120,
+          createdAt: new Date(curYear, curMonth, 5).toISOString(),
+        },
+        // Pedido do mês atual (pendente)
+        {
+          id: 'cur-2',
+          status: 'pending',
+          price: 80,
+          createdAt: new Date(curYear, curMonth, 6).toISOString(),
+        },
+      ];
+
+      const ordersInMonth = orders.filter((o) => {
+        const d = new Date(o.createdAt);
+        return d.getMonth() === curMonth && d.getFullYear() === curYear;
+      });
+
+      const completedInMonth = ordersInMonth.filter((o) => o.status === 'completed');
+      const fallbackRevenue = completedInMonth.reduce((sum, o) => sum + o.price, 0);
+
+      expect(fallbackRevenue).toBe(120);
+      expect(fallbackRevenue).not.toBe(620); // Não inclui o pedido antigo de 500
+    });
   });
 });

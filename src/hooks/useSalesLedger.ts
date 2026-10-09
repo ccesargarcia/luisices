@@ -138,8 +138,15 @@ export function useSalesLedger(options?: {
 
     let ownSales: SaleRecord[] = [];
     let assignedSales: SaleRecord[] = [];
+    let ownLoaded = false;
+    let assignedLoaded = !isEmployee;
 
     const publish = () => {
+      // Aguarda resposta inicial de todas as consultas ativas para evitar salto visual
+      if (!ownLoaded || !assignedLoaded) {
+        return;
+      }
+
       const map = new Map<string, SaleRecord>();
       [...ownSales, ...assignedSales].forEach((s) => map.set(s.id, s));
       const list = [...map.values()].sort((a, b) => String(b.date).localeCompare(String(a.date)));
@@ -160,10 +167,12 @@ export function useSalesLedger(options?: {
         baseQuery,
         (snapshot) => {
           ownSales = mapSnapshot(snapshot);
+          ownLoaded = true;
           publish();
         },
         (err) => {
           console.error('useSalesLedger: erro ao escutar vendas:', err);
+          ownLoaded = true;
           setLoading(false);
         }
       ),
@@ -179,10 +188,12 @@ export function useSalesLedger(options?: {
           assignedQuery,
           (snapshot) => {
             assignedSales = mapSnapshot(snapshot);
+            assignedLoaded = true;
             publish();
           },
           (err) => {
             console.error('useSalesLedger: erro nas vendas atribuídas:', err);
+            assignedLoaded = true;
             setLoading(false);
           }
         )

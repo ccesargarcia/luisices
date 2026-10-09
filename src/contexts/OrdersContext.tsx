@@ -95,7 +95,6 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
           // Força renovação do token do Firebase caso tenha expirado durante o bloqueio de tela
           await user.getIdToken(false);
         } catch {}
-        setReloadToken((prev) => prev + 1);
       }
     };
 
@@ -225,7 +224,16 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
     let assignedOrders: Order[] = [];
     let isFallbackActive = false;
 
+    let operationalLoaded = false;
+    let historicalLoaded = false;
+    let assignedLoaded = userProfile?.role !== 'funcionario';
+
     const publish = () => {
+      // Enquanto não receber a primeira resposta de todas as consultas ativas,
+      // não emite lista parcial na carga inicial para evitar salto visual (ex: 344 -> 373)
+      if (!operationalLoaded || !historicalLoaded || !assignedLoaded) {
+        return;
+      }
       const ordersById = new Map<string, Order>();
       [...operationalOrders, ...historicalOrders, ...assignedOrders].forEach(order => ordersById.set(order.id, order));
       const orders = [...ordersById.values()].sort((a, b) =>
@@ -255,6 +263,8 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
           (snapshot) => {
             operationalOrders = mapSnapshot(snapshot);
             historicalOrders = [];
+            operationalLoaded = true;
+            historicalLoaded = true;
             publish();
           },
           (fallbackErr) => {
@@ -273,9 +283,13 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
       operationalQuery,
       (snapshot) => {
         operationalOrders = mapSnapshot(snapshot);
+        operationalLoaded = true;
         publish();
       },
-      (err) => handleQueryError('pedidos operacionais', err)
+      (err) => {
+        operationalLoaded = true;
+        handleQueryError('pedidos operacionais', err);
+      }
     ));
 
     // Escuta histórico recente (entregues / cancelados)
@@ -283,9 +297,13 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
       historicalQuery,
       (snapshot) => {
         historicalOrders = mapSnapshot(snapshot);
+        historicalLoaded = true;
         publish();
       },
-      (err) => handleQueryError('histórico recente', err)
+      (err) => {
+        historicalLoaded = true;
+        handleQueryError('histórico recente', err);
+      }
     ));
 
     if (userProfile?.role === 'funcionario') {
@@ -299,9 +317,11 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
         assignedQuery,
         (snapshot) => {
           assignedOrders = mapSnapshot(snapshot);
+          assignedLoaded = true;
           publish();
         },
         (err) => {
+          assignedLoaded = true;
           if (err?.code !== 'permission-denied' && !String(err?.message).includes('insufficient permissions')) {
             console.error('OrdersContext: erro nos pedidos atribuídos:', err);
           }

@@ -112,7 +112,11 @@ export function Dashboard() {
     selectedUserIds,
   } = useFirebaseOrders();
   const { settings, updateSettings } = useUserSettings();
-  const { stats: ledgerStats } = useSalesLedger({ teamUserIds: selectedUserIds });
+  const {
+    stats: ledgerStats,
+    allSales,
+    loading: ledgerLoading,
+  } = useSalesLedger({ teamUserIds: selectedUserIds });
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [selectedOrderIds, setSelectedOrderIds] = useState<string[]>([]);
   const [detailsOpen, setDetailsOpen] = useState(false);
@@ -221,6 +225,38 @@ export function Dashboard() {
     }
   };
 
+  const currentMonthStats = useMemo(() => {
+    const now = new Date();
+    const curMonth = now.getMonth();
+    const curYear = now.getFullYear();
+
+    // Fallback caso a coleção sales_ledger ainda não tenha sido sincronizada no ambiente
+    const ordersInMonth = orders.filter((o) => {
+      const dateStr = o.createdAt;
+      if (!dateStr) return false;
+      const d = new Date(dateStr);
+      return !isNaN(d.getTime()) && d.getMonth() === curMonth && d.getFullYear() === curYear;
+    });
+
+    const completedInMonth = ordersInMonth.filter((o) => o.status === 'completed');
+    const fallbackRevenue = completedInMonth.reduce((sum, o) => sum + (o.price || 0), 0);
+    const fallbackCount = completedInMonth.length;
+    const fallbackPaid = ordersInMonth.reduce((sum, o) => sum + (o.payment?.paidAmount || 0), 0);
+    const validOrdersInMonth = ordersInMonth.filter((o) => o.status !== 'cancelled');
+    const fallbackAvgTicket = validOrdersInMonth.length > 0
+      ? validOrdersInMonth.reduce((sum, o) => sum + (o.price || 0), 0) / validOrdersInMonth.length
+      : 0;
+
+    const hasLedgerData = allSales.length > 0;
+
+    return {
+      revenue: hasLedgerData ? ledgerStats.completedRevenue : fallbackRevenue,
+      completedCount: hasLedgerData ? ledgerStats.completedCount : fallbackCount,
+      avgTicket: hasLedgerData ? ledgerStats.averageTicket : fallbackAvgTicket,
+      totalPaid: hasLedgerData ? ledgerStats.totalPaid : fallbackPaid,
+    };
+  }, [allSales.length, ledgerStats, orders]);
+
   const stats = useMemo(() => {
     const total = orders.length;
     const pending = orders.filter(o => o.status === 'pending').length;
@@ -228,13 +264,8 @@ export function Dashboard() {
     const completed = orders.filter(o => o.status === 'completed').length;
     const cancelled = orders.filter(o => o.status === 'cancelled').length;
 
-    // Métricas financeiras consolidadas (preserva vendas mesmo de pedidos arquivados/removidos do quadro)
-    const fallbackRevenue = orders
-      .filter(o => o.status === 'completed')
-      .reduce((sum, o) => sum + o.price, 0);
-    const totalRevenue = ledgerStats.completedRevenue > 0
-      ? ledgerStats.completedRevenue
-      : fallbackRevenue;
+    // Métricas financeiras canônicas do mês corrente
+    const totalRevenue = currentMonthStats.revenue;
 
     // Pagamentos
     const paidOrders = orders.filter(o => o.payment?.status === 'paid').length;
@@ -640,7 +671,9 @@ export function Dashboard() {
     }
   };
 
-  if (loading) {
+  const isInitialLoading = loading || (ledgerLoading && allSales.length === 0);
+
+  if (isInitialLoading) {
     return (
       <div className="space-y-6">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
@@ -736,6 +769,8 @@ export function Dashboard() {
       <DashboardHeaderMetrics
         stats={stats}
         ledgerStats={ledgerStats}
+        currentMonthStats={currentMonthStats}
+        ledgerLoading={ledgerLoading}
         visibleCards={visibleCards}
         currentMonthName={currentMonthName}
         statusChartData={statusChartData}
