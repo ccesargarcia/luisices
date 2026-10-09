@@ -63,7 +63,7 @@ beforeEach(async () => {
 });
 
 describe('Perfis e desativação', () => {
-  it('impede criação direta de perfil por usuário comum, mas permite admin e atualização de dados próprios', async () => {
+  it('impede criação direta de perfil, mas permite atualização de dados próprios', async () => {
     const db = dbFor('new-user');
     // Usuário comum não pode criar o próprio perfil diretamente no Firestore
     await assertPermissionDenied(() => setDoc(doc(db as any, 'userProfiles/new-user'), profile('new-user')));
@@ -72,8 +72,11 @@ describe('Perfis e desativação', () => {
       ...profile('new-user'), permissions: { ...DEFAULT_USER_PERMISSIONS, emails: true },
     }));
 
-    // Admin pode criar perfil
-    await assertSucceeds(setDoc(doc(dbFor('admin') as any, 'userProfiles/new-user'), profile('new-user')));
+    // Admin também não pode criar perfil diretamente (deve usar Cloud Functions)
+    await assertPermissionDenied(() => setDoc(doc(dbFor('admin') as any, 'userProfiles/new-user'), profile('new-user')));
+
+    // Cria o perfil usando a função de seed (bypassa as regras do Firestore)
+    await seed('userProfiles/new-user', profile('new-user'));
 
     // Usuário pode atualizar seu displayName, mas não campos sensíveis
     await assertSucceeds(updateDoc(doc(db as any, 'userProfiles/new-user'), { displayName: 'Novo nome' }));
