@@ -330,11 +330,14 @@ service cloud.firestore {
 
     function validEmailStatusUpdate() {
       return request.resource.data.diff(resource.data).affectedKeys()
-          .hasOnly(['read', 'starred', 'archived', 'trashed', 'trashedAt'])
+          .hasOnly(['read', 'starred', 'archived', 'trashed', 'trashedAt', 'spam', 'spamScore', 'spamReasons'])
         && request.resource.data.get('read', false) is bool
         && request.resource.data.get('starred', false) is bool
         && request.resource.data.get('archived', false) is bool
         && request.resource.data.get('trashed', false) is bool
+        && (!('spam' in request.resource.data) || request.resource.data.get('spam', false) is bool)
+        && (!('spamScore' in request.resource.data) || request.resource.data.spamScore is number)
+        && (!('spamReasons' in request.resource.data) || request.resource.data.spamReasons is list)
         && (request.resource.data.get('trashed', false) == false
           ? request.resource.data.get('trashedAt', null) == null
           : request.resource.data.get('trashedAt', null) is timestamp);
@@ -449,6 +452,14 @@ service cloud.firestore {
 
     // Chaves de idempotência: somente Cloud Functions (Admin SDK) acessa esta coleção.
     match /whatsappSendRequests/{requestKey} {
+      allow read, write: if false;
+    }
+
+    // Chaves de idempotência e webhooks de e-mail: somente Cloud Functions (Admin SDK)
+    match /emailSendRequests/{requestKey} {
+      allow read, write: if false;
+    }
+    match /processedEmailWebhooks/{webhookId} {
       allow read, write: if false;
     }
 

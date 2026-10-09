@@ -45,6 +45,7 @@ describe('Funcionalidade: Comunicação e Mensageria por E-mail (emailService)',
   describe('1. Envio de E-mails via Cloud Function (sendEmail)', () => {
     it('deve chamar a Cloud Function sendCustomEmail com o payload correto e retornar os dados de sucesso', async () => {
       const mockPayload = {
+        idempotencyKey: 'test-idemp-12345678',
         to: ['cliente@exemplo.com'],
         subject: 'Atualização do seu Pedido #1234',
         html: '<p>Seu pedido está em produção!</p>',
@@ -60,6 +61,22 @@ describe('Funcionalidade: Comunicação e Mensageria por E-mail (emailService)',
       expect(httpsCallable).toHaveBeenCalledWith(expect.anything(), 'sendCustomEmail');
       expect(mockSendCustomEmail).toHaveBeenCalledWith(mockPayload);
       expect(result).toEqual({ success: true, emailId: 'resend-msg-abc123' });
+    });
+
+    it('deve retornar resposta deduplicada com duplicate: true quando a chave de idempotência já tiver sido processada', async () => {
+      const mockPayload = {
+        idempotencyKey: 'test-idemp-12345678',
+        to: ['cliente@exemplo.com'],
+        subject: 'Atualização do seu Pedido #1234',
+        html: '<p>Seu pedido está em produção!</p>',
+      };
+
+      mockSendCustomEmail.mockResolvedValueOnce({
+        data: { success: true, emailId: 'resend-msg-abc123', id: 'sent-doc-999', duplicate: true },
+      });
+
+      const result = await emailService.sendEmail(mockPayload);
+      expect(result).toEqual({ success: true, emailId: 'resend-msg-abc123', id: 'sent-doc-999', duplicate: true });
     });
 
     it('deve propagar erro quando a Cloud Function falhar no envio', async () => {
@@ -190,6 +207,28 @@ describe('Funcionalidade: Comunicação e Mensageria por E-mail (emailService)',
         {
           trashed: false,
           trashedAt: null,
+        }
+      );
+    });
+
+    it('deve marcar e desmarcar e-mail como spam através de setSpam', async () => {
+      await emailService.setSpam('rec-123', true, 85, ['Palavras suspeitas']);
+
+      expect(updateDoc).toHaveBeenCalledWith(
+        expect.objectContaining({ path: 'receivedEmails/rec-123' }),
+        {
+          spam: true,
+          spamScore: 85,
+          spamReasons: ['Palavras suspeitas'],
+        }
+      );
+
+      await emailService.setSpam('rec-123', false);
+
+      expect(updateDoc).toHaveBeenCalledWith(
+        expect.objectContaining({ path: 'receivedEmails/rec-123' }),
+        {
+          spam: false,
         }
       );
     });

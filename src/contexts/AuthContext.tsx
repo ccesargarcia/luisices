@@ -215,7 +215,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             try {
               const idTokenResult = await u.getIdTokenResult();
               const authTime = Math.floor(new Date(idTokenResult.authTime).getTime() / 1000);
-              if (data.tokensValidAfterTime && authTime < data.tokensValidAfterTime) {
+              if (data.tokensValidAfterTime && authTime <= data.tokensValidAfterTime) {
                 toast.error('Esta sessão foi revogada remotamente.');
                 handleLogout(true, u.uid);
                 setLoading(false);
@@ -320,11 +320,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await user.getIdToken(true);
 
     // Verificar se o usuário possui perfil cadastrado e ativo
-    const profile = await firebaseUserService.getUserProfile(
-      user.uid,
-      user.email ?? undefined,
-      user.displayName ?? undefined
-    );
+    let profile: UserProfile | null = null;
+    try {
+      profile = await firebaseUserService.getUserProfile(
+        user.uid,
+        user.email ?? undefined,
+        user.displayName ?? undefined
+      );
+    } catch (err: any) {
+      // Se ocorrer colisão temporal de 1 segundo (clock skew) com tokensValidAfterTime de revogação recente,
+      // aguarda o próximo segundo (1100ms) e reautentica para garantir auth_time estritamente posterior.
+      if (err?.code === 'permission-denied' || String(err?.message || '').toLowerCase().includes('permissions')) {
+        await new Promise((r) => setTimeout(r, 1100));
+        const reauthUser = await firebaseAuthService.login(email, password);
+        await reauthUser.getIdToken(true);
+        profile = await firebaseUserService.getUserProfile(
+          reauthUser.uid,
+          reauthUser.email ?? undefined,
+          reauthUser.displayName ?? undefined
+        );
+      } else {
+        throw err;
+      }
+    }
 
     if (!profile) {
       await handleLogout(true, user.uid);

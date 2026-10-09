@@ -4,13 +4,37 @@ const MAX_ATTACHMENT_BYTES = 18 * 1024 * 1024;
 function attachmentPath(url, bucketName, projectId) {
   const parsed = new URL(url);
   if (parsed.protocol !== 'https:') throw new Error('URL de anexo inválida.');
+  let rawPath = '';
   if (parsed.hostname === 'firebasestorage.googleapis.com') {
     const match = parsed.pathname.match(/^\/v0\/b\/([^/]+)\/o\/(.+)$/);
-    if (match && decodeURIComponent(match[1]) === bucketName) return decodeURIComponent(match[2]);
+    if (match && decodeURIComponent(match[1]) === bucketName) {
+      rawPath = decodeURIComponent(match[2]);
+    }
+  } else {
+    const cdn = projectId === 'luisices-dev' ? 'cdn-dev.luisices.com.br' : 'cdn.luisices.com.br';
+    if (parsed.hostname === cdn && !parsed.port) {
+      rawPath = decodeURIComponent(parsed.pathname.slice(1));
+    }
   }
-  const cdn = projectId === 'luisices-dev' ? 'cdn-dev.luisices.com.br' : 'cdn.luisices.com.br';
-  if (parsed.hostname === cdn && !parsed.port) return decodeURIComponent(parsed.pathname.slice(1));
-  throw new Error('O anexo deve pertencer ao Storage deste projeto.');
+  if (!rawPath) {
+    throw new Error('O anexo deve pertencer ao Storage deste projeto.');
+  }
+
+  // Sanitização estrita contra path-traversal e codificações anômalas
+  let decoded = rawPath;
+  try {
+    while (decoded.includes('%')) {
+      const next = decodeURIComponent(decoded);
+      if (next === decoded) break;
+      decoded = next;
+    }
+  } catch {}
+
+  const normalized = decoded.replace(/\\/g, '/');
+  if (normalized.includes('\0') || normalized.split('/').some(part => part === '.' || part === '..')) {
+    throw new Error('Caminho de anexo não permitido.');
+  }
+  return normalized;
 }
 
 async function prepareAttachments({ attachments = [], bucket, db, uid, profile, projectId }) {

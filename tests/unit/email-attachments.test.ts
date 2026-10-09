@@ -48,4 +48,9 @@ describe('anexos privados enviados pelo backend', () => {
     expect(attachmentPath('https://cdn-dev.luisices.com.br/users/owner/emails/a.pdf', bucketName, 'luisices-dev')).toBe('users/owner/emails/a.pdf');
     expect(() => attachmentPath('https://cdn.luisices.com.br/users/owner/emails/a.pdf', bucketName, 'luisices-dev')).toThrow();
   });
+  it('rejeita tentativas de path traversal com codificação dupla ou bytes nulos', () => {
+    expect(() => attachmentPath('https://cdn-dev.luisices.com.br/users/owner/%252e%252e/secrets.json', bucketName, 'luisices-dev')).toThrow();
+    expect(() => attachmentPath('https://cdn-dev.luisices.com.br/users/owner/..%2Fsecrets.json', bucketName, 'luisices-dev')).toThrow();
+    expect(() => attachmentPath('https://cdn-dev.luisices.com.br/users/owner/emails/file\0.pdf', bucketName, 'luisices-dev')).toThrow();
+  });
 });

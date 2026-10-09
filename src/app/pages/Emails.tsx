@@ -1,4 +1,11 @@
 import { runEmailBulkAction } from '../utils/emailBulkActions';
+import {
+  evaluateSpam,
+  extractEmailAddress,
+  extractEmailDomain,
+  matchesSenderOrDomain,
+  normalizeSenderIdentifier,
+} from '../utils/emailSpamFilter';
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import DOMPurify from 'isomorphic-dompurify';
 import { useAuth } from '../../contexts/AuthContext';
@@ -16,6 +23,7 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from '../components/ui/dialog';
@@ -86,6 +94,11 @@ import {
   MoreVertical,
   ExternalLink,
   MessageCircle,
+  ShieldAlert,
+  ShieldCheck,
+  ShieldBan,
+  AlertTriangle,
+  CheckCircle2,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -125,14 +138,15 @@ function EmailHtmlViewer({ html, text }: { html?: string; text?: string }) {
     if (!html) return '';
     const clean = DOMPurify.sanitize(html, {
       ADD_ATTR: ['target', 'rel'],
-      FORBID_TAGS: ['script', 'iframe', 'object', 'embed', 'form'],
+      FORBID_TAGS: ['script', 'iframe', 'object', 'embed', 'form', 'base', 'meta', 'link'],
     });
 
     return clean.replace(/<a\s+(?:[^>]*?\s+)?href="([^"]*)"([^>]*)>/gi, (match, href, rest) => {
+      const safeHref = /^https?:\/\//i.test(href) || /^mailto:/i.test(href) || /^tel:/i.test(href) ? href : '#';
       if (!match.includes('target=')) {
-        return `<a href="${href}" target="_blank" rel="noopener noreferrer"${rest}>`;
+        return `<a href="${safeHref}" target="_blank" rel="noopener noreferrer"${rest}>`;
       }
-      return match;
+      return match.replace(/href="[^"]*"/i, `href="${safeHref}"`);
     });
   }, [html]);
 
@@ -306,6 +320,8 @@ const DYNAMIC_TAGS = [
 ];
 
 const STORAGE_CUSTOM_TEMPLATES_KEY = 'luisices_custom_email_templates';
+const STORAGE_BLOCKED_SENDERS_KEY = 'luisices_blocked_email_senders';
+const STORAGE_ALLOWED_SENDERS_KEY = 'luisices_allowed_email_senders';
 
 function formatRelativeDate(isoString?: string): string {
   if (!isoString) return '';
@@ -346,6 +362,7 @@ export function Emails() {
     markAsRead,
     toggleStar,
     setArchived,
+    setSpam,
     deleteReceived,
     deleteSent,
     moveToTrash,
@@ -396,10 +413,33 @@ export function Emails() {
   const dailyPercent = Math.min(100, Math.round((dailyUsed / dailyLimit) * 100));
 
   // Pastas & Navegação Master-Detail
-  type FolderType = 'inbox' | 'sent' | 'starred' | 'archived' | 'trash';
+  type FolderType = 'inbox' | 'sent' | 'starred' | 'archived' | 'spam' | 'trash';
   const [activeFolder, setActiveFolder] = useState<FolderType>('inbox');
   const [searchQuery, setSearchQuery] = useState('');
   const [filterMode, setFilterMode] = useState<'all' | 'unread'>('all');
+
+  // Listas de Remetentes Bloqueados e Confiáveis (Blacklist / Whitelist)
+  const [blockedSenders, setBlockedSenders] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_BLOCKED_SENDERS_KEY);
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  const [allowedSenders, setAllowedSenders] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_ALLOWED_SENDERS_KEY);
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  const [isSpamSettingsOpen, setIsSpamSettingsOpen] = useState(false);
+  const [newBlockedSenderInput, setNewBlockedSenderInput] = useState('');
+  const [newAllowedSenderInput, setNewAllowedSenderInput] = useState('');
 
   // Seleção de mensagem ativa no painel de leitura
   const [selectedEmailType, setSelectedEmailType] = useState<'received' | 'sent' | null>('received');
@@ -458,14 +498,26 @@ export function Emails() {
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
+  // Helper para verificar se um e-mail é classificado como spam
+  const isEmailSpam = (e: ReceivedEmail) => {
+    if (e.spam === true) return true;
+    const fromAddr = extractEmailAddress(e.from);
+    const domain = extractEmailDomain(fromAddr);
+    if (fromAddr && (blockedSenders.includes(fromAddr) || (domain && blockedSenders.includes(`@${domain}`)))) {
+      return true;
+    }
+    return false;
+  };
+
   // Contagens para badges de navegação
-  const inboxCount = useMemo(() => receivedEmails.filter((e) => !e.archived && !e.trashed).length, [receivedEmails]);
+  const inboxCount = useMemo(() => receivedEmails.filter((e) => !e.archived && !e.trashed && !isEmailSpam(e)).length, [receivedEmails, blockedSenders]);
   const sentCount = useMemo(() => sentEmails.filter((e) => !e.trashed).length, [sentEmails]);
   const starredCount = useMemo(
-    () => receivedEmails.filter((e) => e.starred && !e.archived && !e.trashed).length,
-    [receivedEmails]
+    () => receivedEmails.filter((e) => e.starred && !e.archived && !e.trashed && !isEmailSpam(e)).length,
+    [receivedEmails, blockedSenders]
   );
-  const archivedCount = useMemo(() => receivedEmails.filter((e) => e.archived && !e.trashed).length, [receivedEmails]);
+  const archivedCount = useMemo(() => receivedEmails.filter((e) => e.archived && !e.trashed && !isEmailSpam(e)).length, [receivedEmails, blockedSenders]);
+  const spamCount = useMemo(() => receivedEmails.filter((e) => !e.trashed && isEmailSpam(e)).length, [receivedEmails, blockedSenders]);
   const trashCount = useMemo(
     () => receivedEmails.filter((e) => e.trashed).length + sentEmails.filter((e) => e.trashed).length,
     [receivedEmails, sentEmails]
@@ -517,15 +569,23 @@ export function Emails() {
     return receivedEmails
       .filter((email) => {
         if (email.trashed) return false;
+        const spam = isEmailSpam(email);
 
-        if (activeFolder === 'inbox') {
-          if (email.archived) return false;
-          if (filterMode === 'unread' && email.read) return false;
-        } else if (activeFolder === 'starred') {
-          if (email.archived || !email.starred) return false;
-          if (filterMode === 'unread' && email.read) return false;
-        } else if (activeFolder === 'archived') {
-          if (!email.archived) return false;
+        if (activeFolder === 'spam') {
+          if (!spam) return false;
+        } else {
+          // Nas pastas normais (inbox, starred, archived), não exibe spam
+          if (spam) return false;
+
+          if (activeFolder === 'inbox') {
+            if (email.archived) return false;
+            if (filterMode === 'unread' && email.read) return false;
+          } else if (activeFolder === 'starred') {
+            if (email.archived || !email.starred) return false;
+            if (filterMode === 'unread' && email.read) return false;
+          } else if (activeFolder === 'archived') {
+            if (!email.archived) return false;
+          }
         }
 
         if (q) {
@@ -537,7 +597,7 @@ export function Emails() {
         return true;
       })
       .map((e) => ({ ...e, _type: 'received' as const }));
-  }, [receivedEmails, sentEmails, activeFolder, filterMode, searchQuery]);
+  }, [receivedEmails, sentEmails, activeFolder, filterMode, searchQuery, blockedSenders]);
 
   // Paginação da lista de e-mails
   const [currentPage, setCurrentPage] = useState(1);
@@ -570,7 +630,7 @@ export function Emails() {
   const hasMoreHistory = historyType === 'sent' ? hasMoreSent : hasMoreReceived;
   useEffect(() => {
     if (loading || !hasMoreHistory) return;
-    if (searchQuery.trim() || activeFolder === 'archived' || activeFolder === 'starred' || activeFolder === 'trash' || filterMode === 'unread' || pageSize === 'all') {
+    if (searchQuery.trim() || activeFolder === 'archived' || activeFolder === 'starred' || activeFolder === 'spam' || activeFolder === 'trash' || filterMode === 'unread' || pageSize === 'all') {
       void loadHistory(historyType, true).catch(() => {});
     }
   }, [activeFolder, searchQuery, filterMode, pageSize, historyType, loading, loadHistory]);
@@ -865,6 +925,135 @@ export function Emails() {
     await runBulk(id => setArchived(id, archived), archived ? 'arquivado(s)' : 'desarquivado(s)');
   };
 
+  const handleToggleSpam = async (email: ReceivedEmail, markAsSpam: boolean) => {
+    if (!canEdit) return;
+    try {
+      if (markAsSpam) {
+        const evalResult = evaluateSpam({
+          from: email.from,
+          subject: email.subject,
+          text: email.text,
+          html: email.html,
+          blockedSenders,
+          allowedSenders,
+        });
+        await setSpam(email.id, true, Math.max(evalResult.score, 80), [
+          ...evalResult.reasons,
+          'Marcado manualmente como spam pelo operador',
+        ]);
+        toast.success('Mensagem movida para a pasta Spam.');
+      } else {
+        await setSpam(email.id, false, 0, []);
+        toast.success('Mensagem desmarcada de spam e movida para a Caixa de Entrada.');
+      }
+    } catch {
+      toast.error('Não foi possível alterar a classificação de spam.');
+    }
+  };
+
+  const handleBulkMarkSpam = async (markAsSpam: boolean) => {
+    if (!canEdit || activeFolder === 'sent' || activeFolder === 'trash') return;
+    await runBulk(async (id) => {
+      const item = receivedEmails.find((e) => e.id === id);
+      if (!item) return;
+      if (markAsSpam) {
+        await setSpam(id, true, 90, ['Marcado como spam em lote pelo operador']);
+      } else {
+        await setSpam(id, false, 0, []);
+      }
+    }, markAsSpam ? 'marcado(s) como spam' : 'desmarcado(s) de spam');
+  };
+
+  const handleBlockSender = (rawFrom: string) => {
+    const identifier = normalizeSenderIdentifier(rawFrom);
+    if (!identifier) {
+      toast.error('Endereço de e-mail ou domínio inválido.');
+      return;
+    }
+    if (blockedSenders.some((s) => s.toLowerCase() === identifier)) {
+      toast.info('Este remetente ou domínio já está na lista de bloqueados.');
+      return;
+    }
+    // Verificação de conflito mútuo: impede bloqueio se já estiver na lista de confiança (whitelist)
+    const conflictingAllowed = allowedSenders.find((s) => {
+      const cleanS = s.toLowerCase().trim().replace(/^@/, '');
+      const cleanId = identifier.replace(/^@/, '');
+      return cleanS === cleanId || cleanId.endsWith(`.${cleanS}`) || cleanId.endsWith(`@${cleanS}`) || cleanS.endsWith(`.${cleanId}`) || cleanS.endsWith(`@${cleanId}`);
+    });
+    if (conflictingAllowed) {
+      toast.error(
+        `Não é possível bloquear: "${identifier}" conflita com "${conflictingAllowed}" já presente na lista de confiança (whitelist). Remova-o da lista de confiança primeiro.`
+      );
+      return;
+    }
+
+    const updated = [...blockedSenders, identifier];
+    setBlockedSenders(updated);
+    try {
+      localStorage.setItem(STORAGE_BLOCKED_SENDERS_KEY, JSON.stringify(updated));
+      toast.success(`"${identifier}" adicionado à lista de bloqueados.`);
+    } catch {
+      toast.error('Não foi possível salvar na memória do navegador.');
+    }
+  };
+
+  const handleUnblockSender = (address: string) => {
+    const clean = address.trim().toLowerCase();
+    const updated = blockedSenders.filter((s) => s.toLowerCase() !== clean);
+    setBlockedSenders(updated);
+    try {
+      localStorage.setItem(STORAGE_BLOCKED_SENDERS_KEY, JSON.stringify(updated));
+      toast.success(`Remetente ${address} removido dos bloqueados.`);
+    } catch {
+      toast.error('Erro ao atualizar bloqueados.');
+    }
+  };
+
+  const handleAllowSender = (rawFrom: string) => {
+    const identifier = normalizeSenderIdentifier(rawFrom);
+    if (!identifier) {
+      toast.error('Endereço de e-mail ou domínio inválido.');
+      return;
+    }
+    if (allowedSenders.some((s) => s.toLowerCase() === identifier)) {
+      toast.info('Este remetente ou domínio já está na lista de confiança.');
+      return;
+    }
+    // Verificação de conflito mútuo: impede permissão se já estiver na lista de bloqueados (blacklist)
+    const conflictingBlocked = blockedSenders.find((s) => {
+      const cleanS = s.toLowerCase().trim().replace(/^@/, '');
+      const cleanId = identifier.replace(/^@/, '');
+      return cleanS === cleanId || cleanId.endsWith(`.${cleanS}`) || cleanId.endsWith(`@${cleanS}`) || cleanS.endsWith(`.${cleanId}`) || cleanS.endsWith(`@${cleanId}`);
+    });
+    if (conflictingBlocked) {
+      toast.error(
+        `Não é possível confiar: "${identifier}" conflita com "${conflictingBlocked}" já presente na lista de bloqueados (blacklist). Remova-o dos bloqueados primeiro.`
+      );
+      return;
+    }
+
+    const updated = [...allowedSenders, identifier];
+    setAllowedSenders(updated);
+    try {
+      localStorage.setItem(STORAGE_ALLOWED_SENDERS_KEY, JSON.stringify(updated));
+      toast.success(`"${identifier}" adicionado à lista de confiança (whitelist).`);
+    } catch {
+      toast.error('Não foi possível salvar na memória do navegador.');
+    }
+  };
+
+  const handleUnallowSender = (address: string) => {
+    const clean = address.trim().toLowerCase();
+    const updated = allowedSenders.filter((s) => s.toLowerCase() !== clean);
+    setAllowedSenders(updated);
+    try {
+      localStorage.setItem(STORAGE_ALLOWED_SENDERS_KEY, JSON.stringify(updated));
+      toast.success(`Remetente ${address} removido da lista de confiança.`);
+    } catch {
+      toast.error('Erro ao atualizar lista.');
+    }
+  };
+
   // Substituição de tags dinâmicas
   const replaceDynamicTags = (content: string, customName?: string, customEmail?: string) => {
     const cust = selectedCustomerId ? customers.find((c) => c.id === selectedCustomerId) : null;
@@ -990,39 +1179,49 @@ export function Emails() {
     }
   };
 
-  // Montar HTML dinâmico com identidade visual da loja, anexos e histórico de resposta
+  // Montar HTML dinâmico com identidade visual da loja, anexos e histórico de resposta com sanitização estrita
   const generateFormattedHtml = (messageBody: string): string => {
-    const escaped = messageBody
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/\n/g, '<br />');
+    const escapeText = (str: string) =>
+      str
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+
+    const sanitizeHttpUrl = (url: string) => {
+      const trimmed = (url || '').trim();
+      return /^https?:\/\//i.test(trimmed) ? trimmed.replace(/["'<>]/g, '') : '';
+    };
+
+    const escaped = escapeText(messageBody).replace(/\n/g, '<br />');
+    const safeBusinessName = escapeText(businessName);
+    const safeBusinessPhone = escapeText(businessPhone);
+    const safeBusinessEmail = escapeText(businessEmail);
+    const safeLogo = sanitizeHttpUrl(businessLogo);
+    const safeInstagram = sanitizeHttpUrl(instagramUrl);
+    const safeWebsite = sanitizeHttpUrl(websiteUrl);
 
     const quoteHtml = replyQuote
       ? `
       <div style="margin-top: 28px; padding-top: 18px; border-top: 1px solid #cbd5e1;">
         <div style="font-size: 12px; font-weight: 600; color: #64748b; margin-bottom: 8px;">
-          Em ${replyQuote.date}, <strong>${replyQuote.from}</strong> escreveu:
+          Em ${escapeText(replyQuote.date)}, <strong>${escapeText(replyQuote.from)}</strong> escreveu:
         </div>
         <blockquote style="margin: 0; padding: 14px 16px; border-left: 3px solid #6366f1; background-color: #f8fafc; border-radius: 6px; color: #334155; font-size: 13px; line-height: 1.6;">
           ${replyQuote.html
             ? DOMPurify.sanitize(replyQuote.html, {
                 ADD_ATTR: ['target', 'rel'],
-                FORBID_TAGS: ['script', 'iframe', 'object', 'embed', 'form'],
+                FORBID_TAGS: ['script', 'iframe', 'object', 'embed', 'form', 'base', 'meta', 'link'],
               })
-            : (replyQuote.text || '(Mensagem original)')
-                .replace(/&/g, '&amp;')
-                .replace(/</g, '&lt;')
-                .replace(/>/g, '&gt;')
-                .replace(/\n/g, '<br />')}
+            : escapeText(replyQuote.text || '(Mensagem original)').replace(/\n/g, '<br />')}
         </blockquote>
       </div>
     `
       : '';
 
     const attachmentsHtml = attachments.length
-      ? `<p>Arquivos anexados à mensagem: ${attachments.map(att => att.name
-          .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')).join(', ')}</p>`
+      ? `<p>Arquivos anexados à mensagem: ${attachments.map(att => escapeText(att.name)).join(', ')}</p>`
       : '';
 
     return `
@@ -1041,11 +1240,11 @@ export function Emails() {
           <tr>
             <td style="background-color: #4f46e5; padding: 24px 28px; text-align: left;">
               ${
-                businessLogo
-                  ? `<img src="${businessLogo}" alt="${businessName}" style="max-height: 44px; margin-bottom: 8px; border-radius: 6px; display: block;" />`
+                safeLogo
+                  ? `<img src="${safeLogo}" alt="${safeBusinessName}" style="max-height: 44px; margin-bottom: 8px; border-radius: 6px; display: block;" />`
                   : ''
               }
-              <h1 style="margin: 0; color: #ffffff; font-size: 19px; font-weight: 700; letter-spacing: -0.02em;">${businessName}</h1>
+              <h1 style="margin: 0; color: #ffffff; font-size: 19px; font-weight: 700; letter-spacing: -0.02em;">${safeBusinessName}</h1>
             </td>
           </tr>
           <!-- Body -->
@@ -1059,11 +1258,11 @@ export function Emails() {
           <!-- Signature & Footer -->
           <tr>
             <td style="background-color: #f1f5f9; padding: 20px 28px; border-top: 1px solid #e2e8f0; font-size: 13px; color: #64748b; line-height: 1.5;">
-              <div style="font-weight: 700; color: #0f172a; font-size: 14px;">${businessName}</div>
-              ${businessPhone ? `<div style="margin-top: 3px;">WhatsApp: <strong>${businessPhone}</strong></div>` : ''}
-              ${businessEmail ? `<div style="margin-top: 2px;">E-mail: <a href="mailto:${businessEmail}" style="color: #4f46e5; text-decoration: none;">${businessEmail}</a></div>` : ''}
-              ${instagramUrl ? `<div style="margin-top: 2px;">Instagram: <a href="${instagramUrl}" target="_blank" style="color: #4f46e5; text-decoration: none;">${instagramUrl.replace(/^https?:\/\/(www\.)?instagram\.com\/?/, '@')}</a></div>` : ''}
-              ${websiteUrl ? `<div style="margin-top: 2px;">Site: <a href="${websiteUrl.startsWith('http') ? websiteUrl : `https://${websiteUrl}`}" target="_blank" style="color: #4f46e5; text-decoration: none;">${websiteUrl.replace(/^https?:\/\//, '')}</a></div>` : ''}
+              <div style="font-weight: 700; color: #0f172a; font-size: 14px;">${safeBusinessName}</div>
+              ${safeBusinessPhone ? `<div style="margin-top: 3px;">WhatsApp: <strong>${safeBusinessPhone}</strong></div>` : ''}
+              ${safeBusinessEmail ? `<div style="margin-top: 2px;">E-mail: <a href="mailto:${safeBusinessEmail}" style="color: #4f46e5; text-decoration: none;">${safeBusinessEmail}</a></div>` : ''}
+              ${safeInstagram ? `<div style="margin-top: 2px;">Instagram: <a href="${safeInstagram}" target="_blank" rel="noopener noreferrer" style="color: #4f46e5; text-decoration: none;">${safeInstagram.replace(/^https?:\/\/(www\.)?instagram\.com\/?/, '@')}</a></div>` : ''}
+              ${safeWebsite ? `<div style="margin-top: 2px;">Site: <a href="${safeWebsite}" target="_blank" rel="noopener noreferrer" style="color: #4f46e5; text-decoration: none;">${safeWebsite.replace(/^https?:\/\//, '')}</a></div>` : ''}
               <div style="margin-top: 10px; font-size: 11px; color: #94a3b8; border-top: 1px solid #e2e8f0; padding-top: 8px;">
                 Ateliê de Papelaria Personalizada & Presentes Criativos
               </div>
@@ -1107,6 +1306,7 @@ export function Emails() {
 
     setIsSending(true);
     try {
+      const idempotencyKey = crypto.randomUUID();
       const activeSender = isCustomSender && customSender.trim() ? customSender.trim() : sender;
       const htmlContent = generateFormattedHtml(body);
 
@@ -1115,6 +1315,7 @@ export function Emails() {
         : body;
 
       const payload: SendEmailPayload = {
+        idempotencyKey,
         from: activeSender,
         to: recipientList,
         subject: subject.trim(),
@@ -1342,6 +1543,35 @@ export function Emails() {
             <button
               type="button"
               onClick={() => {
+                setActiveFolder('spam');
+                setSelectedEmailId(null);
+              }}
+              className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs font-medium transition-colors ${
+                activeFolder === 'spam'
+                  ? 'bg-amber-600 text-white shadow-xs'
+                  : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+              }`}
+            >
+              <div className="flex items-center gap-2.5">
+                <ShieldAlert className="size-4" />
+                <span>Spam</span>
+              </div>
+              {spamCount > 0 && (
+                <span
+                  className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
+                    activeFolder === 'spam'
+                      ? 'bg-white text-amber-700'
+                      : 'bg-amber-500/10 text-amber-600 dark:text-amber-400'
+                  }`}
+                >
+                  {spamCount}
+                </span>
+              )}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
                 setActiveFolder('trash');
                 setSelectedEmailId(null);
               }}
@@ -1357,6 +1587,25 @@ export function Emails() {
               </div>
               {trashCount > 0 && <span className="text-[11px] opacity-75">{trashCount}</span>}
             </button>
+
+            <div className="pt-2 border-t border-border/40 mt-2">
+              <button
+                type="button"
+                onClick={() => setIsSpamSettingsOpen(true)}
+                className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-md text-[11px] text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                title="Configurar remetentes bloqueados e regras antispam"
+              >
+                <div className="flex items-center gap-2">
+                  <ShieldBan className="size-3.5 text-muted-foreground" />
+                  <span>Filtro Antispam</span>
+                </div>
+                {(blockedSenders.length > 0 || allowedSenders.length > 0) && (
+                  <Badge variant="outline" className="text-[9px] px-1 py-0 h-4 font-mono">
+                    {blockedSenders.length} blq
+                  </Badge>
+                )}
+              </button>
+            </div>
           </div>
 
           {/* Mini Card de Cota Resend */}
@@ -1409,7 +1658,7 @@ export function Emails() {
             {/* Abas mobile e filtro unread */}
             <div className="flex items-center justify-between gap-2 pt-0.5">
               {/* Pasta no mobile */}
-              <div className="md:hidden">
+              <div className="md:hidden flex items-center gap-1.5">
                 <Select value={activeFolder} onValueChange={(v) => setActiveFolder(v as FolderType)}>
                   <SelectTrigger className="h-7 text-xs w-[130px]">
                     <SelectValue />
@@ -1419,9 +1668,21 @@ export function Emails() {
                     <SelectItem value="sent">Enviados</SelectItem>
                     <SelectItem value="starred">Favoritos</SelectItem>
                     <SelectItem value="archived">Arquivados</SelectItem>
+                    <SelectItem value="spam">Spam</SelectItem>
                     <SelectItem value="trash">Lixeira</SelectItem>
                   </SelectContent>
                 </Select>
+
+                <Button
+                  type="button"
+                  size="icon"
+                  variant="outline"
+                  onClick={() => setIsSpamSettingsOpen(true)}
+                  className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                  title="Configurar Filtro Antispam"
+                >
+                  <ShieldBan className="size-3.5" />
+                </Button>
               </div>
 
               {activeFolder !== 'sent' && activeFolder !== 'trash' && (
@@ -1539,6 +1800,17 @@ export function Emails() {
                             <Archive className="size-3.5" />
                             <span className="hidden sm:inline">{activeFolder === 'archived' ? 'Desarquivar' : 'Arquivar'}</span>
                           </Button>
+                          <Button
+                            disabled={!canEdit || isBulkDeleting}
+                            size="sm"
+                            variant="ghost"
+                            className="h-7 px-2 text-[11px] gap-1 text-amber-600 dark:text-amber-400 hover:text-amber-700"
+                            onClick={() => handleBulkMarkSpam(activeFolder !== 'spam')}
+                            title={activeFolder === 'spam' ? "Mover selecionados para Caixa de Entrada (Não é spam)" : "Marcar selecionados como Spam"}
+                          >
+                            <ShieldAlert className="size-3.5" />
+                            <span className="hidden sm:inline">{activeFolder === 'spam' ? 'Não é spam' : 'Spam'}</span>
+                          </Button>
                         </>
                       )}
                       <Button
@@ -1646,6 +1918,12 @@ export function Emails() {
                                     ? `Para: ${email.to.join(', ')}`
                                     : senderDisplayName}
                                 </span>
+                                {email._type === 'received' && isEmailSpam(email) && (
+                                  <span className="inline-flex items-center gap-0.5 text-[10px] font-medium px-1.5 py-0.2 rounded bg-amber-500/15 text-amber-700 dark:text-amber-400 border border-amber-500/30">
+                                    <ShieldAlert className="size-2.5" />
+                                    <span>Spam</span>
+                                  </span>
+                                )}
                               </div>
 
                               <div className="flex items-center gap-1.5 shrink-0">
@@ -1772,12 +2050,28 @@ export function Emails() {
                                           <span>{email.starred ? 'Remover Favorito' : 'Favoritar'}</span>
                                         </DropdownMenuItem>
                                         <DropdownMenuItem
-                  disabled={!canEdit || isBulkDeleting}
+                                          disabled={!canEdit || isBulkDeleting}
                                           onClick={() => void handleStatusChange(() => setArchived(email.id, !email.archived))}
                                           className="gap-2 cursor-pointer"
                                         >
                                           {email.archived ? <ArchiveRestore className="size-3.5" /> : <Archive className="size-3.5" />}
                                           <span>{email.archived ? 'Desarquivar' : 'Arquivar'}</span>
+                                        </DropdownMenuItem>
+                                        <DropdownMenuItem
+                                          disabled={!canEdit || isBulkDeleting}
+                                          onClick={() => handleToggleSpam(email, !isEmailSpam(email))}
+                                          className="gap-2 cursor-pointer text-amber-700 dark:text-amber-400 focus:text-amber-700"
+                                        >
+                                          <ShieldAlert className="size-3.5" />
+                                          <span>{isEmailSpam(email) ? 'Não é Spam (Mover para Entrada)' : 'Marcar como Spam'}</span>
+                                        </DropdownMenuItem>
+                                        <DropdownMenuSeparator />
+                                        <DropdownMenuItem
+                                          onClick={() => handleBlockSender(email.from)}
+                                          className="gap-2 cursor-pointer text-destructive focus:text-destructive"
+                                        >
+                                          <ShieldBan className="size-3.5" />
+                                          <span>Bloquear Remetente</span>
                                         </DropdownMenuItem>
                                         <DropdownMenuSeparator />
                                         <DropdownMenuItem
@@ -2011,12 +2305,28 @@ export function Emails() {
                             <span>{email.starred ? 'Remover dos Favoritos' : 'Adicionar aos Favoritos'}</span>
                           </ContextMenuItem>
                           <ContextMenuItem
-                  disabled={!canEdit || isBulkDeleting}
+                            disabled={!canEdit || isBulkDeleting}
                             onClick={() => void handleStatusChange(() => setArchived(email.id, !email.archived))}
                             className="gap-2 cursor-pointer"
                           >
                             {email.archived ? <ArchiveRestore className="size-3.5" /> : <Archive className="size-3.5" />}
                             <span>{email.archived ? 'Desarquivar Mensagem' : 'Arquivar Mensagem'}</span>
+                          </ContextMenuItem>
+                          <ContextMenuItem
+                            disabled={!canEdit || isBulkDeleting}
+                            onClick={() => handleToggleSpam(email, !isEmailSpam(email))}
+                            className="gap-2 cursor-pointer text-amber-700 dark:text-amber-400 focus:text-amber-700"
+                          >
+                            <ShieldAlert className="size-3.5" />
+                            <span>{isEmailSpam(email) ? 'Não é Spam (Mover para Entrada)' : 'Marcar como Spam'}</span>
+                          </ContextMenuItem>
+                          <ContextMenuSeparator />
+                          <ContextMenuItem
+                            onClick={() => handleBlockSender(email.from)}
+                            className="gap-2 cursor-pointer text-destructive focus:text-destructive"
+                          >
+                            <ShieldBan className="size-3.5" />
+                            <span>Bloquear Remetente ({senderAddress})</span>
                           </ContextMenuItem>
                           <ContextMenuSeparator />
                           <ContextMenuItem
@@ -2256,7 +2566,7 @@ export function Emails() {
                         </Button>
 
                         <Button
-                  disabled={!canEdit || isBulkDeleting}
+                          disabled={!canEdit || isBulkDeleting}
                           size="sm"
                           variant="outline"
                           onClick={() => void handleStatusChange(() => setArchived(currentReceivedEmail.id, !currentReceivedEmail.archived))}
@@ -2271,6 +2581,36 @@ export function Emails() {
                           <span className="hidden sm:inline">
                             {currentReceivedEmail.archived ? 'Desarquivar' : 'Arquivar'}
                           </span>
+                        </Button>
+
+                        <Button
+                          disabled={!canEdit || isBulkDeleting}
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleToggleSpam(currentReceivedEmail, !isEmailSpam(currentReceivedEmail))}
+                          className={`h-8 gap-1 text-xs ${
+                            isEmailSpam(currentReceivedEmail)
+                              ? 'text-emerald-700 dark:text-emerald-400 hover:text-emerald-800'
+                              : 'text-amber-700 dark:text-amber-400 hover:text-amber-800'
+                          }`}
+                          title={isEmailSpam(currentReceivedEmail) ? 'Não é spam (Mover para Caixa de Entrada)' : 'Marcar como spam'}
+                        >
+                          <ShieldAlert className="size-3.5" />
+                          <span className="hidden sm:inline">
+                            {isEmailSpam(currentReceivedEmail) ? 'Não é Spam' : 'Spam'}
+                          </span>
+                        </Button>
+
+                        <Button
+                          disabled={isBulkDeleting}
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleBlockSender(currentReceivedEmail.from)}
+                          className="h-8 gap-1 text-xs text-destructive hover:bg-destructive/10"
+                          title="Bloquear este remetente"
+                        >
+                          <ShieldBan className="size-3.5" />
+                          <span className="hidden lg:inline">Bloquear</span>
                         </Button>
                       </>
                     )
@@ -2336,6 +2676,43 @@ export function Emails() {
                   >
                     Restaurar agora
                   </Button>
+                </div>
+              )}
+
+              {/* Banner informativo quando a mensagem foi classificada como Spam */}
+              {currentReceivedEmail && !currentReceivedEmail.trashed && isEmailSpam(currentReceivedEmail) && (
+                <div className="bg-amber-500/15 border-b border-amber-500/30 px-4 py-2.5 flex flex-wrap items-center justify-between gap-2 text-xs text-amber-950 dark:text-amber-200 shrink-0">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <ShieldAlert className="size-4 text-amber-600 dark:text-amber-400 shrink-0" />
+                    <div>
+                      <span className="font-semibold">Esta mensagem foi classificada como Spam / Lixo Eletrônico.</span>
+                      {currentReceivedEmail.spamReasons && currentReceivedEmail.spamReasons.length > 0 && (
+                        <span className="text-[11px] text-muted-foreground ml-1 hidden sm:inline">
+                          ({currentReceivedEmail.spamReasons.join('; ')})
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={!canEdit || isBulkDeleting}
+                      onClick={() => handleToggleSpam(currentReceivedEmail, false)}
+                      className="h-6 px-2 text-xs bg-background/80 hover:bg-background text-foreground font-medium"
+                    >
+                      Não é spam (Mover para Entrada)
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => handleAllowSender(currentReceivedEmail.from)}
+                      className="h-6 px-2 text-xs text-muted-foreground hover:text-foreground"
+                      title="Adicionar remetente à lista de confiança"
+                    >
+                      Confiar no remetente
+                    </Button>
+                  </div>
                 </div>
               )}
 
@@ -3088,6 +3465,199 @@ export function Emails() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* ─── Modal de Configurações do Filtro Antispam ──────────────── */}
+      <Dialog open={isSpamSettingsOpen} onOpenChange={setIsSpamSettingsOpen}>
+        <DialogContent size="2xl" className="max-h-[90dvh] flex flex-col p-0 overflow-hidden">
+          <DialogHeader className="p-4 sm:p-5 pb-3 border-b border-border/60">
+            <DialogTitle className="text-lg flex items-center gap-2">
+              <ShieldAlert className="size-5 text-amber-600 dark:text-amber-400" />
+              <span>Configuração do Filtro Antispam</span>
+            </DialogTitle>
+            <DialogDescription className="text-xs mt-0.5">
+              Gerencie a lista de remetentes bloqueados e de confiança para proteger sua caixa de entrada contra fraudes e spam.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6 text-xs">
+            {/* Explicação da Heurística */}
+            <div className="rounded-lg border bg-muted/40 p-3 space-y-1.5">
+              <div className="font-semibold text-foreground flex items-center gap-1.5 text-xs">
+                <CheckCircle2 className="size-3.5 text-emerald-600" />
+                <span>Como o filtro funciona</span>
+              </div>
+              <p className="text-muted-foreground leading-relaxed text-[11px]">
+                O Luisices analisa automaticamente os e-mails recebidos em busca de golpes, phishing, domínios descartáveis temporários e palavras apelativas. Você também pode cadastrar e-mails ou domínios inteiros (ex: <code className="text-foreground">@dominio.com</code>) para bloquear ou aprovar previamente.
+              </p>
+            </div>
+
+            {/* Seção 1: Remetentes Bloqueados (Blacklist) */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="font-semibold text-foreground flex items-center gap-1.5">
+                    <ShieldBan className="size-3.5 text-destructive" />
+                    <span>Remetentes Bloqueados (Blacklist)</span>
+                  </h3>
+                  <p className="text-[11px] text-muted-foreground">
+                    E-mails enviados por esses remetentes ou domínios irão direto para a pasta Spam.
+                  </p>
+                </div>
+                <Badge variant="outline" className="text-[10px] font-mono">
+                  {blockedSenders.length} bloqueado(s)
+                </Badge>
+              </div>
+
+              {/* Input para adicionar bloqueado */}
+              <div className="flex gap-2">
+                <Input
+                  placeholder="ex: spammer@dominio.com ou @dominio.com"
+                  value={newBlockedSenderInput}
+                  onChange={(e) => setNewBlockedSenderInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      if (newBlockedSenderInput.trim()) {
+                        handleBlockSender(newBlockedSenderInput.trim());
+                        setNewBlockedSenderInput('');
+                      }
+                    }
+                  }}
+                  className="h-8 text-xs flex-1"
+                />
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  onClick={() => {
+                    if (newBlockedSenderInput.trim()) {
+                      handleBlockSender(newBlockedSenderInput.trim());
+                      setNewBlockedSenderInput('');
+                    }
+                  }}
+                  className="h-8 text-xs gap-1 shrink-0"
+                >
+                  <Plus className="size-3.5" />
+                  <span>Bloquear</span>
+                </Button>
+              </div>
+
+              {/* Lista de bloqueados */}
+              <div className="rounded-lg border max-h-40 overflow-y-auto divide-y bg-card">
+                {blockedSenders.length === 0 ? (
+                  <div className="p-3 text-center text-muted-foreground text-[11px]">
+                    Nenhum remetente bloqueado manualmente no momento.
+                  </div>
+                ) : (
+                  blockedSenders.map((senderItem) => (
+                    <div
+                      key={senderItem}
+                      className="px-3 py-2 flex items-center justify-between gap-2 hover:bg-muted/40 transition-colors"
+                    >
+                      <span className="font-mono text-[11px] text-foreground truncate">{senderItem}</span>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => handleUnblockSender(senderItem)}
+                        className="h-6 px-2 text-[11px] text-destructive hover:bg-destructive/10 hover:text-destructive"
+                      >
+                        Remover
+                      </Button>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+
+            {/* Seção 2: Remetentes Confiáveis (Whitelist) */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="font-semibold text-foreground flex items-center gap-1.5">
+                    <ShieldCheck className="size-3.5 text-emerald-600" />
+                    <span>Remetentes Confiáveis (Whitelist)</span>
+                  </h3>
+                  <p className="text-[11px] text-muted-foreground">
+                    E-mails desta lista nunca serão classificados como spam e chegarão direto na Entrada.
+                  </p>
+                </div>
+                <Badge variant="outline" className="text-[10px] font-mono">
+                  {allowedSenders.length} confiável(is)
+                </Badge>
+              </div>
+
+              {/* Input para adicionar confiável */}
+              <div className="flex gap-2">
+                <Input
+                  placeholder="ex: parceiro@loja.com.br ou @loja.com.br"
+                  value={newAllowedSenderInput}
+                  onChange={(e) => setNewAllowedSenderInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      if (newAllowedSenderInput.trim()) {
+                        handleAllowSender(newAllowedSenderInput.trim());
+                        setNewAllowedSenderInput('');
+                      }
+                    }
+                  }}
+                  className="h-8 text-xs flex-1"
+                />
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    if (newAllowedSenderInput.trim()) {
+                      handleAllowSender(newAllowedSenderInput.trim());
+                      setNewAllowedSenderInput('');
+                    }
+                  }}
+                  className="h-8 text-xs gap-1 shrink-0 text-emerald-700 hover:text-emerald-800 dark:text-emerald-400"
+                >
+                  <Plus className="size-3.5" />
+                  <span>Confiar</span>
+                </Button>
+              </div>
+
+              {/* Lista de confiáveis */}
+              <div className="rounded-lg border max-h-40 overflow-y-auto divide-y bg-card">
+                {allowedSenders.length === 0 ? (
+                  <div className="p-3 text-center text-muted-foreground text-[11px]">
+                    Nenhum remetente confiável específico cadastrado.
+                  </div>
+                ) : (
+                  allowedSenders.map((senderItem) => (
+                    <div
+                      key={senderItem}
+                      className="px-3 py-2 flex items-center justify-between gap-2 hover:bg-muted/40 transition-colors"
+                    >
+                      <span className="font-mono text-[11px] text-foreground truncate">{senderItem}</span>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => handleUnallowSender(senderItem)}
+                        className="h-6 px-2 text-[11px] text-muted-foreground hover:bg-muted hover:text-foreground"
+                      >
+                        Remover
+                      </Button>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter className="p-4 border-t border-border/60 flex justify-end">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setIsSpamSettingsOpen(false)}
+              className="text-xs h-8"
+            >
+              Fechar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

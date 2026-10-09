@@ -64,6 +64,17 @@ export class EmailService {
   }
 
   /**
+   * Marca ou desmarca um e-mail recebido como Spam
+   */
+  async setSpam(emailId: string, spam: boolean, spamScore?: number, spamReasons?: string[]): Promise<void> {
+    const ref = doc(db, 'receivedEmails', emailId);
+    const updateData: Record<string, any> = { spam };
+    if (spamScore !== undefined) updateData.spamScore = spamScore;
+    if (spamReasons !== undefined) updateData.spamReasons = spamReasons;
+    await updateDoc(ref, updateData);
+  }
+
+  /**
    * Move um e-mail recebido ou enviado para a lixeira
    */
   async moveToTrash(emailId: string, type: 'received' | 'sent'): Promise<void> {

@@ -87,6 +87,9 @@ export function useEmails({ subscribe = true } = {}) {
             read: !!data.read,
             starred: !!data.starred,
             archived: !!data.archived,
+            spam: !!data.spam,
+            spamScore: typeof data.spamScore === 'number' ? data.spamScore : 0,
+            spamReasons: Array.isArray(data.spamReasons) ? data.spamReasons : [],
             trashed: Boolean(data.trashed || data.deleted),
             trashedAt: data.trashedAt || null,
             receivedAt: data.receivedAt || new Date().toISOString(),
@@ -186,6 +189,11 @@ export function useEmails({ subscribe = true } = {}) {
     await emailService.setArchived(id, archived);
   }, [canEdit]);
 
+  const setSpam = useCallback(async (id: string, spam: boolean, spamScore?: number, spamReasons?: string[]) => {
+    if (!canEdit) throw new Error('Você não possui permissão para classificar e-mails.');
+    await emailService.setSpam(id, spam, spamScore, spamReasons);
+  }, [canEdit]);
+
   const deleteReceived = useCallback(async (id: string) => {
     if (!canDelete) throw new Error('Você não possui permissão para excluir e-mails.');
     await emailService.deleteReceivedEmail(id);
@@ -206,7 +214,7 @@ export function useEmails({ subscribe = true } = {}) {
     await emailService.restoreFromTrash(id, type);
   }, [canEdit, canDelete]);
 
-  const unreadCount = receivedEmails.filter((e) => !e.read && !e.archived && !e.trashed).length;
+  const unreadCount = receivedEmails.filter((e) => !e.read && !e.archived && !e.trashed && !e.spam).length;
 
   return {
     receivedEmails,
@@ -222,6 +230,7 @@ export function useEmails({ subscribe = true } = {}) {
     markAsRead,
     toggleStar,
     setArchived,
+    setSpam,
     moveToTrash,
     restoreFromTrash,
     deleteReceived,

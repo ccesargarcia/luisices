@@ -12,6 +12,7 @@ const { getResend, isAdminRequest, assertActiveSession } = require('../common/he
 const { validateOriginSecret } = require('../originProtection');
 const { prepareAttachments } = require('./attachments');
 const { cleanupEmailDrafts } = require('./cleanup');
+const { evaluateSpam } = require('./spamFilter');
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MAX_CC_BCC = 20;
@@ -24,7 +25,7 @@ function normalizeEmailList(value, fieldName, max = MAX_CC_BCC) {
     throw new functions.https.HttpsError('invalid-argument', `${fieldName} deve conter no máximo ${max} endereços.`);
   }
   return value.map((entry) => {
-    if (typeof entry !== 'string' || entry.length > MAX_HEADER_LENGTH || /[\r\n]/.test(entry)) {
+    if (typeof entry !== 'string' || entry.length > MAX_HEADER_LENGTH || /[\r\n\0,;]/.test(entry)) {
       throw new functions.https.HttpsError('invalid-argument', `${fieldName} contém um endereço inválido.`);
     }
     const email = entry.trim();
@@ -38,6 +39,7 @@ function normalizeEmailList(value, fieldName, max = MAX_CC_BCC) {
 /**
  * Cloud Function para envio de e-mails via Resend pela plataforma Luisices.
  * Salva o histórico de envios na coleção 'sentEmails'.
+ * Garante idempotência estrita via coleção 'emailSendRequests' e cabeçalho X-Entity-Ref-ID.
  */
 const sendCustomEmail = onCall(
   { cors: true, maxInstances: 5, secrets: [RESEND_API_KEY] },
@@ -58,17 +60,24 @@ const sendCustomEmail = onCall(
       throw new functions.https.HttpsError('permission-denied', 'Você não possui permissão para disparar e-mails pelo sistema.');
     }
 
-    // Rate Limiting: proteção contra abusos, loops e exaustão de cota
-    try {
-      await customEmailLimiter.consume(request.auth.uid);
-    } catch {
-      throw new functions.https.HttpsError(
-        'resource-exhausted',
-        'Limite de envio de e-mails atingido (máximo de 50 disparos por hora). Tente novamente mais tarde.'
-      );
-    }
+    const {
+      to,
+      subject,
+      html,
+      text,
+      from,
+      replyTo,
+      cc,
+      bcc,
+      attachments,
+      idempotencyKey,
+    } = request.data || {};
 
-    const { to, subject, html, text, from, replyTo, cc, bcc, attachments } = request.data || {};
+    if (idempotencyKey != null) {
+      if (typeof idempotencyKey !== 'string' || !/^[a-zA-Z0-9_-]{8,128}$/.test(idempotencyKey)) {
+        throw new functions.https.HttpsError('invalid-argument', 'Chave de idempotência inválida (deve conter 8 a 128 caracteres alfanuméricos, hífens ou underscores).');
+      }
+    }
 
     if (!to || (Array.isArray(to) && to.length === 0)) {
       throw new functions.https.HttpsError('invalid-argument', 'Pelo menos um destinatário é obrigatório.');
@@ -87,7 +96,7 @@ const sendCustomEmail = onCall(
     }
 
     for (const email of recipientList) {
-      if (email.length > MAX_HEADER_LENGTH || /[\r\n]/.test(email) || !EMAIL_REGEX.test(email)) {
+      if (email.length > MAX_HEADER_LENGTH || /[\r\n\0,;]/.test(email) || !EMAIL_REGEX.test(email)) {
         throw new functions.https.HttpsError('invalid-argument', `Endereço de e-mail inválido: "${email}"`);
       }
     }
@@ -124,19 +133,86 @@ const sendCustomEmail = onCall(
       : 'Luisices <contato@luisices.com.br>';
 
     let senderEmail = defaultSender;
-    if (from != null && (typeof from !== 'string' || from.length > MAX_HEADER_LENGTH || /[\r\n]/.test(from))) {
+    if (from != null && (typeof from !== 'string' || from.length > MAX_HEADER_LENGTH || /[\r\n\0]/.test(from))) {
       throw new functions.https.HttpsError('invalid-argument', 'Remetente inválido.');
     }
     if (typeof from === 'string' && from.trim()) {
       const trimmedFrom = from.trim();
-      const domainMatch = trimmedFrom.match(/@([a-zA-Z0-9.-]+)>?$/);
-      const domain = domainMatch ? domainMatch[1].toLowerCase() : '';
-      if (domain === 'luisices.com.br' || domain === 'dev.luisices.com.br' || domain.endsWith('.luisices.com.br')) {
+      const match = trimmedFrom.match(/^(?:([^<>]+)\s+<)?([^\s<>@]+@[^\s<>@]+)>?$/);
+      if (!match) {
+        throw new functions.https.HttpsError('invalid-argument', 'Remetente inválido.');
+      }
+      const rawDomain = match[2].toLowerCase().split('@')[1] || '';
+      if (rawDomain === 'luisices.com.br' || rawDomain === 'dev.luisices.com.br' || rawDomain.endsWith('.luisices.com.br')) {
         senderEmail = trimmedFrom;
       } else {
-        console.warn(`[sendCustomEmail] Remetente com domínio não autorizado (${domain}). Usando padrão: ${defaultSender}`);
+        console.warn(`[sendCustomEmail] Remetente com domínio não autorizado (${rawDomain}). Usando padrão: ${defaultSender}`);
         senderEmail = defaultSender;
       }
+    }
+
+    // ─── Controle de Idempotência Transacional ──────────────────────────────────
+    let idempotencyRef = null;
+    let ownsIdempotency = false;
+    if (idempotencyKey) {
+      idempotencyRef = admin.firestore().collection('emailSendRequests').doc(`${request.auth.uid}_${idempotencyKey}`);
+      let existingRequest = null;
+      await admin.firestore().runTransaction(async (transaction) => {
+        const snap = await transaction.get(idempotencyRef);
+        existingRequest = snap.data() || null;
+        if (existingRequest?.status === 'completed') {
+          return;
+        }
+        if (existingRequest?.status === 'processing') {
+          const createdAtMs = existingRequest.createdAt?.toMillis?.() || 0;
+          if (Date.now() - createdAtMs < 60000) {
+            return;
+          }
+          // Request estagnado há mais de 60s, permite recuperação
+          transaction.update(idempotencyRef, {
+            status: 'processing',
+            retryAt: admin.firestore.FieldValue.serverTimestamp(),
+            error: admin.firestore.FieldValue.delete(),
+          });
+          ownsIdempotency = true;
+          existingRequest = null;
+          return;
+        }
+        transaction.set(idempotencyRef, {
+          status: 'processing',
+          uid: request.auth.uid,
+          subject: subject.trim().slice(0, 100),
+          recipientCount: recipientList.length,
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        }, { merge: true });
+        ownsIdempotency = true;
+        existingRequest = null;
+      });
+
+      if (existingRequest?.status === 'completed') {
+        return {
+          success: true,
+          emailId: existingRequest.emailId,
+          id: existingRequest.sentDocId,
+          duplicate: true,
+        };
+      }
+      if (existingRequest?.status === 'processing') {
+        throw new functions.https.HttpsError('aborted', 'Este envio de e-mail já está sendo processado.');
+      }
+    }
+
+    // Rate Limiting: proteção contra abusos, loops e exaustão de cota
+    try {
+      await customEmailLimiter.consume(request.auth.uid);
+    } catch {
+      if (ownsIdempotency && idempotencyRef) {
+        await idempotencyRef.delete().catch(() => {});
+      }
+      throw new functions.https.HttpsError(
+        'resource-exhausted',
+        'Limite de envio de e-mails atingido (máximo de 50 disparos por hora). Tente novamente mais tarde.'
+      );
     }
 
     try {
@@ -156,6 +232,12 @@ const sendCustomEmail = onCall(
         subject: subject.trim(),
       };
 
+      if (idempotencyKey) {
+        payload.headers = {
+          'X-Entity-Ref-ID': idempotencyKey,
+        };
+      }
+
       if (preparedAttachments.length) {
         payload.attachments = preparedAttachments.map(({ filename, content }) => ({ filename, content }));
       }
@@ -163,14 +245,15 @@ const sendCustomEmail = onCall(
       if (html) payload.html = html;
       if (text) payload.text = text;
       if (replyTo != null) {
-        if (typeof replyTo !== 'string' || replyTo.length > MAX_HEADER_LENGTH || /[\r\n]/.test(replyTo)) {
+        if (typeof replyTo !== 'string' || replyTo.length > MAX_HEADER_LENGTH || /[\r\n\0,;]/.test(replyTo)) {
           throw new functions.https.HttpsError('invalid-argument', 'Responder para inválido.');
         }
         const normalizedReplyTo = replyTo.trim();
-        if (!EMAIL_REGEX.test(normalizedReplyTo)) {
+        const replyToMatch = normalizedReplyTo.match(/^(?:([^<>]+)\s+<)?([^\s<>@]+@[^\s<>@]+)>?$/);
+        if (!replyToMatch || !EMAIL_REGEX.test(replyToMatch[2])) {
           throw new functions.https.HttpsError('invalid-argument', 'Responder para inválido.');
         }
-        payload.reply_to = normalizedReplyTo;
+        payload.reply_to = replyToMatch[2];
       }
       const normalizedCc = normalizeEmailList(cc, 'Cópia');
       const normalizedBcc = normalizeEmailList(bcc, 'Cópia oculta');
@@ -193,6 +276,7 @@ const sendCustomEmail = onCall(
 
       const emailRecord = {
         resendId: resendData?.id || null,
+        idempotencyKey: idempotencyKey || null,
         from: senderEmail,
         to: recipientList,
         cc: payload.cc || [],
@@ -210,9 +294,23 @@ const sendCustomEmail = onCall(
 
       const docRef = await admin.firestore().collection('sentEmails').add(emailRecord);
 
-      // O Resend já recebeu uma cópia; o arquivo temporário não precisa permanecer no Storage.
+      // Marca idempotência como concluída com sucesso
+      if (ownsIdempotency && idempotencyRef) {
+        await idempotencyRef.update({
+          status: 'completed',
+          emailId: resendData?.id || null,
+          sentDocId: docRef.id,
+          completedAt: admin.firestore.FieldValue.serverTimestamp(),
+        }).catch((err) => console.warn('[sendCustomEmail] Falha ao atualizar idempotência:', err));
+      }
+
+      // IMPORTANTE: Apenas rascunhos temporários de e-mail devem ser removidos;
+      // arquivos pertencentes a pedidos definitivos NUNCA devem ser deletados!
+      const isTemporaryDraft = (filePath) => typeof filePath === 'string' && /^users\/[^/]+\/orders\/email_draft\//.test(filePath);
       await Promise.allSettled(
-        preparedAttachments.map(({ path }) => admin.storage().bucket().file(path).delete({ ignoreNotFound: true }))
+        preparedAttachments
+          .filter(({ path }) => isTemporaryDraft(path))
+          .map(({ path }) => admin.storage().bucket().file(path).delete({ ignoreNotFound: true }))
       );
 
       return {
@@ -221,6 +319,13 @@ const sendCustomEmail = onCall(
         id: docRef.id,
       };
     } catch (error) {
+      if (ownsIdempotency && idempotencyRef) {
+        await idempotencyRef.set({
+          status: 'failed',
+          error: error.message || 'Erro ao enviar e-mail.',
+          failedAt: admin.firestore.FieldValue.serverTimestamp(),
+        }, { merge: true }).catch(() => {});
+      }
       console.error('[sendCustomEmail] Exceção:', error);
       if (error instanceof functions.https.HttpsError) throw error;
       throw new functions.https.HttpsError('internal', error.message || 'Erro ao enviar e-mail.');
@@ -385,9 +490,13 @@ const resendReceivingWebhook = onRequest(
         console.error('[resendReceivingWebhook] ERRO: RESEND_WEBHOOK_SECRET não configurado no Cloud Functions Secrets.');
         return res.status(500).json({ error: 'Configuração de segurança do webhook pendente no servidor' });
       }
-      const svixId = req.headers['svix-id'];
-      const svixTimestamp = req.headers['svix-timestamp'];
-      const svixSignature = req.headers['svix-signature'];
+      const rawSvixId = req.headers['svix-id'];
+      const rawSvixTimestamp = req.headers['svix-timestamp'];
+      const rawSvixSignature = req.headers['svix-signature'];
+
+      const svixId = Array.isArray(rawSvixId) ? rawSvixId[0] : rawSvixId;
+      const svixTimestamp = Array.isArray(rawSvixTimestamp) ? rawSvixTimestamp[0] : rawSvixTimestamp;
+      const svixSignature = Array.isArray(rawSvixSignature) ? rawSvixSignature[0] : rawSvixSignature;
 
       if (!svixId || !svixTimestamp || !svixSignature) {
         console.warn('[resendReceivingWebhook] Cabeçalhos de assinatura Svix ausentes');
@@ -433,7 +542,16 @@ const resendReceivingWebhook = onRequest(
         return res.status(401).json({ error: 'Falha na validação de assinatura' });
       }
 
-      const event = req.body;
+      let event = req.body;
+      if (typeof event === 'string') {
+        try {
+          event = JSON.parse(event);
+        } catch {}
+      } else if (Buffer.isBuffer(event)) {
+        try {
+          event = JSON.parse(event.toString('utf8'));
+        } catch {}
+      }
       console.log('[resendReceivingWebhook] Evento recebido:', event?.type);
 
       if (!event || event.type !== 'email.received') {
@@ -483,16 +601,24 @@ const resendReceivingWebhook = onRequest(
           const [mailbox, domain] = cleanEmail.split('@');
           if (!mailbox || !domain) return false;
 
+          // Suporte a subendereçamento (plus-addressing / tags: contato+orcamento@luisices.com.br)
+          const baseMailbox = mailbox.split('+')[0];
+
           const isLuisicesDomain =
             domain === 'luisices.com.br' ||
             domain === 'dev.luisices.com.br' ||
             domain.endsWith('.luisices.com.br');
 
-          return isLuisicesDomain && allowedMailboxPrefixes.includes(mailbox);
+          return isLuisicesDomain && allowedMailboxPrefixes.includes(baseMailbox);
         });
       };
 
-      const initialRecipients = Array.isArray(eventData.to) ? eventData.to : [eventData.to].filter(Boolean);
+      const initialRecipients = [
+        ...(Array.isArray(eventData.to) ? eventData.to : [eventData.to]),
+        ...(Array.isArray(eventData.cc) ? eventData.cc : [eventData.cc]),
+        ...(Array.isArray(eventData.bcc) ? eventData.bcc : [eventData.bcc]),
+      ].filter(Boolean);
+
       if (initialRecipients.length > 0 && !checkAllowedRecipient(initialRecipients)) {
         console.log(`[resendReceivingWebhook] Evento descartado: destinatario_nao_autorizado, count=${initialRecipients.length}`);
         return res.status(200).json({
@@ -533,20 +659,36 @@ const resendReceivingWebhook = onRequest(
         console.warn('[resendReceivingWebhook] Aviso: Não foi possível obter corpo completo via API Resend. Salvando com metadados do payload:', emailId);
       }
 
+      // Avaliação heurística e por regras antispam
+      const emailFrom = fullEmail?.from || eventData.from || '';
+      const emailSubject = fullEmail?.subject || eventData.subject || '';
+      const emailText = fullEmail?.text || '';
+      const emailHtml = fullEmail?.html || '';
+
+      const spamResult = evaluateSpam({
+        from: emailFrom,
+        subject: emailSubject,
+        text: emailText,
+        html: emailHtml,
+      });
+
       const emailDoc = {
         resendId: emailId,
-        from: fullEmail?.from || eventData.from || '',
+        from: emailFrom,
         to: fullEmail?.to || (Array.isArray(eventData.to) ? eventData.to : [eventData.to].filter(Boolean)),
         cc: fullEmail?.cc || eventData.cc || [],
         bcc: fullEmail?.bcc || eventData.bcc || [],
-        subject: fullEmail?.subject || eventData.subject || '(Sem assunto)',
-        html: fullEmail?.html || '',
-        text: fullEmail?.text || '',
+        subject: emailSubject || '(Sem assunto)',
+        html: emailHtml,
+        text: emailText,
         attachments: fullEmail?.attachments || eventData.attachments || [],
         raw: fullEmail?.raw || null,
         read: false,
         starred: false,
         archived: false,
+        spam: spamResult.isSpam,
+        spamScore: spamResult.score,
+        spamReasons: spamResult.reasons,
         receivedAt: eventData.created_at || new Date().toISOString(),
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
       };

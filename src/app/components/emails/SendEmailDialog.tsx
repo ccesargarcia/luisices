@@ -167,17 +167,31 @@ export function SendEmailDialog({
     setAttachments((prev) => prev.filter((a) => a.url !== url));
   };
 
-  // Gerador de HTML estilizado com identidade visual
+  // Gerador de HTML estilizado com identidade visual e sanitização estrita contra injeções
   const generateFormattedHtml = (messageBody: string): string => {
-    const escaped = messageBody
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/\n/g, '<br />');
+    const escapeText = (str: string) =>
+      str
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+
+    const sanitizeHttpUrl = (url: string) => {
+      const trimmed = (url || '').trim();
+      return /^https?:\/\//i.test(trimmed) ? trimmed.replace(/["'<>]/g, '') : '';
+    };
+
+    const escaped = escapeText(messageBody).replace(/\n/g, '<br />');
+    const safeBusinessName = escapeText(businessName);
+    const safeBusinessPhone = escapeText(businessPhone);
+    const safeBusinessEmail = escapeText(businessEmail);
+    const safeLogo = sanitizeHttpUrl(businessLogo);
+    const safeInstagram = sanitizeHttpUrl(instagramUrl);
+    const safeWebsite = sanitizeHttpUrl(websiteUrl);
 
     const attachmentsHtml = attachments.length
-      ? `<p>Arquivos anexados à mensagem: ${attachments.map(att => att.name
-          .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')).join(', ')}</p>`
+      ? `<p>Arquivos anexados à mensagem: ${attachments.map(att => escapeText(att.name)).join(', ')}</p>`
       : '';
 
     return `
@@ -196,11 +210,11 @@ export function SendEmailDialog({
           <tr>
             <td style="background-color: #4f46e5; padding: 24px 28px; text-align: left;">
               ${
-                businessLogo
-                  ? `<img src="${businessLogo}" alt="${businessName}" style="max-height: 44px; margin-bottom: 8px; border-radius: 6px; display: block;" />`
+                safeLogo
+                  ? `<img src="${safeLogo}" alt="${safeBusinessName}" style="max-height: 44px; margin-bottom: 8px; border-radius: 6px; display: block;" />`
                   : ''
               }
-              <h1 style="margin: 0; color: #ffffff; font-size: 19px; font-weight: 700; letter-spacing: -0.02em;">${businessName}</h1>
+              <h1 style="margin: 0; color: #ffffff; font-size: 19px; font-weight: 700; letter-spacing: -0.02em;">${safeBusinessName}</h1>
             </td>
           </tr>
           <!-- Body -->
@@ -213,11 +227,11 @@ export function SendEmailDialog({
           <!-- Signature & Footer -->
           <tr>
             <td style="background-color: #f1f5f9; padding: 20px 28px; border-top: 1px solid #e2e8f0; font-size: 13px; color: #64748b; line-height: 1.5;">
-              <div style="font-weight: 700; color: #0f172a; font-size: 14px;">${businessName}</div>
-              ${businessPhone ? `<div style="margin-top: 3px;">WhatsApp: <strong>${businessPhone}</strong></div>` : ''}
-              ${businessEmail ? `<div style="margin-top: 2px;">E-mail: <a href="mailto:${businessEmail}" style="color: #4f46e5; text-decoration: none;">${businessEmail}</a></div>` : ''}
-              ${instagramUrl ? `<div style="margin-top: 2px;">Instagram: <a href="${instagramUrl}" target="_blank" style="color: #4f46e5; text-decoration: none;">${instagramUrl.replace(/^https?:\/\/(www\.)?instagram\.com\/?/, '@')}</a></div>` : ''}
-              ${websiteUrl ? `<div style="margin-top: 2px;">Site: <a href="${websiteUrl.startsWith('http') ? websiteUrl : `https://${websiteUrl}`}" target="_blank" style="color: #4f46e5; text-decoration: none;">${websiteUrl.replace(/^https?:\/\//, '')}</a></div>` : ''}
+              <div style="font-weight: 700; color: #0f172a; font-size: 14px;">${safeBusinessName}</div>
+              ${safeBusinessPhone ? `<div style="margin-top: 3px;">WhatsApp: <strong>${safeBusinessPhone}</strong></div>` : ''}
+              ${safeBusinessEmail ? `<div style="margin-top: 2px;">E-mail: <a href="mailto:${safeBusinessEmail}" style="color: #4f46e5; text-decoration: none;">${safeBusinessEmail}</a></div>` : ''}
+              ${safeInstagram ? `<div style="margin-top: 2px;">Instagram: <a href="${safeInstagram}" target="_blank" rel="noopener noreferrer" style="color: #4f46e5; text-decoration: none;">${safeInstagram.replace(/^https?:\/\/(www\.)?instagram\.com\/?/, '@')}</a></div>` : ''}
+              ${safeWebsite ? `<div style="margin-top: 2px;">Site: <a href="${safeWebsite}" target="_blank" rel="noopener noreferrer" style="color: #4f46e5; text-decoration: none;">${safeWebsite.replace(/^https?:\/\//, '')}</a></div>` : ''}
               <div style="margin-top: 10px; font-size: 11px; color: #94a3b8; border-top: 1px solid #e2e8f0; padding-top: 8px;">
                 Ateliê de Papelaria Personalizada & Presentes Criativos
               </div>
@@ -263,8 +277,10 @@ export function SendEmailDialog({
 
     setIsSending(true);
     try {
+      const idempotencyKey = crypto.randomUUID();
       const htmlContent = generateFormattedHtml(body);
       const payload: SendEmailPayload = {
+        idempotencyKey,
         from: sender,
         to: recipientList,
         subject: subject.trim(),

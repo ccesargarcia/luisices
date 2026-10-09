@@ -699,6 +699,9 @@ export interface ReceivedEmail {
   read: boolean;
   starred: boolean;
   archived?: boolean;
+  spam?: boolean;
+  spamScore?: number;
+  spamReasons?: string[];
   trashed?: boolean;
   trashedAt?: string | null;
   receivedAt: string;
@@ -725,6 +728,7 @@ export interface SentEmail {
 }
 
 export interface SendEmailPayload {
+  idempotencyKey?: string;
   attachments?: { name: string; url: string }[];
   to: string[];
   subject: string;
