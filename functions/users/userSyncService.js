@@ -593,7 +593,9 @@ async function processUserSync(uid, options = {}, deps = {}) {
 
           await Promise.all([
             database.ref(`status/${uid}`).remove(),
-            database.ref(`revocations/${uid}`).set(cutOffMs),
+            database.ref(`revocations/${uid}`).transaction((currentVal) => {
+              return Math.max(currentVal || 0, cutOffMs);
+            }),
           ]);
           completedSteps.rtdbRevocation = true;
         } catch (rtdbErr) {
@@ -633,7 +635,7 @@ async function processUserSync(uid, options = {}, deps = {}) {
     }
   } catch (externalErr) {
     console.error(`[processUserSync] Erro na chamada externa para ${uid}:`, externalErr);
-    await recordSyncFailure(uid, activeMarker.opId, activeMarker.version, externalErr, deps).catch(() => {});
+    await recordSyncFailure(uid, activeMarker.opId, activeMarker.version, externalErr, completedSteps, deps).catch(() => {});
     throw externalErr;
   }
 
@@ -736,7 +738,13 @@ async function processUserSync(uid, options = {}, deps = {}) {
 /**
  * Registra falha de sincronização sem dados sensíveis e libera o lease para retries.
  */
-async function recordSyncFailure(uid, opId, version, error, deps = {}) {
+async function recordSyncFailure(uid, opId, version, error, completedSteps = null, deps = {}) {
+  // Trata deslocamento se deps for passado no 4º argumento
+  if (completedSteps && typeof completedSteps === 'object' && !('rtdbRevocation' in completedSteps) && !deps.firestore) {
+    deps = completedSteps;
+    completedSteps = null;
+  }
+
   const { firestore, now } = getServices(deps);
   const profileRef = firestore.doc(`userProfiles/${uid}`);
 
@@ -753,6 +761,7 @@ async function recordSyncFailure(uid, opId, version, error, deps = {}) {
         claimsSyncPending: {
           ...marker,
           status: 'failed',
+          ...(completedSteps ? { completedSteps: { ...marker.completedSteps, ...completedSteps } } : {}),
           lastError: sanitizeErrorMessage(error),
           updatedAt: now(),
           lease: null, // Libera lease para que o próximo retry possa tentar

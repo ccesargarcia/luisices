@@ -185,6 +185,14 @@ function createFakeDependencies() {
           rtdbRevocations.set(path.replace('revocations/', ''), val);
         }
       }),
+      transaction: vi.fn(async (updateFn: (current: any) => any) => {
+        if (path.startsWith('revocations/')) {
+          const key = path.replace('revocations/', '');
+          const current = rtdbRevocations.get(key);
+          const next = updateFn(current);
+          rtdbRevocations.set(key, next);
+        }
+      }),
     }),
     _status: rtdbStatus,
     _revocations: rtdbRevocations,
@@ -520,6 +528,7 @@ describe('userSyncService — Resiliência, Concorrência e Monotonicidade Real'
       deps.database.ref = vi.fn().mockReturnValue({
         remove: vi.fn().mockRejectedValue(new Error('RTDB connection refused')),
         set: vi.fn().mockResolvedValue(undefined),
+        transaction: vi.fn().mockRejectedValue(new Error('RTDB connection refused')),
       });
 
       await expect(updateUserProfile({
@@ -856,6 +865,7 @@ describe('userSyncService — Resiliência, Concorrência e Monotonicidade Real'
       deps.database.ref = vi.fn().mockReturnValue({
         remove: vi.fn().mockRejectedValue(new Error('RTDB transient timeout')),
         set: vi.fn().mockResolvedValue(undefined),
+        transaction: vi.fn().mockRejectedValue(new Error('RTDB transient timeout')),
       });
 
       await expect(updateUserProfile({
@@ -883,6 +893,9 @@ describe('userSyncService — Resiliência, Concorrência e Monotonicidade Real'
         remove: vi.fn().mockResolvedValue(undefined),
         set: vi.fn().mockImplementation(async (val: number) => {
           rtdbRevocationWrittenTime = val;
+        }),
+        transaction: vi.fn().mockImplementation(async (updateFn: (current: any) => any) => {
+          rtdbRevocationWrittenTime = updateFn(0);
         }),
       });
 
