@@ -94,8 +94,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let profileUnsub: (() => void) | null = null;
     let deviceUnsub: (() => void) | null = null;
+    let currentUid: string | null = null;
 
     const authUnsubscribe = firebaseAuthService.onAuthChange(async (u) => {
+      if (currentUid === u?.uid) {
+        // Ignora mudanças se for o mesmo usuário (ex: token refresh),
+        // evitando desmontar a aplicação e quebrar o status de online (presence).
+        setUser(u);
+        return;
+      }
+
+      currentUid = u?.uid || null;
+
       if (profileUnsub) {
         profileUnsub();
         profileUnsub = null;
@@ -193,26 +203,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               const profileActive = Boolean(data.active);
               if (idTokenResult.claims.role !== data.role || claimActive !== profileActive) {
                 try {
-                  // Primeiro força a atualização do token local, pois o backend pode já ter aplicado
-                  await u.getIdToken(true);
-                  const newIdTokenResult = await u.getIdTokenResult();
-                  const newClaimActive = Boolean(newIdTokenResult.claims.active);
-
-                  // Se mesmo após atualizar o token as claims ainda divergirem, aciona o reparo
-                  if (newIdTokenResult.claims.role !== data.role || newClaimActive !== profileActive) {
-                    const { httpsCallable } = await import('firebase/functions');
-                    const { functions } = await import('../lib/firebase');
-                    const repairClaims = httpsCallable(functions, 'repairUserClaims');
-                    await repairClaims({ uid: u.uid });
-                    await u.getIdToken(true);
-                  }
-                } catch (repairErr: any) {
-                  if (repairErr?.code === 'auth/user-token-expired' || repairErr?.code === 'auth/invalid-user-token') {
-                    console.info('[AuthContext] Sessão revogada ou expirada durante sincronização de claims.');
-                  } else {
-                    console.warn('[AuthContext] Falha na sincronização de claims:', repairErr);
-                  }
+                  const { httpsCallable } = await import('firebase/functions');
+                  const { functions } = await import('../lib/firebase');
+                  const repairClaims = httpsCallable(functions, 'repairUserClaims');
+                  await repairClaims({ uid: u.uid });
+                } catch (repairErr) {
+                  console.warn('[AuthContext] Falha ao acionar reparo administrativo de claims:', repairErr);
                 }
+                await u.getIdToken(true);
               }
             } catch (claimErr) {
               console.warn('[AuthContext] Falha ao verificar/atualizar claims do token:', claimErr);
