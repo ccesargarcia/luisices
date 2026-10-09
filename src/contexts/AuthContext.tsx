@@ -71,9 +71,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       console.warn('[AuthContext] Timeout ao ficar offline:', e);
     }
     const uidToClear = uUid || user?.uid;
-    if (clearReg && uidToClear) {
+    if (uidToClear) {
       localStorage.removeItem(`luisices_device_reg_${uidToClear}`);
     }
+    try {
+      Object.keys(localStorage).forEach(k => {
+        if (k.startsWith('luisices_device_reg_')) {
+          localStorage.removeItem(k);
+        }
+      });
+    } catch (_) {}
     await firebaseAuthService.logout().catch(() => {});
     setUserProfile(null);
   }, [presence, user]);
@@ -148,14 +155,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 }).catch(err => console.warn('[AuthContext] Erro ao atualizar sessão do dispositivo', err));
               }
             } else {
-              const regKey = `luisices_device_reg_${u.uid}`;
-              if (deviceWasRegistered || localStorage.getItem(regKey) === 'true') {
-                localStorage.removeItem(regKey);
+              // Se já estava registrado nesta sessão ativa e sumiu do Firestore, a sessão foi revogada remotamente.
+              // Em um login novo (deviceWasRegistered == false), trata-se do registro inicial do dispositivo.
+              if (deviceWasRegistered) {
                 toast.error('Esta sessão foi revogada remotamente.');
                 handleLogout(true, u.uid);
               } else {
                 deviceWasRegistered = true;
-                localStorage.setItem(regKey, 'true');
                 firebaseUserService.registerDeviceSession(deviceId, navigator.userAgent).then(() => {
                   localStorage.setItem('luisices_device_last_reg', String(Date.now()));
                 }).catch(err => console.warn('[AuthContext] Erro ao registrar sessão do dispositivo', err));
@@ -196,7 +202,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             try {
               const idTokenResult = await u.getIdTokenResult();
               const authTime = Math.floor(new Date(idTokenResult.authTime).getTime() / 1000);
-              if (data.tokensValidAfterTime && authTime <= data.tokensValidAfterTime) {
+              if (data.tokensValidAfterTime && authTime < data.tokensValidAfterTime) {
                 toast.error('Esta sessão foi revogada remotamente.');
                 handleLogout(true, u.uid);
                 setLoading(false);
