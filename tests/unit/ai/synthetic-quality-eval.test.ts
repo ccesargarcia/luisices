@@ -201,7 +201,8 @@ describe('IA-QA: Suíte Sintética de Avaliação e Regressão (40 Casos Obrigat
 
     it('Caso 19: Mensagem de pedido pronto', async () => {
       const msg = await toolsExec.executeGenerateWhatsAppMessage({ orderNumber: '#101', recipientName: 'Alice Mendes', messageType: 'pedido_pronto' }, adminScope);
-      expect(msg.text).toContain('prontinho');
+      expect(msg.text).toContain('concluído');
+      expect(msg.text).not.toMatch(/embalad|prontinho/);
     });
 
     it('Caso 20: Busca por orderNumber sem hash', async () => {

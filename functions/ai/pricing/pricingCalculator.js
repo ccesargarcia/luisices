@@ -212,7 +212,7 @@ function calculateRecipePricing(params = {}) {
 
     return {
       quantity: qty,
-      scaleDiscountPercent: qty === 1 ? 0 : Math.max(0, Math.round((1 - (roundedUnitPrice / suggestedUnitPrice)) * 100)),
+      scaleDiscountPercent: qty === 1 || suggestedUnitPrice <= 0 ? 0 : Math.max(0, Math.round((1 - (roundedUnitPrice / suggestedUnitPrice)) * 100)),
       unitCost: Math.round(batchUnitCost * 100) / 100,
       unitPrice: roundedUnitPrice,
       totalPrice: batchTotalPrice,

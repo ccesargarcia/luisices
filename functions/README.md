@@ -62,6 +62,19 @@ Detalhes: [e-mail](../docs/RECUPERACAO_ENVIO_EMAIL.md), [sessões](../docs/SEGUR
 
 A política atual pode percorrer alternativas de modelo; não assumir uma única tentativa nem uma tarifa única. Templates no handler também influenciam respostas e precisam ser revisados junto com mudanças no prompt.
 
+## Contratos de resposta do Copiloto
+
+Entrega `fix/ai-response-contracts`, baseada em `develop` / `298f298`: implementada e validada localmente, ainda não publicada em DEV. As nove ferramentas permanecem; autorização, persistência, reserva/reconciliação, telemetria e política de fallback não foram ampliadas.
+
+- `get_financial_summary` preserva campos existentes, inclusive `totalRecebido` (pagamentos acumulados nos pedidos selecionados, não caixa por recebimento). Acrescenta `selectionDateField`, `paymentDateBasis: not_available`, `paymentScopeNotice` e `excludedMissingCreationDate`. Templates usam `periodLabel` e o critério de seleção. Intervalos exigem criação válida; `all` não filtra datas. Cancelados ficam fora dos valores.
+- `calculate_pricing_estimate` acrescenta `contractVersion: 2`, `inputs` por campo/valor/origem (`argument`, `configuration`, `default`), `assumptions` e `requiresReview`. `unitCostRaw/rawMaterialsCost` são aliases explícitos coerentes; zeros válidos, argumentos inválidos recusados. Configuração inválida é substituída por padrão identificado. Argumento recebido não comprova origem humana.
+- O executor usa a composição do motor existente sem duplicar despesas fixas, rateando setup e preservando eficiência dos tiers. `breakdown` preserva nomes antigos e acrescenta `rawMaterials`, `customization`, `fixedCostsIncludedInLabor`. O frontend adapta históricos e omite detalhes ausentes. O motor JS/TS evita desconto `NaN` para preço zero, sem mudar a fórmula.
+- Rascunhos têm `preparationStatus: draft_prepared`; identificação insuficiente pode retornar `identification_required`, `requiresIdentification` e `preparationNotice`. O handler pede identificação e omite o card acionável. Extração sem preço/sinal/quantidade mantém ausência, não fabrica custo zero.
+- Envio pela UI é posterior ao chat. O cliente envia `requestId` ao callable existente e só aceita `success === true`; resultado incerto não é repetido automaticamente. WhatsApp Web não confirma envio. Nenhuma permissão foi acrescentada para tornar o envio possível.
+- `alexa/constants.js` é fonte pura dos TTLs usada por Alexa e schema IA, sem leitura remota/inicialização de secrets no schema. Conteúdo cadastrado vai separado das instruções do sistema; autorização permanece no backend. Cache do chat versionado `v3-response-contracts`.
+
+Validação, limites e roteiro manual sintético: [COPILOTO_IA.md](../docs/COPILOTO_IA.md). Nenhuma chamada real ao provedor ou envio a cliente foi executado nesta entrega.
+
 ## Configuração e publicação
 
 Os nomes de parâmetros/segredos estão em [common/secrets.js](common/secrets.js) e nos módulos das integrações. Forneça valores pelo mecanismo de secrets do ambiente. Não publique valores, arquivos de service account ou identificadores de instâncias operacionais em exemplos.

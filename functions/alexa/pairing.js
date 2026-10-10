@@ -4,6 +4,7 @@
  */
 
 const crypto = require('crypto');
+const { PAIRING_CODE_TTL_MINUTES } = require('./constants');
 const admin = require('firebase-admin');
 const { COLLECTIONS, computeCodeHash, computeBindingKey, recordAuditEvent } = require('./repository');
 const { checkPairingRateLimit } = require('./rateLimit');
@@ -66,7 +67,7 @@ async function handleVoicePairingRequest(envelope, config, db) {
   );
 
   const now = Date.now();
-  const ttlMs = (config.pairingCodeTtlMinutes || 5) * 60 * 1000;
+  const ttlMs = (config.pairingCodeTtlMinutes || PAIRING_CODE_TTL_MINUTES) * 60 * 1000;
   const expiresAt = new Date(now + ttlMs);
 
   // 4. Salvar desafio em alexaPairings/{codeHmac}

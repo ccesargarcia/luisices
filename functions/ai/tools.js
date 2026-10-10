@@ -3,7 +3,7 @@
  */
 
 const { BUSINESS_TIMEZONE, TOOL_LIMITS } = require('./config');
-const { calculateRecipePricing, DEFAULT_PRICING_SETTINGS } = require('./pricing/pricingCalculator');
+const { calculateRecipePricing, calculateHourlyRate, DEFAULT_PRICING_SETTINGS } = require('./pricing/pricingCalculator');
 
 /**
  * Calcula intervalos de data no fuso do negócio (America/Sao_Paulo - UTC-3)
@@ -208,27 +208,22 @@ class AiToolsExecutor {
   /**
    * Resolução de telefone de cliente com tratamento de homônimos (R09)
    */
-  async resolveCustomerPhone(customerName, existingPhone, scope) {
-    if (existingPhone && typeof existingPhone === 'string' && existingPhone.replace(/\D/g, '').length >= 10) {
-      return normalizePhone(existingPhone);
-    }
-    if (!customerName || typeof customerName !== 'string') return '';
-
+  async resolveCustomerIdentity(customerName, existingPhone, scope) {
+    const phone = normalizePhone(existingPhone);
+    // Telefone explícito já identifica o destinatário declarado do rascunho.
+    if (phone.length >= 12 || !customerName || typeof customerName !== 'string') return { phone, ambiguous: false };
     const clean = customerName.trim().toLowerCase();
     const result = await this.repos.getScopedCustomers(scope, { searchTerm: clean });
     const matches = result.customers || [];
+    const exact = matches.filter((customer) => String(customer.name || '').toLowerCase().trim() === clean);
+    let candidates = exact.length ? exact : matches;
+    if (phone) candidates = candidates.filter((customer) => normalizePhone(customer.phone) === phone);
+    const ambiguous = candidates.length > 1 || Boolean(result.hasMore);
+    return { phone: ambiguous ? '' : phone || normalizePhone(candidates[0]?.phone), ambiguous };
+  }
 
-    if (matches.length === 1 && matches[0].phone) {
-      return normalizePhone(matches[0].phone);
-    }
-
-    // Se houver correspondência exata de nome
-    const exactMatches = matches.filter((c) => c.name.toLowerCase() === clean && c.phone);
-    if (exactMatches.length === 1) {
-      return normalizePhone(exactMatches[0].phone);
-    }
-
-    return '';
+  async resolveCustomerPhone(customerName, existingPhone, scope) {
+    return (await this.resolveCustomerIdentity(customerName, existingPhone, scope)).phone;
   }
 
   /**
@@ -301,7 +296,7 @@ class AiToolsExecutor {
     const filtered = orders.filter((o) => {
       if (o.isDeleted) return false;
       if (period === 'all') return true;
-      const orderDate = new Date(o.createdAt || o.deliveryDate || Date.now());
+      const orderDate = new Date(o.createdAt || NaN);
       return orderDate >= startDate && orderDate <= endDate;
     });
 
@@ -333,7 +328,11 @@ class AiToolsExecutor {
         inicio: interval.startFormatted,
         fim: interval.endFormatted,
       },
-      criterioFiltro: 'Data de criação do pedido (createdAt)',
+      criterioFiltro: period === 'all' ? 'Todo o histórico, sem filtro de datas' : 'Data de criação do pedido (createdAt); sem data válida excluído do intervalo',
+      selectionDateField: period === 'all' ? null : 'createdAt',
+      paymentDateBasis: 'not_available',
+      paymentScopeNotice: 'Pagamentos acumulados nos pedidos selecionados, inclusive registrados depois do período. Esta consulta não apura entradas de caixa por data de recebimento.',
+      excludedMissingCreationDate: period === 'all' ? 0 : orders.filter((o) => !o.isDeleted && !Number.isFinite(new Date(o.createdAt || NaN).getTime())).length,
       faturamentoRealizado: Number(realizedRevenue.toFixed(2)),
       volumeTotalEmitido: Number(grossIssuedVolume.toFixed(2)),
       totalRecebido: Number(totalReceived.toFixed(2)),
@@ -504,37 +503,70 @@ class AiToolsExecutor {
    * Ferramenta 5: Estimativa de Precificação com Configurações Reais e Diluição de Setup (IA-04 & R08)
    */
   async executePricingEstimate(args = {}, scope) {
-    const qty = Math.max(1, Number(args.quantity) || 1);
-    const rawCost = args.rawMaterialsCost !== undefined && !isNaN(Number(args.rawMaterialsCost))
-      ? Math.max(0, Number(args.rawMaterialsCost))
-      : (args.unitCostRaw !== undefined && !isNaN(Number(args.unitCostRaw))
-        ? Math.max(0, Number(args.unitCostRaw))
-        : 15);
-    const customCost = args.customizationCost !== undefined && !isNaN(Number(args.customizationCost))
-      ? Math.max(0, Number(args.customizationCost))
-      : 5;
-    const laborTimeMinutes = args.laborTimeMinutes !== undefined && !isNaN(Number(args.laborTimeMinutes))
-      ? Math.max(0, Number(args.laborTimeMinutes))
-      : 15;
-    const setupTimeMinutes = args.setupTimeMinutes !== undefined && !isNaN(Number(args.setupTimeMinutes))
-      ? Math.max(0, Number(args.setupTimeMinutes))
-      : 0;
-
-    let studioSettings = DEFAULT_PRICING_SETTINGS;
-    if (this.repos && typeof this.repos.getPricingSettings === 'function' && scope) {
-      const loaded = await this.repos.getPricingSettings(scope);
-      if (loaded) studioSettings = { ...DEFAULT_PRICING_SETTINGS, ...loaded };
+    // Ausência usa uma premissa identificada; valores presentes inválidos falham.
+    const inputs = {};
+    const labels = {
+      quantity: 'Quantidade', rawMaterialsCost: 'Matéria-prima por unidade (R$)',
+      customizationCost: 'Personalização por unidade (R$)', laborTimeMinutes: 'Montagem por unidade (min)',
+      setupTimeMinutes: 'Setup do lote (min)', profitMarginPercent: 'Margem (%)',
+      paymentFeePercent: 'Taxa de pagamento (%)', wasteMarginPercent: 'Perdas (%)',
+      desiredSalary: 'Salário mensal (R$)', workingDaysPerMonth: 'Dias por mês', workingHoursPerDay: 'Horas por dia',
+      defaultWasteMarginPercent: 'Perdas configuradas (%)', defaultPaymentFeePercent: 'Taxa configurada (%)', defaultProfitMarginPercent: 'Margem configurada (%)',
+    };
+    const invalid = (field) => {
+      const error = new Error(`Valor inválido para ${field}: informe número finito não negativo dentro do intervalo permitido.`);
+      error.code = 'invalid-argument';
+      throw error;
+    };
+    const parse = (value, field, min = 0, max = Infinity) => {
+      if ((typeof value !== 'number' && typeof value !== 'string') || value === null || (typeof value === 'string' && !value.trim())) invalid(field);
+      const number = Number(value);
+      if (!Number.isFinite(number) || number < min || number > max) invalid(field);
+      return number;
+    };
+    const loaded = this.repos && typeof this.repos.getPricingSettings === 'function' && scope
+      ? await this.repos.getPricingSettings(scope) : null;
+    const studioSettings = {};
+    // Configurações inválidas não viram custo zero: substituição explícita por padrão.
+    for (const [field, fallback] of Object.entries(DEFAULT_PRICING_SETTINGS)) {
+      if (field === 'monthlyFixedExpenses') continue;
+      const value = loaded?.[field];
+      const numeric = typeof value === 'number' || (typeof value === 'string' && value.trim());
+      const max = field === 'defaultProfitMarginPercent' ? 95 : Infinity;
+      const valid = numeric && Number.isFinite(Number(value)) && Number(value) >= 0 && Number(value) <= max;
+      studioSettings[field] = valid ? Number(value) : fallback;
+      inputs[field] = { value: studioSettings[field], source: valid ? 'configuration' : 'default', label: labels[field] || field, invalidConfiguration: value !== undefined && !valid };
     }
-
-    const profitMarginPercent = args.profitMarginPercent !== undefined && !isNaN(Number(args.profitMarginPercent))
-      ? Math.min(95, Math.max(0, Number(args.profitMarginPercent)))
-      : studioSettings.defaultProfitMarginPercent;
-    const paymentFeePercent = args.paymentFeePercent !== undefined && !isNaN(Number(args.paymentFeePercent))
-      ? Math.max(0, Number(args.paymentFeePercent))
-      : studioSettings.defaultPaymentFeePercent;
-    const wasteMarginPercent = args.wasteMarginPercent !== undefined && !isNaN(Number(args.wasteMarginPercent))
-      ? Math.max(0, Number(args.wasteMarginPercent))
-      : studioSettings.defaultWasteMarginPercent;
+    studioSettings.monthlyFixedExpenses = {};
+    for (const [field, fallback] of Object.entries(DEFAULT_PRICING_SETTINGS.monthlyFixedExpenses)) {
+      const value = loaded?.monthlyFixedExpenses?.[field];
+      const valid = (typeof value === 'number' || (typeof value === 'string' && value.trim())) && Number.isFinite(Number(value)) && Number(value) >= 0;
+      studioSettings.monthlyFixedExpenses[field] = valid ? Number(value) : fallback;
+      inputs[`monthlyFixedExpenses.${field}`] = { value: studioSettings.monthlyFixedExpenses[field], source: valid ? 'configuration' : 'default', label: `Despesa fixa mensal: ${field} (R$)`, invalidConfiguration: value !== undefined && !valid };
+    }
+    const read = (field, fallback, configField, min = 0, max = Infinity) => {
+      const supplied = args[field] !== undefined;
+      const value = supplied ? parse(args[field], field, min, max) : fallback;
+      const source = supplied ? 'argument' : (configField ? inputs[configField].source : 'default');
+      inputs[field] = { value, source, label: labels[field], ...(configField ? { configurationField: configField } : {}) };
+      return value;
+    };
+    // Valida ambos os aliases; divergência é ambígua, não deve ser resolvida silenciosamente.
+    const alias = args.unitCostRaw !== undefined ? parse(args.unitCostRaw, 'unitCostRaw') : undefined;
+    const raw = args.rawMaterialsCost !== undefined ? parse(args.rawMaterialsCost, 'rawMaterialsCost') : undefined;
+    if (alias !== undefined && raw !== undefined && alias !== raw) invalid('unitCostRaw/rawMaterialsCost (valores divergentes)');
+    const rawCost = raw ?? alias ?? 15;
+    inputs.rawMaterialsCost = { value: rawCost, source: raw !== undefined || alias !== undefined ? 'argument' : 'default', label: labels.rawMaterialsCost, argumentFields: ['rawMaterialsCost', 'unitCostRaw'].filter((key) => args[key] !== undefined) };
+    const qty = read('quantity', 1, null, 1);
+    if (!Number.isSafeInteger(qty)) invalid('quantity');
+    const customCost = read('customizationCost', 5);
+    const laborTimeMinutes = read('laborTimeMinutes', 15);
+    const setupTimeMinutes = read('setupTimeMinutes', 0);
+    const profitMarginPercent = read('profitMarginPercent', studioSettings.defaultProfitMarginPercent, 'defaultProfitMarginPercent', 0, 95);
+    const paymentFeePercent = read('paymentFeePercent', studioSettings.defaultPaymentFeePercent, 'defaultPaymentFeePercent');
+    const wasteMarginPercent = read('wasteMarginPercent', studioSettings.defaultWasteMarginPercent, 'defaultWasteMarginPercent');
+    const sourceLabels = { argument: 'argumento recebido pela ferramenta (origem humana não comprovada)', configuration: 'configuração cadastrada', default: 'padrão assumido' };
+    const assumptions = Object.values(inputs).map((input) => `${input.label}: ${input.value} — ${sourceLabels[input.source]}${input.invalidConfiguration ? ' (configuração inválida substituída)' : ''}.`);
 
     const items = [
       {
@@ -567,47 +599,53 @@ class AiToolsExecutor {
       settings: studioSettings,
     });
 
-    // Se temos setup e qty >= 1, calcula custo unitário e preço unitário na base efetiva do lote
-    const minuteRate = calcResult.minuteRateApplied || 0.47;
-    const setupLaborPerUnit = (setupTimeMinutes / qty) * minuteRate;
-    const directLaborPerUnit = laborTimeMinutes * minuteRate;
+    // Usa a mesma composição do motor. A taxa já inclui despesas fixas.
+    // A eficiência dos tiers existentes é preservada; quantidades fora dos tiers
+    // continuam sem desconto por eficiência, com setup rateado pelo lote.
+    const matchingTier = calcResult.batchTiers.find((tier) => tier.quantity === qty);
+    const seriesEfficiency = matchingTier && qty !== 1 ? Math.max(0.8, 1 - Math.log10(qty) * 0.1) : 1;
+    const effective = calculateRecipePricing({
+      items, wasteMarginPercent, laborMode: 'time',
+      productionTimeMinutes: laborTimeMinutes * seriesEfficiency,
+      setupTimeMinutes: setupTimeMinutes / qty,
+      profitMarginPercent, paymentFeePercent, settings: studioSettings,
+    });
+    const rates = calculateHourlyRate(studioSettings);
+    const setupLaborPerUnit = (setupTimeMinutes / qty) * rates.minuteRate;
+    const directLaborPerUnit = laborTimeMinutes * seriesEfficiency * rates.minuteRate;
     const matWithWaste = (rawCost + customCost) * (1 + wasteMarginPercent / 100);
-    const fixedCostsSharePerUnit = calcResult.fixedCostsShare ? (calcResult.fixedCostsShare) : 0;
-    const unitCostForQty = matWithWaste + directLaborPerUnit + setupLaborPerUnit + fixedCostsSharePerUnit;
-
-    const divisor = Math.max(0.02, 1 - (paymentFeePercent + profitMarginPercent) / 100);
-    let unitPriceForQty = Math.round((unitCostForQty / divisor) * 100) / 100;
-    const breakevenForQty = Math.round((unitCostForQty / Math.max(0.02, 1 - paymentFeePercent / 100)) * 100) / 100;
-
-    let suggestedTotalPrice = 0;
-    const matchingTier = calcResult.batchTiers.find((t) => t.quantity === qty);
-    if (matchingTier) {
-      unitPriceForQty = matchingTier.unitPrice;
-      suggestedTotalPrice = matchingTier.totalPrice;
-    } else {
-      suggestedTotalPrice = Math.round(unitPriceForQty * qty * 100) / 100;
-    }
+    inputs.seriesEfficiency = { value: seriesEfficiency, source: 'default', label: 'Fator de eficiência do motor para este lote' };
+    assumptions.push(`Setup de ${setupTimeMinutes} min rateado em ${qty} unidade(s); fator de eficiência da montagem: ${seriesEfficiency}. Despesas fixas já incluídas na mão de obra; não somar novamente.`);
+    const suggestedTotalPrice = matchingTier?.totalPrice ?? Math.round(effective.suggestedUnitPrice * qty * 100) / 100;
+    if (![effective.totalUnitCost, effective.suggestedUnitPrice, suggestedTotalPrice, effective.breakevenPrice, ...calcResult.batchTiers.flatMap((tier) => [tier.unitCost, tier.unitPrice, tier.totalPrice])].every(Number.isFinite)) invalid('resultado fora da capacidade numérica');
 
     return {
       productName: args.productName || 'Personalizado Luisices',
       quantity: qty,
-      unitCost: Number(unitCostForQty.toFixed(2)),
-      suggestedUnitPrice: Number(unitPriceForQty.toFixed(2)),
+      unitCost: effective.totalUnitCost,
+      suggestedUnitPrice: effective.suggestedUnitPrice,
       suggestedTotalPrice,
       profitMarginPercent,
-      breakevenPrice: Number(breakevenForQty.toFixed(2)),
-      maxDiscountPercent: calcResult.maxDiscountPercent,
+      breakevenPrice: effective.breakevenPrice,
+      maxDiscountPercent: effective.maxDiscountPercent,
       batchTiers: calcResult.batchTiers,
-      isExplicitMaterialsCost: args.rawMaterialsCost !== undefined,
+      contractVersion: 2,
+      inputs,
+      assumptions,
+      requiresReview: true,
+      isExplicitMaterialsCost: inputs.rawMaterialsCost.source === 'argument',
       isExplicitLaborTime: args.laborTimeMinutes !== undefined,
       breakdown: {
+        rawMaterials: rawCost,
+        customization: customCost,
         materialsBase: Number((rawCost + customCost).toFixed(2)),
-        wasteMarginAmount: calcResult.wasteAmount,
+        wasteMarginAmount: effective.wasteAmount,
         totalMaterialsWithWaste: Number(matWithWaste.toFixed(2)),
         directLaborPerUnit: Number(directLaborPerUnit.toFixed(2)),
         setupLaborPerUnit: Number(setupLaborPerUnit.toFixed(2)),
         specializedLabor: Number((directLaborPerUnit + setupLaborPerUnit).toFixed(2)),
-        fixedCostsShare: Number(fixedCostsSharePerUnit.toFixed(2)),
+        fixedCostsShare: effective.fixedCostsShare,
+        fixedCostsIncludedInLabor: true,
       },
     };
   }
@@ -619,7 +657,7 @@ class AiToolsExecutor {
     const { recipientName = 'Cliente', orderNumber, messageType = 'cobranca', customText } = args;
 
     // Normaliza tipo para os enums compatíveis com AiCopilotSheet.tsx (VARIANTS)
-    let normalizedType = 'cobranca';
+    let normalizedType = 'geral';
     if (messageType === 'cobranca' || messageType === 'cobranca_saldo') {
       normalizedType = 'cobranca';
     } else if (messageType === 'pronto_retirada' || messageType === 'pedido_pronto') {
@@ -633,13 +671,41 @@ class AiToolsExecutor {
     let phone = args.recipientPhone || '';
     let realOrder = null;
 
-    if (orderNumber) {
-      const orders = await this.repos.getScopedOrders(scope);
-      const cleanTarget = String(orderNumber).toLowerCase().replace('#', '').trim();
-      realOrder = orders.find((o) =>
-        o.orderId.toLowerCase() === cleanTarget ||
-        (o.orderNumber && o.orderNumber.toLowerCase().replace('#', '').trim() === cleanTarget)
-      );
+    const orders = (await this.repos.getScopedOrders(scope)).filter((order) => !order.isDeleted);
+    const cleanTarget = String(orderNumber || '').toLowerCase().replace('#', '').trim();
+    const nameTarget = String(recipientName).trim().toLowerCase();
+    const matches = orders.filter((order) => cleanTarget
+      ? String(order.orderId || '').toLowerCase() === cleanTarget || String(order.orderNumber || '').toLowerCase().replace('#', '').trim() === cleanTarget
+      : String(order.customerName || '').trim().toLowerCase() === nameTarget)
+      .filter((order) => orderNumber || !args.recipientPhone || normalizePhone(order.customerPhone) === normalizePhone(args.recipientPhone));
+    const identificationRequired = matches.length > 1 || ((orderNumber || normalizedType !== 'geral') && matches.length === 0);
+    if (identificationRequired) {
+      return { preparationStatus: 'identification_required', requiresIdentification: true,
+        preparationNotice: matches.length > 1 ? 'Há mais de um pedido ou cliente correspondente. Informe o número do pedido antes de preparar a mensagem.' : 'Pedido não localizado. Informe um identificador válido antes de preparar uma mensagem vinculada ao pedido.',
+        recipientName, recipientPhone: '', type: normalizedType, messageText: '', text: '', orderDetails: null };
+    }
+    let nameIdentity = null;
+    if (!orderNumber && matches.length === 1) {
+      nameIdentity = await this.resolveCustomerIdentity(recipientName, args.recipientPhone, scope);
+      if (nameIdentity.ambiguous) {
+        return { preparationStatus: 'identification_required', requiresIdentification: true,
+          preparationNotice: 'Nome ambíguo. Informe o número do pedido ou telefone do cliente antes de preparar a mensagem.',
+          recipientName, recipientPhone: '', type: normalizedType, messageText: '', text: '', orderDetails: null };
+      }
+    }
+    realOrder = matches[0] || null;
+    if (!realOrder) {
+      const result = await this.repos.getScopedCustomers(scope, { searchTerm: nameTarget });
+      const customers = result.customers || [];
+      const exact = customers.filter((customer) => String(customer.name || '').trim().toLowerCase() === nameTarget);
+      let candidates = exact.length ? exact : customers;
+      if (phone) candidates = candidates.filter((customer) => normalizePhone(customer.phone) === normalizePhone(phone));
+      if (candidates.length > 1 || result.hasMore) {
+        return { preparationStatus: 'identification_required', requiresIdentification: true,
+          preparationNotice: 'Nome ambíguo. Identifique o cliente pelo telefone ou pedido antes de preparar a mensagem.',
+          recipientName, recipientPhone: '', type: normalizedType, messageText: '', text: '', orderDetails: null };
+      }
+      phone = phone || candidates[0]?.phone || '';
     }
 
     if (realOrder) {
@@ -648,8 +714,8 @@ class AiToolsExecutor {
       }
     }
 
-    if (!phone && recipientName) {
-      phone = await this.resolveCustomerPhone(recipientName, null, scope);
+    if (!phone && realOrder?.customerName) {
+      phone = nameIdentity ? nameIdentity.phone : await this.resolveCustomerPhone(realOrder.customerName, null, scope);
     }
 
     phone = normalizePhone(phone);
@@ -658,7 +724,8 @@ class AiToolsExecutor {
     let orderDetails = null;
 
     if (realOrder) {
-      const remainingFmt = Number(realOrder.remainingAmount || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+      const remaining = Number(realOrder.remainingAmount ?? Math.max(0, Number(realOrder.totalPrice || 0) - Number(realOrder.paidAmount || 0)));
+      const remainingFmt = remaining.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
       const totalFmt = Number(realOrder.totalPrice || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
       const dateFmt = realOrder.deliveryDate ? ` para entrega em ${realOrder.deliveryDate}` : '';
 
@@ -677,24 +744,28 @@ class AiToolsExecutor {
       if (realOrder.status === 'cancelled') {
         generatedText = `Olá, ${realOrder.customerName}! Consta em nosso sistema que o pedido ${realOrder.orderNumber} (${realOrder.productSummary}) foi cancelado. Se desejar reativar ou tiver dúvidas, estamos à disposição! ✨`;
       } else if (normalizedType === 'cobranca') {
-        if (realOrder.paymentStatus === 'paid' || realOrder.remainingAmount <= 0) {
+        if (realOrder.paymentStatus === 'paid' || remaining <= 0) {
           generatedText = `Olá, ${realOrder.customerName}! Tudo bem? Passando para avisar que seu pedido ${realOrder.orderNumber} (${realOrder.productSummary}) já está com pagamento totalmente quitado! Qualquer dúvida estamos à disposição. ✨`;
         } else {
           // O saldo restante oficial SEMPRE prevalece sobre valores arbitrários
-          generatedText = `Olá, ${realOrder.customerName}! Tudo bem? Seu pedido ${realOrder.orderNumber} (${realOrder.productSummary})${dateFmt} está em produção! O saldo restante oficial é de ${remainingFmt} (Total: ${totalFmt}). Quando puder, nos envie o comprovante para agendarmos a entrega com todo carinho! ✨`;
+          generatedText = `Olá, ${realOrder.customerName}! Tudo bem? Seu pedido ${realOrder.orderNumber} (${realOrder.productSummary})${dateFmt} está registrado no sistema! O saldo restante oficial é de ${remainingFmt} (Total: ${totalFmt}). Quando puder, nos envie o comprovante para agendarmos a entrega com todo carinho! ✨`;
         }
       } else if (normalizedType === 'pronto_retirada') {
-        generatedText = `Olá, ${realOrder.customerName}! Ótima notícia: seu pedido ${realOrder.orderNumber} (${realOrder.productSummary}) está prontinho e embalado com muito afeto! Ficou lindo demais! ✨`;
+        generatedText = realOrder.status === 'completed'
+          ? `Olá, ${realOrder.customerName}! Seu pedido ${realOrder.orderNumber} (${realOrder.productSummary}) consta como concluído no sistema. Vamos combinar os próximos passos? ✨`
+          : `Olá, ${realOrder.customerName}! Seu pedido ${realOrder.orderNumber} (${realOrder.productSummary}) ainda não consta como concluído. Avisaremos quando houver atualização. ✨`;
       } else if (normalizedType === 'status_producao') {
-        generatedText = `Olá, ${realOrder.customerName}! Seu pedido ${realOrder.orderNumber} (${realOrder.productSummary}) já entrou na etapa de produção e personalização! ✨`;
+        const statusLabel = { pending: 'pendente', 'in-progress': 'em produção', completed: 'concluído' }[realOrder.status] || 'com status a conferir';
+        generatedText = `Olá, ${realOrder.customerName}! Seu pedido ${realOrder.orderNumber} (${realOrder.productSummary}) consta como ${statusLabel} no sistema. ✨`;
       } else {
-        generatedText = `Olá, ${realOrder.customerName}! Confirmamos o recebimento dos detalhes do seu pedido ${realOrder.orderNumber} (${realOrder.productSummary}). Já iniciamos os preparativos! ✨`;
+        generatedText = `Olá, ${realOrder.customerName}! Confirmamos o recebimento dos detalhes do seu pedido ${realOrder.orderNumber} (${realOrder.productSummary}). Consulte-nos para combinar os próximos passos. ✨`;
       }
     } else {
       generatedText = customText || `Olá, ${recipientName}! Tudo bem? Entramos em contato para passar informações sobre seus personalizados Luisices. Estamos à disposição para qualquer dúvida! ✨`;
     }
 
     return {
+      preparationStatus: 'draft_prepared',
       recipientName: realOrder?.customerName || recipientName,
       recipientPhone: phone,
       orderNumber: realOrder?.orderNumber || orderNumber || '',
@@ -888,21 +959,24 @@ class AiToolsExecutor {
    * Ferramenta 9: Rascunho de Pedido com Contrato Compatível (IA-03 & R03)
    */
   async executeExtractOrderDraft(args = {}, scope) {
-    let phone = args.customerPhone || '';
-    if (!phone && args.customerName) {
-      phone = await this.resolveCustomerPhone(args.customerName, null, scope);
+    const identity = await this.resolveCustomerIdentity(args.customerName, args.customerPhone, scope);
+    if (identity.ambiguous) {
+      return { preparationStatus: 'identification_required', requiresIdentification: true,
+        preparationNotice: 'Nome ambíguo. Informe o telefone ou identificador do cliente antes de preparar o rascunho.' };
     }
+    const phone = identity.phone;
 
     const pName = args.productName || args.productSummary || 'Personalizado Luisices';
 
     return {
+      preparationStatus: 'draft_prepared',
       customerName: args.customerName || 'Cliente',
       customerPhone: normalizePhone(phone),
       productName: pName,
       productSummary: pName,
-      quantity: Number(args.quantity) || 1,
-      totalPrice: Number(args.totalPrice) || 0,
-      paidAmount: Number(args.paidAmount) || 0,
+      quantity: args.quantity != null && Number(args.quantity) > 0 && Number.isFinite(Number(args.quantity)) ? Number(args.quantity) : undefined,
+      totalPrice: args.totalPrice != null && args.totalPrice !== '' && Number.isFinite(Number(args.totalPrice)) ? Number(args.totalPrice) : undefined,
+      paidAmount: args.paidAmount != null && args.paidAmount !== '' && Number.isFinite(Number(args.paidAmount)) ? Number(args.paidAmount) : undefined,
       deliveryDate: args.deliveryDate || '',
       theme: args.theme || '',
       notes: args.notes || '',

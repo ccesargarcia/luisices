@@ -788,7 +788,11 @@ export interface SaleRecord {
 export type LedgerPeriod = 'today' | 'yesterday' | 'week' | 'month' | 'quarter' | 'year' | 'all' | 'custom';
 
 // Tipos para o Copiloto de IA Interno
+export type AiOperationState = 'draft_prepared' | 'form_loaded' | 'user_confirmed' | 'backend_completed' | 'failed' | 'unconfirmed';
+
 export interface AiOrderDraft {
+  preparationStatus?: 'draft_prepared';
+  paidAmount?: number;
   customerName: string;
   customerPhone?: string;
   productName: string;
@@ -801,6 +805,11 @@ export interface AiOrderDraft {
 }
 
 export interface AiWhatsAppDraft {
+  preparationStatus?: 'draft_prepared' | 'identification_required';
+  requiresIdentification?: boolean;
+  preparationNotice?: string;
+  orderNumber?: string;
+  orderDetails?: { orderId: string; orderNumber?: string } | null;
   recipientPhone?: string;
   recipientName?: string;
   messageText: string;
@@ -814,7 +823,20 @@ export interface AiPricingEstimate {
   suggestedUnitPrice: number;
   suggestedTotalPrice: number;
   profitMarginPercent?: number;
+  contractVersion?: number;
+  inputs?: Record<string, { value: number; source: 'argument' | 'configuration' | 'default'; label: string; invalidConfiguration?: boolean; configurationField?: string; argumentFields?: string[] }>;
+  assumptions?: string[];
+  requiresReview?: boolean;
   breakdown?: {
+    rawMaterials?: number;
+    materialsBase?: number;
+    wasteMarginAmount?: number;
+    totalMaterialsWithWaste?: number;
+    directLaborPerUnit?: number;
+    setupLaborPerUnit?: number;
+    specializedLabor?: number;
+    fixedCostsShare?: number;
+    fixedCostsIncludedInLabor?: boolean;
     materials?: number;
     customization?: number;
     labor?: number;

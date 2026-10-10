@@ -62,14 +62,20 @@ export class FirebaseAiAgentService {
    */
   async sendWhatsAppDirectMessage(
     phone: string,
-    text: string
+    text: string,
+    requestId: string = crypto.randomUUID()
   ): Promise<{ success: boolean; message: string }> {
     const callable = httpsCallable<
-      { phone: string; text: string },
+      { phone: string; text: string; requestId: string },
       { success: boolean; message: string }
     >(functions, 'sendWhatsAppDirectMessage');
 
-    const result = await callable({ phone, text });
+    const result = await callable({ phone, text, requestId });
+    if (result.data?.success !== true) {
+      const error = new Error('Envio não confirmado pelo backend. Confira o Atendimento antes de tentar novamente.');
+      Object.assign(error, { code: 'unconfirmed' });
+      throw error;
+    }
     return result.data;
   }
 
