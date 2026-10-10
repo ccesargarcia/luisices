@@ -78,11 +78,11 @@ firebase firestore:get users/{UID} --project luisices-dev
      }
      ```
 
-#### Opção B: Via script (se `make-admin.mjs` suportar)
-```bash
-# Adaptar script existente
-node scripts/make-admin.mjs caio.garcia@gmail.com
-```
+#### Opção B: Administração de contas
+
+O script antigo de autopromoção foi removido. Use o fluxo autorizado de gestão
+de usuários da aplicação. Não altere regras de acesso para permitir que uma
+conta promova a si mesma pelo cliente.
 
 ---
 
