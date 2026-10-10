@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import type { CustomerGalleryPage } from '../../../services/firebaseGalleryService';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Customer, Order, GalleryItem } from '../../types';
 import { formatDate } from '../../utils/date';
 import { formatCurrency } from '../../utils/currency';
@@ -46,6 +47,13 @@ export function CustomerHistoryDialog({
   const { orders: allContextOrders, loading: loadingOrders } = useOrders();
   const [gallery, setGallery] = useState<GalleryItem[]>([]);
   const [loadingGallery, setLoadingGallery] = useState(false);
+  const [galleryCursor, setGalleryCursor] = useState<CustomerGalleryPage['cursor']>(null);
+  const [hasMoreGallery, setHasMoreGallery] = useState(false);
+  const [loadingMoreGallery, setLoadingMoreGallery] = useState(false);
+  const [galleryError, setGalleryError] = useState<string | null>(null);
+  const [galleryReload, setGalleryReload] = useState(0);
+  const galleryGeneration = useRef(0);
+  const galleryPageBusy = useRef(false);
   const [lightboxItem, setLightboxItem] = useState<GalleryItem | null>(null);
   const [uploadOpen, setUploadOpen] = useState(false);
 
@@ -62,6 +70,13 @@ export function CustomerHistoryDialog({
   }, [open, customer, orders, historicalOrders, metricsLoading, tiersConfig]);
 
   useEffect(() => {
+    galleryGeneration.current += 1;
+    galleryPageBusy.current = false;
+    setGallery([]);
+    setGalleryCursor(null);
+    setHasMoreGallery(false);
+    setLoadingMoreGallery(false);
+    setGalleryError(null);
     if (!open || !customer || !userId) {
       setGallery([]);
       return;
@@ -74,11 +89,14 @@ export function CustomerHistoryDialog({
 
     async function loadGallery() {
       try {
-        const customerItems = await firebaseGalleryService.getItemsByCustomer(currentUserId, currentCustomerId);
+        const page = await firebaseGalleryService.getCustomerPage(currentUserId, currentCustomerId);
         if (!isCancelled) {
-          setGallery(customerItems);
+          setGallery(page.items);
+          setGalleryCursor(page.cursor);
+          setHasMoreGallery(page.hasMore);
         }
       } catch (error) {
+        if (!isCancelled) setGalleryError('Não foi possível carregar a galeria.');
         console.error('Erro ao carregar histórico da galeria:', error);
       } finally {
         if (!isCancelled) {
@@ -92,7 +110,7 @@ export function CustomerHistoryDialog({
     return () => {
       isCancelled = true;
     };
-  }, [open, customer, userId]);
+  }, [open, customer?.id, userId, galleryReload]);
 
   const handleGalleryDelete = async (item: GalleryItem) => {
     try {
@@ -102,6 +120,28 @@ export function CustomerHistoryDialog({
       toast.success('Arte removida');
     } catch {
       toast.error('Erro ao remover arte');
+    }
+  };
+
+  const loadMoreGallery = async () => {
+    if (!open || !customer || !userId || !hasMoreGallery || galleryPageBusy.current) return;
+    const generation = galleryGeneration.current;
+    galleryPageBusy.current = true;
+    setLoadingMoreGallery(true);
+    setGalleryError(null);
+    try {
+      const page = await firebaseGalleryService.getCustomerPage(userId, customer.id, 30, galleryCursor);
+      if (generation !== galleryGeneration.current) return;
+      setGallery((previous) => [...new Map([...previous, ...page.items].map((item) => [item.id, item])).values()]);
+      setGalleryCursor(page.cursor);
+      setHasMoreGallery(page.hasMore);
+    } catch {
+      if (generation === galleryGeneration.current) setGalleryError('Falha ao carregar mais artes. Tente novamente.');
+    } finally {
+      if (generation === galleryGeneration.current) {
+        galleryPageBusy.current = false;
+        setLoadingMoreGallery(false);
+      }
     }
   };
 
@@ -240,7 +280,7 @@ export function CustomerHistoryDialog({
               ) : gallery.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-12 text-muted-foreground gap-3">
                   <Images className="size-10 opacity-30" />
-                  <p className="text-sm">Nenhuma arte ainda</p>
+                  <p className="text-sm">{hasMoreGallery ? "Nenhuma arte ativa nesta página. Carregue mais para continuar." : galleryError ? "Galeria indisponível" : "Nenhuma arte ainda"}</p>
                   <Button
                     variant="outline"
                     size="sm"
@@ -272,6 +312,17 @@ export function CustomerHistoryDialog({
                     </button>
                   ))}
                 </div>
+              )}
+              {galleryError && <p role="alert" className="text-sm text-destructive mt-3">{galleryError}</p>}
+              {galleryError && !hasMoreGallery && (
+                <Button variant="outline" className="mt-3" onClick={() => setGalleryReload((value) => value + 1)}>
+                  Tentar novamente
+                </Button>
+              )}
+              {hasMoreGallery && (
+                <Button variant="outline" className="mt-4 w-full" disabled={loadingMoreGallery} onClick={loadMoreGallery}>
+                  {loadingMoreGallery ? 'Carregando…' : 'Carregar mais artes'}
+                </Button>
               )}
             </TabsContent>
 

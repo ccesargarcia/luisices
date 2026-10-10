@@ -15,6 +15,10 @@ import {
   where,
   orderBy,
   Timestamp,
+  limit,
+  startAfter,
+  type QueryDocumentSnapshot,
+  type DocumentData,
 } from 'firebase/firestore';
 import { ref, deleteObject } from 'firebase/storage';
 import { httpsCallable } from 'firebase/functions';
@@ -24,6 +28,12 @@ import { firebaseStorageService } from './firebaseStorageService';
 import { resolveGalleryImageUrl } from './firebaseGalleryImageService';
 
 const storageService = firebaseStorageService;
+
+export interface CustomerGalleryPage {
+  items: GalleryItem[];
+  cursor: QueryDocumentSnapshot<DocumentData> | null;
+  hasMore: boolean;
+}
 
 export class FirebaseGalleryService {
   private collectionName = 'gallery';
@@ -83,30 +93,42 @@ export class FirebaseGalleryService {
    * Evita leitura completa da coleção (otimização de custo e performance).
    */
   async getItemsByCustomer(userId: string, customerId: string, limitCount: number = 50): Promise<GalleryItem[]> {
-    if (!userId || !customerId) return [];
+    return (await this.getCustomerPage(userId, customerId, limitCount)).items;
+  }
+
+  async getCustomerPage(
+    userId: string,
+    customerId: string,
+    pageSize: number = 30,
+    cursor: QueryDocumentSnapshot<DocumentData> | null = null,
+  ): Promise<CustomerGalleryPage> {
+    if (!userId || !customerId) return { items: [], cursor: null, hasMore: false };
+    if (!Number.isInteger(pageSize) || pageSize < 1 || pageSize > 100) {
+      throw new Error('O tamanho da página deve estar entre 1 e 100.');
+    }
     const q = query(
       collection(db, this.collectionName),
       where('userId', '==', userId),
-      where('customerId', '==', customerId)
+      where('customerId', '==', customerId),
+      orderBy('createdAt', 'desc'),
+      ...(cursor ? [startAfter(cursor)] : []),
+      limit(pageSize),
     );
     const snapshot = await getDocs(q);
     const items = await Promise.all(
-      snapshot.docs
-        .filter(d => !d.data().deletedAt)
-        .map(async d => {
-          const item = this.fromFirestore(d.id, d.data());
-          try {
-            item.imageUrl = await resolveGalleryImageUrl(item.imageUrl);
-          } catch {
-            item.imageUrl = '';
-          }
-          return item;
-        })
+      snapshot.docs.filter((d) => !d.data().deletedAt).map(async (d) => {
+        const item = this.fromFirestore(d.id, d.data());
+        try { item.imageUrl = await resolveGalleryImageUrl(item.imageUrl); }
+        catch { item.imageUrl = ''; }
+        return item;
+      }),
     );
-
-    return items
-      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-      .slice(0, limitCount);
+    return {
+      items,
+      // Avança também sobre documentos excluídos, evitando páginas repetidas.
+      cursor: snapshot.docs.at(-1) || null,
+      hasMore: snapshot.docs.length === pageSize,
+    };
   }
 
   // ─── Create ───────────────────────────────────────────────────────────────────
