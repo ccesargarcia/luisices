@@ -178,11 +178,13 @@ jobs:
       - name: Deploy Firebase Functions & Rules (Production)
         if: steps.env.outputs.target == 'prod'
         env:
-          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_PROD || secrets.FIREBASE_SERVICE_ACCOUNT }}
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_PROD || secrets.PROD_FIREBASE_SERVICE_ACCOUNT || secrets.FIREBASE_SERVICE_ACCOUNT }}
           RESEND_API_KEY: ${{ secrets.PROD_RESEND_API_KEY || secrets.RESEND_API_KEY }}
           RESEND_WEBHOOK_SECRET: ${{ secrets.PROD_RESEND_WEBHOOK_SECRET || secrets.RESEND_WEBHOOK_SECRET }}
           EVOLUTION_API_KEY: ${{ secrets.PROD_EVOLUTION_API_KEY || secrets.EVOLUTION_API_KEY }}
-          GEMINI_API_KEY: ${{ secrets.PROD_GEMINI_API_KEY || secrets.GEMINI_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.PROD_GEMINI || secrets.prod_gemini || secrets.PROD_GEMINI_API_KEY || secrets.GEMINI_API_KEY }}
+          ORIGIN_SECRET: ${{ secrets.PROD_ORIGIN_SECRET || secrets.ORIGIN_SECRET }}
+          ALEXA_HMAC: ${{ secrets.PROD_ALEXA_IDENTITY_HMAC_KEY || secrets.ALEXA_IDENTITY_HMAC_KEY }}
         run: |
           if [ -z "$FIREBASE_SERVICE_ACCOUNT" ]; then
             echo "❌ ERRO: Secret FIREBASE_SERVICE_ACCOUNT_PROD não encontrado no GitHub."
@@ -192,43 +194,96 @@ jobs:
           export GOOGLE_APPLICATION_CREDENTIALS="$HOME/firebase-service-account.json"
           firebase use papelaria-dashboard --project papelaria-dashboard --non-interactive
 
-          # Atualiza segredos no Secret Manager apenas se explicitamente solicitado
+          node <<'NODE'
+          const checks = [
+            { name: 'FIREBASE_SERVICE_ACCOUNT_PROD', val: process.env.FIREBASE_SERVICE_ACCOUNT, required: true },
+            { name: 'PROD_RESEND_API_KEY / RESEND_API_KEY', val: process.env.RESEND_API_KEY, required: true },
+            { name: 'PROD_RESEND_WEBHOOK_SECRET / RESEND_WEBHOOK_SECRET', val: process.env.RESEND_WEBHOOK_SECRET, required: false },
+            { name: 'PROD_EVOLUTION_API_KEY / EVOLUTION_API_KEY', val: process.env.EVOLUTION_API_KEY, required: true },
+            { name: 'PROD_GEMINI / PROD_GEMINI_API_KEY / GEMINI_API_KEY', val: process.env.GEMINI_API_KEY, required: true },
+            { name: 'PROD_ORIGIN_SECRET / ORIGIN_SECRET', val: process.env.ORIGIN_SECRET, required: false },
+            { name: 'PROD_ALEXA_IDENTITY_HMAC_KEY / ALEXA_IDENTITY_HMAC_KEY', val: process.env.ALEXA_HMAC, required: false }
+          ];
+
+          console.log('\n=============================================================');
+          console.log('🔍 RELATÓRIO DE AUDITORIA DE SECRETS DAS FUNCTIONS (PRODUÇÃO)');
+          console.log('=============================================================');
+          for (const item of checks) {
+            const hasVal = typeof item.val === 'string' && item.val.trim().length > 0;
+            if (hasVal) {
+              const preview = item.val.length > 8
+                ? `${item.val.substring(0, 14)}...${item.val.substring(item.val.length - 4)} (${item.val.length} chars)`
+                : `(${item.val.length} chars)`;
+              console.log(`✅ ${item.name.padEnd(52)}: PRESENTE ${preview}`);
+            } else {
+              if (item.required) {
+                console.log(`❌ ${item.name.padEnd(52)}: AUSENTE (OBRIGATÓRIO)`);
+              } else {
+                console.log(`⚪ ${item.name.padEnd(52)}: OPCIONAL (não configurado)`);
+              }
+            }
+          }
+          console.log('=============================================================\n');
+          NODE
+
+          # Atualiza segredos no Secret Manager se explicitamente solicitado
           if [ "${{ inputs.update_secrets }}" = "true" ]; then
             echo "🔐 Atualizando secrets no Google Secret Manager (Prod)..."
-            echo "$RESEND_API_KEY" > "$HOME/resend_api_key.txt"
-            echo "$EVOLUTION_API_KEY" > "$HOME/evolution_api_key.txt"
-            echo "$GEMINI_API_KEY" > "$HOME/gemini_api_key.txt"
-            firebase functions:secrets:set RESEND_API_KEY --project papelaria-dashboard --data-file "$HOME/resend_api_key.txt" --non-interactive --force || true
-            firebase functions:secrets:set EVOLUTION_API_KEY --project papelaria-dashboard --data-file "$HOME/evolution_api_key.txt" --non-interactive --force || true
+            if [ -n "$RESEND_API_KEY" ]; then
+              echo "$RESEND_API_KEY" > "$HOME/resend_api_key.txt"
+              firebase functions:secrets:set RESEND_API_KEY --project papelaria-dashboard --data-file "$HOME/resend_api_key.txt" --non-interactive --force || true
+            fi
+            if [ -n "$EVOLUTION_API_KEY" ]; then
+              echo "$EVOLUTION_API_KEY" > "$HOME/evolution_api_key.txt"
+              firebase functions:secrets:set EVOLUTION_API_KEY --project papelaria-dashboard --data-file "$HOME/evolution_api_key.txt" --non-interactive --force || true
+            fi
             if [ -n "$RESEND_WEBHOOK_SECRET" ]; then
               echo "$RESEND_WEBHOOK_SECRET" > "$HOME/resend_webhook.txt"
               firebase functions:secrets:set RESEND_WEBHOOK_SECRET --project papelaria-dashboard --data-file "$HOME/resend_webhook.txt" --non-interactive --force || true
             fi
             if [ -n "$GEMINI_API_KEY" ]; then
+              echo "$GEMINI_API_KEY" > "$HOME/gemini_api_key.txt"
               firebase functions:secrets:set GEMINI_API_KEY --project papelaria-dashboard --data-file "$HOME/gemini_api_key.txt" --non-interactive --force || true
             fi
-            if [ -n "${{ secrets.PROD_ALEXA_IDENTITY_HMAC_KEY || secrets.ALEXA_IDENTITY_HMAC_KEY }}" ]; then
-              echo "${{ secrets.PROD_ALEXA_IDENTITY_HMAC_KEY || secrets.ALEXA_IDENTITY_HMAC_KEY }}" > "$HOME/alexa_hmac.txt"
+            if [ -n "$ALEXA_HMAC" ]; then
+              echo "$ALEXA_HMAC" > "$HOME/alexa_hmac.txt"
               firebase functions:secrets:set ALEXA_IDENTITY_HMAC_KEY --project papelaria-dashboard --data-file "$HOME/alexa_hmac.txt" --non-interactive --force || true
             fi
-            if [ -n "${{ secrets.PROD_ORIGIN_SECRET || secrets.ORIGIN_SECRET }}" ]; then
-              echo "${{ secrets.PROD_ORIGIN_SECRET || secrets.ORIGIN_SECRET }}" > "$HOME/origin_secret_prod.txt"
+            if [ -n "$ORIGIN_SECRET" ]; then
+              echo "$ORIGIN_SECRET" > "$HOME/origin_secret_prod.txt"
               firebase functions:secrets:set ORIGIN_SECRET --project papelaria-dashboard --data-file "$HOME/origin_secret_prod.txt" --non-interactive --force || true
             fi
           fi
 
-          # Garante que ALEXA_IDENTITY_HMAC_KEY existe no Secret Manager de Prod antes do deploy se secret disponível
-          if [ -n "${{ secrets.PROD_ALEXA_IDENTITY_HMAC_KEY || secrets.ALEXA_IDENTITY_HMAC_KEY }}" ] && ! firebase functions:secrets:get ALEXA_IDENTITY_HMAC_KEY --project papelaria-dashboard --non-interactive > /dev/null 2>&1; then
+          # Garante que segredos críticos existam no Secret Manager de Prod antes do deploy se secret disponível no GitHub
+          if [ -n "$ALEXA_HMAC" ] && ! firebase functions:secrets:get ALEXA_IDENTITY_HMAC_KEY --project papelaria-dashboard --non-interactive > /dev/null 2>&1; then
             echo "🔐 Inicializando ALEXA_IDENTITY_HMAC_KEY no Secret Manager (Prod)..."
-            echo "${{ secrets.PROD_ALEXA_IDENTITY_HMAC_KEY || secrets.ALEXA_IDENTITY_HMAC_KEY }}" > "$HOME/alexa_hmac.txt"
+            echo "$ALEXA_HMAC" > "$HOME/alexa_hmac.txt"
             firebase functions:secrets:set ALEXA_IDENTITY_HMAC_KEY --project papelaria-dashboard --data-file "$HOME/alexa_hmac.txt" --non-interactive --force || true
           fi
 
-          # Garante que ORIGIN_SECRET existe no Secret Manager de Prod antes do deploy se secret disponível
-          if [ -n "${{ secrets.PROD_ORIGIN_SECRET || secrets.ORIGIN_SECRET }}" ] && ! firebase functions:secrets:get ORIGIN_SECRET --project papelaria-dashboard --non-interactive > /dev/null 2>&1; then
+          if [ -n "$ORIGIN_SECRET" ] && ! firebase functions:secrets:get ORIGIN_SECRET --project papelaria-dashboard --non-interactive > /dev/null 2>&1; then
             echo "🔐 Inicializando ORIGIN_SECRET no Secret Manager (Prod)..."
-            echo "${{ secrets.PROD_ORIGIN_SECRET || secrets.ORIGIN_SECRET }}" > "$HOME/origin_secret_prod.txt"
+            echo "$ORIGIN_SECRET" > "$HOME/origin_secret_prod.txt"
             firebase functions:secrets:set ORIGIN_SECRET --project papelaria-dashboard --data-file "$HOME/origin_secret_prod.txt" --non-interactive --force || true
+          fi
+
+          if [ -n "$GEMINI_API_KEY" ] && ! firebase functions:secrets:get GEMINI_API_KEY --project papelaria-dashboard --non-interactive > /dev/null 2>&1; then
+            echo "🔐 Inicializando GEMINI_API_KEY no Secret Manager (Prod)..."
+            echo "$GEMINI_API_KEY" > "$HOME/gemini_api_key.txt"
+            firebase functions:secrets:set GEMINI_API_KEY --project papelaria-dashboard --data-file "$HOME/gemini_api_key.txt" --non-interactive --force || true
+          fi
+
+          if [ -n "$RESEND_API_KEY" ] && ! firebase functions:secrets:get RESEND_API_KEY --project papelaria-dashboard --non-interactive > /dev/null 2>&1; then
+            echo "🔐 Inicializando RESEND_API_KEY no Secret Manager (Prod)..."
+            echo "$RESEND_API_KEY" > "$HOME/resend_api_key.txt"
+            firebase functions:secrets:set RESEND_API_KEY --project papelaria-dashboard --data-file "$HOME/resend_api_key.txt" --non-interactive --force || true
+          fi
+
+          if [ -n "$EVOLUTION_API_KEY" ] && ! firebase functions:secrets:get EVOLUTION_API_KEY --project papelaria-dashboard --non-interactive > /dev/null 2>&1; then
+            echo "🔐 Inicializando EVOLUTION_API_KEY no Secret Manager (Prod)..."
+            echo "$EVOLUTION_API_KEY" > "$HOME/evolution_api_key.txt"
+            firebase functions:secrets:set EVOLUTION_API_KEY --project papelaria-dashboard --data-file "$HOME/evolution_api_key.txt" --non-interactive --force || true
           fi
 
           # Determina se deve publicar regras e índices
