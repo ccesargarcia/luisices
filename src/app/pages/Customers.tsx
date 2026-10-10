@@ -13,7 +13,9 @@ import {
   Trash2,
   Loader2,
   Download,
+  X,
 } from 'lucide-react';
+import { cn } from '../components/ui/utils';
 import { firebaseCustomerService } from '../../services/firebaseCustomerService';
 import { useAuth } from '../../contexts/AuthContext';
 import { useOrders } from '../../contexts/OrdersContext';
@@ -226,6 +228,93 @@ export function Customers() {
     return { total, totalRevenue, totalOrders, averagePerCustomer };
   }, [customers, allTimeStats]);
 
+  // Chips Rápidos de Filtragem Contextual para Operação Ágil (Mobile & Desktop)
+  const quickChips = useMemo(() => {
+    const isAll = orderFilter === 'all' && profileFilter === 'all' && birthdayFilter === 'all';
+    const birthdayTodayCount = customers.filter((c) => getDaysUntilBirthday(c.birthday) === 0).length;
+    const birthdayMonthCount = customers.filter((c) => isBirthdayThisMonth(c.birthday)).length;
+    const openOrdersCount = customers.filter((c) => (openOrdersMap[c.id] || 0) > 0).length;
+    const vipCount = customers.filter((c) => c.status === 'vip').length;
+
+    return [
+      {
+        id: 'all',
+        label: 'Todos',
+        count: customers.length,
+        isActive: isAll,
+        onClick: () => {
+          setOrderFilter('all');
+          setProfileFilter('all');
+          setBirthdayFilter('all');
+        },
+      },
+      {
+        id: 'open',
+        label: '📦 Pedidos Ativos',
+        count: openOrdersCount,
+        isActive: orderFilter === 'open',
+        onClick: () => {
+          setOrderFilter(orderFilter === 'open' ? 'all' : 'open');
+          setProfileFilter('all');
+          setBirthdayFilter('all');
+        },
+      },
+      {
+        id: 'month',
+        label: '📅 Aniversariantes do Mês',
+        count: birthdayMonthCount,
+        isActive: birthdayFilter === 'this_month',
+        onClick: () => {
+          setBirthdayFilter(birthdayFilter === 'this_month' ? 'all' : 'this_month');
+          setOrderFilter('all');
+          setProfileFilter('all');
+        },
+      },
+      {
+        id: 'today',
+        label: '🎂 Aniversário Hoje',
+        count: birthdayTodayCount,
+        isActive: birthdayFilter === 'today',
+        onClick: () => {
+          setBirthdayFilter(birthdayFilter === 'today' ? 'all' : 'today');
+          setOrderFilter('all');
+          setProfileFilter('all');
+        },
+      },
+      {
+        id: 'vip',
+        label: '👑 VIPs',
+        count: vipCount,
+        isActive: profileFilter === 'vip',
+        onClick: () => {
+          setProfileFilter(profileFilter === 'vip' ? 'all' : 'vip');
+          setOrderFilter('all');
+          setBirthdayFilter('all');
+        },
+      },
+      {
+        id: 'recurring',
+        label: '🔁 Recorrentes',
+        isActive: profileFilter === 'recurring',
+        onClick: () => {
+          setProfileFilter(profileFilter === 'recurring' ? 'all' : 'recurring');
+          setOrderFilter('all');
+          setBirthdayFilter('all');
+        },
+      },
+      {
+        id: 'partner',
+        label: '🤝 Parceiros',
+        isActive: profileFilter === 'partner',
+        onClick: () => {
+          setProfileFilter(profileFilter === 'partner' ? 'all' : 'partner');
+          setOrderFilter('all');
+          setBirthdayFilter('all');
+        },
+      },
+    ];
+  }, [customers, orderFilter, profileFilter, birthdayFilter, openOrdersMap]);
+
   // Ações de seleção e modais
   const toggleCustomerSelection = (customerId: string, selected: boolean) => {
     setSelectedCustomerIds((prev) => {
@@ -379,61 +468,113 @@ export function Customers() {
         averagePerCustomer={stats.averagePerCustomer}
       />
 
-      {/* Search and Filters */}
-      <div className="glass-chip flex flex-col items-center gap-3 rounded-lg p-3 sm:flex-row">
-        <div className="relative flex-1 w-full">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
-          <Input
-            data-testid="search-customers-input"
-            placeholder="Buscar por nome, telefone ou email..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-10"
-          />
+      {/* Search, Carrossel de Chips e Filtros Rápidos (Liquid Glassmorphism) */}
+      <div className="p-3.5 sm:p-4 rounded-2xl luisices-glass border border-white/60 dark:border-white/10 space-y-3">
+        {/* Linha de Busca e Seletores Granulares */}
+        <div className="flex flex-col sm:flex-row items-center gap-2.5">
+          <div className="relative flex-1 w-full">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+            <Input
+              data-testid="search-customers-input"
+              placeholder="Buscar por nome, telefone ou email..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-10 h-9 rounded-xl bg-background/80"
+            />
+          </div>
+
+          <Select
+            value={orderFilter}
+            onValueChange={(v) => setOrderFilter(v as 'all' | 'open' | 'no_orders')}
+          >
+            <SelectTrigger className="w-full sm:w-52 h-9 text-xs bg-background/80 rounded-xl">
+              <SelectValue placeholder="Filtrar por pedidos" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todos os clientes</SelectItem>
+              <SelectItem value="open">Com pedidos em aberto</SelectItem>
+              <SelectItem value="no_orders">Sem pedidos relacionados</SelectItem>
+            </SelectContent>
+          </Select>
+
+          <Select
+            value={profileFilter}
+            onValueChange={(value) => setProfileFilter(value as Customer['status'] | 'all')}
+          >
+            <SelectTrigger className="w-full sm:w-52 h-9 text-xs bg-background/80 rounded-xl">
+              <SelectValue placeholder="Classificação" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todas as classificações</SelectItem>
+              <SelectItem value="active">Cliente padrão</SelectItem>
+              <SelectItem value="vip">VIP</SelectItem>
+              <SelectItem value="recurring">Cliente recorrente</SelectItem>
+              <SelectItem value="defaulter">Inadimplente</SelectItem>
+              <SelectItem value="partner">Parceiro / Permuta</SelectItem>
+            </SelectContent>
+          </Select>
+
+          <Select
+            value={birthdayFilter}
+            onValueChange={(value) => setBirthdayFilter(value as 'all' | 'today' | 'upcoming_7' | 'this_month')}
+          >
+            <SelectTrigger className="w-full sm:w-52 h-9 text-xs bg-background/80 rounded-xl">
+              <SelectValue placeholder="Aniversários" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">🎂 Todos os aniversários</SelectItem>
+              <SelectItem value="today">🎂 Aniversariantes de Hoje</SelectItem>
+              <SelectItem value="upcoming_7">🎉 Próximos 7 dias</SelectItem>
+              <SelectItem value="this_month">📅 Aniversariantes do Mês</SelectItem>
+            </SelectContent>
+          </Select>
+
+          {(searchQuery || orderFilter !== 'all' || profileFilter !== 'all' || birthdayFilter !== 'all') && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setSearchQuery('');
+                setOrderFilter('all');
+                setProfileFilter('all');
+                setBirthdayFilter('all');
+              }}
+              className="h-9 px-2.5 text-xs text-muted-foreground hover:text-foreground cursor-pointer rounded-xl shrink-0"
+              title="Limpar todos os filtros"
+            >
+              <X className="size-3.5 mr-1" />
+              <span>Limpar</span>
+            </Button>
+          )}
         </div>
-        <Select
-          value={orderFilter}
-          onValueChange={(v) => setOrderFilter(v as 'all' | 'open' | 'no_orders')}
-        >
-          <SelectTrigger className="w-full sm:w-60">
-            <SelectValue placeholder="Filtrar por pedidos" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Todos os clientes</SelectItem>
-            <SelectItem value="open">Com pedidos em aberto</SelectItem>
-            <SelectItem value="no_orders">Sem pedidos relacionados</SelectItem>
-          </SelectContent>
-        </Select>
-        <Select
-          value={profileFilter}
-          onValueChange={(value) => setProfileFilter(value as Customer['status'] | 'all')}
-        >
-          <SelectTrigger className="w-full sm:w-56">
-            <SelectValue placeholder="Filtrar por classificação" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Todas as classificações</SelectItem>
-            <SelectItem value="active">Cliente padrão</SelectItem>
-            <SelectItem value="vip">VIP</SelectItem>
-            <SelectItem value="recurring">Cliente recorrente</SelectItem>
-            <SelectItem value="defaulter">Inadimplente</SelectItem>
-            <SelectItem value="partner">Parceiro / Permuta</SelectItem>
-          </SelectContent>
-        </Select>
-        <Select
-          value={birthdayFilter}
-          onValueChange={(value) => setBirthdayFilter(value as 'all' | 'today' | 'upcoming_7' | 'this_month')}
-        >
-          <SelectTrigger className="w-full sm:w-56">
-            <SelectValue placeholder="Aniversariantes" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">🎂 Todos os aniversários</SelectItem>
-            <SelectItem value="today">🎂 Aniversariantes de Hoje</SelectItem>
-            <SelectItem value="upcoming_7">🎉 Próximos 7 dias</SelectItem>
-            <SelectItem value="this_month">📅 Aniversariantes do Mês</SelectItem>
-          </SelectContent>
-        </Select>
+
+        {/* ─── Carrossel Horizontal de Chips Rápidos de Negócio ───────────── */}
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 pt-0.5 -mx-1 px-1 scrollbar-none [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          {quickChips.map((chip) => (
+            <button
+              key={chip.id}
+              onClick={chip.onClick}
+              className={cn(
+                'shrink-0 text-xs px-3 py-1.5 rounded-xl font-medium transition-all duration-200 cursor-pointer border flex items-center gap-1.5 select-none',
+                chip.isActive
+                  ? 'bg-primary text-primary-foreground border-primary shadow-xs'
+                  : 'bg-background/60 hover:bg-background text-muted-foreground border-border/60 hover:text-foreground'
+              )}
+            >
+              <span>{chip.label}</span>
+              {chip.count !== undefined && (
+                <span
+                  className={cn(
+                    'text-[10px] px-1.5 py-0.2 rounded-full font-bold',
+                    chip.isActive ? 'bg-primary-foreground/20 text-primary-foreground' : 'bg-muted text-muted-foreground'
+                  )}
+                >
+                  {chip.count}
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Bulk Actions Toolbar */}
