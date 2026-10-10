@@ -1,210 +1,105 @@
-# 📚 Documentação de Dependências e Arquitetura do Projeto
+# Arquitetura e dependências
 
-Este documento detalha **todas as dependências**, serviços externos, arquitetura de infraestrutura, coleções do Firestore e a integração da **Cloudflare CDN** com o **Firebase Storage**.
+Revisão: **10/10/2026**, código `develop` / `b2b6ef9`. Este mapa descreve relações verificáveis no repositório; não substitui inventário de serviços configurados na nuvem.
 
----
+## Entrypoints e execução
 
-## 🏗️ 1. Visão Geral da Arquitetura
+- Frontend: [src/main.tsx](../src/main.tsx) → [src/app/App.tsx](../src/app/App.tsx) → [rotas](../src/app/routes.tsx).
+- Backend: [functions/index.js](../functions/index.js), que exporta os módulos de domínio.
+- Build: [vite.config.ts](../vite.config.ts), com React/TypeScript e saída em `dist`.
+- Runtime de Functions: **Node.js 22**, em [firebase.json](../firebase.json) e [functions/package.json](../functions/package.json).
+- O protótipo Express foi removido. Não existe backend Studio separado no fluxo publicado por esses workflows.
 
 ```mermaid
 flowchart TD
-    subgraph Frontend ["🖥️ Frontend (SPA / PWA)"]
-        UI["React 18 + Vite + TypeScript"]
-        Tailwind["Tailwind CSS v4 + Radix UI"]
-        CDNUtil["cdnUtils.ts (toCdnUrl)"]
-        LazyRetry["lazyWithRetry (Resiliência Quádrupla)"]
-        Shield["Firebase Shield (Auto-Cura IndexedDB)"]
-    end
-
-    subgraph CDN ["☁️ Cloudflare Edge (CDN)"]
-        CFWorker["Cloudflare Worker Proxy"]
-        CFDomainDev["cdn-dev.luisices.com.br"]
-        CFDomainProd["cdn.luisices.com.br"]
-        CFCache["Edge Cache (1 ano Prod / 5m Dev)"]
-    end
-
-    subgraph Firebase ["🔥 Firebase Google Cloud"]
-        FAuth["Firebase Auth"]
-        Firestore["Cloud Firestore (DB)"]
-        FStorageDev["Bucket: luisices-dev.firebasestorage.app"]
-        FStorageProd["Bucket: papelaria-dashboard.firebasestorage.app"]
-        FFunctions["Cloud Functions v2 (Node 20)"]
-    end
-
-    subgraph ThirdParty ["🌐 Serviços Externos"]
-        Sentry["Sentry (Monitoramento de Erros)"]
-        Resend["Resend (Disparo e Webhooks de E-mails)"]
-        ViaCEP["ViaCEP (Consulta de Endereço)"]
-        WhatsApp["Evolution API (Mensagens WhatsApp)"]
-        Gemini["Google Gemini API (IA & Visão Computacional)"]
-    end
-
-    UI --> FAuth
-    UI --> Firestore
-    UI --> CDNUtil
-    CDNUtil --> CFDomainDev
-    CDNUtil --> CFDomainProd
-    CFDomainDev --> CFWorker
-    CFDomainProd --> CFWorker
-    CFWorker --> CFCache
-    CFCache --> FStorageDev
-    CFCache --> FStorageProd
-    UI --> Sentry
-    UI --> ViaCEP
-    FFunctions --> WhatsApp
-    FFunctions --> Resend
-    FFunctions --> Gemini
-    FFunctions --> Firestore
+  UI["Aplicação React"] --> SDK["Firebase SDK"]
+  SDK --> DATA["Auth, Firestore, RTDB e Storage"]
+  SDK --> FN["Cloud Functions por domínio"]
+  FN --> DATA
+  FN --> AI["Gemini"]
+  FN --> MAIL["Resend"]
+  FN --> WA["Evolution API"]
+  ALEXA["Alexa Skill"] --> FN
 ```
 
----
+O navegador também utiliza serviços de observabilidade, consulta de CEP e URLs de mídia. O CDN de mídia é uma integração externa; não inferir configuração de cache, permissões do bucket ou disponibilidade apenas pelo domínio.
 
-## 📦 2. Catálogo Completo de Dependências
+## Dependências por responsabilidade
 
-### 🖥️ Frontend (Root `package.json`)
+| Área | Pacotes/serviços | Uso |
+|---|---|---|
+| Aplicação | React, React DOM, TypeScript, Vite, React Router | Componentes, tipagem, build e navegação |
+| Interface | Tailwind, Radix, Lucide, Sonner, Motion | Estilos, componentes e feedback |
+| Formulários | React Hook Form, Zod, resolvers | Entrada e validação |
+| Dados | Firebase SDK | Auth, Firestore, RTDB, Storage, Analytics e Performance |
+| Backend | firebase-admin, firebase-functions | Operações administrativas, callables e eventos |
+| E-mail | Resend | Envio e webhook de recebimento |
+| WhatsApp | Evolution API via HTTP | Envio, histórico e webhook |
+| IA | Gemini via HTTP | Chat com ferramentas e análise de imagens |
+| Voz | ASK SDK e verificação de requisições | Integração Alexa |
+| Exportação | xlsx, jspdf, jspdf-autotable | Excel e PDF sob demanda |
+| Segurança de conteúdo | DOMPurify | Sanitização de conteúdo exibido |
+| Observabilidade | Sentry, Firebase Analytics/Performance | Erros e métricas do frontend |
+| Testes | Vitest, Playwright, rules-unit-testing, Emulator Suite | Unitários, E2E e regras |
+| Imagens | sharp | Otimização local de recursos |
 
-#### Core & Framework
-| Dependência | Versão | Finalidade |
-| :--- | :--- | :--- |
-| `react` | `18.3.1` | Biblioteca principal de interface do usuário |
-| `react-dom` | `18.3.1` | Renderização do React para a Web |
-| `react-router` | `^7.18.2` | Roteamento SPA e gerenciamento de rotas |
-| `typescript` | `^5.7.3` | Tipagem estática e segurança de código |
-| `vite` | `^6.4.3` | Build tool e servidor de desenvolvimento ultra-rápido |
+Versões declaradas: [package.json](../package.json) e [functions/package.json](../functions/package.json).
+Versões resolvidas: [package-lock.json](../package-lock.json) e [functions/package-lock.json](../functions/package-lock.json).
+Um pacote listado não comprova que todos os seus recursos estejam habilitados. Por exemplo, dependências PWA não significam que haja um service worker ativo.
 
-#### Interface & Design System (Radix UI + Tailwind)
-| Dependência | Versão | Finalidade |
-| :--- | :--- | :--- |
-| `tailwindcss` | `4.1.12` | Framework CSS utilitário (versão moderna v4) |
-| `@tailwindcss/vite` | `4.1.12` | Plugin oficial do Tailwind v4 para o Vite |
-| `@radix-ui/react-*` | `~1.1 / ~1.2` | Primitivos de componentes acessíveis (Dialog, Dropdown, Tabs, Tooltip, Select, Switch, Popover, Slider, etc.) |
-| `lucide-react` | `0.487.0` | Biblioteca de ícones SVG consistentes |
-| `class-variance-authority` | `0.7.1` | Criação de variantes de componentes (CVA) |
-| `clsx` | `2.1.1` | Concatenação condicional de classes CSS |
-| `tailwind-merge` | `3.2.0` | Resolução inteligente de conflitos de classes Tailwind |
-| `tw-animate-css` | `1.3.8` | Animações CSS prontas para Tailwind |
-| `next-themes` | `0.4.6` | Gerenciamento de tema Claro / Escuro / Sistema |
-| `sonner` | `2.0.3` | Sistema de notificações Toast elegante |
-| `vaul` | `1.1.2` | Drawer modal estilo mobile interativo |
-| `cmdk` | `1.1.1` | Menu de comando rápido (Command Palette) |
-| `input-otp` | `1.4.2` | Componente de input para códigos OTP / PIN |
+## Organização interna
 
-#### Formulários & Validação
-| Dependência | Versão | Finalidade |
-| :--- | :--- | :--- |
-| `react-hook-form` | `7.55.0` | Gerenciamento de estado de formulários de alta performance |
-| `zod` | `^4.3.6` | Validação de esquemas e contratos de dados |
-| `@hookform/resolvers` | `^3.10.0` | Integração de esquemas Zod com React Hook Form |
+| Local | Responsabilidade |
+|---|---|
+| `src/app/pages` e `src/app/components` | Telas, formulários e componentes |
+| `src/services` | Operações e contratos de acesso Firebase |
+| `src/hooks` e contextos | Assinaturas, autenticação e estado compartilhado |
+| `src/app/utils` | Cálculos, formatação e regras reutilizáveis |
+| `functions/users` | Contas, convites, claims, sessões e sincronização |
+| `functions/orders` | Recebimento de encomendas públicas e compatibilidade legada |
+| `functions/email` | Envio, recebimento, anexos, idempotência e limpeza |
+| `functions/whatsapp` | Conversas, autorização, integração e persistência de eventos |
+| `functions/ai` | Prompt, schemas, repositórios, ferramentas, orçamento e telemetria |
+| `functions/alexa` | Identidade, diálogo, rascunhos e criação confirmada |
+| `functions/common` | Utilitários, limites e parâmetros compartilhados |
 
-#### Gráficos, Exportação & Manipulação de Arquivos
-| Dependência | Versão | Finalidade |
-| :--- | :--- | :--- |
-| `recharts` | `2.15.2` | Gráficos e dashboards analíticos interativos |
-| `jspdf` | `^4.2.1` | Geração de PDFs client-side (*Dynamic Import sob demanda*) |
-| `jspdf-autotable` | `^5.0.7` | Criação de tabelas formatadas em relatórios PDF |
-| `xlsx` | `^0.18.5` | Exportação de planilhas Excel (*Dynamic Import sob demanda*) |
-| `date-fns` | `3.6.0` | Manipulação e formatação de datas |
+## Dados principais
 
-#### Animação, Drag & Drop e Carrossel
-| Dependência | Versão | Finalidade |
-| :--- | :--- | :--- |
-| `motion` | `12.23.24` | Animações fluidas de interface (Framer Motion) |
-| `react-dnd` | `16.0.1` | Drag and drop para kanban e reordenação |
-| `react-dnd-html5-backend`| `16.0.1` | Backend HTML5 para react-dnd |
-| `embla-carousel-react` | `8.6.0` | Carrossel touch responsivo para banners da loja |
-| `react-responsive-masonry`| `2.7.1` | Grid estilo Pinterest para galeria de artes |
-| `react-resizable-panels`| `2.1.7` | Painéis redimensionáveis na interface |
+| Grupo | Coleções/serviço usados |
+|---|---|
+| Operação | `orders`, `customers`, `products`, `quotes`, `gallery`, `exchanges` |
+| Histórico financeiro | `salesLedger`, `salesMonthlySummaries` |
+| Precificação | `supplies`, `pricingRecipes`, `pricingSettings`, `purchaseHistory`, `productionTracking` |
+| Loja | `storeProducts`, `catalogOrders`, `storeSettings` |
+| Usuários | `userProfiles` e preferências em `users` |
+| Atendimento | `sentEmails`, `whatsapp_chats`, `whatsapp_messages` e coleções auxiliares dos módulos |
+| Presença | Realtime Database, separado do Firestore |
+| Mídia | Cloud Storage e URLs de CDN |
+| IA/Alexa | Registros de uso, orçamento, vínculos e rascunhos gerenciados pelos módulos |
 
-#### Backend Client & Observabilidade
-| Dependência | Versão | Finalidade |
-| :--- | :--- | :--- |
-| `firebase` | `^12.9.0` | SDK Client (Auth, Firestore com Persistent Cache, Storage, Analytics, Performance) |
-| `@sentry/react` | `^8.55.0` | Monitoramento e rastreamento de exceções em tempo real |
-| `workbox-window` | `^7.4.0` | Suporte a Service Worker e recursos PWA offline |
+Este quadro não é uma concessão de acesso. Regras executáveis: [Firestore](../firestore.rules), [RTDB](../database.rules.json), [Storage](../storage.rules); operações privilegiadas também validam o chamador nas Functions.
 
-#### Dev & Build Tools
-| Dependência | Versão | Finalidade |
-| :--- | :--- | :--- |
-| `@playwright/test` | `^1.49.1` | Testes E2E, fluxos críticos, segurança e permissões |
-| `@vitejs/plugin-react` | `4.7.0` | Suporte a Fast Refresh no React via Vite |
-| `vite-plugin-pwa` | `^1.3.0` | Geração de manifest e Service Worker PWA |
-| `vite-plugin-html` | `^3.2.2` | Minificação e injeção de tags no HTML |
-| `sharp` | `^0.34.5` | Otimização de imagens em scripts de build |
-| `dotenv` | `^17.3.1` | Carregamento de variáveis de ambiente em scripts Node |
-| `firebase-admin` | `^13.7.0` | SDK Admin usado em scripts utilitários de manutenção |
+## IA: fluxo e limites
 
----
+A UI envia mensagem, histórico limitado e imagem opcional a `aiAgentChat`. O backend valida a sessão, resolve escopo, reserva orçamento, prepara contexto autorizado e chama o modelo com as ferramentas declaradas. As ferramentas consultam dados ou retornam rascunhos; handlers montam boa parte das respostas de forma determinística.
 
-### ⚙️ Backend Cloud Functions (`functions/package.json`)
+Quando várias ferramentas são chamadas, pode haver uma rodada adicional de síntese. A configuração limita o trabalho por solicitação. Consultas de pedidos percorrem páginas até um teto operacional; limitar a lista exibida não garante uma quantidade equivalente de leituras no Firestore.
 
-| Dependência | Versão | Finalidade |
-| :--- | :--- | :--- |
-| `firebase-admin` | `^12.0.0` | Acesso privilegiado ao Firestore e Auth no backend |
-| `firebase-functions` | `^4.5.0` | Triggers e endpoints HTTP / callable functions v2 |
-| `resend` | `^6.9.3` | Envio e recebimento de e-mails transacionais |
-| `rate-limiter-flexible` | `^9.1.1` | Proteção contra abuso e limitação de taxa (Rate Limit) |
+O cache é em memória e não é compartilhado por todas as instâncias. Orçamento e telemetria possuem persistência própria. Veja [Copiloto](COPILOTO_IA.md).
 
----
+## Publicação e configuração
 
-## 🗄️ 3. Mapeamento de Coleções do Cloud Firestore
+A [configuração Firebase](../firebase.json) aponta para regras e índices versionados. O workflow [DEV](../.github/workflows/deploy-dev.yml) pode publicar Hosting, Functions, Firestore/RTDB/Storage e índices. O [workflow de produção](../.github/workflows/deploy.yml) publica o frontend; o [workflow manual de Functions](../.github/workflows/deploy-functions-manual.yml) trata o backend.
 
-| Coleção | Caminho | Finalidade | Regra de Acesso |
-|---|---|---|---|
-| **Pedidos do Ateliê** | `/orders/{orderId}` | Pedidos de produção internos | Isolado por `userId` + permissão de equipe (`assignedTo`) |
-| **Clientes** | `/customers/{customerId}` | Base de clientes do ateliê | Isolado por `userId` |
-| **Produtos Internos** | `/products/{productId}` | Catálogo de insumos e peças internas | Isolado por `userId` |
-| **Orçamentos** | `/quotes/{quoteId}` | Propostas comerciais enviadas | Isolado por `userId` |
-| **Galeria** | `/gallery/{imageId}` | Fotos de trabalhos realizados | Isolado por `userId` |
-| **Trocas / Permutas** | `/exchanges/{exchangeId}` | Registros de permutas e parcerias | Isolado por `userId` |
-| **Perfis de Usuários** | `/userProfiles/{uid}` | Papéis (`admin`, `funcionario`, `user`) e permissões | Leitura autenticada; escrita restrita a Admin |
-| **Produtos da Lojinha** | `/storeProducts/{id}` | Vitrine de produtos do catálogo online | Leitura pública; escrita restrita a usuários com permissão |
-| **Pedidos da Lojinha** | `/catalogOrders/{id}` | Pedidos recebidos via vitrine pública | Criação pública; gestão por usuários autorizados |
-| **Configurações da Loja** | `/storeSettings/public` | Banners, WhatsApp de vendas e tema da lojinha | Leitura pública; edição exclusiva por Admin |
-| **Insumos de Precificação** | `/pricingSupplies/{id}` | Cadastro de matérias-primas e custos unitários | Acesso autenticado com permissão `pricing` |
-| **Histórico de Compras** | `/pricingPurchases/{id}` | Registro de lotes e notas de suprimentos adquiridos | Acesso autenticado com permissão `pricing` |
-| **Configurações do Ateliê** | `/pricingStudioSettings/{userId}` | Custo hora de trabalho, custos fixos e margem padrão | Acesso autenticado por usuário / Admin |
-| **Configurações de Usuário** | `/users/{uid}/settings/profile` | Preferências de UI, tema e dados do ateliê | Acesso restrito ao próprio usuário |
-| **Histórico de E-mails** | `/sentEmails/{id}` | Registro de e-mails disparados via Resend | Leitura restrita a Admin |
-| **Convites** | `/invitations/{hashToken}` | Tokens SHA-256 de convite para cadastro | Validação e criação controlada |
-| **Conversas WhatsApp** | `/whatsapp_chats/{phone}` | Metadados e snippets de conversas do WhatsApp | Acesso restrito a usuários com permissão `whatsapp` |
-| **Mensagens WhatsApp** | `/whatsapp_messages/{id}` | Histórico completo de mensagens recebidas e enviadas | Acesso restrito a usuários com permissão `whatsapp` |
-| **Logs de Consumo de IA** | `/ai_usage_logs/{id}` | Métricas e contagem de requisições por modelo da API Gemini | Exclusivo backend Admin SDK (inacessível via cliente) |
-| *(Descontinuada)* **Visão de Pedidos para IA** | `/ai_orders_view/{orderId}` | *Legada/Descontinuada*: Substituída por projeção sanitizada em memória direta de `/orders` | Obsoleta (Zero manutenção manual) |
+Parâmetros secretos devem ser fornecidos pelos mecanismos de secrets do ambiente. Templates públicos devem conter somente nomes e placeholders. Rotação, permissões de contas de serviço e estado de deploy precisam ser verificados na infraestrutura; não são comprovados por este documento.
 
----
+## Custo e evolução
 
-## 🛡️ 4. Resiliência de Aplicação e Auto-Cura
+- Paginar antes da leitura evita carregar coleções inteiras para depois usar `slice`.
+- O histórico completo usado por telas e agregações merece medição de leituras, latência e crescimento.
+- Carregar contexto de catálogo em cada solicitação de IA pode custar leituras e tokens mesmo para perguntas simples.
+- Limitar o tamanho do prompt, reutilizar dados dentro da mesma requisição e usar respostas determinísticas pode reduzir trabalho; a economia deve ser medida.
+- Índices e resumos materializados exigem contratos de atualização, recomputação e definição de período.
+- Agrupar modelos sob uma única tarifa ou ignorar tentativas de fallback pode distorcer a estimativa de IA.
 
-1. **Carregador de Rotas Quádruplo (`lazyWithRetry` em `routes.tsx`)**:
-   - Suporte a named e default exports.
-   - Retry de 800ms contra oscilações de rede.
-   - Auto-recuperação com limpeza de caches e reload inteligente para prevenir erro de módulos dinâmicos desatualizados após deploys.
-   - Fallback gracioso com Error Boundary.
-
-2. **Escudo Global do Firestore (`recoverFirestorePersistence` em `firebase.ts`)**:
-   - Interceptação de asserções assíncronas do Firestore (como o erro `b815` em abas concorrentes).
-   - Auto-recuperação suave do IndexedDB (`terminate` + `clearIndexedDbPersistence`) sem derrubar a interface React.
-
-3. **Performance com Dynamic Imports (`exportData.ts` e `exportPdf.ts`)**:
-   - `xlsx` e `jspdf` carregadas sob demanda apenas quando o usuário solicita exportação, aliviando o carregamento inicial da página.
-
----
-
-## ☁️ 5. Arquitetura de CDN de Imagens (Cloudflare Worker)
-
-As imagens do Firebase Storage são servidas via Cloudflare Worker no Edge.
-
-| Ambiente | Domínio da CDN | Bucket de Origem (Firebase) |
-| :--- | :--- | :--- |
-| **Produção** | `https://cdn.luisices.com.br` | `papelaria-dashboard.firebasestorage.app` |
-| **Desenvolvimento** | `https://cdn-dev.luisices.com.br` | `luisices-dev.firebasestorage.app` |
-
----
-
-## 📊 6. Gestão de Índices Compostos do Firestore (`firestore.indexes.json`)
-
-Consultas compostas (filtros múltiplos combinados com ordenação) requerem índices manuais definidos no projeto.
-
-### Deploy de Índices
-* **Via GitHub Actions (Recomendado)**: Workflow `Deploy Firestore Indexes` na aba Actions.
-* **Via CLI**: `firebase deploy --only firestore:indexes --project papelaria-dashboard`.
+A revisão documental executou **771 testes unitários em 73 arquivos**, todos aprovados. Não realizou teste de carga, validação de faturamento real, E2E remoto ou nova auditoria dos serviços publicados.

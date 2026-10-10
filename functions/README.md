@@ -1,134 +1,71 @@
-# Firebase Cloud Functions — Luisices
+# Backend Firebase — Luisices
 
-Funções serverless (Firebase Functions v2) para autenticação, convites, gestão segura de usuários, envio e recebimento de e-mails transacionais (Resend) e mensageria WhatsApp (Evolution API).
+Revisado em **10/10/2026**, base `develop` / `b2b6ef9`. Runtime **Node.js 22**. O entrypoint público é [index.js](index.js); funções internas só ficam disponíveis remotamente quando exportadas e publicadas.
 
----
+## Instalação e verificação
 
-## 📦 Instalação
-
-```bash
-cd functions
-npm install
-```
-
----
-
-## 🔧 Configuração de Segredos (Secrets)
-
-As funções utilizam o sistema de parâmetros e segredos do Google Cloud Secret Manager integrado ao Firebase Functions v2:
+Na raiz do repositório:
 
 ```bash
-# Chave da API do Resend para envio de e-mails
-firebase functions:secrets:set RESEND_API_KEY
-
-# Token do Webhook do Resend para validação de assinatura Svix
-firebase functions:secrets:set RESEND_WEBHOOK_SECRET
-
-# Chave da API Evolution para envio de mensagens WhatsApp (opcional)
-firebase functions:secrets:set EVOLUTION_API_KEY
-
-# Chave da API Gemini (Google AI) para o Copiloto e Visão Computacional
-firebase functions:secrets:set GEMINI_API_KEY
+npm ci
+npm --prefix functions ci
+npm run lint:functions
+npm run test:unit
+npm run test:integration
+npm run test:presence
 ```
 
-> **Nota:** A Evolution API utiliza a URL `https://wa.luisices.com.br` e a instância `homeassistant`.
+Testes de integração/presença usam emuladores e precisam de Java 21 para a versão de CLI adotada. Testes unitários não comprovam configuração remota de secrets, regras ou provedores.
 
----
+## Domínios exportados
 
-## 🚀 Deploy
+| Domínio | Exportações em `index.js` |
+|---|---|
+| Contas e convites | `createUser`, `updateUser`, `deleteUser`, `createUserInvitation`, `validateUserInvitation`, `completeUserInvitation` |
+| Recuperação/verificação | `sendAdminPasswordReset`, `sendPasswordResetEmail`, `sendVerificationEmail`, `recordUserPasswordChange` |
+| Acesso e sessões | `getUserAccountMetadata`, `registerDeviceSession`, `revokeAllSessions`, `revokeDeviceSession`, `repairUserClaims` |
+| E-mail | `sendCustomEmail`, `getEmailUsage`, `resendReceivingWebhook`, `cleanupEmailDrafts` |
+| WhatsApp | `sendWhatsAppDirectMessage`, `deleteWhatsAppMessage`, `syncWhatsAppChatMessages`, `getWhatsAppInstanceStatus`, `markWhatsAppChatRead`, `ensureWhatsAppConversation`, `evolutionWhatsAppWebhook` |
+| Loja/pedidos | `submitPublicCatalogOrder`, `syncAllOrdersToAiView` |
+| IA | `aiAgentChat`, `getAiUsage`, `enrichGalleryItemWithAi`, `enrichStoreProductWithAi` |
+| Alexa | `alexaWebhook`, `approveAlexaPairing`, `setAlexaPermission`, `revokeAlexaBinding`, `toggleGlobalAlexaIntegration`, `getAlexaIntegrationStatus`, `approveAlexaDraft`, `cancelAlexaDraft` |
 
-```bash
-# Deploy de todas as functions
-npm run deploy
+`syncAllOrdersToAiView` é compatibilidade legada sem sincronização de dados. `cleanupEmailDrafts` é agendada. Webhooks têm validações próprias; não são chamadas de interface equivalentes aos callables autenticados.
 
-# Ou via Firebase CLI
-firebase deploy --only functions
-```
+## Contratos relevantes
 
----
+- Administração de contas passa pelo módulo `users`, com autorização, sincronização e tratamento de estado pendente.
+- `revokeDeviceSession` solicita desconexão cooperativa; `revokeAllSessions` trata revogação global.
+- `sendCustomEmail` admite administrador ou permissão de envio correspondente. O fluxo com chave de idempotência usa reserva local, chave do provedor e recuperação documentada.
+- O WhatsApp valida proprietário e conversa; veja a limitação atual para telefone compartilhado entre parceiros.
+- `submitPublicCatalogOrder` recebe encomendas da vitrine e valida dados no servidor.
+- O Copiloto consulta dados e prepara rascunhos; o envio de WhatsApp pela UI é uma operação posterior, separada.
+- A análise de uma arte da galeria pode persistir seu enriquecimento. Não confundir esse endpoint visual com as ferramentas de consulta do chat.
+- `getAiUsage` é destinado à administração. Limites e referências de custo estão em `ai/config.js`.
+- Alexa possui diálogo, identidade, rascunhos e confirmação independentes do Copiloto.
 
-## 🧪 Teste Local (Emuladores)
+Detalhes: [e-mail](../docs/RECUPERACAO_ENVIO_EMAIL.md), [sessões](../docs/SEGURANCA_DESCONEXAO_DISPOSITIVOS.md), [WhatsApp](../docs/ISOLAMENTO_WHATSAPP_PARCEIROS.md), [Copiloto](../docs/COPILOTO_IA.md).
 
-```bash
-# Iniciar emuladores
-firebase emulators:start --only functions
+## Organização de IA
 
-# Acessar UI do emulador
-http://localhost:4000
-```
+| Arquivo | Responsabilidade |
+|---|---|
+| `ai/callables.js` | Endpoints e validação de sessão |
+| `ai/schemas.js` | Prompt e nove ferramentas declaradas |
+| `ai/handlers.js` | Orquestração, respostas e enriquecimento |
+| `ai/tools.js` | Regras das ferramentas de negócio |
+| `ai/repositories.js` | Consultas, projeções e escopo |
+| `ai/pricing/pricingCalculator.js` | Cálculo de preço |
+| `ai/geminiClient.js` | HTTP, timeout e política de fallback |
+| `ai/cache.js` | Cache em memória |
+| `ai/budget.js` e `ai/usage.js` | Orçamento distribuído e medição |
 
----
+A política atual pode percorrer alternativas de modelo; não assumir uma única tentativa nem uma tarifa única. Templates no handler também influenciam respostas e precisam ser revisados junto com mudanças no prompt.
 
-## 📋 Catálogo Completo de Funções
+## Configuração e publicação
 
-### 👤 1. Gestão de Usuários & Autenticação
+Os nomes de parâmetros/segredos estão em [common/secrets.js](common/secrets.js) e nos módulos das integrações. Forneça valores pelo mecanismo de secrets do ambiente. Não publique valores, arquivos de service account ou identificadores de instâncias operacionais em exemplos.
 
-| Função | Tipo | Descrição | Permissão |
-|---|---|---|---|
-| `createUser` | Callable v2 | Cria usuário no Firebase Auth e inicializa perfil em `userProfiles/{uid}` com role e permissões | Apenas Admin |
-| `deleteUser` | Callable v2 | Exclui usuário do Firebase Auth e perfil do Firestore (com bloqueio de auto-exclusão do admin) | Apenas Admin |
-| `createUserInvitation` | Callable v2 | Gera convite com token criptográfico de uso único (SHA-256) válido por 48h, enviado por e-mail e WhatsApp | Apenas Admin |
-| `validateUserInvitation` | Callable v2 | Valida token de convite e retorna e-mail associado se estiver pendente e no prazo | Público |
-| `completeUserInvitation` | Callable v2 | Conclui cadastro convidado via transação atômica, ativando perfil `user` e marcando convite como `accepted` | Autenticado |
-| `sendAdminPasswordReset` | Callable v2 | Gera link de redefinição de senha para outro usuário e envia por e-mail e WhatsApp | Apenas Admin |
-| `sendPasswordResetEmail` | Callable v2 | Solicitação pública de recuperação de senha com rate limit (3 tentativas/hora por e-mail) | Público |
+O workflow [DEV](../.github/workflows/deploy-dev.yml) seleciona os componentes a publicar. Há [workflow manual de Functions](../.github/workflows/deploy-functions-manual.yml). Para operação manual, selecione explicitamente o projeto e o conjunto de funções após revisão; não use comandos genéricos supondo o ambiente ativo.
 
----
-
-### 📧 2. Central de E-mails & Webhooks (Resend)
-
-| Função | Tipo | Descrição | Permissão |
-|---|---|---|---|
-| `sendCustomEmail` | Callable v2 | Disparo de e-mails transacionais com validação estrita de destinatários, tamanho (<500KB) e registro em `sentEmails` | Apenas Admin (Rate limit: 50 envios/hora) |
-| `getEmailUsage` | Callable v2 | Consulta cota diária (100/dia) e mensal (3.000/mês) via Resend Metrics API combinada com contagem do Firestore | Admin ou permissão `emails` |
-| `resendReceivingWebhook` | HTTP onRequest | Endpoint para recebimento de e-mails (`email.received`) com validação de assinatura Svix e tolerância de 5 min contra replay attack | Público / Webhook Svix |
-
----
-
-### 🤖 3. Inteligência Artificial (Google Gemini & Módulos functions/ai)
-
-O subsistema de IA está modularizado dentro de `functions/ai/` com separação estrita de responsabilidades:
-- `functions/ai/authorization.js`: isolamento multiusuário estrito, cálculo de escopo de permissões (`aiCopilot`), blindagem de contexto da galeria, pedidos e clientes.
-- `functions/ai/pricing/pricingCalculator.js`: motor de precificação puro em paridade matemática centavo a centavo com o frontend.
-- `functions/ai/geminiClient.js`: cliente Gemini resiliente com timeout compartilhado cobrindo body stream, fallback controlado (máx 1 tentativa), circuit breaker por modelo e classificação de erros não-repetíveis.
-- `functions/ai/cache.js`: cache LRU com TTL, limites de memória e coalescing de requisições concorrentes (Single-Flight).
-- `functions/ai/budget.js`: gerenciador de orçamento distribuído com reserva atômica pré-chamada e reconciliação pós-execução.
-- `functions/ai/usage.js`: agregação diária/mensal atômica O(1) de telemetria sem varredura de coleções completas e conversão tarifária.
-- `functions/ai/tools.js`: execução validada e autorizada das 9 ferramentas de negócio no fuso `America/Sao_Paulo`.
-- `functions/ai/handlers.js`: handlers desacoplados e testáveis com injeção de dependências.
-
-| Função | Tipo | Descrição | Permissão |
-|---|---|---|---|
-| `aiAgentChat` | Callable v2 | Copiloto conversacional multimodal com tool calling: extração de pedidos, cálculo de precificação, sugestão de WhatsApp e consultas com isolamento estrito de dados | Autenticado com `aiCopilot` (Rate limit: 60 req/min) |
-| `enrichGalleryItemWithAi` | Callable v2 | Visão computacional (Gemini Vision) para catalogar foto da galeria, extraindo descrição rica, tags e cores | Autenticado com `aiCopilot` e dono/admin da arte (Rate limit: 20 req/min) |
-| `enrichStoreProductWithAi` | Callable v2 | Visão computacional (Gemini Vision) para catálogo de produtos da lojinha pública, sugerindo títulos de alta conversão, categorias e descrições | Autenticado com `aiCopilot` (Rate limit: 20 req/min) |
-| `syncAllOrdersToAiView` | Callable v2 | *(Legada/No-op)* Mantida para compatibilidade retroativa | Apenas Admin |
-| `getAiUsage` | Callable v2 | Consulta consumo de cota e métricas de requisições a partir de agregados diários/mensais do Firestore | Apenas Admin |
-
----
-
-### 💬 4. Central de Atendimento (Evolution API WhatsApp)
-
-| Função | Tipo | Descrição | Permissão |
-|---|---|---|---|
-| `sendWhatsAppDirectMessage` | Callable v2 | Envio de mensagem direta via Evolution API com gravação em `whatsapp_messages` e atualização do chat | Autenticado com `whatsapp` |
-| `deleteWhatsAppMessage` | Callable v2 | Exclusão de mensagem do chat no Firestore e revogação no WhatsApp via Evolution API | Autenticado com `whatsapp` |
-| `syncWhatsAppChatMessages` | Callable v2 | Sincronização de mensagens recentes entre a instância WhatsApp e o Firestore | Autenticado com `whatsapp` |
-| `getWhatsAppInstanceStatus` | Callable v2 | Consulta de status e conectividade da instância Evolution API com cache em memória | Autenticado com `whatsapp` |
-| `evolutionWhatsAppWebhook` | HTTP onRequest | Recebimento de webhooks de mensagens e status de conexão da Evolution API em dual-forwarding | Público / Webhook Evolution |
-
----
-
-## 🔒 Regras de Segurança e Rate Limiting
-
-1. **Rate Limiting em Memória**:
-   - `sendPasswordResetEmail`: máximo de 3 tentativas por e-mail por hora.
-   - `sendCustomEmail`: máximo de 50 disparos por hora por administrador autenticado.
-   - `aiAgentChat`: máximo de 60 requisições por minuto por usuário autenticado.
-   - `enrichGalleryItemWithAi`: máximo de 20 requisições por minuto por usuário autenticado.
-2. **Proteção Anti-Replay Svix**:
-   - O webhook `resendReceivingWebhook` valida os headers `svix-id`, `svix-timestamp` e `svix-signature` com tolerância máxima de 300 segundos (5 minutos).
-3. **Isolamento Multiusuário e Projeção em Memória de IA**:
-   - Chamadas de IA executam sob estrito isolamento por `callerUid` para usuários não-administradores com projeção de leitura em memória em tempo real. O Copiloto não possui poder de escrita direta em coleções operacionais.
-4. **Senhas**:
-   - A aplicação nunca recebe nem armazena senhas em texto puro; todo o gerenciamento de credenciais é delegado com exclusividade ao Firebase Authentication.
+Alterar documentação não exige deploy. `[skip tests]` não impede publicação; para commits exclusivamente documentais sem execução dos workflows de push, use `[skip ci]`. Análises gerenciadas pelo GitHub podem continuar.

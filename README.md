@@ -1,156 +1,83 @@
-# 🎨 Papelaria Personalizada — Sistema de Gestão (Luisices)
+# Luisices — gestão do ateliê
 
-Sistema completo de gerenciamento para ateliês de papelaria personalizada com controle de pedidos, orçamentos, clientes, produtos, galeria de trabalhos, **permissões granulares (RBAC)**, **Lojinha Online pública** e relatórios — tudo em tempo real via Firebase.
+Aplicação de gestão de papelaria personalizada: pedidos, produção, clientes, orçamentos, precificação, galeria, loja pública, atendimento e assistência por IA.
 
-Para consultar a visão completa do produto, regras e fluxos de negócio, veja [docs/FUNCIONALIDADES.md](docs/FUNCIONALIDADES.md).  
-Para detalhes sobre a stack técnica, todas as dependências e a arquitetura de CDN com Cloudflare, consulte [docs/DEPENDENCIAS_E_ARQUITETURA.md](docs/DEPENDENCIAS_E_ARQUITETURA.md).
+Documentação revisada em **10/10/2026**, com base na `develop` (`b2b6ef9`). A presença de uma funcionalidade no código não comprova sua configuração ou publicação em um ambiente remoto.
 
----
+## Documentação
 
-## ✨ Funcionalidades Principais
+- [Índice dos guias](docs/README.md)
+- [Funcionalidades e limites operacionais](docs/FUNCIONALIDADES.md)
+- [Arquitetura e dependências](docs/DEPENDENCIAS_E_ARQUITETURA.md)
+- [Copiloto: capacidades e evolução do system prompt](docs/COPILOTO_IA.md)
+- [Backend e funções publicadas pelo código](functions/README.md)
 
-### 📦 Pedidos do Ateliê
-- Cadastro completo com cliente, produto, valor, data de entrega e status.
-- **Workflow de produção** em 7 etapas (Design → Aprovação → Impressão → Corte → Montagem → Qualidade → Embalagem).
-- **Atribuição para equipe**: delegação de pedidos para funcionários responsáveis (`assignedTo`).
-- **Ações em lote**: atribuição rápida de múltiplos pedidos a um colaborador.
-- **Filtro de equipe**: administradores filtram visão por colaborador responsável.
-- Controle de pagamento com múltiplos métodos (PIX, dinheiro, cartão, transferência).
-- **Trocas/Parcerias**: pedidos sem cobrança monetária com itens de permuta.
-- Anexos (fotos e PDFs) com thumbnails automáticos e vinculação com a galeria de artes.
-- Atualização em tempo real via Firestore.
+## Módulos
 
-### 🛍️ Lojinha Online & Catálogo Público (`/catalogo`)
-- **Catálogo público para clientes**: vitrine digital responsiva e rápida para compartilhamento no Instagram, WhatsApp ou link na bio, permitindo encomendas sem necessidade de login.
-- **Separação de Catálogos**: módulo dedicado para **Produtos da Lojinha** (`/produtos-lojinha`), separando a coleção pública (`storeProducts`) dos insumos internos do ateliê (`products`).
-- **Cadastro em Massa por Fotos**: upload simultâneo de múltiplas fotos com inferência automática de título comercial e replicação rápida de categoria, preço e prazo de confecção.
-- **Exclusão e Ativação em Massa**: barra flutuante mobile-first para pausar, ativar ou excluir múltiplos produtos com modal de prévia visual.
-- **Gestão de Pedidos da Lojinha (`/pedidos-lojinha`)**: acompanhamento de pedidos recebidos com conversão em 1 clique para a esteira oficial de produção do ateliê.
-- **Lock Anti-duplicação**: prevenção contra concorrência e cliques múltiplos na conversão de pedidos da lojinha.
-- **Auditoria Anti-adulteração de Preços**: verificação automática no backend que detecta divergências entre o valor submetido pelo cliente e os preços oficiais do catálogo (`isPriceTampered`).
-- **Banners rotativos e vitrine**: carrossel de propaganda e comunicados com transição automática configurável e opção de banner fixo.
-- **Sacola de encomendas e WhatsApp**: cálculo de subtotal dinâmico, campos de personalização por item (nome, tema) e geração de mensagem pronta para envio no WhatsApp de vendas dedicado.
-- **Isolamento de tema**: a vitrine pública inicia obrigatoriamente no **tema claro (default)** sem interferir na preferência do painel administrativo.
-
-### 💰 Orçamentos
-- Criação com itens do catálogo interno ou livres.
-- Desconto (porcentagem ou valor fixo).
-- **Envio via WhatsApp** com mensagem comercial personalizável.
-- Fluxo completo: Rascunho → Enviado → Aprovado/Rejeitado/Expirado.
-- **Conversão automática** em pedido de produção ao aprovar.
-- Expiração automática de orçamentos vencidos.
-- Exportação dinâmica para PDF e duplicação rápida.
-
-### 👥 Clientes
-- CRUD completo com foto, contatos, data de aniversário e endereço.
-- Classificação: Cliente padrão, VIP, Cliente recorrente, Inadimplente e Parceiro/Permuta.
-- Preenchimento automático de endereço por CEP via ViaCEP com suporte a preenchimento manual internacional.
-- **Galeria de artes** vinculada ao cliente e histórico de pedidos.
-
-### 📊 Trocas / Permutas
-- Gestão de pedidos em permuta e parcerias com influenciadores.
-- Controle de itens fornecidos e benefícios/produtos recebidos.
-- Relatórios específicos de trocas com acesso escopado para usuário comum.
-
-### 💰 Precificação, Gestão de Custos & Insumos (`/precificacao`)
-- **4 Abas especializadas**: Cadastro de Custos (Insumos), Calculadora de Precificação Inteligente, Histórico de Compras e Configurações do Ateliê.
-- **Cálculo unitário automático**: incorporação de preço e rateio de frete `(Preço + Frete) ÷ Qtd`.
-- **Formação de preço com markup real**: cálculo de tempo de produção/mão de obra por minuto, custos fixos da oficina e margem de lucro.
-- **Sincronização com 1 clique**: atualização automática do valor de venda no catálogo.
-- **Visualização compacta**: tabela otimizada sem barras de rolagem excessivas e alertas de reposição de estoque (`⚠️ Repor`).
-- **Exportação para Excel (`xlsx`)**: download de planilha completa de custos e estoque de insumos.
-
-### 🎨 Galeria de Artes
-- Upload e organização de trabalhos realizados em pastas por cliente/tema.
-- Tags, busca avançada e visualização em lightbox.
-
-### 📅 Agenda Semanal
-- Visualização de entregas nos próximos 7 dias.
-- Filtros por status, resumo semanal e destaque do dia atual.
-
-### 📈 Dashboard & Relatórios
-- **KPIs em tempo real**: receita, ticket médio, pedidos em aberto e faturamento.
-- Alertas de entregas e pedidos em atraso.
-- Gráficos analíticos e relatórios com exportação sob demanda em Excel (`xlsx`) e PDF (`jspdf`).
-- Preservação do histórico contábil (`salesLedger`) independente de exclusões de contatos.
-
-### 👤 Sistema de Permissões (RBAC)
-- **3 Papéis no sistema**:
-  - **Admin**: controle total, gerenciamento de equipe/usuários, delegação de pedidos e métricas globais.
-  - **Funcionário**: execução da produção, acompanhamento de pedidos atribuídos e atualização de etapas.
-  - **User**: gestão de clientes, produtos, orçamentos e pedidos próprios com relatórios individuais.
-- **Permissões granulares** por módulo (visualizar, criar, editar, excluir).
-- **Revogação em tempo real**: alterações de papel ou permissões são aplicadas imediatamente na sessão via listeners do Firestore sem necessidade de novo login.
-
-### 📧 Central de E-mails (`/emails`)
-- **Envio de e-mails transacionais** via Resend com preview em tempo real (exclusivo para admins).
-- **Controle de cota diária/mensal** com barra de progresso sincronizada via Cloud Function.
-- **Recebimento de e-mails** via webhook HTTP com validação de assinatura Svix e proteção contra replay attacks.
-- **Rate limiting** no backend: máximo de 50 disparos por hora por administrador.
-
-### 💡 Central de Ajuda & Guia Operacional (`/ajuda`)
-- Guia operacional interativo com passo a passo dos fluxos do sistema.
-- FAQ com soluções para dúvidas frequentes do dia a dia e catálogo de atalhos de teclado.
-
-### ⚙️ Configurações & Personalização
-- Segregação entre dados do ateliê (dados institucionais) e da lojinha pública (WhatsApp de vendas dedicado).
-- Personalização visual: logotipo, banner, avatar e 6 paletas de cores de destaque.
-- Templates de mensagem WhatsApp e preferências do dashboard.
-
----
-
-## 🛠️ Stack Tecnológica
-
-| Camada | Tecnologia |
+| Área | Recursos principais |
 |---|---|
-| Frontend | React 18 + TypeScript + Vite |
-| UI & Estilos | Tailwind CSS v4 + Radix UI + Lucide React |
-| Backend & DB | Firebase (Cloud Firestore + Authentication + Cloud Storage) |
-| Serverless | Firebase Cloud Functions v2 (Node 20) |
-| CDN de Mídia | Cloudflare Workers Edge CDN (`cdn.luisices.com.br`) |
-| Roteamento | React Router v7 com carregamento resiliente (`lazyWithRetry`) |
-| Resiliência | Escudo global do Firestore com auto-cura de cache IndexedDB |
-| Observabilidade | Sentry React SDK + Firebase Performance & Analytics |
+| Operação | Quadro de pedidos, etapas de produção, atribuição à equipe, pagamentos, arquivamento e agenda |
+| Comercial | Clientes, orçamentos, catálogo interno, permutas e galeria |
+| Custos | Insumos, compras, receitas de produção, cálculo de preço e configurações do ateliê |
+| Loja pública | Produtos próprios da vitrine, personalização, encomendas e conversão em pedidos internos |
+| Atendimento | E-mails via Resend e conversas WhatsApp via Evolution API |
+| Administração | Usuários, convites, permissões, sessões e presença |
+| Assistência | Copiloto com nove ferramentas, análise de imagens e integração Alexa separada |
 
----
+O Copiloto consulta dados e prepara rascunhos. Salvar um pedido ou enviar uma mensagem exige a ação correspondente na interface e autorização do backend.
 
-## 🚀 Como Rodar Localmente
+## Desenvolvimento local
 
-### 1. Pré-requisitos
-- Node.js 20+
-- Projeto no Firebase Console com Firestore, Auth e Storage habilitados.
+Use **Node.js 22**, alinhado ao runtime de Functions e aos workflows. Os testes com Firebase Emulator Suite também precisam de Java compatível com a versão instalada do Firebase CLI; para este projeto, use Java 21.
 
-### 2. Instalar dependências
 ```bash
-npm install
-```
-
-### 3. Configurar variáveis de ambiente
-```bash
+npm ci
+npm --prefix functions ci
 cp .env.example .env.local
-```
-
-Preencha o `.env.local` com as credenciais do seu projeto Firebase (Project Settings → General → Your apps).
-
-### 4. Iniciar o servidor de desenvolvimento
-```bash
 npm run dev
 ```
-Acesse: `http://localhost:5173`
 
-### 5. Validar tipos e build
+Preencha o arquivo local com a configuração do seu ambiente. O Vite usa **http://localhost:3000**. O entrypoint é `src/main.tsx` → `src/app/App.tsx`; não existe um servidor Express separado neste checkout.
+
+Não versione credenciais, arquivos de service account ou ambientes preenchidos. A configuração pública do SDK Firebase não substitui regras e autorização no servidor.
+
+## Validações
+
 ```bash
 npm run typecheck
+npm run test:unit
+npm run lint:functions
 npm run build
+npm run test:integration
+npm run test:presence
 ```
 
----
+Os dois últimos comandos usam emuladores. E2E possui configuração própria: consulte [tests/README.md](tests/README.md) e [tests/integration/README.md](tests/integration/README.md). Verifique o destino antes de executar testes que escrevem dados.
 
-## 🌐 Ambientes e Deploy
+Para simular a limpeza de artefatos locais:
 
-| Ambiente | Branch | URL | Destino |
-|---|---|---|---|
-| Desenvolvimento | `develop` | https://dev.luisices.com.br | Firebase Hosting `luisices-dev` |
-| Produção | `main` | https://luisices.com.br | GitHub Pages |
+```bash
+npm run clean:disk -- --dry-run
+```
 
-O deploy padrão de `develop` executa os testes E2E antes de publicar. O deploy das Cloud Functions é separado e executado sob demanda via GitHub Actions ou Firebase CLI.
+Sem `--dry-run`, remove apenas os diretórios gerados previstos no script, dentro do projeto.
+
+## Publicação
+
+| Branch | Ambiente | Workflow principal |
+|---|---|---|
+| `develop` | Desenvolvimento/QA | [deploy-dev.yml](.github/workflows/deploy-dev.yml): seleciona frontend, Functions e regras/índices conforme alterações ou parâmetros |
+| `main` | Produção | [deploy.yml](.github/workflows/deploy.yml): frontend no GitHub Pages; backend tem workflow separado |
+
+O workflow de DEV decide as validações conforme alterações e parâmetros; não executa obrigatoriamente todos os E2E em cada push. `[skip tests]` pula testes, mas permite deploy. `[skip ci]` evita os workflows de push/pull request; verificações gerenciadas pelo GitHub, como CodeQL, podem continuar.
+
+Os índices são definidos em [firestore.indexes.json](firestore.indexes.json), referenciado por [firebase.json](firebase.json). Aguarde a disponibilidade dos índices necessários antes de validar consultas dependentes deles.
+
+## Limites importantes
+
+- Desconexão individual de dispositivo é uma solicitação cooperativa; não equivale à revogação global de sessões.
+- O histórico financeiro de clientes usa o ledger; as consultas financeiras do Copiloto ainda usam pedidos. As bases podem divergir após exclusões ou mudanças históricas.
+- O modelo atual de chat WhatsApp associa um telefone a um proprietário. Contatos compartilhados entre parceiros exigem evolução desse modelo.
+- Manifest e ícones estão presentes; o entrypoint desregistra service workers. Não há promessa de funcionamento offline completo.
+
+Detalhes e fontes estão nos guias vinculados acima.
