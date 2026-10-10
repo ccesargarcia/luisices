@@ -13,6 +13,7 @@ const { validateOriginSecret } = require('../originProtection');
 const { prepareAttachments } = require('./attachments');
 const { cleanupEmailDrafts } = require('./cleanup');
 const { evaluateSpam } = require('./spamFilter');
+const { fingerprint, acquireSend, markProviderAttempt, completeSend, releaseSend } = require('./sendIdempotency');
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MAX_CC_BCC = 20;
@@ -39,7 +40,8 @@ function normalizeEmailList(value, fieldName, max = MAX_CC_BCC) {
 /**
  * Cloud Function para envio de e-mails via Resend pela plataforma Luisices.
  * Salva o histórico de envios na coleção 'sentEmails'.
- * Garante idempotência estrita via coleção 'emailSendRequests' e cabeçalho X-Entity-Ref-ID.
+ * Deduplica pelo registro local e pela chave de idempotência da API Resend.
+ * A recuperação local de operações interrompidas exige validação adicional.
  */
 const sendCustomEmail = onCall(
   { cors: true, maxInstances: 5, secrets: [RESEND_API_KEY] },
@@ -151,63 +153,29 @@ const sendCustomEmail = onCall(
       }
     }
 
-    // ─── Controle de Idempotência Transacional ──────────────────────────────────
-    let idempotencyRef = null;
-    let ownsIdempotency = false;
+    let sendContext = null;
     if (idempotencyKey) {
-      idempotencyRef = admin.firestore().collection('emailSendRequests').doc(`${request.auth.uid}_${idempotencyKey}`);
-      let existingRequest = null;
-      await admin.firestore().runTransaction(async (transaction) => {
-        const snap = await transaction.get(idempotencyRef);
-        existingRequest = snap.data() || null;
-        if (existingRequest?.status === 'completed') {
-          return;
-        }
-        if (existingRequest?.status === 'processing') {
-          const createdAtMs = existingRequest.createdAt?.toMillis?.() || 0;
-          if (Date.now() - createdAtMs < 60000) {
-            return;
-          }
-          // Request estagnado há mais de 60s, permite recuperação
-          transaction.update(idempotencyRef, {
-            status: 'processing',
-            retryAt: admin.firestore.FieldValue.serverTimestamp(),
-            error: admin.firestore.FieldValue.delete(),
-          });
-          ownsIdempotency = true;
-          existingRequest = null;
-          return;
-        }
-        transaction.set(idempotencyRef, {
-          status: 'processing',
-          uid: request.auth.uid,
-          subject: subject.trim().slice(0, 100),
-          recipientCount: recipientList.length,
-          createdAt: admin.firestore.FieldValue.serverTimestamp(),
-        }, { merge: true });
-        ownsIdempotency = true;
-        existingRequest = null;
+      const db = admin.firestore();
+      const ref = db.collection('emailSendRequests').doc(`${request.auth.uid}_${idempotencyKey}`);
+      const hash = fingerprint({
+        from: senderEmail, to: recipientList, subject: subject.trim(),
+        html: html || '', text: text || '', replyTo: replyTo || '',
+        cc: normalizeEmailList(cc, 'Cópia'), bcc: normalizeEmailList(bcc, 'Cópia oculta'),
+        attachments: attachments || [],
       });
-
-      if (existingRequest?.status === 'completed') {
-        return {
-          success: true,
-          emailId: existingRequest.emailId,
-          id: existingRequest.sentDocId,
-          duplicate: true,
-        };
+      const decision = await acquireSend({ db, ref, hash, uid: request.auth.uid });
+      if (decision.completed) {
+        return { success: true, emailId: decision.completed.emailId, id: decision.completed.sentDocId, duplicate: true };
       }
-      if (existingRequest?.status === 'processing') {
-        throw new functions.https.HttpsError('aborted', 'Este envio de e-mail já está sendo processado.');
-      }
+      sendContext = { db, ref, owner: decision.owner };
     }
 
     // Rate Limiting: proteção contra abusos, loops e exaustão de cota
     try {
       await customEmailLimiter.consume(request.auth.uid);
     } catch {
-      if (ownsIdempotency && idempotencyRef) {
-        await idempotencyRef.delete().catch(() => {});
+      if (sendContext) {
+        await releaseSend(sendContext, admin.firestore.FieldValue.serverTimestamp()).catch(() => {});
       }
       throw new functions.https.HttpsError(
         'resource-exhausted',
@@ -232,12 +200,6 @@ const sendCustomEmail = onCall(
         subject: subject.trim(),
       };
 
-      if (idempotencyKey) {
-        payload.headers = {
-          'X-Entity-Ref-ID': idempotencyKey,
-        };
-      }
-
       if (preparedAttachments.length) {
         payload.attachments = preparedAttachments.map(({ filename, content }) => ({ filename, content }));
       }
@@ -261,7 +223,10 @@ const sendCustomEmail = onCall(
       if (normalizedBcc.length) payload.bcc = normalizedBcc;
 
       console.log(`[sendCustomEmail] Enviando e-mail: uid=${request.auth.uid}, recipients=${recipientList.length}, attachments=${preparedAttachments.length}`);
-      const { data: resendData, error: resendError } = await resend.emails.send(payload);
+      if (sendContext) await markProviderAttempt(sendContext, fingerprint(payload));
+      const { data: resendData, error: resendError } = await resend.emails.send(payload, idempotencyKey
+        ? { idempotencyKey: fingerprint({ uid: request.auth.uid, key: idempotencyKey }) }
+        : undefined);
 
       if (resendError) {
         console.error('[sendCustomEmail] Resend rejeitou o envio:', {
@@ -292,16 +257,14 @@ const sendCustomEmail = onCall(
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
       };
 
-      const docRef = await admin.firestore().collection('sentEmails').add(emailRecord);
-
-      // Marca idempotência como concluída com sucesso
-      if (ownsIdempotency && idempotencyRef) {
-        await idempotencyRef.update({
-          status: 'completed',
-          emailId: resendData?.id || null,
-          sentDocId: docRef.id,
-          completedAt: admin.firestore.FieldValue.serverTimestamp(),
-        }).catch((err) => console.warn('[sendCustomEmail] Falha ao atualizar idempotência:', err));
+      const sentCollection = admin.firestore().collection('sentEmails');
+      const docRef = sendContext
+        ? sentCollection.doc(crypto.createHash('sha256').update(sendContext.ref.path).digest('hex'))
+        : sentCollection.doc();
+      if (sendContext) {
+        await completeSend(sendContext, docRef, emailRecord, admin.firestore.FieldValue.serverTimestamp());
+      } else {
+        await docRef.set(emailRecord);
       }
 
       // IMPORTANTE: Apenas rascunhos temporários de e-mail devem ser removidos;
@@ -319,12 +282,8 @@ const sendCustomEmail = onCall(
         id: docRef.id,
       };
     } catch (error) {
-      if (ownsIdempotency && idempotencyRef) {
-        await idempotencyRef.set({
-          status: 'failed',
-          error: error.message || 'Erro ao enviar e-mail.',
-          failedAt: admin.firestore.FieldValue.serverTimestamp(),
-        }, { merge: true }).catch(() => {});
+      if (sendContext) {
+        await releaseSend(sendContext, admin.firestore.FieldValue.serverTimestamp()).catch(() => {});
       }
       console.error('[sendCustomEmail] Exceção:', error);
       if (error instanceof functions.https.HttpsError) throw error;

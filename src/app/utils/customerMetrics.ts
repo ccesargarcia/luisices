@@ -240,7 +240,8 @@ export function computeCustomerXRay(
   allOrdersForCustomer: Order[],
   period: CustomerAnalysisPeriod = 'all',
   tiersConfig: CustomerTiersSettings = DEFAULT_CUSTOMER_TIERS,
-  now: Date = new Date()
+  now: Date = new Date(),
+  completeHistory: boolean = false
 ): CustomerXRayMetrics {
   // Filtrar pedidos deste cliente pelo período selecionado
   const periodOrders = filterOrdersByPeriod(allOrdersForCustomer, period, now);
@@ -263,17 +264,17 @@ export function computeCustomerXRay(
   // Se houver pedidos carregados na sessão, a soma dos pedidos concluídos é a fonte primária e exata.
   // Caso o cliente não possua pedidos na memória (ex: pedidos antigos arquivados), usamos customer.totalSpent como fallback.
   const totalRevenue = period === 'all'
-    ? (allOrdersForCustomer.length > 0 ? completedRevenueFromOrders : (customer.totalSpent || 0))
+    ? (completeHistory || allOrdersForCustomer.length > 0 ? completedRevenueFromOrders : (customer.totalSpent || 0))
     : completedRevenueFromOrders;
 
   const totalValidAmount = totalRevenue + inProductionAmount;
 
   const completedOrdersCount = period === 'all'
-    ? (allOrdersForCustomer.length > 0 ? completedOrders.length : (customer.totalOrders || 0))
+    ? (completeHistory || allOrdersForCustomer.length > 0 ? completedOrders.length : (customer.totalOrders || 0))
     : completedOrders.length;
 
   const totalOrdersCount = period === 'all'
-    ? (allOrdersForCustomer.length > 0 ? validOrders.length : (customer.totalOrders || 0))
+    ? (completeHistory || allOrdersForCustomer.length > 0 ? validOrders.length : (customer.totalOrders || 0))
     : validOrders.length;
 
   // Ticket Médio

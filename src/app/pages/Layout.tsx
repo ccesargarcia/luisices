@@ -98,9 +98,9 @@ export function Layout() {
     const unsubscribe = firebaseWhatsAppService.subscribeConversations((chats) => {
       const totalUnread = chats.reduce((acc, c) => acc + (c.unreadCount || 0), 0);
       setUnreadWhatsAppCount(totalUnread);
-    });
+    }, undefined, isAdmin);
     return () => unsubscribe();
-  }, []);
+  }, [isAdmin]);
 
   const handleApplyAiOrderDraft = (draft: AiOrderDraft) => {
     setAiOrderDraft(draft);

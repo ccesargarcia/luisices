@@ -82,6 +82,7 @@ export function useSalesLedger(options?: {
   const { user, userProfile } = useAuth();
   const [allSales, setAllSales] = useState<SaleRecord[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [period, setPeriod] = useState<LedgerPeriod>(options?.defaultPeriod || 'month');
   const [customStart, setCustomStart] = useState<string>('');
   const [customEnd, setCustomEnd] = useState<string>('');
@@ -96,6 +97,8 @@ export function useSalesLedger(options?: {
     }
 
     setLoading(true);
+    setError(null);
+    setAllSales([]);
 
     const isAdmin = userProfile?.role === 'admin';
     const isEmployee = userProfile?.role === 'funcionario';
@@ -171,6 +174,7 @@ export function useSalesLedger(options?: {
           publish();
         },
         (err) => {
+          setError('Não foi possível carregar o histórico financeiro.');
           console.error('useSalesLedger: erro ao escutar vendas:', err);
           ownLoaded = true;
           setLoading(false);
@@ -192,6 +196,7 @@ export function useSalesLedger(options?: {
             publish();
           },
           (err) => {
+            setError('Não foi possível carregar o histórico financeiro atribuído.');
             console.error('useSalesLedger: erro nas vendas atribuídas:', err);
             assignedLoaded = true;
             setLoading(false);
@@ -312,5 +317,6 @@ export function useSalesLedger(options?: {
     stats,
     allTimeStats,
     loading,
+    error,
   };
 }

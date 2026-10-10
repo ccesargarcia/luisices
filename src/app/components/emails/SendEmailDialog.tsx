@@ -109,6 +109,8 @@ export function SendEmailDialog({
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const prevOpenRef = useRef(false);
+  const sendAttemptRef = useRef<{ fingerprint: string; key: string } | null>(null);
+  const sendingRef = useRef(false);
 
   // Sincroniza valores iniciais APENAS no momento em que o diálogo é aberto (evita apagar digitação do usuário)
   useEffect(() => {
@@ -248,6 +250,7 @@ export function SendEmailDialog({
 
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (sendingRef.current) return;
     if (!canSendEmail) {
       toast.error('Você não tem permissão para enviar e-mails pelo sistema.');
       return;
@@ -275,12 +278,11 @@ export function SendEmailDialog({
       return;
     }
 
+    sendingRef.current = true;
     setIsSending(true);
     try {
-      const idempotencyKey = crypto.randomUUID();
       const htmlContent = generateFormattedHtml(body);
       const payload: SendEmailPayload = {
-        idempotencyKey,
         from: sender,
         to: recipientList,
         subject: subject.trim(),
@@ -293,7 +295,13 @@ export function SendEmailDialog({
         payload.cc = cc.split(/[,;\s]+/).filter((c) => c.includes('@'));
       }
 
+      const fingerprint = JSON.stringify({ uid: user?.uid, ...payload });
+      if (sendAttemptRef.current?.fingerprint !== fingerprint) {
+        sendAttemptRef.current = { fingerprint, key: crypto.randomUUID() };
+      }
+      payload.idempotencyKey = sendAttemptRef.current.key;
       await sendEmail(payload);
+      sendAttemptRef.current = null;
       toast.success('E-mail enviado com sucesso!');
       onOpenChange(false);
       onSuccess?.();
@@ -301,6 +309,7 @@ export function SendEmailDialog({
       console.error('Erro ao enviar e-mail:', err);
       toast.error(err.message || 'Falha ao enviar e-mail.');
     } finally {
+      sendingRef.current = false;
       setIsSending(false);
     }
   };

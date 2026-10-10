@@ -101,7 +101,7 @@ const assertActiveSession = async (request, options = {}) => {
 
   // Barreira temporal estrita: auth_time DEVE ser estritamente maior que tokensValidAfterTime.
   // Rejeita qualquer sessão emitida no mesmo segundo ou antes da revogação.
-  if (profile.tokensValidAfterTime && typeof authTime === 'number' && authTime <= profile.tokensValidAfterTime) {
+  if (profile.tokensValidAfterTime && (!Number.isFinite(authTime) || authTime <= profile.tokensValidAfterTime)) {
     throw new HttpsError('unauthenticated', 'Sessão revogada no servidor. Faça login novamente.');
   }
 

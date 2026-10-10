@@ -996,41 +996,13 @@ const revokeAllSessions = onCall(async (request) => {
   }
 });
 
-/** Revoga um único dispositivo/sessão específico do usuário. */
-const revokeDeviceSession = onCall(async (request) => {
-  const { uid, deviceId } = request.data || {};
-  if (!uid || typeof uid !== 'string' || !deviceId || typeof deviceId !== 'string') {
-    throw new functions.https.HttpsError('invalid-argument', 'UID e deviceId são obrigatórios.');
-  }
-
-  const callerUid = request.auth?.uid;
-  if (!callerUid) {
-    throw new functions.https.HttpsError('unauthenticated', 'Sessão expirada. Faça login novamente.');
-  }
-
-  const isSelf = callerUid === uid;
-  const isAdmin = await isAdminRequest(request);
-
-  if (!isSelf && !isAdmin) {
-    throw new functions.https.HttpsError('permission-denied', 'Apenas o próprio usuário ou administradores podem revogar este dispositivo.');
-  }
-
-  try {
-    const deviceRef = admin.firestore().doc(`userProfiles/${uid}/devices/${deviceId}`);
-    // Marca como revogado explicitamente no Firestore para evitar que o dispositivo
-    // offline se registre novamente no futuro (impede bypass de revogação).
-    await deviceRef.set({
-      deviceId,
-      status: 'revoked',
-      revokedAt: admin.firestore.FieldValue.serverTimestamp(),
-      revokedBy: callerUid,
-    }, { merge: true });
-    return { success: true };
-  } catch (err) {
-    console.error(`[revokeDeviceSession] Erro ao revogar dispositivo ${deviceId} do usuário ${uid}:`, err);
-    throw new functions.https.HttpsError('internal', 'Falha ao revogar a sessão do dispositivo.');
-  }
-});
+/** Solicita logout ao dispositivo; revogação efetiva de tokens usa revokeAllSessions. */
+const { requestDeviceLogout } = require('./deviceLogout');
+const revokeDeviceSession = onCall(async (request) => requestDeviceLogout(request, {
+  assertActiveSession,
+  db: admin.firestore(),
+  timestamp: admin.firestore.FieldValue.serverTimestamp,
+}));
 
 module.exports = {
   sendAdminPasswordReset,

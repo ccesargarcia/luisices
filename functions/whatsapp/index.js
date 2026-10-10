@@ -15,6 +15,11 @@ const {
 const { validateOriginSecret } = require('../originProtection');
 const { whatsappMessageLimiter } = require('../common/rateLimiters');
 
+const { persistIncomingMessage } = require('./persistMessage');
+
+const { authorizeChat } = require('./chatScope');
+const chatScope = (request, phone, options = {}) => authorizeChat(request, phone, { db: admin.firestore(), assertActiveSession, ...options });
+
 const MAX_WEBHOOK_BYTES = 1024 * 1024;
 
 /**
@@ -90,6 +95,7 @@ const sendWhatsAppDirectMessage = onCall(
         verifiedCustomerName = customer.data().name || null;
         verifiedCustomerId = customerId;
       }
+      const chatOwner = await chatScope(request, cleanNumber, { customerId, create: true });
       requestRef = admin.firestore().collection('whatsappSendRequests')
         .doc(`${request.auth.uid}_${requestId}`);
       let existingRequest = null;
@@ -192,7 +198,7 @@ const sendWhatsAppDirectMessage = onCall(
         timestamp: nowIso,
         evolutionMessageId: messageId,
         sentByUid: request.auth.uid,
-        userId: request.auth.uid,
+        userId: chatOwner,
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
       });
 
@@ -204,7 +210,7 @@ const sendWhatsAppDirectMessage = onCall(
         lastMessageText: text.trim(),
         lastMessageTimestamp: nowIso,
         lastMessageSender: 'me',
-        userId: request.auth.uid,
+        userId: chatOwner,
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       }, { merge: true });
 
@@ -262,9 +268,10 @@ const deleteWhatsAppMessage = onCall(
       throw new functions.https.HttpsError('invalid-argument', 'Número de WhatsApp inválido.');
     }
 
+    const chatOwner = await chatScope(request, cleanNumber);
     if (messageDocId) {
       const target = await admin.firestore().collection('whatsapp_messages').doc(String(messageDocId)).get();
-      if (!target.exists || target.data().chatId !== cleanNumber) {
+      if (!target.exists || target.data().chatId !== cleanNumber || (target.data().userId || null) !== chatOwner) {
         throw new functions.https.HttpsError('permission-denied', 'A mensagem não pertence a este chat.');
       }
       if (evolutionMessageId && target.data().evolutionMessageId !== evolutionMessageId) {
@@ -275,7 +282,7 @@ const deleteWhatsAppMessage = onCall(
         .where('evolutionMessageId', '==', String(evolutionMessageId))
         .limit(1)
         .get();
-      if (target.empty || target.docs[0].data().chatId !== cleanNumber) {
+      if (target.empty || target.docs[0].data().chatId !== cleanNumber || (target.docs[0].data().userId || null) !== chatOwner) {
         throw new functions.https.HttpsError('not-found', 'Mensagem não encontrada neste chat.');
       }
     }
@@ -396,6 +403,7 @@ const syncWhatsAppChatMessages = onCall(
     if (!/^55\d{10,11}$/.test(cleanPhone)) {
       throw new functions.https.HttpsError('invalid-argument', 'Número de WhatsApp inválido.');
     }
+    const chatOwner = await chatScope(request, cleanPhone);
     const remoteJid = cleanPhone.includes('@') ? cleanPhone : `${cleanPhone}@s.whatsapp.net`;
 
     try {
@@ -435,7 +443,7 @@ const syncWhatsAppChatMessages = onCall(
       let customerName = cleanPhone;
       let customerId = null;
       try {
-        const custSnap = await admin.firestore().collection('customers').limit(100).get();
+        const custSnap = await admin.firestore().collection('customers').where('userId', '==', chatOwner || '__unassigned__').limit(100).get();
         for (const d of custSnap.docs) {
           const cData = d.data();
           const cPhone = String(cData.phone || '').replace(/\D/g, '');
@@ -475,6 +483,7 @@ const syncWhatsAppChatMessages = onCall(
 
         const msgDocId = `wa_${key.id}`;
         await admin.firestore().collection('whatsapp_messages').doc(msgDocId).set({
+          userId: chatOwner,
           chatId: cleanPhone,
           phone: cleanPhone,
           customerName,
@@ -591,6 +600,7 @@ const markWhatsAppChatRead = onCall(async (request) => {
   if (!/^55\d{10,11}$/.test(cleanPhone)) {
     throw new functions.https.HttpsError('invalid-argument', 'Número de WhatsApp inválido.');
   }
+  await chatScope(request, cleanPhone);
   await admin.firestore().collection('whatsapp_chats').doc(cleanPhone).update({
     unreadCount: 0,
     updatedAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -626,7 +636,9 @@ const ensureWhatsAppConversation = onCall(async (request) => {
       throw new functions.https.HttpsError('invalid-argument', 'Cliente não corresponde ao telefone informado.');
     }
   }
+  const chatOwner = await chatScope(request, cleanPhone, { customerId, create: true });
   await admin.firestore().collection('whatsapp_chats').doc(cleanPhone).set({
+    userId: chatOwner,
     id: cleanPhone,
     phone: cleanPhone,
     customerName: customerName || cleanPhone,
@@ -697,73 +709,35 @@ const evolutionWhatsAppWebhook = onRequest(
             }
             const nowIso = new Date().toISOString();
 
-            let customerName = cleanPhone;
-            let customerId = null;
-            try {
-              // 1. Busca rápida indexada direta por phoneDigits ou phone com limite 1
-              let custSnap = await admin.firestore().collection('customers').where('phoneDigits', '==', cleanPhone).limit(1).get();
-              if (custSnap.empty) {
-                custSnap = await admin.firestore().collection('customers').where('phone', '==', cleanPhone).limit(1).get();
-              }
-              if (!custSnap.empty) {
-                const cData = custSnap.docs[0].data();
-                customerName = cData.name || customerName;
-                customerId = custSnap.docs[0].id;
-              } else {
-                // Fallback com limite reduzido para casos com máscara não normalizada
-                const fallbackSnap = await admin.firestore().collection('customers').limit(25).get();
-                for (const d of fallbackSnap.docs) {
-                  const cData = d.data();
-                  const cPhone = String(cData.phoneDigits || cData.phone || '').replace(/\D/g, '');
-                  if (cPhone && (cleanPhone.endsWith(cPhone) || cPhone.endsWith(cleanPhone))) {
-                    customerName = cData.name || customerName;
-                    customerId = d.id;
-                    break;
-                  }
-                }
-              }
-            } catch (e) {
-              console.warn('[evolutionWhatsAppWebhook] Erro ao buscar cliente:', e);
-            }
+            const scopedChat = await admin.firestore().collection('whatsapp_chats').doc(cleanPhone).get();
+            const chatData = scopedChat.exists ? scopedChat.data() : {};
+            const chatOwner = chatData.userId || null;
+            // Instância compartilhada: contatos sem vínculo permanecem administrativos.
+            const customerName = chatData.customerName || cleanPhone;
+            const customerId = chatData.customerId || null;
 
             const msgDocId = key?.id ? `wa_${key.id}` : null;
             if (msgDocId) {
               const msgRef = admin.firestore().collection('whatsapp_messages').doc(msgDocId);
-              const msgSnap = await msgRef.get();
-              const isNewMessage = !msgSnap.exists;
-
-              await msgRef.set({
-                chatId: cleanPhone,
-                phone: cleanPhone,
-                customerName,
-                customerId,
-                sender: fromMe ? 'me' : 'customer',
-                text: messageText,
-                status: fromMe ? 'sent' : 'received',
-                timestamp: nowIso,
-                evolutionMessageId: key?.id || `inc_${Date.now()}`,
-                createdAt: isNewMessage ? admin.firestore.FieldValue.serverTimestamp() : (msgSnap.data()?.createdAt || admin.firestore.FieldValue.serverTimestamp()),
-              }, { merge: true });
-
-              const chatUpdatePayload = {
-                id: cleanPhone,
-                phone: cleanPhone,
-                customerName,
-                customerId,
-                lastMessageText: messageText,
-                lastMessageTimestamp: nowIso,
-                lastMessageSender: fromMe ? 'me' : 'customer',
-                updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-              };
-
-              // Idempotência estrita: só incrementa unreadCount se a mensagem for inédita no Firestore
-              if (fromMe) {
-                chatUpdatePayload.unreadCount = 0;
-              } else if (isNewMessage) {
-                chatUpdatePayload.unreadCount = admin.firestore.FieldValue.increment(1);
-              }
-
-              await admin.firestore().collection('whatsapp_chats').doc(cleanPhone).set(chatUpdatePayload, { merge: true });
+              await persistIncomingMessage({
+                db: admin.firestore(),
+                messageRef: msgRef,
+                chatRef: admin.firestore().collection('whatsapp_chats').doc(cleanPhone),
+                message: {
+                  userId: chatOwner,
+                  chatId: cleanPhone,
+                  phone: cleanPhone,
+                  customerName,
+                  customerId,
+                  sender: fromMe ? 'me' : 'customer',
+                  text: messageText,
+                  status: fromMe ? 'sent' : 'received',
+                  timestamp: nowIso,
+                  evolutionMessageId: key.id,
+                },
+                increment: admin.firestore.FieldValue.increment,
+                serverTimestamp: admin.firestore.FieldValue.serverTimestamp,
+              });
             } else {
               console.warn('[evolutionWhatsAppWebhook] Evento sem message key.id ignorado.');
               return res.status(200).json({ received: true, ignored: 'missing_message_id' });

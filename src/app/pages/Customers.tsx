@@ -43,6 +43,7 @@ import {
   BulkCustomerDeleteDialog,
 } from '../components/customers/CustomerDeleteDialogs';
 import { CustomerStatsCards } from '../components/customers/CustomerStatsCards';
+import { groupCustomerLedgerHistory, ledgerSaleToOrder } from '../utils/customerLedgerHistory';
 import { useSalesLedger } from '../../hooks/useSalesLedger';
 import { PaginationControls } from '../components/common/PaginationControls';
 import { toast } from 'sonner';
@@ -50,15 +51,13 @@ import { toast } from 'sonner';
 export function Customers() {
   const { user, userProfile, hasPermission } = useAuth();
   const {
-    allOrders,
-    orders: activeFilteredOrders,
     selectedUserIds,
     isFilterActive,
     selectedFilterLabel,
     activePartnerId,
     clearUserFilter,
   } = useOrders();
-  const { allTimeStats } = useSalesLedger({ teamUserIds: selectedUserIds });
+  const { allTimeStats, sales: ledgerSales, loading: ledgerLoading, error: ledgerError } = useSalesLedger({ teamUserIds: selectedUserIds });
 
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
@@ -156,8 +155,8 @@ export function Customers() {
     return customers.filter((c) => c.userId && selectedUserIds.includes(c.userId));
   }, [customers, isFilterActive, selectedUserIds]);
 
-  // Pedidos considerados para contagem de clientes: utiliza activeFilteredOrders quando o filtro de equipe/parceiro estiver ativo
-  const relevantOrders = isFilterActive ? activeFilteredOrders : allOrders;
+  // Reutiliza o ledger histórico no escopo selecionado, sem truncar pelos pedidos operacionais.
+  const relevantOrders = useMemo(() => ledgerSales.map(ledgerSaleToOrder), [ledgerSales]);
 
   // Mapa de pedidos em aberto e total de pedidos por cliente a partir de OrdersContext
   const openOrdersMap = useMemo(() => {
@@ -180,25 +179,17 @@ export function Customers() {
     return map;
   }, [relevantOrders]);
 
-  // Agrupamento de pedidos por customerId para O(1) lookup
-  const ordersByCustomerMap = useMemo(() => {
-    const map = new Map<string, typeof relevantOrders>();
-    relevantOrders.forEach((o) => {
-      if (o.customerId) {
-        const list = map.get(o.customerId) || [];
-        list.push(o);
-        map.set(o.customerId, list);
-      }
-    });
-    return map;
-  }, [relevantOrders]);
+  const ordersByCustomerMap = useMemo(
+    () => groupCustomerLedgerHistory(partnerScopedCustomers, ledgerSales),
+    [partnerScopedCustomers, ledgerSales],
+  );
 
   // Mapa de Raio X calculado para cada cliente da carteira
   const customerXRayMap = useMemo(() => {
     const map = new Map<string, CustomerXRayMetrics>();
     partnerScopedCustomers.forEach((c) => {
       const customerOrders = ordersByCustomerMap.get(c.id) || [];
-      const metrics = computeCustomerXRay(c, customerOrders, analysisPeriod, tiersConfig);
+      const metrics = computeCustomerXRay(c, customerOrders, analysisPeriod, tiersConfig, new Date(), true);
       map.set(c.id, metrics);
     });
     return map;
@@ -597,7 +588,16 @@ export function Customers() {
     }
   };
 
-  if (loading) {
+  if (ledgerError) {
+    return (
+      <Card><CardContent className="p-6" role="alert">
+        <p>{ledgerError} Os indicadores não foram calculados.</p>
+        <Button className="mt-3" onClick={() => window.location.reload()}>Tentar novamente</Button>
+      </CardContent></Card>
+    );
+  }
+
+  if (loading || ledgerLoading) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
         <Loader2 className="size-8 animate-spin text-primary" />
@@ -673,6 +673,12 @@ export function Customers() {
         completedOrdersCount={stats.completedOrdersCount}
         inProductionOrdersCount={stats.inProductionOrdersCount}
       />
+
+      <p className="text-xs text-muted-foreground" role="note">
+        {ledgerLoading
+          ? 'Carregando histórico financeiro dos clientes…'
+          : 'Indicadores calculados pelo histórico financeiro vinculado a cada cliente. Pedidos antigos sem vínculo precisam de conciliação.'}
+      </p>
 
       {/* Search, Carrossel de Chips e Filtros Rápidos (Liquid Glassmorphism) */}
       <div className="p-3.5 sm:p-4 rounded-2xl luisices-glass border border-white/60 dark:border-white/10 space-y-3">
@@ -952,6 +958,8 @@ export function Customers() {
         userId={historyCustomer?.userId || user?.uid}
         onOpenNewOrder={handleOpenNewOrder}
         tiersConfig={tiersConfig}
+        historicalOrders={historyCustomer ? (ordersByCustomerMap.get(historyCustomer.id) || []) : []}
+        metricsLoading={ledgerLoading}
       />
 
       <NewOrderDialog

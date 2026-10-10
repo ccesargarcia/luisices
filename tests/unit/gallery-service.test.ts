@@ -10,6 +10,8 @@ import {
   query,
   where,
   orderBy,
+  limit,
+  startAfter,
   Timestamp,
 } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
@@ -27,6 +29,8 @@ vi.mock('firebase/firestore', () => ({
   query: vi.fn((...args) => ({ args })),
   where: vi.fn((field, op, val) => ({ field, op, val })),
   orderBy: vi.fn((field, dir) => ({ field, dir })),
+  limit: vi.fn((count) => ({ count })),
+  startAfter: vi.fn((cursor) => ({ cursor })),
   Timestamp: {
     now: vi.fn(() => ({
       toDate: () => new Date('2026-10-01T12:00:00Z'),
@@ -123,6 +127,36 @@ describe('Funcionalidade: Galeria de Mídias e Portfólio (firebaseGalleryServic
     });
   });
 
+  describe('Paginação da galeria por cliente', () => {
+    it('usa o último documento como cursor e resolve somente os itens ativos', async () => {
+      const active = { id: 'active', data: () => ({ userId: 'user-owner', customerId: 'cust', imageUrl: 'active.png', createdAt: { toDate: () => new Date() } }) };
+      const deleted = { id: 'deleted', data: () => ({ deletedAt: true }) };
+      (getDocs as any).mockResolvedValueOnce({ docs: [active, deleted] });
+      const page = await firebaseGalleryService.getCustomerPage('user-owner', 'cust', 2);
+      expect(page.cursor).toBe(deleted);
+      expect(page.hasMore).toBe(true);
+      expect(page.items).toHaveLength(1);
+      expect(resolveGalleryImageUrl).toHaveBeenCalledTimes(1);
+      (getDocs as any).mockResolvedValueOnce({ docs: [] });
+      const next = await firebaseGalleryService.getCustomerPage('user-owner', 'cust', 2, page.cursor);
+      expect(startAfter).toHaveBeenCalledWith(deleted);
+      expect(next.hasMore).toBe(false);
+    });
+    it('continua páginas compostas apenas por itens excluídos', async () => {
+      const deleted = { id: 'deleted', data: () => ({ deletedAt: true }) };
+      (getDocs as any).mockResolvedValueOnce({ docs: [deleted] });
+      const page = await firebaseGalleryService.getCustomerPage('user-owner', 'cust', 1);
+      expect(page.items).toEqual([]);
+      expect(page.hasMore).toBe(true);
+      expect(page.cursor).toBe(deleted);
+      expect(resolveGalleryImageUrl).not.toHaveBeenCalled();
+    });
+    it.each([0, -1, 101, 1.5])('rejeita tamanho inválido %s sem consultar', async (size) => {
+      await expect(firebaseGalleryService.getCustomerPage('user-owner', 'cust', size)).rejects.toThrow('tamanho da página');
+      expect(getDocs).not.toHaveBeenCalled();
+    });
+  });
+
   describe('1.1. Listagem Direcionada por Cliente (getItemsByCustomer)', () => {
     it('deve buscar apenas artes associadas ao customerId especificado e ignorar itens excluídos logicamente', async () => {
       const mockDocs = [
@@ -193,9 +227,12 @@ describe('Funcionalidade: Galeria de Mídias e Portfólio (firebaseGalleryServic
         },
       ];
 
-      (getDocs as any).mockResolvedValueOnce({ docs: mockDocs });
+      // O Firestore aplica ordenação e limite antes de devolver a página.
+      (getDocs as any).mockResolvedValueOnce({ docs: [mockDocs[1]] });
 
       const items = await firebaseGalleryService.getItemsByCustomer('user-owner', 'cust-123', 1);
+      expect(orderBy).toHaveBeenCalledWith('createdAt', 'desc');
+      expect(limit).toHaveBeenCalledWith(1);
 
       expect(items).toHaveLength(1);
       expect(items[0].id).toBe('item-new');
