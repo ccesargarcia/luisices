@@ -70,15 +70,6 @@ export function ChatSidebar({
               </button>
             )}
           </div>
-          <Button
-            size="sm"
-            onClick={onNewChat}
-            className="h-9 px-2.5 bg-primary hover:bg-primary/90 text-white text-xs gap-1 shrink-0 font-medium md:hidden cursor-pointer"
-            title="Iniciar Nova Conversa"
-          >
-            <Plus className="size-4" />
-            <span>Nova</span>
-          </Button>
         </div>
 
         <div className="flex items-center gap-1 overflow-x-auto pb-0.5">
@@ -213,7 +204,7 @@ export function ChatSidebar({
         onClick={onNewChat}
         aria-label="Iniciar Nova Conversa"
         title="Iniciar Nova Conversa"
-        className="md:hidden fixed bottom-20 right-4 z-30 size-12 rounded-full bg-primary hover:bg-primary/90 text-white shadow-xl flex items-center justify-center transition-transform active:scale-95 focus:outline-hidden cursor-pointer ring-2 ring-background"
+        className="md:hidden fixed bottom-[calc(5rem+env(safe-area-inset-bottom,0px))] right-4 z-30 size-12 rounded-full bg-primary hover:bg-primary/90 text-white shadow-xl flex items-center justify-center transition-transform active:scale-95 focus:outline-hidden cursor-pointer ring-2 ring-background"
       >
         <Plus className="size-6" />
       </button>

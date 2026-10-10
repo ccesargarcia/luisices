@@ -281,6 +281,7 @@ export function Layout() {
   const businessName = settings?.businessName || '';
   const isDevEnvironment = import.meta.env.VITE_FIREBASE_PROJECT_ID?.endsWith('-dev') ?? false;
   const appVersion = __APP_VERSION__ || '0.0.0';
+  const isWhatsApp = location.pathname.startsWith('/whatsapp');
 
   return (
     <div className="min-h-[100dvh] w-full max-w-full overflow-x-clip bg-transparent flex flex-col">
@@ -345,7 +346,10 @@ export function Layout() {
       {/* Conteúdo Principal */}
       <main
         className={cn(
-          'min-w-0 w-full flex-1 px-3 py-4 pb-24 transition-[margin,width] duration-300 sm:px-4 sm:py-8 md:pb-8',
+          'min-w-0 w-full flex-1 transition-[margin,width] duration-300',
+          isWhatsApp
+            ? 'p-0 pb-16 md:pb-0 h-[calc(100dvh-4rem)] overflow-hidden flex flex-col'
+            : 'px-3 py-4 pb-24 sm:px-4 sm:py-8 md:pb-8',
           sidebarCollapsed ? 'md:ml-20 md:w-[calc(100%-5rem)]' : 'md:ml-72 md:w-[calc(100%-18rem)]'
         )}
       >
@@ -353,27 +357,29 @@ export function Layout() {
       </main>
 
       {/* Rodapé Desktop & Mobile */}
-      <Footer
-        sidebarCollapsed={sidebarCollapsed}
-        businessName={businessName}
-        logo={settings?.logo}
-        businessTagline={settings?.businessTagline}
-        businessPhone={settings?.businessPhone}
-        businessEmail={settings?.businessEmail}
-        businessAddress={settings?.businessAddress}
-        instagramUrl={settings?.instagramUrl}
-        whatsappPhone={settings?.whatsappPhone}
-        websiteUrl={settings?.websiteUrl}
-        isDevEnvironment={isDevEnvironment}
-        appVersion={appVersion}
-        aboutOpen={aboutOpen}
-        onAboutOpenChange={setAboutOpen}
-        footerMode={settings?.footerMode ?? 'compact'}
-        footerShowSocialLinks={settings?.footerShowSocialLinks ?? true}
-        footerShowContactInfo={settings?.footerShowContactInfo ?? true}
-        footerShowVersion={settings?.footerShowVersion ?? true}
-        footerShowScrollToTop={settings?.footerShowScrollToTop ?? true}
-      />
+      {!isWhatsApp && (
+        <Footer
+          sidebarCollapsed={sidebarCollapsed}
+          businessName={businessName}
+          logo={settings?.logo}
+          businessTagline={settings?.businessTagline}
+          businessPhone={settings?.businessPhone}
+          businessEmail={settings?.businessEmail}
+          businessAddress={settings?.businessAddress}
+          instagramUrl={settings?.instagramUrl}
+          whatsappPhone={settings?.whatsappPhone}
+          websiteUrl={settings?.websiteUrl}
+          isDevEnvironment={isDevEnvironment}
+          appVersion={appVersion}
+          aboutOpen={aboutOpen}
+          onAboutOpenChange={setAboutOpen}
+          footerMode={settings?.footerMode ?? 'compact'}
+          footerShowSocialLinks={settings?.footerShowSocialLinks ?? true}
+          footerShowContactInfo={settings?.footerShowContactInfo ?? true}
+          footerShowVersion={settings?.footerShowVersion ?? true}
+          footerShowScrollToTop={settings?.footerShowScrollToTop ?? true}
+        />
+      )}
 
       {/* Navegação Inferior Mobile */}
       <MobileNavigation

@@ -115,7 +115,7 @@ export function ChatArea({
   return (
     <>
       {/* Header do Chat Selecionado */}
-      <div className="px-2.5 sm:px-4 py-2 sm:py-3 border-b luisices-glass flex items-center justify-between gap-2 sm:gap-3 shrink-0 min-w-0">
+      <div className="px-2.5 sm:px-4 py-2 sm:py-3 border-b luisices-glass flex items-center justify-between gap-2 sm:gap-3 shrink-0 min-w-0 pt-[max(0.5rem,env(safe-area-inset-top))]">
         {/* Lado Esquerdo: Voltar + Avatar + Dados do Cliente */}
         <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
           {/* Botão Voltar (Mobile First: apenas ícone limpo para não ocupar espaço horizontal) */}
@@ -165,7 +165,7 @@ export function ChatArea({
           <Button
             variant="outline"
             size="sm"
-            className="h-8 px-2 sm:px-2.5 text-xs gap-1.5 cursor-pointer rounded-lg"
+            className="size-8 p-0 sm:size-auto sm:h-8 sm:px-2.5 text-xs gap-1.5 cursor-pointer rounded-lg"
             onClick={onSyncMessages}
             disabled={syncingMessages}
             title="Sincronizar mensagens recentes do WhatsApp"
@@ -193,7 +193,7 @@ export function ChatArea({
             variant={isSelectionMode ? 'default' : 'outline'}
             size="sm"
             className={cn(
-              'h-8 px-2 sm:px-2.5 text-xs gap-1.5 cursor-pointer rounded-lg',
+              'size-8 p-0 sm:size-auto sm:h-8 sm:px-2.5 text-xs gap-1.5 cursor-pointer rounded-lg',
               isSelectionMode
                 ? 'bg-primary text-primary-foreground hover:bg-primary/90'
                 : 'border-primary/30 text-primary hover:bg-primary/10'
@@ -208,7 +208,7 @@ export function ChatArea({
       </div>
 
       {/* Área de Mensagens com Rolagem */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-muted/10 relative">
+      <div className="flex-1 overflow-y-auto overscroll-contain p-4 space-y-3 bg-muted/10 relative">
         {/* Barra Fixa de Ações no Modo de Seleção */}
         {isSelectionMode && (
           <div className="sticky top-0 z-20 px-4 py-2.5 luisices-glass border border-border/60 shadow-md mb-3 flex flex-col sm:flex-row items-center justify-between rounded-xl gap-2 backdrop-blur-md">
