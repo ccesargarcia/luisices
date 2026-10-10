@@ -15,11 +15,24 @@ import {
   Download,
   X,
   Users,
+  Sparkles,
+  ArrowUpDown,
+  Filter,
 } from 'lucide-react';
 import { cn } from '../components/ui/utils';
 import { firebaseCustomerService } from '../../services/firebaseCustomerService';
 import { useAuth } from '../../contexts/AuthContext';
 import { useOrders } from '../../contexts/OrdersContext';
+import { useUserSettings } from '../../hooks/useUserSettings';
+import {
+  computeCustomerXRay,
+  CustomerAnalysisPeriod,
+  CustomerTiersSettings,
+  CustomerXRayMetrics,
+  DEFAULT_CUSTOMER_TIERS,
+  TIER_DEFINITIONS,
+} from '../utils/customerMetrics';
+import { formatCurrency } from '../utils/currency';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { CustomerCard } from '../components/customers/CustomerCard';
 import { CustomerFormDialog } from '../components/customers/CustomerFormDialog';
@@ -55,7 +68,17 @@ export function Customers() {
   const [orderFilter, setOrderFilter] = useState<'all' | 'open' | 'no_orders'>('all');
   const [profileFilter, setProfileFilter] = useState<Customer['status'] | 'all'>('all');
   const [birthdayFilter, setBirthdayFilter] = useState<'all' | 'today' | 'upcoming_7' | 'this_month'>('all');
+  const [spendingTierFilter, setSpendingTierFilter] = useState<
+    'all' | 'diamond' | 'gold' | 'silver' | 'bronze' | 'inactive' | 'no_orders'
+  >('all');
+  const [analysisPeriod, setAnalysisPeriod] = useState<CustomerAnalysisPeriod>('all');
+  const [sortBy, setSortBy] = useState<
+    'default' | 'totalSpent_desc' | 'averageTicket_desc' | 'orders_desc' | 'lastOrder_desc' | 'name_asc'
+  >('default');
   const [selectedCustomerIds, setSelectedCustomerIds] = useState<string[]>([]);
+
+  const { settings } = useUserSettings();
+  const tiersConfig = useMemo(() => settings?.customerTiers ?? DEFAULT_CUSTOMER_TIERS, [settings]);
 
   // Dialogs state
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -157,7 +180,31 @@ export function Customers() {
     return map;
   }, [relevantOrders]);
 
-  // Filtragem de clientes
+  // Agrupamento de pedidos por customerId para O(1) lookup
+  const ordersByCustomerMap = useMemo(() => {
+    const map = new Map<string, typeof relevantOrders>();
+    relevantOrders.forEach((o) => {
+      if (o.customerId) {
+        const list = map.get(o.customerId) || [];
+        list.push(o);
+        map.set(o.customerId, list);
+      }
+    });
+    return map;
+  }, [relevantOrders]);
+
+  // Mapa de Raio X calculado para cada cliente da carteira
+  const customerXRayMap = useMemo(() => {
+    const map = new Map<string, CustomerXRayMetrics>();
+    partnerScopedCustomers.forEach((c) => {
+      const customerOrders = ordersByCustomerMap.get(c.id) || [];
+      const metrics = computeCustomerXRay(c, customerOrders, analysisPeriod, tiersConfig);
+      map.set(c.id, metrics);
+    });
+    return map;
+  }, [partnerScopedCustomers, ordersByCustomerMap, analysisPeriod, tiersConfig]);
+
+  // Filtragem e ordenação de clientes
   const filteredCustomers = useMemo(() => {
     let list = partnerScopedCustomers;
     if (orderFilter === 'open') {
@@ -175,29 +222,82 @@ export function Customers() {
     } else if (birthdayFilter === 'this_month') {
       list = list.filter((c) => isBirthdayThisMonth(c.birthday));
     }
-    if (!searchQuery) return list;
-    const queryStr = searchQuery.toLowerCase().trim();
-    const cleanQueryDigits = queryStr.replace(/\D/g, '');
-    const normalizedQuery = queryStr.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 
-    return list.filter((customer) => {
-      const nameNorm = customer.name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-      const phoneDigits = customer.phone ? customer.phone.replace(/\D/g, '') : '';
-      const email = customer.email?.toLowerCase() || '';
+    // Filtro por Faixa de Gasto e Raio X
+    if (spendingTierFilter === 'diamond') {
+      list = list.filter((c) => customerXRayMap.get(c.id)?.tier === 'diamond');
+    } else if (spendingTierFilter === 'gold') {
+      list = list.filter((c) => customerXRayMap.get(c.id)?.tier === 'gold');
+    } else if (spendingTierFilter === 'silver') {
+      list = list.filter((c) => customerXRayMap.get(c.id)?.tier === 'silver');
+    } else if (spendingTierFilter === 'bronze') {
+      list = list.filter((c) => customerXRayMap.get(c.id)?.tier === 'bronze');
+    } else if (spendingTierFilter === 'inactive') {
+      list = list.filter((c) => customerXRayMap.get(c.id)?.isInactive === true);
+    } else if (spendingTierFilter === 'no_orders') {
+      list = list.filter((c) => (customerXRayMap.get(c.id)?.totalOrdersCount ?? 0) === 0);
+    }
 
-      return (
-        nameNorm.includes(normalizedQuery) ||
-        (cleanQueryDigits.length >= 3 && phoneDigits.includes(cleanQueryDigits)) ||
-        customer.phone.includes(queryStr) ||
-        email.includes(queryStr)
+    if (searchQuery) {
+      const queryStr = searchQuery.toLowerCase().trim();
+      const cleanQueryDigits = queryStr.replace(/\D/g, '');
+      const normalizedQuery = queryStr.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+
+      list = list.filter((customer) => {
+        const nameNorm = customer.name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        const phoneDigits = customer.phone ? customer.phone.replace(/\D/g, '') : '';
+        const email = customer.email?.toLowerCase() || '';
+
+        return (
+          nameNorm.includes(normalizedQuery) ||
+          (cleanQueryDigits.length >= 3 && phoneDigits.includes(cleanQueryDigits)) ||
+          customer.phone.includes(queryStr) ||
+          email.includes(queryStr)
+        );
+      });
+    }
+
+    // Ordenação personalizada
+    if (sortBy === 'totalSpent_desc') {
+      list = [...list].sort(
+        (a, b) => (customerXRayMap.get(b.id)?.totalRevenue || 0) - (customerXRayMap.get(a.id)?.totalRevenue || 0)
       );
-    });
-  }, [partnerScopedCustomers, searchQuery, orderFilter, profileFilter, birthdayFilter, openOrdersMap, totalOrdersMap]);
+    } else if (sortBy === 'averageTicket_desc') {
+      list = [...list].sort(
+        (a, b) => (customerXRayMap.get(b.id)?.averageTicket || 0) - (customerXRayMap.get(a.id)?.averageTicket || 0)
+      );
+    } else if (sortBy === 'orders_desc') {
+      list = [...list].sort(
+        (a, b) => (customerXRayMap.get(b.id)?.totalOrdersCount || 0) - (customerXRayMap.get(a.id)?.totalOrdersCount || 0)
+      );
+    } else if (sortBy === 'lastOrder_desc') {
+      list = [...list].sort((a, b) => {
+        const dateB = customerXRayMap.get(b.id)?.lastOrderDate ? new Date(customerXRayMap.get(b.id)!.lastOrderDate!).getTime() : 0;
+        const dateA = customerXRayMap.get(a.id)?.lastOrderDate ? new Date(customerXRayMap.get(a.id)!.lastOrderDate!).getTime() : 0;
+        return dateB - dateA;
+      });
+    } else if (sortBy === 'name_asc') {
+      list = [...list].sort((a, b) => a.name.localeCompare(b.name));
+    }
+
+    return list;
+  }, [
+    partnerScopedCustomers,
+    searchQuery,
+    orderFilter,
+    profileFilter,
+    birthdayFilter,
+    spendingTierFilter,
+    sortBy,
+    openOrdersMap,
+    totalOrdersMap,
+    customerXRayMap,
+  ]);
 
   // Resetar página ao filtrar ou mudar tamanho
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery, orderFilter, profileFilter, birthdayFilter, pageSize]);
+  }, [searchQuery, orderFilter, profileFilter, birthdayFilter, spendingTierFilter, analysisPeriod, sortBy, pageSize]);
 
   const effectivePageSize = pageSize === 'all' ? filteredCustomers.length : pageSize;
   const totalPages = Math.ceil(filteredCustomers.length / (effectivePageSize || 1));
@@ -267,10 +367,18 @@ export function Customers() {
 
   // Chips Rápidos de Filtragem Contextual para Operação Ágil (Mobile & Desktop)
   const quickChips = useMemo(() => {
-    const isAll = orderFilter === 'all' && profileFilter === 'all' && birthdayFilter === 'all';
+    const isAll =
+      orderFilter === 'all' &&
+      profileFilter === 'all' &&
+      birthdayFilter === 'all' &&
+      spendingTierFilter === 'all';
     const birthdayTodayCount = partnerScopedCustomers.filter((c) => getDaysUntilBirthday(c.birthday) === 0).length;
     const birthdayMonthCount = partnerScopedCustomers.filter((c) => isBirthdayThisMonth(c.birthday)).length;
     const openOrdersCount = partnerScopedCustomers.filter((c) => (openOrdersMap[c.id] || 0) > 0).length;
+    const diamondCount = partnerScopedCustomers.filter((c) => customerXRayMap.get(c.id)?.tier === 'diamond').length;
+    const goldCount = partnerScopedCustomers.filter((c) => customerXRayMap.get(c.id)?.tier === 'gold').length;
+    const silverCount = partnerScopedCustomers.filter((c) => customerXRayMap.get(c.id)?.tier === 'silver').length;
+    const inactiveCount = partnerScopedCustomers.filter((c) => customerXRayMap.get(c.id)?.isInactive === true).length;
     const vipCount = partnerScopedCustomers.filter((c) => c.status === 'vip').length;
 
     return [
@@ -280,6 +388,55 @@ export function Customers() {
         count: partnerScopedCustomers.length,
         isActive: isAll,
         onClick: () => {
+          setOrderFilter('all');
+          setProfileFilter('all');
+          setBirthdayFilter('all');
+          setSpendingTierFilter('all');
+        },
+      },
+      {
+        id: 'diamond',
+        label: '💎 Diamante',
+        count: diamondCount,
+        isActive: spendingTierFilter === 'diamond',
+        onClick: () => {
+          setSpendingTierFilter(spendingTierFilter === 'diamond' ? 'all' : 'diamond');
+          setOrderFilter('all');
+          setProfileFilter('all');
+          setBirthdayFilter('all');
+        },
+      },
+      {
+        id: 'gold',
+        label: '🥇 Ouro',
+        count: goldCount,
+        isActive: spendingTierFilter === 'gold',
+        onClick: () => {
+          setSpendingTierFilter(spendingTierFilter === 'gold' ? 'all' : 'gold');
+          setOrderFilter('all');
+          setProfileFilter('all');
+          setBirthdayFilter('all');
+        },
+      },
+      {
+        id: 'silver',
+        label: '🥈 Prata',
+        count: silverCount,
+        isActive: spendingTierFilter === 'silver',
+        onClick: () => {
+          setSpendingTierFilter(spendingTierFilter === 'silver' ? 'all' : 'silver');
+          setOrderFilter('all');
+          setProfileFilter('all');
+          setBirthdayFilter('all');
+        },
+      },
+      {
+        id: 'inactive',
+        label: '⚠️ Inativos',
+        count: inactiveCount,
+        isActive: spendingTierFilter === 'inactive',
+        onClick: () => {
+          setSpendingTierFilter(spendingTierFilter === 'inactive' ? 'all' : 'inactive');
           setOrderFilter('all');
           setProfileFilter('all');
           setBirthdayFilter('all');
@@ -294,6 +451,7 @@ export function Customers() {
           setOrderFilter(orderFilter === 'open' ? 'all' : 'open');
           setProfileFilter('all');
           setBirthdayFilter('all');
+          setSpendingTierFilter('all');
         },
       },
       {
@@ -305,6 +463,7 @@ export function Customers() {
           setBirthdayFilter(birthdayFilter === 'this_month' ? 'all' : 'this_month');
           setOrderFilter('all');
           setProfileFilter('all');
+          setSpendingTierFilter('all');
         },
       },
       {
@@ -316,6 +475,7 @@ export function Customers() {
           setBirthdayFilter(birthdayFilter === 'today' ? 'all' : 'today');
           setOrderFilter('all');
           setProfileFilter('all');
+          setSpendingTierFilter('all');
         },
       },
       {
@@ -327,30 +487,11 @@ export function Customers() {
           setProfileFilter(profileFilter === 'vip' ? 'all' : 'vip');
           setOrderFilter('all');
           setBirthdayFilter('all');
-        },
-      },
-      {
-        id: 'recurring',
-        label: '🔁 Recorrentes',
-        isActive: profileFilter === 'recurring',
-        onClick: () => {
-          setProfileFilter(profileFilter === 'recurring' ? 'all' : 'recurring');
-          setOrderFilter('all');
-          setBirthdayFilter('all');
-        },
-      },
-      {
-        id: 'partner',
-        label: '🤝 Parceiros',
-        isActive: profileFilter === 'partner',
-        onClick: () => {
-          setProfileFilter(profileFilter === 'partner' ? 'all' : 'partner');
-          setOrderFilter('all');
-          setBirthdayFilter('all');
+          setSpendingTierFilter('all');
         },
       },
     ];
-  }, [customers, orderFilter, profileFilter, birthdayFilter, openOrdersMap]);
+  }, [partnerScopedCustomers, orderFilter, profileFilter, birthdayFilter, spendingTierFilter, openOrdersMap, customerXRayMap]);
 
   // Ações de seleção e modais
   const toggleCustomerSelection = (customerId: string, selected: boolean) => {
@@ -477,7 +618,7 @@ export function Customers() {
             <Button
               variant="outline"
               size="default"
-              onClick={() => exportCustomersToExcel(filteredCustomers)}
+              onClick={() => exportCustomersToExcel(filteredCustomers, 'clientes', customerXRayMap)}
               disabled={filteredCustomers.length === 0}
               className="gap-2"
             >
@@ -535,7 +676,7 @@ export function Customers() {
 
       {/* Search, Carrossel de Chips e Filtros Rápidos (Liquid Glassmorphism) */}
       <div className="p-3.5 sm:p-4 rounded-2xl luisices-glass border border-white/60 dark:border-white/10 space-y-3">
-        {/* Linha de Busca e Seletores Granulares */}
+        {/* Linha 1: Busca Principal, Período de Análise e Ordenação */}
         <div className="flex flex-col sm:flex-row items-center gap-2.5">
           <div className="relative flex-1 w-full">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
@@ -548,11 +689,69 @@ export function Customers() {
             />
           </div>
 
+          <div className="flex items-center gap-2 w-full sm:w-auto">
+            {/* Período de Análise do Raio X */}
+            <Select
+              value={analysisPeriod}
+              onValueChange={(v) => setAnalysisPeriod(v as CustomerAnalysisPeriod)}
+            >
+              <SelectTrigger className="w-full sm:w-44 h-9 text-xs bg-background/80 rounded-xl" title="Período de Análise do Raio X">
+                <SelectValue placeholder="Período" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">📅 Todo o Histórico</SelectItem>
+                <SelectItem value="last_30_days">⏳ Últimos 30 dias</SelectItem>
+                <SelectItem value="last_90_days">⏳ Últimos 90 dias</SelectItem>
+                <SelectItem value="this_year">📆 Este Ano</SelectItem>
+              </SelectContent>
+            </Select>
+
+            {/* Ordenação Inteligente */}
+            <Select
+              value={sortBy}
+              onValueChange={(value) => setSortBy(value as any)}
+            >
+              <SelectTrigger className="w-full sm:w-48 h-9 text-xs bg-background/80 rounded-xl" title="Ordenar lista de clientes">
+                <SelectValue placeholder="Ordenar por" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="default">✨ Recentes (Padrão)</SelectItem>
+                <SelectItem value="totalSpent_desc">💰 Maior Faturamento</SelectItem>
+                <SelectItem value="averageTicket_desc">🎯 Maior Ticket Médio</SelectItem>
+                <SelectItem value="orders_desc">📦 Mais Pedidos</SelectItem>
+                <SelectItem value="lastOrder_desc">🕒 Compra Mais Recente</SelectItem>
+                <SelectItem value="name_asc">🔤 Nome (A-Z)</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+
+        {/* Linha 2: Filtros por Faixa Comercial, Pedidos, Classificação e Aniversários */}
+        <div className="flex flex-col sm:flex-row items-center gap-2.5 flex-wrap">
+          {/* Faixa Comercial Personalizável */}
+          <Select
+            value={spendingTierFilter}
+            onValueChange={(value) => setSpendingTierFilter(value as any)}
+          >
+            <SelectTrigger className="w-full sm:w-52 h-9 text-xs bg-background/80 rounded-xl">
+              <SelectValue placeholder="Faixa Comercial" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">💎 Todas as Faixas de Gasto</SelectItem>
+              <SelectItem value="diamond">💎 Diamante (≥ {formatCurrency(tiersConfig.diamondMin)})</SelectItem>
+              <SelectItem value="gold">🥇 Ouro (≥ {formatCurrency(tiersConfig.goldMin)})</SelectItem>
+              <SelectItem value="silver">🥈 Prata (≥ {formatCurrency(tiersConfig.silverMin)})</SelectItem>
+              <SelectItem value="bronze">🌱 Bronze (&lt; {formatCurrency(tiersConfig.silverMin)})</SelectItem>
+              <SelectItem value="inactive">⚠️ Inativos (&gt; {tiersConfig.inactiveDaysThreshold}d)</SelectItem>
+              <SelectItem value="no_orders">💤 Sem compras</SelectItem>
+            </SelectContent>
+          </Select>
+
           <Select
             value={orderFilter}
             onValueChange={(v) => setOrderFilter(v as 'all' | 'open' | 'no_orders')}
           >
-            <SelectTrigger className="w-full sm:w-52 h-9 text-xs bg-background/80 rounded-xl">
+            <SelectTrigger className="w-full sm:w-44 h-9 text-xs bg-background/80 rounded-xl">
               <SelectValue placeholder="Filtrar por pedidos" />
             </SelectTrigger>
             <SelectContent>
@@ -566,7 +765,7 @@ export function Customers() {
             value={profileFilter}
             onValueChange={(value) => setProfileFilter(value as Customer['status'] | 'all')}
           >
-            <SelectTrigger className="w-full sm:w-52 h-9 text-xs bg-background/80 rounded-xl">
+            <SelectTrigger className="w-full sm:w-44 h-9 text-xs bg-background/80 rounded-xl">
               <SelectValue placeholder="Classificação" />
             </SelectTrigger>
             <SelectContent>
@@ -583,7 +782,7 @@ export function Customers() {
             value={birthdayFilter}
             onValueChange={(value) => setBirthdayFilter(value as 'all' | 'today' | 'upcoming_7' | 'this_month')}
           >
-            <SelectTrigger className="w-full sm:w-52 h-9 text-xs bg-background/80 rounded-xl">
+            <SelectTrigger className="w-full sm:w-44 h-9 text-xs bg-background/80 rounded-xl">
               <SelectValue placeholder="Aniversários" />
             </SelectTrigger>
             <SelectContent>
@@ -594,7 +793,13 @@ export function Customers() {
             </SelectContent>
           </Select>
 
-          {(searchQuery || orderFilter !== 'all' || profileFilter !== 'all' || birthdayFilter !== 'all') && (
+          {(searchQuery ||
+            orderFilter !== 'all' ||
+            profileFilter !== 'all' ||
+            birthdayFilter !== 'all' ||
+            spendingTierFilter !== 'all' ||
+            analysisPeriod !== 'all' ||
+            sortBy !== 'default') && (
             <Button
               variant="ghost"
               size="sm"
@@ -603,6 +808,9 @@ export function Customers() {
                 setOrderFilter('all');
                 setProfileFilter('all');
                 setBirthdayFilter('all');
+                setSpendingTierFilter('all');
+                setAnalysisPeriod('all');
+                setSortBy('default');
               }}
               className="h-9 px-2.5 text-xs text-muted-foreground hover:text-foreground cursor-pointer rounded-xl shrink-0"
               title="Limpar todos os filtros"
@@ -681,6 +889,7 @@ export function Customers() {
           <CustomerCard
             key={customer.id}
             customer={customer}
+            xray={customerXRayMap.get(customer.id)}
             isSelected={selectedCustomerIds.includes(customer.id)}
             onToggleSelect={toggleCustomerSelection}
             onOpenHistory={handleOpenHistory}
@@ -742,6 +951,7 @@ export function Customers() {
         customer={historyCustomer}
         userId={historyCustomer?.userId || user?.uid}
         onOpenNewOrder={handleOpenNewOrder}
+        tiersConfig={tiersConfig}
       />
 
       <NewOrderDialog

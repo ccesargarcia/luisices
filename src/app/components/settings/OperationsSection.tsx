@@ -9,8 +9,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from '../ui/select';
-import { Truck, Bell, CreditCard, Loader2, Archive } from 'lucide-react';
+import { Truck, Bell, CreditCard, Loader2, Archive, Sparkles } from 'lucide-react';
 import { Switch } from '../ui/switch';
+import { Input } from '../ui/input';
+import { CustomerTiersSettings, DEFAULT_CUSTOMER_TIERS } from '../../utils/customerMetrics';
 
 interface OperationsSectionProps {
   deliveryAlertDays: number;
@@ -23,6 +25,8 @@ interface OperationsSectionProps {
   onAutoArchiveCompletedOrdersChange?: (val: boolean) => void;
   autoArchiveDays?: number;
   onAutoArchiveDaysChange?: (days: number) => void;
+  customerTiers?: CustomerTiersSettings;
+  onCustomerTiersChange?: (tiers: CustomerTiersSettings) => void;
   onSave: () => Promise<void>;
   saving: boolean;
 }
@@ -38,6 +42,8 @@ export function OperationsSection({
   onAutoArchiveCompletedOrdersChange,
   autoArchiveDays = 30,
   onAutoArchiveDaysChange,
+  customerTiers,
+  onCustomerTiersChange,
   onSave,
   saving,
 }: OperationsSectionProps) {
@@ -184,6 +190,115 @@ export function OperationsSection({
               </Select>
             </div>
           )}
+        </div>
+
+        {/* Segmentação Comercial e Faixas de Gasto */}
+        <div className="p-4 rounded-lg border border-border/70 bg-card/60 backdrop-blur-sm space-y-4">
+          <div className="space-y-1">
+            <Label className="text-sm font-medium flex items-center gap-2">
+              <Sparkles className="size-4 text-amber-500" />
+              Segmentação Comercial de Clientes (Faixas de Gasto & Alertas)
+            </Label>
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              Defina os valores de corte para classificar automaticamente os clientes do ateliê (Diamante, Ouro e Prata) e o limite de dias sem comprar para sinalizar inatividade no Raio X.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5 pt-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="tier-diamond-min" className="text-xs font-semibold flex items-center gap-1.5 text-cyan-700 dark:text-cyan-300">
+                💎 Diamante (VIP) — Mínimo (R$)
+              </Label>
+              <Input
+                id="tier-diamond-min"
+                type="number"
+                min="0"
+                step="50"
+                value={customerTiers?.diamondMin ?? DEFAULT_CUSTOMER_TIERS.diamondMin}
+                onChange={(e) =>
+                  onCustomerTiersChange?.({
+                    ...(customerTiers ?? DEFAULT_CUSTOMER_TIERS),
+                    diamondMin: Math.max(0, Number(e.target.value) || 0),
+                  })
+                }
+                className="h-9 text-xs"
+              />
+              <p className="text-[10px] text-muted-foreground">Clientes acima deste valor</p>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="tier-gold-min" className="text-xs font-semibold flex items-center gap-1.5 text-amber-700 dark:text-amber-300">
+                🥇 Ouro — Mínimo (R$)
+              </Label>
+              <Input
+                id="tier-gold-min"
+                type="number"
+                min="0"
+                step="50"
+                value={customerTiers?.goldMin ?? DEFAULT_CUSTOMER_TIERS.goldMin}
+                onChange={(e) =>
+                  onCustomerTiersChange?.({
+                    ...(customerTiers ?? DEFAULT_CUSTOMER_TIERS),
+                    goldMin: Math.max(0, Number(e.target.value) || 0),
+                  })
+                }
+                className="h-9 text-xs"
+              />
+              <p className="text-[10px] text-muted-foreground">Clientes entre Ouro e Diamante</p>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="tier-silver-min" className="text-xs font-semibold flex items-center gap-1.5 text-slate-700 dark:text-slate-300">
+                🥈 Prata — Mínimo (R$)
+              </Label>
+              <Input
+                id="tier-silver-min"
+                type="number"
+                min="0"
+                step="20"
+                value={customerTiers?.silverMin ?? DEFAULT_CUSTOMER_TIERS.silverMin}
+                onChange={(e) =>
+                  onCustomerTiersChange?.({
+                    ...(customerTiers ?? DEFAULT_CUSTOMER_TIERS),
+                    silverMin: Math.max(0, Number(e.target.value) || 0),
+                  })
+                }
+                className="h-9 text-xs"
+              />
+              <p className="text-[10px] text-muted-foreground">Abaixo disto: 🌱 Bronze</p>
+            </div>
+          </div>
+
+          <div className="pt-3 border-t border-border/50 grid grid-cols-1 sm:grid-cols-2 gap-3 items-center">
+            <div>
+              <Label htmlFor="tier-inactive-days" className="text-xs font-semibold text-foreground">
+                Alerta de Cliente Inativo (Risco de Perda)
+              </Label>
+              <p className="text-[11px] text-muted-foreground">
+                Clientes com compras que não fecham novos pedidos há mais que este período recebem aviso no Raio X.
+              </p>
+            </div>
+            <Select
+              value={String(customerTiers?.inactiveDaysThreshold ?? DEFAULT_CUSTOMER_TIERS.inactiveDaysThreshold)}
+              onValueChange={(val) =>
+                onCustomerTiersChange?.({
+                  ...(customerTiers ?? DEFAULT_CUSTOMER_TIERS),
+                  inactiveDaysThreshold: Number(val),
+                })
+              }
+            >
+              <SelectTrigger id="tier-inactive-days" className="h-9 text-xs">
+                <SelectValue placeholder="Selecione o limite" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="30">30 dias sem comprar</SelectItem>
+                <SelectItem value="45">45 dias sem comprar</SelectItem>
+                <SelectItem value="60">60 dias sem comprar (Padrão)</SelectItem>
+                <SelectItem value="90">90 dias sem comprar</SelectItem>
+                <SelectItem value="120">120 dias sem comprar</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
         </div>
 
         <Button onClick={onSave} disabled={saving}>

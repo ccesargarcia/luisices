@@ -14,11 +14,12 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
 import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
 import { Skeleton } from '../ui/skeleton';
-import { ShoppingBag, Images, Plus, Upload, ZoomIn, Trash2, X, Loader2, MessageCircle } from 'lucide-react';
+import { ShoppingBag, Images, Plus, Upload, ZoomIn, Trash2, X, Loader2, MessageCircle, Sparkles, Tag, DollarSign, Clock, AlertTriangle, TrendingUp, CreditCard, PackageCheck } from 'lucide-react';
 import { generateCustomerGreetingWhatsAppUrl } from '../../utils/whatsapp';
 import { useOrders } from '../../../contexts/OrdersContext';
 import { firebaseGalleryService } from '../../../services/firebaseGalleryService';
 import { CustomerGalleryUploadDialog } from './CustomerGalleryUploadDialog';
+import { computeCustomerXRay, CustomerTiersSettings, TIER_DEFINITIONS } from '../../utils/customerMetrics';
 import { toast } from 'sonner';
 
 interface CustomerHistoryDialogProps {
@@ -27,6 +28,7 @@ interface CustomerHistoryDialogProps {
   customer: Customer | null;
   userId?: string;
   onOpenNewOrder?: (customer: Customer) => void;
+  tiersConfig?: CustomerTiersSettings;
 }
 
 export function CustomerHistoryDialog({
@@ -35,6 +37,7 @@ export function CustomerHistoryDialog({
   customer,
   userId,
   onOpenNewOrder,
+  tiersConfig,
 }: CustomerHistoryDialogProps) {
   const { orders: allContextOrders, loading: loadingOrders } = useOrders();
   const [gallery, setGallery] = useState<GalleryItem[]>([]);
@@ -48,6 +51,11 @@ export function CustomerHistoryDialog({
       (o) => o.customerId === customer.id || o.customerName === customer.name
     );
   }, [open, customer, allContextOrders]);
+
+  const xray = useMemo(() => {
+    if (!open || !customer) return null;
+    return computeCustomerXRay(customer, orders, 'all', tiersConfig);
+  }, [open, customer, orders, tiersConfig]);
 
   useEffect(() => {
     if (!open || !customer || !userId) {
@@ -128,6 +136,9 @@ export function CustomerHistoryDialog({
                 <TabsTrigger value="pedidos" className="flex-1 gap-1.5">
                   <ShoppingBag className="size-3.5" /> Pedidos
                   {!loadingOrders && <span className="text-xs opacity-60">({orders.length})</span>}
+                </TabsTrigger>
+                <TabsTrigger value="raiox" className="flex-1 gap-1.5">
+                  <Sparkles className="size-3.5 text-amber-500" /> Raio X 360°
                 </TabsTrigger>
                 <TabsTrigger value="galeria" className="flex-1 gap-1.5">
                   <Images className="size-3.5" /> Galeria
@@ -256,6 +267,149 @@ export function CustomerHistoryDialog({
                       </div>
                     </button>
                   ))}
+                </div>
+              )}
+            </TabsContent>
+
+            {/* ── Raio X 360° Comercial ── */}
+            <TabsContent value="raiox" className="flex-1 overflow-y-auto mt-3 space-y-4">
+              {xray ? (
+                <>
+                  {/* Banner do Tier e Diagnóstico */}
+                  <div className={`p-4 rounded-xl border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 ${TIER_DEFINITIONS[xray.tier].badgeClass}`}>
+                    <div className="flex items-center gap-3">
+                      <div className="text-3xl shrink-0">{TIER_DEFINITIONS[xray.tier].icon}</div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <h4 className="font-bold text-base leading-tight">
+                            Cliente {TIER_DEFINITIONS[xray.tier].label}
+                          </h4>
+                          {xray.isInactive && (
+                            <Badge variant="destructive" className="text-[10px] py-0">
+                              Inativo ({xray.daysSinceLastOrder}d)
+                            </Badge>
+                          )}
+                        </div>
+                        <p className="text-xs opacity-90 mt-0.5">
+                          {TIER_DEFINITIONS[xray.tier].description}
+                        </p>
+                      </div>
+                    </div>
+
+                    {customer?.phone && (
+                      <a
+                        href={generateCustomerGreetingWhatsAppUrl({
+                          name: customer.name,
+                          phone: customer.phone,
+                          customMessage: xray.isInactive
+                            ? `Olá ${customer.name}, tudo bem? Sentimos sua falta aqui no ateliê! Preparamos condições especiais para o seu próximo pedido :)`
+                            : `Olá ${customer.name}! Passando para agradecer sua parceria e preferência com o nosso ateliê!`,
+                        })}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg bg-background/80 hover:bg-background text-foreground border shadow-xs transition-colors shrink-0"
+                      >
+                        <MessageCircle className="size-3.5 text-emerald-600" />
+                        <span>{xray.isInactive ? 'Mensagem de Reativação' : 'Agradecer Parceria'}</span>
+                      </a>
+                    )}
+                  </div>
+
+                  {/* Grid de 4 Cards de Métricas Principais */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="p-3.5 rounded-xl border border-border/60 bg-card/60 backdrop-blur-sm space-y-1">
+                      <div className="flex items-center gap-1.5 text-xs text-muted-foreground font-medium">
+                        <Tag className="size-3.5 text-primary" />
+                        <span>Ticket Médio</span>
+                      </div>
+                      <p className="text-lg sm:text-xl font-bold text-foreground">
+                        {formatCurrency(xray.averageTicket)}
+                      </p>
+                      <p className="text-[10px] text-muted-foreground">Por pedido entregue</p>
+                    </div>
+
+                    <div className="p-3.5 rounded-xl border border-border/60 bg-card/60 backdrop-blur-sm space-y-1">
+                      <div className="flex items-center gap-1.5 text-xs text-muted-foreground font-medium">
+                        <DollarSign className="size-3.5 text-emerald-600" />
+                        <span>Faturamento Total</span>
+                      </div>
+                      <p className="text-lg sm:text-xl font-bold text-foreground">
+                        {formatCurrency(xray.totalRevenue)}
+                      </p>
+                      {xray.inProductionAmount > 0 ? (
+                        <p className="text-[10px] text-amber-600 dark:text-amber-400 font-medium">
+                          + {formatCurrency(xray.inProductionAmount)} em produção
+                        </p>
+                      ) : (
+                        <p className="text-[10px] text-muted-foreground">{xray.completedOrdersCount} pedidos concluídos</p>
+                      )}
+                    </div>
+
+                    <div className="p-3.5 rounded-xl border border-border/60 bg-card/60 backdrop-blur-sm space-y-1">
+                      <div className="flex items-center gap-1.5 text-xs text-muted-foreground font-medium">
+                        <Clock className="size-3.5 text-violet-600" />
+                        <span>Recência / Última Compra</span>
+                      </div>
+                      <p className="text-lg sm:text-xl font-bold text-foreground">
+                        {xray.daysSinceLastOrder !== null ? `${xray.daysSinceLastOrder} dias` : '—'}
+                      </p>
+                      <p className="text-[10px] text-muted-foreground">
+                        {xray.lastOrderDate ? `Última em ${formatDate(xray.lastOrderDate)}` : 'Nenhuma compra'}
+                      </p>
+                    </div>
+
+                    <div className="p-3.5 rounded-xl border border-border/60 bg-card/60 backdrop-blur-sm space-y-1">
+                      <div className="flex items-center gap-1.5 text-xs text-muted-foreground font-medium">
+                        <TrendingUp className="size-3.5 text-sky-600" />
+                        <span>Frequência Média</span>
+                      </div>
+                      <p className="text-lg sm:text-xl font-bold text-foreground">
+                        {xray.frequencyDays ? `~${xray.frequencyDays} dias` : '—'}
+                      </p>
+                      <p className="text-[10px] text-muted-foreground">
+                        {xray.frequencyDays ? 'Intervalo entre compras' : 'Requer > 1 pedido'}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Hábitos de Consumo do Cliente */}
+                  <div className="p-3.5 rounded-xl border border-border/60 bg-card/60 backdrop-blur-sm space-y-3">
+                    <h5 className="text-xs font-semibold text-foreground uppercase tracking-wider flex items-center gap-1.5">
+                      <PackageCheck className="size-3.5 text-primary" />
+                      Hábitos de Compra & Preferências
+                    </h5>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                      <div className="p-2.5 rounded-lg bg-background/60 border border-border/40">
+                        <span className="text-muted-foreground text-[11px] block">Produto Favorito:</span>
+                        {xray.topProduct ? (
+                          <div className="mt-1">
+                            <strong className="text-foreground text-sm block">{xray.topProduct.name}</strong>
+                            <span className="text-muted-foreground text-[10px]">
+                              {xray.topProduct.count} unidades • {formatCurrency(xray.topProduct.revenue)} gerados
+                            </span>
+                          </div>
+                        ) : (
+                          <span className="text-muted-foreground italic mt-1 block">Nenhum produto registrado</span>
+                        )}
+                      </div>
+
+                      <div className="p-2.5 rounded-lg bg-background/60 border border-border/40">
+                        <span className="text-muted-foreground text-[11px] block">Forma de Pagamento Mais Usada:</span>
+                        <div className="mt-1 flex items-center gap-2">
+                          <CreditCard className="size-4 text-primary shrink-0" />
+                          <strong className="text-foreground text-sm uppercase">
+                            {xray.preferredPaymentMethod || 'Não informada'}
+                          </strong>
+                        </div>
+                        <span className="text-[10px] text-muted-foreground">Histórico de transações</span>
+                      </div>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div className="py-8 text-center text-muted-foreground text-sm">
+                  Dados insuficientes para gerar o Raio X deste cliente.
                 </div>
               )}
             </TabsContent>

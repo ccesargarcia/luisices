@@ -18,6 +18,7 @@ import { toast } from 'sonner';
 import { useTheme } from 'next-themes';
 import { applyColorTheme, type ColorThemeKey } from '../utils/colorThemes';
 import { DEFAULT_DASHBOARD_CARDS } from '../utils/dashboardCards';
+import { CustomerTiersSettings, DEFAULT_CUSTOMER_TIERS } from '../utils/customerMetrics';
 import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card';
@@ -101,6 +102,7 @@ export function Settings() {
   const [defaultPaymentMethod, setDefaultPaymentMethod] = useState('');
   const [autoArchiveCompletedOrders, setAutoArchiveCompletedOrders] = useState(false);
   const [autoArchiveDays, setAutoArchiveDays] = useState(30);
+  const [customerTiers, setCustomerTiers] = useState<CustomerTiersSettings>(DEFAULT_CUSTOMER_TIERS);
   const [customColorHex, setCustomColorHex] = useState('#7c3aed');
 
   // Personalização de Cabeçalho & Rodapé
@@ -179,6 +181,7 @@ export function Settings() {
       setDefaultPaymentMethod(settings.defaultPaymentMethod ?? '');
       setAutoArchiveCompletedOrders(settings.autoArchiveCompletedOrders ?? false);
       setAutoArchiveDays(settings.autoArchiveDays ?? 30);
+      setCustomerTiers(settings.customerTiers ?? DEFAULT_CUSTOMER_TIERS);
       setCustomColorHex(settings.customColorHex ?? '#7c3aed');
 
       // Cabeçalho & Rodapé
@@ -304,6 +307,7 @@ export function Settings() {
         defaultPaymentMethod: defaultPaymentMethod || undefined,
         autoArchiveCompletedOrders,
         autoArchiveDays,
+        customerTiers,
       });
       toast.success('Preferências de operação salvas!');
     } catch {
@@ -505,6 +509,8 @@ export function Settings() {
             onAutoArchiveCompletedOrdersChange={setAutoArchiveCompletedOrders}
             autoArchiveDays={autoArchiveDays}
             onAutoArchiveDaysChange={setAutoArchiveDays}
+            customerTiers={customerTiers}
+            onCustomerTiersChange={setCustomerTiers}
             onSave={handleOperationsSave}
             saving={savingOperations}
           />

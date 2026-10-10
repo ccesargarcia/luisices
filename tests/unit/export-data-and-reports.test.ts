@@ -143,6 +143,61 @@ describe('Funcionalidade: Relatórios e Exportação de Dados (exportData)', () 
         expect.stringMatching(/^clientes_vip_\d{4}-\d{2}-\d{2}\.xlsx$/)
       );
     });
+
+    it('deve enriquecer a planilha com métricas do Raio X e faixa comercial quando xrayMap for fornecido', async () => {
+      const mockCustomers: Customer[] = [
+        {
+          id: 'cli-99',
+          name: 'Renata Silveira',
+          phone: '11988887777',
+          email: 'renata@luxo.com',
+          totalOrders: 3,
+          totalSpent: 1500,
+          createdAt: '2025-01-01',
+        },
+      ];
+
+      const mockXRayMap = new Map([
+        [
+          'cli-99',
+          {
+            customerId: 'cli-99',
+            customerName: 'Renata Silveira',
+            totalRevenue: 3000,
+            inProductionAmount: 450,
+            totalValidAmount: 3450,
+            totalOrdersCount: 5,
+            completedOrdersCount: 4,
+            averageTicket: 750,
+            lastOrderDate: '2026-09-15',
+            daysSinceLastOrder: 25,
+            isInactive: false,
+            frequencyDays: 14,
+            topProduct: { name: 'Caderno Devocional', count: 4, revenue: 2000 },
+            preferredPaymentMethod: 'pix',
+            tier: 'gold' as const,
+          },
+        ],
+      ]);
+
+      await exportCustomersToExcel(mockCustomers, 'clientes_raiox', mockXRayMap);
+
+      expect(mockJsonToSheet).toHaveBeenCalledWith([
+        expect.objectContaining({
+          ID: 'cli-99',
+          Nome: 'Renata Silveira',
+          'Faixa Comercial': '🥇 Ouro',
+          'Total Pedidos': 5,
+          'Total Gasto': 3000,
+          'Ticket Médio': 750,
+          'Em Produção': 450,
+          'Dias sem Comprar': 25,
+          'Status Inatividade': 'Ativo',
+          'Produto Favorito': 'Caderno Devocional (4x)',
+          'Meio de Pagamento Preferido': 'pix',
+        }),
+      ]);
+    });
   });
 
   describe('3. Exportação de Orçamentos para Excel (exportQuotesToExcel)', () => {

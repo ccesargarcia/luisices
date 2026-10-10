@@ -20,7 +20,10 @@ import {
   Star,
   MessageCircle,
   Gift,
+  Tag,
+  AlertTriangle,
 } from 'lucide-react';
+import { CustomerXRayMetrics, TIER_DEFINITIONS } from '../../utils/customerMetrics';
 
 interface CustomerCardProps {
   customer: Customer;
@@ -33,6 +36,7 @@ interface CustomerCardProps {
   canEdit: boolean;
   canDelete: boolean;
   canCreateOrder?: boolean;
+  xray?: CustomerXRayMetrics;
 }
 
 function CustomerCardComponent({
@@ -46,6 +50,7 @@ function CustomerCardComponent({
   canEdit,
   canDelete,
   canCreateOrder = false,
+  xray,
 }: CustomerCardProps) {
   const addressLine = customer.address || [customer.street, customer.number, customer.complement]
     .filter(Boolean)
@@ -129,6 +134,12 @@ function CustomerCardComponent({
                   🤝 Parceiro
                 </Badge>
               )}
+              {xray && xray.tier !== 'none' && (
+                <Badge variant="outline" className={`gap-1 py-0 text-[11px] font-semibold ${TIER_DEFINITIONS[xray.tier].badgeClass}`} title={TIER_DEFINITIONS[xray.tier].description}>
+                  <span>{TIER_DEFINITIONS[xray.tier].icon}</span>
+                  <span>{TIER_DEFINITIONS[xray.tier].label}</span>
+                </Badge>
+              )}
             </div>
             {customer.phone && (
               <div className="flex items-center gap-2 text-sm text-muted-foreground flex-wrap">
@@ -178,12 +189,44 @@ function CustomerCardComponent({
         <div className="flex items-center justify-between pt-2.5 border-t border-white/20 dark:border-white/10">
           <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
             <ShoppingBag className="size-3.5 shrink-0" />
-            <span>{customer.totalOrders || 0} pedidos</span>
+            <span>
+              {xray ? xray.totalOrdersCount : (customer.totalOrders || 0)} pedidos
+              {xray && xray.completedOrdersCount > 0 && xray.completedOrdersCount !== xray.totalOrdersCount && (
+                <span className="opacity-75"> ({xray.completedOrdersCount} entregues)</span>
+              )}
+            </span>
           </div>
-          <div className="font-semibold text-sm">
-            {formatCurrency(customer.totalSpent || 0)}
+          <div className="text-right">
+            <div className="font-semibold text-sm">
+              {formatCurrency(xray ? xray.totalRevenue : (customer.totalSpent || 0))}
+            </div>
+            {xray && xray.inProductionAmount > 0 && (
+              <div className="text-[10px] text-amber-600 dark:text-amber-400 font-medium truncate" title={`+ ${formatCurrency(xray.inProductionAmount)} em pedidos em produção`}>
+                + {formatCurrency(xray.inProductionAmount)} em prod.
+              </div>
+            )}
           </div>
         </div>
+
+        {/* Mini Raio X: Ticket Médio & Recência */}
+        {xray && (xray.completedOrdersCount > 0 || xray.totalOrdersCount > 0) && (
+          <div className="flex items-center justify-between gap-2 text-[11px] bg-black/[0.03] dark:bg-white/[0.04] px-2.5 py-1 rounded-lg border border-white/15">
+            <div className="flex items-center gap-1 font-medium text-foreground truncate" title="Ticket Médio por pedido entregue">
+              <Tag className="size-3 text-primary shrink-0" />
+              <span>TM: <strong>{formatCurrency(xray.averageTicket)}</strong></span>
+            </div>
+            {xray.isInactive ? (
+              <span className="flex items-center gap-1 text-amber-600 dark:text-amber-400 font-semibold shrink-0 text-[10px]" title={`Cliente inativo há ${xray.daysSinceLastOrder} dias`}>
+                <AlertTriangle className="size-3 shrink-0" />
+                <span>Inativo ({xray.daysSinceLastOrder}d)</span>
+              </span>
+            ) : xray.frequencyDays ? (
+              <span className="text-[10px] text-muted-foreground shrink-0" title={`Intervalo médio de ${xray.frequencyDays} dias entre pedidos`}>
+                ~{xray.frequencyDays}d / pedido
+              </span>
+            ) : null}
+          </div>
+        )}
         {customer.lastOrderDate && (
           <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
             <Calendar className="size-3.5 shrink-0" />

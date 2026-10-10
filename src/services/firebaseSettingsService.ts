@@ -6,6 +6,7 @@
 
 import { doc, getDoc, setDoc, writeBatch } from 'firebase/firestore';
 import { db } from '../lib/firebase';
+import { CustomerTiersSettings } from '../app/utils/customerMetrics';
 
 export interface CatalogBannerItem {
   id: string;
@@ -132,6 +133,7 @@ export interface UserSettings {
   defaultPaymentMethod?: string; // Método de pagamento padrão ao criar pedido
   autoArchiveCompletedOrders?: boolean; // Arquivamento automático ao marcar pedido como concluído
   autoArchiveDays?: number; // Prazo em dias após entrega para auto-arquivamento (0 = imediato, 15, 30, 60, 90)
+  customerTiers?: CustomerTiersSettings; // Configurações de faixas de clientes e inatividade
 
   // Alertas
   deliveryAlertDays?: number;    // Dias antes do prazo para mostrar alerta (padrão 3)

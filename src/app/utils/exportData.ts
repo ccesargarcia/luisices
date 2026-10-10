@@ -7,6 +7,7 @@
  */
 
 import { Order, Customer, Quote } from '../types';
+import { CustomerXRayMetrics, TIER_DEFINITIONS } from './customerMetrics';
 import { formatCurrency } from './currency';
 import { formatDate } from './date';
 
@@ -45,10 +46,17 @@ export async function exportOrdersToExcel(orders: Order[], filename = 'pedidos')
   XLSX.writeFile(workbook, `${filename}_${new Date().toISOString().split('T')[0]}.xlsx`);
 }
 
-export async function exportCustomersToExcel(customers: Customer[], filename = 'clientes') {
+export async function exportCustomersToExcel(
+  customers: Customer[],
+  filename = 'clientes',
+  xrayMap?: Map<string, CustomerXRayMetrics>
+) {
   const XLSX = await import('xlsx');
   const data = customers.map(customer => {
     const fullAddress = customer.address || [customer.street, customer.number, customer.complement, customer.city, customer.state].filter(Boolean).join(', ') || '';
+    const xray = xrayMap?.get(customer.id);
+    const tierDef = xray ? TIER_DEFINITIONS[xray.tier] : null;
+
     return {
       'ID': customer.id,
       'Nome': customer.name,
@@ -56,8 +64,16 @@ export async function exportCustomersToExcel(customers: Customer[], filename = '
       'Email': customer.email || '',
       'Endereço': fullAddress,
       'Classificação': customer.status || 'Padrão',
-      'Total Pedidos': customer.totalOrders || 0,
-      'Total Gasto': customer.totalSpent || 0,
+      'Faixa Comercial': tierDef ? `${tierDef.icon} ${tierDef.label}` : 'N/A',
+      'Total Pedidos': xray ? xray.totalOrdersCount : (customer.totalOrders || 0),
+      'Total Gasto': xray ? xray.totalRevenue : (customer.totalSpent || 0),
+      'Ticket Médio': xray ? Math.round(xray.averageTicket * 100) / 100 : 0,
+      'Em Produção': xray ? xray.inProductionAmount : 0,
+      'Dias sem Comprar': xray?.daysSinceLastOrder !== null && xray?.daysSinceLastOrder !== undefined ? xray.daysSinceLastOrder : 'N/A',
+      'Status Inatividade': xray?.isInactive ? 'Inativo' : 'Ativo',
+      'Frequência Média (dias)': xray?.frequencyDays !== null && xray?.frequencyDays !== undefined ? xray.frequencyDays : 'N/A',
+      'Produto Favorito': xray?.topProduct ? `${xray.topProduct.name} (${xray.topProduct.count}x)` : 'N/A',
+      'Meio de Pagamento Preferido': xray?.preferredPaymentMethod || 'N/A',
       'Criado em': formatDate(customer.createdAt),
     };
   });
