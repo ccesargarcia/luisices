@@ -15,6 +15,8 @@ const {
 const { validateOriginSecret } = require('../originProtection');
 const { whatsappMessageLimiter } = require('../common/rateLimiters');
 
+const { persistIncomingMessage } = require('./persistMessage');
+
 const MAX_WEBHOOK_BYTES = 1024 * 1024;
 
 /**
@@ -729,41 +731,24 @@ const evolutionWhatsAppWebhook = onRequest(
             const msgDocId = key?.id ? `wa_${key.id}` : null;
             if (msgDocId) {
               const msgRef = admin.firestore().collection('whatsapp_messages').doc(msgDocId);
-              const msgSnap = await msgRef.get();
-              const isNewMessage = !msgSnap.exists;
-
-              await msgRef.set({
-                chatId: cleanPhone,
-                phone: cleanPhone,
-                customerName,
-                customerId,
-                sender: fromMe ? 'me' : 'customer',
-                text: messageText,
-                status: fromMe ? 'sent' : 'received',
-                timestamp: nowIso,
-                evolutionMessageId: key?.id || `inc_${Date.now()}`,
-                createdAt: isNewMessage ? admin.firestore.FieldValue.serverTimestamp() : (msgSnap.data()?.createdAt || admin.firestore.FieldValue.serverTimestamp()),
-              }, { merge: true });
-
-              const chatUpdatePayload = {
-                id: cleanPhone,
-                phone: cleanPhone,
-                customerName,
-                customerId,
-                lastMessageText: messageText,
-                lastMessageTimestamp: nowIso,
-                lastMessageSender: fromMe ? 'me' : 'customer',
-                updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-              };
-
-              // Idempotência estrita: só incrementa unreadCount se a mensagem for inédita no Firestore
-              if (fromMe) {
-                chatUpdatePayload.unreadCount = 0;
-              } else if (isNewMessage) {
-                chatUpdatePayload.unreadCount = admin.firestore.FieldValue.increment(1);
-              }
-
-              await admin.firestore().collection('whatsapp_chats').doc(cleanPhone).set(chatUpdatePayload, { merge: true });
+              await persistIncomingMessage({
+                db: admin.firestore(),
+                messageRef: msgRef,
+                chatRef: admin.firestore().collection('whatsapp_chats').doc(cleanPhone),
+                message: {
+                  chatId: cleanPhone,
+                  phone: cleanPhone,
+                  customerName,
+                  customerId,
+                  sender: fromMe ? 'me' : 'customer',
+                  text: messageText,
+                  status: fromMe ? 'sent' : 'received',
+                  timestamp: nowIso,
+                  evolutionMessageId: key.id,
+                },
+                increment: admin.firestore.FieldValue.increment,
+                serverTimestamp: admin.firestore.FieldValue.serverTimestamp,
+              });
             } else {
               console.warn('[evolutionWhatsAppWebhook] Evento sem message key.id ignorado.');
               return res.status(200).json({ received: true, ignored: 'missing_message_id' });

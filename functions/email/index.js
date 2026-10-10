@@ -39,7 +39,8 @@ function normalizeEmailList(value, fieldName, max = MAX_CC_BCC) {
 /**
  * Cloud Function para envio de e-mails via Resend pela plataforma Luisices.
  * Salva o histórico de envios na coleção 'sentEmails'.
- * Garante idempotência estrita via coleção 'emailSendRequests' e cabeçalho X-Entity-Ref-ID.
+ * Deduplica pelo registro local e pela chave de idempotência da API Resend.
+ * A recuperação local de operações interrompidas exige validação adicional.
  */
 const sendCustomEmail = onCall(
   { cors: true, maxInstances: 5, secrets: [RESEND_API_KEY] },
@@ -232,12 +233,6 @@ const sendCustomEmail = onCall(
         subject: subject.trim(),
       };
 
-      if (idempotencyKey) {
-        payload.headers = {
-          'X-Entity-Ref-ID': idempotencyKey,
-        };
-      }
-
       if (preparedAttachments.length) {
         payload.attachments = preparedAttachments.map(({ filename, content }) => ({ filename, content }));
       }
@@ -261,7 +256,9 @@ const sendCustomEmail = onCall(
       if (normalizedBcc.length) payload.bcc = normalizedBcc;
 
       console.log(`[sendCustomEmail] Enviando e-mail: uid=${request.auth.uid}, recipients=${recipientList.length}, attachments=${preparedAttachments.length}`);
-      const { data: resendData, error: resendError } = await resend.emails.send(payload);
+      const { data: resendData, error: resendError } = await resend.emails.send(payload, idempotencyKey
+        ? { idempotencyKey: `${request.auth.uid}_${idempotencyKey}` }
+        : undefined);
 
       if (resendError) {
         console.error('[sendCustomEmail] Resend rejeitou o envio:', {
