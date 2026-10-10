@@ -130,5 +130,15 @@ describe('Ciclo de Vida de Sessões e Resiliência de Dispositivos', () => {
       expect(isRevoked(activeDeviceData)).toBe(false);
       expect(isRevoked(revokedDeviceData)).toBe(true);
     });
+
+    it('permite re-registro de sessão com novo IP e dados atualizados em nova conexão', async () => {
+      mockCallable.mockResolvedValueOnce({ data: { success: true } });
+      await firebaseUserService.registerDeviceSession('dev-fresh', 'Chrome/124.0');
+
+      expect(mockCallable).toHaveBeenCalledWith('registerDeviceSession', {
+        deviceId: 'dev-fresh',
+        userAgent: 'Chrome/124.0',
+      });
+    });
   });
 });

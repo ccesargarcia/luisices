@@ -573,6 +573,12 @@ function UserDevicesDialog({ open, user, onClose }: UserDevicesDialogProps) {
     if (!user) return;
     setLoading(true);
     try {
+      if (currentUser?.uid === user.uid && currentDeviceId) {
+        try {
+          await firebaseUserService.registerDeviceSession(currentDeviceId, navigator.userAgent);
+          localStorage.setItem('luisices_device_last_reg', String(Date.now()));
+        } catch (_) {}
+      }
       const list = await firebaseUserService.getUserDevices(user.uid);
       setDevices(list);
     } catch (err) {
@@ -621,6 +627,12 @@ function UserDevicesDialog({ open, user, onClose }: UserDevicesDialogProps) {
       await firebaseUserService.revokeAllSessions(user.uid);
       toast.success('Todas as sessões e tokens foram revogados com sucesso');
       setConfirmRevoke(false);
+      if (currentUser?.uid === user?.uid) {
+        localStorage.removeItem('luisices_device_id');
+        localStorage.removeItem('luisices_device_last_reg');
+        await logout();
+        return;
+      }
       await loadDevices(); // Recarrega a lista
     } catch (err: any) {
       toast.error(err?.message || 'Erro ao revogar sessões do usuário');

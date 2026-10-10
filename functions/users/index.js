@@ -838,10 +838,16 @@ const registerDeviceSession = onCall({ memory: '512MiB' }, async (request) => {
     safeUserAgent = safeUserAgent.substring(0, 300) + '...';
   }
 
-  // Obter IP (x-forwarded-for pode conter múltiplos IPs)
-  let ip = request.rawRequest?.headers?.['x-forwarded-for'] || request.rawRequest?.socket?.remoteAddress;
+  // Obter IP (x-forwarded-for pode conter múltiplos IPs, proxy reverso, Cloud Run / Cloudflare / Fastly)
+  let ip = request.rawRequest?.headers?.['cf-connecting-ip'] ||
+           request.rawRequest?.headers?.['fastly-client-ip'] ||
+           request.rawRequest?.headers?.['x-real-ip'] ||
+           request.rawRequest?.headers?.['x-forwarded-for'] ||
+           request.rawRequest?.ip ||
+           request.rawRequest?.socket?.remoteAddress;
   if (ip && typeof ip === 'string' && ip.includes(',')) ip = ip.split(',')[0].trim();
-  ip = (ip && typeof ip === 'string') ? ip : 'Desconhecido';
+  if (ip && typeof ip === 'string' && ip.startsWith('::ffff:')) ip = ip.substring(7);
+  ip = (ip && typeof ip === 'string' && ip.trim()) ? ip.trim() : 'Desconhecido';
 
   let resolvedLocationString = null;
   if (ip !== 'Desconhecido' && ip !== '127.0.0.1' && ip !== '::1') {
@@ -907,13 +913,12 @@ const registerDeviceSession = onCall({ memory: '512MiB' }, async (request) => {
     if (deviceSnap.exists) {
       // Dispositivo existente: atualiza sem consultar toda a coleção (Otimização C1)
       const existingData = deviceSnap.data();
-      if (existingData.status === 'revoked') {
-        throw new functions.https.HttpsError('permission-denied', 'Esta sessão de dispositivo foi revogada remotamente.');
-      }
       if (existingData.ip === ip && existingData.location) {
         locationString = existingData.location;
       } else if (resolvedLocationString) {
         locationString = resolvedLocationString;
+      } else if (existingData.location) {
+        locationString = existingData.location;
       }
 
       transaction.update(deviceRef, {

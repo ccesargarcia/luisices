@@ -58,6 +58,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading]         = useState(true);
   const currentUidRef                 = useRef<string | null>(null);
+  const isLoggingInRef                = useRef<boolean>(false);
   const presence = usePresence(user);
 
   const handleLogout = useCallback(async (clearReg = false, uUid?: string) => {
@@ -77,6 +78,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       localStorage.removeItem(`luisices_device_reg_${uidToClear}`);
     }
     try {
+      localStorage.removeItem('luisices_device_id');
+      localStorage.removeItem('luisices_device_last_reg');
       Object.keys(localStorage).forEach(k => {
         if (k.startsWith('luisices_device_reg_')) {
           localStorage.removeItem(k);
@@ -130,6 +133,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(u);
 
       if (u) {
+        let heartbeatTimer: any = null;
+        let onlineHandler: (() => void) | null = null;
         try {
           // Garante que o token de autenticação está válido antes de conectar os listeners do Firestore
           await u.getIdToken();
@@ -140,45 +145,63 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             deviceId = crypto.randomUUID();
             localStorage.setItem('luisices_device_id', deviceId);
           }
-          
-          let deviceWasRegistered = false;
-          deviceUnsub = onSnapshot(doc(db, 'userProfiles', u.uid, 'devices', deviceId), (snap) => {
-            if (snap.exists()) {
-              const data = snap.data();
-              if (data?.status === 'revoked') {
+
+          const syncDeviceSession = async () => {
+            const devId = localStorage.getItem('luisices_device_id') || deviceId;
+            if (!devId) return;
+            try {
+              await firebaseUserService.registerDeviceSession(devId, navigator.userAgent);
+              localStorage.setItem('luisices_device_last_reg', String(Date.now()));
+            } catch (err: any) {
+              console.warn('[AuthContext] Erro ao sincronizar sessão do dispositivo:', err);
+              if (String(err?.message || '').toLowerCase().includes('revogada') && !isLoggingInRef.current) {
                 toast.error('Esta sessão foi revogada remotamente.');
                 localStorage.removeItem('luisices_device_id');
                 localStorage.removeItem('luisices_device_last_reg');
                 handleLogout(true, u.uid);
+              }
+            }
+          };
+
+          // Sincroniza IP/dispositivo se não sincronizou nos últimos 30 segundos
+          const lastReg = Number(localStorage.getItem('luisices_device_last_reg') || '0');
+          if (Date.now() - lastReg > 30 * 1000) {
+            syncDeviceSession();
+          }
+
+          // Atualiza IP imediatamente quando houver reconexão/troca de rede
+          onlineHandler = () => {
+            syncDeviceSession();
+          };
+          window.addEventListener('online', onlineHandler);
+
+          // Heartbeat periódico a cada 5 minutos para manter IP e lastActiveAt atualizados
+          heartbeatTimer = setInterval(syncDeviceSession, 5 * 60 * 1000);
+          
+          let deviceWasRegistered = false;
+          const snapUnsub = onSnapshot(doc(db, 'userProfiles', u.uid, 'devices', deviceId), (snap) => {
+            if (snap.exists()) {
+              const data = snap.data();
+              if (data?.status === 'revoked') {
+                if (!isLoggingInRef.current) {
+                  toast.error('Esta sessão foi revogada remotamente.');
+                  localStorage.removeItem('luisices_device_id');
+                  localStorage.removeItem('luisices_device_last_reg');
+                  handleLogout(true, u.uid);
+                }
                 return;
               }
               deviceWasRegistered = true;
-              const lastReg = Number(localStorage.getItem('luisices_device_last_reg') || '0');
-              if (Date.now() - lastReg > 60 * 60 * 1000) {
-                firebaseUserService.registerDeviceSession(deviceId, navigator.userAgent).then(() => {
-                  localStorage.setItem('luisices_device_last_reg', String(Date.now()));
-                }).catch(err => console.warn('[AuthContext] Erro ao atualizar sessão do dispositivo', err));
-              }
             } else {
               // Se já estava registrado nesta sessão ativa e sumiu do Firestore, a sessão foi revogada remotamente.
-              if (deviceWasRegistered) {
+              if (deviceWasRegistered && !isLoggingInRef.current) {
                 toast.error('Esta sessão foi revogada remotamente.');
                 localStorage.removeItem('luisices_device_id');
                 localStorage.removeItem('luisices_device_last_reg');
                 handleLogout(true, u.uid);
               } else {
                 deviceWasRegistered = true;
-                firebaseUserService.registerDeviceSession(deviceId, navigator.userAgent).then(() => {
-                  localStorage.setItem('luisices_device_last_reg', String(Date.now()));
-                }).catch(err => {
-                  console.warn('[AuthContext] Erro ao registrar sessão do dispositivo', err);
-                  if (String(err?.message || '').toLowerCase().includes('revogada')) {
-                    toast.error('Esta sessão foi revogada remotamente.');
-                    localStorage.removeItem('luisices_device_id');
-                    localStorage.removeItem('luisices_device_last_reg');
-                    handleLogout(true, u.uid);
-                  }
-                });
+                syncDeviceSession();
               }
             }
           }, (err) => {
@@ -186,6 +209,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               console.warn('[AuthContext] Aviso ao escutar dispositivo:', err);
             }
           });
+
+          deviceUnsub = () => {
+            snapUnsub();
+            if (heartbeatTimer) clearInterval(heartbeatTimer);
+            if (onlineHandler) window.removeEventListener('online', onlineHandler);
+          };
 
         } catch (tokenErr) {
           console.warn('[AuthContext] Falha ao renovar token de autenticação inicial (possível offline):', tokenErr);
@@ -216,7 +245,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             try {
               const idTokenResult = await u.getIdTokenResult();
               const authTime = Math.floor(new Date(idTokenResult.authTime).getTime() / 1000);
-              if (data.tokensValidAfterTime && authTime <= data.tokensValidAfterTime) {
+              if (!isLoggingInRef.current && data.tokensValidAfterTime && authTime <= data.tokensValidAfterTime) {
                 toast.error('Esta sessão foi revogada remotamente.');
                 handleLogout(true, u.uid);
                 setLoading(false);
@@ -305,55 +334,87 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const login = async (email: string, password: string) => {
+    isLoggingInRef.current = true;
     currentUidRef.current = null;
-    const user = await firebaseAuthService.login(email, password);
-
-    // O e-mail só pode ser usado para acessar o sistema depois da confirmação.
-    await user.reload();
-    if (!user.emailVerified) {
-      await handleLogout(true, user.uid);
-      const error = new Error('Confirme seu e-mail para liberar o acesso. O cadastro está aguardando a confirmação do endereço enviado por e-mail.');
-      (error as Error & { code: string }).code = 'auth/email-not-verified';
-      throw error;
-    }
-
-    // Garante que o Firestore receba o token de autenticação antes da leitura
-    await user.getIdToken(true);
-
-    // Verificar se o usuário possui perfil cadastrado e ativo
-    let profile: UserProfile | null = null;
     try {
-      profile = await firebaseUserService.getUserProfile(
-        user.uid,
-        user.email ?? undefined,
-        user.displayName ?? undefined
-      );
-    } catch (err: any) {
-      // Se ocorrer colisão temporal de 1 segundo (clock skew) com tokensValidAfterTime de revogação recente,
-      // aguarda o próximo segundo (1100ms) e reautentica para garantir auth_time estritamente posterior.
-      if (err?.code === 'permission-denied' || String(err?.message || '').toLowerCase().includes('permissions')) {
+      localStorage.removeItem('luisices_device_id');
+      localStorage.removeItem('luisices_device_last_reg');
+    } catch (_) {}
+
+    const newDeviceId = crypto.randomUUID();
+    localStorage.setItem('luisices_device_id', newDeviceId);
+
+    try {
+      let user = await firebaseAuthService.login(email, password);
+
+      // O e-mail só pode ser usado para acessar o sistema depois da confirmação.
+      await user.reload();
+      if (!user.emailVerified) {
+        await handleLogout(true, user.uid);
+        const error = new Error('Confirme seu e-mail para liberar o acesso. O cadastro está aguardando a confirmação do endereço enviado por e-mail.');
+        (error as Error & { code: string }).code = 'auth/email-not-verified';
+        throw error;
+      }
+
+      // Garante que o Firestore receba o token de autenticação antes da leitura
+      await user.getIdToken(true);
+
+      // Verificar se o usuário possui perfil cadastrado e ativo
+      let profile: UserProfile | null = null;
+      try {
+        profile = await firebaseUserService.getUserProfile(
+          user.uid,
+          user.email ?? undefined,
+          user.displayName ?? undefined
+        );
+      } catch (err: any) {
+        // Se ocorrer colisão temporal de 1 segundo (clock skew) com tokensValidAfterTime de revogação recente,
+        // aguarda o próximo segundo (1100ms) e reautentica para garantir auth_time estritamente posterior.
+        if (err?.code === 'permission-denied' || String(err?.message || '').toLowerCase().includes('permissions')) {
+          await new Promise((r) => setTimeout(r, 1100));
+          const reauthUser = await firebaseAuthService.login(email, password);
+          await reauthUser.getIdToken(true);
+          profile = await firebaseUserService.getUserProfile(
+            reauthUser.uid,
+            reauthUser.email ?? undefined,
+            reauthUser.displayName ?? undefined
+          );
+          user = reauthUser;
+        } else {
+          throw err;
+        }
+      }
+
+      if (!profile) {
+        await handleLogout(true, user.uid);
+        throw new Error('Sua conta não possui permissão de acesso ou convite ativo.');
+      }
+
+      if (profile.active === false) {
+        // Usuário inativo - fazer logout imediato
+        await handleLogout(true, user.uid);
+        throw new Error('Sua conta foi desativada. Entre em contato com o administrador.');
+      }
+
+      // Se o perfil tiver tokensValidAfterTime e o token ainda estiver em colisão temporal,
+      // avança o token com novo login sem abortar a sessão
+      const idTokenResult = await user.getIdTokenResult();
+      const authTime = Math.floor(new Date(idTokenResult.authTime).getTime() / 1000);
+      if (profile.tokensValidAfterTime && authTime <= profile.tokensValidAfterTime) {
         await new Promise((r) => setTimeout(r, 1100));
         const reauthUser = await firebaseAuthService.login(email, password);
         await reauthUser.getIdToken(true);
-        profile = await firebaseUserService.getUserProfile(
-          reauthUser.uid,
-          reauthUser.email ?? undefined,
-          reauthUser.displayName ?? undefined
-        );
-      } else {
-        throw err;
       }
-    }
 
-    if (!profile) {
-      await handleLogout(true, user.uid);
-      throw new Error('Sua conta não possui permissão de acesso ou convite ativo.');
-    }
-
-    if (profile.active === false) {
-      // Usuário inativo - fazer logout imediato
-      await handleLogout(true, user.uid);
-      throw new Error('Sua conta foi desativada. Entre em contato com o administrador.');
+      // Registra a sessão do dispositivo com o novo deviceId imediatamente
+      try {
+        await firebaseUserService.registerDeviceSession(newDeviceId, navigator.userAgent);
+        localStorage.setItem('luisices_device_last_reg', String(Date.now()));
+      } catch (regErr) {
+        console.warn('[AuthContext] Aviso ao registrar sessão no login:', regErr);
+      }
+    } finally {
+      isLoggingInRef.current = false;
     }
   };
 
