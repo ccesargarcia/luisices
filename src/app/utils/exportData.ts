@@ -47,16 +47,20 @@ export async function exportOrdersToExcel(orders: Order[], filename = 'pedidos')
 
 export async function exportCustomersToExcel(customers: Customer[], filename = 'clientes') {
   const XLSX = await import('xlsx');
-  const data = customers.map(customer => ({
-    'ID': customer.id,
-    'Nome': customer.name,
-    'Telefone': customer.phone || '',
-    'Email': customer.email || '',
-    'Endereço': customer.address || '',
-    'Total Pedidos': customer.totalOrders || 0,
-    'Total Gasto': customer.totalSpent || 0,
-    'Criado em': formatDate(customer.createdAt),
-  }));
+  const data = customers.map(customer => {
+    const fullAddress = customer.address || [customer.street, customer.number, customer.complement, customer.city, customer.state].filter(Boolean).join(', ') || '';
+    return {
+      'ID': customer.id,
+      'Nome': customer.name,
+      'Telefone': customer.phone || '',
+      'Email': customer.email || '',
+      'Endereço': fullAddress,
+      'Classificação': customer.status || 'Padrão',
+      'Total Pedidos': customer.totalOrders || 0,
+      'Total Gasto': customer.totalSpent || 0,
+      'Criado em': formatDate(customer.createdAt),
+    };
+  });
 
   const worksheet = XLSX.utils.json_to_sheet(data);
   const workbook = XLSX.utils.book_new();

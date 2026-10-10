@@ -436,16 +436,18 @@ export function Customers() {
           <p className="mt-1 text-muted-foreground">Gerencie sua base de clientes</p>
         </div>
         <div className="flex w-full flex-wrap gap-2 sm:w-auto">
-          <Button
-            variant="outline"
-            size="default"
-            onClick={() => exportCustomersToExcel(filteredCustomers)}
-            disabled={filteredCustomers.length === 0}
-            className="gap-2"
-          >
-            <Download className="size-4" />
-            <span className="hidden sm:inline">Exportar Excel</span>
-          </Button>
+          {hasPermission((p) => p.customers?.view ?? false) && (
+            <Button
+              variant="outline"
+              size="default"
+              onClick={() => exportCustomersToExcel(filteredCustomers)}
+              disabled={filteredCustomers.length === 0}
+              className="gap-2"
+            >
+              <Download className="size-4" />
+              <span className="hidden sm:inline">Exportar Excel</span>
+            </Button>
+          )}
 
           {hasPermission((p) => p.customers?.create ?? false) && (
             <Button
