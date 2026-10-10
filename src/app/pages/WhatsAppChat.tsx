@@ -29,7 +29,7 @@ import { NewChatModal } from '../components/whatsapp/NewChatModal';
 export function WhatsAppChat() {
   const { user, isAdmin } = useAuth();
   const { customers, loading: customersLoading } = useFirebaseCustomers();
-  const { orders, isFilterActive, selectedFilterLabel, clearUserFilter } = useOrders();
+  const { orders, selectedUserIds, isFilterActive, selectedFilterLabel, clearUserFilter } = useOrders();
 
   const [conversations, setConversations] = useState<WhatsAppConversation[]>([]);
   const [loadingConversations, setLoadingConversations] = useState(true);
@@ -40,6 +40,8 @@ export function WhatsAppChat() {
     phone: string;
     customerId?: string;
   } | null>(null);
+
+  const partnerScopeKey = [...selectedUserIds].sort().join('|');
 
   const [messages, setMessages] = useState<WhatsAppMessage[]>([]);
   const [messageLimit, setMessageLimit] = useState(10);
@@ -67,6 +69,18 @@ export function WhatsAppChat() {
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  React.useLayoutEffect(() => {
+    if (inputText.trim()) toast.warning('O texto não enviado foi descartado ao trocar de parceiro ou conta.');
+    setSelectedPhone(null);
+    setActiveCustomer(null);
+    setMessages([]);
+    setOptimisticMessages([]);
+    setInputText('');
+    setSelectedMessageIds(new Set());
+    setIsSelectionMode(false);
+    setMessageToDelete(null);
+  }, [partnerScopeKey, user?.uid]);
 
   const scrollToBottom = (behavior: ScrollBehavior = 'smooth') => {
     if (messagesContainerRef.current) {
@@ -106,10 +120,11 @@ export function WhatsAppChat() {
       () => {
         setLoadingConversations(false);
         setConversationError('Não foi possível carregar as conversas.');
-      }
+      },
+      isAdmin
     );
     return () => unsubscribe();
-  }, []);
+  }, [user?.uid, isAdmin]);
 
   useEffect(() => {
     if (!selectedPhone) {
@@ -120,9 +135,11 @@ export function WhatsAppChat() {
     }
 
     setOptimisticMessages([]);
+    let active = true;
     const unsubscribe = firebaseWhatsAppService.subscribeMessages(
       selectedPhone, 
       (msgs) => {
+        if (!active) return;
         setMessages(msgs);
         if (messageLimit === 10) {
           // Only scroll to bottom on initial load
@@ -130,13 +147,14 @@ export function WhatsAppChat() {
         }
       },
       undefined,
-      messageLimit
+      messageLimit,
+      isAdmin
     );
 
     firebaseWhatsAppService.markChatAsRead(selectedPhone);
 
-    return () => unsubscribe();
-  }, [selectedPhone, messageLimit]);
+    return () => { active = false; unsubscribe(); };
+  }, [selectedPhone, messageLimit, user?.uid, isAdmin]);
 
   useEffect(() => {
     if (!selectedPhone) return;

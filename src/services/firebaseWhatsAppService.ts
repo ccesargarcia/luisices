@@ -1,6 +1,6 @@
 import { collection, query, where, orderBy, onSnapshot, limit } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
-import { db, functions } from '../lib/firebase';
+import { db, functions, auth } from '../lib/firebase';
 import { WhatsAppMessage, WhatsAppConversation } from '../app/types';
 import { normalizePhoneForWhatsApp } from '../app/utils/whatsapp';
 
@@ -106,7 +106,8 @@ export const firebaseWhatsAppService = {
     phone: string,
     onUpdate: (messages: WhatsAppMessage[]) => void,
     onError?: (err: any) => void,
-    msgLimit: number = 50
+    msgLimit: number = 50,
+    adminScope: boolean = false
   ) {
     const cleanPhone = normalizePhoneForWhatsApp(phone);
     if (!cleanPhone) {
@@ -118,6 +119,7 @@ export const firebaseWhatsAppService = {
     const q = query(
       messagesRef,
       where('chatId', '==', cleanPhone),
+      ...(!adminScope ? [where('userId', '==', auth.currentUser?.uid || '__unauthenticated__')] : []),
       orderBy('timestamp', 'desc'),
       limit(msgLimit)
     );
@@ -144,10 +146,11 @@ export const firebaseWhatsAppService = {
    */
   subscribeConversations(
     onUpdate: (conversations: WhatsAppConversation[]) => void,
-    onError?: (err: any) => void
+    onError?: (err: any) => void,
+    adminScope: boolean = false
   ) {
     const chatsRef = collection(db, 'whatsapp_chats');
-    const q = query(chatsRef, orderBy('lastMessageTimestamp', 'desc'), limit(100));
+    const q = query(chatsRef, ...(!adminScope ? [where('userId', '==', auth.currentUser?.uid || '__unauthenticated__')] : []), orderBy('lastMessageTimestamp', 'desc'), limit(100));
 
     return onSnapshot(
       q,

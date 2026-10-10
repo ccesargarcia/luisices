@@ -473,12 +473,12 @@ service cloud.firestore {
     }
 
     match /whatsapp_chats/{chatId} {
-      allow read: if canAccessWhatsApp();
+      allow read: if canAccessWhatsApp() && (isAdmin() || resource.data.get('userId', '') == request.auth.uid);
       allow write: if false;
     }
 
     match /whatsapp_messages/{messageId} {
-      allow read: if canAccessWhatsApp();
+      allow read: if canAccessWhatsApp() && (isAdmin() || resource.data.get('userId', '') == request.auth.uid);
       allow write: if false;
     }
 

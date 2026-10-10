@@ -3,12 +3,16 @@ async function persistIncomingMessage({ db, messageRef, chatRef, message, increm
   return db.runTransaction(async (transaction) => {
     const snapshot = await transaction.get(messageRef);
     if (snapshot.exists) return false;
-    transaction.set(messageRef, { ...message, createdAt: serverTimestamp() });
+    const chatSnapshot = await transaction.get(chatRef);
+    const existingChat = chatSnapshot.exists ? chatSnapshot.data() : {};
+    const owner = existingChat.userId || message.userId || null;
+    transaction.set(messageRef, { ...message, userId: owner, createdAt: serverTimestamp() });
     const chat = {
+      userId: owner,
       id: message.chatId,
       phone: message.phone,
-      customerName: message.customerName,
-      customerId: message.customerId,
+      customerName: existingChat.customerName || message.customerName,
+      customerId: existingChat.customerId || message.customerId,
       lastMessageText: message.text,
       lastMessageTimestamp: message.timestamp,
       lastMessageSender: message.sender,
