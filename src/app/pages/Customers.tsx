@@ -674,6 +674,11 @@ export function Customers() {
         inProductionOrdersCount={stats.inProductionOrdersCount}
       />
 
+      <p className="text-xs text-muted-foreground" role="note">
+        O Raio X e as faixas de clientes usam os pedidos disponíveis nesta tela.
+        O histórico pode estar incompleto; confira os relatórios antes de tomar decisões financeiras.
+      </p>
+
       {/* Search, Carrossel de Chips e Filtros Rápidos (Liquid Glassmorphism) */}
       <div className="p-3.5 sm:p-4 rounded-2xl luisices-glass border border-white/60 dark:border-white/10 space-y-3">
         {/* Linha 1: Busca Principal, Período de Análise e Ordenação */}

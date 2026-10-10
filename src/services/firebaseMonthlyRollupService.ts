@@ -26,7 +26,7 @@ export interface MonthlySalesSummary {
   cancelledAmount: number;
   inProgressCount: number;
   pendingCount: number;
-  totalPaid: number;    // Total efetivamente recebido em caixa
+  totalPaid: number;    // Pagamentos registrados nos pedidos criados neste mês; não é caixa por data de pagamento
   totalPending: number; // Saldo pendente a receber
   settlementRate: number; // Percentual quitado (0 - 100)
   paymentMethods: Record<string, number>; // { pix: 5000, credit: 3000, ... }
@@ -42,9 +42,23 @@ export function computeMonthlyRollup(
   userId: string,
   sales: SaleRecord[]
 ): MonthlySalesSummary {
+  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(yearMonth)) throw new Error('Mês inválido para consolidação.');
+  if (!userId || userId.includes('/') || userId.length > 128) throw new Error('Parceiro inválido para consolidação.');
+  const cents = (value: number | undefined): number => {
+    if (value == null) return 0;
+    if (!Number.isFinite(value) || value < 0) throw new Error('Valor financeiro inválido na consolidação.');
+    const result = Math.round(value * 100);
+    if (!Number.isSafeInteger(result)) throw new Error('Valor financeiro fora do limite seguro.');
+    return result;
+  };
+  const sumMoney = (values: Array<number | undefined>) => {
+    const total = values.reduce<number>((sum, value) => sum + cents(value), 0);
+    if (!Number.isSafeInteger(total)) throw new Error('Total financeiro fora do limite seguro.');
+    return total / 100;
+  };
   const monthSales = sales.filter((s) => {
     const saleDate = s.date || s.createdAt || '';
-    return saleDate.startsWith(yearMonth);
+    return s.userId === userId && typeof saleDate === 'string' && saleDate.startsWith(`${yearMonth}-`);
   });
 
   const validSales = monthSales.filter((s) => s.status !== 'cancelled');
@@ -53,44 +67,40 @@ export function computeMonthlyRollup(
   const pendingSales = validSales.filter((s) => s.status === 'pending');
   const cancelledSales = monthSales.filter((s) => s.status === 'cancelled');
 
-  const totalRevenue = completedSales.reduce((sum, s) => sum + (s.amount || 0), 0);
-  const totalValidAmount = validSales.reduce((sum, s) => sum + (s.amount || 0), 0);
-  const cancelledAmount = cancelledSales.reduce((sum, s) => sum + (s.amount || 0), 0);
+  const totalRevenue = sumMoney(completedSales.map((s) => s.amount));
+  const totalValidAmount = sumMoney(validSales.map((s) => s.amount));
+  const cancelledAmount = sumMoney(cancelledSales.map((s) => s.amount));
 
   // Fluxo de pagamentos e caixa
   const paymentMethods: Record<string, number> = {};
   let totalPending = 0;
 
   validSales.forEach((s) => {
-    const saleAmount = s.amount || 0;
-    const isCompleted = s.status === 'completed' || s.paymentStatus === 'paid';
-
-    let paid = s.paidAmount || 0;
-    if (isCompleted && paid === 0 && saleAmount > 0) {
-      paid = saleAmount;
-    }
-
-    const remaining = Math.max(0, saleAmount - paid);
-    totalPending += remaining;
+    const saleAmount = cents(s.amount);
+    const paidCents = cents(s.paidAmount);
+    if (paidCents > saleAmount) throw new Error('Pagamento acima do valor do pedido exige conciliação.');
+    const paid = paidCents / 100;
+    const remaining = (saleAmount - paidCents) / 100;
+    totalPending = sumMoney([totalPending, remaining]);
 
     if (paid > 0) {
       const method = s.paymentMethod || 'other';
-      paymentMethods[method] = (paymentMethods[method] || 0) + paid;
+      paymentMethods[method] = sumMoney([paymentMethods[method], paid]);
     }
   });
 
-  const totalPaid = Object.values(paymentMethods).reduce((sum, val) => sum + val, 0);
+  const totalPaid = sumMoney(Object.values(paymentMethods));
   const totalAccounted = totalPaid + totalPending;
   const settlementRate = totalAccounted > 0 ? (totalPaid / totalAccounted) * 100 : 100;
 
   // Produtos mais vendidos no mês
   const prodMap = new Map<string, { count: number; revenue: number }>();
-  monthSales.forEach((s) => {
+  validSales.forEach((s) => {
     const prodName = s.productName || 'Produto';
     const cur = prodMap.get(prodName) ?? { count: 0, revenue: 0 };
     prodMap.set(prodName, {
       count: cur.count + (s.quantity || 1),
-      revenue: cur.revenue + (s.status === 'completed' ? (s.amount || 0) : 0),
+      revenue: sumMoney([cur.revenue, s.status === 'completed' ? s.amount : 0]),
     });
   });
 
@@ -173,7 +183,7 @@ class FirebaseMonthlyRollupService {
 
     // Identificar todos os yearMonths presentes nas vendas
     const monthsSet = new Set<string>();
-    allSales.forEach((s) => {
+    allSales.filter((s) => s.userId === userId).forEach((s) => {
       const d = s.date || s.createdAt;
       if (d && typeof d === 'string' && d.length >= 7) {
         const ym = d.substring(0, 7);
