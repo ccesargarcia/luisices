@@ -1,6 +1,11 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { computeMonthlyRollup } from '../../src/services/firebaseMonthlyRollupService';
 import { SaleRecord, Order } from '../../src/app/types';
+
+vi.mock('../../src/lib/firebase', () => ({
+  db: { id: 'mock-db' },
+  auth: { currentUser: { uid: 'atelie-luisices-principal' } },
+}));
 
 describe('Arquitetura de Dados Históricos: Auto-arquivamento e Rollups Mensais', () => {
   const USER_ID = 'atelie-luisices-principal';
