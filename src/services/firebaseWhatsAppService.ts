@@ -105,7 +105,8 @@ export const firebaseWhatsAppService = {
   subscribeMessages(
     phone: string,
     onUpdate: (messages: WhatsAppMessage[]) => void,
-    onError?: (err: any) => void
+    onError?: (err: any) => void,
+    msgLimit: number = 50
   ) {
     const cleanPhone = normalizePhoneForWhatsApp(phone);
     if (!cleanPhone) {
@@ -117,8 +118,8 @@ export const firebaseWhatsAppService = {
     const q = query(
       messagesRef,
       where('chatId', '==', cleanPhone),
-      orderBy('timestamp', 'asc'),
-      limit(100)
+      orderBy('timestamp', 'desc'),
+      limit(msgLimit)
     );
 
     return onSnapshot(
@@ -128,7 +129,8 @@ export const firebaseWhatsAppService = {
           id: d.id,
           ...d.data(),
         })) as WhatsAppMessage[];
-        onUpdate(msgs);
+        // Reverse so the newest messages are at the bottom
+        onUpdate(msgs.reverse());
       },
       (err) => {
         console.error('[firebaseWhatsAppService] Erro ao carregar mensagens:', err);

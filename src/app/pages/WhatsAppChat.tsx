@@ -7,10 +7,9 @@ import { WhatsAppMessage, WhatsAppConversation, Customer } from '../types';
 import { normalizePhoneForWhatsApp, formatPhoneForDisplay } from '../utils/whatsapp';
 import { secureRandomId } from '../utils/random';
 import { Button } from '../components/ui/button';
-import { Input } from '../components/ui/input';
-import { Textarea } from '../components/ui/textarea';
 import { Badge } from '../components/ui/badge';
-import { Avatar, AvatarFallback } from '../components/ui/avatar';
+import { MessageSquare, Plus, RefreshCw, Loader2, Trash2 } from 'lucide-react';
+import { toast } from 'sonner';
 import {
   Dialog,
   DialogContent,
@@ -20,73 +19,11 @@ import {
   DialogBody,
   DialogFooter,
 } from '../components/ui/dialog';
-import { cn } from '../components/ui/utils';
-import {
-  MessageSquare,
-  Send,
-  Search,
-  Plus,
-  ArrowLeft,
-  RefreshCw,
-  ExternalLink,
-  Phone,
-  Check,
-  CheckCheck,
-  Clock,
-  User,
-  Users,
-  Package,
-  Sparkles,
-  Loader2,
-  Copy,
-  Info,
-  ShieldCheck,
-  Store,
-  ChevronRight,
-  Filter,
-  Trash2,
-  RotateCcw,
-  AlertCircle,
-} from 'lucide-react';
-import { toast } from 'sonner';
 
-const QUICK_TEMPLATES = [
-  {
-    id: 'ready',
-    label: '📦 Pronto p/ Retirada',
-    title: 'Pedido Pronto para Retirada',
-    getText: (name: string) =>
-      `Olá, ${name || 'cliente'}! 👋\n\nÓtima notícia: seu pedido personalizado está finalizado com todo carinho e já está disponível para retirada no ateliê! ✨📦\n\nQualquer dúvida sobre horários de retirada, estamos à disposição!`,
-  },
-  {
-    id: 'production',
-    label: '🔄 Em Produção',
-    title: 'Pedido em Produção',
-    getText: (name: string) =>
-      `Olá, ${name || 'cliente'}! 👋\n\nPassando para avisar que seu pedido já entrou na nossa esteira de produção e impressão! 👕✂️\n\nAssim que finalizarmos e embalarmos, avisamos você imediatamente!`,
-  },
-  {
-    id: 'payment',
-    label: '💰 Cobrança Amigável',
-    title: 'Lembrete Amigável de Pagamento',
-    getText: (name: string) =>
-      `Olá, ${name || 'cliente'}! Tudo bem? 😊\n\nPassando apenas para enviar o lembrete referente ao pagamento/sinal do seu pedido na Luisices.\n\nAceitamos PIX e Cartão de Crédito. Se precisar da chave ou link atualizado, só nos avisar! Obrigado pela parceria! 🙏`,
-  },
-  {
-    id: 'confirm',
-    label: '🧾 Confirmação',
-    title: 'Confirmação do Pedido',
-    getText: (name: string) =>
-      `Olá, ${name || 'cliente'}! 👋\n\nSeu pedido foi registrado com sucesso em nosso sistema! 🧾\n\nJá estamos preparando os detalhes. Obrigado pela confiança na Luisices!`,
-  },
-  {
-    id: 'catalog',
-    label: '🛍️ Catálogo Lojinha',
-    title: 'Link da Vitrine Online',
-    getText: (name: string) =>
-      `Olá, ${name || 'cliente'}! 👋\n\nConfira os produtos e lançamentos exclusivos na nossa vitrine online:\nhttps://luisices.com.br/loja\n\nQualquer item que desejar personalizar, é só falar com a gente por aqui! 👕✨`,
-  },
-];
+// Components
+import { ChatSidebar } from '../components/whatsapp/ChatSidebar';
+import { ChatArea } from '../components/whatsapp/ChatArea';
+import { NewChatModal } from '../components/whatsapp/NewChatModal';
 
 export function WhatsAppChat() {
   const { user, isAdmin } = useAuth();
@@ -104,26 +41,14 @@ export function WhatsAppChat() {
   } | null>(null);
 
   const [messages, setMessages] = useState<WhatsAppMessage[]>([]);
+  const [messageLimit, setMessageLimit] = useState(10);
   const [optimisticMessages, setOptimisticMessages] = useState<WhatsAppMessage[]>([]);
   const [inputText, setInputText] = useState('');
   const [sending, setSending] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterMode, setFilterMode] = useState<'all' | 'unread' | 'with_orders'>('all');
 
-  // Modal Nova Conversa
   const [newChatModalOpen, setNewChatModalOpen] = useState(false);
-  const [newChatTab, setNewChatTab] = useState<'customers' | 'custom'>('customers');
-  const [modalCustomerSearch, setModalCustomerSearch] = useState('');
-  const [customPhone, setCustomPhone] = useState('');
-  const [customName, setCustomName] = useState('');
-
-  const filteredModalCustomers = useMemo(() => {
-    if (!modalCustomerSearch.trim()) return customers.slice(0, 30);
-    const q = modalCustomerSearch.toLowerCase().trim();
-    return customers.filter(
-      (c) => c.name?.toLowerCase().includes(q) || c.phone?.includes(q) || c.email?.toLowerCase().includes(q)
-    ).slice(0, 30);
-  }, [customers, modalCustomerSearch]);
 
   // Status da Conexão WhatsApp
   const [instanceStatus, setInstanceStatus] = useState<WhatsAppStatusResult | null>(null);
@@ -134,6 +59,10 @@ export function WhatsAppChat() {
   const [messageToDelete, setMessageToDelete] = useState<WhatsAppMessage | null>(null);
   const [deletingMessage, setDeletingMessage] = useState(false);
 
+  // Seleção múltipla
+  const [isSelectionMode, setIsSelectionMode] = useState(false);
+  const [selectedMessageIds, setSelectedMessageIds] = useState<Set<string>>(new Set());
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -141,7 +70,6 @@ export function WhatsAppChat() {
     messagesEndRef.current?.scrollIntoView({ behavior });
   };
 
-  // Verifica status da conexão com o WhatsApp
   const checkStatus = async () => {
     setCheckingStatus(true);
     try {
@@ -158,7 +86,6 @@ export function WhatsAppChat() {
     checkStatus();
   }, []);
 
-  // Escuta conversas em tempo real
   useEffect(() => {
     setLoadingConversations(true);
     setConversationError(null);
@@ -175,31 +102,36 @@ export function WhatsAppChat() {
     return () => unsubscribe();
   }, []);
 
-  // Escuta mensagens da conversa selecionada
   useEffect(() => {
     if (!selectedPhone) {
       setMessages([]);
       setOptimisticMessages([]);
+      setMessageLimit(10); // Reset limit when changing chats
       return;
     }
 
     setOptimisticMessages([]);
-    const unsubscribe = firebaseWhatsAppService.subscribeMessages(selectedPhone, (msgs) => {
-      setMessages(msgs);
-      setTimeout(() => scrollToBottom('smooth'), 100);
-    });
+    const unsubscribe = firebaseWhatsAppService.subscribeMessages(
+      selectedPhone, 
+      (msgs) => {
+        setMessages(msgs);
+        if (messageLimit === 10) {
+          // Only scroll to bottom on initial load
+          setTimeout(() => scrollToBottom('smooth'), 100);
+        }
+      },
+      undefined,
+      messageLimit
+    );
 
-    // Marca conversa como lida
     firebaseWhatsAppService.markChatAsRead(selectedPhone);
 
     return () => unsubscribe();
-  }, [selectedPhone]);
+  }, [selectedPhone, messageLimit]);
 
-  // Mantém os dados do cliente ativo sincronizados
   useEffect(() => {
     if (!selectedPhone) return;
 
-    // 1. Tenta achar na lista de clientes cadastrados
     const matchedCustomer = customers.find((c) => {
       const cleanCustPhone = normalizePhoneForWhatsApp(c.phone);
       return cleanCustPhone === selectedPhone;
@@ -214,7 +146,6 @@ export function WhatsAppChat() {
       return;
     }
 
-    // 2. Tenta achar na lista de conversas
     const matchedChat = conversations.find((c) => c.phone === selectedPhone);
     if (matchedChat) {
       setActiveCustomer({
@@ -225,7 +156,6 @@ export function WhatsAppChat() {
       return;
     }
 
-    // 3. Fallback
     if (!activeCustomer || activeCustomer.phone !== selectedPhone) {
       setActiveCustomer({
         name: selectedPhone,
@@ -234,11 +164,8 @@ export function WhatsAppChat() {
     }
   }, [selectedPhone, customers, conversations]);
 
-  // Lista combinada de contatos/conversas
   const mergedConversations = useMemo(() => {
     const map = new Map<string, WhatsAppConversation>();
-
-    // Conjuntos de identificadores de clientes pertencentes ao usuário (quando não admin)
     const allowedPhones = new Set<string>();
     const allowedCustomerIds = new Set<string>();
 
@@ -254,11 +181,8 @@ export function WhatsAppChat() {
       if (ord.customerId) allowedCustomerIds.add(ord.customerId);
     }
 
-    // Adiciona conversas existentes
     for (const chat of conversations) {
       const chatPhone = normalizePhoneForWhatsApp(chat.phone) || chat.phone;
-
-      // Guardrail: Se não for administrador, filtra apenas conversas associadas aos clientes do usuário ou iniciadas por ele
       if (!isAdmin) {
         const isBelongingCustomer =
           (chat.customerId && allowedCustomerIds.has(chat.customerId)) ||
@@ -269,11 +193,9 @@ export function WhatsAppChat() {
           continue;
         }
       }
-
       map.set(chat.phone, { ...chat });
     }
 
-    // Mescla clientes com pedidos ou cadastrados para que sempre apareçam na busca
     for (const cust of customers) {
       const cleanPhone = normalizePhoneForWhatsApp(cust.phone);
       if (!cleanPhone) continue;
@@ -292,7 +214,6 @@ export function WhatsAppChat() {
           existing.lastOrderSummary = `${custOrders[0].productName} (${custOrders[0].quantity} un)`;
         }
       } else {
-        // Cria entrada de conversa virtual para clientes cadastrados
         map.set(cleanPhone, {
           id: cleanPhone,
           phone: cleanPhone,
@@ -312,7 +233,6 @@ export function WhatsAppChat() {
 
     let list = Array.from(map.values());
 
-    // Ordenação: primeiro quem tem mensagens recentes, depois ordem alfabética de clientes
     list.sort((a, b) => {
       const timeA = a.lastMessageTimestamp ? new Date(a.lastMessageTimestamp).getTime() : 0;
       const timeB = b.lastMessageTimestamp ? new Date(b.lastMessageTimestamp).getTime() : 0;
@@ -320,14 +240,12 @@ export function WhatsAppChat() {
       return (a.customerName || '').localeCompare(b.customerName || '');
     });
 
-    // Filtros
     if (filterMode === 'unread') {
       list = list.filter((c) => c.unreadCount > 0);
     } else if (filterMode === 'with_orders') {
       list = list.filter((c) => (c.orderCount || 0) > 0);
     }
 
-    // Busca
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase().trim();
       list = list.filter(
@@ -339,9 +257,8 @@ export function WhatsAppChat() {
     }
 
     return list;
-  }, [conversations, customers, orders, filterMode, searchQuery]);
+  }, [conversations, customers, orders, filterMode, searchQuery, isAdmin, user?.uid]);
 
-  // Mensagens exibidas no chat: combina histórico do Firestore com mensagens otimistas locais
   const displayedMessages = useMemo(() => {
     if (optimisticMessages.length === 0) return messages;
 
@@ -369,9 +286,8 @@ export function WhatsAppChat() {
     toast.info('Texto restaurado para reenvio.');
   };
 
-  // Envio otimista de mensagem (sensação instantânea, limpa a caixa na hora e exibe o balão)
-  const handleSendMessage = async (textToSend?: string) => {
-    const text = (textToSend || inputText).trim();
+  const handleSendMessage = async () => {
+    const text = inputText.trim();
     if (!text || !selectedPhone) return;
 
     const tempId = `opt_${Date.now()}_${secureRandomId()}`;
@@ -387,13 +303,11 @@ export function WhatsAppChat() {
       timestamp: new Date().toISOString(),
     };
 
-    // 1. Limpa o input IMEDIATAMENTE (0ms de latência)
     setInputText('');
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
     }
 
-    // 2. Adiciona o balão imediatamente no chat com reloginho 🕒
     setOptimisticMessages((prev) => [...prev, tempMsg]);
     setTimeout(() => scrollToBottom('smooth'), 50);
 
@@ -405,7 +319,6 @@ export function WhatsAppChat() {
         activeCustomer?.name,
         activeCustomer?.customerId
       );
-      // Sucesso: remove da fila temporária após 1s para o Firestore ter refletido no snapshot
       setTimeout(() => {
         setOptimisticMessages((prev) => prev.filter((m) => m.id !== tempId));
       }, 1000);
@@ -413,7 +326,6 @@ export function WhatsAppChat() {
     } catch (err: any) {
       console.error('[WhatsAppChat] Erro ao enviar mensagem:', err);
       toast.error(err.message || 'Erro ao enviar mensagem para o WhatsApp.');
-      // Marca como falha para permitir recuperação ou reenvio
       setOptimisticMessages((prev) =>
         prev.map((m) => (m.id === tempId ? { ...m, status: 'failed' } : m))
       );
@@ -422,7 +334,6 @@ export function WhatsAppChat() {
     }
   };
 
-  // Exclusão de mensagem
   const handleDeleteMessage = async () => {
     if (!messageToDelete || !selectedPhone || deletingMessage) return;
     setDeletingMessage(true);
@@ -442,7 +353,6 @@ export function WhatsAppChat() {
     }
   };
 
-  // Sincronização direta de mensagens
   const handleSyncMessages = async () => {
     if (!selectedPhone || syncingMessages) return;
     setSyncingMessages(true);
@@ -458,6 +368,75 @@ export function WhatsAppChat() {
       toast.error(err.message || 'Erro ao sincronizar mensagens com o WhatsApp.');
     } finally {
       setSyncingMessages(false);
+    }
+  };
+
+  const handleToggleSelectionMode = () => {
+    setIsSelectionMode((prev) => {
+      if (prev) setSelectedMessageIds(new Set());
+      return !prev;
+    });
+  };
+
+  const handleToggleMessageSelection = (id: string) => {
+    setSelectedMessageIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const [bulkDeleteDialogOpen, setBulkDeleteDialogOpen] = useState(false);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
+
+  const handleSelectAll = () => {
+    if (selectedMessageIds.size === displayedMessages.length && displayedMessages.length > 0) {
+      setSelectedMessageIds(new Set());
+    } else {
+      setSelectedMessageIds(new Set(displayedMessages.map((m) => m.id)));
+    }
+  };
+
+  const handleClearSelection = () => {
+    setSelectedMessageIds(new Set());
+    setIsSelectionMode(false);
+  };
+
+  const handleOpenBulkDelete = () => {
+    if (selectedMessageIds.size === 0 || !selectedPhone) return;
+    setBulkDeleteDialogOpen(true);
+  };
+
+  const handleConfirmBulkDelete = async () => {
+    if (selectedMessageIds.size === 0 || !selectedPhone || bulkDeleting) return;
+    setBulkDeleting(true);
+
+    const messagesToDelete = displayedMessages.filter((m) => selectedMessageIds.has(m.id));
+
+    try {
+      const results = await Promise.allSettled(
+        messagesToDelete.map((msg) =>
+          firebaseWhatsAppService.deleteMessage(selectedPhone, msg.id, msg.evolutionMessageId)
+        )
+      );
+
+      const successCount = results.filter(
+        (r) => r.status === 'fulfilled' && (r.value as any)?.success !== false
+      ).length;
+
+      if (successCount > 0) {
+        toast.success(`${successCount} mensagem(ns) apagada(s) com sucesso!`);
+      } else {
+        toast.error('Não foi possível apagar as mensagens selecionadas.');
+      }
+      handleClearSelection();
+      setBulkDeleteDialogOpen(false);
+    } catch (err: any) {
+      console.error('[WhatsAppChat] Erro ao apagar mensagens em lote:', err);
+      toast.error(err.message || 'Erro ao apagar mensagens em lote.');
+    } finally {
+      setBulkDeleting(false);
     }
   };
 
@@ -482,10 +461,9 @@ export function WhatsAppChat() {
     firebaseWhatsAppService.ensureConversation(clean, c.name, c.id);
     handleSelectChat(clean, c.name, c.id);
     setNewChatModalOpen(false);
-    setModalCustomerSearch('');
   };
 
-  const handleStartCustomChat = () => {
+  const handleStartCustomChat = (customPhone: string, customName: string) => {
     const clean = normalizePhoneForWhatsApp(customPhone);
     if (!clean || clean.length < 10) {
       toast.error('Por favor, informe um número de telefone com DDD válido.');
@@ -495,16 +473,6 @@ export function WhatsAppChat() {
     firebaseWhatsAppService.ensureConversation(clean, name);
     handleSelectChat(clean, name);
     setNewChatModalOpen(false);
-    setCustomPhone('');
-    setCustomName('');
-  };
-
-  const handleApplyTemplate = (tmpl: (typeof QUICK_TEMPLATES)[0]) => {
-    const generated = tmpl.getText(activeCustomer?.name || '');
-    setInputText(generated);
-    if (textareaRef.current) {
-      textareaRef.current.focus();
-    }
   };
 
   const handleOpenWhatsAppWeb = () => {
@@ -524,10 +492,9 @@ export function WhatsAppChat() {
 
   return (
     <div className="flex flex-col h-[calc(100dvh-4rem)] max-h-[calc(100dvh-4rem)] overflow-hidden bg-background">
-      {/* Barra de Status e Cabeçalho Geral */}
-      <div className="px-3 sm:px-4 py-2 sm:py-2.5 bg-card/80 border-b flex items-center justify-between gap-2 sm:gap-3 shrink-0 min-w-0">
+      <div className="px-3 sm:px-4 py-2 sm:py-2.5 luisices-glass border-b flex items-center justify-between gap-2 sm:gap-3 shrink-0 min-w-0">
         <div className="flex items-center gap-2 sm:gap-2.5 min-w-0">
-          <div className="p-1.5 sm:p-2 bg-emerald-500/10 text-emerald-600 rounded-xl shrink-0">
+          <div className="p-1.5 sm:p-2 bg-primary/10 text-primary rounded-xl shrink-0">
             <MessageSquare className="size-4 sm:size-5" />
           </div>
           <div className="min-w-0">
@@ -580,7 +547,7 @@ export function WhatsAppChat() {
           <Button
             size="sm"
             onClick={() => setNewChatModalOpen(true)}
-            className="h-8 px-2.5 sm:px-3 text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-medium gap-1.5 shadow-xs shrink-0 cursor-pointer"
+            className="h-8 px-2.5 sm:px-3 text-xs bg-primary hover:bg-primary/90 text-primary-foreground font-medium gap-1.5 shadow-xs shrink-0 cursor-pointer"
             title="Iniciar Nova Conversa"
           >
             <Plus className="size-3.5" />
@@ -590,646 +557,65 @@ export function WhatsAppChat() {
         </div>
       </div>
 
-      {/* Corpo Principal (Split Pane) */}
       <div className="flex-1 flex overflow-hidden">
-        {/* Painel Esquerdo: Lista de Conversas e Contatos */}
-        <div
-          className={`w-full md:w-80 lg:w-96 border-r bg-card/40 flex flex-col h-full shrink-0 relative ${
-            selectedPhone ? 'hidden md:flex' : 'flex'
-          }`}
-        >
-          {/* Busca e Filtros */}
-          <div className="p-3 border-b space-y-2 bg-card/60">
-            <div className="flex items-center gap-2">
-              <div className="relative flex-1">
-                <Search className="size-4 absolute left-3 top-2.5 text-muted-foreground" />
-                <Input
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Buscar cliente, número ou mensagem..."
-                  className="pl-9 h-9 text-xs bg-background"
-                />
-                {searchQuery && (
-                  <button
-                    type="button"
-                    onClick={() => setSearchQuery('')}
-                    className="absolute right-2.5 top-2.5 text-muted-foreground hover:text-foreground text-xs cursor-pointer"
-                  >
-                    ✕
-                  </button>
-                )}
-              </div>
-              <Button
-                size="sm"
-                onClick={() => setNewChatModalOpen(true)}
-                className="h-9 px-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs gap-1 shrink-0 font-medium md:hidden cursor-pointer"
-                title="Iniciar Nova Conversa"
-              >
-                <Plus className="size-4" />
-                <span>Nova</span>
-              </Button>
-            </div>
+        <ChatSidebar
+          searchQuery={searchQuery}
+          setSearchQuery={setSearchQuery}
+          filterMode={filterMode}
+          setFilterMode={setFilterMode}
+          loadingConversations={loadingConversations}
+          conversationError={conversationError}
+          mergedConversations={mergedConversations as any}
+          selectedPhone={selectedPhone}
+          onSelectChat={handleSelectChat}
+          onNewChat={() => setNewChatModalOpen(true)}
+        />
 
-            <div className="flex items-center gap-1 overflow-x-auto pb-0.5">
-              <button
-                type="button"
-                onClick={() => setFilterMode('all')}
-                className={`text-[11px] px-2.5 py-1 rounded-full font-medium transition-colors ${
-                  filterMode === 'all'
-                    ? 'bg-emerald-600 text-white'
-                    : 'bg-muted/60 text-muted-foreground hover:text-foreground'
-                }`}
-              >
-                Todos ({mergedConversations.length})
-              </button>
-              <button
-                type="button"
-                onClick={() => setFilterMode('unread')}
-                className={`text-[11px] px-2.5 py-1 rounded-full font-medium transition-colors ${
-                  filterMode === 'unread'
-                    ? 'bg-emerald-600 text-white'
-                    : 'bg-muted/60 text-muted-foreground hover:text-foreground'
-                }`}
-              >
-                Não Lidos
-              </button>
-              <button
-                type="button"
-                onClick={() => setFilterMode('with_orders')}
-                className={`text-[11px] px-2.5 py-1 rounded-full font-medium transition-colors ${
-                  filterMode === 'with_orders'
-                    ? 'bg-emerald-600 text-white'
-                    : 'bg-muted/60 text-muted-foreground hover:text-foreground'
-                }`}
-              >
-                Com Pedidos
-              </button>
-            </div>
-          </div>
-
-          {/* Lista de Chats */}
-          <div className="flex-1 overflow-y-auto divide-y divide-border/40">
-            {loadingConversations ? (
-              <div className="p-8 text-center text-muted-foreground space-y-3" role="status" aria-live="polite">
-                <Loader2 className="size-7 mx-auto animate-spin text-emerald-600" />
-                <p className="text-xs">Carregando conversas...</p>
-              </div>
-            ) : conversationError ? (
-              <div className="p-8 text-center text-muted-foreground space-y-3" role="alert">
-                <AlertCircle className="size-8 mx-auto text-destructive/70" />
-                <p className="text-xs">{conversationError}</p>
-                <Button size="sm" variant="outline" className="text-xs h-8" onClick={() => window.location.reload()}>
-                  Tentar novamente
-                </Button>
-              </div>
-            ) : mergedConversations.length === 0 ? (
-              <div className="p-8 text-center text-muted-foreground space-y-3">
-                <MessageSquare className="size-8 mx-auto opacity-30" />
-                <p className="text-xs">Nenhuma conversa encontrada.</p>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="text-xs h-8"
-                  onClick={() => setNewChatModalOpen(true)}
-                >
-                  <Plus className="size-3.5 mr-1" />
-                  Iniciar Conversa
-                </Button>
-              </div>
-            ) : (
-              mergedConversations.map((chat) => {
-                const isSelected = selectedPhone === chat.phone;
-                const formattedNumber = formatPhoneForDisplay(chat.phone);
-                const hasOrders = (chat.orderCount || 0) > 0;
-
-                return (
-                  <button
-                    key={chat.phone}
-                    type="button"
-                    onClick={() => handleSelectChat(chat.phone, chat.customerName, chat.customerId || undefined)}
-                    className={`w-full text-left p-3 transition-colors flex items-start gap-3 hover:bg-muted/40 ${
-                      isSelected ? 'bg-emerald-500/10 border-l-4 border-l-emerald-600' : ''
-                    }`}
-                  >
-                    <Avatar className="size-10 shrink-0 border border-border">
-                      <AvatarFallback className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 text-xs font-bold">
-                        {chat.customerName ? chat.customerName.slice(0, 2).toUpperCase() : 'WA'}
-                      </AvatarFallback>
-                    </Avatar>
-
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between gap-1 mb-0.5">
-                        <span className="font-semibold text-xs sm:text-sm text-foreground truncate">
-                          {chat.customerName || formattedNumber}
-                        </span>
-                        {chat.lastMessageTimestamp && (
-                          <span className="text-[10px] text-muted-foreground shrink-0">
-                            {new Date(chat.lastMessageTimestamp).toLocaleTimeString('pt-BR', {
-                              hour: '2-digit',
-                              minute: '2-digit',
-                            })}
-                          </span>
-                        )}
-                      </div>
-
-                      <div className="flex items-center justify-between gap-1">
-                        <p className="text-xs text-muted-foreground truncate leading-snug">
-                          {chat.lastMessageText || formattedNumber}
-                        </p>
-                        {chat.unreadCount > 0 && (
-                          <Badge className="bg-emerald-600 text-white text-[10px] h-4.5 px-1.5 font-bold rounded-full">
-                            {chat.unreadCount}
-                          </Badge>
-                        )}
-                      </div>
-
-                      {hasOrders && (
-                        <div className="mt-1 flex items-center gap-1 text-[10px] text-emerald-700 dark:text-emerald-400 font-medium">
-                          <Package className="size-3 shrink-0" />
-                          <span className="truncate">
-                            {chat.orderCount} pedido(s) • {chat.lastOrderSummary || 'Ateliê'}
-                          </span>
-                        </div>
-                      )}
-                    </div>
-                  </button>
-                );
-              })
-            )}
-          </div>
-
-          {/* Botão Flutuante (FAB) para Nova Conversa no Mobile */}
-          <button
-            type="button"
-            onClick={() => setNewChatModalOpen(true)}
-            aria-label="Iniciar Nova Conversa"
-            title="Iniciar Nova Conversa"
-            className="md:hidden fixed bottom-20 right-4 z-30 size-12 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white shadow-xl flex items-center justify-center transition-transform active:scale-95 focus:outline-hidden cursor-pointer ring-2 ring-background"
-          >
-            <Plus className="size-6" />
-          </button>
-        </div>
-
-        {/* Painel Direito: Chat Ativo */}
         <div
           className={`flex-1 flex flex-col h-full bg-background min-w-0 ${
             !selectedPhone ? 'hidden md:flex' : 'flex'
           }`}
         >
-          {selectedPhone ? (
-            <>
-              {/* Header do Chat Selecionado */}
-              <div className="px-4 py-3 border-b bg-card/60 flex items-center justify-between gap-3 shrink-0">
-                <div className="flex items-center gap-3 min-w-0">
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="md:hidden size-8 shrink-0 text-muted-foreground"
-                    onClick={() => setSelectedPhone(null)}
-                  >
-                    <ArrowLeft className="size-4" />
-                  </Button>
-
-                  <Avatar className="size-9 shrink-0 border">
-                    <AvatarFallback className="bg-emerald-600 text-white text-xs font-bold">
-                      {activeCustomer?.name ? activeCustomer.name.slice(0, 2).toUpperCase() : 'WA'}
-                    </AvatarFallback>
-                  </Avatar>
-
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      <h2 className="text-sm font-bold text-foreground truncate">
-                        {activeCustomer?.name || formatPhoneForDisplay(selectedPhone)}
-                      </h2>
-                      {activeCustomerOrders.length > 0 && (
-                        <Badge
-                          variant="outline"
-                          className="text-[10px] bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/30 font-medium hidden sm:inline-flex"
-                        >
-                          {activeCustomerOrders.length} Pedido(s)
-                        </Badge>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                      <Phone className="size-3 shrink-0" />
-                      <span>{formatPhoneForDisplay(selectedPhone)}</span>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-1.5 shrink-0">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-8 text-xs gap-1.5"
-                    onClick={handleSyncMessages}
-                    disabled={syncingMessages}
-                    title="Sincronizar mensagens recentes do WhatsApp"
-                  >
-                    <RefreshCw className={`size-3.5 ${syncingMessages ? 'animate-spin' : ''}`} />
-                    <span className="hidden sm:inline">
-                      {syncingMessages ? 'Sincronizando...' : 'Sincronizar'}
-                    </span>
-                  </Button>
-
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-8 text-xs gap-1.5"
-                    onClick={handleOpenWhatsAppWeb}
-                    title="Abrir no WhatsApp Web"
-                  >
-                    <ExternalLink className="size-3.5" />
-                    <span className="hidden sm:inline">WhatsApp Web</span>
-                  </Button>
-                </div>
-              </div>
-
-              {/* Área de Mensagens */}
-              <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-muted/10">
-                {displayedMessages.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center h-full text-center text-muted-foreground p-6 space-y-3">
-                    <div className="size-12 rounded-full bg-emerald-500/10 text-emerald-600 flex items-center justify-center">
-                      <MessageSquare className="size-6" />
-                    </div>
-                    <div className="max-w-sm space-y-1">
-                      <p className="text-sm font-semibold text-foreground">
-                        Início da conversa com {activeCustomer?.name || formatPhoneForDisplay(selectedPhone)}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        Envie uma mensagem abaixo ou use um dos nossos modelos rápidos pré-formatados.
-                      </p>
-                    </div>
-                  </div>
-                ) : (
-                  displayedMessages.map((msg) => {
-                    const isMe = msg.sender === 'me';
-                    return (
-                      <div
-                        key={msg.id}
-                        className={`group relative flex flex-col ${isMe ? 'items-end' : 'items-start'}`}
-                      >
-                        <div
-                          className={`relative max-w-[85%] sm:max-w-[75%] rounded-2xl px-3.5 py-2.5 text-xs sm:text-sm whitespace-pre-wrap leading-relaxed shadow-xs ${
-                            isMe
-                              ? 'bg-emerald-600 text-white rounded-tr-none'
-                              : 'bg-card text-foreground border rounded-tl-none'
-                          }`}
-                        >
-                          {/* Botão de excluir mensagem (visível em mobile/touch e no hover do desktop) */}
-                          {msg.status !== 'pending' && (
-                            <button
-                              type="button"
-                              onClick={() => setMessageToDelete(msg)}
-                              title="Apagar mensagem para todos"
-                              aria-label="Apagar mensagem"
-                              className={`absolute -top-2.5 ${
-                                isMe
-                                  ? '-left-2.5 text-emerald-700 dark:text-emerald-300 bg-background/95'
-                                  : '-right-2.5 text-muted-foreground bg-background/95'
-                              } opacity-80 sm:opacity-0 sm:group-hover:opacity-100 transition-all size-7 sm:size-5.5 rounded-full border shadow-xs flex items-center justify-center hover:text-destructive hover:bg-destructive/10 active:scale-90 cursor-pointer z-10`}
-                            >
-                              <Trash2 className="size-3.5 sm:size-3" />
-                            </button>
-                          )}
-
-                          <div>{msg.text}</div>
-                          <div
-                            className={`flex items-center justify-end gap-1 mt-1 text-[10px] ${
-                              isMe ? 'text-emerald-100' : 'text-muted-foreground'
-                            }`}
-                          >
-                            <span>
-                              {new Date(msg.timestamp).toLocaleTimeString('pt-BR', {
-                                hour: '2-digit',
-                                minute: '2-digit',
-                              })}
-                            </span>
-                            {isMe && (
-                              <span>
-                                {msg.status === 'read' ? (
-                                  <span title="Lida"><CheckCheck className="size-3 text-cyan-200" /></span>
-                                ) : msg.status === 'delivered' ? (
-                                  <span title="Entregue"><CheckCheck className="size-3 text-emerald-200" /></span>
-                                ) : msg.status === 'pending' ? (
-                                  <span title="Enviando para o WhatsApp..."><Clock className="size-3 text-emerald-200 animate-pulse" /></span>
-                                ) : msg.status === 'failed' ? (
-                                  <button
-                                    type="button"
-                                    onClick={() => handleRetryFailedMessage(msg)}
-                                    className="text-red-200 hover:text-white flex items-center gap-1 cursor-pointer bg-red-500/40 px-1 py-0.5 rounded text-[9px] font-semibold tracking-wide hover:bg-red-500/60 transition-colors"
-                                    title="Falha ao enviar. Toque para restaurar o texto."
-                                  >
-                                    <RotateCcw className="size-2.5" />
-                                    <span>Falha</span>
-                                  </button>
-                                ) : (
-                                  <span title="Enviada"><Check className="size-3" /></span>
-                                )}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })
-                )}
-                <div ref={messagesEndRef} />
-              </div>
-
-              {/* Barra de Modelos Rápidos (Quick Replies) */}
-              <div className="px-3 py-2 border-t bg-muted/20 flex items-center gap-1.5 overflow-x-auto shrink-0">
-                <span className="text-[10px] font-semibold text-muted-foreground shrink-0 uppercase tracking-wide flex items-center gap-1">
-                  <Sparkles className="size-3 text-amber-500" />
-                  Modelos Rápidos:
-                </span>
-                {QUICK_TEMPLATES.map((tmpl) => (
-                  <button
-                    key={tmpl.id}
-                    type="button"
-                    onClick={() => handleApplyTemplate(tmpl)}
-                    className="text-[11px] px-2.5 py-1 rounded-md bg-background hover:bg-emerald-500/10 border text-foreground transition-colors shrink-0 font-medium cursor-pointer"
-                  >
-                    {tmpl.label}
-                  </button>
-                ))}
-              </div>
-
-              {/* Caixa de Entrada de Mensagem */}
-              <div className="p-3 border-t bg-card/80 flex flex-col gap-2 shrink-0 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
-                <form
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    handleSendMessage();
-                  }}
-                  className="flex items-end gap-2"
-                >
-                  <Textarea
-                    ref={textareaRef}
-                    value={inputText}
-                    onChange={(e) => setInputText(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' && !e.shiftKey) {
-                        e.preventDefault();
-                        handleSendMessage();
-                      }
-                    }}
-                    rows={1}
-                    maxLength={4096}
-                    aria-label="Mensagem para o cliente"
-                    placeholder="Digite uma mensagem para o cliente... (Enter envia)"
-                    className="text-xs sm:text-sm bg-background min-h-[42px] max-h-32 resize-none py-2.5 leading-tight flex-1"
-                  />
-
-                  <Button
-                    type="submit"
-                    disabled={sending || !inputText.trim() || inputText.length > 4096}
-                    className="h-[42px] px-4 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold gap-1.5 shrink-0 shadow-xs active:scale-95 cursor-pointer"
-                  >
-                    {sending ? (
-                      <Loader2 className="size-4 animate-spin" />
-                    ) : (
-                      <Send className="size-4" />
-                    )}
-                    <span className="hidden sm:inline">
-                      {sending ? 'Enviando...' : 'Enviar'}
-                    </span>
-                  </Button>
-                </form>
-
-                <div className="flex items-center justify-between gap-2 text-[10px] text-muted-foreground hidden sm:flex">
-                  <p>
-                    💡 <kbd className="px-1 py-0.5 text-[9px] bg-muted border rounded font-mono">Enter</kbd> envia · <kbd className="px-1 py-0.5 text-[9px] bg-muted border rounded font-mono">Shift+Enter</kbd> quebra linha
-                  </p>
-                  <span className={inputText.length > 3800 ? 'text-amber-600 font-medium' : ''}>
-                    {inputText.length}/4096
-                  </span>
-                </div>
-              </div>
-            </>
-          ) : (
-            // Estado vazio quando nenhuma conversa estiver selecionada
-            <div className="flex-1 flex flex-col items-center justify-center p-8 text-center space-y-4">
-              <div className="size-16 rounded-full bg-emerald-500/10 text-emerald-600 flex items-center justify-center">
-                <MessageSquare className="size-8" />
-              </div>
-              <div className="max-w-md space-y-2">
-                <h3 className="text-base font-bold text-foreground">
-                  Selecione ou inicie uma conversa no WhatsApp
-                </h3>
-                <p className="text-xs text-muted-foreground leading-relaxed">
-                  Interaja diretamente com os clientes através do WhatsApp integrado ao Luisices.
-                  Envie avisos de produção, cobranças amigáveis e consulte o histórico em tempo real.
-                </p>
-              </div>
-              <Button
-                onClick={() => setNewChatModalOpen(true)}
-                className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs gap-1.5"
-              >
-                <Plus className="size-4" />
-                Iniciar Nova Conversa
-              </Button>
-            </div>
-          )}
+          <ChatArea
+            selectedPhone={selectedPhone}
+            activeCustomer={activeCustomer as any}
+            activeCustomerOrders={activeCustomerOrders}
+            displayedMessages={displayedMessages}
+            syncingMessages={syncingMessages}
+            inputText={inputText}
+            sending={sending}
+            onClearSelectedPhone={() => setSelectedPhone(null)}
+            onSyncMessages={handleSyncMessages}
+            onOpenWhatsAppWeb={handleOpenWhatsAppWeb}
+            onDeleteMessage={setMessageToDelete}
+            onRetryMessage={handleRetryFailedMessage}
+            onSendMessage={handleSendMessage}
+            onSetInputText={setInputText}
+            onNewChatOpen={() => setNewChatModalOpen(true)}
+            onLoadMore={() => setMessageLimit((prev) => prev + 10)}
+            hasMore={displayedMessages.length >= messageLimit}
+            messagesEndRef={messagesEndRef}
+            textareaRef={textareaRef}
+            isSelectionMode={isSelectionMode}
+            selectedMessageIds={selectedMessageIds}
+            onToggleSelectionMode={handleToggleSelectionMode}
+            onToggleMessageSelection={handleToggleMessageSelection}
+            onSelectAll={handleSelectAll}
+            onClearSelection={handleClearSelection}
+            onBulkDelete={handleOpenBulkDelete}
+          />
         </div>
       </div>
 
-      {/* Modal Nova Conversa */}
-      <Dialog
+      <NewChatModal
         open={newChatModalOpen}
-        onOpenChange={(open) => {
-          setNewChatModalOpen(open);
-          if (!open) {
-            setModalCustomerSearch('');
-            setCustomPhone('');
-            setCustomName('');
-            setNewChatTab('customers');
-          }
-        }}
-      >
-        <DialogContent size="md" noPadding className="max-h-[90dvh] flex flex-col overflow-hidden">
-          <DialogHeader className="px-4 sm:px-6 pt-4 sm:pt-6 pb-3 border-b shrink-0">
-            <DialogTitle className="text-base sm:text-lg font-bold flex items-center gap-2">
-              <div className="p-1.5 rounded-lg bg-emerald-500/10 text-emerald-600 shrink-0">
-                <MessageSquare className="size-4 sm:size-5" />
-              </div>
-              <span>Iniciar Conversa no WhatsApp</span>
-            </DialogTitle>
-            <DialogDescription className="text-xs text-muted-foreground">
-              Selecione um cliente cadastrado ou digite um número avulso para abrir o chat.
-            </DialogDescription>
-          </DialogHeader>
+        onOpenChange={setNewChatModalOpen}
+        customers={customers}
+        customersLoading={customersLoading}
+        onStartCustomerChat={handleStartNewChatWithCustomer}
+        onStartCustomChat={handleStartCustomChat}
+      />
 
-          <DialogBody className="px-4 sm:px-6 py-4 space-y-4 overflow-y-auto min-h-0">
-            {/* Seletor de Modo (Segmented Control) */}
-            <div className="flex p-1 bg-muted rounded-lg text-xs font-medium shrink-0">
-              <button
-                type="button"
-                onClick={() => setNewChatTab('customers')}
-                className={cn(
-                  'flex-1 py-1.5 px-3 rounded-md transition-all flex items-center justify-center gap-1.5 cursor-pointer',
-                  newChatTab === 'customers'
-                    ? 'bg-background text-foreground shadow-xs font-semibold'
-                    : 'text-muted-foreground hover:text-foreground'
-                )}
-              >
-                <Users className="size-3.5" />
-                <span>Clientes Cadastrados</span>
-                {customers.length > 0 && (
-                  <Badge variant="secondary" className="text-[10px] h-4 px-1.5 rounded-full font-mono">
-                    {customers.length}
-                  </Badge>
-                )}
-              </button>
-              <button
-                type="button"
-                onClick={() => setNewChatTab('custom')}
-                className={cn(
-                  'flex-1 py-1.5 px-3 rounded-md transition-all flex items-center justify-center gap-1.5 cursor-pointer',
-                  newChatTab === 'custom'
-                    ? 'bg-background text-foreground shadow-xs font-semibold'
-                    : 'text-muted-foreground hover:text-foreground'
-                )}
-              >
-                <Phone className="size-3.5" />
-                <span>Número Avulso</span>
-              </button>
-            </div>
-
-            {newChatTab === 'customers' ? (
-              <div className="space-y-3">
-                <div className="relative">
-                  <Search className="size-3.5 absolute left-3 top-2.5 text-muted-foreground" />
-                  <Input
-                    value={modalCustomerSearch}
-                    onChange={(e) => setModalCustomerSearch(e.target.value)}
-                    placeholder="Pesquisar por nome, telefone ou e-mail..."
-                    className="pl-9 h-9 text-xs bg-background"
-                    autoFocus
-                  />
-                  {modalCustomerSearch && (
-                    <button
-                      type="button"
-                      onClick={() => setModalCustomerSearch('')}
-                      className="absolute right-2.5 top-2.5 text-muted-foreground hover:text-foreground text-xs cursor-pointer"
-                    >
-                      ✕
-                    </button>
-                  )}
-                </div>
-
-                <div className="max-h-56 sm:max-h-64 overflow-y-auto border rounded-lg divide-y divide-border/60 bg-card/40">
-                  {customersLoading ? (
-                    <div className="p-6 text-center text-xs text-muted-foreground space-y-2" role="status">
-                      <Loader2 className="size-5 mx-auto animate-spin text-emerald-600" />
-                      <p>Carregando clientes...</p>
-                    </div>
-                  ) : filteredModalCustomers.length === 0 ? (
-                    <div className="p-6 text-center text-xs text-muted-foreground space-y-2">
-                      <p>Nenhum cliente cadastrado encontrado para a busca.</p>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setNewChatTab('custom')}
-                        className="text-xs h-7 cursor-pointer"
-                      >
-                        Digitar número avulso
-                      </Button>
-                    </div>
-                  ) : (
-                    filteredModalCustomers.map((c) => (
-                      <button
-                        key={c.id}
-                        type="button"
-                        onClick={() => handleStartNewChatWithCustomer(c)}
-                        className="w-full p-2.5 text-left text-xs flex items-center justify-between hover:bg-emerald-500/10 transition-colors group cursor-pointer"
-                      >
-                        <div className="flex items-center gap-2.5 min-w-0">
-                          <Avatar className="size-8 shrink-0 border">
-                            <AvatarFallback className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 text-xs font-semibold">
-                              {c.name ? c.name.slice(0, 2).toUpperCase() : 'CL'}
-                            </AvatarFallback>
-                          </Avatar>
-                          <div className="min-w-0">
-                            <div className="font-semibold text-foreground truncate group-hover:text-emerald-600 transition-colors">
-                              {c.name}
-                            </div>
-                            <div className="text-[11px] text-muted-foreground flex items-center gap-1.5">
-                              <span>{formatPhoneForDisplay(c.phone)}</span>
-                              {c.city && <span>• {c.city}</span>}
-                            </div>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-1 text-emerald-600 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
-                          <span className="text-[11px] font-medium hidden sm:inline">Iniciar</span>
-                          <ChevronRight className="size-4" />
-                        </div>
-                      </button>
-                    ))
-                  )}
-                </div>
-              </div>
-            ) : (
-              <div className="space-y-3.5 py-1">
-                <div>
-                  <label className="text-xs font-medium text-foreground block mb-1.5">
-                    Nome do Contato <span className="text-muted-foreground text-[11px]">(opcional)</span>
-                  </label>
-                  <Input
-                    value={customName}
-                    onChange={(e) => setCustomName(e.target.value)}
-                    placeholder="Ex: João da Silva"
-                    className="h-9 text-xs"
-                    autoFocus
-                  />
-                </div>
-                <div>
-                  <label className="text-xs font-medium text-foreground block mb-1.5">
-                    Número de WhatsApp com DDD <span className="text-destructive">*</span>
-                  </label>
-                  <Input
-                    value={customPhone}
-                    onChange={(e) => setCustomPhone(e.target.value)}
-                    placeholder="Ex: (11) 99999-8888"
-                    className="h-9 text-xs"
-                    type="tel"
-                  />
-                  <p className="text-[11px] text-muted-foreground mt-1">
-                    Digite o DDD e o número (ex: 11999998888). O código do país +55 será incluído automaticamente.
-                  </p>
-                </div>
-              </div>
-            )}
-          </DialogBody>
-
-          <DialogFooter className="px-4 sm:px-6 py-3 border-t bg-card/60 flex items-center justify-between sm:justify-end gap-2 shrink-0">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => setNewChatModalOpen(false)}
-              className="h-8 text-xs cursor-pointer"
-            >
-              Cancelar
-            </Button>
-            {newChatTab === 'custom' && (
-              <Button
-                type="button"
-                size="sm"
-                onClick={handleStartCustomChat}
-                disabled={!customPhone.trim()}
-                className="h-8 text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-semibold gap-1.5 shadow-xs cursor-pointer"
-              >
-                <MessageSquare className="size-3.5" />
-                <span>Iniciar Chat</span>
-              </Button>
-            )}
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Modal Confirmar Exclusão de Mensagem */}
       <Dialog
         open={Boolean(messageToDelete)}
         onOpenChange={(open) => {
@@ -1255,7 +641,7 @@ export function WhatsAppChat() {
             )}
           </DialogBody>
 
-          <DialogFooter className="px-4 sm:px-6 py-3 border-t bg-card/60 flex items-center justify-end gap-2 shrink-0">
+          <DialogFooter className="px-4 sm:px-6 py-3 border-t luisices-glass flex items-center justify-end gap-2 shrink-0">
             <Button
               variant="outline"
               size="sm"
@@ -1278,6 +664,51 @@ export function WhatsAppChat() {
                 <Trash2 className="size-3.5" />
               )}
               <span>{deletingMessage ? 'Apagando...' : 'Apagar para Todos'}</span>
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={bulkDeleteDialogOpen}
+        onOpenChange={(open) => {
+          if (!open && !bulkDeleting) setBulkDeleteDialogOpen(false);
+        }}
+      >
+        <DialogContent size="sm" noPadding className="max-h-[90dvh] flex flex-col overflow-hidden">
+          <DialogHeader className="px-4 sm:px-6 pt-4 sm:pt-6 pb-3 border-b shrink-0">
+            <DialogTitle className="text-base font-bold flex items-center gap-2 text-destructive">
+              <Trash2 className="size-4 sm:size-5" />
+              <span>Apagar {selectedMessageIds.size} mensagem(ns)?</span>
+            </DialogTitle>
+            <DialogDescription className="text-xs text-muted-foreground">
+              Esta ação tentará apagar as mensagens selecionadas para todos no WhatsApp e remover do sistema. Esta ação não pode ser desfeita.
+            </DialogDescription>
+          </DialogHeader>
+
+          <DialogFooter className="px-4 sm:px-6 py-3 border-t luisices-glass flex items-center justify-end gap-2 shrink-0">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={bulkDeleting}
+              onClick={() => setBulkDeleteDialogOpen(false)}
+              className="h-8 text-xs cursor-pointer"
+            >
+              Cancelar
+            </Button>
+            <Button
+              variant="destructive"
+              size="sm"
+              disabled={bulkDeleting}
+              onClick={handleConfirmBulkDelete}
+              className="h-8 text-xs gap-1.5 font-semibold cursor-pointer"
+            >
+              {bulkDeleting ? (
+                <Loader2 className="size-3.5 animate-spin" />
+              ) : (
+                <Trash2 className="size-3.5" />
+              )}
+              <span>{bulkDeleting ? 'Apagando...' : `Confirmar e Apagar (${selectedMessageIds.size})`}</span>
             </Button>
           </DialogFooter>
         </DialogContent>

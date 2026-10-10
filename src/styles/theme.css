@@ -568,3 +568,25 @@
     color: #f5efea;
   }
 }
+
+  .luisices-glass {
+    background: var(--card);
+    backdrop-filter: blur(28px);
+    -webkit-backdrop-filter: blur(28px);
+    border: 1px solid var(--glass-border);
+    box-shadow: 0 8px 32px rgba(230, 180, 180, 0.16), 0 2px 8px rgba(0, 0, 0, 0.04);
+  }
+
+  .luisices-glass-input {
+    background: var(--input);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid var(--border);
+  }
+
+  .luisices-chip {
+    background: color-mix(in srgb, var(--card) 85%, transparent);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid var(--glass-border);
+  }
