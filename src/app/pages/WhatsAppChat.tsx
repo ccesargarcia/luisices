@@ -64,11 +64,19 @@ export function WhatsAppChat() {
   const [isSelectionMode, setIsSelectionMode] = useState(false);
   const [selectedMessageIds, setSelectedMessageIds] = useState<Set<string>>(new Set());
 
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const scrollToBottom = (behavior: ScrollBehavior = 'smooth') => {
-    messagesEndRef.current?.scrollIntoView({ behavior });
+    if (messagesContainerRef.current) {
+      messagesContainerRef.current.scrollTo({
+        top: messagesContainerRef.current.scrollHeight,
+        behavior,
+      });
+    } else {
+      messagesEndRef.current?.scrollIntoView({ behavior });
+    }
   };
 
   const checkStatus = async () => {
@@ -492,7 +500,7 @@ export function WhatsAppChat() {
   }, [orders, selectedPhone, activeCustomer]);
 
   return (
-    <div className="flex flex-col h-full w-full overflow-hidden bg-background">
+    <div className="flex flex-col h-full w-full overflow-hidden bg-background min-h-0">
       <div className={`px-3 sm:px-4 py-2 sm:py-2.5 luisices-glass border-b items-center justify-between gap-2 sm:gap-3 shrink-0 min-w-0 ${selectedPhone ? 'hidden md:flex' : 'flex'}`}>
         <div className="flex items-center gap-2 sm:gap-2.5 min-w-0">
           <div className="p-1.5 sm:p-2 bg-primary/10 text-primary rounded-xl shrink-0">
@@ -558,7 +566,7 @@ export function WhatsAppChat() {
         </div>
       </div>
 
-      <div className="flex-1 flex overflow-hidden">
+      <div className="flex-1 min-h-0 flex overflow-hidden">
         <ChatSidebar
           searchQuery={searchQuery}
           setSearchQuery={setSearchQuery}
@@ -574,7 +582,7 @@ export function WhatsAppChat() {
 
         <div
           className={cn(
-            'flex-1 flex flex-col h-full bg-background min-w-0',
+            'flex-1 flex flex-col h-full bg-background min-w-0 min-h-0',
             selectedPhone
               ? 'fixed inset-0 z-40 md:static md:inset-auto md:z-auto flex'
               : 'hidden md:flex'
@@ -598,6 +606,7 @@ export function WhatsAppChat() {
             onNewChatOpen={() => setNewChatModalOpen(true)}
             onLoadMore={() => setMessageLimit((prev) => prev + 10)}
             hasMore={displayedMessages.length >= messageLimit}
+            messagesContainerRef={messagesContainerRef}
             messagesEndRef={messagesEndRef}
             textareaRef={textareaRef}
             isSelectionMode={isSelectionMode}

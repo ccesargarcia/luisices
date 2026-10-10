@@ -42,6 +42,7 @@ interface ChatAreaProps {
   onSendMessage: () => void;
   onSetInputText: (val: string) => void;
   onNewChatOpen: () => void;
+  messagesContainerRef?: React.RefObject<HTMLDivElement>;
   messagesEndRef: React.RefObject<HTMLDivElement>;
   textareaRef: React.RefObject<HTMLTextAreaElement>;
   onLoadMore?: () => void;
@@ -71,6 +72,7 @@ export function ChatArea({
   onSendMessage,
   onSetInputText,
   onNewChatOpen,
+  messagesContainerRef,
   messagesEndRef,
   textareaRef,
   onLoadMore,
@@ -208,7 +210,10 @@ export function ChatArea({
       </div>
 
       {/* Área de Mensagens com Rolagem */}
-      <div className="flex-1 overflow-y-auto overscroll-contain p-4 space-y-3 bg-muted/10 relative">
+      <div
+        ref={messagesContainerRef}
+        className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-4 space-y-3 bg-muted/10 relative custom-scrollbar"
+      >
         {/* Barra Fixa de Ações no Modo de Seleção */}
         {isSelectionMode && (
           <div className="sticky top-0 z-20 px-4 py-2.5 luisices-glass border border-border/60 shadow-md mb-3 flex flex-col sm:flex-row items-center justify-between rounded-xl gap-2 backdrop-blur-md">

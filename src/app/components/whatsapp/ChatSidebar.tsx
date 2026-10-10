@@ -46,11 +46,11 @@ export function ChatSidebar({
 }: ChatSidebarProps) {
   return (
     <div
-      className={`w-full md:w-80 lg:w-96 border-r luisices-glass flex flex-col h-full shrink-0 relative ${
+      className={`w-full md:w-80 lg:w-96 border-r luisices-glass flex flex-col h-full shrink-0 min-h-0 relative ${
         selectedPhone ? 'hidden md:flex' : 'flex'
       }`}
     >
-      <div className="p-3 border-b space-y-2 luisices-glass">
+      <div className="p-3 border-b space-y-2 luisices-glass shrink-0">
         <div className="flex items-center gap-2">
           <div className="relative flex-1">
             <Search className="size-4 absolute left-3 top-2.5 text-muted-foreground" />
@@ -109,7 +109,7 @@ export function ChatSidebar({
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto divide-y divide-border/40">
+      <div className="flex-1 min-h-0 overflow-y-auto divide-y divide-border/40 custom-scrollbar">
         {loadingConversations ? (
           <div className="p-8 text-center text-muted-foreground space-y-3" role="status" aria-live="polite">
             <Loader2 className="size-7 mx-auto animate-spin text-primary" />

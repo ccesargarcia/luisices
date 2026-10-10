@@ -284,7 +284,12 @@ export function Layout() {
   const isWhatsApp = location.pathname.startsWith('/whatsapp');
 
   return (
-    <div className="min-h-[100dvh] w-full max-w-full overflow-x-clip bg-transparent flex flex-col">
+    <div
+      className={cn(
+        'w-full max-w-full overflow-x-clip bg-transparent flex flex-col',
+        isWhatsApp ? 'h-[100dvh] max-h-[100dvh] overflow-hidden' : 'min-h-[100dvh]'
+      )}
+    >
       {/* Barra Lateral Desktop */}
       <SidebarNavigation
         sidebarCollapsed={sidebarCollapsed}
@@ -301,7 +306,7 @@ export function Layout() {
       {/* Cabeçalho Superior */}
       <header
         className={cn(
-          'min-w-0 transition-[margin,width] duration-300',
+          'shrink-0 min-w-0 transition-[margin,width] duration-300',
           (settings?.headerSticky ?? true) ? 'sticky top-0 z-30' : 'relative z-20',
           settings?.headerStyle === 'solid'
             ? 'border-b border-border bg-card'
@@ -346,10 +351,10 @@ export function Layout() {
       {/* Conteúdo Principal */}
       <main
         className={cn(
-          'min-w-0 w-full flex-1 transition-[margin,width] duration-300',
+          'min-w-0 w-full transition-[margin,width] duration-300',
           isWhatsApp
-            ? 'p-0 pb-16 md:pb-0 h-[calc(100dvh-4rem)] overflow-hidden flex flex-col'
-            : 'px-3 py-4 pb-24 sm:px-4 sm:py-8 md:pb-8',
+            ? 'flex-1 min-h-0 overflow-hidden flex flex-col p-0 pb-16 md:pb-0'
+            : 'flex-1 px-3 py-4 pb-24 sm:px-4 sm:py-8 md:pb-8',
           sidebarCollapsed ? 'md:ml-20 md:w-[calc(100%-5rem)]' : 'md:ml-72 md:w-[calc(100%-18rem)]'
         )}
       >
