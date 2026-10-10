@@ -53,7 +53,7 @@ function prepareSkillPackage(options = {}) {
   }
 
   const envDefaults = DEFAULTS[env];
-  const endpoint = options.endpoint || process.env.ALEXA_ENDPOINT || envDefaults.endpoint;
+  const endpoint = options.endpoint || (env === 'prod' ? process.env.ALEXA_PROD_ENDPOINT : process.env.ALEXA_DEV_ENDPOINT) || process.env.ALEXA_ENDPOINT || envDefaults.endpoint;
   const invocation = options.invocation || (env === 'dev' ? process.env.ALEXA_DEV_INVOCATION_NAME : process.env.ALEXA_PROD_INVOCATION_NAME) || envDefaults.invocation;
   const skillName = options.skillName || (env === 'dev' ? process.env.ALEXA_DEV_SKILL_NAME : process.env.ALEXA_PROD_SKILL_NAME) || envDefaults.skillName;
   const privacyPolicyUrl = options.privacyPolicyUrl || (env === 'dev' ? process.env.ALEXA_DEV_PRIVACY_POLICY_URL : process.env.ALEXA_PROD_PRIVACY_POLICY_URL) || process.env.ALEXA_PRIVACY_POLICY_URL || envDefaults.privacyPolicyUrl;
@@ -83,6 +83,13 @@ function prepareSkillPackage(options = {}) {
       `Alexa, peça ao ${invocation} para criar um pedido`,
       'vincular minha voz'
     ];
+    if (env === 'prod') {
+      locale.smallIconUri = 'https://luisices.com.br/images/alexa-small-icon.png';
+      locale.largeIconUri = 'https://luisices.com.br/images/alexa-large-icon.png';
+    } else {
+      locale.smallIconUri = 'https://dev.luisices.com.br/images/alexa-small-icon.png';
+      locale.largeIconUri = 'https://dev.luisices.com.br/images/alexa-large-icon.png';
+    }
   }
   if (manifest.manifest?.publishingInformation) {
     manifest.manifest.publishingInformation.testingInstructions = envDefaults.testingInstructions;
