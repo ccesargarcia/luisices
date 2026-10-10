@@ -5,6 +5,8 @@ import {
   generateCatalogOrderWhatsAppMessage,
   generateProductInquiryWhatsAppMessage,
   generateBespokeConsultationWhatsAppMessage,
+  generateCustomerGreetingWhatsAppUrl,
+  generateCustomerBirthdayWhatsAppUrl,
 } from '../../src/app/utils/whatsapp';
 
 describe('Utilitários de WhatsApp (whatsapp-utils)', () => {
@@ -118,6 +120,40 @@ describe('Utilitários de WhatsApp (whatsapp-utils)', () => {
       expect(msg).toContain('categoria *Casamentos*');
       expect(msg).toContain('15/10/2026');
       expect(msg).toContain('Identidade visual completa com monograma em hot stamping');
+    });
+  });
+
+  describe('generateCustomerGreetingWhatsAppUrl', () => {
+    it('deve gerar link seguro wa.me com primeiro nome e saudação de afeto', () => {
+      const url = generateCustomerGreetingWhatsAppUrl({
+        name: 'Camila Vasconcelos',
+        phone: '(11) 98765-4321',
+      });
+
+      expect(url).toContain('https://wa.me/5511987654321?text=');
+      expect(decodeURIComponent(url)).toContain('Olá, Camila!');
+      expect(decodeURIComponent(url)).toContain('Luisices Papelaria de Afeto');
+    });
+
+    it('deve retornar string vazia se o telefone for inválido', () => {
+      const url = generateCustomerGreetingWhatsAppUrl({
+        name: 'Camila Vasconcelos',
+        phone: '',
+      });
+      expect(url).toBe('');
+    });
+  });
+
+  describe('generateCustomerBirthdayWhatsAppUrl', () => {
+    it('deve gerar link wa.me com mensagem festiva e afetuosa de aniversário', () => {
+      const url = generateCustomerBirthdayWhatsAppUrl({
+        name: 'Juliana Paes',
+        phone: '11912345678',
+      });
+
+      expect(url).toContain('https://wa.me/5511912345678?text=');
+      expect(decodeURIComponent(url)).toContain('🎂 Parabéns, Juliana! Feliz Aniversário! 🎉🎈');
+      expect(decodeURIComponent(url)).toContain('carinho especial');
     });
   });
 });

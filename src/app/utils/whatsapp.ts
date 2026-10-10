@@ -498,3 +498,34 @@ export function generateBespokeConsultationWhatsAppMessage(opts: BespokeConsulta
 
   return msg;
 }
+
+export interface CustomerWhatsAppOptions {
+  name: string;
+  phone: string;
+  customMessage?: string;
+}
+
+/**
+ * Gera URL do WhatsApp para iniciar atendimento acolhedor com o cliente
+ */
+export function generateCustomerGreetingWhatsAppUrl(opts: CustomerWhatsAppOptions): string {
+  const normalizedPhone = normalizePhoneForWhatsApp(opts.phone);
+  if (!normalizedPhone) return '';
+
+  const firstName = opts.name?.trim().split(' ')[0] || 'Cliente';
+  const message = opts.customMessage || `🌸 Olá, ${firstName}! Tudo bem? É da Luisices Papelaria de Afeto. Em que posso te ajudar hoje? ✨`;
+  return `https://wa.me/${normalizedPhone}?text=${encodeURIComponent(message)}`;
+}
+
+/**
+ * Gera URL do WhatsApp para parabenizar o cliente pelo aniversário com mensagem de afeto
+ */
+export function generateCustomerBirthdayWhatsAppUrl(opts: CustomerWhatsAppOptions): string {
+  const normalizedPhone = normalizePhoneForWhatsApp(opts.phone);
+  if (!normalizedPhone) return '';
+
+  const firstName = opts.name?.trim().split(' ')[0] || 'Cliente';
+  const message = opts.customMessage || `🎂 Parabéns, ${firstName}! Feliz Aniversário! 🎉🎈\n\nA equipe da Luisices deseja um novo ciclo repleto de afeto, saúde e momentos inesquecíveis! Para comemorar com você, preparamos um carinho especial para o seu próximo pedido. Um grande abraço! ✨`;
+  return `https://wa.me/${normalizedPhone}?text=${encodeURIComponent(message)}`;
+}
+

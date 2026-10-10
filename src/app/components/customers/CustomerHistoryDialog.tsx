@@ -14,7 +14,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
 import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
 import { Skeleton } from '../ui/skeleton';
-import { ShoppingBag, Images, Plus, Upload, ZoomIn, Trash2, X, Loader2 } from 'lucide-react';
+import { ShoppingBag, Images, Plus, Upload, ZoomIn, Trash2, X, Loader2, MessageCircle } from 'lucide-react';
+import { generateCustomerGreetingWhatsAppUrl } from '../../utils/whatsapp';
 import { useOrders } from '../../../contexts/OrdersContext';
 import { firebaseGalleryService } from '../../../services/firebaseGalleryService';
 import { CustomerGalleryUploadDialog } from './CustomerGalleryUploadDialog';
@@ -98,8 +99,25 @@ export function CustomerHistoryDialog({
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent size="2xl" noPadding className="max-h-[90dvh] flex flex-col overflow-hidden">
-          <DialogHeader className="p-4 sm:p-6 pb-3 border-b border-border">
-            <DialogTitle>{customer?.name}</DialogTitle>
+          <DialogHeader className="p-4 sm:p-6 pb-3 border-b border-border flex flex-row items-center justify-between gap-3">
+            <div className="min-w-0 flex-1">
+              <DialogTitle className="truncate">{customer?.name}</DialogTitle>
+              {customer?.phone && (
+                <p className="text-xs text-muted-foreground mt-0.5">{customer.phone}</p>
+              )}
+            </div>
+            {customer?.phone && (
+              <a
+                href={generateCustomerGreetingWhatsAppUrl({ name: customer.name, phone: customer.phone })}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="shrink-0 inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-700 bg-emerald-500/10 hover:bg-emerald-500/20 dark:text-emerald-300 dark:bg-emerald-500/15 border border-emerald-500/20 rounded-lg px-3 py-1.5 transition-colors"
+                title="Conversar no WhatsApp"
+              >
+                <MessageCircle className="size-3.5 text-emerald-600 dark:text-emerald-400" />
+                <span>WhatsApp</span>
+              </a>
+            )}
           </DialogHeader>
 
           <DialogBody className="p-4 sm:p-6 flex-1 flex flex-col min-h-0 overflow-hidden">

@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { memo } from 'react';
 import { formatDate } from '../../utils/date';
 import { formatCurrency } from '../../utils/currency';
+import { generateCustomerGreetingWhatsAppUrl, generateCustomerBirthdayWhatsAppUrl } from '../../utils/whatsapp';
 import { Customer } from '../../types';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { Button } from '../ui/button';
@@ -17,6 +18,8 @@ import {
   History,
   Cake,
   Star,
+  MessageCircle,
+  Gift,
 } from 'lucide-react';
 
 interface CustomerCardProps {
@@ -30,7 +33,7 @@ interface CustomerCardProps {
   canDelete: boolean;
 }
 
-export function CustomerCard({
+function CustomerCardComponent({
   customer,
   isSelected,
   onToggleSelect,
@@ -122,14 +125,42 @@ export function CustomerCard({
                   </Badge>
                 )}
               </div>
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Phone className="size-3" />
-                {customer.phone}
+              <div className="flex items-center gap-2 text-sm text-muted-foreground flex-wrap">
+                <div className="flex items-center gap-1.5">
+                  <Phone className="size-3" />
+                  <span>{customer.phone}</span>
+                </div>
+                {customer.phone && (
+                  <a
+                    href={generateCustomerGreetingWhatsAppUrl({ name: customer.name, phone: customer.phone })}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 bg-emerald-500/10 hover:bg-emerald-500/20 dark:text-emerald-300 dark:bg-emerald-500/15 rounded-md px-1.5 py-0.5 transition-colors"
+                    title="Conversar no WhatsApp"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <MessageCircle className="size-3 text-emerald-600 dark:text-emerald-400" />
+                    <span>WhatsApp</span>
+                  </a>
+                )}
               </div>
             </div>
           </div>
 
-          <div className="flex gap-1">
+          <div className="flex gap-1 items-center">
+            {customer.phone && (
+              <a
+                href={generateCustomerGreetingWhatsAppUrl({ name: customer.name, phone: customer.phone })}
+                target="_blank"
+                rel="noopener noreferrer"
+                title="Conversar no WhatsApp"
+                aria-label={`Conversar no WhatsApp com ${customer.name}`}
+                className="h-9 w-9 sm:h-8 sm:w-8 inline-flex items-center justify-center rounded-md text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 transition-colors"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <MessageCircle className="size-4" />
+              </a>
+            )}
             <Button
               size="icon"
               variant="ghost"
@@ -208,18 +239,40 @@ export function CustomerCard({
           const next = new Date(today.getFullYear(), mm - 1, dd);
           if (next < today) next.setFullYear(today.getFullYear() + 1);
           const days = Math.round((next.getTime() - today.setHours(0, 0, 0, 0)) / 86400000);
+          const isUpcomingOrToday = days <= 7;
           return (
             <div
-              className={`flex items-center gap-2 text-xs ${
-                days === 0 ? 'text-yellow-600 font-semibold' : 'text-muted-foreground'
+              className={`flex items-center justify-between gap-2 text-xs ${
+                days === 0
+                  ? 'text-amber-700 font-semibold'
+                  : isUpcomingOrToday
+                  ? 'text-primary font-medium'
+                  : 'text-muted-foreground'
               }`}
             >
-              <Cake className="size-3" />
-              {days === 0
-                ? '🎂 Aniversário hoje!'
-                : days <= 7
-                ? `Aniversário em ${days}d — ${dd.toString().padStart(2, '0')}/${mm.toString().padStart(2, '0')}`
-                : `Aniversário: ${dd.toString().padStart(2, '0')}/${mm.toString().padStart(2, '0')}`}
+              <div className="flex items-center gap-1.5 min-w-0">
+                <Cake className="size-3 shrink-0" />
+                <span className="truncate">
+                  {days === 0
+                    ? '🎂 Aniversário hoje!'
+                    : days <= 7
+                    ? `Aniversário em ${days}d — ${dd.toString().padStart(2, '0')}/${mm.toString().padStart(2, '0')}`
+                    : `Aniversário: ${dd.toString().padStart(2, '0')}/${mm.toString().padStart(2, '0')}`}
+                </span>
+              </div>
+              {isUpcomingOrToday && customer.phone && (
+                <a
+                  href={generateCustomerBirthdayWhatsAppUrl({ name: customer.name, phone: customer.phone })}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="shrink-0 inline-flex items-center gap-1 text-[11px] font-semibold text-primary bg-primary/10 hover:bg-primary/20 dark:bg-primary/20 dark:hover:bg-primary/30 rounded-full px-2 py-0.5 transition-colors"
+                  title="Enviar mensagem de parabéns pelo WhatsApp"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <Gift className="size-3 text-primary" />
+                  <span>Parabenizar</span>
+                </a>
+              )}
             </div>
           );
         })()}
@@ -227,3 +280,5 @@ export function CustomerCard({
     </Card>
   );
 }
+
+export const CustomerCard = memo(CustomerCardComponent);
