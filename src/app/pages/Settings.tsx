@@ -100,6 +100,7 @@ export function Settings() {
   const [defaultDeliveryDays, setDefaultDeliveryDays] = useState(0);
   const [defaultPaymentMethod, setDefaultPaymentMethod] = useState('');
   const [autoArchiveCompletedOrders, setAutoArchiveCompletedOrders] = useState(false);
+  const [autoArchiveDays, setAutoArchiveDays] = useState(30);
   const [customColorHex, setCustomColorHex] = useState('#7c3aed');
 
   // Personalização de Cabeçalho & Rodapé
@@ -177,6 +178,7 @@ export function Settings() {
       setDefaultDeliveryDays(settings.defaultDeliveryDays ?? 0);
       setDefaultPaymentMethod(settings.defaultPaymentMethod ?? '');
       setAutoArchiveCompletedOrders(settings.autoArchiveCompletedOrders ?? false);
+      setAutoArchiveDays(settings.autoArchiveDays ?? 30);
       setCustomColorHex(settings.customColorHex ?? '#7c3aed');
 
       // Cabeçalho & Rodapé
@@ -301,6 +303,7 @@ export function Settings() {
         defaultDeliveryDays,
         defaultPaymentMethod: defaultPaymentMethod || undefined,
         autoArchiveCompletedOrders,
+        autoArchiveDays,
       });
       toast.success('Preferências de operação salvas!');
     } catch {
@@ -500,6 +503,8 @@ export function Settings() {
             onDefaultPaymentMethodChange={setDefaultPaymentMethod}
             autoArchiveCompletedOrders={autoArchiveCompletedOrders}
             onAutoArchiveCompletedOrdersChange={setAutoArchiveCompletedOrders}
+            autoArchiveDays={autoArchiveDays}
+            onAutoArchiveDaysChange={setAutoArchiveDays}
             onSave={handleOperationsSave}
             saving={savingOperations}
           />

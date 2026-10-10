@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect, Fragment } from 'react';
+import { useMemo, useState, useEffect, useRef, Fragment } from 'react';
 import { Link } from 'react-router';
 import { Order, OrderStatus, UserProfile, canAccessArchivedOrders } from '../types';
 import { OrderCard } from '../components/OrderCard';
@@ -177,6 +177,21 @@ export function Dashboard() {
     setDetailsOpen(true);
   };
 
+  // Rotina silenciosa e idempotente de auto-arquivamento de pedidos concluídos expirados (Hot/Cold Data)
+  const hasCheckedAutoArchiveRef = useRef(false);
+  useEffect(() => {
+    if (
+      !hasCheckedAutoArchiveRef.current &&
+      settings?.autoArchiveCompletedOrders &&
+      orders.length > 0 &&
+      canArchive
+    ) {
+      hasCheckedAutoArchiveRef.current = true;
+      const days = settings.autoArchiveDays ?? 30;
+      firebaseOrderService.autoArchiveEligibleOrders(orders, days).catch(() => {});
+    }
+  }, [settings?.autoArchiveCompletedOrders, settings?.autoArchiveDays, orders, canArchive]);
+
   const handleUpdateStatus = async (orderId: string, status: OrderStatus) => {
     try {
       const order = orders.find((o) => o.id === orderId);
@@ -187,12 +202,15 @@ export function Dashboard() {
 
       // Se foi marcado como concluído:
       if (status === 'completed') {
-        if (settings?.autoArchiveCompletedOrders && canArchive) {
+        const autoArchiveDays = settings?.autoArchiveDays ?? 30;
+        if (settings?.autoArchiveCompletedOrders && autoArchiveDays === 0 && canArchive) {
           await firebaseOrderService.archiveOrder(orderId);
           if (selectedOrder && selectedOrder.id === orderId) {
             setSelectedOrder({ ...selectedOrder, status: 'completed', isArchived: true, version: (selectedOrder.version || 1) + 1 });
           }
-          toast.success('Pedido marcado como concluído e arquivado automaticamente!');
+          toast.success('Pedido marcado como concluído e arquivado imediatamente!');
+        } else if (settings?.autoArchiveCompletedOrders && autoArchiveDays > 0) {
+          toast.success(`Pedido concluído! Será arquivado automaticamente após ${autoArchiveDays} dias.`);
         } else if (canArchive) {
           const target = order || (selectedOrder?.id === orderId ? selectedOrder : null);
           if (target) {

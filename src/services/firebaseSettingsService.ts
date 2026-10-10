@@ -131,6 +131,7 @@ export interface UserSettings {
   defaultDeliveryDays?: number;  // Dias à frente para pré-preencher data de entrega
   defaultPaymentMethod?: string; // Método de pagamento padrão ao criar pedido
   autoArchiveCompletedOrders?: boolean; // Arquivamento automático ao marcar pedido como concluído
+  autoArchiveDays?: number; // Prazo em dias após entrega para auto-arquivamento (0 = imediato, 15, 30, 60, 90)
 
   // Alertas
   deliveryAlertDays?: number;    // Dias antes do prazo para mostrar alerta (padrão 3)

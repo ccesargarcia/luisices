@@ -1029,6 +1029,41 @@ export class FirebaseOrderService {
     }
     await batch.commit();
   }
+
+  /**
+   * Arquivar automaticamente pedidos concluídos antigos baseado no prazo configurado (dias).
+   * Identifica pedidos concluídos cuja data de conclusão/entrega ultrapassa autoArchiveDays.
+   * Retorna o número de pedidos arquivados.
+   */
+  async autoArchiveEligibleOrders(orders: Order[], autoArchiveDays: number = 30): Promise<number> {
+    if (!Array.isArray(orders) || orders.length === 0) return 0;
+
+    const now = Date.now();
+    const maxAgeMs = Math.max(0, autoArchiveDays) * 24 * 60 * 60 * 1000;
+
+    const eligible = orders.filter((order) => {
+      // Somente pedidos concluídos e que ainda não estão arquivados
+      if (order.status !== 'completed' || order.isArchived) return false;
+
+      // Se prazo for 0, arquiva imediatamente
+      if (autoArchiveDays === 0) return true;
+
+      // Data de referência: deliveryDate ou updatedAt ou createdAt
+      const refDateStr = order.deliveryDate || order.updatedAt || order.createdAt;
+      if (!refDateStr) return false;
+
+      const orderTime = new Date(refDateStr).getTime();
+      if (isNaN(orderTime)) return false;
+
+      return (now - orderTime) >= maxAgeMs;
+    });
+
+    if (eligible.length === 0) return 0;
+
+    const eligibleIds = eligible.map((o) => o.id);
+    await this.archiveOrdersBulk(eligibleIds);
+    return eligibleIds.length;
+  }
 }
 
 // Exportar instância singleton

@@ -21,6 +21,8 @@ interface OperationsSectionProps {
   onDefaultPaymentMethodChange: (method: string) => void;
   autoArchiveCompletedOrders?: boolean;
   onAutoArchiveCompletedOrdersChange?: (val: boolean) => void;
+  autoArchiveDays?: number;
+  onAutoArchiveDaysChange?: (days: number) => void;
   onSave: () => Promise<void>;
   saving: boolean;
 }
@@ -34,6 +36,8 @@ export function OperationsSection({
   onDefaultPaymentMethodChange,
   autoArchiveCompletedOrders = false,
   onAutoArchiveCompletedOrdersChange,
+  autoArchiveDays = 30,
+  onAutoArchiveDaysChange,
   onSave,
   saving,
 }: OperationsSectionProps) {
@@ -134,22 +138,52 @@ export function OperationsSection({
         </div>
 
         {/* Arquivamento automático de pedidos concluídos */}
-        <div className="flex items-start justify-between gap-4 p-4 rounded-lg border border-border/70 bg-card/60 backdrop-blur-sm">
-          <div className="space-y-1">
-            <Label htmlFor="auto-archive-switch" className="text-sm font-medium flex items-center gap-2 cursor-pointer">
-              <Archive className="size-4 text-primary" />
-              Arquivamento automático de pedidos concluídos
-            </Label>
-            <p className="text-xs text-muted-foreground leading-relaxed">
-              Ao marcar um pedido como concluído, ele é enviado automaticamente para a área de arquivamento para não poluir o painel operacional diário.
-            </p>
+        <div className="p-4 rounded-lg border border-border/70 bg-card/60 backdrop-blur-sm space-y-4">
+          <div className="flex items-start justify-between gap-4">
+            <div className="space-y-1">
+              <Label htmlFor="auto-archive-switch" className="text-sm font-medium flex items-center gap-2 cursor-pointer">
+                <Archive className="size-4 text-primary" />
+                Arquivamento automático de pedidos concluídos
+              </Label>
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                Ao marcar um pedido como concluído, ele é enviado para a área de arquivamento para não poluir o painel operacional diário.
+              </p>
+            </div>
+            <Switch
+              id="auto-archive-switch"
+              checked={Boolean(autoArchiveCompletedOrders)}
+              onCheckedChange={(checked) => onAutoArchiveCompletedOrdersChange?.(checked)}
+              aria-label="Arquivamento automático de pedidos concluídos"
+            />
           </div>
-          <Switch
-            id="auto-archive-switch"
-            checked={Boolean(autoArchiveCompletedOrders)}
-            onCheckedChange={(checked) => onAutoArchiveCompletedOrdersChange?.(checked)}
-            aria-label="Arquivamento automático de pedidos concluídos"
-          />
+
+          {autoArchiveCompletedOrders && (
+            <div className="pt-3 border-t border-border/50 grid grid-cols-1 sm:grid-cols-2 gap-3 items-center animate-in fade-in duration-200">
+              <div>
+                <Label htmlFor="auto-archive-days" className="text-xs font-semibold text-foreground">
+                  Prazo para arquivar após a entrega
+                </Label>
+                <p className="text-[11px] text-muted-foreground">
+                  Tempo que o pedido concluído permanece visível no painel antes de ir para o arquivo.
+                </p>
+              </div>
+              <Select
+                value={String(autoArchiveDays ?? 30)}
+                onValueChange={(val) => onAutoArchiveDaysChange?.(Number(val))}
+              >
+                <SelectTrigger id="auto-archive-days" className="h-9 text-xs">
+                  <SelectValue placeholder="Selecione o prazo" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="0">Imediatamente ao concluir</SelectItem>
+                  <SelectItem value="15">Após 15 dias da entrega</SelectItem>
+                  <SelectItem value="30">Após 30 dias da entrega (Recomendado)</SelectItem>
+                  <SelectItem value="60">Após 60 dias da entrega</SelectItem>
+                  <SelectItem value="90">Após 90 dias da entrega</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          )}
         </div>
 
         <Button onClick={onSave} disabled={saving}>
