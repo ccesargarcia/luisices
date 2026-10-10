@@ -45,7 +45,7 @@ export function Customers() {
     activePartnerId,
     clearUserFilter,
   } = useOrders();
-  const { allTimeStats } = useSalesLedger();
+  const { allTimeStats } = useSalesLedger({ teamUserIds: selectedUserIds });
 
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
@@ -226,32 +226,44 @@ export function Customers() {
     });
   };
 
-  // Estatísticas monetárias e da carteira de clientes
+  // Estatísticas monetárias e da carteira de clientes sincronizadas com o Ledger e Pedidos
   const stats = useMemo(() => {
     const total = partnerScopedCustomers.length;
-    // Histórico de faturamento e ticket médio consolidados do ledger
-    // Quando um parceiro estiver filtrado, faturamento e pedidos vêm dos clientes escopados
-    const ledgerRevenue = allTimeStats.totalAllTimeRevenue || allTimeStats.totalAllTimeAmount;
-    const ledgerOrders = allTimeStats.totalAllTimeCount;
 
-    const totalRevenue = isFilterActive
-      ? partnerScopedCustomers.reduce((sum, c) => sum + (c.totalSpent || 0), 0)
-      : (ledgerRevenue > 0
-          ? ledgerRevenue
-          : partnerScopedCustomers.reduce((sum, c) => sum + (c.totalSpent || 0), 0));
+    // Pedidos válidos da sessão (descartando cancelados)
+    const validOrders = relevantOrders.filter((o) => o.status !== 'cancelled');
+    const completedOrders = relevantOrders.filter((o) => o.status === 'completed');
+    const inProductionOrders = relevantOrders.filter((o) => o.status === 'in-progress' || o.status === 'pending');
 
-    const totalOrders = isFilterActive
-      ? partnerScopedCustomers.reduce((sum, c) => sum + (c.totalOrders || 0), 0)
-      : (ledgerOrders > 0
-          ? ledgerOrders
-          : partnerScopedCustomers.reduce((sum, c) => sum + (c.totalOrders || 0), 0));
+    const completedRevenueFromOrders = completedOrders.reduce((sum, o) => sum + (o.price || 0), 0);
+    const inProductionAmount = inProductionOrders.reduce((sum, o) => sum + (o.price || 0), 0);
 
-    const averagePerCustomer = totalOrders > 0
-      ? totalRevenue / totalOrders
-      : (total > 0 ? totalRevenue / total : 0);
+    // Se o ledger tiver vendas concluídas registradas para a equipe/parceiro, prioriza o ledger
+    // Caso contrário, utiliza os pedidos concluídos da sessão
+    const totalRevenue = allTimeStats.totalAllTimeRevenue > 0
+      ? allTimeStats.totalAllTimeRevenue
+      : completedRevenueFromOrders;
 
-    return { total, totalRevenue, totalOrders, averagePerCustomer };
-  }, [partnerScopedCustomers, allTimeStats, isFilterActive]);
+    const completedOrdersCount = completedOrders.length;
+    const inProductionOrdersCount = inProductionOrders.length;
+    const totalOrders = allTimeStats.totalAllTimeCount > 0
+      ? allTimeStats.totalAllTimeCount
+      : validOrders.length;
+
+    const averagePerCustomer = completedOrdersCount > 0
+      ? totalRevenue / completedOrdersCount
+      : (totalOrders > 0 ? (totalRevenue + inProductionAmount) / totalOrders : 0);
+
+    return {
+      total,
+      totalRevenue,
+      totalOrders,
+      averagePerCustomer,
+      inProductionAmount,
+      completedOrdersCount,
+      inProductionOrdersCount,
+    };
+  }, [partnerScopedCustomers, relevantOrders, allTimeStats]);
 
   // Chips Rápidos de Filtragem Contextual para Operação Ágil (Mobile & Desktop)
   const quickChips = useMemo(() => {
@@ -516,6 +528,9 @@ export function Customers() {
         totalRevenue={stats.totalRevenue}
         totalOrders={stats.totalOrders}
         averagePerCustomer={stats.averagePerCustomer}
+        inProductionAmount={stats.inProductionAmount}
+        completedOrdersCount={stats.completedOrdersCount}
+        inProductionOrdersCount={stats.inProductionOrdersCount}
       />
 
       {/* Search, Carrossel de Chips e Filtros Rápidos (Liquid Glassmorphism) */}

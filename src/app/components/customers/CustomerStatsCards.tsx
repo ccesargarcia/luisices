@@ -7,6 +7,9 @@ interface CustomerStatsCardsProps {
   totalRevenue: number;
   totalOrders: number;
   averagePerCustomer: number;
+  inProductionAmount?: number;
+  completedOrdersCount?: number;
+  inProductionOrdersCount?: number;
 }
 
 export function CustomerStatsCards({
@@ -14,6 +17,9 @@ export function CustomerStatsCards({
   totalRevenue,
   totalOrders,
   averagePerCustomer,
+  inProductionAmount,
+  completedOrdersCount,
+  inProductionOrdersCount,
 }: CustomerStatsCardsProps) {
   return (
     <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
@@ -24,6 +30,7 @@ export function CustomerStatsCards({
         <div className="min-w-0">
           <p className="text-[11px] sm:text-xs text-muted-foreground truncate font-medium">Total de Clientes</p>
           <p className="text-lg sm:text-2xl font-bold text-foreground leading-tight">{total}</p>
+          <p className="text-[10px] text-muted-foreground truncate mt-0.5">Carteira cadastrada</p>
         </div>
       </div>
 
@@ -32,10 +39,17 @@ export function CustomerStatsCards({
           <DollarSign className="size-4 sm:size-5" />
         </div>
         <div className="min-w-0">
-          <p className="text-[11px] sm:text-xs text-muted-foreground truncate font-medium">Faturamento Total</p>
+          <p className="text-[11px] sm:text-xs text-muted-foreground truncate font-medium">Faturamento Realizado</p>
           <p className="text-lg sm:text-2xl font-bold text-foreground leading-tight truncate">
             {formatCurrency(totalRevenue)}
           </p>
+          {inProductionAmount && inProductionAmount > 0 ? (
+            <p className="text-[10px] text-amber-600 dark:text-amber-400 font-medium truncate mt-0.5" title={`+ ${formatCurrency(inProductionAmount)} em pedidos em produção`}>
+              + {formatCurrency(inProductionAmount)} em produção
+            </p>
+          ) : (
+            <p className="text-[10px] text-muted-foreground truncate mt-0.5">Pedidos concluídos</p>
+          )}
         </div>
       </div>
 
@@ -46,6 +60,13 @@ export function CustomerStatsCards({
         <div className="min-w-0">
           <p className="text-[11px] sm:text-xs text-muted-foreground truncate font-medium">Total de Pedidos</p>
           <p className="text-lg sm:text-2xl font-bold text-foreground leading-tight">{totalOrders}</p>
+          {completedOrdersCount !== undefined && inProductionOrdersCount !== undefined ? (
+            <p className="text-[10px] text-muted-foreground truncate mt-0.5">
+              {completedOrdersCount} entregues • {inProductionOrdersCount} abertos
+            </p>
+          ) : (
+            <p className="text-[10px] text-muted-foreground truncate mt-0.5">Histórico da carteira</p>
+          )}
         </div>
       </div>
 
@@ -58,6 +79,7 @@ export function CustomerStatsCards({
           <p className="text-lg sm:text-2xl font-bold text-foreground leading-tight truncate">
             {formatCurrency(averagePerCustomer)}
           </p>
+          <p className="text-[10px] text-muted-foreground truncate mt-0.5">Por pedido entregue</p>
         </div>
       </div>
     </div>

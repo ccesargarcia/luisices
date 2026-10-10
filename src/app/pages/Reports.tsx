@@ -21,6 +21,8 @@ import {
   X,
   FileText,
   UserPlus,
+  CreditCard,
+  Clock,
 } from 'lucide-react';
 import {
   AreaChart,
@@ -58,7 +60,14 @@ const STATUS_LABELS: Record<string, string> = {
   cancelled:     'Cancelado',
 };
 
-const PAYMENT_COLORS = ['#6366F1', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6'];
+const PAYMENT_COLORS: Record<string, string> = {
+  pix:      '#10B981', // Verde esmeralda PIX
+  credit:   '#6366F1', // Índigo Cartão de Crédito
+  debit:    '#0EA5E9', // Azul Débito
+  cash:     '#F59E0B', // Âmbar Dinheiro
+  transfer: '#8B5CF6', // Violeta Transferência
+  other:    '#64748B', // Slate / Cinza Outros
+};
 
 const PAYMENT_LABELS: Record<string, string> = {
   pix:      'PIX',
@@ -66,6 +75,7 @@ const PAYMENT_LABELS: Record<string, string> = {
   credit:   'Crédito',
   debit:    'Débito',
   transfer: 'Transferência',
+  other:    'Outros / Não informado',
 };
 
 const PERIOD_LABELS: Record<Period, string> = {
@@ -244,6 +254,7 @@ export function Reports() {
       paymentStatus: o.payment?.status || 'pending',
       paidAmount: o.payment?.paidAmount || 0,
       paymentMethod: o.payment?.method || null,
+      paymentHistory: o.payment?.history || null,
       date: o.createdAt,
       status: o.status,
       tags: o.tags,
@@ -356,24 +367,70 @@ export function Reports() {
       .sort((a, b) => b.revenue - a.revenue)
       .slice(0, 8);
 
+    // Mapa rápido de pedidos em memória para recuperar histórico de parcelas se disponível
+    const ordersMap = new Map(orders.map((o) => [o.id, o]));
+
     const payMap = new Map<string, { total: number; count: number }>();
+    let totalPending = 0;
+    let pendingCount = 0;
+
     curSales.forEach(o => {
-      const method = (o as any).paymentMethod || (o as any).payment?.method;
-      const paid = (o as any).paidAmount || (o as any).payment?.paidAmount || 0;
-      if (method && paid > 0) {
+      if (o.status === 'cancelled') return;
+
+      const saleAmount = o.amount || 0;
+      const liveOrder = ordersMap.get(o.orderId || o.id);
+      const isCompleted = o.status === 'completed' || (o.paymentStatus as any) === 'paid' || liveOrder?.payment?.status === 'paid';
+
+      let paid = (o as any).paidAmount || liveOrder?.payment?.paidAmount || 0;
+      // Se o pedido ou pagamento estiver concluído e o paidAmount estiver 0 ou ausente, considera o valor total quitado
+      if (isCompleted && paid === 0 && saleAmount > 0) {
+        paid = saleAmount;
+      }
+
+      const remaining = Math.max(0, saleAmount - paid);
+      if (remaining > 0) {
+        totalPending += remaining;
+        pendingCount += 1;
+      }
+
+      const history = liveOrder?.payment?.history || (o as any).paymentHistory;
+      if (Array.isArray(history) && history.length > 0) {
+        let historySum = 0;
+        history.forEach((h: any) => {
+          const hAmount = Number(h.amount || 0);
+          if (hAmount > 0) {
+            const m = h.method || 'other';
+            const cur = payMap.get(m) ?? { total: 0, count: 0 };
+            payMap.set(m, { total: cur.total + hAmount, count: cur.count + 1 });
+            historySum += hAmount;
+          }
+        });
+        const unassignedPaid = Math.max(0, paid - historySum);
+        if (unassignedPaid > 0) {
+          const fallbackMethod = (o as any).paymentMethod || liveOrder?.payment?.method || 'other';
+          const cur = payMap.get(fallbackMethod) ?? { total: 0, count: 0 };
+          payMap.set(fallbackMethod, { total: cur.total + unassignedPaid, count: cur.count + 1 });
+        }
+      } else if (paid > 0) {
+        const method = (o as any).paymentMethod || liveOrder?.payment?.method || 'other';
         const cur = payMap.get(method) ?? { total: 0, count: 0 };
         payMap.set(method, { total: cur.total + paid, count: cur.count + 1 });
       }
     });
+
+    const paymentPalette = ['#10B981', '#6366F1', '#0EA5E9', '#F59E0B', '#8B5CF6', '#64748B'];
     const paymentData = Array.from(payMap.entries())
       .map(([method, d], i) => ({
         method,
         label: PAYMENT_LABELS[method] ?? method,
         ...d,
-        color: PAYMENT_COLORS[i % PAYMENT_COLORS.length],
+        color: PAYMENT_COLORS[method] || paymentPalette[i % paymentPalette.length],
       }))
       .sort((a, b) => b.total - a.total);
+
     const totalPaid = paymentData.reduce((s, p) => s + p.total, 0);
+    const totalAccounted = totalPaid + totalPending;
+    const settlementRate = totalAccounted > 0 ? (totalPaid / totalAccounted) * 100 : 100;
 
     // Cancelados descartados
     const cancelledAmount = curSales
@@ -399,10 +456,11 @@ export function Reports() {
       prevTotal: prevSales.length,
       cancelledAmount,
       statusData, dailySales, topProducts, topCustomers, paymentData, totalPaid,
+      totalPending, pendingCount, settlementRate,
       quoteCount, quoteValue, quoteApproved, quoteConversion, prevQuoteCount,
       newCustomers, prevNewCustomers,
     };
-  }, [curSales, prevSales, quotes, customers, curStart, curEnd, prevStart, prevEnd]);
+  }, [curSales, prevSales, quotes, customers, orders, curStart, curEnd, prevStart, prevEnd]);
 
   const exportCsv = () => {
     const rows = [
@@ -691,27 +749,52 @@ export function Reports() {
               </CardContent>
             </Card>
 
-            <Card>
-              <CardHeader><CardTitle className="text-base">Métodos de Pagamento</CardTitle></CardHeader>
-              <CardContent className="flex flex-col sm:flex-row items-center gap-4">
-                {stats.paymentData.length === 0 ? (
-                  <p className="text-sm text-muted-foreground py-4">Nenhum pagamento no período</p>
+            <Card className="flex flex-col justify-between">
+              <CardHeader className="pb-2 space-y-1.5">
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <CreditCard className="size-4 text-primary" />
+                    Fluxo de Pagamentos & Caixa
+                  </CardTitle>
+                  <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                    {stats.settlementRate.toFixed(0)}% liquidado
+                  </span>
+                </div>
+                <div className="flex items-baseline justify-between gap-2 pt-1 text-xs border-t border-border/40">
+                  <div>
+                    <span className="text-muted-foreground">Total Recebido (Caixa): </span>
+                    <span className="text-foreground font-bold tabular-nums text-sm">{formatCurrency(stats.totalPaid)}</span>
+                  </div>
+                  {stats.totalPending > 0 && (
+                    <div className="text-right">
+                      <span className="text-muted-foreground">A Receber: </span>
+                      <span className="text-amber-600 dark:text-amber-400 font-semibold tabular-nums">{formatCurrency(stats.totalPending)}</span>
+                    </div>
+                  )}
+                </div>
+              </CardHeader>
+              <CardContent className="flex flex-col sm:flex-row items-center gap-4 pt-1">
+                {stats.paymentData.length === 0 && stats.totalPending === 0 ? (
+                  <p className="text-sm text-muted-foreground py-4">Nenhum pagamento registrado no período</p>
                 ) : (
                   <>
-                    <ResponsiveContainer width={140} height={140}>
-                      <PieChart>
-                        <Pie data={stats.paymentData} cx="50%" cy="50%" innerRadius={36} outerRadius={58} paddingAngle={3} dataKey="total" strokeWidth={0}>
-                          {stats.paymentData.map((e, i) => <Cell key={i} fill={e.color} />)}
-                        </Pie>
-                        <Tooltip formatter={(v: number) => [formatCurrency(v), '']} />
-                      </PieChart>
-                    </ResponsiveContainer>
+                    {stats.paymentData.length > 0 && (
+                      <ResponsiveContainer width={130} height={130}>
+                        <PieChart>
+                          <Pie data={stats.paymentData} cx="50%" cy="50%" innerRadius={34} outerRadius={54} paddingAngle={3} dataKey="total" strokeWidth={0}>
+                            {stats.paymentData.map((e, i) => <Cell key={i} fill={e.color} />)}
+                          </Pie>
+                          <Tooltip formatter={(v: number) => [formatCurrency(v), '']} />
+                        </PieChart>
+                      </ResponsiveContainer>
+                    )}
                     <div className="space-y-2 w-full flex-1 min-w-0">
                       {stats.paymentData.map(d => (
-                        <div key={d.method} className="flex items-center justify-between text-sm">
+                        <div key={d.method} className="flex items-center justify-between text-xs sm:text-sm">
                           <div className="flex items-center gap-2 min-w-0">
                             <span className="size-2.5 rounded-full shrink-0" style={{ backgroundColor: d.color }} />
                             <span className="text-muted-foreground truncate">{d.label}</span>
+                            <span className="text-[10px] text-muted-foreground/70 hidden sm:inline">({d.count})</span>
                           </div>
                           <div className="text-right shrink-0 ml-2">
                             <div className="font-semibold tabular-nums text-xs">{formatCurrency(d.total)}</div>
@@ -721,6 +804,20 @@ export function Reports() {
                           </div>
                         </div>
                       ))}
+
+                      {stats.totalPending > 0 && (
+                        <div className="pt-2 mt-1 border-t border-border/50 flex items-center justify-between text-xs">
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <Clock className="size-3.5 text-amber-500 shrink-0" />
+                            <span className="text-muted-foreground truncate">Saldo a receber ({stats.pendingCount} {stats.pendingCount === 1 ? 'pedido' : 'pedidos'})</span>
+                          </div>
+                          <div className="text-right shrink-0 ml-2">
+                            <div className="font-semibold tabular-nums text-amber-600 dark:text-amber-400 text-xs">
+                              {formatCurrency(stats.totalPending)}
+                            </div>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </>
                 )}
