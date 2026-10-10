@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect } from 'react';
 import { collection, query, where, orderBy, onSnapshot, limit } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { exportCustomersToExcel } from '../utils/exportData';
+import { getDaysUntilBirthday, isBirthdayThisMonth, isBirthdayUpcoming } from '../utils/date';
 import { Customer } from '../types';
 import { Card, CardContent } from '../components/ui/card';
 import { Input } from '../components/ui/input';
@@ -41,6 +42,7 @@ export function Customers() {
   const [pageSize, setPageSize] = useState<number | 'all'>(12);
   const [orderFilter, setOrderFilter] = useState<'all' | 'open' | 'no_orders'>('all');
   const [profileFilter, setProfileFilter] = useState<Customer['status'] | 'all'>('all');
+  const [birthdayFilter, setBirthdayFilter] = useState<'all' | 'today' | 'upcoming_7' | 'this_month'>('all');
   const [selectedCustomerIds, setSelectedCustomerIds] = useState<string[]>([]);
 
   // Dialogs state
@@ -140,20 +142,36 @@ export function Customers() {
     if (profileFilter !== 'all') {
       list = list.filter((customer) => (customer.status || 'active') === profileFilter);
     }
+    if (birthdayFilter === 'today') {
+      list = list.filter((c) => getDaysUntilBirthday(c.birthday) === 0);
+    } else if (birthdayFilter === 'upcoming_7') {
+      list = list.filter((c) => isBirthdayUpcoming(c.birthday, 7));
+    } else if (birthdayFilter === 'this_month') {
+      list = list.filter((c) => isBirthdayThisMonth(c.birthday));
+    }
     if (!searchQuery) return list;
-    const queryStr = searchQuery.toLowerCase();
-    return list.filter(
-      (customer) =>
-        customer.name.toLowerCase().includes(queryStr) ||
+    const queryStr = searchQuery.toLowerCase().trim();
+    const cleanQueryDigits = queryStr.replace(/\D/g, '');
+    const normalizedQuery = queryStr.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+
+    return list.filter((customer) => {
+      const nameNorm = customer.name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      const phoneDigits = customer.phone ? customer.phone.replace(/\D/g, '') : '';
+      const email = customer.email?.toLowerCase() || '';
+
+      return (
+        nameNorm.includes(normalizedQuery) ||
+        (cleanQueryDigits.length >= 3 && phoneDigits.includes(cleanQueryDigits)) ||
         customer.phone.includes(queryStr) ||
-        customer.email?.toLowerCase().includes(queryStr),
-    );
-  }, [customers, searchQuery, orderFilter, profileFilter, openOrdersMap, totalOrdersMap]);
+        email.includes(queryStr)
+      );
+    });
+  }, [customers, searchQuery, orderFilter, profileFilter, birthdayFilter, openOrdersMap, totalOrdersMap]);
 
   // Resetar página ao filtrar ou mudar tamanho
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery, orderFilter, profileFilter, pageSize]);
+  }, [searchQuery, orderFilter, profileFilter, birthdayFilter, pageSize]);
 
   const effectivePageSize = pageSize === 'all' ? filteredCustomers.length : pageSize;
   const totalPages = Math.ceil(filteredCustomers.length / (effectivePageSize || 1));
@@ -381,7 +399,7 @@ export function Customers() {
           value={profileFilter}
           onValueChange={(value) => setProfileFilter(value as Customer['status'] | 'all')}
         >
-          <SelectTrigger className="w-full sm:w-60">
+          <SelectTrigger className="w-full sm:w-56">
             <SelectValue placeholder="Filtrar por classificação" />
           </SelectTrigger>
           <SelectContent>
@@ -391,6 +409,20 @@ export function Customers() {
             <SelectItem value="recurring">Cliente recorrente</SelectItem>
             <SelectItem value="defaulter">Inadimplente</SelectItem>
             <SelectItem value="partner">Parceiro / Permuta</SelectItem>
+          </SelectContent>
+        </Select>
+        <Select
+          value={birthdayFilter}
+          onValueChange={(value) => setBirthdayFilter(value as 'all' | 'today' | 'upcoming_7' | 'this_month')}
+        >
+          <SelectTrigger className="w-full sm:w-56">
+            <SelectValue placeholder="Aniversariantes" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">🎂 Todos os aniversários</SelectItem>
+            <SelectItem value="today">🎂 Aniversariantes de Hoje</SelectItem>
+            <SelectItem value="upcoming_7">🎉 Próximos 7 dias</SelectItem>
+            <SelectItem value="this_month">📅 Aniversariantes do Mês</SelectItem>
           </SelectContent>
         </Select>
       </div>

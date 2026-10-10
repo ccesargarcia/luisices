@@ -1,4 +1,10 @@
-import { parseLocalDate, formatDateShort } from '../../src/app/utils/date';
+import {
+  parseLocalDate,
+  formatDateShort,
+  getDaysUntilBirthday,
+  isBirthdayThisMonth,
+  isBirthdayUpcoming,
+} from '../../src/app/utils/date';
 import { getLedgerDateRange } from '../../src/hooks/useSalesLedger';
 import { getSalesLedgerDateRangeQuery, getSalesLedgerQuery } from '../../src/services/firebaseLedgerService';
 
@@ -144,6 +150,52 @@ describe('Etapa 8: Consultas, Fusos Horários e Paginação (Achados 10, 11 e 18
 
       const qAssigned = getSalesLedgerDateRangeQuery('user-1', 'assigned', '2026-09-01T00:00:00.000Z', '2026-09-30T23:59:59.999Z');
       expect(qAssigned).toBeDefined();
+    });
+  });
+
+  describe('Cálculos e utilitários de aniversariantes (Marketing de Afeto)', () => {
+    // Referência fixa para testes: 10 de Outubro de 2026
+    const refDate = new Date(2026, 9, 10, 14, 0, 0); // 10/10/2026
+
+    it('getDaysUntilBirthday deve retornar 0 se o aniversário for hoje', () => {
+      expect(getDaysUntilBirthday('1990-10-10', refDate)).toBe(0);
+    });
+
+    it('getDaysUntilBirthday deve calcular dias futuros no mesmo mês e ano', () => {
+      // 15 de Outubro (5 dias a frente de 10 de Outubro)
+      expect(getDaysUntilBirthday('1995-10-15', refDate)).toBe(5);
+    });
+
+    it('getDaysUntilBirthday deve virar o ano para aniversários já ocorridos no ano atual', () => {
+      // 05 de Outubro (já passou em 2026, próximo será em 05/10/2027)
+      const days = getDaysUntilBirthday('1990-10-05', refDate);
+      expect(days).toBeGreaterThan(350);
+    });
+
+    it('getDaysUntilBirthday deve retornar null para inputs nulos, inválidos ou mal formatados', () => {
+      expect(getDaysUntilBirthday(null, refDate)).toBeNull();
+      expect(getDaysUntilBirthday(undefined, refDate)).toBeNull();
+      expect(getDaysUntilBirthday('', refDate)).toBeNull();
+      expect(getDaysUntilBirthday('data-invalida', refDate)).toBeNull();
+      expect(getDaysUntilBirthday('1990-99-99', refDate)).toBeNull();
+    });
+
+    it('isBirthdayThisMonth deve identificar corretamente aniversários do mês atual', () => {
+      expect(isBirthdayThisMonth('1995-10-25', refDate)).toBe(true);
+      expect(isBirthdayThisMonth('1990-10-01', refDate)).toBe(true);
+      expect(isBirthdayThisMonth('1990-11-10', refDate)).toBe(false);
+      expect(isBirthdayThisMonth(null, refDate)).toBe(false);
+    });
+
+    it('isBirthdayUpcoming deve identificar aniversários nos próximos N dias', () => {
+      // Em 3 dias (13/10)
+      expect(isBirthdayUpcoming('1995-10-13', 7, refDate)).toBe(true);
+      // Em 10 dias (20/10) - fora da janela de 7 dias
+      expect(isBirthdayUpcoming('1995-10-20', 7, refDate)).toBe(false);
+      // Hoje (10/10)
+      expect(isBirthdayUpcoming('1995-10-10', 7, refDate)).toBe(true);
+      // Já passou (09/10)
+      expect(isBirthdayUpcoming('1995-10-09', 7, refDate)).toBe(false);
     });
   });
 });

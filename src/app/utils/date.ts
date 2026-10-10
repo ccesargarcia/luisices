@@ -134,3 +134,43 @@ export function daysUntil(dateStr: string): number {
 export function daysOverdue(dateStr: string): number {
   return -daysUntil(dateStr);
 }
+
+/**
+ * Retorna os dias restantes para o próximo aniversário considerando o ano atual/próximo.
+ * Retorna null se a string de aniversário for inválida.
+ * 0 = é hoje!
+ */
+export function getDaysUntilBirthday(birthday?: string | null, referenceDate = new Date()): number | null {
+  if (!birthday || typeof birthday !== 'string') return null;
+  const parts = birthday.trim().split('-');
+  if (parts.length < 3) return null;
+  const mm = Number(parts[1]);
+  const dd = Number(parts[2]);
+  if (!mm || !dd || mm < 1 || mm > 12 || dd < 1 || dd > 31) return null;
+
+  const today = new Date(referenceDate);
+  today.setHours(0, 0, 0, 0);
+
+  let next = new Date(today.getFullYear(), mm - 1, dd, 0, 0, 0, 0);
+  if (next.getTime() < today.getTime()) {
+    next.setFullYear(today.getFullYear() + 1);
+  }
+
+  return Math.round((next.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+}
+
+/** Verifica se o aniversário é no mês da data de referência (mês atual por padrão) */
+export function isBirthdayThisMonth(birthday?: string | null, referenceDate = new Date()): boolean {
+  if (!birthday || typeof birthday !== 'string') return false;
+  const parts = birthday.trim().split('-');
+  if (parts.length < 3) return false;
+  const mm = Number(parts[1]);
+  return mm === referenceDate.getMonth() + 1;
+}
+
+/** Verifica se o aniversário é nos próximos N dias (padrão 7 dias) */
+export function isBirthdayUpcoming(birthday?: string | null, maxDays = 7, referenceDate = new Date()): boolean {
+  const days = getDaysUntilBirthday(birthday, referenceDate);
+  return days !== null && days >= 0 && days <= maxDays;
+}
+
