@@ -301,6 +301,71 @@ jobs:
           console.log('E-mail da conta: ' + email);
           NODE
 
+      - name: 🔍 Diagnóstico e Auditoria de Secrets (Dev)
+        env:
+          SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_DEV }}
+          VITE_API_KEY: ${{ secrets.DEV_VITE_FIREBASE_API_KEY }}
+          VITE_AUTH_DOMAIN: ${{ secrets.DEV_VITE_FIREBASE_AUTH_DOMAIN }}
+          VITE_PROJECT_ID: ${{ secrets.DEV_VITE_FIREBASE_PROJECT_ID }}
+          VITE_STORAGE_BUCKET: ${{ secrets.DEV_VITE_FIREBASE_STORAGE_BUCKET }}
+          VITE_MESSAGING_SENDER_ID: ${{ secrets.DEV_VITE_FIREBASE_MESSAGING_SENDER_ID }}
+          VITE_APP_ID: ${{ secrets.DEV_VITE_FIREBASE_APP_ID }}
+          VITE_MEASUREMENT_ID: ${{ secrets.DEV_VITE_FIREBASE_MEASUREMENT_ID }}
+          VITE_DATABASE_URL: ${{ secrets.DEV_VITE_FIREBASE_DATABASE_URL }}
+          VITE_STORAGE_CDN_URL: ${{ secrets.DEV_VITE_STORAGE_CDN_URL }}
+          DEV_ORIGIN_SECRET: ${{ secrets.DEV_ORIGIN_SECRET || secrets.ORIGIN_SECRET }}
+          DEV_ALEXA_HMAC: ${{ secrets.DEV_ALEXA_IDENTITY_HMAC_KEY || secrets.ALEXA_IDENTITY_HMAC_KEY }}
+          RESEND_API_KEY: ${{ secrets.DEV_RESEND_API_KEY || secrets.RESEND_API_KEY }}
+          RESEND_WEBHOOK_SECRET: ${{ secrets.DEV_RESEND_WEBHOOK_SECRET || secrets.RESEND_WEBHOOK_SECRET }}
+          EVOLUTION_API_KEY: ${{ secrets.DEV_EVOLUTION_API_KEY || secrets.EVOLUTION_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.DEV_GEMINI || secrets.dev_gemini || secrets.DEV_GEMINI_API_KEY || secrets.GEMINI_API_KEY }}
+        run: |
+          node <<'NODE'
+          const checks = [
+            { name: 'FIREBASE_SERVICE_ACCOUNT_DEV', val: process.env.SERVICE_ACCOUNT, required: true },
+            { name: 'DEV_VITE_FIREBASE_API_KEY', val: process.env.VITE_API_KEY, required: true },
+            { name: 'DEV_VITE_FIREBASE_AUTH_DOMAIN', val: process.env.VITE_AUTH_DOMAIN, required: true },
+            { name: 'DEV_VITE_FIREBASE_PROJECT_ID', val: process.env.VITE_PROJECT_ID, required: true },
+            { name: 'DEV_VITE_FIREBASE_STORAGE_BUCKET', val: process.env.VITE_STORAGE_BUCKET, required: true },
+            { name: 'DEV_VITE_FIREBASE_MESSAGING_SENDER_ID', val: process.env.VITE_MESSAGING_SENDER_ID, required: true },
+            { name: 'DEV_VITE_FIREBASE_APP_ID', val: process.env.VITE_APP_ID, required: true },
+            { name: 'DEV_VITE_FIREBASE_MEASUREMENT_ID', val: process.env.VITE_MEASUREMENT_ID, required: false },
+            { name: 'DEV_VITE_FIREBASE_DATABASE_URL', val: process.env.VITE_DATABASE_URL, required: false },
+            { name: 'DEV_VITE_STORAGE_CDN_URL', val: process.env.VITE_STORAGE_CDN_URL, required: false },
+            { name: 'DEV_ORIGIN_SECRET / ORIGIN_SECRET', val: process.env.DEV_ORIGIN_SECRET, required: true },
+            { name: 'DEV_ALEXA_IDENTITY_HMAC_KEY', val: process.env.DEV_ALEXA_HMAC, required: false },
+            { name: 'DEV_RESEND_API_KEY / RESEND_API_KEY', val: process.env.RESEND_API_KEY, required: true },
+            { name: 'DEV_RESEND_WEBHOOK_SECRET / RESEND_WEBHOOK_SECRET', val: process.env.RESEND_WEBHOOK_SECRET, required: false },
+            { name: 'DEV_EVOLUTION_API_KEY / EVOLUTION_API_KEY', val: process.env.EVOLUTION_API_KEY, required: true },
+            { name: 'DEV_GEMINI / DEV_GEMINI_API_KEY', val: process.env.GEMINI_API_KEY, required: true }
+          ];
+
+          console.log('\n=============================================================');
+          console.log('🔍 RELATÓRIO DE AUDITORIA DE VARIÁVEIS / SECRETS (DEV)');
+          console.log('=============================================================');
+          let hasMissingRequired = false;
+          for (const item of checks) {
+            const hasVal = typeof item.val === 'string' && item.val.trim().length > 0;
+            if (hasVal) {
+              const preview = item.val.length > 8
+                ? `${item.val.substring(0, 14)}...${item.val.substring(item.val.length - 4)} (${item.val.length} chars)`
+                : `(${item.val.length} chars)`;
+              console.log(`✅ ${item.name.padEnd(44)}: PRESENTE ${preview}`);
+            } else {
+              if (item.required) {
+                console.log(`❌ ${item.name.padEnd(44)}: AUSENTE (OBRIGATÓRIO)`);
+                hasMissingRequired = true;
+              } else {
+                console.log(`⚠️  ${item.name.padEnd(44)}: OPCIONAL / NÃO DEFINIDO`);
+              }
+            }
+          }
+          console.log('=============================================================\n');
+          if (hasMissingRequired) {
+            console.error('⚠️ ALERTA: Uma ou mais variáveis obrigatórias estão ausentes no GitHub Secrets!');
+          }
+          NODE
+
       - name: Instalar dependências do Frontend
         if: needs.detect-changes.outputs.frontend == 'true'
         run: npm install --legacy-peer-deps
@@ -365,6 +430,45 @@ jobs:
         working-directory: functions
         run: npm ci
 
+      - name: Sincronizar Secrets no Secret Manager (Dev)
+        if: needs.detect-changes.outputs.functions == 'true'
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_DEV }}
+          ORIGIN_SECRET: ${{ secrets.DEV_ORIGIN_SECRET || secrets.ORIGIN_SECRET }}
+          ALEXA_HMAC: ${{ secrets.DEV_ALEXA_IDENTITY_HMAC_KEY || secrets.ALEXA_IDENTITY_HMAC_KEY }}
+          RESEND_API_KEY: ${{ secrets.DEV_RESEND_API_KEY || secrets.RESEND_API_KEY }}
+          RESEND_WEBHOOK_SECRET: ${{ secrets.DEV_RESEND_WEBHOOK_SECRET || secrets.RESEND_WEBHOOK_SECRET }}
+          EVOLUTION_API_KEY: ${{ secrets.DEV_EVOLUTION_API_KEY || secrets.EVOLUTION_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.DEV_GEMINI || secrets.dev_gemini || secrets.DEV_GEMINI_API_KEY || secrets.GEMINI_API_KEY }}
+        run: |
+          echo "$FIREBASE_SERVICE_ACCOUNT" > "$HOME/firebase-service-account.json"
+          export GOOGLE_APPLICATION_CREDENTIALS="$HOME/firebase-service-account.json"
+
+          if [ -n "$ORIGIN_SECRET" ]; then
+            echo "$ORIGIN_SECRET" > "$HOME/origin_secret.txt"
+            npx --yes firebase-tools functions:secrets:set ORIGIN_SECRET --project luisices-dev --data-file "$HOME/origin_secret.txt" --non-interactive --force || true
+          fi
+          if [ -n "$ALEXA_HMAC" ]; then
+            echo "$ALEXA_HMAC" > "$HOME/alexa_hmac.txt"
+            npx --yes firebase-tools functions:secrets:set ALEXA_IDENTITY_HMAC_KEY --project luisices-dev --data-file "$HOME/alexa_hmac.txt" --non-interactive --force || true
+          fi
+          if [ -n "$RESEND_API_KEY" ]; then
+            echo "$RESEND_API_KEY" > "$HOME/resend_key.txt"
+            npx --yes firebase-tools functions:secrets:set RESEND_API_KEY --project luisices-dev --data-file "$HOME/resend_key.txt" --non-interactive --force || true
+          fi
+          if [ -n "$RESEND_WEBHOOK_SECRET" ]; then
+            echo "$RESEND_WEBHOOK_SECRET" > "$HOME/resend_wh.txt"
+            npx --yes firebase-tools functions:secrets:set RESEND_WEBHOOK_SECRET --project luisices-dev --data-file "$HOME/resend_wh.txt" --non-interactive --force || true
+          fi
+          if [ -n "$EVOLUTION_API_KEY" ]; then
+            echo "$EVOLUTION_API_KEY" > "$HOME/evolution_key.txt"
+            npx --yes firebase-tools functions:secrets:set EVOLUTION_API_KEY --project luisices-dev --data-file "$HOME/evolution_key.txt" --non-interactive --force || true
+          fi
+          if [ -n "$GEMINI_API_KEY" ]; then
+            echo "$GEMINI_API_KEY" > "$HOME/gemini_key.txt"
+            npx --yes firebase-tools functions:secrets:set GEMINI_API_KEY --project luisices-dev --data-file "$HOME/gemini_key.txt" --non-interactive --force || true
+          fi
+
       - name: Deploy Firebase Functions (Dev)
         if: needs.detect-changes.outputs.functions == 'true'
         env:
@@ -372,4 +476,12 @@ jobs:
         run: |
           echo "$FIREBASE_SERVICE_ACCOUNT" > "$HOME/firebase-service-account.json"
           export GOOGLE_APPLICATION_CREDENTIALS="$HOME/firebase-service-account.json"
-          npx --yes firebase-tools deploy --only functions --project luisices-dev --non-interactive
+
+          if ! npx --yes firebase-tools deploy --only functions --project luisices-dev --non-interactive; then
+            echo "⚠️ Deploy em lote geral atingiu limite de concorrência. Executando deploy particionado por módulos..."
+            npx --yes firebase-tools deploy --only "functions:sendWhatsAppDirectMessage,functions:deleteWhatsAppMessage,functions:syncWhatsAppChatMessages,functions:getWhatsAppInstanceStatus,functions:evolutionWhatsAppWebhook,functions:markWhatsAppChatRead,functions:ensureWhatsAppConversation" --project luisices-dev --non-interactive
+            npx --yes firebase-tools deploy --only "functions:aiAgentChat,functions:enrichGalleryItemWithAi,functions:enrichStoreProductWithAi,functions:getAiUsage,functions:syncAllOrdersToAiView,functions:submitPublicCatalogOrder" --project luisices-dev --non-interactive
+            npx --yes firebase-tools deploy --only "functions:cleanupEmailDrafts,functions:resendReceivingWebhook,functions:sendCustomEmail,functions:getEmailUsage" --project luisices-dev --non-interactive
+            npx --yes firebase-tools deploy --only "functions:approveAlexaDraft,functions:approveAlexaPairing,functions:cancelAlexaDraft,functions:getAlexaIntegrationStatus,functions:revokeAlexaBinding,functions:setAlexaPermission,functions:toggleGlobalAlexaIntegration,functions:alexaWebhook" --project luisices-dev --non-interactive
+            npx --yes firebase-tools deploy --only "functions:updateUser,functions:recordUserPasswordChange,functions:completeUserInvitation,functions:createUserInvitation,functions:createUser,functions:getUserAccountMetadata,functions:deleteUser,functions:revokeAllSessions,functions:repairUserClaims,functions:registerDeviceSession,functions:revokeDeviceSession" --project luisices-dev --non-interactive
+          fi

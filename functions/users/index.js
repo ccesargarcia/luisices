@@ -14,6 +14,8 @@ const {
   getResend,
   sendWhatsAppMessage,
   getAppUrl,
+  getNoReplySender,
+  getContactEmail,
   formatActionLink,
   assertActiveSession,
   isAdminRequest,
@@ -151,7 +153,7 @@ const sendAdminPasswordReset = onCall(
       ]);
       const phone = profileQuery.empty ? null : profileQuery.docs[0].data().whatsappPhone;
       const emailPromise = resend.emails.send({
-        from: 'Luisices <noreply@luisices.com.br>',
+        from: getNoReplySender(),
         to: [email.trim()],
         subject: 'Redefinição de senha - Luisices',
         html: `<p>Olá,</p><p>Um administrador solicitou a redefinição da senha da sua conta Luisices.</p><p><a href="${resetLink}">Definir nova senha</a></p><p>Este link expira em 1 hora e pode ser usado uma única vez.</p><p>Se você não esperava este e-mail, entre em contato com o administrador.</p>`,
@@ -239,7 +241,7 @@ const createUserInvitation = onCall(
         if (!resend) throw new functions.https.HttpsError('failed-precondition', 'Resend não configurado.');
         const verificationLink = await createCustomVerificationLink(normalizedEmail, token);
         const { error } = await resend.emails.send({
-          from: 'Luisices <noreply@luisices.com.br>',
+          from: getNoReplySender(),
           to: [normalizedEmail],
           subject: 'Confirme seu e-mail - Luisices',
           html: `<p>Já encontramos uma conta Luisices vinculada a este e-mail.</p><p>Confirme o endereço para concluir a ativação do seu acesso:</p><p><a href="${verificationLink}">Confirmar e ativar minha conta</a></p><p>Se não reconhece este cadastro, ignore esta mensagem.</p>`,
@@ -258,7 +260,7 @@ const createUserInvitation = onCall(
 
       const inviteLink = `${getAppUrl()}/registrar?invite=${token}`;
       const emailPromise = resend.emails.send({
-        from: 'Luisices <noreply@luisices.com.br>',
+        from: getNoReplySender(),
         to: [normalizedEmail],
         subject: 'Convite para acessar a plataforma Luisices',
         html: `<p>Você foi convidado para acessar a plataforma Luisices.</p><p><a href="${inviteLink}">Aceitar convite e criar conta</a></p><p>O convite expira em 48 horas. Após criar a senha, será necessário confirmar o e-mail para concluir o cadastro.</p>`,
@@ -372,10 +374,10 @@ const sendVerificationEmail = onCall(
       const verificationLink = `${getAppUrl()}/action?mode=verifyEmail&oobCode=${encodeURIComponent(oobCode)}&invite=${encodeURIComponent(inviteToken)}`;
 
       const { error } = await resend.emails.send({
-        from: 'Luisices <noreply@luisices.com.br>',
+        from: getNoReplySender(),
         to: [authUser.email],
         subject: 'Confirme seu e-mail - Luisices',
-        html: `<!DOCTYPE html><html><body style="font-family:Arial,sans-serif;line-height:1.6;color:#333"><div style="max-width:600px;margin:auto;padding:24px"><h1 style="color:#667eea">Confirme seu e-mail</h1><p>Olá!</p><p>Confirme seu endereço de e-mail para concluir seu cadastro na Luisices.</p><p style="text-align:center;margin:32px 0"><a href="${verificationLink}" style="background:#667eea;color:#fff;padding:14px 28px;border-radius:6px;text-decoration:none;font-weight:bold">Confirmar meu e-mail</a></p><p>Se o botão não funcionar, copie este endereço no navegador:</p><p style="word-break:break-all"><a href="${verificationLink}">${verificationLink}</a></p><p>Se você não solicitou este cadastro, ignore esta mensagem.</p><hr><p style="font-size:12px;color:#666">Luisices · contato@luisices.com.br</p></div></body></html>`,
+        html: `<!DOCTYPE html><html><body style="font-family:Arial,sans-serif;line-height:1.6;color:#333"><div style="max-width:600px;margin:auto;padding:24px"><h1 style="color:#667eea">Confirme seu e-mail</h1><p>Olá!</p><p>Confirme seu endereço de e-mail para concluir seu cadastro na Luisices.</p><p style="text-align:center;margin:32px 0"><a href="${verificationLink}" style="background:#667eea;color:#fff;padding:14px 28px;border-radius:6px;text-decoration:none;font-weight:bold">Confirmar meu e-mail</a></p><p>Se o botão não funcionar, copie este endereço no navegador:</p><p style="word-break:break-all"><a href="${verificationLink}">${verificationLink}</a></p><p>Se você não solicitou este cadastro, ignore esta mensagem.</p><hr><p style="font-size:12px;color:#666">Luisices · ${getContactEmail()}</p></div></body></html>`,
       });
       if (error) {
         console.error('[sendVerificationEmail] Resend:', JSON.stringify(error));
@@ -430,7 +432,7 @@ const sendPasswordResetEmail = onCall(
       const phone = profileQuery.empty ? null : profileQuery.docs[0].data().whatsappPhone;
 
       const { data: emailData, error } = await resend.emails.send({
-        from: 'Luisices <noreply@luisices.com.br>',
+        from: getNoReplySender(),
         to: [email],
         subject: 'Recuperação de Senha - Luisices',
         html: `
@@ -472,7 +474,7 @@ const sendPasswordResetEmail = onCall(
               </div>
               <div class="footer">
                 <p>Este é um email automático, por favor não responda.</p>
-                <p>Para suporte, entre em contato: contato@luisices.com.br</p>
+                <p>Para suporte, entre em contato: ${getContactEmail()}</p>
                 <p>&copy; ${new Date().getFullYear()} Luisices - Todos os direitos reservados</p>
               </div>
             </div>
