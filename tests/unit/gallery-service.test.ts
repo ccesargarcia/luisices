@@ -123,6 +123,86 @@ describe('Funcionalidade: Galeria de Mídias e Portfólio (firebaseGalleryServic
     });
   });
 
+  describe('1.1. Listagem Direcionada por Cliente (getItemsByCustomer)', () => {
+    it('deve buscar apenas artes associadas ao customerId especificado e ignorar itens excluídos logicamente', async () => {
+      const mockDocs = [
+        {
+          id: 'item-cust-1',
+          data: () => ({
+            userId: 'user-owner',
+            customerId: 'cust-123',
+            title: 'Convite Personalizado Jardim',
+            imageUrl: 'art1.png',
+            deletedAt: null,
+            createdAt: { toDate: () => new Date('2026-10-02T10:00:00Z') },
+          }),
+        },
+        {
+          id: 'item-cust-del',
+          data: () => ({
+            userId: 'user-owner',
+            customerId: 'cust-123',
+            title: 'Arte Deletada',
+            imageUrl: 'art2.png',
+            deletedAt: { toDate: () => new Date('2026-10-02T11:00:00Z') },
+            createdAt: { toDate: () => new Date('2026-10-01T10:00:00Z') },
+          }),
+        },
+      ];
+
+      (getDocs as any).mockResolvedValueOnce({ docs: mockDocs });
+
+      const items = await firebaseGalleryService.getItemsByCustomer('user-owner', 'cust-123');
+
+      expect(where).toHaveBeenCalledWith('userId', '==', 'user-owner');
+      expect(where).toHaveBeenCalledWith('customerId', '==', 'cust-123');
+      expect(items).toHaveLength(1);
+      expect(items[0].id).toBe('item-cust-1');
+      expect(items[0].title).toBe('Convite Personalizado Jardim');
+    });
+
+    it('deve retornar array vazio se userId ou customerId forem vazios', async () => {
+      const res1 = await firebaseGalleryService.getItemsByCustomer('', 'cust-123');
+      const res2 = await firebaseGalleryService.getItemsByCustomer('user-owner', '');
+      expect(res1).toEqual([]);
+      expect(res2).toEqual([]);
+      expect(getDocs).not.toHaveBeenCalled();
+    });
+
+    it('deve ordenar os itens por data decrescente e respeitar limitCount', async () => {
+      const mockDocs = [
+        {
+          id: 'item-old',
+          data: () => ({
+            userId: 'user-owner',
+            customerId: 'cust-123',
+            title: 'Arte Antiga',
+            imageUrl: 'art-old.png',
+            createdAt: { toDate: () => new Date('2026-09-01T10:00:00Z') },
+          }),
+        },
+        {
+          id: 'item-new',
+          data: () => ({
+            userId: 'user-owner',
+            customerId: 'cust-123',
+            title: 'Arte Nova',
+            imageUrl: 'art-new.png',
+            createdAt: { toDate: () => new Date('2026-10-05T10:00:00Z') },
+          }),
+        },
+      ];
+
+      (getDocs as any).mockResolvedValueOnce({ docs: mockDocs });
+
+      const items = await firebaseGalleryService.getItemsByCustomer('user-owner', 'cust-123', 1);
+
+      expect(items).toHaveLength(1);
+      expect(items[0].id).toBe('item-new');
+      expect(items[0].title).toBe('Arte Nova');
+    });
+  });
+
   describe('2. Criação de Itens (createItem)', () => {
     it('deve cadastrar um novo item na galeria com timestamp e deletedAt nulo', async () => {
       (addDoc as any).mockResolvedValueOnce({ id: 'generated-gallery-id' });

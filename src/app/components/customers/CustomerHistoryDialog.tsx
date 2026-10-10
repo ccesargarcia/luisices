@@ -59,9 +59,9 @@ export function CustomerHistoryDialog({
 
     async function loadGallery() {
       try {
-        const galleryItems = await firebaseGalleryService.getItems(currentUserId);
+        const customerItems = await firebaseGalleryService.getItemsByCustomer(currentUserId, currentCustomerId);
         if (!isCancelled) {
-          setGallery(galleryItems.filter((g) => g.customerId === currentCustomerId));
+          setGallery(customerItems);
         }
       } catch (error) {
         console.error('Erro ao carregar histórico da galeria:', error);

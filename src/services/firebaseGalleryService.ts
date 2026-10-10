@@ -78,6 +78,37 @@ export class FirebaseGalleryService {
       }));
   }
 
+  /**
+   * Buscar itens da galeria associados a um cliente específico com filtro direcionado.
+   * Evita leitura completa da coleção (otimização de custo e performance).
+   */
+  async getItemsByCustomer(userId: string, customerId: string, limitCount: number = 50): Promise<GalleryItem[]> {
+    if (!userId || !customerId) return [];
+    const q = query(
+      collection(db, this.collectionName),
+      where('userId', '==', userId),
+      where('customerId', '==', customerId)
+    );
+    const snapshot = await getDocs(q);
+    const items = await Promise.all(
+      snapshot.docs
+        .filter(d => !d.data().deletedAt)
+        .map(async d => {
+          const item = this.fromFirestore(d.id, d.data());
+          try {
+            item.imageUrl = await resolveGalleryImageUrl(item.imageUrl);
+          } catch {
+            item.imageUrl = '';
+          }
+          return item;
+        })
+    );
+
+    return items
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+      .slice(0, limitCount);
+  }
+
   // ─── Create ───────────────────────────────────────────────────────────────────
 
   async createItem(
