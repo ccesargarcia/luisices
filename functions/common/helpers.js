@@ -45,6 +45,20 @@ const getAppUrl = () => {
   return projectId === 'luisices-dev' ? 'https://dev.luisices.com.br' : 'https://luisices.com.br';
 };
 
+const getNoReplySender = () => {
+  const projectId = process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT;
+  const isDev = projectId === 'luisices-dev';
+  return isDev
+    ? 'Luisices Dev <noreply@dev.luisices.com.br>'
+    : 'Luisices <noreply@luisices.com.br>';
+};
+
+const getContactEmail = () => {
+  const projectId = process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT;
+  const isDev = projectId === 'luisices-dev';
+  return isDev ? 'contato@dev.luisices.com.br' : 'contato@luisices.com.br';
+};
+
 const toCdnUrl = (url) => {
   if (!url || typeof url !== 'string') return '';
   if (url.includes('cdn.luisices.com.br') || url.includes('cdn-dev.luisices.com.br')) {
@@ -130,6 +144,8 @@ module.exports = {
   normalizeWhatsAppNumber,
   sendWhatsAppMessage,
   getAppUrl,
+  getNoReplySender,
+  getContactEmail,
   toCdnUrl,
   formatActionLink,
   assertActiveSession,
