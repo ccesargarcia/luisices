@@ -318,7 +318,7 @@ jobs:
           RESEND_API_KEY: ${{ secrets.DEV_RESEND_API_KEY || secrets.RESEND_API_KEY }}
           RESEND_WEBHOOK_SECRET: ${{ secrets.DEV_RESEND_WEBHOOK_SECRET || secrets.RESEND_WEBHOOK_SECRET }}
           EVOLUTION_API_KEY: ${{ secrets.DEV_EVOLUTION_API_KEY || secrets.EVOLUTION_API_KEY }}
-          GEMINI_API_KEY: ${{ secrets.DEV_GEMINI_API_KEY || secrets.GEMINI_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.DEV_GEMINI || secrets.dev_gemini || secrets.DEV_GEMINI_API_KEY || secrets.GEMINI_API_KEY }}
         run: |
           node <<'NODE'
           const checks = [
@@ -337,7 +337,7 @@ jobs:
             { name: 'DEV_RESEND_API_KEY / RESEND_API_KEY', val: process.env.RESEND_API_KEY, required: true },
             { name: 'DEV_RESEND_WEBHOOK_SECRET / RESEND_WEBHOOK_SECRET', val: process.env.RESEND_WEBHOOK_SECRET, required: false },
             { name: 'DEV_EVOLUTION_API_KEY / EVOLUTION_API_KEY', val: process.env.EVOLUTION_API_KEY, required: true },
-            { name: 'DEV_GEMINI_API_KEY / GEMINI_API_KEY', val: process.env.GEMINI_API_KEY, required: true }
+            { name: 'DEV_GEMINI / DEV_GEMINI_API_KEY', val: process.env.GEMINI_API_KEY, required: true }
           ];
 
           console.log('\n=============================================================');
@@ -348,7 +348,7 @@ jobs:
             const hasVal = typeof item.val === 'string' && item.val.trim().length > 0;
             if (hasVal) {
               const preview = item.val.length > 8
-                ? `${item.val.substring(0, 4)}...${item.val.substring(item.val.length - 3)} (${item.val.length} chars)`
+                ? `${item.val.substring(0, 14)}...${item.val.substring(item.val.length - 4)} (${item.val.length} chars)`
                 : `(${item.val.length} chars)`;
               console.log(`✅ ${item.name.padEnd(44)}: PRESENTE ${preview}`);
             } else {
@@ -439,7 +439,7 @@ jobs:
           RESEND_API_KEY: ${{ secrets.DEV_RESEND_API_KEY || secrets.RESEND_API_KEY }}
           RESEND_WEBHOOK_SECRET: ${{ secrets.DEV_RESEND_WEBHOOK_SECRET || secrets.RESEND_WEBHOOK_SECRET }}
           EVOLUTION_API_KEY: ${{ secrets.DEV_EVOLUTION_API_KEY || secrets.EVOLUTION_API_KEY }}
-          GEMINI_API_KEY: ${{ secrets.DEV_GEMINI_API_KEY || secrets.GEMINI_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.DEV_GEMINI || secrets.dev_gemini || secrets.DEV_GEMINI_API_KEY || secrets.GEMINI_API_KEY }}
         run: |
           echo "$FIREBASE_SERVICE_ACCOUNT" > "$HOME/firebase-service-account.json"
           export GOOGLE_APPLICATION_CREDENTIALS="$HOME/firebase-service-account.json"
