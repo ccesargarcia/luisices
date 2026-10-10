@@ -605,7 +605,7 @@ function UserDevicesDialog({ open, user, onClose }: UserDevicesDialogProps) {
     setRevoking(deviceId);
     try {
       await firebaseUserService.revokeDeviceSession(user.uid, deviceId);
-      toast.success('Dispositivo desconectado com sucesso!');
+      toast.success('Solicitação de desconexão enviada ao aplicativo.');
       if (currentUser?.uid === user?.uid && deviceId === currentDeviceId) {
         localStorage.removeItem('luisices_device_id');
         localStorage.removeItem('luisices_device_last_reg');
@@ -624,8 +624,12 @@ function UserDevicesDialog({ open, user, onClose }: UserDevicesDialogProps) {
     if (!user) return;
     setRevoking('all');
     try {
-      await firebaseUserService.revokeAllSessions(user.uid);
-      toast.success('Todas as sessões e tokens foram revogados com sucesso');
+      const result = await firebaseUserService.revokeAllSessions(user.uid);
+      if (result.synced === true) {
+        toast.success('Revogação global concluída. As sessões anteriores precisam de novo login.');
+      } else {
+        toast.warning('Revogação global iniciada, com sincronização pendente. Confira o estado antes de considerar o bloqueio concluído.');
+      }
       setConfirmRevoke(false);
       if (currentUser?.uid === user?.uid) {
         localStorage.removeItem('luisices_device_id');
@@ -648,7 +652,7 @@ function UserDevicesDialog({ open, user, onClose }: UserDevicesDialogProps) {
           <DialogHeader className="p-4 sm:p-6 pb-3 border-b border-border">
             <DialogTitle>Dispositivos e Sessões Ativas</DialogTitle>
             <DialogDescription className="text-xs text-muted-foreground">
-              Monitoramento de sessões para {user?.displayName}. Você pode desconectar dispositivos individualmente ou revogar todos de uma vez.
+              Monitoramento de sessões para {user?.displayName}. A desconexão individual depende de o aplicativo receber e executar a solicitação. Para bloquear as credenciais no servidor, use Revogar Todas as Sessões.
             </DialogDescription>
           </DialogHeader>
 
@@ -711,7 +715,7 @@ function UserDevicesDialog({ open, user, onClose }: UserDevicesDialogProps) {
                               ) : (
                                 <LogOut className="size-3.5 mr-1" />
                               )}
-                              Desconectar
+                              Solicitar desconexão
                             </Button>
                           </div>
                           <div className="flex flex-col gap-2 text-xs text-muted-foreground mt-2">
@@ -769,7 +773,7 @@ function UserDevicesDialog({ open, user, onClose }: UserDevicesDialogProps) {
           <DialogHeader>
             <DialogTitle>Confirmar Revogação Global</DialogTitle>
             <DialogDescription className="text-xs text-muted-foreground">
-              Esta ação revogará imediatamente as credenciais de autenticação (refresh tokens) e desconectará <strong>todos os dispositivos e abas</strong> de <strong>{user?.displayName}</strong>.
+              Esta ação bloqueia as sessões anteriores de <strong>{user?.displayName}</strong> e revoga suas credenciais de renovação. Afeta <strong>todos os dispositivos e abas</strong>. O sistema informará se houver sincronização pendente.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="gap-2 sm:justify-end">
