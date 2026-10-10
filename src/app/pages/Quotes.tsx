@@ -6,6 +6,7 @@ import { getTextColor } from '../utils/tagColors';
 import { useUserSettings } from '../../hooks/useUserSettings';
 import { useFirebaseQuotes } from '../../hooks/useFirebaseQuotes';
 import { useAuth } from '../../contexts/AuthContext';
+import { useOrders } from '../../contexts/OrdersContext';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -18,6 +19,7 @@ import {
   Filter,
   X,
   Download,
+  Users,
 } from 'lucide-react';
 import { QuoteCard } from '../components/quotes/QuoteCard';
 import { QuoteStatsCards } from '../components/quotes/QuoteStatsCards';
@@ -28,6 +30,7 @@ import { PaginationControls } from '../components/common/PaginationControls';
 export function Quotes() {
   const [searchParams, setSearchParams] = useSearchParams();
   const { user, hasPermission } = useAuth();
+  const { isFilterActive, selectedFilterLabel, clearUserFilter } = useOrders();
   const { quotes, loading, error } = useFirebaseQuotes();
   const { settings } = useUserSettings();
   const [activeTab, setActiveTab] = useState('all');
@@ -198,6 +201,29 @@ export function Quotes() {
           )}
         </div>
       </div>
+
+      {/* Indicador de Filtro de Parceiro Ativo para Admin */}
+      {isFilterActive && (
+        <div className="flex items-center justify-between gap-3 p-3 sm:p-3.5 rounded-xl border border-primary/25 bg-primary/5 text-primary text-sm shadow-sm backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="flex size-7 items-center justify-center rounded-full bg-primary/10 shrink-0">
+              <Users className="size-4" />
+            </div>
+            <span className="truncate">
+              Exibindo orçamentos do parceiro: <strong>{selectedFilterLabel}</strong>
+            </span>
+          </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={clearUserFilter}
+            className="h-7 text-xs px-2.5 text-primary hover:bg-primary/10 shrink-0"
+            title="Limpar filtro e exibir orçamentos de todos os parceiros"
+          >
+            Ver todos os orçamentos
+          </Button>
+        </div>
+      )}
 
       {/* Summary cards */}
       <QuoteStatsCards stats={stats} />

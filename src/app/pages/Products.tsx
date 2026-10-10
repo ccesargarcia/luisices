@@ -4,6 +4,7 @@ import { formatCurrency } from '../utils/currency';
 import { Product } from '../types';
 import { firebaseProductService } from '../../services/firebaseProductService';
 import { useAuth } from '../../contexts/AuthContext';
+import { useOrders } from '../../contexts/OrdersContext';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { SafeImg } from '../components/SafeMedia';
 import { Button } from '../components/ui/button';
@@ -46,6 +47,7 @@ import {
   Coins,
   Globe,
   ExternalLink,
+  Users,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '../components/ui/utils';
@@ -166,6 +168,7 @@ function ProductFormDialog({ open, onOpenChange, editing, existingCategories, us
     setSaving(true);
     try {
       const payload: Partial<Product> = {
+        userId,
         name: form.name.trim(),
         unitPrice: price,
         category: form.category.trim() || undefined,
@@ -403,6 +406,7 @@ const ATELIER_PRODUCTS_VIEW_MODE_KEY = 'luisices_atelier_products_view_mode';
 
 export function Products() {
   const { user, userProfile, hasPermission } = useAuth();
+  const { activePartnerId, matchesSelectedUser, isFilterActive, selectedFilterLabel, clearUserFilter } = useOrders();
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -456,15 +460,20 @@ export function Products() {
   function openEdit(p: Product) { setEditingProduct(p); setFormOpen(true); }
   function openNew() { setEditingProduct(null); setFormOpen(true); }
 
-  const allCategories = Array.from(new Set(products.map((p) => p.category || 'Sem categoria')))
+  // Filtragem reativa em memória por parceiro ativo (Zero Custo Firestore, 0ms)
+  const partnerScopedProducts = useMemo(() => {
+    return products.filter((p) => matchesSelectedUser(p.userId));
+  }, [products, matchesSelectedUser]);
+
+  const allCategories = Array.from(new Set(partnerScopedProducts.map((p) => p.category || 'Sem categoria')))
     .sort((a, b) => a.localeCompare(b, 'pt-BR'));
 
   const existingCategories = Array.from(
-    new Set(products.map((p) => p.category).filter(Boolean) as string[])
+    new Set(partnerScopedProducts.map((p) => p.category).filter(Boolean) as string[])
   ).sort((a, b) => a.localeCompare(b, 'pt-BR'));
 
   const filtered = useMemo<Product[]>(() => {
-    return products.filter((p: Product) => {
+    return partnerScopedProducts.filter((p: Product) => {
       const matchSearch =
         !search.trim() ||
         p.name.toLowerCase().includes(search.toLowerCase()) ||
@@ -473,7 +482,7 @@ export function Products() {
       const matchCat = !filterCategory || (p.category || 'Sem categoria') === filterCategory;
       return matchSearch && matchCat;
     });
-  }, [products, search, filterCategory]);
+  }, [partnerScopedProducts, search, filterCategory]);
 
   useEffect(() => {
     setCurrentPage(1);
@@ -490,7 +499,7 @@ export function Products() {
   const displayCategories = Array.from(new Set(paginatedProducts.map((p: Product) => p.category || 'Sem categoria')))
     .sort((a: string, b: string) => a.localeCompare(b, 'pt-BR'));
 
-  const prices = products.map((p) => p.unitPrice);
+  const prices = partnerScopedProducts.map((p) => p.unitPrice);
   const minPrice = prices.length ? Math.min(...prices) : null;
   const maxPrice = prices.length ? Math.max(...prices) : null;
 
@@ -535,13 +544,36 @@ export function Products() {
         </div>
       </div>
 
+      {/* Indicador de Filtro de Parceiro Ativo para Admin */}
+      {isFilterActive && (
+        <div className="flex items-center justify-between gap-3 p-3 sm:p-3.5 rounded-xl border border-primary/25 bg-primary/5 text-primary text-sm shadow-sm backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="flex size-7 items-center justify-center rounded-full bg-primary/10 shrink-0">
+              <Users className="size-4" />
+            </div>
+            <span className="truncate">
+              Exibindo produtos do parceiro: <strong>{selectedFilterLabel}</strong>
+            </span>
+          </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={clearUserFilter}
+            className="h-7 text-xs px-2.5 text-primary hover:bg-primary/10 shrink-0"
+            title="Limpar filtro e exibir produtos de todos os parceiros"
+          >
+            Ver todos os produtos
+          </Button>
+        </div>
+      )}
+
       {/* Stats – 4 cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">Total de produtos</CardTitle>
           </CardHeader>
-          <CardContent><div className="text-2xl font-bold">{products.length}</div></CardContent>
+          <CardContent><div className="text-2xl font-bold">{partnerScopedProducts.length}</div></CardContent>
         </Card>
         <Card>
           <CardHeader className="pb-2">
@@ -549,7 +581,7 @@ export function Products() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {new Set(products.map((p) => p.category || 'Sem categoria')).size}
+              {new Set(partnerScopedProducts.map((p) => p.category || 'Sem categoria')).size}
             </div>
           </CardContent>
         </Card>
@@ -846,7 +878,7 @@ export function Products() {
         onOpenChange={setFormOpen}
         editing={editingProduct}
         existingCategories={existingCategories}
-        userId={user?.uid ?? ''}
+        userId={editingProduct?.userId || activePartnerId || user?.uid || ''}
       />
 
       {/* Delete confirmation */}

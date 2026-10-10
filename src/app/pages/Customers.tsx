@@ -14,6 +14,7 @@ import {
   Loader2,
   Download,
   X,
+  Users,
 } from 'lucide-react';
 import { cn } from '../components/ui/utils';
 import { firebaseCustomerService } from '../../services/firebaseCustomerService';
@@ -35,7 +36,15 @@ import { toast } from 'sonner';
 
 export function Customers() {
   const { user, userProfile, hasPermission } = useAuth();
-  const { allOrders } = useOrders();
+  const {
+    allOrders,
+    orders: activeFilteredOrders,
+    selectedUserIds,
+    isFilterActive,
+    selectedFilterLabel,
+    activePartnerId,
+    clearUserFilter,
+  } = useOrders();
   const { allTimeStats } = useSalesLedger();
 
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -116,30 +125,41 @@ export function Customers() {
     return unsub;
   }, [user, userProfile?.role]);
 
+  // Escopo de clientes pelo parceiro selecionado pelo Admin (ou todos se não filtrado)
+  const partnerScopedCustomers = useMemo(() => {
+    if (!isFilterActive || !selectedUserIds || selectedUserIds.length === 0) {
+      return customers;
+    }
+    return customers.filter((c) => c.userId && selectedUserIds.includes(c.userId));
+  }, [customers, isFilterActive, selectedUserIds]);
+
+  // Pedidos considerados para contagem de clientes: utiliza activeFilteredOrders quando o filtro de equipe/parceiro estiver ativo
+  const relevantOrders = isFilterActive ? activeFilteredOrders : allOrders;
+
   // Mapa de pedidos em aberto e total de pedidos por cliente a partir de OrdersContext
   const openOrdersMap = useMemo(() => {
     const map: Record<string, number> = {};
-    allOrders.forEach((o) => {
+    relevantOrders.forEach((o) => {
       if (o.customerId && o.status !== 'completed' && o.status !== 'cancelled') {
         map[o.customerId] = (map[o.customerId] || 0) + 1;
       }
     });
     return map;
-  }, [allOrders]);
+  }, [relevantOrders]);
 
   const totalOrdersMap = useMemo(() => {
     const map: Record<string, number> = {};
-    allOrders.forEach((o) => {
+    relevantOrders.forEach((o) => {
       if (o.customerId) {
         map[o.customerId] = (map[o.customerId] || 0) + 1;
       }
     });
     return map;
-  }, [allOrders]);
+  }, [relevantOrders]);
 
   // Filtragem de clientes
   const filteredCustomers = useMemo(() => {
-    let list = customers;
+    let list = partnerScopedCustomers;
     if (orderFilter === 'open') {
       list = list.filter((c) => (openOrdersMap[c.id] || 0) > 0);
     } else if (orderFilter === 'no_orders') {
@@ -172,7 +192,7 @@ export function Customers() {
         email.includes(queryStr)
       );
     });
-  }, [customers, searchQuery, orderFilter, profileFilter, birthdayFilter, openOrdersMap, totalOrdersMap]);
+  }, [partnerScopedCustomers, searchQuery, orderFilter, profileFilter, birthdayFilter, openOrdersMap, totalOrdersMap]);
 
   // Resetar página ao filtrar ou mudar tamanho
   useEffect(() => {
@@ -208,39 +228,44 @@ export function Customers() {
 
   // Estatísticas monetárias e da carteira de clientes
   const stats = useMemo(() => {
-    const total = customers.length;
-    // Histórico de faturamento e ticket médio consolidados do ledger (preserva valores mesmo se clientes forem excluídos)
+    const total = partnerScopedCustomers.length;
+    // Histórico de faturamento e ticket médio consolidados do ledger
+    // Quando um parceiro estiver filtrado, faturamento e pedidos vêm dos clientes escopados
     const ledgerRevenue = allTimeStats.totalAllTimeRevenue || allTimeStats.totalAllTimeAmount;
     const ledgerOrders = allTimeStats.totalAllTimeCount;
 
-    const totalRevenue = ledgerRevenue > 0
-      ? ledgerRevenue
-      : customers.reduce((sum, c) => sum + (c.totalSpent || 0), 0);
+    const totalRevenue = isFilterActive
+      ? partnerScopedCustomers.reduce((sum, c) => sum + (c.totalSpent || 0), 0)
+      : (ledgerRevenue > 0
+          ? ledgerRevenue
+          : partnerScopedCustomers.reduce((sum, c) => sum + (c.totalSpent || 0), 0));
 
-    const totalOrders = ledgerOrders > 0
-      ? ledgerOrders
-      : customers.reduce((sum, c) => sum + (c.totalOrders || 0), 0);
+    const totalOrders = isFilterActive
+      ? partnerScopedCustomers.reduce((sum, c) => sum + (c.totalOrders || 0), 0)
+      : (ledgerOrders > 0
+          ? ledgerOrders
+          : partnerScopedCustomers.reduce((sum, c) => sum + (c.totalOrders || 0), 0));
 
     const averagePerCustomer = totalOrders > 0
       ? totalRevenue / totalOrders
       : (total > 0 ? totalRevenue / total : 0);
 
     return { total, totalRevenue, totalOrders, averagePerCustomer };
-  }, [customers, allTimeStats]);
+  }, [partnerScopedCustomers, allTimeStats, isFilterActive]);
 
   // Chips Rápidos de Filtragem Contextual para Operação Ágil (Mobile & Desktop)
   const quickChips = useMemo(() => {
     const isAll = orderFilter === 'all' && profileFilter === 'all' && birthdayFilter === 'all';
-    const birthdayTodayCount = customers.filter((c) => getDaysUntilBirthday(c.birthday) === 0).length;
-    const birthdayMonthCount = customers.filter((c) => isBirthdayThisMonth(c.birthday)).length;
-    const openOrdersCount = customers.filter((c) => (openOrdersMap[c.id] || 0) > 0).length;
-    const vipCount = customers.filter((c) => c.status === 'vip').length;
+    const birthdayTodayCount = partnerScopedCustomers.filter((c) => getDaysUntilBirthday(c.birthday) === 0).length;
+    const birthdayMonthCount = partnerScopedCustomers.filter((c) => isBirthdayThisMonth(c.birthday)).length;
+    const openOrdersCount = partnerScopedCustomers.filter((c) => (openOrdersMap[c.id] || 0) > 0).length;
+    const vipCount = partnerScopedCustomers.filter((c) => c.status === 'vip').length;
 
     return [
       {
         id: 'all',
         label: 'Todos',
-        count: customers.length,
+        count: partnerScopedCustomers.length,
         isActive: isAll,
         onClick: () => {
           setOrderFilter('all');
@@ -462,6 +487,29 @@ export function Customers() {
         </div>
       </div>
 
+      {/* Indicador de Filtro de Parceiro Ativo para Admin */}
+      {isFilterActive && (
+        <div className="flex items-center justify-between gap-3 p-3 sm:p-3.5 rounded-xl border border-primary/25 bg-primary/5 text-primary text-sm shadow-sm backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="flex size-7 items-center justify-center rounded-full bg-primary/10 shrink-0">
+              <Users className="size-4" />
+            </div>
+            <span className="truncate">
+              Exibindo clientes do parceiro: <strong>{selectedFilterLabel}</strong>
+            </span>
+          </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={clearUserFilter}
+            className="h-7 text-xs px-2.5 text-primary hover:bg-primary/10 shrink-0"
+            title="Limpar filtro e exibir clientes de todos os parceiros"
+          >
+            Ver todos os clientes
+          </Button>
+        </div>
+      )}
+
       {/* Stats Cards */}
       <CustomerStatsCards
         total={stats.total}
@@ -670,14 +718,14 @@ export function Customers() {
         open={isFormOpen}
         onOpenChange={setIsFormOpen}
         customer={editingCustomer}
-        userId={user?.uid}
+        userId={editingCustomer ? (editingCustomer.userId || user?.uid) : (activePartnerId || user?.uid)}
       />
 
       <CustomerHistoryDialog
         open={isHistoryOpen}
         onOpenChange={setIsHistoryOpen}
         customer={historyCustomer}
-        userId={user?.uid}
+        userId={historyCustomer?.userId || user?.uid}
         onOpenNewOrder={handleOpenNewOrder}
       />
 

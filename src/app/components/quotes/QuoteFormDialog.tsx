@@ -4,6 +4,7 @@ import { formatCurrency } from '../../utils/currency';
 import { TagInput } from '../TagInput';
 import { TAG_COLORS } from '../../utils/tagColors';
 import { useAuth } from '../../../contexts/AuthContext';
+import { useOrders } from '../../../contexts/OrdersContext';
 import { firebaseCustomerService } from '../../../services/firebaseCustomerService';
 import { firebaseProductService } from '../../../services/firebaseProductService';
 import { firebaseQuoteService } from '../../../services/firebaseQuoteService';
@@ -115,6 +116,7 @@ export function QuoteFormDialog({
   onSaved,
 }: QuoteFormDialogProps) {
   const { user } = useAuth();
+  const { activePartnerId } = useOrders();
   const [form, setForm] = useState<FormState>(editing ? formFromQuote(editing) : emptyForm());
   const [saving, setSaving] = useState(false);
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -134,10 +136,11 @@ export function QuoteFormDialog({
   // Load registered customers when dialog opens
   useEffect(() => {
     if (open && user) {
-      firebaseCustomerService.getCustomers(user.uid).then(setCustomers);
-      firebaseProductService.getProducts().then(setCatalogProducts);
+      const targetUid = editing ? editing.userId : (activePartnerId || user.uid);
+      firebaseCustomerService.getCustomers(targetUid).then(setCustomers);
+      firebaseProductService.getProducts(targetUid).then(setCatalogProducts);
     }
-  }, [open, user]);
+  }, [open, user, editing, activePartnerId]);
 
   // Fill form fields when a customer is selected from the list
   useEffect(() => {
@@ -216,19 +219,20 @@ export function QuoteFormDialog({
     setSaving(true);
     try {
       let finalCustomerId = form.customerId;
+      const targetUserId = editing ? editing.userId : (activePartnerId || user?.uid);
 
       // Se for novo cliente ou cliente sem ID salvo, auto-cadastrar/localizar na base
-      if (user?.uid && (!finalCustomerId || selectedCustomer === 'new')) {
+      if (targetUserId && (!finalCustomerId || selectedCustomer === 'new')) {
         try {
           const existingCustomer = await firebaseCustomerService.findCustomerByPhoneOrDigits(
-            user.uid,
+            targetUserId,
             trimmedPhone
           );
 
           if (existingCustomer) {
             finalCustomerId = existingCustomer.id;
           } else {
-            finalCustomerId = await firebaseCustomerService.createCustomer(user.uid, {
+            finalCustomerId = await firebaseCustomerService.createCustomer(targetUserId, {
               name: trimmedName,
               phone: trimmedPhone,
               status: 'active',
@@ -237,7 +241,7 @@ export function QuoteFormDialog({
         } catch (custErr: any) {
           if (custErr?.message?.includes('DUPLICATE_PHONE')) {
             const fallback = await firebaseCustomerService.findCustomerByPhoneOrDigits(
-              user.uid,
+              targetUserId,
               trimmedPhone
             );
             if (fallback) finalCustomerId = fallback.id;
@@ -248,6 +252,7 @@ export function QuoteFormDialog({
       }
 
       const payload: Partial<Quote> = {
+        userId: targetUserId,
         customerName: trimmedName,
         customerPhone: trimmedPhone,
         customerId: finalCustomerId || undefined,

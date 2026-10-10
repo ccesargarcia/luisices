@@ -53,8 +53,8 @@ class FirebaseProductService {
     };
   }
 
-  async getProducts(): Promise<Product[]> {
-    const userId = this.getCurrentUserId();
+  async getProducts(targetUserId?: string): Promise<Product[]> {
+    const userId = targetUserId || this.getCurrentUserId();
     const q = query(
       collection(db, PRODUCTS_COLLECTION),
       where('userId', '==', userId)
@@ -73,7 +73,7 @@ class FirebaseProductService {
   }
 
   async createProduct(data: Partial<Product>): Promise<Product> {
-    const userId = this.getCurrentUserId();
+    const userId = data.userId || this.getCurrentUserId();
     const ref = await addDoc(collection(db, PRODUCTS_COLLECTION), {
       userId,
       name: data.name,

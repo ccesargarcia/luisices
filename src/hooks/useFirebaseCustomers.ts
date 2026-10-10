@@ -1,17 +1,19 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { collection, query, where, orderBy, onSnapshot, limit } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { useAuth } from '../contexts/AuthContext';
+import { useOrders } from '../contexts/OrdersContext';
 import { Customer } from '../app/types';
 
 export function useFirebaseCustomers() {
   const { user, userProfile, loading: authLoading } = useAuth();
-  const [customers, setCustomers] = useState<Customer[]>([]);
+  const { selectedUserIds, isFilterActive } = useOrders();
+  const [allCustomers, setAllCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (!user) {
-      setCustomers([]);
+      setAllCustomers([]);
       setLoading(false);
       return;
     }
@@ -38,7 +40,7 @@ export function useFirebaseCustomers() {
     const unsub = onSnapshot(
       q,
       (snap) => {
-        setCustomers(
+        setAllCustomers(
           snap.docs.map((d) => {
             const raw = d.data();
             return {
@@ -59,5 +61,13 @@ export function useFirebaseCustomers() {
     return () => unsub();
   }, [user, userProfile?.role, authLoading]);
 
-  return { customers, loading };
+  // Se o admin tiver selecionado parceiro(s) específico(s), filtra reativamente em memória
+  const customers = useMemo(() => {
+    if (!isFilterActive || !selectedUserIds || selectedUserIds.length === 0) {
+      return allCustomers;
+    }
+    return allCustomers.filter((c) => c.userId && selectedUserIds.includes(c.userId));
+  }, [allCustomers, isFilterActive, selectedUserIds]);
+
+  return { customers, allCustomers, loading };
 }

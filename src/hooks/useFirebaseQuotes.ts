@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import {
   collection,
   query,
@@ -9,19 +9,21 @@ import {
 } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { useAuth } from '../contexts/AuthContext';
+import { useOrders } from '../contexts/OrdersContext';
 import { Quote } from '../app/types';
 import { firebaseQuoteService } from '../services/firebaseQuoteService';
 import { isQuoteExpired } from '../app/components/quotes/quoteHelpers';
 
 export function useFirebaseQuotes() {
   const { user, userProfile, loading: authLoading } = useAuth();
-  const [quotes, setQuotes] = useState<Quote[]>([]);
+  const { selectedUserIds, isFilterActive } = useOrders();
+  const [allQuotes, setAllQuotes] = useState<Quote[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!user) {
-      setQuotes([]);
+      setAllQuotes([]);
       setLoading(false);
       setError(null);
       return;
@@ -109,7 +111,7 @@ export function useFirebaseQuotes() {
       );
 
       const expiredQuotes = sorted.filter(isQuoteExpired);
-      setQuotes(sorted.map((quote) => (
+      setAllQuotes(sorted.map((quote) => (
         isQuoteExpired(quote) ? { ...quote, status: 'expired' as const } : quote
       )));
 
@@ -174,5 +176,13 @@ export function useFirebaseQuotes() {
     return () => unsubscribers.forEach((unsub) => unsub());
   }, [user, userProfile?.role, authLoading]);
 
-  return { quotes, loading, error };
+  // Se o admin tiver selecionado parceiro(s) específico(s), filtra reativamente em memória
+  const quotes = useMemo(() => {
+    if (!isFilterActive || !selectedUserIds || selectedUserIds.length === 0) {
+      return allQuotes;
+    }
+    return allQuotes.filter((q) => q.userId && selectedUserIds.includes(q.userId));
+  }, [allQuotes, isFilterActive, selectedUserIds]);
+
+  return { quotes, allQuotes, loading, error };
 }

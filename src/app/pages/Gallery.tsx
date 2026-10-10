@@ -19,6 +19,7 @@ import {
   ArrowUpDown,
   FolderHeart,
   Palette,
+  Users,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '../components/ui/button';
@@ -41,6 +42,7 @@ import {
   DialogFooter,
 } from '../components/ui/dialog';
 import { useAuth } from '../../contexts/AuthContext';
+import { useOrders } from '../../contexts/OrdersContext';
 import { firebaseGalleryService } from '../../services/firebaseGalleryService';
 import { firebaseCustomerService } from '../../services/firebaseCustomerService';
 import type { GalleryItem, Customer, Tag } from '../types';
@@ -68,6 +70,7 @@ const SUGGESTED_INSPIRATION_TAGS = [
 
 export function Gallery() {
   const { user, userProfile, hasPermission } = useAuth();
+  const { activePartnerId, matchesSelectedUser, isFilterActive, selectedFilterLabel, clearUserFilter } = useOrders();
   const [items, setItems] = useState<GalleryItem[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
@@ -148,10 +151,19 @@ export function Gallery() {
     loadData();
   }, [user, userProfile?.role]);
 
+  // Filtragem reativa em memória por parceiro ativo (Zero Custo Firestore, 0ms)
+  const partnerScopedItems = useMemo(() => {
+    return items.filter((item) => matchesSelectedUser(item.userId));
+  }, [items, matchesSelectedUser]);
+
+  const partnerScopedCustomers = useMemo(() => {
+    return customers.filter((customer) => matchesSelectedUser(customer.userId));
+  }, [customers, matchesSelectedUser]);
+
   // Agrupamento de itens em pastas por cliente + pastas manuais
   const folders = useMemo(() => {
     const map = new Map<string, { name: string; items: GalleryItem[] }>();
-    for (const item of items) {
+    for (const item of partnerScopedItems) {
       const key = item.customerId || '__none__';
       const name = item.customerName || 'Sem cliente';
       if (!map.has(key)) map.set(key, { name, items: [] });
@@ -169,14 +181,14 @@ export function Gallery() {
         if (b.id === '__none__') return -1;
         return b.items.length - a.items.length;
       });
-  }, [items, manualFolders]);
+  }, [partnerScopedItems, manualFolders]);
 
   // Todas as tags existentes nos itens
   const allTags = useMemo(() => {
     const set = new Set<string>();
-    items.forEach((i) => (i.tags ?? []).forEach((t) => set.add(t.name)));
+    partnerScopedItems.forEach((i) => (i.tags ?? []).forEach((t) => set.add(t.name)));
     return Array.from(set).sort();
-  }, [items]);
+  }, [partnerScopedItems]);
 
   // Tags combinadas para o carrossel de inspiração
   const combinedInspirationTags = useMemo(() => {
@@ -194,7 +206,7 @@ export function Gallery() {
     if (viewMode === 'folders' && openFolderId !== null) {
       list = openFolder?.items ?? [];
     } else {
-      list = items;
+      list = partnerScopedItems;
     }
 
     const q = search.toLowerCase().trim();
@@ -245,7 +257,7 @@ export function Gallery() {
       return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
     });
   }, [
-    items,
+    partnerScopedItems,
     viewMode,
     openFolderId,
     openFolder,
@@ -278,12 +290,12 @@ export function Gallery() {
 
   // Estatísticas do Portfólio
   const stats = useMemo(() => {
-    const totalArts = items.length;
+    const totalArts = partnerScopedItems.length;
     const totalFolders = folders.length;
-    const aiCount = items.filter((i) => Boolean(i.aiDescription)).length;
-    const customersCount = new Set(items.map((i) => i.customerId).filter(Boolean)).size;
+    const aiCount = partnerScopedItems.filter((i) => Boolean(i.aiDescription)).length;
+    const customersCount = new Set(partnerScopedItems.map((i) => i.customerId).filter(Boolean)).size;
     return { totalArts, totalFolders, aiCount, customersCount };
-  }, [items, folders]);
+  }, [partnerScopedItems, folders]);
 
   // Manipulação de Pastas
   const setFolderColor = (folderId: string, color: string) => {
@@ -599,6 +611,29 @@ export function Gallery() {
           )}
         </div>
       </div>
+
+      {/* Indicador de Filtro de Parceiro Ativo para Admin */}
+      {isFilterActive && (
+        <div className="flex items-center justify-between gap-3 p-3 sm:p-3.5 rounded-xl border border-primary/25 bg-primary/5 text-primary text-sm shadow-sm backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="flex size-7 items-center justify-center rounded-full bg-primary/10 shrink-0">
+              <Users className="size-4" />
+            </div>
+            <span className="truncate">
+              Exibindo galeria do parceiro: <strong>{selectedFilterLabel}</strong>
+            </span>
+          </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={clearUserFilter}
+            className="h-7 text-xs px-2.5 text-primary hover:bg-primary/10 shrink-0"
+            title="Limpar filtro e exibir artes de todos os parceiros"
+          >
+            Ver todas as artes
+          </Button>
+        </div>
+      )}
 
       {/* ─── Barra de Estatísticas do Portfólio (Liquid Glassmorphism) ───────── */}
       {!isInsideFolder && (
@@ -993,7 +1028,7 @@ export function Gallery() {
             currentCover={folderCovers[f.id]}
             currentTags={folderTags[f.id]}
             folderItems={f.items}
-            userId={user.uid}
+            userId={activePartnerId || user.uid}
             onSaved={handleEditFolder}
           />
         );
@@ -1004,7 +1039,7 @@ export function Gallery() {
         <NewFolderDialog
           open={newFolderOpen}
           onClose={() => setNewFolderOpen(false)}
-          customers={customers}
+          customers={partnerScopedCustomers}
           existingFolderIds={folders.map((f) => f.id)}
           onSaved={handleNewFolder}
         />
@@ -1016,8 +1051,8 @@ export function Gallery() {
           open={uploadOpen}
           onClose={() => setUploadOpen(false)}
           onSaved={(item) => setItems((prev) => [item, ...prev])}
-          customers={customers}
-          userId={user.uid}
+          customers={partnerScopedCustomers}
+          userId={activePartnerId || user.uid}
           initialCustomerId={openFolder && openFolder.id !== '__none__' ? openFolder.id : undefined}
         />
       )}

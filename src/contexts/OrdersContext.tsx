@@ -39,6 +39,8 @@ export interface OrdersContextValue {
   unassignedCount: number;
   isFilterActive: boolean;
   selectedFilterLabel: string;
+  activePartnerId: string | null;
+  matchesSelectedUser: (userId?: string | null) => boolean;
 }
 
 const STORAGE_KEY = 'luisices_admin_selected_users';
@@ -72,6 +74,8 @@ const OrdersContext = createContext<OrdersContextValue>({
   unassignedCount: 0,
   isFilterActive: false,
   selectedFilterLabel: 'Todos (Tudo)',
+  activePartnerId: null,
+  matchesSelectedUser: () => true,
 });
 
 export function OrdersProvider({ children }: { children: ReactNode }) {
@@ -509,6 +513,20 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
     setSelectedUserIds([]);
   }, [setSelectedUserIds]);
 
+  const activePartnerId = useMemo(() => {
+    if (userProfile?.role !== 'admin' || !isFilterActive) return null;
+    if (selectedUserIds.length === 1 && selectedUserIds[0] !== 'unassigned' && selectedUserIds[0] !== 'all') {
+      return selectedUserIds[0];
+    }
+    return null;
+  }, [userProfile?.role, isFilterActive, selectedUserIds]);
+
+  const matchesSelectedUser = useCallback((itemUserId?: string | null) => {
+    if (userProfile?.role !== 'admin' || !isFilterActive) return true;
+    if (!itemUserId) return selectedUserIds.includes('unassigned');
+    return selectedUserIds.includes(itemUserId);
+  }, [userProfile?.role, isFilterActive, selectedUserIds]);
+
   const archivedOrders = useMemo(() => filteredOrders.filter(o => Boolean(o.isArchived)), [filteredOrders]);
   const activeOrders = useMemo(() => filteredOrders.filter(o => !o.isArchived), [filteredOrders]);
 
@@ -532,6 +550,8 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
         unassignedCount,
         isFilterActive,
         selectedFilterLabel,
+        activePartnerId,
+        matchesSelectedUser,
       }}
     >
       {children}

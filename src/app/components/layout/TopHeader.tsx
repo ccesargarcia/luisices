@@ -276,7 +276,7 @@ export function TopHeader({
             </a>
           )}
 
-          <AdminTeamFilter variant="header" className="hidden xl:inline-flex" />
+          <AdminTeamFilter variant="header" className="inline-flex" />
           <NotificationBell />
 
           <div className="hidden sm:inline-flex shrink-0">

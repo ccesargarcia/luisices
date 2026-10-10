@@ -99,7 +99,7 @@ export class FirebaseQuoteService {
 
   // ─── Create ──────────────────────────────────────────────────────────────────
   async createQuote(quoteData: Partial<Quote>): Promise<Quote> {
-    const userId = this.getCurrentUserId();
+    const userId = quoteData.userId || this.getCurrentUserId();
     const quoteNumber = await this.generateQuoteNumber(userId);
     const ref = await addDoc(collection(db, QUOTES_COLLECTION), {
       userId,

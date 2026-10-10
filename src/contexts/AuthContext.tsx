@@ -82,6 +82,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           localStorage.removeItem(k);
         }
       });
+      sessionStorage.removeItem('luisices_admin_selected_users');
     } catch (_) {}
     await firebaseAuthService.logout().catch(() => {});
     setUser(null);

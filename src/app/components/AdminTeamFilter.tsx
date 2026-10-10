@@ -74,11 +74,11 @@ export function AdminTeamFilter({ variant = 'header', className }: AdminTeamFilt
                   ? 'border-primary/40 bg-primary/10 text-primary hover:bg-primary/20 shadow-sm'
                   : 'border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/80',
               )}
-              title="Filtrar pedidos por responsável / equipe"
+              title="Filtrar dados da plataforma por parceiro / equipe"
             >
               <Users className={cn('size-4 shrink-0', isFilterActive ? 'text-primary' : 'text-muted-foreground')} />
               <span className="hidden xs:inline-block max-w-[130px] sm:max-w-[180px] truncate">
-                {isFilterActive ? selectedFilterLabel : 'Equipe: Todos'}
+                {isFilterActive ? selectedFilterLabel : 'Parceiro: Todos'}
               </span>
               {isFilterActive && (
                 <span className="flex size-4 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-primary-foreground">
@@ -115,7 +115,7 @@ export function AdminTeamFilter({ variant = 'header', className }: AdminTeamFilt
           >
             <Users className="size-4 shrink-0" />
             <span className="truncate max-w-[200px]">
-              {isFilterActive ? `Responsável: ${selectedFilterLabel}` : 'Visualizar: Todos'}
+              {isFilterActive ? `Parceiro: ${selectedFilterLabel}` : 'Parceiro: Todos'}
             </span>
             {isFilterActive && (
               <Badge variant="secondary" className="px-1.5 py-0 text-[10px] bg-primary/20 text-primary">
@@ -131,9 +131,9 @@ export function AdminTeamFilter({ variant = 'header', className }: AdminTeamFilt
         <div className="p-3.5 border-b bg-muted/20">
           <div className="flex items-center justify-between gap-2">
             <div>
-              <h4 className="font-semibold text-sm leading-tight">Visualização por Responsável</h4>
+              <h4 className="font-semibold text-sm leading-tight">Visualização por Parceiro / Equipe</h4>
               <p className="text-xs text-muted-foreground mt-0.5">
-                Cálculos e entregas calculados individualmente ou por grupo
+                Filtra pedidos, clientes, orçamentos, produtos e galeria
               </p>
             </div>
             {isFilterActive && (
@@ -152,7 +152,7 @@ export function AdminTeamFilter({ variant = 'header', className }: AdminTeamFilt
             <div className="relative mt-2.5">
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
               <Input
-                placeholder="Buscar membro da equipe..."
+                placeholder="Buscar parceiro ou membro da equipe..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="h-8 pl-8 text-xs bg-background"
@@ -184,7 +184,7 @@ export function AdminTeamFilter({ variant = 'header', className }: AdminTeamFilt
                   {!isFilterActive && <Check className="size-3.5 text-primary" />}
                 </div>
                 <p className="text-[11px] text-muted-foreground truncate">
-                  Todos os pedidos e cálculos consolidados
+                  Todos os dados da plataforma consolidados
                 </p>
               </div>
             </div>
@@ -243,9 +243,9 @@ export function AdminTeamFilter({ variant = 'header', className }: AdminTeamFilt
 
           <Separator className="my-1.5" />
 
-          {/* Seção: Membros da Equipe */}
+          {/* Seção: Parceiros & Equipe */}
           <div className="px-2 py-1 flex items-center justify-between text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
-            <span>Membros da Equipe ({filteredMembers.length})</span>
+            <span>Parceiros & Equipe ({filteredMembers.length})</span>
             <span className="text-[10px] font-normal normal-case text-muted-foreground">
               Selecione 1, 2 ou mais
             </span>
