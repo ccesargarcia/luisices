@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { useAuth } from '../../contexts/AuthContext';
+import { secureRandomId } from '../../utils/random';
 import { useUserSettings } from '../../hooks/useUserSettings';
 import { firebaseAiAgentService } from '../../services/firebaseAiAgentService';
 import { parseLlmJson } from '../../lib/robustJsonParser';
@@ -1000,7 +1001,7 @@ export function StoreCustomization() {
     try {
       const url = await uploadCatalogBannerImage(file);
       const newBanner: CatalogBannerItem = {
-        id: `b-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+        id: `b-${Date.now()}-${secureRandomId()}`,
         imageUrl: url,
         title: '',
         linkUrl: '',

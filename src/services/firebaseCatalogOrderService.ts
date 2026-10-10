@@ -22,6 +22,7 @@ import {
 import { db } from '../lib/firebase';
 import { CatalogOrder, CatalogOrderStatus, Order } from '../app/types';
 import { firebaseOrderService } from './firebaseOrderService';
+import { secureRandomNumber } from '../utils/random';
 
 const CATALOG_ORDERS_COLLECTION = 'catalogOrders';
 
@@ -116,7 +117,7 @@ class FirebaseCatalogOrderService {
     }
 
     const docData: Record<string, any> = {
-      orderCode: String(orderData.orderCode || `LJ-${Math.floor(1000 + Math.random() * 9000)}`),
+      orderCode: String(orderData.orderCode || `LJ-${secureRandomNumber(1000, 10000)}`),
       items: sanitizedItems,
       totalItems: Number(orderData.totalItems || sanitizedItems.reduce((acc, i) => acc + (i.quantity || 1), 0)),
       subtotal: Number(orderData.subtotal || 0),

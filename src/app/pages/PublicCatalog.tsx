@@ -54,6 +54,7 @@ import {
   InstitutionalCustomSection,
 } from '../../services/firebaseSettingsService';
 import { firebaseCatalogOrderService } from '../../services/firebaseCatalogOrderService';
+import { secureRandomId, secureRandomNumber } from '../../utils/random';
 import { toCdnUrl } from '../utils/cdnUtils';
 import { FormattedDescription } from '../components/FormattedDescription';
 import {
@@ -325,7 +326,7 @@ export function PublicCatalog() {
       if (!Array.isArray(parsed)) return [];
       return parsed.map((item: any, idx: number) => ({
         ...item,
-        id: item.id || `cart-${idx}-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+        id: item.id || `cart-${idx}-${Date.now()}-${secureRandomId()}`,
       }));
     } catch {
       return [];
@@ -891,7 +892,7 @@ export function PublicCatalog() {
           idx === existingIndex ? { ...item, quantity: item.quantity + quantity } : item
         );
       }
-      const newItemId = `item-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+      const newItemId = `item-${Date.now()}-${secureRandomId()}`;
       return [...prev, { id: newItemId, product, quantity, customName: trimmedCustom || undefined }];
     });
   }, []);
@@ -942,7 +943,7 @@ export function PublicCatalog() {
 
     setSubmittingOrder(true);
 
-    const orderCode = `LJ-${Math.floor(1000 + Math.random() * 9000)}`;
+    const orderCode = `LJ-${secureRandomNumber(1000, 10000)}`;
 
     const msg = generateCatalogOrderWhatsAppMessage({
       orderCode,

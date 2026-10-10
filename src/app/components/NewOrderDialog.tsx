@@ -15,6 +15,7 @@ import { firebaseStorageService } from '../../services/firebaseStorageService';
 import { firebaseCustomerService } from '../../services/firebaseCustomerService';
 import { firebaseProductService } from '../../services/firebaseProductService';
 import { firebaseGalleryService } from '../../services/firebaseGalleryService';
+import { secureRandomId } from '../../utils/random';
 import { useAuth } from '../../contexts/AuthContext';
 import { useOrders } from '../../contexts/OrdersContext';
 import { useUserSettingsContext } from '../../contexts/UserSettingsContext';
@@ -399,7 +400,7 @@ export function NewOrderDialog({
 
       for (const g of pendingGallery) {
         try {
-          const tempId = `${Date.now()}_${Math.random().toString(36).slice(2)}`;
+          const tempId = `${Date.now()}_${secureRandomId()}`;
           const imageUrl = await firebaseGalleryService.uploadImage(g.file, user.uid, tempId);
           await firebaseGalleryService.createItem(user.uid, {
             title: g.title,

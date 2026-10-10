@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import DOMPurify from 'dompurify';
 import { ConceptResult, CutSheetPreview } from '../types';
+import { secureRandomNumber } from '../utils/random';
 import { 
   Check, 
   Copy, 
@@ -46,7 +47,7 @@ export const ResultViewer: React.FC<ResultViewerProps> = ({ result }) => {
 
   const handleRegenerateMockup = () => {
     setIsRegenerating(true);
-    const seed = Math.floor(Math.random() * 900000) + 10000;
+    const seed = secureRandomNumber(10000, 910000);
     const prompt = result.renderedPrompt || `Professional commercial studio product photography of a luxury handcrafted 3D layered paper cake topper, theme "${sheet.theme}", customized script text "${sheet.recipientName}", crafted from physical pastel Colorplus cardstock layers and reflective gold mirror lamicote cardstock, elevated with 2mm foam banana tape, standing on an elegant pastel frosted cake, soft diffused studio light, sharp focus on paper cutout textures and drop shadows, 8k resolution`;
     const newUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=1024&height=1024&nologo=true&model=flux&seed=${seed}`;
 
