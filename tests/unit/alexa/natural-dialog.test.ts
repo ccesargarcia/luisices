@@ -839,6 +839,34 @@ describe('Alexa: Diálogo Natural, Contextual e Catálogo Controlado (Fases 1 a 
     });
   });
 
+  it('TTL de aprovação no modo app usa a mesma fonte do prompt, sem alterar prazo de voz', async () => {
+    const { APP_APPROVAL_TTL_MINUTES, DRAFT_TTL_MINUTES } = require('../../../functions/alexa/constants');
+    const { COPILOT_SYSTEM_INSTRUCTION } = require('../../../functions/ai/schemas');
+    const draftId = 'synthetic-app-ttl';
+    const sessionId = 'synthetic-session-ttl';
+    const db = createMockDb({ alexaDrafts: { [draftId]: {
+      draftId, sessionId, uid: identity.uid, bindingKey: identity.bindingKey,
+      personId: identity.personId, environment: 'dev', mode: 'app_approval',
+      state: 'awaiting_confirmation', customer: 'Pessoa Sintética', product: 'Caixa',
+      quantity: 10, price: 100, deliveryDate: '2026-10-25', revision: 1,
+      expiresAt: { toDate: () => new Date(Date.now() + DRAFT_TTL_MINUTES * 60 * 1000) },
+    } } });
+    const before = Date.now();
+    const result = await handleAlexaDialog({
+      envelope: { session: { sessionId, attributes: { draftId, revision: 1 } },
+        request: { type: 'IntentRequest', intent: { name: 'AMAZON.YesIntent' } } },
+      identity, config: baseConfig, db,
+      authService: { getUser: async (uid: string) => ({ uid, disabled: false }) },
+    });
+    expect(result.shouldEndSession).toBe(true);
+    expect(db.store.alexaDrafts[draftId].state).toBe('awaiting_app_approval');
+    const expires = db.store.alexaDrafts[draftId].expiresAt.toDate().getTime();
+    expect(expires).toBeGreaterThanOrEqual(before + APP_APPROVAL_TTL_MINUTES * 60 * 1000);
+    expect(expires).toBeLessThanOrEqual(Date.now() + APP_APPROVAL_TTL_MINUTES * 60 * 1000);
+    expect(COPILOT_SYSTEM_INSTRUCTION).toContain(`renovada para ${APP_APPROVAL_TTL_MINUTES / 60} horas`);
+    expect(COPILOT_SYSTEM_INSTRUCTION).toContain(`rascunho inicial Alexa vale ${DRAFT_TTL_MINUTES} minutos`);
+  });
+
   describe('7. Imutabilidade de awaiting_app_approval', () => {
     it('rejeita qualquer alteração por voz quando pedido está em awaiting_app_approval', async () => {
       const draftId = 'draft-app-locked';
@@ -2309,6 +2337,10 @@ describe('Alexa: Diálogo Natural, Contextual e Catálogo Controlado (Fases 1 a 
         expiresAt: { toDate: () => new Date(Date.now() + 10 * 60 * 1000) },
       };
 
+      const originalExpiry = mockDb.store.alexaDrafts[draftId].expiresAt.toDate().getTime();
+      // Timestamp persistido é estável; não deve avançar a cada chamada de toDate.
+      mockDb.store.alexaDrafts[draftId].expiresAt = { toDate: () => new Date(originalExpiry) };
+
       // 1ª tentativa: Envelope com "Sim" sem biometria física
       const envelope = {
         session: { sessionId, attributes: { draftId, revision: 1 } },
@@ -2348,6 +2380,7 @@ describe('Alexa: Diálogo Natural, Contextual e Catálogo Controlado (Fases 1 a 
       expect(res3.speech).toContain('Por segurança, o pedido foi enviado para aprovação no aplicativo Luisices');
       expect(mockDb.store.alexaDrafts[draftId].state).toBe('awaiting_app_approval');
       expect(mockDb.store.alexaDrafts[draftId].voiceConfirmationFailures).toBe(3);
+      expect(mockDb.store.alexaDrafts[draftId].expiresAt.toDate().getTime()).toBe(originalExpiry);
       expect(Object.keys(mockDb.store.orders).length).toBe(0);
     });
 

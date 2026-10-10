@@ -144,13 +144,14 @@ export function NewOrderDialog({
         deliveryDate: initialDraft.deliveryDate || prev.deliveryDate,
         notes: initialDraft.notes || prev.notes,
         paymentMethod: (initialDraft.paymentMethod as PaymentMethod) || prev.paymentMethod,
+        paidAmount: initialDraft.paidAmount != null ? String(initialDraft.paidAmount) : prev.paidAmount,
       }));
 
       if (initialDraft.productName) {
         const qty = initialDraft.quantity || 1;
-        const unit = initialDraft.unitPrice
+        const unit = initialDraft.unitPrice != null
           ? String(initialDraft.unitPrice)
-          : (initialDraft.totalPrice ? String(initialDraft.totalPrice / qty) : '');
+          : (initialDraft.totalPrice != null ? String(initialDraft.totalPrice / qty) : '');
 
         setProducts([
           {
@@ -377,6 +378,7 @@ export function NewOrderDialog({
       });
 
       trackOrderCreated(createdOrder.id, totalAmount, formData.status);
+      toast.success('Pedido salvo com sucesso.');
 
       if (pendingFiles.length > 0) {
         setIsUploadingAttachment(true);
@@ -456,7 +458,7 @@ export function NewOrderDialog({
       setGalleryBrowserSearch('');
     } catch (err) {
       console.error('Erro ao criar pedido:', err);
-      toast.error('Erro ao criar pedido. Tente novamente.');
+      toast.error('Não foi possível confirmar o salvamento. Confira a lista de pedidos antes de tentar novamente.');
       setOpen(false);
     } finally {
       setLoading(false);
@@ -480,7 +482,7 @@ export function NewOrderDialog({
       <DialogContent size="2xl" noPadding className="max-h-[90dvh] flex flex-col overflow-hidden">
         <DialogHeader className="p-4 sm:p-6 pb-3 border-b border-border">
           <DialogTitle>Adicionar Novo Pedido</DialogTitle>
-          <DialogDescription className="sr-only">Formulário para criar um novo pedido</DialogDescription>
+          <DialogDescription className={initialDraft ? '' : 'sr-only'}>{initialDraft ? 'Dados do rascunho carregados no formulário. Revise e confirme para salvar; o pedido ainda não foi criado.' : 'Formulário para criar um novo pedido'}</DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0 overflow-hidden">
           <DialogBody className="p-4 sm:p-6 space-y-4">

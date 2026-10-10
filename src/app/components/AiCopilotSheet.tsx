@@ -34,9 +34,9 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useOrders } from '../../contexts/OrdersContext';
 import { firebaseAiAgentService } from '../../services/firebaseAiAgentService';
 import { firebaseOrderService } from '../../services/firebaseOrderService';
-import { useFirebaseCustomers } from '../../hooks/useFirebaseCustomers';
 import {
   AiChatMessage,
+  AiOperationState,
   AiOrderDraft,
   AiWhatsAppDraft,
   AiPricingEstimate,
@@ -47,6 +47,8 @@ import {
 import { OrderDetailsDialog } from './OrderDetailsDialog';
 import { toast } from 'sonner';
 import { formatCurrency } from '../utils/currency';
+import { confirmAiWhatsAppSend, isAiSendFailureConfirmed } from '../utils/aiOperations';
+import { AiPricingDetails } from './AiPricingDetails';
 import { optimizeImageForAi } from '../utils/imageOptimizer';
 
 export type { AiCopilotSheetProps };
@@ -92,30 +94,21 @@ interface WhatsAppComposerProps {
 function WhatsAppComposer({ draft, onSendVariantRequest, disabled }: WhatsAppComposerProps) {
   const { hasPermission, isAdmin } = useAuth();
   const canUseWhatsApp = isAdmin || hasPermission((p) => Boolean(p?.whatsapp));
-  const { customers } = useFirebaseCustomers();
   const [phone, setPhone] = useState(draft.recipientPhone || '');
   const [recipientName, setRecipientName] = useState(draft.recipientName || '');
   const [message, setMessage] = useState(draft.messageText || '');
   const [copied, setCopied] = useState(false);
   const [sendingViaApi, setSendingViaApi] = useState(false);
-  const [sentSuccess, setSentSuccess] = useState(false);
+  const [operationState, setOperationState] = useState<AiOperationState>('draft_prepared');
+  const sendLock = useRef(false);
 
   useEffect(() => {
     setMessage(draft.messageText || '');
-    let resolvedPhone = draft.recipientPhone || '';
-    if (!resolvedPhone && draft.recipientName && customers.length > 0) {
-      const term = draft.recipientName.toLowerCase().trim();
-      const matched = customers.find(
-        (c) => c.name && (c.name.toLowerCase().includes(term) || term.includes(c.name.toLowerCase()))
-      );
-      if (matched && matched.phone) {
-        resolvedPhone = matched.phone;
-      }
-    }
-    setPhone(resolvedPhone);
+    setPhone(draft.recipientPhone || '');
     if (draft.recipientName) setRecipientName(draft.recipientName);
-    setSentSuccess(false);
-  }, [draft, customers]);
+    // Não apague o estado de envio quando outro rascunho chegar durante a operação.
+    if (!sendLock.current) setOperationState('draft_prepared');
+  }, [draft]);
 
   const handleCopy = async () => {
     try {
@@ -142,15 +135,20 @@ function WhatsAppComposer({ draft, onSendVariantRequest, disabled }: WhatsAppCom
       return;
     }
 
+    if (sendLock.current || operationState === 'unconfirmed' || operationState === 'backend_completed') return;
+    sendLock.current = true;
     setSendingViaApi(true);
     try {
-      const res = await firebaseAiAgentService.sendWhatsAppDirectMessage(phone, message);
-      setSentSuccess(true);
+      const res = await confirmAiWhatsAppSend(
+        () => firebaseAiAgentService.sendWhatsAppDirectMessage(phone, message),
+        setOperationState,
+      );
       toast.success(res.message || 'Mensagem enviada com sucesso para o WhatsApp!');
     } catch (err: any) {
       console.error('[WhatsAppComposer] Erro ao disparar mensagem:', err);
-      toast.error(err.message || 'Erro ao enviar para o WhatsApp. Você pode usar a opção de abrir no WhatsApp Web.');
+      toast.error(isAiSendFailureConfirmed(err) ? (err.message || 'O envio foi recusado pelo sistema.') : 'Envio não confirmado. Confira o histórico no Atendimento antes de tentar novamente; a mensagem pode ter sido enviada.');
     } finally {
+      sendLock.current = false;
       setSendingViaApi(false);
     }
   };
@@ -166,6 +164,7 @@ function WhatsAppComposer({ draft, onSendVariantRequest, disabled }: WhatsAppCom
       ? `https://wa.me/${formattedPhone}?text=${encodedText}`
       : `https://wa.me/?text=${encodedText}`;
     window.open(url, '_blank', 'noopener,noreferrer');
+    toast.info('Texto preparado no WhatsApp. Conclua o envio lá; abrir a janela não confirma envio.');
   };
 
   const VARIANTS = [
@@ -194,13 +193,17 @@ function WhatsAppComposer({ draft, onSendVariantRequest, disabled }: WhatsAppCom
         </div>
       )}
 
-      {sentSuccess && (
+      {operationState === 'backend_completed' && (
         <div className="p-2.5 bg-emerald-500/15 border border-emerald-500/40 rounded-lg text-xs font-semibold text-emerald-800 dark:text-emerald-300 flex items-center gap-2">
           <Check className="size-4 text-emerald-600 shrink-0" />
           <span>Mensagem disparada com sucesso para o WhatsApp!</span>
         </div>
       )}
 
+      {operationState === 'failed' && <p className="text-xs text-amber-700">O sistema recusou o envio. Confira os dados e sua permissão antes de tentar novamente.</p>}
+      {operationState === 'unconfirmed' && <p className="text-xs text-amber-700">Resultado não confirmado. Confira o Atendimento antes de reenviar, inclusive pelo WhatsApp Web.</p>}
+      {operationState === 'draft_prepared' && <p className="text-xs">Rascunho preparado. Revise destinatário e texto antes de confirmar o envio.</p>}
+      {operationState === 'user_confirmed' && <p className="text-xs">Envio confirmado por você; aguardando o backend.</p>}
       {/* Seletor rápido de tipos de mensagem */}
       <div className="space-y-1">
         <span className="text-[10px] font-medium text-muted-foreground">Trocar formato da mensagem com 1 clique:</span>
@@ -209,7 +212,7 @@ function WhatsAppComposer({ draft, onSendVariantRequest, disabled }: WhatsAppCom
             <button
               key={v.type}
               type="button"
-              onClick={() => onSendVariantRequest(`${v.prompt} para ${recipientName || 'o cliente'}`)}
+              onClick={() => onSendVariantRequest(`${v.prompt} para ${recipientName || 'o cliente'}${draft.orderDetails?.orderId ? `, pedido ID ${draft.orderDetails.orderId}` : draft.orderNumber ? `, pedido ${draft.orderNumber}` : ''}`)}
               disabled={disabled || sendingViaApi}
               className={`text-[11px] px-2 py-1 rounded-md border transition-colors ${
                 draft.type === v.type
@@ -272,7 +275,7 @@ function WhatsAppComposer({ draft, onSendVariantRequest, disabled }: WhatsAppCom
           size="sm"
           className="flex-1 gap-1.5 text-xs sm:text-sm h-10 sm:h-9 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold shadow-xs"
           onClick={handleSendViaWhatsAppApi}
-          disabled={sendingViaApi || !message.trim() || !canUseWhatsApp}
+          disabled={sendingViaApi || operationState === 'unconfirmed' || operationState === 'backend_completed' || !message.trim() || !canUseWhatsApp}
           title={!canUseWhatsApp ? 'Você não possui permissão para envio de mensagens no módulo de Atendimento' : undefined}
         >
           {sendingViaApi ? (
@@ -651,7 +654,7 @@ export function AiCopilotSheet({
     if (onApplyOrderDraft) {
       onApplyOrderDraft(draft);
       onOpenChange(false);
-      toast.info('Dados carregados no formulário de Novo Pedido!');
+      toast.info('Dados carregados no formulário. Revise e confirme para salvar o pedido.');
     }
   };
 
@@ -818,13 +821,7 @@ export function AiCopilotSheet({
                         </div>
                       </div>
 
-                      {msg.pricingEstimate.breakdown && (
-                        <div className="text-[11px] text-muted-foreground space-y-0.5 border-t border-amber-500/10 pt-1.5">
-                          <div>• Matéria-prima base: {formatCurrency(msg.pricingEstimate.breakdown.materials || 0)}/un</div>
-                          <div>• Insumos estamparia: {formatCurrency(msg.pricingEstimate.breakdown.customization || 0)}/un</div>
-                          <div>• Mão de obra estimada: {formatCurrency(msg.pricingEstimate.breakdown.labor || 0)}/un</div>
-                        </div>
-                      )}
+                      <AiPricingDetails estimate={msg.pricingEstimate} />
                     </div>
                   )}
 

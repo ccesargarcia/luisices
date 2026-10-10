@@ -4,6 +4,7 @@
  */
 
 const crypto = require('crypto');
+const { DRAFT_TTL_MINUTES, APP_APPROVAL_TTL_MINUTES } = require('./constants');
 const admin = require('firebase-admin');
 const { escapeXmlCharacters } = require('ask-sdk-core');
 const { COLLECTIONS, recordAuditEvent } = require('./repository');
@@ -1668,7 +1669,7 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
       txDraftId = newDraftId;
       txDraftRef = db.collection(COLLECTIONS.DRAFTS).doc(newDraftId);
       const now = Date.now();
-      const ttlMs = (config.draftTtlMinutes || 15) * 60 * 1000;
+      const ttlMs = (config.draftTtlMinutes || DRAFT_TTL_MINUTES) * 60 * 1000;
       const expiresAt = new Date(now + ttlMs);
       existingData = {
         draftId: newDraftId,
@@ -2648,7 +2649,7 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
             const isExpired = expiresAt > 0 && expiresAt <= now;
 
             if (isOwner && isSameBinding && isSameEnv && isSameRevision && isAwaiting && !isExpired) {
-              const appExpiresAt = new Date(now + 24 * 60 * 60 * 1000);
+              const appExpiresAt = new Date(now + APP_APPROVAL_TTL_MINUTES * 60 * 1000);
               transaction.update(draftRef, {
                 sessionId: sessionId || dData.sessionId,
                 state: 'awaiting_app_approval',

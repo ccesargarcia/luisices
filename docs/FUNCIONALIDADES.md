@@ -59,7 +59,7 @@ Excluir/alterar um cadastro não deve ser interpretado como remoção automátic
 
 Orçamentos têm itens, descontos, status, exportação e conversão em pedido. Produtos internos e itens da loja são cadastros distintos. A precificação trabalha com insumos, compras, receitas, perdas, mão de obra, setup, despesas e margem.
 
-A estimativa do Copiloto usa um cálculo próprio apoiado no motor compartilhado de regras, mas pode preencher entradas ausentes com padrões. Não equivale automaticamente ao preço aprovado de um produto nem a um orçamento salvo. O atendente precisa conferir custos, quantidade, tempo e premissas.
+A estimativa do Copiloto reutiliza o motor de regras com setup rateado pela quantidade. O texto e o card identificam argumentos recebidos, configurações cadastradas e padrões assumidos; um argumento da ferramenta não comprova que foi informado pelo usuário. Zeros explícitos são preservados e argumentos inválidos são recusados. Os detalhes distinguem materiais, personalização, perdas, montagem e setup sem duplicar despesas fixas. Históricos antigos continuam visíveis com adaptação explícita. Não equivale a preço aprovado nem orçamento salvo; o atendente precisa revisar as premissas.
 
 Fontes: [Quotes](../src/app/pages/Quotes.tsx), [Pricing](../src/app/pages/Pricing.tsx), [serviço de precificação](../src/services/firebasePricingService.ts).
 
@@ -75,7 +75,7 @@ Fontes: [PublicCatalog](../src/app/pages/PublicCatalog.tsx), [StoreProducts](../
 
 **E-mail:** envio e recebimento via Resend, anexos e acompanhamento de consumo. O backend aceita administradores ou contas com a permissão de envio correspondente. O formulário mantém chave de idempotência em repetições da mesma tentativa; consulte o [contrato de recuperação](RECUPERACAO_ENVIO_EMAIL.md).
 
-**WhatsApp:** rascunho e envio são operações distintas. A central consulta mensagens e permite ações conforme autorização. O Copiloto pode preparar um texto; o usuário revisa e usa o botão de envio ou abre o WhatsApp.
+**WhatsApp:** rascunho e envio são operações distintas. A central consulta mensagens e permite ações conforme autorização. O Copiloto prepara um rascunho; o usuário revisa e confirma o envio. A interface mostra sucesso somente após retorno `success === true` do backend; um resultado incerto não gera repetição automática e orienta conferir o Atendimento. Abrir WhatsApp Web apenas carrega o texto. Homônimos/pedidos não localizados exigem identificação; cobrança e status usam somente fatos comprovados, sem presumir embalagem por pedido concluído.
 
 O modelo atual de conversa usa telefone e proprietário. Clientes de parceiros diferentes podem ter o mesmo telefone, mas isso ainda não cria caixas independentes para cada parceiro. Veja [o contrato atual](ISOLAMENTO_WHATSAPP_PARCEIROS.md).
 
@@ -89,7 +89,7 @@ O modelo atual de conversa usa telefone e proprietário. Clientes de parceiros d
 | Saldo pendente | Valor ainda devido conforme os registros consultados |
 | Caixa por data de pagamento | Exige selecionar eventos de pagamento pela data de recebimento; não é sinônimo dos itens acima |
 
-O financeiro do Copiloto filtra pedidos principalmente por `createdAt`. Seu “recebido” refere-se aos pagamentos acumulados desses pedidos; não comprova entradas de caixa ocorridas no período solicitado. Ele consulta `orders`, enquanto o histórico de clientes utiliza o ledger. Não prometer igualdade entre bases sem reconciliação.
+O financeiro do Copiloto filtra pedidos por `createdAt` (ou todo o histórico sem filtro). Pedidos sem criação válida ficam fora de intervalos, sem usar entrega ou data atual como substituto. “Pagamentos registrados nos pedidos selecionados” refere-se aos pagamentos acumulados desses pedidos; não comprova entradas de caixa ocorridas no período solicitado. Ele consulta `orders`, enquanto o histórico de clientes utiliza o ledger. Não prometer igualdade entre bases sem reconciliação.
 
 Resumos mensais têm contrato próprio: [integridade dos rollups](INTEGRIDADE_ROLLUPS_FINANCEIROS.md). Relatórios permitem exportações; o Copiloto não tem ferramenta para gerar/anexar esses arquivos.
 
@@ -103,11 +103,13 @@ Consulte [sessões](SEGURANCA_DESCONEXAO_DISPOSITIVOS.md) e [presença](CORRECAO
 
 ## IA e Alexa
 
-O Copiloto tem nove ferramentas de consulta/preparação; enriquecimento de imagens usa callables separados. Leia [capacidades e proposta de prompt](COPILOTO_IA.md).
+O Copiloto tem nove ferramentas de consulta/preparação; enriquecimento de imagens usa callables separados. Leia [capacidades, contratos e prompt aplicado](COPILOTO_IA.md).
 
-Alexa é uma integração independente, com pareamento, autorização e modos de confirmação por voz ou aprovação no app. A configuração atual estabelece 15 minutos para rascunhos e 5 minutos para códigos de pareamento. Consulte a interface e a configuração do ambiente; não aplicar a janela de convites de usuários a rascunhos Alexa.
+Alexa é uma integração independente, com pareamento, autorização e modos de confirmação por voz ou aprovação no app. A configuração atual estabelece 15 minutos para rascunhos iniciais e 5 minutos para códigos de pareamento. No modo `app_approval`, o diálogo renova a validade para 24 horas ao encaminhar para o aplicativo; o encaminhamento de segurança após falhas de voz mantém a validade inicial. O prompt diferencia essas condições a partir de constantes compartilhadas. Consulte a interface e a configuração do ambiente; não aplicar a janela de convites de usuários a rascunhos Alexa.
 
-Fontes: [configuração Alexa](../functions/alexa/config.js), [diálogo](../functions/alexa/dialog.js).
+**Estado desta entrega:** contratos implementados e validados localmente, ainda sem publicação em DEV. Histórico por cliente, consulta de orçamentos, estoque e planejamento semanal no chat continuam propostos.
+
+Fontes: [constantes compartilhadas](../functions/alexa/constants.js), [configuração Alexa](../functions/alexa/config.js), [diálogo](../functions/alexa/dialog.js).
 
 ## Mobile e instalação
 

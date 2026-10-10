@@ -11,8 +11,7 @@ const ALEXA_IDENTITY_HMAC_KEY = defineSecret('ALEXA_IDENTITY_HMAC_KEY');
 const DEFAULT_TIMEZONE = 'America/Sao_Paulo';
 const MAX_REQUEST_BODY_SIZE = 128 * 1024; // 128 KiB
 const MAX_TIMESTAMP_AGE_SECONDS = 150; // 150 segundos de tolerância da Amazon
-const DRAFT_TTL_MINUTES = 15;
-const PAIRING_CODE_TTL_MINUTES = 5;
+const { DRAFT_TTL_MINUTES, APP_APPROVAL_TTL_MINUTES, PAIRING_CODE_TTL_MINUTES } = require('./constants');
 
 /**
  * Lê a configuração ativa do ambiente e valida combinações permitidas.
@@ -90,6 +89,7 @@ async function getAlexaConfig(db = null) {
     maxRequestBodySize: MAX_REQUEST_BODY_SIZE,
     maxTimestampAgeSeconds: MAX_TIMESTAMP_AGE_SECONDS,
     draftTtlMinutes: DRAFT_TTL_MINUTES,
+    appApprovalTtlMinutes: APP_APPROVAL_TTL_MINUTES,
     pairingCodeTtlMinutes: PAIRING_CODE_TTL_MINUTES,
   };
 }
@@ -100,6 +100,7 @@ module.exports = {
   MAX_REQUEST_BODY_SIZE,
   MAX_TIMESTAMP_AGE_SECONDS,
   DRAFT_TTL_MINUTES,
+  APP_APPROVAL_TTL_MINUTES,
   PAIRING_CODE_TTL_MINUTES,
   getAlexaConfig,
 };
