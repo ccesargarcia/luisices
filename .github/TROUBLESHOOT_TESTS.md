@@ -78,11 +78,12 @@ firebase firestore:get users/{UID} --project luisices-dev
      }
      ```
 
-#### Opção B: Via script (se `make-admin.mjs` suportar)
-```bash
-# Adaptar script existente
-node scripts/make-admin.mjs admin@exemplo.com
-```
+#### Opção B: Pela administração da aplicação
+
+Para contas existentes, use uma sessão administrativa autorizada e a tela
+**Usuários**. As alterações de perfil passam pela callable `updateUser`.
+O antigo script de autopromoção foi removido: as regras atuais bloqueiam
+alterações diretas de papel e permissões pelo cliente.
 
 ---
 
