@@ -163,6 +163,27 @@ service cloud.firestore {
         || isAdmin();
     }
 
+    // Regras para resumos mensais consolidados de vendas (salesMonthlySummaries)
+    match /salesMonthlySummaries/{summaryId} {
+      allow read: if request.auth != null && (
+        (resource != null && (
+          ('userId' in resource.data && isOwner(resource.data.userId))
+          || isAdmin()
+        ))
+        || (resource == null && (isAdmin() || isActiveUser()))
+      );
+      allow create: if ('userId' in request.resource.data && isOwner(request.resource.data.userId)) || isAdmin();
+      allow update: if isAdmin() || (
+        resource != null
+        && 'userId' in resource.data
+        && 'userId' in request.resource.data
+        && request.resource.data.userId == resource.data.userId
+        && isOwner(resource.data.userId)
+      );
+      allow delete: if (resource != null && 'userId' in resource.data && isOwner(resource.data.userId))
+        || isAdmin();
+    }
+
     // Regras para clientes (customers)
     match /customers/{customerId} {
       allow read: if (resource != null && 'userId' in resource.data && isOwner(resource.data.userId))
