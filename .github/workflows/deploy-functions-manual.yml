@@ -185,6 +185,7 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.PROD_GEMINI || secrets.prod_gemini || secrets.PROD_GEMINI_API_KEY || secrets.GEMINI_API_KEY }}
           ORIGIN_SECRET: ${{ secrets.PROD_ORIGIN_SECRET || secrets.ORIGIN_SECRET }}
           ALEXA_HMAC: ${{ secrets.PROD_ALEXA_IDENTITY_HMAC_KEY || secrets.ALEXA_IDENTITY_HMAC_KEY }}
+          ALEXA_SKILL_ID: ${{ secrets.PROD_ALEXA_SKILL_ID || secrets.ALEXA_PROD_SKILL_ID || secrets.ALEXA_SKILL_ID }}
         run: |
           if [ -z "$FIREBASE_SERVICE_ACCOUNT" ]; then
             echo "❌ ERRO: Secret FIREBASE_SERVICE_ACCOUNT_PROD não encontrado no GitHub."
@@ -202,7 +203,8 @@ jobs:
             { name: 'PROD_EVOLUTION_API_KEY / EVOLUTION_API_KEY', val: process.env.EVOLUTION_API_KEY, required: true },
             { name: 'PROD_GEMINI / PROD_GEMINI_API_KEY / GEMINI_API_KEY', val: process.env.GEMINI_API_KEY, required: true },
             { name: 'PROD_ORIGIN_SECRET / ORIGIN_SECRET', val: process.env.ORIGIN_SECRET, required: false },
-            { name: 'PROD_ALEXA_IDENTITY_HMAC_KEY / ALEXA_IDENTITY_HMAC_KEY', val: process.env.ALEXA_HMAC, required: false }
+            { name: 'PROD_ALEXA_IDENTITY_HMAC_KEY / ALEXA_IDENTITY_HMAC_KEY', val: process.env.ALEXA_HMAC, required: false },
+            { name: 'PROD_ALEXA_SKILL_ID / ALEXA_PROD_SKILL_ID', val: process.env.ALEXA_SKILL_ID, required: false }
           ];
 
           console.log('\n=============================================================');
@@ -284,6 +286,24 @@ jobs:
             echo "🔐 Inicializando EVOLUTION_API_KEY no Secret Manager (Prod)..."
             echo "$EVOLUTION_API_KEY" > "$HOME/evolution_api_key.txt"
             firebase functions:secrets:set EVOLUTION_API_KEY --project papelaria-dashboard --data-file "$HOME/evolution_api_key.txt" --non-interactive --force || true
+          fi
+
+          if [ -n "$ALEXA_SKILL_ID" ]; then
+            echo "🔧 Sincronizando allowedSkillId no Firestore (papelaria-dashboard)..."
+            node -e '
+              const admin = require("firebase-admin");
+              admin.initializeApp();
+              admin.firestore().doc("integrationSettings/alexa").set({
+                allowedSkillId: process.env.ALEXA_SKILL_ID,
+                enabled: true
+              }, { merge: true }).then(() => {
+                console.log("✅ integrationSettings/alexa sincronizado no Firestore com sucesso!");
+                process.exit(0);
+              }).catch(err => {
+                console.warn("⚠️ Aviso ao sincronizar Firestore:", err.message);
+                process.exit(0);
+              });
+            ' || true
           fi
 
           # Determina se deve publicar regras e índices

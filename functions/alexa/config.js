@@ -39,7 +39,7 @@ async function getAlexaConfig(db = null) {
   
   // Skill ID padrão de desenvolvimento fornecida pelo operador
   const DEV_SKILL_ID = 'amzn1.ask.skill.1cd0031f-ada0-4da8-8721-2ad44b4b1c96';
-  let allowedSkillId = (process.env.ALEXA_SKILL_ID || '').trim() || (environment === 'dev' ? DEV_SKILL_ID : '');
+  let allowedSkillId = (process.env.ALEXA_SKILL_ID || (environment === 'prod' ? process.env.ALEXA_PROD_SKILL_ID : process.env.ALEXA_DEV_SKILL_ID) || '').trim() || (environment === 'dev' ? DEV_SKILL_ID : '');
   
   // Em dev, ativa por padrão se houver skillId; em produção permanece explicitamente desativada
   let isEnabled = environment === 'dev' ? true : (process.env.ALEXA_ENABLED === 'true');
