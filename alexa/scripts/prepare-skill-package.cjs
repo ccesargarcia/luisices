@@ -16,7 +16,7 @@ const DEFAULTS = {
   },
   prod: {
     endpoint: 'https://us-central1-papelaria-dashboard.cloudfunctions.net/alexaWebhook',
-    invocation: 'luisices',
+    invocation: 'ateliê',
     skillName: 'Luisices Ateliê',
     privacyPolicyUrl: 'https://luisices.com.br',
     testingInstructions: 'Ambiente de produção do ateliê Luisices.'

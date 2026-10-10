@@ -44,18 +44,18 @@ describe('Alexa: Preparação Multi-Ambiente do Pacote da Skill (DEV vs PROD)', 
 
     expect(res.env).toBe('prod');
     expect(res.endpoint).toBe('https://us-central1-papelaria-dashboard.cloudfunctions.net/alexaWebhook');
-    expect(res.invocation).toBe('luisices');
+    expect(res.invocation).toBe('ateliê');
     expect(res.skillName).toBe('Luisices Ateliê');
     expect(res.privacyPolicyUrl).toBe('https://luisices.com.br');
 
     const manifest = JSON.parse(fs.readFileSync(res.manifestPath, 'utf8'));
     expect(manifest.manifest.apis.custom.endpoint.uri).toBe('https://us-central1-papelaria-dashboard.cloudfunctions.net/alexaWebhook');
     expect(manifest.manifest.publishingInformation.locales['pt-BR'].name).toBe('Luisices Ateliê');
-    expect(manifest.manifest.publishingInformation.locales['pt-BR'].examplePhrases).toContain('Alexa, abrir luisices');
+    expect(manifest.manifest.publishingInformation.locales['pt-BR'].examplePhrases).toContain('Alexa, abrir ateliê');
     expect(manifest.manifest.privacyAndCompliance.locales['pt-BR'].privacyPolicyUrl).toBe('https://luisices.com.br');
 
     const interactionModel = JSON.parse(fs.readFileSync(res.interactionModelPath, 'utf8'));
-    expect(interactionModel.interactionModel.languageModel.invocationName).toBe('luisices');
+    expect(interactionModel.interactionModel.languageModel.invocationName).toBe('ateliê');
   });
 
   it('deve respeitar overrides de endpoint, nome e invocação customizados', () => {
