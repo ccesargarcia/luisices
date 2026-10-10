@@ -492,7 +492,7 @@ export function WhatsAppChat() {
 
   return (
     <div className="flex flex-col h-[calc(100dvh-4rem)] max-h-[calc(100dvh-4rem)] overflow-hidden bg-background">
-      <div className="px-3 sm:px-4 py-2 sm:py-2.5 luisices-glass border-b flex items-center justify-between gap-2 sm:gap-3 shrink-0 min-w-0">
+      <div className={`px-3 sm:px-4 py-2 sm:py-2.5 luisices-glass border-b items-center justify-between gap-2 sm:gap-3 shrink-0 min-w-0 ${selectedPhone ? 'hidden md:flex' : 'flex'}`}>
         <div className="flex items-center gap-2 sm:gap-2.5 min-w-0">
           <div className="p-1.5 sm:p-2 bg-primary/10 text-primary rounded-xl shrink-0">
             <MessageSquare className="size-4 sm:size-5" />

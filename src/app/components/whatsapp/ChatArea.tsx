@@ -16,6 +16,7 @@ import { Avatar, AvatarFallback } from '../ui/avatar';
 import { Badge } from '../ui/badge';
 import { formatPhoneForDisplay } from '../../utils/whatsapp';
 import { WhatsAppMessage, Order } from '../../types';
+import { cn } from '../ui/utils';
 import { MessageBubble } from './MessageBubble';
 import { ChatInput } from './ChatInput';
 
@@ -114,84 +115,94 @@ export function ChatArea({
   return (
     <>
       {/* Header do Chat Selecionado */}
-      <div className="px-4 py-3 border-b luisices-glass flex items-center justify-between gap-3 shrink-0">
-        <div className="flex items-center gap-3 min-w-0">
+      <div className="px-2.5 sm:px-4 py-2 sm:py-3 border-b luisices-glass flex items-center justify-between gap-2 sm:gap-3 shrink-0 min-w-0">
+        {/* Lado Esquerdo: Voltar + Avatar + Dados do Cliente */}
+        <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
+          {/* Botão Voltar (Mobile First: apenas ícone limpo para não ocupar espaço horizontal) */}
           <Button
             variant="ghost"
-            size="sm"
-            className="md:hidden h-9 px-2 shrink-0 text-foreground bg-primary/10 hover:bg-primary/20 gap-1 rounded-xl cursor-pointer transition-colors"
+            size="icon"
+            className="md:hidden size-8 shrink-0 text-foreground bg-primary/10 hover:bg-primary/20 rounded-full cursor-pointer transition-colors"
             onClick={onClearSelectedPhone}
+            title="Voltar para conversas"
+            aria-label="Voltar para conversas"
           >
             <ArrowLeft className="size-4" />
-            <span className="text-xs font-semibold">Voltar</span>
           </Button>
 
-          <Avatar className="size-9 shrink-0 border">
+          {/* Avatar com inicial do cliente */}
+          <Avatar className="size-8 sm:size-9 shrink-0 border border-border/60">
             <AvatarFallback className="bg-primary text-white text-xs font-bold">
               {activeCustomer?.name ? activeCustomer.name.slice(0, 2).toUpperCase() : 'WA'}
             </AvatarFallback>
           </Avatar>
 
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <h2 className="text-sm font-bold text-foreground truncate">
+          {/* Nome e Telefone com truncamento seguro (nunca sobrepõe botões à direita) */}
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-1.5 min-w-0">
+              <h2 className="text-xs sm:text-sm font-bold text-foreground truncate leading-tight">
                 {activeCustomer?.name || formatPhoneForDisplay(selectedPhone)}
               </h2>
               {activeCustomerOrders.length > 0 && (
                 <Badge
                   variant="outline"
-                  className="text-[10px] bg-primary/10 text-primary dark:text-primary border-primary/30 font-medium hidden sm:inline-flex"
+                  className="text-[9px] sm:text-[10px] px-1.5 py-0 bg-primary/10 text-primary border-primary/30 font-medium hidden md:inline-flex shrink-0"
                 >
-                  {activeCustomerOrders.length} Pedido(s)
+                  {activeCustomerOrders.length} ped.
                 </Badge>
               )}
             </div>
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <Phone className="size-3 shrink-0" />
-              <span>{formatPhoneForDisplay(selectedPhone)}</span>
+            <div className="flex items-center gap-1 text-[11px] sm:text-xs text-muted-foreground truncate leading-tight mt-0.5">
+              <Phone className="size-2.5 sm:size-3 shrink-0 opacity-70" />
+              <span className="truncate">{formatPhoneForDisplay(selectedPhone)}</span>
             </div>
           </div>
         </div>
 
-        <div className="flex items-center gap-1.5 shrink-0">
+        {/* Lado Direito: Ações (Sincronizar, WhatsApp Web, Selecionar) */}
+        <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
+          {/* Botão Sincronizar: ícone compacto no mobile, com texto no desktop */}
           <Button
             variant="outline"
             size="sm"
-            className="h-8 text-xs gap-1.5 cursor-pointer"
+            className="h-8 px-2 sm:px-2.5 text-xs gap-1.5 cursor-pointer rounded-lg"
             onClick={onSyncMessages}
             disabled={syncingMessages}
             title="Sincronizar mensagens recentes do WhatsApp"
           >
-            <RefreshCw className={`size-3.5 ${syncingMessages ? 'animate-spin' : ''}`} />
-            <span className="hidden sm:inline">
+            <RefreshCw className={cn('size-3.5', syncingMessages && 'animate-spin')} />
+            <span className="hidden md:inline">
               {syncingMessages ? 'Sincronizando...' : 'Sincronizar'}
             </span>
           </Button>
 
+          {/* WhatsApp Web: apenas em telas médias e grandes (oculto no mobile para economizar espaço) */}
           <Button
             variant="outline"
             size="sm"
-            className="h-8 text-xs gap-1.5 cursor-pointer"
+            className="h-8 px-2.5 text-xs gap-1.5 cursor-pointer rounded-lg hidden sm:inline-flex"
             onClick={onOpenWhatsAppWeb}
             title="Abrir no WhatsApp Web"
           >
             <ExternalLink className="size-3.5" />
-            <span className="hidden sm:inline">WhatsApp Web</span>
+            <span className="hidden md:inline">WhatsApp Web</span>
           </Button>
 
+          {/* Botão Selecionar / Cancelar modo de seleção */}
           <Button
             variant={isSelectionMode ? 'default' : 'outline'}
             size="sm"
-            className={`h-8 text-xs gap-1.5 cursor-pointer ${
+            className={cn(
+              'h-8 px-2 sm:px-2.5 text-xs gap-1.5 cursor-pointer rounded-lg',
               isSelectionMode
                 ? 'bg-primary text-primary-foreground hover:bg-primary/90'
                 : 'border-primary/30 text-primary hover:bg-primary/10'
-            }`}
+            )}
             onClick={onToggleSelectionMode}
             title={isSelectionMode ? 'Sair do modo de seleção' : 'Selecionar várias mensagens para apagar'}
           >
             {isSelectionMode ? <X className="size-3.5" /> : <CheckSquare className="size-3.5" />}
-            <span>{isSelectionMode ? 'Cancelar' : 'Selecionar'}</span>
+            <span className="hidden sm:inline">{isSelectionMode ? 'Cancelar' : 'Selecionar'}</span>
           </Button>
         </div>
       </div>
