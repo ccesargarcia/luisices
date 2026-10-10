@@ -29,6 +29,8 @@ interface CustomerHistoryDialogProps {
   userId?: string;
   onOpenNewOrder?: (customer: Customer) => void;
   tiersConfig?: CustomerTiersSettings;
+  historicalOrders?: Order[];
+  metricsLoading?: boolean;
 }
 
 export function CustomerHistoryDialog({
@@ -38,6 +40,8 @@ export function CustomerHistoryDialog({
   userId,
   onOpenNewOrder,
   tiersConfig,
+  historicalOrders,
+  metricsLoading = false,
 }: CustomerHistoryDialogProps) {
   const { orders: allContextOrders, loading: loadingOrders } = useOrders();
   const [gallery, setGallery] = useState<GalleryItem[]>([]);
@@ -48,14 +52,14 @@ export function CustomerHistoryDialog({
   const orders = useMemo(() => {
     if (!open || !customer) return [];
     return allContextOrders.filter(
-      (o) => o.customerId === customer.id || o.customerName === customer.name
+      (o) => o.customerId === customer.id && o.userId === customer.userId
     );
   }, [open, customer, allContextOrders]);
 
   const xray = useMemo(() => {
-    if (!open || !customer) return null;
-    return computeCustomerXRay(customer, orders, 'all', tiersConfig);
-  }, [open, customer, orders, tiersConfig]);
+    if (!open || !customer || metricsLoading) return null;
+    return computeCustomerXRay(customer, historicalOrders ?? orders, 'all', tiersConfig, new Date(), historicalOrders !== undefined);
+  }, [open, customer, orders, historicalOrders, metricsLoading, tiersConfig]);
 
   useEffect(() => {
     if (!open || !customer || !userId) {
@@ -150,7 +154,7 @@ export function CustomerHistoryDialog({
               <TabsContent value="pedidos" className="flex-1 overflow-y-auto mt-3">
                 <div className="flex items-center justify-between pb-2 mb-2 border-b border-border/40">
                   <span className="text-xs text-muted-foreground font-medium">
-                    {orders.length} {orders.length === 1 ? 'pedido registrado' : 'pedidos registrados'}
+                    {orders.length} {orders.length === 1 ? 'pedido carregado' : 'pedidos carregados'} — lista operacional; consulte o Raio X para indicadores históricos.
                   </span>
                   {onOpenNewOrder && customer && (
                     <Button
