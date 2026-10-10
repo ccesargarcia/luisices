@@ -216,8 +216,8 @@ class FirebasePricingService {
 
   // ─── Configurações do Ateliê ───────────────────────────────────────────────
 
-  async getStudioSettings(): Promise<StudioPricingSettings> {
-    const userId = this.getCurrentUserId();
+  async getStudioSettings(targetUserId?: string): Promise<StudioPricingSettings> {
+    const userId = targetUserId || this.getCurrentUserId();
     const docRef = doc(db, SETTINGS_COLLECTION, userId);
     const snap = await getDoc(docRef);
 
@@ -290,8 +290,8 @@ class FirebasePricingService {
     };
   }
 
-  subscribeToSupplies(callback: (supplies: SupplyItem[]) => void): Unsubscribe {
-    const userId = this.getCurrentUserId();
+  subscribeToSupplies(callback: (supplies: SupplyItem[]) => void, targetUserId?: string): Unsubscribe {
+    const userId = targetUserId || this.getCurrentUserId();
     const q = query(
       collection(db, SUPPLIES_COLLECTION),
       where('userId', '==', userId)
@@ -308,13 +308,13 @@ class FirebasePricingService {
       (err) => {
         console.warn('Erro na sincronização de insumos:', err);
         // Fallback para getDocs estático para garantir dados na tela
-        this.getSupplies().then(callback).catch(() => {});
+        this.getSupplies(userId).then(callback).catch(() => {});
       }
     );
   }
 
-  async getSupplies(): Promise<SupplyItem[]> {
-    const userId = this.getCurrentUserId();
+  async getSupplies(targetUserId?: string): Promise<SupplyItem[]> {
+    const userId = targetUserId || this.getCurrentUserId();
     const q = query(
       collection(db, SUPPLIES_COLLECTION),
       where('userId', '==', userId)
@@ -422,8 +422,8 @@ class FirebasePricingService {
     };
   }
 
-  subscribeToPurchaseHistory(callback: (history: PurchaseHistoryItem[]) => void): Unsubscribe {
-    const userId = this.getCurrentUserId();
+  subscribeToPurchaseHistory(callback: (history: PurchaseHistoryItem[]) => void, targetUserId?: string): Unsubscribe {
+    const userId = targetUserId || this.getCurrentUserId();
     const q = query(
       collection(db, PURCHASE_HISTORY_COLLECTION),
       where('userId', '==', userId)
@@ -709,8 +709,8 @@ class FirebasePricingService {
     };
   }
 
-  subscribeToRecipes(callback: (recipes: ProductPricingRecipe[]) => void): Unsubscribe {
-    const userId = this.getCurrentUserId();
+  subscribeToRecipes(callback: (recipes: ProductPricingRecipe[]) => void, targetUserId?: string): Unsubscribe {
+    const userId = targetUserId || this.getCurrentUserId();
     const q = query(
       collection(db, RECIPES_COLLECTION),
       where('userId', '==', userId)
@@ -727,13 +727,13 @@ class FirebasePricingService {
       (err) => {
         console.warn('Erro na sincronização de receitas:', err);
         // Fallback para getDocs estático para garantir dados na tela
-        this.getRecipes().then(callback).catch(() => {});
+        this.getRecipes(userId).then(callback).catch(() => {});
       }
     );
   }
 
-  async getRecipes(): Promise<ProductPricingRecipe[]> {
-    const userId = this.getCurrentUserId();
+  async getRecipes(targetUserId?: string): Promise<ProductPricingRecipe[]> {
+    const userId = targetUserId || this.getCurrentUserId();
     const q = query(
       collection(db, RECIPES_COLLECTION),
       where('userId', '==', userId)

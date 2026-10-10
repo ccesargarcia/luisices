@@ -190,6 +190,7 @@ export function Reports() {
     selectedFilterLabel,
     clearUserFilter,
     selectedUserIds,
+    matchesSelectedUser,
   } = useFirebaseOrders();
   const { quotes }                 = useFirebaseQuotes();
   const { customers }              = useFirebaseCustomers();
@@ -201,6 +202,7 @@ export function Reports() {
 
   const {
     allSales,
+    teamFilteredSales,
     loading: ledgerLoading,
   } = useSalesLedger({ teamUserIds: selectedUserIds });
 
@@ -221,7 +223,14 @@ export function Reports() {
 
   // Vendas históricas consolidadas do ledger (preserva vendas de clientes/pedidos removidos)
   const sourceSales = useMemo(() => {
-    if (allSales.length > 0) return allSales;
+    let salesPool = allSales;
+    if (isFilterActive) {
+      salesPool = teamFilteredSales.filter((s) => matchesSelectedUser(s.userId || (s as any).assignedTo));
+    }
+
+    if (salesPool.length > 0) return salesPool;
+
+    // Se o ledger estiver vazio, usa os pedidos filtrados do OrdersContext
     return orders.map(o => ({
       id: o.id,
       orderId: o.id,
@@ -240,7 +249,7 @@ export function Reports() {
       tags: o.tags,
       createdAt: o.createdAt,
     } as any));
-  }, [allSales, orders]);
+  }, [allSales, teamFilteredSales, isFilterActive, matchesSelectedUser, orders]);
 
   const curSales = useMemo(() =>
     sourceSales.filter(s => {

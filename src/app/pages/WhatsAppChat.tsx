@@ -29,7 +29,7 @@ import { NewChatModal } from '../components/whatsapp/NewChatModal';
 export function WhatsAppChat() {
   const { user, isAdmin } = useAuth();
   const { customers, loading: customersLoading } = useFirebaseCustomers();
-  const { orders } = useOrders();
+  const { orders, isFilterActive, selectedFilterLabel, clearUserFilter } = useOrders();
 
   const [conversations, setConversations] = useState<WhatsAppConversation[]>([]);
   const [loadingConversations, setLoadingConversations] = useState(true);
@@ -192,7 +192,14 @@ export function WhatsAppChat() {
 
     for (const chat of conversations) {
       const chatPhone = normalizePhoneForWhatsApp(chat.phone) || chat.phone;
-      if (!isAdmin) {
+      if (isFilterActive) {
+        const isBelongingCustomer =
+          (chat.customerId && allowedCustomerIds.has(chat.customerId)) ||
+          allowedPhones.has(chatPhone);
+        if (!isBelongingCustomer) {
+          continue;
+        }
+      } else if (!isAdmin) {
         const isBelongingCustomer =
           (chat.customerId && allowedCustomerIds.has(chat.customerId)) ||
           allowedPhones.has(chatPhone);
@@ -565,6 +572,26 @@ export function WhatsAppChat() {
           </Button>
         </div>
       </div>
+
+      {/* Indicador de Filtro de Parceiro Ativo para Admin */}
+      {isFilterActive && (
+        <div className="flex items-center justify-between gap-3 px-3 py-2 sm:px-4 sm:py-2.5 rounded-xl border border-primary/25 bg-primary/5 text-primary text-xs sm:text-sm shadow-xs backdrop-blur-sm shrink-0">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="truncate">
+              Exibindo conversas do parceiro: <strong>{selectedFilterLabel}</strong> ({mergedConversations.length} chats)
+            </span>
+          </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={clearUserFilter}
+            className="h-6 text-xs px-2 text-primary hover:bg-primary/10 shrink-0 font-medium"
+            title="Limpar filtro e exibir conversas de todos os parceiros"
+          >
+            Ver todas as conversas
+          </Button>
+        </div>
+      )}
 
       <div className="flex-1 min-h-0 flex overflow-hidden">
         <ChatSidebar

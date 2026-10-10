@@ -165,4 +165,126 @@ describe('Guardrails e Arquitetura: Filtro de Parceiro / Multi-tenant para Admin
       expect(vipCount).toBe(1);
     });
   });
+
+  describe('5. Rota de Relatórios: Isolamento Financeiro e Vendas por Parceiro', () => {
+    const mockLedgerSales = [
+      { id: 'sale-1', userId: PARTNER_A_UID, totalAmount: 350, customerName: 'Cliente Flor', status: 'delivered' },
+      { id: 'sale-2', userId: PARTNER_A_UID, totalAmount: 150, customerName: 'Cliente Rosa', status: 'delivered' },
+      { id: 'sale-3', userId: PARTNER_B_UID, totalAmount: 800, customerName: 'Cliente Doce', status: 'delivered' },
+      { id: 'sale-4', assignedTo: PARTNER_A_UID, totalAmount: 200, customerName: 'Cliente Atribuído', status: 'delivered' },
+    ];
+
+    it('deve filtrar vendas de relatórios exclusivamente para o parceiro selecionado', () => {
+      const state = resolveFilterState('admin', [PARTNER_A_UID]);
+      const filteredSales = mockLedgerSales.filter((s) => state.matchesSelectedUser(s.userId || s.assignedTo));
+
+      expect(filteredSales).toHaveLength(3);
+      expect(filteredSales.map((s) => s.id)).toEqual(['sale-1', 'sale-2', 'sale-4']);
+
+      const totalRevenue = filteredSales.reduce((sum, s) => sum + s.totalAmount, 0);
+      expect(totalRevenue).toBe(700); // 350 + 150 + 200
+    });
+
+    it('deve retornar todas as vendas se o filtro estiver desativado ("all")', () => {
+      const state = resolveFilterState('admin', ['all']);
+      const filteredSales = mockLedgerSales.filter((s) => state.matchesSelectedUser(s.userId || s.assignedTo));
+
+      expect(filteredSales).toHaveLength(4);
+      const totalRevenue = filteredSales.reduce((sum, s) => sum + s.totalAmount, 0);
+      expect(totalRevenue).toBe(1500);
+    });
+  });
+
+  describe('6. Isolamento de Pedidos (OrdersContext): Criador Parceiro vs Funcionário Atribuído', () => {
+    // Simula a lógica atualizada do OrdersContext
+    function orderMatchesFilter(
+      order: { userId?: string; assignedTo?: string },
+      selectedUserIds: string[],
+      isFilterActive: boolean
+    ) {
+      if (!isFilterActive) return true;
+      if (order.userId && selectedUserIds.includes(order.userId)) return true;
+      if (order.assignedTo && selectedUserIds.includes(order.assignedTo)) return true;
+      if (!order.assignedTo && selectedUserIds.includes('unassigned')) return true;
+      return false;
+    }
+
+    const mockOrders = [
+      // Criado pelo Parceiro A e atribuído ao Funcionário Marcos
+      { id: 'ord-1', userId: PARTNER_A_UID, assignedTo: EMPLOYEE_UID },
+      // Criado pelo Parceiro A sem responsável atribuído
+      { id: 'ord-2', userId: PARTNER_A_UID, assignedTo: undefined },
+      // Criado pelo Parceiro B
+      { id: 'ord-3', userId: PARTNER_B_UID, assignedTo: undefined },
+      // Criado pelo Admin e atribuído ao Parceiro A
+      { id: 'ord-4', userId: ADMIN_UID, assignedTo: PARTNER_A_UID },
+    ];
+
+    it('deve manter o pedido do Parceiro A mesmo se houver funcionário atribuído no assignedTo', () => {
+      const isFilterActive = true;
+      const selected = [PARTNER_A_UID];
+
+      const visibleOrders = mockOrders.filter((o) => orderMatchesFilter(o, selected, isFilterActive));
+
+      // ord-1 (userId Parceiro A), ord-2 (userId Parceiro A), ord-4 (assignedTo Parceiro A)
+      expect(visibleOrders.map((o) => o.id)).toEqual(['ord-1', 'ord-2', 'ord-4']);
+      expect(visibleOrders.find((o) => o.id === 'ord-3')).toBeUndefined();
+    });
+  });
+
+  describe('7. Rota de WhatsApp Chat: Escopo Restrito aos Clientes do Parceiro Ativo', () => {
+    function filterConversations(
+      conversations: Array<{ id: string; customerId?: string; customerPhone?: string }>,
+      isFilterActive: boolean,
+      allowedCustomerIds: Set<string>,
+      allowedPhones: Set<string>
+    ) {
+      if (!isFilterActive) return conversations;
+      return conversations.filter((c) => {
+        const matchesId = Boolean(c.customerId && allowedCustomerIds.has(c.customerId));
+        const cleanPhone = (c.customerPhone || '').replace(/\D/g, '');
+        const matchesPhone = Boolean(cleanPhone && allowedPhones.has(cleanPhone));
+        return matchesId || matchesPhone;
+      });
+    }
+
+    const conversations = [
+      { id: 'chat-1', customerId: 'cust-a1', customerPhone: '5511999990001' },
+      { id: 'chat-2', customerId: 'cust-a2', customerPhone: '5511999990002' },
+      { id: 'chat-3', customerId: 'cust-b1', customerPhone: '5511999990003' },
+    ];
+
+    it('deve filtrar as conversas apenas para os clientes vinculados ao parceiro ativo', () => {
+      const allowedCustomerIds = new Set(['cust-a1', 'cust-a2']);
+      const allowedPhones = new Set(['5511999990001', '5511999990002']);
+
+      const filtered = filterConversations(conversations, true, allowedCustomerIds, allowedPhones);
+      expect(filtered).toHaveLength(2);
+      expect(filtered.map((c) => c.id)).toEqual(['chat-1', 'chat-2']);
+    });
+
+    it('deve exibir todas as conversas quando nenhum filtro estiver ativo', () => {
+      const filtered = filterConversations(conversations, false, new Set(), new Set());
+      expect(filtered).toHaveLength(3);
+    });
+  });
+
+  describe('8. Rota de Precificação: targetUid para Insumos, Fichas e Histórico', () => {
+    it('deve priorizar o activePartnerId sobre o userProfile.uid para isolamento multi-tenant', () => {
+      const state = resolveFilterState('admin', [PARTNER_A_UID]);
+      const currentAdminUid = ADMIN_UID;
+      const targetUid = state.activePartnerId || currentAdminUid;
+
+      expect(targetUid).toBe(PARTNER_A_UID);
+    });
+
+    it('deve usar o UID do próprio admin quando não houver parceiro selecionado', () => {
+      const state = resolveFilterState('admin', []);
+      const currentAdminUid = ADMIN_UID;
+      const targetUid = state.activePartnerId || currentAdminUid;
+
+      expect(targetUid).toBe(ADMIN_UID);
+    });
+  });
 });
+

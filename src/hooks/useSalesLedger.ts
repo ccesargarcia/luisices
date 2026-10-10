@@ -299,6 +299,8 @@ export function useSalesLedger(options?: {
 
   return {
     allSales,
+    teamFilteredSales,
+    sales: teamFilteredSales,
     salesInPeriod,
     validSales,
     period,

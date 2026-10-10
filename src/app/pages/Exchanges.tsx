@@ -22,6 +22,7 @@ import {
   Loader2,
   MessageCircle,
   AlertTriangle,
+  Users,
 } from 'lucide-react';
 import { useFirebaseOrders } from '../../hooks/useFirebaseOrders';
 import { firebaseOrderService } from '../../services/firebaseOrderService';
@@ -69,7 +70,7 @@ function getPeriodStart(period: Period): Date | null {
 }
 
 export function Exchanges() {
-  const { orders, loading } = useFirebaseOrders();
+  const { orders, loading, isFilterActive, selectedFilterLabel, clearUserFilter } = useFirebaseOrders();
   const { settings } = useUserSettings();
   const [period, setPeriod] = useState<Period>('all');
   const [search, setSearch] = useState('');
@@ -405,6 +406,29 @@ export function Exchanges() {
           </Button>
         </div>
       </div>
+
+      {/* Indicador de Filtro de Parceiro Ativo para Admin */}
+      {isFilterActive && (
+        <div className="flex items-center justify-between gap-3 p-3 sm:p-3.5 rounded-xl border border-primary/25 bg-primary/5 text-primary text-sm shadow-sm backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="flex size-7 items-center justify-center rounded-full bg-primary/10 shrink-0">
+              <Users className="size-4" />
+            </div>
+            <span className="truncate">
+              Exibindo permutas do parceiro: <strong>{selectedFilterLabel}</strong>
+            </span>
+          </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={clearUserFilter}
+            className="h-7 text-xs px-2.5 text-primary hover:bg-primary/10 shrink-0"
+            title="Limpar filtro e exibir permutas de todos os parceiros"
+          >
+            Ver todas as permutas
+          </Button>
+        </div>
+      )}
 
       {/* Alert card — open exchanges */}
       {openStats.openCount > 0 && (

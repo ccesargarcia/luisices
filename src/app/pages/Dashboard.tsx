@@ -115,6 +115,7 @@ export function Dashboard() {
   const {
     stats: ledgerStats,
     allSales,
+    teamFilteredSales,
     loading: ledgerLoading,
   } = useSalesLedger({ teamUserIds: selectedUserIds });
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
@@ -247,7 +248,7 @@ export function Dashboard() {
       ? validOrdersInMonth.reduce((sum, o) => sum + (o.price || 0), 0) / validOrdersInMonth.length
       : 0;
 
-    const hasLedgerData = allSales.length > 0;
+    const hasLedgerData = (isFilterActive ? teamFilteredSales.length : allSales.length) > 0;
 
     return {
       revenue: hasLedgerData ? ledgerStats.completedRevenue : fallbackRevenue,
@@ -255,7 +256,7 @@ export function Dashboard() {
       avgTicket: hasLedgerData ? ledgerStats.averageTicket : fallbackAvgTicket,
       totalPaid: hasLedgerData ? ledgerStats.totalPaid : fallbackPaid,
     };
-  }, [allSales.length, ledgerStats, orders]);
+  }, [allSales.length, teamFilteredSales.length, isFilterActive, ledgerStats, orders]);
 
   const stats = useMemo(() => {
     const total = orders.length;
@@ -277,9 +278,11 @@ export function Dashboard() {
       !o.payment || o.payment.status === 'pending' || o.payment.status === 'partial'
     ).length;
 
-    const totalPaid = ledgerStats.totalPaid > 0
-      ? ledgerStats.totalPaid
-      : orders.reduce((sum, o) => sum + (o.payment?.paidAmount || 0), 0);
+    const totalPaid = isFilterActive
+      ? orders.reduce((sum, o) => sum + (o.payment?.paidAmount || 0), 0)
+      : (ledgerStats.totalPaid > 0
+          ? ledgerStats.totalPaid
+          : orders.reduce((sum, o) => sum + (o.payment?.paidAmount || 0), 0));
 
     // "A Receber": total do que ainda não foi pago em pedidos ativos
     const totalPending = activeOrders

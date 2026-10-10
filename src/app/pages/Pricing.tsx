@@ -33,11 +33,15 @@ import {
   Loader2,
   AlertTriangle,
   Plus,
+  Users,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { useOrders } from '../../contexts/OrdersContext';
 
 export function Pricing() {
   const { userProfile, isAdmin, hasPermission } = useAuth();
+  const { activePartnerId, isFilterActive, selectedFilterLabel, clearUserFilter } = useOrders();
+  const targetUid = activePartnerId || userProfile?.uid;
 
   // Permissões granulares de acesso ao módulo de Precificação & Custos
   const canView = isAdmin || hasPermission((p) => canAccessPricing(p, 'view'));
@@ -86,40 +90,44 @@ export function Pricing() {
   useEffect(() => {
     if (!canView) return;
 
+    setLoadingSupplies(true);
+    setLoadingRecipes(true);
+    setLoadingHistory(true);
+
     // Carregar configurações do ateliê
-    firebasePricingService.getStudioSettings().then(setStudioSettings).catch(console.error);
+    firebasePricingService.getStudioSettings(targetUid).then(setStudioSettings).catch(console.error);
 
     // Carregar produtos para vinculação
-    firebaseProductService.getProducts().then(setProducts).catch(console.error);
+    firebaseProductService.getProducts(targetUid).then(setProducts).catch(console.error);
 
     // Assinar Insumos em tempo real
     const unsubSupplies = firebasePricingService.subscribeToSupplies((list) => {
       setSupplies(list);
       setLoadingSupplies(false);
-    });
+    }, targetUid);
 
     // Assinar Fichas Técnicas em tempo real
     const unsubRecipes = firebasePricingService.subscribeToRecipes((list) => {
       setRecipes(list);
       setLoadingRecipes(false);
-    });
+    }, targetUid);
 
     // Assinar Histórico de Compras em tempo real
     const unsubHistory = firebasePricingService.subscribeToPurchaseHistory((list) => {
       setHistoryItems(list);
       setLoadingHistory(false);
-    });
+    }, targetUid);
 
     return () => {
       unsubSupplies();
       unsubRecipes();
       unsubHistory();
     };
-  }, [canView]);
+  }, [canView, targetUid]);
 
   const refreshProducts = async () => {
     try {
-      const list = await firebaseProductService.getProducts();
+      const list = await firebaseProductService.getProducts(targetUid);
       setProducts(list);
     } catch (err) {
       console.error(err);
@@ -232,6 +240,29 @@ export function Pricing() {
           )}
         </div>
       </div>
+
+      {/* Indicador de Filtro de Parceiro Ativo para Admin */}
+      {isFilterActive && (
+        <div className="flex items-center justify-between gap-3 p-3 sm:p-3.5 rounded-xl border border-primary/25 bg-primary/5 text-primary text-sm shadow-sm backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="flex size-7 items-center justify-center rounded-full bg-primary/10 shrink-0">
+              <Users className="size-4" />
+            </div>
+            <span className="truncate">
+              Exibindo custos e insumos do parceiro: <strong>{selectedFilterLabel}</strong> ({supplies.length} insumos, {recipes.length} fichas)
+            </span>
+          </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={clearUserFilter}
+            className="h-7 text-xs px-2.5 text-primary hover:bg-primary/10 shrink-0"
+            title="Limpar filtro e exibir seus próprios custos e insumos"
+          >
+            Ver meus insumos
+          </Button>
+        </div>
+      )}
 
       {/* Mini Cards de Indicadores Rápidos */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4">

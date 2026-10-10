@@ -46,6 +46,7 @@ import {
   Package,
   RotateCcw,
   CheckCircle,
+  Users,
 } from 'lucide-react';
 import { cn } from '../components/ui/utils';
 import { PaginationControls } from '../components/common/PaginationControls';
@@ -64,7 +65,15 @@ type SortOption =
 
 export function ArchivedOrders() {
   const { user, userProfile, isAdmin, hasPermission } = useAuth();
-  const { orders, loading, error, refreshOrders } = useFirebaseOrders();
+  const {
+    orders,
+    loading,
+    error,
+    refreshOrders,
+    isFilterActive,
+    selectedFilterLabel,
+    clearUserFilter,
+  } = useFirebaseOrders();
   const { settings } = useUserSettings();
 
   const canUnarchive = isAdmin || canAccessArchivedOrders(userProfile?.permissions, 'edit');
@@ -401,6 +410,29 @@ export function ArchivedOrders() {
           </Button>
         </div>
       </div>
+
+      {/* Indicador de Filtro de Parceiro Ativo para Admin */}
+      {isFilterActive && (
+        <div className="flex items-center justify-between gap-3 p-3 sm:p-3.5 rounded-xl border border-primary/25 bg-primary/5 text-primary text-sm shadow-sm backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="flex size-7 items-center justify-center rounded-full bg-primary/10 shrink-0">
+              <Users className="size-4" />
+            </div>
+            <span className="truncate">
+              Exibindo arquivados do parceiro: <strong>{selectedFilterLabel}</strong> ({rawArchivedOrders.length} pedidos)
+            </span>
+          </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={clearUserFilter}
+            className="h-7 text-xs px-2.5 text-primary hover:bg-primary/10 shrink-0"
+            title="Limpar filtro e exibir pedidos arquivados de todos os parceiros"
+          >
+            Ver todos os arquivados
+          </Button>
+        </div>
+      )}
 
       {/* Cards de Métricas */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">

@@ -435,22 +435,14 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
         return true;
       }
 
-      // 2. Responsável atribuído está entre os selecionados
+      // 2. Pedido pertence ao parceiro selecionado (ou criador do pedido)
+      if (order.userId && selectedUserIds.includes(order.userId)) {
+        return true;
+      }
+
+      // 3. Responsável atribuído está entre os selecionados
       if (order.assignedTo && selectedUserIds.includes(order.assignedTo)) {
         return true;
-      }
-
-      // 3. Pedido não atribuído cujo criador está selecionado
-      if (!order.assignedTo && order.userId && selectedUserIds.includes(order.userId)) {
-        return true;
-      }
-
-      // 4. Se o criador for um funcionário selecionado
-      if (selectedUserIds.includes(order.userId)) {
-        const creator = profiles.find((p) => p.uid === order.userId);
-        if (creator?.role === 'funcionario') {
-          return true;
-        }
       }
 
       return false;
