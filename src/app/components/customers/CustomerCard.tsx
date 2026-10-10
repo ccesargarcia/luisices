@@ -29,8 +29,10 @@ interface CustomerCardProps {
   onOpenHistory: (customer: Customer) => void;
   onOpenEdit: (customer: Customer) => void;
   onOpenDelete: (customer: Customer) => void;
+  onOpenNewOrder?: (customer: Customer) => void;
   canEdit: boolean;
   canDelete: boolean;
+  canCreateOrder?: boolean;
 }
 
 function CustomerCardComponent({
@@ -40,8 +42,10 @@ function CustomerCardComponent({
   onOpenHistory,
   onOpenEdit,
   onOpenDelete,
+  onOpenNewOrder,
   canEdit,
   canDelete,
+  canCreateOrder = false,
 }: CustomerCardProps) {
   const addressLine = customer.address || [customer.street, customer.number, customer.complement]
     .filter(Boolean)
@@ -160,6 +164,18 @@ function CustomerCardComponent({
               >
                 <MessageCircle className="size-4" />
               </a>
+            )}
+            {canCreateOrder && onOpenNewOrder && (
+              <Button
+                size="icon"
+                variant="ghost"
+                onClick={() => onOpenNewOrder(customer)}
+                title="Criar novo pedido para este cliente"
+                aria-label={`Criar novo pedido para ${customer.name}`}
+                className="h-9 w-9 sm:h-8 sm:w-8 text-primary hover:text-primary hover:bg-primary/10 transition-colors"
+              >
+                <ShoppingBag className="size-4" />
+              </Button>
             )}
             <Button
               size="icon"

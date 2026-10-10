@@ -34,6 +34,7 @@ interface NewOrderDialogProps {
   onOpenChange?: (open: boolean) => void;
   initialDraft?: AiOrderDraft | null;
   hideTrigger?: boolean;
+  initialCustomerId?: string | null;
 }
 
 export function NewOrderDialog({
@@ -41,6 +42,7 @@ export function NewOrderDialog({
   onOpenChange: controlledOnOpenChange,
   initialDraft,
   hideTrigger = false,
+  initialCustomerId,
 }: NewOrderDialogProps = {}) {
   const { user, userProfile, hasPermission } = useAuth();
   const { teamMembers } = useOrders();
@@ -102,7 +104,7 @@ export function NewOrderDialog({
     localAttachments.forEach(attachment => {
       if (attachment.url.startsWith('blob:')) URL.revokeObjectURL(attachment.url);
     });
-    setSelectedCustomer('');
+    setSelectedCustomer(initialCustomerId || '');
     setIsNewCustomer(false);
     setAssignedTo('__none__');
     setFormData({
@@ -163,8 +165,13 @@ export function NewOrderDialog({
 
   // Every opening starts a clean order draft, including after Cancel/close.
   useEffect(() => {
-    if (open) resetForm();
-  }, [open]);
+    if (open) {
+      resetForm();
+      if (initialCustomerId) {
+        setSelectedCustomer(initialCustomerId);
+      }
+    }
+  }, [open, initialCustomerId]);
 
   // Pré-preencher datas e método de pagamento com os padrões configurados
   useEffect(() => {

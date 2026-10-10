@@ -26,6 +26,7 @@ interface CustomerHistoryDialogProps {
   onOpenChange: (open: boolean) => void;
   customer: Customer | null;
   userId?: string;
+  onOpenNewOrder?: (customer: Customer) => void;
 }
 
 export function CustomerHistoryDialog({
@@ -33,6 +34,7 @@ export function CustomerHistoryDialog({
   onOpenChange,
   customer,
   userId,
+  onOpenNewOrder,
 }: CustomerHistoryDialogProps) {
   const { orders: allContextOrders, loading: loadingOrders } = useOrders();
   const [gallery, setGallery] = useState<GalleryItem[]>([]);
@@ -135,6 +137,25 @@ export function CustomerHistoryDialog({
 
               {/* ── Pedidos ── */}
               <TabsContent value="pedidos" className="flex-1 overflow-y-auto mt-3">
+                <div className="flex items-center justify-between pb-2 mb-2 border-b border-border/40">
+                  <span className="text-xs text-muted-foreground font-medium">
+                    {orders.length} {orders.length === 1 ? 'pedido registrado' : 'pedidos registrados'}
+                  </span>
+                  {onOpenNewOrder && customer && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="gap-1.5 h-7 text-xs"
+                      onClick={() => {
+                        onOpenChange(false);
+                        onOpenNewOrder(customer);
+                      }}
+                    >
+                      <Plus className="size-3" />
+                      Novo Pedido
+                    </Button>
+                  )}
+                </div>
               {loadingOrders ? (
                 <div className="flex justify-center py-8">
                   <Loader2 className="size-6 animate-spin text-primary" />

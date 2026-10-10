@@ -21,6 +21,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { CustomerCard } from '../components/customers/CustomerCard';
 import { CustomerFormDialog } from '../components/customers/CustomerFormDialog';
 import { CustomerHistoryDialog } from '../components/customers/CustomerHistoryDialog';
+import { NewOrderDialog } from '../components/NewOrderDialog';
 import {
   SingleCustomerDeleteDialog,
   BulkCustomerDeleteDialog,
@@ -61,6 +62,9 @@ export function Customers() {
   const [bulkDeleteBlocked, setBulkDeleteBlocked] = useState<
     { id: string; name: string; count: number }[]
   >([]);
+
+  const [isNewOrderOpen, setIsNewOrderOpen] = useState(false);
+  const [newOrderCustomer, setNewOrderCustomer] = useState<Customer | null>(null);
 
   // Assinar clientes em tempo real para refletir criações/edições/exclusões
   useEffect(() => {
@@ -246,6 +250,11 @@ export function Customers() {
   const handleOpenHistory = (customer: Customer) => {
     setHistoryCustomer(customer);
     setIsHistoryOpen(true);
+  };
+
+  const handleOpenNewOrder = (customer: Customer) => {
+    setNewOrderCustomer(customer);
+    setIsNewOrderOpen(true);
   };
 
   const handleOpenDelete = (customer: Customer) => {
@@ -471,8 +480,10 @@ export function Customers() {
             onOpenHistory={handleOpenHistory}
             onOpenEdit={handleOpenEdit}
             onOpenDelete={handleOpenDelete}
+            onOpenNewOrder={handleOpenNewOrder}
             canEdit={hasPermission((p) => p.customers?.edit ?? false)}
             canDelete={hasPermission((p) => p.customers?.delete ?? false)}
+            canCreateOrder={hasPermission((p) => p.orders?.create ?? false)}
           />
         ))}
       </div>
@@ -524,6 +535,14 @@ export function Customers() {
         onOpenChange={setIsHistoryOpen}
         customer={historyCustomer}
         userId={user?.uid}
+        onOpenNewOrder={handleOpenNewOrder}
+      />
+
+      <NewOrderDialog
+        open={isNewOrderOpen}
+        onOpenChange={setIsNewOrderOpen}
+        initialCustomerId={newOrderCustomer?.id}
+        hideTrigger={true}
       />
 
       <SingleCustomerDeleteDialog
