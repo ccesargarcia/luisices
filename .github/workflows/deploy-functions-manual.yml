@@ -95,6 +95,7 @@ jobs:
         env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_DEV }}
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          RESEND_WEBHOOK_SECRET: ${{ secrets.RESEND_WEBHOOK_SECRET }}
           EVOLUTION_API_KEY: ${{ secrets.EVOLUTION_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
@@ -110,6 +111,10 @@ jobs:
             echo "$GEMINI_API_KEY" > "$HOME/gemini_api_key.txt"
             firebase functions:secrets:set RESEND_API_KEY --project luisices-dev --data-file "$HOME/resend_api_key.txt" --non-interactive --force || true
             firebase functions:secrets:set EVOLUTION_API_KEY --project luisices-dev --data-file "$HOME/evolution_api_key.txt" --non-interactive --force || true
+            if [ -n "$RESEND_WEBHOOK_SECRET" ]; then
+              echo "$RESEND_WEBHOOK_SECRET" > "$HOME/resend_webhook.txt"
+              firebase functions:secrets:set RESEND_WEBHOOK_SECRET --project luisices-dev --data-file "$HOME/resend_webhook.txt" --non-interactive --force || true
+            fi
             if [ -n "$GEMINI_API_KEY" ]; then
               firebase functions:secrets:set GEMINI_API_KEY --project luisices-dev --data-file "$HOME/gemini_api_key.txt" --non-interactive --force || true
             fi
@@ -175,6 +180,7 @@ jobs:
         env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_PROD || secrets.FIREBASE_SERVICE_ACCOUNT }}
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          RESEND_WEBHOOK_SECRET: ${{ secrets.RESEND_WEBHOOK_SECRET }}
           EVOLUTION_API_KEY: ${{ secrets.EVOLUTION_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
@@ -194,6 +200,10 @@ jobs:
             echo "$GEMINI_API_KEY" > "$HOME/gemini_api_key.txt"
             firebase functions:secrets:set RESEND_API_KEY --project papelaria-dashboard --data-file "$HOME/resend_api_key.txt" --non-interactive --force || true
             firebase functions:secrets:set EVOLUTION_API_KEY --project papelaria-dashboard --data-file "$HOME/evolution_api_key.txt" --non-interactive --force || true
+            if [ -n "$RESEND_WEBHOOK_SECRET" ]; then
+              echo "$RESEND_WEBHOOK_SECRET" > "$HOME/resend_webhook.txt"
+              firebase functions:secrets:set RESEND_WEBHOOK_SECRET --project papelaria-dashboard --data-file "$HOME/resend_webhook.txt" --non-interactive --force || true
+            fi
             if [ -n "$GEMINI_API_KEY" ]; then
               firebase functions:secrets:set GEMINI_API_KEY --project papelaria-dashboard --data-file "$HOME/gemini_api_key.txt" --non-interactive --force || true
             fi
