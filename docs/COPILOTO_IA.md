@@ -44,10 +44,11 @@ Há também `enrichGalleryItemWithAi` e `enrichStoreProductWithAi`, acionados pe
 3. **Precificação:** perguntar por custo e tempo quando faltarem; identificar simulação com premissas; não apresentar valores padrão como custos reais cadastrados.
 4. **Atendimento:** exigir coerência entre situação real, saldo e texto sugerido. Pedidos cancelados ou quitados não devem receber cobrança; “pronto” precisa de comprovação.
 5. **Portfólio:** buscar trabalhos reais por tema; a ausência em uma amostra de contexto não comprova inexistência na galeria.
-6. **Navegação:** explicar as telas de orçamento, loja, estoque, relatórios e e-mails, sem alegar capacidade de operá-las quando não há ferramenta.
-7. **Privacidade:** usar dados pessoais apenas quando necessários à solicitação; não listar telefones por padrão em uma consulta de desempenho.
-8. **Datas e dinheiro:** informar critério do período; pagamentos associados aos pedidos não são automaticamente caixa por data de recebimento.
-9. **Uso econômico:** escolher a ferramenta mínima necessária, evitar consultas repetidas e manter respostas curtas.
+6. **Comunicação e E-mails:** orientar sobre o uso do módulo oficial de e-mails (@luisices.com.br via Resend), pastas, templates e limites de cota; não prometer disparo autônomo sem a interface web.
+7. **Lojinha Pública:** distinguir a vitrine externa (/loja e /catalogo com sacola e banners) da gestão interna de produção e personalização de ateliê.
+8. **Privacidade:** usar dados pessoais apenas quando necessários à solicitação; não listar telefones por padrão em uma consulta de desempenho.
+9. **Datas e dinheiro:** informar critério do período; pagamentos associados aos pedidos não são automaticamente caixa por data de recebimento.
+10. **Tom e Uso econômico:** adotar tom acolhedor e empático ("Papelaria de Afeto"), escolher a ferramenta mínima necessária, evitar consultas repetidas e manter respostas curtas.
 
 ## Contratos implementados
 
