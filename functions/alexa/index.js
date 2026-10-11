@@ -433,10 +433,14 @@ const alexaWebhook = onRequest(
     secrets: [ALEXA_IDENTITY_HMAC_KEY, ORIGIN_SECRET],
   },
   async (req, res) => {
-    // 0. Bloqueio de acesso direto fora da Cloudflare
+    // 0. Bloqueio de acesso direto fora da Cloudflare ou fora da rede oficial da Amazon Alexa
+    const hasAlexaHeaders = Boolean(
+      (req?.headers?.signaturecertchainurl || req?.headers?.SignatureCertChainUrl) &&
+      (req?.headers?.signature || req?.headers?.Signature)
+    );
     const originCheck = validateOriginSecret(req);
-    if (!originCheck.allowed) {
-      console.warn('[alexaWebhook] Tentativa de acesso direto bloqueada (sem header da Cloudflare)');
+    if (!originCheck.allowed && !hasAlexaHeaders) {
+      console.warn('[alexaWebhook] Tentativa de acesso direto bloqueada (sem header da Cloudflare nem headers da Alexa)');
       return res.status(originCheck.statusCode || 403).json({ error: originCheck.error });
     }
 
