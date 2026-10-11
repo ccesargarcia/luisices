@@ -18,30 +18,17 @@ on:
         type: choice
         options:
           - 'all'
-          - 'aiAgentChat,enrichGalleryItemWithAi,enrichStoreProductWithAi,getAiUsage,sendWhatsAppDirectMessage,deleteWhatsAppMessage,syncWhatsAppChatMessages,getWhatsAppInstanceStatus,evolutionWhatsAppWebhook,syncAllOrdersToAiView'
-          - 'aiAgentChat,enrichGalleryItemWithAi,enrichStoreProductWithAi,getAiUsage'
-          - 'aiAgentChat,enrichGalleryItemWithAi'
-          - 'enrichStoreProductWithAi'
-          - 'enrichGalleryItemWithAi'
-          - 'enrichGalleryItemWithAi,enrichStoreProductWithAi'
-          - 'aiAgentChat'
-          - 'getAiUsage'
-          - 'sendWhatsAppDirectMessage,deleteWhatsAppMessage,syncWhatsAppChatMessages,getWhatsAppInstanceStatus,evolutionWhatsAppWebhook'
-          - 'aiAgentChat,sendWhatsAppDirectMessage'
-          - 'sendWhatsAppDirectMessage'
-          - 'deleteWhatsAppMessage'
-          - 'syncWhatsAppChatMessages'
-          - 'getWhatsAppInstanceStatus'
-          - 'evolutionWhatsAppWebhook'
-          - 'syncAllOrdersToAiView'
-          - 'submitPublicCatalogOrder,syncAllOrdersToAiView'
-          - 'submitPublicCatalogOrder'
-          - 'sendAdminPasswordReset,sendPasswordResetEmail'
-          - 'createUserInvitation,validateUserInvitation,completeUserInvitation'
-          - 'createUser,deleteUser'
-          - 'sendCustomEmail,getEmailUsage,resendReceivingWebhook'
-          - 'alexaWebhook,approveAlexaPairing,setAlexaPermission,revokeAlexaBinding,toggleGlobalAlexaIntegration,getAlexaIntegrationStatus,approveAlexaDraft'
+          - 'alexaWebhook,approveAlexaPairing,setAlexaPermission,revokeAlexaBinding,toggleGlobalAlexaIntegration,getAlexaIntegrationStatus,approveAlexaDraft,cancelAlexaDraft'
+          - 'sendWhatsAppDirectMessage,deleteWhatsAppMessage,syncWhatsAppChatMessages,getWhatsAppInstanceStatus,evolutionWhatsAppWebhook,markWhatsAppChatRead,ensureWhatsAppConversation'
+          - 'aiAgentChat,enrichGalleryItemWithAi,enrichStoreProductWithAi,getAiUsage,syncAllOrdersToAiView,submitPublicCatalogOrder'
+          - 'cleanupEmailDrafts,resendReceivingWebhook,sendCustomEmail,getEmailUsage'
+          - 'updateUser,recordUserPasswordChange,completeUserInvitation,createUserInvitation,createUser,getUserAccountMetadata,deleteUser,revokeAllSessions,repairUserClaims,registerDeviceSession,revokeDeviceSession,sendAdminPasswordReset,sendPasswordResetEmail,sendVerificationEmail,validateUserInvitation'
           - 'alexaWebhook'
+          - 'aiAgentChat'
+          - 'sendWhatsAppDirectMessage'
+          - 'evolutionWhatsAppWebhook'
+          - 'cleanupEmailDrafts'
+          - 'submitPublicCatalogOrder'
       deploy_rules_and_indexes:
         description: 'Publicar Firestore Rules e Indexes? (Já publicado no deploy de Hosting)'
         required: false
@@ -168,7 +155,23 @@ jobs:
           fi
 
           echo "🚀 Realizando deploy de: $DEPLOY_TARGET"
-          firebase deploy --only "$DEPLOY_TARGET" --project luisices-dev --non-interactive --force
+          if [ "$DEPLOY_TARGET" = "functions" ]; then
+            if ! firebase deploy --only functions --project luisices-dev --non-interactive --force; then
+              echo "⚠️ Deploy em lote geral atingiu timeout ou limite de concorrência. Executando deploy particionado por módulos..."
+              echo "📦 1/5: WhatsApp..."
+              firebase deploy --only "functions:sendWhatsAppDirectMessage,functions:deleteWhatsAppMessage,functions:syncWhatsAppChatMessages,functions:getWhatsAppInstanceStatus,functions:evolutionWhatsAppWebhook,functions:markWhatsAppChatRead,functions:ensureWhatsAppConversation" --project luisices-dev --non-interactive --force
+              echo "📦 2/5: IA e Pedidos..."
+              firebase deploy --only "functions:aiAgentChat,functions:enrichGalleryItemWithAi,functions:enrichStoreProductWithAi,functions:getAiUsage,functions:syncAllOrdersToAiView,functions:submitPublicCatalogOrder" --project luisices-dev --non-interactive --force
+              echo "📦 3/5: E-mails..."
+              firebase deploy --only "functions:cleanupEmailDrafts,functions:resendReceivingWebhook,functions:sendCustomEmail,functions:getEmailUsage" --project luisices-dev --non-interactive --force
+              echo "📦 4/5: Alexa..."
+              firebase deploy --only "functions:approveAlexaDraft,functions:approveAlexaPairing,functions:cancelAlexaDraft,functions:getAlexaIntegrationStatus,functions:revokeAlexaBinding,functions:setAlexaPermission,functions:toggleGlobalAlexaIntegration,functions:alexaWebhook" --project luisices-dev --non-interactive --force
+              echo "📦 5/5: Usuários e Autenticação..."
+              firebase deploy --only "functions:updateUser,functions:recordUserPasswordChange,functions:completeUserInvitation,functions:createUserInvitation,functions:createUser,functions:getUserAccountMetadata,functions:deleteUser,functions:revokeAllSessions,functions:repairUserClaims,functions:registerDeviceSession,functions:revokeDeviceSession,functions:sendAdminPasswordReset,functions:sendPasswordResetEmail,functions:sendVerificationEmail,functions:validateUserInvitation" --project luisices-dev --non-interactive --force
+            fi
+          else
+            firebase deploy --only "$DEPLOY_TARGET" --project luisices-dev --non-interactive --force
+          fi
 
           if [ "${{ inputs.update_secrets }}" = "true" ]; then
             echo "🧹 Podando versões obsoletas de segredos no Secret Manager (Dev)..."
@@ -292,7 +295,7 @@ jobs:
             echo "🔧 Sincronizando allowedSkillId no Firestore (papelaria-dashboard)..."
             node -e '
               const admin = require("firebase-admin");
-              admin.initializeApp();
+              admin.initializeApp({ projectId: "papelaria-dashboard" });
               admin.firestore().doc("integrationSettings/alexa").set({
                 allowedSkillId: process.env.ALEXA_SKILL_ID,
                 enabled: true
@@ -332,7 +335,23 @@ jobs:
           fi
 
           echo "🚀 Realizando deploy de: $DEPLOY_TARGET"
-          firebase deploy --only "$DEPLOY_TARGET" --project papelaria-dashboard --non-interactive --force
+          if [ "$DEPLOY_TARGET" = "functions" ]; then
+            if ! firebase deploy --only functions --project papelaria-dashboard --non-interactive --force; then
+              echo "⚠️ Deploy em lote geral atingiu timeout ou limite de concorrência. Executando deploy particionado por módulos..."
+              echo "📦 1/5: WhatsApp..."
+              firebase deploy --only "functions:sendWhatsAppDirectMessage,functions:deleteWhatsAppMessage,functions:syncWhatsAppChatMessages,functions:getWhatsAppInstanceStatus,functions:evolutionWhatsAppWebhook,functions:markWhatsAppChatRead,functions:ensureWhatsAppConversation" --project papelaria-dashboard --non-interactive --force
+              echo "📦 2/5: IA e Pedidos..."
+              firebase deploy --only "functions:aiAgentChat,functions:enrichGalleryItemWithAi,functions:enrichStoreProductWithAi,functions:getAiUsage,functions:syncAllOrdersToAiView,functions:submitPublicCatalogOrder" --project papelaria-dashboard --non-interactive --force
+              echo "📦 3/5: E-mails..."
+              firebase deploy --only "functions:cleanupEmailDrafts,functions:resendReceivingWebhook,functions:sendCustomEmail,functions:getEmailUsage" --project papelaria-dashboard --non-interactive --force
+              echo "📦 4/5: Alexa..."
+              firebase deploy --only "functions:approveAlexaDraft,functions:approveAlexaPairing,functions:cancelAlexaDraft,functions:getAlexaIntegrationStatus,functions:revokeAlexaBinding,functions:setAlexaPermission,functions:toggleGlobalAlexaIntegration,functions:alexaWebhook" --project papelaria-dashboard --non-interactive --force
+              echo "📦 5/5: Usuários e Autenticação..."
+              firebase deploy --only "functions:updateUser,functions:recordUserPasswordChange,functions:completeUserInvitation,functions:createUserInvitation,functions:createUser,functions:getUserAccountMetadata,functions:deleteUser,functions:revokeAllSessions,functions:repairUserClaims,functions:registerDeviceSession,functions:revokeDeviceSession,functions:sendAdminPasswordReset,functions:sendPasswordResetEmail,functions:sendVerificationEmail,functions:validateUserInvitation" --project papelaria-dashboard --non-interactive --force
+            fi
+          else
+            firebase deploy --only "$DEPLOY_TARGET" --project papelaria-dashboard --non-interactive --force
+          fi
 
           if [ "${{ inputs.update_secrets }}" = "true" ]; then
             echo "🧹 Podando versões obsoletas de segredos no Secret Manager (Prod)..."

@@ -67,8 +67,8 @@ jobs:
           TARGET_ENV: ${{ steps.env.outputs.target }}
           ASK_CLI_CONFIG: ${{ secrets.ASK_CLI_CONFIG }}
           ASK_REFRESH_TOKEN: ${{ secrets.ASK_REFRESH_TOKEN }}
-          DEV_SKILL_ID: ${{ secrets.DEV_ALEXA_SKILL_ID || secrets.ALEXA_DEV_SKILL_ID || secrets.ALEXA_SKILL_ID || 'amzn1.ask.skill.1cd0031f-ada0-4da8-8721-2ad44b4b1c96' }}
-          PROD_SKILL_ID: ${{ secrets.PROD_ALEXA_SKILL_ID || secrets.ALEXA_PROD_SKILL_ID }}
+          DEV_SKILL_ID: ${{ secrets.DEV_ALEXA_SKILL_ID || secrets.ALEXA_DEV_SKILL_ID || 'amzn1.ask.skill.1cd0031f-ada0-4da8-8721-2ad44b4b1c96' }}
+          PROD_SKILL_ID: ${{ secrets.PROD_ALEXA_SKILL_ID || secrets.ALEXA_PROD_SKILL_ID || secrets.ALEXA_SKILL_ID }}
         run: |
           mkdir -p ~/.ask
           if [ -n "$ASK_CLI_CONFIG" ]; then
