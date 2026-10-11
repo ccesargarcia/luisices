@@ -36,7 +36,7 @@ export default defineConfig(() => {
       target: 'es2022',
       cssCodeSplit: true,
       minify: 'esbuild',
-      reportCompressedSize: false,
+      chunkSizeWarningLimit: 1500,
       rollupOptions: {
         input: {
           main: path.resolve(__dirname, 'index.html'),
@@ -70,7 +70,7 @@ export default defineConfig(() => {
               case '@radix-ui/react-alert-dialog':
                 return 'vendor-ui';
 
-              // Firebase (separado para cache independente)
+              // Firebase (mantido coeso para integridade de dependências internas)
               case 'firebase':
               case '@firebase/app':
               case '@firebase/auth':

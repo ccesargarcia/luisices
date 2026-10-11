@@ -47,6 +47,10 @@ import {
 import { collection, doc, getDoc, getDocs } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { BannerCarousel, CatalogBannerItem } from '../components/catalog/BannerCarousel';
+import { CatalogFloatingWhatsApp } from '../components/catalog/CatalogFloatingWhatsApp';
+import { CatalogOrderSuccessModal } from '../components/catalog/CatalogOrderSuccessModal';
+import { CatalogCartDrawer } from '../components/catalog/CatalogCartDrawer';
+import { CatalogProductPreviewModal } from '../components/catalog/CatalogProductPreviewModal';
 import {
   InstitutionalPillarItem,
   InstitutionalStepItem,
@@ -2554,460 +2558,57 @@ export function PublicCatalog() {
           </div>
         )}
 
-        {/* 5. Modal Responsivo de Prévia / Personalização (2 Colunas no Desktop) */}
-        {selectedProductPreview && (
-          <div className="fixed inset-0 z-modal flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/60 backdrop-blur-xs animate-in fade-in">
-            {/* Backdrop clicável para fechar no mobile e desktop */}
-            <div 
-              className="absolute inset-0" 
-              onClick={() => setSelectedProductPreview(null)} 
-              aria-hidden="true" 
-            />
-
-            <div className="relative z-10 w-full sm:max-w-2xl md:max-w-3xl h-auto max-h-[90vh] sm:max-h-[85vh] flex flex-col md:flex-row rounded-t-3xl sm:rounded-3xl bg-[#fff8f7] dark:bg-[#1f191b] border border-white/45 dark:border-[#ebcdcd]/20 shadow-2xl overflow-hidden animate-in slide-in-from-bottom-4 sm:slide-in-from-bottom-0 sm:zoom-in-95">
-              
-              {/* Coluna Esquerda (Desktop): Imagem */}
-              <div className="relative h-40 sm:h-auto md:w-1/2 bg-stone-100 dark:bg-stone-900 overflow-hidden shrink-0">
-                <img
-                  src={selectedProductPreview.imageUrl}
-                  alt={selectedProductPreview.name}
-                  onError={(e) => {
-                    e.currentTarget.src = 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?auto=format&fit=crop&w=800&q=80';
-                  }}
-                  className="w-full h-full object-cover"
-                  decoding="async"
-                />
-                <button
-                  onClick={() => setSelectedProductPreview(null)}
-                  className="absolute top-3 right-3 p-2 rounded-full bg-black/50 text-white hover:bg-black/70 backdrop-blur-xs transition-colors cursor-pointer z-10"
-                  aria-label="Fechar prévia"
-                >
-                  <X size={18} />
-                </button>
-                {selectedProductPreview.badge && (
-                  <span className="absolute bottom-3 left-3 px-3 py-1 rounded-md text-xs font-bold bg-[var(--store-primary,#613d3e)]/90 text-white backdrop-blur-sm">
-                    {selectedProductPreview.badge}
-                  </span>
-                )}
-              </div>
-
-              {/* Coluna Direita (Desktop): Detalhes, Customização e Adição */}
-              <div className="p-4 sm:p-6 flex-1 min-h-0 flex flex-col justify-between overflow-hidden">
-                <div className="space-y-3 overflow-y-auto flex-1 min-h-0 pr-1 overscroll-contain">
-                  <div className="flex justify-between items-start gap-2">
-                    <div>
-                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-[11px] font-semibold bg-[var(--store-primary,#613d3e)]/10 dark:bg-[#f4b7b9]/15 text-[var(--store-primary,#613d3e)] dark:text-[#f4b7b9] border border-[var(--store-primary,#613d3e)]/20 dark:border-[#f4b7b9]/20 mb-1">
-                        <Tag size={11} className="shrink-0" />
-                        <span>{selectedProductPreview.category || 'Geral'}</span>
-                      </span>
-                      <h3 className="text-base sm:text-xl font-extrabold text-[#221a1a] dark:text-[#e8e0e3] leading-snug">
-                        {selectedProductPreview.name}
-                      </h3>
-                    </div>
-                    <span className="text-base sm:text-xl font-extrabold text-[var(--store-primary,#613d3e)] dark:text-[#f4b7b9] tabular-nums shrink-0">
-                      {formatCurrency(selectedProductPreview.price)}
-                    </span>
-                  </div>
-
-                  <div className="text-xs sm:text-sm text-[#504444] dark:text-[#c9c0b8] leading-relaxed">
-                    <FormattedDescription text={selectedProductPreview.description} />
-                  </div>
-
-                  <div className="flex items-center gap-2 p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-800 dark:text-amber-300 text-xs">
-                    <Clock size={14} className="shrink-0" />
-                    <span>Prazo de confecção: <strong>{selectedProductPreview.leadTimeDays > 0 ? `até ${selectedProductPreview.leadTimeDays} dias úteis` : 'Pronta entrega'}</strong></span>
-                  </div>
-
-                  {/* Campo de Personalização */}
-                  {selectedProductPreview.isCustomizable && (
-                    <div className="space-y-1.5 pt-1">
-                      <label className="block text-xs font-semibold text-[#221a1a] dark:text-[#e8e0e3]">
-                        Nome ou tema para personalização:
-                      </label>
-                      <input
-                        type="text"
-                        placeholder="Ex: Nome da criança, idade ou tema desejado"
-                        value={previewCustomName}
-                        onChange={(e) => setPreviewCustomName(e.target.value)}
-                        className="w-full px-3.5 py-2 text-base sm:text-xs rounded-xl bg-white dark:bg-[#161214] border border-stone-300 dark:border-stone-700 text-[#221a1a] dark:text-[#e8e0e3] focus:outline-none focus:ring-2 focus:ring-[var(--store-primary,#613d3e)]/30"
-                      />
-                      <p className="text-[10px] text-stone-400">
-                        Você também poderá combinar mais detalhes da arte depois no WhatsApp.
-                      </p>
-                    </div>
-                  )}
-                </div>
-
-                {/* Ação de Adicionar ou Consulta direta via WhatsApp */}
-                <div className="pt-3 pb-[max(1rem,env(safe-area-inset-bottom))] sm:pb-0 border-t border-stone-200/50 dark:border-stone-800 shrink-0 bg-[#fff8f7] dark:bg-[#1f191b] space-y-2">
-                  {featureFlags.enableOnlineOrders !== false ? (
-                    <>
-                      <button
-                        onClick={() => {
-                          addToCart(selectedProductPreview, previewCustomName);
-                          setSelectedProductPreview(null);
-                          setIsCartOpen(true);
-                        }}
-                        className="w-full py-3.5 px-4 rounded-[var(--btn-radius)] font-bold text-xs sm:text-sm flex items-center justify-center gap-2 bg-[var(--btn-bg)] text-[var(--btn-text)] border border-[var(--btn-border)] hover:opacity-95 active:scale-[0.98] transition-all shadow-md cursor-pointer"
-                      >
-                        <ShoppingBag size={16} />
-                        <span>Adicionar à Sacola</span>
-                      </button>
-
-                      {businessInfo.whatsapp && (
-                        <a
-                          href={`https://wa.me/${normalizePhoneForWhatsApp(businessInfo.whatsapp)}?text=${encodeURIComponent(
-                            generateProductInquiryWhatsAppMessage({
-                              businessName: businessInfo.name,
-                              productName: selectedProductPreview.name,
-                              price: selectedProductPreview.price,
-                              category: selectedProductPreview.category,
-                              leadTimeDays: selectedProductPreview.leadTimeDays,
-                              customName: previewCustomName,
-                            })
-                          )}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="w-full py-2.5 px-3 rounded-xl font-semibold text-xs flex items-center justify-center gap-1.5 border border-emerald-600/30 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-500/10 active:scale-98 transition-all cursor-pointer"
-                        >
-                          <MessageCircle size={15} />
-                          <span>Tirar dúvidas deste item no WhatsApp</span>
-                        </a>
-                      )}
-                    </>
-                  ) : (
-                    <a
-                      href={`https://wa.me/${normalizePhoneForWhatsApp(businessInfo.whatsapp)}?text=${encodeURIComponent(
-                        generateProductInquiryWhatsAppMessage({
-                          businessName: businessInfo.name,
-                          productName: selectedProductPreview.name,
-                          price: selectedProductPreview.price,
-                          category: selectedProductPreview.category,
-                          leadTimeDays: selectedProductPreview.leadTimeDays,
-                          customName: previewCustomName,
-                        })
-                      )}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="w-full py-3.5 px-4 rounded-xl font-bold text-xs sm:text-sm flex items-center justify-center gap-2 bg-[#25D366] hover:bg-[#20ba59] text-white transition-all shadow-md cursor-pointer"
-                    >
-                      <MessageCircle size={16} />
-                      <span>Consultar no WhatsApp</span>
-                    </a>
-                  )}
-                </div>
-              </div>
-
-            </div>
-          </div>
-        )}
+        {/* 5. Modal Responsivo de Prévia / Personalização */}
+        <CatalogProductPreviewModal
+          product={selectedProductPreview}
+          onClose={() => setSelectedProductPreview(null)}
+          previewCustomName={previewCustomName}
+          setPreviewCustomName={setPreviewCustomName}
+          businessInfo={businessInfo}
+          enableOnlineOrders={featureFlags.enableOnlineOrders !== false}
+          onAddToCart={(prod, customName) => {
+            addToCart(prod, customName);
+            setSelectedProductPreview(null);
+            setIsCartOpen(true);
+          }}
+        />
 
         {/* 6. Gaveta Lateral / Slide-over Drawer da Sacola de Pedidos */}
-        {isCartOpen && featureFlags.enableOnlineOrders !== false && (
-          <div className="fixed inset-0 z-drawer flex items-end sm:items-stretch sm:justify-end bg-black/60 backdrop-blur-xs animate-in fade-in">
-            {/* Backdrop clicável no mobile e desktop */}
-            <div 
-              className="absolute inset-0" 
-              onClick={() => setIsCartOpen(false)} 
-              aria-hidden="true" 
-            />
-
-            {/* Container da Gaveta (Full-height slide-over no desktop, bottom sheet no mobile) */}
-            <div className="relative z-10 w-full sm:max-w-md h-[88vh] sm:h-full max-h-[90vh] sm:max-h-none flex flex-col rounded-t-3xl sm:rounded-none sm:rounded-l-3xl bg-[#fff8f7] dark:bg-[#1f191b] border-t sm:border-t-0 sm:border-l border-stone-200/80 dark:border-stone-800 shadow-2xl overflow-hidden animate-in slide-in-from-bottom-4 sm:slide-in-from-right duration-200">
-              
-              {/* Header do Carrinho */}
-              <div className="p-4 sm:p-5 flex items-center justify-between border-b border-stone-200/60 dark:border-[#ebcdcd]/10 shrink-0">
-                <div className="flex items-center gap-2.5">
-                  <div className="p-2 rounded-xl bg-[var(--store-primary,#613d3e)]/10 dark:bg-[#f4b7b9]/15 text-[var(--store-primary,#613d3e)] dark:text-[#f4b7b9]">
-                    <ShoppingBag size={18} />
-                  </div>
-                  <div>
-                    <h3 className="text-sm sm:text-base font-bold text-[#221a1a] dark:text-[#e8e0e3]">
-                      Sacola de Encomendas
-                    </h3>
-                    <span className="text-[11px] text-stone-400 font-medium">
-                      {totalItemsCount} {totalItemsCount === 1 ? 'item adicionado' : 'itens adicionados'}
-                    </span>
-                  </div>
-                </div>
-                <button
-                  onClick={() => setIsCartOpen(false)}
-                  className="p-2 rounded-full hover:bg-stone-200 dark:hover:bg-stone-800 text-stone-500 cursor-pointer"
-                  aria-label="Fechar sacola"
-                >
-                  <X size={18} />
-                </button>
-              </div>
-
-              {/* Lista de Itens Adicionados */}
-              <div className="p-4 sm:p-5 flex-1 min-h-0 overflow-y-auto space-y-3 overscroll-contain">
-                {cart.length === 0 ? (
-                  <div className="text-center py-16 text-stone-400 space-y-2">
-                    <ShoppingBag size={40} className="mx-auto opacity-30" />
-                    <p className="text-sm font-semibold text-stone-600 dark:text-stone-300">Sua sacola está vazia.</p>
-                    <p className="text-xs">Explore o catálogo e adicione os mimos que deseja encomendar.</p>
-                  </div>
-                ) : (
-                  cart.map((item) => (
-                    <div
-                      key={item.id}
-                      className="p-3.5 rounded-2xl bg-white/80 dark:bg-[#261f22] border border-stone-200/70 dark:border-[#ebcdcd]/10 space-y-2.5 shadow-2xs"
-                    >
-                      <div className="flex justify-between items-start gap-2">
-                        <div className="flex items-center gap-3 min-w-0">
-                          <img
-                            src={item.product.imageUrl}
-                            alt={item.product.name}
-                            onError={(e) => {
-                              e.currentTarget.src = 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?auto=format&fit=crop&w=800&q=80';
-                            }}
-                            className="size-12 rounded-xl object-cover border border-white/60 shrink-0"
-                            decoding="async"
-                          />
-                          <div className="min-w-0">
-                            <h4 className="text-xs font-bold text-[#221a1a] dark:text-[#e8e0e3] truncate" title={item.product.name}>
-                              {item.product.name}
-                            </h4>
-                            <span className="text-xs font-bold text-[var(--store-primary,#613d3e)] dark:text-[#f4b7b9] tabular-nums">
-                              {formatCurrency(item.product.price * item.quantity)}
-                            </span>
-                          </div>
-                        </div>
-
-                        <button
-                          onClick={() => removeFromCart(item.id)}
-                          className="text-red-500 hover:text-red-700 p-1.5 hover:bg-red-50 dark:hover:bg-red-950/30 rounded-lg transition-colors cursor-pointer"
-                          title="Remover item"
-                        >
-                          <Trash2 size={15} />
-                        </button>
-                      </div>
-
-                      {/* Campo editável para nome/personalização */}
-                      {item.product.isCustomizable && (
-                        <div>
-                          <label className="block text-[10px] font-semibold text-stone-500 dark:text-stone-400 mb-1">
-                            Personalização / Nome:
-                          </label>
-                          <input
-                            type="text"
-                            placeholder="Ex: Nome da criança ou tema"
-                            value={item.customName || ''}
-                            onChange={(e) => {
-                              const val = e.target.value;
-                              setCart((prev) =>
-                                prev.map((ci) =>
-                                  ci.id === item.id ? { ...ci, customName: val } : ci
-                                )
-                              );
-                            }}
-                            className="w-full px-2.5 py-1.5 text-base sm:text-xs rounded-lg bg-white dark:bg-[#161214] border border-stone-200 dark:border-stone-700 text-[#221a1a] dark:text-[#e8e0e3] focus:outline-none focus:ring-1 focus:ring-[var(--store-primary,#613d3e)]"
-                          />
-                        </div>
-                      )}
-
-                      {/* Controle de Quantidade */}
-                      <div className="flex items-center justify-between pt-1 text-[11px]">
-                        <span className="text-[10px] text-stone-400">
-                          {item.product.leadTimeDays > 0 ? `Prazo: ${item.product.leadTimeDays} dias úteis` : 'Pronta entrega'}
-                        </span>
-                        <div className="flex items-center gap-1.5 bg-stone-100 dark:bg-[#161214] rounded-lg p-0.5 border border-stone-200 dark:border-stone-700">
-                          <button
-                            onClick={() => updateQuantity(item.id, -1)}
-                            className="p-1 rounded text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-800 cursor-pointer"
-                            aria-label="Diminuir quantidade"
-                          >
-                            <Minus size={12} />
-                          </button>
-                          <span className="text-xs font-bold px-2 tabular-nums">
-                            {item.quantity}
-                          </span>
-                          <button
-                            onClick={() => updateQuantity(item.id, 1)}
-                            className="p-1 rounded text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-800 cursor-pointer"
-                            aria-label="Aumentar quantidade"
-                          >
-                            <Plus size={12} />
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  ))
-                )}
-
-                {/* Observações Gerais / Data do Evento */}
-                {cart.length > 0 && (
-                  <div className="pt-2 space-y-1">
-                    <label className="block text-xs font-semibold text-[#221a1a] dark:text-[#e8e0e3]">
-                      Observações ou data do seu evento:
-                    </label>
-                    <textarea
-                      rows={2}
-                      placeholder="Ex: Preciso receber até dia 20 para o aniversário..."
-                      value={customerNotes}
-                      onChange={(e) => setCustomerNotes(e.target.value)}
-                      className="w-full p-2.5 text-base sm:text-xs rounded-xl bg-white dark:bg-[#261f22] border border-stone-200 dark:border-stone-700 text-[#221a1a] dark:text-[#e8e0e3] focus:outline-none focus:ring-1 focus:ring-[var(--store-primary,#613d3e)]"
-                    />
-                  </div>
-                )}
-              </div>
-
-              {/* Footer do Carrinho com Envio WhatsApp */}
-              {cart.length > 0 && (
-                <div className="p-4 sm:p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] bg-white/95 dark:bg-[#161214]/95 border-t border-stone-200/80 dark:border-stone-800 space-y-3 shrink-0">
-                  {/* Desconto PIX no Carrinho */}
-                  {businessInfo.pixDiscountText && (
-                    <div className="flex items-center gap-1.5 p-2 rounded-xl bg-emerald-500/10 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 text-xs font-semibold">
-                      <Percent size={13} className="text-emerald-600 dark:text-emerald-400 shrink-0" />
-                      <span>{businessInfo.pixDiscountText}</span>
-                    </div>
-                  )}
-
-                  <div className="flex justify-between items-center text-sm font-bold">
-                    <span>Subtotal Estimado:</span>
-                    <span className="text-lg text-[var(--store-primary,#613d3e)] dark:text-[#f4b7b9] tabular-nums font-extrabold">
-                      {formatCurrency(subtotal)}
-                    </span>
-                  </div>
-
-                  {/* Validação de Valor Mínimo de Pedido */}
-                  {businessInfo.minOrderAmount > 0 && subtotal < businessInfo.minOrderAmount && (
-                    <div className="flex items-center gap-1.5 p-2.5 rounded-xl bg-amber-500/10 dark:bg-amber-500/20 text-amber-800 dark:text-amber-300 border border-amber-500/30 text-xs font-medium">
-                      <AlertCircle size={14} className="text-amber-600 dark:text-amber-400 shrink-0" />
-                      <span>
-                        Pedido mínimo de <strong>{formatCurrency(businessInfo.minOrderAmount)}</strong>. Adicione mais <strong>{formatCurrency(businessInfo.minOrderAmount - subtotal)}</strong> para finalizar.
-                      </span>
-                    </div>
-                  )}
-
-                  <button
-                    onClick={handleSendToWhatsApp}
-                    disabled={submittingOrder || (businessInfo.minOrderAmount > 0 && subtotal < businessInfo.minOrderAmount)}
-                    className="w-full py-3.5 px-4 rounded-[var(--btn-radius)] bg-[#10B981] hover:bg-[#059669] text-white font-bold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg active:scale-98 transition-all cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
-                  >
-                    {submittingOrder ? (
-                      <>
-                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                        <span>Registrando e abrindo WhatsApp...</span>
-                      </>
-                    ) : (
-                      <>
-                        <Send size={15} />
-                        <span>Confirmar & Enviar Pedido no WhatsApp</span>
-                      </>
-                    )}
-                  </button>
-                </div>
-              )}
-
-            </div>
-          </div>
+        {featureFlags.enableOnlineOrders !== false && (
+          <CatalogCartDrawer
+            isOpen={isCartOpen}
+            onClose={() => setIsCartOpen(false)}
+            cart={cart}
+            onUpdateQuantity={updateQuantity}
+            onRemoveItem={removeFromCart}
+            onUpdateCustomName={(id, val) => {
+              setCart((prev) =>
+                prev.map((ci) => (ci.id === id ? { ...ci, customName: val } : ci))
+              );
+            }}
+            customerNotes={customerNotes}
+            onUpdateCustomerNotes={setCustomerNotes}
+            businessInfo={businessInfo}
+            subtotal={subtotal}
+            submittingOrder={submittingOrder}
+            onSendToWhatsApp={handleSendToWhatsApp}
+          />
         )}
 
-        {/* 6. MODAL DE CONFIRMAÇÃO DE PEDIDO ENVIADO */}
-        {submittedOrderInfo && (
-          <div 
-            className="fixed inset-0 z-modal flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in"
-            onClick={() => setSubmittedOrderInfo(null)}
-          >
-            <div 
-              className="bg-white dark:bg-[#1f191b] rounded-3xl max-w-md w-full p-6 shadow-2xl border border-stone-200/80 dark:border-[#ebcdcd]/20 relative text-center space-y-5 animate-scale-up"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <button 
-                onClick={() => setSubmittedOrderInfo(null)}
-                className="absolute top-4 right-4 p-2 rounded-full text-stone-400 hover:text-stone-600 dark:hover:text-stone-200 hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors cursor-pointer"
-                title="Fechar"
-              >
-                <X size={18} />
-              </button>
+        {/* 7. Modal de Confirmação de Pedido Enviado */}
+        <CatalogOrderSuccessModal
+          orderInfo={submittedOrderInfo}
+          onClose={() => setSubmittedOrderInfo(null)}
+          onClearAndFinish={() => {
+            setCart([]);
+            setCustomerNotes('');
+            setIsCartOpen(false);
+            setSubmittedOrderInfo(null);
+          }}
+        />
 
-              <div className="w-16 h-16 mx-auto rounded-full bg-emerald-100 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shadow-inner">
-                <CheckCircle2 size={36} />
-              </div>
-
-              <div className="space-y-2">
-                <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[var(--store-primary,#613d3e)]/10 dark:bg-[#f4b7b9]/15 text-[var(--store-primary,#613d3e)] dark:text-[#f4b7b9] font-mono font-bold text-xs">
-                  Pedido #{submittedOrderInfo.orderCode}
-                </div>
-                <h3 className="text-xl font-black text-stone-900 dark:text-stone-100 tracking-tight">
-                  Pedido Enviado com Sucesso!
-                </h3>
-                <p className="text-xs sm:text-sm text-stone-500 dark:text-stone-400 leading-relaxed">
-                  Seu pedido foi registrado em nosso ateliê e a conversa foi iniciada no WhatsApp. Nossa equipe já tem acesso à sua seleção de itens!
-                </p>
-              </div>
-
-              <div className="p-3.5 rounded-2xl bg-stone-50 dark:bg-stone-900/50 border border-stone-200/60 dark:border-stone-800 text-left space-y-1.5 text-xs text-stone-600 dark:text-stone-300">
-                <div className="flex items-center gap-2 font-semibold text-stone-800 dark:text-stone-200">
-                  <Sparkles size={14} className="text-amber-500" />
-                  <span>Próximos passos no WhatsApp:</span>
-                </div>
-                <p className="text-[11px] text-stone-500 dark:text-stone-400">
-                  Envie a mensagem no aplicativo e informe seu CEP para cálculo do frete e opções de pagamento (PIX ou Cartão).
-                </p>
-              </div>
-
-              <div className="flex flex-col gap-2 pt-2">
-                <a
-                  href={submittedOrderInfo.whatsappUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="w-full py-3 px-4 rounded-[var(--btn-radius)] bg-[#10B981] hover:bg-[#059669] text-white font-bold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-md transition-all active:scale-98 cursor-pointer"
-                >
-                  <MessageCircle size={16} />
-                  <span>Reabrir WhatsApp</span>
-                </a>
-
-                <button
-                  onClick={() => {
-                    setCart([]);
-                    setCustomerNotes('');
-                    setIsCartOpen(false);
-                    setSubmittedOrderInfo(null);
-                  }}
-                  className="w-full py-2.5 px-4 rounded-xl bg-stone-100 hover:bg-stone-200 dark:bg-stone-800 dark:hover:bg-stone-700 text-stone-800 dark:text-stone-200 font-semibold text-xs sm:text-sm transition-colors cursor-pointer"
-                >
-                  Concluir e Limpar Sacola
-                </button>
-
-                <button
-                  onClick={() => setSubmittedOrderInfo(null)}
-                  className="w-full py-2 text-stone-400 hover:text-stone-600 dark:hover:text-stone-300 text-xs font-medium transition-colors cursor-pointer"
-                >
-                  Continuar Comprando
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* 7. BOTÃO FLUTUANTE DO WHATSAPP */}
-        {businessInfo.showFloatingWhatsApp && businessInfo.whatsapp && (
-          <aside aria-label="Atendimento WhatsApp" className="fixed bottom-6 right-6 z-40 flex items-center gap-2 group">
-            {businessInfo.floatingWhatsAppText && (
-              <div className="hidden sm:flex items-center px-3 py-1.5 rounded-full bg-white dark:bg-[#1f191b] border border-stone-200/80 dark:border-[#ebcdcd]/20 shadow-lg text-xs font-semibold text-stone-800 dark:text-stone-200 backdrop-blur-md opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
-                <span>{businessInfo.floatingWhatsAppText}</span>
-              </div>
-            )}
-            <a
-              href={`https://wa.me/${normalizePhoneForWhatsApp(businessInfo.whatsapp)}?text=${encodeURIComponent(
-                generateBespokeConsultationWhatsAppMessage({
-                  businessName: businessInfo.name,
-                  notes: 'Olá! Estou navegando pelo Catálogo Online e gostaria de tirar algumas dúvidas.',
-                })
-              )}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="relative size-14 rounded-full bg-[#25D366] hover:bg-[#1EBE5D] text-white shadow-xl flex items-center justify-center transition-transform hover:scale-110 active:scale-95 cursor-pointer ring-4 ring-white/60 dark:ring-[#161214]/60"
-              title={businessInfo.floatingWhatsAppText || 'Fale Conosco no WhatsApp'}
-              aria-label="Atendimento direto no WhatsApp"
-            >
-              <MessageCircle size={28} className="fill-white/20" />
-              <span className="absolute top-1 right-1 size-3.5 bg-emerald-300 rounded-full border-2 border-white dark:border-[#161214] animate-ping" />
-            </a>
-          </aside>
-        )}
+        {/* 8. Botão Flutuante do WhatsApp */}
+        <CatalogFloatingWhatsApp businessInfo={businessInfo} />
       </div>
     </div>
   );
