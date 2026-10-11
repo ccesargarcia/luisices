@@ -349,6 +349,8 @@ async function authorizeAlexaPerson(envelope, config, db, authService = null) {
       bindingKey,
       displayName: profile.displayName || profile.email || 'Usuário',
       email: profile.email || '',
+      role: profile.role || 'user',
+      permissions: profile.permissions || {},
       mode,
       personId,
       amazonUserId,

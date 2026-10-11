@@ -672,59 +672,89 @@ async function handleListRecentOrders({ envelope, identity, config, db }) {
   }
 
   const uid = identity?.uid;
+  const role = identity?.role || 'user';
+  const isAdmin = role === 'admin';
   let orderDocs = [];
+  let isAtelierOverview = false;
 
   try {
     const ordersCol = db.collection(COLLECTIONS.ORDERS);
-    let snap = null;
 
-    // 1. Tenta buscar pedidos criados pelo usuário ordenados por data decrescente
     if (uid) {
-      try {
-        snap = await ordersCol
-          .where('userId', '==', uid)
-          .where('deletedAt', '==', null)
-          .orderBy('createdAt', 'desc')
-          .limit(5)
-          .get();
-      } catch (idxErr) {
-        // Fallback sem orderBy caso o índice composto esteja ausente no ambiente
-        console.warn('[AlexaDialog] Fallback na consulta com filtro de usuário:', idxErr?.message);
-        try {
-          snap = await ordersCol.where('userId', '==', uid).limit(10).get();
-        } catch {}
-      }
-    }
+      // 1. Busca os pedidos onde o usuário é o criador (userId == uid)
+      // e, se for funcionário/colaborador, também os atribuídos a ele (assignedTo == uid)
+      const queries = [
+        ordersCol.where('userId', '==', uid).limit(20).get().catch((err) => {
+          console.warn('[AlexaDialog] Erro ao buscar pedidos por userId:', err?.message || err);
+          return null;
+        }),
+      ];
 
-    if (snap && !snap.empty) {
-      orderDocs = snap.docs.map((d) => ({ id: d.id, ...(typeof d.data === 'function' ? d.data() : d.data) }));
-      orderDocs.sort((a, b) => {
-        const tA = a.createdAt?.toDate ? a.createdAt.toDate().getTime() : (typeof a.createdAt === 'number' ? a.createdAt : 0);
-        const tB = b.createdAt?.toDate ? b.createdAt.toDate().getTime() : (typeof b.createdAt === 'number' ? b.createdAt : 0);
+      if (role === 'funcionario' || role === 'collaborator') {
+        queries.push(
+          ordersCol.where('assignedTo', '==', uid).limit(20).get().catch((err) => {
+            console.warn('[AlexaDialog] Erro ao buscar pedidos por assignedTo:', err?.message || err);
+            return null;
+          })
+        );
+      }
+
+      const snapshots = await Promise.all(queries);
+      const ordersMap = new Map();
+
+      for (const snap of snapshots) {
+        if (snap && !snap.empty) {
+          snap.docs.forEach((d) => {
+            const data = typeof d.data === 'function' ? d.data() : d.data;
+            ordersMap.set(d.id, { id: d.id, ...data });
+          });
+        }
+      }
+
+      // Filtra em memória os pedidos ativos (não deletados e não arquivados)
+      const userOrders = Array.from(ordersMap.values()).filter((o) => !o.deletedAt && !o.isArchived);
+
+      // Ordena por data de criação decrescente
+      userOrders.sort((a, b) => {
+        const tA = a.createdAt?.toDate ? a.createdAt.toDate().getTime() : (typeof a.createdAt === 'string' ? new Date(a.createdAt).getTime() : (typeof a.createdAt === 'number' ? a.createdAt : 0));
+        const tB = b.createdAt?.toDate ? b.createdAt.toDate().getTime() : (typeof b.createdAt === 'string' ? new Date(b.createdAt).getTime() : (typeof b.createdAt === 'number' ? b.createdAt : 0));
         return tB - tA;
       });
-      orderDocs = orderDocs.slice(0, 5);
+
+      orderDocs = userOrders.slice(0, 5);
     }
 
-    // 2. Se o usuário não tiver pedidos próprios (ex: admin que gerencia o ateliê), busca os mais recentes gerais
-    if (orderDocs.length === 0) {
+    // 2. ISOLAMENTO ESTRITO DE USUÁRIOS:
+    // Usuários comuns (role !== 'admin') NUNCA têm acesso a pedidos de outros usuários!
+    // Se o usuário não tiver pedidos próprios, a lista permanece vazia e ele é informado com segurança.
+    // APENAS administradores do ateliê sem pedidos pessoais cadastrados podem ver os pedidos gerais.
+    if (orderDocs.length === 0 && isAdmin) {
       try {
         const generalSnap = await ordersCol
           .where('deletedAt', '==', null)
           .orderBy('createdAt', 'desc')
           .limit(5)
-          .get();
+          .get()
+          .catch(() => ordersCol.limit(5).get());
+
         if (generalSnap && !generalSnap.empty) {
-          orderDocs = generalSnap.docs.map((d) => ({ id: d.id, ...(typeof d.data === 'function' ? d.data() : d.data) }));
+          const generalOrders = generalSnap.docs
+            .map((d) => ({ id: d.id, ...(typeof d.data === 'function' ? d.data() : d.data) }))
+            .filter((o) => !o.deletedAt && !o.isArchived);
+
+          generalOrders.sort((a, b) => {
+            const tA = a.createdAt?.toDate ? a.createdAt.toDate().getTime() : (typeof a.createdAt === 'string' ? new Date(a.createdAt).getTime() : (typeof a.createdAt === 'number' ? a.createdAt : 0));
+            const tB = b.createdAt?.toDate ? b.createdAt.toDate().getTime() : (typeof b.createdAt === 'string' ? new Date(b.createdAt).getTime() : (typeof b.createdAt === 'number' ? b.createdAt : 0));
+            return tB - tA;
+          });
+
+          orderDocs = generalOrders.slice(0, 5);
+          if (orderDocs.length > 0) {
+            isAtelierOverview = true;
+          }
         }
       } catch (generalErr) {
-        console.warn('[AlexaDialog] Fallback na consulta geral de pedidos:', generalErr?.message);
-        try {
-          const rawSnap = await ordersCol.limit(5).get();
-          if (rawSnap && !rawSnap.empty) {
-            orderDocs = rawSnap.docs.map((d) => ({ id: d.id, ...(typeof d.data === 'function' ? d.data() : d.data) }));
-          }
-        } catch {}
+        console.warn('[AlexaDialog] Fallback na consulta geral de pedidos para admin:', generalErr?.message);
       }
     }
   } catch (err) {
@@ -778,7 +808,9 @@ async function handleListRecentOrders({ envelope, identity, config, db }) {
     cardLines.push(`${cardNum}${customer}\n${quantity}x ${product}${cardPrice} (${statusText})`);
   }
 
-  let fullSpeech = `Encontrei ${countText}. `;
+  let fullSpeech = isAtelierOverview
+    ? `Você não possui pedidos pessoais, mas encontrei ${countText} gerais do ateliê. `
+    : `Encontrei ${countText}. `;
   if (count === 1) {
     fullSpeech += `${speechParts[0]}.`;
   } else {

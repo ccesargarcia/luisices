@@ -36,41 +36,56 @@ describe('Alexa: Máquina de Estados, Diálogo e Validação de Slots pt-BR', ()
     return {
       store,
       collection: (col: string) => {
-        const queryObj: any = {
-          where: () => queryObj,
-          orderBy: () => queryObj,
-          limit: () => queryObj,
-          get: async () => {
-            const items = Object.entries(store[col] || {}).map(([id, data]: [string, any]) => ({
-              id,
-              data: () => data,
-            }));
-            return {
-              empty: items.length === 0,
-              docs: items,
-            };
-          },
-          doc: (id: string) => {
-            const docRef = {
-              id,
-              get: async () => ({
-                exists: Boolean(store[col]?.[id]),
-                data: () => store[col]?.[id] || null,
-                ref: docRef,
-              }),
-              set: async (data: any, options: any) => {
-                store[col] = store[col] || {};
-                store[col][id] = options?.merge ? { ...store[col][id], ...data } : data;
-              },
-              update: async (data: any) => {
-                if (!store[col]?.[id]) throw new Error('Not found');
-                store[col][id] = { ...store[col][id], ...data };
-              },
-            };
-            return docRef;
-          },
+        const createQuery = (currentFilters: Array<{ field: string; op: string; val: any }> = []) => {
+          const queryObj: any = {
+            where: (field: string, op: string, val: any) => {
+              return createQuery([...currentFilters, { field, op, val }]);
+            },
+            orderBy: () => queryObj,
+            limit: () => queryObj,
+            get: async () => {
+              let items = Object.entries(store[col] || {}).map(([id, data]: [string, any]) => ({
+                id,
+                data: () => data,
+                _raw: data,
+              }));
+
+              for (const f of currentFilters) {
+                if (f.op === '==') {
+                  items = items.filter((it: any) => it._raw[f.field] === f.val);
+                } else if (f.op === 'in' && Array.isArray(f.val)) {
+                  items = items.filter((it: any) => f.val.includes(it._raw[f.field]));
+                }
+              }
+
+              return {
+                empty: items.length === 0,
+                docs: items,
+              };
+            },
+            doc: (id: string) => {
+              const docRef = {
+                id,
+                get: async () => ({
+                  exists: Boolean(store[col]?.[id]),
+                  data: () => store[col]?.[id] || null,
+                  ref: docRef,
+                }),
+                set: async (data: any, options: any) => {
+                  store[col] = store[col] || {};
+                  store[col][id] = options?.merge ? { ...store[col][id], ...data } : data;
+                },
+                update: async (data: any) => {
+                  if (!store[col]?.[id]) throw new Error('Not found');
+                  store[col][id] = { ...store[col][id], ...data };
+                },
+              };
+              return docRef;
+            },
+          };
+          return queryObj;
         };
-        return queryObj;
+        return createQuery([]);
       },
 
       runTransaction: async (cb: any) => cb({
@@ -417,6 +432,108 @@ describe('Alexa: Máquina de Estados, Diálogo e Validação de Slots pt-BR', ()
       });
 
       expect(res.speech).toContain('Você ainda não possui pedidos cadastrados');
+      expect(res.shouldEndSession).toBe(false);
+    });
+
+    it('deve isolar estritamente pedidos de outros usuários para usuário comum (não-admin)', async () => {
+      const mockDb = createMockDb({
+        orders: {
+          'order-alheio': {
+            orderNumber: '#2026-9999',
+            userId: 'outro-usuario-uid',
+            customerName: 'Cliente Confidencial',
+            productName: 'Produto Secreto',
+            quantity: 50,
+            price: 1500,
+            status: 'completed',
+            createdAt: { toDate: () => new Date('2026-09-30T10:00:00Z') },
+            deletedAt: null,
+          },
+        },
+      });
+
+      const commonUserIdentity = {
+        ...identity,
+        uid: 'usuario-comum-123',
+        role: 'user',
+      };
+
+      const envelope = {
+        request: {
+          type: 'IntentRequest',
+          intent: { name: 'ListRecentOrdersIntent' },
+        },
+        session: { sessionId: 'session-isolation-test' },
+      };
+
+      const res = await handleAlexaDialog({
+        envelope,
+        identity: commonUserIdentity,
+        config: baseConfig,
+        db: mockDb,
+      });
+
+      // Usuário comum com 0 pedidos próprios NÃO PODE ouvir dados de pedidos de terceiros
+      expect(res.speech).not.toContain('Cliente Confidencial');
+      expect(res.speech).not.toContain('Produto Secreto');
+      expect(res.speech).toContain('Você ainda não possui pedidos cadastrados no Luisices');
+      expect(res.shouldEndSession).toBe(false);
+    });
+
+    it('deve listar pedidos atribuídos quando o usuário for funcionário', async () => {
+      const mockDb = createMockDb({
+        orders: {
+          'order-assigned': {
+            orderNumber: '#2026-5555',
+            userId: 'admin-criador-uid',
+            assignedTo: 'funcionario-uid',
+            customerName: 'Cliente Atribuído',
+            productName: 'Caixa Lembrancinha',
+            quantity: 15,
+            price: 150,
+            status: 'in-progress',
+            createdAt: { toDate: () => new Date('2026-10-01T10:00:00Z') },
+            deletedAt: null,
+          },
+          'order-outro': {
+            orderNumber: '#2026-6666',
+            userId: 'outro-uid',
+            assignedTo: 'outro-colaborador',
+            customerName: 'Cliente Inacessível',
+            productName: 'Item de Outro',
+            quantity: 5,
+            price: 50,
+            status: 'pending',
+            createdAt: { toDate: () => new Date('2026-10-02T10:00:00Z') },
+            deletedAt: null,
+          },
+        },
+      });
+
+      const funcionarioIdentity = {
+        ...identity,
+        uid: 'funcionario-uid',
+        role: 'funcionario',
+      };
+
+      const envelope = {
+        request: {
+          type: 'IntentRequest',
+          intent: { name: 'ListRecentOrdersIntent' },
+        },
+        session: { sessionId: 'session-assigned-test' },
+      };
+
+      const res = await handleAlexaDialog({
+        envelope,
+        identity: funcionarioIdentity,
+        config: baseConfig,
+        db: mockDb,
+      });
+
+      expect(res.speech).toContain('Cliente Atribuído');
+      expect(res.speech).toContain('Caixa Lembrancinha');
+      expect(res.speech).not.toContain('Cliente Inacessível');
       expect(res.shouldEndSession).toBe(false);
     });
 

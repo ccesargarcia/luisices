@@ -680,25 +680,21 @@ describe('Alexa Advancements: Dynamic Entities, Fuzzy Suggestions & APL', () => 
       const mockDb = createMockDb();
       mockDb.collection = (colName: string) => {
         if (colName === 'orders') {
-          return {
-            where: () => ({
-              where: () => ({
-                orderBy: () => ({
-                  limit: () => ({
-                    get: async () => ({
-                      empty: false,
-                      docs: [
-                        {
-                          id: 'ord-apl-list-1',
-                          data: () => mockOrders[0],
-                        },
-                      ],
-                    }),
-                  }),
-                }),
-              }),
+          const makeQuery = (): any => ({
+            where: () => makeQuery(),
+            orderBy: () => makeQuery(),
+            limit: () => makeQuery(),
+            get: async () => ({
+              empty: false,
+              docs: [
+                {
+                  id: 'ord-apl-list-1',
+                  data: () => mockOrders[0],
+                },
+              ],
             }),
-          };
+          });
+          return makeQuery();
         }
         return (createMockDb() as any).collection(colName);
       };
