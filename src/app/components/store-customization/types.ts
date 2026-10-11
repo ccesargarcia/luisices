@@ -117,3 +117,20 @@ export interface StoreCustomizationFormData {
 }
 
 export type StoreCustomizationHandleChange = (field: any, value: any) => void;
+
+export const HEADER_COLOR_PRESETS = [
+  { name: 'Branco Puro', color: '#ffffff', textColor: 'dark' as const },
+  { name: 'Rosê Suave', color: '#fceee9', textColor: 'dark' as const },
+  { name: 'Rosa Quartzo', color: '#fae6e7', textColor: 'dark' as const },
+  { name: 'Pêssego Nude', color: '#fceede', textColor: 'dark' as const },
+  { name: 'Lavanda Floral', color: '#f3eef8', textColor: 'dark' as const },
+  { name: 'Creme Vanilla', color: '#fbf8f2', textColor: 'dark' as const },
+  { name: 'Grafite Nobre', color: '#1f191b', textColor: 'light' as const },
+  { name: 'Vinho Marsala', color: '#613d3e', textColor: 'light' as const },
+  { name: 'Dourado Suave', color: '#fcf4e6', textColor: 'dark' as const },
+  { name: 'Verde Natalino', color: '#1b3b2b', textColor: 'light' as const },
+  { name: 'Vermelho Rubi Natal', color: '#851c22', textColor: 'light' as const },
+  { name: 'Amarelo Páscoa', color: '#fef9e7', textColor: 'dark' as const },
+  { name: 'Azul Céu Batizado', color: '#eef6fc', textColor: 'dark' as const },
+  { name: 'Lilás Festivo', color: '#f7f0fa', textColor: 'dark' as const },
+];
