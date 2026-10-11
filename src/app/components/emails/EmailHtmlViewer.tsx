@@ -1,17 +1,17 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { memo, useEffect, useMemo, useRef, useState } from 'react';
 import DOMPurify from 'isomorphic-dompurify';
+import { observeEmailFrameSize } from '../../utils/emailFrameSizing';
 
 // Email CSS must never participate in the application's document. The sandbox
 // permits measuring the frame and opening links, but does not permit scripts.
-function IsolatedEmailHtml({ html }: { html: string }) {
+const IsolatedEmailHtml = memo(function IsolatedEmailHtml({ html }: { html: string }) {
   const frameRef = useRef<HTMLIFrameElement>(null);
-  const [height, setHeight] = useState(200);
-  const observerRef = useRef<ResizeObserver | null>(null);
-  useEffect(() => () => observerRef.current?.disconnect(), []);
+  const cleanupRef = useRef<(() => void) | null>(null);
+  useEffect(() => () => cleanupRef.current?.(), []);
 
   const srcDoc = `<!doctype html><html><head>
     <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src https: http: data:; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'">
-    <style>html{margin:0;padding:0}body{margin:0;padding:0;display:flow-root;font:14px/1.5 Arial,sans-serif;color:#0f172a;overflow-wrap:anywhere}img{max-width:100%;height:auto}table{max-width:100%}a{color:#4f46e5}</style>
+    <style>html{margin:0;padding:0;overflow-y:hidden}body{margin:0;padding:0;display:flow-root;font:14px/1.5 Arial,sans-serif;color:#0f172a;overflow-wrap:anywhere}img{max-width:100%;height:auto}table{max-width:100%}a{color:#4f46e5}</style>
     </head><body>${html}</body></html>`;
 
   return (
@@ -22,19 +22,14 @@ function IsolatedEmailHtml({ html }: { html: string }) {
       referrerPolicy="no-referrer"
       srcDoc={srcDoc}
       className="block w-full min-w-0 border-0"
-      style={{ height }}
+      style={{ height: 200 }}
       onLoad={() => {
-        observerRef.current?.disconnect();
-        const body = frameRef.current?.contentDocument?.body;
-        if (!body) return;
-        const resize = () => setHeight(Math.max(200, Math.ceil(body.getBoundingClientRect().height), body.scrollHeight));
-        resize();
-        observerRef.current = new ResizeObserver(resize);
-        observerRef.current.observe(body);
+        cleanupRef.current?.();
+        if (frameRef.current) cleanupRef.current = observeEmailFrameSize(frameRef.current);
       }}
     />
   );
-}
+});
 
 /**
  * Visualizador de E-mail HTML com renderização rica, rolagem nativa suave e alternador de texto
