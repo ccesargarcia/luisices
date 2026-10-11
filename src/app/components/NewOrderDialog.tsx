@@ -266,6 +266,7 @@ export function NewOrderDialog({
     try {
       let customerId = selectedCustomer && selectedCustomer !== 'new' ? selectedCustomer : undefined;
 
+      // Criar novo cliente ou auto-vincular se necessário
       const trimmedCustomerName = formData.customerName.trim();
       const trimmedCustomerPhone = formData.customerPhone.trim();
       const trimmedCustomerEmail = formData.customerEmail?.trim() || undefined;
@@ -314,14 +315,9 @@ export function NewOrderDialog({
             ]);
           } catch (createErr: any) {
             if (createErr?.message?.startsWith('DUPLICATE_PHONE:')) {
-              const dupCustomer = await firebaseCustomerService.findCustomerByPhone(user.uid, trimmedCustomerPhone);
-              if (dupCustomer) {
-                customerId = dupCustomer.id;
-              } else {
-                throw createErr;
-              }
+              customerId = createErr.message.split(':')[1];
             } else {
-              throw createErr;
+              console.warn('Erro ao auto-cadastrar cliente, criando pedido mesmo assim:', createErr);
             }
           }
         }
