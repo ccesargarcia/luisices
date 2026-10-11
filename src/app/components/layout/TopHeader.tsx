@@ -65,6 +65,7 @@ export interface TopHeaderProps {
   headerShowQuickSearch?: boolean;
   headerShowHelpCenter?: boolean;
   headerStyle?: 'blur' | 'solid' | 'bordered';
+  headerVariant?: 'floating' | 'slim' | 'dual';
 }
 
 export function TopHeader({
@@ -96,6 +97,7 @@ export function TopHeader({
   headerShowQuickSearch = true,
   headerShowHelpCenter = true,
   headerStyle = 'blur',
+  headerVariant = 'floating',
 }: TopHeaderProps) {
   const navigate = useNavigate();
   const [mobileActionsOpen, setMobileActionsOpen] = useState(false);
@@ -105,31 +107,41 @@ export function TopHeader({
   return (
     <div
       className={cn(
-        'w-full px-3 sm:px-4 py-2 sm:py-2.5 transition-colors',
-        headerStyle === 'solid' && 'bg-card text-card-foreground',
-        headerStyle === 'bordered' && 'bg-background/95 border-b border-border/80'
+        'w-full transition-all',
+        headerVariant === 'floating'
+          ? cn(
+              'max-md:rounded-2xl max-md:border max-md:border-white/50 max-md:dark:border-white/10 max-md:bg-card/90 max-md:backdrop-blur-xl max-md:shadow-xs max-md:px-3 max-md:py-1.5',
+              'md:px-4 md:py-2.5',
+              headerStyle === 'solid' && 'md:bg-card md:text-card-foreground',
+              headerStyle === 'bordered' && 'md:bg-background/95 md:border-b md:border-border/80'
+            )
+          : cn(
+              'px-3 sm:px-4 py-2 sm:py-2.5',
+              headerStyle === 'solid' && 'bg-card text-card-foreground',
+              headerStyle === 'bordered' && 'bg-background/95 border-b border-border/80'
+            )
       )}
     >
-      <div className="flex items-center justify-between gap-2 md:flex-wrap md:gap-3">
+      <div className="flex items-center justify-between gap-1.5 xs:gap-2 md:gap-3">
         {/* Identificação / Logo no Topo */}
-        <div className="flex items-center gap-2 sm:gap-2.5 min-w-0 flex-1 md:max-w-[280px] xl:max-w-none">
+        <div className="flex items-center gap-1.5 xs:gap-2 sm:gap-2.5 min-w-0 flex-1 md:max-w-[280px] xl:max-w-none">
           {hasLogo && !showIconOnly ? (
             <img
               src={logo}
               alt={businessName}
-              className="h-8 md:h-9 max-h-8 md:max-h-9 max-w-[96px] md:max-w-[140px] object-contain min-w-0 rounded-md"
+              className="h-7 xs:h-8 md:h-9 max-h-8 md:max-h-9 max-w-[80px] xs:max-w-[105px] md:max-w-[140px] object-contain min-w-0 rounded-md shrink-0"
             />
           ) : headerLogoStyle !== 'hidden' && businessName ? (
-            <div className="flex items-center justify-center size-8 sm:size-9 bg-primary text-primary-foreground rounded-lg shrink-0 shadow-xs">
-              <Package2 className="size-4 sm:size-5" />
+            <div className="flex items-center justify-center size-7 xs:size-8 sm:size-9 bg-primary text-primary-foreground rounded-lg shrink-0 shadow-xs">
+              <Package2 className="size-3.5 xs:size-4 sm:size-5" />
             </div>
           ) : null}
 
-          <div className={cn("min-w-0 flex-1", hasLogo && !showIconOnly && "hidden md:block")}>
+          <div className="min-w-0 flex-1">
             <div className="flex items-center gap-1.5 sm:gap-2">
               {businessName ? (
                 <h1
-                  className="font-bold text-xs xs:text-sm sm:text-base md:text-lg line-clamp-1 truncate text-foreground leading-tight tracking-tight max-w-[110px] xs:max-w-[160px] sm:max-w-none"
+                  className="font-bold text-xs xs:text-sm sm:text-base md:text-lg truncate text-foreground leading-tight tracking-tight"
                   title={businessName}
                 >
                   {businessName}
@@ -176,15 +188,15 @@ export function TopHeader({
         )}
 
         {/* Ações do Cabeçalho */}
-        <div className="flex items-center justify-end gap-1 md:flex-wrap md:gap-1.5 shrink-0 max-w-full max-md:[&_button]:min-h-11 max-md:[&_button]:min-w-11 pointer-coarse:[&_button]:min-h-11 pointer-coarse:[&_button]:min-w-11">
-          {/* Botão de Busca Mobile/Tablet/Landscape (< xl) */}
-          {headerShowQuickSearch && onOpenSearch && (
+        <div className="flex items-center justify-end gap-1 sm:gap-1.5 shrink-0 max-w-full">
+          {/* Botão de Busca Rápida Mobile/Tablet (se não estiver no modo dual, onde fica na sub-barra) */}
+          {headerShowQuickSearch && onOpenSearch && headerVariant !== 'dual' && (
             <Button
               variant="ghost"
               size="icon"
               data-testid="header-search-btn"
               onClick={onOpenSearch}
-              className="size-8 sm:size-9 hidden md:inline-flex xl:hidden text-muted-foreground hover:text-foreground rounded-lg"
+              className="size-8 sm:size-9 text-muted-foreground hover:text-foreground rounded-full sm:rounded-lg shrink-0 xl:hidden"
               title="Buscar no sistema (Ctrl + K)"
               aria-label="Buscar no sistema"
             >
@@ -198,12 +210,12 @@ export function TopHeader({
               <DropdownMenuTrigger asChild>
                 <Button
                   size="sm"
-                  className="max-md:size-11 max-md:p-0 gap-1 sm:gap-1.5 h-8 sm:h-9 bg-primary text-primary-foreground font-semibold shadow-xs hover:bg-primary/90 px-2.5 sm:px-3 cursor-pointer shrink-0 rounded-lg sm:rounded-md"
+                  className="gap-1 sm:gap-1.5 h-8 sm:h-9 bg-primary text-primary-foreground font-semibold shadow-xs hover:bg-primary/90 px-2.5 sm:px-3 cursor-pointer shrink-0 rounded-full sm:rounded-md text-xs"
                   title="Criar novo (+ Novo)"
                   aria-label="Criar novo"
                 >
-                  <Plus className="size-4 shrink-0" />
-                  <span className="hidden md:inline text-xs font-semibold">Novo</span>
+                  <Plus className="size-3.5 sm:size-4 shrink-0" />
+                  <span className="text-xs font-semibold">Novo</span>
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-52">
@@ -251,22 +263,23 @@ export function TopHeader({
             </DropdownMenu>
           )}
 
-          {/* Botão Copiloto de IA */}
+          {/* Botão Copiloto de IA - Visível no mobile e desktop */}
           {headerShowAiCopilot && canAccessAiCopilot && (
             <Button
               variant="outline"
               size="sm"
               onClick={onOpenAiCopilot}
-              className="hidden md:inline-flex gap-1.5 h-8 sm:h-9 text-xs sm:text-sm font-medium border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400 hover:bg-amber-500/20 transition-colors shadow-2xs px-2 sm:px-2.5 shrink-0"
+              className="gap-1 sm:gap-1.5 h-8 sm:h-9 text-xs sm:text-sm font-medium border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400 hover:bg-amber-500/20 transition-colors shadow-2xs px-2 sm:px-2.5 shrink-0 rounded-full sm:rounded-md"
               title="Abrir Copiloto de IA Interno"
               aria-label="Abrir Copiloto de IA"
             >
               <Sparkles className="size-3.5 sm:size-4 text-amber-500 shrink-0" />
+              <span className="text-[11px] font-semibold sm:hidden">IA</span>
               <span className="hidden xl:inline">Copiloto</span>
             </Button>
           )}
 
-          {/* Atalho Catálogo Online */}
+          {/* Atalho Catálogo Online (desktop xl+) */}
           {headerShowCatalogLink && (
             <a
               href="/catalogo"
@@ -301,24 +314,24 @@ export function TopHeader({
             </Button>
           )}
 
-          {/* Ações secundárias no celular: preserva uma única linha no cabeçalho. */}
+          {/* Ações secundárias no celular: preserva uma única linha no cabeçalho */}
           <Popover open={mobileActionsOpen} onOpenChange={setMobileActionsOpen}>
             <PopoverTrigger asChild>
-              <Button variant="ghost" size="icon" className="md:hidden rounded-lg" aria-label="Mais ações do cabeçalho">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="md:hidden size-8 rounded-full text-muted-foreground hover:text-foreground shrink-0"
+                aria-label="Mais ações do cabeçalho"
+              >
                 <MoreHorizontal className="size-4" />
               </Button>
             </PopoverTrigger>
             <PopoverContent align="end" className="w-64 max-w-[calc(100vw-1.5rem)] p-3 md:hidden">
               <p className="mb-2 text-xs font-semibold text-muted-foreground">Ações do sistema</p>
-              <div className="flex flex-col gap-2 [&_button]:min-h-11 [&_button]:min-w-11">
-                {headerShowQuickSearch && onOpenSearch && (
+              <div className="flex flex-col gap-2">
+                {headerShowQuickSearch && onOpenSearch && headerVariant === 'dual' && (
                   <Button variant="ghost" onClick={() => { setMobileActionsOpen(false); onOpenSearch(); }} className="justify-start gap-2">
                     <Search className="size-4" /> Buscar no sistema
-                  </Button>
-                )}
-                {headerShowAiCopilot && canAccessAiCopilot && (
-                  <Button variant="ghost" onClick={() => { setMobileActionsOpen(false); onOpenAiCopilot(); }} className="justify-start gap-2">
-                    <Sparkles className="size-4" /> Copiloto de IA
                   </Button>
                 )}
                 <AdminTeamFilter variant="inline" className="w-full min-w-0 [&>span]:min-w-0 [&>span]:flex-1" />
@@ -333,7 +346,7 @@ export function TopHeader({
           {/* Menu do Usuário */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" aria-label="Abrir menu do usuário" className="relative size-8 sm:size-9 rounded-full shrink-0 p-0 ml-0.5">
+              <Button variant="ghost" aria-label="Abrir menu do usuário" className="relative size-8 sm:size-9 rounded-full shrink-0 p-0 ml-0.5 ring-1 ring-border/50">
                 <Avatar className="size-8 sm:size-9">
                   <AvatarImage src={avatarUrl} alt="Avatar" />
                   <AvatarFallback className="bg-primary text-primary-foreground text-xs sm:text-sm font-semibold">
@@ -391,6 +404,21 @@ export function TopHeader({
           </DropdownMenu>
         </div>
       </div>
+
+      {/* Sub-barra exclusiva para headerVariant === 'dual' no mobile */}
+      {headerVariant === 'dual' && headerShowQuickSearch && onOpenSearch && (
+        <div className="w-full flex items-center gap-2 pt-2 mt-1.5 border-t border-border/40 md:hidden">
+          <button
+            type="button"
+            onClick={onOpenSearch}
+            className="flex-1 flex items-center gap-2 px-3 py-1.5 rounded-full border border-border/70 bg-muted/30 hover:bg-muted/60 text-muted-foreground text-xs transition-colors cursor-pointer"
+            title="Buscar no sistema (Ctrl + K)"
+          >
+            <Search className="size-3.5 text-muted-foreground" />
+            <span className="truncate">Buscar páginas, clientes, pedidos...</span>
+          </button>
+        </div>
+      )}
     </div>
   );
 }

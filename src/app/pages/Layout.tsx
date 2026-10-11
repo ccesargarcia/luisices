@@ -308,12 +308,24 @@ export function Layout() {
         className={cn(
           'shrink-0 min-w-0 transition-[margin,width] duration-300',
           (settings?.headerSticky ?? true) ? 'sticky top-0 z-30' : 'relative z-20',
-          settings?.headerStyle === 'solid'
-            ? 'border-b border-border bg-card'
-            : settings?.headerStyle === 'bordered'
-            ? 'border-b border-border/80 bg-background/95'
-            : 'border-b border-white/40 bg-card/85 backdrop-blur-2xl',
-          sidebarCollapsed ? 'md:ml-20 md:w-[calc(100%-5rem)]' : 'md:ml-72 md:w-[calc(100%-18rem)]'
+          sidebarCollapsed ? 'md:ml-20 md:w-[calc(100%-5rem)]' : 'md:ml-72 md:w-[calc(100%-18rem)]',
+          (settings?.headerVariant ?? 'floating') === 'floating'
+            ? cn(
+                'max-md:bg-transparent max-md:border-none max-md:px-2.5 max-md:pt-[calc(env(safe-area-inset-top,0px)+0.375rem)] max-md:pb-1',
+                settings?.headerStyle === 'solid'
+                  ? 'md:border-b md:border-border md:bg-card'
+                  : settings?.headerStyle === 'bordered'
+                  ? 'md:border-b md:border-border/80 md:bg-background/95'
+                  : 'md:border-b md:border-white/40 md:bg-card/85 md:backdrop-blur-2xl'
+              )
+            : cn(
+                'max-md:pt-[env(safe-area-inset-top,0px)]',
+                settings?.headerStyle === 'solid'
+                  ? 'border-b border-border bg-card'
+                  : settings?.headerStyle === 'bordered'
+                  ? 'border-b border-border/80 bg-background/95'
+                  : 'border-b border-white/40 bg-card/85 backdrop-blur-2xl'
+              )
         )}
       >
         <TopHeader
@@ -345,6 +357,7 @@ export function Layout() {
           headerShowQuickSearch={settings?.headerShowQuickSearch ?? true}
           headerShowHelpCenter={settings?.headerShowHelpCenter ?? true}
           headerStyle={settings?.headerStyle ?? 'blur'}
+          headerVariant={settings?.headerVariant ?? 'floating'}
         />
       </header>
 

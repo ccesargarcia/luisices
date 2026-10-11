@@ -111,6 +111,7 @@ export interface UserSettings {
   headerShowQuickSearch?: boolean;             // Exibir barra de busca rápida global
   headerShowHelpCenter?: boolean;              // Exibir ícone de Central de Ajuda
   headerStyle?: 'blur' | 'solid' | 'bordered'; // Estilo visual do cabeçalho
+  headerVariant?: 'floating' | 'slim' | 'dual'; // Layout do cabeçalho mobile: 'floating' (Cápsula Flutuante), 'slim' (Barra Slim), 'dual' (Dois Níveis)
 
   // Personalização do Rodapé do Painel Administrativo
   footerMode?: 'compact' | 'complete' | 'hidden'; // 'compact' (1 linha), 'complete' (3 colunas), 'hidden' (oculto)

@@ -100,7 +100,7 @@ class GeminiClient {
       }
 
       const controller = new AbortController();
-      const perAttemptTimeout = Math.min(remainingTime, 15000);
+      const perAttemptTimeout = Math.min(remainingTime, TIMEOUTS.FETCH_STREAM_MS || 35000);
       const timeoutId = setTimeout(() => controller.abort(), perAttemptTimeout);
 
       const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`;

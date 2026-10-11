@@ -115,6 +115,7 @@ export function Settings() {
   const [headerShowQuickSearch, setHeaderShowQuickSearch] = useState(true);
   const [headerShowHelpCenter, setHeaderShowHelpCenter] = useState(true);
   const [headerStyle, setHeaderStyle] = useState<'blur' | 'solid' | 'bordered'>('blur');
+  const [headerVariant, setHeaderVariant] = useState<'floating' | 'slim' | 'dual'>('floating');
 
   const [footerMode, setFooterMode] = useState<'compact' | 'complete' | 'hidden'>('compact');
   const [footerShowSocialLinks, setFooterShowSocialLinks] = useState(true);
@@ -194,6 +195,7 @@ export function Settings() {
       setHeaderShowQuickSearch(settings.headerShowQuickSearch ?? true);
       setHeaderShowHelpCenter(settings.headerShowHelpCenter ?? true);
       setHeaderStyle(settings.headerStyle ?? 'blur');
+      setHeaderVariant(settings.headerVariant ?? 'floating');
 
       setFooterMode(settings.footerMode ?? 'compact');
       setFooterShowSocialLinks(settings.footerShowSocialLinks ?? true);
@@ -366,6 +368,7 @@ export function Settings() {
         headerShowQuickSearch,
         headerShowHelpCenter,
         headerStyle,
+        headerVariant,
         footerMode,
         footerShowSocialLinks,
         footerShowContactInfo,
@@ -557,6 +560,8 @@ export function Settings() {
             onHeaderShowHelpCenterChange={setHeaderShowHelpCenter}
             headerStyle={headerStyle}
             onHeaderStyleChange={setHeaderStyle}
+            headerVariant={headerVariant}
+            onHeaderVariantChange={setHeaderVariant}
             footerMode={footerMode}
             onFooterModeChange={setFooterMode}
             footerShowSocialLinks={footerShowSocialLinks}

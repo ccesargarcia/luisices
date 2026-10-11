@@ -4,6 +4,7 @@ import { Button } from '../ui/button';
 import { Label } from '../ui/label';
 import { Switch } from '../ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
+import { cn } from '../ui/utils';
 import {
   LayoutTemplate,
   Sliders,
@@ -40,6 +41,8 @@ export interface HeaderFooterCustomizationProps {
   onHeaderShowHelpCenterChange: (val: boolean) => void;
   headerStyle: 'blur' | 'solid' | 'bordered';
   onHeaderStyleChange: (val: 'blur' | 'solid' | 'bordered') => void;
+  headerVariant: 'floating' | 'slim' | 'dual';
+  onHeaderVariantChange: (val: 'floating' | 'slim' | 'dual') => void;
 
   // Footer
   footerMode: 'compact' | 'complete' | 'hidden';
@@ -76,6 +79,8 @@ export function HeaderFooterCustomizationSection({
   onHeaderShowHelpCenterChange,
   headerStyle,
   onHeaderStyleChange,
+  headerVariant,
+  onHeaderVariantChange,
   footerMode,
   onFooterModeChange,
   footerShowSocialLinks,
@@ -166,6 +171,69 @@ export function HeaderFooterCustomizationSection({
                   <SelectItem value="bordered">Minimalista (Borda Fina e Clean)</SelectItem>
                 </SelectContent>
               </Select>
+            </div>
+          </div>
+
+          {/* Formato & Layout do Cabeçalho Mobile */}
+          <div className="space-y-2">
+            <Label className="text-xs font-medium text-muted-foreground">Modelo de Layout do Cabeçalho (Mobile & Desktop)</Label>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+              <button
+                type="button"
+                onClick={() => onHeaderVariantChange('floating')}
+                className={cn(
+                  'flex flex-col items-start p-3 rounded-xl border text-left transition-all cursor-pointer',
+                  headerVariant === 'floating'
+                    ? 'border-primary bg-primary/10 shadow-xs ring-1 ring-primary/30'
+                    : 'border-border/70 hover:border-border hover:bg-muted/40'
+                )}
+              >
+                <div className="flex items-center justify-between w-full mb-1">
+                  <span className="text-xs font-semibold text-foreground">Cápsula Flutuante</span>
+                  <span className="text-[9px] font-bold bg-primary/15 text-primary px-1.5 py-0.5 rounded-full">
+                    Padrão
+                  </span>
+                </div>
+                <p className="text-[11px] text-muted-foreground leading-snug">
+                  Ilha translúcida arredondada no topo com estilo iOS Glass, Copiloto IA e ações diretas.
+                </p>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => onHeaderVariantChange('slim')}
+                className={cn(
+                  'flex flex-col items-start p-3 rounded-xl border text-left transition-all cursor-pointer',
+                  headerVariant === 'slim'
+                    ? 'border-primary bg-primary/10 shadow-xs ring-1 ring-primary/30'
+                    : 'border-border/70 hover:border-border hover:bg-muted/40'
+                )}
+              >
+                <div className="flex items-center justify-between w-full mb-1">
+                  <span className="text-xs font-semibold text-foreground">Barra Slim</span>
+                </div>
+                <p className="text-[11px] text-muted-foreground leading-snug">
+                  Barra contínua de 52px de ponta a ponta, ultra-leve e botão Novo em pílula delicada.
+                </p>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => onHeaderVariantChange('dual')}
+                className={cn(
+                  'flex flex-col items-start p-3 rounded-xl border text-left transition-all cursor-pointer',
+                  headerVariant === 'dual'
+                    ? 'border-primary bg-primary/10 shadow-xs ring-1 ring-primary/30'
+                    : 'border-border/70 hover:border-border hover:bg-muted/40'
+                )}
+              >
+                <div className="flex items-center justify-between w-full mb-1">
+                  <span className="text-xs font-semibold text-foreground">Dois Níveis (Dual)</span>
+                </div>
+                <p className="text-[11px] text-muted-foreground leading-snug">
+                  Dois níveis dinâmicos com campo de busca rápido e atalhos de alta produtividade.
+                </p>
+              </button>
             </div>
           </div>
 
