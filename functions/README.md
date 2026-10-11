@@ -44,7 +44,7 @@ Testes de integração/presença usam emuladores e precisam de Java 21 para a ve
 - `getAiUsage` é destinado à administração. Limites e referências de custo estão em `ai/config.js`.
 - Alexa possui diálogo, identidade, rascunhos e confirmação independentes do Copiloto.
 
-Detalhes: [e-mail](../docs/RECUPERACAO_ENVIO_EMAIL.md), [sessões](../docs/SEGURANCA_DESCONEXAO_DISPOSITIVOS.md), [WhatsApp](../docs/ISOLAMENTO_WHATSAPP_PARCEIROS.md), [Copiloto](../docs/COPILOTO_IA.md).
+Detalhes: [Funcionalidades](../docs/FUNCIONALIDADES.md), [Arquitetura](../docs/DEPENDENCIAS_E_ARQUITETURA.md), [Copiloto](../docs/COPILOTO_IA.md).
 
 ## Organização de IA
 
