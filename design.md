@@ -148,7 +148,8 @@ background-attachment: fixed;
 5. **Largura do Painel:** Em layouts flex/grid, usar `min-w-0` nos itens que precisam encolher. O breakpoint da viewport não garante espaço no painel: considerar sidebar, colunas de leitura e largura do modal.
 6. **Cabeçalhos e Metadados:** A identificação pode truncar para preservar ações essenciais. Assuntos e endereços longos devem quebrar com `overflow-wrap:anywhere`; a data pode ocupar outra linha quando faltar espaço.
 7. **Barras de Ações:** Usar `flex-wrap` no grupo e nos controles quando necessário. Contagem de seleção e botões devem permanecer dentro do painel, inclusive ao selecionar todas as mensagens. Manter a ordem de leitura e deixar a exclusão acessível, sem depender de rolagem horizontal da página.
-8. **Ícones Compactos:** Ao ocultar o texto de uma ação, fornecer nome acessível (`aria-label`). Preservar o alvo de toque mínimo de 44px em mobile; um ícone visual de 16px não exige uma área clicável de 16px.
+8. **Cabeçalho Global no Celular:** Manter logo e ações essenciais em uma única linha. Agrupar busca, copiloto e filtro de equipe em um menu de ações secundárias quando faltar espaço, respeitando permissões e personalização. Não colocar o logo sozinho em uma linha nem espalhar os controles com `justify-between`. Verificar a composição visual além da ausência de overflow.
+9. **Ícones Compactos:** Ao ocultar o texto de uma ação, fornecer nome acessível (`aria-label`). Preservar o alvo de toque mínimo de 44px em mobile; um ícone visual de 16px não exige uma área clicável de 16px.
 
 ---
 
@@ -191,3 +192,5 @@ Quando for solicitar insights e novos componentes ao Stitch, envie este document
 2. *"Como podemos aprimorar a tela de Galeria e Lojinha para destacar melhor as texturas de Lamicote Dourado e fotos em alta resolução seguindo a paleta Rosewood e Lavanda?"*
 3. *"Crie uma proposta de layout mobile-first para o checkout da vitrine pública respeitando a estética de papelaria de afeto e micro-interações táteis."*
 4. *"Gere um componente de 'Resumo Financeiro & Precificação' com cards estatísticos translúcidos, gráficos sutis e badges de margem de lucro."*
+
+Checagem do cabeçalho: após `npm run build`, executar `node scripts/check-header-responsiveness.mjs` com Chromium do Playwright instalado. `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` aceita um executável alternativo. A checagem usa os componentes reais com dados de conta simulados e verifica altura, overflow, alvos de toque e abertura de ações secundárias, com e sem logo e com permissões reduzidas. Conferir também a composição visual; testes geométricos não comprovam qualidade visual.

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router';
 import {
   DropdownMenu,
@@ -11,6 +11,7 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from '../ui/avatar';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
+import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover';
 import { ThemeToggle } from '../common/ThemeToggle';
 import { NotificationBell } from '../NotificationBell';
 import { AdminTeamFilter } from '../AdminTeamFilter';
@@ -29,6 +30,7 @@ import {
   LogOut,
   Package2,
   Search,
+  MoreHorizontal,
 } from 'lucide-react';
 import { cn } from '../ui/utils';
 
@@ -96,6 +98,7 @@ export function TopHeader({
   headerStyle = 'blur',
 }: TopHeaderProps) {
   const navigate = useNavigate();
+  const [mobileActionsOpen, setMobileActionsOpen] = useState(false);
   const hasLogo = Boolean(logo) && headerLogoStyle !== 'hidden';
   const showIconOnly = headerLogoStyle === 'icon';
 
@@ -107,14 +110,14 @@ export function TopHeader({
         headerStyle === 'bordered' && 'bg-background/95 border-b border-border/80'
       )}
     >
-      <div className="flex flex-wrap items-center justify-between gap-1.5 sm:gap-3">
+      <div className="flex items-center justify-between gap-2 md:flex-wrap md:gap-3">
         {/* Identificação / Logo no Topo */}
-        <div className="flex items-center gap-2 sm:gap-2.5 min-w-0 flex-1 max-w-[180px] xs:max-w-[220px] sm:max-w-[280px] xl:max-w-none">
+        <div className="flex items-center gap-2 sm:gap-2.5 min-w-0 flex-1 md:max-w-[280px] xl:max-w-none">
           {hasLogo && !showIconOnly ? (
             <img
               src={logo}
               alt={businessName}
-              className="h-8 sm:h-9 max-h-8 sm:max-h-9 max-w-[70px] xs:max-w-[100px] sm:max-w-[140px] object-contain shrink-0 rounded-md"
+              className="h-8 md:h-9 max-h-8 md:max-h-9 max-w-[96px] md:max-w-[140px] object-contain min-w-0 rounded-md"
             />
           ) : headerLogoStyle !== 'hidden' && businessName ? (
             <div className="flex items-center justify-center size-8 sm:size-9 bg-primary text-primary-foreground rounded-lg shrink-0 shadow-xs">
@@ -122,7 +125,7 @@ export function TopHeader({
             </div>
           ) : null}
 
-          <div className="min-w-0 flex-1">
+          <div className={cn("min-w-0 flex-1", hasLogo && !showIconOnly && "hidden md:block")}>
             <div className="flex items-center gap-1.5 sm:gap-2">
               {businessName ? (
                 <h1
@@ -143,7 +146,7 @@ export function TopHeader({
             </div>
             {headerShowTagline && (
               <div>
-                <p className="text-[11px] sm:text-xs text-muted-foreground hidden sm:block truncate leading-none mt-0.5">
+                <p className="text-[11px] sm:text-xs text-muted-foreground hidden md:block truncate leading-none mt-0.5">
                   {businessTagline || 'Sistema de Gestão de Pedidos'}
                 </p>
               </div>
@@ -173,7 +176,7 @@ export function TopHeader({
         )}
 
         {/* Ações do Cabeçalho */}
-        <div className="flex flex-wrap items-center justify-end gap-1 sm:gap-1.5 shrink-0 max-w-full">
+        <div className="flex items-center justify-end gap-1 md:flex-wrap md:gap-1.5 shrink-0 max-w-full max-md:[&_button]:min-h-11 max-md:[&_button]:min-w-11 pointer-coarse:[&_button]:min-h-11 pointer-coarse:[&_button]:min-w-11">
           {/* Botão de Busca Mobile/Tablet/Landscape (< xl) */}
           {headerShowQuickSearch && onOpenSearch && (
             <Button
@@ -181,7 +184,7 @@ export function TopHeader({
               size="icon"
               data-testid="header-search-btn"
               onClick={onOpenSearch}
-              className="size-8 sm:size-9 xl:hidden text-muted-foreground hover:text-foreground rounded-lg"
+              className="size-8 sm:size-9 hidden md:inline-flex xl:hidden text-muted-foreground hover:text-foreground rounded-lg"
               title="Buscar no sistema (Ctrl + K)"
               aria-label="Buscar no sistema"
             >
@@ -195,11 +198,12 @@ export function TopHeader({
               <DropdownMenuTrigger asChild>
                 <Button
                   size="sm"
-                  className="gap-1 sm:gap-1.5 h-8 sm:h-9 bg-primary text-primary-foreground font-semibold shadow-xs hover:bg-primary/90 px-2.5 sm:px-3 cursor-pointer shrink-0 rounded-lg sm:rounded-md"
+                  className="max-md:size-11 max-md:p-0 gap-1 sm:gap-1.5 h-8 sm:h-9 bg-primary text-primary-foreground font-semibold shadow-xs hover:bg-primary/90 px-2.5 sm:px-3 cursor-pointer shrink-0 rounded-lg sm:rounded-md"
                   title="Criar novo (+ Novo)"
+                  aria-label="Criar novo"
                 >
                   <Plus className="size-4 shrink-0" />
-                  <span className="hidden sm:inline text-xs font-semibold">Novo</span>
+                  <span className="hidden md:inline text-xs font-semibold">Novo</span>
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-52">
@@ -253,8 +257,9 @@ export function TopHeader({
               variant="outline"
               size="sm"
               onClick={onOpenAiCopilot}
-              className="gap-1.5 h-8 sm:h-9 text-xs sm:text-sm font-medium border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400 hover:bg-amber-500/20 transition-colors shadow-2xs px-2 sm:px-2.5 shrink-0"
+              className="hidden md:inline-flex gap-1.5 h-8 sm:h-9 text-xs sm:text-sm font-medium border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400 hover:bg-amber-500/20 transition-colors shadow-2xs px-2 sm:px-2.5 shrink-0"
               title="Abrir Copiloto de IA Interno"
+              aria-label="Abrir Copiloto de IA"
             >
               <Sparkles className="size-3.5 sm:size-4 text-amber-500 shrink-0" />
               <span className="hidden xl:inline">Copiloto</span>
@@ -276,10 +281,10 @@ export function TopHeader({
             </a>
           )}
 
-          <AdminTeamFilter variant="header" className="inline-flex" />
+          <div className="hidden md:inline-flex"><AdminTeamFilter variant="header" /></div>
           <NotificationBell />
 
-          <div className="hidden sm:inline-flex shrink-0">
+          <div className="hidden md:inline-flex shrink-0">
             <ThemeToggle />
           </div>
 
@@ -296,10 +301,39 @@ export function TopHeader({
             </Button>
           )}
 
+          {/* Ações secundárias no celular: preserva uma única linha no cabeçalho. */}
+          <Popover open={mobileActionsOpen} onOpenChange={setMobileActionsOpen}>
+            <PopoverTrigger asChild>
+              <Button variant="ghost" size="icon" className="md:hidden rounded-lg" aria-label="Mais ações do cabeçalho">
+                <MoreHorizontal className="size-4" />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent align="end" className="w-64 max-w-[calc(100vw-1.5rem)] p-3 md:hidden">
+              <p className="mb-2 text-xs font-semibold text-muted-foreground">Ações do sistema</p>
+              <div className="flex flex-col gap-2 [&_button]:min-h-11 [&_button]:min-w-11">
+                {headerShowQuickSearch && onOpenSearch && (
+                  <Button variant="ghost" onClick={() => { setMobileActionsOpen(false); onOpenSearch(); }} className="justify-start gap-2">
+                    <Search className="size-4" /> Buscar no sistema
+                  </Button>
+                )}
+                {headerShowAiCopilot && canAccessAiCopilot && (
+                  <Button variant="ghost" onClick={() => { setMobileActionsOpen(false); onOpenAiCopilot(); }} className="justify-start gap-2">
+                    <Sparkles className="size-4" /> Copiloto de IA
+                  </Button>
+                )}
+                <AdminTeamFilter variant="inline" className="w-full min-w-0 [&>span]:min-w-0 [&>span]:flex-1" />
+                <div className="flex items-center justify-between gap-2 border-t pt-2">
+                  <span className="text-sm text-muted-foreground">Tema visual</span>
+                  <ThemeToggle />
+                </div>
+              </div>
+            </PopoverContent>
+          </Popover>
+
           {/* Menu do Usuário */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" className="relative size-8 sm:size-9 rounded-full shrink-0 p-0 ml-0.5">
+              <Button variant="ghost" aria-label="Abrir menu do usuário" className="relative size-8 sm:size-9 rounded-full shrink-0 p-0 ml-0.5">
                 <Avatar className="size-8 sm:size-9">
                   <AvatarImage src={avatarUrl} alt="Avatar" />
                   <AvatarFallback className="bg-primary text-primary-foreground text-xs sm:text-sm font-semibold">
