@@ -18,13 +18,33 @@ on:
         required: true
         type: boolean
         default: true
+      initial_password:
+        description: 'Senha temporária para primeiro acesso do usuário em Produção (opcional)'
+        required: false
+        type: string
+        default: ''
+      copy_storage:
+        description: 'Copiar arquivos físicos do Firebase Storage (fotos, logos, anexos)?'
+        required: true
+        type: boolean
+        default: true
       migrate_auth:
         description: 'Provisionar conta no Firebase Auth de Produção se não existir?'
         required: true
         type: boolean
         default: true
+      migrate_profile:
+        description: 'Migrar Perfis e Permissões (userProfiles, users, metadata)?'
+        required: true
+        type: boolean
+        default: true
+      migrate_settings:
+        description: 'Migrar Configurações do Ateliê e Identidade (users/settings/profile, pricingSettings)?'
+        required: true
+        type: boolean
+        default: true
       migrate_orders:
-        description: 'Migrar Pedidos de Produção (orders)?'
+        description: 'Migrar Pedidos de Produção e Apontamentos (orders, productionTracking)?'
         required: true
         type: boolean
         default: true
@@ -39,22 +59,47 @@ on:
         type: boolean
         default: true
       migrate_products:
-        description: 'Migrar Catálogo de Produtos (products)?'
+        description: 'Migrar Catálogo de Produtos Interno (products)?'
+        required: true
+        type: boolean
+        default: true
+      migrate_store_products:
+        description: 'Migrar Vitrine da Loja Pública Online (storeProducts)?'
         required: true
         type: boolean
         default: true
       migrate_supplies:
-        description: 'Migrar Insumos, Compras e Receitas (supplies, recipes, purchase_history)?'
+        description: 'Migrar Insumos e Histórico de Compras (supplies, purchaseHistory)?'
+        required: true
+        type: boolean
+        default: true
+      migrate_recipes:
+        description: 'Migrar Fichas Técnicas e Receitas (pricingRecipes)?'
         required: true
         type: boolean
         default: true
       migrate_ledger:
-        description: 'Migrar Livro Caixa e Vendas (salesLedger)?'
+        description: 'Migrar Livro Caixa e Faturamento Mensal (salesLedger, salesMonthlySummaries)?'
         required: true
         type: boolean
         default: true
       migrate_gallery:
-        description: 'Migrar Imagens e Galeria (gallery)?'
+        description: 'Migrar Galeria de Artes e Portfólio (gallery)?'
+        required: true
+        type: boolean
+        default: true
+      migrate_whatsapp:
+        description: 'Migrar Histórico de Conversas do WhatsApp (whatsapp_chats, whatsapp_messages)?'
+        required: true
+        type: boolean
+        default: true
+      migrate_emails:
+        description: 'Migrar Histórico de E-mails Enviados (sentEmails)?'
+        required: true
+        type: boolean
+        default: true
+      migrate_alexa:
+        description: 'Migrar Configurações e Dispositivos Alexa (alexaPermissions, alexaBindings)?'
         required: true
         type: boolean
         default: true
@@ -65,7 +110,7 @@ permissions:
 jobs:
   migrate-user:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
 
     steps:
       - name: Checkout
@@ -87,15 +132,23 @@ jobs:
           USER_EMAIL: ${{ inputs.user_email }}
           USER_UID: ${{ inputs.user_uid }}
           DRY_RUN: ${{ inputs.dry_run }}
+          INITIAL_PASSWORD: ${{ inputs.initial_password }}
+          COPY_STORAGE: ${{ inputs.copy_storage }}
           MIGRATE_AUTH: ${{ inputs.migrate_auth }}
+          MIGRATE_PROFILE: ${{ inputs.migrate_profile }}
+          MIGRATE_SETTINGS: ${{ inputs.migrate_settings }}
           MIGRATE_ORDERS: ${{ inputs.migrate_orders }}
           MIGRATE_CUSTOMERS: ${{ inputs.migrate_customers }}
           MIGRATE_QUOTES: ${{ inputs.migrate_quotes }}
           MIGRATE_PRODUCTS: ${{ inputs.migrate_products }}
+          MIGRATE_STORE_PRODUCTS: ${{ inputs.migrate_store_products }}
           MIGRATE_SUPPLIES: ${{ inputs.migrate_supplies }}
-          MIGRATE_RECIPES: ${{ inputs.migrate_supplies }}
+          MIGRATE_RECIPES: ${{ inputs.migrate_recipes }}
           MIGRATE_LEDGER: ${{ inputs.migrate_ledger }}
           MIGRATE_GALLERY: ${{ inputs.migrate_gallery }}
+          MIGRATE_WHATSAPP: ${{ inputs.migrate_whatsapp }}
+          MIGRATE_EMAILS: ${{ inputs.migrate_emails }}
+          MIGRATE_ALEXA: ${{ inputs.migrate_alexa }}
         run: |
           if [ -z "$FIREBASE_SERVICE_ACCOUNT_DEV" ]; then
             echo "❌ ERRO: Secret FIREBASE_SERVICE_ACCOUNT_DEV não configurado no repositório."
