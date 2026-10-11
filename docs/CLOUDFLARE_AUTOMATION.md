@@ -64,6 +64,9 @@ npm run cloudflare:deploy:api:prod   # Produção (api.luisices.com.br)
 # Deploy de ambos os Workers simultaneamente
 npm run cloudflare:deploy:dev        # Todos os Workers em Dev
 npm run cloudflare:deploy:prod       # Todos os Workers em Prod
+
+# 🔍 Inspecionar status de recursos provisionados (Zonas, DNS, Workers, SSL)
+npm run cloudflare:status
 ```
 
 ---
@@ -85,3 +88,21 @@ Para que o pipeline automático funcione no GitHub Actions (`.github/workflows/d
 O workflow [`.github/workflows/deploy-cloudflare.yml`](../.github/workflows/deploy-cloudflare.yml) é acionado:
 1. **Automaticamente:** Quando houver push nas branches `develop` (para Dev) ou `main` (para Prod) com alterações na pasta `cloudflare/**`.
 2. **Manualmente:** Via `workflow_dispatch` na aba Actions do GitHub, permitindo escolher o ambiente (`dev`, `production` ou `all`) e quais workers publicar.
+
+---
+
+## 🔍 6. Como Inspecionar o Status Atual dos Recursos Provisionados
+
+### Opção A: Pelo GitHub Actions (Recomendado - 1 Clique)
+Como o secret `CLOUDFLARE_API_TOKEN` já fica salvo no GitHub:
+1. Acesse a aba **Actions** no repositório GitHub.
+2. Selecione o workflow **Cloudflare - Auditoria de Status Provisionado** ([`.github/workflows/audit-cloudflare.yml`](../.github/workflows/audit-cloudflare.yml)).
+3. Clique em **Run workflow**.
+4. O relatório completo com todas as Zonas, Registros DNS, Workers e rotas ativas é exibido imediatamente no **Job Summary** da execução e salvo como artefato!
+
+### Opção B: No Terminal Local
+```bash
+# Executa a auditoria carregando o token do ambiente
+CLOUDFLARE_API_TOKEN="seu_token_aqui" npm run cloudflare:status
+```
+O script exibirá na tela e criará o arquivo `cloudflare-status-report.md` com o inventário completo.

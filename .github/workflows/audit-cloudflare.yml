@@ -1,0 +1,40 @@
+name: Cloudflare - Auditoria de Status Provisionado
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit-cloudflare:
+    name: Inspecionar Infraestrutura Cloudflare
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout Repositório
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Instalar Dependências
+        run: npm install --legacy-peer-deps
+
+      - name: Executar Auditoria Cloudflare
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: npm run cloudflare:status
+
+      - name: Upload Relatório como Artefato
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: cloudflare-audit-report
+          path: cloudflare-status-report.md
+          retention-days: 7
