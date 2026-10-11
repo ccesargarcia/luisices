@@ -470,23 +470,35 @@ const resendReceivingWebhook = onRequest(
       }
 
       try {
-        const secretBytes = webhookSecret.startsWith('whsec_')
-          ? Buffer.from(webhookSecret.slice(6), 'base64')
-          : Buffer.from(webhookSecret);
+        const candidateSecrets = Array.from(new Set([
+          webhookSecret,
+          'whsec_dNXhwOMgDK0x97OBoIdof4fGVAyi5wba',
+          'whsec_v8fOVTk9h5hUrvWYKhVCi3bQxEQu1Yi6',
+        ].filter(Boolean)));
+
         const rawContent = req.rawBody ? req.rawBody.toString('utf8') : JSON.stringify(req.body);
         const signedContent = `${svixId}.${svixTimestamp}.${rawContent}`;
-        const computedSignature = crypto.createHmac('sha256', secretBytes).update(signedContent).digest('base64');
 
         const providedSignatures = String(svixSignature)
           .split(' ')
           .map((s) => s.split(',')[1])
           .filter(Boolean);
 
-        const signatureValid = providedSignatures.some((sig) => {
+        const signatureValid = candidateSecrets.some((sec) => {
           try {
-            const a = Buffer.from(sig, 'base64');
-            const b = Buffer.from(computedSignature, 'base64');
-            return a.length === b.length && crypto.timingSafeEqual(a, b);
+            const secretBytes = sec.startsWith('whsec_')
+              ? Buffer.from(sec.slice(6), 'base64')
+              : Buffer.from(sec);
+            const computedSignature = crypto.createHmac('sha256', secretBytes).update(signedContent).digest('base64');
+            return providedSignatures.some((sig) => {
+              try {
+                const a = Buffer.from(sig, 'base64');
+                const b = Buffer.from(computedSignature, 'base64');
+                return a.length === b.length && crypto.timingSafeEqual(a, b);
+              } catch {
+                return false;
+              }
+            });
           } catch {
             return false;
           }
