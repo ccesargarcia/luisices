@@ -4,6 +4,7 @@ import { Order, OrderStatus, UserProfile, canAccessArchivedOrders } from '../typ
 import { OrderCard } from '../components/OrderCard';
 import { OrderDetailsDialog } from '../components/OrderDetailsDialog';
 import { NewOrderDialog } from '../components/NewOrderDialog';
+import { ImportOrdersDialog } from '../components/orders/ImportOrdersDialog';
 import { DashboardHeaderMetrics } from '../components/dashboard/DashboardHeaderMetrics';
 import { DashboardBulkBar } from '../components/dashboard/DashboardBulkBar';
 import { DashboardCardSkeleton, OrderCardSkeleton } from '../components/SkeletonLoaders';
@@ -764,6 +765,9 @@ export function Dashboard() {
             <Download className="size-4" />
             <span className="hidden sm:inline">Exportar Excel</span>
           </Button>
+          {(isAdmin || hasPermission((p) => p.orders?.create ?? false)) && (
+            <ImportOrdersDialog onImportSuccess={refreshOrders} />
+          )}
           <NewOrderDialog />
         </div>
       </div>
