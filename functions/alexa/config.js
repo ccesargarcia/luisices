@@ -18,7 +18,13 @@ const { DRAFT_TTL_MINUTES, APP_APPROVAL_TTL_MINUTES, PAIRING_CODE_TTL_MINUTES } 
  * @param {object} [db] - Instância Firestore opcional para leitura de overrides dinâmicos
  */
 async function getAlexaConfig(db = null) {
-  const gcloudProject = process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT || '';
+  let gcloudProject = (process.env.GCLOUD_PROJECT || process.env.GOOGLE_CLOUD_PROJECT || process.env.GCP_PROJECT || '').trim();
+  if (!gcloudProject && process.env.FIREBASE_CONFIG) {
+    try {
+      const parsed = JSON.parse(process.env.FIREBASE_CONFIG);
+      gcloudProject = (parsed.projectId || '').trim();
+    } catch (_) {}
+  }
   const envVar = (process.env.ALEXA_ENVIRONMENT || '').trim().toLowerCase();
   
   // Se ALEXA_ENVIRONMENT não estiver setado, inferir pelo projeto GCP
@@ -57,7 +63,13 @@ async function getAlexaConfig(db = null) {
           isEnabled = data.enabled;
         }
         if (data.allowedSkillId && typeof data.allowedSkillId === 'string') {
-          allowedSkillId = data.allowedSkillId.trim();
+          const overrideId = data.allowedSkillId.trim();
+          if (environment === 'prod' && overrideId === DEV_SKILL_ID) {
+            console.warn('[AlexaConfig] Override do Firestore continha DEV_SKILL_ID em producao. Usando PROD_SKILL_ID oficial.');
+            allowedSkillId = PROD_SKILL_ID;
+          } else {
+            allowedSkillId = overrideId;
+          }
         }
         if (data.timezone && typeof data.timezone === 'string') {
           timezone = data.timezone.trim();

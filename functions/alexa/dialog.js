@@ -249,25 +249,26 @@ function parseAndValidatePriceToCents(priceValue) {
  * Inclui confirmação explícita de gratuidade quando price === 0.
  */
 function buildConfirmationSpeech(draftData, identity, config) {
-  const envLabel = config.environment === 'prod' ? 'produção' : 'teste';
+  const isProd = config.environment === 'prod';
   const name = sanitizeSpeech(identity.displayName || 'Amanda');
   const qty = draftData.quantity;
   const prod = sanitizeSpeech(draftData.product);
   const cust = sanitizeSpeech(draftData.customer);
   const dateFormatted = formatDatePtBr(draftData.deliveryDate);
+  const prefix = isProd ? `${name}:` : `${name}, no ambiente de teste:`;
 
   if (draftData.pricingMode === 'unit' && draftData.unitPriceCents !== null && draftData.unitPriceCents !== undefined) {
     const unitPriceReais = draftData.unitPriceCents / 100;
     const unitPriceFormatted = unitPriceReais === 0 ? 'zero reais' : formatCurrencyPtBr(unitPriceReais);
     const totalPriceFormatted = draftData.price === 0 ? 'zero reais, pedido gratuito' : formatCurrencyPtBr(draftData.price);
-    return `${name}, no ambiente de ${envLabel}: ${qty} ${prod} para ${cust} a ${unitPriceFormatted} cada, total de ${totalPriceFormatted}, entrega em ${dateFormatted}. Confirmar? Diga: pode confirmar. Ou diga o que deseja corrigir.`;
+    return `${prefix} ${qty} ${prod} para ${cust} a ${unitPriceFormatted} cada, total de ${totalPriceFormatted}, entrega em ${dateFormatted}. Confirmar? Diga: pode confirmar. Ou diga o que deseja corrigir.`;
   }
 
   const priceFormatted = draftData.price === 0
     ? 'zero reais, pedido gratuito'
     : formatCurrencyPtBr(draftData.price);
 
-  return `${name}, no ambiente de ${envLabel}: ${qty} ${prod} para ${cust}, entrega em ${dateFormatted}, total de ${priceFormatted}. Confirmar? Diga: pode confirmar. Ou diga o que deseja corrigir.`;
+  return `${prefix} ${qty} ${prod} para ${cust}, entrega em ${dateFormatted}, total de ${priceFormatted}. Confirmar? Diga: pode confirmar. Ou diga o que deseja corrigir.`;
 }
 
 /**
@@ -999,7 +1000,10 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
       }
     }
 
-    const speech = `Olá, ${name}. Ambiente de ${envLabel}. Diga criar pedido, ver últimos pedidos ou vincular minha voz.`;
+    const isProd = config.environment === 'prod';
+    const speech = isProd
+      ? `Olá, ${name}! Bem-vindo ao Ateliê Luisices. Diga criar pedido, ver últimos pedidos ou vincular minha voz.`
+      : `Olá, ${name}. Ambiente de ${envLabel}. Diga criar pedido, ver últimos pedidos ou vincular minha voz.`;
     const reprompt = 'Você pode dizer: criar pedido, ver últimos pedidos ou pedir ajuda.';
     const directives = [
       isApl ? buildWelcomeAplDirective({ userName: name, envLabel }) : null,
@@ -2703,7 +2707,9 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
         : undefined;
 
       return {
-        speech: `Pedido preparado no seu espaço de ${envLabel}. Acesse o Luisices no aplicativo para conferir e aprovar a gravação definitiva.`,
+        speech: config.environment === 'prod'
+          ? 'Pedido preparado. Acesse o Luisices no aplicativo para conferir e aprovar a gravação definitiva.'
+          : `Pedido preparado no seu espaço de ${envLabel}. Acesse o Luisices no aplicativo para conferir e aprovar a gravação definitiva.`,
         shouldEndSession: true,
         sessionAttributes: {},
         directives,
@@ -2852,7 +2858,9 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
 
         const successSpeech = commitRes.isReplay
           ? `O pedido número ${commitRes.orderNumber} já havia sido registrado com sucesso.`
-          : `Pedido criado no seu espaço de ${envLabel} com o número ${commitRes.orderNumber}.`;
+          : (config.environment === 'prod'
+              ? `Pedido criado com sucesso com o número ${commitRes.orderNumber}.`
+              : `Pedido criado no seu espaço de ${envLabel} com o número ${commitRes.orderNumber}.`);
 
         const isApl = supportsApl(envelope);
         const directives = isApl

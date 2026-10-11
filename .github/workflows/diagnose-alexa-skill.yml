@@ -64,7 +64,7 @@ jobs:
       - name: Consultar e Comparar Dev vs Prod
         env:
           DEV_SKILL_ID: ${{ secrets.DEV_ALEXA_SKILL_ID || secrets.ALEXA_DEV_SKILL_ID || 'amzn1.ask.skill.1cd0031f-ada0-4da8-8721-2ad44b4b1c96' }}
-          PROD_SKILL_ID: ${{ secrets.PROD_ALEXA_SKILL_ID || secrets.ALEXA_PROD_SKILL_ID || secrets.ALEXA_SKILL_ID }}
+          PROD_SKILL_ID: ${{ secrets.PROD_ALEXA_SKILL_ID || secrets.ALEXA_PROD_SKILL_ID || secrets.ALEXA_SKILL_ID || 'amzn1.ask.skill.0f0da257-2062-4fd0-9514-2d5925b47957' }}
           ACTION: ${{ inputs.action }}
         run: |
           echo "=========================================================="

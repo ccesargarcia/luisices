@@ -155,6 +155,20 @@ describe('Alexa: Máquina de Estados, Diálogo e Validação de Slots pt-BR', ()
       expect(res.shouldEndSession).toBe(false);
     });
 
+    it('deve responder à saudação LaunchRequest em producao sem citar teste nem ambiente', async () => {
+      const envelope = {
+        request: { type: 'LaunchRequest' },
+      };
+      const mockDb = createMockDb();
+      const prodConfig = { ...baseConfig, environment: 'prod' as const };
+      const res = await handleAlexaDialog({ envelope, identity, config: prodConfig, db: mockDb });
+
+      expect(res.speech).toBe('Olá, Amanda! Bem-vindo ao Ateliê Luisices. Diga criar pedido, ver últimos pedidos ou vincular minha voz.');
+      expect(res.speech).not.toContain('teste');
+      expect(res.speech).not.toContain('ambiente');
+      expect(res.shouldEndSession).toBe(false);
+    });
+
     it('deve pedir dados faltantes se o pedido não estiver completo', async () => {
       const envelope = {
         request: {
@@ -186,7 +200,7 @@ describe('Alexa: Máquina de Estados, Diálogo e Validação de Slots pt-BR', ()
               customer: { value: 'Maria' },
               product: { value: 'caixinhas' },
               quantity: { value: '20' },
-              deliveryDate: { value: '2026-10-10' },
+              deliveryDate: { value: '2026-10-25' },
               total: { value: '100' },
             },
           },
@@ -197,7 +211,37 @@ describe('Alexa: Máquina de Estados, Diálogo e Validação de Slots pt-BR', ()
 
       expect(res.speech).toContain('Amanda, no ambiente de teste:');
       expect(res.speech).toContain('20 caixinhas para Maria');
-      expect(res.speech).toContain('entrega em 10 de outubro de 2026');
+      expect(res.speech).toContain('entrega em 25 de outubro de 2026');
+      expect(res.speech).toContain('total de 100 reais');
+      expect(res.speech).toContain('Confirmar?');
+      expect(res.shouldEndSession).toBe(false);
+      expect(res.sessionAttributes?.draftId).toBeDefined();
+    });
+
+    it('deve emitir resumo verbal sem citar teste em producao', async () => {
+      const envelope = {
+        request: {
+          type: 'IntentRequest',
+          intent: {
+            name: 'CreateOrderIntent',
+            slots: {
+              customer: { value: 'Maria' },
+              product: { value: 'caixinhas' },
+              quantity: { value: '20' },
+              deliveryDate: { value: '2026-10-25' },
+              total: { value: '100' },
+            },
+          },
+        },
+      };
+      const mockDb = createMockDb();
+      const prodConfig = { ...baseConfig, environment: 'prod' as const };
+      const res = await handleAlexaDialog({ envelope, identity, config: prodConfig, db: mockDb });
+
+      expect(res.speech).toContain('Amanda: 20 caixinhas para Maria');
+      expect(res.speech).not.toContain('teste');
+      expect(res.speech).not.toContain('produção');
+      expect(res.speech).toContain('entrega em 25 de outubro de 2026');
       expect(res.speech).toContain('total de 100 reais');
       expect(res.speech).toContain('Confirmar?');
       expect(res.shouldEndSession).toBe(false);

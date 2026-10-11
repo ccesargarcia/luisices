@@ -354,9 +354,14 @@ async function processAlexaEnvelope(envelope, { db, config, authService = null }
       let reprompt = undefined;
 
       if (reqType === 'LaunchRequest' && (authRes.code === 'VOICE_NOT_ALLOWED' || authRes.code === 'VOICE_NOT_RECOGNIZED')) {
+        const isProd = config.environment === 'prod';
         speech = authRes.code === 'VOICE_NOT_ALLOWED'
-          ? 'Olá! Sua voz foi reconhecida, mas ainda não está vinculada ao Luisices. Diga: gerar código, para receber seu código de vinculação.'
-          : 'Olá! Bem-vindo ao Luisices de teste. Diga: gerar código, para receber seu código de vinculação.';
+          ? (isProd
+              ? 'Olá! Sua voz foi reconhecida, mas ainda não está vinculada ao Ateliê Luisices. Diga: gerar código, para receber seu código de vinculação.'
+              : 'Olá! Sua voz foi reconhecida, mas ainda não está vinculada ao Luisices. Diga: gerar código, para receber seu código de vinculação.')
+          : (isProd
+              ? 'Olá! Bem-vindo ao Ateliê Luisices. Diga: gerar código, para receber seu código de vinculação.'
+              : 'Olá! Bem-vindo ao Ateliê de testes. Diga: gerar código, para receber seu código de vinculação.');
         reprompt = 'Diga: gerar código.';
         shouldEnd = false;
       } else if (reqType === 'Alexa.Presentation.APL.UserEvent' && (authRes.code === 'VOICE_NOT_ALLOWED' || authRes.code === 'VOICE_NOT_RECOGNIZED')) {
