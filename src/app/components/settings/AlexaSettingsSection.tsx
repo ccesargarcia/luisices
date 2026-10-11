@@ -121,12 +121,14 @@ export function AlexaSettingsSection({ isAdmin }: AlexaSettingsSectionProps) {
 
   const handleToggleGlobal = async (checked: boolean) => {
     setTogglingGlobal(true);
+    setStatus((prev) => (prev ? { ...prev, isEnabled: checked } : prev));
     try {
       await firebaseAlexaService.toggleGlobalIntegration(checked);
       toast.success(checked ? 'Integração Alexa ativada globalmente.' : 'Integração Alexa desativada globalmente.');
       await loadData();
     } catch (err: any) {
       toast.error('Erro ao alterar status global: ' + (err.message || 'Falha na operação.'));
+      await loadData();
     } finally {
       setTogglingGlobal(false);
     }

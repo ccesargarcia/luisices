@@ -132,10 +132,12 @@ async function revokeAlexaBindingHandler(request, db) {
 async function toggleGlobalAlexaIntegrationHandler(request, db) {
   const adminProfile = await assertActiveAdmin(request);
   const { enabled } = request.data || {};
+  const config = await getAlexaConfig(db);
 
   await db.doc(COLLECTIONS.SETTINGS).set(
     {
       enabled: Boolean(enabled),
+      allowedSkillId: config.allowedSkillId || 'amzn1.ask.skill.1cd0031f-ada0-4da8-8721-2ad44b4b1c96',
       updatedBy: request.auth.uid,
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
     },
