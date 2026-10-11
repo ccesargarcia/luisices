@@ -34,7 +34,10 @@ service firebase.storage {
     }
 
     function canViewGallery() {
-      return isActiveUser();
+      return isActiveUser() && (
+        isAdmin()
+        || (isActiveEmployee() && ('gallery' in getEmployeePermissions()) && hasPerm(getEmployeePermissions().gallery, 'view'))
+      );
     }
 
     function canAccessEmailAttachments(action) {

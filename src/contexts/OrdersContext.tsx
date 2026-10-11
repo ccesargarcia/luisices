@@ -326,11 +326,7 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
         },
         (err) => {
           assignedLoaded = true;
-          if (err?.code !== 'permission-denied' && !String(err?.message).includes('insufficient permissions')) {
-            console.error('OrdersContext: erro nos pedidos atribuídos:', err);
-          }
-          setError(err.message);
-          setLoading(false);
+          handleQueryError('pedidos atribuídos', err);
         }
       ));
     }

@@ -443,11 +443,10 @@ service cloud.firestore {
       // Bloquear criação direta no cliente por qualquer usuário; pedidos públicos devem passar estritamente pela Cloud Function submitPublicCatalogOrder
       allow create: if false;
 
-      // Leitura permitida para administradores ou membros autorizados
+      // Leitura permitida para administradores ou membros autorizados com permissão explícita de loja
       allow read: if isActiveUser() && (
         isAdmin()
         || getEmployeePermissions().get('store', false) == true
-        || ('orders' in getEmployeePermissions() && hasPerm(getEmployeePermissions().orders, 'view'))
       );
 
       // Atualização e exclusão restritas a administradores ou gestores da loja
