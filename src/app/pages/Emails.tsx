@@ -1563,7 +1563,7 @@ export function Emails() {
 
         {/* ── Coluna 2: Lista de Mensagens / Master (md: 4 ou 5 colunas) ── */}
         <div
-          className={`col-span-1 md:col-span-4 lg:col-span-4 border-r border-border/60 flex flex-col bg-background min-h-0 h-full overflow-hidden ${
+          className={`col-span-1 md:col-span-4 lg:col-span-4 border-r border-border/60 flex flex-col bg-background min-w-0 min-h-0 h-full overflow-hidden ${
             selectedEmailId ? 'hidden md:flex' : 'flex'
           }`}
         >
@@ -1645,8 +1645,8 @@ export function Emails() {
 
           {/* Barra de Seleção em Massa e Select All */}
           {displayedEmails.length > 0 && (
-            <div className="px-3 py-2 bg-muted/40 dark:bg-zinc-900/70 border-b border-border/80 dark:border-zinc-800 flex items-center justify-between gap-2 text-xs">
-              <div className="flex items-center gap-2">
+            <div className="px-3 py-2 bg-muted/40 dark:bg-zinc-900/70 border-b border-border/80 dark:border-zinc-800 flex flex-wrap items-center justify-between gap-2 text-xs min-w-0 shrink-0 max-md:[&_button]:min-h-11 max-md:[&_button]:min-w-11 pointer-coarse:[&_button]:min-h-11 pointer-coarse:[&_button]:min-w-11">
+              <div className="flex items-center gap-2 min-w-0">
                 <Checkbox
                   id="select-all-emails"
                   checked={isAllDisplayedSelected ? true : isSomeDisplayedSelected ? 'indeterminate' : false}
@@ -1656,7 +1656,7 @@ export function Emails() {
                 />
                 <label
                   htmlFor="select-all-emails"
-                  className="text-xs font-medium cursor-pointer text-muted-foreground select-none hover:text-foreground transition-colors"
+                  className="text-xs font-medium cursor-pointer text-muted-foreground select-none hover:text-foreground transition-colors [overflow-wrap:anywhere]"
                 >
                   {selectedEmailIds.size > 0 ? (
                     <span className="font-semibold text-primary">{selectedEmailIds.size} selecionado(s)</span>
@@ -1681,7 +1681,7 @@ export function Emails() {
               )}
 
               {selectedEmailIds.size > 0 && (
-                <div className="flex items-center gap-1">
+                <div className="flex flex-wrap items-center gap-1 min-w-0 max-w-full flex-1 basis-[20rem]">
                   {activeFolder === 'trash' ? (
                     <>
                       <Button
@@ -1691,6 +1691,7 @@ export function Emails() {
                         className="h-7 px-2 text-[11px] gap-1 text-primary hover:text-primary font-medium"
                         onClick={handleBulkRestore}
                         title="Restaurar e-mails selecionados para as pastas de origem"
+                        aria-label="Restaurar e-mails selecionados"
                       >
                         <ArchiveRestore className="size-3.5" />
                         <span className="hidden sm:inline">Restaurar</span>
@@ -1699,7 +1700,7 @@ export function Emails() {
                         disabled={!canDelete || isBulkDeleting}
                         size="sm"
                         variant="destructive"
-                        className="h-7 px-2.5 text-[11px] gap-1 shadow-xs font-medium"
+                        className="h-auto min-h-7 max-w-full whitespace-normal px-2.5 text-[11px] gap-1 shadow-xs font-medium [&>span]:min-w-0 [&>span]:[overflow-wrap:anywhere]"
                         onClick={() => setIsBulkDeleteDialogOpen(true)}
                         title="Excluir e-mails selecionados definitivamente"
                       >
@@ -1718,6 +1719,7 @@ export function Emails() {
                             className="h-7 px-2 text-[11px] gap-1 text-muted-foreground hover:text-foreground"
                             onClick={() => handleBulkMarkRead(true)}
                             title="Marcar selecionados como lidos"
+                            aria-label="Marcar selecionados como lidos"
                           >
                             <MailCheck className="size-3.5 text-primary" />
                             <span className="hidden sm:inline">Lido</span>
@@ -1729,6 +1731,7 @@ export function Emails() {
                             className="h-7 px-2 text-[11px] gap-1 text-muted-foreground hover:text-foreground"
                             onClick={() => handleBulkArchive(activeFolder !== 'archived')}
                             title={activeFolder === 'archived' ? "Desarquivar selecionados" : "Arquivar selecionados"}
+                            aria-label={activeFolder === 'archived' ? "Desarquivar selecionados" : "Arquivar selecionados"}
                           >
                             <Archive className="size-3.5" />
                             <span className="hidden sm:inline">{activeFolder === 'archived' ? 'Desarquivar' : 'Arquivar'}</span>
@@ -1740,6 +1743,7 @@ export function Emails() {
                             className="h-7 px-2 text-[11px] gap-1 text-amber-600 dark:text-amber-400 hover:text-amber-700"
                             onClick={() => handleBulkMarkSpam(activeFolder !== 'spam')}
                             title={activeFolder === 'spam' ? "Mover selecionados para Caixa de Entrada (Não é spam)" : "Marcar selecionados como Spam"}
+                            aria-label={activeFolder === 'spam' ? "Mover selecionados para Caixa de Entrada (Não é spam)" : "Marcar selecionados como Spam"}
                           >
                             <ShieldAlert className="size-3.5" />
                             <span className="hidden sm:inline">{activeFolder === 'spam' ? 'Não é spam' : 'Spam'}</span>
@@ -1750,7 +1754,7 @@ export function Emails() {
                         disabled={!canDelete || isBulkDeleting}
                         size="sm"
                         variant="destructive"
-                        className="h-7 px-2.5 text-[11px] gap-1 shadow-xs font-medium"
+                        className="h-auto min-h-7 max-w-full whitespace-normal px-2.5 text-[11px] gap-1 shadow-xs font-medium [&>span]:min-w-0 [&>span]:[overflow-wrap:anywhere]"
                         onClick={() => setIsBulkDeleteDialogOpen(true)}
                         title="Mover e-mails selecionados para a lixeira"
                       >
@@ -1765,6 +1769,7 @@ export function Emails() {
                     className="h-7 px-1.5 text-muted-foreground hover:text-foreground"
                     onClick={handleClearSelection}
                     title="Limpar seleção"
+                    aria-label="Limpar seleção"
                   >
                     <X className="size-3.5" />
                   </Button>

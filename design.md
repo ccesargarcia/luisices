@@ -194,3 +194,5 @@ Quando for solicitar insights e novos componentes ao Stitch, envie este document
 4. *"Gere um componente de 'Resumo Financeiro & Precificação' com cards estatísticos translúcidos, gráficos sutis e badges de margem de lucro."*
 
 Checagem do cabeçalho: após `npm run build`, executar `node scripts/check-header-responsiveness.mjs` com Chromium do Playwright instalado. `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` aceita um executável alternativo. A checagem usa os componentes reais com dados de conta simulados e verifica altura, overflow, alvos de toque e abertura de ações secundárias, com e sem logo e com permissões reduzidas. Conferir também a composição visual; testes geométricos não comprovam qualidade visual.
+
+Checagem da seleção de e-mails: após `npm run build`, executar `node scripts/check-email-toolbar-responsiveness.mjs` com Chromium do Playwright instalado. A checagem usa o JSX da barra real com dados simulados, testa colunas estreitas em viewport desktop e dispositivos com toque, e verifica overflow, sobreposição e acesso à confirmação de exclusão. Não executa exclusões reais.
