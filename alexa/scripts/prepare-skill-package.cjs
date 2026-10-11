@@ -15,7 +15,7 @@ const DEFAULTS = {
     testingInstructions: 'Ambiente isolado de desenvolvimento. Requer perfil de voz ativo no aplicativo Alexa e pareamento supervisionado aprovado por administrador no Luisices.'
   },
   prod: {
-    endpoint: 'https://us-central1-papelaria-dashboard.cloudfunctions.net/alexaWebhook',
+    endpoint: 'https://api.luisices.com.br/alexaWebhook',
     invocation: 'ateliê',
     skillName: 'Luisices Ateliê',
     privacyPolicyUrl: 'https://luisices.com.br',
