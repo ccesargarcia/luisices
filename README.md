@@ -7,6 +7,7 @@ Documentação revisada em **10/10/2026**, com base na `develop` (`b2b6ef9`). A 
 ## Documentação
 
 - [Índice dos guias](docs/README.md)
+- [Design system e critérios de revisão de UI](design.md)
 - [Funcionalidades e limites operacionais](docs/FUNCIONALIDADES.md)
 - [Arquitetura e dependências](docs/DEPENDENCIAS_E_ARQUITETURA.md)
 - [Copiloto: capacidades e evolução do system prompt](docs/COPILOTO_IA.md)

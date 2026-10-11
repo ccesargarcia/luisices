@@ -6,6 +6,7 @@ Revisão: **10/10/2026**, base de código `develop` / `b2b6ef9`.
 
 | Guia | Quando consultar |
 |---|---|
+| [Design system](../design.md) | Tokens, componentes compartilhados, modais, responsividade, isolamento de HTML e critérios de revisão de UI |
 | [Funcionalidades](FUNCIONALIDADES.md) | Módulos, jornadas, separação entre catálogo interno e loja, limites operacionais |
 | [Arquitetura](DEPENDENCIAS_E_ARQUITETURA.md) | Entrypoints, domínios, dados, integrações e publicação |
 | [Copiloto de IA](COPILOTO_IA.md) | Nove ferramentas existentes, proposta de system prompt, custo e evoluções priorizadas |
