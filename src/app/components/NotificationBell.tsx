@@ -1,7 +1,6 @@
 import { useMemo, useState, useEffect, useCallback } from 'react';
 import { Bell, Cake, AlertTriangle, Package, CalendarClock, X, Trash2 } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
-import { Button } from './ui/button';
 import { useFirebaseOrders } from '../../hooks/useFirebaseOrders';
 import { firebaseCustomerService } from '../../services/firebaseCustomerService';
 import { useAuth } from '../../contexts/AuthContext';
@@ -148,7 +147,7 @@ export function NotificationBell() {
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <Button variant="ghost" size="icon"
+        <button
           className="relative inline-flex items-center justify-center size-8 sm:size-9 rounded-full hover:bg-muted text-muted-foreground hover:text-foreground transition-colors cursor-pointer shrink-0"
           aria-label="Notificações"
         >
@@ -158,7 +157,7 @@ export function NotificationBell() {
               {urgentCount > 9 ? '9+' : urgentCount}
             </span>
           )}
-        </Button>
+        </button>
       </PopoverTrigger>
       <PopoverContent align="end" className="w-[calc(100vw-1.5rem)] sm:w-80 max-w-sm p-0">
         <div className="px-3 py-2.5 border-b flex items-center justify-between">

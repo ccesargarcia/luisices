@@ -450,7 +450,6 @@ export function QuoteFormDialog({
                       className="col-start-6 row-start-1 size-8 shrink-0 text-destructive hover:text-destructive sm:col-auto sm:row-auto"
                       disabled={form.items.length === 1}
                       onClick={() => removeItem(idx)}
-                      aria-label={`Remover item ${idx + 1} do orçamento`}
                     >
                       <Trash2 className="size-3.5" />
                     </Button>

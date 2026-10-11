@@ -230,7 +230,7 @@ export function NewChatModal({
               size="sm"
               onClick={() => onStartCustomChat(customPhone, customName)}
               disabled={!customPhone.trim()}
-              className="h-8 text-xs bg-primary hover:bg-primary/90 text-primary-foreground font-semibold gap-1.5 shadow-xs cursor-pointer"
+              className="h-8 text-xs bg-primary hover:bg-primary/90 text-white font-semibold gap-1.5 shadow-xs cursor-pointer"
             >
               <MessageSquare className="size-3.5" />
               <span>Iniciar Chat</span>

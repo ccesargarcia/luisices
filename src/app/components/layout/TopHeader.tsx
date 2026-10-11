@@ -109,7 +109,7 @@ export function TopHeader({
     >
       <div className="flex flex-wrap items-center justify-between gap-1.5 sm:gap-3">
         {/* Identificação / Logo no Topo */}
-        <div className="flex items-center gap-2 sm:gap-2.5 min-w-0 flex-1 max-md:basis-full max-md:max-w-none md:max-w-[280px] xl:max-w-none">
+        <div className="flex items-center gap-2 sm:gap-2.5 min-w-0 flex-1 max-w-[180px] xs:max-w-[220px] sm:max-w-[280px] xl:max-w-none">
           {hasLogo && !showIconOnly ? (
             <img
               src={logo}
@@ -173,7 +173,7 @@ export function TopHeader({
         )}
 
         {/* Ações do Cabeçalho */}
-        <div className="flex flex-wrap items-center justify-end max-md:w-full max-md:justify-between gap-1 sm:gap-1.5 shrink-0 max-w-full">
+        <div className="flex flex-wrap items-center justify-end gap-1 sm:gap-1.5 shrink-0 max-w-full">
           {/* Botão de Busca Mobile/Tablet/Landscape (< xl) */}
           {headerShowQuickSearch && onOpenSearch && (
             <Button
@@ -197,7 +197,6 @@ export function TopHeader({
                   size="sm"
                   className="gap-1 sm:gap-1.5 h-8 sm:h-9 bg-primary text-primary-foreground font-semibold shadow-xs hover:bg-primary/90 px-2.5 sm:px-3 cursor-pointer shrink-0 rounded-lg sm:rounded-md"
                   title="Criar novo (+ Novo)"
-                  aria-label="Criar novo"
                 >
                   <Plus className="size-4 shrink-0" />
                   <span className="hidden sm:inline text-xs font-semibold">Novo</span>
@@ -256,7 +255,6 @@ export function TopHeader({
               onClick={onOpenAiCopilot}
               className="gap-1.5 h-8 sm:h-9 text-xs sm:text-sm font-medium border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400 hover:bg-amber-500/20 transition-colors shadow-2xs px-2 sm:px-2.5 shrink-0"
               title="Abrir Copiloto de IA Interno"
-              aria-label="Abrir Copiloto de IA"
             >
               <Sparkles className="size-3.5 sm:size-4 text-amber-500 shrink-0" />
               <span className="hidden xl:inline">Copiloto</span>
@@ -301,7 +299,7 @@ export function TopHeader({
           {/* Menu do Usuário */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" aria-label="Abrir menu do usuário" className="relative size-8 sm:size-9 rounded-full shrink-0 p-0 ml-0.5">
+              <Button variant="ghost" className="relative size-8 sm:size-9 rounded-full shrink-0 p-0 ml-0.5">
                 <Avatar className="size-8 sm:size-9">
                   <AvatarImage src={avatarUrl} alt="Avatar" />
                   <AvatarFallback className="bg-primary text-primary-foreground text-xs sm:text-sm font-semibold">

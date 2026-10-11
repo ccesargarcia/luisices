@@ -201,7 +201,6 @@ export function OrderCard({ order, onClick, isSelected = false, onToggleSelect }
                   e.stopPropagation();
                   openWhatsAppForOrder(order);
                 }}
-                aria-label="Abrir conversa do pedido no WhatsApp"
               >
                 <MessageCircle className="size-4" />
                 <span className="hidden sm:inline">WhatsApp</span>

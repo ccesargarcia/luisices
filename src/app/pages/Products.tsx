@@ -616,27 +616,22 @@ export function Products() {
             placeholder="Buscar por nome, categoria ou descrição..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="pl-10 pr-12 h-11 sm:h-9"
+            className="pl-10 pr-10"
           />
           {search && (
             <button onClick={() => setSearch('')}
-              aria-label="Limpar busca de produtos"
-              className="absolute right-0 top-1/2 -translate-y-1/2 size-11 sm:size-8 flex items-center justify-center text-muted-foreground hover:text-foreground">
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
               <X className="size-4" />
             </button>
           )}
         </div>
         <div className="flex border rounded-md overflow-hidden">
           <Button variant="ghost" size="icon"
-            aria-label="Exibir produtos em grade"
-            aria-pressed={viewMode === 'grid'}
             className={cn('rounded-none border-0', viewMode === 'grid' && 'bg-muted')}
             onClick={() => handleSetViewMode('grid')}>
             <LayoutGrid className="size-4" />
           </Button>
           <Button variant="ghost" size="icon"
-            aria-label="Exibir produtos em lista"
-            aria-pressed={viewMode === 'list'}
             className={cn('rounded-none border-0', viewMode === 'list' && 'bg-muted')}
             onClick={() => handleSetViewMode('list')}>
             <LayoutList className="size-4" />

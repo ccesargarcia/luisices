@@ -75,7 +75,6 @@ export function AdminTeamFilter({ variant = 'header', className }: AdminTeamFilt
                   : 'border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/80',
               )}
               title="Filtrar dados da plataforma por parceiro / equipe"
-              aria-label="Filtrar dados por parceiro ou equipe"
             >
               <Users className={cn('size-4 shrink-0', isFilterActive ? 'text-primary' : 'text-muted-foreground')} />
               <span className="hidden xs:inline-block max-w-[130px] sm:max-w-[180px] truncate">
@@ -89,20 +88,17 @@ export function AdminTeamFilter({ variant = 'header', className }: AdminTeamFilt
               <ChevronDown className="size-3.5 opacity-60 shrink-0 ml-0.5" />
             </Button>
             {isFilterActive && (
-              <Button
+              <button
                 type="button"
-                variant="ghost"
-                size="icon"
-                aria-label="Limpar filtro de parceiro"
                 onClick={(e) => {
                   e.stopPropagation();
                   clearUserFilter();
                 }}
-                className="ml-1 size-8 rounded-full hover:bg-destructive hover:text-destructive-foreground text-foreground"
+                className="absolute -top-1 -right-1 flex size-4 items-center justify-center rounded-full bg-muted-foreground/30 hover:bg-destructive hover:text-destructive-foreground text-foreground text-[10px] transition-colors"
                 title="Limpar filtro e visualizar tudo"
               >
-                <X className="size-3.5" />
-              </Button>
+                <X className="size-2.5" />
+              </button>
             )}
           </div>
         ) : (

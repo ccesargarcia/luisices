@@ -43,7 +43,7 @@ export function PaginationControls({
 
   return (
     <div className={cn("flex flex-col sm:flex-row items-center justify-between gap-3 pt-4 border-t border-border/60", className)}>
-      <div className="flex flex-wrap justify-center items-center gap-3 text-xs sm:text-sm text-muted-foreground">
+      <div className="flex items-center gap-3 text-xs sm:text-sm text-muted-foreground">
         <span>
           Mostrando <strong>{startItem}–{endItem}</strong> de <strong>{totalItems}</strong> {totalItems === 1 ? itemName : itemPluralName}
         </span>
@@ -54,8 +54,7 @@ export function PaginationControls({
               value={String(pageSize)}
               onValueChange={(val) => onPageSizeChange(val === 'all' ? 'all' : Number(val))}
             >
-              <SelectTrigger aria-label="Quantidade de itens por página"
-                className="h-7 w-[70px] text-xs px-2 max-md:min-h-11 pointer-coarse:min-h-11">
+              <SelectTrigger className="h-7 w-[70px] text-xs px-2">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -71,7 +70,7 @@ export function PaginationControls({
       </div>
 
       {pageSize !== 'all' && totalPages > 1 && (
-        <div className="flex flex-wrap justify-center items-center gap-1 sm:gap-2 max-w-full">
+        <div className="flex items-center gap-1 sm:gap-2">
           <Button
             variant="outline"
             size="sm"
@@ -79,13 +78,12 @@ export function PaginationControls({
             onClick={() => onPageChange(Math.max(1, currentPage - 1))}
             disabled={currentPage === 1}
             title="Página anterior"
-            aria-label="Página anterior"
           >
             <ChevronLeft className="size-3.5" />
             <span className="hidden xs:inline">Anterior</span>
           </Button>
 
-          <div className="flex flex-wrap justify-center items-center gap-1 max-w-full">
+          <div className="flex items-center gap-1">
             {Array.from({ length: totalPages }, (_, i) => i + 1)
               .filter((page) => totalPages <= 5 || page === 1 || page === totalPages || Math.abs(page - currentPage) <= 1)
               .map((page, index, array) => {
@@ -114,7 +112,6 @@ export function PaginationControls({
             onClick={() => onPageChange(Math.min(totalPages, currentPage + 1))}
             disabled={currentPage === totalPages}
             title="Próxima página"
-            aria-label="Próxima página"
           >
             <span className="hidden xs:inline">Próxima</span>
             <ChevronRight className="size-3.5" />

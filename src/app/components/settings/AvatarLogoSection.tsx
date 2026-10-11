@@ -89,7 +89,6 @@ export function AvatarLogoSection({
                   size="icon"
                   disabled={uploading === 'avatar'}
                   onClick={() => onImageRemove('avatar')}
-                  aria-label="Remover avatar"
                   className="text-destructive hover:text-destructive"
                 >
                   <X className="size-4" />
@@ -163,7 +162,6 @@ export function AvatarLogoSection({
                 size="icon"
                 disabled={uploading === 'logo'}
                 onClick={() => onImageRemove('logo')}
-                aria-label="Remover logo"
                 className="text-destructive hover:text-destructive"
               >
                 <X className="size-4" />

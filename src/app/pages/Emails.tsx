@@ -2490,7 +2490,6 @@ export function Emails() {
                           variant="outline"
                           onClick={() => handleToggleRead(currentReceivedEmail.id, currentReceivedEmail.read)}
                           className="h-8 gap-1 text-xs"
-                          aria-label={currentReceivedEmail.read ? 'Marcar como não lido' : 'Marcar como lido'}
                           title={currentReceivedEmail.read ? 'Marcar como não lido' : 'Marcar como lido'}
                         >
                           <MailCheck className="size-3.5" />
@@ -2505,7 +2504,6 @@ export function Emails() {
                           variant="outline"
                           onClick={() => void handleStatusChange(() => setArchived(currentReceivedEmail.id, !currentReceivedEmail.archived))}
                           className="h-8 gap-1 text-xs"
-                          aria-label={currentReceivedEmail.archived ? 'Desarquivar e-mail' : 'Arquivar e-mail'}
                           title={currentReceivedEmail.archived ? 'Desarquivar' : 'Arquivar'}
                         >
                           {currentReceivedEmail.archived ? (
@@ -2528,7 +2526,6 @@ export function Emails() {
                               ? 'text-emerald-700 dark:text-emerald-400 hover:text-emerald-800'
                               : 'text-amber-700 dark:text-amber-400 hover:text-amber-800'
                           }`}
-                          aria-label={isEmailSpam(currentReceivedEmail) ? 'Remover e-mail do spam' : 'Marcar e-mail como spam'}
                           title={isEmailSpam(currentReceivedEmail) ? 'Não é spam (Mover para Caixa de Entrada)' : 'Marcar como spam'}
                         >
                           <ShieldAlert className="size-3.5" />
@@ -2544,7 +2541,6 @@ export function Emails() {
                           onClick={() => handleBlockSender(currentReceivedEmail.from)}
                           className="h-8 gap-1 text-xs text-destructive hover:bg-destructive/10"
                           title="Bloquear este remetente"
-                          aria-label="Bloquear remetente"
                         >
                           <ShieldBan className="size-3.5" />
                           <span className="hidden 2xl:inline">Bloquear</span>
@@ -2559,7 +2555,6 @@ export function Emails() {
                     onClick={handleCopyMessageText}
                     className="h-8 gap-1 text-xs"
                     title="Copiar texto da mensagem"
-                    aria-label={copiedText ? 'Texto copiado' : 'Copiar texto da mensagem'}
                   >
                     {copiedText ? <Check className="size-3.5 text-emerald-600" /> : <Copy className="size-3.5" />}
                     <span className="hidden xl:inline">Copiar</span>
@@ -2569,8 +2564,7 @@ export function Emails() {
                 <Button
                   disabled={!canDelete || isBulkDeleting}
                   size="sm"
-                  variant="destructive"
-                  aria-label={currentReceivedEmail?.trashed || currentSentEmail?.trashed ? 'Excluir e-mail definitivamente' : 'Mover e-mail para a lixeira'}
+                  variant="ghost"
                   onClick={() => {
                     const isRec = Boolean(currentReceivedEmail);
                     const item = currentReceivedEmail || currentSentEmail;
@@ -2583,7 +2577,7 @@ export function Emails() {
                       isPermanent: isTrashed,
                     });
                   }}
-                  className="h-8 px-2"
+                  className="h-8 px-2 text-destructive hover:text-destructive hover:bg-destructive/10"
                   title={
                     currentReceivedEmail?.trashed || currentSentEmail?.trashed
                       ? 'Excluir definitivamente'
