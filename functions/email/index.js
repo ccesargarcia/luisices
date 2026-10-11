@@ -563,12 +563,15 @@ const resendReceivingWebhook = onRequest(
           // Suporte a subendereçamento (plus-addressing / tags: contato+orcamento@luisices.com.br)
           const baseMailbox = mailbox.split('+')[0];
 
-          const isLuisicesDomain =
-            domain === 'luisices.com.br' ||
-            domain === 'dev.luisices.com.br' ||
-            domain.endsWith('.luisices.com.br');
+          const projectId = process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT;
+          const isDev = projectId === 'luisices-dev';
 
-          return isLuisicesDomain && allowedMailboxPrefixes.includes(baseMailbox);
+          // Garante isolamento estrito de ambiente: Dev processa dev.luisices.com.br e Prod processa luisices.com.br
+          const isTargetDomain = isDev
+            ? (domain === 'dev.luisices.com.br' || domain.endsWith('.dev.luisices.com.br'))
+            : (domain === 'luisices.com.br' || (domain.endsWith('.luisices.com.br') && !domain.endsWith('.dev.luisices.com.br')));
+
+          return isTargetDomain && allowedMailboxPrefixes.includes(baseMailbox);
         });
       };
 
