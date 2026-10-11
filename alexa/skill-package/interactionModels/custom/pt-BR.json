@@ -1,0 +1,895 @@
+{
+  "interactionModel": {
+    "languageModel": {
+      "invocationName": "ateliê de testes",
+      "intents": [
+        {
+          "name": "AMAZON.CancelIntent",
+          "samples": [
+            "cancelar",
+            "cancela",
+            "cancelar pedido",
+            "desistir",
+            "não quero mais"
+          ]
+        },
+        {
+          "name": "AMAZON.HelpIntent",
+          "samples": [
+            "ajuda",
+            "o que você pode fazer",
+            "como funciona",
+            "me ajuda"
+          ]
+        },
+        {
+          "name": "AMAZON.StopIntent",
+          "samples": [
+            "parar",
+            "sair",
+            "fechar",
+            "tchau",
+            "encerra"
+          ]
+        },
+        {
+          "name": "AMAZON.FallbackIntent",
+          "samples": []
+        },
+        {
+          "name": "AMAZON.YesIntent",
+          "samples": [
+            "sim",
+            "confirmo",
+            "confirmar",
+            "pode confirmar",
+            "confirmo o pedido",
+            "está certo",
+            "correto",
+            "gravar",
+            "pode gravar",
+            "com certeza"
+          ]
+        },
+        {
+          "name": "AMAZON.NoIntent",
+          "samples": [
+            "não",
+            "não confirmo",
+            "está errado",
+            "quero mudar",
+            "corrigir",
+            "alterar",
+            "espera"
+          ]
+        },
+        {
+          "name": "LinkVoiceIntent",
+          "samples": [
+            "vincular minha voz",
+            "conectar minha voz",
+            "iniciar pareamento",
+            "vincular perfil",
+            "vincular usuário",
+            "gerar código de vinculação",
+            "gerar o código de vinculação",
+            "gerar código",
+            "gerar o código",
+            "gerar um código",
+            "gerar código de pareamento",
+            "gerar o código de pareamento",
+            "criar código",
+            "criar código de vinculação",
+            "solicitar código",
+            "solicitar o código",
+            "pedir código",
+            "pedir o código",
+            "me dá um código",
+            "me dê o código",
+            "código de vinculação",
+            "código de pareamento",
+            "código"
+          ],
+          "slots": []
+        },
+        {
+          "name": "CreateOrderIntent",
+          "samples": [
+            "criar pedido",
+            "novo pedido",
+            "anotar pedido",
+            "criar um pedido",
+            "registrar pedido",
+            "fazer pedido",
+            "criar pedido de {quantity} {product} para {customer}",
+            "criar pedido para {customer}",
+            "pedido de {quantity} {product} para {customer}",
+            "novo pedido de {product} para {customer}",
+            "criar pedido de {product} para {customer}",
+            "criar pedido de {product} para o {customer}",
+            "criar pedido de {product} para a {customer}",
+            "criar pedido {product} para {customer}",
+            "criar pedido {product} para o {customer}",
+            "criar pedido {product} para a {customer}",
+            "criar pedido de {product} para {customer} com {quantity} unidades a {unitPrice} reais cada",
+            "criar pedido {product} para {customer} com {quantity} unidades no valor de {unitPrice} reais cada",
+            "criar pedido de {quantity} {product} para {customer} a {unitPrice} reais cada",
+            "criar pedido de {quantity} unidades de {product} para {customer} a {unitPrice} reais cada",
+            "criar pedido {quantity} {product} para {customer} no valor de {unitPrice} reais cada",
+            "{quantity} unidades de {product} para {customer} por {unitPrice} reais a unidade",
+            "{quantity} unidades de {product} para {customer} a {unitPrice} reais cada",
+            "{quantity} {product} para {customer} por {unitPrice} reais cada",
+            "criar pedido de {quantity} {product} para {customer} por {total} reais no total",
+            "criar pedido {quantity} {product} para {customer} por {total} reais no total",
+            "criar pedido de {quantity} {product} para {customer} totalizando {total} reais",
+            "criar pedido de {quantity} {product} para {customer} com valor total de {total} reais",
+            "criar pedido de {product} para {customer} com {quantity} unidades",
+            "criar pedido {product} para {customer} com {quantity} unidades",
+            "criar pedido de {quantity} unidades de {product} para {customer}",
+            "criar pedido de {product} para {customer} no valor de {unitPrice} reais cada",
+            "criar pedido de {quantity} {product} para {customer} por {ambiguousPrice} reais",
+            "criar pedido de {quantity} {product} para {customer} no valor de {ambiguousPrice} reais",
+            "criar pedido de {quantity} {product} para {customer} a {unitPrice} reais cada para {deliveryDate}",
+            "criar pedido de {quantity} {product} para {customer} a {unitPrice} reais cada entrega em {deliveryDate}",
+            "criar pedido de {quantity} {product} para {customer} a {unitPrice} reais cada entrega para {deliveryDate}",
+            "criar pedido de {quantity} {product} para {customer} a {unitPrice} reais cada com entrega para {deliveryDate}",
+            "criar pedido de {quantity} {product} para {customer} a {unitPrice} reais cada para o dia {deliveryDate}",
+            "criar pedido de {quantity} unidades de {product} para {customer} a {unitPrice} reais cada para {deliveryDate}",
+            "criar pedido {quantity} {product} para {customer} no valor de {unitPrice} reais cada para {deliveryDate}",
+            "criar pedido de {quantity} {product} para {customer} por {unitPrice} reais a unidade para {deliveryDate}",
+            "{quantity} {product} para {customer} a {unitPrice} reais cada para {deliveryDate}",
+            "{quantity} unidades de {product} para {customer} a {unitPrice} reais cada para {deliveryDate}",
+            "{quantity} unidades de {product} para {customer} por {unitPrice} reais cada para {deliveryDate}",
+            "criar pedido de {quantity} {product} para {customer} por {total} reais no total para {deliveryDate}",
+            "criar pedido de {quantity} {product} para {customer} por {total} reais no total entrega em {deliveryDate}",
+            "criar pedido de {quantity} {product} para {customer} por {total} reais no total entrega para {deliveryDate}",
+            "criar pedido de {quantity} {product} para {customer} por {total} reais no total com entrega para {deliveryDate}",
+            "criar pedido de {quantity} {product} para {customer} com valor total de {total} reais para {deliveryDate}",
+            "criar pedido de {quantity} {product} para {customer} totalizando {total} reais para {deliveryDate}",
+            "{quantity} {product} para {customer} por {total} reais no total para {deliveryDate}",
+            "criar pedido de {quantity} {product} para {customer} por {ambiguousPrice} reais para {deliveryDate}",
+            "criar pedido de {quantity} {product} para {customer} no valor de {ambiguousPrice} reais para {deliveryDate}",
+            "criar pedido de {quantity} {product} para {customer} para {deliveryDate}",
+            "criar pedido de {quantity} {product} para {customer} entrega em {deliveryDate}",
+            "criar pedido de {quantity} {product} para {customer} com entrega para {deliveryDate}",
+            "criar pedido de {quantity} unidades de {product} para {customer} para {deliveryDate}",
+            "{quantity} {product} para {customer} para {deliveryDate}",
+            "{quantity} {product} para {customer} entrega para {deliveryDate}",
+            "crie um pedido de {quantity} {product} para {customer} a {unitPrice} reais cada para {deliveryDate}",
+            "crie um pedido de {quantity} {product} para {customer} por {total} reais no total para {deliveryDate}",
+            "crie um pedido de {quantity} {product} para {customer} para {deliveryDate}",
+            "criar um pedido de {quantity} {product} para {customer} a {unitPrice} reais cada para {deliveryDate}",
+            "criar um pedido de {quantity} {product} para {customer} por {total} reais no total para {deliveryDate}",
+            "criar um pedido de {quantity} {product} para {customer} para {deliveryDate}",
+            "criar pedido de {quantity} {product} para {customer} a {unitPrice} reais cada com entrega {deliveryDate}",
+            "{quantity} {product} para {customer} a {unitPrice} reais cada entrega {deliveryDate}",
+            "{quantity} {product} para {customer} a {unitPrice} reais cada com entrega {deliveryDate}",
+            "criar pedido de {product} para {customer} no valor de {ambiguousPrice} reais e entrega {deliveryDate}",
+            "criar pedido de {product} para {customer} no valor de {ambiguousPrice} reais com entrega {deliveryDate}",
+            "criar pedido de {product} para {customer} a {unitPrice} reais cada com entrega {deliveryDate}",
+            "pedido de {product} para {customer} no valor de {ambiguousPrice} reais e entrega {deliveryDate}",
+            "{quantity} {product} para {customer} total de {total} reais entrega {deliveryDate}",
+            "{quantity} {product} para {customer} total de {total} reais com entrega {deliveryDate}",
+            "criar pedido de {quantity} {product} para {customer} total de {total} reais com entrega {deliveryDate}",
+            "criar pedido de {quantity} {product} para {customer} para entrega {deliveryDate} no valor de {ambiguousPrice} reais",
+            "criar pedido de {quantity} {product} para {customer} para entrega {deliveryDate} no valor de {total} reais total",
+            "criar pedido de {quantity} {product} para {customer} para entrega {deliveryDate} no valor de {total} reais no total",
+            "criar pedido de {quantity} {product} para {customer} para entrega {deliveryDate} no valor de {unitPrice} reais cada",
+            "criar pedido de {quantity} {product} para {customer} para entrega {deliveryDate} por {ambiguousPrice} reais",
+            "criar pedido de {quantity} {product} para {customer} para entrega {deliveryDate} por {total} reais no total",
+            "criar pedido de {quantity} {product} para {customer} para entrega {deliveryDate} a {unitPrice} reais cada",
+            "criar pedido de {quantity} {product} para {customer} com entrega {deliveryDate} no valor de {ambiguousPrice} reais",
+            "criar pedido de {quantity} {product} para {customer} com entrega {deliveryDate} no valor de {total} reais total",
+            "criar pedido de {quantity} {product} para {customer} com entrega {deliveryDate} no valor de {total} reais no total",
+            "criar pedido de {quantity} {product} para {customer} com entrega {deliveryDate} no valor de {unitPrice} reais cada",
+            "criar pedido de {quantity} {product} para {customer} para {deliveryDate} no valor de {ambiguousPrice} reais",
+            "criar pedido de {quantity} {product} para {customer} para {deliveryDate} no valor de {total} reais total",
+            "criar pedido de {quantity} {product} para {customer} para {deliveryDate} no valor de {total} reais no total",
+            "criar pedido de {quantity} {product} para {customer} para {deliveryDate} no valor de {unitPrice} reais cada",
+            "crie um pedido de {quantity} {product} para {customer} para entrega {deliveryDate} no valor de {ambiguousPrice} reais",
+            "crie um pedido de {quantity} {product} para {customer} para entrega {deliveryDate} no valor de {unitPrice} reais cada",
+            "crie um pedido de {quantity} {product} para {customer} para entrega {deliveryDate} no valor de {total} reais total"
+          ],
+          "slots": [
+            {
+              "name": "customer",
+              "type": "AMAZON.FirstName"
+            },
+            {
+              "name": "product",
+              "type": "PRODUCT_TYPE"
+            },
+            {
+              "name": "quantity",
+              "type": "AMAZON.NUMBER"
+            },
+            {
+              "name": "deliveryDate",
+              "type": "AMAZON.DATE"
+            },
+            {
+              "name": "total",
+              "type": "AMAZON.NUMBER"
+            },
+            {
+              "name": "unitPrice",
+              "type": "AMAZON.NUMBER"
+            },
+            {
+              "name": "ambiguousPrice",
+              "type": "AMAZON.NUMBER"
+            },
+            {
+              "name": "price",
+              "type": "AMAZON.NUMBER"
+            }
+          ]
+        },
+        {
+          "name": "ProvideProductAndCustomerIntent",
+          "samples": [
+            "{product} para {customer}",
+            "{product} para o {customer}",
+            "{product} para a {customer}",
+            "{product} pro {customer}",
+            "{product} pra {customer}",
+            "{product} e {customer}",
+            "o produto é {product} e o cliente é {customer}",
+            "o produto é {product} e a cliente é {customer}",
+            "o produto é {product} para o {customer}",
+            "o produto é {product} para a {customer}",
+            "produto {product} cliente {customer}",
+            "produto {product} para o cliente {customer}",
+            "produto {product} para a cliente {customer}",
+            "é {product} para {customer}",
+            "é {product} para o {customer}",
+            "é {product} para a {customer}",
+            "é um {product} para {customer}",
+            "é um {product} para o {customer}",
+            "é uma {product} para {customer}",
+            "é uma {product} para o {customer}",
+            "são {product} para {customer}",
+            "são {product} para o {customer}",
+            "são {product} para a {customer}",
+            "pedido de {product} para {customer}",
+            "pedido de {product} para o {customer}",
+            "pedido de {product} para a {customer}",
+            "pedido {product} para {customer}",
+            "pedido {product} para o {customer}",
+            "pedido {product} para a {customer}",
+            "para o {customer} {product}",
+            "para {customer} {product}",
+            "cliente {customer} produto {product}"
+          ],
+          "slots": [
+            {
+              "name": "product",
+              "type": "PRODUCT_TYPE"
+            },
+            {
+              "name": "customer",
+              "type": "AMAZON.FirstName"
+            }
+          ]
+        },
+        {
+          "name": "ProvideCustomerOnlyIntent",
+          "samples": [
+            "{customer}"
+          ],
+          "slots": [
+            {
+              "name": "customer",
+              "type": "AMAZON.FirstName"
+            }
+          ]
+        },
+        {
+          "name": "ProvideCustomerIntent",
+          "samples": [
+            "para {customer}",
+            "para o {customer}",
+            "para a {customer}",
+            "pro {customer}",
+            "pra {customer}",
+            "ao {customer}",
+            "à {customer}",
+            "o cliente é {customer}",
+            "o cliente é o {customer}",
+            "a cliente é {customer}",
+            "a cliente é a {customer}",
+            "cliente {customer}",
+            "é para {customer}",
+            "é para o {customer}",
+            "é para a {customer}",
+            "é pro {customer}",
+            "é pra {customer}",
+            "o nome é {customer}",
+            "o nome é o {customer}",
+            "o nome é a {customer}",
+            "troca o cliente para {customer}",
+            "troca o cliente por {customer}",
+            "trocar o cliente para {customer}",
+            "trocar o cliente por {customer}",
+            "troca para {customer}",
+            "troca por {customer}",
+            "mudar o cliente para {customer}",
+            "alterar o cliente para {customer}",
+            "corrigir o cliente para {customer}",
+            "o nome correto é {customer}",
+            "o cliente correto é {customer}",
+            "na verdade é para {customer}",
+            "não o cliente é {customer}",
+            "não é para {customer}"
+          ],
+          "slots": [
+            {
+              "name": "customer",
+              "type": "AMAZON.FirstName"
+            }
+          ]
+        },
+        {
+          "name": "ProvideProductIntent",
+          "samples": [
+            "{product}",
+            "o produto é {product}",
+            "produto {product}",
+            "são {product}",
+            "é {product}",
+            "é um {product}",
+            "é uma {product}",
+            "quero {product}",
+            "quero um {product}",
+            "quero uma {product}",
+            "fazer {product}",
+            "são caixinhas",
+            "são cadernos",
+            "troca o produto para {product}",
+            "troca o produto por {product}",
+            "trocar o produto para {product}",
+            "trocar o produto por {product}",
+            "mudar o produto para {product}",
+            "alterar o produto para {product}",
+            "corrigir o produto para {product}",
+            "o produto correto é {product}",
+            "na verdade é {product}",
+            "não o produto é {product}",
+            "não é {product}",
+            "troca para {product}",
+            "troca por {product}"
+          ],
+          "slots": [
+            {
+              "name": "product",
+              "type": "PRODUCT_TYPE"
+            }
+          ]
+        },
+        {
+          "name": "ProvideQuantityIntent",
+          "samples": [
+            "{quantity} no total",
+            "{quantity} ao todo",
+            "{quantity} topos",
+            "{quantity} topos de bolo",
+            "{quantity} caixas",
+            "{quantity} lembrancinhas",
+            "{quantity} convites",
+            "{quantity} cadernos",
+            "{quantity} bloquinhos",
+            "{quantity} agendas",
+            "{quantity} sacolas",
+            "{quantity} adesivos",
+            "{quantity} etiquetas",
+            "{quantity} paper craft",
+            "{quantity} paper crafts",
+            "{quantity} produtos",
+            "{quantity} unidades",
+            "{quantity} itens",
+            "{quantity} peças",
+            "quantidade {quantity}",
+            "quantidade de {quantity}",
+            "são {quantity} itens",
+            "são {quantity} unidades",
+            "são {quantity} peças",
+            "são {quantity} no total",
+            "são {quantity} ao todo",
+            "é {quantity} no total",
+            "é {quantity} ao todo",
+            "quero {quantity}",
+            "quero {quantity} unidades",
+            "quero {quantity} itens",
+            "apenas {quantity}",
+            "apenas {quantity} unidades",
+            "apenas {quantity} itens",
+            "apenas {quantity} peças",
+            "só {quantity} itens",
+            "só {quantity} unidades",
+            "na verdade são {quantity}",
+            "na verdade são {quantity} unidades",
+            "na verdade são {quantity} itens",
+            "na verdade é {quantity}",
+            "são {quantity} na verdade",
+            "não são {quantity}",
+            "não são {quantity} unidades",
+            "não é {quantity}",
+            "coloca {quantity} unidades",
+            "coloca {quantity} itens",
+            "coloca {quantity} peças",
+            "alterar a quantidade para {quantity}",
+            "mudar a quantidade para {quantity}",
+            "corrigir a quantidade para {quantity}",
+            "mudar para {quantity} unidades",
+            "alterar para {quantity} unidades",
+            "corrigir para {quantity} unidades",
+            "mudar para {quantity}",
+            "alterar para {quantity}",
+            "corrigir para {quantity}"
+          ],
+          "slots": [
+            {
+              "name": "quantity",
+              "type": "AMAZON.NUMBER"
+            }
+          ]
+        },
+        {
+          "name": "ProvideDeliveryDateIntent",
+          "samples": [
+            "entrega em {deliveryDate}",
+            "entregar dia {deliveryDate}",
+            "para o dia {deliveryDate}",
+            "data de entrega {deliveryDate}",
+            "dia {deliveryDate}",
+            "{deliveryDate}",
+            "a entrega fica para {deliveryDate}",
+            "a entrega é para {deliveryDate}",
+            "entrega para {deliveryDate}",
+            "troca a data para {deliveryDate}",
+            "mudar a data para {deliveryDate}",
+            "alterar a data para {deliveryDate}",
+            "na verdade é para {deliveryDate}",
+            "não a data é {deliveryDate}",
+            "não {deliveryDate}",
+            "não dia {deliveryDate}"
+          ],
+          "slots": [
+            {
+              "name": "deliveryDate",
+              "type": "AMAZON.DATE"
+            }
+          ]
+        },
+        {
+          "name": "ProvideUnitPriceIntent",
+          "samples": [
+            "{unitPrice} reais cada",
+            "{unitPrice} reais por unidade",
+            "{unitPrice} reais a unidade",
+            "{unitPrice} cada",
+            "{unitPrice} por unidade",
+            "{unitPrice} a unidade",
+            "é {unitPrice} cada",
+            "são {unitPrice} cada",
+            "fica {unitPrice} cada",
+            "fica {unitPrice} reais cada",
+            "custa {unitPrice} reais cada",
+            "custa {unitPrice} cada",
+            "custa {unitPrice} reais por unidade",
+            "o valor unitário é {unitPrice} reais",
+            "o valor unitário é {unitPrice}",
+            "valor unitário {unitPrice} reais",
+            "valor unitário de {unitPrice} reais",
+            "preço unitário {unitPrice} reais",
+            "corrigir o valor unitário para {unitPrice} reais",
+            "alterar o valor unitário para {unitPrice} reais",
+            "mudar o valor unitário para {unitPrice} reais",
+            "corrigir para {unitPrice} reais cada",
+            "mudar para {unitPrice} reais cada",
+            "alterar para {unitPrice} reais cada",
+            "mantém a quantidade mas coloca {unitPrice} reais cada",
+            "coloca {unitPrice} reais cada",
+            "coloca {unitPrice} por unidade",
+            "na verdade é {unitPrice} reais cada",
+            "na verdade são {unitPrice} reais cada",
+            "não são {unitPrice} reais cada",
+            "não é {unitPrice} cada"
+          ],
+          "slots": [
+            {
+              "name": "unitPrice",
+              "type": "AMAZON.NUMBER"
+            }
+          ]
+        },
+        {
+          "name": "ProvideTotalIntent",
+          "samples": [
+            "o total é {total} reais",
+            "o total é {total}",
+            "total de {total} reais",
+            "total de {total}",
+            "{total} reais no total",
+            "{total} no total",
+            "o valor é {total} reais no total",
+            "o valor é {total} no total",
+            "o valor total é {total} reais",
+            "o valor total é {total}",
+            "valor total {total}",
+            "o pedido inteiro por {total} reais",
+            "o pedido inteiro por {total}",
+            "deu {total} reais no total",
+            "deu {total} no total",
+            "corrigir o total para {total} reais",
+            "alterar o total para {total} reais",
+            "mudar o total para {total} reais",
+            "corrigir para {total} reais no total",
+            "mudar para {total} reais no total",
+            "alterar para {total} reais no total",
+            "não o total é {total} reais",
+            "na verdade o total é {total} reais",
+            "na verdade deu {total} reais",
+            "coloca {total} reais no total",
+            "{total} reais pelo pedido inteiro",
+            "não deu {total} reais no total"
+          ],
+          "slots": [
+            {
+              "name": "total",
+              "type": "AMAZON.NUMBER"
+            }
+          ]
+        },
+        {
+          "name": "RepeatOrderIntent",
+          "samples": [
+            "repetir",
+            "repete",
+            "repita",
+            "pode repetir",
+            "o que você entendeu",
+            "o que já informei",
+            "quais são os dados",
+            "como está o pedido",
+            "o que temos até agora",
+            "o que já temos",
+            "o que falta",
+            "quais dados faltam"
+          ],
+          "slots": []
+        },
+        {
+          "name": "ProvidePriceIntent",
+          "samples": [
+            "{price} reais",
+            "o valor é {price} reais",
+            "o valor é {price}",
+            "deu {price} reais",
+            "deu {price}",
+            "corrigir o valor para {price} reais",
+            "alterar o valor para {price} reais",
+            "mudar o valor para {price} reais",
+            "corrigir para {price} reais",
+            "alterar para {price} reais",
+            "mudar para {price} reais",
+            "{price} reais e {cents} centavos"
+          ],
+          "slots": [
+            {
+              "name": "price",
+              "type": "AMAZON.NUMBER"
+            },
+            {
+              "name": "cents",
+              "type": "AMAZON.NUMBER"
+            }
+          ]
+        },
+        {
+          "name": "ClarifyPriceUnitIntent",
+          "samples": [
+            "cada",
+            "por unidade",
+            "a unidade",
+            "é cada",
+            "é por unidade",
+            "é a unidade",
+            "valor unitário",
+            "unitário"
+          ],
+          "slots": []
+        },
+        {
+          "name": "ClarifyPriceTotalIntent",
+          "samples": [
+            "no total",
+            "total",
+            "o total",
+            "o pedido inteiro",
+            "pedido inteiro",
+            "pelo pedido inteiro",
+            "para o pedido inteiro",
+            "valor total"
+          ],
+          "slots": []
+        },
+        {
+          "name": "ListRecentOrdersIntent",
+          "samples": [
+            "meus últimos pedidos",
+            "meus pedidos",
+            "últimos pedidos",
+            "pedidos recentes",
+            "ver últimos pedidos",
+            "ver meus pedidos",
+            "ver pedidos recentes",
+            "ver os pedidos",
+            "consultar pedidos",
+            "consultar meus pedidos",
+            "consultar últimos pedidos",
+            "consultar pedidos recentes",
+            "quais são meus últimos pedidos",
+            "quais são os últimos pedidos",
+            "quais são os pedidos recentes",
+            "quais são os meus pedidos",
+            "listar pedidos",
+            "listar meus pedidos",
+            "listar últimos pedidos",
+            "listar pedidos recentes",
+            "o que tem de pedido",
+            "o que tem de pedidos",
+            "mostrar pedidos",
+            "mostrar últimos pedidos",
+            "como estão os pedidos"
+          ],
+          "slots": []
+        },
+        {
+          "name": "ProvideNumberIntent",
+          "samples": [
+            "{number}",
+            "é {number}",
+            "são {number}",
+            "foi {number}",
+            "deu {number}",
+            "{number} e {cents}",
+            "é {number} e {cents}",
+            "são {number} e {cents}",
+            "deu {number} e {cents}",
+            "{number} com {cents}",
+            "{cents} centavos"
+          ],
+          "slots": [
+            {
+              "name": "number",
+              "type": "AMAZON.NUMBER"
+            },
+            {
+              "name": "cents",
+              "type": "AMAZON.NUMBER"
+            }
+          ]
+        }
+      ],
+      "types": [
+        {
+          "name": "PRODUCT_TYPE",
+          "values": [
+            {
+              "name": {
+                "value": "caixinhas",
+                "synonyms": [
+                  "caixa",
+                  "caixas",
+                  "caixinha",
+                  "caixas personalizadas",
+                  "caixinhas personalizadas",
+                  "caixa milk",
+                  "caixa pirâmide",
+                  "caixa bala"
+                ]
+              }
+            },
+            {
+              "name": {
+                "value": "cadernos",
+                "synonyms": [
+                  "caderno",
+                  "caderno personalizado",
+                  "caderninho",
+                  "caderninhos"
+                ]
+              }
+            },
+            {
+              "name": {
+                "value": "bloquinhos",
+                "synonyms": [
+                  "bloquinho",
+                  "bloco de anotações",
+                  "blocos",
+                  "bloco"
+                ]
+              }
+            },
+            {
+              "name": {
+                "value": "agendas",
+                "synonyms": [
+                  "agenda",
+                  "planner",
+                  "planners",
+                  "agenda escolar"
+                ]
+              }
+            },
+            {
+              "name": {
+                "value": "convites",
+                "synonyms": [
+                  "convite",
+                  "convite de aniversário",
+                  "convite de casamento",
+                  "convitinhos"
+                ]
+              }
+            },
+            {
+              "name": {
+                "value": "etiquetas",
+                "synonyms": [
+                  "etiqueta",
+                  "etiquetas escolares",
+                  "tags",
+                  "tag",
+                  "rótulos",
+                  "rótulo"
+                ]
+              }
+            },
+            {
+              "name": {
+                "value": "adesivos",
+                "synonyms": [
+                  "adesivo",
+                  "cartela de adesivos",
+                  "stickers"
+                ]
+              }
+            },
+            {
+              "name": {
+                "value": "topo de bolo",
+                "synonyms": [
+                  "topos de bolo",
+                  "topper",
+                  "toppers",
+                  "topper de bolo"
+                ]
+              }
+            },
+            {
+              "name": {
+                "value": "sacolas",
+                "synonyms": [
+                  "sacola",
+                  "sacolinhas",
+                  "sacolinha personalizada",
+                  "sacolas personalizadas"
+                ]
+              }
+            },
+            {
+              "name": {
+                "value": "lembrancinhas",
+                "synonyms": [
+                  "lembrancinha",
+                  "kits festa",
+                  "kit festa",
+                  "lembrança"
+                ]
+              }
+            },
+            {
+              "name": {
+                "value": "paper craft",
+                "synonyms": [
+                  "papercraft",
+                  "paper crafts",
+                  "papercrafts",
+                  "papel craft",
+                  "paper-craft",
+                  "dobradura",
+                  "dobraduras",
+                  "escultura de papel",
+                  "escultura em papel",
+                  "papercraft 3d",
+                  "low poly",
+                  "artesanato em papel"
+                ]
+              }
+            },
+            {
+              "name": {
+                "value": "papelaria personalizada",
+                "synonyms": [
+                  "papelaria",
+                  "personalizado",
+                  "personalizados",
+                  "itens personalizados",
+                  "kit papelaria",
+                  "papelaria criativa",
+                  "artesanato"
+                ]
+              }
+            },
+            {
+              "name": {
+                "value": "canecas",
+                "synonyms": [
+                  "caneca",
+                  "caneca personalizada",
+                  "canecas personalizadas",
+                  "copo",
+                  "copos"
+                ]
+              }
+            },
+            {
+              "name": {
+                "value": "chaveiros",
+                "synonyms": [
+                  "chaveiro",
+                  "chaveirinho",
+                  "chaveirinhos",
+                  "chaveiro personalizado",
+                  "chaveiros personalizados"
+                ]
+              }
+            },
+            {
+              "name": {
+                "value": "cartões",
+                "synonyms": [
+                  "cartão",
+                  "cartão de visita",
+                  "cartões de visita",
+                  "cartão de agradecimento",
+                  "cartões de agradecimento",
+                  "card",
+                  "cards"
+                ]
+              }
+            },
+            {
+              "name": {
+                "value": "quadros",
+                "synonyms": [
+                  "quadro",
+                  "quadro decorativo",
+                  "quadros decorativos",
+                  "plaquinha",
+                  "plaquinhas"
+                ]
+              }
+            },
+            {
+              "name": {
+                "value": "painel",
+                "synonyms": [
+                  "painéis",
+                  "painel de festa",
+                  "painel redondo",
+                  "display",
+                  "displays",
+                  "display de mesa"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

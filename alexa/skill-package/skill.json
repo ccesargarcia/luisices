@@ -1,0 +1,72 @@
+{
+  "manifest": {
+    "publishingInformation": {
+      "locales": {
+        "pt-BR": {
+          "summary": "Criação de pedidos por voz para o ateliê Luisices.",
+          "examplePhrases": [
+            "Alexa, abrir ateliê de testes",
+            "Alexa, peça ao ateliê de testes para criar um pedido",
+            "vincular minha voz"
+          ],
+          "name": "Ateliê de Testes",
+          "description": "Skill privada para criação rápida e segura de pedidos por comando de voz no ateliê Luisices, vinculada ao perfil de voz de pessoas autorizadas.",
+          "smallIconUri": "https://dev.luisices.com.br/images/alexa-small-icon.png",
+          "largeIconUri": "https://dev.luisices.com.br/images/alexa-large-icon.png"
+        }
+      },
+      "isAvailableWorldwide": true,
+      "testingInstructions": "Ambiente isolado de desenvolvimento. Requer perfil de voz ativo no aplicativo Alexa e pareamento supervisionado aprovado por administrador no Luisices.",
+      "category": "ORGANIZERS_AND_ASSISTANTS"
+    },
+    "apis": {
+      "custom": {
+        "endpoint": {
+          "uri": "https://api.dev.luisices.com.br/alexaWebhook",
+          "sslCertificateType": "Wildcard"
+        },
+        "interfaces": [
+          {
+            "type": "ALEXA_PRESENTATION_APL",
+            "supportedViewports": [
+              {
+                "mode": "HUB",
+                "shape": "ROUND"
+              },
+              {
+                "mode": "HUB",
+                "shape": "RECTANGLE"
+              },
+              {
+                "mode": "TV",
+                "shape": "RECTANGLE"
+              },
+              {
+                "mode": "MOBILE",
+                "shape": "RECTANGLE"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "manifestVersion": "1.0",
+    "permissions": [
+      {
+        "name": "alexa::person_id:read"
+      }
+    ],
+    "privacyAndCompliance": {
+      "allowsPurchases": false,
+      "usesPersonalInfo": true,
+      "isChildDirected": false,
+      "isExportCompliant": true,
+      "containsAds": false,
+      "locales": {
+        "pt-BR": {
+          "privacyPolicyUrl": "https://dev.luisices.com.br"
+        }
+      }
+    }
+  }
+}

@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - develop
+      - main
     paths:
       - 'alexa/**'
   workflow_dispatch:
@@ -11,7 +12,7 @@ on:
       environment:
         description: 'Ambiente de destino (dev ou prod)'
         required: true
-        default: 'dev'
+        default: 'prod'
         type: choice
         options:
           - dev
@@ -52,11 +53,12 @@ jobs:
       - name: Prepare Skill Package (Dev or Prod)
         env:
           TARGET_ENV: ${{ steps.env.outputs.target }}
-          ALEXA_DEV_INVOCATION_NAME: ${{ secrets.ALEXA_DEV_INVOCATION_NAME }}
-          ALEXA_PROD_INVOCATION_NAME: ${{ secrets.ALEXA_PROD_INVOCATION_NAME }}
-          ALEXA_DEV_SKILL_NAME: ${{ secrets.ALEXA_DEV_SKILL_NAME }}
-          ALEXA_PROD_SKILL_NAME: ${{ secrets.ALEXA_PROD_SKILL_NAME }}
-          ALEXA_PROD_ENDPOINT: ${{ secrets.ALEXA_PROD_ENDPOINT }}
+          ALEXA_DEV_INVOCATION_NAME: ${{ secrets.DEV_ALEXA_INVOCATION_NAME || secrets.ALEXA_DEV_INVOCATION_NAME }}
+          ALEXA_PROD_INVOCATION_NAME: ${{ secrets.PROD_ALEXA_INVOCATION_NAME || secrets.ALEXA_PROD_INVOCATION_NAME || 'ateliê' }}
+          ALEXA_DEV_SKILL_NAME: ${{ secrets.DEV_ALEXA_SKILL_NAME || secrets.ALEXA_DEV_SKILL_NAME }}
+          ALEXA_PROD_SKILL_NAME: ${{ secrets.PROD_ALEXA_SKILL_NAME || secrets.ALEXA_PROD_SKILL_NAME || 'Luisices Ateliê' }}
+          ALEXA_DEV_ENDPOINT: ${{ secrets.DEV_ALEXA_ENDPOINT || secrets.ALEXA_DEV_ENDPOINT }}
+          ALEXA_PROD_ENDPOINT: ${{ secrets.PROD_ALEXA_ENDPOINT || secrets.ALEXA_PROD_ENDPOINT }}
         run: |
           node alexa/scripts/prepare-skill-package.cjs --env "$TARGET_ENV"
 
@@ -65,8 +67,8 @@ jobs:
           TARGET_ENV: ${{ steps.env.outputs.target }}
           ASK_CLI_CONFIG: ${{ secrets.ASK_CLI_CONFIG }}
           ASK_REFRESH_TOKEN: ${{ secrets.ASK_REFRESH_TOKEN }}
-          DEV_SKILL_ID: ${{ secrets.ALEXA_DEV_SKILL_ID || secrets.ALEXA_SKILL_ID || 'amzn1.ask.skill.1cd0031f-ada0-4da8-8721-2ad44b4b1c96' }}
-          PROD_SKILL_ID: ${{ secrets.ALEXA_PROD_SKILL_ID }}
+          DEV_SKILL_ID: ${{ secrets.DEV_ALEXA_SKILL_ID || secrets.ALEXA_DEV_SKILL_ID || 'amzn1.ask.skill.1cd0031f-ada0-4da8-8721-2ad44b4b1c96' }}
+          PROD_SKILL_ID: ${{ secrets.PROD_ALEXA_SKILL_ID || secrets.ALEXA_PROD_SKILL_ID || secrets.ALEXA_SKILL_ID }}
         run: |
           mkdir -p ~/.ask
           if [ -n "$ASK_CLI_CONFIG" ]; then
@@ -89,15 +91,18 @@ jobs:
             chmod 600 ~/.ask/cli_config
             echo "✅ Credenciais configuradas via ASK_REFRESH_TOKEN."
           else
-            echo "::warning ::Nenhum segredo (ASK_CLI_CONFIG ou ASK_REFRESH_TOKEN) configurado no repositório. Deploy pulado por segurança."
-            exit 0
+            echo "::error ::Nenhum segredo de autenticação da Alexa (ASK_CLI_CONFIG ou ASK_REFRESH_TOKEN) encontrado no GitHub Secrets! O deploy não pôde ser executado na Amazon."
+            exit 1
           fi
 
           if [ "$TARGET_ENV" = "prod" ]; then
             SKILL_ID="$PROD_SKILL_ID"
             if [ -z "$SKILL_ID" ]; then
-              echo "::error ::ALEXA_PROD_SKILL_ID não foi configurado nos Secrets do repositório! Crie a skill de produção no Alexa Developer Console e adicione a Secret ALEXA_PROD_SKILL_ID."
+              echo "::error ::Nenhum Skill ID de produção encontrado! Configure a Secret ALEXA_PROD_SKILL_ID nos Secrets do repositório."
               exit 1
+            fi
+            if [ "$SKILL_ID" = "$DEV_SKILL_ID" ]; then
+              echo "::warning ::ATENÇÃO: O Skill ID usado para produção ($SKILL_ID) é idêntico ao de desenvolvimento! Certifique-se de configurar a secret ALEXA_PROD_SKILL_ID com o Skill ID da skill de produção."
             fi
           else
             SKILL_ID="$DEV_SKILL_ID"
@@ -105,10 +110,82 @@ jobs:
 
           echo "🚀 Deployando para Skill ID: $SKILL_ID (Ambiente: $TARGET_ENV)..."
           
-          echo "📦 Atualizando modelo de interação pt-BR..."
-          ask smapi set-interaction-model -s "$SKILL_ID" -g development -l pt-BR --interaction-model "file:alexa/build/skill-package/interactionModels/custom/pt-BR.json"
-          
-          echo "📦 Atualizando manifesto skill.json..."
+          echo "📦 Preservando ícones e dados visuais configurados no console..."
+          node -e '
+            const fs = require("fs");
+            const { execSync } = require("child_process");
+            try {
+              const liveRaw = execSync("ask smapi get-skill-manifest -s \"'"$SKILL_ID"'\" -g development", { encoding: "utf8" });
+              const live = JSON.parse(liveRaw);
+              const buildPath = "alexa/build/skill-package/skill.json";
+              const target = JSON.parse(fs.readFileSync(buildPath, "utf8"));
+              
+              const liveLocale = live.manifest?.publishingInformation?.locales?.["pt-BR"];
+              const targetLocale = target.manifest?.publishingInformation?.locales?.["pt-BR"];
+              if (liveLocale && targetLocale) {
+                if (liveLocale.smallIconUri && !targetLocale.smallIconUri) {
+                  targetLocale.smallIconUri = liveLocale.smallIconUri;
+                  console.log("ℹ️ Preservando smallIconUri do console:", liveLocale.smallIconUri);
+                }
+                if (liveLocale.largeIconUri && !targetLocale.largeIconUri) {
+                  targetLocale.largeIconUri = liveLocale.largeIconUri;
+                  console.log("ℹ️ Preservando largeIconUri do console:", liveLocale.largeIconUri);
+                }
+              }
+              fs.writeFileSync(buildPath, JSON.stringify(target, null, 2) + "\n", "utf8");
+            } catch (err) {
+              console.warn("⚠️ Aviso ao ler manifesto remoto para preservação:", err.message);
+            }
+          '
+
+          echo "📦 [Passo 1/2] Atualizando manifesto skill.json (Interfaces APL, permissões e endpoints)..."
           ask smapi update-skill-manifest -s "$SKILL_ID" -g development --manifest "file:alexa/build/skill-package/skill.json"
           
-          echo "✅ Modelo e manifesto enviados com sucesso para a Amazon Alexa [$TARGET_ENV]!"
+          echo "⏳ Aguardando e validando processamento do manifesto pela Amazon Alexa..."
+          for i in {1..15}; do
+            STATUS_RAW=$(ask smapi get-skill-status -s "$SKILL_ID" 2>/dev/null || echo "{}")
+            MANIFEST_STATUS=$(node -e '
+              try {
+                const s = JSON.parse(process.argv[1]);
+                console.log(s.manifest?.lastUpdateRequest?.status || "PENDING");
+              } catch {
+                console.log("PENDING");
+              }
+            ' "$STATUS_RAW")
+            echo "   [Tentativa $i/15] Status do manifesto na Amazon: $MANIFEST_STATUS"
+            if [ "$MANIFEST_STATUS" = "SUCCEEDED" ]; then
+              echo "✅ Manifesto (APL, Permissões e Endpoints) aplicado com sucesso na Amazon Alexa!"
+              break
+            elif [ "$MANIFEST_STATUS" = "FAILED" ]; then
+              echo "::error ::Amazon rejeitou a atualização do manifesto: $STATUS_RAW"
+              exit 1
+            fi
+            sleep 3
+          done
+
+          echo "📦 [Passo 2/2] Atualizando e compilando modelo de interação pt-BR (com APL ativo)..."
+          ask smapi set-interaction-model -s "$SKILL_ID" -g development -l pt-BR --interaction-model "file:alexa/build/skill-package/interactionModels/custom/pt-BR.json"
+          
+          echo "⏳ Aguardando compilação do modelo de interação pela Amazon Alexa..."
+          for i in {1..20}; do
+            STATUS_RAW=$(ask smapi get-skill-status -s "$SKILL_ID" 2>/dev/null || echo "{}")
+            MODEL_STATUS=$(node -e '
+              try {
+                const s = JSON.parse(process.argv[1]);
+                console.log(s.interactionModel?.["pt-BR"]?.lastUpdateRequest?.status || "PENDING");
+              } catch {
+                console.log("PENDING");
+              }
+            ' "$STATUS_RAW")
+            echo "   [Tentativa $i/20] Status do modelo na Amazon: $MODEL_STATUS"
+            if [ "$MODEL_STATUS" = "SUCCEEDED" ]; then
+              echo "✅ Modelo de interação compilado com sucesso com as novas interfaces!"
+              break
+            elif [ "$MODEL_STATUS" = "FAILED" ]; then
+              echo "::error ::Amazon falhou ao compilar o modelo de interação: $STATUS_RAW"
+              exit 1
+            fi
+            sleep 3
+          done
+
+          echo "✅ Deploy concluído com sucesso para a Amazon Alexa [$TARGET_ENV]!"
