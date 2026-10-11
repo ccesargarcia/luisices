@@ -170,6 +170,109 @@ async function main() {
     } catch {
       // Rotas podem requerer escopo específico
     }
+
+    // 4. Page Rules, Redirect Rules, Cache Rules & Configurações de Cache
+    console.log(`\n  🔀 REGRAS DE CACHE, REDIRECIONAMENTOS E PAGE RULES:`);
+    markdownReport += `\n#### Regras de Cache, Redirecionamento e Page Rules em \`${z.name}\`\n\n`;
+
+    // A. Page Rules
+    try {
+      const pageRules = await cfFetch(`/zones/${z.id}/pagerules?status=active`);
+      if (pageRules && pageRules.length > 0) {
+        console.log(`    Total de Page Rules ativas: ${pageRules.length}`);
+        markdownReport += `**Page Rules Ativas (${pageRules.length}):**\n\n`;
+        markdownReport += '| Padrão de URL (Target) | Ações Configuradas | Status |\n';
+        markdownReport += '| :--- | :--- | :---: |\n';
+        for (const pr of pageRules) {
+          const targets = pr.targets?.map((t) => t.constraint?.value).join(', ') || 'N/A';
+          const actions = pr.actions
+            ?.map((a) => {
+              if (a.id === 'forwarding_url') {
+                return `↪️ Redirect ${a.value?.status_code} para \`${a.value?.url}\``;
+              }
+              if (typeof a.value === 'object') return `${a.id}: ${JSON.stringify(a.value)}`;
+              return `${a.id}: ${a.value ?? 'habilitado'}`;
+            })
+            .join('<br>') || 'N/A';
+          console.log(`      • ${targets} -> ${actions}`);
+          markdownReport += `| \`${targets}\` | ${actions} | \`${pr.status}\` |\n`;
+        }
+        markdownReport += '\n';
+      } else {
+        console.log(`    Nenhuma Page Rule legada ativa configurada.`);
+        markdownReport += `*Nenhuma Page Rule legada ativa configurada.*\n\n`;
+      }
+    } catch (err) {
+      console.log(`    Não foi possível listar Page Rules: ${err.message}`);
+    }
+
+    // B. Redirect Rules (Rulesets)
+    try {
+      const redirectRuleset = await cfFetch(`/zones/${z.id}/rulesets/phases/http_request_dynamic_redirect/entrypoint`);
+      const rules = redirectRuleset?.rules || [];
+      if (rules.length > 0) {
+        console.log(`    Total de Regras de Redirecionamento (Redirect Rules): ${rules.length}`);
+        markdownReport += `**Redirect Rules Dinâmicas (${rules.length}):**\n\n`;
+        markdownReport += '| Descrição | Condição (Expressão) | Destino do Redirect |\n';
+        markdownReport += '| :--- | :--- | :--- |\n';
+        for (const r of rules) {
+          const target = r.action_parameters?.from_value?.target_url?.value || r.action_parameters?.from_value?.target_url?.expression || 'N/A';
+          const status = r.action_parameters?.from_value?.status_code || 301;
+          console.log(`      • [${status}] ${r.description || 'Redirect'}: ${r.expression} -> ${target}`);
+          markdownReport += `| ${r.description || 'Redirect'} | \`${r.expression}\` | ↪️ [${status}] \`${target}\` |\n`;
+        }
+        markdownReport += '\n';
+      } else {
+        console.log(`    Nenhuma Redirect Rule dinâmica configurada.`);
+      }
+    } catch {
+      // Endpoint de ruleset pode não existir se nenhuma regra foi criada
+    }
+
+    // C. Cache Rules (Rulesets)
+    try {
+      const cacheRuleset = await cfFetch(`/zones/${z.id}/rulesets/phases/http_request_cache_settings/entrypoint`);
+      const rules = cacheRuleset?.rules || [];
+      if (rules.length > 0) {
+        console.log(`    Total de Regras de Cache (Cache Rules): ${rules.length}`);
+        markdownReport += `**Cache Rules Customizadas (${rules.length}):**\n\n`;
+        markdownReport += '| Descrição | Condição (Expressão) | Comportamento de Cache |\n';
+        markdownReport += '| :--- | :--- | :--- |\n';
+        for (const r of rules) {
+          const eligible = r.action_parameters?.cache ? 'Cache Habilitado' : 'Bypass (Não Cachear)';
+          const edgeTtl = r.action_parameters?.edge_ttl ? `Edge TTL: ${JSON.stringify(r.action_parameters.edge_ttl)}` : '';
+          console.log(`      • ${r.description || 'Cache Rule'}: ${r.expression} (${eligible})`);
+          markdownReport += `| ${r.description || 'Cache Rule'} | \`${r.expression}\` | ${eligible} ${edgeTtl} |\n`;
+        }
+        markdownReport += '\n';
+      } else {
+        console.log(`    Nenhuma Cache Rule customizada configurada.`);
+      }
+    } catch {
+      // Ignorar caso não configurado
+    }
+
+    // D. Configurações Globais de Cache e Otimização
+    try {
+      const cacheLevel = await cfFetch(`/zones/${z.id}/settings/cache_level`).catch(() => ({}));
+      const browserCacheTtl = await cfFetch(`/zones/${z.id}/settings/browser_cache_ttl`).catch(() => ({}));
+      const alwaysHttps = await cfFetch(`/zones/${z.id}/settings/always_use_https`).catch(() => ({}));
+      const brotli = await cfFetch(`/zones/${z.id}/settings/brotli`).catch(() => ({}));
+
+      console.log(`\n    ⚙️ Configurações Globais de Cache & Rede:`);
+      console.log(`      - Nível de Cache (Cache Level): ${cacheLevel.value || 'standard'}`);
+      console.log(`      - Browser Cache TTL: ${browserCacheTtl.value === 0 ? 'Respeitar cabeçalhos existentes da origem' : `${browserCacheTtl.value}s`}`);
+      console.log(`      - Always Use HTTPS: ${alwaysHttps.value || 'off'}`);
+      console.log(`      - Compressão Brotli: ${brotli.value || 'off'}`);
+
+      markdownReport += `**Configurações Globais de Cache & Rede:**\n\n`;
+      markdownReport += `- **Nível de Cache:** \`${cacheLevel.value || 'standard'}\`\n`;
+      markdownReport += `- **Browser Cache TTL:** \`${browserCacheTtl.value === 0 ? 'Respeitar cabeçalhos existentes da origem' : `${browserCacheTtl.value}s`}\`\n`;
+      markdownReport += `- **Always Use HTTPS:** \`${alwaysHttps.value || 'off'}\`\n`;
+      markdownReport += `- **Compressão Brotli:** \`${brotli.value || 'off'}\`\n\n`;
+    } catch {
+      // Ignorar se não puder ler settings
+    }
   }
 
   // 4. Workers Scripts & Custom Domains da Conta
