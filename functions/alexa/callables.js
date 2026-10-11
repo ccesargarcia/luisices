@@ -137,7 +137,7 @@ async function toggleGlobalAlexaIntegrationHandler(request, db) {
   await db.doc(COLLECTIONS.SETTINGS).set(
     {
       enabled: Boolean(enabled),
-      allowedSkillId: config.allowedSkillId || 'amzn1.ask.skill.1cd0031f-ada0-4da8-8721-2ad44b4b1c96',
+      allowedSkillId: config.allowedSkillId,
       updatedBy: request.auth.uid,
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
     },

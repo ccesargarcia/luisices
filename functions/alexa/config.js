@@ -37,9 +37,11 @@ async function getAlexaConfig(db = null) {
     throw new Error(`Ambiente inválido para integração Alexa: '${environment}'. Operação bloqueada.`);
   }
   
-  // Skill ID padrão da skill oficial Luisices
-  const DEFAULT_SKILL_ID = 'amzn1.ask.skill.1cd0031f-ada0-4da8-8721-2ad44b4b1c96';
-  let allowedSkillId = (process.env.ALEXA_SKILL_ID || (environment === 'prod' ? process.env.ALEXA_PROD_SKILL_ID : process.env.ALEXA_DEV_SKILL_ID) || '').trim() || DEFAULT_SKILL_ID;
+  // Skill IDs oficiais da Alexa (dev vs prod)
+  const PROD_SKILL_ID = 'amzn1.ask.skill.0f0da257-2062-4fd0-9514-2d5925b47957';
+  const DEV_SKILL_ID = 'amzn1.ask.skill.1cd0031f-ada0-4da8-8721-2ad44b4b1c96';
+  const defaultSkillId = environment === 'prod' ? PROD_SKILL_ID : DEV_SKILL_ID;
+  let allowedSkillId = (process.env.ALEXA_SKILL_ID || (environment === 'prod' ? process.env.ALEXA_PROD_SKILL_ID : process.env.ALEXA_DEV_SKILL_ID) || '').trim() || defaultSkillId;
   
   // Em dev, ativa por padrão se houver skillId; em produção permanece explicitamente desativada
   let isEnabled = environment === 'dev' ? true : (process.env.ALEXA_ENABLED === 'true');

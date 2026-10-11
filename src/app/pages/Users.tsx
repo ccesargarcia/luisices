@@ -980,9 +980,10 @@ export function Users() {
 
   const filteredUsers = useMemo<UserProfile[]>(() => {
     return users.filter((u: UserProfile) => {
-      const matchSearch =
-        u.displayName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        u.email.toLowerCase().includes(searchTerm.toLowerCase());
+      const name = (u.displayName || '').toLowerCase();
+      const mail = (u.email || '').toLowerCase();
+      const term = searchTerm.toLowerCase().trim();
+      const matchSearch = !term || name.includes(term) || mail.includes(term);
       const matchRole = roleFilter === 'all' || u.role === roleFilter;
       return matchSearch && matchRole;
     });
