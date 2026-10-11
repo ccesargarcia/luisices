@@ -1,7 +1,19 @@
-import { describe, it, expect, vi } from 'vitest';
-import { normalizeUrlToProd, normalizeObjectUrls } from '../../scripts/migrate-user-dev-to-prod.mjs';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import {
+  normalizeUrlToProd,
+  normalizeObjectUrls,
+  sendPasswordResetEmailNotification,
+} from '../../scripts/migrate-user-dev-to-prod.mjs';
 
 describe('Migração de Usuário (Dev ➔ Prod): Validação de Lógica e Segurança', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it('deve normalizar URLs de Storage e CDN de dev para produção', () => {
     const urlDev1 = 'https://cdn-dev.luisices.com.br/products/topo.webp';
     const urlDev2 = 'https://luisices-dev.firebasestorage.app/v0/b/luisices-dev.appspot.com/o/item.jpg';
@@ -20,6 +32,7 @@ describe('Migração de Usuário (Dev ➔ Prod): Validação de Lógica e Segura
       ],
       details: {
         banner: 'https://cdn-dev.luisices.com.br/banner.png',
+        avatar: 'https://cdn-dev.luisices.com.br/users/123/avatar/foto.webp',
         active: true,
         price: 49.9,
       },
@@ -31,6 +44,7 @@ describe('Migração de Usuário (Dev ➔ Prod): Validação de Lógica e Segura
     expect(normalized.gallery[0]).toBe('https://papelaria-dashboard.firebasestorage.app/v0/b/papelaria-dashboard.firebasestorage.app/o/g1.jpg');
     expect(normalized.gallery[1]).toBe('https://cdn.luisices.com.br/g2.webp');
     expect(normalized.details.banner).toBe('https://cdn.luisices.com.br/banner.png');
+    expect(normalized.details.avatar).toBe('https://cdn.luisices.com.br/users/123/avatar/foto.webp');
     expect(normalized.details.price).toBe(49.9);
   });
 
@@ -92,10 +106,52 @@ describe('Migração de Usuário (Dev ➔ Prod): Validação de Lógica e Segura
   it('deve remapear caminhos de arquivos de Storage quando o UID for alterado', () => {
     const devUid = 'uid-dev-123';
     const prodUid = 'uid-prod-999';
-    const devFilePath = `users/${devUid}/products/foto1.webp`;
+    const devFilePath = `users/${devUid}/avatar/avatar_123.webp`;
 
     const destPath = devUid === prodUid ? devFilePath : devFilePath.replace(`users/${devUid}/`, `users/${prodUid}/`);
-    expect(destPath).toBe(`users/${prodUid}/products/foto1.webp`);
+    expect(destPath).toBe(`users/${prodUid}/avatar/avatar_123.webp`);
+  });
+
+  it('deve enviar e-mail de redefinição de senha com sucesso via Resend quando chave for fornecida', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ id: 'resend_email_12345' }),
+    });
+    vi.stubGlobal('fetch', mockFetch);
+
+    const result = await sendPasswordResetEmailNotification({
+      userEmail: 'parceiro@luisices.com.br',
+      userName: 'Caio Garcia',
+      resetLink: 'https://auth.luisices.com.br/reset?token=xyz',
+      resendApiKey: 're_mock_test_key_123',
+    });
+
+    expect(result.sent).toBe(true);
+    expect(result.resendId).toBe('resend_email_12345');
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+
+    const [url, options] = mockFetch.mock.calls[0];
+    expect(url).toBe('https://api.resend.com/emails');
+    expect(options.method).toBe('POST');
+    expect(options.headers['Authorization']).toBe('Bearer re_mock_test_key_123');
+
+    const body = JSON.parse(options.body);
+    expect(body.to).toEqual(['parceiro@luisices.com.br']);
+    expect(body.subject).toContain('Defina sua senha de acesso');
+    expect(body.html).toContain('https://auth.luisices.com.br/reset?token=xyz');
+  });
+
+  it('deve retornar falha amigável sem lançar erro quando RESEND_API_KEY não estiver configurada', async () => {
+    const result = await sendPasswordResetEmailNotification({
+      userEmail: 'parceiro@luisices.com.br',
+      userName: 'Caio Garcia',
+      resetLink: 'https://auth.luisices.com.br/reset?token=xyz',
+      resendApiKey: '',
+    });
+
+    expect(result.sent).toBe(false);
+    expect(result.reason).toContain('RESEND_API_KEY');
   });
 
   it('deve garantir que em modo DRY_RUN nenhuma escrita seja executada', async () => {
@@ -126,7 +182,6 @@ describe('Migração de Usuário (Dev ➔ Prod): Validação de Lógica e Segura
       chunks.push(i);
     }
 
-    // 950 itens divididos em lotes de 400: [0..399], [400..799], [800..949] -> 3 lotes
     expect(chunks.length).toBe(3);
     expect(chunks).toEqual([0, 400, 800]);
   });

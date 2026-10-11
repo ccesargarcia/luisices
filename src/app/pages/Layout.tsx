@@ -332,7 +332,7 @@ export function Layout() {
           businessName={businessName}
           logo={settings?.logo}
           businessTagline={settings?.businessTagline}
-          avatarUrl={settings?.avatar}
+          avatarUrl={settings?.avatar || user?.photoURL || undefined}
           userDisplayName={user?.displayName ?? undefined}
           userEmail={user?.email ?? undefined}
           userInitials={getUserInitials()}

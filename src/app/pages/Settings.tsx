@@ -483,7 +483,7 @@ export function Settings() {
         {/* ─── ABA 1: EMPRESA & PERFIL ────────────────────────────── */}
         <TabsContent value="empresa" className="space-y-6">
           <AvatarLogoSection
-            avatarUrl={settings?.avatar}
+            avatarUrl={settings?.avatar || user?.photoURL || undefined}
             logoUrl={settings?.logo}
             userInitials={userInitials}
             uploading={uploading}
