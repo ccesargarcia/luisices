@@ -88,6 +88,55 @@ export interface CartItem {
   customName?: string;
 }
 
+export const ALL_THEME_CLASSES = ['light', 'dark', 'deep-ocean', 'forest-glow', 'sunset-amber'] as const;
+
+export function applyCatalogTheme(isDark: boolean) {
+  if (typeof document === 'undefined') return;
+  const root = document.documentElement;
+
+  // 1. Remove qualquer classe residual de temas da plataforma ou anteriores
+  ALL_THEME_CLASSES.forEach((cls) => root.classList.remove(cls));
+
+  // 2. Aplica estritamente o tema isolado da loja pública
+  if (isDark) {
+    root.classList.add('dark');
+    root.setAttribute('data-theme', 'dark');
+    root.style.colorScheme = 'dark';
+  } else {
+    root.classList.add('light');
+    root.setAttribute('data-theme', 'light');
+    root.style.colorScheme = 'light';
+  }
+}
+
+export function restoreAdminTheme() {
+  if (typeof document === 'undefined') return;
+  const root = document.documentElement;
+
+  // 1. Limpa classes isoladas do catálogo
+  ALL_THEME_CLASSES.forEach((cls) => root.classList.remove(cls));
+
+  // 2. Restaura com fidelidade absoluta o tema configurado na plataforma administrativa
+  try {
+    const adminTheme = localStorage.getItem('theme') || 'system';
+    if (adminTheme === 'system') {
+      const systemPrefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+      const effectiveTheme = systemPrefersDark ? 'dark' : 'light';
+      root.classList.add(effectiveTheme);
+      root.setAttribute('data-theme', effectiveTheme);
+      root.style.colorScheme = effectiveTheme;
+    } else {
+      root.classList.add(adminTheme);
+      root.setAttribute('data-theme', adminTheme);
+      root.style.colorScheme = adminTheme === 'light' ? 'light' : 'dark';
+    }
+  } catch {
+    root.classList.add('light');
+    root.setAttribute('data-theme', 'light');
+    root.style.colorScheme = 'light';
+  }
+}
+
 export function PublicCatalog() {
 
   // Controle de tema: recupera preferência salva no localStorage para persistir entre recarregamentos
@@ -383,41 +432,26 @@ export function PublicCatalog() {
     setHeaderBgError(false);
   }, [businessInfo.headerBackground]);
 
-  // Isolar o tema da lojinha: persiste a escolha da lojinha e restaura o tema do painel ao desmontar
+  // 1. Isolar e restaurar fielmente o tema do painel administrativo estritamente no unmount
   useEffect(() => {
-    const root = document.documentElement;
-    const adminTheme = localStorage.getItem('theme') || 'system';
-    const systemPrefersDark = typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches;
-    const adminIsDark = adminTheme === 'dark' || (adminTheme === 'system' && systemPrefersDark);
+    return () => {
+      restoreAdminTheme();
+    };
+  }, []);
 
-    if (isDarkMode) {
-      root.classList.add('dark');
-      root.classList.remove('light');
-    } else {
-      root.classList.remove('dark');
-      root.classList.add('light');
-    }
-
+  // 2. Aplicação reativa do tema da Loja Pública no DOM e no localStorage
+  useEffect(() => {
+    applyCatalogTheme(isDarkMode);
     try {
       localStorage.setItem('luisices_catalog_theme', isDarkMode ? 'dark' : 'light');
     } catch {}
-
-    return () => {
-      // Ao sair do catálogo para o painel administrativo, restaura fielmente o tema escolhido pelo usuário
-      if (adminIsDark) {
-        root.classList.add('dark');
-        root.classList.remove('light');
-      } else {
-        root.classList.remove('dark');
-        root.classList.add('light');
-      }
-    };
   }, [isDarkMode]);
 
-  // Alternar tema Claro / Escuro da lojinha (persistindo no localStorage sem alterar o tema administrativo)
+  // 3. Alternar tema Claro / Escuro da lojinha com sincronização imediata
   const toggleTheme = () => {
     setIsDarkMode((prev) => {
       const next = !prev;
+      applyCatalogTheme(next);
       try {
         localStorage.setItem('luisices_catalog_theme', next ? 'dark' : 'light');
       } catch {}
@@ -1038,7 +1072,7 @@ export function PublicCatalog() {
   // ─── Página de Loja Despublicada (Manutenção / Fora do Ar) ───
   if (!storePublished) {
     return (
-      <div className={isDarkMode ? 'dark' : ''} style={{ '--store-primary': businessInfo.primaryColor || '#613d3e' } as React.CSSProperties}>
+      <div className={isDarkMode ? 'dark' : 'light'} style={{ '--store-primary': businessInfo.primaryColor || '#613d3e' } as React.CSSProperties}>
 
         <div
           className={`min-h-[100dvh] flex flex-col items-center justify-center text-[#221a1a] dark:text-[#e8e0e3] transition-colors duration-500 font-sans
@@ -1172,7 +1206,7 @@ export function PublicCatalog() {
   };
 
   return (
-    <div className={isDarkMode ? 'dark' : ''} style={{ '--store-primary': businessInfo.primaryColor || '#613d3e', ...getButtonVars() } as React.CSSProperties}>
+    <div className={isDarkMode ? 'dark' : 'light'} style={{ '--store-primary': businessInfo.primaryColor || '#613d3e', ...getButtonVars() } as React.CSSProperties}>
 
       {/* 
         Container Principal com Iluminação Atmosférica Radial (Glassmorphism & Depth) ou Papel Clean Solid
