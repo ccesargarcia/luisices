@@ -17,6 +17,9 @@ import { firebaseStorageService } from '../../services/firebaseStorageService';
 import { ReceivedEmail, SentEmail, SendEmailPayload } from '../types';
 import { Button } from '../components/ui/button';
 import { EmailHtmlViewer } from '../components/emails/EmailHtmlViewer';
+import { EmailComposerModal } from '../components/emails/EmailComposerModal';
+import { EmailDeleteConfirmDialogs } from '../components/emails/EmailDeleteConfirmDialogs';
+import { EmailSpamSettingsDialog } from '../components/emails/EmailSpamSettingsDialog';
 import { Input } from '../components/ui/input';
 import { Textarea } from '../components/ui/textarea';
 import { Badge } from '../components/ui/badge';
@@ -2806,796 +2809,131 @@ export function Emails() {
       </div>
 
       {/* ─── Modal de Composição / Nova Mensagem ───────────────────── */}
-      <Dialog open={isComposeOpen} onOpenChange={setIsComposeOpen}>
-        <DialogContent size="3xl" className="max-h-[92dvh] flex flex-col p-0 overflow-hidden">
-          <DialogHeader className="p-4 sm:p-5 pb-3 border-b border-border/60">
-            <div className="flex items-center justify-between">
-              <div>
-                <DialogTitle className="text-lg flex items-center gap-2">
-                  <SendHorizontal className="size-5 text-primary" />
-                  <span>Nova Mensagem</span>
-                </DialogTitle>
-                <DialogDescription className="text-xs mt-0.5">
-                  Envie e-mails profissionais com a assinatura oficial do ateliê
-                </DialogDescription>
-              </div>
-
-              {/* Alternador Escrever / Prévia */}
-              <div className="flex items-center gap-1 bg-muted p-0.5 rounded-lg text-xs">
-                <button
-                  type="button"
-                  onClick={() => setComposeMode('write')}
-                  className={`px-3 py-1 rounded-md transition-colors ${
-                    composeMode === 'write' ? 'bg-background shadow-xs font-semibold text-foreground' : 'text-muted-foreground'
-                  }`}
-                >
-                  Escrever
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setComposeMode('preview')}
-                  className={`px-3 py-1 rounded-md transition-colors flex items-center gap-1 ${
-                    composeMode === 'preview' ? 'bg-background shadow-xs font-semibold text-foreground' : 'text-muted-foreground'
-                  }`}
-                >
-                  <Eye className="size-3.5" />
-                  <span>Prévia Real</span>
-                </button>
-              </div>
-            </div>
-          </DialogHeader>
-
-          <form onSubmit={handleSend} className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4">
-            {composeMode === 'write' ? (
-              <>
-                {/* Linha 1: Modelos Prontos & Cliente Cadastrado */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3 rounded-lg border bg-muted/20">
-                  <div className="space-y-1">
-                    <label className="text-[11px] font-semibold text-muted-foreground flex items-center gap-1.5">
-                      <Sparkles className="size-3 text-amber-500" />
-                      <span>Modelos de Papelaria:</span>
-                    </label>
-                    <Select onValueChange={handleSelectTemplate}>
-                      <SelectTrigger className="h-8 text-xs bg-background">
-                        <SelectValue placeholder="Escolher modelo rápido..." />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {allTemplates.map((tpl) => (
-                          <SelectItem key={tpl.id} value={tpl.id} className="text-xs">
-                            {tpl.name} {tpl.isCustom ? '⭐' : ''}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div className="space-y-1">
-                    <label className="text-[11px] font-semibold text-muted-foreground flex items-center gap-1.5">
-                      <Tag className="size-3 text-primary" />
-                      <span>Preencher com Cliente:</span>
-                    </label>
-                    <Popover
-                      open={customerPickerOpen}
-                      onOpenChange={(open) => {
-                        setCustomerPickerOpen(open);
-                        if (!open) setCustomerSearch('');
-                      }}
-                    >
-                      <PopoverTrigger asChild>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          role="combobox"
-                          aria-expanded={customerPickerOpen}
-                          className="h-8 w-full justify-between bg-background px-3 text-xs font-normal"
-                        >
-                          <span className="truncate">
-                            {selectedCustomerId
-                              ? (() => {
-                                  const selected = customers.find((c) => c.id === selectedCustomerId);
-                                  return selected ? `${selected.name} (${selected.email})` : 'Selecionar cliente cadastrado...';
-                                })()
-                              : 'Selecionar cliente cadastrado...'}
-                          </span>
-                          <Search className="ml-2 size-3.5 shrink-0 text-muted-foreground" />
-                        </Button>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-[min(26rem,calc(100vw-2rem))] p-2" align="start">
-                        <div className="relative">
-                          <Search className="absolute left-2.5 top-2 size-3.5 text-muted-foreground" />
-                          <Input
-                            autoFocus
-                            value={customerSearch}
-                            onChange={(event) => setCustomerSearch(event.target.value)}
-                            placeholder="Buscar por nome ou e-mail..."
-                            className="h-8 pl-8 text-xs"
-                          />
-                        </div>
-                        <div
-                          className="mt-2 max-h-56 overflow-y-auto space-y-0.5 custom-scrollbar overscroll-contain"
-                          onWheel={(event) => event.stopPropagation()}
-                          onTouchMove={(event) => event.stopPropagation()}
-                        >
-                          {customers
-                            .filter((customer) => Boolean(customer.email))
-                            .filter((customer) => {
-                              const query = customerSearch.trim().toLowerCase();
-                              return !query
-                                || customer.name.toLowerCase().includes(query)
-                                || (customer.email || '').toLowerCase().includes(query);
-                            })
-                            .map((customer) => (
-                              <button
-                                key={customer.id}
-                                type="button"
-                                className={`w-full rounded px-2 py-1.5 text-left text-xs hover:bg-muted ${selectedCustomerId === customer.id ? 'bg-muted' : ''}`}
-                                onClick={() => handleSelectCustomer(customer.id)}
-                              >
-                                <span className="block truncate font-medium">{customer.name}</span>
-                                <span className="block truncate text-[11px] text-muted-foreground">{customer.email}</span>
-                              </button>
-                            ))}
-                          {customers.filter((customer) => {
-                            const query = customerSearch.trim().toLowerCase();
-                            return Boolean(customer.email) && (!query
-                              || customer.name.toLowerCase().includes(query)
-                              || (customer.email || '').toLowerCase().includes(query));
-                          }).length === 0 && (
-                            <p className="px-2 py-4 text-center text-xs text-muted-foreground">
-                              Nenhum cliente encontrado.
-                            </p>
-                          )}
-                        </div>
-                      </PopoverContent>
-                    </Popover>
-                  </div>
-                </div>
-
-                {/* Linha 2: Remetente & Destinatário */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div className="space-y-1">
-                    <div className="flex items-center justify-between">
-                      <label className="text-xs font-semibold text-muted-foreground">Remetente (De):</label>
-                      <button
-                        type="button"
-                        onClick={() => setIsCustomSender(!isCustomSender)}
-                        className="text-[11px] text-primary hover:underline"
-                      >
-                        {isCustomSender ? 'Lista Padrão' : 'Digitar Manual'}
-                      </button>
-                    </div>
-                    {isCustomSender ? (
-                      <Input
-                        placeholder="Ex: Minha Loja <contato@meudominio.com>"
-                        value={customSender}
-                        onChange={(e) => setCustomSender(e.target.value)}
-                        className="h-9 text-xs"
-                      />
-                    ) : (
-                      <Select value={sender} onValueChange={setSender}>
-                        <SelectTrigger className="h-9 text-xs">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value={defaultSender} className="text-xs">
-                            {defaultSender} (Padrão)
-                          </SelectItem>
-                          {isDev ? (
-                            <>
-                              <SelectItem value="Luisices Dev <noreply@dev.luisices.com.br>" className="text-xs">
-                                Luisices Dev &lt;noreply@dev.luisices.com.br&gt;
-                              </SelectItem>
-                              <SelectItem value="Atendimento Dev <suporte@dev.luisices.com.br>" className="text-xs">
-                                Atendimento Dev &lt;suporte@dev.luisices.com.br&gt;
-                              </SelectItem>
-                            </>
-                          ) : (
-                            <>
-                              <SelectItem value="Luisices <noreply@luisices.com.br>" className="text-xs">
-                                Luisices &lt;noreply@luisices.com.br&gt;
-                              </SelectItem>
-                              <SelectItem value="Atendimento Luisices <suporte@luisices.com.br>" className="text-xs">
-                                Atendimento &lt;suporte@luisices.com.br&gt;
-                              </SelectItem>
-                            </>
-                          )}
-                        </SelectContent>
-                      </Select>
-                    )}
-                  </div>
-
-                  <div className="space-y-1">
-                    <div className="flex items-center justify-between">
-                      <label className="text-xs font-semibold text-muted-foreground">Destinatário (Para):</label>
-                      <button
-                        type="button"
-                        onClick={() => setShowCcBcc(!showCcBcc)}
-                        className="text-[11px] text-primary hover:underline"
-                      >
-                        {showCcBcc ? 'Ocultar Cc/Cco' : '+ Adicionar Cc/Cco'}
-                      </button>
-                    </div>
-                    <Input
-                      placeholder="cliente@exemplo.com.br (vírgula para múltiplos)"
-                      value={recipient}
-                      onChange={(e) => setRecipient(e.target.value)}
-                      className="h-9 text-xs"
-                      required
-                    />
-                  </div>
-                </div>
-
-                {/* Cc e Cco colapsáveis */}
-                {showCcBcc && (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
-                    <div className="space-y-1">
-                      <label className="text-xs font-semibold text-muted-foreground">Com Cópia (Cc):</label>
-                      <Input
-                        placeholder="copia@dominio.com"
-                        value={cc}
-                        onChange={(e) => setCc(e.target.value)}
-                        className="h-8 text-xs"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-xs font-semibold text-muted-foreground">Cópia Oculta (Cco):</label>
-                      <Input
-                        placeholder="copiaoculta@dominio.com"
-                        value={bcc}
-                        onChange={(e) => setBcc(e.target.value)}
-                        className="h-8 text-xs"
-                      />
-                    </div>
-                  </div>
-                )}
-
-                {/* Assunto */}
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold text-muted-foreground">Assunto:</label>
-                  <Input
-                    placeholder="Ex: Seu Orçamento Personalizado - Luisices"
-                    value={subject}
-                    onChange={(e) => setSubject(e.target.value)}
-                    className="h-9 text-xs"
-                    required
-                  />
-                </div>
-
-                {/* Banner de citação quando estiver respondendo */}
-                {replyQuote && (
-                  <div className="flex items-center justify-between p-2.5 rounded-lg border bg-primary/5 border-primary/20 text-xs">
-                    <div className="flex items-center gap-2 truncate">
-                      <Reply className="size-4 text-primary shrink-0" />
-                      <span className="truncate">
-                        Respondendo a <strong className="text-foreground">{replyQuote.from}</strong> (Mídia, imagens e links originais preservados no envio)
-                      </span>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setReplyQuote(null);
-                        toast.info('Citação da mensagem original removida.');
-                      }}
-                      className="text-xs text-muted-foreground hover:text-destructive font-medium shrink-0 ml-2"
-                      title="Remover citação da mensagem original"
-                    >
-                      Remover citação
-                    </button>
-                  </div>
-                )}
-
-                {/* Tags Dinâmicas Rápidas */}
-                <div className="space-y-1.5">
-                  <div className="flex items-center justify-between">
-                    <label className="text-xs font-semibold text-muted-foreground">Mensagem:</label>
-                    <span className="text-[10px] text-muted-foreground">Clique numa tag para inserir:</span>
-                  </div>
-
-                  <div className="flex flex-wrap gap-1.5 pb-1">
-                    {DYNAMIC_TAGS.map((t) => (
-                      <button
-                        key={t.tag}
-                        type="button"
-                        onClick={() => handleInsertTag(t.tag)}
-                        className="text-[10px] font-mono px-2 py-0.5 rounded border bg-muted/40 hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
-                        title={`Inserir ${t.label}`}
-                      >
-                        {t.tag}
-                      </button>
-                    ))}
-                  </div>
-
-                  <Textarea
-                    ref={textareaRef}
-                    placeholder={replyQuote ? "Digite sua resposta aqui..." : "Escreva sua mensagem aqui..."}
-                    value={body}
-                    onChange={(e) => setBody(e.target.value)}
-                    className="min-h-[180px] font-sans text-xs leading-relaxed"
-                    required
-                  />
-                </div>
-
-                {/* Anexos na Composição */}
-                <div className="space-y-2 pt-2 border-t border-border/60">
-                  <div className="flex items-center justify-between">
-                    <label className="text-xs font-semibold text-muted-foreground flex items-center gap-1.5">
-                      <Paperclip className="size-3.5" />
-                      <span>Anexos ({attachments.length}):</span>
-                    </label>
-
-                    <div>
-                      <input
-                        ref={fileInputRef}
-                        type="file"
-                        onChange={handleUploadAttachment}
-                        className="hidden"
-                        id="compose-file-input"
-                      />
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => fileInputRef.current?.click()}
-                        disabled={isUploadingAttachment}
-                        className="h-7 text-xs gap-1.5"
-                      >
-                        {isUploadingAttachment ? (
-                          <>
-                            <Loader2 className="size-3 animate-spin" />
-                            <span>Enviando...</span>
-                          </>
-                        ) : (
-                          <>
-                            <Paperclip className="size-3" />
-                            <span>Adicionar Arquivo</span>
-                          </>
-                        )}
-                      </Button>
-                    </div>
-                  </div>
-
-                  {attachments.length > 0 && (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                      {attachments.map((att) => (
-                        <div
-                          key={att.url}
-                          className="flex items-center justify-between p-2 rounded-lg border bg-muted/20 text-xs"
-                        >
-                          <span className="font-medium truncate mr-2">{att.name}</span>
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveAttachment(att.url)}
-                            className="text-muted-foreground hover:text-destructive p-1 rounded transition-colors"
-                            title="Remover anexo"
-                          >
-                            <Trash2 className="size-3.5" />
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </>
-            ) : (
-              /* Prévia ao vivo */
-              <div className="space-y-3">
-                <div className="flex items-center gap-2 p-2.5 rounded-lg bg-primary/5 text-primary text-xs">
-                  <Info className="size-4 shrink-0" />
-                  <span>
-                    Pré-visualização fiel de como a mensagem chegará na caixa de entrada com a identidade da sua loja e links de anexos.
-                  </span>
-                </div>
-
-                <EmailHtmlViewer
-                  html={generateFormattedHtml(body || 'Sua mensagem aparecerá aqui.')}
-                />
-              </div>
-            )}
-
-            {/* Rodapé do Formulário */}
-            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 pt-3 border-t border-border/60">
-              <div className="flex items-center gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={handleSaveAsTemplate}
-                  className="gap-1.5 text-xs h-8"
-                  title="Salvar texto atual como modelo personalizado"
-                >
-                  <BookmarkPlus className="size-3.5" />
-                  <span>Salvar como Modelo</span>
-                </Button>
-              </div>
-
-              <div className="flex items-center justify-end gap-2">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setIsComposeOpen(false)}
-                  className="text-xs h-8"
-                >
-                  Cancelar
-                </Button>
-
-                <Button
-                  type="submit"
-                  disabled={isSending || dailyRemaining === 0 || isUploadingAttachment}
-                  className="gap-2 text-xs h-8 px-4"
-                >
-                  {isSending ? (
-                    <>
-                      <Loader2 className="size-3.5 animate-spin" />
-                      <span>Enviando...</span>
-                    </>
-                  ) : (
-                    <>
-                      <Send className="size-3.5" />
-                      <span>Enviar E-mail</span>
-                    </>
-                  )}
-                </Button>
-              </div>
-            </div>
-          </form>
-        </DialogContent>
-      </Dialog>
-
-      {/* ─── Modal de Confirmação de Exclusão Individual ─────────────── */}
-      <AlertDialog
-        open={Boolean(emailToDelete)}
-        onOpenChange={(open) => {
-          if (!open) setEmailToDelete(null);
+      <EmailComposerModal
+        isOpen={isComposeOpen}
+        onOpenChange={setIsComposeOpen}
+        composeMode={composeMode}
+        setComposeMode={setComposeMode}
+        handleSend={handleSend}
+        allTemplates={allTemplates}
+        handleSelectTemplate={handleSelectTemplate}
+        customerPickerOpen={customerPickerOpen}
+        setCustomerPickerOpen={setCustomerPickerOpen}
+        customerSearch={customerSearch}
+        setCustomerSearch={setCustomerSearch}
+        selectedCustomerId={selectedCustomerId}
+        customers={customers}
+        handleSelectCustomer={handleSelectCustomer}
+        isCustomSender={isCustomSender}
+        setIsCustomSender={setIsCustomSender}
+        customSender={customSender}
+        setCustomSender={setCustomSender}
+        sender={sender}
+        setSender={setSender}
+        defaultSender={defaultSender}
+        isDev={isDev}
+        showCcBcc={showCcBcc}
+        setShowCcBcc={setShowCcBcc}
+        recipient={recipient}
+        setRecipient={setRecipient}
+        cc={cc}
+        setCc={setCc}
+        bcc={bcc}
+        setBcc={setBcc}
+        subject={subject}
+        setSubject={setSubject}
+        replyQuote={replyQuote}
+        onRemoveReplyQuote={() => {
+          setReplyQuote(null);
+          toast.info('Citação da mensagem original removida.');
         }}
-      >
-        <AlertDialogContent className="sm:max-w-md">
-          <AlertDialogHeader>
-            <AlertDialogTitle>
-              {emailToDelete?.isPermanent
-                ? 'Excluir definitivamente'
-                : emailToDelete?.type === 'received'
-                ? 'Mover e-mail para a lixeira?'
-                : 'Mover registro para a lixeira?'}
-            </AlertDialogTitle>
-            <AlertDialogDescription className="text-xs">
-              {emailToDelete?.isPermanent
-                ? `Tem certeza que deseja excluir o e-mail "${emailToDelete?.subject}" definitivamente? Esta ação não pode ser desfeita.`
-                : `Deseja mover o e-mail "${emailToDelete?.subject}" para a lixeira? Você poderá restaurá-lo a qualquer momento.`}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter className="flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-            <AlertDialogCancel className="text-xs h-8">Cancelar</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={async () => {
-                if (!emailToDelete) return;
-                const target = emailToDelete;
-                setEmailToDelete(null);
+        dynamicTags={DYNAMIC_TAGS}
+        handleInsertTag={handleInsertTag}
+        textareaRef={textareaRef}
+        body={body}
+        setBody={setBody}
+        attachments={attachments}
+        fileInputRef={fileInputRef}
+        handleUploadAttachment={handleUploadAttachment}
+        isUploadingAttachment={isUploadingAttachment}
+        handleRemoveAttachment={handleRemoveAttachment}
+        generateFormattedHtml={generateFormattedHtml}
+        handleSaveAsTemplate={handleSaveAsTemplate}
+        isSending={isSending}
+        dailyRemaining={dailyRemaining}
+      />
 
-                if (target.isPermanent) {
-                  try {
-                    if (target.type === 'received') {
-                      await deleteReceived(target.id);
-                    } else {
-                      await deleteSent(target.id);
-                    }
-                    if (selectedEmailId === target.id) {
-                      setSelectedEmailId(null);
-                    }
-                    toast.success('E-mail excluído definitivamente.');
-                  } catch {
-                    toast.error('Não foi possível excluir o e-mail.');
-                  }
-                } else {
-                  try {
-                    await moveToTrash(target.id, target.type);
-                    if (selectedEmailId === target.id) {
-                      setSelectedEmailId(null);
-                    }
-                    toast.success('E-mail movido para a lixeira.', {
-                      action: {
-                        label: 'Desfazer',
-                        onClick: () => {
-                          void restoreFromTrash(target.id, target.type)
-                            .then(() => toast.success('E-mail restaurado.'))
-                            .catch(() => toast.error('Não foi possível restaurar o e-mail.'));
-                        },
-                      },
-                      duration: 8000,
-                    });
-                  } catch {
-                    toast.error('Não foi possível mover o e-mail para a lixeira.');
-                  }
-                }
-              }}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90 text-xs h-8"
-            >
-              {emailToDelete?.isPermanent ? 'Excluir definitivamente' : 'Mover para a lixeira'}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      {/* ─── Modais de Confirmação de Exclusão (Individual, Lote, Lixeira) ─── */}
+      <EmailDeleteConfirmDialogs
+        emailToDelete={emailToDelete}
+        onCloseDeleteIndividual={() => setEmailToDelete(null)}
+        onConfirmDeleteIndividual={async () => {
+          if (!emailToDelete) return;
+          const target = emailToDelete;
+          setEmailToDelete(null);
 
-      {/* ─── Modal de Confirmação de Exclusão em Massa (Bulk Delete) ──── */}
-      <AlertDialog
-        open={isBulkDeleteDialogOpen}
-        onOpenChange={setIsBulkDeleteDialogOpen}
-      >
-        <AlertDialogContent className="sm:max-w-md">
-          <AlertDialogHeader>
-            <AlertDialogTitle className="flex items-center gap-2 text-destructive text-base">
-              <Trash2 className="size-4 text-destructive" />
-              {activeFolder === 'trash'
-                ? `Excluir ${selectedEmailIds.size} e-mail(s) definitivamente?`
-                : `Mover ${selectedEmailIds.size} e-mail(s) para a lixeira?`}
-            </AlertDialogTitle>
-            <AlertDialogDescription className="text-xs leading-relaxed">
-              {activeFolder === 'trash'
-                ? `Esta ação removerá permanentemente os ${selectedEmailIds.size} e-mails da lixeira. Esta ação não pode ser desfeita.`
-                : `Os ${selectedEmailIds.size} e-mails selecionados serão movidos para a lixeira. Você poderá restaurá-los se precisar.`}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter className="flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-            <AlertDialogCancel disabled={isBulkDeleting} className="text-xs h-8">
-              Cancelar
-            </AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleConfirmBulkDelete}
-              disabled={isBulkDeleting}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90 text-xs h-8 gap-1.5"
-            >
-              {isBulkDeleting ? (
-                <>
-                  <Loader2 className="size-3.5 animate-spin" />
-                  <span>{activeFolder === 'trash' ? 'Excluindo...' : 'Movendo...'}</span>
-                </>
-              ) : (
-                <>
-                  <Trash2 className="size-3.5" />
-                  <span>
-                    {activeFolder === 'trash'
-                      ? `Excluir definitivamente (${selectedEmailIds.size})`
-                      : `Mover para a lixeira (${selectedEmailIds.size})`}
-                  </span>
-                </>
-              )}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      {/* ─── Modal de Confirmação para Esvaziar a Lixeira ─────────────── */}
-      <AlertDialog
-        open={isEmptyTrashDialogOpen}
-        onOpenChange={setIsEmptyTrashDialogOpen}
-      >
-        <AlertDialogContent className="sm:max-w-md">
-          <AlertDialogHeader>
-            <AlertDialogTitle className="flex items-center gap-2 text-destructive text-base">
-              <Trash2 className="size-4 text-destructive" />
-              Esvaziar lixeira?
-            </AlertDialogTitle>
-            <AlertDialogDescription className="text-xs leading-relaxed">
-              Todos os e-mails na lixeira serão excluídos definitivamente. Esta ação não pode ser desfeita.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter className="flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-            <AlertDialogCancel disabled={isBulkDeleting} className="text-xs h-8">
-              Cancelar
-            </AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleEmptyTrash}
-              disabled={isBulkDeleting}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90 text-xs h-8 gap-1.5"
-            >
-              {isBulkDeleting ? (
-                <>
-                  <Loader2 className="size-3.5 animate-spin" />
-                  <span>Esvaziando...</span>
-                </>
-              ) : (
-                <>
-                  <Trash2 className="size-3.5" />
-                  <span>Esvaziar Lixeira</span>
-                </>
-              )}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+          if (target.isPermanent) {
+            try {
+              if (target.type === 'received') {
+                await deleteReceived(target.id);
+              } else {
+                await deleteSent(target.id);
+              }
+              if (selectedEmailId === target.id) {
+                setSelectedEmailId(null);
+              }
+              toast.success('E-mail excluído definitivamente.');
+            } catch {
+              toast.error('Não foi possível excluir o e-mail.');
+            }
+          } else {
+            try {
+              await moveToTrash(target.id, target.type);
+              if (selectedEmailId === target.id) {
+                setSelectedEmailId(null);
+              }
+              toast.success('E-mail movido para a lixeira.', {
+                action: {
+                  label: 'Desfazer',
+                  onClick: () => {
+                    void restoreFromTrash(target.id, target.type)
+                      .then(() => toast.success('E-mail restaurado.'))
+                      .catch(() => toast.error('Não foi possível restaurar o e-mail.'));
+                  },
+                },
+                duration: 8000,
+              });
+            } catch {
+              toast.error('Não foi possível mover o e-mail para a lixeira.');
+            }
+          }
+        }}
+        isBulkDeleteDialogOpen={isBulkDeleteDialogOpen}
+        onCloseBulkDelete={() => setIsBulkDeleteDialogOpen(false)}
+        onConfirmBulkDelete={handleConfirmBulkDelete}
+        isBulkDeleting={isBulkDeleting}
+        selectedCount={selectedEmailIds.size}
+        activeFolder={activeFolder}
+        isEmptyTrashDialogOpen={isEmptyTrashDialogOpen}
+        onCloseEmptyTrash={() => setIsEmptyTrashDialogOpen(false)}
+        onConfirmEmptyTrash={handleEmptyTrash}
+      />
 
       {/* ─── Modal de Configurações do Filtro Antispam ──────────────── */}
-      <Dialog open={isSpamSettingsOpen} onOpenChange={setIsSpamSettingsOpen}>
-        <DialogContent size="2xl" className="max-h-[90dvh] flex flex-col p-0 overflow-hidden">
-          <DialogHeader className="p-4 sm:p-5 pb-3 border-b border-border/60">
-            <DialogTitle className="text-lg flex items-center gap-2">
-              <ShieldAlert className="size-5 text-amber-600 dark:text-amber-400" />
-              <span>Configuração do Filtro Antispam</span>
-            </DialogTitle>
-            <DialogDescription className="text-xs mt-0.5">
-              Gerencie a lista de remetentes bloqueados e de confiança para proteger sua caixa de entrada contra fraudes e spam.
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6 text-xs">
-            {/* Explicação da Heurística */}
-            <div className="rounded-lg border bg-muted/40 p-3 space-y-1.5">
-              <div className="font-semibold text-foreground flex items-center gap-1.5 text-xs">
-                <CheckCircle2 className="size-3.5 text-emerald-600" />
-                <span>Como o filtro funciona</span>
-              </div>
-              <p className="text-muted-foreground leading-relaxed text-[11px]">
-                O Luisices analisa automaticamente os e-mails recebidos em busca de golpes, phishing, domínios descartáveis temporários e palavras apelativas. Você também pode cadastrar e-mails ou domínios inteiros (ex: <code className="text-foreground">@dominio.com</code>) para bloquear ou aprovar previamente.
-              </p>
-            </div>
-
-            {/* Seção 1: Remetentes Bloqueados (Blacklist) */}
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="font-semibold text-foreground flex items-center gap-1.5">
-                    <ShieldBan className="size-3.5 text-destructive" />
-                    <span>Remetentes Bloqueados (Blacklist)</span>
-                  </h3>
-                  <p className="text-[11px] text-muted-foreground">
-                    E-mails enviados por esses remetentes ou domínios irão direto para a pasta Spam.
-                  </p>
-                </div>
-                <Badge variant="outline" className="text-[10px] font-mono">
-                  {blockedSenders.length} bloqueado(s)
-                </Badge>
-              </div>
-
-              {/* Input para adicionar bloqueado */}
-              <div className="flex gap-2">
-                <Input
-                  placeholder="ex: spammer@dominio.com ou @dominio.com"
-                  value={newBlockedSenderInput}
-                  onChange={(e) => setNewBlockedSenderInput(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault();
-                      if (newBlockedSenderInput.trim()) {
-                        handleBlockSender(newBlockedSenderInput.trim());
-                        setNewBlockedSenderInput('');
-                      }
-                    }
-                  }}
-                  className="h-8 text-xs flex-1"
-                />
-                <Button
-                  size="sm"
-                  variant="destructive"
-                  onClick={() => {
-                    if (newBlockedSenderInput.trim()) {
-                      handleBlockSender(newBlockedSenderInput.trim());
-                      setNewBlockedSenderInput('');
-                    }
-                  }}
-                  className="h-8 text-xs gap-1 shrink-0"
-                >
-                  <Plus className="size-3.5" />
-                  <span>Bloquear</span>
-                </Button>
-              </div>
-
-              {/* Lista de bloqueados */}
-              <div className="rounded-lg border max-h-40 overflow-y-auto divide-y bg-card">
-                {blockedSenders.length === 0 ? (
-                  <div className="p-3 text-center text-muted-foreground text-[11px]">
-                    Nenhum remetente bloqueado manualmente no momento.
-                  </div>
-                ) : (
-                  blockedSenders.map((senderItem) => (
-                    <div
-                      key={senderItem}
-                      className="px-3 py-2 flex items-center justify-between gap-2 hover:bg-muted/40 transition-colors"
-                    >
-                      <span className="font-mono text-[11px] text-foreground truncate">{senderItem}</span>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => handleUnblockSender(senderItem)}
-                        className="h-6 px-2 text-[11px] text-destructive hover:bg-destructive/10 hover:text-destructive"
-                      >
-                        Remover
-                      </Button>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
-
-            {/* Seção 2: Remetentes Confiáveis (Whitelist) */}
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="font-semibold text-foreground flex items-center gap-1.5">
-                    <ShieldCheck className="size-3.5 text-emerald-600" />
-                    <span>Remetentes Confiáveis (Whitelist)</span>
-                  </h3>
-                  <p className="text-[11px] text-muted-foreground">
-                    E-mails desta lista nunca serão classificados como spam e chegarão direto na Entrada.
-                  </p>
-                </div>
-                <Badge variant="outline" className="text-[10px] font-mono">
-                  {allowedSenders.length} confiável(is)
-                </Badge>
-              </div>
-
-              {/* Input para adicionar confiável */}
-              <div className="flex gap-2">
-                <Input
-                  placeholder="ex: parceiro@loja.com.br ou @loja.com.br"
-                  value={newAllowedSenderInput}
-                  onChange={(e) => setNewAllowedSenderInput(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault();
-                      if (newAllowedSenderInput.trim()) {
-                        handleAllowSender(newAllowedSenderInput.trim());
-                        setNewAllowedSenderInput('');
-                      }
-                    }
-                  }}
-                  className="h-8 text-xs flex-1"
-                />
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => {
-                    if (newAllowedSenderInput.trim()) {
-                      handleAllowSender(newAllowedSenderInput.trim());
-                      setNewAllowedSenderInput('');
-                    }
-                  }}
-                  className="h-8 text-xs gap-1 shrink-0 text-emerald-700 hover:text-emerald-800 dark:text-emerald-400"
-                >
-                  <Plus className="size-3.5" />
-                  <span>Confiar</span>
-                </Button>
-              </div>
-
-              {/* Lista de confiáveis */}
-              <div className="rounded-lg border max-h-40 overflow-y-auto divide-y bg-card">
-                {allowedSenders.length === 0 ? (
-                  <div className="p-3 text-center text-muted-foreground text-[11px]">
-                    Nenhum remetente confiável específico cadastrado.
-                  </div>
-                ) : (
-                  allowedSenders.map((senderItem) => (
-                    <div
-                      key={senderItem}
-                      className="px-3 py-2 flex items-center justify-between gap-2 hover:bg-muted/40 transition-colors"
-                    >
-                      <span className="font-mono text-[11px] text-foreground truncate">{senderItem}</span>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => handleUnallowSender(senderItem)}
-                        className="h-6 px-2 text-[11px] text-muted-foreground hover:bg-muted hover:text-foreground"
-                      >
-                        Remover
-                      </Button>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
-          </div>
-
-          <DialogFooter className="p-4 border-t border-border/60 flex justify-end">
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => setIsSpamSettingsOpen(false)}
-              className="text-xs h-8"
-            >
-              Fechar
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <EmailSpamSettingsDialog
+        isOpen={isSpamSettingsOpen}
+        onClose={() => setIsSpamSettingsOpen(false)}
+        blockedSenders={blockedSenders}
+        newBlockedSenderInput={newBlockedSenderInput}
+        setNewBlockedSenderInput={setNewBlockedSenderInput}
+        handleBlockSender={handleBlockSender}
+        handleUnblockSender={handleUnblockSender}
+        allowedSenders={allowedSenders}
+        newAllowedSenderInput={newAllowedSenderInput}
+        setNewAllowedSenderInput={setNewAllowedSenderInput}
+        handleAllowSender={handleAllowSender}
+        handleUnallowSender={handleUnallowSender}
+      />
     </div>
   );
 }
