@@ -55,7 +55,10 @@ const Button = React.forwardRef<
       ref={ref}
       data-slot="button"
       data-variant={variant ?? "default"}
-      className={cn(buttonVariants({ variant, size, className }))}
+      className={cn(
+        buttonVariants({ variant, size, className }),
+        'max-md:min-h-11 max-md:min-w-11 pointer-coarse:min-h-11 pointer-coarse:min-w-11',
+      )}
       onClick={asChild ? onClick : handleClick}
       {...props}
     />

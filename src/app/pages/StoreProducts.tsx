@@ -798,7 +798,7 @@ function ImportFromAtelierDialog({ open, onOpenChange, onImported }: ImportFromA
                     variant="outline"
                     onClick={() => handleImport(prod)}
                     disabled={importingId === prod.id}
-                    className="shrink-0 text-xs gap-1.5 hover:bg-primary hover:text-white"
+                    className="shrink-0 text-xs gap-1.5 hover:bg-primary hover:text-primary-foreground"
                   >
                     {importingId === prod.id ? (
                       <Loader2 size={13} className="animate-spin" />

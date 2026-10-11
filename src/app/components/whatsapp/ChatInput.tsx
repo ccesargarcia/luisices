@@ -37,14 +37,16 @@ export function ChatInput({
           Modelos Rápidos:
         </span>
         {QUICK_TEMPLATES.map((tmpl) => (
-          <button
+          <Button
+            variant="outline"
+            size="sm"
             key={tmpl.id}
             type="button"
             onClick={() => handleApplyTemplate(tmpl)}
             className="text-[11px] px-2.5 py-1 rounded-md bg-background hover:bg-primary/10 border text-foreground transition-colors shrink-0 font-medium cursor-pointer"
           >
             {tmpl.label}
-          </button>
+          </Button>
         ))}
       </div>
 
@@ -75,6 +77,7 @@ export function ChatInput({
 
           <Button
             type="submit"
+            aria-label={sending ? 'Enviando mensagem' : 'Enviar mensagem'}
             disabled={sending || !inputText.trim() || inputText.length > 4096}
             className="h-[42px] px-4 bg-primary hover:bg-primary/90 text-primary-foreground font-semibold gap-1.5 shrink-0 shadow-xs active:scale-95 cursor-pointer rounded-xl"
           >

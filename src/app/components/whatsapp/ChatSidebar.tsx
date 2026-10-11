@@ -58,13 +58,14 @@ export function ChatSidebar({
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Buscar cliente, número ou mensagem..."
-              className="pl-9 h-9 text-xs bg-background"
+              className="pl-9 pr-12 h-11 sm:h-9 text-xs bg-background"
             />
             {searchQuery && (
               <button
                 type="button"
                 onClick={() => setSearchQuery('')}
-                className="absolute right-2.5 top-2.5 text-muted-foreground hover:text-foreground text-xs cursor-pointer"
+                aria-label="Limpar busca de conversas"
+                className="absolute right-0 top-1/2 -translate-y-1/2 size-11 sm:size-8 flex items-center justify-center text-muted-foreground hover:text-foreground text-xs cursor-pointer"
               >
                 ✕
               </button>
@@ -72,40 +73,43 @@ export function ChatSidebar({
           </div>
         </div>
 
-        <div className="flex items-center gap-1 overflow-x-auto pb-0.5">
-          <button
+        <div className="flex flex-wrap items-center gap-1 pb-0.5">
+          <Button variant="ghost" size="sm"
             type="button"
             onClick={() => setFilterMode('all')}
+            aria-pressed={filterMode === 'all'}
             className={`text-[11px] px-2.5 py-1 rounded-full font-medium transition-colors ${
               filterMode === 'all'
-                ? 'bg-primary text-white'
+                ? 'bg-primary text-primary-foreground'
                 : 'bg-muted/60 text-muted-foreground hover:text-foreground'
             }`}
           >
             Todos ({mergedConversations.length})
-          </button>
-          <button
+          </Button>
+          <Button variant="ghost" size="sm"
             type="button"
             onClick={() => setFilterMode('unread')}
+            aria-pressed={filterMode === 'unread'}
             className={`text-[11px] px-2.5 py-1 rounded-full font-medium transition-colors ${
               filterMode === 'unread'
-                ? 'bg-primary text-white'
+                ? 'bg-primary text-primary-foreground'
                 : 'bg-muted/60 text-muted-foreground hover:text-foreground'
             }`}
           >
             Não Lidos
-          </button>
-          <button
+          </Button>
+          <Button variant="ghost" size="sm"
             type="button"
             onClick={() => setFilterMode('with_orders')}
+            aria-pressed={filterMode === 'with_orders'}
             className={`text-[11px] px-2.5 py-1 rounded-full font-medium transition-colors ${
               filterMode === 'with_orders'
-                ? 'bg-primary text-white'
+                ? 'bg-primary text-primary-foreground'
                 : 'bg-muted/60 text-muted-foreground hover:text-foreground'
             }`}
           >
             Com Pedidos
-          </button>
+          </Button>
         </div>
       </div>
 
@@ -178,7 +182,7 @@ export function ChatSidebar({
                       {chat.lastMessageText || formattedNumber}
                     </p>
                     {chat.unreadCount > 0 && (
-                      <Badge className="bg-primary text-white text-[10px] h-4.5 px-1.5 font-bold rounded-full">
+                      <Badge className="bg-primary text-primary-foreground text-[10px] h-4.5 px-1.5 font-bold rounded-full">
                         {chat.unreadCount}
                       </Badge>
                     )}
@@ -204,7 +208,7 @@ export function ChatSidebar({
         onClick={onNewChat}
         aria-label="Iniciar Nova Conversa"
         title="Iniciar Nova Conversa"
-        className="md:hidden fixed bottom-[calc(5rem+env(safe-area-inset-bottom,0px))] right-4 z-30 size-12 rounded-full bg-primary hover:bg-primary/90 text-white shadow-xl flex items-center justify-center transition-transform active:scale-95 focus:outline-hidden cursor-pointer ring-2 ring-background"
+        className="md:hidden fixed bottom-[calc(5rem+env(safe-area-inset-bottom,0px))] right-4 z-30 size-12 rounded-full bg-primary hover:bg-primary/90 text-primary-foreground shadow-xl flex items-center justify-center transition-transform active:scale-95 focus:outline-hidden cursor-pointer ring-2 ring-background"
       >
         <Plus className="size-6" />
       </button>

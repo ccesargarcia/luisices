@@ -102,7 +102,7 @@ export function ChatArea({
         </div>
         <Button
           onClick={onNewChatOpen}
-          className="bg-primary hover:bg-primary/90 text-white text-xs gap-1.5 cursor-pointer"
+          className="bg-primary hover:bg-primary/90 text-primary-foreground text-xs gap-1.5 cursor-pointer"
         >
           <Plus className="size-4" />
           Iniciar Nova Conversa
@@ -117,7 +117,7 @@ export function ChatArea({
   return (
     <>
       {/* Header do Chat Selecionado */}
-      <div className="px-2.5 sm:px-4 py-2 sm:py-3 border-b luisices-glass flex items-center justify-between gap-2 sm:gap-3 shrink-0 min-w-0 pt-[max(0.5rem,env(safe-area-inset-top))]">
+      <div className="px-2.5 sm:px-4 py-2 sm:py-3 border-b luisices-glass flex flex-wrap items-center justify-between gap-2 sm:gap-3 shrink-0 min-w-0 pt-[max(0.5rem,env(safe-area-inset-top))]">
         {/* Lado Esquerdo: Voltar + Avatar + Dados do Cliente */}
         <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
           {/* Botão Voltar (Mobile First: apenas ícone limpo para não ocupar espaço horizontal) */}
@@ -134,7 +134,7 @@ export function ChatArea({
 
           {/* Avatar com inicial do cliente */}
           <Avatar className="size-8 sm:size-9 shrink-0 border border-border/60">
-            <AvatarFallback className="bg-primary text-white text-xs font-bold">
+            <AvatarFallback className="bg-primary text-primary-foreground text-xs font-bold">
               {activeCustomer?.name ? activeCustomer.name.slice(0, 2).toUpperCase() : 'WA'}
             </AvatarFallback>
           </Avatar>
@@ -162,7 +162,7 @@ export function ChatArea({
         </div>
 
         {/* Lado Direito: Ações (Sincronizar, WhatsApp Web, Selecionar) */}
-        <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
+        <div className="flex flex-wrap items-center gap-1 sm:gap-1.5 shrink-0 max-w-full">
           {/* Botão Sincronizar: ícone compacto no mobile, com texto no desktop */}
           <Button
             variant="outline"
@@ -171,6 +171,7 @@ export function ChatArea({
             onClick={onSyncMessages}
             disabled={syncingMessages}
             title="Sincronizar mensagens recentes do WhatsApp"
+            aria-label={syncingMessages ? 'Sincronizando mensagens' : 'Sincronizar mensagens do WhatsApp'}
           >
             <RefreshCw className={cn('size-3.5', syncingMessages && 'animate-spin')} />
             <span className="hidden md:inline">
@@ -185,6 +186,7 @@ export function ChatArea({
             className="h-8 px-2.5 text-xs gap-1.5 cursor-pointer rounded-lg hidden sm:inline-flex"
             onClick={onOpenWhatsAppWeb}
             title="Abrir no WhatsApp Web"
+            aria-label="Abrir conversa no WhatsApp Web"
           >
             <ExternalLink className="size-3.5" />
             <span className="hidden md:inline">WhatsApp Web</span>
@@ -202,6 +204,7 @@ export function ChatArea({
             )}
             onClick={onToggleSelectionMode}
             title={isSelectionMode ? 'Sair do modo de seleção' : 'Selecionar várias mensagens para apagar'}
+            aria-label={isSelectionMode ? 'Cancelar seleção de mensagens' : 'Selecionar mensagens para apagar'}
           >
             {isSelectionMode ? <X className="size-3.5" /> : <CheckSquare className="size-3.5" />}
             <span className="hidden sm:inline">{isSelectionMode ? 'Cancelar' : 'Selecionar'}</span>
