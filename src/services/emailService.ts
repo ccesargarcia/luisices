@@ -1,9 +1,7 @@
 import {
-  collection,
   doc,
   updateDoc,
   deleteDoc,
-  setDoc,
   serverTimestamp,
 } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';

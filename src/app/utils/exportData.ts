@@ -8,7 +8,6 @@
 
 import { Order, Customer, Quote } from '../types';
 import { CustomerXRayMetrics, TIER_DEFINITIONS } from './customerMetrics';
-import { formatCurrency } from './currency';
 import { formatDate } from './date';
 
 // ========== EXCEL EXPORT (Dynamic Import) ==========

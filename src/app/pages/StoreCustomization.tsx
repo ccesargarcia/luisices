@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { useState, useEffect } from 'react';
+import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { useAuth } from '../../contexts/AuthContext';
 import { useUserSettings } from '../../hooks/useUserSettings';
@@ -7,14 +7,9 @@ import { secureRandomId } from '../utils/random';
 import { firebaseAiAgentService } from '../../services/firebaseAiAgentService';
 import { parseLlmJson } from '../../lib/robustJsonParser';
 import { Button } from '../components/ui/button';
-import { Switch } from '../components/ui/switch';
-import { Input } from '../components/ui/input';
-import { Label } from '../components/ui/label';
-import { Textarea } from '../components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogBody, DialogFooter } from '../components/ui/dialog';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
 import { StoreWhatsappTab } from '../components/store-customization/StoreWhatsappTab';
 import { StoreFooterTab } from '../components/store-customization/StoreFooterTab';
 import { StoreContactTab } from '../components/store-customization/StoreContactTab';
@@ -26,52 +21,19 @@ import {
   Store,
   Globe,
   ExternalLink,
-  MessageCircle,
   Sparkles,
   CheckCircle2,
-  Check,
-  SlidersHorizontal,
-  LayoutGrid,
   Loader2,
-  Clock,
   MapPin,
-  FileText,
-  AtSign,
-  Phone,
-  Info,
   HelpCircle,
-  Bell,
   Building2,
-  Upload,
   X,
   Eye,
   ShoppingBag,
   Wand2,
-  Heart,
-  Image as ImageIcon,
-  Layers,
-  Palette,
-  AlignLeft,
-  AlignCenter,
-  Sun,
-  Moon,
   Search,
-  ChevronUp,
-  ChevronDown,
-  ArrowUp,
-  ArrowDown,
-  Plus,
-  Trash2,
-  ToggleLeft,
   Power,
-  Zap,
   ShieldAlert,
-  Bot,
-  Percent,
-  BadgeCheck,
-  Type,
-  ArrowUpDown,
-  Smartphone,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { BannerCarousel, CatalogBannerItem } from '../components/catalog/BannerCarousel';
@@ -313,10 +275,8 @@ export function StoreCustomization() {
     updateSettings, 
     uploadCatalogLogo, 
     removeCatalogLogo,
-    uploadCatalogBanner,
     uploadCatalogBannerImage,
     deleteCatalogBannerImage,
-    removeCatalogBanner,
     uploadCatalogHeaderBackground,
     removeCatalogHeaderBackground,
     uploadCatalogAboutImage,
@@ -1090,73 +1050,6 @@ export function StoreCustomization() {
     );
   };
 
-  const handleBannerUpload = async (file: File) => {
-    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
-      toast.error('Formato inválido. Use imagem JPG, PNG ou WebP.');
-      return;
-    }
-    if (file.size > 5 * 1024 * 1024) {
-      toast.error('A imagem deve ter no máximo 5 MB.');
-      return;
-    }
-
-    setUploadingBanner(true);
-    try {
-      const url = await uploadCatalogBanner(file, currentCatalogBanner || undefined);
-      setCurrentCatalogBanner(url);
-      setCatalogBanners((prev) => {
-        if (prev.length === 0) {
-          return [{ id: `b-${Date.now()}`, imageUrl: url }];
-        }
-        return prev.map((b, idx) => (idx === 0 ? { ...b, imageUrl: url } : b));
-      });
-      try {
-        const cached = localStorage.getItem('luisices_public_store_settings');
-        if (cached) {
-          const parsed = JSON.parse(cached);
-          parsed.banner = url;
-          parsed.catalogBanner = url;
-          localStorage.setItem('luisices_public_store_settings', JSON.stringify(parsed));
-        }
-      } catch {}
-      toast.success('Banner de capa da lojinha atualizado com sucesso!');
-    } catch (error) {
-      console.error('Erro no upload do banner da lojinha:', error);
-      toast.error(error instanceof Error ? error.message : 'Erro ao fazer upload do banner');
-    } finally {
-      setUploadingBanner(false);
-    }
-  };
-
-  const handleBannerRemove = async () => {
-    if (!confirm('Deseja realmente remover o banner de capa da lojinha pública?')) return;
-    setUploadingBanner(true);
-    const previousBanner = currentCatalogBanner;
-    try {
-      setCurrentCatalogBanner(null);
-      setCatalogBanners([]);
-      await removeCatalogBanner(previousBanner || undefined);
-      try {
-        const cached = localStorage.getItem('luisices_public_store_settings');
-        if (cached) {
-          const parsed = JSON.parse(cached);
-          parsed.banner = '';
-          parsed.catalogBanner = '';
-          parsed.banners = [];
-          parsed.catalogBanners = [];
-          localStorage.setItem('luisices_public_store_settings', JSON.stringify(parsed));
-        }
-      } catch {}
-      toast.success('Banner de capa da lojinha removido!');
-    } catch (error) {
-      console.error('Erro ao remover banner da lojinha:', error);
-      setCurrentCatalogBanner(previousBanner);
-      toast.error('Erro ao remover banner');
-    } finally {
-      setUploadingBanner(false);
-    }
-  };
-
   const handleHeaderBackgroundUpload = async (file: File) => {
     if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
       toast.error('Formato inválido. Use imagem JPG, PNG ou WebP.');
@@ -1830,18 +1723,19 @@ IMPORTANTE:
 
             <button
               type="button"
+              disabled={togglingSales}
               onClick={() => handleToggleSales(featureFlags.enableOnlineOrders === false)}
               className={`inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold border transition-all cursor-pointer ${
                 featureFlags.enableOnlineOrders !== false
                   ? "bg-blue-500/10 text-blue-700 dark:text-blue-400 border-blue-500/30 hover:bg-blue-500/20"
                   : "bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/30 hover:bg-amber-500/20"
-              }`}
+              } ${togglingSales ? 'opacity-50 cursor-not-allowed' : ''}`}
               title="Pausar ou ativar vendas de todo o catálogo de uma vez"
             >
               <span className={`size-2 rounded-full ${featureFlags.enableOnlineOrders !== false ? "bg-blue-500 animate-pulse" : "bg-amber-500"}`} />
-              <span>${featureFlags.enableOnlineOrders !== false ? "Vendas Ativas" : "Vendas Pausadas"}</span>
+              <span>{featureFlags.enableOnlineOrders !== false ? "Vendas Ativas" : "Vendas Pausadas"}</span>
               <span className="text-[10px] opacity-75 underline ml-1">
-                ${featureFlags.enableOnlineOrders !== false ? "Pausar Vendas" : "Retomar Vendas"}
+                {togglingSales ? "Salvando..." : featureFlags.enableOnlineOrders !== false ? "Pausar Vendas" : "Retomar Vendas"}
               </span>
             </button>
 

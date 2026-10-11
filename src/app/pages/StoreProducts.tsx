@@ -2,23 +2,18 @@ import { BulkDeleteStoreProductsDialog } from '../components/store/BulkDeleteSto
 import { BulkStoreProductsDialog } from '../components/store/BulkStoreProductsDialog';
 import { StoreProductDialog } from '../components/store/StoreProductDialog';
 import { ImportFromAtelierDialog } from '../components/store/ImportFromAtelierDialog';
-import { useState, useEffect, useRef, useMemo, Fragment } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { cn } from '../components/ui/utils';
-import { Link } from 'react-router';
 import { formatCurrency } from '../utils/currency';
-import { StoreProduct, Product } from '../types';
+import { StoreProduct } from '../types';
 import { firebaseStoreProductService } from '../../services/firebaseStoreProductService';
-import { firebaseProductService } from '../../services/firebaseProductService';
 import { useAuth } from '../../contexts/AuthContext';
 import { useUserSettings } from '../../hooks/useUserSettings';
 import { PaginationControls } from '../components/common/PaginationControls';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card';
+import { Card, CardContent } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
-import { Label } from '../components/ui/label';
-import { Textarea } from '../components/ui/textarea';
 import { Badge } from '../components/ui/badge';
-import { Switch } from '../components/ui/switch';
 import {
   Select,
   SelectContent,
@@ -26,7 +21,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '../components/ui/select';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogBody, DialogFooter, DialogDescription } from '../components/ui/dialog';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -45,7 +39,6 @@ import {
   Search,
   Store,
   Loader2,
-  Upload,
   X,
   ImageIcon,
   LayoutGrid,
@@ -55,17 +48,15 @@ import {
   Globe,
   ExternalLink,
   Eye,
-  EyeOff, Pause,
+  EyeOff,
+  Pause,
   PackagePlus,
-  CheckCircle2,
   CheckSquare,
   Square,
   Tag,
-  ShoppingBag,
   AlertTriangle,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { FormattedDescription } from '../components/FormattedDescription';
 const STORE_PRODUCTS_VIEW_MODE_KEY = 'luisices_store_products_view_mode';
 const STORE_PRODUCTS_PAGE_SIZE_KEY = 'luisices_store_products_page_size';
 

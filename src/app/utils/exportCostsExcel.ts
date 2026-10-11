@@ -1,5 +1,4 @@
 import { SupplyItem, PurchaseHistoryItem, ProductPricingRecipe } from '../types';
-import { formatCurrency } from './currency';
 
 /**
  * Gera e faz o download da planilha Excel completa (.xlsx)

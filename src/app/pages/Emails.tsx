@@ -3,10 +3,9 @@ import {
   evaluateSpam,
   extractEmailAddress,
   extractEmailDomain,
-  matchesSenderOrDomain,
   normalizeSenderIdentifier,
 } from '../utils/emailSpamFilter';
-import React, { useState, useMemo, useRef, useEffect } from 'react';
+import { useState, useMemo, useRef, useEffect } from 'react';
 import DOMPurify from 'isomorphic-dompurify';
 import { useAuth } from '../../contexts/AuthContext';
 import { useEmails } from '../../hooks/useEmails';
@@ -14,33 +13,14 @@ import { useFirebaseCustomers } from '../../hooks/useFirebaseCustomers';
 import { useFirebaseOrders } from '../../hooks/useFirebaseOrders';
 import { useUserSettings } from '../../hooks/useUserSettings';
 import { firebaseStorageService } from '../../services/firebaseStorageService';
-import { ReceivedEmail, SentEmail, SendEmailPayload } from '../types';
+import { ReceivedEmail, SendEmailPayload } from '../types';
 import { Button } from '../components/ui/button';
 import { EmailHtmlViewer } from '../components/emails/EmailHtmlViewer';
 import { EmailComposerModal } from '../components/emails/EmailComposerModal';
 import { EmailDeleteConfirmDialogs } from '../components/emails/EmailDeleteConfirmDialogs';
 import { EmailSpamSettingsDialog } from '../components/emails/EmailSpamSettingsDialog';
 import { Input } from '../components/ui/input';
-import { Textarea } from '../components/ui/textarea';
 import { Badge } from '../components/ui/badge';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '../components/ui/dialog';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '../components/ui/alert-dialog';
 import {
   Select,
   SelectContent,
@@ -48,7 +28,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '../components/ui/select';
-import { Popover, PopoverContent, PopoverTrigger } from '../components/ui/popover';
 import { Checkbox } from '../components/ui/checkbox';
 import { PaginationControls } from '../components/common/PaginationControls';
 import {
@@ -76,33 +55,22 @@ import {
   Search,
   X,
   Paperclip,
-  Eye,
-  Sparkles,
   Clock,
   Archive,
   ArchiveRestore,
   MailCheck,
   Loader2,
   Plus,
-  SendHorizontal,
   MailOpen,
   Gauge,
   RefreshCw,
   ArrowLeft,
   Copy,
   Check,
-  Tag,
-  BookmarkPlus,
-  Info,
   User,
   MoreVertical,
-  ExternalLink,
-  MessageCircle,
   ShieldAlert,
-  ShieldCheck,
   ShieldBan,
-  AlertTriangle,
-  CheckCircle2,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -445,8 +413,6 @@ export function Emails() {
     return false;
   };
 
-  // Contagens para badges de navegação
-  const inboxCount = useMemo(() => receivedEmails.filter((e) => !e.archived && !e.trashed && !isEmailSpam(e)).length, [receivedEmails, blockedSenders]);
   const sentCount = useMemo(() => sentEmails.filter((e) => !e.trashed).length, [sentEmails]);
   const starredCount = useMemo(
     () => receivedEmails.filter((e) => e.starred && !e.archived && !e.trashed && !isEmailSpam(e)).length,

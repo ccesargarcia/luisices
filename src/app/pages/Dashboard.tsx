@@ -8,7 +8,6 @@ import { ImportOrdersDialog } from '../components/orders/ImportOrdersDialog';
 import { DashboardHeaderMetrics } from '../components/dashboard/DashboardHeaderMetrics';
 import { DashboardBulkBar } from '../components/dashboard/DashboardBulkBar';
 import { DashboardCardSkeleton, OrderCardSkeleton } from '../components/SkeletonLoaders';
-import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { SectionErrorBoundary } from '../components/common/SectionErrorBoundary';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
 import { cn } from '../components/ui/utils';
@@ -19,32 +18,21 @@ import { Button } from '../components/ui/button';
 import { Checkbox } from '../components/ui/checkbox';
 import {
   Package,
-  Clock,
-  CheckCircle,
-  TrendingUp,
   Search,
   X,
   Loader2,
-  DollarSign,
   AlertCircle,
-  TrendingDown,
-  Calendar,
-  Target,
   Repeat2,
   Download,
-  Trash2,
   Users,
-  UserCheck,
   RefreshCw,
   LayoutGrid,
   LayoutList,
   Archive,
-  ArchiveRestore,
   ExternalLink,
 } from 'lucide-react';
 import { OrderTable } from '../components/OrderTable';
 import { AdminTeamFilter } from '../components/AdminTeamFilter';
-import { getTextColor } from '../utils/tagColors';
 import { useFirebaseOrders } from '../../hooks/useFirebaseOrders';
 import { firebaseOrderService } from '../../services/firebaseOrderService';
 import { firebaseUserService } from '../../services/firebaseUserService';
@@ -54,7 +42,6 @@ import { useUserSettings } from '../../hooks/useUserSettings';
 import { useSalesLedger } from '../../hooks/useSalesLedger';
 import { DEFAULT_DASHBOARD_CARDS } from '../utils/dashboardCards';
 import { parseLocalDate } from '../utils/date';
-import { formatCurrency } from '../utils/currency';
 import { exportOrdersToExcel } from '../utils/exportData';
 import { toast } from 'sonner';
 import {

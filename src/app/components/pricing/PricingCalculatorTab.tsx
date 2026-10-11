@@ -5,17 +5,15 @@ import {
   Product,
   StudioPricingSettings,
   RecipeItem,
-  KitComponentItem,
   ProductionTrackingRecord,
 } from '../../types';
 import {
   calculateRecipePricing,
-  calculateHourlyRate,
   DEFAULT_PRICING_SETTINGS,
 } from '../../utils/pricingCalculations';
 import { firebasePricingService } from '../../../services/firebasePricingService';
 import { formatCurrency } from '../../utils/currency';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
@@ -55,21 +53,14 @@ import {
   RefreshCw,
   ShoppingBag,
   Layers,
-  ArrowRight,
   TrendingUp,
   TrendingDown,
   Percent,
   Clock,
   Coins,
-  Package,
-  CheckCircle2,
   Loader2,
-  HelpCircle,
   AlertTriangle,
-  Boxes,
   ClipboardList,
-  Sliders,
-  Sparkles,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -152,14 +143,6 @@ export function PricingCalculatorTab({
   const [recipeToDelete, setRecipeToDelete] = useState<ProductPricingRecipe | null>(null);
   const [deleting, setDeleting] = useState(false);
 
-  // Modal de Kits
-  const [kitModalOpen, setKitModalOpen] = useState(false);
-  const [kitName, setKitName] = useState('');
-  const [kitComponents, setKitComponents] = useState<KitComponentItem[]>([]);
-  const [kitExtraSetupMinutes, setKitExtraSetupMinutes] = useState<number>(15);
-  const [kitProfitMarginPercent, setKitProfitMarginPercent] = useState<number>(
-    studioSettings?.defaultProfitMarginPercent ?? DEFAULT_PRICING_SETTINGS.defaultProfitMarginPercent
-  );
 
   // Acompanhamento Previsto vs Realizado
   const [trackingRecords, setTrackingRecords] = useState<ProductionTrackingRecord[]>([]);
@@ -541,8 +524,6 @@ export function PricingCalculatorTab({
       (r.category && r.category.toLowerCase().includes(searchTerm.toLowerCase()))
     );
   }, [recipes, searchTerm]);
-
-  const rates = calculateHourlyRate(studioSettings || undefined);
 
   return (
     <div className="space-y-6">
@@ -1833,6 +1814,31 @@ export function PricingCalculatorTab({
                   value={trackingActualMinutes || ''}
                   onChange={(e) => setTrackingActualMinutes(parseInt(e.target.value) || 0)}
                   className="mt-1 font-bold"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label className="text-xs">Custo Materiais Real (R$)</Label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  placeholder="0,00"
+                  value={trackingActualCost || ''}
+                  onChange={(e) => setTrackingActualCost(parseFloat(e.target.value) || 0)}
+                  className="mt-1"
+                />
+              </div>
+              <div>
+                <Label className="text-xs">Preço de Venda (R$)</Label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  placeholder="0,00"
+                  value={trackingSalePrice || ''}
+                  onChange={(e) => setTrackingSalePrice(parseFloat(e.target.value) || 0)}
+                  className="mt-1"
                 />
               </div>
             </div>

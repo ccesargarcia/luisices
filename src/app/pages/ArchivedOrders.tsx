@@ -1,13 +1,11 @@
-import React, { useMemo, useState, useEffect, Fragment } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { Link } from 'react-router';
-import { Order, OrderStatus, canAccessArchivedOrders } from '../types';
+import { Order, canAccessArchivedOrders } from '../types';
 import { useFirebaseOrders } from '../../hooks/useFirebaseOrders';
 import { firebaseOrderService } from '../../services/firebaseOrderService';
 import { firebaseCustomerService } from '../../services/firebaseCustomerService';
 import { useAuth } from '../../contexts/AuthContext';
-import { useUserSettings } from '../../hooks/useUserSettings';
 import { formatCurrency } from '../utils/currency';
-import { formatDateShort, parseLocalDate } from '../utils/date';
 import { exportOrdersToExcel } from '../utils/exportData';
 import { OrderDetailsDialog } from '../components/OrderDetailsDialog';
 import { OrderTable } from '../components/OrderTable';
@@ -16,7 +14,6 @@ import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Input } from '../components/ui/input';
 import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
-import { Checkbox } from '../components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import {
   AlertDialog,
@@ -35,7 +32,6 @@ import {
   X,
   Calendar,
   DollarSign,
-  TrendingUp,
   Download,
   Trash2,
   ArrowLeft,
@@ -43,7 +39,6 @@ import {
   LayoutGrid,
   LayoutList,
   Filter,
-  Package,
   RotateCcw,
   CheckCircle,
   Users,
@@ -64,17 +59,13 @@ type SortOption =
   | 'customer_asc';
 
 export function ArchivedOrders() {
-  const { user, userProfile, isAdmin, hasPermission } = useAuth();
+  const { userProfile, isAdmin } = useAuth();
   const {
     orders,
-    loading,
-    error,
-    refreshOrders,
     isFilterActive,
     selectedFilterLabel,
     clearUserFilter,
   } = useFirebaseOrders();
-  const { settings } = useUserSettings();
 
   const canUnarchive = isAdmin || canAccessArchivedOrders(userProfile?.permissions, 'edit');
   const canDelete = isAdmin || canAccessArchivedOrders(userProfile?.permissions, 'delete');

@@ -20,9 +20,8 @@ import {
   type QueryDocumentSnapshot,
   type DocumentData,
 } from 'firebase/firestore';
-import { ref, deleteObject } from 'firebase/storage';
 import { httpsCallable } from 'firebase/functions';
-import { db, storage, auth, functions } from '../lib/firebase';
+import { db, auth, functions } from '../lib/firebase';
 import type { GalleryItem } from '../app/types';
 import { firebaseStorageService } from './firebaseStorageService';
 import { resolveGalleryImageUrl } from './firebaseGalleryImageService';

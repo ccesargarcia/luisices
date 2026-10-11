@@ -1,5 +1,4 @@
-import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
-import { Link } from 'react-router';
+import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { 
   Search, 
   ShoppingBag, 
@@ -9,9 +8,6 @@ import {
   Sparkles, 
   MessageCircle, 
   Check, 
-  Plus, 
-  Minus, 
-  Trash2, 
   X, 
   Send, 
   Heart, 
@@ -23,17 +19,12 @@ import {
   ShieldCheck, 
   Truck,
   Sparkle,
-  CheckCircle2,
   Tag,
   ShieldAlert,
   ChevronDown,
-  ChevronUp,
   SlidersHorizontal,
   HelpCircle,
-  Building2,
   Percent,
-  BadgePercent,
-  AlertCircle, ArrowLeft,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { formatCurrency } from '../utils/currency';
@@ -61,7 +52,6 @@ import {
 import { firebaseCatalogOrderService } from '../../services/firebaseCatalogOrderService';
 import { secureRandomId } from '../utils/random';
 import { toCdnUrl } from '../utils/cdnUtils';
-import { FormattedDescription } from '../components/FormattedDescription';
 import {
   Select,
   SelectContent,

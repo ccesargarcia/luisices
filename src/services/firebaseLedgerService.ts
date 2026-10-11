@@ -10,7 +10,6 @@ import {
   where,
   orderBy,
   writeBatch,
-  Timestamp,
 } from 'firebase/firestore';
 import { db, auth } from '../lib/firebase';
 import { Order, OrderStatus, SaleRecord } from '../app/types';

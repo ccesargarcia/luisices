@@ -75,7 +75,7 @@ export class FirebaseAuthService {
       // Chamar Cloud Function que envia email via SendGrid
       const sendResetEmail = httpsCallable(functions, 'sendPasswordResetEmail');
 
-      const result = await sendResetEmail({ email });
+      await sendResetEmail({ email });
 
     } catch (error) {
       console.error('Erro ao enviar email de recuperação:', error);
