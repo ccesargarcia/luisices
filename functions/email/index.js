@@ -554,6 +554,78 @@ const resendReceivingWebhook = onRequest(
         return res.status(200).json({ status: 'duplicate', id: emailId });
       }
 
+      const projectId = process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT;
+      const isDev = projectId === 'luisices-dev';
+
+      const initialRecipients = [
+        ...(Array.isArray(eventData.to) ? eventData.to : [eventData.to]),
+        ...(Array.isArray(eventData.cc) ? eventData.cc : [eventData.cc]),
+        ...(Array.isArray(eventData.bcc) ? eventData.bcc : [eventData.bcc]),
+      ].filter(Boolean);
+
+      const parseEmailDomain = (r) => {
+        if (typeof r !== 'string') return '';
+        const match = r.match(/<([^>]+)>/) || [null, r];
+        const cleanEmail = (match[1] || r).trim().toLowerCase();
+        return cleanEmail.split('@')[1] || '';
+      };
+
+      const recipientDomains = initialRecipients.map(parseEmailDomain).filter(Boolean);
+      const hasDevRecipient = recipientDomains.some((d) => d === 'dev.luisices.com.br' || d.endsWith('.dev.luisices.com.br'));
+      const hasProdRecipient = recipientDomains.some((d) => (d === 'luisices.com.br' || d.endsWith('.luisices.com.br')) && !(d === 'dev.luisices.com.br' || d.endsWith('.dev.luisices.com.br')));
+
+      // Redirecionamento inteligente entre ambientes quando o Resend possui apenas um webhook cadastrado:
+      const forwardedFrom = req.headers['x-forwarded-from'];
+      if (!forwardedFrom) {
+        if (!isDev && hasDevRecipient && !hasProdRecipient) {
+          // Chegou em PROD, mas é um e-mail de DEV -> Encaminhar para a API de DEV
+          try {
+            console.log('[resendReceivingWebhook] Encaminhando webhook de e-mail de DEV para api.dev.luisices.com.br...');
+            const forwardHeaders = {
+              'content-type': 'application/json',
+              'x-forwarded-from': 'prod',
+            };
+            if (rawSvixId) forwardHeaders['svix-id'] = svixId;
+            if (rawSvixTimestamp) forwardHeaders['svix-timestamp'] = svixTimestamp;
+            if (rawSvixSignature) forwardHeaders['svix-signature'] = svixSignature;
+
+            const forwardResp = await fetch('https://api.dev.luisices.com.br/resendReceivingWebhook', {
+              method: 'POST',
+              headers: forwardHeaders,
+              body: req.rawBody ? req.rawBody : JSON.stringify(req.body),
+            });
+            const forwardJson = await forwardResp.json().catch(() => ({}));
+            console.log('[resendReceivingWebhook] Encaminhado para DEV com resposta:', forwardResp.status, forwardJson);
+            return res.status(forwardResp.status).json(forwardJson);
+          } catch (fwdErr) {
+            console.error('[resendReceivingWebhook] Falha ao encaminhar para DEV:', fwdErr);
+          }
+        } else if (isDev && hasProdRecipient && !hasDevRecipient) {
+          // Chegou em DEV, mas é um e-mail de PROD -> Encaminhar para a API de PROD
+          try {
+            console.log('[resendReceivingWebhook] Encaminhando webhook de e-mail de PROD para api.luisices.com.br...');
+            const forwardHeaders = {
+              'content-type': 'application/json',
+              'x-forwarded-from': 'dev',
+            };
+            if (rawSvixId) forwardHeaders['svix-id'] = svixId;
+            if (rawSvixTimestamp) forwardHeaders['svix-timestamp'] = svixTimestamp;
+            if (rawSvixSignature) forwardHeaders['svix-signature'] = svixSignature;
+
+            const forwardResp = await fetch('https://api.luisices.com.br/resendReceivingWebhook', {
+              method: 'POST',
+              headers: forwardHeaders,
+              body: req.rawBody ? req.rawBody : JSON.stringify(req.body),
+            });
+            const forwardJson = await forwardResp.json().catch(() => ({}));
+            console.log('[resendReceivingWebhook] Encaminhado para PROD com resposta:', forwardResp.status, forwardJson);
+            return res.status(forwardResp.status).json(forwardJson);
+          } catch (fwdErr) {
+            console.error('[resendReceivingWebhook] Falha ao encaminhar para PROD:', fwdErr);
+          }
+        }
+      }
+
       const allowedMailboxPrefixes = [
         'caio',
         'amanda',
@@ -575,23 +647,14 @@ const resendReceivingWebhook = onRequest(
           // Suporte a subendereçamento (plus-addressing / tags: contato+orcamento@luisices.com.br)
           const baseMailbox = mailbox.split('+')[0];
 
-          const projectId = process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT;
-          const isDev = projectId === 'luisices-dev';
+          // Isolamento rigoroso: DEV só processa dev.luisices.com.br e PROD só processa luisices.com.br
+          const isDevDomain = domain === 'dev.luisices.com.br' || domain.endsWith('.dev.luisices.com.br');
+          const isProdDomain = (domain === 'luisices.com.br' || domain.endsWith('.luisices.com.br')) && !isDevDomain;
 
-          // Garante isolamento estrito de ambiente: Dev processa dev.luisices.com.br e Prod processa luisices.com.br
-          const isTargetDomain = isDev
-            ? (domain === 'dev.luisices.com.br' || domain.endsWith('.dev.luisices.com.br'))
-            : (domain === 'luisices.com.br' || (domain.endsWith('.luisices.com.br') && !domain.endsWith('.dev.luisices.com.br')));
-
+          const isTargetDomain = isDev ? isDevDomain : isProdDomain;
           return isTargetDomain && allowedMailboxPrefixes.includes(baseMailbox);
         });
       };
-
-      const initialRecipients = [
-        ...(Array.isArray(eventData.to) ? eventData.to : [eventData.to]),
-        ...(Array.isArray(eventData.cc) ? eventData.cc : [eventData.cc]),
-        ...(Array.isArray(eventData.bcc) ? eventData.bcc : [eventData.bcc]),
-      ].filter(Boolean);
 
       if (initialRecipients.length > 0 && !checkAllowedRecipient(initialRecipients)) {
         console.log(`[resendReceivingWebhook] Evento descartado: destinatario_nao_autorizado, count=${initialRecipients.length}`);
