@@ -325,9 +325,27 @@ class FirebasePricingService {
       .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
   }
 
+  private validateSupplyPayload(supply: Partial<SupplyItem>, isCreate = false): void {
+    if (isCreate || supply.name !== undefined) {
+      if (!supply.name || typeof supply.name !== 'string' || !supply.name.trim()) {
+        throw new Error('Nome do insumo é obrigatório.');
+      }
+      if (supply.name.trim().length > 200) {
+        throw new Error('Nome do insumo deve ter no máximo 200 caracteres.');
+      }
+    }
+    if (supply.purchasePrice !== undefined && (Number(supply.purchasePrice) < 0 || isNaN(Number(supply.purchasePrice)))) {
+      throw new Error('Preço de compra não pode ser negativo.');
+    }
+    if (supply.packageQuantity !== undefined && (Number(supply.packageQuantity) <= 0 || isNaN(Number(supply.packageQuantity)))) {
+      throw new Error('Quantidade da embalagem deve ser maior que zero.');
+    }
+  }
+
   async createSupply(
     supply: Omit<SupplyItem, 'id' | 'userId' | 'createdAt' | 'updatedAt'>
   ): Promise<SupplyItem> {
+    this.validateSupplyPayload(supply, true);
     const userId = this.getCurrentUserId();
     const purchasePrice = Number(supply.purchasePrice) || 0;
     const shippingCost = Number(supply.shippingCost) || 0;
@@ -340,6 +358,7 @@ class FirebasePricingService {
 
     const payload = sanitizeForFirestore({
       ...supply,
+      name: supply.name.trim(),
       purchasePrice,
       shippingCost,
       totalPrice,
@@ -360,6 +379,7 @@ class FirebasePricingService {
     id: string,
     data: Partial<Omit<SupplyItem, 'id' | 'userId' | 'createdAt'>>
   ): Promise<void> {
+    this.validateSupplyPayload(data, false);
     const updates: Record<string, any> = sanitizeForFirestore({
       ...data,
       supplier: data.supplier !== undefined ? (data.supplier || null) : undefined,

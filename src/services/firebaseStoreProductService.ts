@@ -115,12 +115,27 @@ class FirebaseStoreProductService {
     );
   }
 
+  private validateStoreProductPayload(data: Partial<StoreProduct>, isCreate = false): void {
+    if (isCreate || data.name !== undefined) {
+      if (!data.name || typeof data.name !== 'string' || !data.name.trim()) {
+        throw new Error('Nome do produto é obrigatório.');
+      }
+      if (data.name.trim().length > 200) {
+        throw new Error('Nome do produto deve ter no máximo 200 caracteres.');
+      }
+    }
+    if (data.price !== undefined && (typeof data.price !== 'number' || data.price < 0)) {
+      throw new Error('Preço não pode ser negativo.');
+    }
+  }
+
   async createStoreProduct(data: Partial<StoreProduct>): Promise<StoreProduct> {
+    this.validateStoreProductPayload(data, true);
     const now = Timestamp.now();
     const currentUid = auth.currentUser?.uid || null;
 
     const ref = await addDoc(collection(db, STORE_PRODUCTS_COLLECTION), {
-      name: data.name?.trim() || '',
+      name: data.name!.trim(),
       price: this.ensurePositive(data.price),
       category: data.category?.trim() || 'Geral',
       description: data.description?.trim() || '',
@@ -142,10 +157,13 @@ class FirebaseStoreProductService {
   }
 
   async updateStoreProduct(id: string, changes: Partial<StoreProduct>): Promise<void> {
+    this.validateStoreProductPayload(changes, false);
     const { id: _id, createdAt: _ca, ...rest } = changes as any;
     const sanitized: Record<string, any> = {};
     for (const [k, v] of Object.entries(rest)) {
-      if (k === 'price') {
+      if (k === 'name' && typeof v === 'string') {
+        sanitized[k] = v.trim();
+      } else if (k === 'price') {
         sanitized[k] = this.ensurePositive(v as number);
       } else if (v === undefined) {
         sanitized[k] = null;

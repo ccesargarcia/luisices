@@ -97,8 +97,29 @@ export class FirebaseQuoteService {
     };
   }
 
+  /**
+   * Validar integridade e regras de negócio de orçamento
+   */
+  private validateQuotePayload(data: Partial<Quote>, isCreate = false): void {
+    if (isCreate || data.customerName !== undefined) {
+      if (!data.customerName || typeof data.customerName !== 'string' || !data.customerName.trim()) {
+        throw new Error('Nome do cliente é obrigatório.');
+      }
+      if (data.customerName.trim().length > 200) {
+        throw new Error('Nome do cliente deve ter no máximo 200 caracteres.');
+      }
+    }
+    if (data.totalPrice !== undefined && (typeof data.totalPrice !== 'number' || data.totalPrice < 0)) {
+      throw new Error('Preço total não pode ser negativo.');
+    }
+    if (data.status !== undefined && !['draft', 'sent', 'approved', 'rejected', 'expired'].includes(data.status)) {
+      throw new Error('Status do orçamento inválido.');
+    }
+  }
+
   // ─── Create ──────────────────────────────────────────────────────────────────
   async createQuote(quoteData: Partial<Quote>): Promise<Quote> {
+    this.validateQuotePayload(quoteData, true);
     const userId = quoteData.userId || this.getCurrentUserId();
     const quoteNumber = await this.generateQuoteNumber(userId);
     const ref = await addDoc(collection(db, QUOTES_COLLECTION), {
@@ -161,6 +182,7 @@ export class FirebaseQuoteService {
 
   // ─── Update ──────────────────────────────────────────────────────────────────
   async updateQuote(id: string, changes: Partial<Quote>): Promise<void> {
+    this.validateQuotePayload(changes, false);
     const userId = this.getCurrentUserId();
     const quoteSnap = await getDoc(doc(db, QUOTES_COLLECTION, id));
     if (!quoteSnap.exists()) throw new Error(`Orçamento ${id} não encontrado`);
@@ -190,6 +212,9 @@ export class FirebaseQuoteService {
 
   // ─── Status helpers ───────────────────────────────────────────────────────────
   async updateStatus(id: string, status: QuoteStatus): Promise<void> {
+    if (!['draft', 'sent', 'approved', 'rejected', 'expired'].includes(status)) {
+      throw new Error('Status de orçamento inválido.');
+    }
     const timestampField: Record<string, string> = {
       sent: 'sentAt',
       approved: 'approvedAt',

@@ -95,6 +95,43 @@ export class FirebaseOrderService {
   }
 
   /**
+   * Validar campos e tipos com paridade estrita em relação ao backend (firestore.rules)
+   */
+  private validateOrderPayload(data: Partial<Order>): void {
+    if (data.customerName !== undefined) {
+      if (!data.customerName || typeof data.customerName !== 'string' || !data.customerName.trim()) {
+        throw new Error('Nome do cliente é obrigatório.');
+      }
+      if (data.customerName.trim().length > 200) {
+        throw new Error('Nome do cliente deve ter no máximo 200 caracteres.');
+      }
+    }
+    if (data.productName !== undefined) {
+      if (!data.productName || typeof data.productName !== 'string' || !data.productName.trim()) {
+        throw new Error('Nome do produto é obrigatório.');
+      }
+      if (data.productName.trim().length > 300) {
+        throw new Error('Nome do produto deve ter no máximo 300 caracteres.');
+      }
+    }
+    if (data.quantity !== undefined) {
+      if (typeof data.quantity !== 'number' || data.quantity <= 0) {
+        throw new Error('A quantidade deve ser um número maior que zero.');
+      }
+    }
+    if (data.price !== undefined) {
+      if (typeof data.price !== 'number' || data.price < 0 || isNaN(data.price)) {
+        throw new Error('O preço não pode ser negativo.');
+      }
+    }
+    if (data.status !== undefined) {
+      if (!['pending', 'in-progress', 'completed', 'cancelled'].includes(data.status)) {
+        throw new Error('Status do pedido inválido.');
+      }
+    }
+  }
+
+  /**
    * Criar pedido
    */
   private buildOrderData(orderData: Partial<Order>, userId: string, orderNumber: string) {
@@ -168,6 +205,7 @@ export class FirebaseOrderService {
 
   /** Grava contador, pedido, venda e vínculo de catálogo/orçamento em uma única transação atômica. */
   async createOrder(orderData: Partial<Order>, catalogOrderId?: string, quoteId?: string): Promise<Order> {
+    this.validateOrderPayload(orderData);
     const userId = this.getCurrentUserId();
     const orderRef = doc(collection(db, ORDERS_COLLECTION));
     const counterRef = doc(db, 'users', userId, 'metadata', 'counters');
@@ -546,6 +584,7 @@ export class FirebaseOrderService {
     updates: Partial<Omit<Order, 'id' | 'userId' | 'createdAt' | 'orderNumber'>>,
     expectedVersion?: number
   ): Promise<void> {
+    this.validateOrderPayload(updates);
     const userId = this.getCurrentUserId();
     const orderRef = doc(db, ORDERS_COLLECTION, orderId);
     const saleRef = doc(db, 'salesLedger', orderId);

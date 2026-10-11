@@ -53,12 +53,11 @@ export const resetPasswordSchema = z.object({
 export const customerSchema = z.object({
   name: z
     .string()
-    .min(2, 'Nome deve ter pelo menos 2 caracteres')
-    .max(100, 'Nome muito longo'),
+    .min(1, 'Nome do cliente é obrigatório')
+    .max(200, 'Nome muito longo'),
   phone: z
     .string()
-    .min(10, 'Telefone inválido')
-    .max(15, 'Telefone inválido')
+    .max(50, 'Telefone inválido')
     .optional()
     .or(z.literal('')),
   email: z
@@ -82,17 +81,17 @@ export const customerSchema = z.object({
 export const orderSchema = z.object({
   customerName: z
     .string()
-    .min(2, 'Nome do cliente é obrigatório')
-    .max(100, 'Nome muito longo'),
+    .min(1, 'Nome do cliente é obrigatório')
+    .max(200, 'Nome muito longo'),
   customerPhone: z
     .string()
-    .min(10, 'Telefone inválido')
+    .max(50, 'Telefone inválido')
     .optional()
     .or(z.literal('')),
   productName: z
     .string()
     .min(1, 'Produto é obrigatório')
-    .max(200, 'Nome do produto muito longo'),
+    .max(300, 'Nome do produto muito longo'),
   quantity: z
     .number()
     .int('Quantidade deve ser um número inteiro')
@@ -152,8 +151,8 @@ export const quoteItemSchema = z.object({
 export const quoteSchema = z.object({
   customerName: z
     .string()
-    .min(2, 'Nome do cliente é obrigatório')
-    .max(100, 'Nome muito longo'),
+    .min(1, 'Nome do cliente é obrigatório')
+    .max(200, 'Nome muito longo'),
   customerPhone: z
     .string()
     .min(10, 'Telefone inválido')
@@ -184,8 +183,8 @@ export const quoteSchema = z.object({
 export const productSchema = z.object({
   name: z
     .string()
-    .min(2, 'Nome do produto é obrigatório')
-    .max(100, 'Nome muito longo'),
+    .min(1, 'Nome do produto é obrigatório')
+    .max(200, 'Nome muito longo'),
   category: z
     .string()
     .min(2, 'Categoria é obrigatória')
@@ -202,6 +201,50 @@ export const productSchema = z.object({
     .optional(),
 });
 
+// ========== STORE PRODUCTS ==========
+
+export const storeProductSchema = z.object({
+  name: z
+    .string()
+    .min(1, 'Nome do produto na vitrine é obrigatório')
+    .max(200, 'Nome muito longo'),
+  price: z
+    .number()
+    .nonnegative('Preço não pode ser negativo')
+    .max(100000, 'Preço máximo: R$ 100.000'),
+  category: z
+    .string()
+    .max(50, 'Categoria muito longa')
+    .optional(),
+  description: z
+    .string()
+    .max(1000, 'Descrição muito longa')
+    .optional(),
+});
+
+// ========== SUPPLIES ==========
+
+export const supplySchema = z.object({
+  name: z
+    .string()
+    .min(1, 'Nome do insumo é obrigatório')
+    .max(200, 'Nome muito longo'),
+  category: z
+    .string()
+    .max(50, 'Categoria muito longa')
+    .optional(),
+  purchasePrice: z
+    .number()
+    .nonnegative('Preço de compra não pode ser negativo'),
+  packageQuantity: z
+    .number()
+    .positive('Quantidade do pacote deve ser maior que zero'),
+  unit: z
+    .string()
+    .max(20, 'Unidade muito longa')
+    .optional(),
+});
+
 // ========== TYPE INFERENCE ==========
 
 export type LoginInput = z.infer<typeof loginSchema>;
@@ -213,3 +256,5 @@ export type OrderEditInput = z.infer<typeof orderEditSchema>;
 export type QuoteInput = z.infer<typeof quoteSchema>;
 export type QuoteItemInput = z.infer<typeof quoteItemSchema>;
 export type ProductInput = z.infer<typeof productSchema>;
+export type StoreProductInput = z.infer<typeof storeProductSchema>;
+export type SupplyInput = z.infer<typeof supplySchema>;

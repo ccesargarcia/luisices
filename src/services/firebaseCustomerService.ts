@@ -7,6 +7,16 @@ export const firebaseCustomerService = {
    * Criar novo cliente
    */
   async createCustomer(userId: string, customerData: Omit<Customer, 'id' | 'createdAt' | 'userId' | 'totalOrders' | 'totalSpent'>): Promise<string> {
+    if (!customerData.name || typeof customerData.name !== 'string' || !customerData.name.trim()) {
+      throw new Error('Nome do cliente é obrigatório.');
+    }
+    if (customerData.name.trim().length > 200) {
+      throw new Error('Nome do cliente deve ter no máximo 200 caracteres.');
+    }
+    if (customerData.phone && (typeof customerData.phone !== 'string' || customerData.phone.length > 50)) {
+      throw new Error('Telefone do cliente inválido.');
+    }
+
     const customersRef = collection(db, 'customers');
 
     // Verificar duplicata de telefone (chave primária)
@@ -20,7 +30,7 @@ export const firebaseCustomerService = {
 
     // Remover campos undefined (Firestore não aceita undefined)
     const cleanData: any = {
-      name: customerData.name,
+      name: customerData.name.trim(),
       phone: customerData.phone,
       phoneDigits: cleanPhoneDigits,
       userId,
@@ -84,6 +94,26 @@ export const firebaseCustomerService = {
    * Atualizar dados do cliente
    */
   async updateCustomer(customerId: string, updates: Partial<Omit<Customer, 'id' | 'userId' | 'createdAt'>>): Promise<void> {
+    if (updates.name !== undefined) {
+      if (typeof updates.name !== 'string' || !updates.name.trim()) {
+        throw new Error('Nome do cliente é obrigatório.');
+      }
+      if (updates.name.trim().length > 200) {
+        throw new Error('Nome do cliente deve ter no máximo 200 caracteres.');
+      }
+    }
+    if (updates.phone !== undefined && updates.phone !== null) {
+      if (typeof updates.phone !== 'string' || updates.phone.length > 50) {
+        throw new Error('Telefone do cliente inválido.');
+      }
+    }
+    if (updates.totalSpent !== undefined && (typeof updates.totalSpent !== 'number' || updates.totalSpent < 0)) {
+      throw new Error('Total gasto não pode ser negativo.');
+    }
+    if (updates.totalOrders !== undefined && (typeof updates.totalOrders !== 'number' || updates.totalOrders < 0)) {
+      throw new Error('Total de pedidos não pode ser negativo.');
+    }
+
     const customerRef = doc(db, 'customers', customerId);
 
     // Remover campos undefined antes de atualizar

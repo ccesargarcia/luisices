@@ -72,11 +72,26 @@ class FirebaseProductService {
     return Math.max(0, value ?? 0);
   }
 
+  private validateProductPayload(data: Partial<Product>, isCreate = false): void {
+    if (isCreate || data.name !== undefined) {
+      if (!data.name || typeof data.name !== 'string' || !data.name.trim()) {
+        throw new Error('Nome do produto é obrigatório.');
+      }
+      if (data.name.trim().length > 200) {
+        throw new Error('Nome do produto deve ter no máximo 200 caracteres.');
+      }
+    }
+    if (data.unitPrice !== undefined && (typeof data.unitPrice !== 'number' || data.unitPrice < 0)) {
+      throw new Error('Preço unitário não pode ser negativo.');
+    }
+  }
+
   async createProduct(data: Partial<Product>): Promise<Product> {
+    this.validateProductPayload(data, true);
     const userId = data.userId || this.getCurrentUserId();
     const ref = await addDoc(collection(db, PRODUCTS_COLLECTION), {
       userId,
-      name: data.name,
+      name: data.name!.trim(),
       unitPrice: this.ensurePositive(data.unitPrice),
       description: data.description || null,
       category: data.category || null,
@@ -121,9 +136,11 @@ class FirebaseProductService {
   }
 
   async updateProduct(id: string, changes: Partial<Product>): Promise<void> {
+    this.validateProductPayload(changes, false);
     const { id: _id, userId: _uid, createdAt: _ca, ...rest } = changes as any;
     const sanitized = Object.fromEntries(
       Object.entries(rest).map(([k, v]) => {
+        if (k === 'name' && typeof v === 'string') return [k, v.trim()];
         if (k === 'unitPrice') return [k, this.ensurePositive(v as number)];
         return [k, v === undefined ? null : v];
       })
