@@ -84,8 +84,8 @@ function prepareSkillPackage(options = {}) {
       'vincular minha voz'
     ];
     if (env === 'prod') {
-      locale.smallIconUri = 'https://firebasestorage.googleapis.com/v0/b/papelaria-dashboard.firebasestorage.app/o/public%2Fimages%2Falexa-small-icon.png?alt=media';
-      locale.largeIconUri = 'https://firebasestorage.googleapis.com/v0/b/papelaria-dashboard.firebasestorage.app/o/public%2Fimages%2Falexa-large-icon.png?alt=media';
+      locale.smallIconUri = 'https://cdn.luisices.com.br/public/images/alexa-small-icon.png';
+      locale.largeIconUri = 'https://cdn.luisices.com.br/public/images/alexa-large-icon.png';
     } else {
       locale.smallIconUri = 'https://dev.luisices.com.br/images/alexa-small-icon.png';
       locale.largeIconUri = 'https://dev.luisices.com.br/images/alexa-large-icon.png';
