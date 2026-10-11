@@ -1,4 +1,4 @@
-name = "luisices-cdn-storage"
+name = "luisices-cdn"
 main = "src/index.js"
 compatibility_date = "2024-09-01"
 
@@ -9,7 +9,7 @@ FIREBASE_FALLBACK_BUCKET = "papelaria-dashboard.appspot.com"
 CACHE_TTL = "31536000"
 
 [env.production]
-name = "luisices-cdn-storage-prod"
+name = "luisices-cdn"
 routes = [
   { pattern = "cdn.luisices.com.br/*", zone_name = "luisices.com.br" }
 ]
@@ -20,7 +20,7 @@ FIREBASE_FALLBACK_BUCKET = "papelaria-dashboard.appspot.com"
 CACHE_TTL = "31536000"
 
 [env.dev]
-name = "luisices-cdn-storage-dev"
+name = "luisices-cdn"
 routes = [
   { pattern = "cdn-dev.luisices.com.br/*", zone_name = "luisices.com.br" }
 ]
