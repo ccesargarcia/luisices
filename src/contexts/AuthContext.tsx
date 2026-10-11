@@ -347,15 +347,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       let user = await firebaseAuthService.login(email, password);
 
-      // O e-mail só pode ser usado para acessar o sistema depois da confirmação.
-      await user.reload();
-      if (!user.emailVerified) {
-        await handleLogout(true, user.uid);
-        const error = new Error('Confirme seu e-mail para liberar o acesso. O cadastro está aguardando a confirmação do endereço enviado por e-mail.');
-        (error as Error & { code: string }).code = 'auth/email-not-verified';
-        throw error;
-      }
-
       // Garante que o Firestore receba o token de autenticação antes da leitura
       await user.getIdToken(true);
 
@@ -386,6 +377,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       if (!profile) {
+        // Se a conta ainda não possui perfil e o e-mail não foi confirmado, orienta a validação do convite
+        await user.reload();
+        if (!user.emailVerified) {
+          await handleLogout(true, user.uid);
+          const error = new Error('Confirme seu e-mail para liberar o acesso. O cadastro está aguardando a confirmação do endereço enviado por e-mail.');
+          (error as Error & { code: string }).code = 'auth/email-not-verified';
+          throw error;
+        }
         await handleLogout(true, user.uid);
         throw new Error('Sua conta não possui permissão de acesso ou convite ativo.');
       }
