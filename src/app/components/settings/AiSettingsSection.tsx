@@ -113,7 +113,7 @@ export function AiSettingsSection({ isAdmin }: AiSettingsSectionProps) {
         success: false,
         isAvailable: false,
         activeModel: 'desconhecido',
-        provider: 'Google AI Studio / Gemini API',
+        provider: 'Google Gemini API',
         resetsAt: '',
         totalDaily: { used: 0, limit: null, percentage: null },
         totalMonthly: { used: 0, limit: null, percentage: null },
@@ -243,7 +243,7 @@ export function AiSettingsSection({ isAdmin }: AiSettingsSectionProps) {
           <div className="space-y-1">
             <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
               <Sparkles className="size-5 text-amber-500" />
-              Cota e Consumo de Modelos Gemini (Google AI Studio)
+              Cota e Consumo de Modelos Gemini
             </CardTitle>
             <CardDescription>
               Acompanhamento de consumo individual por modelo e cotas operacionais em tempo real com telemetria ativa
@@ -270,12 +270,12 @@ export function AiSettingsSection({ isAdmin }: AiSettingsSectionProps) {
               className="h-8 gap-1.5 text-xs text-muted-foreground hover:text-foreground"
             >
               <a
-                href="https://aistudio.google.com/app/usage"
+                href="https://ai.google.dev"
                 target="_blank"
                 rel="noopener noreferrer"
               >
                 <ExternalLink className="size-3.5" />
-                Painel Google AI Studio
+                Painel Google Gemini
               </a>
             </Button>
           </div>
