@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - develop
+      - main
     paths:
       - 'alexa/**'
   workflow_dispatch:
@@ -11,7 +12,7 @@ on:
       environment:
         description: 'Ambiente de destino (dev ou prod)'
         required: true
-        default: 'dev'
+        default: 'prod'
         type: choice
         options:
           - dev
@@ -52,11 +53,12 @@ jobs:
       - name: Prepare Skill Package (Dev or Prod)
         env:
           TARGET_ENV: ${{ steps.env.outputs.target }}
-          ALEXA_DEV_INVOCATION_NAME: ${{ secrets.ALEXA_DEV_INVOCATION_NAME }}
-          ALEXA_PROD_INVOCATION_NAME: ${{ secrets.ALEXA_PROD_INVOCATION_NAME }}
-          ALEXA_DEV_SKILL_NAME: ${{ secrets.ALEXA_DEV_SKILL_NAME }}
-          ALEXA_PROD_SKILL_NAME: ${{ secrets.ALEXA_PROD_SKILL_NAME }}
-          ALEXA_PROD_ENDPOINT: ${{ secrets.ALEXA_PROD_ENDPOINT }}
+          ALEXA_DEV_INVOCATION_NAME: ${{ secrets.DEV_ALEXA_INVOCATION_NAME || secrets.ALEXA_DEV_INVOCATION_NAME }}
+          ALEXA_PROD_INVOCATION_NAME: ${{ secrets.PROD_ALEXA_INVOCATION_NAME || secrets.ALEXA_PROD_INVOCATION_NAME || 'ateliê' }}
+          ALEXA_DEV_SKILL_NAME: ${{ secrets.DEV_ALEXA_SKILL_NAME || secrets.ALEXA_DEV_SKILL_NAME }}
+          ALEXA_PROD_SKILL_NAME: ${{ secrets.PROD_ALEXA_SKILL_NAME || secrets.ALEXA_PROD_SKILL_NAME || 'Luisices Ateliê' }}
+          ALEXA_DEV_ENDPOINT: ${{ secrets.DEV_ALEXA_ENDPOINT || secrets.ALEXA_DEV_ENDPOINT }}
+          ALEXA_PROD_ENDPOINT: ${{ secrets.PROD_ALEXA_ENDPOINT || secrets.ALEXA_PROD_ENDPOINT }}
         run: |
           node alexa/scripts/prepare-skill-package.cjs --env "$TARGET_ENV"
 
@@ -65,8 +67,8 @@ jobs:
           TARGET_ENV: ${{ steps.env.outputs.target }}
           ASK_CLI_CONFIG: ${{ secrets.ASK_CLI_CONFIG }}
           ASK_REFRESH_TOKEN: ${{ secrets.ASK_REFRESH_TOKEN }}
-          DEV_SKILL_ID: ${{ secrets.ALEXA_DEV_SKILL_ID || secrets.ALEXA_SKILL_ID || 'amzn1.ask.skill.1cd0031f-ada0-4da8-8721-2ad44b4b1c96' }}
-          PROD_SKILL_ID: ${{ secrets.ALEXA_PROD_SKILL_ID }}
+          DEV_SKILL_ID: ${{ secrets.DEV_ALEXA_SKILL_ID || secrets.ALEXA_DEV_SKILL_ID || secrets.ALEXA_SKILL_ID || 'amzn1.ask.skill.1cd0031f-ada0-4da8-8721-2ad44b4b1c96' }}
+          PROD_SKILL_ID: ${{ secrets.PROD_ALEXA_SKILL_ID || secrets.ALEXA_PROD_SKILL_ID }}
         run: |
           mkdir -p ~/.ask
           if [ -n "$ASK_CLI_CONFIG" ]; then
