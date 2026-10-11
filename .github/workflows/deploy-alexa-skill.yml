@@ -110,9 +110,6 @@ jobs:
 
           echo "🚀 Deployando para Skill ID: $SKILL_ID (Ambiente: $TARGET_ENV)..."
           
-          echo "📦 Atualizando modelo de interação pt-BR..."
-          ask smapi set-interaction-model -s "$SKILL_ID" -g development -l pt-BR --interaction-model "file:alexa/build/skill-package/interactionModels/custom/pt-BR.json"
-          
           echo "📦 Preservando ícones e dados visuais configurados no console..."
           node -e '
             const fs = require("fs");
@@ -141,7 +138,7 @@ jobs:
             }
           '
 
-          echo "📦 Atualizando manifesto skill.json (Interfaces APL, permissões e endpoints)..."
+          echo "📦 [Passo 1/2] Atualizando manifesto skill.json (Interfaces APL, permissões e endpoints)..."
           ask smapi update-skill-manifest -s "$SKILL_ID" -g development --manifest "file:alexa/build/skill-package/skill.json"
           
           echo "⏳ Aguardando e validando processamento do manifesto pela Amazon Alexa..."
@@ -161,6 +158,31 @@ jobs:
               break
             elif [ "$MANIFEST_STATUS" = "FAILED" ]; then
               echo "::error ::Amazon rejeitou a atualização do manifesto: $STATUS_RAW"
+              exit 1
+            fi
+            sleep 3
+          done
+
+          echo "📦 [Passo 2/2] Atualizando e compilando modelo de interação pt-BR (com APL ativo)..."
+          ask smapi set-interaction-model -s "$SKILL_ID" -g development -l pt-BR --interaction-model "file:alexa/build/skill-package/interactionModels/custom/pt-BR.json"
+          
+          echo "⏳ Aguardando compilação do modelo de interação pela Amazon Alexa..."
+          for i in {1..20}; do
+            STATUS_RAW=$(ask smapi get-skill-status -s "$SKILL_ID" 2>/dev/null || echo "{}")
+            MODEL_STATUS=$(node -e '
+              try {
+                const s = JSON.parse(process.argv[1]);
+                console.log(s.interactionModel?.["pt-BR"]?.lastUpdateRequest?.status || "PENDING");
+              } catch {
+                console.log("PENDING");
+              }
+            ' "$STATUS_RAW")
+            echo "   [Tentativa $i/20] Status do modelo na Amazon: $MODEL_STATUS"
+            if [ "$MODEL_STATUS" = "SUCCEEDED" ]; then
+              echo "✅ Modelo de interação compilado com sucesso com as novas interfaces!"
+              break
+            elif [ "$MODEL_STATUS" = "FAILED" ]; then
+              echo "::error ::Amazon falhou ao compilar o modelo de interação: $STATUS_RAW"
               exit 1
             fi
             sleep 3
