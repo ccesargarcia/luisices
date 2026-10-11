@@ -6,6 +6,7 @@ dist/
 build/
 alexa/build/
 *.local
+cloudflare-status-report.md
 
 # Environment variables (IMPORTANT - Never commit these!)
 .env
