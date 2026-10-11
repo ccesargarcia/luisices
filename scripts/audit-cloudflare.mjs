@@ -60,13 +60,26 @@ async function main() {
 
   // 1. Validar Token
   process.stdout.write('🔑 Validando Cloudflare API Token... ');
+  const tokenType = API_TOKEN.startsWith('cfat_') ? 'Account-Owned Token' : 'User Token';
   try {
-    const verify = await cfFetch('/user/tokens/verify');
-    console.log(`✅ Válido! Status: ${verify.status}`);
+    if (!API_TOKEN.startsWith('cfat_')) {
+      const verify = await cfFetch('/user/tokens/verify');
+      console.log(`✅ Válido (${tokenType})! Status: ${verify.status}`);
+    } else {
+      // Tokens de conta (cfat_) não acessam /user/tokens/verify; validamos diretamente via /zones
+      await cfFetch('/zones');
+      console.log(`✅ Válido (${tokenType})! Autenticação confirmada.`);
+    }
   } catch (err) {
-    console.log('❌ Inválido!');
-    console.error(`Detalhes: ${err.message}`);
-    process.exit(1);
+    // Fallback: tentar /zones caso seja um token com escopo específico
+    try {
+      await cfFetch('/zones');
+      console.log(`✅ Válido! Autenticação confirmada via Zones.`);
+    } catch (innerErr) {
+      console.log('❌ Inválido!');
+      console.error(`Detalhes: ${innerErr.message || err.message}`);
+      process.exit(1);
+    }
   }
 
   let markdownReport = '# ⛅ Relatório de Auditoria Cloudflare - Luisices\n\n';
