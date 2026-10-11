@@ -16,6 +16,7 @@ import { useUserSettings } from '../../hooks/useUserSettings';
 import { firebaseStorageService } from '../../services/firebaseStorageService';
 import { ReceivedEmail, SentEmail, SendEmailPayload } from '../types';
 import { Button } from '../components/ui/button';
+import { EmailHtmlViewer } from '../components/emails/EmailHtmlViewer';
 import { Input } from '../components/ui/input';
 import { Textarea } from '../components/ui/textarea';
 import { Badge } from '../components/ui/badge';
@@ -125,74 +126,6 @@ export interface ReplyQuoteData {
   html?: string;
   text?: string;
   attachments?: { filename?: string; name?: string; downloadUrl?: string; url?: string }[];
-}
-
-/**
- * Visualizador de E-mail HTML com renderização rica, rolagem nativa suave e alternador de texto
- */
-function EmailHtmlViewer({ html, text }: { html?: string; text?: string }) {
-  const [viewMode, setViewMode] = useState<'html' | 'text'>('html');
-
-  // Prepara o HTML seguro garantindo sanitização robusta (anti-XSS) e links externos com target="_blank"
-  const sanitizedHtml = useMemo(() => {
-    if (!html) return '';
-    const clean = DOMPurify.sanitize(html, {
-      ADD_ATTR: ['target', 'rel'],
-      FORBID_TAGS: ['script', 'iframe', 'object', 'embed', 'form', 'base', 'meta', 'link'],
-    });
-
-    return clean.replace(/<a\s+(?:[^>]*?\s+)?href="([^"]*)"([^>]*)>/gi, (match, href, rest) => {
-      const safeHref = /^https?:\/\//i.test(href) || /^mailto:/i.test(href) || /^tel:/i.test(href) ? href : '#';
-      if (!match.includes('target=')) {
-        return `<a href="${safeHref}" target="_blank" rel="noopener noreferrer"${rest}>`;
-      }
-      return match.replace(/href="[^"]*"/i, `href="${safeHref}"`);
-    });
-  }, [html]);
-
-  if (!html || viewMode === 'text') {
-    return (
-      <div className="w-full space-y-2">
-        {html && (
-          <div className="flex items-center justify-between text-xs pb-1 border-b border-border/40">
-            <span className="text-muted-foreground text-[11px]">Exibindo em modo texto simples</span>
-            <button
-              type="button"
-              onClick={() => setViewMode('html')}
-              className="text-primary hover:underline font-semibold text-xs"
-            >
-              Exibir Formatado (HTML/Mídia)
-            </button>
-          </div>
-        )}
-        <div className="whitespace-pre-wrap font-sans text-xs sm:text-sm leading-relaxed p-4 bg-muted/20 rounded-lg border border-border/60 select-text overflow-x-auto">
-          {text || '(Mensagem sem texto)'}
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="w-full space-y-2">
-      {text && (
-        <div className="flex items-center justify-end text-xs pb-1">
-          <button
-            type="button"
-            onClick={() => setViewMode('text')}
-            className="text-muted-foreground hover:text-foreground text-[11px] hover:underline"
-          >
-            Ver apenas texto
-          </button>
-        </div>
-      )}
-      <div className="w-full bg-white text-slate-900 rounded-lg border border-border/70 p-4 sm:p-6 shadow-2xs overflow-x-auto select-text">
-        <div
-          className="prose prose-sm sm:prose max-w-none prose-img:rounded-md prose-img:max-w-full prose-a:text-indigo-600 hover:prose-a:underline prose-table:max-w-full break-words [&_table]:max-w-full [&_img]:max-w-full [&_img]:h-auto"
-          dangerouslySetInnerHTML={{ __html: sanitizedHtml }}
-        />
-      </div>
-    </div>
-  );
 }
 
 const DEFAULT_TEMPLATES: EmailTemplate[] = [
@@ -2508,8 +2441,8 @@ export function Emails() {
           {currentReceivedEmail || currentSentEmail ? (
             <div className="flex flex-col h-full min-w-0 overflow-hidden">
               {/* Barra de Ações Superior */}
-              <div className="p-3 border-b border-border/60 flex items-center justify-between gap-2 bg-muted/10 shrink-0">
-                <div className="flex items-center gap-1">
+              <div className="p-3 border-b border-border/60 flex flex-wrap items-center justify-between gap-2 bg-muted/10 shrink-0 min-w-0">
+                <div className="flex flex-wrap items-center gap-1 min-w-0 flex-1">
                   {/* Botão voltar no mobile */}
                   <Button
                     variant="ghost"
@@ -2560,7 +2493,7 @@ export function Emails() {
                           title={currentReceivedEmail.read ? 'Marcar como não lido' : 'Marcar como lido'}
                         >
                           <MailCheck className="size-3.5" />
-                          <span className="hidden sm:inline">
+                          <span className="hidden xl:inline">
                             {currentReceivedEmail.read ? 'Não lido' : 'Lido'}
                           </span>
                         </Button>
@@ -2578,7 +2511,7 @@ export function Emails() {
                           ) : (
                             <Archive className="size-3.5" />
                           )}
-                          <span className="hidden sm:inline">
+                          <span className="hidden xl:inline">
                             {currentReceivedEmail.archived ? 'Desarquivar' : 'Arquivar'}
                           </span>
                         </Button>
@@ -2596,7 +2529,7 @@ export function Emails() {
                           title={isEmailSpam(currentReceivedEmail) ? 'Não é spam (Mover para Caixa de Entrada)' : 'Marcar como spam'}
                         >
                           <ShieldAlert className="size-3.5" />
-                          <span className="hidden sm:inline">
+                          <span className="hidden xl:inline">
                             {isEmailSpam(currentReceivedEmail) ? 'Não é Spam' : 'Spam'}
                           </span>
                         </Button>
@@ -2610,7 +2543,7 @@ export function Emails() {
                           title="Bloquear este remetente"
                         >
                           <ShieldBan className="size-3.5" />
-                          <span className="hidden lg:inline">Bloquear</span>
+                          <span className="hidden 2xl:inline">Bloquear</span>
                         </Button>
                       </>
                     )
@@ -2624,7 +2557,7 @@ export function Emails() {
                     title="Copiar texto da mensagem"
                   >
                     {copiedText ? <Check className="size-3.5 text-emerald-600" /> : <Copy className="size-3.5" />}
-                    <span className="hidden sm:inline">Copiar</span>
+                    <span className="hidden xl:inline">Copiar</span>
                   </Button>
                 </div>
 
@@ -2750,12 +2683,12 @@ export function Emails() {
 
               {/* Cabeçalho da Mensagem */}
               <div className="p-4 sm:p-5 border-b border-border/60 space-y-3 shrink-0">
-                <h2 className="text-lg sm:text-xl font-bold text-foreground leading-tight">
+                <h2 className="text-lg sm:text-xl font-bold text-foreground leading-tight [overflow-wrap:anywhere]">
                   {(currentReceivedEmail || currentSentEmail)?.subject || '(Sem assunto)'}
                 </h2>
 
-                <div className="flex items-start justify-between gap-3 text-xs text-muted-foreground">
-                  <div className="space-y-1 min-w-0">
+                <div className="flex flex-col xl:flex-row items-start justify-between gap-3 text-xs text-muted-foreground">
+                  <div className="space-y-1 min-w-0 [overflow-wrap:anywhere]">
                     <div>
                       <span className="font-semibold text-foreground">De:</span>{' '}
                       <span className="font-mono text-primary">

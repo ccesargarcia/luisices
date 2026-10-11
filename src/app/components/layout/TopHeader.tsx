@@ -107,9 +107,9 @@ export function TopHeader({
         headerStyle === 'bordered' && 'bg-background/95 border-b border-border/80'
       )}
     >
-      <div className="flex items-center justify-between gap-1.5 sm:gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-1.5 sm:gap-3">
         {/* Identificação / Logo no Topo */}
-        <div className="flex items-center gap-2 sm:gap-2.5 min-w-0 shrink-0 max-w-[180px] xs:max-w-[220px] sm:max-w-[280px] xl:max-w-none">
+        <div className="flex items-center gap-2 sm:gap-2.5 min-w-0 flex-1 max-w-[180px] xs:max-w-[220px] sm:max-w-[280px] xl:max-w-none">
           {hasLogo && !showIconOnly ? (
             <img
               src={logo}
@@ -173,7 +173,7 @@ export function TopHeader({
         )}
 
         {/* Ações do Cabeçalho */}
-        <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
+        <div className="flex flex-wrap items-center justify-end gap-1 sm:gap-1.5 shrink-0 max-w-full">
           {/* Botão de Busca Mobile/Tablet/Landscape (< xl) */}
           {headerShowQuickSearch && onOpenSearch && (
             <Button

@@ -212,18 +212,18 @@ export function ChatArea({
       {/* Área de Mensagens com Rolagem */}
       <div
         ref={messagesContainerRef}
-        className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-4 space-y-3 bg-muted/10 relative custom-scrollbar"
+        className="flex-1 min-h-0 min-w-0 overflow-y-auto overflow-x-hidden overscroll-contain p-4 space-y-3 bg-muted/10 relative custom-scrollbar"
       >
         {/* Barra Fixa de Ações no Modo de Seleção */}
         {isSelectionMode && (
-          <div className="sticky top-0 z-20 px-4 py-2.5 luisices-glass border border-border/60 shadow-md mb-3 flex flex-col sm:flex-row items-center justify-between rounded-xl gap-2 backdrop-blur-md">
-            <div className="flex items-center gap-2">
+          <div className="sticky top-0 z-20 px-4 py-2.5 luisices-glass border border-border/60 shadow-md mb-3 flex flex-wrap items-center rounded-xl gap-2 min-w-0 max-w-full backdrop-blur-md">
+            <div className="flex items-center gap-2 min-w-0 flex-auto">
               <CheckSquare className="size-4 text-primary" />
-              <span className="text-xs font-bold text-foreground">
+              <span className="text-xs font-bold text-foreground [overflow-wrap:anywhere]">
                 {selectedMessageIds.size} de {displayedMessages.length} mensagem(ns) selecionada(s)
               </span>
             </div>
-            <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+            <div className="flex flex-wrap items-center gap-2 min-w-0 max-w-full">
               <Button
                 size="sm"
                 variant="outline"
