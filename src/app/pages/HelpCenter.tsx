@@ -21,6 +21,10 @@ import {
   Globe,
   Calculator,
   Mic,
+  Mail,
+  MessageCircle,
+  Bot,
+  Repeat2,
 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { Input } from '../components/ui/input';
@@ -419,6 +423,125 @@ const MODULE_GUIDES: GuideSection[] = [
       'Você pode limitar o acesso à criação e edição de insumos através das permissões de usuário na tela de Equipe.',
     ],
   },
+  {
+    id: 'emails',
+    title: 'Central de E-mails & Comunicação Oficial',
+    badge: 'Comunicação & Notificações',
+    icon: Mail,
+    description:
+      'Envio e recebimento de e-mails profissionais via Resend, histórico de propostas, quarentena de spam, modelos rápidos e monitoramento de cota.',
+    colorClass: 'text-blue-600 bg-blue-600/10 border-blue-600/20',
+    steps: [
+      {
+        title: 'Caixa de Entrada & Pastas Organizadas',
+        desc: 'Navegue entre Caixa de Entrada, Enviados, Favoritos (estrelas), Arquivados, Lixeira e Spam com atualização em tempo real.',
+      },
+      {
+        title: 'Composição com Modelos Prontos (Templates)',
+        desc: 'Crie mensagens do zero ou use modelos instantâneos de "Aprovação de Orçamento", "Confirmação de Pagamento" e "Aviso de Encomenda Pronta" com saudação personalizada.',
+      },
+      {
+        title: 'Proteção Anti-Spam Inteligente',
+        desc: 'Mecanismo de avaliação automática por pontuação de risco (0 a 100). Você pode gerenciar remetentes e domínios bloqueados na aba de Regras de Spam.',
+      },
+      {
+        title: 'Monitoramento de Cotas em Tempo Real',
+        desc: 'Acompanhe no cabeçalho o limite de disparos diários e mensais da Cloud Function conectada ao Resend para garantir estabilidade contínua.',
+      },
+    ],
+    tips: [
+      'O envio de e-mails utiliza chave de idempotência automática, garantindo que cliques duplos nunca disparem mensagens repetidas.',
+      'Anexos temporários de rascunhos não finalizados são higienizados com segurança periodicamente.',
+    ],
+  },
+  {
+    id: 'whatsapp',
+    title: 'Central de Atendimento WhatsApp',
+    badge: 'Mensagens & Clientes',
+    icon: MessageCircle,
+    description:
+      'Atendimento centralizado com sincronização em tempo real via Evolution API, paginação de mensagens, ações em lote e menu de contexto.',
+    colorClass: 'text-emerald-600 bg-emerald-600/10 border-emerald-600/20',
+    steps: [
+      {
+        title: 'Iniciar Nova Conversa',
+        desc: 'Clique em "+ Nova Conversa" no topo do chat para buscar um cliente existente no cadastro ou digitar um número avulso com DDD.',
+      },
+      {
+        title: 'Menu de Contexto (Botão Direito no Desktop)',
+        desc: 'Clique com o botão direito sobre qualquer balão de conversa para copiar o texto ou ativar o modo de seleção múltipla.',
+      },
+      {
+        title: 'Modo de Seleção em Lote',
+        desc: 'Ative "Selecionar várias" para apagar múltiplos recados de teste de uma só vez, com contagem e confirmação na barra superior.',
+      },
+      {
+        title: 'Status de Conexão em Tempo Real',
+        desc: 'Acompanhe o indicador verde/vermelho no cabeçalho para certificar-se de que a instância da Evolution API está conectada e operacional.',
+      },
+    ],
+    tips: [
+      'Mensagens de cobrança ou aviso preparadas pelo Copiloto IA podem ser revisadas e disparadas com segurança diretamente.',
+      'Em smartphones, o chat possui botão flutuante (FAB) e transição nativa de tela cheia entre a lista de contatos e a conversa.',
+    ],
+  },
+  {
+    id: 'ai-copilot',
+    title: 'Copiloto IA (Assistente Operacional)',
+    badge: 'Inteligência Artificial',
+    icon: Bot,
+    description:
+      'Assistente inteligente integrado com Gemini 2.5 para montagem de rascunhos de pedidos, cálculo de custos, análise visual de portfólio e resumo diário.',
+    colorClass: 'text-purple-600 bg-purple-600/10 border-purple-600/20',
+    steps: [
+      {
+        title: 'Acesso Rápido Global',
+        desc: 'Abra o Copiloto a qualquer momento clicando no botão da varinha mágica/IA no cabeçalho superior ou no menu lateral do sistema.',
+      },
+      {
+        title: 'Geração de Rascunhos de Encomendas',
+        desc: 'Cole mensagens informais de clientes do WhatsApp e o Copiloto identifica cliente, itens, quantidade, valor e data de entrega, gerando o rascunho.',
+      },
+      {
+        title: 'Briefing Operacional do Dia (Daily Briefing)',
+        desc: 'Pergunte "Como está o dia hoje?" para receber a lista de pedidos atrasados, entregas previstas para hoje e tarefas em produção.',
+      },
+      {
+        title: 'Simulação de Precificação com Proteção de Margem',
+        desc: 'Simule custos com base em insumos consumidos e tempo de mão de obra antes de formalizar orçamentos oficiais com clientes.',
+      },
+    ],
+    tips: [
+      'O Copiloto prepara rascunhos revisáveis: nenhum pedido é gravado ou mensagem enviada sem a sua confirmação explícita na tela.',
+      'Apenas administradores podem solicitar métricas financeiras gerais e desempenho da equipe de colaboradores.',
+    ],
+  },
+  {
+    id: 'exchanges',
+    title: 'Permutas & Parcerias Comerciais',
+    badge: 'Marketing & Parcerias',
+    icon: Repeat2,
+    description:
+      'Gestão de encomendas feitas em troca de divulgação com influenciadores ou permuta de serviços, sem impactar o faturamento real do ateliê.',
+    colorClass: 'text-orange-500 bg-orange-500/10 border-orange-500/20',
+    steps: [
+      {
+        title: 'Identificação Clara da Parceria',
+        desc: 'Registre o parceiro/influenciador, detalhes da contrapartida acordada (stories, reels, posts) e data do evento.',
+      },
+      {
+        title: 'Isolamento Financeiro Automático',
+        desc: 'Pedidos de permuta registram os custos de insumos para o ateliê, mas não geram "Valores a Receber" nem inflam artificialmente a receita de vendas.',
+      },
+      {
+        title: 'Acompanhamento do Retorno e Status',
+        desc: 'Monitore o cumprimento das postagens combinadas e a entrega dos materiais promocionais diretamente na lista de permutas.',
+      },
+    ],
+    tips: [
+      'Você pode converter um orçamento ou pedido regular em permuta a qualquer momento ativando a opção correspondente.',
+    ],
+  },
 ];
 
 const FAQ_LIST = [
@@ -517,6 +640,22 @@ const FAQ_LIST = [
   {
     q: 'Quais produtos e encomendas a Alexa reconhece por voz?',
     a: 'O catálogo de voz reconhece os produtos mais solicitados do ateliê: caixinhas, cadernos, bloquinhos, agendas, convites, etiquetas, adesivos, sacolas, lembrancinhas e topo de bolo. Caso precise de especificações detalhadas ou personalizações complexas de arte, você pode registrar o pedido base por voz e depois anexar fotos e notas complementares no painel do sistema.',
+  },
+  {
+    q: 'Como funciona a Central de E-mails oficiais (Resend) e quais os limites de disparo?',
+    a: 'O sistema utiliza o provedor corporativo Resend via Cloud Functions para enviar e receber e-mails institucionais com domínio próprio (@luisices.com.br). O painel exibe um medidor de consumo diário e mensal. O envio conta com chave de idempotência para impedir envios duplicados e quarentena automática contra spams e mensagens maliciosas.',
+  },
+  {
+    q: 'O Copiloto IA pode enviar mensagens ou criar pedidos sozinho sem minha autorização?',
+    a: 'Não. O Copiloto foi concebido com governança e supervisão humana estrita: ele apenas extrai informações e prepara rascunhos revisáveis na interface. Nenhum pedido é cadastrado no banco de dados e nenhuma mensagem de WhatsApp ou e-mail é enviada sem que você revise os dados e clique no botão de confirmação na tela.',
+  },
+  {
+    q: 'Como funciona a exclusão em lote e o menu de contexto no WhatsApp Chat?',
+    a: 'No computador, você pode clicar com o botão direito sobre qualquer mensagem para copiar o texto ou selecionar a opção "Selecionar várias". No topo do chat aparecerá uma barra de controle onde você escolhe apagar as mensagens selecionadas ou selecionar todas de uma vez com confirmação rápida.',
+  },
+  {
+    q: 'Como gerenciar e auditar os pedidos de Permuta e Parceria com influenciadores?',
+    a: 'Ao criar um pedido ou orçamento para influenciadores, marque a opção "Permuta / Parceria" ou acesse o módulo dedicado "Permutas". O sistema calcula e deduz os custos dos insumos do ateliê para seu controle interno, mas mantém o valor a receber zerado, garantindo que os relatórios de faturamento reflitam apenas o dinheiro real que entra no caixa.',
   },
 ];
 
