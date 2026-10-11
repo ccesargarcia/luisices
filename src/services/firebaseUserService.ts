@@ -9,7 +9,9 @@ import {
   collection,
   doc,
   getDocs,
+  getDocsFromServer,
   getDoc,
+  getDocFromServer,
   query,
   where,
   orderBy,
@@ -128,13 +130,22 @@ export class FirebaseUserService {
    * Não cria perfil automaticamente: contas novas requerem convite válido aprovado no servidor.
    */
   async getUserProfile(uid: string, _email?: string, _displayName?: string): Promise<UserProfile | null> {
-    const snap = await getDoc(doc(db, USERS_COLLECTION, uid));
-    if (snap.exists()) return snap.data() as UserProfile;
+    try {
+      const snap = await getDocFromServer(doc(db, USERS_COLLECTION, uid));
+      if (snap.exists()) return snap.data() as UserProfile;
+    } catch {
+      try {
+        const snap = await getDoc(doc(db, USERS_COLLECTION, uid));
+        if (snap.exists()) return snap.data() as UserProfile;
+      } catch (localErr) {
+        console.warn('[getUserProfile] Falha ao consultar perfil local:', localErr);
+      }
+    }
 
     if (_email) {
       try {
         const q = query(collection(db, USERS_COLLECTION), where('email', '==', _email.trim().toLowerCase()));
-        const querySnap = await getDocs(q);
+        const querySnap = await getDocsFromServer(q).catch(() => getDocs(q));
         if (!querySnap.empty) {
           return querySnap.docs[0].data() as UserProfile;
         }
@@ -151,7 +162,7 @@ export class FirebaseUserService {
    */
   async listUsers(): Promise<UserProfile[]> {
     const q = query(collection(db, USERS_COLLECTION), orderBy('createdAt', 'asc'));
-    const snap = await getDocs(q);
+    const snap = await getDocsFromServer(q).catch(() => getDocs(q));
     return snap.docs.map((d) => {
       const data = d.data();
       return {
