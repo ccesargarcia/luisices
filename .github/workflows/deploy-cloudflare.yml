@@ -1,0 +1,114 @@
+name: Deploy Cloudflare Workers (CDN & API Gateway)
+
+on:
+  push:
+    branches:
+      - develop
+      - main
+    paths:
+      - 'cloudflare/**'
+      - '.github/workflows/deploy-cloudflare.yml'
+
+  workflow_dispatch:
+    inputs:
+      target_environment:
+        description: 'Ambiente de destino para Deploy'
+        required: true
+        type: choice
+        options:
+          - dev
+          - production
+          - all
+        default: all
+      target_worker:
+        description: 'Worker para Deploy'
+        required: true
+        type: choice
+        options:
+          - all
+          - cdn
+          - api
+        default: all
+
+permissions:
+  contents: read
+
+jobs:
+  deploy-cloudflare:
+    name: Deploy Cloudflare Workers
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout Repositório
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Instalar Dependências
+        run: npm install --legacy-peer-deps
+
+      - name: Validar Configuração da Cloudflare
+        run: |
+          if [ -z "${{ secrets.CLOUDFLARE_API_TOKEN }}" ]; then
+            echo "❌ ERRO: Secret CLOUDFLARE_API_TOKEN não configurado no repositório."
+            echo "ℹ️ Obtenha seu token em: Cloudflare Dashboard > My Profile > API Tokens (com permissão Workers Scripts:Edit e Zone:Edit)."
+            exit 1
+          fi
+          echo "✅ Secret CLOUDFLARE_API_TOKEN presente."
+
+      # ─── DEPLOY NO AMBIENTE DE DESENVOLVIMENTO (DEV) ────────────────────────
+      - name: Deploy CDN Worker (Dev)
+        if: |
+          (github.ref == 'refs/heads/develop' && github.event_name == 'push') ||
+          (github.event_name == 'workflow_dispatch' && (inputs.target_environment == 'dev' || inputs.target_environment == 'all') && (inputs.target_worker == 'cdn' || inputs.target_worker == 'all'))
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          echo "🚀 Realizando deploy do CDN Storage Worker em DEV (cdn-dev.luisices.com.br)..."
+          npx wrangler deploy -c cloudflare/cdn-worker/wrangler.toml -e dev
+
+      - name: Deploy API Gateway Worker (Dev)
+        if: |
+          (github.ref == 'refs/heads/develop' && github.event_name == 'push') ||
+          (github.event_name == 'workflow_dispatch' && (inputs.target_environment == 'dev' || inputs.target_environment == 'all') && (inputs.target_worker == 'api' || inputs.target_worker == 'all'))
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          echo "🚀 Realizando deploy do API Gateway Worker em DEV (api.dev.luisices.com.br)..."
+          if [ -n "${{ secrets.DEV_ORIGIN_SECRET || secrets.ORIGIN_SECRET }}" ]; then
+            echo "${{ secrets.DEV_ORIGIN_SECRET || secrets.ORIGIN_SECRET }}" | npx wrangler secret put ORIGIN_SECRET -c cloudflare/api-worker/wrangler.toml -e dev || true
+          fi
+          npx wrangler deploy -c cloudflare/api-worker/wrangler.toml -e dev
+
+      # ─── DEPLOY NO AMBIENTE DE PRODUÇÃO ─────────────────────────────────────
+      - name: Deploy CDN Worker (Produção)
+        if: |
+          (github.ref == 'refs/heads/main' && github.event_name == 'push') ||
+          (github.event_name == 'workflow_dispatch' && (inputs.target_environment == 'production' || inputs.target_environment == 'all') && (inputs.target_worker == 'cdn' || inputs.target_worker == 'all'))
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          echo "🚀 Realizando deploy do CDN Storage Worker em PRODUÇÃO (cdn.luisices.com.br)..."
+          npx wrangler deploy -c cloudflare/cdn-worker/wrangler.toml -e production
+
+      - name: Deploy API Gateway Worker (Produção)
+        if: |
+          (github.ref == 'refs/heads/main' && github.event_name == 'push') ||
+          (github.event_name == 'workflow_dispatch' && (inputs.target_environment == 'production' || inputs.target_environment == 'all') && (inputs.target_worker == 'api' || inputs.target_worker == 'all'))
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          echo "🚀 Realizando deploy do API Gateway Worker em PRODUÇÃO (api.luisices.com.br)..."
+          if [ -n "${{ secrets.PROD_ORIGIN_SECRET || secrets.ORIGIN_SECRET }}" ]; then
+            echo "${{ secrets.PROD_ORIGIN_SECRET || secrets.ORIGIN_SECRET }}" | npx wrangler secret put ORIGIN_SECRET -c cloudflare/api-worker/wrangler.toml -e production || true
+          fi
+          npx wrangler deploy -c cloudflare/api-worker/wrangler.toml -e production

@@ -1,0 +1,31 @@
+name = "luisices-cdn-storage"
+main = "src/index.js"
+compatibility_date = "2024-09-01"
+
+[vars]
+ENVIRONMENT = "production"
+FIREBASE_BUCKET = "papelaria-dashboard.firebasestorage.app"
+FIREBASE_FALLBACK_BUCKET = "papelaria-dashboard.appspot.com"
+CACHE_TTL = "31536000"
+
+[env.production]
+name = "luisices-cdn-storage-prod"
+routes = [
+  { pattern = "cdn.luisices.com.br/*", zone_name = "luisices.com.br" }
+]
+[env.production.vars]
+ENVIRONMENT = "production"
+FIREBASE_BUCKET = "papelaria-dashboard.firebasestorage.app"
+FIREBASE_FALLBACK_BUCKET = "papelaria-dashboard.appspot.com"
+CACHE_TTL = "31536000"
+
+[env.dev]
+name = "luisices-cdn-storage-dev"
+routes = [
+  { pattern = "cdn-dev.luisices.com.br/*", zone_name = "luisices.com.br" }
+]
+[env.dev.vars]
+ENVIRONMENT = "dev"
+FIREBASE_BUCKET = "luisices-dev.firebasestorage.app"
+FIREBASE_FALLBACK_BUCKET = "luisices-dev.appspot.com"
+CACHE_TTL = "300"

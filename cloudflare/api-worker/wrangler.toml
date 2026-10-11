@@ -1,0 +1,25 @@
+name = "luisices-api-proxy"
+main = "src/index.js"
+compatibility_date = "2024-09-01"
+
+[vars]
+ENVIRONMENT = "production"
+BACKEND_ORIGIN = "https://us-central1-papelaria-dashboard.cloudfunctions.net"
+
+[env.production]
+name = "luisices-api-proxy-prod"
+routes = [
+  { pattern = "api.luisices.com.br/*", zone_name = "luisices.com.br" }
+]
+[env.production.vars]
+ENVIRONMENT = "production"
+BACKEND_ORIGIN = "https://us-central1-papelaria-dashboard.cloudfunctions.net"
+
+[env.dev]
+name = "luisices-api-proxy-dev"
+routes = [
+  { pattern = "api.dev.luisices.com.br/*", zone_name = "luisices.com.br" }
+]
+[env.dev.vars]
+ENVIRONMENT = "dev"
+BACKEND_ORIGIN = "https://us-central1-luisices-dev.cloudfunctions.net"

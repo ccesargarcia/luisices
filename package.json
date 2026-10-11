@@ -16,6 +16,12 @@
     "fix-negative-values": "node scripts/fix-negative-values.mjs",
     "sync:ledger": "node scripts/sync-sales-ledger.mjs",
     "clean:disk": "bash scripts/clean-disk.sh",
+    "cloudflare:deploy:cdn:dev": "wrangler deploy -c cloudflare/cdn-worker/wrangler.toml -e dev",
+    "cloudflare:deploy:cdn:prod": "wrangler deploy -c cloudflare/cdn-worker/wrangler.toml -e production",
+    "cloudflare:deploy:api:dev": "wrangler deploy -c cloudflare/api-worker/wrangler.toml -e dev",
+    "cloudflare:deploy:api:prod": "wrangler deploy -c cloudflare/api-worker/wrangler.toml -e production",
+    "cloudflare:deploy:dev": "npm run cloudflare:deploy:cdn:dev && npm run cloudflare:deploy:api:dev",
+    "cloudflare:deploy:prod": "npm run cloudflare:deploy:cdn:prod && npm run cloudflare:deploy:api:prod",
     "test": "vitest run",
     "test:unit": "vitest run",
     "test:unit:watch": "vitest",
@@ -129,7 +135,8 @@
     "vite-plugin-html": "^3.2.2",
     "vite-plugin-pwa": "^1.3.0",
     "vitest": "^5.0.1",
-    "workbox-window": "^7.4.0"
+    "workbox-window": "^7.4.0",
+    "wrangler": "^4.149.0"
   },
   "peerDependencies": {
     "react": "18.3.1",
