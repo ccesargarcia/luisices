@@ -91,15 +91,18 @@ jobs:
             chmod 600 ~/.ask/cli_config
             echo "✅ Credenciais configuradas via ASK_REFRESH_TOKEN."
           else
-            echo "::warning ::Nenhum segredo (ASK_CLI_CONFIG ou ASK_REFRESH_TOKEN) configurado no repositório. Deploy pulado por segurança."
-            exit 0
+            echo "::error ::Nenhum segredo de autenticação da Alexa (ASK_CLI_CONFIG ou ASK_REFRESH_TOKEN) encontrado no GitHub Secrets! O deploy não pôde ser executado na Amazon."
+            exit 1
           fi
 
           if [ "$TARGET_ENV" = "prod" ]; then
             SKILL_ID="$PROD_SKILL_ID"
             if [ -z "$SKILL_ID" ]; then
-              echo "::error ::ALEXA_PROD_SKILL_ID não foi configurado nos Secrets do repositório! Crie a skill de produção no Alexa Developer Console e adicione a Secret ALEXA_PROD_SKILL_ID."
+              echo "::error ::Nenhum Skill ID de produção encontrado! Configure a Secret ALEXA_PROD_SKILL_ID nos Secrets do repositório."
               exit 1
+            fi
+            if [ "$SKILL_ID" = "$DEV_SKILL_ID" ]; then
+              echo "::warning ::ATENÇÃO: O Skill ID usado para produção ($SKILL_ID) é idêntico ao de desenvolvimento! Certifique-se de configurar a secret ALEXA_PROD_SKILL_ID com o Skill ID da skill de produção."
             fi
           else
             SKILL_ID="$DEV_SKILL_ID"
@@ -138,7 +141,29 @@ jobs:
             }
           '
 
-          echo "📦 Atualizando manifesto skill.json..."
+          echo "📦 Atualizando manifesto skill.json (Interfaces APL, permissões e endpoints)..."
           ask smapi update-skill-manifest -s "$SKILL_ID" -g development --manifest "file:alexa/build/skill-package/skill.json"
           
-          echo "✅ Modelo e manifesto enviados com sucesso para a Amazon Alexa [$TARGET_ENV]!"
+          echo "⏳ Aguardando e validando processamento do manifesto pela Amazon Alexa..."
+          for i in {1..15}; do
+            STATUS_RAW=$(ask smapi get-skill-status -s "$SKILL_ID" 2>/dev/null || echo "{}")
+            MANIFEST_STATUS=$(node -e '
+              try {
+                const s = JSON.parse(process.argv[1]);
+                console.log(s.manifest?.lastUpdateRequest?.status || "PENDING");
+              } catch {
+                console.log("PENDING");
+              }
+            ' "$STATUS_RAW")
+            echo "   [Tentativa $i/15] Status do manifesto na Amazon: $MANIFEST_STATUS"
+            if [ "$MANIFEST_STATUS" = "SUCCEEDED" ]; then
+              echo "✅ Manifesto (APL, Permissões e Endpoints) aplicado com sucesso na Amazon Alexa!"
+              break
+            elif [ "$MANIFEST_STATUS" = "FAILED" ]; then
+              echo "::error ::Amazon rejeitou a atualização do manifesto: $STATUS_RAW"
+              exit 1
+            fi
+            sleep 3
+          done
+
+          echo "✅ Deploy concluído com sucesso para a Amazon Alexa [$TARGET_ENV]!"
