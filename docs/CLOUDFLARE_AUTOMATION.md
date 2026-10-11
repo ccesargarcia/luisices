@@ -67,6 +67,9 @@ npm run cloudflare:deploy:prod       # Todos os Workers em Prod
 
 # 🔍 Inspecionar status de recursos provisionados (Zonas, DNS, Workers, SSL)
 npm run cloudflare:status
+
+# 🛠️ Aplicar correções de conformidade automaticamente (DKIM cinza, deletar acme, SSL strict)
+npm run cloudflare:fix
 ```
 
 ---
@@ -106,3 +109,18 @@ Como o secret `CLOUDFLARE_API_TOKEN` já fica salvo no GitHub:
 CLOUDFLARE_API_TOKEN="seu_token_aqui" npm run cloudflare:status
 ```
 O script exibirá na tela e criará o arquivo `cloudflare-status-report.md` com o inventário completo.
+
+---
+
+## 🛠️ 7. Aplicar Ajustes Automáticos de Conformidade
+
+Para ajustar automaticamente os registros DKIM (nuvem cinza), limpar registros temporários (`_acme-challenge`) e configurar SSL para Full (strict):
+
+* **Pelo GitHub Actions (1 Clique):**
+  Acesse a aba **Actions** > **Cloudflare - Aplicar Ajustes de Conformidade** ([`.github/workflows/fix-cloudflare.yml`](../.github/workflows/fix-cloudflare.yml)) e clique em **Run workflow**.
+
+* **No Terminal Local:**
+  ```bash
+  CLOUDFLARE_API_TOKEN="seu_token_aqui" npm run cloudflare:fix
+  ```
+

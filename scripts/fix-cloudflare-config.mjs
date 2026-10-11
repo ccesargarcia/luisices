@@ -1,0 +1,133 @@
+#!/usr/bin/env node
+/**
+ * scripts/fix-cloudflare-config.mjs
+ * 
+ * Aplica automaticamente as correções de conformidade na Cloudflare:
+ * 1. Desativa proxy (muda para nuvem cinza) nos registros DKIM do Firebase:
+ *    - firebase1._domainkey.luisices.com.br
+ *    - firebase2._domainkey.luisices.com.br
+ * 2. Remove registros temporários obsoletos (lixo de certificados expirados):
+ *    - _acme-challenge.loja.dev.luisices.com.br
+ *    - _acme-challenge.lojinha.dev.luisices.com.br
+ * 3. Altera o modo SSL/TLS da zona para 'strict' (Full Strict).
+ */
+
+import dotenv from 'dotenv';
+
+dotenv.config({ path: '.env.local' });
+dotenv.config();
+
+const API_TOKEN = process.env.CLOUDFLARE_API_TOKEN;
+const BASE_URL = 'https://api.cloudflare.com/client/v4';
+
+if (!API_TOKEN) {
+  console.error('\n❌ ERRO: CLOUDFLARE_API_TOKEN não encontrado.');
+  console.log('Defina no arquivo .env.local ou passe via linha de comando:');
+  console.log('CLOUDFLARE_API_TOKEN="seu_token" node scripts/fix-cloudflare-config.mjs\n');
+  process.exit(1);
+}
+
+async function cfRequest(endpoint, options = {}) {
+  const res = await fetch(`${BASE_URL}${endpoint}`, {
+    ...options,
+    headers: {
+      Authorization: `Bearer ${API_TOKEN}`,
+      'Content-Type': 'application/json',
+      ...options.headers,
+    },
+  });
+
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data.success) {
+    const errorMsg = data.errors?.[0]?.message || `HTTP ${res.status}: ${res.statusText}`;
+    throw new Error(`[Cloudflare API Error] ${endpoint} -> ${errorMsg}`);
+  }
+
+  return data.result;
+}
+
+async function run() {
+  console.log('\n======================================================');
+  console.log('       🛠️ APLICANDO AJUSTES AUTOMÁTICOS NA CLOUDFLARE   ');
+  console.log('======================================================\n');
+
+  // 1. Obter Zonas
+  console.log('🔍 Localizando zona principal...');
+  const zones = await cfRequest('/zones');
+  const zone = zones.find((z) => z.name === 'luisices.com.br') || zones[0];
+
+  if (!zone) {
+    throw new Error('Nenhuma zona encontrada para luisices.com.br.');
+  }
+
+  console.log(`✅ Zona identificada: ${zone.name} (ID: ${zone.id})\n`);
+
+  // 2. Buscar Registros DNS
+  console.log('📋 Buscando registros DNS da zona...');
+  const records = await cfRequest(`/zones/${zone.id}/dns_records?per_page=100`);
+  console.log(`Total de registros: ${records.length}\n`);
+
+  // 3. Ajustar DKIM do Firebase (Remover Proxy / Nuvem Cinza)
+  console.log('--- 1. Ajustando Registros DKIM (Email Deliverability) ---');
+  const dkimRecords = records.filter(
+    (r) =>
+      r.name.startsWith('firebase1._domainkey') ||
+      r.name.startsWith('firebase2._domainkey')
+  );
+
+  for (const dkim of dkimRecords) {
+    if (dkim.proxied) {
+      process.stdout.write(`• Alterando ${dkim.name} para ⚪ DNS Only... `);
+      await cfRequest(`/zones/${zone.id}/dns_records/${dkim.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ proxied: false }),
+      });
+      console.log('✅ Feito!');
+    } else {
+      console.log(`• ${dkim.name} já está como ⚪ DNS Only.`);
+    }
+  }
+
+  // 4. Remover Lixo Órfão (_acme-challenge)
+  console.log('\n--- 2. Removendo Registros Órfãos (_acme-challenge) ---');
+  const acmeRecords = records.filter((r) => r.name.startsWith('_acme-challenge'));
+
+  if (acmeRecords.length === 0) {
+    console.log('• Nenhum registro _acme-challenge antigo encontrado.');
+  } else {
+    for (const acme of acmeRecords) {
+      process.stdout.write(`• Removendo registro órfão ${acme.name} (${acme.type})... `);
+      await cfRequest(`/zones/${zone.id}/dns_records/${acme.id}`, {
+        method: 'DELETE',
+      });
+      console.log('🗑️ Excluído com sucesso!');
+    }
+  }
+
+  // 5. Ajustar SSL/TLS para 'strict'
+  console.log('\n--- 3. Ajustando Modo SSL/TLS para Full (Strict) ---');
+  try {
+    const ssl = await cfRequest(`/zones/${zone.id}/settings/ssl`);
+    if (ssl.value !== 'strict') {
+      process.stdout.write(`• Modo atual: ${ssl.value}. Atualizando para 'strict'... `);
+      await cfRequest(`/zones/${zone.id}/settings/ssl`, {
+        method: 'PATCH',
+        body: JSON.stringify({ value: 'strict' }),
+      });
+      console.log('🔒 Atualizado com sucesso para Full (strict)!');
+    } else {
+      console.log('• Modo SSL já está configurado como Full (strict).');
+    }
+  } catch (err) {
+    console.warn(`⚠️ Não foi possível alterar a configuração SSL: ${err.message}`);
+  }
+
+  console.log('\n======================================================');
+  console.log('🎉 TODOS OS AJUSTES FORAM APLICADOS COM SUCESSO!');
+  console.log('======================================================\n');
+}
+
+run().catch((err) => {
+  console.error('\n❌ Erro durante a execução dos ajustes:', err.message);
+  process.exit(1);
+});

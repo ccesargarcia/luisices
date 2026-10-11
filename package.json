@@ -23,6 +23,7 @@
     "cloudflare:deploy:dev": "npm run cloudflare:deploy:cdn:dev && npm run cloudflare:deploy:api:dev",
     "cloudflare:deploy:prod": "npm run cloudflare:deploy:cdn:prod && npm run cloudflare:deploy:api:prod",
     "cloudflare:status": "node scripts/audit-cloudflare.mjs",
+    "cloudflare:fix": "node scripts/fix-cloudflare-config.mjs",
     "test": "vitest run",
     "test:unit": "vitest run",
     "test:unit:watch": "vitest",
