@@ -1,0 +1,186 @@
+name: Diagnóstico e Sincronização Alexa Skill (ASK SMAPI)
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'Ação a executar'
+        required: true
+        default: 'consultar'
+        type: choice
+        options:
+          - consultar
+          - sincronizar_prod_igual_dev
+
+concurrency:
+  group: "alexa-skill-diagnose-${{ github.ref }}"
+  cancel-in-progress: false
+
+jobs:
+  diagnose-alexa:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: '20'
+
+      - name: Install ASK CLI
+        run: npm install -g ask-cli
+
+      - name: Configurar ASK CLI
+        env:
+          ASK_CLI_CONFIG: ${{ secrets.ASK_CLI_CONFIG }}
+          ASK_REFRESH_TOKEN: ${{ secrets.ASK_REFRESH_TOKEN }}
+        run: |
+          mkdir -p ~/.ask
+          if [ -n "$ASK_CLI_CONFIG" ]; then
+            echo "$ASK_CLI_CONFIG" > ~/.ask/cli_config
+            chmod 600 ~/.ask/cli_config
+            echo "✅ Credenciais configuradas via ASK_CLI_CONFIG."
+          elif [ -n "$ASK_REFRESH_TOKEN" ]; then
+            cat <<EOF > ~/.ask/cli_config
+          {
+            "profiles": {
+              "default": {
+                "token": {
+                  "refresh_token": "${ASK_REFRESH_TOKEN}",
+                  "token_type": "bearer"
+                }
+              }
+            }
+          }
+          EOF
+            chmod 600 ~/.ask/cli_config
+            echo "✅ Credenciais configuradas via ASK_REFRESH_TOKEN."
+          else
+            echo "::error ::Nenhuma credencial ASK encontrada em secrets."
+            exit 1
+          fi
+
+      - name: Consultar e Comparar Dev vs Prod
+        env:
+          DEV_SKILL_ID: ${{ secrets.DEV_ALEXA_SKILL_ID || secrets.ALEXA_DEV_SKILL_ID || 'amzn1.ask.skill.1cd0031f-ada0-4da8-8721-2ad44b4b1c96' }}
+          PROD_SKILL_ID: ${{ secrets.PROD_ALEXA_SKILL_ID || secrets.ALEXA_PROD_SKILL_ID || secrets.ALEXA_SKILL_ID }}
+          ACTION: ${{ inputs.action }}
+        run: |
+          echo "=========================================================="
+          echo "🔍 DIAGNÓSTICO DIRETO VIA AMAZON SMAPI"
+          echo "DEV SKILL ID:  $DEV_SKILL_ID"
+          echo "PROD SKILL ID: $PROD_SKILL_ID"
+          echo "=========================================================="
+
+          echo "📥 Baixando manifesto real de DEV da Amazon..."
+          ask smapi get-skill-manifest -s "$DEV_SKILL_ID" -g development > dev-manifest.json
+          ask smapi get-skill-status -s "$DEV_SKILL_ID" > dev-status.json
+
+          echo "📥 Baixando manifesto real de PROD da Amazon..."
+          ask smapi get-skill-manifest -s "$PROD_SKILL_ID" -g development > prod-manifest.json
+          ask smapi get-skill-status -s "$PROD_SKILL_ID" > prod-status.json
+
+          node -e '
+            const fs = require("fs");
+            const devManifest = JSON.parse(fs.readFileSync("dev-manifest.json", "utf8"));
+            const prodManifest = JSON.parse(fs.readFileSync("prod-manifest.json", "utf8"));
+            const devStatus = JSON.parse(fs.readFileSync("dev-status.json", "utf8"));
+            const prodStatus = JSON.parse(fs.readFileSync("prod-status.json", "utf8"));
+
+            console.log("\n================ DEV (ESTADO NA AMAZON) ================");
+            console.log("Endpoint:", devManifest.manifest?.apis?.custom?.endpoint?.uri);
+            console.log("Interfaces:", JSON.stringify(devManifest.manifest?.apis?.custom?.interfaces, null, 2));
+            console.log("Permissions:", JSON.stringify(devManifest.manifest?.permissions, null, 2));
+            console.log("Status Manifest:", devStatus.manifest?.lastUpdateRequest?.status);
+            console.log("Status Model pt-BR:", devStatus.interactionModel?.["pt-BR"]?.lastUpdateRequest?.status);
+
+            console.log("\n================ PROD (ESTADO NA AMAZON) ================");
+            console.log("Endpoint:", prodManifest.manifest?.apis?.custom?.endpoint?.uri);
+            console.log("Interfaces:", JSON.stringify(prodManifest.manifest?.apis?.custom?.interfaces, null, 2));
+            console.log("Permissions:", JSON.stringify(prodManifest.manifest?.permissions, null, 2));
+            console.log("Status Manifest:", prodStatus.manifest?.lastUpdateRequest?.status);
+            console.log("Status Model pt-BR:", prodStatus.interactionModel?.["pt-BR"]?.lastUpdateRequest?.status);
+
+            if (prodStatus.manifest?.lastUpdateRequest?.errors) {
+              console.log("❌ ERROS NO MANIFESTO DE PROD:", JSON.stringify(prodStatus.manifest.lastUpdateRequest.errors, null, 2));
+            }
+            if (prodStatus.interactionModel?.["pt-BR"]?.lastUpdateRequest?.errors) {
+              console.log("❌ ERROS NO MODELO DE PROD:", JSON.stringify(prodStatus.interactionModel["pt-BR"].lastUpdateRequest.errors, null, 2));
+            }
+
+            console.log("\n================ DIFERENÇAS DETECTADAS ================");
+            const devInterfaces = devManifest.manifest?.apis?.custom?.interfaces || [];
+            const prodInterfaces = prodManifest.manifest?.apis?.custom?.interfaces || [];
+            console.log("Interfaces em Dev:", devInterfaces.map(i => i.type));
+            console.log("Interfaces em Prod:", prodInterfaces.map(i => i.type));
+
+            const devPerms = devManifest.manifest?.permissions || [];
+            const prodPerms = prodManifest.manifest?.permissions || [];
+            console.log("Permissões em Dev:", devPerms.map(p => p.name));
+            console.log("Permissões em Prod:", prodPerms.map(p => p.name));
+          '
+
+          if [ "$ACTION" = "sincronizar_prod_igual_dev" ]; then
+            echo ""
+            echo "=========================================================="
+            echo "🚀 SINCRONIZANDO: APLICANDO INTERFACES E PERMISSÕES DE DEV EM PROD"
+            echo "=========================================================="
+            node -e '
+              const fs = require("fs");
+              const dev = JSON.parse(fs.readFileSync("dev-manifest.json", "utf8"));
+              const prod = JSON.parse(fs.readFileSync("prod-manifest.json", "utf8"));
+              
+              if (!prod.manifest.apis) prod.manifest.apis = {};
+              if (!prod.manifest.apis.custom) prod.manifest.apis.custom = {};
+              prod.manifest.apis.custom.interfaces = dev.manifest?.apis?.custom?.interfaces || [];
+              prod.manifest.permissions = dev.manifest?.permissions || [];
+              
+              if (!prod.manifest.apis.custom.endpoint) prod.manifest.apis.custom.endpoint = {};
+              prod.manifest.apis.custom.endpoint.uri = "https://api.luisices.com.br/alexaWebhook";
+              prod.manifest.apis.custom.endpoint.sslCertificateType = "Wildcard";
+              
+              fs.writeFileSync("prod-manifest-sync.json", JSON.stringify(prod, null, 2) + "\n", "utf8");
+              console.log("✅ Manifesto sincronizado gerado em prod-manifest-sync.json");
+            '
+
+            echo "📦 Enviando manifesto sincronizado para Prod..."
+            ask smapi update-skill-manifest -s "$PROD_SKILL_ID" -g development --manifest "file:prod-manifest-sync.json"
+            
+            echo "⏳ Aguardando confirmação da Amazon..."
+            for i in {1..15}; do
+              STATUS_RAW=$(ask smapi get-skill-status -s "$PROD_SKILL_ID" 2>/dev/null || echo "{}")
+              M_STATUS=$(node -e 'try { const s = JSON.parse(process.argv[1]); console.log(s.manifest?.lastUpdateRequest?.status || "PENDING"); } catch { console.log("PENDING"); }' "$STATUS_RAW")
+              echo "   Status Manifesto: $M_STATUS"
+              if [ "$M_STATUS" = "SUCCEEDED" ]; then
+                echo "✅ Manifesto aprovado na Amazon!"
+                break
+              fi
+              sleep 3
+            done
+
+            echo "📦 Recompilando modelo de interação em Prod a partir de Dev..."
+            ask smapi get-interaction-model -s "$DEV_SKILL_ID" -g development -l pt-BR > dev-model.json
+            node -e '
+              const fs = require("fs");
+              const model = JSON.parse(fs.readFileSync("dev-model.json", "utf8"));
+              if (model.interactionModel?.languageModel) {
+                model.interactionModel.languageModel.invocationName = "ateliê";
+              }
+              fs.writeFileSync("prod-model-sync.json", JSON.stringify(model, null, 2) + "\n", "utf8");
+            '
+            ask smapi set-interaction-model -s "$PROD_SKILL_ID" -g development -l pt-BR --interaction-model "file:prod-model-sync.json"
+
+            echo "⏳ Aguardando compilação do modelo pela Amazon..."
+            for i in {1..20}; do
+              STATUS_RAW=$(ask smapi get-skill-status -s "$PROD_SKILL_ID" 2>/dev/null || echo "{}")
+              MOD_STATUS=$(node -e 'try { const s = JSON.parse(process.argv[1]); console.log(s.interactionModel?.["pt-BR"]?.lastUpdateRequest?.status || "PENDING"); } catch { console.log("PENDING"); }' "$STATUS_RAW")
+              echo "   Status Modelo: $MOD_STATUS"
+              if [ "$MOD_STATUS" = "SUCCEEDED" ]; then
+                echo "✅ Modelo compilado com sucesso!"
+                break
+              fi
+              sleep 3
+            done
+            echo "🎉 Sincronização concluída com sucesso!"
+          fi
