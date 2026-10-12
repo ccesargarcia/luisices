@@ -66,7 +66,7 @@ Os testes atuais de integração de regras usam principalmente SDKs cliente e `r
 
 - **Etapa 1:** inventário e matriz de versões — concluída.
 - **Etapa 2:** concluída; base atual e contratos reais do Admin/Functions validados, sem atualizar os SDKs.
-- **Etapa 3:** consumidores migrados e par alvo instalado; validar no workflow completo antes do deploy em DEV.
+- **Etapa 3:** concluída; consumidores migrados e par alvo instalado com contratos validados nos dois modos do workflow.
 - **Etapa 4:** publicar e observar em DEV. Exigir instalação completa com `npm ci` sem ignorar conflitos de peers, descoberta das Functions, testes e verificações dos fluxos afetados.
 - **Etapa 5:** preparar reversão ao conjunto anterior de código e lockfiles; promover à `main` e publicar Functions pelo workflow separado após validação explícita da entrega.
 
@@ -118,11 +118,11 @@ Os SDKs do backend foram fixados em **Admin 14.5.0 / Functions 7.4.0**, com runt
 
 Os consumidores diretos usam os módulos `app`, `auth`, `firestore`, `storage` e `database`. Foram preservados os serviços injetados de sincronização de usuários e o contrato da fábrica de IA; o chamador dessa fábrica agora fornece getters por serviço em lugar do namespace do SDK. Todos os erros HTTPS usam import explícito de v2, incluindo comparações com `instanceof`.
 
-O trecho JavaScript do workflow manual de Functions também foi migrado e sua CLI foi fixada em 15.32.1, versão usada na validação local. Nenhum workflow de produção foi executado nesta etapa.
+O trecho JavaScript do workflow manual de Functions também foi migrado. A CLI dos workflows manual e DEV foi fixada em 15.32.1, versão usada na validação local, e a validação rápida do backend usa `npm ci`. Nenhum workflow de produção foi executado nesta etapa.
 
 Functions 7 traz Express 5. O teste de parsing passa a declarar `query parser = extended`, preservando suas verificações de campos aninhados e de rejeição de campos de protótipo. Os handlers atuais do backend não leem `req.query`; essa configuração pertence ao teste de compatibilidade, não altera endpoints da aplicação. Ver [mudanças do Express 5](https://expressjs.com/en/guide/migrating-5/).
 
-Validação local com os SDKs novos: 907 testes unitários, 102 testes de integração Firestore/Storage, 6 testes de presença RTDB e 17 contratos com Admin real e wrappers HTTP aprovados. A referência das 40 definições de Functions não foi regenerada: os contratos continuaram iguais. O workflow completo de emuladores deve confirmar a execução antes do deploy em DEV.
+Validação local com os SDKs novos: 907 testes unitários, 102 testes de integração Firestore/Storage, 6 testes de presença RTDB e 17 contratos com Admin real e wrappers HTTP aprovados. A referência das 40 definições de Functions não foi regenerada: os contratos continuaram iguais. O [workflow com os SDKs novos](https://github.com/ccesargarcia/luisices/actions/runs/38207792753) passou tanto no Functions Emulator completo quanto nos wrappers HTTP reais com validação do SDK, antes do deploy em DEV.
 
 ## Fontes
 
