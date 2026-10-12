@@ -12,6 +12,7 @@ import {
   executeOrdersImport,
   ParsedOrderRow,
 } from '../../../src/app/utils/importOrdersExcel';
+import { updateReviewedImportRow, getSelectedImportRows } from '../../../src/app/utils/importOrdersReview';
 import { firebaseOrderService } from '../../../src/services/firebaseOrderService';
 import { firebaseCustomerService } from '../../../src/services/firebaseCustomerService';
 
@@ -180,6 +181,18 @@ describe('Importação de Pedidos via Excel (importOrdersExcel)', () => {
   describe('4. Execução em Lote (executeOrdersImport)', () => {
     beforeEach(() => {
       vi.restoreAllMocks();
+    });
+
+    it('grava somente o pedido selecionado com valores editados, sem cadastrar o cliente excluído da seleção', async () => {
+      const original: ParsedOrderRow = { rowIndex: 2, customerName: 'Cliente não selecionado', customerPhone: '', productName: 'Produto original', quantity: 1, price: 100, deliveryDate: '2026-10-20', status: 'pending', paymentStatus: 'pending', paidAmount: 0, remainingAmount: 100, isValid: true, errors: [], warnings: [], rawData: {} };
+      const edited = updateReviewedImportRow({ ...original, rowIndex: 3 }, { customerName: 'Cliente revisado', productName: 'Produto revisado', quantity: 5, price: 150, paidAmount: 40, paymentStatus: 'partial', paymentMethod: 'pix' });
+      vi.spyOn(firebaseCustomerService, 'getCustomers').mockResolvedValue([]);
+      const customerSpy = vi.spyOn(firebaseCustomerService, 'createCustomer').mockResolvedValue('selected-customer');
+      const orderSpy = vi.spyOn(firebaseOrderService, 'createOrder').mockResolvedValue({ id: 'selected-order' } as any);
+      const result = await executeOrdersImport(getSelectedImportRows([original, edited], new Set([3])), 'test-user');
+      expect(result.total).toBe(1);expect(result.successCount).toBe(1);
+      expect(customerSpy).toHaveBeenCalledTimes(1);expect(customerSpy).toHaveBeenCalledWith('test-user', expect.objectContaining({ name: 'Cliente revisado' }));
+      expect(orderSpy).toHaveBeenCalledTimes(1);expect(orderSpy).toHaveBeenCalledWith(expect.objectContaining({ customerName: 'Cliente revisado', productName: 'Produto revisado', quantity: 5, price: 150, payment: expect.objectContaining({ paidAmount: 40, remainingAmount: 110 }) }));
     });
 
     it('deve criar clientes automaticamente se não existirem e gravar os pedidos', async () => {

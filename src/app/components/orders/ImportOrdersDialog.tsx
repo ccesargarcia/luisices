@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -37,6 +37,8 @@ import {
   ImportProgress,
   ImportExecutionResult,
 } from '../../utils/importOrdersExcel';
+import { ImportOrderRowEditor } from './ImportOrderRowEditor';
+import { getSelectedImportRows } from '../../utils/importOrdersReview';
 import { formatCurrency } from '../../utils/currency';
 
 interface ImportOrdersDialogProps {
@@ -68,6 +70,10 @@ export function ImportOrdersDialog({
   const [parseResult, setParseResult] = useState<ExcelParseResult | null>(null);
 
   // Filtro de exibição na tabela de pré-visualização
+  const [selectedRowIds, setSelectedRowIds] = useState<Set<number>>(new Set());
+  const [editingRowIndex, setEditingRowIndex] = useState<number | null>(null);
+  const editorRef = useRef<HTMLDivElement>(null);
+  useEffect(() => { if (editingRowIndex !== null) editorRef.current?.scrollIntoView({ block: 'start' }); }, [editingRowIndex]);
   const [previewFilter, setPreviewFilter] = useState<'all' | 'valid' | 'invalid'>('all');
   const [autoCreateCustomer, setAutoCreateCustomer] = useState(true);
 
@@ -79,6 +85,8 @@ export function ImportOrdersDialog({
   const resetState = () => {
     setFileName(null);
     setParseResult(null);
+    setSelectedRowIds(new Set());
+    setEditingRowIndex(null);
     setIsImporting(false);
     setImportProgress(null);
     setImportResult(null);
@@ -99,12 +107,16 @@ export function ImportOrdersDialog({
     }
 
     setFileName(file.name);
+    setParseResult(null);
+    setSelectedRowIds(new Set());
+    setEditingRowIndex(null);
     setParsing(true);
     setImportResult(null);
 
     try {
       const res = await parseOrdersExcelFile(file);
       setParseResult(res);
+      setSelectedRowIds(new Set(res.validRows.map(row => row.rowIndex)));
 
       if (res.totalRows === 0) {
         toast.warning('O arquivo não contém linhas de pedidos para importar.');
@@ -146,17 +158,17 @@ export function ImportOrdersDialog({
   };
 
   const handleStartImport = async () => {
-    if (!parseResult || parseResult.validRows.length === 0 || !user?.uid) return;
+    if (!selectedRows.length || selectedInvalidCount > 0 || editingRowIndex !== null || parsing || isImporting || !user?.uid) return;
 
     setIsImporting(true);
     setImportProgress({
       current: 0,
-      total: parseResult.validRows.length,
+      total: selectedRows.length,
       statusText: 'Iniciando importação...',
     });
 
     try {
-      const result = await executeOrdersImport(parseResult.validRows, user.uid, {
+      const result = await executeOrdersImport(selectedRows, user.uid, {
         autoCreateCustomer,
         onProgress: (p) => setImportProgress(p),
       });
@@ -182,6 +194,39 @@ export function ImportOrdersDialog({
     if (previewFilter === 'invalid') return !r.isValid;
     return true;
   });
+
+  const selectedRows = getSelectedImportRows(parseResult?.allRows || [], selectedRowIds);
+  const selectedInvalidCount = selectedRows.filter(row => !row.isValid).length;
+  const editingRow = parseResult?.allRows.find(row => row.rowIndex === editingRowIndex);
+  const allVisibleSelected = filteredPreviewRows.length > 0 && filteredPreviewRows.every(row => selectedRowIds.has(row.rowIndex));
+  const someVisibleSelected = filteredPreviewRows.some(row => selectedRowIds.has(row.rowIndex));
+  const toggleRow = (rowIndex: number) => setSelectedRowIds(previous => {
+    const next = new Set(previous);
+    if (next.has(rowIndex)) next.delete(rowIndex); else next.add(rowIndex);
+    return next;
+  });
+  const toggleVisibleRows = () => setSelectedRowIds(previous => {
+    const next = new Set(previous);
+    filteredPreviewRows.forEach(row => { if (allVisibleSelected) next.delete(row.rowIndex); else next.add(row.rowIndex); });
+    return next;
+  });
+  const beginEdit = (rowIndex: number) => {
+    if (editingRowIndex !== null && editingRowIndex !== rowIndex) {
+      toast.info('Salve ou descarte a edição atual antes de editar outro pedido.');
+      editorRef.current?.scrollIntoView({ block: 'start' });
+      return;
+    }
+    setEditingRowIndex(rowIndex);
+  };
+  const saveEditedRow = (edited: ParsedOrderRow) => {
+    setParseResult(previous => {
+      if (!previous) return previous;
+      const allRows = previous.allRows.map(row => row.rowIndex === edited.rowIndex ? edited : row);
+      return { ...previous, allRows, validRows: allRows.filter(row => row.isValid), invalidRows: allRows.filter(row => !row.isValid) };
+    });
+    setEditingRowIndex(null);
+    toast.success(`Alterações da linha ${edited.rowIndex} salvas na prévia.`);
+  };
 
   const percentProgress =
     importProgress && importProgress.total > 0
@@ -222,7 +267,7 @@ export function ImportOrdersDialog({
                 Importar Pedidos via Excel
               </DialogTitle>
               <DialogDescription className="text-sm text-muted-foreground mt-0.5">
-                Revise sua planilha (.xlsx, .xls ou .csv) antes de importar os pedidos.
+                Revise, edite e selecione os pedidos da sua planilha antes de importar.
               </DialogDescription>
             </div>
           </div>
@@ -419,6 +464,18 @@ export function ImportOrdersDialog({
                     </div>
                   </div>
 
+                  <div className="flex flex-wrap items-center gap-2 text-xs">
+                    <label className="flex items-center gap-2 min-h-11 text-xs cursor-pointer">
+                      <Checkbox checked={allVisibleSelected ? true : someVisibleSelected ? 'indeterminate' : false} onCheckedChange={toggleVisibleRows} aria-label="Selecionar pedidos visíveis" />
+                      Todos visíveis
+                    </label>
+                    <span className="font-medium">{selectedRows.length} selecionado(s)</span>
+                    <Button variant="ghost" size="sm" className="min-h-11" aria-label="Limpar seleção" onClick={() => setSelectedRowIds(new Set())} disabled={!selectedRows.length}>Limpar</Button>
+                  </div>
+                  {selectedInvalidCount > 0 && <p role="alert" className="text-xs text-destructive">Há {selectedInvalidCount} pedido(s) selecionado(s) com erros. Edite os dados ou desmarque essas linhas para importar.</p>}
+                  {editingRow && <div ref={editorRef}><ImportOrderRowEditor key={editingRow.rowIndex} row={editingRow} onSave={saveEditedRow} onCancel={() => setEditingRowIndex(null)} /></div>}
+                  <p className="text-xs text-muted-foreground">Somente os pedidos selecionados serão importados. Edite uma linha para corrigir os dados antes de confirmar.</p>
+
                   {/* Opção de Autocadastro de Cliente */}
                   <div className="flex items-start gap-2 px-1 min-w-0">
                     <Checkbox
@@ -438,7 +495,7 @@ export function ImportOrdersDialog({
                   <div className="space-y-3 md:hidden" aria-label="Prévia dos pedidos">
                     {filteredPreviewRows.length === 0 ? (
                       <p className="py-6 text-center text-sm text-muted-foreground">Nenhum pedido encontrado para o filtro selecionado.</p>
-                    ) : filteredPreviewRows.map((row) => <ImportOrderPreviewCard key={row.rowIndex} row={row} />)}
+                    ) : filteredPreviewRows.map((row) => <ImportOrderPreviewCard key={row.rowIndex} row={row} selected={selectedRowIds.has(row.rowIndex)} onToggle={() => toggleRow(row.rowIndex)} onEdit={() => beginEdit(row.rowIndex)} />)}
                   </div>
 
                   {/* No desktop a tabela tem rolagem horizontal própria; o corpo controla a rolagem vertical. */}
@@ -446,6 +503,7 @@ export function ImportOrdersDialog({
                     <table className="w-full min-w-[900px] text-xs text-left">
                       <thead className="bg-muted text-muted-foreground border-b border-border">
                         <tr>
+                          <th className="py-2.5 px-3 font-semibold">Importar</th>
                           <th className="py-2.5 px-3 font-semibold w-12 text-center">Linha</th>
                           <th className="py-2.5 px-3 font-semibold">Cliente</th>
                           <th className="py-2.5 px-3 font-semibold">Telefone</th>
@@ -455,12 +513,13 @@ export function ImportOrdersDialog({
                           <th className="py-2.5 px-3 font-semibold">Entrega</th>
                           <th className="py-2.5 px-3 font-semibold">Status</th>
                           <th className="py-2.5 px-3 font-semibold">Validação</th>
+                          <th className="py-2.5 px-3 font-semibold">Editar</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-border">
                         {filteredPreviewRows.length === 0 ? (
                           <tr>
-                            <td colSpan={9} className="py-8 text-center text-muted-foreground">
+                            <td colSpan={11} className="py-8 text-center text-muted-foreground">
                               Nenhum pedido encontrado para o filtro selecionado.
                             </td>
                           </tr>
@@ -474,6 +533,7 @@ export function ImportOrdersDialog({
                                   : 'bg-destructive/5 hover:bg-destructive/10 transition-colors'
                               }
                             >
+                              <td className="py-2 px-3"><Checkbox checked={selectedRowIds.has(row.rowIndex)} onCheckedChange={() => toggleRow(row.rowIndex)} aria-label={`Selecionar linha ${row.rowIndex}`} /></td>
                               <td className="py-2 px-3 text-center text-muted-foreground font-mono">
                                 #{row.rowIndex}
                               </td>
@@ -494,11 +554,7 @@ export function ImportOrdersDialog({
                                 {row.deliveryDate}
                               </td>
                               <td className="py-2 px-3 capitalize text-muted-foreground">
-                                {row.status === 'in-progress'
-                                  ? 'Em Produção'
-                                  : row.status === 'completed'
-                                  ? 'Concluído'
-                                  : 'Pendente'}
+                                {orderStatusLabel(row.status)}
                               </td>
                               <td className="py-2 px-3">
                                 {row.isValid ? (
@@ -516,6 +572,7 @@ export function ImportOrdersDialog({
                                   </div>
                                 )}
                               </td>
+                              <td className="py-2 px-3"><Button variant="outline" size="sm" className="min-h-11" onClick={() => beginEdit(row.rowIndex)} aria-label={`Editar linha ${row.rowIndex}`}>Editar</Button></td>
                             </tr>
                           ))
                         )}
@@ -554,10 +611,10 @@ export function ImportOrdersDialog({
               </Button>
 
               <div className="min-w-0 flex justify-end">
-                {parseResult && parseResult.validRows.length > 0 && (
+                {parseResult && (
                   <Button
                     onClick={handleStartImport}
-                    disabled={isImporting || parseResult.validRows.length === 0}
+                    disabled={isImporting || !selectedRows.length || selectedInvalidCount > 0 || editingRowIndex !== null}
                     className="min-h-11 w-full sm:w-auto min-w-0 whitespace-normal gap-2 px-3 sm:px-4"
                   >
                     {isImporting ? (
@@ -567,7 +624,7 @@ export function ImportOrdersDialog({
                       </>
                     ) : (
                       <>
-                        <span>Importar {parseResult.validRows.length} {parseResult.validRows.length === 1 ? 'pedido' : 'pedidos'}</span>
+                        <span>Importar {selectedRows.length} {selectedRows.length === 1 ? 'pedido' : 'pedidos'}</span>
                         <ArrowRight className="size-4" />
                       </>
                     )}
@@ -582,11 +639,15 @@ export function ImportOrdersDialog({
   );
 }
 
-function ImportOrderPreviewCard({ row }: { row: ParsedOrderRow }) {
+function orderStatusLabel(status: ParsedOrderRow['status']) {
+  return { pending: 'Pendente', 'in-progress': 'Em Produção', completed: 'Concluído', cancelled: 'Cancelado' }[status];
+}
+
+function ImportOrderPreviewCard({ row, selected, onToggle, onEdit }: { row: ParsedOrderRow; selected: boolean; onToggle: () => void; onEdit: () => void }) {
   return (
     <article className="rounded-lg border border-border bg-card p-3 space-y-2 min-w-0 [overflow-wrap:anywhere]">
       <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
-        <span className="font-medium text-muted-foreground">Linha #{row.rowIndex}</span>
+        <label className="flex items-center gap-2 min-h-11 text-xs cursor-pointer"><Checkbox checked={selected} onCheckedChange={onToggle} aria-label={`Selecionar linha ${row.rowIndex}`} /><span className="font-medium text-muted-foreground">Linha #{row.rowIndex}</span></label>
         <span className={row.isValid ? 'text-emerald-700 dark:text-emerald-400' : 'text-destructive'}>
           {row.isValid ? 'Pronto para importar' : 'Revisar dados'}
         </span>
@@ -598,8 +659,9 @@ function ImportOrderPreviewCard({ row }: { row: ParsedOrderRow }) {
         <div><dt className="text-muted-foreground">Quantidade</dt><dd>{row.quantity}</dd></div>
         <div><dt className="text-muted-foreground">Valor</dt><dd>{formatCurrency(row.price)}</dd></div>
         <div><dt className="text-muted-foreground">Entrega</dt><dd>{row.deliveryDate}</dd></div>
-        <div className="col-span-2"><dt className="text-muted-foreground">Status</dt><dd>{row.status === 'in-progress' ? 'Em Produção' : row.status === 'completed' ? 'Concluído' : 'Pendente'}</dd></div>
+        <div className="col-span-2"><dt className="text-muted-foreground">Status</dt><dd>{orderStatusLabel(row.status)}</dd></div>
       </dl>
+      <Button variant="outline" size="sm" className="min-h-11 w-full" onClick={onEdit} aria-label={`Editar linha ${row.rowIndex}`}>Editar dados</Button>
       {row.errors.length > 0 && <ul className="text-xs text-destructive space-y-1">{row.errors.map((error, index) => <li key={index}>{error}</li>)}</ul>}
     </article>
   );

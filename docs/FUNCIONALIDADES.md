@@ -41,6 +41,12 @@ A separação entre `products` (catálogo interno), `storeProducts` (vitrine), `
 
 Pedidos reúnem cliente, produto, quantidade, preço, pagamentos, entrega e status. O workflow inclui Design, Aprovação, Impressão, Corte, Montagem, Qualidade e Embalagem. Há atribuição de pedidos a colaboradores, filtros de equipe e consulta de arquivados.
 
+A importação de pedidos por `.xlsx`, `.xls` ou `.csv` permite revisar e editar cada linha antes de gravar. É possível alterar cliente e contatos, produto, quantidade, valores, entrega, status, pagamento, etiquetas e observações. Os pedidos válidos começam selecionados; o usuário pode marcar ou desmarcar linhas, selecionar as linhas visíveis no filtro ou limpar toda a seleção. Trocar o filtro não altera os pedidos escolhidos.
+
+O botão de importar mostra a quantidade selecionada e fica bloqueado enquanto houver edição aberta, nenhuma linha selecionada ou uma linha selecionada com erro. As edições são revalidadas ao salvar, recalculando o saldo do pagamento. A opção de cadastro automático de clientes atua somente sobre os pedidos efetivamente importados. Editar a prévia não altera o arquivo original nem grava dados no sistema; a gravação começa ao confirmar a importação. No celular a prévia usa cartões; no desktop, tabela com rolagem horizontal.
+
+Fontes da importação: [modal](../src/app/components/orders/ImportOrdersDialog.tsx), [edição](../src/app/components/orders/ImportOrderRowEditor.tsx), [revisão e seleção](../src/app/utils/importOrdersReview.ts), [parsing e gravação](../src/app/utils/importOrdersExcel.ts).
+
 A agenda organiza entregas. Não existe no Copiloto uma ferramenta dedicada para capacidade produtiva, dependências entre etapas ou alteração de responsável.
 
 O autoarquivamento atual é acionado pela interface do dashboard conforme dados carregados e preferências. Não deve ser apresentado como agendamento autônomo garantido no servidor quando ninguém abre o sistema.
