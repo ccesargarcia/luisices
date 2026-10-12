@@ -3,7 +3,7 @@
  * Segue estritamente a especificação docs/ESPECIFICACAO_ALEXA_ANTIGRAVITY.md.
  */
 
-const admin = require('firebase-admin');
+const { FieldValue, Timestamp } = require('firebase-admin/firestore');
 const { COLLECTIONS } = require('./repository');
 
 const LIMITS = {
@@ -15,7 +15,7 @@ const LIMITS = {
 
 /**
  * Incrementa atomicamente o contador para a janela de tempo e verifica o limite.
- * @param {admin.firestore.Firestore} db
+ * @param {import('firebase-admin/firestore').Firestore} db
  * @param {string} bucketKey - Identificador do bucket (ex: req:bindingKey:min)
  * @param {number} maxPoints - Limite máximo de operações na janela
  * @param {number} windowSeconds - Duração da janela em segundos
@@ -53,8 +53,8 @@ async function consumeRateLimit(db, bucketKey, maxPoints, windowSeconds) {
       ref,
       {
         count: nextCount,
-        expiresAt: admin.firestore.Timestamp.fromDate(expiresAt),
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        expiresAt: Timestamp.fromDate(expiresAt),
+        updatedAt: FieldValue.serverTimestamp(),
       },
       { merge: true }
     );
@@ -163,8 +163,8 @@ async function checkAndConsumeOrderRateLimitInTransaction(transaction, db, uid) 
     hourRef,
     {
       count: hourCount + 1,
-      expiresAt: admin.firestore.Timestamp.fromDate(hourExpiresAt),
-      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      expiresAt: Timestamp.fromDate(hourExpiresAt),
+      updatedAt: FieldValue.serverTimestamp(),
     },
     { merge: true }
   );
@@ -173,8 +173,8 @@ async function checkAndConsumeOrderRateLimitInTransaction(transaction, db, uid) 
     dayRef,
     {
       count: dayCount + 1,
-      expiresAt: admin.firestore.Timestamp.fromDate(dayExpiresAt),
-      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      expiresAt: Timestamp.fromDate(dayExpiresAt),
+      updatedAt: FieldValue.serverTimestamp(),
     },
     { merge: true }
   );

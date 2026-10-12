@@ -3,7 +3,9 @@
  * Segue estritamente a especificação docs/ESPECIFICACAO_ALEXA_ANTIGRAVITY.md (Seção 6).
  */
 
-const admin = require('firebase-admin');
+const { FieldValue, Timestamp } = require('firebase-admin/firestore');
+const { getAuth } = require('firebase-admin/auth');
+const { getApps } = require('firebase-admin/app');
 const { COLLECTIONS, recordAuditEvent } = require('./repository');
 
 /**
@@ -29,7 +31,7 @@ const { COLLECTIONS, recordAuditEvent } = require('./repository');
  * @param {number} [params.expectedRevision]
  * @param {string} [params.channel] - 'voice' | 'app' (padrão 'voice')
  * @param {object} params.config
- * @param {admin.firestore.Firestore} db
+ * @param {import('firebase-admin/firestore').Firestore} db
  * @param {object} [authService] - Instância auth injetável para testes
  * @returns {Promise<{ success: boolean, orderId: string, orderNumber: string, isReplay?: boolean }>}
  */
@@ -61,7 +63,7 @@ async function commitOrderFromDraft({
   }
 
   // 1.5. Validação prévia de autenticação Firebase Auth (fail-closed antes da transação)
-  const auth = authService || (admin.apps && admin.apps.length > 0 ? admin.auth() : null);
+  const auth = authService || (getApps().length > 0 ? getAuth() : null);
   if (!auth || typeof auth.getUser !== 'function') {
     throw new Error('AUTH_UNAVAILABLE: Serviço de autenticação indisponível no momento do commit.');
   }
@@ -330,12 +332,12 @@ async function commitOrderFromDraft({
     const dayExpiresAt = new Date(now + 172800 * 1000);
     transaction.set(
       hourRef,
-      { count: hourCount + 1, expiresAt: admin.firestore.Timestamp.fromDate(hourExpiresAt), updatedAt: admin.firestore.FieldValue.serverTimestamp() },
+      { count: hourCount + 1, expiresAt: Timestamp.fromDate(hourExpiresAt), updatedAt: FieldValue.serverTimestamp() },
       { merge: true }
     );
     transaction.set(
       dayRef,
-      { count: dayCount + 1, expiresAt: admin.firestore.Timestamp.fromDate(dayExpiresAt), updatedAt: admin.firestore.FieldValue.serverTimestamp() },
+      { count: dayCount + 1, expiresAt: Timestamp.fromDate(dayExpiresAt), updatedAt: FieldValue.serverTimestamp() },
       { merge: true }
     );
 
@@ -393,7 +395,7 @@ async function commitOrderFromDraft({
         startedAt: new Date().toISOString(),
       },
       version: 1,
-      createdAt: admin.firestore.Timestamp.now(),
+      createdAt: Timestamp.now(),
       deletedAt: null,
     };
     transaction.set(orderRef, orderData);
@@ -422,8 +424,8 @@ async function commitOrderFromDraft({
       tags: ['Alexa', 'Voz'],
       source: 'alexa',
       createdBy: uid,
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
-      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      createdAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
     };
     transaction.set(ledgerRef, ledgerData);
 
@@ -432,7 +434,7 @@ async function commitOrderFromDraft({
       state: 'committed',
       orderId,
       orderNumber,
-      committedAt: admin.firestore.FieldValue.serverTimestamp(),
+      committedAt: FieldValue.serverTimestamp(),
     });
 
     // 5. Gravar recibo durável de idempotência (alexaCommits/{draftId})
@@ -441,7 +443,7 @@ async function commitOrderFromDraft({
       orderNumber,
       uid,
       environment: config.environment,
-      committedAt: admin.firestore.FieldValue.serverTimestamp(),
+      committedAt: FieldValue.serverTimestamp(),
     });
 
     return {

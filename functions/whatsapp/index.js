@@ -2,9 +2,8 @@
  * Módulo de Integração com WhatsApp (Evolution API e Webhooks).
  */
 
-const functions = require('firebase-functions');
-const { onCall, onRequest } = require('firebase-functions/v2/https');
-const admin = require('firebase-admin');
+const { FieldValue, getFirestore } = require('firebase-admin/firestore');
+const { onCall, onRequest, HttpsError } = require('firebase-functions/v2/https');
 const { EVOLUTION_API_KEY, ORIGIN_SECRET } = require('../common/secrets');
 const {
   EVOLUTION_API_URL,
@@ -18,7 +17,7 @@ const { whatsappMessageLimiter } = require('../common/rateLimiters');
 const { persistIncomingMessage } = require('./persistMessage');
 
 const { authorizeChat } = require('./chatScope');
-const chatScope = (request, phone, options = {}) => authorizeChat(request, phone, { db: admin.firestore(), assertActiveSession, ...options });
+const chatScope = (request, phone, options = {}) => authorizeChat(request, phone, { db: getFirestore(), assertActiveSession, ...options });
 
 const MAX_WEBHOOK_BYTES = 1024 * 1024;
 
@@ -43,7 +42,7 @@ const sendWhatsAppDirectMessage = onCall(
   { maxInstances: 5, secrets: [EVOLUTION_API_KEY] },
   async (request) => {
     if (!(await isAuthorizedForWhatsApp(request))) {
-      throw new functions.https.HttpsError('permission-denied', 'Sem permissão para utilizar o módulo de Atendimento (WhatsApp).');
+      throw new HttpsError('permission-denied', 'Sem permissão para utilizar o módulo de Atendimento (WhatsApp).');
     }
 
     let requestRef = null;
@@ -51,61 +50,61 @@ const sendWhatsAppDirectMessage = onCall(
     try {
       await whatsappMessageLimiter.consume(request.auth.uid);
     } catch {
-      throw new functions.https.HttpsError('resource-exhausted', 'Limite de mensagens do WhatsApp atingido. Tente novamente mais tarde.');
+      throw new HttpsError('resource-exhausted', 'Limite de mensagens do WhatsApp atingido. Tente novamente mais tarde.');
     }
 
     const { phone, text, customerName, customerId, requestId } = request.data || {};
     if (!phone || typeof phone !== 'string' || !phone.trim()) {
-      throw new functions.https.HttpsError('invalid-argument', 'Telefone do destinatário é obrigatório.');
+      throw new HttpsError('invalid-argument', 'Telefone do destinatário é obrigatório.');
     }
     if (!text || typeof text !== 'string' || !text.trim()) {
-      throw new functions.https.HttpsError('invalid-argument', 'Texto da mensagem é obrigatório.');
+      throw new HttpsError('invalid-argument', 'Texto da mensagem é obrigatório.');
     }
     if (text.length > 4096) {
-      throw new functions.https.HttpsError('invalid-argument', 'A mensagem não pode ultrapassar 4096 caracteres.');
+      throw new HttpsError('invalid-argument', 'A mensagem não pode ultrapassar 4096 caracteres.');
     }
     if (typeof requestId !== 'string' || !/^[A-Za-z0-9_-]{16,100}$/.test(requestId)) {
-      throw new functions.https.HttpsError('invalid-argument', 'Identificador de envio inválido.');
+      throw new HttpsError('invalid-argument', 'Identificador de envio inválido.');
     }
 
     if (customerName != null && (typeof customerName !== 'string' || customerName.length > 200)) {
-      throw new functions.https.HttpsError('invalid-argument', 'Nome do cliente inválido.');
+      throw new HttpsError('invalid-argument', 'Nome do cliente inválido.');
     }
 
     const rawKey = (typeof EVOLUTION_API_KEY.value === 'function' ? EVOLUTION_API_KEY.value() : process.env.EVOLUTION_API_KEY) || '';
     if (!rawKey) {
-      throw new functions.https.HttpsError('failed-precondition', 'Chave EVOLUTION_API_KEY não configurada no Firebase Secret Manager.');
+      throw new HttpsError('failed-precondition', 'Chave EVOLUTION_API_KEY não configurada no Firebase Secret Manager.');
     }
 
     try {
       const cleanNumber = normalizeWhatsAppNumber(phone);
       if (!/^55\d{10,11}$/.test(cleanNumber)) {
-        throw new functions.https.HttpsError('invalid-argument', 'Número de WhatsApp inválido.');
+        throw new HttpsError('invalid-argument', 'Número de WhatsApp inválido.');
       }
       let verifiedCustomerName = null;
       let verifiedCustomerId = null;
       if (customerId) {
         if (typeof customerId !== 'string' || customerId.length > 128) {
-          throw new functions.https.HttpsError('invalid-argument', 'Cliente inválido.');
+          throw new HttpsError('invalid-argument', 'Cliente inválido.');
         }
-        const customer = await admin.firestore().collection('customers').doc(customerId).get();
+        const customer = await getFirestore().collection('customers').doc(customerId).get();
         if (!customer.exists || normalizeWhatsAppNumber(customer.data().phone) !== cleanNumber) {
-          throw new functions.https.HttpsError('invalid-argument', 'Cliente não corresponde ao telefone informado.');
+          throw new HttpsError('invalid-argument', 'Cliente não corresponde ao telefone informado.');
         }
         verifiedCustomerName = customer.data().name || null;
         verifiedCustomerId = customerId;
       }
       const chatOwner = await chatScope(request, cleanNumber, { customerId, create: true });
-      requestRef = admin.firestore().collection('whatsappSendRequests')
+      requestRef = getFirestore().collection('whatsappSendRequests')
         .doc(`${request.auth.uid}_${requestId}`);
       let existingRequest = null;
-      await admin.firestore().runTransaction(async (transaction) => {
+      await getFirestore().runTransaction(async (transaction) => {
         existingRequest = (await transaction.get(requestRef)).data() || null;
         if (existingRequest?.status === 'failed') {
           transaction.update(requestRef, {
             status: 'processing',
-            retryAt: admin.firestore.FieldValue.serverTimestamp(),
-            error: admin.firestore.FieldValue.delete(),
+            retryAt: FieldValue.serverTimestamp(),
+            error: FieldValue.delete(),
           });
           existingRequest = null;
           ownsRequest = true;
@@ -116,7 +115,7 @@ const sendWhatsAppDirectMessage = onCall(
           status: 'processing',
           uid: request.auth.uid,
           phone: cleanNumber,
-          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          createdAt: FieldValue.serverTimestamp(),
         });
         ownsRequest = true;
       });
@@ -124,7 +123,7 @@ const sendWhatsAppDirectMessage = onCall(
         return existingRequest.result;
       }
       if (existingRequest) {
-        throw new functions.https.HttpsError('aborted', 'Este envio já está sendo processado.');
+        throw new HttpsError('aborted', 'Este envio já está sendo processado.');
       }
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 10000);
@@ -159,7 +158,7 @@ const sendWhatsAppDirectMessage = onCall(
         });
 
         if (numberNotRegistered) {
-          throw new functions.https.HttpsError(
+          throw new HttpsError(
             'failed-precondition',
             'Este número não possui uma conta WhatsApp ativa ou não está disponível para receber mensagens.'
           );
@@ -175,7 +174,7 @@ const sendWhatsAppDirectMessage = onCall(
                 : response.status >= 500
                   ? 'unavailable'
                   : 'internal';
-        throw new functions.https.HttpsError(
+        throw new HttpsError(
           statusCode,
           response.status === 429
             ? 'A Evolution API está limitando os envios. Aguarde alguns instantes e tente novamente.'
@@ -187,7 +186,7 @@ const sendWhatsAppDirectMessage = onCall(
       const messageId = resData?.key?.id || `msg_${Date.now()}`;
       const nowIso = new Date().toISOString();
 
-      await admin.firestore().collection('whatsapp_messages').add({
+      await getFirestore().collection('whatsapp_messages').add({
         chatId: cleanNumber,
         phone: cleanNumber,
         customerName: verifiedCustomerName,
@@ -199,10 +198,10 @@ const sendWhatsAppDirectMessage = onCall(
         evolutionMessageId: messageId,
         sentByUid: request.auth.uid,
         userId: chatOwner,
-        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        createdAt: FieldValue.serverTimestamp(),
       });
 
-      await admin.firestore().collection('whatsapp_chats').doc(cleanNumber).set({
+      await getFirestore().collection('whatsapp_chats').doc(cleanNumber).set({
         id: cleanNumber,
         phone: cleanNumber,
         customerName: verifiedCustomerName || cleanNumber,
@@ -211,7 +210,7 @@ const sendWhatsAppDirectMessage = onCall(
         lastMessageTimestamp: nowIso,
         lastMessageSender: 'me',
         userId: chatOwner,
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
       }, { merge: true });
 
       const result = {
@@ -223,7 +222,7 @@ const sendWhatsAppDirectMessage = onCall(
       await requestRef.set({
         status: 'completed',
         result,
-        completedAt: admin.firestore.FieldValue.serverTimestamp(),
+        completedAt: FieldValue.serverTimestamp(),
       }, { merge: true });
 
       console.log('[sendWhatsAppDirectMessage] Mensagem enviada com sucesso para:', cleanNumber);
@@ -233,16 +232,16 @@ const sendWhatsAppDirectMessage = onCall(
         try {
           await requestRef.set({
             status: 'failed',
-            failedAt: admin.firestore.FieldValue.serverTimestamp(),
-            error: error instanceof functions.https.HttpsError ? error.code : 'internal',
+            failedAt: FieldValue.serverTimestamp(),
+            error: error instanceof HttpsError ? error.code : 'internal',
           }, { merge: true });
         } catch (stateError) {
           console.error('[sendWhatsAppDirectMessage] Não foi possível atualizar o estado idempotente:', stateError);
         }
       }
-      if (error instanceof functions.https.HttpsError) throw error;
+      if (error instanceof HttpsError) throw error;
       console.error('[sendWhatsAppDirectMessage] Falha ao enviar mensagem:', error);
-      throw new functions.https.HttpsError('internal', error.message || 'Erro ao conectar com a API do WhatsApp.');
+      throw new HttpsError('internal', error.message || 'Erro ao conectar com a API do WhatsApp.');
     }
   }
 );
@@ -254,41 +253,41 @@ const deleteWhatsAppMessage = onCall(
   { maxInstances: 5, secrets: [EVOLUTION_API_KEY] },
   async (request) => {
     if (!(await isAuthorizedForWhatsApp(request))) {
-      throw new functions.https.HttpsError('permission-denied', 'Sem permissão para utilizar o módulo de Atendimento (WhatsApp).');
+      throw new HttpsError('permission-denied', 'Sem permissão para utilizar o módulo de Atendimento (WhatsApp).');
     }
 
     const { messageDocId, phone, evolutionMessageId } = request.data || {};
     if ((!messageDocId && !evolutionMessageId) || typeof phone !== 'string' || !phone.trim()) {
-      throw new functions.https.HttpsError('invalid-argument', 'Identificador da mensagem é obrigatório.');
+      throw new HttpsError('invalid-argument', 'Identificador da mensagem é obrigatório.');
     }
 
     const rawKey = (typeof EVOLUTION_API_KEY.value === 'function' ? EVOLUTION_API_KEY.value() : process.env.EVOLUTION_API_KEY) || '';
     const cleanNumber = phone ? normalizeWhatsAppNumber(phone) : '';
     if (phone && !/^55\d{10,11}$/.test(cleanNumber)) {
-      throw new functions.https.HttpsError('invalid-argument', 'Número de WhatsApp inválido.');
+      throw new HttpsError('invalid-argument', 'Número de WhatsApp inválido.');
     }
 
     const chatOwner = await chatScope(request, cleanNumber);
     if (messageDocId) {
-      const target = await admin.firestore().collection('whatsapp_messages').doc(String(messageDocId)).get();
+      const target = await getFirestore().collection('whatsapp_messages').doc(String(messageDocId)).get();
       if (!target.exists || target.data().chatId !== cleanNumber || (target.data().userId || null) !== chatOwner) {
-        throw new functions.https.HttpsError('permission-denied', 'A mensagem não pertence a este chat.');
+        throw new HttpsError('permission-denied', 'A mensagem não pertence a este chat.');
       }
       if (evolutionMessageId && target.data().evolutionMessageId !== evolutionMessageId) {
-        throw new functions.https.HttpsError('invalid-argument', 'Identificadores da mensagem não correspondem.');
+        throw new HttpsError('invalid-argument', 'Identificadores da mensagem não correspondem.');
       }
     } else if (evolutionMessageId) {
-      const target = await admin.firestore().collection('whatsapp_messages')
+      const target = await getFirestore().collection('whatsapp_messages')
         .where('evolutionMessageId', '==', String(evolutionMessageId))
         .limit(1)
         .get();
       if (target.empty || target.docs[0].data().chatId !== cleanNumber || (target.docs[0].data().userId || null) !== chatOwner) {
-        throw new functions.https.HttpsError('not-found', 'Mensagem não encontrada neste chat.');
+        throw new HttpsError('not-found', 'Mensagem não encontrada neste chat.');
       }
     }
 
     if (evolutionMessageId && !rawKey) {
-      throw new functions.https.HttpsError('failed-precondition', 'Chave da Evolution API não configurada.');
+      throw new HttpsError('failed-precondition', 'Chave da Evolution API não configurada.');
     }
 
     if (evolutionMessageId && cleanNumber) {
@@ -317,21 +316,21 @@ const deleteWhatsAppMessage = onCall(
 
         if (!response.ok) {
           console.warn(`[deleteWhatsAppMessage] Evolution recusou a exclusão remota: status=${response.status}`);
-          throw new functions.https.HttpsError('failed-precondition', 'A Evolution API não confirmou a exclusão remota.');
+          throw new HttpsError('failed-precondition', 'A Evolution API não confirmou a exclusão remota.');
         }
       } catch (err) {
-        if (err instanceof functions.https.HttpsError) throw err;
+        if (err instanceof HttpsError) throw err;
         console.warn('[deleteWhatsAppMessage] Falha de rede ao tentar apagar na API do WhatsApp.');
-        throw new functions.https.HttpsError('unavailable', 'Não foi possível confirmar a exclusão no WhatsApp.');
+        throw new HttpsError('unavailable', 'Não foi possível confirmar a exclusão no WhatsApp.');
       }
     }
 
     try {
       if (messageDocId) {
-        await admin.firestore().collection('whatsapp_messages').doc(messageDocId).delete();
+        await getFirestore().collection('whatsapp_messages').doc(messageDocId).delete();
       }
       if (evolutionMessageId) {
-        const snap = await admin.firestore().collection('whatsapp_messages')
+        const snap = await getFirestore().collection('whatsapp_messages')
           .where('evolutionMessageId', '==', evolutionMessageId)
           .get();
         for (const d of snap.docs) {
@@ -340,12 +339,12 @@ const deleteWhatsAppMessage = onCall(
       }
     } catch (err) {
       console.error('[deleteWhatsAppMessage] Erro ao deletar documento no Firestore:', err);
-      throw new functions.https.HttpsError('internal', 'Não foi possível remover a mensagem do histórico.');
+      throw new HttpsError('internal', 'Não foi possível remover a mensagem do histórico.');
     }
 
     if (cleanNumber) {
       try {
-        const lastMsgSnap = await admin.firestore()
+        const lastMsgSnap = await getFirestore()
           .collection('whatsapp_messages')
           .where('chatId', '==', cleanNumber)
           .orderBy('timestamp', 'desc')
@@ -354,17 +353,17 @@ const deleteWhatsAppMessage = onCall(
 
         if (!lastMsgSnap.empty) {
           const lastMsg = lastMsgSnap.docs[0].data();
-          await admin.firestore().collection('whatsapp_chats').doc(cleanNumber).set({
+          await getFirestore().collection('whatsapp_chats').doc(cleanNumber).set({
             lastMessageText: lastMsg.text || '',
             lastMessageTimestamp: lastMsg.timestamp || new Date().toISOString(),
             lastMessageSender: lastMsg.sender || 'me',
-            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            updatedAt: FieldValue.serverTimestamp(),
           }, { merge: true });
         } else {
-          await admin.firestore().collection('whatsapp_chats').doc(cleanNumber).set({
+          await getFirestore().collection('whatsapp_chats').doc(cleanNumber).set({
             lastMessageText: '',
             lastMessageTimestamp: null,
-            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            updatedAt: FieldValue.serverTimestamp(),
           }, { merge: true });
         }
       } catch (err) {
@@ -386,22 +385,22 @@ const syncWhatsAppChatMessages = onCall(
   { maxInstances: 5, secrets: [EVOLUTION_API_KEY] },
   async (request) => {
     if (!(await isAuthorizedForWhatsApp(request))) {
-      throw new functions.https.HttpsError('permission-denied', 'Sem permissão para utilizar o módulo de Atendimento (WhatsApp).');
+      throw new HttpsError('permission-denied', 'Sem permissão para utilizar o módulo de Atendimento (WhatsApp).');
     }
 
     const { phone } = request.data || {};
     if (!phone || typeof phone !== 'string' || !phone.trim()) {
-      throw new functions.https.HttpsError('invalid-argument', 'Telefone do contato é obrigatório.');
+      throw new HttpsError('invalid-argument', 'Telefone do contato é obrigatório.');
     }
 
     const rawKey = (typeof EVOLUTION_API_KEY.value === 'function' ? EVOLUTION_API_KEY.value() : process.env.EVOLUTION_API_KEY) || '';
     if (!rawKey) {
-      throw new functions.https.HttpsError('failed-precondition', 'Chave EVOLUTION_API_KEY não configurada no Firebase Secret Manager.');
+      throw new HttpsError('failed-precondition', 'Chave EVOLUTION_API_KEY não configurada no Firebase Secret Manager.');
     }
 
     const cleanPhone = normalizeWhatsAppNumber(phone);
     if (!/^55\d{10,11}$/.test(cleanPhone)) {
-      throw new functions.https.HttpsError('invalid-argument', 'Número de WhatsApp inválido.');
+      throw new HttpsError('invalid-argument', 'Número de WhatsApp inválido.');
     }
     const chatOwner = await chatScope(request, cleanPhone);
     const remoteJid = cleanPhone.includes('@') ? cleanPhone : `${cleanPhone}@s.whatsapp.net`;
@@ -443,7 +442,7 @@ const syncWhatsAppChatMessages = onCall(
       let customerName = cleanPhone;
       let customerId = null;
       try {
-        const custSnap = await admin.firestore().collection('customers').where('userId', '==', chatOwner || '__unassigned__').limit(100).get();
+        const custSnap = await getFirestore().collection('customers').where('userId', '==', chatOwner || '__unassigned__').limit(100).get();
         for (const d of custSnap.docs) {
           const cData = d.data();
           const cPhone = String(cData.phone || '').replace(/\D/g, '');
@@ -482,7 +481,7 @@ const syncWhatsAppChatMessages = onCall(
         const tsIso = epochSec ? new Date(Number(epochSec) * 1000).toISOString() : new Date().toISOString();
 
         const msgDocId = `wa_${key.id}`;
-        await admin.firestore().collection('whatsapp_messages').doc(msgDocId).set({
+        await getFirestore().collection('whatsapp_messages').doc(msgDocId).set({
           userId: chatOwner,
           chatId: cleanPhone,
           phone: cleanPhone,
@@ -493,7 +492,7 @@ const syncWhatsAppChatMessages = onCall(
           status: fromMe ? 'sent' : 'received',
           timestamp: tsIso,
           evolutionMessageId: key.id,
-          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          createdAt: FieldValue.serverTimestamp(),
         }, { merge: true });
 
         syncedCount++;
@@ -503,7 +502,7 @@ const syncWhatsAppChatMessages = onCall(
       }
 
       if (syncedCount > 0 && latestMessageText) {
-        await admin.firestore().collection('whatsapp_chats').doc(cleanPhone).set({
+        await getFirestore().collection('whatsapp_chats').doc(cleanPhone).set({
           id: cleanPhone,
           phone: cleanPhone,
           customerName,
@@ -511,7 +510,7 @@ const syncWhatsAppChatMessages = onCall(
           lastMessageText: latestMessageText,
           lastMessageTimestamp: latestTimestamp,
           lastMessageSender: latestSender,
-          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          updatedAt: FieldValue.serverTimestamp(),
         }, { merge: true });
       }
 
@@ -522,7 +521,7 @@ const syncWhatsAppChatMessages = onCall(
       };
     } catch (err) {
       console.error('[syncWhatsAppChatMessages] Erro:', err);
-      throw new functions.https.HttpsError('internal', err.message || 'Erro ao sincronizar mensagens.');
+      throw new HttpsError('internal', err.message || 'Erro ao sincronizar mensagens.');
     }
   }
 );
@@ -534,7 +533,7 @@ const getWhatsAppInstanceStatus = onCall(
   { maxInstances: 5, secrets: [EVOLUTION_API_KEY] },
   async (request) => {
     if (!(await isAuthorizedForWhatsApp(request))) {
-      throw new functions.https.HttpsError('permission-denied', 'Sem permissão para utilizar o módulo de Atendimento (WhatsApp).');
+      throw new HttpsError('permission-denied', 'Sem permissão para utilizar o módulo de Atendimento (WhatsApp).');
     }
 
     const rawKey = (typeof EVOLUTION_API_KEY.value === 'function' ? EVOLUTION_API_KEY.value() : process.env.EVOLUTION_API_KEY) || '';
@@ -590,60 +589,60 @@ const getWhatsAppInstanceStatus = onCall(
 
 const markWhatsAppChatRead = onCall(async (request) => {
   if (!(await isAuthorizedForWhatsApp(request))) {
-    throw new functions.https.HttpsError('permission-denied', 'Sem permissão para utilizar o módulo de Atendimento (WhatsApp).');
+    throw new HttpsError('permission-denied', 'Sem permissão para utilizar o módulo de Atendimento (WhatsApp).');
   }
   const { phone } = request.data || {};
   if (typeof phone !== 'string' || !phone.trim()) {
-    throw new functions.https.HttpsError('invalid-argument', 'Telefone do chat é obrigatório.');
+    throw new HttpsError('invalid-argument', 'Telefone do chat é obrigatório.');
   }
   const cleanPhone = normalizeWhatsAppNumber(phone);
   if (!/^55\d{10,11}$/.test(cleanPhone)) {
-    throw new functions.https.HttpsError('invalid-argument', 'Número de WhatsApp inválido.');
+    throw new HttpsError('invalid-argument', 'Número de WhatsApp inválido.');
   }
   await chatScope(request, cleanPhone);
-  await admin.firestore().collection('whatsapp_chats').doc(cleanPhone).update({
+  await getFirestore().collection('whatsapp_chats').doc(cleanPhone).update({
     unreadCount: 0,
-    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    updatedAt: FieldValue.serverTimestamp(),
   });
   return { success: true };
 });
 
 const ensureWhatsAppConversation = onCall(async (request) => {
   if (!(await isAuthorizedForWhatsApp(request))) {
-    throw new functions.https.HttpsError('permission-denied', 'Sem permissão para utilizar o módulo de Atendimento (WhatsApp).');
+    throw new HttpsError('permission-denied', 'Sem permissão para utilizar o módulo de Atendimento (WhatsApp).');
   }
   const { phone, customerName, customerId } = request.data || {};
   if (typeof phone !== 'string' || !phone.trim()) {
-    throw new functions.https.HttpsError('invalid-argument', 'Telefone do chat é obrigatório.');
+    throw new HttpsError('invalid-argument', 'Telefone do chat é obrigatório.');
   }
   if (customerName != null && (typeof customerName !== 'string' || customerName.length > 200)) {
-    throw new functions.https.HttpsError('invalid-argument', 'Nome do cliente inválido.');
+    throw new HttpsError('invalid-argument', 'Nome do cliente inválido.');
   }
   if (customerId != null && (typeof customerId !== 'string' || customerId.length > 128)) {
-    throw new functions.https.HttpsError('invalid-argument', 'Cliente inválido.');
+    throw new HttpsError('invalid-argument', 'Cliente inválido.');
   }
   const cleanPhone = normalizeWhatsAppNumber(phone);
   if (!/^55\d{10,11}$/.test(cleanPhone)) {
-    throw new functions.https.HttpsError('invalid-argument', 'Número de WhatsApp inválido.');
+    throw new HttpsError('invalid-argument', 'Número de WhatsApp inválido.');
   }
   if (customerId) {
-    const customer = await admin.firestore().collection('customers').doc(customerId).get();
+    const customer = await getFirestore().collection('customers').doc(customerId).get();
     if (!customer.exists) {
-      throw new functions.https.HttpsError('invalid-argument', 'Cliente não encontrado.');
+      throw new HttpsError('invalid-argument', 'Cliente não encontrado.');
     }
     const customerPhone = normalizeWhatsAppNumber(customer.data().phone);
     if (customerPhone !== cleanPhone) {
-      throw new functions.https.HttpsError('invalid-argument', 'Cliente não corresponde ao telefone informado.');
+      throw new HttpsError('invalid-argument', 'Cliente não corresponde ao telefone informado.');
     }
   }
   const chatOwner = await chatScope(request, cleanPhone, { customerId, create: true });
-  await admin.firestore().collection('whatsapp_chats').doc(cleanPhone).set({
+  await getFirestore().collection('whatsapp_chats').doc(cleanPhone).set({
     userId: chatOwner,
     id: cleanPhone,
     phone: cleanPhone,
     customerName: customerName || cleanPhone,
     customerId: customerId || null,
-    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    updatedAt: FieldValue.serverTimestamp(),
   }, { merge: true });
   return { success: true };
 });
@@ -709,7 +708,7 @@ const evolutionWhatsAppWebhook = onRequest(
             }
             const nowIso = new Date().toISOString();
 
-            const scopedChat = await admin.firestore().collection('whatsapp_chats').doc(cleanPhone).get();
+            const scopedChat = await getFirestore().collection('whatsapp_chats').doc(cleanPhone).get();
             const chatData = scopedChat.exists ? scopedChat.data() : {};
             const chatOwner = chatData.userId || null;
             // Instância compartilhada: contatos sem vínculo permanecem administrativos.
@@ -718,11 +717,11 @@ const evolutionWhatsAppWebhook = onRequest(
 
             const msgDocId = key?.id ? `wa_${key.id}` : null;
             if (msgDocId) {
-              const msgRef = admin.firestore().collection('whatsapp_messages').doc(msgDocId);
+              const msgRef = getFirestore().collection('whatsapp_messages').doc(msgDocId);
               await persistIncomingMessage({
-                db: admin.firestore(),
+                db: getFirestore(),
                 messageRef: msgRef,
-                chatRef: admin.firestore().collection('whatsapp_chats').doc(cleanPhone),
+                chatRef: getFirestore().collection('whatsapp_chats').doc(cleanPhone),
                 message: {
                   userId: chatOwner,
                   chatId: cleanPhone,
@@ -735,8 +734,8 @@ const evolutionWhatsAppWebhook = onRequest(
                   timestamp: nowIso,
                   evolutionMessageId: key.id,
                 },
-                increment: admin.firestore.FieldValue.increment,
-                serverTimestamp: admin.firestore.FieldValue.serverTimestamp,
+                increment: FieldValue.increment,
+                serverTimestamp: FieldValue.serverTimestamp,
               });
             } else {
               console.warn('[evolutionWhatsAppWebhook] Evento sem message key.id ignorado.');

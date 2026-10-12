@@ -1,0 +1,670 @@
+{
+  "sendAdminPasswordReset": {
+    "availableMemoryMb": null,
+    "timeoutSeconds": null,
+    "minInstances": null,
+    "maxInstances": 5,
+    "ingressSettings": null,
+    "concurrency": null,
+    "serviceAccountEmail": null,
+    "vpc": null,
+    "platform": "gcfv2",
+    "secretEnvironmentVariables": [
+      {
+        "key": "RESEND_API_KEY"
+      },
+      {
+        "key": "EVOLUTION_API_KEY"
+      }
+    ],
+    "labels": {},
+    "callableTrigger": {}
+  },
+  "createUserInvitation": {
+    "availableMemoryMb": null,
+    "timeoutSeconds": null,
+    "minInstances": null,
+    "maxInstances": 5,
+    "ingressSettings": null,
+    "concurrency": null,
+    "serviceAccountEmail": null,
+    "vpc": null,
+    "platform": "gcfv2",
+    "secretEnvironmentVariables": [
+      {
+        "key": "RESEND_API_KEY"
+      },
+      {
+        "key": "EVOLUTION_API_KEY"
+      }
+    ],
+    "labels": {},
+    "callableTrigger": {}
+  },
+  "validateUserInvitation": {
+    "availableMemoryMb": null,
+    "timeoutSeconds": null,
+    "minInstances": null,
+    "maxInstances": null,
+    "ingressSettings": null,
+    "concurrency": null,
+    "serviceAccountEmail": null,
+    "vpc": null,
+    "platform": "gcfv2",
+    "labels": {},
+    "callableTrigger": {}
+  },
+  "completeUserInvitation": {
+    "availableMemoryMb": null,
+    "timeoutSeconds": null,
+    "minInstances": null,
+    "maxInstances": null,
+    "ingressSettings": null,
+    "concurrency": null,
+    "serviceAccountEmail": null,
+    "vpc": null,
+    "platform": "gcfv2",
+    "labels": {},
+    "callableTrigger": {}
+  },
+  "sendVerificationEmail": {
+    "availableMemoryMb": null,
+    "timeoutSeconds": null,
+    "minInstances": null,
+    "maxInstances": 5,
+    "ingressSettings": null,
+    "concurrency": null,
+    "serviceAccountEmail": null,
+    "vpc": null,
+    "platform": "gcfv2",
+    "secretEnvironmentVariables": [
+      {
+        "key": "RESEND_API_KEY"
+      }
+    ],
+    "labels": {},
+    "callableTrigger": {}
+  },
+  "sendPasswordResetEmail": {
+    "availableMemoryMb": null,
+    "timeoutSeconds": null,
+    "minInstances": null,
+    "maxInstances": 5,
+    "ingressSettings": null,
+    "concurrency": null,
+    "serviceAccountEmail": null,
+    "vpc": null,
+    "platform": "gcfv2",
+    "secretEnvironmentVariables": [
+      {
+        "key": "RESEND_API_KEY"
+      },
+      {
+        "key": "EVOLUTION_API_KEY"
+      }
+    ],
+    "labels": {},
+    "callableTrigger": {}
+  },
+  "getUserAccountMetadata": {
+    "availableMemoryMb": null,
+    "timeoutSeconds": null,
+    "minInstances": null,
+    "maxInstances": null,
+    "ingressSettings": null,
+    "concurrency": null,
+    "serviceAccountEmail": null,
+    "vpc": null,
+    "platform": "gcfv2",
+    "labels": {},
+    "callableTrigger": {}
+  },
+  "recordUserPasswordChange": {
+    "availableMemoryMb": null,
+    "timeoutSeconds": null,
+    "minInstances": null,
+    "maxInstances": null,
+    "ingressSettings": null,
+    "concurrency": null,
+    "serviceAccountEmail": null,
+    "vpc": null,
+    "platform": "gcfv2",
+    "labels": {},
+    "callableTrigger": {}
+  },
+  "deleteUser": {
+    "availableMemoryMb": null,
+    "timeoutSeconds": null,
+    "minInstances": null,
+    "maxInstances": null,
+    "ingressSettings": null,
+    "concurrency": null,
+    "serviceAccountEmail": null,
+    "vpc": null,
+    "platform": "gcfv2",
+    "labels": {},
+    "callableTrigger": {}
+  },
+  "createUser": {
+    "availableMemoryMb": null,
+    "timeoutSeconds": null,
+    "minInstances": null,
+    "maxInstances": null,
+    "ingressSettings": null,
+    "concurrency": null,
+    "serviceAccountEmail": null,
+    "vpc": null,
+    "platform": "gcfv2",
+    "labels": {},
+    "callableTrigger": {}
+  },
+  "updateUser": {
+    "availableMemoryMb": null,
+    "timeoutSeconds": null,
+    "minInstances": null,
+    "maxInstances": null,
+    "ingressSettings": null,
+    "concurrency": null,
+    "serviceAccountEmail": null,
+    "vpc": null,
+    "platform": "gcfv2",
+    "labels": {},
+    "callableTrigger": {}
+  },
+  "registerDeviceSession": {
+    "availableMemoryMb": 512,
+    "timeoutSeconds": null,
+    "minInstances": null,
+    "maxInstances": null,
+    "ingressSettings": null,
+    "concurrency": null,
+    "serviceAccountEmail": null,
+    "vpc": null,
+    "platform": "gcfv2",
+    "labels": {},
+    "callableTrigger": {}
+  },
+  "revokeAllSessions": {
+    "availableMemoryMb": null,
+    "timeoutSeconds": null,
+    "minInstances": null,
+    "maxInstances": null,
+    "ingressSettings": null,
+    "concurrency": null,
+    "serviceAccountEmail": null,
+    "vpc": null,
+    "platform": "gcfv2",
+    "labels": {},
+    "callableTrigger": {}
+  },
+  "revokeDeviceSession": {
+    "availableMemoryMb": null,
+    "timeoutSeconds": null,
+    "minInstances": null,
+    "maxInstances": null,
+    "ingressSettings": null,
+    "concurrency": null,
+    "serviceAccountEmail": null,
+    "vpc": null,
+    "platform": "gcfv2",
+    "labels": {},
+    "callableTrigger": {}
+  },
+  "repairUserClaims": {
+    "availableMemoryMb": null,
+    "timeoutSeconds": null,
+    "minInstances": null,
+    "maxInstances": null,
+    "ingressSettings": null,
+    "concurrency": null,
+    "serviceAccountEmail": null,
+    "vpc": null,
+    "platform": "gcfv2",
+    "labels": {},
+    "callableTrigger": {}
+  },
+  "sendCustomEmail": {
+    "availableMemoryMb": null,
+    "timeoutSeconds": null,
+    "minInstances": null,
+    "maxInstances": 5,
+    "ingressSettings": null,
+    "concurrency": null,
+    "serviceAccountEmail": null,
+    "vpc": null,
+    "platform": "gcfv2",
+    "secretEnvironmentVariables": [
+      {
+        "key": "RESEND_API_KEY"
+      }
+    ],
+    "labels": {},
+    "callableTrigger": {}
+  },
+  "getEmailUsage": {
+    "availableMemoryMb": null,
+    "timeoutSeconds": null,
+    "minInstances": null,
+    "maxInstances": 5,
+    "ingressSettings": null,
+    "concurrency": null,
+    "serviceAccountEmail": null,
+    "vpc": null,
+    "platform": "gcfv2",
+    "secretEnvironmentVariables": [
+      {
+        "key": "RESEND_API_KEY"
+      }
+    ],
+    "labels": {},
+    "callableTrigger": {}
+  },
+  "resendReceivingWebhook": {
+    "availableMemoryMb": null,
+    "timeoutSeconds": null,
+    "minInstances": null,
+    "maxInstances": null,
+    "ingressSettings": null,
+    "concurrency": null,
+    "serviceAccountEmail": null,
+    "vpc": null,
+    "platform": "gcfv2",
+    "secretEnvironmentVariables": [
+      {
+        "key": "RESEND_API_KEY"
+      },
+      {
+        "key": "RESEND_WEBHOOK_SECRET"
+      },
+      {
+        "key": "ORIGIN_SECRET"
+      }
+    ],
+    "labels": {},
+    "httpsTrigger": {}
+  },
+  "cleanupEmailDrafts": {
+    "availableMemoryMb": null,
+    "timeoutSeconds": 540,
+    "minInstances": null,
+    "maxInstances": null,
+    "ingressSettings": null,
+    "concurrency": null,
+    "serviceAccountEmail": null,
+    "vpc": null,
+    "platform": "gcfv2",
+    "region": [
+      "us-central1"
+    ],
+    "labels": {},
+    "scheduleTrigger": {
+      "schedule": "every 24 hours",
+      "retryConfig": {},
+      "timeZone": "America/Sao_Paulo"
+    }
+  },
+  "sendWhatsAppDirectMessage": {
+    "availableMemoryMb": null,
+    "timeoutSeconds": null,
+    "minInstances": null,
+    "maxInstances": 5,
+    "ingressSettings": null,
+    "concurrency": null,
+    "serviceAccountEmail": null,
+    "vpc": null,
+    "platform": "gcfv2",
+    "secretEnvironmentVariables": [
+      {
+        "key": "EVOLUTION_API_KEY"
+      }
+    ],
+    "labels": {},
+    "callableTrigger": {}
+  },
+  "deleteWhatsAppMessage": {
+    "availableMemoryMb": null,
+    "timeoutSeconds": null,
+    "minInstances": null,
+    "maxInstances": 5,
+    "ingressSettings": null,
+    "concurrency": null,
+    "serviceAccountEmail": null,
+    "vpc": null,
+    "platform": "gcfv2",
+    "secretEnvironmentVariables": [
+      {
+        "key": "EVOLUTION_API_KEY"
+      }
+    ],
+    "labels": {},
+    "callableTrigger": {}
+  },
+  "syncWhatsAppChatMessages": {
+    "availableMemoryMb": null,
+    "timeoutSeconds": null,
+    "minInstances": null,
+    "maxInstances": 5,
+    "ingressSettings": null,
+    "concurrency": null,
+    "serviceAccountEmail": null,
+    "vpc": null,
+    "platform": "gcfv2",
+    "secretEnvironmentVariables": [
+      {
+        "key": "EVOLUTION_API_KEY"
+      }
+    ],
+    "labels": {},
+    "callableTrigger": {}
+  },
+  "getWhatsAppInstanceStatus": {
+    "availableMemoryMb": null,
+    "timeoutSeconds": null,
+    "minInstances": null,
+    "maxInstances": 5,
+    "ingressSettings": null,
+    "concurrency": null,
+    "serviceAccountEmail": null,
+    "vpc": null,
+    "platform": "gcfv2",
+    "secretEnvironmentVariables": [
+      {
+        "key": "EVOLUTION_API_KEY"
+      }
+    ],
+    "labels": {},
+    "callableTrigger": {}
+  },
+  "markWhatsAppChatRead": {
+    "availableMemoryMb": null,
+    "timeoutSeconds": null,
+    "minInstances": null,
+    "maxInstances": null,
+    "ingressSettings": null,
+    "concurrency": null,
+    "serviceAccountEmail": null,
+    "vpc": null,
+    "platform": "gcfv2",
+    "labels": {},
+    "callableTrigger": {}
+  },
+  "ensureWhatsAppConversation": {
+    "availableMemoryMb": null,
+    "timeoutSeconds": null,
+    "minInstances": null,
+    "maxInstances": null,
+    "ingressSettings": null,
+    "concurrency": null,
+    "serviceAccountEmail": null,
+    "vpc": null,
+    "platform": "gcfv2",
+    "labels": {},
+    "callableTrigger": {}
+  },
+  "evolutionWhatsAppWebhook": {
+    "availableMemoryMb": null,
+    "timeoutSeconds": null,
+    "minInstances": null,
+    "maxInstances": null,
+    "ingressSettings": null,
+    "concurrency": null,
+    "serviceAccountEmail": null,
+    "vpc": null,
+    "platform": "gcfv2",
+    "secretEnvironmentVariables": [
+      {
+        "key": "EVOLUTION_API_KEY"
+      },
+      {
+        "key": "ORIGIN_SECRET"
+      }
+    ],
+    "labels": {},
+    "httpsTrigger": {}
+  },
+  "syncAllOrdersToAiView": {
+    "availableMemoryMb": null,
+    "timeoutSeconds": null,
+    "minInstances": null,
+    "maxInstances": null,
+    "ingressSettings": null,
+    "concurrency": null,
+    "serviceAccountEmail": null,
+    "vpc": null,
+    "platform": "gcfv2",
+    "labels": {},
+    "callableTrigger": {}
+  },
+  "submitPublicCatalogOrder": {
+    "availableMemoryMb": null,
+    "timeoutSeconds": null,
+    "minInstances": null,
+    "maxInstances": 10,
+    "ingressSettings": null,
+    "concurrency": null,
+    "serviceAccountEmail": null,
+    "vpc": null,
+    "platform": "gcfv2",
+    "labels": {},
+    "callableTrigger": {}
+  },
+  "aiAgentChat": {
+    "availableMemoryMb": 1024,
+    "timeoutSeconds": 120,
+    "minInstances": null,
+    "maxInstances": 10,
+    "ingressSettings": null,
+    "concurrency": null,
+    "serviceAccountEmail": null,
+    "vpc": null,
+    "platform": "gcfv2",
+    "secretEnvironmentVariables": [
+      {
+        "key": "GEMINI_API_KEY"
+      }
+    ],
+    "labels": {},
+    "callableTrigger": {}
+  },
+  "getAiUsage": {
+    "availableMemoryMb": null,
+    "timeoutSeconds": null,
+    "minInstances": null,
+    "maxInstances": 5,
+    "ingressSettings": null,
+    "concurrency": null,
+    "serviceAccountEmail": null,
+    "vpc": null,
+    "platform": "gcfv2",
+    "secretEnvironmentVariables": [
+      {
+        "key": "GEMINI_API_KEY"
+      }
+    ],
+    "labels": {},
+    "callableTrigger": {}
+  },
+  "enrichGalleryItemWithAi": {
+    "availableMemoryMb": 1024,
+    "timeoutSeconds": 120,
+    "minInstances": null,
+    "maxInstances": 5,
+    "ingressSettings": null,
+    "concurrency": null,
+    "serviceAccountEmail": null,
+    "vpc": null,
+    "platform": "gcfv2",
+    "secretEnvironmentVariables": [
+      {
+        "key": "GEMINI_API_KEY"
+      }
+    ],
+    "labels": {},
+    "callableTrigger": {}
+  },
+  "enrichStoreProductWithAi": {
+    "availableMemoryMb": 1024,
+    "timeoutSeconds": 120,
+    "minInstances": null,
+    "maxInstances": 5,
+    "ingressSettings": null,
+    "concurrency": null,
+    "serviceAccountEmail": null,
+    "vpc": null,
+    "platform": "gcfv2",
+    "secretEnvironmentVariables": [
+      {
+        "key": "GEMINI_API_KEY"
+      }
+    ],
+    "labels": {},
+    "callableTrigger": {}
+  },
+  "alexaWebhook": {
+    "availableMemoryMb": 256,
+    "timeoutSeconds": null,
+    "minInstances": 0,
+    "maxInstances": 2,
+    "ingressSettings": null,
+    "concurrency": null,
+    "serviceAccountEmail": null,
+    "vpc": null,
+    "platform": "gcfv2",
+    "secretEnvironmentVariables": [
+      {
+        "key": "ALEXA_IDENTITY_HMAC_KEY"
+      },
+      {
+        "key": "ORIGIN_SECRET"
+      }
+    ],
+    "labels": {},
+    "httpsTrigger": {}
+  },
+  "approveAlexaPairing": {
+    "availableMemoryMb": null,
+    "timeoutSeconds": null,
+    "minInstances": null,
+    "maxInstances": 5,
+    "ingressSettings": null,
+    "concurrency": null,
+    "serviceAccountEmail": null,
+    "vpc": null,
+    "platform": "gcfv2",
+    "secretEnvironmentVariables": [
+      {
+        "key": "ALEXA_IDENTITY_HMAC_KEY"
+      }
+    ],
+    "labels": {},
+    "callableTrigger": {}
+  },
+  "setAlexaPermission": {
+    "availableMemoryMb": null,
+    "timeoutSeconds": null,
+    "minInstances": null,
+    "maxInstances": 5,
+    "ingressSettings": null,
+    "concurrency": null,
+    "serviceAccountEmail": null,
+    "vpc": null,
+    "platform": "gcfv2",
+    "secretEnvironmentVariables": [
+      {
+        "key": "ALEXA_IDENTITY_HMAC_KEY"
+      }
+    ],
+    "labels": {},
+    "callableTrigger": {}
+  },
+  "revokeAlexaBinding": {
+    "availableMemoryMb": null,
+    "timeoutSeconds": null,
+    "minInstances": null,
+    "maxInstances": 5,
+    "ingressSettings": null,
+    "concurrency": null,
+    "serviceAccountEmail": null,
+    "vpc": null,
+    "platform": "gcfv2",
+    "secretEnvironmentVariables": [
+      {
+        "key": "ALEXA_IDENTITY_HMAC_KEY"
+      }
+    ],
+    "labels": {},
+    "callableTrigger": {}
+  },
+  "toggleGlobalAlexaIntegration": {
+    "availableMemoryMb": null,
+    "timeoutSeconds": null,
+    "minInstances": null,
+    "maxInstances": 5,
+    "ingressSettings": null,
+    "concurrency": null,
+    "serviceAccountEmail": null,
+    "vpc": null,
+    "platform": "gcfv2",
+    "secretEnvironmentVariables": [
+      {
+        "key": "ALEXA_IDENTITY_HMAC_KEY"
+      }
+    ],
+    "labels": {},
+    "callableTrigger": {}
+  },
+  "getAlexaIntegrationStatus": {
+    "availableMemoryMb": null,
+    "timeoutSeconds": null,
+    "minInstances": null,
+    "maxInstances": 5,
+    "ingressSettings": null,
+    "concurrency": null,
+    "serviceAccountEmail": null,
+    "vpc": null,
+    "platform": "gcfv2",
+    "secretEnvironmentVariables": [
+      {
+        "key": "ALEXA_IDENTITY_HMAC_KEY"
+      }
+    ],
+    "labels": {},
+    "callableTrigger": {}
+  },
+  "approveAlexaDraft": {
+    "availableMemoryMb": null,
+    "timeoutSeconds": null,
+    "minInstances": null,
+    "maxInstances": 5,
+    "ingressSettings": null,
+    "concurrency": null,
+    "serviceAccountEmail": null,
+    "vpc": null,
+    "platform": "gcfv2",
+    "secretEnvironmentVariables": [
+      {
+        "key": "ALEXA_IDENTITY_HMAC_KEY"
+      }
+    ],
+    "labels": {},
+    "callableTrigger": {}
+  },
+  "cancelAlexaDraft": {
+    "availableMemoryMb": null,
+    "timeoutSeconds": null,
+    "minInstances": null,
+    "maxInstances": 5,
+    "ingressSettings": null,
+    "concurrency": null,
+    "serviceAccountEmail": null,
+    "vpc": null,
+    "platform": "gcfv2",
+    "secretEnvironmentVariables": [
+      {
+        "key": "ALEXA_IDENTITY_HMAC_KEY"
+      }
+    ],
+    "labels": {},
+    "callableTrigger": {}
+  }
+}

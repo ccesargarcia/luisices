@@ -28,6 +28,7 @@ on:
           - store
           - whatsapp
           - responsive
+          - backend-sdk
         default: 'security'
 
 permissions:
@@ -38,7 +39,42 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  backend-sdk:
+    if: ${{ inputs.test_target == 'backend-sdk' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: 'npm'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+      - name: Install existing frontend tooling and backend SDKs
+        run: |
+          npm ci --legacy-peer-deps
+          npm --prefix functions ci
+      - name: Install deployment-compatible Firebase CLI
+        run: npm install --prefix "$RUNNER_TEMP/firebase-cli" firebase-tools@15.32.1 --no-audit --no-fund
+      - name: Verify real Admin SDK and Functions Emulator contracts
+        env:
+          SDK_TEST_FIREBASE_CLI: ${{ runner.temp }}/firebase-cli/node_modules/firebase-tools/lib/bin/firebase.js
+        run: node scripts/run-firebase-sdk-tests.mjs --reporter=json --outputFile=test-results/backend-sdk.json
+      - name: Verify real HTTP wrappers with SDK token verification
+        env:
+          SDK_TEST_FIREBASE_CLI: ${{ runner.temp }}/firebase-cli/node_modules/firebase-tools/lib/bin/firebase.js
+        run: node scripts/run-firebase-sdk-tests.mjs --http-wrapper --reporter=json --outputFile=test-results/backend-sdk-http.json
+      - uses: actions/upload-artifact@v4
+        if: ${{ always() }}
+        with:
+          name: backend-sdk-results
+          path: test-results/backend-sdk*.json
+
   test:
+    if: ${{ inputs.test_target != 'backend-sdk' }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
     env:

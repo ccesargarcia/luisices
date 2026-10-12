@@ -3,9 +3,9 @@
  * Segue estritamente a especificação docs/ESPECIFICACAO_ALEXA_ANTIGRAVITY.md (Seção 4.2).
  */
 
+const { FieldValue, Timestamp } = require('firebase-admin/firestore');
 const crypto = require('crypto');
 const { PAIRING_CODE_TTL_MINUTES } = require('./constants');
-const admin = require('firebase-admin');
 const { COLLECTIONS, computeCodeHash, computeBindingKey, recordAuditEvent } = require('./repository');
 const { checkPairingRateLimit } = require('./rateLimit');
 const { supportsApl, buildVoicePairingAplDirective } = require('./apl');
@@ -17,7 +17,7 @@ const { assertActiveSession } = require('../common/helpers');
  *
  * @param {object} envelope - Requisição Alexa contendo context.System
  * @param {object} config - Configuração de ambiente resolvida
- * @param {admin.firestore.Firestore} db - Instância Firestore
+ * @param {import('firebase-admin/firestore').Firestore} db - Instância Firestore
  * @returns {Promise<{ speech: string, shouldEndSession: boolean, error?: string }>}
  */
 async function handleVoicePairingRequest(envelope, config, db) {
@@ -78,9 +78,9 @@ async function handleVoicePairingRequest(envelope, config, db) {
     amazonUserIdHash: crypto.createHash('sha256').update(amazonUserId || '').digest('hex'),
     personIdHash: crypto.createHash('sha256').update(personId || '').digest('hex'),
     deviceId: deviceId || null,
-    expiresAt: admin.firestore.Timestamp.fromDate(expiresAt),
+    expiresAt: Timestamp.fromDate(expiresAt),
     consumedAt: null,
-    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    createdAt: FieldValue.serverTimestamp(),
   });
 
   await recordAuditEvent(db, {
@@ -200,7 +200,7 @@ async function approveAlexaPairingAdmin({ code, targetUid, request, db, config }
 
     // Consumir o pareamento
     transaction.update(pairingRef, {
-      consumedAt: admin.firestore.FieldValue.serverTimestamp(),
+      consumedAt: FieldValue.serverTimestamp(),
       consumedBy: request.auth.uid,
       assignedUid: targetUid,
     });
@@ -216,7 +216,7 @@ async function approveAlexaPairingAdmin({ code, targetUid, request, db, config }
         allowedSkillId: config.allowedSkillId || null,
         approvedBy: request.auth.uid,
         approvedByEmail: request.auth.token?.email || '',
-        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        createdAt: FieldValue.serverTimestamp(),
         revokedAt: null,
         allowedDeviceIds: [],
         lastPairingDeviceId: pData.deviceId || null,
@@ -233,7 +233,7 @@ async function approveAlexaPairingAdmin({ code, targetUid, request, db, config }
         mode: finalMode,
         scope: 'orders:create:self',
         approvedBy: request.auth.uid,
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
       },
       { merge: true }
     );

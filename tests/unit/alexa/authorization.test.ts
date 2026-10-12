@@ -193,11 +193,6 @@ describe('Alexa: Subsistema de Identidade, Vínculo de Voz e Autorização', () 
       baseConfig.hmacKey
     );
 
-    const admin = require('firebase-admin');
-    const authSpy = vi.spyOn(admin, 'auth').mockReturnValue({
-      getUser: async () => ({ disabled: false }),
-    } as any);
-
     const mockDb = createMockDb({
       alexaBindings: {
         [bindingKey]: {

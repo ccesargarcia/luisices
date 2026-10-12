@@ -3,7 +3,7 @@
  * Segue estritamente a especificação docs/ESPECIFICACAO_ALEXA_ANTIGRAVITY.md (Seção 6).
  */
 
-const admin = require('firebase-admin');
+const { FieldValue } = require('firebase-admin/firestore');
 const { HttpsError } = require('firebase-functions/v2/https');
 const { COLLECTIONS, recordAuditEvent } = require('./repository');
 const { getAlexaConfig } = require('./config');
@@ -62,7 +62,7 @@ async function setAlexaPermissionHandler(request, db) {
       mode: validMode,
       scope: 'orders:create:self',
       approvedBy: request.auth.uid,
-      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
     },
     { merge: true }
   );
@@ -110,7 +110,7 @@ async function revokeAlexaBindingHandler(request, db) {
 
   await bindingRef.update({
     active: false,
-    revokedAt: admin.firestore.FieldValue.serverTimestamp(),
+    revokedAt: FieldValue.serverTimestamp(),
     revokedBy: callerUid,
   });
 
@@ -139,7 +139,7 @@ async function toggleGlobalAlexaIntegrationHandler(request, db) {
       enabled: Boolean(enabled),
       allowedSkillId: config.allowedSkillId,
       updatedBy: request.auth.uid,
-      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
     },
     { merge: true }
   );
@@ -327,9 +327,9 @@ async function cancelAlexaDraftHandler(request, db) {
 
   await draftRef.update({
     state: 'cancelled',
-    cancelledAt: admin.firestore.FieldValue.serverTimestamp(),
+    cancelledAt: FieldValue.serverTimestamp(),
     cancelledBy: callerUid,
-    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    updatedAt: FieldValue.serverTimestamp(),
   });
 
   await recordAuditEvent(db, {

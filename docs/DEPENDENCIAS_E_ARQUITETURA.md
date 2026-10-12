@@ -106,6 +106,8 @@ A revisão documental executou **771 testes unitários em 73 arquivos**, todos a
 
 ## Responsabilidades e refatoração gradual
 
+A [migração dos SDKs Firebase do backend](MIGRACAO_FIREBASE_SDK.md) registra o inventário de consumidores, a matriz de versões e os critérios de compatibilidade antes da atualização de dependências.
+
 O critério de modularização é a responsabilidade, não apenas a quantidade de linhas. Telas devem coordenar a interação; regras de domínio devem ser testáveis separadamente; consultas e gravações devem permanecer em componentes de acesso a dados identificáveis. Evite módulos genéricos de utilidades que misturem domínios distintos.
 
 Primeira separação aplicada ao diálogo de voz:

@@ -6,7 +6,13 @@ O registro começou em 12/10/2026 com as entregas recentes verificadas em produ�
 
 ## Não lançado
 
+### Adicionado
+
+- Suíte de compatibilidade do backend com o Admin SDK real em emuladores locais, incluindo operações entre serviços, contratos das Functions e respostas HTTP; execução manual disponível no GitHub Actions.
+
 ### Segurança
+
+- Migração do backend para Firebase Admin 14.5.0 e Firebase Functions 7.4.0, mantendo Node 22 e os contratos de dados, autorização e triggers, com validação nos emuladores.
 
 - Atualizações das dependências de processamento de requisições, transporte de dados e imagens, com testes de compatibilidade em Node 22.
 - Atualização de `proxy-addr` de 2.0.7 para 2.0.8 no backend, com testes de compatibilidade do processamento de endereços de rede.
