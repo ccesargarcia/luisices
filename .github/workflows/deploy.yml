@@ -130,6 +130,23 @@ jobs:
         env:
           VITE_BASE_PATH: /
 
+      - name: Deploy Firestore Rules (Production)
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_PROD || secrets.PROD_FIREBASE_SERVICE_ACCOUNT || secrets.FIREBASE_SERVICE_ACCOUNT }}
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/firebase-production-rules.json
+        run: |
+          set -euo pipefail
+          trap 'rm -f "$GOOGLE_APPLICATION_CREDENTIALS"' EXIT
+          node <<'NODE'
+          const fs = require('node:fs');
+          if (!process.env.FIREBASE_SERVICE_ACCOUNT) {
+            throw new Error('Firebase production service account is required to deploy Firestore rules.');
+          }
+          JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+          fs.writeFileSync(process.env.GOOGLE_APPLICATION_CREDENTIALS, process.env.FIREBASE_SERVICE_ACCOUNT, { mode: 0o600 });
+          NODE
+          npx firebase deploy --only firestore:rules --project papelaria-dashboard --non-interactive
+
       - name: Deploy to GitHub Pages (root)
         uses: peaceiris/actions-gh-pages@v4
         with:

@@ -3,6 +3,15 @@ import { updateReviewedImportRow, getSelectedImportRows } from '../../../src/app
 import type { ParsedOrderRow } from '../../../src/app/utils/importOrdersExcel';
 const row: ParsedOrderRow = { rowIndex: 2, customerName: 'Ana', customerPhone: '11999999999', productName: 'Convites', quantity: 10, price: 100, deliveryDate: '2026-10-20', status: 'pending', paymentStatus: 'partial', paidAmount: 30, remainingAmount: 70, isValid: true, errors: [], warnings: [], rawData: { Cliente: 'Ana' } };
 describe('Revisão da importação', () => {
+  it('normaliza espaços de etiquetas e rejeita separador de controle sem alterar a linha original', () => {
+    const source = { ...row, tags: [{ name: '  Etiqueta válida  ', color: '#123456' }] };
+    const reviewed = updateReviewedImportRow(source, {});
+    expect(reviewed.isValid).toBe(true);
+    expect(reviewed.tags?.[0].name).toBe('Etiqueta válida');
+    expect(source.tags[0].name).toBe('  Etiqueta válida  ');
+    expect(updateReviewedImportRow({ ...row, tags: [{ name: 'Tag\u0000x', color: '#123456' }] }, {}).isValid).toBe(false);
+  });
+
   it('usa os valores editados, recalcula o saldo e preserva a linha original', () => {
     const edited = updateReviewedImportRow(row, { customerName: '  Beatriz  ', price: 150, paidAmount: 40 });
     expect(edited.customerName).toBe('Beatriz');expect(edited.remainingAmount).toBe(110);expect(edited.isValid).toBe(true);
