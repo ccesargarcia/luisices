@@ -9,6 +9,12 @@ const { defineSecret } = require('firebase-functions/params');
 
 const ORIGIN_SECRET = defineSecret('ORIGIN_SECRET');
 
+// Tokens conhecidos e legítimos dos Workers da Cloudflare (DEV e PROD)
+const KNOWN_ORIGIN_TOKENS = [
+  '5dabad5dfa834c8b3370095ebac3f3fda1fe2dfb99d47c7c9e6c2daa8b91c3fe', // PROD
+  '507e46b43a0947fcc63638707ea33df50938f89b2e49013c9a51ba1d95e816cc', // DEV
+];
+
 /**
  * Obtém o valor configurado do ORIGIN_SECRET (Secret Manager ou variável de ambiente).
  * @returns {string}
@@ -32,10 +38,22 @@ function getOriginSecretValue() {
  * @returns {{ allowed: boolean, error?: string, statusCode?: number }}
  */
 function validateOriginSecret(req) {
+  const isTestOrLocal = process.env.FUNCTIONS_EMULATOR === 'true' || process.env.NODE_ENV === 'test' || Boolean(process.env.VITEST);
   const secret = getOriginSecretValue();
-  if (!secret) {
-    const isLocal = process.env.FUNCTIONS_EMULATOR === 'true' || process.env.NODE_ENV === 'test' || Boolean(process.env.VITEST);
-    return isLocal
+
+  if (!secret && isTestOrLocal) {
+    return { allowed: true };
+  }
+
+  const candidateSecrets = Array.from(new Set(
+    [secret, ...(isTestOrLocal && secret ? [] : KNOWN_ORIGIN_TOKENS)]
+      .flatMap((s) => (s ? s.split(',') : []))
+      .map((s) => s.trim())
+      .filter(Boolean)
+  ));
+
+  if (candidateSecrets.length === 0) {
+    return isTestOrLocal
       ? { allowed: true }
       : { allowed: false, statusCode: 503, error: 'Proteção de origem não configurada.' };
   }
@@ -49,13 +67,18 @@ function validateOriginSecret(req) {
     };
   }
 
-  const expectedBuf = Buffer.from(secret, 'utf8');
   const providedBuf = Buffer.from(provided.trim(), 'utf8');
 
-  if (
-    expectedBuf.length !== providedBuf.length ||
-    !crypto.timingSafeEqual(expectedBuf, providedBuf)
-  ) {
+  const isValid = candidateSecrets.some((sec) => {
+    try {
+      const secBuf = Buffer.from(sec, 'utf8');
+      return secBuf.length === providedBuf.length && crypto.timingSafeEqual(secBuf, providedBuf);
+    } catch {
+      return false;
+    }
+  });
+
+  if (!isValid) {
     return {
       allowed: false,
       statusCode: 403,
