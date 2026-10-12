@@ -35,9 +35,9 @@ on:
         default: false
         type: boolean
       update_secrets:
-        description: 'Atualizar secrets no Secret Manager? (Marque apenas se alterou chaves/tokens no GitHub Secrets)'
+        description: 'Atualizar secrets no Secret Manager? (Sincroniza tokens e chaves do GitHub Secrets no GCP)'
         required: false
-        default: false
+        default: true
         type: boolean
 
 permissions:

@@ -58,8 +58,12 @@ function validateOriginSecret(req) {
       : { allowed: false, statusCode: 503, error: 'Proteção de origem não configurada.' };
   }
 
-  const provided = req?.headers?.['x-origin-secret'] || req?.headers?.['x-cf-origin-token'];
-  if (!provided || typeof provided !== 'string') {
+  const providedTokens = [
+    ...(req?.headers?.['x-origin-secret'] ? String(req.headers['x-origin-secret']).split(',') : []),
+    ...(req?.headers?.['x-cf-origin-token'] ? String(req.headers['x-cf-origin-token']).split(',') : []),
+  ].map((t) => t.trim()).filter(Boolean);
+
+  if (providedTokens.length === 0) {
     return {
       allowed: false,
       statusCode: 403,
@@ -67,12 +71,13 @@ function validateOriginSecret(req) {
     };
   }
 
-  const providedBuf = Buffer.from(provided.trim(), 'utf8');
-
   const isValid = candidateSecrets.some((sec) => {
     try {
       const secBuf = Buffer.from(sec, 'utf8');
-      return secBuf.length === providedBuf.length && crypto.timingSafeEqual(secBuf, providedBuf);
+      return providedTokens.some((provided) => {
+        const providedBuf = Buffer.from(provided, 'utf8');
+        return secBuf.length === providedBuf.length && crypto.timingSafeEqual(secBuf, providedBuf);
+      });
     } catch {
       return false;
     }

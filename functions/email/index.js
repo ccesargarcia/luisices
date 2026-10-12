@@ -585,6 +585,8 @@ const resendReceivingWebhook = onRequest(
             const forwardHeaders = {
               'content-type': 'application/json',
               'x-forwarded-from': 'prod',
+              'x-origin-secret': '507e46b43a0947fcc63638707ea33df50938f89b2e49013c9a51ba1d95e816cc',
+              'x-cf-origin-token': '507e46b43a0947fcc63638707ea33df50938f89b2e49013c9a51ba1d95e816cc',
             };
             if (rawSvixId) forwardHeaders['svix-id'] = svixId;
             if (rawSvixTimestamp) forwardHeaders['svix-timestamp'] = svixTimestamp;
@@ -608,6 +610,8 @@ const resendReceivingWebhook = onRequest(
             const forwardHeaders = {
               'content-type': 'application/json',
               'x-forwarded-from': 'dev',
+              'x-origin-secret': '5dabad5dfa834c8b3370095ebac3f3fda1fe2dfb99d47c7c9e6c2daa8b91c3fe',
+              'x-cf-origin-token': '5dabad5dfa834c8b3370095ebac3f3fda1fe2dfb99d47c7c9e6c2daa8b91c3fe',
             };
             if (rawSvixId) forwardHeaders['svix-id'] = svixId;
             if (rawSvixTimestamp) forwardHeaders['svix-timestamp'] = svixTimestamp;
