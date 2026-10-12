@@ -89,8 +89,8 @@ const COLLECTIONS = {
 };
 
 const CACHE_TTL_MS = {
-  KEY: 60 * 1000, // 60 segundos de cache em memória para validação de chave
-  SETTINGS: 60 * 1000, // 60 segundos de cache para o switch global
+  KEY: 5 * 60 * 1000, // 5 minutos de cache em memória para validação de chave
+  SETTINGS: 2 * 60 * 1000, // 2 minutos de cache para o switch global
 };
 
 const DEFAULT_RATE_LIMIT_PER_HOUR = 60;

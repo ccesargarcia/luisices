@@ -41,6 +41,17 @@ async function executeToolByName(toolsExecutor, toolName, args, scope) {
   }
 }
 
+let sharedAiServices = null;
+function getSharedAiServices(db) {
+  if (!sharedAiServices) {
+    sharedAiServices = createAiServices({
+      firestore: () => db,
+      auth: () => getAuth(),
+    });
+  }
+  return sharedAiServices;
+}
+
 /**
  * Endpoint HTTP de Ferramentas de IA para ChatGPT e MCP.
  */
@@ -49,7 +60,7 @@ const chatGptToolsEndpoint = onRequest(
     cors: true,
     minInstances: 0,
     maxInstances: 5,
-    memory: '512MiB',
+    memory: '1GiB',
     timeoutSeconds: 30,
     secrets: [ORIGIN_SECRET],
   },
@@ -313,7 +324,7 @@ const chatGptToolsEndpoint = onRequest(
         }
 
         try {
-          const aiServices = createAiServices({ firestore: () => db, auth: () => getAuth() });
+          const aiServices = getSharedAiServices(db);
           const { toolsExecutor } = aiServices;
           const result = await executeToolByName(toolsExecutor, toolName, toolArgs, scope);
           touchKeyUsage(db, keyHash);
@@ -407,7 +418,7 @@ const chatGptToolsEndpoint = onRequest(
 
       // 5. Execução Segura da Ferramenta no Núcleo de IA
       const args = req.body || {};
-      const aiServices = createAiServices({ firestore: () => db, auth: () => getAuth() });
+      const aiServices = getSharedAiServices(db);
       const { toolsExecutor } = aiServices;
 
       try {

@@ -125,6 +125,10 @@ async function readAllPages(queryFactory, { pageSize = 250, maxDocs = 5000 } = {
   }
 }
 
+// Cache volátil em memória para evitar leituras repetidas do Firestore em interações contínuas
+const SCOPED_ORDERS_CACHE = new Map();
+const SCOPED_ORDERS_TTL_MS = 20 * 1000; // 20 segundos
+
 class AiDataRepositories {
   constructor(firestoreInstance, authInstance = null) {
     this.db = firestoreInstance;
@@ -136,6 +140,12 @@ class AiDataRepositories {
    */
   async getScopedOrders(scope, options = {}) {
     if (!this.db) return [];
+
+    const cacheKey = `${scope?.isAdmin ? 'admin' : (scope?.uid || 'anon')}:${options.maxLimit || 'full'}`;
+    const cached = SCOPED_ORDERS_CACHE.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) {
+      return cached.data;
+    }
 
     let rawDocs = [];
     const maxSafetyCeiling = options.maxLimit || 5000;
@@ -176,6 +186,12 @@ class AiDataRepositories {
       const tB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
       return (isNaN(tB) ? 0 : tB) - (isNaN(tA) ? 0 : tA);
     });
+
+    SCOPED_ORDERS_CACHE.set(cacheKey, {
+      data: filtered,
+      expiresAt: Date.now() + SCOPED_ORDERS_TTL_MS,
+    });
+
     return filtered;
   }
 
