@@ -583,31 +583,31 @@ export function McpSettingsSection({ isAdmin }: McpSettingsSectionProps) {
             </div>
           </div>
 
-          {/* ─── GUIA RÁPIDO: COMO CONECTAR NO CHATGPT ─────────────────────── */}
+          {/* ─── GUIA RÁPIDO: COMO CONECTAR O PLUGIN NO CHATGPT ──────────────── */}
           <div className="p-4 rounded-xl border border-primary/20 bg-primary/5 space-y-3">
             <div className="flex items-center gap-2">
               <Sparkles className="size-4 text-primary" />
               <h4 className="text-xs font-semibold uppercase tracking-wider text-primary">
-                Passo a Passo: Como Configurar no ChatGPT (Actions ou Plugins)
+                Passo a Passo: Como Conectar o Plugin no ChatGPT (learn.chatgpt.com/docs/plugins)
               </h4>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs text-muted-foreground">
               <div className="p-3 rounded-lg bg-card/60 border border-border/60 space-y-1">
-                <span className="font-semibold text-foreground">1. GPT Actions vs Plugin</span>
+                <span className="font-semibold text-foreground">1. Conectar Plugin no ChatGPT</span>
                 <p>
-                  Para <strong>GPT Actions</strong>, use o link do <em>Schema OpenAPI (3.0)</em>. Para <strong>Plugins</strong>, use o domínio ou a URL do manifesto <em>ai-plugin.json</em>.
+                  No ChatGPT, acesse a <strong>Plugin Store &gt; Develop your own plugin</strong> (ou <strong>Add Connected App / MCP</strong>) e digite apenas o domínio base: <code className="font-mono text-[11px] text-primary">{status?.environment === 'prod' ? 'api.luisices.com.br' : 'api.dev.luisices.com.br'}</code>.
                 </p>
               </div>
               <div className="p-3 rounded-lg bg-card/60 border border-border/60 space-y-1">
-                <span className="font-semibold text-foreground">2. Importar o Schema</span>
+                <span className="font-semibold text-foreground">2. Validação do Manifesto & Schema</span>
                 <p>
-                  No editor de GPTs, clique em <strong>Actions &gt; Import from URL</strong> e cole o link do OpenAPI. Todos os 9 endpoints serão mapeados automaticamente.
+                  O ChatGPT buscará automaticamente o manifesto em <code className="font-mono text-[10px]">/.well-known/ai-plugin.json</code> e o schema OpenAPI 3.0.3, validando as 9 ferramentas operacionais sem erros.
                 </p>
               </div>
               <div className="p-3 rounded-lg bg-card/60 border border-border/60 space-y-1">
-                <span className="font-semibold text-foreground">3. Autenticação Bearer</span>
+                <span className="font-semibold text-foreground">3. Autenticação Bearer (user_http)</span>
                 <p>
-                  Em Authentication selecione <strong>API Key</strong>, Auth Type: <strong>Bearer</strong> e cole a Chave de Acesso (<code className="font-mono text-[10px]">lui_...</code>) gerada para o seu usuário.
+                  Quando o ChatGPT solicitar as credenciais, selecione <strong>API Key / Bearer</strong> e cole a Chave de Acesso (<code className="font-mono text-[10px]">lui_...</code>) gerada para o seu colaborador.
                 </p>
               </div>
             </div>
