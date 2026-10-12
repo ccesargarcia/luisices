@@ -57,7 +57,8 @@ try {
   const quote = (value) => `'${value.replaceAll("'", "'\\''")}'`;
   const command = [process.execPath, path.join(root, 'node_modules/vitest/vitest.mjs'),
     'run', '--config', 'vitest.backend.config.ts', ...vitestArguments].map(quote).join(' ');
-  const child = spawn(process.execPath, [path.join(root, 'node_modules/firebase-tools/lib/bin/firebase.js'),
+  const cli = process.env.SDK_TEST_FIREBASE_CLI || path.join(root, 'node_modules/firebase-tools/lib/bin/firebase.js');
+  const child = spawn(process.execPath, [cli,
     'emulators:exec', '--config', configPath, '--project', project,
     '--only', wrapperMode ? 'auth,firestore,storage,database' : 'auth,firestore,storage,database,functions', command], { cwd: root, env, stdio: 'inherit' });
   process.exitCode = await new Promise((resolve, reject) => {
