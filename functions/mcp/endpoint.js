@@ -66,6 +66,32 @@ const chatGptToolsEndpoint = onRequest(
       return res.status(200).json(schema);
     }
 
+    // ─── ROTA 1.1: Manifesto de Plugin OpenAI (/.well-known/ai-plugin.json ou /ai-plugin.json) ──
+    if (req.method === 'GET' && (rawPath === '.well-known/ai-plugin.json' || rawPath === 'ai-plugin.json')) {
+      const isDev = !isProd;
+      const pluginManifest = {
+        schema_version: 'v1',
+        name_for_human: isDev ? 'Luisices Ateliê (DEV)' : 'Luisices Ateliê',
+        name_for_model: 'luisices',
+        description_for_human: 'Assistente de produção, pedidos, clientes e precificação do Ateliê Luisices.',
+        description_for_model: 'Ferramentas do sistema Luisices para consultar pedidos por status/data, detalhes de clientes, resumo operacional e calcular precificação.',
+        auth: {
+          type: 'user_http',
+          authorization_type: 'bearer',
+        },
+        api: {
+          type: 'openapi',
+          url: `${baseUrl}/openapi.json`,
+        },
+        logo_url: `https://${apiDomain}/favicon.ico`,
+        contact_email: 'contato@luisices.com.br',
+        legal_info_url: 'https://luisices.com.br',
+      };
+      res.setHeader('Content-Type', 'application/json; charset=utf-8');
+      res.setHeader('Cache-Control', 'public, max-age=300');
+      return res.status(200).json(pluginManifest);
+    }
+
     // ─── ROTA 2: Health Check (/ ou /health) ─────────────────────────────────
     if (req.method === 'GET' && (rawPath === '' || rawPath === 'health')) {
       return res.status(200).json({

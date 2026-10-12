@@ -39,6 +39,37 @@ export default {
       });
     }
 
+    // Manifesto de Plugin OpenAI (/.well-known/ai-plugin.json)
+    if (url.pathname === '/.well-known/ai-plugin.json') {
+      const isDev = url.hostname.includes('dev') || env.ENVIRONMENT === 'dev';
+      const openApiUrl = `https://${url.hostname}/chatGptToolsEndpoint/openapi.json`;
+      const manifest = {
+        schema_version: 'v1',
+        name_for_human: isDev ? 'Luisices Ateliê (DEV)' : 'Luisices Ateliê',
+        name_for_model: 'luisices',
+        description_for_human: 'Consulta pedidos, fila de produção, clientes e orçamentos do Ateliê Luisices.',
+        description_for_model: 'Ferramentas do sistema Luisices para consultar pedidos por status/data, detalhes de clientes, resumo operacional e calcular precificação.',
+        auth: {
+          type: 'user_http',
+          authorization_type: 'bearer',
+        },
+        api: {
+          type: 'openapi',
+          url: openApiUrl,
+        },
+        logo_url: `https://${url.hostname}/favicon.ico`,
+        contact_email: 'contato@luisices.com.br',
+        legal_info_url: 'https://luisices.com.br',
+      };
+      return new Response(JSON.stringify(manifest, null, 2), {
+        status: 200,
+        headers: {
+          ...CORS_HEADERS,
+          'Content-Type': 'application/json; charset=utf-8',
+        },
+      });
+    }
+
     // 2. Determinar backend de destino (Dev vs Prod)
     const isDev = url.hostname.includes('dev') || env.ENVIRONMENT === 'dev';
     const backendBase = env.BACKEND_ORIGIN || (isDev ? DEFAULT_ORIGINS.dev : DEFAULT_ORIGINS.prod);
