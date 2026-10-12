@@ -470,11 +470,12 @@ const resendReceivingWebhook = onRequest(
       }
 
       try {
-        const candidateSecrets = Array.from(new Set([
-          webhookSecret,
-          'whsec_dNXhwOMgDK0x97OBoIdof4fGVAyi5wba',
-          'whsec_v8fOVTk9h5hUrvWYKhVCi3bQxEQu1Yi6',
-        ].filter(Boolean)));
+        const candidateSecrets = Array.from(new Set(
+          String(webhookSecret)
+            .split(',')
+            .map((s) => s.trim())
+            .filter(Boolean)
+        ));
 
         const rawContent = req.rawBody ? req.rawBody.toString('utf8') : JSON.stringify(req.body);
         const signedContent = `${svixId}.${svixTimestamp}.${rawContent}`;
