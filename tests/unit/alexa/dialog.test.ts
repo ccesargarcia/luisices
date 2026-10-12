@@ -1,11 +1,7 @@
 import { describe, it, expect } from 'vitest';
-const {
-  formatDatePtBr,
-  formatCurrencyPtBr,
-  parseAndValidateDeliveryDate,
-  parseAndValidatePrice,
-  handleAlexaDialog,
-} = require('../../../functions/alexa/dialog');
+const { formatDatePtBr, formatCurrencyPtBr } = require('../../../functions/alexa/dialogSpeech');
+const { parseAndValidateDeliveryDate, parseAndValidatePrice } = require('../../../functions/alexa/dialogInput');
+const { handleAlexaDialog } = require('../../../functions/alexa/dialog');
 
 describe('Alexa: Máquina de Estados, Diálogo e Validação de Slots pt-BR', () => {
   const baseConfig = {

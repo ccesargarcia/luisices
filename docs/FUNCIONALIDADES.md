@@ -45,7 +45,7 @@ A importação de pedidos por `.xlsx`, `.xls` ou `.csv` permite revisar e editar
 
 O botão de importar mostra a quantidade selecionada e fica bloqueado enquanto houver edição aberta, nenhuma linha selecionada ou uma linha selecionada com erro. As edições são revalidadas ao salvar, recalculando o saldo do pagamento. A opção de cadastro automático de clientes atua somente sobre os pedidos efetivamente importados. Editar a prévia não altera o arquivo original nem grava dados no sistema; a gravação começa ao confirmar a importação. No celular a prévia usa cartões; no desktop, tabela com rolagem horizontal.
 
-A leitura aceita arquivos de até 10 MB, com até 1.000 pedidos e 64 colunas. Quantidade, valores, datas e dados do cliente são revalidados antes de gravar, e as regras do Firestore impõem validação independente para criação e alteração de pedidos. Consulte o [contrato, evidências e limites de segurança](IMPORTACAO_PEDIDOS.md).
+A leitura aceita arquivos de até 10 MB, com até 1.000 pedidos e 64 colunas. Quantidade, valores, datas e dados do cliente são revalidados antes de gravar, e as regras do Firestore impõem validação independente para criação e alteração de pedidos.
 
 Fontes da importação: [modal](../src/app/components/orders/ImportOrdersDialog.tsx), [edição](../src/app/components/orders/ImportOrderRowEditor.tsx), [revisão e seleção](../src/app/utils/importOrdersReview.ts), [parsing e gravação](../src/app/utils/importOrdersExcel.ts).
 
@@ -61,7 +61,7 @@ Cadastro com contatos, classificação, endereço e aniversário. A interface of
 
 Os indicadores históricos do cliente usam `salesLedger`, associados por identificador do cliente e proprietário. A lista de pedidos operacionais pode ter cobertura diferente. A galeria no histórico usa páginas de até 30 documentos, com carregamento incremental.
 
-Excluir/alterar um cadastro não deve ser interpretado como remoção automática do histórico contábil. Confira [métricas](METRICAS_CLIENTES_LEDGER.md) e [paginação](PAGINACAO_GALERIA_CLIENTE.md).
+Excluir/alterar um cadastro não deve ser interpretado como remoção automática do histórico contábil.
 
 ## Orçamentos, produtos e precificação
 
@@ -81,11 +81,11 @@ Fontes: [PublicCatalog](../src/app/pages/PublicCatalog.tsx), [StoreProducts](../
 
 ## Atendimento
 
-**E-mail:** envio e recebimento via Resend, anexos e acompanhamento de consumo. O backend aceita administradores ou contas com a permissão de envio correspondente. O formulário mantém chave de idempotência em repetições da mesma tentativa; consulte o [contrato de recuperação](RECUPERACAO_ENVIO_EMAIL.md).
+**E-mail:** envio e recebimento via Resend, anexos e acompanhamento de consumo. O backend aceita administradores ou contas com a permissão de envio correspondente. O formulário mantém chave de idempotência em repetições da mesma tentativa.
 
 **WhatsApp:** rascunho e envio são operações distintas. A central consulta mensagens e permite ações conforme autorização. O Copiloto prepara um rascunho; o usuário revisa e confirma o envio. A interface mostra sucesso somente após retorno `success === true` do backend; um resultado incerto não gera repetição automática e orienta conferir o Atendimento. Abrir WhatsApp Web apenas carrega o texto. Homônimos/pedidos não localizados exigem identificação; cobrança e status usam somente fatos comprovados, sem presumir embalagem por pedido concluído.
 
-O modelo atual de conversa usa telefone e proprietário. Clientes de parceiros diferentes podem ter o mesmo telefone, mas isso ainda não cria caixas independentes para cada parceiro. Veja [o contrato atual](ISOLAMENTO_WHATSAPP_PARCEIROS.md).
+O acesso às conversas depende das permissões e da configuração do módulo de atendimento.
 
 ## Relatórios e conceitos financeiros
 
@@ -99,15 +99,13 @@ O modelo atual de conversa usa telefone e proprietário. Clientes de parceiros d
 
 O financeiro do Copiloto filtra pedidos por `createdAt` (ou todo o histórico sem filtro). Pedidos sem criação válida ficam fora de intervalos, sem usar entrega ou data atual como substituto. “Pagamentos registrados nos pedidos selecionados” refere-se aos pagamentos acumulados desses pedidos; não comprova entradas de caixa ocorridas no período solicitado. Ele consulta `orders`, enquanto o histórico de clientes utiliza o ledger. Não prometer igualdade entre bases sem reconciliação.
 
-Resumos mensais têm contrato próprio: [integridade dos rollups](INTEGRIDADE_ROLLUPS_FINANCEIROS.md). Relatórios permitem exportações; o Copiloto não tem ferramenta para gerar/anexar esses arquivos.
+Relatórios permitem exportações; o Copiloto não tem ferramenta para gerar/anexar esses arquivos.
 
 ## Administração, sessões e presença
 
 Há papéis `admin`, `funcionario` e `user`, permissões por módulo e verificações no backend/regras. Convites, recuperação de acesso e mudanças administrativas têm fluxos próprios.
 
 A atualização visual de permissões depende de listeners e conectividade. Desconexão individual é cooperativa; revogação global é outra operação. A sincronização entre Auth, Firestore e RTDB pode ter etapas pendentes e não constitui uma transação única entre serviços.
-
-Consulte [sessões](SEGURANCA_DESCONEXAO_DISPOSITIVOS.md) e [presença](CORRECAO_PRESENCA_RTDB.md).
 
 ## IA e Alexa
 

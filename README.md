@@ -6,6 +6,8 @@ Documentação revisada em **10/10/2026**, com base na `develop` (`b2b6ef9`). A 
 
 ## Documentação
 
+- [Changelog das entregas](CHANGELOG.md)
+- [Guia de changelog e releases](docs/CHANGELOG_E_RELEASES.md)
 - [Índice dos guias](docs/README.md)
 - [Design system e critérios de revisão de UI](design.md)
 - [Funcionalidades e limites operacionais](docs/FUNCIONALIDADES.md)

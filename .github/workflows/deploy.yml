@@ -9,6 +9,7 @@ on:
       - '.github/workflows/**'
       - 'tests/**'
       - 'README.md'
+      - 'CHANGELOG.md'
       - 'docs/**'
       - 'DEPLOY_PRODUCAO_CHECKLIST.md'
 
