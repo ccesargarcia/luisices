@@ -211,24 +211,24 @@ export function ImportOrdersDialog({
         </DialogTrigger>
       )}
 
-      <DialogContent className="max-w-4xl max-h-[92vh] flex flex-col p-0 overflow-hidden border border-white/20 dark:border-white/10 luisices-glass rounded-2xl shadow-2xl">
-        <DialogHeader className="p-6 pb-4 border-b border-white/10">
-          <div className="flex items-center gap-3">
-            <div className="size-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary border border-primary/20">
+      <DialogContent size="4xl" noPadding className="flex flex-col overflow-hidden bg-background text-foreground border-border rounded-xl shadow-2xl [&>[data-slot=dialog-close]]:size-11 [&>[data-slot=dialog-close]]:top-2 [&>[data-slot=dialog-close]]:right-2">
+        <DialogHeader className="p-4 pr-16 sm:p-6 sm:pr-16 border-b border-border text-left">
+          <div className="flex items-start gap-3 min-w-0">
+            <div className="hidden sm:flex shrink-0 size-10 rounded-xl bg-primary/10 items-center justify-center text-primary border border-primary/20">
               <FileSpreadsheet className="size-5" />
             </div>
-            <div>
-              <DialogTitle className="text-xl font-bold tracking-tight">
+            <div className="min-w-0">
+              <DialogTitle className="text-base sm:text-xl font-bold tracking-tight leading-snug">
                 Importar Pedidos via Excel
               </DialogTitle>
               <DialogDescription className="text-sm text-muted-foreground mt-0.5">
-                Envie sua planilha (.xlsx, .xls ou .csv) para importar múltiplos pedidos e cadastrar clientes automaticamente.
+                Revise sua planilha (.xlsx, .xls ou .csv) antes de importar os pedidos.
               </DialogDescription>
             </div>
           </div>
         </DialogHeader>
 
-        <DialogBody className="p-6 overflow-y-auto space-y-6 flex-1">
+        <DialogBody className="p-4 sm:p-6 space-y-4 min-w-0 overflow-x-hidden">
           {/* 1. Tela de Conclusão / Resumo */}
           {importResult && (
             <div className="space-y-6 text-center py-6">
@@ -282,7 +282,7 @@ export function ImportOrdersDialog({
           {!isImporting && !importResult && (
             <>
               {/* Banner do Template */}
-              <div className="p-4 rounded-xl border border-primary/20 bg-primary/5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+              {!fileName && <div className="p-4 rounded-xl border border-primary/20 bg-primary/5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
                 <div className="flex items-center gap-3">
                   <Info className="size-5 text-primary shrink-0" />
                   <div className="text-sm">
@@ -297,12 +297,12 @@ export function ImportOrdersDialog({
                   variant="outline"
                   size="sm"
                   onClick={handleDownloadTemplate}
-                  className="gap-1.5 shrink-0 border-primary/30 text-primary hover:bg-primary/10"
+                  className="min-h-11 gap-1.5 shrink-0 border-primary/30 text-primary hover:bg-primary/10"
                 >
                   <Download className="size-3.5" />
                   <span>Baixar Modelo (.xlsx)</span>
                 </Button>
-              </div>
+              </div>}
 
               {/* Dropzone */}
               {!fileName ? (
@@ -317,7 +317,7 @@ export function ImportOrdersDialog({
                   className={`border-2 border-dashed rounded-2xl p-8 text-center cursor-pointer transition-colors duration-200 ${
                     isDragging
                       ? 'border-primary bg-primary/10'
-                      : 'border-white/20 dark:border-white/10 hover:border-primary/50 hover:bg-white/5'
+                      : 'border-border hover:border-primary/50 hover:bg-muted/40'
                   }`}
                 >
                   <input
@@ -336,11 +336,11 @@ export function ImportOrdersDialog({
                   </p>
                 </div>
               ) : (
-                <div className="flex items-center justify-between p-4 rounded-xl border border-white/20 bg-white/5">
-                  <div className="flex items-center gap-3">
-                    <FileSpreadsheet className="size-6 text-primary" />
+                <div className="flex items-center gap-3 p-3 sm:p-4 rounded-xl border border-border bg-muted/40 min-w-0">
+                  <FileSpreadsheet className="size-5 sm:size-6 text-primary shrink-0" />
+                  <div className="min-w-0 flex-1">
                     <div>
-                      <span className="font-semibold text-sm">{fileName}</span>
+                      <span className="block font-semibold text-sm [overflow-wrap:anywhere]">{fileName}</span>
                       <p className="text-xs text-muted-foreground">
                         {parsing ? 'Processando dados...' : `${parseResult?.totalRows || 0} linha(s) encontrada(s)`}
                       </p>
@@ -351,10 +351,11 @@ export function ImportOrdersDialog({
                     size="sm"
                     onClick={resetState}
                     disabled={parsing}
-                    className="text-muted-foreground hover:text-destructive gap-1.5"
+                    aria-label="Trocar arquivo"
+                    className="size-11 sm:w-auto shrink-0 text-muted-foreground hover:text-destructive gap-1.5"
                   >
                     <Trash2 className="size-4" />
-                    <span>Trocar arquivo</span>
+                    <span className="hidden sm:inline">Trocar arquivo</span>
                   </Button>
                 </div>
               )}
@@ -371,8 +372,8 @@ export function ImportOrdersDialog({
               {parseResult && !parsing && (
                 <div className="space-y-4">
                   {/* Resumo com Badges */}
-                  <div className="flex flex-wrap items-center justify-between gap-3 p-3 rounded-xl bg-white/5 border border-white/10">
-                    <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center justify-between gap-3 p-3 rounded-xl bg-muted/40 border border-border">
+                    <div className="flex flex-wrap items-center gap-2 min-w-0">
                       <Badge variant="outline" className="text-xs font-medium">
                         Total: {parseResult.totalRows}
                       </Badge>
@@ -388,12 +389,11 @@ export function ImportOrdersDialog({
                       )}
                     </div>
 
-                    <div className="flex items-center gap-1.5 text-xs">
-                      <span className="text-muted-foreground mr-1">Filtrar:</span>
+                    <div className="grid grid-cols-3 gap-1.5 text-xs min-w-0 w-full sm:w-auto" role="group" aria-label="Filtrar prévia">
                       <Button
                         variant={previewFilter === 'all' ? 'secondary' : 'ghost'}
                         size="sm"
-                        className="h-7 text-xs px-2.5"
+                        className="min-h-11 sm:min-h-8 text-xs px-2.5"
                         onClick={() => setPreviewFilter('all')}
                       >
                         Todos
@@ -401,24 +401,26 @@ export function ImportOrdersDialog({
                       <Button
                         variant={previewFilter === 'valid' ? 'secondary' : 'ghost'}
                         size="sm"
-                        className="h-7 text-xs px-2.5"
+                        className="min-h-11 sm:min-h-8 text-xs px-2.5"
                         onClick={() => setPreviewFilter('valid')}
+                        aria-label="Apenas Válidos"
                       >
-                        Apenas Válidos
+                        Válidos
                       </Button>
                       <Button
                         variant={previewFilter === 'invalid' ? 'secondary' : 'ghost'}
                         size="sm"
-                        className="h-7 text-xs px-2.5"
+                        className="min-h-11 sm:min-h-8 text-xs px-2.5"
                         onClick={() => setPreviewFilter('invalid')}
+                        aria-label="Com Erros"
                       >
-                        Com Erros
+                        Erros
                       </Button>
                     </div>
                   </div>
 
                   {/* Opção de Autocadastro de Cliente */}
-                  <div className="flex items-center space-x-2 px-1">
+                  <div className="flex items-start gap-2 px-1 min-w-0">
                     <Checkbox
                       id="auto-create-customer"
                       checked={autoCreateCustomer}
@@ -426,16 +428,23 @@ export function ImportOrdersDialog({
                     />
                     <label
                       htmlFor="auto-create-customer"
-                      className="text-xs font-medium text-foreground cursor-pointer select-none"
+                      className="text-xs leading-relaxed font-medium text-foreground cursor-pointer select-none min-h-11 flex items-center"
                     >
                       Cadastrar clientes automaticamente caso ainda não existam no sistema
                     </label>
                   </div>
 
-                  {/* Tabela de Preview */}
-                  <div className="border border-white/10 rounded-xl overflow-hidden max-h-72 overflow-y-auto">
-                    <table className="w-full text-xs text-left">
-                      <thead className="bg-muted/40 sticky top-0 backdrop-blur-md text-muted-foreground border-b border-white/10">
+                  {/* No celular, cada pedido preserva seus dados sem comprimir colunas. */}
+                  <div className="space-y-3 md:hidden" aria-label="Prévia dos pedidos">
+                    {filteredPreviewRows.length === 0 ? (
+                      <p className="py-6 text-center text-sm text-muted-foreground">Nenhum pedido encontrado para o filtro selecionado.</p>
+                    ) : filteredPreviewRows.map((row) => <ImportOrderPreviewCard key={row.rowIndex} row={row} />)}
+                  </div>
+
+                  {/* No desktop a tabela tem rolagem horizontal própria; o corpo controla a rolagem vertical. */}
+                  <div className="hidden md:block border border-border rounded-xl overflow-x-auto" role="region" aria-label="Tabela de prévia dos pedidos" tabIndex={0}>
+                    <table className="w-full min-w-[900px] text-xs text-left">
+                      <thead className="bg-muted text-muted-foreground border-b border-border">
                         <tr>
                           <th className="py-2.5 px-3 font-semibold w-12 text-center">Linha</th>
                           <th className="py-2.5 px-3 font-semibold">Cliente</th>
@@ -448,7 +457,7 @@ export function ImportOrdersDialog({
                           <th className="py-2.5 px-3 font-semibold">Validação</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-white/5">
+                      <tbody className="divide-y divide-border">
                         {filteredPreviewRows.length === 0 ? (
                           <tr>
                             <td colSpan={9} className="py-8 text-center text-muted-foreground">
@@ -461,7 +470,7 @@ export function ImportOrdersDialog({
                               key={row.rowIndex}
                               className={
                                 row.isValid
-                                  ? 'hover:bg-white/5 transition-colors'
+                                  ? 'hover:bg-muted/40 transition-colors'
                                   : 'bg-destructive/5 hover:bg-destructive/10 transition-colors'
                               }
                             >
@@ -519,10 +528,10 @@ export function ImportOrdersDialog({
           )}
         </DialogBody>
 
-        <DialogFooter className="p-4 border-t border-white/10 flex items-center justify-between gap-3">
+        <DialogFooter className="grid grid-cols-[auto_1fr] sm:flex sm:flex-row sm:justify-between items-center gap-2 p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] border-t border-border bg-background">
           {importResult ? (
             <Button
-              className="w-full sm:w-auto ml-auto"
+              className="min-h-11 col-span-2 w-full sm:w-auto ml-auto"
               onClick={() => {
                 resetState();
                 setOpen(false);
@@ -533,7 +542,8 @@ export function ImportOrdersDialog({
           ) : (
             <>
               <Button
-                variant="ghost"
+                variant="outline"
+                className="min-h-11"
                 disabled={isImporting}
                 onClick={() => {
                   resetState();
@@ -543,12 +553,12 @@ export function ImportOrdersDialog({
                 Cancelar
               </Button>
 
-              <div className="flex items-center gap-2">
+              <div className="min-w-0 flex justify-end">
                 {parseResult && parseResult.validRows.length > 0 && (
                   <Button
                     onClick={handleStartImport}
                     disabled={isImporting || parseResult.validRows.length === 0}
-                    className="gap-2"
+                    className="min-h-11 w-full sm:w-auto min-w-0 whitespace-normal gap-2 px-3 sm:px-4"
                   >
                     {isImporting ? (
                       <>
@@ -557,7 +567,7 @@ export function ImportOrdersDialog({
                       </>
                     ) : (
                       <>
-                        <span>Importar {parseResult.validRows.length} Pedido(s)</span>
+                        <span>Importar {parseResult.validRows.length} {parseResult.validRows.length === 1 ? 'pedido' : 'pedidos'}</span>
                         <ArrowRight className="size-4" />
                       </>
                     )}
@@ -569,5 +579,28 @@ export function ImportOrdersDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function ImportOrderPreviewCard({ row }: { row: ParsedOrderRow }) {
+  return (
+    <article className="rounded-lg border border-border bg-card p-3 space-y-2 min-w-0 [overflow-wrap:anywhere]">
+      <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+        <span className="font-medium text-muted-foreground">Linha #{row.rowIndex}</span>
+        <span className={row.isValid ? 'text-emerald-700 dark:text-emerald-400' : 'text-destructive'}>
+          {row.isValid ? 'Pronto para importar' : 'Revisar dados'}
+        </span>
+      </div>
+      <p className="text-sm font-semibold">{row.customerName || 'Cliente ausente'}</p>
+      <p className="text-sm">{row.productName || 'Produto ausente'}</p>
+      <dl className="grid grid-cols-2 gap-x-3 gap-y-2 text-xs">
+        <div><dt className="text-muted-foreground">Telefone</dt><dd>{row.customerPhone || '—'}</dd></div>
+        <div><dt className="text-muted-foreground">Quantidade</dt><dd>{row.quantity}</dd></div>
+        <div><dt className="text-muted-foreground">Valor</dt><dd>{formatCurrency(row.price)}</dd></div>
+        <div><dt className="text-muted-foreground">Entrega</dt><dd>{row.deliveryDate}</dd></div>
+        <div className="col-span-2"><dt className="text-muted-foreground">Status</dt><dd>{row.status === 'in-progress' ? 'Em Produção' : row.status === 'completed' ? 'Concluído' : 'Pendente'}</dd></div>
+      </dl>
+      {row.errors.length > 0 && <ul className="text-xs text-destructive space-y-1">{row.errors.map((error, index) => <li key={index}>{error}</li>)}</ul>}
+    </article>
   );
 }

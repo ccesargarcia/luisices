@@ -1,0 +1,30 @@
+// Valida o modal real com parsing e gravação simulados; não acessa contas nem importa pedidos reais.
+import fs from 'node:fs';
+import { createServer } from 'vite';
+import { chromium } from 'playwright';
+const mock = `const rows=Array.from({length:11},(_,i)=>({rowIndex:i+2,customerName:'Cliente Final '+(1138+i),customerPhone:'11999991138',productName:'30 Vinil Hotwheels + 1 Folha Vinil Impresso 2cm',quantity:31,price:123.45,deliveryDate:'2026-10-20',status:'pending',paymentStatus:'pending',paidAmount:0,remainingAmount:123.45,isValid:i!==10,errors:i===10?['Telefone inválido: revise os dados desta linha.']:[],warnings:[],rawData:{}}));
+export const downloadOrderImportTemplate=async()=>{};
+export const parseOrdersExcelFile=async()=>({totalRows:11,allRows:rows,validRows:rows.filter(r=>r.isValid),invalidRows:rows.filter(r=>!r.isValid),headersFound:[]});
+export const executeOrdersImport=async(rows,uid,options)=>{document.body.dataset.imported=String(rows.length);options.onProgress({current:rows.length,total:rows.length,statusText:'Concluído'});return{total:rows.length,successCount:rows.length,errorCount:0,createdOrderIds:[],createdCustomerIds:[],errors:[]}};`;
+const fixture = `import React from 'react';import {createRoot} from 'react-dom/client';import {ImportOrdersDialog} from '/src/app/components/orders/ImportOrdersDialog';function App(){const[open,setOpen]=React.useState(true);return <><div style={{padding:32}}>Dashboard — Conteúdo atrás do modal</div><ImportOrdersDialog open={open} onOpenChange={setOpen}/></>}createRoot(document.getElementById('root')).render(<App/>);`;
+const css = fs.readFileSync('dist/assets/'+fs.readdirSync('dist/assets').find(x=>/^main.*\.css$/.test(x)),'utf8');
+const server = await createServer({server:{host:'127.0.0.1',port:3199},plugins:[{name:'import-dialog-fixture',enforce:'pre',resolveId(id){if(id==='/__import_fixture.tsx')return id},load(id){if(id==='/__import_fixture.tsx')return fixture;if(id.endsWith('/contexts/AuthContext.tsx'))return `export const useAuth=()=>({user:{uid:'fixture-user'}});`;if(id.endsWith('/utils/importOrdersExcel.ts'))return mock},configureServer(s){s.middlewares.use('/__import',async(req,res)=>{const theme=new URL(req.url,'http://localhost').searchParams.get('theme')||'deep-ocean';res.setHeader('Content-Type','text/html');res.end(await s.transformIndexHtml('/__import',`<html class="${theme}"><head><style>${css}</style></head><body><div id="root"></div><script type="module" src="/__import_fixture.tsx"></script></body></html>`));})}}]});
+await server.listen();
+const browser = await chromium.launch({...(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH?{executablePath:process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH}:{}),args:['--no-sandbox','--disable-dev-shm-usage']});
+try {
+  for(const [width,height] of [[320,640],[393,740],[640,700],[844,500],[1280,800]])for(const theme of ['light','dark','deep-ocean']){
+    const page=await browser.newPage({viewport:{width,height},hasTouch:width<900});const errors=[];page.on('pageerror',e=>errors.push(e.message));
+    await page.goto(`http://127.0.0.1:3199/__import?theme=${theme}`);const dialog=page.getByRole('dialog');await dialog.waitFor();await page.waitForTimeout(250);
+    await page.locator('input[type=file]').setInputFiles({name:'pedidos_luisices_importacaogemini_com_nome_muito_longo.xlsx',mimeType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',buffer:Buffer.from('fixture')});
+    await page.getByRole('button',{name:'Importar 10 pedidos',exact:true}).waitFor();
+    const geometry=await dialog.evaluate(e=>{const r=e.getBoundingClientRect(),body=e.querySelector('[data-slot=dialog-body]'),footer=e.querySelector('[data-slot=dialog-footer]').getBoundingClientRect(),close=e.querySelector('[data-slot=dialog-close]').getBoundingClientRect(),title=e.querySelector('[data-slot=dialog-title]').getBoundingClientRect();return{width:r.width,height:r.height,overflow:e.scrollWidth>e.clientWidth||body.scrollWidth>body.clientWidth,footerOutside:footer.bottom>innerHeight||footer.top<0,closeOverlapsTitle:close.left<title.right&&close.bottom>title.top&&close.top<title.bottom,background:getComputedStyle(e).backgroundColor,scrollable:body.scrollHeight>body.clientHeight}});
+    if(errors.length||geometry.overflow||geometry.footerOutside||geometry.closeOverlapsTitle||geometry.background==='rgba(0, 0, 0, 0)')throw Error(JSON.stringify({width,height,theme,errors,geometry}));
+    const mobile=width<768, visibleRows=()=>mobile?page.locator('article'):page.locator('tbody tr');
+    if(await visibleRows().count()!==11)throw Error('Pedidos ausentes na prévia');
+    await page.getByRole('button',{name:'Com Erros',exact:true}).click();if(await visibleRows().count()!==1)throw Error('Filtro de erros incorreto');await (mobile?page.locator('article'):page.locator('tbody')).getByText('Telefone inválido: revise os dados desta linha.',{exact:mobile}).first().waitFor();
+    await page.getByRole('button',{name:'Apenas Válidos',exact:true}).click();if(await visibleRows().count()!==10)throw Error('Filtro de válidos incorreto');await page.getByRole('button',{name:'Todos',exact:true}).click();
+    if(width===393&&theme==='deep-ocean'&&process.env.IMPORT_DIALOG_SCREENSHOT_PATH){await page.locator('[data-slot=dialog-body]').evaluate(e=>e.scrollTop=0);await page.screenshot({path:process.env.IMPORT_DIALOG_SCREENSHOT_PATH});}
+    await page.getByRole('button',{name:'Importar 10 pedidos',exact:true}).click();await page.getByText('Importação Concluída!',{exact:true}).waitFor();if(await page.locator('body').getAttribute('data-imported')!=='10')throw Error('Importação simulada incorreta');await page.getByRole('button',{name:'Concluir',exact:true}).click();await dialog.waitFor({state:'hidden'});
+    console.log(JSON.stringify({viewportWidth:width,viewportHeight:height,theme,...geometry}));await page.close();
+  }
+} finally {await browser.close();await server.close();}
