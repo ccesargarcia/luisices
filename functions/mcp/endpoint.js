@@ -8,10 +8,38 @@ const { getFirestore } = require('firebase-admin/firestore');
 const { getAuth } = require('firebase-admin/auth');
 const { validateMcpRequest, touchKeyUsage } = require('./auth');
 const { TOOL_SCOPE_MAP, MCP_SCOPES } = require('./constants');
-const { buildOpenApiSchema } = require('./openapi');
+const { buildOpenApiSchema, TOOLS_METADATA } = require('./openapi');
 const { createAiServices } = require('../ai/index');
 const { ORIGIN_SECRET } = require('../common/secrets');
 const { validateOriginSecret } = require('../originProtection');
+
+/**
+ * Função utilitária para executar ferramentas pelo nome
+ */
+async function executeToolByName(toolsExecutor, toolName, args, scope) {
+  switch (toolName) {
+    case 'query_orders_view':
+      return await toolsExecutor.executeQueryOrdersView(args, scope);
+    case 'daily_briefing':
+      return await toolsExecutor.executeDailyBriefing(args, scope);
+    case 'query_customers':
+      return await toolsExecutor.executeQueryCustomers(args, scope);
+    case 'get_financial_summary':
+      return await toolsExecutor.executeFinancialSummary(args, scope);
+    case 'calculate_pricing_estimate':
+      return await toolsExecutor.executePricingEstimate(args, scope);
+    case 'generate_whatsapp_message':
+      return await toolsExecutor.executeGenerateWhatsAppMessage(args, scope);
+    case 'extract_order_draft':
+      return await toolsExecutor.executeExtractOrderDraft(args, scope);
+    case 'search_gallery_portfolio':
+      return await toolsExecutor.executeSearchGalleryPortfolio(args, scope);
+    case 'get_user_summary':
+      return await toolsExecutor.executeUserSummary(args, scope);
+    default:
+      throw new Error(`Ferramenta '${toolName}' não implementada.`);
+  }
+}
 
 /**
  * Endpoint HTTP de Ferramentas de IA para ChatGPT e MCP.
@@ -55,10 +83,10 @@ const chatGptToolsEndpoint = onRequest(
       : `${protocol}://${apiDomain}/chatGptToolsEndpoint`;
 
     // ─── 1. Validação de Proteção de Origem ──────────────────────────────────
-    // Rotas públicas de descoberta (OpenAPI, Manifesto de Plugins e Health) são abertas
-    // para que a OpenAI / ChatGPT consiga ler os schemas e conectar o assistente
+    // Rotas públicas de descoberta (OpenAPI, Manifesto de Plugins, MCP Initialize e Health) são abertas
+    // para que a OpenAI / ChatGPT e clientes MCP consigam ler os schemas e conectar o assistente
     const isPublicDiscovery =
-      req.method === 'GET' &&
+      (req.method === 'GET' &&
       (
         rawPath === 'openapi.json' ||
         rawPath === 'openapi.yaml' ||
@@ -69,7 +97,12 @@ const chatGptToolsEndpoint = onRequest(
         rawPath === 'plugin.json' ||
         rawPath === 'health' ||
         rawPath === ''
-      );
+      )) ||
+      (req.method === 'POST' && (
+        req.body?.method === 'initialize' ||
+        req.body?.method === 'notifications/initialized' ||
+        req.body?.method === 'ping'
+      ));
 
     if (!isPublicDiscovery) {
       const originCheck = validateOriginSecret(req);
@@ -149,8 +182,174 @@ const chatGptToolsEndpoint = onRequest(
       });
     }
 
-    // ─── ROTA 3: Execução de Ferramentas (POST /tools/:toolName) ────────────
-    const matchTool = rawPath.match(/^tools\/([a-zA-Z0-9_]+)$/);
+    // ─── ROTA 3: Suporte ao Protocolo Nativo MCP JSON-RPC 2.0 ─────────────
+    // Suporta qualquer cliente MCP (Cursor, Claude Desktop, ChatGPT MCP connector, etc.)
+    const isMcpRpc = req.method === 'POST' && (
+      req.body?.jsonrpc === '2.0' ||
+      (typeof req.body?.method === 'string' && !matchTool)
+    );
+
+    if (isMcpRpc) {
+      const rpcId = req.body?.id ?? null;
+      const method = req.body?.method;
+      const params = req.body?.params || {};
+
+      // 3.1 Handshake Inicial: initialize
+      if (method === 'initialize') {
+        return res.status(200).json({
+          jsonrpc: '2.0',
+          id: rpcId,
+          result: {
+            protocolVersion: params.protocolVersion || '2024-11-05',
+            capabilities: {
+              tools: {
+                listChanged: false,
+              },
+            },
+            serverInfo: {
+              name: 'luisices-mcp-server',
+              version: '1.0.0',
+            },
+            instructions: 'Servidor MCP oficial do Ateliê Luisices para consulta de pedidos, produção, clientes e orçamentos.',
+          },
+        });
+      }
+
+      // 3.2 Notificação initialized
+      if (method === 'notifications/initialized') {
+        return res.status(200).json({ jsonrpc: '2.0', result: {} });
+      }
+
+      // 3.3 Ping
+      if (method === 'ping') {
+        return res.status(200).json({ jsonrpc: '2.0', id: rpcId, result: {} });
+      }
+
+      // 3.4 Listagem de Ferramentas: tools/list
+      if (method === 'tools/list') {
+        let allowedScopes = null;
+        if (req.headers.authorization) {
+          const authResult = await validateMcpRequest(req, db);
+          if (authResult.success) {
+            allowedScopes = authResult.keyData.scopes || [];
+          }
+        }
+
+        const filteredTools = TOOLS_METADATA.filter((tool) => {
+          if (!allowedScopes || allowedScopes.includes('*')) return true;
+          return allowedScopes.includes(tool.scope);
+        });
+
+        return res.status(200).json({
+          jsonrpc: '2.0',
+          id: rpcId,
+          result: {
+            tools: filteredTools.map((t) => ({
+              name: t.name,
+              description: `${t.summary}: ${t.description}`,
+              inputSchema: t.requestBody || { type: 'object', properties: {} },
+            })),
+          },
+        });
+      }
+
+      // 3.5 Execução de Ferramentas: tools/call
+      if (method === 'tools/call') {
+        const toolName = params.name;
+        const toolArgs = params.arguments || {};
+
+        const authResult = await validateMcpRequest(req, db);
+        if (!authResult.success) {
+          return res.status(200).json({
+            jsonrpc: '2.0',
+            id: rpcId,
+            error: {
+              code: -32001,
+              message: authResult.message || 'Falha de autenticação. Chave inválida ou ausente.',
+            },
+          });
+        }
+
+        const { keyData, scope, keyHash } = authResult;
+        const requiredScope = TOOL_SCOPE_MAP[toolName];
+        if (!requiredScope) {
+          return res.status(200).json({
+            jsonrpc: '2.0',
+            id: rpcId,
+            error: {
+              code: -32601,
+              message: `Ferramenta '${toolName}' não reconhecida pelo sistema Luisices.`,
+            },
+          });
+        }
+
+        const keyScopes = keyData.scopes || [];
+        const hasScope = keyScopes.includes('*') || keyScopes.includes(requiredScope);
+        if (!hasScope) {
+          return res.status(200).json({
+            jsonrpc: '2.0',
+            id: rpcId,
+            error: {
+              code: -32003,
+              message: `Permissão negada para o escopo '${requiredScope}'.`,
+            },
+          });
+        }
+
+        const scopeDef = Object.values(MCP_SCOPES).find((s) => s.id === requiredScope);
+        if (scopeDef?.requiresAdmin && !scope.isAdmin) {
+          return res.status(200).json({
+            jsonrpc: '2.0',
+            id: rpcId,
+            error: {
+              code: -32003,
+              message: `Acesso restrito: a ferramenta '${toolName}' exige privilégios de Administrador.`,
+            },
+          });
+        }
+
+        try {
+          const aiServices = createAiServices({ firestore: () => db, auth: () => getAuth() });
+          const { toolsExecutor } = aiServices;
+          const result = await executeToolByName(toolsExecutor, toolName, toolArgs, scope);
+          touchKeyUsage(db, keyHash);
+
+          return res.status(200).json({
+            jsonrpc: '2.0',
+            id: rpcId,
+            result: {
+              content: [
+                {
+                  type: 'text',
+                  text: typeof result === 'string' ? result : JSON.stringify(result, null, 2),
+                },
+              ],
+              isError: false,
+            },
+          });
+        } catch (execErr) {
+          return res.status(200).json({
+            jsonrpc: '2.0',
+            id: rpcId,
+            error: {
+              code: -32603,
+              message: execErr.message || 'Erro ao executar ferramenta MCP.',
+            },
+          });
+        }
+      }
+
+      return res.status(200).json({
+        jsonrpc: '2.0',
+        id: rpcId,
+        error: {
+          code: -32601,
+          message: `Método MCP '${method}' não implementado.`,
+        },
+      });
+    }
+
+    // ─── ROTA 4: Execução de Ferramentas via REST / OpenAPI (POST /tools/:toolName) ─
     if (matchTool) {
       if (req.method !== 'POST') {
         res.setHeader('Allow', 'POST, OPTIONS');
@@ -208,48 +407,7 @@ const chatGptToolsEndpoint = onRequest(
       const { toolsExecutor } = aiServices;
 
       try {
-        let result = null;
-
-        switch (toolName) {
-          case 'query_orders_view':
-            result = await toolsExecutor.executeQueryOrdersView(args, scope);
-            break;
-
-          case 'daily_briefing':
-            result = await toolsExecutor.executeDailyBriefing(args, scope);
-            break;
-
-          case 'query_customers':
-            result = await toolsExecutor.executeQueryCustomers(args, scope);
-            break;
-
-          case 'get_financial_summary':
-            result = await toolsExecutor.executeFinancialSummary(args, scope);
-            break;
-
-          case 'calculate_pricing_estimate':
-            result = await toolsExecutor.executePricingEstimate(args, scope);
-            break;
-
-          case 'generate_whatsapp_message':
-            result = await toolsExecutor.executeGenerateWhatsAppMessage(args, scope);
-            break;
-
-          case 'extract_order_draft':
-            result = await toolsExecutor.executeExtractOrderDraft(args, scope);
-            break;
-
-          case 'search_gallery_portfolio':
-            result = await toolsExecutor.executeSearchGalleryPortfolio(args, scope);
-            break;
-
-          case 'get_user_summary':
-            result = await toolsExecutor.executeUserSummary(args, scope);
-            break;
-
-          default:
-            return res.status(404).json({ error: 'TOOL_NOT_FOUND', message: 'Ferramenta não implementada.' });
-        }
+        const result = await executeToolByName(toolsExecutor, toolName, args, scope);
 
         // 6. Atualização assíncrona das métricas da chave (lastUsedAt, totalCalls)
         touchKeyUsage(db, keyHash);

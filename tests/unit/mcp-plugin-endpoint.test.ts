@@ -143,5 +143,43 @@ describe('MCP & ChatGPT Plugin / OpenAPI 3.0.3 Specification', () => {
       const [targetUrl] = mockFetch.mock.calls[0];
       expect(targetUrl).toBe('https://us-central1-papelaria-dashboard.cloudfunctions.net/chatGptToolsEndpoint/tools/query_orders_view');
     });
+
+    it('deve rotear chamadas MCP JSON-RPC (POST / ou POST /mcp) para /chatGptToolsEndpoint', async () => {
+      const mockFetch = vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ jsonrpc: '2.0', id: 1, result: { protocolVersion: '2024-11-05' } }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        })
+      );
+      vi.stubGlobal('fetch', mockFetch);
+
+      for (const path of ['/', '/mcp', '/rpc']) {
+        const request = new Request(`https://api.dev.luisices.com.br${path}`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            jsonrpc: '2.0',
+            id: 1,
+            method: 'initialize',
+            params: { protocolVersion: '2024-11-05' },
+          }),
+        });
+
+        const res = await apiWorker.fetch(request, {
+          ENVIRONMENT: 'dev',
+          BACKEND_ORIGIN: 'https://us-central1-luisices-dev.cloudfunctions.net',
+        }, {});
+
+        expect(res.status).toBe(200);
+      }
+
+      expect(mockFetch).toHaveBeenCalledTimes(3);
+      for (const call of mockFetch.mock.calls) {
+        expect(call[0]).toBe('https://us-central1-luisices-dev.cloudfunctions.net/chatGptToolsEndpoint');
+      }
+    });
   });
 });
+

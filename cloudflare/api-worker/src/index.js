@@ -31,8 +31,8 @@ export default {
 
     const url = new URL(request.url);
 
-    // Healthcheck do Gateway
-    if (url.pathname === '/' || url.pathname === '') {
+    // Healthcheck do Gateway (apenas para GET e HEAD)
+    if ((url.pathname === '/' || url.pathname === '') && (request.method === 'GET' || request.method === 'HEAD')) {
       return new Response('Luisices API Gateway Online', {
         status: 200,
         headers: { 'Content-Type': 'text/plain; charset=utf-8' },
@@ -87,14 +87,27 @@ export default {
       targetPath === '/openapi.yaml' ||
       targetPath === '/schema' ||
       targetPath.startsWith('/tools/') ||
-      targetPath === '/health'
+      targetPath === '/health' ||
+      targetPath === '/mcp' ||
+      targetPath === '/rpc' ||
+      targetPath === '/sse' ||
+      (request.method === 'POST' && (targetPath === '/' || targetPath === ''))
     ) {
-      targetPath = `/chatGptToolsEndpoint${targetPath}`;
+      if (targetPath === '/mcp' || targetPath === '/rpc' || targetPath === '/sse' || targetPath === '/' || targetPath === '') {
+        targetPath = '/chatGptToolsEndpoint';
+      } else {
+        targetPath = `/chatGptToolsEndpoint${targetPath}`;
+      }
     }
     const targetUrl = new URL(targetPath + url.search, backendBase);
 
     // 4. Clonar e enriquecer cabeçalhos para a origem
     const forwardHeaders = new Headers(request.headers);
+
+    // Assegurar User-Agent válido caso o cliente MCP envie sem User-Agent
+    if (!forwardHeaders.has('User-Agent') || !forwardHeaders.get('User-Agent')) {
+      forwardHeaders.set('User-Agent', 'Luisices-Api-Gateway/1.0 (Cloudflare Worker; MCP Client)');
+    }
 
     // Injeção do segredo de proteção de origem (validado por functions/originProtection.js)
     const originSecret = env.ORIGIN_SECRET ? env.ORIGIN_SECRET.trim() : '';

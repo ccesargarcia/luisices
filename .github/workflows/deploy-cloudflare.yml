@@ -61,6 +61,11 @@ jobs:
           fi
           echo "✅ Secret CLOUDFLARE_API_TOKEN presente."
 
+      - name: Aplicar Ajustes de Conformidade & WAF (Desativar BIC / Erro 1010, SSL Strict, DKIM)
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: npm run cloudflare:fix
+
       # ─── DEPLOY NO AMBIENTE DE DESENVOLVIMENTO (DEV) ────────────────────────
       - name: Deploy CDN Worker (Dev)
         if: |
