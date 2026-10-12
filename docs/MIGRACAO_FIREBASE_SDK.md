@@ -67,7 +67,7 @@ Os testes atuais de integração de regras usam principalmente SDKs cliente e `r
 - **Etapa 1:** inventário e matriz de versões — concluída.
 - **Etapa 2:** concluída; base atual e contratos reais do Admin/Functions validados, sem atualizar os SDKs.
 - **Etapa 3:** concluída; consumidores migrados e par alvo instalado com contratos validados nos dois modos do workflow.
-- **Etapa 4:** publicar e observar em DEV. Exigir instalação completa com `npm ci` sem ignorar conflitos de peers, descoberta das Functions, testes e verificações dos fluxos afetados.
+- **Etapa 4:** deploy em DEV concluído; observar o ambiente e validar os fluxos autenticados afetados antes de produção.
 - **Etapa 5:** preparar reversão ao conjunto anterior de código e lockfiles; promover à `main` e publicar Functions pelo workflow separado após validação explícita da entrega.
 
 A PR #105 não deve ser mesclada como está. Ela troca a versão do Admin sem adaptar os consumidores nem atualizar o SDK Functions. A migração pode reduzir dependências antigas, mas não implica zerar todos os alertas do projeto; dependências da integração Alexa permanecem em escopo separado.
@@ -126,7 +126,9 @@ Validação local com os SDKs novos: 907 testes unitários, 102 testes de integr
 
 O runner aceita `SDK_TEST_FIREBASE_CLI` para repetir os contratos com a CLI escolhida para deploy. A versão selecionada é instalada separadamente do SDK/tooling da raiz no workflow. Os SDKs Admin/Functions não foram revertidos.
 
-O deploy em DEV permanece pendente: as tentativas foram bloqueadas antes de atualizar as Functions por uma API de suporte à publicação desabilitada no projeto. O problema foi confirmado em duas versões da CLI; reduzir sua versão não resolveu e a versão mais recente já validada foi mantida. A configuração do projeto deve ser regularizada por um responsável autorizado antes de repetir o deploy `functions-only`; não ampliar permissões do pipeline para contornar o bloqueio. A implementação e os testes concluídos não equivalem a uma publicação no ambiente.
+O deploy em DEV foi concluído em 12/10/2026, após regularização da API de suporte à publicação pelo responsável do projeto. O [workflow functions-only](https://github.com/ccesargarcia/luisices/actions/runs/38209176163) confirmou atualização bem-sucedida das **40 Functions**, correspondendo integralmente ao contrato de exports. A CLI 15.32.1 foi mantida. Hosting, regras e produção não foram publicados nessa execução.
+
+Após o deploy, chamadas HTTP sem autenticação ao ambiente DEV confirmaram `getEmailUsage` retornando 401/`UNAUTHENTICATED` e `getUserAccountMetadata` retornando 403/`PERMISSION_DENIED`. Essas verificações confirmam carregamento e resposta dos endpoints publicados; não substituem a validação dos fluxos autenticados de uso na etapa 4.
 
 ## Fontes
 
