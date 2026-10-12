@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { createRequire } from 'node:module';
 
 const mockGetDoc = vi.fn();
 const mockSetDoc = vi.fn();
@@ -124,11 +125,13 @@ describe('Sessões e Dispositivos (Contratos de Callables)', () => {
 });
 
 describe('Barreira Temporal e Segurança de Sessões (assertActiveSession)', () => {
-  const admin = require('../../functions/node_modules/firebase-admin');
+  const backendRequire = createRequire(new URL('../../functions/package.json', import.meta.url));
+  const { getApps, initializeApp } = backendRequire('firebase-admin/app');
+  const { getFirestore } = backendRequire('firebase-admin/firestore');
   const { assertActiveSession } = require('../../functions/common/helpers');
 
-  if (!admin.apps.length) {
-    admin.initializeApp({ projectId: 'demo-test' });
+  if (!getApps().length) {
+    initializeApp({ projectId: 'demo-test' });
   }
 
   it('rejeita chamadas sem autenticação com unauthenticated', async () => {
@@ -140,7 +143,7 @@ describe('Barreira Temporal e Segurança de Sessões (assertActiveSession)', () 
       exists: true,
       data: () => ({ active: true, tokensValidAfterTime: 1700000050 }),
     });
-    const mockCollection = vi.spyOn(admin.firestore(), 'collection').mockReturnValue({
+    const mockCollection = vi.spyOn(getFirestore(), 'collection').mockReturnValue({
       doc: vi.fn().mockReturnValue({ get: mockGet }),
     } as any);
 
@@ -169,7 +172,7 @@ describe('Barreira Temporal e Segurança de Sessões (assertActiveSession)', () 
       exists: true,
       data: () => ({ active: true, tokensValidAfterTime: 1700000050 }),
     });
-    const mockCollection = vi.spyOn(admin.firestore(), 'collection').mockReturnValue({
+    const mockCollection = vi.spyOn(getFirestore(), 'collection').mockReturnValue({
       doc: vi.fn().mockReturnValue({ get: mockGet }),
     } as any);
 

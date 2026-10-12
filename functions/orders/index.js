@@ -2,9 +2,8 @@
  * Módulo de Pedidos e Catálogo Público (Cloud Functions v2).
  */
 
-const functions = require('firebase-functions');
-const { onCall } = require('firebase-functions/v2/https');
-const admin = require('firebase-admin');
+const { Timestamp, getFirestore } = require('firebase-admin/firestore');
+const { onCall, HttpsError } = require('firebase-functions/v2/https');
 const crypto = require('crypto');
 const { publicCatalogOrderLimiter } = require('../common/rateLimiters');
 
@@ -33,7 +32,7 @@ const submitPublicCatalogOrder = onCall({ cors: true, maxInstances: 10 }, async 
   try {
     await publicCatalogOrderLimiter.consume(clientIp);
   } catch (_limiterErr) {
-    throw new functions.https.HttpsError(
+    throw new HttpsError(
       'resource-exhausted',
       'Muitas tentativas de pedido em sequência. Por favor, aguarde alguns minutos antes de tentar novamente.'
     );
@@ -44,10 +43,10 @@ const submitPublicCatalogOrder = onCall({ cors: true, maxInstances: 10 }, async 
 
   // 2. Validação estrutural de entrada
   if (!Array.isArray(items) || items.length === 0) {
-    throw new functions.https.HttpsError('invalid-argument', 'O carrinho de pedidos não pode estar vazio.');
+    throw new HttpsError('invalid-argument', 'O carrinho de pedidos não pode estar vazio.');
   }
   if (items.length > 50) {
-    throw new functions.https.HttpsError('invalid-argument', 'O limite máximo é de 50 itens distintos por pedido.');
+    throw new HttpsError('invalid-argument', 'O limite máximo é de 50 itens distintos por pedido.');
   }
 
   // Chave de idempotência segura (se informada)
@@ -56,14 +55,14 @@ const submitPublicCatalogOrder = onCall({ cors: true, maxInstances: 10 }, async 
       ? idempotencyKey.trim().slice(0, 100)
       : null;
 
-  const db = admin.firestore();
+  const db = getFirestore();
 
   // 3. Validação do status da Lojinha no servidor (storeSettings/public)
   const settingsSnap = await db.doc('storeSettings/public').get();
   if (settingsSnap.exists) {
     const sData = settingsSnap.data() || {};
     if (sData.storePublished === false) {
-      throw new functions.https.HttpsError(
+      throw new HttpsError(
         'failed-precondition',
         sData.storeUnpublishMessage || 'A lojinha online está temporariamente indisponível para novos pedidos.'
       );
@@ -73,14 +72,14 @@ const submitPublicCatalogOrder = onCall({ cors: true, maxInstances: 10 }, async 
       sData.catalogEnabled === false ||
       (sData.featureFlags && sData.featureFlags.enableOnlineOrders === false)
     ) {
-      throw new functions.https.HttpsError(
+      throw new HttpsError(
         'failed-precondition',
         'Os pedidos online estão desabilitados temporariamente. Entre em contato diretamente pelo WhatsApp.'
       );
     }
   } else {
     // Política fail-closed: se o documento de configuração não existir, não aceita pedidos
-    throw new functions.https.HttpsError(
+    throw new HttpsError(
       'failed-precondition',
       'Configuração da vitrine online não encontrada. A lojinha está temporariamente indisponível.'
     );
@@ -89,7 +88,7 @@ const submitPublicCatalogOrder = onCall({ cors: true, maxInstances: 10 }, async 
   // 4. Validação e cálculo confiável dos produtos via storeProducts
   for (const item of items) {
     if (!item || typeof item.productId !== 'string' || !item.productId.trim()) {
-      throw new functions.https.HttpsError('invalid-argument', 'Cada item deve possuir um productId válido.');
+      throw new HttpsError('invalid-argument', 'Cada item deve possuir um productId válido.');
     }
   }
 
@@ -111,12 +110,12 @@ const submitPublicCatalogOrder = onCall({ cors: true, maxInstances: 10 }, async 
     const trimmedPid = item.productId.trim();
     const pData = productMap.get(trimmedPid);
     if (!pData) {
-      throw new functions.https.HttpsError('not-found', `Produto "${trimmedPid}" não encontrado no catálogo.`);
+      throw new HttpsError('not-found', `Produto "${trimmedPid}" não encontrado no catálogo.`);
     }
 
     const computedStatus = pData.status || (pData.active === false ? 'hidden' : 'active');
     if (computedStatus === 'hidden' || computedStatus === 'paused') {
-      throw new functions.https.HttpsError(
+      throw new HttpsError(
         'failed-precondition',
         `O produto "${pData.name || trimmedPid}" está indisponível para pedidos no momento.`
       );
@@ -124,7 +123,7 @@ const submitPublicCatalogOrder = onCall({ cors: true, maxInstances: 10 }, async 
 
     const officialPrice = Number(pData.price ?? pData.unitPrice);
     if (!Number.isFinite(officialPrice) || officialPrice <= 0) {
-      throw new functions.https.HttpsError(
+      throw new HttpsError(
         'failed-precondition',
         `O produto "${pData.name || trimmedPid}" possui valor inválido.`
       );
@@ -132,7 +131,7 @@ const submitPublicCatalogOrder = onCall({ cors: true, maxInstances: 10 }, async 
 
     const quantity = Number(item.quantity);
     if (!Number.isInteger(quantity) || quantity <= 0 || quantity > 100) {
-      throw new functions.https.HttpsError(
+      throw new HttpsError(
         'invalid-argument',
         `A quantidade para "${pData.name || trimmedPid}" deve ser um número inteiro entre 1 e 100.`
       );
@@ -172,7 +171,7 @@ const submitPublicCatalogOrder = onCall({ cors: true, maxInstances: 10 }, async 
   if (submittedSubtotal !== undefined && submittedSubtotal !== null) {
     const diff = Math.abs(Number(submittedSubtotal) - computedSubtotal);
     if (diff > 0.05) {
-      throw new functions.https.HttpsError(
+      throw new HttpsError(
         'aborted',
         `O valor do pedido foi atualizado (R$ ${computedSubtotal.toFixed(2)}). Por favor, revise o valor do seu carrinho antes de confirmar.`,
         { currentSubtotal: computedSubtotal, submittedSubtotal: Number(submittedSubtotal) }
@@ -182,7 +181,7 @@ const submitPublicCatalogOrder = onCall({ cors: true, maxInstances: 10 }, async 
 
   // 6. Geração do código do pedido e gravação com verifiedByServer: true de forma atômica e idempotente
   const orderCode = `LJ-${crypto.randomInt(1000, 10000)}`;
-  const now = admin.firestore.Timestamp.now();
+  const now = Timestamp.now();
 
   const payloadForHash = JSON.stringify({
     items: verifiedItems.map((i) => ({
@@ -231,7 +230,7 @@ const submitPublicCatalogOrder = onCall({ cors: true, maxInstances: 10 }, async 
     if (existingDoc.exists) {
       const existingData = existingDoc.data();
       if (existingData.payloadHash && existingData.payloadHash !== payloadHash) {
-        throw new functions.https.HttpsError(
+        throw new HttpsError(
           'already-exists',
           'A chave de idempotência fornecida já foi utilizada para um pedido com itens ou valores diferentes.'
         );

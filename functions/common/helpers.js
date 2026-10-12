@@ -2,7 +2,7 @@
  * Funções utilitárias e de sanitização compartilhadas entre os domínios de backend.
  */
 
-const admin = require('firebase-admin');
+const { getFirestore } = require('firebase-admin/firestore');
 const crypto = require('crypto');
 const { Resend } = require('resend');
 const { EVOLUTION_API_KEY } = require('./secrets');
@@ -104,7 +104,7 @@ const assertActiveSession = async (request, options = {}) => {
     throw new HttpsError('unauthenticated', 'Requer autenticação.');
   }
 
-  const db = options.db || admin.firestore();
+  const db = options.db || getFirestore();
   const profileSnap = await db.collection('userProfiles').doc(request.auth.uid).get();
   if (!profileSnap.exists || profileSnap.data().active === false) {
     throw new HttpsError('permission-denied', 'Perfil de usuário inativo ou inexistente.');

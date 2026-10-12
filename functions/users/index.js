@@ -2,9 +2,9 @@
  * Módulo de Gestão de Usuários, Convites e Autenticação (Cloud Functions v2).
  */
 
-const functions = require('firebase-functions');
-const { onCall } = require('firebase-functions/v2/https');
-const admin = require('firebase-admin');
+const { FieldValue, Timestamp, getFirestore } = require('firebase-admin/firestore');
+const { getAuth } = require('firebase-admin/auth');
+const { onCall, HttpsError } = require('firebase-functions/v2/https');
 const crypto = require('crypto');
 const { RESEND_API_KEY, EVOLUTION_API_KEY } = require('../common/secrets');
 const { passwordResetLimiter, adminUserActionLimiter } = require('../common/rateLimiters');
@@ -46,7 +46,7 @@ async function consumeAdminUserAction(uid) {
   try {
     await adminUserActionLimiter.consume(uid);
   } catch {
-    throw new functions.https.HttpsError(
+    throw new HttpsError(
       'resource-exhausted',
       'Limite de operações administrativas atingido. Tente novamente mais tarde.'
     );
@@ -54,12 +54,12 @@ async function consumeAdminUserAction(uid) {
 }
 
 function writeUserAudit(action, actorUid, targetUid, details = {}) {
-  return admin.firestore().collection('userAuditLogs').add({
+  return getFirestore().collection('userAuditLogs').add({
     action,
     actorUid,
     ...(targetUid ? { targetUid } : {}),
     ...details,
-    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    createdAt: FieldValue.serverTimestamp(),
   }).catch((error) => {
     console.error('[users] Falha ao registrar auditoria:', error);
   });
@@ -67,30 +67,30 @@ function writeUserAudit(action, actorUid, targetUid, details = {}) {
 
 async function activateInvitedAccount(invitationRef, invitationData, authUser) {
   if (!authUser.email || authUser.email.toLowerCase() !== invitationData.email.toLowerCase()) {
-    throw new functions.https.HttpsError('permission-denied', 'O e-mail da conta não corresponde ao convite.');
+    throw new HttpsError('permission-denied', 'O e-mail da conta não corresponde ao convite.');
   }
   if (authUser.emailVerified !== true) {
-    throw new functions.https.HttpsError('failed-precondition', 'Confirme o e-mail antes de concluir o cadastro.');
+    throw new HttpsError('failed-precondition', 'Confirme o e-mail antes de concluir o cadastro.');
   }
 
-  await admin.firestore().runTransaction(async (transaction) => {
+  await getFirestore().runTransaction(async (transaction) => {
     const invitationSnapshot = await transaction.get(invitationRef);
-    const profileRef = admin.firestore().doc(`userProfiles/${authUser.uid}`);
+    const profileRef = getFirestore().doc(`userProfiles/${authUser.uid}`);
     const profileSnapshot = await transaction.get(profileRef);
     if (!invitationSnapshot.exists) {
-      throw new functions.https.HttpsError('not-found', 'Convite inválido ou expirado.');
+      throw new HttpsError('not-found', 'Convite inválido ou expirado.');
     }
 
     const currentInvitation = invitationSnapshot.data();
     if (currentInvitation.status === 'accepted' && currentInvitation.acceptedBy === authUser.uid) return;
     if (currentInvitation.status !== 'pending' || currentInvitation.expiresAt.toDate() <= new Date()) {
-      throw new functions.https.HttpsError('failed-precondition', 'Convite inválido ou expirado.');
+      throw new HttpsError('failed-precondition', 'Convite inválido ou expirado.');
     }
 
     if (profileSnapshot.exists) {
       const profileEmail = profileSnapshot.data().email;
       if (!profileEmail || profileEmail.toLowerCase() !== authUser.email.toLowerCase()) {
-        throw new functions.https.HttpsError('already-exists', 'Esta conta já possui outro perfil.');
+        throw new HttpsError('already-exists', 'Esta conta já possui outro perfil.');
       }
     } else {
       transaction.set(profileRef, {
@@ -102,23 +102,23 @@ async function activateInvitedAccount(invitationRef, invitationData, authUser) {
         active: true,
         permissions: INVITED_USER_PERMISSIONS,
         invitedBy: invitationData.invitedBy,
-        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        createdAt: FieldValue.serverTimestamp(),
         passwordChangedAt: authUser.metadata.creationTime,
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
       });
     }
 
     transaction.update(invitationRef, {
       status: 'accepted',
       acceptedBy: authUser.uid,
-      acceptedAt: admin.firestore.FieldValue.serverTimestamp(),
+      acceptedAt: FieldValue.serverTimestamp(),
     });
   });
 }
 
 async function createCustomVerificationLink(email, inviteToken) {
   const continueUrl = `${getAppUrl()}/action?mode=verifyEmail&invite=${encodeURIComponent(inviteToken)}`;
-  const rawLink = await admin.auth().generateEmailVerificationLink(email, { url: continueUrl });
+  const rawLink = await getAuth().generateEmailVerificationLink(email, { url: continueUrl });
   const customLink = formatActionLink(rawLink, 'verifyEmail');
   const verificationUrl = new URL(customLink);
   verificationUrl.searchParams.set('invite', inviteToken);
@@ -130,26 +130,26 @@ const sendAdminPasswordReset = onCall(
   { maxInstances: 5, secrets: [RESEND_API_KEY, EVOLUTION_API_KEY] },
   async (request) => {
     if (!(await isAdminRequest(request))) {
-      throw new functions.https.HttpsError('permission-denied', 'Apenas administradores podem redefinir senhas.');
+      throw new HttpsError('permission-denied', 'Apenas administradores podem redefinir senhas.');
     }
     await consumeAdminUserAction(request.auth.uid);
     const { email } = request.data || {};
     if (!email || typeof email !== 'string') {
-      throw new functions.https.HttpsError('invalid-argument', 'E-mail do usuário é obrigatório.');
+      throw new HttpsError('invalid-argument', 'E-mail do usuário é obrigatório.');
     }
     const resend = getResend(RESEND_API_KEY.value());
-    if (!resend) throw new functions.https.HttpsError('failed-precondition', 'Resend não configurado.');
+    if (!resend) throw new HttpsError('failed-precondition', 'Resend não configurado.');
 
     try {
-      const rawResetLink = await admin.auth().generatePasswordResetLink(email.trim(), {
+      const rawResetLink = await getAuth().generatePasswordResetLink(email.trim(), {
         url: `${getAppUrl()}/action`,
         handleCodeInApp: true,
       });
       const resetLink = formatActionLink(rawResetLink);
       const [profileQuery, authUser] = await Promise.all([
-        admin.firestore().collection('userProfiles')
+        getFirestore().collection('userProfiles')
           .where('email', '==', email.trim().toLowerCase()).limit(1).get(),
-        admin.auth().getUserByEmail(email.trim()),
+        getAuth().getUserByEmail(email.trim()),
       ]);
       const phone = profileQuery.empty ? null : profileQuery.docs[0].data().whatsappPhone;
       const emailPromise = resend.emails.send({
@@ -158,7 +158,7 @@ const sendAdminPasswordReset = onCall(
         subject: 'Redefinição de senha - Luisices',
         html: `<p>Olá,</p><p>Um administrador solicitou a redefinição da senha da sua conta Luisices.</p><p><a href="${resetLink}">Definir nova senha</a></p><p>Este link expira em 1 hora e pode ser usado uma única vez.</p><p>Se você não esperava este e-mail, entre em contato com o administrador.</p>`,
       });
-      const profilePromise = admin.firestore().doc(`userProfiles/${authUser.uid}`).set({
+      const profilePromise = getFirestore().doc(`userProfiles/${authUser.uid}`).set({
         lastPasswordResetRequestedAt: new Date().toISOString(),
       }, { merge: true });
       const whatsappPromise = phone
@@ -175,10 +175,10 @@ const sendAdminPasswordReset = onCall(
       return { success: true };
     } catch (error) {
       if (error.code === 'auth/user-not-found') {
-        throw new functions.https.HttpsError('not-found', 'Usuário não encontrado.');
+        throw new HttpsError('not-found', 'Usuário não encontrado.');
       }
       console.error('[sendAdminPasswordReset]', error);
-      throw new functions.https.HttpsError('internal', 'Não foi possível enviar o link de redefinição.');
+      throw new HttpsError('internal', 'Não foi possível enviar o link de redefinição.');
     }
   }
 );
@@ -188,31 +188,31 @@ const createUserInvitation = onCall(
   { maxInstances: 5, secrets: [RESEND_API_KEY, EVOLUTION_API_KEY] },
   async (request) => {
     if (!(await isAdminRequest(request))) {
-      throw new functions.https.HttpsError('permission-denied', 'Apenas administradores podem enviar convites.');
+      throw new HttpsError('permission-denied', 'Apenas administradores podem enviar convites.');
     }
     await consumeAdminUserAction(request.auth.uid);
     const { email, whatsappPhone } = request.data || {};
     if (!email || typeof email !== 'string') {
-      throw new functions.https.HttpsError('invalid-argument', 'E-mail do convite é obrigatório.');
+      throw new HttpsError('invalid-argument', 'E-mail do convite é obrigatório.');
     }
     const normalizedEmail = email.trim().toLowerCase();
 
     try {
-      const existing = await admin.auth().getUserByEmail(normalizedEmail).catch(() => null);
+      const existing = await getAuth().getUserByEmail(normalizedEmail).catch(() => null);
       const token = crypto.randomBytes(32).toString('hex');
       const expiresAt = new Date(Date.now() + 48 * 60 * 60 * 1000);
-      const invitationRef = admin.firestore().collection('invitations').doc(hashToken(token));
+      const invitationRef = getFirestore().collection('invitations').doc(hashToken(token));
       const invitationData = {
         email: normalizedEmail,
         whatsappPhone: whatsappPhone || null,
         invitedBy: request.auth.uid,
         status: 'pending',
-        expiresAt: admin.firestore.Timestamp.fromDate(expiresAt),
-        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        expiresAt: Timestamp.fromDate(expiresAt),
+        createdAt: FieldValue.serverTimestamp(),
       };
 
       if (existing) {
-        const existingProfile = await admin.firestore().doc(`userProfiles/${existing.uid}`).get();
+        const existingProfile = await getFirestore().doc(`userProfiles/${existing.uid}`).get();
         if (existingProfile.exists) {
           const profile = existingProfile.data();
           if (
@@ -222,12 +222,12 @@ const createUserInvitation = onCall(
           ) {
             await existingProfile.ref.update({
               active: true,
-              updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+              updatedAt: FieldValue.serverTimestamp(),
             });
             await writeUserAudit('ORPHANED_USER_ACCOUNT_ACTIVATED', request.auth.uid, existing.uid, { email: normalizedEmail });
             return { success: true, repairedExistingAccount: true };
           }
-          throw new functions.https.HttpsError('already-exists', 'Este e-mail já possui uma conta ativa.');
+          throw new HttpsError('already-exists', 'Este e-mail já possui uma conta ativa.');
         }
 
         await invitationRef.set(invitationData);
@@ -238,7 +238,7 @@ const createUserInvitation = onCall(
         }
 
         const resend = getResend(RESEND_API_KEY.value());
-        if (!resend) throw new functions.https.HttpsError('failed-precondition', 'Resend não configurado.');
+        if (!resend) throw new HttpsError('failed-precondition', 'Resend não configurado.');
         const verificationLink = await createCustomVerificationLink(normalizedEmail, token);
         const { error } = await resend.emails.send({
           from: getNoReplySender(),
@@ -248,14 +248,14 @@ const createUserInvitation = onCall(
         });
         if (error) {
           console.error('[createUserInvitation] Falha ao reenviar confirmação:', JSON.stringify(error));
-          throw new functions.https.HttpsError('internal', 'Não foi possível enviar o link de confirmação.');
+          throw new HttpsError('internal', 'Não foi possível enviar o link de confirmação.');
         }
         await writeUserAudit('ORPHANED_USER_VERIFICATION_RESENT', request.auth.uid, existing.uid, { email: normalizedEmail });
         return { success: true, verificationSent: true, expiresAt: expiresAt.toISOString() };
       }
 
       const resend = getResend(RESEND_API_KEY.value());
-      if (!resend) throw new functions.https.HttpsError('failed-precondition', 'Resend não configurado.');
+      if (!resend) throw new HttpsError('failed-precondition', 'Resend não configurado.');
       await invitationRef.set(invitationData);
 
       const inviteLink = `${getAppUrl()}/registrar?invite=${token}`;
@@ -277,9 +277,9 @@ const createUserInvitation = onCall(
       await writeUserAudit('USER_INVITATION_CREATED', request.auth.uid, null, { email: normalizedEmail });
       return { success: true, expiresAt: expiresAt.toISOString() };
     } catch (error) {
-      if (error instanceof functions.https.HttpsError) throw error;
+      if (error instanceof HttpsError) throw error;
       console.error('[createUserInvitation]', error);
-      throw new functions.https.HttpsError('internal', 'Não foi possível enviar o convite.');
+      throw new HttpsError('internal', 'Não foi possível enviar o convite.');
     }
   }
 );
@@ -288,13 +288,13 @@ const createUserInvitation = onCall(
 const validateUserInvitation = onCall(async (request) => {
   const { token } = request.data || {};
   if (!token || typeof token !== 'string') {
-    throw new functions.https.HttpsError('invalid-argument', 'Convite inválido.');
+    throw new HttpsError('invalid-argument', 'Convite inválido.');
   }
-  const snapshot = await admin.firestore().collection('invitations').doc(hashToken(token)).get();
-  if (!snapshot.exists) throw new functions.https.HttpsError('not-found', 'Convite inválido ou expirado.');
+  const snapshot = await getFirestore().collection('invitations').doc(hashToken(token)).get();
+  if (!snapshot.exists) throw new HttpsError('not-found', 'Convite inválido ou expirado.');
   const data = snapshot.data();
   if (data.status !== 'pending' || data.expiresAt.toDate() <= new Date()) {
-    throw new functions.https.HttpsError('failed-precondition', 'Convite inválido ou expirado.');
+    throw new HttpsError('failed-precondition', 'Convite inválido ou expirado.');
   }
   return { email: data.email, expiresAt: data.expiresAt.toDate().toISOString() };
 });
@@ -303,29 +303,29 @@ const validateUserInvitation = onCall(async (request) => {
 const completeUserInvitation = onCall(async (request) => {
   const { token } = request.data || {};
   if (!token || typeof token !== 'string') {
-    throw new functions.https.HttpsError('invalid-argument', 'Convite inválido.');
+    throw new HttpsError('invalid-argument', 'Convite inválido.');
   }
-  const invitationRef = admin.firestore().collection('invitations').doc(hashToken(token));
+  const invitationRef = getFirestore().collection('invitations').doc(hashToken(token));
   const invitation = await invitationRef.get();
   if (!invitation.exists) {
-    throw new functions.https.HttpsError('not-found', 'Convite inválido ou expirado.');
+    throw new HttpsError('not-found', 'Convite inválido ou expirado.');
   }
   const invData = invitation.data();
   if (invData.status === 'accepted' && invData.acceptedBy) {
-    const acceptedUser = await admin.auth().getUser(invData.acceptedBy);
+    const acceptedUser = await getAuth().getUser(invData.acceptedBy);
     if (acceptedUser.emailVerified && acceptedUser.email.toLowerCase() === invData.email.toLowerCase()) {
       return { success: true };
     }
   }
   if (invData.status !== 'pending' || invData.expiresAt.toDate() <= new Date()) {
-    throw new functions.https.HttpsError('failed-precondition', 'Convite inválido ou expirado.');
+    throw new HttpsError('failed-precondition', 'Convite inválido ou expirado.');
   }
 
   // O token do convite prova o acesso ao convite; o Admin Auth confirma que o
   // endereço correspondente já foi verificado, mesmo em outro navegador.
-  const authUser = await admin.auth().getUserByEmail(invData.email);
+  const authUser = await getAuth().getUserByEmail(invData.email);
   if (authUser.emailVerified !== true) {
-    throw new functions.https.HttpsError(
+    throw new HttpsError(
       'failed-precondition',
       'Confirme o e-mail da conta antes de concluir o cadastro.'
     );
@@ -340,34 +340,34 @@ const sendVerificationEmail = onCall(
   { maxInstances: 5, secrets: [RESEND_API_KEY] },
   async (request) => {
     if (!request.auth) {
-      throw new functions.https.HttpsError('unauthenticated', 'Faça login para solicitar a confirmação do e-mail.');
+      throw new HttpsError('unauthenticated', 'Faça login para solicitar a confirmação do e-mail.');
     }
     const { inviteToken } = request.data || {};
     if (!inviteToken || typeof inviteToken !== 'string') {
-      throw new functions.https.HttpsError('invalid-argument', 'Convite inválido.');
+      throw new HttpsError('invalid-argument', 'Convite inválido.');
     }
 
     const resend = getResend(RESEND_API_KEY.value());
-    if (!resend) throw new functions.https.HttpsError('failed-precondition', 'Resend não configurado.');
+    if (!resend) throw new HttpsError('failed-precondition', 'Resend não configurado.');
 
     try {
-      const authUser = await admin.auth().getUser(request.auth.uid);
-      if (!authUser.email) throw new functions.https.HttpsError('failed-precondition', 'A conta não possui e-mail.');
+      const authUser = await getAuth().getUser(request.auth.uid);
+      if (!authUser.email) throw new HttpsError('failed-precondition', 'A conta não possui e-mail.');
       if (authUser.emailVerified) return { success: true };
 
-      const invitation = await admin.firestore().collection('invitations').doc(hashToken(inviteToken)).get();
-      if (!invitation.exists) throw new functions.https.HttpsError('not-found', 'Convite inválido ou expirado.');
+      const invitation = await getFirestore().collection('invitations').doc(hashToken(inviteToken)).get();
+      if (!invitation.exists) throw new HttpsError('not-found', 'Convite inválido ou expirado.');
       const invitationData = invitation.data();
       if (
         invitationData.status !== 'pending' ||
         invitationData.expiresAt.toDate() <= new Date() ||
         invitationData.email.toLowerCase() !== authUser.email.toLowerCase()
       ) {
-        throw new functions.https.HttpsError('failed-precondition', 'Convite inválido ou expirado.');
+        throw new HttpsError('failed-precondition', 'Convite inválido ou expirado.');
       }
 
       const continueUrl = `${getAppUrl()}/action?mode=verifyEmail&invite=${encodeURIComponent(inviteToken)}`;
-      const rawLink = await admin.auth().generateEmailVerificationLink(authUser.email, { url: continueUrl });
+      const rawLink = await getAuth().generateEmailVerificationLink(authUser.email, { url: continueUrl });
       const firebaseLink = new URL(rawLink);
       const oobCode = firebaseLink.searchParams.get('oobCode');
       if (!oobCode) throw new Error('Firebase não retornou o código de confirmação.');
@@ -385,9 +385,9 @@ const sendVerificationEmail = onCall(
       }
       return { success: true };
     } catch (error) {
-      if (error instanceof functions.https.HttpsError) throw error;
+      if (error instanceof HttpsError) throw error;
       console.error('[sendVerificationEmail]', error);
-      throw new functions.https.HttpsError('internal', 'Não foi possível enviar o e-mail de confirmação.');
+      throw new HttpsError('internal', 'Não foi possível enviar o e-mail de confirmação.');
     }
   }
 );
@@ -399,7 +399,7 @@ const sendPasswordResetEmail = onCall(
     const { email } = request.data || {};
 
     if (!email) {
-      throw new functions.https.HttpsError('invalid-argument', 'Email é obrigatório');
+      throw new HttpsError('invalid-argument', 'Email é obrigatório');
     }
 
     try {
@@ -407,7 +407,7 @@ const sendPasswordResetEmail = onCall(
     } catch (rateLimiterRes) {
       const retryAfter = Math.ceil(rateLimiterRes.msBeforeNext / 1000 / 60);
       console.warn(`[sendPasswordResetEmail] Rate limit excedido para: ${email}`);
-      throw new functions.https.HttpsError(
+      throw new HttpsError(
         'resource-exhausted',
         `Muitas tentativas. Tente novamente em ${retryAfter} minuto(s).`
       );
@@ -415,7 +415,7 @@ const sendPasswordResetEmail = onCall(
 
     const resend = getResend(RESEND_API_KEY.value());
     if (!resend) {
-      throw new functions.https.HttpsError('failed-precondition', 'Resend não configurado');
+      throw new HttpsError('failed-precondition', 'Resend não configurado');
     }
 
     try {
@@ -423,11 +423,11 @@ const sendPasswordResetEmail = onCall(
       console.log(`[sendPasswordResetEmail] Iniciando para: ${maskedEmail}`);
 
       const actionUrl = `${getAppUrl()}/action`;
-      const rawResetLink = await admin.auth().generatePasswordResetLink(email, {
+      const rawResetLink = await getAuth().generatePasswordResetLink(email, {
         url: actionUrl,
       });
       const resetLink = formatActionLink(rawResetLink);
-      const profileQuery = await admin.firestore().collection('userProfiles')
+      const profileQuery = await getFirestore().collection('userProfiles')
         .where('email', '==', email.trim().toLowerCase()).limit(1).get();
       const phone = profileQuery.empty ? null : profileQuery.docs[0].data().whatsappPhone;
 
@@ -490,7 +490,7 @@ const sendPasswordResetEmail = onCall(
 
       if (error) {
         console.error('[sendPasswordResetEmail] Erro ao enviar email via Resend:', JSON.stringify(error));
-        throw new functions.https.HttpsError('internal', `Erro Resend: ${error.message || JSON.stringify(error)}`);
+        throw new HttpsError('internal', `Erro Resend: ${error.message || JSON.stringify(error)}`);
       }
 
       return {
@@ -505,7 +505,7 @@ const sendPasswordResetEmail = onCall(
           message: 'Se o email estiver cadastrado, você receberá instruções de recuperação.',
         };
       }
-      throw new functions.https.HttpsError('internal', 'Erro ao enviar email de recuperação');
+      throw new HttpsError('internal', 'Erro ao enviar email de recuperação');
     }
   }
 );
@@ -516,15 +516,15 @@ const getUserAccountMetadata = onCall({
   cors: true,
 }, async (request) => {
   if (!(await isAdminRequest(request))) {
-    throw new functions.https.HttpsError('permission-denied', 'Apenas administradores podem consultar os dados das contas.');
+    throw new HttpsError('permission-denied', 'Apenas administradores podem consultar os dados das contas.');
   }
   const { uids } = request.data || {};
   if (!Array.isArray(uids) || uids.length > 100 || uids.some((uid) => typeof uid !== 'string' || uid.length > 128)) {
-    throw new functions.https.HttpsError('invalid-argument', 'Lista de usuários inválida.');
+    throw new HttpsError('invalid-argument', 'Lista de usuários inválida.');
   }
   if (uids.length === 0) return { users: [] };
 
-  const result = await admin.auth().getUsers(uids.map((uid) => ({ uid })));
+  const result = await getAuth().getUsers(uids.map((uid) => ({ uid })));
   return {
     users: result.users.map((user) => ({
       uid: user.uid,
@@ -536,14 +536,14 @@ const getUserAccountMetadata = onCall({
 
 /** Sincroniza e recupera custom claims de um usuário para garantir paridade com o Firestore. */
 const syncUserClaims = async (uid) => {
-  const profileDoc = await admin.firestore().doc(`userProfiles/${uid}`).get();
+  const profileDoc = await getFirestore().doc(`userProfiles/${uid}`).get();
   if (!profileDoc.exists) return null;
   const data = profileDoc.data();
   const claims = {
     role: data.role || 'user',
     active: data.active !== false,
   };
-  await admin.auth().setCustomUserClaims(uid, claims);
+  await getAuth().setCustomUserClaims(uid, claims);
   return claims;
 };
 
@@ -558,18 +558,18 @@ const executeClaimsRepair = async (uid) => {
 /** Callable para reparo e sincronização de custom claims e revogações pendentes. */
 const repairUserClaims = onCall(async (request) => {
   if (!request.auth) {
-    throw new functions.https.HttpsError('unauthenticated', 'Requer autenticação.');
+    throw new HttpsError('unauthenticated', 'Requer autenticação.');
   }
 
   const { uid } = request.data || {};
   if (!uid || typeof uid !== 'string') {
-    throw new functions.https.HttpsError('invalid-argument', 'UID do usuário é obrigatório.');
+    throw new HttpsError('invalid-argument', 'UID do usuário é obrigatório.');
   }
 
   // Permite que o próprio usuário repare suas claims, ou que um admin repare de terceiros
   if (request.auth.uid !== uid) {
     if (!(await helpers.isAdminRequest(request))) {
-      throw new functions.https.HttpsError('permission-denied', 'Sem permissão para reparar credenciais de terceiros.');
+      throw new HttpsError('permission-denied', 'Sem permissão para reparar credenciais de terceiros.');
     }
   }
 
@@ -590,40 +590,40 @@ const repairUserClaims = onCall(async (request) => {
     };
   } catch (err) {
     console.error(`[repairUserClaims] Falha no reparo do usuário ${uid}:`, err);
-    throw new functions.https.HttpsError('internal', 'Não foi possível concluir o reparo das credenciais.');
+    throw new HttpsError('internal', 'Não foi possível concluir o reparo das credenciais.');
   }
 });
 
 /** Registra a troca de senha concluída pelo próprio usuário. */
 const recordUserPasswordChange = onCall(async (request) => {
   await assertActiveSession(request);
-  const profileRef = admin.firestore().doc(`userProfiles/${request.auth.uid}`);
-  await profileRef.set({ passwordChangedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+  const profileRef = getFirestore().doc(`userProfiles/${request.auth.uid}`);
+  await profileRef.set({ passwordChangedAt: FieldValue.serverTimestamp() }, { merge: true });
   return { success: true };
 });
 
 /** Remove um usuário do Firebase Auth e do Firestore (apenas admin). */
 const deleteUser = onCall(async (request) => {
   if (!(await isAdminRequest(request))) {
-    throw new functions.https.HttpsError('permission-denied', 'Apenas administradores podem remover usuários.');
+    throw new HttpsError('permission-denied', 'Apenas administradores podem remover usuários.');
   }
   await consumeAdminUserAction(request.auth.uid);
   const { uid } = request.data || {};
   if (!uid || typeof uid !== 'string') {
-    throw new functions.https.HttpsError('invalid-argument', 'UID do usuário é obrigatório.');
+    throw new HttpsError('invalid-argument', 'UID do usuário é obrigatório.');
   }
   if (uid === request.auth.uid) {
-    throw new functions.https.HttpsError('failed-precondition', 'Você não pode remover sua própria conta de administrador.');
+    throw new HttpsError('failed-precondition', 'Você não pode remover sua própria conta de administrador.');
   }
 
-  const profileRef = admin.firestore().doc(`userProfiles/${uid}`);
+  const profileRef = getFirestore().doc(`userProfiles/${uid}`);
   const profileSnap = await profileRef.get();
 
   if (profileSnap.exists && profileSnap.data()?.role === 'admin' && profileSnap.data()?.active !== false) {
-    const admins = await admin.firestore().collection('userProfiles').where('role', '==', 'admin').get();
+    const admins = await getFirestore().collection('userProfiles').where('role', '==', 'admin').get();
     const activeAdmins = admins.docs.filter((doc) => doc.data().active !== false);
     if (activeAdmins.length <= 1) {
-      throw new functions.https.HttpsError('failed-precondition', 'O sistema precisa manter pelo menos um administrador ativo.');
+      throw new HttpsError('failed-precondition', 'O sistema precisa manter pelo menos um administrador ativo.');
     }
   }
 
@@ -632,11 +632,11 @@ const deleteUser = onCall(async (request) => {
       await profileRef.update({
         active: false,
         deletionStatus: 'in_progress',
-        deletedAt: admin.firestore.FieldValue.serverTimestamp(),
+        deletedAt: FieldValue.serverTimestamp(),
       });
     } catch (err) {
       console.error('[deleteUser] Falha ao desativar perfil antes da exclusão:', err);
-      throw new functions.https.HttpsError(
+      throw new HttpsError(
         'internal',
         `Não foi possível desativar o perfil do usuário para exclusão: ${err?.message || err}`
       );
@@ -644,7 +644,7 @@ const deleteUser = onCall(async (request) => {
   }
 
   try {
-    await admin.auth().revokeRefreshTokens(uid);
+    await getAuth().revokeRefreshTokens(uid);
   } catch (err) {
     if (err?.code !== 'auth/user-not-found') {
       console.warn('[deleteUser] Aviso ao revogar tokens:', err?.message || err);
@@ -652,7 +652,7 @@ const deleteUser = onCall(async (request) => {
   }
 
   try {
-    await admin.auth().deleteUser(uid);
+    await getAuth().deleteUser(uid);
   } catch (error) {
     if (error?.code !== 'auth/user-not-found') {
       console.error('[deleteUser] Falha ao remover usuário do Firebase Auth:', error);
@@ -665,7 +665,7 @@ const deleteUser = onCall(async (request) => {
           console.error('[deleteUser] Falha ao registrar status de erro no perfil:', updateErr);
         });
       }
-      throw new functions.https.HttpsError(
+      throw new HttpsError(
         'internal',
         `Falha ao remover usuário do serviço de autenticação: ${error?.message || 'erro desconhecido'}. A conta permanece desativada e a exclusão pode ser retomada.`
       );
@@ -678,48 +678,48 @@ const deleteUser = onCall(async (request) => {
     return { success: true };
   } catch (firestoreError) {
     console.error('[deleteUser] Erro ao deletar perfil do Firestore:', firestoreError);
-    throw new functions.https.HttpsError('internal', 'Usuário removido da autenticação, mas houve falha ao limpar o perfil no banco.');
+    throw new HttpsError('internal', 'Usuário removido da autenticação, mas houve falha ao limpar o perfil no banco.');
   }
 });
 
 /** Cria um novo usuário via Firebase Auth e inicializa o perfil no Firestore (apenas admin). */
 const createUser = onCall(async (request) => {
   if (!(await isAdminRequest(request))) {
-    throw new functions.https.HttpsError('permission-denied', 'Apenas administradores podem criar usuários.');
+    throw new HttpsError('permission-denied', 'Apenas administradores podem criar usuários.');
   }
   await consumeAdminUserAction(request.auth.uid);
 
   const { email, password, displayName, role, permissions } = request.data || {};
 
   if (!email || typeof email !== 'string' || email.trim().length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
-    throw new functions.https.HttpsError('invalid-argument', 'E-mail é obrigatório.');
+    throw new HttpsError('invalid-argument', 'E-mail é obrigatório.');
   }
   if (!password || typeof password !== 'string' || password.length < 8 || password.length > 128) {
-    throw new functions.https.HttpsError('invalid-argument', 'Senha deve ter entre 8 e 128 caracteres.');
+    throw new HttpsError('invalid-argument', 'Senha deve ter entre 8 e 128 caracteres.');
   }
   if (!displayName || typeof displayName !== 'string' || displayName.trim().length < 2 || displayName.trim().length > 120) {
-    throw new functions.https.HttpsError('invalid-argument', 'Nome é obrigatório.');
+    throw new HttpsError('invalid-argument', 'Nome é obrigatório.');
   }
 
   const allowedRoles = ['admin', 'funcionario', 'user'];
   if (!role || !allowedRoles.includes(role)) {
-    throw new functions.https.HttpsError('invalid-argument', 'Role inválido.');
+    throw new HttpsError('invalid-argument', 'Role inválido.');
   }
   if (permissions != null && (typeof permissions !== 'object' || Array.isArray(permissions))) {
-    throw new functions.https.HttpsError('invalid-argument', 'Permissões inválidas.');
+    throw new HttpsError('invalid-argument', 'Permissões inválidas.');
   }
 
   const normalizedEmail = email.trim().toLowerCase();
   const normalizedName = displayName.trim();
 
   try {
-    const userRecord = await admin.auth().createUser({
+    const userRecord = await getAuth().createUser({
       email: normalizedEmail,
       password,
       displayName: normalizedName,
     });
     
-    await admin.auth().setCustomUserClaims(userRecord.uid, { role, active: true });
+    await getAuth().setCustomUserClaims(userRecord.uid, { role, active: true });
 
     const profile = {
       uid: userRecord.uid,
@@ -734,9 +734,9 @@ const createUser = onCall(async (request) => {
     };
 
     try {
-      await admin.firestore().doc(`userProfiles/${userRecord.uid}`).set(profile);
+      await getFirestore().doc(`userProfiles/${userRecord.uid}`).set(profile);
     } catch (profileError) {
-      await admin.auth().deleteUser(userRecord.uid).catch((rollbackError) => {
+      await getAuth().deleteUser(userRecord.uid).catch((rollbackError) => {
         console.error('[createUser] Falha ao reverter usuário órfão:', rollbackError);
       });
       throw profileError;
@@ -746,44 +746,44 @@ const createUser = onCall(async (request) => {
     return { success: true, uid: userRecord.uid, profile };
   } catch (error) {
     if (error.code === 'auth/email-already-exists') {
-      throw new functions.https.HttpsError('already-exists', 'Este e-mail já possui uma conta.');
+      throw new HttpsError('already-exists', 'Este e-mail já possui uma conta.');
     }
     if (error.code === 'auth/invalid-email') {
-      throw new functions.https.HttpsError('invalid-argument', 'E-mail inválido.');
+      throw new HttpsError('invalid-argument', 'E-mail inválido.');
     }
     if (error.code === 'auth/weak-password') {
-      throw new functions.https.HttpsError('invalid-argument', 'Senha muito fraca.');
+      throw new HttpsError('invalid-argument', 'Senha muito fraca.');
     }
     console.error('[createUser] Error:', error);
-    throw new functions.https.HttpsError('internal', 'Não foi possível criar o usuário.');
+    throw new HttpsError('internal', 'Não foi possível criar o usuário.');
   }
 });
 
 /** Atualiza perfil e status de usuário com proteção contra perda do último admin e reconciliação monotônica. */
 const updateUser = onCall(async (request) => {
   if (!(await isAdminRequest(request))) {
-    throw new functions.https.HttpsError('permission-denied', 'Apenas administradores podem atualizar usuários.');
+    throw new HttpsError('permission-denied', 'Apenas administradores podem atualizar usuários.');
   }
   await consumeAdminUserAction(request.auth.uid);
 
   const { uid, displayName, role, permissions, active } = request.data || {};
   if (!uid || typeof uid !== 'string' || uid.length > 128) {
-    throw new functions.https.HttpsError('invalid-argument', 'UID do usuário é obrigatório.');
+    throw new HttpsError('invalid-argument', 'UID do usuário é obrigatório.');
   }
   if (uid === request.auth.uid && (role !== undefined || active !== undefined)) {
-    throw new functions.https.HttpsError('failed-precondition', 'Você não pode alterar seu próprio perfil administrativo.');
+    throw new HttpsError('failed-precondition', 'Você não pode alterar seu próprio perfil administrativo.');
   }
   if (displayName !== undefined && (typeof displayName !== 'string' || displayName.trim().length < 2 || displayName.trim().length > 120)) {
-    throw new functions.https.HttpsError('invalid-argument', 'Nome inválido.');
+    throw new HttpsError('invalid-argument', 'Nome inválido.');
   }
   if (role !== undefined && !['admin', 'funcionario', 'user'].includes(role)) {
-    throw new functions.https.HttpsError('invalid-argument', 'Role inválido.');
+    throw new HttpsError('invalid-argument', 'Role inválido.');
   }
   if (active !== undefined && typeof active !== 'boolean') {
-    throw new functions.https.HttpsError('invalid-argument', 'Status inválido.');
+    throw new HttpsError('invalid-argument', 'Status inválido.');
   }
   if (permissions !== undefined && (typeof permissions !== 'object' || permissions === null || Array.isArray(permissions))) {
-    throw new functions.https.HttpsError('invalid-argument', 'Permissões inválidas.');
+    throw new HttpsError('invalid-argument', 'Permissões inválidas.');
   }
 
   try {
@@ -804,13 +804,13 @@ const updateUser = onCall(async (request) => {
     };
   } catch (err) {
     if (err.code === 'failed-precondition') {
-      throw new functions.https.HttpsError('failed-precondition', err.message);
+      throw new HttpsError('failed-precondition', err.message);
     }
     if (err.code === 'not-found') {
-      throw new functions.https.HttpsError('not-found', err.message);
+      throw new HttpsError('not-found', err.message);
     }
     console.error(`[updateUser] Erro ao atualizar usuário ${uid}:`, err);
-    throw new functions.https.HttpsError(
+    throw new HttpsError(
       'internal',
       err.message || 'O perfil foi atualizado, mas houve falha na sincronização de credenciais/sessões. Reparo pendente.'
     );
@@ -819,16 +819,16 @@ const updateUser = onCall(async (request) => {
 
 /** Registra o dispositivo e captura o IP e Localização do usuário. */
 const registerDeviceSession = onCall({ memory: '512MiB' }, async (request) => {
-  if (!request.auth) throw new functions.https.HttpsError('unauthenticated', 'Requer autenticação.');
+  if (!request.auth) throw new HttpsError('unauthenticated', 'Requer autenticação.');
   
   const { deviceId, userAgent } = request.data || {};
   // Validação estrita de deviceId: apenas caracteres alfanuméricos, hífen e underscore (impede path traversal)
   if (!deviceId || typeof deviceId !== 'string' || !/^[a-zA-Z0-9_-]{5,100}$/.test(deviceId)) {
-    throw new functions.https.HttpsError('invalid-argument', 'deviceId inválido. Deve ter entre 5 e 100 caracteres alfanuméricos.');
+    throw new HttpsError('invalid-argument', 'deviceId inválido. Deve ter entre 5 e 100 caracteres alfanuméricos.');
   }
 
   if (userAgent !== undefined && typeof userAgent !== 'string') {
-    throw new functions.https.HttpsError('invalid-argument', 'userAgent deve ser uma string.');
+    throw new HttpsError('invalid-argument', 'userAgent deve ser uma string.');
   }
 
   let safeUserAgent = (typeof userAgent === 'string' && userAgent.trim().length > 0) ? userAgent.trim() : 'Desconhecido';
@@ -884,7 +884,7 @@ const registerDeviceSession = onCall({ memory: '512MiB' }, async (request) => {
   }
 
   const uid = request.auth.uid;
-  const db = admin.firestore();
+  const db = getFirestore();
   const profileRef = db.doc(`userProfiles/${uid}`);
   const userDevicesRef = db.collection(`userProfiles/${uid}/devices`);
   const deviceRef = userDevicesRef.doc(deviceId);
@@ -896,14 +896,14 @@ const registerDeviceSession = onCall({ memory: '512MiB' }, async (request) => {
     ]);
     
     if (!profileSnap.exists || profileSnap.data().active === false) {
-      throw new functions.https.HttpsError('permission-denied', 'Perfil de usuário inativo ou inexistente.');
+      throw new HttpsError('permission-denied', 'Perfil de usuário inativo ou inexistente.');
     }
 
     const profileData = profileSnap.data();
     // Barreira de revogação: rejeita ID token emitido antes ou no mesmo segundo da última revogação
     const authTime = request.auth.token.auth_time;
     if (profileData.tokensValidAfterTime && typeof authTime === 'number' && authTime <= profileData.tokensValidAfterTime) {
-      throw new functions.https.HttpsError('unauthenticated', 'Sessão revogada. Faça login novamente.');
+      throw new HttpsError('unauthenticated', 'Sessão revogada. Faça login novamente.');
     }
 
     let locationString = 'Localização Desconhecida';
@@ -924,7 +924,7 @@ const registerDeviceSession = onCall({ memory: '512MiB' }, async (request) => {
         ip,
         location: locationString,
         status: 'active',
-        lastActiveAt: admin.firestore.FieldValue.serverTimestamp(),
+        lastActiveAt: FieldValue.serverTimestamp(),
       });
     } else {
       // Novo dispositivo: agora sim consulta a coleção para garantir o teto de 10 dispositivos
@@ -953,8 +953,8 @@ const registerDeviceSession = onCall({ memory: '512MiB' }, async (request) => {
         ip,
         location: locationString,
         status: 'active',
-        lastActiveAt: admin.firestore.FieldValue.serverTimestamp(),
-        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        lastActiveAt: FieldValue.serverTimestamp(),
+        createdAt: FieldValue.serverTimestamp(),
       });
     }
   });
@@ -965,12 +965,12 @@ const registerDeviceSession = onCall({ memory: '512MiB' }, async (request) => {
 /** Revoga todas as sessões e tokens de um usuário (Apenas Admin). */
 const revokeAllSessions = onCall(async (request) => {
   if (!(await isAdminRequest(request))) {
-    throw new functions.https.HttpsError('permission-denied', 'Apenas administradores podem revogar sessões.');
+    throw new HttpsError('permission-denied', 'Apenas administradores podem revogar sessões.');
   }
   
   const { uid } = request.data || {};
   if (!uid || typeof uid !== 'string' || uid.length > 128) {
-    throw new functions.https.HttpsError('invalid-argument', 'UID é obrigatório.');
+    throw new HttpsError('invalid-argument', 'UID é obrigatório.');
   }
 
   try {
@@ -987,10 +987,10 @@ const revokeAllSessions = onCall(async (request) => {
     };
   } catch (err) {
     if (err.code === 'not-found') {
-      throw new functions.https.HttpsError('not-found', err.message);
+      throw new HttpsError('not-found', err.message);
     }
     console.error(`[revokeAllSessions] Erro crítico ao revogar sessões do usuário ${uid}:`, err);
-    throw new functions.https.HttpsError('internal', 'Falha ao revogar credenciais de autenticação no servidor.');
+    throw new HttpsError('internal', 'Falha ao revogar credenciais de autenticação no servidor.');
   }
 });
 
@@ -998,8 +998,8 @@ const revokeAllSessions = onCall(async (request) => {
 const { requestDeviceLogout } = require('./deviceLogout');
 const revokeDeviceSession = onCall(async (request) => requestDeviceLogout(request, {
   assertActiveSession,
-  db: admin.firestore(),
-  timestamp: admin.firestore.FieldValue.serverTimestamp,
+  db: getFirestore(),
+  timestamp: FieldValue.serverTimestamp,
 }));
 
 module.exports = {

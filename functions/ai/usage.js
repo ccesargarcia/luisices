@@ -2,6 +2,7 @@
  * Subsistema de Observabilidade, Telemetria e Gestão de Custos - Luisices
  */
 
+const { FieldValue: AdminFieldValue } = require('firebase-admin/firestore');
 const { MODEL_PRICING_USD, BUSINESS_TIMEZONE, PROVIDER_TIMEZONE, MODEL_CONFIG } = require('./config');
 
 /**
@@ -103,7 +104,7 @@ async function recordAiUsage(db, record = {}) {
   }
 
   try {
-    const FieldValue = db.FieldValue || require('firebase-admin').firestore.FieldValue;
+    const FieldValue = db.FieldValue || AdminFieldValue;
     const usageAttempts = logEntry.attempts.length ? logEntry.attempts : [{
       model: usedModel,
       status,

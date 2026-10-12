@@ -4,7 +4,7 @@ Etapa 1 concluída em **12/10/2026**. Este documento define o escopo e os crité
 
 ## Matriz de versões
 
-| Componente | Resolvido atualmente em `functions` | Alvo para validação | Decisão |
+| Componente | Base anterior à migração | Alvo para validação | Decisão |
 |---|---|---|---|
 | Node.js | 22 | 22 | Manter o runtime |
 | Firebase Admin | 12.7.0 | 14.5.0 | Migrar os acessos para os módulos por serviço |
@@ -66,7 +66,7 @@ Os testes atuais de integração de regras usam principalmente SDKs cliente e `r
 
 - **Etapa 1:** inventário e matriz de versões — concluída.
 - **Etapa 2:** concluída; base atual e contratos reais do Admin/Functions validados, sem atualizar os SDKs.
-- **Etapa 3:** migrar primeiro inicialização/utilitários, depois usuários, pedidos, e-mails, WhatsApp, IA e Alexa. Os imports por serviço podem ser preparados com o Admin atual; promover a troca dos SDKs somente após adaptar os consumidores.
+- **Etapa 3:** consumidores migrados e par alvo instalado; validar no workflow completo antes do deploy em DEV.
 - **Etapa 4:** publicar e observar em DEV. Exigir instalação completa com `npm ci` sem ignorar conflitos de peers, descoberta das Functions, testes e verificações dos fluxos afetados.
 - **Etapa 5:** preparar reversão ao conjunto anterior de código e lockfiles; promover à `main` e publicar Functions pelo workflow separado após validação explícita da entrega.
 
@@ -110,7 +110,19 @@ A falha anterior de Storage foi reproduzida com proxy de ambiente e desapareceu 
 
 Os dois modos do backend passaram no [workflow de validação](https://github.com/ccesargarcia/luisices/actions/runs/38206768218). A CLI ativa `skipTokenVerification` no Functions Emulator: um token inválido pode receber uma identidade simulada e ser negado pelo handler com 403, enquanto o wrapper real sem esse modo de debug rejeita o token com 401. A suíte distingue os casos, exige acesso negado em ambos e verifica diretamente rejeição de token malformado e revogado pelo Admin. Tokens emitidos pelo Auth Emulator não comprovam verificação de assinaturas de tokens de produção.
 
-O agendamento da limpeza de e-mails é conferido no contrato de trigger; a suíte não simula o disparo do Scheduler nem integrações reais com provedores externos. Os SDKs permanecem Admin 12.7.0 e Functions 4.9.0; o par alvo da etapa 1 ainda deve passar por estes contratos durante a etapa 3.
+O agendamento da limpeza de e-mails é conferido no contrato de trigger; a suíte não simula o disparo do Scheduler nem integrações reais com provedores externos. Esses resultados são a base anterior à atualização dos SDKs.
+
+## Implementação da etapa 3
+
+Os SDKs do backend foram fixados em **Admin 14.5.0 / Functions 7.4.0**, com runtime Node 22. O lockfile foi regenerado e a instalação completa com `npm ci` passou sem ignorar conflitos de peers. O SDK da raiz permanece independente e inalterado.
+
+Os consumidores diretos usam os módulos `app`, `auth`, `firestore`, `storage` e `database`. Foram preservados os serviços injetados de sincronização de usuários e o contrato da fábrica de IA; o chamador dessa fábrica agora fornece getters por serviço em lugar do namespace do SDK. Todos os erros HTTPS usam import explícito de v2, incluindo comparações com `instanceof`.
+
+O trecho JavaScript do workflow manual de Functions também foi migrado e sua CLI foi fixada em 15.32.1, versão usada na validação local. Nenhum workflow de produção foi executado nesta etapa.
+
+Functions 7 traz Express 5. O teste de parsing passa a declarar `query parser = extended`, preservando suas verificações de campos aninhados e de rejeição de campos de protótipo. Os handlers atuais do backend não leem `req.query`; essa configuração pertence ao teste de compatibilidade, não altera endpoints da aplicação. Ver [mudanças do Express 5](https://expressjs.com/en/guide/migrating-5/).
+
+Validação local com os SDKs novos: 907 testes unitários, 102 testes de integração Firestore/Storage, 6 testes de presença RTDB e 17 contratos com Admin real e wrappers HTTP aprovados. A referência das 40 definições de Functions não foi regenerada: os contratos continuaram iguais. O workflow completo de emuladores deve confirmar a execução antes do deploy em DEV.
 
 ## Fontes
 

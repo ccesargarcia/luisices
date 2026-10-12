@@ -2,11 +2,10 @@
  * Ponto de Entrada Principal das Cloud Functions para Firebase (v2).
  * Arquitetura Modularizada por Domínio de Negócio - Luisices.
  */
-
-const admin = require('firebase-admin');
+const { initializeApp } = require('firebase-admin/app');
 
 // Inicialização do Firebase Admin SDK no escopo global
-admin.initializeApp();
+initializeApp();
 
 // Importação dos módulos de domínio
 const userFunctions = require('./users');

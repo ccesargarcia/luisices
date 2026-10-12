@@ -2,9 +2,9 @@
  * Módulo de E-mail (Resend API e Webhook de Recebimento).
  */
 
-const functions = require('firebase-functions');
-const { onCall, onRequest } = require('firebase-functions/v2/https');
-const admin = require('firebase-admin');
+const { FieldValue, getFirestore } = require('firebase-admin/firestore');
+const { getStorage } = require('firebase-admin/storage');
+const { onCall, onRequest, HttpsError } = require('firebase-functions/v2/https');
 const crypto = require('crypto');
 const { RESEND_API_KEY, RESEND_WEBHOOK_SECRET, ORIGIN_SECRET } = require('../common/secrets');
 const { customEmailLimiter } = require('../common/rateLimiters');
@@ -23,15 +23,15 @@ const MAX_WEBHOOK_BYTES = 1024 * 1024;
 function normalizeEmailList(value, fieldName, max = MAX_CC_BCC) {
   if (value == null) return [];
   if (!Array.isArray(value) || value.length > max) {
-    throw new functions.https.HttpsError('invalid-argument', `${fieldName} deve conter no máximo ${max} endereços.`);
+    throw new HttpsError('invalid-argument', `${fieldName} deve conter no máximo ${max} endereços.`);
   }
   return value.map((entry) => {
     if (typeof entry !== 'string' || entry.length > MAX_HEADER_LENGTH || /[\r\n\0,;]/.test(entry)) {
-      throw new functions.https.HttpsError('invalid-argument', `${fieldName} contém um endereço inválido.`);
+      throw new HttpsError('invalid-argument', `${fieldName} contém um endereço inválido.`);
     }
     const email = entry.trim();
     if (!EMAIL_REGEX.test(email)) {
-      throw new functions.https.HttpsError('invalid-argument', `${fieldName} contém um endereço inválido.`);
+      throw new HttpsError('invalid-argument', `${fieldName} contém um endereço inválido.`);
     }
     return email;
   });
@@ -59,7 +59,7 @@ const sendCustomEmail = onCall(
     );
 
     if (!canSend) {
-      throw new functions.https.HttpsError('permission-denied', 'Você não possui permissão para disparar e-mails pelo sistema.');
+      throw new HttpsError('permission-denied', 'Você não possui permissão para disparar e-mails pelo sistema.');
     }
 
     const {
@@ -77,12 +77,12 @@ const sendCustomEmail = onCall(
 
     if (idempotencyKey != null) {
       if (typeof idempotencyKey !== 'string' || !/^[a-zA-Z0-9_-]{8,128}$/.test(idempotencyKey)) {
-        throw new functions.https.HttpsError('invalid-argument', 'Chave de idempotência inválida (deve conter 8 a 128 caracteres alfanuméricos, hífens ou underscores).');
+        throw new HttpsError('invalid-argument', 'Chave de idempotência inválida (deve conter 8 a 128 caracteres alfanuméricos, hífens ou underscores).');
       }
     }
 
     if (!to || (Array.isArray(to) && to.length === 0)) {
-      throw new functions.https.HttpsError('invalid-argument', 'Pelo menos um destinatário é obrigatório.');
+      throw new HttpsError('invalid-argument', 'Pelo menos um destinatário é obrigatório.');
     }
 
     const recipientList = Array.isArray(to)
@@ -90,43 +90,43 @@ const sendCustomEmail = onCall(
       : [String(to).trim()];
 
     if (recipientList.length === 0) {
-      throw new functions.https.HttpsError('invalid-argument', 'Pelo menos um destinatário válido é obrigatório.');
+      throw new HttpsError('invalid-argument', 'Pelo menos um destinatário válido é obrigatório.');
     }
 
     if (recipientList.length > 50) {
-      throw new functions.https.HttpsError('invalid-argument', 'O número máximo de destinatários por envio é 50.');
+      throw new HttpsError('invalid-argument', 'O número máximo de destinatários por envio é 50.');
     }
 
     for (const email of recipientList) {
       if (email.length > MAX_HEADER_LENGTH || /[\r\n\0,;]/.test(email) || !EMAIL_REGEX.test(email)) {
-        throw new functions.https.HttpsError('invalid-argument', `Endereço de e-mail inválido: "${email}"`);
+        throw new HttpsError('invalid-argument', `Endereço de e-mail inválido: "${email}"`);
       }
     }
 
     if (!subject || typeof subject !== 'string' || !subject.trim()) {
-      throw new functions.https.HttpsError('invalid-argument', 'Assunto é obrigatório.');
+      throw new HttpsError('invalid-argument', 'Assunto é obrigatório.');
     }
 
     if (subject.trim().length > 200) {
-      throw new functions.https.HttpsError('invalid-argument', 'O assunto do e-mail não pode ultrapassar 200 caracteres.');
+      throw new HttpsError('invalid-argument', 'O assunto do e-mail não pode ultrapassar 200 caracteres.');
     }
 
     if ((html != null && typeof html !== 'string') || (text != null && typeof text !== 'string')) {
-      throw new functions.https.HttpsError('invalid-argument', 'O conteúdo da mensagem deve ser texto.');
+      throw new HttpsError('invalid-argument', 'O conteúdo da mensagem deve ser texto.');
     }
 
     if (!html && !text) {
-      throw new functions.https.HttpsError('invalid-argument', 'Conteúdo da mensagem (HTML ou texto) é obrigatório.');
+      throw new HttpsError('invalid-argument', 'Conteúdo da mensagem (HTML ou texto) é obrigatório.');
     }
 
     const bodyLength = (html ? String(html).length : 0) + (text ? String(text).length : 0);
     if (bodyLength > 500 * 1024) {
-      throw new functions.https.HttpsError('invalid-argument', 'O tamanho da mensagem excede o limite máximo permitido (500 KB).');
+      throw new HttpsError('invalid-argument', 'O tamanho da mensagem excede o limite máximo permitido (500 KB).');
     }
 
     const resend = getResend(RESEND_API_KEY.value());
     if (!resend) {
-      throw new functions.https.HttpsError('failed-precondition', 'Resend não configurado.');
+      throw new HttpsError('failed-precondition', 'Resend não configurado.');
     }
 
     const isDev = (process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT) === 'luisices-dev';
@@ -136,13 +136,13 @@ const sendCustomEmail = onCall(
 
     let senderEmail = defaultSender;
     if (from != null && (typeof from !== 'string' || from.length > MAX_HEADER_LENGTH || /[\r\n\0]/.test(from))) {
-      throw new functions.https.HttpsError('invalid-argument', 'Remetente inválido.');
+      throw new HttpsError('invalid-argument', 'Remetente inválido.');
     }
     if (typeof from === 'string' && from.trim()) {
       const trimmedFrom = from.trim();
       const match = trimmedFrom.match(/^(?:([^<>]+)\s+<)?([^\s<>@]+@[^\s<>@]+)>?$/);
       if (!match) {
-        throw new functions.https.HttpsError('invalid-argument', 'Remetente inválido.');
+        throw new HttpsError('invalid-argument', 'Remetente inválido.');
       }
       const rawDomain = match[2].toLowerCase().split('@')[1] || '';
       if (rawDomain === 'luisices.com.br' || rawDomain === 'dev.luisices.com.br' || rawDomain.endsWith('.luisices.com.br')) {
@@ -155,7 +155,7 @@ const sendCustomEmail = onCall(
 
     let sendContext = null;
     if (idempotencyKey) {
-      const db = admin.firestore();
+      const db = getFirestore();
       const ref = db.collection('emailSendRequests').doc(`${request.auth.uid}_${idempotencyKey}`);
       const hash = fingerprint({
         from: senderEmail, to: recipientList, subject: subject.trim(),
@@ -175,9 +175,9 @@ const sendCustomEmail = onCall(
       await customEmailLimiter.consume(request.auth.uid);
     } catch {
       if (sendContext) {
-        await releaseSend(sendContext, admin.firestore.FieldValue.serverTimestamp()).catch(() => {});
+        await releaseSend(sendContext, FieldValue.serverTimestamp()).catch(() => {});
       }
-      throw new functions.https.HttpsError(
+      throw new HttpsError(
         'resource-exhausted',
         'Limite de envio de e-mails atingido (máximo de 50 disparos por hora). Tente novamente mais tarde.'
       );
@@ -187,12 +187,12 @@ const sendCustomEmail = onCall(
       let preparedAttachments;
       try {
         preparedAttachments = await prepareAttachments({
-          attachments, bucket: admin.storage().bucket(), db: admin.firestore(),
+          attachments, bucket: getStorage().bucket(), db: getFirestore(),
           uid: request.auth.uid, profile: profileData,
           projectId: process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT,
         });
       } catch (error) {
-        throw new functions.https.HttpsError('invalid-argument', error.message);
+        throw new HttpsError('invalid-argument', error.message);
       }
       const payload = {
         from: senderEmail,
@@ -208,12 +208,12 @@ const sendCustomEmail = onCall(
       if (text) payload.text = text;
       if (replyTo != null) {
         if (typeof replyTo !== 'string' || replyTo.length > MAX_HEADER_LENGTH || /[\r\n\0,;]/.test(replyTo)) {
-          throw new functions.https.HttpsError('invalid-argument', 'Responder para inválido.');
+          throw new HttpsError('invalid-argument', 'Responder para inválido.');
         }
         const normalizedReplyTo = replyTo.trim();
         const replyToMatch = normalizedReplyTo.match(/^(?:([^<>]+)\s+<)?([^\s<>@]+@[^\s<>@]+)>?$/);
         if (!replyToMatch || !EMAIL_REGEX.test(replyToMatch[2])) {
-          throw new functions.https.HttpsError('invalid-argument', 'Responder para inválido.');
+          throw new HttpsError('invalid-argument', 'Responder para inválido.');
         }
         payload.reply_to = replyToMatch[2];
       }
@@ -233,7 +233,7 @@ const sendCustomEmail = onCall(
           name: resendError.name || 'ResendError',
           statusCode: resendError.statusCode || null,
         });
-        throw new functions.https.HttpsError(
+        throw new HttpsError(
           'internal',
           resendError.message || 'Falha ao disparar o e-mail via Resend.'
         );
@@ -254,15 +254,15 @@ const sendCustomEmail = onCall(
         senderEmail: request.auth.token.email || '',
         attachments: preparedAttachments.map(({ filename }) => ({ filename })),
         sentAt: new Date().toISOString(),
-        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        createdAt: FieldValue.serverTimestamp(),
       };
 
-      const sentCollection = admin.firestore().collection('sentEmails');
+      const sentCollection = getFirestore().collection('sentEmails');
       const docRef = sendContext
         ? sentCollection.doc(crypto.createHash('sha256').update(sendContext.ref.path).digest('hex'))
         : sentCollection.doc();
       if (sendContext) {
-        await completeSend(sendContext, docRef, emailRecord, admin.firestore.FieldValue.serverTimestamp());
+        await completeSend(sendContext, docRef, emailRecord, FieldValue.serverTimestamp());
       } else {
         await docRef.set(emailRecord);
       }
@@ -273,7 +273,7 @@ const sendCustomEmail = onCall(
       await Promise.allSettled(
         preparedAttachments
           .filter(({ path }) => isTemporaryDraft(path))
-          .map(({ path }) => admin.storage().bucket().file(path).delete({ ignoreNotFound: true }))
+          .map(({ path }) => getStorage().bucket().file(path).delete({ ignoreNotFound: true }))
       );
 
       return {
@@ -283,11 +283,11 @@ const sendCustomEmail = onCall(
       };
     } catch (error) {
       if (sendContext) {
-        await releaseSend(sendContext, admin.firestore.FieldValue.serverTimestamp()).catch(() => {});
+        await releaseSend(sendContext, FieldValue.serverTimestamp()).catch(() => {});
       }
       console.error('[sendCustomEmail] Exceção:', error);
-      if (error instanceof functions.https.HttpsError) throw error;
-      throw new functions.https.HttpsError('internal', error.message || 'Erro ao enviar e-mail.');
+      if (error instanceof HttpsError) throw error;
+      throw new HttpsError('internal', error.message || 'Erro ao enviar e-mail.');
     }
   }
 );
@@ -309,7 +309,7 @@ const getEmailUsage = onCall(
       (typeof emailsPerm === 'object' && emailsPerm !== null && Boolean(emailsPerm.view || emailsPerm.create))
     );
     if (!hasEmailPerm) {
-      throw new functions.https.HttpsError('permission-denied', 'Sem permissão para consultar a cota de e-mails.');
+      throw new HttpsError('permission-denied', 'Sem permissão para consultar a cota de e-mails.');
     }
 
     // 1. Sempre computar contagem real do Firestore para garantir feedback em tempo real
@@ -321,11 +321,11 @@ const getEmailUsage = onCall(
     let firestoreMonthCount = 0;
     try {
       const [todaySnap, monthSnap] = await Promise.all([
-        admin.firestore().collection('sentEmails')
+        getFirestore().collection('sentEmails')
           .where('sentAt', '>=', startOfTodayUtc.toISOString())
           .count()
           .get(),
-        admin.firestore().collection('sentEmails')
+        getFirestore().collection('sentEmails')
           .where('sentAt', '>=', startOfMonthUtc.toISOString())
           .count()
           .get(),
@@ -538,15 +538,15 @@ const resendReceivingWebhook = onRequest(
         return res.status(400).json({ error: 'Payload sem email_id' });
       }
 
-      webhookClaimRef = admin.firestore().collection('processedEmailWebhooks').doc(String(svixId));
-      await admin.firestore().runTransaction(async (transaction) => {
+      webhookClaimRef = getFirestore().collection('processedEmailWebhooks').doc(String(svixId));
+      await getFirestore().runTransaction(async (transaction) => {
         webhookClaimed = false;
         const existing = await transaction.get(webhookClaimRef);
         if (existing.exists) return;
         transaction.create(webhookClaimRef, {
           emailId: String(emailId),
           eventType: event.type,
-          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          createdAt: FieldValue.serverTimestamp(),
         });
         webhookClaimed = true;
       });
@@ -727,10 +727,10 @@ const resendReceivingWebhook = onRequest(
         spamScore: spamResult.score,
         spamReasons: spamResult.reasons,
         receivedAt: eventData.created_at || new Date().toISOString(),
-        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        createdAt: FieldValue.serverTimestamp(),
       };
 
-      await admin.firestore().collection('receivedEmails').doc(emailId).set(emailDoc, { merge: true });
+      await getFirestore().collection('receivedEmails').doc(emailId).set(emailDoc, { merge: true });
       console.log(`[resendReceivingWebhook] E-mail recebido salvo com sucesso: ${emailId}`);
 
       return res.status(200).json({ ok: true, id: emailId });

@@ -59,7 +59,7 @@ jobs:
           cache-dependency-path: functions/package-lock.json
 
       - name: Install Firebase CLI
-        run: npm install -g firebase-tools@13.16.0
+        run: npm install -g firebase-tools@15.32.1
 
       - name: Install Functions Dependencies
         working-directory: functions
@@ -294,9 +294,10 @@ jobs:
           if [ -n "$ALEXA_SKILL_ID" ]; then
             echo "🔧 Sincronizando allowedSkillId no Firestore (papelaria-dashboard)..."
             node -e '
-              const admin = require("firebase-admin");
-              admin.initializeApp({ projectId: "papelaria-dashboard" });
-              admin.firestore().doc("integrationSettings/alexa").set({
+              const { initializeApp } = require("firebase-admin/app");
+              const { getFirestore } = require("firebase-admin/firestore");
+              initializeApp({ projectId: "papelaria-dashboard" });
+              getFirestore().doc("integrationSettings/alexa").set({
                 allowedSkillId: process.env.ALEXA_SKILL_ID,
                 enabled: true
               }, { merge: true }).then(() => {

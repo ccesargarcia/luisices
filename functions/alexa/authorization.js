@@ -3,7 +3,8 @@
  * Segue estritamente a especificação docs/ESPECIFICACAO_ALEXA_ANTIGRAVITY.md.
  */
 
-const admin = require('firebase-admin');
+const { getAuth } = require('firebase-admin/auth');
+const { getApps } = require('firebase-admin/app');
 const { COLLECTIONS, computeBindingKey } = require('./repository');
 
 // Cache em memória para validação de status do Firebase Auth (TTL de 60 segundos)
@@ -123,7 +124,7 @@ function logAlexaAuthDiagnostic(envelope, result) {
  *
  * @param {object} envelope - Envelope JSON da Alexa
  * @param {object} config - Configuração de ambiente resolvida
- * @param {admin.firestore.Firestore} db - Instância Firestore
+ * @param {import('firebase-admin/firestore').Firestore} db - Instância Firestore
  * @returns {Promise<{ authorized: boolean, identity?: object, error?: string, speech?: string, code?: string }>}
  */
 async function authorizeAlexaPerson(envelope, config, db, authService = null) {
@@ -240,7 +241,7 @@ async function authorizeAlexaPerson(envelope, config, db, authService = null) {
   // 5. Validar paralelamente userProfile, alexaPermissions e conta no Firebase Auth (com cache em memória)
   let authUserPromise;
   try {
-    const auth = authService || (admin.apps && admin.apps.length > 0 ? admin.auth() : null);
+    const auth = authService || (getApps().length > 0 ? getAuth() : null);
     if (auth && typeof auth.getUser === 'function') {
       const now = Date.now();
       const cached = AUTH_USER_CACHE.get(uid);

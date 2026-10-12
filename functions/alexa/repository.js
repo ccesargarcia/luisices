@@ -3,8 +3,8 @@
  * Segue estritamente a especificação docs/ESPECIFICACAO_ALEXA_ANTIGRAVITY.md.
  */
 
+const { FieldValue } = require('firebase-admin/firestore');
 const crypto = require('crypto');
-const admin = require('firebase-admin');
 
 const COLLECTIONS = {
   SETTINGS: 'integrationSettings/alexa',
@@ -84,7 +84,7 @@ async function recordAuditEvent(db, eventData) {
       durationMs: Number(durationMs) || 0,
       success: Boolean(success),
       environment: String(environment),
-      timestamp: admin.firestore.FieldValue.serverTimestamp(),
+      timestamp: FieldValue.serverTimestamp(),
       createdAtIso: new Date().toISOString(),
     });
   } catch (err) {

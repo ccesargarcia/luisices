@@ -3,9 +3,9 @@
  * Orquestra os estados, consultas e persistência do diálogo.
  */
 
+const { FieldValue, Timestamp } = require('firebase-admin/firestore');
 const crypto = require('crypto');
 const { DRAFT_TTL_MINUTES, APP_APPROVAL_TTL_MINUTES } = require('./constants');
-const admin = require('firebase-admin');
 const {
   parseAndValidateDeliveryDate,
   parseQuantity,
@@ -200,7 +200,7 @@ async function findActiveDraftForUser(db, uid, bindingKey, environment) {
       for (let i = 1; i < validDrafts.length; i++) {
         colRef.doc(validDrafts[i].draftId).update({
           state: 'expired',
-          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          updatedAt: FieldValue.serverTimestamp(),
         }).catch(() => {});
       }
     }
@@ -419,7 +419,7 @@ async function handleListRecentOrders({ envelope, identity, config, db }) {
  * @param {object} params.envelope
  * @param {object} params.identity
  * @param {object} params.config
- * @param {admin.firestore.Firestore} params.db
+ * @param {import('firebase-admin/firestore').Firestore} params.db
  * @returns {Promise<{ speech: string, reprompt?: string, shouldEndSession: boolean, sessionAttributes?: object }>}
  */
 async function handleAlexaDialog({ envelope, identity, config, db, authService = null }) {
@@ -461,7 +461,7 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
       if (sessionId && activeDraft.sessionId !== sessionId) {
         await db.collection(COLLECTIONS.DRAFTS).doc(activeDraft.draftId).update({
           sessionId,
-          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          updatedAt: FieldValue.serverTimestamp(),
         }).catch(() => {});
         activeDraft.sessionId = sessionId;
       }
@@ -498,7 +498,7 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
       if (sessionId && activeDraft.sessionId !== sessionId) {
         await db.collection(COLLECTIONS.DRAFTS).doc(activeDraft.draftId).update({
           sessionId,
-          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          updatedAt: FieldValue.serverTimestamp(),
         }).catch(() => {});
         activeDraft.sessionId = sessionId;
       }
@@ -546,7 +546,7 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
       if (activeDraft.expectedInput !== expectedInput) {
         await db.collection(COLLECTIONS.DRAFTS).doc(activeDraft.draftId).update({
           expectedInput,
-          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          updatedAt: FieldValue.serverTimestamp(),
         }).catch(() => {});
         activeDraft.expectedInput = expectedInput;
       }
@@ -636,7 +636,7 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
           if (isOwner && isSameBinding && isSameEnv && isCancellable) {
             transaction.update(draftRef, {
               state: 'cancelled',
-              updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+              updatedAt: FieldValue.serverTimestamp(),
             });
           }
         }
@@ -724,7 +724,7 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
       const nextExpected = determineNextExpectedInput(d);
       if (nextExpected && nextExpected !== d.expectedInput) {
         d.expectedInput = nextExpected;
-        d.updatedAt = admin.firestore.FieldValue.serverTimestamp();
+        d.updatedAt = FieldValue.serverTimestamp();
         transaction.set(draftRef, d, { merge: true });
       }
 
@@ -878,12 +878,12 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
               transaction.update(draftRef, {
                 state: 'expired',
                 fallbackCount,
-                updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+                updatedAt: FieldValue.serverTimestamp(),
               });
             } else {
               transaction.update(draftRef, {
                 fallbackCount,
-                updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+                updatedAt: FieldValue.serverTimestamp(),
               });
             }
           }
@@ -1302,9 +1302,9 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
         state: 'collecting',
         fallbackCount: 0,
         voiceConfirmationFailures: 0,
-        expiresAt: admin.firestore.Timestamp.fromDate(expiresAt),
-        createdAt: admin.firestore.FieldValue.serverTimestamp(),
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        expiresAt: Timestamp.fromDate(expiresAt),
+        createdAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
       };
     } else {
       if (existingData.pendingConflict === undefined) existingData.pendingConflict = null;
@@ -1333,7 +1333,7 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
       existingData.expectedInput = 'deliveryDate';
       existingData.state = 'collecting';
       existingData.revision = (existingData.revision || 1) + 1;
-      existingData.updatedAt = admin.firestore.FieldValue.serverTimestamp();
+      existingData.updatedAt = FieldValue.serverTimestamp();
       transaction.set(txDraftRef, existingData, { merge: true });
       return {
         draft: existingData,
@@ -1352,7 +1352,7 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
       existingData.expectedInput = 'unitPrice';
       existingData.state = 'collecting';
       existingData.revision = (existingData.revision || 1) + 1;
-      existingData.updatedAt = admin.firestore.FieldValue.serverTimestamp();
+      existingData.updatedAt = FieldValue.serverTimestamp();
       transaction.set(txDraftRef, existingData, { merge: true });
       return {
         draft: existingData,
@@ -1371,7 +1371,7 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
       existingData.expectedInput = 'totalPrice';
       existingData.state = 'collecting';
       existingData.revision = (existingData.revision || 1) + 1;
-      existingData.updatedAt = admin.firestore.FieldValue.serverTimestamp();
+      existingData.updatedAt = FieldValue.serverTimestamp();
       transaction.set(txDraftRef, existingData, { merge: true });
       return {
         draft: existingData,
@@ -1443,7 +1443,7 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
       }
       existingData.state = 'collecting';
       existingData.revision = (existingData.revision || 1) + 1;
-      existingData.updatedAt = admin.firestore.FieldValue.serverTimestamp();
+      existingData.updatedAt = FieldValue.serverTimestamp();
       transaction.set(txDraftRef, existingData, { merge: true });
       return {
         draft: existingData,
@@ -1476,7 +1476,7 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
             existingData.suggestedPriceCents = null;
             existingData.suggestedProductName = null;
             existingData.expectedInput = 'totalPrice';
-            existingData.updatedAt = admin.firestore.FieldValue.serverTimestamp();
+            existingData.updatedAt = FieldValue.serverTimestamp();
             transaction.set(txDraftRef, existingData, { merge: true });
             return {
               draft: existingData,
@@ -1495,7 +1495,7 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
             existingData.suggestedPriceCents = null;
             existingData.suggestedProductName = null;
             existingData.expectedInput = 'totalPrice';
-            existingData.updatedAt = admin.firestore.FieldValue.serverTimestamp();
+            existingData.updatedAt = FieldValue.serverTimestamp();
             transaction.set(txDraftRef, existingData, { merge: true });
             return {
               draft: existingData,
@@ -1520,7 +1520,7 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
             existingData.suggestedPriceCents = null;
             existingData.suggestedProductName = null;
             existingData.expectedInput = 'totalPrice';
-            existingData.updatedAt = admin.firestore.FieldValue.serverTimestamp();
+            existingData.updatedAt = FieldValue.serverTimestamp();
             transaction.set(txDraftRef, existingData, { merge: true });
             return {
               draft: existingData,
@@ -1540,7 +1540,7 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
             existingData.suggestedPriceCents = currentCents;
             existingData.suggestedProductName = prodData.name || existingData.suggestedProductName;
             existingData.expectedInput = 'suggestedPrice';
-            existingData.updatedAt = admin.firestore.FieldValue.serverTimestamp();
+            existingData.updatedAt = FieldValue.serverTimestamp();
             transaction.set(txDraftRef, existingData, { merge: true });
             const sStr = formatCurrencyPtBr(prodData.unitPrice);
             return {
@@ -1604,7 +1604,7 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
         existingData.suggestedPriceCents = null;
         existingData.suggestedProductName = null;
         existingData.expectedInput = 'totalPrice';
-        existingData.updatedAt = admin.firestore.FieldValue.serverTimestamp();
+        existingData.updatedAt = FieldValue.serverTimestamp();
         transaction.set(txDraftRef, existingData, { merge: true });
         return {
           draft: existingData,
@@ -1620,7 +1620,7 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
       if (wasAwaitingConfirmation) {
         existingData.state = 'collecting';
         existingData.expectedInput = null;
-        existingData.updatedAt = admin.firestore.FieldValue.serverTimestamp();
+        existingData.updatedAt = FieldValue.serverTimestamp();
         transaction.set(txDraftRef, existingData, { merge: true });
         return {
           draft: existingData,
@@ -1635,7 +1635,7 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
       }
       // Se não estava em confirmação, "Não" cancela o pedido
       existingData.state = 'cancelled';
-      existingData.updatedAt = admin.firestore.FieldValue.serverTimestamp();
+      existingData.updatedAt = FieldValue.serverTimestamp();
       transaction.set(txDraftRef, existingData, { merge: true });
       return {
         draft: existingData,
@@ -1657,7 +1657,7 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
       );
       if (!hasPending) {
         existingData.expectedInput = 'totalPrice';
-        existingData.updatedAt = admin.firestore.FieldValue.serverTimestamp();
+        existingData.updatedAt = FieldValue.serverTimestamp();
         transaction.set(txDraftRef, existingData, { merge: true });
         return {
           draft: existingData,
@@ -1742,7 +1742,7 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
       );
       if (!hasPending) {
         existingData.expectedInput = 'totalPrice';
-        existingData.updatedAt = admin.firestore.FieldValue.serverTimestamp();
+        existingData.updatedAt = FieldValue.serverTimestamp();
         transaction.set(txDraftRef, existingData, { merge: true });
         return {
           draft: existingData,
@@ -2077,7 +2077,7 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
     if (updated) {
       existingData.revision = (existingData.revision || 1) + 1;
       existingData.state = 'collecting';
-      existingData.updatedAt = admin.firestore.FieldValue.serverTimestamp();
+      existingData.updatedAt = FieldValue.serverTimestamp();
     }
 
     // Se todos os campos estiverem preenchidos sem pendências, avançar para awaiting_confirmation
@@ -2096,7 +2096,7 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
     if (isComplete && (existingData.state === 'collecting' || updated)) {
       existingData.state = 'awaiting_confirmation';
       existingData.expectedInput = 'confirmation';
-      existingData.updatedAt = admin.firestore.FieldValue.serverTimestamp();
+      existingData.updatedAt = FieldValue.serverTimestamp();
     } else if (existingData.state === 'collecting') {
       // Determinar e persistir atomicamente o próximo campo esperado no Firestore (P1.3)
       existingData.expectedInput = determineNextExpectedInput(existingData);
@@ -2255,8 +2255,8 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
               transaction.update(draftRef, {
                 sessionId: sessionId || dData.sessionId,
                 state: 'awaiting_app_approval',
-                expiresAt: admin.firestore.Timestamp.fromDate(appExpiresAt),
-                updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+                expiresAt: Timestamp.fromDate(appExpiresAt),
+                updatedAt: FieldValue.serverTimestamp(),
               });
               return true;
             }
@@ -2349,7 +2349,7 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
                 transaction.update(draftRef, {
                   sessionId: sessionId || dData.sessionId,
                   voiceConfirmationFailures: nextFailures,
-                  updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+                  updatedAt: FieldValue.serverTimestamp(),
                 });
                 return { status: 'retry', failures: nextFailures };
               }
@@ -2359,7 +2359,7 @@ async function handleAlexaDialog({ envelope, identity, config, db, authService =
                 sessionId: sessionId || dData.sessionId,
                 voiceConfirmationFailures: currentFailures + 1,
                 state: 'awaiting_app_approval',
-                updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+                updatedAt: FieldValue.serverTimestamp(),
               });
               return { status: 'transitioned_app', failures: currentFailures + 1 };
             }

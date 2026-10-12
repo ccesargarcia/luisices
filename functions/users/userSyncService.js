@@ -14,7 +14,9 @@
  *  I8. Clientes não podem alterar marcadores de sincronização ou revogação.
  */
 
-const defaultAdmin = require('firebase-admin');
+const { getFirestore, FieldValue } = require('firebase-admin/firestore');
+const { getAuth } = require('firebase-admin/auth');
+const { getDatabase } = require('firebase-admin/database');
 
 const LEASE_TTL_MS = 15000; // 15 segundos de lease para processamento externo
 const MAX_RECONCILIATION_ATTEMPTS = 3; // Limite de iterações do loop de reconciliação pós-escrita
@@ -36,14 +38,14 @@ function sanitizeErrorMessage(error) {
  * Cria ou obtém referências para os serviços injetados ou padrão.
  */
 function getServices(deps = {}) {
-  const admin = deps.admin || defaultAdmin;
-  const firestore = deps.firestore || admin.firestore();
-  const auth = deps.auth || admin.auth();
-  const database = deps.database || (admin.database ? admin.database() : null);
+  const serviceProvider = deps.admin || { firestore: getFirestore, auth: getAuth, database: getDatabase };
+  const firestore = deps.firestore || serviceProvider.firestore();
+  const auth = deps.auth || serviceProvider.auth();
+  const database = deps.database || (serviceProvider.database ? serviceProvider.database() : null);
   const now = deps.now || (() => Date.now());
   const generateOpId = deps.generateOpId || (() => firestore.collection('_').doc().id);
 
-  return { admin, firestore, auth, database, now, generateOpId };
+  return { admin: serviceProvider, firestore, auth, database, now, generateOpId };
 }
 
 /**
@@ -131,7 +133,7 @@ async function updateUserProfile(params, deps = {}) {
       ...(permissions !== undefined ? { permissions } : {}),
       ...(active !== undefined ? { active } : {}),
       syncVersion: nextVersion,
-      updatedAt: defaultAdmin.firestore.FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
       updatedBy: actorUid || 'system',
       claimsSyncPending: {
         version: nextVersion,
@@ -185,7 +187,7 @@ async function updateUserProfile(params, deps = {}) {
       version: nextVersion,
       opId,
       changes: Object.keys(updateData).filter((k) => !['updatedAt', 'updatedBy', 'claimsSyncPending', 'syncVersion'].includes(k)),
-      createdAt: defaultAdmin.firestore.FieldValue.serverTimestamp(),
+      createdAt: FieldValue.serverTimestamp(),
     });
 
     return {
@@ -296,7 +298,7 @@ async function revokeUserSessions(params, deps = {}) {
     const updateData = {
       tokensValidAfterTime: originalRevocationTimeSeconds,
       syncVersion: nextVersion,
-      updatedAt: defaultAdmin.firestore.FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
       updatedBy: actorUid || 'system',
       claimsSyncPending: {
         version: nextVersion,
@@ -328,7 +330,7 @@ async function revokeUserSessions(params, deps = {}) {
       revocationTimeSeconds: newBarrier,
       version: nextVersion,
       opId,
-      createdAt: defaultAdmin.firestore.FieldValue.serverTimestamp(),
+      createdAt: FieldValue.serverTimestamp(),
     });
 
     return { uid, version: nextVersion, opId, needsClaims: wasClaimsPending };
@@ -516,7 +518,7 @@ async function convertLegacyMarker(uid, deps = {}) {
     tx.update(profileRef, {
       syncVersion: nextVersion,
       claimsSyncPending: structuredMarker,
-      updatedAt: defaultAdmin.firestore.FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
     });
 
     return { converted: true, version: nextVersion, opId };
@@ -710,7 +712,7 @@ async function processUserSync(uid, options = {}, deps = {}) {
         ) {
           tx.update(profileRef, {
             syncedVersion: activeMarker.version,
-            claimsSyncPending: defaultAdmin.firestore.FieldValue.delete(),
+            claimsSyncPending: FieldValue.delete(),
           });
           return { status: 'completed', version: activeMarker.version };
         }

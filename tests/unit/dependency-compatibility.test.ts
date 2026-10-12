@@ -34,8 +34,10 @@ describe('Functions: parser compatibility', () => {
     await expect(finished).rejects.toThrow();
   });
 
-  it('preserves Express nested form/query parsing without accepting prototype fields', async () => {
-    const app = express();app.use(express.urlencoded({ extended: true }));
+  it('supports explicit Express nested form/query parsing without accepting prototype fields', async () => {
+    const app = express();
+    app.set('query parser', 'extended');
+    app.use(express.urlencoded({ extended: true }));
     app.post('/compat', (req: any, res: any) => res.json({ body: req.body, query: req.query }));
     const server = app.listen(0, '127.0.0.1');await once(server, 'listening');
     try {

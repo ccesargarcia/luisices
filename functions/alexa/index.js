@@ -3,8 +3,8 @@
  * Segue estritamente a especificação docs/ESPECIFICACAO_ALEXA_ANTIGRAVITY.md.
  */
 
+const { FieldValue, getFirestore } = require('firebase-admin/firestore');
 const { onRequest, onCall } = require('firebase-functions/v2/https');
-const admin = require('firebase-admin');
 const { getAlexaConfig, ALEXA_IDENTITY_HMAC_KEY } = require('./config');
 const { verifyAlexaHttpRequest } = require('./verification');
 const { authorizeAlexaPerson } = require('./authorization');
@@ -164,7 +164,7 @@ async function processAlexaEnvelope(envelope, { db, config, authService = null }
           environment: config?.environment || 'dev',
           status: 'in_progress',
           startedAt: now,
-          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          createdAt: FieldValue.serverTimestamp(),
           expiresAt: new Date(now + REQUEST_DEDUPE_TTL_MS),
         });
       });
@@ -190,7 +190,7 @@ async function processAlexaEnvelope(envelope, { db, config, authService = null }
           environment: config?.environment || 'dev',
           status: 'completed',
           response: resp,
-          completedAt: admin.firestore.FieldValue.serverTimestamp(),
+          completedAt: FieldValue.serverTimestamp(),
           expiresAt: new Date(Date.now() + REQUEST_DEDUPE_TTL_MS),
         }, { merge: true });
       } catch (err) {
@@ -471,7 +471,7 @@ const alexaWebhook = onRequest(
     console.log(`[alexaWebhook] Requisição verificada com sucesso. Tipo: ${reqType}, AppId: ${envelopeAppId || 'indefinido'}`);
 
     // 2. Somente após verificação criptográfica aprovada, carregar config dinâmica do Firestore.
-    const db = admin.firestore();
+    const db = getFirestore();
     const config = await getAlexaConfig(db);
 
     // 3. Verificar Skill ID com a configuração ativa (pode incluir override do Firestore).
@@ -508,37 +508,37 @@ const alexaWebhook = onRequest(
 // Callables administrativos
 const approveAlexaPairing = onCall(
   { maxInstances: 5, secrets: [ALEXA_IDENTITY_HMAC_KEY] },
-  (req) => approveAlexaPairingHandler(req, admin.firestore())
+  (req) => approveAlexaPairingHandler(req, getFirestore())
 );
 
 const setAlexaPermission = onCall(
   { maxInstances: 5, secrets: [ALEXA_IDENTITY_HMAC_KEY] },
-  (req) => setAlexaPermissionHandler(req, admin.firestore())
+  (req) => setAlexaPermissionHandler(req, getFirestore())
 );
 
 const revokeAlexaBinding = onCall(
   { maxInstances: 5, secrets: [ALEXA_IDENTITY_HMAC_KEY] },
-  (req) => revokeAlexaBindingHandler(req, admin.firestore())
+  (req) => revokeAlexaBindingHandler(req, getFirestore())
 );
 
 const toggleGlobalAlexaIntegration = onCall(
   { maxInstances: 5, secrets: [ALEXA_IDENTITY_HMAC_KEY] },
-  (req) => toggleGlobalAlexaIntegrationHandler(req, admin.firestore())
+  (req) => toggleGlobalAlexaIntegrationHandler(req, getFirestore())
 );
 
 const getAlexaIntegrationStatus = onCall(
   { maxInstances: 5, secrets: [ALEXA_IDENTITY_HMAC_KEY] },
-  (req) => getAlexaIntegrationStatusHandler(req, admin.firestore())
+  (req) => getAlexaIntegrationStatusHandler(req, getFirestore())
 );
 
 const approveAlexaDraft = onCall(
   { maxInstances: 5, secrets: [ALEXA_IDENTITY_HMAC_KEY] },
-  (req) => approveAlexaDraftHandler(req, admin.firestore())
+  (req) => approveAlexaDraftHandler(req, getFirestore())
 );
 
 const cancelAlexaDraft = onCall(
   { maxInstances: 5, secrets: [ALEXA_IDENTITY_HMAC_KEY] },
-  (req) => cancelAlexaDraftHandler(req, admin.firestore())
+  (req) => cancelAlexaDraftHandler(req, getFirestore())
 );
 
 module.exports = {
