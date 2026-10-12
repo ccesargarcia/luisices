@@ -1093,6 +1093,7 @@ export interface McpSettingsStatus {
   globalEnabled: boolean;
   endpointBaseUrl: string;
   openapiUrl: string;
+  pluginManifestUrl?: string;
   keys: McpApiKey[];
   availableScopes: McpScopeInfo[];
   teamMembers: McpTeamMember[];

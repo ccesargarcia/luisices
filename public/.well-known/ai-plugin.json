@@ -1,0 +1,19 @@
+{
+  "schema_version": "v1",
+  "name_for_human": "Luisices Ateliê",
+  "name_for_model": "luisices",
+  "description_for_human": "Assistente de produção, pedidos, clientes e precificação do Ateliê Luisices.",
+  "description_for_model": "Ferramentas do sistema Luisices para consultar pedidos por status/data, detalhes de clientes, resumo operacional e calcular precificação.",
+  "auth": {
+    "type": "user_http",
+    "authorization_type": "bearer"
+  },
+  "api": {
+    "type": "openapi",
+    "url": "https://api.luisices.com.br/chatGptToolsEndpoint/openapi.json",
+    "is_user_authenticated": false
+  },
+  "logo_url": "https://luisices.com.br/favicon.ico",
+  "contact_email": "contato@luisices.com.br",
+  "legal_info_url": "https://luisices.com.br"
+}

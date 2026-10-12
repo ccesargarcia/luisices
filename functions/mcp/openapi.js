@@ -266,7 +266,7 @@ function buildOpenApiSchema(baseUrl, allowedScopes = null) {
         description: `${tool.description} (Escopo necessário: ${tool.scope})`,
         security: [{ bearerAuth: [] }],
         requestBody: {
-          required: true,
+          required: Boolean(tool.requestBody && Array.isArray(tool.requestBody.required) && tool.requestBody.required.length > 0),
           content: {
             'application/json': {
               schema: tool.requestBody,
@@ -282,6 +282,8 @@ function buildOpenApiSchema(baseUrl, allowedScopes = null) {
                   type: 'object',
                   properties: {
                     success: { type: 'boolean' },
+                    tool: { type: 'string' },
+                    timestamp: { type: 'string' },
                     data: { type: 'object' },
                   },
                 },
@@ -309,7 +311,7 @@ function buildOpenApiSchema(baseUrl, allowedScopes = null) {
   });
 
   return {
-    openapi: '3.1.0',
+    openapi: '3.0.3',
     info: {
       title: 'Luisices - Copiloto de Ateliê (ChatGPT & MCP Tools)',
       description: 'API de ferramentas de negócio para consulta de pedidos, clientes, precificação e orçamentos do ateliê Luisices.',
@@ -318,7 +320,12 @@ function buildOpenApiSchema(baseUrl, allowedScopes = null) {
     servers: [
       {
         url: baseUrl,
-        description: 'Servidor de Ferramentas Luisices (Ambiente DEV / Nuvem)',
+        description: 'Servidor de Ferramentas Luisices',
+      },
+    ],
+    security: [
+      {
+        bearerAuth: [],
       },
     ],
     paths,
@@ -329,7 +336,7 @@ function buildOpenApiSchema(baseUrl, allowedScopes = null) {
           type: 'http',
           scheme: 'bearer',
           bearerFormat: 'API Key (lui_...)',
-          description: 'Chave de acesso gerada no painel de configurações do Luisices.',
+          description: 'Chave de acesso gerada no painel de configurações do Luisices (lui_dev_... ou lui_live_...).',
         },
       },
     },

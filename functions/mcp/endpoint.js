@@ -27,30 +27,66 @@ const chatGptToolsEndpoint = onRequest(
   },
   async (req, res) => {
     // Tratamento de preflight CORS
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-origin-secret, x-cf-origin-token, openai-ephemeral-user-id');
+
     if (req.method === 'OPTIONS') {
-      res.setHeader('Access-Control-Allow-Origin', '*');
-      res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-origin-secret, x-cf-origin-token');
       return res.status(204).send('');
     }
 
-    // Validação de Proteção de Origem (garante requisição via Cloudflare Worker)
-    const originCheck = validateOriginSecret(req);
-    if (!originCheck.allowed) {
-      console.warn('[chatGptToolsEndpoint] Requisição bloqueada por violação de proteção de origem.');
-      return res.status(originCheck.statusCode || 403).json({ error: originCheck.error });
-    }
-
     const db = getFirestore();
-    const rawPath = (req.path || '').replace(/^\/+/, '');
+
+    // Normalização rigorosa do caminho (suporta chamadas diretas com ou sem prefixo chatGptToolsEndpoint)
+    const rawPath = (req.path || req.url || '')
+      .split('?')[0]
+      .replace(/^\/+/, '')
+      .replace(/^chatGptToolsEndpoint\/?/, '')
+      .replace(/^\/+/, '');
+
     const isProd = process.env.GCLOUD_PROJECT === 'papelaria-dashboard';
     const forwardedHost = req.get('x-forwarded-host');
-    const apiDomain = forwardedHost || (isProd ? 'api.luisices.com.br' : 'api.dev.luisices.com.br');
-    const protocol = req.get('x-forwarded-proto') || 'https';
-    const baseUrl = `${protocol}://${apiDomain}/chatGptToolsEndpoint`;
+    const reqHost = req.get('host') || '';
+    const isDirectGcf = reqHost.includes('cloudfunctions.net') || reqHost.includes('run.app');
+    const apiDomain = forwardedHost || (!isDirectGcf && reqHost ? reqHost : (isProd ? 'api.luisices.com.br' : 'api.dev.luisices.com.br'));
+    const protocol = req.get('x-forwarded-proto') || (req.secure ? 'https' : 'https');
+    const baseUrl = isDirectGcf
+      ? `${protocol}://${reqHost}/chatGptToolsEndpoint`
+      : `${protocol}://${apiDomain}/chatGptToolsEndpoint`;
 
-    // ─── ROTA 1: Manifesto OpenAPI (/openapi.json ou /schema) ───────────────
-    if (req.method === 'GET' && (rawPath === 'openapi.json' || rawPath === 'schema')) {
+    // ─── 1. Validação de Proteção de Origem ──────────────────────────────────
+    // Rotas públicas de descoberta (OpenAPI, Manifesto de Plugins e Health) são abertas
+    // para que a OpenAI / ChatGPT consiga ler os schemas e conectar o assistente
+    const isPublicDiscovery =
+      req.method === 'GET' &&
+      (
+        rawPath === 'openapi.json' ||
+        rawPath === 'openapi.yaml' ||
+        rawPath === 'schema' ||
+        rawPath === '.well-known/ai-plugin.json' ||
+        rawPath === 'ai-plugin.json' ||
+        rawPath === '.well-known/plugin.json' ||
+        rawPath === 'plugin.json' ||
+        rawPath === 'health' ||
+        rawPath === ''
+      );
+
+    if (!isPublicDiscovery) {
+      const originCheck = validateOriginSecret(req);
+      if (!originCheck.allowed) {
+        // Se a requisição contiver cabeçalho Authorization Bearer com chave lui_ válida,
+        // permite chamada direta (ex: ChatGPT Actions ou MCP chamando diretamente as ferramentas)
+        const authHeader = req.headers.authorization || req.headers.Authorization || '';
+        const hasValidKeyFormat = authHeader.startsWith('Bearer lui_');
+        if (!hasValidKeyFormat) {
+          console.warn('[chatGptToolsEndpoint] Requisição bloqueada por violação de proteção de origem.');
+          return res.status(originCheck.statusCode || 403).json({ error: originCheck.error });
+        }
+      }
+    }
+
+    // ─── ROTA 1: Manifesto OpenAPI (/openapi.json, /openapi.yaml ou /schema) ─
+    if (req.method === 'GET' && (rawPath === 'openapi.json' || rawPath === 'openapi.yaml' || rawPath === 'schema')) {
       // Se a requisição contiver Bearer token, personaliza o schema apenas com as permissões da chave
       let allowedScopes = null;
       if (req.headers.authorization) {
@@ -66,12 +102,20 @@ const chatGptToolsEndpoint = onRequest(
       return res.status(200).json(schema);
     }
 
-    // ─── ROTA 1.1: Manifesto de Plugin OpenAI (/.well-known/ai-plugin.json ou /ai-plugin.json) ──
-    if (req.method === 'GET' && (rawPath === '.well-known/ai-plugin.json' || rawPath === 'ai-plugin.json')) {
+    // ─── ROTA 1.1: Manifesto de Plugin OpenAI (/.well-known/ai-plugin.json, /ai-plugin.json, plugin.json) ──
+    if (
+      req.method === 'GET' &&
+      (
+        rawPath === '.well-known/ai-plugin.json' ||
+        rawPath === 'ai-plugin.json' ||
+        rawPath === '.well-known/plugin.json' ||
+        rawPath === 'plugin.json'
+      )
+    ) {
       const isDev = !isProd;
       const pluginManifest = {
         schema_version: 'v1',
-        name_for_human: isDev ? 'Luisices Ateliê (DEV)' : 'Luisices Ateliê',
+        name_for_human: isDev ? 'Luisices Dev' : 'Luisices Ateliê',
         name_for_model: 'luisices',
         description_for_human: 'Assistente de produção, pedidos, clientes e precificação do Ateliê Luisices.',
         description_for_model: 'Ferramentas do sistema Luisices para consultar pedidos por status/data, detalhes de clientes, resumo operacional e calcular precificação.',
@@ -82,6 +126,7 @@ const chatGptToolsEndpoint = onRequest(
         api: {
           type: 'openapi',
           url: `${baseUrl}/openapi.json`,
+          is_user_authenticated: false,
         },
         logo_url: `https://${apiDomain}/favicon.ico`,
         contact_email: 'contato@luisices.com.br',
@@ -100,12 +145,21 @@ const chatGptToolsEndpoint = onRequest(
         version: '1.0.0',
         environment: process.env.GCLOUD_PROJECT || 'dev',
         schemaUrl: `${baseUrl}/openapi.json`,
+        pluginManifestUrl: `${baseUrl}/.well-known/ai-plugin.json`,
       });
     }
 
     // ─── ROTA 3: Execução de Ferramentas (POST /tools/:toolName) ────────────
     const matchTool = rawPath.match(/^tools\/([a-zA-Z0-9_]+)$/);
-    if (req.method === 'POST' && matchTool) {
+    if (matchTool) {
+      if (req.method !== 'POST') {
+        res.setHeader('Allow', 'POST, OPTIONS');
+        return res.status(405).json({
+          error: 'METHOD_NOT_ALLOWED',
+          message: 'Utilize o método POST para executar ferramentas de IA.',
+        });
+      }
+
       const toolName = matchTool[1];
 
       // 1. Validação de Autenticação, Status Global, Status do Usuário e Rate Limiter

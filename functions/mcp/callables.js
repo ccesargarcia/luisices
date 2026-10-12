@@ -90,6 +90,7 @@ const getMcpSettingsStatus = onCall({ cors: true, maxInstances: 5 }, async (requ
     globalEnabled: globalSettings.enabled !== false,
     endpointBaseUrl,
     openapiUrl: `${endpointBaseUrl}/openapi.json`,
+    pluginManifestUrl: `https://${apiDomain}/.well-known/ai-plugin.json`,
     keys,
     availableScopes: Object.values(MCP_SCOPES),
     teamMembers,

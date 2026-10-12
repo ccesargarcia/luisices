@@ -39,13 +39,18 @@ export default {
       });
     }
 
-    // Manifesto de Plugin OpenAI (/.well-known/ai-plugin.json)
-    if (url.pathname === '/.well-known/ai-plugin.json') {
+    // Manifesto de Plugin OpenAI (/.well-known/ai-plugin.json, /ai-plugin.json, /plugin.json)
+    if (
+      url.pathname === '/.well-known/ai-plugin.json' ||
+      url.pathname === '/ai-plugin.json' ||
+      url.pathname === '/.well-known/plugin.json' ||
+      url.pathname === '/plugin.json'
+    ) {
       const isDev = url.hostname.includes('dev') || env.ENVIRONMENT === 'dev';
       const openApiUrl = `https://${url.hostname}/chatGptToolsEndpoint/openapi.json`;
       const manifest = {
         schema_version: 'v1',
-        name_for_human: isDev ? 'Luisices Ateliê (DEV)' : 'Luisices Ateliê',
+        name_for_human: isDev ? 'Luisices Dev' : 'Luisices Ateliê',
         name_for_model: 'luisices',
         description_for_human: 'Consulta pedidos, fila de produção, clientes e orçamentos do Ateliê Luisices.',
         description_for_model: 'Ferramentas do sistema Luisices para consultar pedidos por status/data, detalhes de clientes, resumo operacional e calcular precificação.',
@@ -56,6 +61,7 @@ export default {
         api: {
           type: 'openapi',
           url: openApiUrl,
+          is_user_authenticated: false,
         },
         logo_url: `https://${url.hostname}/favicon.ico`,
         contact_email: 'contato@luisices.com.br',
@@ -75,7 +81,17 @@ export default {
     const backendBase = env.BACKEND_ORIGIN || (isDev ? DEFAULT_ORIGINS.dev : DEFAULT_ORIGINS.prod);
 
     // 3. Montar URL de encaminhamento preservando path e query params
-    const targetUrl = new URL(url.pathname + url.search, backendBase);
+    let targetPath = url.pathname;
+    if (
+      targetPath === '/openapi.json' ||
+      targetPath === '/openapi.yaml' ||
+      targetPath === '/schema' ||
+      targetPath.startsWith('/tools/') ||
+      targetPath === '/health'
+    ) {
+      targetPath = `/chatGptToolsEndpoint${targetPath}`;
+    }
+    const targetUrl = new URL(targetPath + url.search, backendBase);
 
     // 4. Clonar e enriquecer cabeçalhos para a origem
     const forwardHeaders = new Headers(request.headers);

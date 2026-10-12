@@ -69,6 +69,7 @@ export function McpSettingsSection({ isAdmin }: McpSettingsSectionProps) {
   const [createdResult, setCreatedResult] = useState<CreateMcpKeyResult | null>(null);
   const [copiedKey, setCopiedKey] = useState(false);
   const [copiedUrl, setCopiedUrl] = useState(false);
+  const [copiedPluginUrl, setCopiedPluginUrl] = useState(false);
 
   // Ações inline
   const [togglingGlobal, setTogglingGlobal] = useState(false);
@@ -262,12 +263,16 @@ export function McpSettingsSection({ isAdmin }: McpSettingsSectionProps) {
     }
   };
 
-  const handleCopyText = (text: string, type: 'key' | 'url') => {
+  const handleCopyText = (text: string, type: 'key' | 'url' | 'plugin') => {
     navigator.clipboard.writeText(text);
     if (type === 'key') {
       setCopiedKey(true);
       setTimeout(() => setCopiedKey(false), 2000);
       toast.success('Chave copiada para a área de transferência!');
+    } else if (type === 'plugin') {
+      setCopiedPluginUrl(true);
+      setTimeout(() => setCopiedPluginUrl(false), 2000);
+      toast.success('URL do Manifesto do Plugin copiada!');
     } else {
       setCopiedUrl(true);
       setTimeout(() => setCopiedUrl(false), 2000);
@@ -346,7 +351,8 @@ export function McpSettingsSection({ isAdmin }: McpSettingsSectionProps) {
 
         <CardContent className="space-y-6">
           {/* Interruptor Geral & URL do Manifesto */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* Interruptor Geral & URLs de Integração (OpenAPI e Plugin) */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {/* Box 1: Interruptor Global */}
             <div className="flex items-center justify-between p-4 rounded-xl border border-border/70 bg-card/40 backdrop-blur-xs">
               <div className="space-y-0.5 pr-4">
@@ -362,10 +368,10 @@ export function McpSettingsSection({ isAdmin }: McpSettingsSectionProps) {
               />
             </div>
 
-            {/* Box 2: URL do Schema OpenAPI para o ChatGPT */}
+            {/* Box 2: URL do Schema OpenAPI para o ChatGPT Actions */}
             <div className="flex items-center justify-between p-4 rounded-xl border border-border/70 bg-card/40 backdrop-blur-xs">
               <div className="space-y-0.5 min-w-0 pr-3">
-                <p className="text-sm font-medium">URL do Schema (OpenAPI 3.0)</p>
+                <p className="text-sm font-medium">Schema OpenAPI (GPT Actions)</p>
                 <p className="text-xs text-muted-foreground font-mono truncate" title={status?.openapiUrl}>
                   {status?.openapiUrl || 'Carregando URL...'}
                 </p>
@@ -379,6 +385,32 @@ export function McpSettingsSection({ isAdmin }: McpSettingsSectionProps) {
               >
                 {copiedUrl ? <Check className="size-4 text-emerald-500" /> : <Copy className="size-4" />}
                 <span>{copiedUrl ? 'Copiado' : 'Copiar'}</span>
+              </Button>
+            </div>
+
+            {/* Box 3: Manifesto do Plugin ChatGPT (ai-plugin.json) */}
+            <div className="flex items-center justify-between p-4 rounded-xl border border-border/70 bg-card/40 backdrop-blur-xs">
+              <div className="space-y-0.5 min-w-0 pr-3">
+                <p className="text-sm font-medium">Manifesto (ChatGPT Plugins)</p>
+                <p
+                  className="text-xs text-muted-foreground font-mono truncate"
+                  title={status?.pluginManifestUrl || (status?.endpointBaseUrl ? `${status.endpointBaseUrl}/.well-known/ai-plugin.json` : '')}
+                >
+                  {status?.pluginManifestUrl || (status?.endpointBaseUrl ? `${status.endpointBaseUrl}/.well-known/ai-plugin.json` : 'Carregando URL...')}
+                </p>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  const pUrl = status?.pluginManifestUrl || (status?.endpointBaseUrl ? `${status.endpointBaseUrl}/.well-known/ai-plugin.json` : '');
+                  if (pUrl) handleCopyText(pUrl, 'plugin');
+                }}
+                disabled={!status?.endpointBaseUrl}
+                className="shrink-0 gap-1.5"
+              >
+                {copiedPluginUrl ? <Check className="size-4 text-emerald-500" /> : <Copy className="size-4" />}
+                <span>{copiedPluginUrl ? 'Copiado' : 'Copiar'}</span>
               </Button>
             </div>
           </div>
@@ -556,26 +588,26 @@ export function McpSettingsSection({ isAdmin }: McpSettingsSectionProps) {
             <div className="flex items-center gap-2">
               <Sparkles className="size-4 text-primary" />
               <h4 className="text-xs font-semibold uppercase tracking-wider text-primary">
-                Passo a Passo: Como Configurar no ChatGPT
+                Passo a Passo: Como Configurar no ChatGPT (Actions ou Plugins)
               </h4>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs text-muted-foreground">
               <div className="p-3 rounded-lg bg-card/60 border border-border/60 space-y-1">
-                <span className="font-semibold text-foreground">1. Criar Custom GPT</span>
+                <span className="font-semibold text-foreground">1. GPT Actions vs Plugin</span>
                 <p>
-                  No ChatGPT, vá em <strong>Explore GPTs</strong> &gt; <strong>Create</strong>. Dê um nome (ex: "Luisices Ateliê") e adicione suas instruções.
+                  Para <strong>GPT Actions</strong>, use o link do <em>Schema OpenAPI (3.0)</em>. Para <strong>Plugins</strong>, use o domínio ou a URL do manifesto <em>ai-plugin.json</em>.
                 </p>
               </div>
               <div className="p-3 rounded-lg bg-card/60 border border-border/60 space-y-1">
-                <span className="font-semibold text-foreground">2. Adicionar Action</span>
+                <span className="font-semibold text-foreground">2. Importar o Schema</span>
                 <p>
-                  Em <strong>Actions</strong> &gt; <strong>Create new action</strong>, clique em <strong>Import from URL</strong> e cole o link do Schema OpenAPI acima.
+                  No editor de GPTs, clique em <strong>Actions &gt; Import from URL</strong> e cole o link do OpenAPI. Todos os 9 endpoints serão mapeados automaticamente.
                 </p>
               </div>
               <div className="p-3 rounded-lg bg-card/60 border border-border/60 space-y-1">
-                <span className="font-semibold text-foreground">3. Definir Autenticação</span>
+                <span className="font-semibold text-foreground">3. Autenticação Bearer</span>
                 <p>
-                  Selecione Authentication: <strong>API Key</strong>, Auth Type: <strong>Bearer</strong> e cole a Chave de Acesso gerada para o seu usuário.
+                  Em Authentication selecione <strong>API Key</strong>, Auth Type: <strong>Bearer</strong> e cole a Chave de Acesso (<code className="font-mono text-[10px]">lui_...</code>) gerada para o seu usuário.
                 </p>
               </div>
             </div>
