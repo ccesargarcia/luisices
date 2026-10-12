@@ -10,6 +10,8 @@ const { validateMcpRequest, touchKeyUsage } = require('./auth');
 const { TOOL_SCOPE_MAP, MCP_SCOPES } = require('./constants');
 const { buildOpenApiSchema } = require('./openapi');
 const { createAiServices } = require('../ai/index');
+const { ORIGIN_SECRET } = require('../common/secrets');
+const { validateOriginSecret } = require('../originProtection');
 
 /**
  * Endpoint HTTP de Ferramentas de IA para ChatGPT e MCP.
@@ -21,21 +23,31 @@ const chatGptToolsEndpoint = onRequest(
     maxInstances: 5,
     memory: '512MiB',
     timeoutSeconds: 30,
+    secrets: [ORIGIN_SECRET],
   },
   async (req, res) => {
     // Tratamento de preflight CORS
     if (req.method === 'OPTIONS') {
       res.setHeader('Access-Control-Allow-Origin', '*');
       res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-origin-secret, x-cf-origin-token');
       return res.status(204).send('');
+    }
+
+    // Validação de Proteção de Origem (garante requisição via Cloudflare Worker)
+    const originCheck = validateOriginSecret(req);
+    if (!originCheck.allowed) {
+      console.warn('[chatGptToolsEndpoint] Requisição bloqueada por violação de proteção de origem.');
+      return res.status(originCheck.statusCode || 403).json({ error: originCheck.error });
     }
 
     const db = getFirestore();
     const rawPath = (req.path || '').replace(/^\/+/, '');
-    const protocol = req.protocol || 'https';
-    const host = req.get('host') || 'us-central1-luisices-dev.cloudfunctions.net';
-    const baseUrl = `${protocol}://${host}${req.baseUrl || ''}`;
+    const isProd = process.env.GCLOUD_PROJECT === 'papelaria-dashboard';
+    const forwardedHost = req.get('x-forwarded-host');
+    const apiDomain = forwardedHost || (isProd ? 'api.luisices.com.br' : 'api.dev.luisices.com.br');
+    const protocol = req.get('x-forwarded-proto') || 'https';
+    const baseUrl = `${protocol}://${apiDomain}/chatGptToolsEndpoint`;
 
     // ─── ROTA 1: Manifesto OpenAPI (/openapi.json ou /schema) ───────────────
     if (req.method === 'GET' && (rawPath === 'openapi.json' || rawPath === 'schema')) {

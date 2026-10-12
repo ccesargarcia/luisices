@@ -80,10 +80,9 @@ const getMcpSettingsStatus = onCall({ cors: true, maxInstances: 5 }, async (requ
     })
     .filter((u) => u.active);
 
-  // 4. Monta URL do endpoint de DEV
-  const region = 'us-central1';
-  const gcpProject = environment === 'prod' ? 'papelaria-dashboard' : 'luisices-dev';
-  const endpointBaseUrl = `https://${region}-${gcpProject}.cloudfunctions.net/chatGptToolsEndpoint`;
+  // 4. Monta URL do endpoint com base no domínio customizado unificado
+  const apiDomain = environment === 'prod' ? 'api.luisices.com.br' : 'api.dev.luisices.com.br';
+  const endpointBaseUrl = `https://${apiDomain}/chatGptToolsEndpoint`;
 
   return {
     success: true,
