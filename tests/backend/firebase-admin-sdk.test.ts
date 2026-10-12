@@ -124,6 +124,7 @@ describe('Admin real e contrato publicado das Functions', () => {
     const token = await signIn(uid);
     const decoded = await auth.verifyIdToken(token);
     expect(decoded).toMatchObject({ uid, role: 'funcionario', active: true });
+    await expect(auth.verifyIdToken('invalid-token')).rejects.toThrow();
     expect((await auth.getUser(uid)).customClaims).toEqual({ role: 'funcionario', active: true });
     // Auth timestamps have second precision; revoke in a later second than sign-in.
     await new Promise((resolve) => setTimeout(resolve, 1100));
@@ -237,10 +238,17 @@ describe(`Protocolo HTTP nas Functions (${process.env.SDK_TEST_HTTP_MODE})`, () 
     expect(result.body.error.status).toBe('UNAUTHENTICATED');
   });
 
-  it('rejeita token inválido antes da execução do handler', async () => {
+  it('nega acesso protegido quando o token é inválido', async () => {
     const result = await callable('getUserAccountMetadata', { uids: [] }, 'invalid-token');
-    expect(result.status).toBe(401);
-    expect(result.body.error.status).toBe('UNAUTHENTICATED');
+    if (process.env.SDK_TEST_HTTP_MODE === 'wrapper') {
+      expect(result.status).toBe(401);
+      expect(result.body.error.status).toBe('UNAUTHENTICATED');
+    } else {
+      // The CLI enables skipTokenVerification in its runtime. It may pass a
+      // simulated identity to the handler, which must still deny access.
+      expect([401, 403]).toContain(result.status);
+      expect(['UNAUTHENTICATED', 'PERMISSION_DENIED']).toContain(result.body.error.status);
+    }
   });
 
   it('autentica administrador pelo token real e retorna metadados do Auth', async () => {

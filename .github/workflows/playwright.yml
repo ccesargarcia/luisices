@@ -59,11 +59,13 @@ jobs:
           npm --prefix functions ci
       - name: Verify real Admin SDK and Functions Emulator contracts
         run: node scripts/run-firebase-sdk-tests.mjs --reporter=json --outputFile=test-results/backend-sdk.json
+      - name: Verify real HTTP wrappers with SDK token verification
+        run: node scripts/run-firebase-sdk-tests.mjs --http-wrapper --reporter=json --outputFile=test-results/backend-sdk-http.json
       - uses: actions/upload-artifact@v4
         if: ${{ always() }}
         with:
           name: backend-sdk-results
-          path: test-results/backend-sdk.json
+          path: test-results/backend-sdk*.json
 
   test:
     if: ${{ inputs.test_target != 'backend-sdk' }}

@@ -6,6 +6,10 @@ O registro começou em 12/10/2026 com as entregas recentes verificadas em produ�
 
 ## Não lançado
 
+### Adicionado
+
+- Suíte de compatibilidade do backend com o Admin SDK real em emuladores locais, incluindo operações entre serviços, contratos das Functions e respostas HTTP; execução manual disponível no GitHub Actions.
+
 ### Segurança
 
 - Atualizações das dependências de processamento de requisições, transporte de dados e imagens, com testes de compatibilidade em Node 22.

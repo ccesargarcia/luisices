@@ -98,6 +98,7 @@ Base anterior à migração, verificada em 12/10/2026:
 |---|---|
 | Unitários existentes | 907 aprovados |
 | Integração de pedidos e regressões Firestore/Storage | 91 aprovados e 1 falha existente de Storage |
+| Presença e autorização RTDB existentes | 6 aprovados |
 | Contratos novos com Admin real e wrappers HTTP locais | 17 aprovados |
 | Functions Emulator completo | Execução local bloqueada por restrição de socket Unix; verificar no workflow manual |
 
