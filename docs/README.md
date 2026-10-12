@@ -11,11 +11,9 @@ Este diretório consolida a documentação técnica oficial, arquitetura viva e 
 | **[Changelog](../CHANGELOG.md)** | Histórico de entregas, correções e mudanças de segurança. |
 | **[Changelog e releases](CHANGELOG_E_RELEASES.md)** | Como registrar mudanças, escolher versões e criar tags e Releases após validar uma entrega. |
 | **[Design System](../design.md)** | Diretrizes estéticas de *Papelaria de Afeto*, Liquid Glassmorphism, tokens de cores, anatomia de componentes e regras de UX mobile. |
-| **[Importação de Pedidos](IMPORTACAO_PEDIDOS.md)** | Edição e seleção de planilhas, validação no Firestore, evidências de segurança e limites restantes. |
 | **[Funcionalidades](FUNCIONALIDADES.md)** | Catálogo completo de módulos funcionais (pedidos, clientes, vitrine pública, e-mails corporativos, WhatsApp, financeiro e estoque). |
-| **[Dependências & Arquitetura](DEPENDENCIAS_E_ARQUITETURA.md)** | Visão estrutural de serviços, entrypoints frontend/backend, modelo de dados multi-tenant, Cloudflare WAF e pipelines de deploy. |
+| **[Dependências & Arquitetura](DEPENDENCIAS_E_ARQUITETURA.md)** | Visão estrutural de serviços, entrypoints frontend/backend, modelo de dados multi-tenant e pipelines de deploy. |
 | **[Copiloto de IA](COPILOTO_IA.md)** | Especificação do subsistema de inteligência artificial (Google Gemini), ferramentas (Function Calling), orçamentos de token e system prompt. |
-| **[Especificação Alexa](ESPECIFICACAO_ALEXA_ANTIGRAVITY.md)** | Contratos, intents, modelos de interação de voz e fluxo de segurança da Skill Alexa. |
 | **[Backend Cloud Functions](../functions/README.md)** | Organização de micro-serviços, triggers, webhooks e tarefas agendadas no Firebase Gen2 / Cloud Run. |
 
 ---

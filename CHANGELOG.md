@@ -6,7 +6,13 @@ O registro começou em 12/10/2026 com as entregas recentes verificadas em produ�
 
 ## Não lançado
 
-Ainda sem mudanças registradas para a próxima entrega.
+### Removido
+
+- Documentação operacional da Cloudflare, especificação Alexa e relatório interno de segurança da importação da documentação pública.
+
+### Alterado
+
+- Índice e links dos guias atualizados após a limpeza da documentação.
 
 ## v1.0.4 — 2026-10-12
 
