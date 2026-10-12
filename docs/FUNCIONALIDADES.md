@@ -45,6 +45,8 @@ A importação de pedidos por `.xlsx`, `.xls` ou `.csv` permite revisar e editar
 
 O botão de importar mostra a quantidade selecionada e fica bloqueado enquanto houver edição aberta, nenhuma linha selecionada ou uma linha selecionada com erro. As edições são revalidadas ao salvar, recalculando o saldo do pagamento. A opção de cadastro automático de clientes atua somente sobre os pedidos efetivamente importados. Editar a prévia não altera o arquivo original nem grava dados no sistema; a gravação começa ao confirmar a importação. No celular a prévia usa cartões; no desktop, tabela com rolagem horizontal.
 
+A leitura aceita arquivos de até 10 MB, com até 1.000 pedidos e 64 colunas. Quantidade, valores, datas e dados do cliente são revalidados antes de gravar, e as regras do Firestore impõem validação independente para criação e alteração de pedidos. Consulte o [contrato, evidências e limites de segurança](IMPORTACAO_PEDIDOS.md).
+
 Fontes da importação: [modal](../src/app/components/orders/ImportOrdersDialog.tsx), [edição](../src/app/components/orders/ImportOrderRowEditor.tsx), [revisão e seleção](../src/app/utils/importOrdersReview.ts), [parsing e gravação](../src/app/utils/importOrdersExcel.ts).
 
 A agenda organiza entregas. Não existe no Copiloto uma ferramenta dedicada para capacidade produtiva, dependências entre etapas ou alteração de responsável.

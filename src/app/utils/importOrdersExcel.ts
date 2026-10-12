@@ -13,6 +13,7 @@
 import { Order, OrderStatus, PaymentStatus, PaymentMethod, Tag } from '../types';
 import { firebaseOrderService } from '../../services/firebaseOrderService';
 import { firebaseCustomerService } from '../../services/firebaseCustomerService';
+import { updateReviewedImportRow } from './importOrdersReview';
 import { TAG_COLORS } from './tagColors';
 
 export interface ParsedOrderRow {
@@ -365,7 +366,23 @@ export function parseTagsValue(raw: any): Tag[] {
 // Leitura e Validação do Arquivo Excel (SheetJS)
 // ─────────────────────────────────────────────────────────────────────────────
 
+function parseImportedMoney(raw: unknown): number {
+  if (raw === null || raw === undefined || raw === '') return 0;
+  if (typeof raw === 'number') return raw < 0 ? raw : Math.round(raw * 100) / 100;
+  if (typeof raw !== 'string') return NaN;
+  let clean = raw.trim().replace(/R\$|\$|\s/g, '');
+  if (clean.includes(',') && clean.includes('.')) {
+    clean = clean.lastIndexOf(',') > clean.lastIndexOf('.') ? clean.replace(/\./g, '').replace(',', '.') : clean.replace(/,/g, '');
+  } else clean = clean.replace(',', '.');
+  return /^-?\d+(\.\d{1,2})?$/.test(clean) ? Number(clean) : NaN;
+}
+
+export const MAX_ORDER_IMPORT_BYTES = 10 * 1024 * 1024;
+export const MAX_ORDER_IMPORT_ROWS = 1000;
+
 export async function parseOrdersExcelFile(file: File | ArrayBuffer): Promise<ExcelParseResult> {
+  const fileSize = file instanceof File ? file.size : file.byteLength;
+  if (fileSize > MAX_ORDER_IMPORT_BYTES) throw new Error('A planilha deve ter no máximo 10 MB.');
   const XLSX = await import('xlsx');
 
   let arrayBuffer: ArrayBuffer;
@@ -375,9 +392,24 @@ export async function parseOrdersExcelFile(file: File | ArrayBuffer): Promise<Ex
     arrayBuffer = file;
   }
 
+  const bytes = new Uint8Array(arrayBuffer);
+  const isZip = bytes[0] === 0x50 && bytes[1] === 0x4b && bytes[2] === 0x03 && bytes[3] === 0x04;
+  const isOle = [0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1].every((value, index) => bytes[index] === value);
+  const extension = file instanceof File ? file.name.toLowerCase().split('.').pop() : null;
+  if (extension && !['xlsx', 'xls', 'csv'].includes(extension)) throw new Error('Formato inválido. Use um arquivo .xlsx, .xls ou .csv.');
+  if ((extension === 'xlsx' && !isZip) || (extension === 'xls' && !isOle)) throw new Error('O conteúdo do arquivo não corresponde ao formato Excel informado.');
+  if (extension === 'csv' || (!isZip && !isOle)) {
+    const encoding = bytes[0] === 0xff && bytes[1] === 0xfe ? 'utf-16le' : bytes[0] === 0xfe && bytes[1] === 0xff ? 'utf-16be' : 'utf-8';
+    const preview = new TextDecoder(encoding).decode(bytes.slice(0, 512)).replace(/^\uFEFF/, '').trimStart();
+    if (isZip || isOle || preview.includes('\0') || preview.startsWith('<')) throw new Error('Arquivo CSV inválido. Conteúdo HTML, XML ou binário não é aceito.');
+  }
+
   const workbook = XLSX.read(arrayBuffer, {
     type: 'array',
     cellDates: true,
+    sheetRows: MAX_ORDER_IMPORT_ROWS + 2,
+    cellFormula: false,
+    cellHTML: false,
   });
 
   const firstSheetName = workbook.SheetNames[0];
@@ -393,9 +425,13 @@ export async function parseOrdersExcelFile(file: File | ArrayBuffer): Promise<Ex
     throw new Error('Não foi possível ler os dados da aba selecionada.');
   }
 
+  const range = XLSX.utils.decode_range(sheet['!fullref'] || sheet['!ref'] || 'A1');
+  if (range.e.r - range.s.r > MAX_ORDER_IMPORT_ROWS) throw new Error('A planilha deve conter no máximo 1.000 pedidos. Divida o arquivo para importar.');
+  if (range.e.c - range.s.c + 1 > 64) throw new Error('A planilha contém colunas demais. Use o modelo de importação.');
+
   const rawJsonRows: Record<string, any>[] = XLSX.utils.sheet_to_json(sheet, {
     defval: '',
-    raw: false,
+    raw: true,
     dateNF: 'yyyy-mm-dd',
   });
 
@@ -408,6 +444,9 @@ export async function parseOrdersExcelFile(file: File | ArrayBuffer): Promise<Ex
       headersFound: [],
     };
   }
+
+  if (rawJsonRows.length > MAX_ORDER_IMPORT_ROWS) throw new Error('A planilha deve conter no máximo 1.000 pedidos. Divida o arquivo para importar.');
+  if (Object.keys(rawJsonRows[0] || {}).length > 64) throw new Error('A planilha contém colunas demais. Use o modelo de importação.');
 
   // Mapear cabeçalhos encontrados para os campos padrão
   const headersFound = Object.keys(rawJsonRows[0] || {});
@@ -439,10 +478,10 @@ export async function parseOrdersExcelFile(file: File | ArrayBuffer): Promise<Ex
     const customerEmail = mapped.customerEmail ? String(mapped.customerEmail).trim() : undefined;
     const productName = String(mapped.productName || '').trim();
     const quantity = parseQuantityValue(mapped.quantity);
-    const price = parseCurrencyValue(mapped.price);
+    const price = parseImportedMoney(mapped.price);
     const { dateStr: deliveryDate, isFallback: isDateFallback } = parseDateValue(mapped.deliveryDate);
     const status = parseOrderStatusValue(mapped.status);
-    const paidAmount = parseCurrencyValue(mapped.paidAmount);
+    const paidAmount = parseImportedMoney(mapped.paidAmount);
     const paymentStatus = parsePaymentStatusValue(mapped.paymentStatus, paidAmount, price);
     const paymentMethod = parsePaymentMethodValue(mapped.paymentMethod);
     const notes = mapped.notes ? String(mapped.notes).trim() : undefined;
@@ -472,7 +511,7 @@ export async function parseOrdersExcelFile(file: File | ArrayBuffer): Promise<Ex
 
     const isValid = errors.length === 0;
 
-    allRows.push({
+    const reviewed = updateReviewedImportRow({
       rowIndex,
       customerName,
       customerPhone,
@@ -492,7 +531,14 @@ export async function parseOrdersExcelFile(file: File | ArrayBuffer): Promise<Ex
       errors,
       warnings,
       rawData: row,
-    });
+    }, {});
+    if (mapped.quantity !== undefined && mapped.quantity !== null && mapped.quantity !== '') {
+      const suppliedQuantity = String(mapped.quantity).trim();
+      if (!/^\d+\s*(unidades?|un|x)?$/i.test(suppliedQuantity) || !(quantity > 0 && Number(suppliedQuantity.replace(/[^0-9]/g, '')) > 0)) reviewed.errors.push('Quantidade informada na planilha é inválida. Use um número inteiro maior que zero.');
+    }
+    reviewed.isValid = reviewed.errors.length === 0;
+    reviewed.warnings.push(...warnings.filter(warning => !reviewed.warnings.includes(warning)));
+    allRows.push(reviewed);
   });
 
   const validRows = allRows.filter(r => r.isValid);
@@ -639,6 +685,12 @@ export async function executeOrdersImport(
   userId: string,
   options: ExecuteImportOptions = {}
 ): Promise<ImportExecutionResult> {
+  if (!Array.isArray(rowsToImport) || rowsToImport.length === 0 || rowsToImport.length > MAX_ORDER_IMPORT_ROWS) throw new Error('Selecione entre 1 e 1.000 pedidos para importar.');
+  if (!userId || typeof userId !== 'string') throw new Error('Usuário inválido para importação.');
+  const checkedRows = rowsToImport.map(row => updateReviewedImportRow(row, {}));
+  const invalidRow = checkedRows.find(row => !row.isValid);
+  if (invalidRow) throw new Error(`Linha ${invalidRow.rowIndex}: ${invalidRow.errors.join(' ')}`);
+  rowsToImport = checkedRows;
   const { autoCreateCustomer = true, onProgress } = options;
 
   const result: ImportExecutionResult = {
@@ -693,7 +745,7 @@ export async function executeOrdersImport(
       let matchedCustomer = null;
       if (cleanPhone && phoneToCustomerMap.has(cleanPhone)) {
         matchedCustomer = phoneToCustomerMap.get(cleanPhone);
-      } else if (nameToCustomerMap.has(lowerName)) {
+      } else if (!cleanPhone && nameToCustomerMap.has(lowerName)) {
         matchedCustomer = nameToCustomerMap.get(lowerName);
       }
 
@@ -716,7 +768,7 @@ export async function executeOrdersImport(
           if (cleanPhone) phoneToCustomerMap.set(cleanPhone, dummyCustomer);
           nameToCustomerMap.set(lowerName, dummyCustomer);
         } catch (createCustErr: any) {
-          console.warn(`[executeOrdersImport] Não foi possível criar cliente para ${row.customerName}:`, createCustErr?.message);
+          throw new Error(`Não foi possível cadastrar o cliente desta linha: ${createCustErr?.message || 'operação não autorizada ou indisponível'}`);
         }
       }
 
@@ -729,11 +781,11 @@ export async function executeOrdersImport(
         remainingAmount: row.remainingAmount,
         paymentDate: row.paidAmount > 0 ? new Date().toISOString() : null,
         notes: row.paidAmount > 0 ? 'Registrado via importação de planilha Excel.' : null,
-        history: row.paidAmount > 0 ? [
+        history: row.paidAmount > 0 && row.paymentMethod ? [
           {
             amount: row.paidAmount,
             date: new Date().toISOString(),
-            method: row.paymentMethod || ('pix' as PaymentMethod),
+            method: row.paymentMethod,
             notes: 'Valor adiantado registrado via importação Excel',
           }
         ] : null,

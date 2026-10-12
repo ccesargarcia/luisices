@@ -5,7 +5,7 @@ import { chromium } from 'playwright';
 const mock = `const rows=Array.from({length:11},(_,i)=>({rowIndex:i+2,customerName:i===10?'':'Cliente Final '+(1138+i),customerPhone:'11999991138',productName:'30 Vinil Hotwheels + 1 Folha Vinil Impresso 2cm',quantity:31,price:123.45,deliveryDate:'2026-10-20',status:'pending',paymentStatus:'pending',paidAmount:0,remainingAmount:123.45,isValid:i!==10,errors:i===10?['Nome do cliente é obrigatório.']:[],warnings:[],rawData:{}}));
 export const parseTagsValue=raw=>String(raw).split(',').map(name=>({name:name.trim(),color:'#6785a8'}));
 export const downloadOrderImportTemplate=async()=>{};
-export const parseOrdersExcelFile=async()=>({totalRows:11,allRows:rows,validRows:rows.filter(r=>r.isValid),invalidRows:rows.filter(r=>!r.isValid),headersFound:[]});
+export const parseOrdersExcelFile=async()=>{const delay=Number(new URLSearchParams(location.search).get('delay')||0);if(delay)await new Promise(resolve=>setTimeout(resolve,delay));return{totalRows:11,allRows:rows,validRows:rows.filter(r=>r.isValid),invalidRows:rows.filter(r=>!r.isValid),headersFound:[]}};
 export const executeOrdersImport=async(rows,uid,options)=>{document.body.dataset.imported=String(rows.length);document.body.dataset.payload=JSON.stringify(rows);options.onProgress({current:rows.length,total:rows.length,statusText:'Concluído'});return{total:rows.length,successCount:rows.length,errorCount:0,createdOrderIds:[],createdCustomerIds:[],errors:[]}};`;
 const fixture = `import React from 'react';import {createRoot} from 'react-dom/client';import {ImportOrdersDialog} from '/src/app/components/orders/ImportOrdersDialog';function App(){const[open,setOpen]=React.useState(true);return <><div style={{padding:32}}>Dashboard — Conteúdo atrás do modal</div><ImportOrdersDialog open={open} onOpenChange={setOpen}/></>}createRoot(document.getElementById('root')).render(<App/>);`;
 const css = fs.readFileSync('dist/assets/'+fs.readdirSync('dist/assets').find(x=>/^main.*\.css$/.test(x)),'utf8');
@@ -33,7 +33,7 @@ try {
     await page.getByLabel('Cliente',{exact:true}).fill('Cliente corrigido');
     await page.getByLabel('Quantidade',{exact:true}).fill('0');
     await page.getByRole('button',{name:'Salvar alterações',exact:true}).click();
-    await page.getByText('Quantidade deve ser um número inteiro maior que zero.',{exact:true}).waitFor();
+    await page.getByText('Quantidade deve ser um número inteiro entre 1 e 10.000.',{exact:true}).waitFor();
     await page.getByLabel('Quantidade',{exact:true}).fill('12');
     await page.getByLabel('Valor total',{exact:true}).fill('200,50');
     await page.getByRole('combobox',{name:'Status do pagamento',exact:true}).click();
@@ -61,6 +61,7 @@ try {
     await page.getByText('Importação Concluída!',{exact:true}).waitFor();
     const payload=JSON.parse(await page.locator('body').getAttribute('data-payload'));
     if(payload.length!==2||payload[0].rowIndex!==2||payload[1].rowIndex!==12||payload[0].productName!=='Produto revisado'||payload[0].price!==150.25||payload[0].customerName==='Alteração descartada'||payload[1].customerName!=='Cliente corrigido'||payload[1].paidAmount!==200.5||payload[1].remainingAmount!==0)throw Error('Dados editados ou seleção não respeitados');await page.getByRole('button',{name:'Concluir',exact:true}).click();await dialog.waitFor({state:'hidden'});
+    if(width===393&&theme==='deep-ocean'){await page.goto('http://127.0.0.1:3199/__import?theme=deep-ocean&delay=500');await page.getByRole('dialog').waitFor();await page.locator('input[type=file]').setInputFiles({name:'cancelado.xlsx',mimeType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',buffer:Buffer.from('fixture')});await page.getByRole('button',{name:'Cancelar',exact:true}).click();await page.waitForTimeout(650);await page.getByRole('button',{name:'Importar Excel',exact:true}).click();if(await page.getByRole('button',{name:/^Importar [0-9]/}).count())throw Error('Leitura cancelada repopulou a prévia');}
     console.log(JSON.stringify({viewportWidth:width,viewportHeight:height,theme,...geometry}));await page.close();
   }
 } finally {await browser.close();await server.close();}

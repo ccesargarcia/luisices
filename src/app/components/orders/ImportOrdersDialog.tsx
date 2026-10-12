@@ -63,6 +63,7 @@ export function ImportOrdersDialog({
     controlledOnOpenChange?.(val);
   };
 
+  const parseGenerationRef = useRef(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [parsing, setParsing] = useState(false);
@@ -83,6 +84,8 @@ export function ImportOrdersDialog({
   const [importResult, setImportResult] = useState<ImportExecutionResult | null>(null);
 
   const resetState = () => {
+    parseGenerationRef.current += 1;
+    setParsing(false);
     setFileName(null);
     setParseResult(null);
     setSelectedRowIds(new Set());
@@ -106,6 +109,7 @@ export function ImportOrdersDialog({
       return;
     }
 
+    const generation = ++parseGenerationRef.current;
     setFileName(file.name);
     setParseResult(null);
     setSelectedRowIds(new Set());
@@ -115,6 +119,7 @@ export function ImportOrdersDialog({
 
     try {
       const res = await parseOrdersExcelFile(file);
+      if (generation !== parseGenerationRef.current) return;
       setParseResult(res);
       setSelectedRowIds(new Set(res.validRows.map(row => row.rowIndex)));
 
@@ -128,12 +133,13 @@ export function ImportOrdersDialog({
         toast.success(`${res.validRows.length} pedidos validados com sucesso e prontos para importar!`);
       }
     } catch (err: any) {
+      if (generation !== parseGenerationRef.current) return;
       console.error('[ImportOrdersDialog] Erro ao analisar planilha:', err);
       toast.error(err?.message || 'Falha ao processar arquivo Excel.');
       setFileName(null);
       setParseResult(null);
     } finally {
-      setParsing(false);
+      if (generation === parseGenerationRef.current) setParsing(false);
     }
   };
 
@@ -249,7 +255,7 @@ export function ImportOrdersDialog({
         <DialogTrigger asChild>{triggerButton}</DialogTrigger>
       ) : (
         <DialogTrigger asChild>
-          <Button variant="outline" size="default" className="gap-2">
+          <Button variant="outline" size="default" className="gap-2" aria-label="Importar Excel">
             <Upload className="size-4" />
             <span className="hidden sm:inline">Importar Excel</span>
           </Button>
@@ -548,7 +554,7 @@ export function ImportOrdersDialog({
                               </td>
                               <td className="py-2 px-3 text-center">{row.quantity}</td>
                               <td className="py-2 px-3 font-semibold">
-                                {formatCurrency(row.price)}
+                                {Number.isFinite(row.price) ? formatCurrency(row.price) : 'Valor inválido'}
                               </td>
                               <td className="py-2 px-3 text-muted-foreground">
                                 {row.deliveryDate}
@@ -571,6 +577,7 @@ export function ImportOrdersDialog({
                                     ))}
                                   </div>
                                 )}
+                                {row.warnings.length > 0 && <ul className="mt-1 text-amber-700 dark:text-amber-400">{row.warnings.map((warning, index) => <li key={index}>{warning}</li>)}</ul>}
                               </td>
                               <td className="py-2 px-3"><Button variant="outline" size="sm" className="min-h-11" onClick={() => beginEdit(row.rowIndex)} aria-label={`Editar linha ${row.rowIndex}`}>Editar</Button></td>
                             </tr>
@@ -657,11 +664,12 @@ function ImportOrderPreviewCard({ row, selected, onToggle, onEdit }: { row: Pars
       <dl className="grid grid-cols-2 gap-x-3 gap-y-2 text-xs">
         <div><dt className="text-muted-foreground">Telefone</dt><dd>{row.customerPhone || '—'}</dd></div>
         <div><dt className="text-muted-foreground">Quantidade</dt><dd>{row.quantity}</dd></div>
-        <div><dt className="text-muted-foreground">Valor</dt><dd>{formatCurrency(row.price)}</dd></div>
+        <div><dt className="text-muted-foreground">Valor</dt><dd>{Number.isFinite(row.price) ? formatCurrency(row.price) : 'Valor inválido'}</dd></div>
         <div><dt className="text-muted-foreground">Entrega</dt><dd>{row.deliveryDate}</dd></div>
         <div className="col-span-2"><dt className="text-muted-foreground">Status</dt><dd>{orderStatusLabel(row.status)}</dd></div>
       </dl>
       <Button variant="outline" size="sm" className="min-h-11 w-full" onClick={onEdit} aria-label={`Editar linha ${row.rowIndex}`}>Editar dados</Button>
+      {row.warnings.length > 0 && <ul className="text-xs text-amber-700 dark:text-amber-400 space-y-1">{row.warnings.map((warning, index) => <li key={index}>{warning}</li>)}</ul>}
       {row.errors.length > 0 && <ul className="text-xs text-destructive space-y-1">{row.errors.map((error, index) => <li key={index}>{error}</li>)}</ul>}
     </article>
   );
