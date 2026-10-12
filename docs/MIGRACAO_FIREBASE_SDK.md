@@ -60,12 +60,12 @@ Functions 6 mudou o entrypoint padrão de v1 para v2. Functions 7 removeu `funct
 6. Preservar testes unitários de Alexa, usuários, anexos, limpeza de e-mails, WhatsApp e IA. Adaptar mocks somente após estabelecer os contratos reais esperados.
 7. Verificar códigos de erro enviados ao cliente, autenticação das callables e tratamento de falhas em HTTP no Functions Emulator. Simular provedores externos sem enviar mensagens reais.
 
-Os testes atuais de integração de regras usam principalmente SDKs cliente e `rules-unit-testing`; não substituem testes do Admin. O Admin utiliza autorização administrativa, portanto ambas as categorias são necessárias. A falha de Storage identificada anteriormente deve ser reproduzida e classificada antes de usar a suíte completa como critério de aprovação.
+Os testes atuais de integração de regras usam principalmente SDKs cliente e `rules-unit-testing`; não substituem testes do Admin. O Admin utiliza autorização administrativa, portanto ambas as categorias são necessárias. Falhas anteriores devem ser reproduzidas e classificadas antes de usar a suíte completa como critério de aprovação.
 
 ## Sequência e conclusão
 
 - **Etapa 1:** inventário e matriz de versões — concluída.
-- **Etapa 2:** base atual registrada e suíte de contratos reais do Admin implementada; ver execução abaixo.
+- **Etapa 2:** concluída; base atual e contratos reais do Admin/Functions validados, sem atualizar os SDKs.
 - **Etapa 3:** migrar primeiro inicialização/utilitários, depois usuários, pedidos, e-mails, WhatsApp, IA e Alexa. Os imports por serviço podem ser preparados com o Admin atual; promover a troca dos SDKs somente após adaptar os consumidores.
 - **Etapa 4:** publicar e observar em DEV. Exigir instalação completa com `npm ci` sem ignorar conflitos de peers, descoberta das Functions, testes e verificações dos fluxos afetados.
 - **Etapa 5:** preparar reversão ao conjunto anterior de código e lockfiles; promover à `main` e publicar Functions pelo workflow separado após validação explícita da entrega.
@@ -97,14 +97,20 @@ Base anterior à migração, verificada em 12/10/2026:
 | Verificação | Resultado |
 |---|---|
 | Unitários existentes | 907 aprovados |
-| Integração de pedidos e regressões Firestore/Storage | 91 aprovados e 1 falha existente de Storage |
+| Suíte completa de integração Firestore/Storage | 102 aprovados; 6 de RTDB ignorados nesse comando e aprovados separadamente |
+| Integração de pedidos e regressões Firestore/Storage | 92 aprovados, incluindo Storage, com chamadas locais fora do proxy |
 | Presença e autorização RTDB existentes | 6 aprovados |
 | Contratos novos com Admin real e wrappers HTTP locais | 17 aprovados |
-| Functions Emulator completo | Execução local bloqueada por restrição de socket Unix; verificar no workflow manual |
+| Functions Emulator completo no GitHub Actions | 17 aprovados em Node 22/Java 21 |
+| Wrappers HTTP reais no GitHub Actions | 17 aprovados em Node 22/Java 21 |
 
 Os novos testes verificam os 40 exports e suas definições de trigger, operações reais de Auth/Firestore/Storage/RTDB, mudança de perfil e reconciliação de sessões, criação atômica de pedido Alexa com confirmação concorrente, rejeição de conta desativada e serialização HTTP das respostas. O contrato de triggers foi capturado antes da migração. Qualquer diferença durante a atualização deve ser revisada, não aceita automaticamente regenerando a referência.
 
-A execução de Storage pelo Admin passou; isso não corrige nem substitui a falha anterior no teste de regras cliente. O agendamento da limpeza de e-mails é conferido no contrato de trigger; a suíte não simula o disparo do Scheduler nem integrações reais com provedores externos.
+A falha anterior de Storage foi reproduzida com proxy de ambiente e desapareceu ao executar os emuladores com as variáveis HTTP de proxy removidas. A avaliação cruzada da regra não conseguia obter o perfil no Firestore local. Nenhuma regra ou fixture foi alterada para fazê-la passar; as 92 verificações de pedidos e regressões passaram nesse ambiente corrigido.
+
+Os dois modos do backend passaram no [workflow de validação](https://github.com/ccesargarcia/luisices/actions/runs/38206768218). A CLI ativa `skipTokenVerification` no Functions Emulator: um token inválido pode receber uma identidade simulada e ser negado pelo handler com 403, enquanto o wrapper real sem esse modo de debug rejeita o token com 401. A suíte distingue os casos, exige acesso negado em ambos e verifica diretamente rejeição de token malformado e revogado pelo Admin. Tokens emitidos pelo Auth Emulator não comprovam verificação de assinaturas de tokens de produção.
+
+O agendamento da limpeza de e-mails é conferido no contrato de trigger; a suíte não simula o disparo do Scheduler nem integrações reais com provedores externos. Os SDKs permanecem Admin 12.7.0 e Functions 4.9.0; o par alvo da etapa 1 ainda deve passar por estes contratos durante a etapa 3.
 
 ## Fontes
 
