@@ -72,6 +72,8 @@ const chatGptToolsEndpoint = onRequest(
       .replace(/^chatGptToolsEndpoint\/?/, '')
       .replace(/^\/+/, '');
 
+    const matchTool = rawPath.match(/^tools\/([a-zA-Z0-9_]+)$/);
+
     const isProd = process.env.GCLOUD_PROJECT === 'papelaria-dashboard';
     const forwardedHost = req.get('x-forwarded-host');
     const reqHost = req.get('host') || '';
@@ -81,6 +83,8 @@ const chatGptToolsEndpoint = onRequest(
     const baseUrl = isDirectGcf
       ? `${protocol}://${reqHost}/chatGptToolsEndpoint`
       : `${protocol}://${apiDomain}/chatGptToolsEndpoint`;
+
+    try {
 
     // ─── 1. Validação de Proteção de Origem ──────────────────────────────────
     // Rotas públicas de descoberta (OpenAPI, Manifesto de Plugins, MCP Initialize e Health) são abertas
@@ -433,6 +437,13 @@ const chatGptToolsEndpoint = onRequest(
       error: 'NOT_FOUND',
       message: `Rota '${rawPath}' não encontrada. Consulte o schema em /openapi.json.`,
     });
+    } catch (globalErr) {
+      console.error('[chatGptToolsEndpoint] Erro fatal não tratado:', globalErr);
+      return res.status(500).json({
+        error: 'INTERNAL_SERVER_ERROR',
+        message: globalErr.message || 'Erro interno no servidor ao processar requisição.',
+      });
+    }
   }
 );
 
