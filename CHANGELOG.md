@@ -8,10 +8,12 @@ O registro começou em 12/10/2026 com as entregas recentes verificadas em produ�
 
 ### Segurança
 
+- Atualizações das dependências de processamento de requisições, transporte de dados e imagens, com testes de compatibilidade em Node 22.
 - Atualização de `proxy-addr` de 2.0.7 para 2.0.8 no backend, com testes de compatibilidade do processamento de endereços de rede.
 
 ### Removido
 
+- Dependências de desenvolvimento sem uso (`vite-plugin-html` e `firebase-functions-test`).
 - Documentação operacional da Cloudflare, especificação Alexa e relatório interno de segurança da importação da documentação pública.
 
 ### Alterado
