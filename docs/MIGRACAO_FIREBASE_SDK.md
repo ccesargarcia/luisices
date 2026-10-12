@@ -118,11 +118,15 @@ Os SDKs do backend foram fixados em **Admin 14.5.0 / Functions 7.4.0**, com runt
 
 Os consumidores diretos usam os módulos `app`, `auth`, `firestore`, `storage` e `database`. Foram preservados os serviços injetados de sincronização de usuários e o contrato da fábrica de IA; o chamador dessa fábrica agora fornece getters por serviço em lugar do namespace do SDK. Todos os erros HTTPS usam import explícito de v2, incluindo comparações com `instanceof`.
 
-O trecho JavaScript do workflow manual de Functions também foi migrado. A CLI dos workflows manual e DEV foi fixada em 15.32.1, versão usada na validação local, e a validação rápida do backend usa `npm ci`. Nenhum workflow de produção foi executado nesta etapa.
+O trecho JavaScript do workflow manual de Functions também foi migrado. A CLI dos workflows manual e DEV foi fixada em **15.32.1**, validada com os SDKs novos, e a validação rápida do backend usa `npm ci`. Nenhum workflow de produção foi executado nesta etapa.
 
 Functions 7 traz Express 5. O teste de parsing passa a declarar `query parser = extended`, preservando suas verificações de campos aninhados e de rejeição de campos de protótipo. Os handlers atuais do backend não leem `req.query`; essa configuração pertence ao teste de compatibilidade, não altera endpoints da aplicação. Ver [mudanças do Express 5](https://expressjs.com/en/guide/migrating-5/).
 
 Validação local com os SDKs novos: 907 testes unitários, 102 testes de integração Firestore/Storage, 6 testes de presença RTDB e 17 contratos com Admin real e wrappers HTTP aprovados. A referência das 40 definições de Functions não foi regenerada: os contratos continuaram iguais. O [workflow com os SDKs novos](https://github.com/ccesargarcia/luisices/actions/runs/38207792753) passou tanto no Functions Emulator completo quanto nos wrappers HTTP reais com validação do SDK, antes do deploy em DEV.
+
+O runner aceita `SDK_TEST_FIREBASE_CLI` para repetir os contratos com a CLI escolhida para deploy. A versão selecionada é instalada separadamente do SDK/tooling da raiz no workflow. Os SDKs Admin/Functions não foram revertidos.
+
+O deploy em DEV permanece pendente: as tentativas foram bloqueadas antes de atualizar as Functions por uma API de suporte à publicação desabilitada no projeto. O problema foi confirmado em duas versões da CLI; reduzir sua versão não resolveu e a versão mais recente já validada foi mantida. A configuração do projeto deve ser regularizada por um responsável autorizado antes de repetir o deploy `functions-only`; não ampliar permissões do pipeline para contornar o bloqueio. A implementação e os testes concluídos não equivalem a uma publicação no ambiente.
 
 ## Fontes
 
