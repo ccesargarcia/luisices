@@ -1,6 +1,6 @@
 # Arquitetura e dependências
 
-Revisão: **10/10/2026**, código `develop` / `b2b6ef9`. Este mapa descreve relações verificáveis no repositório; não substitui inventário de serviços configurados na nuvem.
+Revisão estrutural inicial: **10/10/2026**. Organização e plano de manutenção atualizados em **12/10/2026**, na `develop`. Este mapa descreve relações verificáveis no repositório; não substitui inventário de serviços configurados na nuvem.
 
 ## Entrypoints e execução
 
@@ -89,7 +89,7 @@ O cache é em memória e não é compartilhado por todas as instâncias. Orçame
 
 ## Publicação e configuração
 
-A [configuração Firebase](../firebase.json) aponta para regras e índices versionados. O workflow [DEV](../.github/workflows/deploy-dev.yml) pode publicar Hosting, Functions, Firestore/RTDB/Storage e índices. O [workflow de produção](../.github/workflows/deploy.yml) publica o frontend; o [workflow manual de Functions](../.github/workflows/deploy-functions-manual.yml) trata o backend.
+A [configuração Firebase](../firebase.json) aponta para regras e índices versionados. O workflow [DEV](../.github/workflows/deploy-dev.yml) pode publicar Hosting, Functions, Firestore/RTDB/Storage e índices. O [workflow de produção](../.github/workflows/deploy.yml) publica o frontend por artefato no GitHub Pages e as regras do Firestore; o [workflow manual de Functions](../.github/workflows/deploy-functions-manual.yml) trata o backend.
 
 Parâmetros secretos devem ser fornecidos pelos mecanismos de secrets do ambiente. Templates públicos devem conter somente nomes e placeholders. Rotação, permissões de contas de serviço e estado de deploy precisam ser verificados na infraestrutura; não são comprovados por este documento.
 
@@ -103,3 +103,29 @@ Parâmetros secretos devem ser fornecidos pelos mecanismos de secrets do ambient
 - Agrupar modelos sob uma única tarifa ou ignorar tentativas de fallback pode distorcer a estimativa de IA.
 
 A revisão documental executou **771 testes unitários em 73 arquivos**, todos aprovados. Não realizou teste de carga, validação de faturamento real, E2E remoto ou nova auditoria dos serviços publicados.
+
+## Responsabilidades e refatoração gradual
+
+O critério de modularização é a responsabilidade, não apenas a quantidade de linhas. Telas devem coordenar a interação; regras de domínio devem ser testáveis separadamente; consultas e gravações devem permanecer em componentes de acesso a dados identificáveis. Evite módulos genéricos de utilidades que misturem domínios distintos.
+
+Primeira separação aplicada ao diálogo de voz:
+
+| Módulo | Responsabilidade |
+|---|---|
+| [dialogInput.js](../functions/alexa/dialogInput.js) | Validar e normalizar entradas, sem consultar ou gravar dados |
+| [dialogSpeech.js](../functions/alexa/dialogSpeech.js) | Formatar e sanitizar respostas, sem acesso à persistência |
+| [dialogPrompts.js](../functions/alexa/dialogPrompts.js) | Escolher a próxima pergunta a partir do estado recebido, sem consultas ou gravações |
+| [dialog.js](../functions/alexa/dialog.js) | Orquestrar estados, integrações, consultas e persistência; manter a interface pública existente |
+
+As funções foram movidas preservando seus corpos e os exports públicos de `dialog.js`. Os testes existentes verificam o comportamento do fluxo e, no teste básico de diálogo, as funções de entrada e formatação são importadas diretamente dos módulos responsáveis. A separação não elimina a concentração de responsabilidades do processador principal; sua decomposição por intenções permanece como próxima etapa.
+
+Ordem sugerida para os próximos grupos:
+
+| Prioridade | Área | Próxima separação | Critério de validação |
+|---|---|---|---|
+| 1 | Diálogo de voz | Consultas de catálogo e pedidos, seguidas dos handlers por intenção | Preservar transições, respostas, autorização e gravações com testes de cenário |
+| 2 | E-mails | Estado e ciclo do compositor, envio e anexos; ações em lote em responsabilidade própria | Preservar recuperação de envio, seleção, conteúdo e comportamento em telas menores |
+| 3 | Catálogo público | Seleção/sacola, envio da encomenda e apresentação dos produtos | Preservar valores, dados enviados e validação do formulário |
+| 4 | Personalização da loja | Estado e persistência separados dos componentes de apresentação | Preservar o resultado salvo e a prévia da loja |
+
+Cada grupo deve ser uma mudança revisável, com validação em DEV antes de produção. Mantenha os contratos públicos enquanto há consumidores antigos; qualquer remoção de compatibilidade deve ser uma mudança explícita. Refatorações estruturais não devem ser misturadas com novos recursos ou mudanças visuais no mesmo grupo.

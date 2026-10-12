@@ -18,6 +18,7 @@ O registro começou em 12/10/2026 com as entregas recentes verificadas em produ�
 
 ### Alterado
 
+- Separação da validação de entradas, formatação de respostas e escolha da próxima pergunta do diálogo em módulos próprios, preservando sua interface pública.
 - Índice e links dos guias atualizados após a limpeza da documentação.
 
 ## v1.0.4 — 2026-10-12
