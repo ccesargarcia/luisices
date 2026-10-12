@@ -9,12 +9,6 @@ const { defineSecret } = require('firebase-functions/params');
 
 const ORIGIN_SECRET = defineSecret('ORIGIN_SECRET');
 
-// Tokens conhecidos e legítimos dos Workers da Cloudflare (DEV e PROD)
-const KNOWN_ORIGIN_TOKENS = [
-  '5dabad5dfa834c8b3370095ebac3f3fda1fe2dfb99d47c7c9e6c2daa8b91c3fe', // PROD
-  '507e46b43a0947fcc63638707ea33df50938f89b2e49013c9a51ba1d95e816cc', // DEV
-];
-
 /**
  * Obtém o valor configurado do ORIGIN_SECRET (Secret Manager ou variável de ambiente).
  * @returns {string}
@@ -41,13 +35,15 @@ function validateOriginSecret(req) {
   const isTestOrLocal = process.env.FUNCTIONS_EMULATOR === 'true' || process.env.NODE_ENV === 'test' || Boolean(process.env.VITEST);
   const secret = getOriginSecretValue();
 
-  if (!secret && isTestOrLocal) {
-    return { allowed: true };
+  if (!secret) {
+    return isTestOrLocal
+      ? { allowed: true }
+      : { allowed: false, statusCode: 503, error: 'Proteção de origem não configurada no servidor.' };
   }
 
   const candidateSecrets = Array.from(new Set(
-    [secret, ...(isTestOrLocal && secret ? [] : KNOWN_ORIGIN_TOKENS)]
-      .flatMap((s) => (s ? s.split(',') : []))
+    secret
+      .split(',')
       .map((s) => s.trim())
       .filter(Boolean)
   ));

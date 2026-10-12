@@ -9,7 +9,7 @@ const crypto = require('crypto');
 const { RESEND_API_KEY, RESEND_WEBHOOK_SECRET, ORIGIN_SECRET } = require('../common/secrets');
 const { customEmailLimiter } = require('../common/rateLimiters');
 const { getResend, isAdminRequest, assertActiveSession } = require('../common/helpers');
-const { validateOriginSecret } = require('../originProtection');
+const { validateOriginSecret, getOriginSecretValue } = require('../originProtection');
 const { prepareAttachments } = require('./attachments');
 const { cleanupEmailDrafts } = require('./cleanup');
 const { evaluateSpam } = require('./spamFilter');
@@ -577,6 +577,8 @@ const resendReceivingWebhook = onRequest(
 
       // Redirecionamento inteligente entre ambientes quando o Resend possui apenas um webhook cadastrado:
       const forwardedFrom = req.headers['x-forwarded-from'];
+      const dynamicOriginToken = getOriginSecretValue();
+
       if (!forwardedFrom) {
         if (!isDev && hasDevRecipient && !hasProdRecipient) {
           // Chegou em PROD, mas é um e-mail de DEV -> Encaminhar para a API de DEV
@@ -585,9 +587,11 @@ const resendReceivingWebhook = onRequest(
             const forwardHeaders = {
               'content-type': 'application/json',
               'x-forwarded-from': 'prod',
-              'x-origin-secret': '507e46b43a0947fcc63638707ea33df50938f89b2e49013c9a51ba1d95e816cc',
-              'x-cf-origin-token': '507e46b43a0947fcc63638707ea33df50938f89b2e49013c9a51ba1d95e816cc',
             };
+            if (dynamicOriginToken) {
+              forwardHeaders['x-origin-secret'] = dynamicOriginToken;
+              forwardHeaders['x-cf-origin-token'] = dynamicOriginToken;
+            }
             if (rawSvixId) forwardHeaders['svix-id'] = svixId;
             if (rawSvixTimestamp) forwardHeaders['svix-timestamp'] = svixTimestamp;
             if (rawSvixSignature) forwardHeaders['svix-signature'] = svixSignature;
@@ -610,9 +614,11 @@ const resendReceivingWebhook = onRequest(
             const forwardHeaders = {
               'content-type': 'application/json',
               'x-forwarded-from': 'dev',
-              'x-origin-secret': '5dabad5dfa834c8b3370095ebac3f3fda1fe2dfb99d47c7c9e6c2daa8b91c3fe',
-              'x-cf-origin-token': '5dabad5dfa834c8b3370095ebac3f3fda1fe2dfb99d47c7c9e6c2daa8b91c3fe',
             };
+            if (dynamicOriginToken) {
+              forwardHeaders['x-origin-secret'] = dynamicOriginToken;
+              forwardHeaders['x-cf-origin-token'] = dynamicOriginToken;
+            }
             if (rawSvixId) forwardHeaders['svix-id'] = svixId;
             if (rawSvixTimestamp) forwardHeaders['svix-timestamp'] = svixTimestamp;
             if (rawSvixSignature) forwardHeaders['svix-signature'] = svixSignature;

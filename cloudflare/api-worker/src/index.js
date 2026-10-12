@@ -50,12 +50,10 @@ export default {
     const forwardHeaders = new Headers(request.headers);
 
     // Injeção do segredo de proteção de origem (validado por functions/originProtection.js)
-    const originSecret = env.ORIGIN_SECRET || (isDev
-      ? '507e46b43a0947fcc63638707ea33df50938f89b2e49013c9a51ba1d95e816cc'
-      : '5dabad5dfa834c8b3370095ebac3f3fda1fe2dfb99d47c7c9e6c2daa8b91c3fe');
+    const originSecret = env.ORIGIN_SECRET ? env.ORIGIN_SECRET.trim() : '';
     if (originSecret) {
-      forwardHeaders.set('x-origin-secret', originSecret.trim());
-      forwardHeaders.set('x-cf-origin-token', originSecret.trim());
+      forwardHeaders.set('x-origin-secret', originSecret);
+      forwardHeaders.set('x-cf-origin-token', originSecret);
     }
 
     // Informações de proxy confiável
