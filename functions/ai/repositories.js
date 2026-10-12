@@ -99,13 +99,14 @@ function sanitizeOrderForAi(id, data = {}) {
 }
 
 /** Lê páginas completas até o fim ou falha claramente ao atingir o teto operacional. */
-async function readAllPages(queryFactory, { pageSize = 250, maxDocs = 5000 } = {}) {
+async function readAllPages(queryFactory, { pageSize = 250, maxDocs = 5000, allowPartial = false } = {}) {
   const docs = [];
   let cursor = null;
   while (true) {
     // Lê no máximo um registro além do teto para diferenciar conjunto completo
-    // exatamente no limite de um resultado truncado.
-    const requested = Math.min(pageSize, maxDocs - docs.length + 1);
+    // exatamente no limite de um resultado truncado (quando allowPartial é false).
+    const requested = Math.min(pageSize, maxDocs - docs.length + (allowPartial ? 0 : 1));
+    if (requested <= 0) return docs;
     let query = queryFactory().limit(requested);
     if (cursor) {
       if (typeof query.startAfter !== 'function') {
@@ -118,9 +119,12 @@ async function readAllPages(queryFactory, { pageSize = 250, maxDocs = 5000 } = {
     if (!pageDocs.length) return docs;
     docs.push(...pageDocs);
     if (docs.length > maxDocs) {
+      if (allowPartial) {
+        return docs.slice(0, maxDocs);
+      }
       throw new Error(`Consulta excedeu o limite operacional de ${maxDocs} registros; resultado parcial recusado.`);
     }
-    if (pageDocs.length < requested) return docs;
+    if (pageDocs.length < requested || docs.length >= maxDocs) return docs.slice(0, maxDocs);
     cursor = pageDocs[pageDocs.length - 1];
   }
 }
@@ -141,6 +145,7 @@ class AiDataRepositories {
   async getScopedOrders(scope, options = {}) {
     if (!this.db) return [];
 
+    const isPartialAllowed = options.allowPartial ?? (options.maxLimit ? true : false);
     const cacheKey = `${scope?.isAdmin ? 'admin' : (scope?.uid || 'anon')}:${options.maxLimit || 'full'}`;
     const cached = SCOPED_ORDERS_CACHE.get(cacheKey);
     if (cached && cached.expiresAt > Date.now()) {
@@ -155,14 +160,14 @@ class AiDataRepositories {
       if (scope.isAdmin) {
         const docs = await readAllPages(
           () => this.db.collection('orders').where('deletedAt', '==', null),
-          { maxDocs: maxSafetyCeiling },
+          { maxDocs: maxSafetyCeiling, allowPartial: isPartialAllowed },
         );
         rawDocs = docs.map((d) => sanitizeOrderForAi(d.id, d.data()));
       } else {
         const [userDocs, assignedDocs, createdDocs] = await Promise.all([
-          readAllPages(() => this.db.collection('orders').where('userId', '==', scope.uid).where('deletedAt', '==', null), { maxDocs: linkedQueryCeiling }),
-          readAllPages(() => this.db.collection('orders').where('assignedTo', '==', scope.uid).where('deletedAt', '==', null), { maxDocs: linkedQueryCeiling }),
-          readAllPages(() => this.db.collection('orders').where('createdBy', '==', scope.uid).where('deletedAt', '==', null), { maxDocs: linkedQueryCeiling }),
+          readAllPages(() => this.db.collection('orders').where('userId', '==', scope.uid).where('deletedAt', '==', null), { maxDocs: linkedQueryCeiling, allowPartial: isPartialAllowed }),
+          readAllPages(() => this.db.collection('orders').where('assignedTo', '==', scope.uid).where('deletedAt', '==', null), { maxDocs: linkedQueryCeiling, allowPartial: isPartialAllowed }),
+          readAllPages(() => this.db.collection('orders').where('createdBy', '==', scope.uid).where('deletedAt', '==', null), { maxDocs: linkedQueryCeiling, allowPartial: isPartialAllowed }),
         ]);
 
         const map = new Map();

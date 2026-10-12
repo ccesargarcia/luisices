@@ -397,7 +397,7 @@ class AiToolsExecutor {
     const limit = Math.min(Math.max(Number(args.limit) || TOOL_LIMITS.ORDERS_PAGE_LIMIT, 1), 50);
     // Otimização de performance: busca apenas a janela necessária no Firestore
     const maxLimit = args.searchTerm ? 150 : (args.status && args.status !== 'all' ? 100 : Math.max(limit * 2, 50));
-    const orders = await this.repos.getScopedOrders(scope, { maxLimit });
+    const orders = await this.repos.getScopedOrders(scope, { maxLimit, allowPartial: true });
     let filtered = orders;
 
     if (args.status && args.status !== 'all') {
