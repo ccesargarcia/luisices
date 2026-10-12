@@ -65,12 +65,45 @@ Os testes atuais de integração de regras usam principalmente SDKs cliente e `r
 ## Sequência e conclusão
 
 - **Etapa 1:** inventário e matriz de versões — concluída.
-- **Etapa 2:** estabelecer a base de testes e complementar contratos reais do Admin.
+- **Etapa 2:** base atual registrada e suíte de contratos reais do Admin implementada; ver execução abaixo.
 - **Etapa 3:** migrar primeiro inicialização/utilitários, depois usuários, pedidos, e-mails, WhatsApp, IA e Alexa. Os imports por serviço podem ser preparados com o Admin atual; promover a troca dos SDKs somente após adaptar os consumidores.
 - **Etapa 4:** publicar e observar em DEV. Exigir instalação completa com `npm ci` sem ignorar conflitos de peers, descoberta das Functions, testes e verificações dos fluxos afetados.
 - **Etapa 5:** preparar reversão ao conjunto anterior de código e lockfiles; promover à `main` e publicar Functions pelo workflow separado após validação explícita da entrega.
 
 A PR #105 não deve ser mesclada como está. Ela troca a versão do Admin sem adaptar os consumidores nem atualizar o SDK Functions. A migração pode reduzir dependências antigas, mas não implica zerar todos os alertas do projeto; dependências da integração Alexa permanecem em escopo separado.
+
+## Execução da base de compatibilidade
+
+Em Node 22, instalar as dependências de `functions` com `npm --prefix functions ci`. A suíte usa as versões desse diretório, não o SDK da raiz. Java 21+ e as portas locais 5001, 8080, 9000, 9099 e 9199 livres são necessários.
+
+```sh
+node scripts/run-firebase-sdk-tests.mjs
+```
+
+O runner inicia Auth, Firestore, Storage, RTDB e Functions no projeto fictício `demo-luisices-sdk`. Usa uma cópia temporária do código das Functions, ligada às dependências já instaladas, com valores de secrets exclusivos de teste. Não copia `.env` ou `.secret` existentes, não utiliza credenciais de conta de serviço e não publica recursos. O teste recusa execução sem projeto fictício e hosts de emuladores em loopback.
+
+Para ambientes que proíbem sockets Unix internos do Functions Emulator, existe uma alternativa explícita:
+
+```sh
+node scripts/run-firebase-sdk-tests.mjs --http-wrapper
+```
+
+Esse modo usa os wrappers HTTP reais exportados pelo SDK, atendidos por Express local, mantendo os quatro emuladores de dados. Não substitui a execução do Functions Emulator: o modo utilizado deve acompanhar o resultado informado. Em ambientes com proxy, baixar previamente os binários dos emuladores; a CLI instalada força proxy inclusive em chamadas de RTDB local, por isso o runner remove as variáveis HTTP de proxy do processo filho.
+
+O workflow manual **Playwright Tests**, no alvo `backend-sdk` e ref `develop`, executa o modo completo em Node 22/Java 21 sem secrets de DEV ou produção. A instalação da raiz mantém a opção de peers já utilizada pelas ferramentas existentes; a instalação do backend não ignora conflitos de peers. O job publica o relatório de testes como artefato e não executa deploy.
+
+Base anterior à migração, verificada em 12/10/2026:
+
+| Verificação | Resultado |
+|---|---|
+| Unitários existentes | 907 aprovados |
+| Integração de pedidos e regressões Firestore/Storage | 91 aprovados e 1 falha existente de Storage |
+| Contratos novos com Admin real e wrappers HTTP locais | 17 aprovados |
+| Functions Emulator completo | Execução local bloqueada por restrição de socket Unix; verificar no workflow manual |
+
+Os novos testes verificam os 40 exports e suas definições de trigger, operações reais de Auth/Firestore/Storage/RTDB, mudança de perfil e reconciliação de sessões, criação atômica de pedido Alexa com confirmação concorrente, rejeição de conta desativada e serialização HTTP das respostas. O contrato de triggers foi capturado antes da migração. Qualquer diferença durante a atualização deve ser revisada, não aceita automaticamente regenerando a referência.
+
+A execução de Storage pelo Admin passou; isso não corrige nem substitui a falha anterior no teste de regras cliente. O agendamento da limpeza de e-mails é conferido no contrato de trigger; a suíte não simula o disparo do Scheduler nem integrações reais com provedores externos.
 
 ## Fontes
 
