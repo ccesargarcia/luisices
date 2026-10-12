@@ -9,6 +9,7 @@ Este diretório consolida a documentação técnica oficial, arquitetura viva e 
 | Documento | Foco & Quando Consultar |
 | :--- | :--- |
 | **[Design System](../design.md)** | Diretrizes estéticas de *Papelaria de Afeto*, Liquid Glassmorphism, tokens de cores, anatomia de componentes e regras de UX mobile. |
+| **[Importação de Pedidos](IMPORTACAO_PEDIDOS.md)** | Edição e seleção de planilhas, validação no Firestore, evidências de segurança e limites restantes. |
 | **[Funcionalidades](FUNCIONALIDADES.md)** | Catálogo completo de módulos funcionais (pedidos, clientes, vitrine pública, e-mails corporativos, WhatsApp, financeiro e estoque). |
 | **[Dependências & Arquitetura](DEPENDENCIAS_E_ARQUITETURA.md)** | Visão estrutural de serviços, entrypoints frontend/backend, modelo de dados multi-tenant, Cloudflare WAF e pipelines de deploy. |
 | **[Copiloto de IA](COPILOTO_IA.md)** | Especificação do subsistema de inteligência artificial (Google Gemini), ferramentas (Function Calling), orçamentos de token e system prompt. |
