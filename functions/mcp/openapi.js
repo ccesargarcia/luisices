@@ -1,5 +1,5 @@
 /**
- * Gerador Dinâmico da Especificação OpenAPI 3.0.3 para Custom GPTs da OpenAI e Clientes MCP.
+ * Gerador Dinâmico da Especificação OpenAPI 3.1.0 para Plugins ChatGPT e Clientes MCP.
  */
 
 const { TOOL_SCOPE_MAP, MCP_SCOPES } = require('./constants');
@@ -244,7 +244,7 @@ const TOOLS_METADATA = [
 ];
 
 /**
- * Gera a especificação OpenAPI 3.0.3 dinâmica.
+ * Gera a especificação OpenAPI 3.1.0 dinâmica.
  * @param {string} baseUrl - URL base da Cloud Function
  * @param {string[]} [allowedScopes] - Se informado, filtra apenas as ferramentas autorizadas para a chave
  */
@@ -309,7 +309,7 @@ function buildOpenApiSchema(baseUrl, allowedScopes = null) {
   });
 
   return {
-    openapi: '3.0.3',
+    openapi: '3.1.0',
     info: {
       title: 'Luisices - Copiloto de Ateliê (ChatGPT & MCP Tools)',
       description: 'API de ferramentas de negócio para consulta de pedidos, clientes, precificação e orçamentos do ateliê Luisices.',
@@ -323,6 +323,7 @@ function buildOpenApiSchema(baseUrl, allowedScopes = null) {
     ],
     paths,
     components: {
+      schemas: {},
       securitySchemes: {
         bearerAuth: {
           type: 'http',
