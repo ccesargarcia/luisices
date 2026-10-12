@@ -84,3 +84,15 @@ O resumo permanece aberto até ser dispensado. O callback de atualização do da
 Cada falha informa a linha, a etapa (cadastro do cliente ou gravação do pedido), a mensagem e, quando disponível, o código retornado pelo SDK. Exceções anteriores à execução também permanecem no resumo. As mensagens de permissão e indisponibilidade têm texto em português, sem flexibilizar as regras do servidor. O resumo diferencia sucesso completo, parcial e falha total. Não há repetição automática; os pedidos já salvos não devem ser reimportados.
 
 A imagem com o aviso genérico não permite determinar a causa histórica da recusa. É necessário consultar o diagnóstico por linha antes de decidir uma correção de dados ou permissões. A validação adicional cobre falhas de cliente/pedido e os resultados parcial e fatal no modal real em navegador, com atualização do dashboard simulando a desmontagem.
+
+## Correção de `permission-denied` na gravação com etiquetas
+
+A reprodução local revelou um defeito nas regras introduzidas na validação de importação: pedidos válidos com cinco ou mais etiquetas podiam exceder o limite de 1.000 expressões avaliadas pelo Firestore. A operação atômica de pedido, contador e ledger era recusada com `permission-denied`. A mensagem do cliente não distingue esse limite de uma recusa comum de autorização; a evidência veio do emulador, sem acesso aos dados reais da planilha enviada pelo usuário.
+
+A validação de etiquetas foi compactada, com curto-circuito para posições inexistentes e uma expressão regular limitada para nome/cor. O separador NUL usado somente durante a avaliação é proibido nos campos, impedindo ambiguidades na concatenação. O mapa deve conter exatamente os dois campos obrigatórios. Nomes são normalizados na revisão removendo espaços nas extremidades; o backend exige nomes de 1 a 80 caracteres, sem espaços nas extremidades ou NUL, e cores hexadecimais de seis ou oito dígitos. O limite de 20 etiquetas foi mantido.
+
+Os helpers de perfil/permissões e pagamento evitam avaliações repetidas. Perfil ausente, desativação e revogação temporal continuam negando operações; o vínculo de cliente continua exigindo proprietário correspondente. Campos obrigatórios ausentes ou com tipo incompatível falham na avaliação, sem abrir acesso.
+
+A regressão executa lotes reais de 11 pedidos no emulador com 0, 1, 5 e 20 etiquetas, incluindo conta administrativa, centavos e pagamentos parcial/quitado. Verifica também alterações posteriores de preço/pagamento e adulterações na última etiqueta, campos ausentes, tipos incorretos, campos extras e tentativas de injetar o separador.
+
+Na atualização, etiquetas são revalidadas quando esse campo muda; valores monetários alterados passam pela validação completa de consistência, evitando avaliar novamente a mesma condição na validação legada de pagamento. Evidência final desta correção: 91 testes de integração Firestore passaram (64 de segurança/importação e 27 de regressão), com o teste conhecido de Storage excluído; 35 testes unitários de importação/revisão passaram e o build com TypeScript concluiu com sucesso.

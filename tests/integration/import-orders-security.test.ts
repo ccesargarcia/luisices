@@ -69,6 +69,28 @@ describe('Importação: gravação direta não contorna validação do servidor'
     const customers=await getDocs(query(collection(appClient.db,'customers'),where('userId','==','owner')));
     expect(customers.docs.some(document=>document.data().name==='Cliente não selecionado')).toBe(false);
   });
+  it.each([['owner',0],['owner',1],['owner',5],['owner',20],['admin',20]])('aceita importação real de 11 pedidos para %s com %i etiquetas e centavos', async (uid,tagCount) => {
+    appClient.db=dbFor(String(uid));appClient.auth.currentUser={uid:String(uid),displayName:'Owner'};
+    const rows=Array.from({length:11},(_,i)=>updateReviewedImportRow({rowIndex:i+2,customerName:`Cliente ${i}`,customerPhone:String(1138+i),productName:'30 Vinil Hotwheels + 1 Folha Vinil Impresso 2cm',quantity:31,price:28.35,deliveryDate:'2026-10-11',status:'completed',paymentStatus:i%2?'partial':'paid',paidAmount:i%2?10.1:28.35,remainingAmount:0,paymentMethod:'pix',tags:Array.from({length:Number(tagCount)},(_,j)=>({name:`Etiqueta ${j}`,color:'#123456'})),isValid:true,errors:[],warnings:[],rawData:{}},{}));
+    const result=await executeOrdersImport(rows as any,String(uid));
+    expect(result.errors).toEqual([]);expect(result.successCount).toBe(11);
+    const orderRef=doc(appClient.db,'orders',result.createdOrderIds[0]);
+    await assertSucceeds(updateDoc(orderRef,{status:'pending',price:30.5,payment:{status:'partial',totalAmount:30.5,paidAmount:10,remainingAmount:20.5,method:'pix'},tags:rows[0].tags?.map(tag=>({...tag,name:'Etiqueta alterada'}))}));
+  });
+  it.each([
+    { name: '', color: '#123456' }, { name: 'a'.repeat(81), color: '#123456' },
+    { name: 1, color: '#123456' }, { name: [], color: '#123456' },
+    { name: 'Tag', color: 123456 }, { name: 'Tag', color: '#123456', extra: true },
+    { name: 'Tag' }, { color: '#123456' },
+    { name: 'Tag\u0000:#123456', color: '#123456' }, { name: 'Tag', color: 'fake\u0000#123456' },
+  ])('nega etiqueta adulterada na última posição: %j', async badTag => {
+    const tags=Array.from({length:19},()=>({name:'Etiqueta válida',color:'#12345678'}));
+    await assertFails(setDoc(doc(dbFor('owner'),'orders/bad-last'),{...valid,tags:[...tags,badTag]}));
+  });
+  it('nega perfil ausente e aceita nome de etiqueta no limite com pontuação e Unicode', async()=>{
+    await assertFails(setDoc(doc(dbFor('missing-profile'),'orders/no-profile'),{...valid,userId:'missing-profile'}));
+    await assertSucceeds(setDoc(doc(dbFor('owner'),'orders/tag-name'),{...valid,tags:[{name:'Á:#'+ 'x'.repeat(76)+'!',color:'#abcdef12'}]}));
+  });
   it('protege o cadastro automático de clientes mesmo com gravação direta',async()=>{
     await assertFails(setDoc(doc(dbFor('restricted'),'customers/restricted'),{userId:'restricted',name:'Ana'}));
     await assertFails(setDoc(doc(dbFor('owner'),'customers/no-name'),{userId:'owner'}));

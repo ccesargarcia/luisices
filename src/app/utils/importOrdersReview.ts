@@ -7,6 +7,7 @@ export function updateReviewedImportRow(row: ParsedOrderRow, changes: Partial<Pa
   next.productName = typeof next.productName === 'string' ? next.productName.trim() : '';
   next.customerPhone = typeof next.customerPhone === 'string' ? next.customerPhone.trim() : '';
   next.customerEmail = typeof next.customerEmail === 'string' ? next.customerEmail.trim() || undefined : undefined;
+  if (Array.isArray(next.tags)) next.tags = next.tags.map(tag => tag && typeof tag.name === 'string' ? { ...tag, name: tag.name.trim() } : tag);
   const errors: string[] = [];
   if (!next.customerName) errors.push('Nome do cliente é obrigatório.');
   if (next.customerName.length > 200) errors.push('Nome do cliente deve ter no máximo 200 caracteres.');
@@ -27,7 +28,7 @@ export function updateReviewedImportRow(row: ParsedOrderRow, changes: Partial<Pa
   if (typeof row.customerPhone !== 'string' && changes.customerPhone === undefined || next.customerPhone.length > 50) errors.push('Telefone deve conter no máximo 50 caracteres.');
   if (next.customerEmail && next.customerEmail.length > 254) errors.push('E-mail deve conter no máximo 254 caracteres.');
   if (next.notes != null && (typeof next.notes !== 'string' || next.notes.length > 1000)) errors.push('Observações devem conter no máximo 1.000 caracteres.');
-  if (next.tags != null && (!Array.isArray(next.tags) || next.tags.length > 20 || next.tags.some(tag => !tag || typeof tag.name !== 'string' || !tag.name.trim() || tag.name.length > 80 || typeof tag.color !== 'string' || !/^#[a-fA-F0-9]{6}([a-fA-F0-9]{2})?$/.test(tag.color)))) errors.push('Etiquetas inválidas: use até 20 etiquetas, com nomes de até 80 caracteres e cores hexadecimais.');
+  if (next.tags != null && (!Array.isArray(next.tags) || next.tags.length > 20 || next.tags.some(tag => !tag || typeof tag.name !== 'string' || !tag.name.trim() || tag.name.includes('\u0000') || tag.name.length > 80 || typeof tag.color !== 'string' || !/^#[a-fA-F0-9]{6}([a-fA-F0-9]{2})?$/.test(tag.color)))) errors.push('Etiquetas inválidas: use até 20 etiquetas, com nomes de até 80 caracteres e cores hexadecimais.');
   next.remainingAmount = Number.isFinite(next.price) && Number.isFinite(next.paidAmount) ? Math.max(0, Math.round((next.price - next.paidAmount) * 100) / 100) : 0;
   next.errors = errors;
   next.isValid = errors.length === 0;
