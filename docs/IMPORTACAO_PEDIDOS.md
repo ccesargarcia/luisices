@@ -76,3 +76,11 @@ A versão atual do Firebase CLI requer Java 21 ou superior. A checagem de navega
 Fontes de implementação: [importador](../src/app/utils/importOrdersExcel.ts), [revisão](../src/app/utils/importOrdersReview.ts), [modal](../src/app/components/orders/ImportOrdersDialog.tsx), [regras](../firestore.rules), [testes de segurança](../tests/integration/import-orders-security.test.ts).
 
 Fontes externas: [CVE-2023-30533 — SheetJS](https://cdn.sheetjs.com/advisories/CVE-2023-30533), [CVE-2024-22363 — SheetJS](https://cdn.sheetjs.com/advisories/CVE-2024-22363), [distribuição oficial de SheetJS](https://docs.sheetjs.com/docs/getting-started/installation/nodejs/).
+
+## Diagnóstico de falhas no celular — 12/10/2026
+
+O resumo permanece aberto até ser dispensado. O callback de atualização do dashboard só é executado ao fechar o resultado: o recarregamento de pedidos ativa o estado de carregamento e desmontava o modal imediatamente após uma importação parcialmente bem-sucedida, ocultando os motivos das falhas.
+
+Cada falha informa a linha, a etapa (cadastro do cliente ou gravação do pedido), a mensagem e, quando disponível, o código retornado pelo SDK. Exceções anteriores à execução também permanecem no resumo. As mensagens de permissão e indisponibilidade têm texto em português, sem flexibilizar as regras do servidor. O resumo diferencia sucesso completo, parcial e falha total. Não há repetição automática; os pedidos já salvos não devem ser reimportados.
+
+A imagem com o aviso genérico não permite determinar a causa histórica da recusa. É necessário consultar o diagnóstico por linha antes de decidir uma correção de dados ou permissões. A validação adicional cobre falhas de cliente/pedido e os resultados parcial e fatal no modal real em navegador, com atualização do dashboard simulando a desmontagem.

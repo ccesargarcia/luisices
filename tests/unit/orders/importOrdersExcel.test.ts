@@ -236,6 +236,20 @@ describe('Importação de Pedidos via Excel (importOrdersExcel)', () => {
       expect(orderSpy).toHaveBeenCalledTimes(1);expect(orderSpy).toHaveBeenCalledWith(expect.objectContaining({ customerName: 'Cliente revisado', productName: 'Produto revisado', quantity: 5, price: 150, payment: expect.objectContaining({ paidAmount: 40, remainingAmount: 110 }) }));
     });
 
+    it('preserva a etapa e o código da recusa do servidor sem gravar após falha no cliente', async () => {
+      const row = { rowIndex: 2, customerName: 'Ana', customerPhone: '', productName: 'Convites', quantity: 1, price: 10, deliveryDate: '2026-10-20', status: 'pending', paymentStatus: 'pending', paidAmount: 0, remainingAmount: 10, isValid: true, errors: [], warnings: [], rawData: {} } as ParsedOrderRow;
+      vi.spyOn(firebaseCustomerService, 'getCustomers').mockResolvedValue([]);
+      vi.spyOn(firebaseCustomerService, 'createCustomer').mockRejectedValue(Object.assign(new Error('Missing or insufficient permissions.'), { code: 'permission-denied' }));
+      const order = vi.spyOn(firebaseOrderService, 'createOrder');
+      const result = await executeOrdersImport([row], 'owner');
+      expect(order).not.toHaveBeenCalled();
+      expect(result.errors[0]).toMatchObject({ rowIndex: 2, stage: 'customer', code: 'permission-denied', error: expect.stringContaining('servidor recusou') });
+      vi.spyOn(firebaseCustomerService, 'createCustomer').mockResolvedValue('customer');
+      order.mockRejectedValue(Object.assign(new Error('Unavailable'), { code: 'unavailable' }));
+      const failedOrder = await executeOrdersImport([row], 'owner');
+      expect(failedOrder.errors[0]).toMatchObject({ stage: 'order', code: 'unavailable' });
+    });
+
     it('não associa clientes com o mesmo nome quando o telefone informado é diferente', async () => {
       const row={rowIndex:2,customerName:'Ana',customerPhone:'11922222222',productName:'Convites',quantity:1,price:10,deliveryDate:'2026-10-20',status:'pending',paymentStatus:'pending',paidAmount:0,remainingAmount:10,isValid:true,errors:[],warnings:[],rawData:{}} as ParsedOrderRow;
       vi.spyOn(firebaseCustomerService,'getCustomers').mockResolvedValue([{id:'different-phone',name:'Ana',phone:'11911111111'}] as any);

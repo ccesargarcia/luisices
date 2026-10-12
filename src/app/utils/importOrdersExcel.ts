@@ -59,7 +59,7 @@ export interface ImportExecutionResult {
   errorCount: number;
   createdOrderIds: string[];
   createdCustomerIds: string[];
-  errors: Array<{ rowIndex: number; customerName: string; error: string }>;
+  errors: Array<{ rowIndex: number; customerName: string; error: string; code?: string; stage?: 'customer' | 'order' }>;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -736,6 +736,7 @@ export async function executeOrdersImport(
       statusText: `Importando pedido ${i + 1} de ${total}: ${row.customerName}...`,
     });
 
+    let stage: 'customer' | 'order' = 'customer';
     try {
       let customerId: string | undefined = undefined;
       const cleanPhone = row.customerPhone ? row.customerPhone.replace(/\D/g, '') : '';
@@ -768,7 +769,7 @@ export async function executeOrdersImport(
           if (cleanPhone) phoneToCustomerMap.set(cleanPhone, dummyCustomer);
           nameToCustomerMap.set(lowerName, dummyCustomer);
         } catch (createCustErr: any) {
-          throw new Error(`Não foi possível cadastrar o cliente desta linha: ${createCustErr?.message || 'operação não autorizada ou indisponível'}`);
+          throw createCustErr;
         }
       }
 
@@ -806,6 +807,7 @@ export async function executeOrdersImport(
         source: 'store', // Origem reconhecida para pedidos do ateliê
       };
 
+      stage = 'order';
       const createdOrder = await firebaseOrderService.createOrder(orderPayload);
       result.successCount++;
       result.createdOrderIds.push(createdOrder.id);
@@ -815,7 +817,13 @@ export async function executeOrdersImport(
       result.errors.push({
         rowIndex: row.rowIndex,
         customerName: row.customerName,
-        error: err?.message || 'Falha desconhecida ao cadastrar pedido.',
+        stage,
+        code: typeof err?.code === 'string' ? err.code : undefined,
+        error: err?.code === 'permission-denied' || err?.code === 'firestore/permission-denied'
+          ? 'O servidor recusou a operação. Verifique as permissões do usuário e os dados desta linha.'
+          : err?.code === 'unavailable' || err?.code === 'firestore/unavailable'
+            ? 'O servidor está indisponível ou a conexão foi interrompida. Verifique a conexão antes de tentar novamente.'
+            : err?.message || 'Falha desconhecida ao cadastrar pedido.',
       });
     }
   }

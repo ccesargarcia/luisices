@@ -64,6 +64,7 @@ export function ImportOrdersDialog({
   };
 
   const parseGenerationRef = useRef(0);
+  const pendingRefreshRef = useRef(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [parsing, setParsing] = useState(false);
@@ -95,6 +96,11 @@ export function ImportOrdersDialog({
     setImportResult(null);
     setPreviewFilter('all');
     if (fileInputRef.current) fileInputRef.current.value = '';
+    // Refreshing the dashboard unmounts this dialog. Keep results until dismissed.
+    if (pendingRefreshRef.current) {
+      pendingRefreshRef.current = false;
+      onImportSuccess?.();
+    }
   };
 
   const handleFileChange = async (file: File | null) => {
@@ -182,14 +188,16 @@ export function ImportOrdersDialog({
       setImportResult(result);
       if (result.successCount > 0) {
         toast.success(`${result.successCount} pedido(s) importado(s) com sucesso!`);
-        onImportSuccess?.();
+        pendingRefreshRef.current = true;
       }
       if (result.errorCount > 0) {
-        toast.error(`${result.errorCount} pedido(s) falharam ao importar.`);
+        toast.error(`${result.errorCount} pedido(s) falharam. Consulte os detalhes no modal.`);
       }
     } catch (err: any) {
       console.error('[ImportOrdersDialog] Erro durante a importação:', err);
-      toast.error(err?.message || 'Erro inesperado ao importar pedidos.');
+      const message = err?.message || 'Erro inesperado ao importar pedidos.';
+      setImportResult({ total: selectedRows.length, successCount: 0, errorCount: selectedRows.length, createdOrderIds: [], createdCustomerIds: [], errors: [{ rowIndex: 0, customerName: '', error: message }] });
+      toast.error('Não foi possível concluir a importação. Consulte os detalhes no modal.');
     } finally {
       setIsImporting(false);
     }
@@ -283,11 +291,11 @@ export function ImportOrdersDialog({
           {/* 1. Tela de Conclusão / Resumo */}
           {importResult && (
             <div className="space-y-6 text-center py-6">
-              <div className="size-16 rounded-full bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center mx-auto text-emerald-600 dark:text-emerald-400">
-                <CheckCircle2 className="size-8" />
+              <div className={`size-16 rounded-full border flex items-center justify-center mx-auto ${importResult.errorCount > 0 ? 'bg-destructive/10 border-destructive/30 text-destructive' : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-600 dark:text-emerald-400'}`}>
+                {importResult.errorCount > 0 ? <AlertTriangle className="size-8 text-destructive" /> : <CheckCircle2 className="size-8" />}
               </div>
               <div className="space-y-1">
-                <h3 className="text-xl font-bold">Importação Concluída!</h3>
+                <h3 className="text-xl font-bold">{importResult.errorCount > 0 ? (importResult.successCount > 0 ? 'Importação concluída com falhas' : 'Não foi possível importar os pedidos') : 'Importação Concluída!'}</h3>
                 <p className="text-muted-foreground text-sm max-w-md mx-auto">
                   {importResult.successCount} de {importResult.total} pedido(s) foram cadastrados com sucesso no sistema.
                   {importResult.createdCustomerIds.length > 0 &&
@@ -299,12 +307,16 @@ export function ImportOrdersDialog({
                 <div className="text-left bg-destructive/10 border border-destructive/20 rounded-xl p-4 max-w-lg mx-auto">
                   <div className="flex items-center gap-2 text-destructive font-semibold text-sm mb-2">
                     <AlertTriangle className="size-4" />
-                    <span>Falhas registradas ({importResult.errors.length}):</span>
+                    <span>Falhas registradas ({importResult.errorCount}):</span>
                   </div>
-                  <ul className="text-xs space-y-1.5 max-h-32 overflow-y-auto text-destructive/90">
+                  <p className="text-sm mb-3">Os pedidos cadastrados com sucesso já foram salvos. Não importe novamente a planilha inteira para evitar duplicatas.</p>
+                  <ul className="text-sm space-y-3 break-words text-destructive/90">
                     {importResult.errors.map((e, idx) => (
                       <li key={idx}>
-                        • Linha {e.rowIndex} ({e.customerName}): {e.error}
+                        <strong>{e.rowIndex > 0 ? `Linha ${e.rowIndex} (${e.customerName})` : 'Importação'}</strong>
+                        {e.stage && <span className="block">Etapa: {e.stage === 'customer' ? 'cadastro do cliente' : 'gravação do pedido'}</span>}
+                        <span className="block">{e.error}</span>
+                        {e.code && <span className="block text-xs">Código: {e.code}</span>}
                       </li>
                     ))}
                   </ul>
