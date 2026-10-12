@@ -14,6 +14,7 @@ const whatsappFunctions = require('./whatsapp');
 const orderFunctions = require('./orders');
 const aiFunctions = require('./ai/callables');
 const alexaFunctions = require('./alexa');
+const mcpFunctions = require('./mcp');
 
 module.exports = {
   // ─── Gestão de Usuários e Convites ─────────────────────────────────────────
@@ -67,5 +68,14 @@ module.exports = {
   getAlexaIntegrationStatus: alexaFunctions.getAlexaIntegrationStatus,
   approveAlexaDraft: alexaFunctions.approveAlexaDraft,
   cancelAlexaDraft: alexaFunctions.cancelAlexaDraft,
+
+  // ─── Integração MCP & ChatGPT Actions ─────────────────────────────────────
+  getMcpSettingsStatus: mcpFunctions.getMcpSettingsStatus,
+  createMcpApiKey: mcpFunctions.createMcpApiKey,
+  toggleMcpApiKey: mcpFunctions.toggleMcpApiKey,
+  revokeMcpApiKey: mcpFunctions.revokeMcpApiKey,
+  toggleGlobalMcp: mcpFunctions.toggleGlobalMcp,
+  setUserMcpEligibility: mcpFunctions.setUserMcpEligibility,
+  chatGptToolsEndpoint: mcpFunctions.chatGptToolsEndpoint,
 };
 

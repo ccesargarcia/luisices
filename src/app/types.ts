@@ -298,6 +298,7 @@ export interface Permission {
   storeProducts?: ModulePermission;
   whatsapp?: boolean;
   aiCopilot?: boolean;
+  mcpAccess?: boolean;
 }
 
 /**
@@ -610,6 +611,7 @@ export const ADMIN_PERMISSIONS: Permission = {
   storeProducts: { view: true, create: true, edit: true, delete: true },
   whatsapp:  true,
   aiCopilot: true,
+  mcpAccess: true,
 };
 
 export const DEFAULT_USER_PERMISSIONS: Permission = {
@@ -630,6 +632,7 @@ export const DEFAULT_USER_PERMISSIONS: Permission = {
   storeProducts: { view: true, create: true, edit: true, delete: false },
   whatsapp:  true,
   aiCopilot: true,
+  mcpAccess: true,
 };
 
 export const EMPLOYEE_PERMISSIONS: Permission = {
@@ -650,6 +653,7 @@ export const EMPLOYEE_PERMISSIONS: Permission = {
   storeProducts: { view: false, create: false, edit: false, delete: false },
   whatsapp:  false,
   aiCopilot: false,
+  mcpAccess: false,
 };
 
 // Tipos para sistema de compartilhamento de dados
@@ -1047,4 +1051,66 @@ export interface AlexaIntegrationStatus {
     timestamp?: string | null;
   }>;
   isAdmin: boolean;
+}
+
+// ─── Integração MCP & ChatGPT Actions ─────────────────────────────────────
+export interface McpScopeInfo {
+  id: string;
+  label: string;
+  description: string;
+  module: string;
+  requiresAdmin: boolean;
+  defaultGranted: boolean;
+}
+
+export interface McpApiKey {
+  keyId: string;
+  keyPrefix: string;
+  keyName: string;
+  userId: string;
+  userName: string;
+  userRole: string;
+  enabled: boolean;
+  scopes: string[];
+  rateLimitPerHour: number;
+  createdAt: string | null;
+  lastUsedAt: string | null;
+  totalCalls: number;
+}
+
+export interface McpTeamMember {
+  uid: string;
+  displayName: string;
+  email: string;
+  role: string;
+  active: boolean;
+  mcpAccess: boolean;
+}
+
+export interface McpSettingsStatus {
+  success: boolean;
+  environment: 'dev' | 'prod';
+  globalEnabled: boolean;
+  endpointBaseUrl: string;
+  openapiUrl: string;
+  keys: McpApiKey[];
+  availableScopes: McpScopeInfo[];
+  teamMembers: McpTeamMember[];
+}
+
+export interface CreateMcpKeyParams {
+  userId: string;
+  keyName: string;
+  scopes: string[];
+  rateLimitPerHour?: number;
+}
+
+export interface CreateMcpKeyResult {
+  success: boolean;
+  rawKey: string;
+  keyId: string;
+  keyPrefix: string;
+  keyName: string;
+  userName: string;
+  scopes: string[];
 }

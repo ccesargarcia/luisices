@@ -35,6 +35,7 @@ import { HeaderFooterCustomizationSection } from '../components/settings/HeaderF
 import { WhatsAppTemplateSection } from '../components/settings/WhatsAppTemplateSection';
 import { AiSettingsSection } from '../components/settings/AiSettingsSection';
 import { AlexaSettingsSection } from '../components/settings/AlexaSettingsSection';
+import { McpSettingsSection } from '../components/settings/McpSettingsSection';
 import { DangerZoneSection } from '../components/settings/DangerZoneSection';
 
 export function Settings() {
@@ -631,6 +632,9 @@ export function Settings() {
 
             {/* Alexa Skill */}
             <AlexaSettingsSection isAdmin={isAdmin} />
+
+            {/* Assistentes Externos & ChatGPT (MCP) */}
+            <McpSettingsSection isAdmin={isAdmin} />
           </TabsContent>
         )}
 

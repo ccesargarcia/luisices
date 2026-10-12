@@ -709,5 +709,15 @@ service cloud.firestore {
     match /alexaAudit/{eventId} {
       allow read, write: if false;
     }
+
+    // ─── Integração MCP & ChatGPT Actions (Coleções Técnicas Internas) ────────
+    // Bloqueio total de leitura e escrita direta pelo SDK cliente web/mobile.
+    // Todas as operações devem passar exclusivamente por Cloud Functions v2 (Admin SDK).
+    match /integrationSettings/mcp {
+      allow read, write: if false;
+    }
+    match /mcpApiKeys/{keyHash} {
+      allow read, write: if false;
+    }
   }
 }
