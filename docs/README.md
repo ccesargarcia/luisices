@@ -8,6 +8,8 @@ Este diretório consolida a documentação técnica oficial, arquitetura viva e 
 
 | Documento | Foco & Quando Consultar |
 | :--- | :--- |
+| **[Changelog](../CHANGELOG.md)** | Histórico de entregas, correções e mudanças de segurança. |
+| **[Changelog e releases](CHANGELOG_E_RELEASES.md)** | Como registrar mudanças, escolher versões e criar tags e Releases após validar uma entrega. |
 | **[Design System](../design.md)** | Diretrizes estéticas de *Papelaria de Afeto*, Liquid Glassmorphism, tokens de cores, anatomia de componentes e regras de UX mobile. |
 | **[Importação de Pedidos](IMPORTACAO_PEDIDOS.md)** | Edição e seleção de planilhas, validação no Firestore, evidências de segurança e limites restantes. |
 | **[Funcionalidades](FUNCIONALIDADES.md)** | Catálogo completo de módulos funcionais (pedidos, clientes, vitrine pública, e-mails corporativos, WhatsApp, financeiro e estoque). |
