@@ -6,6 +6,10 @@ O registro começou em 12/10/2026 com as entregas recentes verificadas em produ�
 
 ## Não lançado
 
+### Segurança
+
+- Atualização de `proxy-addr` de 2.0.7 para 2.0.8 no backend, com testes de compatibilidade do processamento de endereços de rede.
+
 ### Removido
 
 - Documentação operacional da Cloudflare, especificação Alexa e relatório interno de segurança da importação da documentação pública.
