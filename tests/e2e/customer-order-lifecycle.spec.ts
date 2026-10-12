@@ -188,7 +188,9 @@ test.describe.serial('Ciclo de vida: Cliente + Pedido', () => {
     // Confirmar exclusão
     const alertDialog = page.locator('[role="alertdialog"]');
     await expect(alertDialog).toBeVisible({ timeout: 5000 });
-    await alertDialog.getByRole('button', { name: /Excluir/i }).click();
+    const confirmDeleteBtn = alertDialog.getByRole('button', { name: /Excluir/i });
+    await expect(confirmDeleteBtn).toBeVisible({ timeout: 10000 });
+    await confirmDeleteBtn.click();
     await expect(alertDialog).not.toBeVisible({ timeout: 10000 });
 
     // Verificar que o cliente não aparece mais

@@ -19,7 +19,7 @@ test.describe('Experiência Mobile e Responsividade', () => {
     await expect(bottomNav).toBeVisible({ timeout: 10000 });
 
     // O botão "Mais" deve estar presente na navegação móvel
-    const moreBtn = page.getByRole('button', { name: /Mais opções|Mais/i }).first();
+    const moreBtn = bottomNav.locator('button[aria-label="Mais opções"]').or(bottomNav.getByRole('button', { name: /^Mais/i })).first();
     await expect(moreBtn).toBeVisible({ timeout: 5000 });
 
     // Clicar em Mais deve abrir o menu suspenso com outras opções

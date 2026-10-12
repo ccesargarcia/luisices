@@ -11,6 +11,7 @@ export function ledgerSaleToOrder(sale: SaleRecord): Order {
     quantity: sale.quantity,
     price: sale.amount,
     status: sale.status,
+    deletedAt: sale.isDeletedFromOrders ? (sale.updatedAt || sale.createdAt) : undefined,
     createdAt: sale.date || sale.createdAt,
     deliveryDate: sale.deliveryDate,
     payment: { status: sale.paymentStatus, paidAmount: sale.paidAmount, method: sale.paymentMethod },
@@ -21,6 +22,7 @@ export function groupCustomerLedgerHistory(customers: Customer[], sales: SaleRec
   const owners = new Map(customers.map((customer) => [customer.id, customer.userId]));
   const grouped = new Map<string, Order[]>();
   for (const sale of sales) {
+    if (sale.isDeletedFromOrders) continue;
     if (!sale.customerId || !sale.userId || owners.get(sale.customerId) !== sale.userId) continue;
     const history = grouped.get(sale.customerId) || [];
     history.push(ledgerSaleToOrder(sale));

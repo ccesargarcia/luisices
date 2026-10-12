@@ -156,7 +156,10 @@ export function Customers() {
   }, [customers, isFilterActive, selectedUserIds]);
 
   // Reutiliza o ledger histórico no escopo selecionado, sem truncar pelos pedidos operacionais.
-  const relevantOrders = useMemo(() => ledgerSales.map(ledgerSaleToOrder), [ledgerSales]);
+  const relevantOrders = useMemo(
+    () => ledgerSales.filter((s) => !s.isDeletedFromOrders).map(ledgerSaleToOrder),
+    [ledgerSales]
+  );
 
   // Mapa de pedidos em aberto e total de pedidos por cliente a partir de OrdersContext
   const openOrdersMap = useMemo(() => {
@@ -447,7 +450,7 @@ export function Customers() {
       },
       {
         id: 'month',
-        label: '📅 Aniversariantes do Mês',
+        label: '�� Aniversariantes do Mês',
         count: birthdayMonthCount,
         isActive: birthdayFilter === 'this_month',
         onClick: () => {

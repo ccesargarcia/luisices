@@ -33,6 +33,14 @@ describe('Métricas de cliente a partir do ledger', () => {
     expect(metrics.totalRevenue).toBe(10);
     expect(metrics.totalOrdersCount).toBe(1);
   });
+  it('descarta pedidos excluídos operacionalmente (isDeletedFromOrders)', () => {
+    const history = groupCustomerLedgerHistory([customer], [
+      sale(),
+      sale({ id: 'deletedSale', isDeletedFromOrders: true })
+    ]).get('client')!;
+    expect(history).toHaveLength(1);
+  });
+
   it('o período selecionado não inclui vendas antigas no faturamento', () => {
     const history = groupCustomerLedgerHistory([customer], [sale()]).get('client')!;
     expect(computeCustomerXRay(customer, history, '30d', undefined, new Date('2026-10-10'), true).totalRevenue).toBe(0);

@@ -809,9 +809,11 @@ export class FirebaseOrderService {
       deletedAt: Timestamp.now(),
     });
 
-    firebaseLedgerService.markOrderDeletedFromOrders(orderId).catch(err => {
+    try {
+      await firebaseLedgerService.markOrderDeletedFromOrders(orderId);
+    } catch (err) {
       console.warn('firebaseLedgerService: erro ao marcar pedido como removido de orders:', err);
-    });
+    }
   }
 
   /**
