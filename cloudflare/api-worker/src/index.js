@@ -39,6 +39,13 @@ export default {
       });
     }
 
+    // Favicon Ícone
+    if (url.pathname === '/favicon.ico') {
+      const isDev = url.hostname.includes('dev') || env.ENVIRONMENT === 'dev';
+      const appHost = isDev ? 'dev.luisices.com.br' : 'luisices.com.br';
+      return Response.redirect(`https://${appHost}/favicon.ico`, 302);
+    }
+
     // Manifesto de Plugin OpenAI (/.well-known/ai-plugin.json, /ai-plugin.json, /plugin.json)
     if (
       url.pathname === '/.well-known/ai-plugin.json' ||

@@ -25,7 +25,10 @@ function getOauthProtectedResourceMetadata(baseUrl) {
   let origin = defaultDomain;
   try {
     if (baseUrl && (baseUrl.startsWith('http://') || baseUrl.startsWith('https://'))) {
-      origin = new URL(baseUrl).origin;
+      const parsedOrigin = new URL(baseUrl).origin;
+      if (!parsedOrigin.includes('cloudfunctions.net') && !parsedOrigin.includes('run.app')) {
+        origin = parsedOrigin;
+      }
     }
   } catch (_e) {
     // fallback para defaultDomain
@@ -51,7 +54,10 @@ function getOauthAuthorizationServerMetadata(baseUrl) {
   let origin = defaultDomain;
   try {
     if (baseUrl && (baseUrl.startsWith('http://') || baseUrl.startsWith('https://'))) {
-      origin = new URL(baseUrl).origin;
+      const parsedOrigin = new URL(baseUrl).origin;
+      if (!parsedOrigin.includes('cloudfunctions.net') && !parsedOrigin.includes('run.app')) {
+        origin = parsedOrigin;
+      }
     }
   } catch (_e) {
     // fallback para defaultDomain

@@ -95,12 +95,15 @@ const chatGptToolsEndpoint = onRequest(
     const isProd = process.env.GCLOUD_PROJECT === 'papelaria-dashboard';
     const forwardedHost = req.get('x-forwarded-host');
     const reqHost = req.get('host') || '';
-    const isDirectGcf = reqHost.includes('cloudfunctions.net') || reqHost.includes('run.app');
-    const apiDomain = forwardedHost || (!isDirectGcf && reqHost ? reqHost : (isProd ? 'api.luisices.com.br' : 'api.dev.luisices.com.br'));
-    const protocol = req.get('x-forwarded-proto') || (req.secure ? 'https' : 'https');
-    const baseUrl = isDirectGcf
-      ? `${protocol}://${reqHost}/chatGptToolsEndpoint`
-      : `${protocol}://${apiDomain}/chatGptToolsEndpoint`;
+    const customDomain = isProd ? 'api.luisices.com.br' : 'api.dev.luisices.com.br';
+
+    // Garante que o apiDomain seja SEMPRE o domínio unificado do Cloudflare Worker
+    const apiDomain = (forwardedHost && !forwardedHost.includes('cloudfunctions.net') && !forwardedHost.includes('run.app'))
+      ? forwardedHost
+      : (!reqHost.includes('cloudfunctions.net') && !reqHost.includes('run.app') && reqHost ? reqHost : customDomain);
+
+    const protocol = 'https';
+    const baseUrl = `https://${apiDomain}/chatGptToolsEndpoint`;
 
     try {
 
@@ -122,6 +125,7 @@ const chatGptToolsEndpoint = onRequest(
         rawPath === '.well-known/openid-configuration' ||
         rawPath === 'oauth/authorize' ||
         rawPath === 'authorize' ||
+        rawPath === 'favicon.ico' ||
         rawPath === 'health' ||
         rawPath === ''
       )) ||
@@ -149,6 +153,12 @@ const chatGptToolsEndpoint = onRequest(
           return res.status(originCheck.statusCode || 403).json({ error: originCheck.error });
         }
       }
+    }
+
+    // ─── ROTA 0.0: Favicon Ícone (GET /favicon.ico) ──────────────────────────
+    if (req.method === 'GET' && rawPath === 'favicon.ico') {
+      const appHost = isProd ? 'luisices.com.br' : 'dev.luisices.com.br';
+      return res.redirect(302, `https://${appHost}/favicon.ico`);
     }
 
     // ─── ROTA 0.1: Descoberta de Recurso Protegido OAuth 2.1 (RFC 9723) ────────
