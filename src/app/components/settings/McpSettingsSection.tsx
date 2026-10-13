@@ -48,13 +48,19 @@ import {
   CreateMcpKeyResult,
 } from '../../types';
 
+import { useAuth } from '../../../contexts/AuthContext';
+
 interface McpSettingsSectionProps {
   isAdmin: boolean;
 }
 
 export function McpSettingsSection({ isAdmin }: McpSettingsSectionProps) {
+  const { userProfile } = useAuth();
+  // Se não for admin, o colaborador precisa ter a permissão mcpAccess diferente de false
+  const hasMcpPermission = isAdmin || userProfile?.permissions?.mcpAccess !== false;
+
   const [status, setStatus] = useState<McpSettingsStatus | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(hasMcpPermission);
   const [refreshing, setRefreshing] = useState(false);
 
   // Modal de Criação de Chave
@@ -78,22 +84,34 @@ export function McpSettingsSection({ isAdmin }: McpSettingsSectionProps) {
   const [togglingUserUid, setTogglingUserUid] = useState<string | null>(null);
 
   const fetchStatus = useCallback(async (isSilent = false) => {
+    if (!hasMcpPermission) {
+      setLoading(false);
+      return;
+    }
     if (!isSilent) setLoading(true);
     try {
       const data = await firebaseMcpService.getStatus();
       setStatus(data);
-    } catch (err: any) {
-      console.error('Erro ao carregar configurações de MCP:', err);
+    } catch {
       setStatus(null);
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [hasMcpPermission]);
 
   useEffect(() => {
-    fetchStatus();
-  }, [fetchStatus]);
+    if (hasMcpPermission) {
+      fetchStatus();
+    } else {
+      setLoading(false);
+    }
+  }, [hasMcpPermission, fetchStatus]);
+
+  // Se o usuário não tiver permissão, o menu/seção simplesmente SUMA da tela!
+  if (!hasMcpPermission) {
+    return null;
+  }
 
   // Abre modal de criação e prepara escopos padrão
   const handleOpenCreateModal = () => {
