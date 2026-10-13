@@ -84,7 +84,7 @@ export function McpSettingsSection({ isAdmin }: McpSettingsSectionProps) {
       setStatus(data);
     } catch (err: any) {
       console.error('Erro ao carregar configurações de MCP:', err);
-      toast.error(err?.message || 'Erro ao carregar integrações de MCP/ChatGPT');
+      setStatus(null);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -291,6 +291,41 @@ export function McpSettingsSection({ isAdmin }: McpSettingsSectionProps) {
 
   const selectedMember = status?.teamMembers.find((m) => m.uid === selectedUid);
   const isSelectedAdmin = selectedMember?.role === 'admin';
+
+  if (!loading && !status) {
+    return (
+      <Card className="luisices-glass border-amber-500/30">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-amber-600 dark:text-amber-400">
+            <Lock className="size-5" />
+            Integrações & Assistentes MCP / ChatGPT
+          </CardTitle>
+          <CardDescription>
+            {isAdmin
+              ? 'Não foi possível carregar as configurações do MCP neste momento.'
+              : 'O seu usuário não possui permissão de acesso ativada para as integrações de IA.'}
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-xs text-muted-foreground">
+            {isAdmin
+              ? 'Se o problema persistir, certifique-se de que a sincronização com as Cloud Functions foi concluída.'
+              : 'Para utilizar o ChatGPT e assistentes de IA com a sua conta do ateliê, solicite a um Administrador a liberação de acesso na aba Usuários & Equipe.'}
+          </p>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => fetchStatus()}
+            disabled={refreshing}
+            className="gap-1.5 text-xs"
+          >
+            <RefreshCw className={`size-3.5 ${refreshing ? 'animate-spin' : ''}`} />
+            Tentar Novamente
+          </Button>
+        </CardContent>
+      </Card>
+    );
+  }
 
   return (
     <div className="space-y-6">
