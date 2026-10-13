@@ -330,5 +330,80 @@ describe('OAuth 2.1 & Protected Resource Metadata for MCP / ChatGPT', () => {
       expect(result.status).toBe(401);
       expect(result.code).toBe('UNAUTHORIZED');
     });
+
+    it('deve rejeitar token OAuth revogado explicitamente (revoked: true)', async () => {
+      const mockDb: any = {
+        collection: (colName: string) => {
+          if (colName === 'oauthAccessTokens') {
+            return {
+              doc: () => ({
+                get: async () => ({
+                  exists: true,
+                  data: () => ({
+                    userId: 'user_123',
+                    iss: 'https://api.dev.luisices.com.br',
+                    aud: 'https://api.dev.luisices.com.br',
+                    expiresAt: Date.now() + 3600000,
+                    revoked: true,
+                  }),
+                }),
+              }),
+            };
+          }
+          return { doc: () => ({ get: async () => ({ exists: false }) }) };
+        },
+      };
+
+      const result = await validateOAuthAccessToken('lui_oauth_at_revoked_token', mockDb);
+      expect(result.success).toBe(false);
+      expect(result.status).toBe(401);
+      expect(result.code).toBe('TOKEN_REVOKED');
+      expect(result.message).toContain('revogada');
+    });
+
+    it('deve rejeitar token quando a sessão MCP vinculada foi revogada (SESSION_REVOKED)', async () => {
+      const mockDb: any = {
+        collection: (colName: string) => {
+          if (colName === 'oauthAccessTokens') {
+            return {
+              doc: () => ({
+                get: async () => ({
+                  exists: true,
+                  data: () => ({
+                    userId: 'user_123',
+                    sessionId: 'sess_999',
+                    iss: 'https://api.dev.luisices.com.br',
+                    aud: 'https://api.dev.luisices.com.br',
+                    expiresAt: Date.now() + 3600000,
+                    revoked: false,
+                  }),
+                }),
+              }),
+            };
+          }
+          if (colName === 'oauthSessions') {
+            return {
+              doc: () => ({
+                get: async () => ({
+                  exists: true,
+                  data: () => ({
+                    sessionId: 'sess_999',
+                    active: false,
+                    revoked: true,
+                  }),
+                }),
+              }),
+            };
+          }
+          return { doc: () => ({ get: async () => ({ exists: false }) }) };
+        },
+      };
+
+      const result = await validateOAuthAccessToken('lui_oauth_at_session_revoked', mockDb);
+      expect(result.success).toBe(false);
+      expect(result.status).toBe(401);
+      expect(result.code).toBe('SESSION_REVOKED');
+      expect(result.message).toContain('revogada');
+    });
   });
 });

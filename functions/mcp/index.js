@@ -13,6 +13,7 @@ module.exports = {
   revokeMcpApiKey: callables.revokeMcpApiKey,
   toggleGlobalMcp: callables.toggleGlobalMcp,
   setUserMcpEligibility: callables.setUserMcpEligibility,
+  revokeMcpSession: callables.revokeMcpSession,
 
   // Endpoint HTTP onRequest para ChatGPT e Clientes MCP
   chatGptToolsEndpoint: endpoint.chatGptToolsEndpoint,

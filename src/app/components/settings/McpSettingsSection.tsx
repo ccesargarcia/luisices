@@ -37,6 +37,11 @@ import {
   Layers,
   Activity,
   Users,
+  Wifi,
+  WifiOff,
+  LogOut,
+  Radio,
+  CheckCircle2,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { firebaseMcpService } from '../../../services/firebaseMcpService';
@@ -45,6 +50,7 @@ import {
   McpApiKey,
   McpScopeInfo,
   McpTeamMember,
+  McpSession,
   CreateMcpKeyResult,
 } from '../../types';
 
@@ -82,6 +88,11 @@ export function McpSettingsSection({ isAdmin }: McpSettingsSectionProps) {
   const [togglingKeyId, setTogglingKeyId] = useState<string | null>(null);
   const [revokingKeyId, setRevokingKeyId] = useState<string | null>(null);
   const [togglingUserUid, setTogglingUserUid] = useState<string | null>(null);
+
+  // Gestão de Sessões Ativas MCP / OAuth
+  const [revokingSessionId, setRevokingSessionId] = useState<string | null>(null);
+  const [sessionToRevoke, setSessionToRevoke] = useState<McpSession | null>(null);
+  const [confirmRevokeOpen, setConfirmRevokeOpen] = useState(false);
 
   const fetchStatus = useCallback(async (isSilent = false) => {
     if (!hasMcpPermission) {
@@ -280,6 +291,44 @@ export function McpSettingsSection({ isAdmin }: McpSettingsSectionProps) {
     }
   };
 
+  const handleRevokeSession = async (session: McpSession) => {
+    setRevokingSessionId(session.sessionId);
+    try {
+      await firebaseMcpService.revokeSession(session.sessionId);
+      setStatus((prev) => {
+        if (!prev) return prev;
+        const updatedSessions = (prev.sessions || []).filter(
+          (s) => s.sessionId !== session.sessionId
+        );
+        const updatedMySession =
+          prev.myActiveSession?.sessionId === session.sessionId
+            ? null
+            : prev.myActiveSession;
+        const updatedMembers = prev.teamMembers.map((m) =>
+          m.uid === session.userId ? { ...m, mcpSessionActive: false } : m
+        );
+        return {
+          ...prev,
+          sessions: updatedSessions,
+          myActiveSession: updatedMySession,
+          hasActiveMcpSession: Boolean(updatedMySession),
+          teamMembers: updatedMembers,
+        };
+      });
+      toast.success(
+        session.userId === userProfile?.uid
+          ? 'Sua conexão MCP com o ChatGPT foi revogada com sucesso.'
+          : `Sessão MCP de ${session.userName} revogada com sucesso.`
+      );
+      setConfirmRevokeOpen(false);
+      setSessionToRevoke(null);
+    } catch (err: any) {
+      toast.error(err?.message || 'Erro ao revogar sessão MCP');
+    } finally {
+      setRevokingSessionId(null);
+    }
+  };
+
   const handleCopyText = (text: string, type: 'key' | 'url' | 'plugin') => {
     navigator.clipboard.writeText(text);
     if (type === 'key') {
@@ -370,8 +419,8 @@ export function McpSettingsSection({ isAdmin }: McpSettingsSectionProps) {
               </div>
               <CardDescription>
                 {isAdmin
-                  ? 'Conecte o ChatGPT (Custom GPT Actions), Claude Desktop ou Antigravity ao Luisices com controle granular de permissões, custo zero quando inativo e chave por usuário.'
-                  : 'Crie e gerencie suas chaves de acesso pessoais para usar no ChatGPT do celular ou Claude Desktop com permissões do seu perfil.'}
+                  ? 'Conecte o ChatGPT (Custom GPT Actions) via autenticação segura OAuth 2.1 por colaborador, ou crie chaves estáticas de API para webhooks e integrações de backend.'
+                  : 'O ChatGPT utiliza o seu e-mail e senha do Luisices via OAuth 2.1. Crie e gerencie chaves estáticas para integrações diretas de backend e webhooks.'}
               </CardDescription>
             </div>
 
@@ -392,7 +441,7 @@ export function McpSettingsSection({ isAdmin }: McpSettingsSectionProps) {
 
               <Button size="sm" onClick={handleOpenCreateModal} className="gap-1.5 shadow-sm">
                 <Key className="size-4" />
-                Criar Nova Chave
+                Criar Chave Direct API
               </Button>
             </div>
           </div>
@@ -465,12 +514,159 @@ export function McpSettingsSection({ isAdmin }: McpSettingsSectionProps) {
             </div>
           </div>
 
-          {/* ─── TABELA DE CHAVES DE ACESSO ─────────────────────────────────── */}
+          {/* ─── SESSÕES ATIVAS VIA MCP / CHATGPT (OAUTH 2.1) ───────────────── */}
+          <div className="space-y-4 pt-1">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Radio className="size-4 text-emerald-500 animate-pulse" />
+                <h4 className="text-sm font-semibold">Sessões MCP & ChatGPT Ativas (OAuth 2.1)</h4>
+                {status?.sessions && status.sessions.length > 0 && (
+                  <Badge variant="outline" className="border-emerald-500/40 text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 text-xs font-mono">
+                    {status.sessions.length} {status.sessions.length === 1 ? 'sessão aberta' : 'sessões abertas'}
+                  </Badge>
+                )}
+              </div>
+            </div>
+
+            {/* 1. Card de Status da Sessão do Usuário Conectado */}
+            {status?.myActiveSession ? (
+              <div className="p-4 rounded-xl border border-emerald-500/40 bg-emerald-500/10 backdrop-blur-xs flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-xs">
+                <div className="flex items-start sm:items-center gap-3.5">
+                  <div className="relative p-2.5 rounded-xl bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 shrink-0">
+                    <Wifi className="size-5" />
+                    <span className="absolute -top-1 -right-1 flex h-3 w-3">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
+                    </span>
+                  </div>
+                  <div className="space-y-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-semibold text-sm text-foreground">Sua Conta Conectada ao ChatGPT</span>
+                      <Badge className="bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-medium py-0.5 px-2">
+                        🟢 Sessão MCP Aberta
+                      </Badge>
+                      <Badge variant="outline" className="text-[10px] py-0 font-mono">
+                        {status.myActiveSession.clientId}
+                      </Badge>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Você está autenticado via OAuth 2.1 no <strong>{status.myActiveSession.clientName}</strong>. O assistente de IA possui permissão para consultar dados e executar ações vinculadas ao seu colaborador.
+                    </p>
+                    <div className="flex items-center gap-3 text-[11px] text-muted-foreground pt-1 flex-wrap">
+                      <span>Conectado em: {status.myActiveSession.createdAt ? new Date(status.myActiveSession.createdAt).toLocaleString('pt-BR') : 'Recentemente'}</span>
+                      <span>•</span>
+                      <span>Última chamada: {status.myActiveSession.lastUsedAt ? new Date(status.myActiveSession.lastUsedAt).toLocaleString('pt-BR') : 'Aguardando primeira chamada'}</span>
+                      <span>•</span>
+                      <span>Total de chamadas: {status.myActiveSession.totalCalls || 0}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={() => {
+                    setSessionToRevoke(status.myActiveSession || null);
+                    setConfirmRevokeOpen(true);
+                  }}
+                  disabled={revokingSessionId === status.myActiveSession.sessionId}
+                  className="shrink-0 gap-1.5 self-start md:self-center shadow-xs"
+                >
+                  <LogOut className="size-4" />
+                  Encerrar / Revogar Minha Conexão
+                </Button>
+              </div>
+            ) : (
+              <div className="p-4 rounded-xl border border-border/70 bg-muted/20 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 rounded-xl bg-muted text-muted-foreground shrink-0">
+                    <WifiOff className="size-5" />
+                  </div>
+                  <div className="space-y-0.5">
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium text-sm text-foreground">Sua Conta: Nenhuma Sessão MCP Aberta</span>
+                      <Badge variant="secondary" className="text-[10px] py-0 text-muted-foreground">
+                        Desconectado
+                      </Badge>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Conecte seu assistente no ChatGPT usando seu e-mail e senha. Assim que a autorização for concluída, o status ativo e os detalhes da sessão serão exibidos aqui.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* 2. Visualização Completa de Todas as Sessões da Equipe (Apenas Administrador) */}
+            {isAdmin && status?.sessions && status.sessions.length > 0 && (
+              <div className="space-y-2 pt-2">
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                  Todas as Sessões MCP Abertas no Ateliê ({status.sessions.length})
+                </p>
+                <div className="grid grid-cols-1 gap-2.5">
+                  {status.sessions.map((sess) => {
+                    const isMySession = sess.userId === userProfile?.uid;
+                    const isRevoking = revokingSessionId === sess.sessionId;
+                    return (
+                      <div
+                        key={sess.sessionId}
+                        className="p-3.5 rounded-xl border border-border/80 bg-card/60 backdrop-blur-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                      >
+                        <div className="space-y-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-semibold text-xs text-foreground">{sess.userName}</span>
+                            <span className="text-xs text-muted-foreground">({sess.userEmail})</span>
+                            <Badge
+                              variant={sess.userRole === 'admin' ? 'default' : 'secondary'}
+                              className="text-[9px] py-0"
+                            >
+                              {sess.userRole === 'admin' ? 'Admin' : 'Colaborador'}
+                            </Badge>
+                            {isMySession && (
+                              <Badge variant="outline" className="text-[9px] py-0 border-primary/40 text-primary">
+                                Você
+                              </Badge>
+                            )}
+                            <Badge className="bg-emerald-500/10 border-emerald-500/30 text-emerald-600 dark:text-emerald-400 text-[10px] py-0">
+                              🟢 Aberta via {sess.clientName}
+                            </Badge>
+                          </div>
+                          <div className="flex items-center gap-3 text-[11px] text-muted-foreground pt-0.5 flex-wrap">
+                            <span>Conectado em: {sess.createdAt ? new Date(sess.createdAt).toLocaleString('pt-BR') : 'Sem data'}</span>
+                            <span>•</span>
+                            <span>Último uso: {sess.lastUsedAt ? new Date(sess.lastUsedAt).toLocaleString('pt-BR') : 'Sem chamadas'}</span>
+                            <span>•</span>
+                            <span>Chamadas: {sess.totalCalls || 0}</span>
+                          </div>
+                        </div>
+
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setSessionToRevoke(sess);
+                            setConfirmRevokeOpen(true);
+                          }}
+                          disabled={isRevoking}
+                          className="shrink-0 gap-1.5 text-xs text-destructive hover:text-destructive hover:bg-destructive/10 border-destructive/30"
+                        >
+                          {isRevoking ? <RefreshCw className="size-3.5 animate-spin" /> : <LogOut className="size-3.5" />}
+                          Revogar Conexão
+                        </Button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* ─── TABELA DE CHAVES DE ACESSO LEGADAS ─────────────────────────── */}
           <div className="space-y-3 pt-2">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Key className="size-4 text-primary" />
-                <h4 className="text-sm font-semibold">Chaves Ativas & Interruptor por Usuário</h4>
+                <h4 className="text-sm font-semibold">Chaves Direct API (N8N, Make, Webhooks)</h4>
                 <Badge variant="secondary" className="text-xs font-mono">
                   {status?.keys.length || 0}
                 </Badge>
@@ -485,13 +681,13 @@ export function McpSettingsSection({ isAdmin }: McpSettingsSectionProps) {
             ) : !status?.keys || status.keys.length === 0 ? (
               <div className="p-6 text-center rounded-xl border border-dashed border-border/80 bg-muted/10 space-y-2">
                 <Key className="size-8 text-muted-foreground/60 mx-auto" />
-                <p className="text-sm font-medium text-foreground">Nenhuma chave de acesso criada</p>
+                <p className="text-sm font-medium text-foreground">Nenhuma chave Direct API criada</p>
                 <p className="text-xs text-muted-foreground max-w-md mx-auto">
-                  Crie uma chave para conectar o ChatGPT do seu celular ou o Claude Desktop com permissões granulares.
+                  Para o ChatGPT, a conexão é feita via login seguro OAuth. Crie uma chave estática apenas para webhooks ou integrações de backend.
                 </p>
                 <Button size="sm" onClick={handleOpenCreateModal} variant="outline" className="mt-2 gap-1.5">
                   <Key className="size-3.5" />
-                  Gerar Primeira Chave
+                  Gerar Chave Direct API
                 </Button>
               </div>
             ) : (
@@ -608,7 +804,7 @@ export function McpSettingsSection({ isAdmin }: McpSettingsSectionProps) {
                 <h4 className="text-sm font-semibold">Permissão de Acesso ao MCP por Colaborador</h4>
               </div>
               <p className="text-xs text-muted-foreground">
-                Define quem no ateliê tem autorização para utilizar o assistente de IA. Se desmarcado, nenhuma chave desse colaborador responderá.
+                Define quem no ateliê tem autorização para utilizar o assistente de IA. Se desmarcado, o colaborador não conseguirá se autenticar via OAuth nem executar chamadas.
               </p>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
@@ -618,7 +814,14 @@ export function McpSettingsSection({ isAdmin }: McpSettingsSectionProps) {
                     className="flex items-center justify-between p-3 rounded-lg border border-border/70 bg-card/30 backdrop-blur-xs"
                   >
                     <div className="space-y-0.5 min-w-0 pr-2">
-                      <p className="text-xs font-semibold truncate">{member.displayName}</p>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <p className="text-xs font-semibold truncate">{member.displayName}</p>
+                        {member.mcpSessionActive && (
+                          <Badge className="bg-emerald-500/15 border-emerald-500/30 text-emerald-600 dark:text-emerald-400 text-[9px] py-0">
+                            🟢 Sessão Aberta
+                          </Badge>
+                        )}
+                      </div>
                       <p className="text-[11px] text-muted-foreground truncate">{member.email}</p>
                       <Badge variant={member.role === 'admin' ? 'default' : 'secondary'} className="text-[9px] py-0">
                         {member.role === 'admin' ? 'Admin' : 'Colaborador'}
@@ -640,26 +843,26 @@ export function McpSettingsSection({ isAdmin }: McpSettingsSectionProps) {
             <div className="flex items-center gap-2">
               <Sparkles className="size-4 text-primary" />
               <h4 className="text-xs font-semibold uppercase tracking-wider text-primary">
-                Passo a Passo: Como Conectar o Plugin no ChatGPT (learn.chatgpt.com/docs/plugins)
+                Passo a Passo: Como Conectar o Plugin no ChatGPT via OAuth 2.1
               </h4>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs text-muted-foreground">
               <div className="p-3 rounded-lg bg-card/60 border border-border/60 space-y-1">
                 <span className="font-semibold text-foreground">1. Conectar Plugin no ChatGPT</span>
                 <p>
-                  No ChatGPT, acesse a <strong>Plugin Store &gt; Develop your own plugin</strong> (ou <strong>Add Connected App / MCP</strong>) e digite apenas o domínio base: <code className="font-mono text-[11px] text-primary">{status?.environment === 'prod' ? 'api.luisices.com.br' : 'api.dev.luisices.com.br'}</code>.
+                  No ChatGPT, adicione o assistente MCP digitando apenas o domínio base do ambiente: <code className="font-mono text-[11px] text-primary">{status?.environment === 'prod' ? 'https://api.luisices.com.br' : 'https://api.dev.luisices.com.br'}</code>.
                 </p>
               </div>
               <div className="p-3 rounded-lg bg-card/60 border border-border/60 space-y-1">
-                <span className="font-semibold text-foreground">2. Validação do Manifesto & Schema</span>
+                <span className="font-semibold text-foreground">2. Descoberta & Registro Dinâmico</span>
                 <p>
-                  O ChatGPT buscará automaticamente o manifesto em <code className="font-mono text-[10px]">/.well-known/ai-plugin.json</code> e o schema OpenAPI 3.0.3, validando as 9 ferramentas operacionais sem erros.
+                  O ChatGPT lê os metadados em <code className="font-mono text-[10px]">/.well-known/oauth-authorization-server</code> e faz o registro dinâmico do cliente automaticamente.
                 </p>
               </div>
               <div className="p-3 rounded-lg bg-card/60 border border-border/60 space-y-1">
-                <span className="font-semibold text-foreground">3. Autenticação Bearer (user_http)</span>
+                <span className="font-semibold text-foreground">3. Login do Colaborador (OAuth 2.1)</span>
                 <p>
-                  Quando o ChatGPT solicitar as credenciais, selecione <strong>API Key / Bearer</strong> e cole a Chave de Acesso (<code className="font-mono text-[10px]">lui_...</code>) gerada para o seu colaborador.
+                  O ChatGPT redireciona para a tela do Luisices Ateliê. Digite seu <strong>e-mail e senha do sistema</strong>. As permissões serão vinculadas estritamente ao seu usuário.
                 </p>
               </div>
             </div>
@@ -877,6 +1080,56 @@ export function McpSettingsSection({ isAdmin }: McpSettingsSectionProps) {
             >
               <Copy className="size-4" />
               Copiar Chave e Fechar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ─── MODAL DE CONFIRMAÇÃO DE REVOGAÇÃO DE SESSÃO MCP ────────────────── */}
+      <Dialog open={confirmRevokeOpen} onOpenChange={setConfirmRevokeOpen}>
+        <DialogContent className="max-w-md bg-background border-border">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-destructive">
+              <AlertTriangle className="size-5" />
+              Revogar Conexão MCP / ChatGPT
+            </DialogTitle>
+            <DialogDescription>
+              {sessionToRevoke?.userId === userProfile?.uid
+                ? 'Deseja encerrar e revogar sua conexão com o assistente do ChatGPT?'
+                : `Deseja revogar a conexão MCP do colaborador ${sessionToRevoke?.userName || 'selecionado'}?`}
+            </DialogDescription>
+          </DialogHeader>
+
+          <DialogBody className="space-y-3 py-2 text-xs text-muted-foreground">
+            <p>
+              Ao revogar a conexão, o assistente de IA perderá o acesso imediatamente. Todos os tokens OAuth 2.1 vinculados a esta sessão serão invalidados.
+            </p>
+            <p className="p-2.5 rounded-lg bg-destructive/10 border border-destructive/20 text-destructive font-medium">
+              Aviso: Para voltar a usar o ChatGPT, será necessário realizar um novo login com e-mail e senha na tela de autorização do Luisices.
+            </p>
+          </DialogBody>
+
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setConfirmRevokeOpen(false);
+                setSessionToRevoke(null);
+              }}
+              disabled={Boolean(revokingSessionId)}
+            >
+              Cancelar
+            </Button>
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={() => sessionToRevoke && handleRevokeSession(sessionToRevoke)}
+              disabled={Boolean(revokingSessionId)}
+              className="gap-1.5"
+            >
+              {revokingSessionId ? <RefreshCw className="size-3.5 animate-spin" /> : <LogOut className="size-3.5" />}
+              Confirmar Revogação
             </Button>
           </DialogFooter>
         </DialogContent>

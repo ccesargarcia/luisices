@@ -77,6 +77,7 @@ import {
   MonitorSmartphone,
   ShieldAlert,
   LogOut,
+  Bot,
 } from 'lucide-react';
 
 
@@ -1179,7 +1180,15 @@ export function Users() {
                     {paginatedUsers.map(u => (
                       <TableRow key={u.uid} className="group">
                         <TableCell className="font-medium">
-                          <div className="flex items-center">{renderPresence(u.uid)} {u.displayName}{u.uid === currentUser?.uid && <Badge variant="outline" className="ml-2 text-xs">você</Badge>}</div>
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            {renderPresence(u.uid)} {u.displayName}
+                            {u.uid === currentUser?.uid && <Badge variant="outline" className="text-xs">você</Badge>}
+                            {u.mcpSessionActive && (
+                              <Badge className="bg-emerald-500/15 border-emerald-500/30 text-emerald-600 dark:text-emerald-400 text-[10px] py-0 gap-1 font-medium" title="Sessão aberta via MCP / ChatGPT">
+                                <Bot className="size-3 text-emerald-500" /> MCP Conectado
+                              </Badge>
+                            )}
+                          </div>
                           <div className="text-muted-foreground text-xs font-normal">{u.email}</div>
                         </TableCell>
                         <TableCell>
@@ -1252,10 +1261,15 @@ export function Users() {
                     <CardContent className="p-4 space-y-2">
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0">
-                          <p className="font-semibold truncate flex items-center">
+                          <p className="font-semibold truncate flex items-center flex-wrap gap-1">
                             {renderPresence(u.uid)} {u.displayName}
                             {u.uid === currentUser?.uid && (
-                              <Badge variant="outline" className="ml-2 text-xs">você</Badge>
+                              <Badge variant="outline" className="text-xs">você</Badge>
+                            )}
+                            {u.mcpSessionActive && (
+                              <Badge className="bg-emerald-500/15 border-emerald-500/30 text-emerald-600 dark:text-emerald-400 text-[10px] py-0 gap-1 font-medium">
+                                <Bot className="size-3 text-emerald-500" /> MCP
+                              </Badge>
                             )}
                           </p>
                           <p className="text-xs text-muted-foreground truncate">{u.email}</p>

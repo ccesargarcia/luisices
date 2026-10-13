@@ -76,6 +76,7 @@ module.exports = {
   revokeMcpApiKey: mcpFunctions.revokeMcpApiKey,
   toggleGlobalMcp: mcpFunctions.toggleGlobalMcp,
   setUserMcpEligibility: mcpFunctions.setUserMcpEligibility,
+  revokeMcpSession: mcpFunctions.revokeMcpSession,
   chatGptToolsEndpoint: mcpFunctions.chatGptToolsEndpoint,
 };
 

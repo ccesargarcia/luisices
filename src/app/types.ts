@@ -592,6 +592,8 @@ export interface UserProfile {
   lastPasswordResetRequestedAt?: string;
   whatsappPhone?: string;
   tokensValidAfterTime?: number;
+  mcpSessionActive?: boolean;
+  lastMcpConnectedAt?: string;
 }
 
 export const ADMIN_PERMISSIONS: Permission = {
@@ -1088,6 +1090,25 @@ export interface McpTeamMember {
   role: string;
   active: boolean;
   mcpAccess: boolean;
+  mcpSessionActive?: boolean;
+  lastMcpConnectedAt?: string | null;
+}
+
+export interface McpSession {
+  sessionId: string;
+  userId: string;
+  userName: string;
+  userEmail: string;
+  userRole: string;
+  clientId: string;
+  clientName: string;
+  scopes: string[];
+  createdAt: string | null;
+  lastUsedAt: string | null;
+  expiresAt: number | string | null;
+  totalCalls?: number;
+  active: boolean;
+  revoked?: boolean;
 }
 
 export interface McpSettingsStatus {
@@ -1098,6 +1119,9 @@ export interface McpSettingsStatus {
   openapiUrl: string;
   pluginManifestUrl?: string;
   keys: McpApiKey[];
+  sessions?: McpSession[];
+  myActiveSession?: McpSession | null;
+  hasActiveMcpSession?: boolean;
   availableScopes: McpScopeInfo[];
   teamMembers: McpTeamMember[];
 }

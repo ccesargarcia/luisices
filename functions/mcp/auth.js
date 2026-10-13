@@ -3,7 +3,12 @@
  */
 
 const crypto = require('crypto');
-const { RateLimiterMemory } = require('rate-limiter-flexible');
+let RateLimiterMemory = null;
+try {
+  RateLimiterMemory = require('rate-limiter-flexible').RateLimiterMemory;
+} catch (_err) {
+  // Fallback silencioso caso a lib esteja instalada somente em /functions
+}
 const { COLLECTIONS, CACHE_TTL_MS, DEFAULT_RATE_LIMIT_PER_HOUR } = require('./constants');
 const { getCallerScope } = require('../ai/authorization');
 
@@ -81,13 +86,17 @@ async function getMcpGlobalSettings(db) {
 function getRateLimiterForKey(keyId, limitPerHour = DEFAULT_RATE_LIMIT_PER_HOUR) {
   const safeLimit = Math.max(10, Math.min(300, Number(limitPerHour) || DEFAULT_RATE_LIMIT_PER_HOUR));
   if (!KEY_RATE_LIMITERS.has(keyId)) {
-    KEY_RATE_LIMITERS.set(
-      keyId,
-      new RateLimiterMemory({
-        points: safeLimit,
-        duration: 3600, // 1 hora
-      })
-    );
+    if (RateLimiterMemory) {
+      KEY_RATE_LIMITERS.set(
+        keyId,
+        new RateLimiterMemory({
+          points: safeLimit,
+          duration: 3600, // 1 hora
+        })
+      );
+    } else {
+      KEY_RATE_LIMITERS.set(keyId, { consume: async () => {} });
+    }
   }
   return KEY_RATE_LIMITERS.get(keyId);
 }
@@ -246,6 +255,34 @@ async function validateMcpRequest(req, db) {
 function touchKeyUsage(db, keyHash) {
   if (!db || !keyHash) return;
   const { FieldValue } = require('firebase-admin/firestore');
+
+  // Caso seja um token OAuth 2.1 (lui_oauth_at_...)
+  if (keyHash.startsWith('lui_oauth_at_')) {
+    db.collection('oauthAccessTokens')
+      .doc(keyHash)
+      .update({
+        lastUsedAt: FieldValue.serverTimestamp(),
+        totalCalls: FieldValue.increment(1),
+      })
+      .then(async () => {
+        const tokenSnap = await db.collection('oauthAccessTokens').doc(keyHash).get();
+        if (tokenSnap.exists && tokenSnap.data().sessionId) {
+          await db.collection('oauthSessions')
+            .doc(tokenSnap.data().sessionId)
+            .update({
+              lastUsedAt: FieldValue.serverTimestamp(),
+              totalCalls: FieldValue.increment(1),
+            })
+            .catch(() => {});
+        }
+      })
+      .catch((err) => {
+        console.warn(`[MCP] Falha não-bloqueante ao atualizar métricas do token OAuth ${keyHash}:`, err.message);
+      });
+    return;
+  }
+
+  // Caso seja chave estática
   db.collection(COLLECTIONS.KEYS)
     .doc(keyHash)
     .update({

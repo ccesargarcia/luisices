@@ -298,7 +298,7 @@ async function handleOAuthAuthorize(req, res, db, getAuth) {
         redirectUrl.searchParams.set('state', state);
       }
 
-      return res.redirect(302, redirectUrl.toString());
+      return res.redirect(303, redirectUrl.toString());
     } catch (authErr) {
       console.error('[OAuth] Falha no processo de autorização:', authErr.message);
       return res.status(401).send('Falha na autenticação do colaborador.');
@@ -371,18 +371,25 @@ async function handleOAuthToken(req, res, db) {
       return res.status(403).json({ error: 'access_denied', error_description: 'Conta de usuário inativa ou sem permissão MCP.' });
     }
 
-    // Geração de tokens com vinculação ao usuário
+    // Geração de tokens com vinculação ao usuário e criação de sessão rastreável
     const accessToken = `lui_oauth_at_${crypto.randomBytes(32).toString('hex')}`;
     const refreshToken = `lui_oauth_rt_${crypto.randomBytes(32).toString('hex')}`;
+    const sessionId = `sess_${crypto.randomBytes(16).toString('hex')}`;
     const expiresInSeconds = 3600;
     const expiresAt = Date.now() + expiresInSeconds * 1000;
+    const finalClientId = client_id || codeData.clientId || 'chatgpt-mcp';
+    const clientName = (finalClientId && finalClientId.toLowerCase().includes('chatgpt'))
+      ? 'ChatGPT (OpenAI MCP)'
+      : 'Assistente MCP';
 
     const tokenDoc = {
       accessToken,
       refreshToken,
-      clientId: client_id || codeData.clientId || 'chatgpt-mcp',
+      sessionId,
+      clientId: finalClientId,
       userId: codeData.userId,
-      userEmail: codeData.userEmail,
+      userEmail: codeData.userEmail || userProfile.email || '',
+      userName: userProfile.displayName || userProfile.email || 'Usuário',
       scope: codeData.scope,
       scopes: (codeData.scope || '').split(' ').filter(Boolean),
       iss: issuer,
@@ -396,13 +403,44 @@ async function handleOAuthToken(req, res, db) {
     await db.collection('oauthRefreshTokens').doc(refreshToken).set({
       refreshToken,
       accessToken,
+      sessionId,
       clientId: tokenDoc.clientId,
       userId: codeData.userId,
+      userEmail: tokenDoc.userEmail,
       scope: codeData.scope,
       scopes: tokenDoc.scopes,
       createdAt: new Date().toISOString(),
       expiresAt: Date.now() + 30 * 24 * 3600 * 1000,
+      revoked: false,
     });
+
+    // Registra sessão ativa para monitoramento e revogação por usuário e admin
+    const sessionDoc = {
+      sessionId,
+      accessToken,
+      refreshToken,
+      clientId: tokenDoc.clientId,
+      clientName,
+      userId: codeData.userId,
+      userEmail: tokenDoc.userEmail,
+      userName: tokenDoc.userName,
+      userRole: userProfile.role || 'funcionario',
+      scope: codeData.scope,
+      scopes: tokenDoc.scopes,
+      active: true,
+      revoked: false,
+      createdAt: new Date().toISOString(),
+      expiresAt: Date.now() + 30 * 24 * 3600 * 1000,
+      lastUsedAt: new Date().toISOString(),
+      totalCalls: 0,
+    };
+    await db.collection('oauthSessions').doc(sessionId).set(sessionDoc);
+
+    // Sinaliza no perfil do usuário que há uma sessão aberta via MCP
+    await db.collection(COLLECTIONS.USERS).doc(codeData.userId).update({
+      mcpSessionActive: true,
+      lastMcpConnectedAt: new Date().toISOString(),
+    }).catch(() => {});
 
     return res.status(200).json({
       access_token: accessToken,
@@ -425,8 +463,23 @@ async function handleOAuthToken(req, res, db) {
     }
 
     const refreshData = refreshSnap.data();
+    if (refreshData.revoked) {
+      return res.status(400).json({ error: 'invalid_grant', error_description: 'Sessão MCP revogada pelo usuário ou administrador.' });
+    }
+
     if (refreshData.expiresAt < Date.now()) {
       return res.status(400).json({ error: 'invalid_grant', error_description: 'Refresh token expirado.' });
+    }
+
+    // Valida se a sessão associada foi revogada
+    if (refreshData.sessionId) {
+      const sessionSnap = await db.collection('oauthSessions').doc(refreshData.sessionId).get();
+      if (sessionSnap.exists) {
+        const sData = sessionSnap.data();
+        if (sData.active === false || sData.revoked) {
+          return res.status(400).json({ error: 'invalid_grant', error_description: 'Sessão MCP revogada pelo usuário ou administrador.' });
+        }
+      }
     }
 
     const userSnap = await db.collection(COLLECTIONS.USERS).doc(refreshData.userId).get();
@@ -442,13 +495,16 @@ async function handleOAuthToken(req, res, db) {
     const newAccessToken = `lui_oauth_at_${crypto.randomBytes(32).toString('hex')}`;
     const expiresInSeconds = 3600;
     const expiresAt = Date.now() + expiresInSeconds * 1000;
+    const sessionId = refreshData.sessionId || `sess_${crypto.randomBytes(16).toString('hex')}`;
 
     const tokenDoc = {
       accessToken: newAccessToken,
       refreshToken: refresh_token,
+      sessionId,
       clientId: client_id || refreshData.clientId || 'chatgpt-mcp',
       userId: refreshData.userId,
       userEmail: userProfile.email,
+      userName: userProfile.displayName || userProfile.email || 'Usuário',
       scope: refreshData.scope,
       scopes: refreshData.scopes,
       iss: issuer,
@@ -458,6 +514,14 @@ async function handleOAuthToken(req, res, db) {
     };
 
     await db.collection('oauthAccessTokens').doc(newAccessToken).set(tokenDoc);
+
+    // Atualiza último uso na sessão
+    if (refreshData.sessionId) {
+      await db.collection('oauthSessions').doc(refreshData.sessionId).update({
+        accessToken: newAccessToken,
+        lastUsedAt: new Date().toISOString(),
+      }).catch(() => {});
+    }
 
     return res.status(200).json({
       access_token: newAccessToken,
@@ -495,6 +559,33 @@ async function validateOAuthAccessToken(accessToken, db) {
   }
 
   const tokenData = tokenSnap.data();
+
+  // Checa se o token foi explicitamente revogado
+  if (tokenData.revoked) {
+    return {
+      success: false,
+      status: 401,
+      code: 'TOKEN_REVOKED',
+      message: 'Sessão MCP revogada pelo usuário ou administrador.',
+    };
+  }
+
+  // Checa se a sessão vinculada foi revogada
+  if (tokenData.sessionId) {
+    const sessionSnap = await db.collection('oauthSessions').doc(tokenData.sessionId).get();
+    if (sessionSnap.exists) {
+      const sData = sessionSnap.data();
+      if (sData.active === false || sData.revoked) {
+        return {
+          success: false,
+          status: 401,
+          code: 'SESSION_REVOKED',
+          message: 'Sessão MCP revogada pelo usuário ou administrador.',
+        };
+      }
+    }
+  }
+
   if (tokenData.expiresAt < Date.now()) {
     return {
       success: false,
