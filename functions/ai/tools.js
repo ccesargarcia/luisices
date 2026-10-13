@@ -4,6 +4,7 @@
 
 const { BUSINESS_TIMEZONE, TOOL_LIMITS } = require('./config');
 const { calculateRecipePricing, calculateHourlyRate, DEFAULT_PRICING_SETTINGS } = require('./pricing/pricingCalculator');
+const { sanitizeCollaboratorInfo } = require('./authorization');
 
 /**
  * Calcula intervalos de data no fuso do negócio (America/Sao_Paulo - UTC-3)
@@ -546,7 +547,9 @@ class AiToolsExecutor {
               totalFiltered: derivedCustomers.length,
               isFiltered: true,
               hasMore: derivedCustomers.length > limit,
-              collaboratorFound: matchedMember ? { name: matchedMember.name, email: matchedMember.email } : { identifier: term },
+              collaboratorFound: matchedMember
+                ? sanitizeCollaboratorInfo(matchedMember, scope)
+                : { identifier: term },
             };
           }
         }
