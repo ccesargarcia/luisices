@@ -282,7 +282,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 ? EMPLOYEE_PERMISSIONS
                 : DEFAULT_USER_PERMISSIONS;
 
-            // Para usuários padrão ('user'), usa DEFAULT_USER_PERMISSIONS como base e respeita permissões do Firestore
+            // Para usuários padrão ('user' e 'funcionario'), respeita mcpAccess habilitado por padrão
             const permissions = data.role === 'admin'
               ? ADMIN_PERMISSIONS
               : data.role === 'user'
@@ -296,6 +296,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                     store: data.permissions?.store ?? DEFAULT_USER_PERMISSIONS.store,
                     whatsapp: data.permissions?.whatsapp ?? DEFAULT_USER_PERMISSIONS.whatsapp ?? false,
                     aiCopilot: data.permissions?.aiCopilot ?? DEFAULT_USER_PERMISSIONS.aiCopilot ?? false,
+                    mcpAccess: data.permissions?.mcpAccess !== false,
                     orders: {
                       ...DEFAULT_USER_PERMISSIONS.orders,
                       ...(data.permissions?.orders || {}),
@@ -305,6 +306,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 : {
                     ...fallbackPermissions,
                     ...(data.permissions || {}),
+                    mcpAccess: data.permissions?.mcpAccess !== false,
                     store: data.permissions?.store ?? false,
                     pricing: data.permissions?.pricing ?? false,
                     whatsapp: data.permissions?.whatsapp ?? false,
