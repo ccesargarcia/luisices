@@ -393,6 +393,7 @@ describe('OAuth 2.1 & Protected Resource Metadata for MCP / ChatGPT', () => {
                   exists: true,
                   data: () => ({
                     userId: 'user_123',
+                    clientId: 'client_aaaaaaaaaaaaaaaaaaaaaaaa',
                     sessionId: 'sess_999',
                     iss: 'https://api.dev.luisices.com.br',
                     aud: 'https://api.dev.luisices.com.br',
@@ -410,6 +411,11 @@ describe('OAuth 2.1 & Protected Resource Metadata for MCP / ChatGPT', () => {
                   exists: true,
                   data: () => ({
                     sessionId: 'sess_999',
+                    userId: 'user_123',
+                    clientId: 'client_aaaaaaaaaaaaaaaaaaaaaaaa',
+                    iss: 'https://api.dev.luisices.com.br',
+                    aud: 'https://api.dev.luisices.com.br',
+                    expiresAt: Date.now() + 3600000,
                     active: false,
                     revoked: true,
                   }),

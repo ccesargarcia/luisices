@@ -489,6 +489,8 @@ async function validateOAuthAccessToken(accessToken, db) {
   const sessionSnap = await db.collection('oauthSessions').doc(tokenData.sessionId).get();
   if (!sessionSnap.exists) return { success: false, status: 401, code: 'SESSION_NOT_FOUND', message: 'Sessão OAuth vinculada não encontrada.' };
   const sessionData = sessionSnap.data();
+  if (sessionData.iss !== expectedIssuer) return { success: false, status: 401, code: 'INVALID_SESSION_ISSUER', message: 'Emissor (issuer) da sessão OAuth não confere com o ambiente.' };
+  if (sessionData.aud !== expectedIssuer) return { success: false, status: 401, code: 'INVALID_SESSION_AUDIENCE', message: 'Público (audience) da sessão OAuth não confere com o ambiente.' };
   if (sessionData.active === false || sessionData.revoked || sessionData.userId !== tokenData.userId || sessionData.clientId !== tokenData.clientId
       || !Number.isFinite(sessionData.expiresAt) || sessionData.expiresAt <= Date.now()) {
     return { success: false, status: 401, code: 'SESSION_REVOKED', message: 'Sessão MCP revogada, expirada ou vinculada a outro cliente/ambiente.' };

@@ -5,6 +5,7 @@ import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
+import { resolveOAuthApiOrigin } from '../utils/oauthEnvironment';
 
 export function OAuthConsent() {
   const [searchParams] = useSearchParams();
@@ -15,12 +16,21 @@ export function OAuthConsent() {
   const [loading, setLoading] = useState(false);
   const [clientName, setClientName] = useState('Cliente MCP');
   const [scopes, setScopes] = useState<string[]>([]);
-  const apiUrl = useMemo(() => {
-    const isDev = window.location.hostname === 'dev.luisices.com.br';
-    return `${window.location.protocol}//api${isDev ? '.dev' : ''}.luisices.com.br/oauth/authorize`;
+  const apiOrigin = useMemo(() => {
+    if (typeof window === 'undefined') return null;
+    return resolveOAuthApiOrigin({
+      hostname: window.location.hostname,
+      isDevelopmentBuild: import.meta.env.DEV,
+      firebaseProjectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+    });
   }, []);
+  const apiUrl = apiOrigin ? `${apiOrigin}/oauth/authorize` : null;
 
   useEffect(() => {
+    if (!apiUrl) {
+      setError('Ambiente OAuth não reconhecido. Abra a página pelo domínio oficial de DEV ou produção.');
+      return;
+    }
     if (!requestId) return;
     const infoUrl = apiUrl.replace('/oauth/authorize', '/oauth/consent');
     fetch(`${infoUrl}?request_id=${encodeURIComponent(requestId)}`)
@@ -36,6 +46,10 @@ export function OAuthConsent() {
   async function authorize(event: FormEvent) {
     event.preventDefault();
     setError('');
+    if (!apiUrl) {
+      setError('Ambiente OAuth não reconhecido. Nenhuma credencial foi enviada.');
+      return;
+    }
     if (!requestId) {
       setError('Solicitação de autorização ausente. Recomece a conexão pelo ChatGPT.');
       return;
@@ -74,7 +88,7 @@ export function OAuthConsent() {
             <ul className="list-disc pl-5 text-sm text-muted-foreground">{scopes.map((scope) => <li key={scope}>{scope}</li>)}</ul>
             <p className="text-sm text-muted-foreground">Sua senha é validada pelo Firebase Authentication. A autorização fica vinculada à sua conta e às permissões atuais.</p>
             {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
-            <Button className="w-full" type="submit" disabled={loading}>{loading ? 'Validando e autorizando…' : 'Entrar e autorizar'}</Button>
+            <Button className="w-full" type="submit" disabled={loading || !apiUrl}>{loading ? 'Validando e autorizando…' : 'Entrar e autorizar'}</Button>
           </form>
         </CardContent>
       </Card>

@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   calculateS256Challenge,
   handleOAuthAuthorize,
@@ -73,6 +73,7 @@ function response() {
 }
 
 const callback = 'https://chatgpt.com/aip/g-mcp/oauth/callback';
+const devOrigin = 'https://api.dev.luisices.com.br';
 const verifier = 'dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk';
 const baseRequest = (clientId: string, extra = {}) => ({
   response_type: 'code', client_id: clientId, redirect_uri: callback,
@@ -85,6 +86,25 @@ async function register(db: MemoryFirestore, redirectUris = [callback]) {
   await handleOAuthRegister({ method: 'POST', body: { client_name: 'ChatGPT local test', redirect_uris: redirectUris }, ip: '127.0.0.1' } as any, res, db as any);
   return res;
 }
+
+async function registerClientId(db: MemoryFirestore) {
+  const result = await register(db);
+  expect(result.statusCode).toBe(201);
+  expect(result.body.client_id).toMatch(/^client_[a-f0-9]{24}$/);
+  return result.body.client_id as string;
+}
+
+async function seedValidAccess(db: MemoryFirestore, { userId, clientId, token, scopes, sessionId = `session-${userId}`, session = {}, tokenOrigin = devOrigin }: {
+  userId: string; clientId: string; token: string; scopes?: string[]; sessionId?: string; session?: Stored;
+  tokenOrigin?: string;
+}) {
+  await db.collection('oauthClients').doc(clientId).set({ enabled: true });
+  await db.collection('oauthAccessTokens').doc(token).set({ accessToken: token, userId, clientId, sessionId, ...(scopes ? { scopes } : {}), iss: tokenOrigin, aud: tokenOrigin, authTime: Math.floor(Date.now() / 1000), expiresAt: Date.now() + 3600000 });
+  await db.collection('oauthSessions').doc(sessionId).set({ userId, clientId, iss: devOrigin, aud: devOrigin, expiresAt: Date.now() + 3600000, active: true, revoked: false, ...session });
+  await db.collection('userProfiles').doc(userId).set({ role: 'funcionario', active: true, permissions: { mcpAccess: true } });
+}
+
+afterEach(() => vi.unstubAllEnvs());
 
 async function beginAuthorization(db: MemoryFirestore, clientId: string, overrides = {}) {
   const res = response();
@@ -223,7 +243,7 @@ describe('OAuth authorization and client binding', () => {
 
   it('does not expand read, draft, or absent scopes and never calls a write executor without orders:create', async () => {
     const db = new MemoryFirestore();
-    await db.collection('oauthClients').doc('client-a').set({ enabled: true });
+    const clientId = await registerClientId(db);
     const fixtures = [
       { uid: 'reader', scopes: ['orders:read'] },
       { uid: 'drafter', scopes: ['orders:draft'] },
@@ -232,10 +252,10 @@ describe('OAuth authorization and client binding', () => {
     const validResults = [];
     for (const fixture of fixtures) {
       const token = `lui_oauth_at_${fixture.uid}`;
-      await db.collection('oauthAccessTokens').doc(token).set({ accessToken: token, userId: fixture.uid, clientId: 'client-a', sessionId: `session-${fixture.uid}`, ...(fixture.scopes ? { scopes: fixture.scopes } : {}), iss: 'https://api.dev.luisices.com.br', aud: 'https://api.dev.luisices.com.br', authTime: Math.floor(Date.now() / 1000), expiresAt: Date.now() + 3600000 });
-      await db.collection('oauthSessions').doc(`session-${fixture.uid}`).set({ userId: fixture.uid, clientId: 'client-a', iss: 'https://api.dev.luisices.com.br', aud: 'https://api.dev.luisices.com.br', expiresAt: Date.now() + 3600000, active: true, revoked: false });
-      await db.collection('userProfiles').doc(fixture.uid).set({ role: 'funcionario', active: true, permissions: { mcpAccess: true } });
-      validResults.push(await validateOAuthAccessToken(token, db as any));
+      await seedValidAccess(db, { userId: fixture.uid, clientId, token, scopes: fixture.scopes });
+      const result = await validateOAuthAccessToken(token, db as any);
+      expect(result.success).toBe(true);
+      if (result.success) validResults.push(result);
     }
     expect(validResults.map((result: any) => result.keyData.scopes)).toEqual([['orders:read'], ['orders:draft'], []]);
     const executor = { executeCreateOrder: vi.fn() } as any;
@@ -245,13 +265,53 @@ describe('OAuth authorization and client binding', () => {
 
   it('applies a Firestore shared hourly limit to OAuth calls per user', async () => {
     const db = new MemoryFirestore();
-    await db.collection('oauthClients').doc('client-rate').set({ enabled: true });
-    const token = 'lui_oauth_at_rate_test';
-    await db.collection('oauthAccessTokens').doc(token).set({ accessToken: token, userId: 'rate-user', clientId: 'client-rate', sessionId: 'rate-session', scopes: ['orders:read'], iss: 'https://api.dev.luisices.com.br', aud: 'https://api.dev.luisices.com.br', authTime: Math.floor(Date.now() / 1000), expiresAt: Date.now() + 3600000 });
-    await db.collection('oauthSessions').doc('rate-session').set({ userId: 'rate-user', clientId: 'client-rate', iss: 'https://api.dev.luisices.com.br', aud: 'https://api.dev.luisices.com.br', expiresAt: Date.now() + 3600000, active: true, revoked: false });
-    await db.collection('userProfiles').doc('rate-user').set({ role: 'funcionario', active: true, permissions: { mcpAccess: true } });
+    const clientId = await registerClientId(db);
+    const tokenA = 'lui_oauth_at_rate_test_a';
+    const tokenB = 'lui_oauth_at_rate_test_b';
+    const refreshToken = 'lui_oauth_rt_rate_test';
+    await seedValidAccess(db, { userId: 'rate-user', clientId, token: tokenA, scopes: ['orders:read'], sessionId: 'rate-session-a' });
+    await seedValidAccess(db, { userId: 'rate-user', clientId, token: tokenB, scopes: ['orders:read'], sessionId: 'rate-session-b' });
+    await db.collection('oauthSessions').doc('rate-session-a').update({ accessToken: tokenA, refreshToken });
+    await db.collection('oauthRefreshTokens').doc(refreshToken).set({ refreshToken, accessToken: tokenA, sessionId: 'rate-session-a', clientId, userId: 'rate-user', authTime: Math.floor(Date.now() / 1000), scope: 'orders:read', scopes: ['orders:read'], iss: devOrigin, aud: devOrigin, expiresAt: Date.now() + 3600000, revoked: false });
     let last: any;
-    for (let i = 0; i < 121; i += 1) last = await validateOAuthAccessToken(token, db as any);
-    expect(last).toMatchObject({ success: false, status: 429, code: 'RATE_LIMIT_EXCEEDED' });
+    for (let i = 0; i < 120; i += 1) last = await validateOAuthAccessToken(i % 2 ? tokenA : tokenB, db as any);
+    expect(last.success).toBe(true);
+    const refreshed = response();
+    await handleOAuthToken({ method: 'POST', body: { grant_type: 'refresh_token', refresh_token: refreshToken, client_id: clientId }, ip: '127.0.0.4' } as any, refreshed, db as any);
+    expect(refreshed.statusCode).toBe(200);
+    expect(refreshed.body.access_token).not.toBe(tokenA);
+    const afterRenewal = await validateOAuthAccessToken(refreshed.body.access_token, db as any);
+    expect(afterRenewal).toMatchObject({ success: false, status: 429, code: 'RATE_LIMIT_EXCEEDED' });
+  });
+
+  it.each([
+    ['development', 'https://api.dev.luisices.com.br'],
+    ['production', 'https://api.luisices.com.br'],
+  ])('accepts matching token and session environments for %s', async (project, origin) => {
+    vi.stubEnv('GCLOUD_PROJECT', project === 'production' ? 'papelaria-dashboard' : 'luisices-dev');
+    const db = new MemoryFirestore();
+    const clientId = await registerClientId(db);
+    const token = `lui_oauth_at_${project}`;
+    await seedValidAccess(db, { userId: project, clientId, token, scopes: ['orders:read'], tokenOrigin: origin, session: { iss: origin, aud: origin } });
+    const result = await validateOAuthAccessToken(token, db as any);
+    expect(result.success).toBe(true);
+  });
+
+  it.each([
+    ['issuer from another environment', { iss: 'https://api.luisices.com.br' }, 'INVALID_SESSION_ISSUER'],
+    ['audience from another environment', { aud: 'https://api.luisices.com.br' }, 'INVALID_SESSION_AUDIENCE'],
+    ['missing issuer', { iss: undefined }, 'INVALID_SESSION_ISSUER'],
+    ['missing audience', { aud: undefined }, 'INVALID_SESSION_AUDIENCE'],
+    ['revoked session', { revoked: true }, 'SESSION_REVOKED'],
+    ['expired session', { expiresAt: Date.now() - 1 }, 'SESSION_REVOKED'],
+    ['different user', { userId: 'other-user' }, 'SESSION_REVOKED'],
+    ['different client', { clientId: 'client_000000000000000000000000' }, 'SESSION_REVOKED'],
+  ])('rejects a session with %s', async (_label, override, code) => {
+    const db = new MemoryFirestore();
+    const clientId = await registerClientId(db);
+    const token = 'lui_oauth_at_session_environment';
+    await seedValidAccess(db, { userId: 'session-user', clientId, token, scopes: ['orders:read'], session: override as Stored });
+    const result = await validateOAuthAccessToken(token, db as any);
+    expect(result).toMatchObject({ success: false, status: 401, code });
   });
 });
