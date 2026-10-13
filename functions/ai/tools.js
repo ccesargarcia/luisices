@@ -200,6 +200,61 @@ function normalizePhone(phone) {
   return digits.startsWith('55') ? digits : `55${digits}`;
 }
 
+/**
+ * Validação rigorosa de prazos de entrega no fuso horário do negócio (America/Sao_Paulo)
+ */
+function validateAndNormalizeDeliveryDate(rawDateString) {
+  let rawDate = String(rawDateString || '').trim();
+  if (!rawDate) {
+    throw new Error('Data de entrega é obrigatória para registrar o pedido.');
+  }
+
+  // Normaliza DD/MM/AAAA ou DD-MM-AAAA para AAAA-MM-DD
+  const brMatch = rawDate.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+  if (brMatch) {
+    const day = brMatch[1].padStart(2, '0');
+    const month = brMatch[2].padStart(2, '0');
+    const year = brMatch[3];
+    rawDate = `${year}-${month}-${day}`;
+  }
+
+  const dateMatch = rawDate.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!dateMatch) {
+    throw new Error(`Formato de data de entrega inválido ("${rawDateString}"). Utilize o formato AAAA-MM-DD ou DD/MM/AAAA.`);
+  }
+
+  // Obter a data de hoje no fuso horário do negócio
+  const todayParts = new Intl.DateTimeFormat('en-US', {
+    timeZone: BUSINESS_TIMEZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(new Date());
+
+  const getP = (type) => todayParts.find((p) => p.type === type)?.value || '00';
+  const todayStr = `${getP('year')}-${getP('month')}-${getP('day')}`;
+
+  if (rawDate < todayStr) {
+    throw new Error(
+      `Data de entrega inválida (${rawDate}). A data de entrega não pode ser anterior à data de hoje (${todayStr} no horário de Brasília).`
+    );
+  }
+
+  const isToday = rawDate === todayStr;
+  const deliveryTime = new Date(`${rawDate}T12:00:00-03:00`).getTime();
+  const todayTime = new Date(`${todayStr}T12:00:00-03:00`).getTime();
+  const diffDays = Math.round((deliveryTime - todayTime) / (24 * 60 * 60 * 1000));
+  const isUrgent = diffDays <= 1;
+
+  return {
+    deliveryDate: rawDate,
+    todayStr,
+    isToday,
+    diffDays,
+    isUrgent,
+  };
+}
+
 class AiToolsExecutor {
   constructor(repositories) {
     this.repos = repositories;
@@ -979,9 +1034,33 @@ class AiToolsExecutor {
       quantity: args.quantity != null && Number(args.quantity) > 0 && Number.isFinite(Number(args.quantity)) ? Number(args.quantity) : undefined,
       totalPrice: args.totalPrice != null && args.totalPrice !== '' && Number.isFinite(Number(args.totalPrice)) ? Number(args.totalPrice) : undefined,
       paidAmount: args.paidAmount != null && args.paidAmount !== '' && Number.isFinite(Number(args.paidAmount)) ? Number(args.paidAmount) : undefined,
-      deliveryDate: args.deliveryDate || '',
+    let draftDeliveryDate = args.deliveryDate || '';
+    const draftWarnings = [];
+    if (draftDeliveryDate) {
+      try {
+        const dVal = validateAndNormalizeDeliveryDate(draftDeliveryDate);
+        draftDeliveryDate = dVal.deliveryDate;
+        if (dVal.isUrgent) {
+          draftWarnings.push('Prazo urgente detectado: data de entrega em menos de 24-48 horas.');
+        }
+      } catch (dErr) {
+        draftWarnings.push(`Atenção ao prazo: ${dErr.message}`);
+      }
+    }
+
+    return {
+      preparationStatus: 'draft_prepared',
+      customerName: args.customerName || 'Cliente',
+      customerPhone: normalizePhone(phone),
+      productName: pName,
+      productSummary: pName,
+      quantity: args.quantity != null && Number(args.quantity) > 0 && Number.isFinite(Number(args.quantity)) ? Number(args.quantity) : undefined,
+      totalPrice: args.totalPrice != null && args.totalPrice !== '' && Number.isFinite(Number(args.totalPrice)) ? Number(args.totalPrice) : undefined,
+      paidAmount: args.paidAmount != null && args.paidAmount !== '' && Number.isFinite(Number(args.paidAmount)) ? Number(args.paidAmount) : undefined,
+      deliveryDate: draftDeliveryDate,
       theme: args.theme || '',
       notes: args.notes || '',
+      warnings: draftWarnings.length > 0 ? draftWarnings : undefined,
       nextActionHint: 'Para gravar e registrar oficialmente este pedido na fila de produção do sistema Luisices, execute a ferramenta create_order com estes parâmetros.',
     };
   }
@@ -1017,17 +1096,9 @@ class AiToolsExecutor {
     const cleanPaidAmount = Math.max(0, Math.min(cleanTotalPrice, Math.round((Number(args.paidAmount) || 0) * 100) / 100));
     const remainingAmount = Math.max(0, Math.round((cleanTotalPrice - cleanPaidAmount) * 100) / 100);
 
-    // Validação e normalização de data de entrega
-    let rawDate = String(args.deliveryDate || '').trim();
-    if (!rawDate) {
-      throw new Error('Data de entrega é obrigatória para registrar o pedido.');
-    }
-
-    // Normaliza DD/MM/AAAA para AAAA-MM-DD
-    if (/^\d{2}\/\d{2}\/\d{4}$/.test(rawDate)) {
-      const [d, m, y] = rawDate.split('/');
-      rawDate = `${y}-${m}-${d}`;
-    }
+    // Validação rigorosa de prazo no fuso de Brasília
+    const dateValidation = validateAndNormalizeDeliveryDate(args.deliveryDate);
+    const rawDate = dateValidation.deliveryDate;
 
     // Busca cliente na base
     let customerPhone = normalizePhone(args.customerPhone || '');
@@ -1061,9 +1132,12 @@ class AiToolsExecutor {
 
     // Tags
     const tags = [{ name: 'ChatGPT', color: '#10a37f' }];
+    if (dateValidation.isUrgent) {
+      tags.push({ name: 'Prazo Urgente', color: '#ef4444' });
+    }
     if (Array.isArray(args.tags)) {
       for (const t of args.tags) {
-        if (typeof t === 'string' && t.trim() && t.trim().toLowerCase() !== 'chatgpt') {
+        if (typeof t === 'string' && t.trim() && t.trim().toLowerCase() !== 'chatgpt' && t.trim().toLowerCase() !== 'prazo urgente') {
           tags.push({ name: t.trim(), color: '#6366f1' });
         }
       }
@@ -1247,4 +1321,5 @@ module.exports = {
   AiToolsExecutor,
   getPeriodInterval,
   normalizePhone,
+  validateAndNormalizeDeliveryDate,
 };
