@@ -85,7 +85,7 @@ const COLLECTIONS = {
   SETTINGS: 'integrationSettings',
   SETTINGS_DOC_MCP: 'mcp',
   KEYS: 'mcpApiKeys',
-  USERS: 'users',
+  USERS: 'userProfiles',
 };
 
 const CACHE_TTL_MS = {

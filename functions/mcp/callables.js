@@ -167,12 +167,15 @@ const createMcpApiKey = onCall({ cors: true, maxInstances: 5 }, async (request) 
     throw new HttpsError('invalid-argument', 'O nome de identificação da chave deve ter no mínimo 3 caracteres.');
   }
 
-  // Validação do usuário no Firestore
+  // Validação do usuário no Firestore (coleção userProfiles)
   const userSnap = await db.collection(COLLECTIONS.USERS).doc(userId).get();
-  if (!userSnap.exists) {
+  let userData = userSnap.exists ? userSnap.data() : null;
+
+  if (!userData && userId === profile.uid) {
+    userData = profile;
+  } else if (!userData) {
     throw new HttpsError('not-found', 'Colaborador selecionado não encontrado no sistema.');
   }
-  const userData = userSnap.data();
 
   if (userData.active === false || userData.status === 'paused') {
     throw new HttpsError('failed-precondition', 'Não é possível criar chave para um colaborador inativo.');
