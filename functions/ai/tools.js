@@ -1048,6 +1048,20 @@ class AiToolsExecutor {
       }
     }
 
+    const draftLines = [
+      `📝 **Rascunho de Pedido Preparado**`,
+      `• **Cliente:** ${args.customerName || 'Cliente'}${phone ? ` (${normalizePhone(phone)})` : ''}`,
+      `• **Produto:** ${pName}${args.quantity ? ` (${args.quantity} un)` : ''}`,
+    ];
+    if (args.theme) draftLines.push(`• **Tema:** ${args.theme}`);
+    if (draftDeliveryDate) draftLines.push(`• **Data Prevista:** ${draftDeliveryDate}`);
+    if (args.totalPrice != null && args.totalPrice !== '') draftLines.push(`• **Valor Estimado:** R$ ${Number(args.totalPrice).toFixed(2)}`);
+    if (draftWarnings.length > 0) {
+      draftLines.push(`⚠️ **Alertas:** ${draftWarnings.join(' | ')}`);
+    }
+    draftLines.push(`\n💡 *Para confirmar e salvar oficialmente este pedido na fila do ateliê, execute a ferramenta create_order com estes dados.*`);
+    const formattedSummary = draftLines.join('\n');
+
     return {
       preparationStatus: 'draft_prepared',
       customerName: args.customerName || 'Cliente',
@@ -1061,6 +1075,7 @@ class AiToolsExecutor {
       theme: args.theme || '',
       notes: args.notes || '',
       warnings: draftWarnings.length > 0 ? draftWarnings : undefined,
+      formattedSummary,
       nextActionHint: 'Para gravar e registrar oficialmente este pedido na fila de produção do sistema Luisices, execute a ferramenta create_order com estes parâmetros.',
     };
   }
@@ -1195,6 +1210,15 @@ class AiToolsExecutor {
         const existingDoc = existingSnap.docs[0];
         const existingData = existingDoc.data();
         if (!existingData.deletedAt && !existingData.isDeleted) {
+          const dupSummary = [
+            `ℹ️ **Pedido ${existingData.orderNumber} já constava no sistema!**`,
+            `• **Cliente:** ${existingData.customerName}${existingData.customerPhone ? ` (${existingData.customerPhone})` : ''}`,
+            `• **Produto:** ${existingData.productName} (${existingData.quantity} un)`,
+            `• **Entrega:** ${existingData.deliveryDate}`,
+            `• **Total:** R$ ${Number(existingData.totalPrice || 0).toFixed(2)}`,
+            `\n*(Operação idempotente: a chamada foi reconhecida e nenhuma duplicata foi gravada).*`,
+          ].join('\n');
+
           return {
             success: true,
             isDuplicate: true,
@@ -1211,6 +1235,7 @@ class AiToolsExecutor {
             paymentStatus: existingData.payment?.status || 'pending',
             deliveryDate: existingData.deliveryDate,
             status: existingData.status,
+            formattedSummary: dupSummary,
             message: `Pedido ${existingData.orderNumber} já havia sido registrado para ${existingData.customerName} (idempotência preservada, sem duplicações).`,
           };
         }
@@ -1321,6 +1346,34 @@ class AiToolsExecutor {
       });
     }
 
+    let brDisplayDate = rawDate;
+    if (/^\d{4}-\d{2}-\d{2}$/.test(rawDate)) {
+      const [y, m, d] = rawDate.split('-');
+      brDisplayDate = `${d}/${m}/${y}`;
+    }
+
+    const summaryLines = [
+      `✅ **Pedido ${createdOrderNumber} Registrado no Sistema Luisices!**`,
+      `• **Cliente:** ${cleanCustomer}${customerPhone ? ` (${customerPhone})` : ''}`,
+      `• **Produto:** ${cleanProduct} (${cleanQuantity} un)`,
+    ];
+    if (args.theme) summaryLines.push(`• **Tema:** ${args.theme}`);
+    summaryLines.push(
+      `• **Data de Entrega:** ${brDisplayDate} (${dateValidation.diffDays === 0 ? 'Hoje' : dateValidation.diffDays === 1 ? 'Amanhã' : `em ${dateValidation.diffDays} dias`})`
+    );
+    summaryLines.push(
+      `• **Financeiro:** Total R$ ${cleanTotalPrice.toFixed(2)} | Sinal pago: R$ ${cleanPaidAmount.toFixed(2)} | Saldo a receber: R$ ${remainingAmount.toFixed(2)}`
+    );
+    summaryLines.push(`• **Fila de Produção:** Etapa Inicial (Design)`);
+    if (financialWarning) {
+      summaryLines.push(`⚠️ **Aviso Financeiro:** ${financialWarning}`);
+    }
+    if (dateValidation.isUrgent) {
+      summaryLines.push(`🚨 **Urgência:** Pedido com tag de Prazo Urgente.`);
+    }
+
+    const formattedSummary = summaryLines.join('\n');
+
     return {
       success: true,
       orderId,
@@ -1337,6 +1390,7 @@ class AiToolsExecutor {
       status: 'pending',
       requiresFinancialApproval,
       financialWarning: financialWarning || undefined,
+      formattedSummary,
       message: `Pedido ${createdOrderNumber} criado com sucesso para ${cleanCustomer}!`,
     };
   }
