@@ -324,7 +324,7 @@ export function McpSettingsSection({ isAdmin }: McpSettingsSectionProps) {
   const handleOpenMemberModal = (member: McpTeamMember) => {
     setEditingMember(member);
     setMemberAccess(member.mcpAccess);
-    const defaults = member.mcpScopes && member.mcpScopes.length > 0
+    const defaults = Array.isArray(member.mcpScopes)
       ? member.mcpScopes
       : (status?.availableScopes || [])
           .filter((s) => member.role === 'admin' || !s.requiresAdmin)
@@ -1333,6 +1333,12 @@ export function McpSettingsSection({ isAdmin }: McpSettingsSectionProps) {
               <span className="text-xs font-semibold text-foreground uppercase tracking-wider block">
                 Escopos Permitidos para este Colaborador:
               </span>
+
+              {memberScopes.length === 0 && (
+                <div className="p-2.5 rounded-lg border border-amber-500/40 bg-amber-500/10 text-amber-600 dark:text-amber-400 text-xs font-medium">
+                  ⚠️ Nenhum escopo selecionado: nenhuma funcionalidade MCP / ChatGPT será permitida para este colaborador.
+                </div>
+              )}
 
               <div className="space-y-3 max-h-60 overflow-y-auto pr-1">
                 {Object.entries(groupedScopes).map(([moduleName, scopes]) => {

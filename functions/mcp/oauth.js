@@ -53,25 +53,41 @@ function parseScopes(value) {
 
 function getEffectiveUserScopes(requestedScopes, userProfile) {
   if (!Array.isArray(requestedScopes) || requestedScopes.length === 0) {
-    return [MCP_SCOPES.ORDERS_READ.id];
-  }
-  const isAdmin = userProfile && userProfile.role === 'admin';
-  if (isAdmin) {
-    return requestedScopes;
+    return [];
   }
 
-  const customScopes = userProfile?.permissions?.mcpScopes || userProfile?.mcpScopes;
-  const validNonAdminScopes = Object.values(MCP_SCOPES)
-    .filter((s) => !s.requiresAdmin)
+  const serverSupportedScopeIds = Object.values(MCP_SCOPES).map((s) => s.id);
+  const validRequested = requestedScopes.filter((s) => serverSupportedScopeIds.includes(s));
+  if (validRequested.length === 0) {
+    return [];
+  }
+
+  const isAdmin = Boolean(userProfile && userProfile.role === 'admin');
+
+  // Escopos permitidos pelo papel (role)
+  const roleAllowedScopeIds = Object.values(MCP_SCOPES)
+    .filter((s) => isAdmin || !s.requiresAdmin)
     .map((s) => s.id);
 
-  let allowedForUser = validNonAdminScopes;
-  if (Array.isArray(customScopes) && customScopes.length > 0) {
-    allowedForUser = customScopes.filter((s) => validNonAdminScopes.includes(s));
+  // Checa escopos granulares configurados no perfil (permissions.mcpScopes > mcpScopes)
+  let configuredScopes = null;
+  if (userProfile && userProfile.permissions && Array.isArray(userProfile.permissions.mcpScopes)) {
+    configuredScopes = userProfile.permissions.mcpScopes;
+  } else if (userProfile && Array.isArray(userProfile.mcpScopes)) {
+    configuredScopes = userProfile.mcpScopes;
   }
 
-  const effective = requestedScopes.filter((s) => allowedForUser.includes(s));
-  return effective.length > 0 ? effective : (allowedForUser.length > 0 ? allowedForUser : [MCP_SCOPES.ORDERS_READ.id]);
+  let allowedForUser;
+  if (Array.isArray(configuredScopes)) {
+    // Se o array está presente (inclusive []), restringe aos valores presentes e permitidos pelo papel
+    allowedForUser = configuredScopes.filter((s) => roleAllowedScopeIds.includes(s));
+  } else {
+    // Configuração ausente (undefined): comportamento legado por papel
+    allowedForUser = roleAllowedScopeIds;
+  }
+
+  // Interseção estrita com os escopos solicitados. Nunca adiciona escopos extras!
+  return validRequested.filter((s) => allowedForUser.includes(s));
 }
 
 function authError(res, status, error, description) {
@@ -320,6 +336,9 @@ async function handleOAuthAuthorize(req, res, db, getAuth) {
       const requestedScopes = parseScopes(stored.scope);
       if (!requestedScopes) throw new Error('invalid_scope');
       const effectiveScopes = getEffectiveUserScopes(requestedScopes, currentProfile);
+      if (!effectiveScopes || effectiveScopes.length === 0) {
+        throw new Error('access_denied_no_scopes');
+      }
       tx.update(requestRef, { used: true, usedAt: Date.now(), userId: decoded.uid });
       tx.set(db.collection('oauthAuthCodes').doc(code), {
         code, clientId: stored.clientId, redirectUri: stored.redirectUri, userId: decoded.uid, authTime: decoded.auth_time,
@@ -330,6 +349,9 @@ async function handleOAuthAuthorize(req, res, db, getAuth) {
     });
   } catch (err) {
     if (err.message === 'invalid_scope') return authError(res, 400, 'invalid_scope', 'Escopos de autorização inválidos.');
+    if (err.message === 'access_denied_no_scopes') {
+      return authError(res, 403, 'access_denied', 'O perfil atual não permite um ou mais escopos administrativos solicitados.');
+    }
     return authError(res, 400, 'invalid_request', 'Solicitação de consentimento expirada ou já utilizada. Inicie novamente a conexão.');
   }
   const requestSnap = await requestRef.get();
@@ -445,15 +467,17 @@ async function handleOAuthToken(req, res, db) {
             || client.grantTypes && !client.grantTypes.includes('refresh_token')
             || profile.active === false || ['paused', 'inactive', 'disabled'].includes(profile.status) || profile.permissions?.mcpAccess === false
             || (profile.tokensValidAfterTime && (!Number.isFinite(refresh.authTime) || refresh.authTime <= profile.tokensValidAfterTime))) throw new Error('invalid_grant');
-        const scopes = parseScopes(refresh.scope);
-        if (!scopes || profile.role !== 'admin' && scopes.some((scope) => scope === MCP_SCOPES.FINANCIAL_READ.id || scope === MCP_SCOPES.TEAM_READ.id)) throw new Error('invalid_scope');
+        const previousScopes = parseScopes(refresh.scope);
+        if (!previousScopes) throw new Error('invalid_grant');
+        const scopes = getEffectiveUserScopes(previousScopes, profile);
+        if (!scopes || scopes.length === 0) throw new Error('invalid_grant');
         resultScope = scopes.join(' ');
         const expiresAt = now + expiresInSeconds * 1000;
         const refreshExpiresAt = Math.min(refresh.expiresAt, now + 30 * 24 * 3600 * 1000);
         tx.update(oldRef, { revoked: true, replacedAt: now });
         tx.set(db.collection('oauthAccessTokens').doc(newAccessToken), { accessToken: newAccessToken, refreshToken: newRefreshToken, sessionId: refresh.sessionId, clientId, userId: refresh.userId, authTime: refresh.authTime, userEmail: profile.email || '', userName: profile.displayName || profile.email || 'Usuário', scope: resultScope, scopes, iss: issuer, aud: issuer, createdAt: new Date().toISOString(), expiresAt });
         tx.set(db.collection('oauthRefreshTokens').doc(newRefreshToken), { refreshToken: newRefreshToken, accessToken: newAccessToken, sessionId: refresh.sessionId, clientId, userId: refresh.userId, authTime: refresh.authTime, userEmail: profile.email || '', scope: resultScope, scopes, iss: issuer, aud: issuer, createdAt: new Date().toISOString(), expiresAt: refreshExpiresAt, revoked: false });
-        tx.update(sessionRef, { accessToken: newAccessToken, refreshToken: newRefreshToken, lastUsedAt: new Date().toISOString() });
+        tx.update(sessionRef, { accessToken: newAccessToken, refreshToken: newRefreshToken, scope: resultScope, scopes, lastUsedAt: new Date().toISOString() });
       });
     } catch (_err) {
       return authError(res, 400, 'invalid_grant', 'Refresh token expirado, já utilizado, revogado ou vinculado a outro cliente/ambiente.');
@@ -566,9 +590,17 @@ async function validateOAuthAccessToken(accessToken, db) {
     if (!tokenScopes) return { success: false, status: 401, code: 'INVALID_SCOPE', message: 'Token OAuth contém escopos desconhecidos.' };
   }
   if (tokenScopes.some((value) => !ALLOWED_SCOPES.has(value))) return { success: false, status: 401, code: 'INVALID_SCOPE', message: 'Token OAuth contém escopos desconhecidos.' };
-  if (userProfile.role !== 'admin' && tokenScopes.some((value) => value === MCP_SCOPES.FINANCIAL_READ.id || value === MCP_SCOPES.TEAM_READ.id)) {
-    return { success: false, status: 403, code: 'SCOPE_PERMISSION_DENIED', message: 'O perfil atual não permite os escopos administrativos deste token.' };
+
+  const currentEffectiveScopes = getEffectiveUserScopes(tokenScopes, userProfile);
+  if (tokenScopes.length > 0 && currentEffectiveScopes.length === 0) {
+    return {
+      success: false,
+      status: 403,
+      code: 'SCOPE_PERMISSION_DENIED',
+      message: 'As permissões MCP do perfil foram alteradas e nenhum escopo do token é mais permitido.',
+    };
   }
+
   if (!await consumeOAuthRateLimit(db, `mcp-user:${tokenData.userId}`, 120)) {
     return { success: false, status: 429, code: 'RATE_LIMIT_EXCEEDED', message: 'Limite de 120 chamadas MCP por hora excedido para esta conta.' };
   }
@@ -577,7 +609,7 @@ async function validateOAuthAccessToken(accessToken, db) {
     success: true,
     keyData: {
       userId: tokenData.userId,
-      scopes: tokenScopes,
+      scopes: currentEffectiveScopes,
       keyId: `oauth_${tokenData.userId}`,
       rateLimitPerHour: 120,
     },
@@ -596,4 +628,6 @@ module.exports = {
   handleOAuthConsentInfo,
   handleOAuthToken,
   validateOAuthAccessToken,
+  getEffectiveUserScopes,
+  parseScopes,
 };
