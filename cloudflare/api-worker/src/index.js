@@ -158,13 +158,24 @@ export default {
         method: request.method,
         headers: forwardHeaders,
         body: requestBody,
-        redirect: 'follow',
+        redirect: 'manual',
       });
 
       // 6. Retornar resposta ao cliente garantindo cabeçalhos CORS
       const responseHeaders = new Headers(originResponse.headers);
       responseHeaders.set('Access-Control-Allow-Origin', '*');
       responseHeaders.set('X-Proxy-Gateway', 'Luisices-Cloudflare-Worker');
+
+      // Se a resposta for um redirecionamento HTTP (ex: 302, 303 no fluxo OAuth)
+      // reescreve domínios internos para o domínio público da API caso necessário,
+      // preservando destinos externos (ex: callback do ChatGPT).
+      if (responseHeaders.has('location')) {
+        let loc = responseHeaders.get('location');
+        if (loc.includes('cloudfunctions.net') || loc.includes('run.app')) {
+          loc = loc.replace(/^https?:\/\/[^\/]+(\/chatGptToolsEndpoint)?/, `https://${url.hostname}`);
+          responseHeaders.set('location', loc);
+        }
+      }
 
       return new Response(originResponse.body, {
         status: originResponse.status,
