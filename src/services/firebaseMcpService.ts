@@ -9,6 +9,7 @@ import {
   McpSettingsStatus,
   CreateMcpKeyParams,
   CreateMcpKeyResult,
+  McpAuditLog,
 } from '../app/types';
 
 export class FirebaseMcpService {
@@ -105,6 +106,18 @@ export class FirebaseMcpService {
       'revokeMcpSession'
     );
     const result = await callable({ targetUid });
+    return result.data;
+  }
+
+  /**
+   * Obtém os últimos logs de auditoria de chamadas do MCP (Admin).
+   */
+  async getAuditLogs(limitCount = 25): Promise<{ success: boolean; logs: McpAuditLog[] }> {
+    const callable = httpsCallable<{ limit?: number }, { success: boolean; logs: McpAuditLog[] }>(
+      functions,
+      'getMcpAuditLogs'
+    );
+    const result = await callable({ limit: limitCount });
     return result.data;
   }
 }

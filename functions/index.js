@@ -77,6 +77,7 @@ module.exports = {
   toggleGlobalMcp: mcpFunctions.toggleGlobalMcp,
   setUserMcpEligibility: mcpFunctions.setUserMcpEligibility,
   revokeMcpSession: mcpFunctions.revokeMcpSession,
+  getMcpAuditLogs: mcpFunctions.getMcpAuditLogs,
   chatGptToolsEndpoint: mcpFunctions.chatGptToolsEndpoint,
 };
 

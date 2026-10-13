@@ -639,6 +639,57 @@ const revokeMcpSession = onCall({ cors: true, maxInstances: 5 }, async (request)
   };
 });
 
+/**
+ * Consulta histórico recente de logs de auditoria de chamadas do MCP (apenas Administradores).
+ */
+const getMcpAuditLogs = onCall(async (request) => {
+  const session = await validateSession(request);
+  const isAdmin = session.profile?.role === 'admin';
+  if (!isAdmin) {
+    throw new HttpsError('permission-denied', 'Apenas administradores podem consultar logs de auditoria do MCP.');
+  }
+
+  const db = getFirestore();
+  const limitCount = Math.min(50, Math.max(5, Number(request.data?.limit) || 20));
+
+  let snapshot;
+  try {
+    snapshot = await db
+      .collection('mcpAuditLogs')
+      .orderBy('timestamp', 'desc')
+      .limit(limitCount)
+      .get();
+  } catch (_err) {
+    // Fallback caso o índice composto não esteja pronto
+    snapshot = await db
+      .collection('mcpAuditLogs')
+      .limit(limitCount)
+      .get();
+  }
+
+  const logs = snapshot.docs.map((doc) => {
+    const d = doc.data();
+    return {
+      id: doc.id,
+      toolName: d.toolName || 'unknown',
+      keyId: d.keyId || '',
+      callerUid: d.callerUid || '',
+      callerName: d.callerName || '',
+      clientProtocol: d.clientProtocol || '',
+      executionTimeMs: d.executionTimeMs || 0,
+      success: d.success !== false,
+      errorMessage: d.errorMessage || null,
+      orderNumber: d.orderNumber || null,
+      timestamp: d.timestamp?.toDate ? d.timestamp.toDate().toISOString() : d.timestamp || new Date().toISOString(),
+    };
+  });
+
+  return {
+    success: true,
+    logs,
+  };
+});
+
 module.exports = {
   getMcpSettingsStatus,
   createMcpApiKey,
@@ -647,4 +698,5 @@ module.exports = {
   toggleGlobalMcp,
   setUserMcpEligibility,
   revokeMcpSession,
+  getMcpAuditLogs,
 };

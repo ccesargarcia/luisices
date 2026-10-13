@@ -1145,3 +1145,17 @@ export interface CreateMcpKeyResult {
   userName: string;
   scopes: string[];
 }
+
+export interface McpAuditLog {
+  id: string;
+  toolName: string;
+  keyId: string;
+  callerUid: string;
+  callerName: string;
+  clientProtocol: string;
+  executionTimeMs: number;
+  success: boolean;
+  errorMessage?: string | null;
+  orderNumber?: string | null;
+  timestamp: string;
+}

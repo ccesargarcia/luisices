@@ -42,6 +42,8 @@ import {
   LogOut,
   Radio,
   CheckCircle2,
+  History,
+  XCircle,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { firebaseMcpService } from '../../../services/firebaseMcpService';
@@ -52,6 +54,7 @@ import {
   McpTeamMember,
   McpSession,
   CreateMcpKeyResult,
+  McpAuditLog,
 } from '../../types';
 
 import { useAuth } from '../../../contexts/AuthContext';
@@ -93,6 +96,26 @@ export function McpSettingsSection({ isAdmin }: McpSettingsSectionProps) {
   const [revokingSessionId, setRevokingSessionId] = useState<string | null>(null);
   const [sessionToRevoke, setSessionToRevoke] = useState<McpSession | null>(null);
   const [confirmRevokeOpen, setConfirmRevokeOpen] = useState(false);
+
+  // Auditoria e Histórico de Execuções de IA
+  const [auditLogs, setAuditLogs] = useState<McpAuditLog[]>([]);
+  const [loadingAudit, setLoadingAudit] = useState(false);
+  const [auditExpanded, setAuditExpanded] = useState(false);
+
+  const fetchAuditLogs = useCallback(async () => {
+    if (!isAdmin) return;
+    setLoadingAudit(true);
+    try {
+      const res = await firebaseMcpService.getAuditLogs(25);
+      if (res.success) {
+        setAuditLogs(res.logs || []);
+      }
+    } catch {
+      toast.error('Erro ao consultar histórico de auditoria do MCP.');
+    } finally {
+      setLoadingAudit(false);
+    }
+  }, [isAdmin]);
 
   const fetchStatus = useCallback(async (isSilent = false) => {
     if (!hasMcpPermission) {
@@ -835,6 +858,91 @@ export function McpSettingsSection({ isAdmin }: McpSettingsSectionProps) {
                   </div>
                 ))}
               </div>
+            </div>
+          )}
+
+          {isAdmin && (
+            <div className="space-y-3 pt-4 border-t border-border/60">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <History className="size-4 text-primary" />
+                  <h4 className="text-sm font-semibold">Auditoria & Chamadas de IA (ChatGPT / MCP)</h4>
+                </div>
+                <div className="flex items-center gap-2">
+                  {auditExpanded && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={fetchAuditLogs}
+                      disabled={loadingAudit}
+                      className="h-7 text-xs gap-1"
+                    >
+                      <RefreshCw className={`size-3 ${loadingAudit ? 'animate-spin' : ''}`} />
+                      <span>Atualizar</span>
+                    </Button>
+                  )}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      const next = !auditExpanded;
+                      setAuditExpanded(next);
+                      if (next && auditLogs.length === 0) fetchAuditLogs();
+                    }}
+                    className="h-7 text-xs"
+                  >
+                    {auditExpanded ? 'Ocultar Histórico' : 'Ver Histórico'}
+                  </Button>
+                </div>
+              </div>
+
+              {auditExpanded && (
+                <div className="space-y-2">
+                  {loadingAudit && auditLogs.length === 0 ? (
+                    <div className="flex items-center justify-center p-8 text-xs text-muted-foreground gap-2">
+                      <RefreshCw className="size-4 animate-spin text-primary" />
+                      <span>Carregando histórico de auditoria...</span>
+                    </div>
+                  ) : auditLogs.length === 0 ? (
+                    <div className="p-4 rounded-lg border border-dashed border-border/80 text-center text-xs text-muted-foreground">
+                      Nenhuma execução de ferramenta registrada ainda.
+                    </div>
+                  ) : (
+                    <div className="border border-border/70 rounded-xl overflow-hidden bg-card/30 divide-y divide-border/50 text-xs">
+                      {auditLogs.map((log) => (
+                        <div key={log.id} className="p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2 hover:bg-muted/10 transition-colors">
+                          <div className="flex items-start sm:items-center gap-2.5 min-w-0">
+                            {log.success ? (
+                              <CheckCircle2 className="size-4 text-emerald-500 shrink-0 mt-0.5 sm:mt-0" />
+                            ) : (
+                              <XCircle className="size-4 text-destructive shrink-0 mt-0.5 sm:mt-0" />
+                            )}
+                            <div className="space-y-0.5 min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="font-mono font-medium text-foreground">{log.toolName}</span>
+                                <Badge variant="outline" className="text-[10px] py-0 font-mono">
+                                  {log.clientProtocol}
+                                </Badge>
+                                {log.orderNumber && (
+                                  <Badge className="bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30 text-[10px] py-0">
+                                    Pedido {log.orderNumber}
+                                  </Badge>
+                                )}
+                              </div>
+                              <p className="text-[11px] text-muted-foreground">
+                                {log.callerName || 'Assistente'} • {log.executionTimeMs}ms • {new Date(log.timestamp).toLocaleString('pt-BR')}
+                              </p>
+                              {log.errorMessage && (
+                                <p className="text-[11px] text-destructive truncate max-w-md">{log.errorMessage}</p>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
 

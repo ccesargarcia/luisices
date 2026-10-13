@@ -14,6 +14,7 @@ module.exports = {
   toggleGlobalMcp: callables.toggleGlobalMcp,
   setUserMcpEligibility: callables.setUserMcpEligibility,
   revokeMcpSession: callables.revokeMcpSession,
+  getMcpAuditLogs: callables.getMcpAuditLogs,
 
   // Endpoint HTTP onRequest para ChatGPT e Clientes MCP
   chatGptToolsEndpoint: endpoint.chatGptToolsEndpoint,

@@ -50,6 +50,44 @@ async function executeToolByName(toolsExecutor, toolName, args, scope) {
   }
 }
 
+/**
+ * Registra log de auditoria assíncrono para observabilidade do MCP e ChatGPT
+ */
+function recordMcpAuditLog(db, {
+  toolName,
+  keyId,
+  callerUid,
+  callerName,
+  clientProtocol,
+  executionTimeMs,
+  success,
+  errorMessage,
+  orderNumber,
+}) {
+  if (!db) return;
+  let FieldValue = null;
+  try {
+    FieldValue = require('firebase-admin/firestore').FieldValue;
+  } catch (_e) {}
+
+  db.collection('mcpAuditLogs')
+    .add({
+      toolName: String(toolName || 'unknown'),
+      keyId: String(keyId || 'oauth_session'),
+      callerUid: String(callerUid || ''),
+      callerName: String(callerName || ''),
+      clientProtocol: String(clientProtocol || 'unknown'),
+      executionTimeMs: Number(executionTimeMs) || 0,
+      success: Boolean(success),
+      errorMessage: errorMessage || null,
+      orderNumber: orderNumber || null,
+      timestamp: FieldValue && FieldValue.serverTimestamp ? FieldValue.serverTimestamp() : new Date().toISOString(),
+    })
+    .catch((err) => {
+      console.warn('[MCP] Falha não-bloqueante ao registrar log de auditoria:', err.message);
+    });
+}
+
 let sharedAiServices = null;
 function getSharedAiServices(db) {
   if (!sharedAiServices) {
@@ -402,11 +440,23 @@ const chatGptToolsEndpoint = onRequest(
           });
         }
 
+        const startTime = Date.now();
         try {
           const aiServices = getSharedAiServices(db);
           const { toolsExecutor } = aiServices;
           const result = await executeToolByName(toolsExecutor, toolName, toolArgs, scope);
+          const executionTimeMs = Date.now() - startTime;
           touchKeyUsage(db, keyHash);
+          recordMcpAuditLog(db, {
+            toolName,
+            keyId: keyData.keyId,
+            callerUid: scope.uid,
+            callerName: scope.displayName || scope.email,
+            clientProtocol: 'mcp-rpc',
+            executionTimeMs,
+            success: true,
+            orderNumber: result?.orderNumber || null,
+          });
 
           return res.status(200).json({
             jsonrpc: '2.0',
@@ -422,6 +472,18 @@ const chatGptToolsEndpoint = onRequest(
             },
           });
         } catch (execErr) {
+          const executionTimeMs = Date.now() - startTime;
+          recordMcpAuditLog(db, {
+            toolName,
+            keyId: keyData.keyId,
+            callerUid: scope.uid,
+            callerName: scope.displayName || scope.email,
+            clientProtocol: 'mcp-rpc',
+            executionTimeMs,
+            success: false,
+            errorMessage: execErr.message,
+          });
+
           return res.status(200).json({
             jsonrpc: '2.0',
             id: rpcId,
@@ -507,11 +569,23 @@ const chatGptToolsEndpoint = onRequest(
       const aiServices = getSharedAiServices(db);
       const { toolsExecutor } = aiServices;
 
+      const startTime = Date.now();
       try {
         const result = await executeToolByName(toolsExecutor, toolName, args, scope);
+        const executionTimeMs = Date.now() - startTime;
 
         // 6. Atualização assíncrona das métricas da chave (lastUsedAt, totalCalls)
         touchKeyUsage(db, keyHash);
+        recordMcpAuditLog(db, {
+          toolName,
+          keyId: keyData.keyId,
+          callerUid: scope.uid,
+          callerName: scope.displayName || scope.email,
+          clientProtocol: 'openapi-rest',
+          executionTimeMs,
+          success: true,
+          orderNumber: result?.orderNumber || null,
+        });
 
         // 7. Resposta estruturada e enxuta para economia de tokens no ChatGPT
         return res.status(200).json({
@@ -521,7 +595,19 @@ const chatGptToolsEndpoint = onRequest(
           data: result,
         });
       } catch (execErr) {
+        const executionTimeMs = Date.now() - startTime;
         console.error(`[MCP] Erro ao executar ferramenta ${toolName}:`, execErr);
+        recordMcpAuditLog(db, {
+          toolName,
+          keyId: keyData.keyId,
+          callerUid: scope.uid,
+          callerName: scope.displayName || scope.email,
+          clientProtocol: 'openapi-rest',
+          executionTimeMs,
+          success: false,
+          errorMessage: execErr.message,
+        });
+
         return res.status(500).json({
           error: 'TOOL_EXECUTION_ERROR',
           message: execErr.message || 'Erro interno ao processar a ferramenta no sistema.',
