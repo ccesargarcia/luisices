@@ -263,6 +263,10 @@ const TOOLS_METADATA = [
           items: { type: 'string' },
           description: 'Tags adicionais para organizar o pedido (a tag "ChatGPT" é adicionada automaticamente).',
         },
+        idempotencyKey: {
+          type: 'string',
+          description: 'Chave única de idempotência opcional para evitar duplicação em caso de reexecução de chamada.',
+        },
       },
     },
   },

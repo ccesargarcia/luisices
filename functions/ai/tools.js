@@ -1078,6 +1078,54 @@ class AiToolsExecutor {
     const db = this.repos.db;
     const uid = scope.uid;
     const year = new Date().getFullYear();
+
+    // ─── Proteção de Idempotência contra Duplicação (ChatGPT / MCP) ───
+    const crypto = require('crypto');
+    const explicitIdempotencyKey = args.idempotencyKey ? String(args.idempotencyKey).trim().slice(0, 128) : null;
+    const autoFingerprint = crypto
+      .createHash('sha256')
+      .update(`${uid}|${cleanCustomer.toLowerCase()}|${cleanProduct.toLowerCase()}|${cleanQuantity}|${cleanTotalPrice}|${rawDate}`)
+      .digest('hex')
+      .slice(0, 24);
+    const effectiveIdempotencyKey = explicitIdempotencyKey || `auto_${autoFingerprint}`;
+
+    // Consulta se já existe pedido idêntico recente com a mesma chave de idempotência
+    try {
+      const existingSnap = await db
+        .collection('orders')
+        .where('userId', '==', uid)
+        .where('idempotencyKey', '==', effectiveIdempotencyKey)
+        .limit(1)
+        .get();
+
+      if (!existingSnap.empty) {
+        const existingDoc = existingSnap.docs[0];
+        const existingData = existingDoc.data();
+        if (!existingData.deletedAt && !existingData.isDeleted) {
+          return {
+            success: true,
+            isDuplicate: true,
+            reusedExisting: true,
+            orderId: existingDoc.id,
+            orderNumber: existingData.orderNumber,
+            customerName: existingData.customerName,
+            customerPhone: existingData.customerPhone || 'Não informado',
+            productName: existingData.productName,
+            quantity: existingData.quantity,
+            totalPrice: existingData.totalPrice,
+            paidAmount: existingData.payment?.paidAmount || 0,
+            remainingAmount: existingData.payment?.remainingAmount || 0,
+            paymentStatus: existingData.payment?.status || 'pending',
+            deliveryDate: existingData.deliveryDate,
+            status: existingData.status,
+            message: `Pedido ${existingData.orderNumber} já havia sido registrado para ${existingData.customerName} (idempotência preservada, sem duplicações).`,
+          };
+        }
+      }
+    } catch (_idempErr) {
+      // Caso não haja índice composto ainda, prossegue normalmente
+    }
+
     const orderRef = db.collection('orders').doc();
     const orderId = orderRef.id;
 
@@ -1137,6 +1185,7 @@ class AiToolsExecutor {
             }] : null,
           },
           source: 'chatgpt-mcp',
+          idempotencyKey: effectiveIdempotencyKey,
           productionWorkflow: {
             currentStep: 'design',
             steps: {
@@ -1170,6 +1219,7 @@ class AiToolsExecutor {
         totalPrice: cleanTotalPrice,
         status: 'pending',
         deliveryDate: rawDate,
+        idempotencyKey: effectiveIdempotencyKey,
         createdAt: new Date().toISOString(),
       });
     }
