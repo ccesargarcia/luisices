@@ -236,7 +236,7 @@ const chatGptToolsEndpoint = onRequest(
         auth: {
           type: 'oauth',
           client_url: `${protocol}://${apiDomain}/oauth/authorize`,
-          scope: 'orders:read orders:draft customers:read pricing:estimate whatsapp:compose gallery:read',
+          scope: 'orders:read orders:draft orders:create customers:read pricing:estimate whatsapp:compose gallery:read',
           authorization_url: `${protocol}://${apiDomain}/oauth/token`,
           authorization_content_type: 'application/x-www-form-urlencoded',
           verification_tokens: {},

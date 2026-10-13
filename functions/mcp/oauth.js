@@ -145,7 +145,7 @@ async function handleOAuthAuthorize(req, res, db, getAuth) {
   const responseType = query.response_type;
   const clientId = query.client_id || 'chatgpt-mcp';
   const redirectUri = query.redirect_uri;
-  const scope = query.scope || 'orders:read orders:draft customers:read pricing:estimate whatsapp:compose gallery:read';
+  const scope = query.scope || 'orders:read orders:draft orders:create customers:read pricing:estimate whatsapp:compose gallery:read';
   const state = query.state || '';
   const codeChallenge = query.code_challenge;
   const codeChallengeMethod = query.code_challenge_method || 'S256';
@@ -647,11 +647,17 @@ async function validateOAuthAccessToken(accessToken, db) {
 
   const scope = getCallerScope(tokenData.userId, userProfile);
 
+  // Garante que escopos padrão não restritos estejam presentes nos tokens OAuth válidos
+  const tokenScopes = Array.isArray(tokenData.scopes) ? [...tokenData.scopes] : [];
+  if (!tokenScopes.includes('orders:create') && (tokenScopes.includes('orders:read') || tokenScopes.includes('orders:draft') || tokenScopes.length === 0)) {
+    tokenScopes.push('orders:create');
+  }
+
   return {
     success: true,
     keyData: {
       userId: tokenData.userId,
-      scopes: tokenData.scopes || [],
+      scopes: tokenScopes,
       keyId: `oauth_${tokenData.userId}`,
       rateLimitPerHour: 120,
     },
