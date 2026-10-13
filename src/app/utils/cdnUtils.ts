@@ -3,11 +3,11 @@
  */
 
 /**
- * Normaliza e garante que qualquer URL de imagem (seja do CDN legado cdn-dev/cdn ou do Firebase Storage)
- * seja convertida para uma URL direta e funcional do Firebase Storage com HTTP 200 OK.
+ * Converte qualquer URL do Firebase Storage para o domínio CDN configurado (Cloudflare).
+ * Garante entrega de alta velocidade e SSL próprio (ex: https://cdn-dev.luisices.com.br/users/...).
  *
  * @param url URL da imagem ou anexo
- * @returns URL funcional e limpa da imagem
+ * @returns URL formatada via CDN próprio
  */
 export function toCdnUrl(url?: string | null): string {
   if (!url || typeof url !== 'string') return '';
@@ -15,35 +15,39 @@ export function toCdnUrl(url?: string | null): string {
   const trimmed = url.trim();
   if (!trimmed) return '';
 
-  // 1. Se for uma URL legada do CDN (cdn-dev.luisices.com.br ou cdn.luisices.com.br)
-  if (trimmed.includes('cdn-dev.luisices.com.br') || trimmed.includes('cdn.luisices.com.br')) {
+  const cdnBase = import.meta.env.VITE_STORAGE_CDN_URL || 'https://cdn-dev.luisices.com.br';
+  const cleanCdnBase = cdnBase.replace(/\/+$/, '');
+
+  // 1. Se já for uma URL do CDN próprio, padroniza
+  if (trimmed.startsWith(cleanCdnBase) || trimmed.includes('cdn.luisices.com.br') || trimmed.includes('cdn-dev.luisices.com.br')) {
     try {
       const parsed = new URL(trimmed);
       const cleanPath = parsed.pathname.replace(/^\/+/, '');
-      if (!cleanPath) return trimmed;
-
-      const encodedPath = encodeURIComponent(cleanPath);
-      const isDev = trimmed.includes('cdn-dev');
-      const bucket = isDev ? 'luisices-dev.firebasestorage.app' : 'papelaria-dashboard.firebasestorage.app';
-
-      return `https://firebasestorage.googleapis.com/v0/b/${bucket}/o/${encodedPath}?alt=media`;
+      return `${cleanCdnBase}/${cleanPath}`;
     } catch {
       return trimmed;
     }
   }
 
-  // 2. Se for uma URL do Firebase Storage com domínio legado .appspot.com no ambiente Dev
-  if (trimmed.includes('firebasestorage.googleapis.com') && trimmed.includes('luisices-dev.appspot.com')) {
-    let fixed = trimmed.replace('luisices-dev.appspot.com', 'luisices-dev.firebasestorage.app');
-    if (!fixed.includes('alt=media')) {
-      fixed += (fixed.includes('?') ? '&' : '?') + 'alt=media';
-    }
-    return fixed;
-  }
+  // 2. Se for uma URL do Firebase Storage (googleapis.com)
+  if (trimmed.includes('firebasestorage.googleapis.com')) {
+    try {
+      // Padrão /o/<encodedPath>
+      const match = trimmed.match(/\/o\/(.+?)(\?.*)?$/);
+      if (match && match[1]) {
+        const rawPath = decodeURIComponent(match[1]);
+        return `${cleanCdnBase}/${rawPath}`;
+      }
 
-  // 3. Se for uma URL direta do Firebase Storage sem alt=media
-  if (trimmed.includes('firebasestorage.googleapis.com') && !trimmed.includes('alt=media')) {
-    return trimmed + (trimmed.includes('?') ? '&' : '?') + 'alt=media';
+      // Padrão /o?name=<encodedPath>
+      const nameMatch = trimmed.match(/[?&]name=([^&]+)/);
+      if (nameMatch && nameMatch[1]) {
+        const rawPath = decodeURIComponent(nameMatch[1]);
+        return `${cleanCdnBase}/${rawPath}`;
+      }
+    } catch {
+      return trimmed;
+    }
   }
 
   return trimmed;
