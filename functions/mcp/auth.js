@@ -64,9 +64,10 @@ async function getMcpGlobalSettings(db) {
   const docSnap = await db.collection(COLLECTIONS.SETTINGS).doc(COLLECTIONS.SETTINGS_DOC_MCP).get();
   const data = docSnap.exists ? docSnap.data() : { enabled: true };
 
+  const ttl = data.enabled === false ? 3000 : CACHE_TTL_MS.SETTINGS;
   GLOBAL_SETTINGS_CACHE = {
     data,
-    expiresAt: now + CACHE_TTL_MS.SETTINGS,
+    expiresAt: now + ttl,
   };
 
   return data;
@@ -163,16 +164,21 @@ async function validateMcpRequest(req, db) {
 
     userProfile = userSnap.data();
 
-    // Atualiza cache em memória
-    KEY_CACHE.set(keyHash, {
-      keyData,
-      userProfile,
-      expiresAt: now + CACHE_TTL_MS.KEY,
-    });
+    // Atualiza cache em memória apenas se a chave estiver ativa
+    if (keyData.enabled !== false) {
+      KEY_CACHE.set(keyHash, {
+        keyData,
+        userProfile,
+        expiresAt: now + CACHE_TTL_MS.KEY,
+      });
+    } else {
+      KEY_CACHE.delete(keyHash);
+    }
   }
 
   // 3. Checagem do Interruptor Individual da Chave
   if (keyData.enabled === false) {
+    KEY_CACHE.delete(keyHash);
     return {
       success: false,
       status: 403,
