@@ -23,7 +23,8 @@ export function toCdnUrl(url?: string | null): string {
     try {
       const parsed = new URL(trimmed);
       const cleanPath = parsed.pathname.replace(/^\/+/, '');
-      return `${cleanCdnBase}/${cleanPath}`;
+      const search = parsed.search || '';
+      return `${cleanCdnBase}/${cleanPath}${search}`;
     } catch {
       return trimmed;
     }
@@ -36,7 +37,8 @@ export function toCdnUrl(url?: string | null): string {
       const match = trimmed.match(/\/o\/(.+?)(\?.*)?$/);
       if (match && match[1]) {
         const rawPath = decodeURIComponent(match[1]);
-        return `${cleanCdnBase}/${rawPath}`;
+        const queryParams = match[2] || '';
+        return `${cleanCdnBase}/${rawPath}${queryParams}`;
       }
 
       // Padrão /o?name=<encodedPath>

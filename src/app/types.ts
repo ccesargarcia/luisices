@@ -299,6 +299,7 @@ export interface Permission {
   whatsapp?: boolean;
   aiCopilot?: boolean;
   mcpAccess?: boolean;
+  mcpScopes?: string[];
 }
 
 /**
@@ -633,6 +634,7 @@ export const DEFAULT_USER_PERMISSIONS: Permission = {
   whatsapp:  true,
   aiCopilot: true,
   mcpAccess: true,
+  mcpScopes: ['orders:read', 'customers:read', 'pricing:estimate', 'products:read', 'daily:briefing'],
 };
 
 export const EMPLOYEE_PERMISSIONS: Permission = {
@@ -653,7 +655,8 @@ export const EMPLOYEE_PERMISSIONS: Permission = {
   storeProducts: { view: false, create: false, edit: false, delete: false },
   whatsapp:  false,
   aiCopilot: false,
-  mcpAccess: false,
+  mcpAccess: true,
+  mcpScopes: ['orders:read', 'customers:read', 'pricing:estimate', 'products:read', 'daily:briefing'],
 };
 
 // Tipos para sistema de compartilhamento de dados

@@ -547,38 +547,40 @@ export function McpSettingsSection({ isAdmin }: McpSettingsSectionProps) {
             )}
           </div>
 
-          {/* ─── TABELA DE ELEGIBILIDADE DOS USUÁRIOS ───────────────────────── */}
-          <div className="space-y-3 pt-4 border-t border-border/60">
-            <div className="flex items-center gap-2">
-              <Users className="size-4 text-primary" />
-              <h4 className="text-sm font-semibold">Permissão de Acesso ao MCP por Colaborador</h4>
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Define quem no ateliê tem autorização para utilizar o assistente de IA. Se desmarcado, nenhuma chave desse colaborador responderá.
-            </p>
+          {/* ─── TABELA DE ELEGIBILIDADE DOS USUÁRIOS (APENAS ADMIN) ─────────── */}
+          {isAdmin && (
+            <div className="space-y-3 pt-4 border-t border-border/60">
+              <div className="flex items-center gap-2">
+                <Users className="size-4 text-primary" />
+                <h4 className="text-sm font-semibold">Permissão de Acesso ao MCP por Colaborador</h4>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Define quem no ateliê tem autorização para utilizar o assistente de IA. Se desmarcado, nenhuma chave desse colaborador responderá.
+              </p>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-              {status?.teamMembers.map((member) => (
-                <div
-                  key={member.uid}
-                  className="flex items-center justify-between p-3 rounded-lg border border-border/70 bg-card/30 backdrop-blur-xs"
-                >
-                  <div className="space-y-0.5 min-w-0 pr-2">
-                    <p className="text-xs font-semibold truncate">{member.displayName}</p>
-                    <p className="text-[11px] text-muted-foreground truncate">{member.email}</p>
-                    <Badge variant={member.role === 'admin' ? 'default' : 'secondary'} className="text-[9px] py-0">
-                      {member.role === 'admin' ? 'Admin' : 'Colaborador'}
-                    </Badge>
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                {status?.teamMembers.map((member) => (
+                  <div
+                    key={member.uid}
+                    className="flex items-center justify-between p-3 rounded-lg border border-border/70 bg-card/30 backdrop-blur-xs"
+                  >
+                    <div className="space-y-0.5 min-w-0 pr-2">
+                      <p className="text-xs font-semibold truncate">{member.displayName}</p>
+                      <p className="text-[11px] text-muted-foreground truncate">{member.email}</p>
+                      <Badge variant={member.role === 'admin' ? 'default' : 'secondary'} className="text-[9px] py-0">
+                        {member.role === 'admin' ? 'Admin' : 'Colaborador'}
+                      </Badge>
+                    </div>
+                    <Switch
+                      checked={member.mcpAccess}
+                      onCheckedChange={() => handleToggleUserEligibility(member)}
+                      disabled={togglingUserUid === member.uid}
+                    />
                   </div>
-                  <Switch
-                    checked={member.mcpAccess}
-                    onCheckedChange={() => handleToggleUserEligibility(member)}
-                    disabled={togglingUserUid === member.uid}
-                  />
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
-          </div>
+          )}
 
           {/* ─── GUIA RÁPIDO: COMO CONECTAR O PLUGIN NO CHATGPT ──────────────── */}
           <div className="p-4 rounded-xl border border-primary/20 bg-primary/5 space-y-3">
@@ -621,7 +623,7 @@ export function McpSettingsSection({ isAdmin }: McpSettingsSectionProps) {
               Criar Nova Chave de Acesso
             </DialogTitle>
             <DialogDescription>
-              Defina o colaborador responsável, o nome da chave e selecione de forma granular quais ferramentas o assistente poderá executar.
+              Defina o nome da chave e selecione de forma granular quais ferramentas o assistente poderá executar.
             </DialogDescription>
           </DialogHeader>
 
@@ -631,19 +633,26 @@ export function McpSettingsSection({ isAdmin }: McpSettingsSectionProps) {
               <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                 Colaborador Titular
               </Label>
-              <Select value={selectedUid} onValueChange={handleUserChange}>
-                <SelectTrigger className="w-full luisices-glass-input">
-                  <SelectValue placeholder="Selecione o colaborador" />
-                </SelectTrigger>
-                <SelectContent>
-                  {status?.teamMembers.map((member) => (
-                    <SelectItem key={member.uid} value={member.uid}>
-                      {member.displayName} ({member.role === 'admin' ? 'Administrador' : 'Colaborador'})
-                      {!member.mcpAccess ? ' - [Acesso MCP Bloqueado]' : ''}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              {isAdmin ? (
+                <Select value={selectedUid} onValueChange={handleUserChange}>
+                  <SelectTrigger className="w-full luisices-glass-input">
+                    <SelectValue placeholder="Selecione o colaborador" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {status?.teamMembers.map((member) => (
+                      <SelectItem key={member.uid} value={member.uid}>
+                        {member.displayName} ({member.role === 'admin' ? 'Administrador' : 'Colaborador'})
+                        {!member.mcpAccess ? ' - [Acesso MCP Bloqueado]' : ''}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : (
+                <div className="p-2.5 rounded-lg border border-border/70 bg-muted/20 text-xs font-medium flex items-center justify-between">
+                  <span>{status?.teamMembers[0]?.displayName || 'Minha Conta'}</span>
+                  <Badge variant="secondary" className="text-[10px]">Chave Pessoal</Badge>
+                </div>
+              )}
             </div>
 
             {/* 2. Nome da Chave */}

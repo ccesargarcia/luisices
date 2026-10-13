@@ -59,11 +59,7 @@ export function Settings() {
   type TabType = typeof validTabs[number];
 
   const tabParam = searchParams.get('tab') as TabType;
-  const initialTab: TabType = validTabs.includes(tabParam)
-    ? tabParam === 'integracoes' && !isAdmin
-      ? 'empresa'
-      : tabParam
-    : 'empresa';
+  const initialTab: TabType = validTabs.includes(tabParam) ? tabParam : 'empresa';
 
   const [activeTab, setActiveTab] = useState<TabType>(initialTab);
 
@@ -80,13 +76,9 @@ export function Settings() {
   useEffect(() => {
     const currentTabParam = searchParams.get('tab') as TabType;
     if (currentTabParam && validTabs.includes(currentTabParam) && currentTabParam !== activeTab) {
-      if (currentTabParam === 'integracoes' && !isAdmin) {
-        setActiveTab('empresa');
-      } else {
-        setActiveTab(currentTabParam);
-      }
+      setActiveTab(currentTabParam);
     }
-  }, [searchParams, isAdmin]);
+  }, [searchParams]);
 
   const [uploading, setUploading] = useState<'avatar' | 'logo' | 'banner' | null>(null);
   const [savingBusinessInfo, setSavingBusinessInfo] = useState(false);

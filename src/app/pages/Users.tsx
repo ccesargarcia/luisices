@@ -95,6 +95,7 @@ const MODULES: ModuleConfig[] = [
   { key: 'customers',      label: 'Clientes',                           type: 'crud' },
   { key: 'whatsapp',       label: 'Atendimento (WhatsApp)',             type: 'boolean' },
   { key: 'aiCopilot',      label: 'Copiloto de IA',                     type: 'boolean' },
+  { key: 'mcpAccess',      label: 'Integrações & Assistentes MCP / ChatGPT', type: 'boolean' },
   { key: 'products',       label: 'Produtos do Ateliê (Internos)',      type: 'crud' },
   { key: 'storeProducts',  label: 'Lojinha Online - Produtos da Vitrine', type: 'crud' },
   { key: 'store',          label: 'Lojinha Online - Aparência & Banners', type: 'boolean' },
@@ -112,7 +113,7 @@ function deepClonePermission(p?: Permission | null): Permission {
   const source = p && typeof p === 'object' ? p as unknown as Record<string, any> : {};
   const clone = JSON.parse(JSON.stringify(DEFAULT_USER_PERMISSIONS)) as Record<string, any>;
   const crudKeys = ['orders', 'archivedOrders', 'customers', 'products', 'quotes', 'users', 'emails', 'pricing', 'storeProducts'];
-  const booleanKeys = ['dashboard', 'reports', 'exchanges', 'settings', 'store', 'whatsapp', 'aiCopilot'];
+  const booleanKeys = ['dashboard', 'reports', 'exchanges', 'settings', 'store', 'whatsapp', 'aiCopilot', 'mcpAccess'];
 
   for (const key of crudKeys) {
     const value = source[key];
