@@ -9,10 +9,10 @@ try {
 } catch (_err) {
   // Fallback silencioso caso a lib esteja instalada somente em /functions
 }
-const { COLLECTIONS, CACHE_TTL_MS, DEFAULT_RATE_LIMIT_PER_HOUR } = require('./constants');
+const { COLLECTIONS, CACHE_TTL_MS, DEFAULT_RATE_LIMIT_PER_HOUR, MCP_SCOPES } = require('./constants');
 const { getCallerScope } = require('../ai/authorization');
 
-const { validateOAuthAccessToken, getEffectiveUserScopes, parseScopes } = require('./oauth');
+const { validateOAuthAccessToken, getEffectiveUserScopes } = require('./oauth');
 
 // Cache em memória para validação ultrarrápida de chaves (evita 1 leitura de Firestore por request)
 const KEY_CACHE = new Map();
@@ -202,8 +202,14 @@ async function validateMcpRequest(req, db) {
     };
   }
 
-  const rawKeyScopes = Array.isArray(keyData.scopes) ? keyData.scopes : (keyData.scope ? parseScopes(keyData.scope) || [] : []);
-  const effectiveKeyScopes = getEffectiveUserScopes(rawKeyScopes, userProfile);
+  const rawKeyScopes = Array.isArray(keyData.scopes)
+    ? keyData.scopes
+    : (typeof keyData.scope === 'string' ? keyData.scope.trim().split(/\s+/).filter(Boolean) : []);
+  // Wildcard legado é exclusivo de chaves estáticas; o perfil e o papel ainda limitam o acesso.
+  const requestedKeyScopes = rawKeyScopes.includes('*')
+    ? Object.values(MCP_SCOPES).map((scope) => scope.id)
+    : rawKeyScopes;
+  const effectiveKeyScopes = getEffectiveUserScopes(requestedKeyScopes, userProfile);
   if (effectiveKeyScopes.length === 0) {
     return {
       success: false,

@@ -71,14 +71,17 @@ function getEffectiveUserScopes(requestedScopes, userProfile) {
 
   // Checa escopos granulares configurados no perfil (permissions.mcpScopes > mcpScopes)
   let configuredScopes = null;
-  if (userProfile && userProfile.permissions && Array.isArray(userProfile.permissions.mcpScopes)) {
+  if (userProfile?.permissions && Object.prototype.hasOwnProperty.call(userProfile.permissions, 'mcpScopes')) {
     configuredScopes = userProfile.permissions.mcpScopes;
-  } else if (userProfile && Array.isArray(userProfile.mcpScopes)) {
+    if (!Array.isArray(configuredScopes)) return [];
+  } else if (userProfile && Object.prototype.hasOwnProperty.call(userProfile, 'mcpScopes')) {
     configuredScopes = userProfile.mcpScopes;
+    if (!Array.isArray(configuredScopes)) return [];
   }
 
   let allowedForUser;
   if (Array.isArray(configuredScopes)) {
+    if (configuredScopes.some((scope) => typeof scope !== 'string' || !serverSupportedScopeIds.includes(scope))) return [];
     // Se o array está presente (inclusive []), restringe aos valores presentes e permitidos pelo papel
     allowedForUser = configuredScopes.filter((s) => roleAllowedScopeIds.includes(s));
   } else {
@@ -423,6 +426,7 @@ async function handleOAuthToken(req, res, db) {
         const requestedScopes = parseScopes(data.scope);
         if (!requestedScopes) throw new Error('invalid_scope');
         const scopes = getEffectiveUserScopes(requestedScopes, profile);
+        if (scopes.length === 0) throw new Error('invalid_scope');
         resultScope = scopes.join(' ');
         const expiresAt = now + expiresInSeconds * 1000;
         const refreshExpiresAt = now + 30 * 24 * 3600 * 1000;

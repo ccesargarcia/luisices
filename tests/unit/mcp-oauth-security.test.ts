@@ -1,12 +1,15 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   calculateS256Challenge,
+  getEffectiveUserScopes,
   handleOAuthAuthorize,
   handleOAuthRegister,
   handleOAuthToken,
   validateOAuthAccessToken,
 } from '../../functions/mcp/oauth.js';
 import { buildBearerChallenge, executeScopedToolByName } from '../../functions/mcp/endpoint.js';
+import { clearMcpAuthCache, hashApiKey, validateMcpRequest } from '../../functions/mcp/auth.js';
+import { COLLECTIONS } from '../../functions/mcp/constants.js';
 
 type Stored = Record<string, any>;
 
@@ -111,6 +114,82 @@ async function beginAuthorization(db: MemoryFirestore, clientId: string, overrid
   await handleOAuthAuthorize({ method: 'GET', query: baseRequest(clientId, overrides), ip: '127.0.0.1' } as any, res, db as any, undefined as any);
   return res;
 }
+
+describe('Granular scope edge cases', () => {
+  it.each([null, 'orders:read', {}, ['unknown:scope'], ['orders:read', 7]].map((configured) => ({ configured })))('blocks present invalid configuration: %j', ({ configured }) => {
+    expect(getEffectiveUserScopes(['orders:create'], { role: 'funcionario', permissions: { mcpScopes: configured } })).toEqual([]);
+    expect(getEffectiveUserScopes(['orders:create'], { role: 'funcionario', mcpScopes: configured })).toEqual([]);
+  });
+
+  it('never falls back to legacy scopes when primary configuration is present but invalid', () => {
+    expect(getEffectiveUserScopes(['orders:create'], {
+      role: 'admin', permissions: { mcpScopes: null }, mcpScopes: ['orders:create'],
+    })).toEqual([]);
+    expect(getEffectiveUserScopes(['orders:create'], { role: 'funcionario' })).toEqual(['orders:create']);
+  });
+
+  it.each([{ scopes: ['*'] }, { scopes: '*' }])('supports legacy static wildcard without granting administrative scopes to employees: %j', async ({ scopes }) => {
+    clearMcpAuthCache();
+    const db = new MemoryFirestore();
+    const rawKey = 'lui_dev_wildcard_employee_test';
+    await db.collection(COLLECTIONS.SETTINGS).doc(COLLECTIONS.SETTINGS_DOC_MCP).set({ enabled: true });
+    await db.collection(COLLECTIONS.USERS).doc('wildcard-user').set({ role: 'funcionario', active: true, permissions: { mcpAccess: true } });
+    await db.collection(COLLECTIONS.KEYS).doc(hashApiKey(rawKey)).set({
+      keyId: 'wildcard-employee', userId: 'wildcard-user', enabled: true,
+      ...(Array.isArray(scopes) ? { scopes } : { scope: scopes }),
+    });
+    const result = await validateMcpRequest({ headers: { authorization: `Bearer ${rawKey}` } } as any, db as any);
+    expect(result.success).toBe(true);
+    expect(result.keyData.scopes).toContain('orders:read');
+    expect(result.keyData.scopes).not.toContain('financial:read');
+    expect(result.keyData.scopes).not.toContain('team:read');
+    expect(result.keyData.scopes).not.toContain('*');
+  });
+
+  it('restricts a wildcard key immediately as an admin profile changes, and blocks an empty list', async () => {
+    clearMcpAuthCache();
+    const db = new MemoryFirestore();
+    const rawKey = 'lui_dev_wildcard_restriction_test';
+    await db.collection(COLLECTIONS.SETTINGS).doc(COLLECTIONS.SETTINGS_DOC_MCP).set({ enabled: true });
+    await db.collection(COLLECTIONS.KEYS).doc(hashApiKey(rawKey)).set({ keyId: 'wildcard-admin', userId: 'wildcard-admin-user', enabled: true, scopes: ['*'] });
+    const profileRef = db.collection(COLLECTIONS.USERS).doc('wildcard-admin-user');
+    await profileRef.set({ role: 'admin', active: true, permissions: { mcpAccess: true, mcpScopes: ['orders:read'] } });
+    const request = { headers: { authorization: `Bearer ${rawKey}` } };
+    const allowed = await validateMcpRequest(request as any, db as any);
+    expect(allowed.success).toBe(true);
+    expect(allowed.keyData.scopes).toEqual(['orders:read']);
+    const executor = { executeCreateOrder: vi.fn() };
+    await expect(executeScopedToolByName(executor as any, 'create_order', {}, allowed.scope, allowed.keyData.scopes)).rejects.toMatchObject({ code: 'permission-denied' });
+    expect(executor.executeCreateOrder).not.toHaveBeenCalled();
+    await profileRef.update({ permissions: { mcpAccess: true, mcpScopes: [] } });
+    const denied = await validateMcpRequest(request as any, db as any);
+    expect(denied).toMatchObject({ success: false, status: 403, code: 'SCOPE_PERMISSION_DENIED' });
+  });
+
+  it('does not consume the authorization code or issue tokens when permissions disappear before exchange', async () => {
+    const db = new MemoryFirestore();
+    const clientId = await registerClientId(db);
+    await db.collection(COLLECTIONS.USERS).doc('removed-before-exchange').set({
+      role: 'funcionario', active: true, permissions: { mcpAccess: true, mcpScopes: [] },
+    });
+    const code = 'lui_code_removed_before_exchange';
+    await db.collection('oauthAuthCodes').doc(code).set({
+      clientId, redirectUri: callback, userId: 'removed-before-exchange', authTime: Math.floor(Date.now() / 1000),
+      scope: 'orders:create', codeChallenge: calculateS256Challenge(verifier), codeChallengeMethod: 'S256',
+      issuer: devOrigin, used: false, expiresAt: Date.now() + 300000,
+    });
+    const denied = response();
+    await handleOAuthToken({ method: 'POST', body: {
+      grant_type: 'authorization_code', code, client_id: clientId, redirect_uri: callback, code_verifier: verifier,
+    }, ip: 'synthetic-exchange' } as any, denied, db as any);
+    expect(denied.statusCode).toBe(400);
+    expect(denied.body.error).toBe('invalid_scope');
+    expect(db.records.get(`oauthAuthCodes/${code}`).used).toBe(false);
+    for (const collection of ['oauthAccessTokens', 'oauthRefreshTokens', 'oauthSessions']) {
+      expect([...db.records.keys()].filter((key) => key.startsWith(`${collection}/`))).toHaveLength(0);
+    }
+  });
+});
 
 describe('OAuth authorization and client binding', () => {
   it('advertises protected-resource metadata in 401 challenges and omits invalid_token for missing credentials', () => {
