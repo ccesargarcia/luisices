@@ -950,3 +950,13 @@ Para realizar testes integrados no ChatGPT Actions ou cliente MCP, utilize os da
 
 ---
 *Documentação gerada e mantida no repositório em `/docs/INTEGRACAO_CHATGPT_MCP.md`.*
+
+## Gestão de acesso no perfil do usuário
+
+O administrador configura o acesso em **Usuários → editar usuário → Acesso pelo ChatGPT e assistentes**. O interruptor geral desativa a integração sem apagar as funcionalidades escolhidas. Uma lista explicitamente vazia não permite funcionalidades. A tela de Configurações → Integrações mantém chaves, sessões e auditoria e oferece um atalho para a gestão de usuários.
+
+Os escopos configurados são preservados ao editar nome ou permissões de outros módulos. Clientes antigos que omitem `permissions.mcpScopes` também preservam o valor atual no backend. Um valor explícito enviado ao cadastro/edição deve ser uma lista sem duplicatas de escopos conhecidos.
+
+Para perfis não administrativos, as funcionalidades MCP respeitam permissões explícitas dos módulos: leitura e rascunhos dependem de visualizar Pedidos; criação depende de criar Pedidos; consultas de clientes, precificação e galeria dependem de visualizar os respectivos módulos; composição de mensagens depende de WhatsApp. Perfis legados sem o módulo configurado mantêm a compatibilidade existente. Administradores continuam sujeitos à lista MCP configurada e aos escopos consentidos, com elegibilidade para funcionalidades administrativas.
+
+Restringir um módulo não acrescenta escopos ao token. O backend recalcula a interseção nas chamadas e na renovação. Ao ampliar as permissões, o usuário pode precisar reconectar para consentir novos escopos. Presets de novos perfis contêm somente funcionalidades suportadas pelo servidor.

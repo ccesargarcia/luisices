@@ -3,6 +3,8 @@ import { useSearchParams } from 'react-router';
 import { useAuth } from '../../contexts/AuthContext';
 import { firebaseUserService, DeviceSession } from '../../services/firebaseUserService';
 import { firebaseAlexaService } from '../../services/firebaseAlexaService';
+import { deepClonePermission } from '../utils/userPermissions';
+import { McpProfilePermissions } from '../components/users/McpProfilePermissions';
 import { firebaseMcpService } from '../../services/firebaseMcpService';
 import { subscribeAdminPresence, AdminPresenceSnapshot } from '../../services/adminPresenceService';
 import {
@@ -97,7 +99,6 @@ const MODULES: ModuleConfig[] = [
   { key: 'customers',      label: 'Clientes',                           type: 'crud' },
   { key: 'whatsapp',       label: 'Atendimento (WhatsApp)',             type: 'boolean' },
   { key: 'aiCopilot',      label: 'Copiloto de IA',                     type: 'boolean' },
-  { key: 'mcpAccess',      label: 'Integrações & Assistentes MCP / ChatGPT', type: 'boolean' },
   { key: 'products',       label: 'Produtos do Ateliê (Internos)',      type: 'crud' },
   { key: 'storeProducts',  label: 'Lojinha Online - Produtos da Vitrine', type: 'crud' },
   { key: 'store',          label: 'Lojinha Online - Aparência & Banners', type: 'boolean' },
@@ -111,33 +112,6 @@ const MODULES: ModuleConfig[] = [
   { key: 'pricing',        label: 'Precificação & Custos de Insumos',   type: 'crud' },
 ];
 
-function deepClonePermission(p?: Permission | null): Permission {
-  const source = p && typeof p === 'object' ? p as unknown as Record<string, any> : {};
-  const clone = JSON.parse(JSON.stringify(DEFAULT_USER_PERMISSIONS)) as Record<string, any>;
-  const crudKeys = ['orders', 'archivedOrders', 'customers', 'products', 'quotes', 'users', 'emails', 'pricing', 'storeProducts'];
-  const booleanKeys = ['dashboard', 'reports', 'exchanges', 'settings', 'store', 'whatsapp', 'aiCopilot', 'mcpAccess'];
-
-  for (const key of crudKeys) {
-    const value = source[key];
-    if (typeof value === 'boolean') {
-      clone[key] = { view: value, create: value, edit: value, delete: value };
-    } else if (value && typeof value === 'object') {
-      clone[key] = { ...(clone[key] || {}), ...value };
-    }
-  }
-
-  if (source.gallery && typeof source.gallery === 'object') {
-    clone.gallery = { ...clone.gallery, ...source.gallery };
-  }
-
-  for (const key of booleanKeys) {
-    const value = source[key];
-    if (typeof value === 'boolean') clone[key] = value;
-    else if (value && typeof value === 'object' && typeof value.view === 'boolean') clone[key] = value.view;
-  }
-
-  return clone as Permission;
-}
 
 function formatUserDate(value?: string) {
   if (!value) return 'Nunca';
@@ -299,7 +273,12 @@ function UserFormDialog({ open, editingUser, onClose, onSaved }: UserFormDialogP
       setDisplayName(editingUser.displayName);
       setEmail(editingUser.email);
       setRole(editingUser.role);
-      setPermissions(deepClonePermission(editingUser.permissions));
+      const loadedPermissions = deepClonePermission(editingUser.permissions);
+      const legacyScopes = (editingUser as UserProfile & { mcpScopes?: string[] }).mcpScopes;
+      if (!Object.prototype.hasOwnProperty.call(editingUser.permissions || {}, 'mcpScopes') && Array.isArray(legacyScopes)) {
+        loadedPermissions.mcpScopes = [...legacyScopes];
+      }
+      setPermissions(loadedPermissions);
       setPassword('');
       setAlexaDirty(false);
       setAlexaError(null);
@@ -464,6 +443,8 @@ function UserFormDialog({ open, editingUser, onClose, onSaved }: UserFormDialogP
             <p className="text-sm font-semibold">Permissões de acesso</p>
             <PermissionMatrix permissions={permissions} onChange={setPermissions} />
           </div>
+
+          <McpProfilePermissions role={role} permissions={permissions} onChange={setPermissions} />
 
           {/* Integração Alexa (apenas ao editar usuário existente) */}
           {isEdit && (

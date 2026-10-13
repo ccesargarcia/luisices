@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { Link } from 'react-router';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
@@ -36,7 +37,6 @@ import {
   Lock,
   Layers,
   Activity,
-  Users,
   Wifi,
   WifiOff,
   LogOut,
@@ -51,7 +51,6 @@ import {
   McpSettingsStatus,
   McpApiKey,
   McpScopeInfo,
-  McpTeamMember,
   McpSession,
   CreateMcpKeyResult,
   McpAuditLog,
@@ -90,15 +89,6 @@ export function McpSettingsSection({ isAdmin }: McpSettingsSectionProps) {
   const [togglingGlobal, setTogglingGlobal] = useState(false);
   const [togglingKeyId, setTogglingKeyId] = useState<string | null>(null);
   const [revokingKeyId, setRevokingKeyId] = useState<string | null>(null);
-  const [togglingUserUid, setTogglingUserUid] = useState<string | null>(null);
-
-  // Modal de Permissões Granulares por Colaborador
-  const [memberModalOpen, setMemberModalOpen] = useState(false);
-  const [editingMember, setEditingMember] = useState<McpTeamMember | null>(null);
-  const [memberAccess, setMemberAccess] = useState(true);
-  const [memberScopes, setMemberScopes] = useState<string[]>([]);
-  const [savingMemberPermissions, setSavingMemberPermissions] = useState(false);
-
   // Gestão de Sessões Ativas MCP / OAuth
   const [revokingSessionId, setRevokingSessionId] = useState<string | null>(null);
   const [sessionToRevoke, setSessionToRevoke] = useState<McpSession | null>(null);
@@ -291,67 +281,6 @@ export function McpSettingsSection({ isAdmin }: McpSettingsSectionProps) {
       toast.error(err?.message || 'Erro ao revogar chave');
     } finally {
       setRevokingKeyId(null);
-    }
-  };
-
-  const handleToggleUserEligibility = async (user: McpTeamMember) => {
-    setTogglingUserUid(user.uid);
-    const nextState = !user.mcpAccess;
-    try {
-      await firebaseMcpService.setUserEligibility(user.uid, nextState);
-      setStatus((prev) =>
-        prev
-          ? {
-              ...prev,
-              teamMembers: prev.teamMembers.map((m) =>
-                m.uid === user.uid ? { ...m, mcpAccess: nextState } : m
-              ),
-            }
-          : null
-      );
-      toast.success(
-        nextState
-          ? `Acesso ao MCP liberado para ${user.displayName}.`
-          : `Acesso ao MCP bloqueado para ${user.displayName}.`
-      );
-    } catch (err: any) {
-      toast.error(err?.message || 'Erro ao alterar permissão do colaborador');
-    } finally {
-      setTogglingUserUid(null);
-    }
-  };
-
-  const handleOpenMemberModal = (member: McpTeamMember) => {
-    setEditingMember(member);
-    setMemberAccess(member.mcpAccess);
-    const defaults = Array.isArray(member.mcpScopes)
-      ? member.mcpScopes
-      : (status?.availableScopes || [])
-          .filter((s) => member.role === 'admin' || !s.requiresAdmin)
-          .map((s) => s.id);
-    setMemberScopes(defaults);
-    setMemberModalOpen(true);
-  };
-
-  const handleToggleMemberScope = (scopeId: string) => {
-    setMemberScopes((prev) =>
-      prev.includes(scopeId) ? prev.filter((id) => id !== scopeId) : [...prev, scopeId]
-    );
-  };
-
-  const handleSaveMemberPermissions = async () => {
-    if (!editingMember) return;
-    setSavingMemberPermissions(true);
-    try {
-      await firebaseMcpService.setUserEligibility(editingMember.uid, memberAccess, memberScopes);
-      toast.success(`Permissões do colaborador ${editingMember.displayName} atualizadas!`);
-      setMemberModalOpen(false);
-      setEditingMember(null);
-      await fetchStatus(true);
-    } catch (err: any) {
-      toast.error(err?.message || 'Erro ao atualizar permissões do colaborador.');
-    } finally {
-      setSavingMemberPermissions(false);
     }
   };
 
@@ -860,64 +789,11 @@ export function McpSettingsSection({ isAdmin }: McpSettingsSectionProps) {
             )}
           </div>
 
-          {/* ─── TABELA DE ELEGIBILIDADE DOS USUÁRIOS (APENAS ADMIN) ─────────── */}
           {isAdmin && (
-            <div className="space-y-3 pt-4 border-t border-border/60">
-              <div className="flex items-center gap-2">
-                <Users className="size-4 text-primary" />
-                <h4 className="text-sm font-semibold">Permissão de Acesso ao MCP por Colaborador</h4>
-              </div>
-              <p className="text-xs text-muted-foreground">
-                Define quem no ateliê tem autorização para utilizar o assistente de IA. Se desmarcado, o colaborador não conseguirá se autenticar via OAuth nem executar chamadas.
-              </p>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-                {status?.teamMembers.map((member) => (
-                  <div
-                    key={member.uid}
-                    className="flex items-center justify-between p-3 rounded-lg border border-border/70 bg-card/30 backdrop-blur-xs"
-                  >
-                    <div className="space-y-0.5 min-w-0 pr-2">
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        <p className="text-xs font-semibold truncate">{member.displayName}</p>
-                        {member.mcpSessionActive && (
-                          <Badge className="bg-emerald-500/15 border-emerald-500/30 text-emerald-600 dark:text-emerald-400 text-[9px] py-0">
-                            🟢 Sessão Aberta
-                          </Badge>
-                        )}
-                      </div>
-                      <p className="text-[11px] text-muted-foreground truncate">{member.email}</p>
-                      <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
-                        <Badge variant={member.role === 'admin' ? 'default' : 'secondary'} className="text-[9px] py-0">
-                          {member.role === 'admin' ? 'Admin' : 'Colaborador'}
-                        </Badge>
-                        {member.mcpScopes && member.mcpScopes.length > 0 && (
-                          <Badge variant="outline" className="text-[9px] py-0 font-mono text-muted-foreground">
-                            {member.mcpScopes.length} {member.mcpScopes.length === 1 ? 'escopo' : 'escopos'}
-                          </Badge>
-                        )}
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-1.5 shrink-0">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleOpenMemberModal(member)}
-                        className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground"
-                        title="Configurar escopos e permissões granulares"
-                      >
-                        <Layers className="size-3.5 mr-1" />
-                        Escopos
-                      </Button>
-                      <Switch
-                        checked={member.mcpAccess}
-                        onCheckedChange={() => handleToggleUserEligibility(member)}
-                        disabled={togglingUserUid === member.uid}
-                      />
-                    </div>
-                  </div>
-                ))}
-              </div>
+            <div className="space-y-2 pt-4 border-t border-border/60">
+              <h4 className="text-sm font-semibold">Acesso dos usuários ao ChatGPT</h4>
+              <p className="text-xs text-muted-foreground">Configure o acesso e as funcionalidades no perfil de cada usuário.</p>
+              <Button asChild variant="outline" size="sm"><Link to="/usuarios">Gerenciar usuários</Link></Button>
             </div>
           )}
 
@@ -1303,91 +1179,7 @@ export function McpSettingsSection({ isAdmin }: McpSettingsSectionProps) {
         </DialogContent>
       </Dialog>
 
-      {/* ─── MODAL DE CONFIGURAÇÃO DE ESCOPOS GRANULARES DO COLABORADOR ────── */}
-      <Dialog open={memberModalOpen} onOpenChange={setMemberModalOpen}>
-        <DialogContent className="max-w-lg bg-background border-border">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Users className="size-5 text-primary" />
-              Permissões MCP de {editingMember?.displayName}
-            </DialogTitle>
-            <DialogDescription>
-              Defina o acesso geral e os escopos individuais que este colaborador poderá utilizar no ChatGPT / MCP.
-            </DialogDescription>
-          </DialogHeader>
 
-          <DialogBody className="space-y-4 py-2">
-            <div className="flex items-center justify-between p-3 rounded-lg border bg-muted/20">
-              <div className="space-y-0.5">
-                <span className="font-semibold text-xs text-foreground block">
-                  Acesso ao ChatGPT & Assistentes (MCP)
-                </span>
-                <span className="text-[11px] text-muted-foreground block">
-                  Se desativado, o colaborador é impedido de se conectar via OAuth.
-                </span>
-              </div>
-              <Switch checked={memberAccess} onCheckedChange={setMemberAccess} />
-            </div>
-
-            <div className="space-y-2">
-              <span className="text-xs font-semibold text-foreground uppercase tracking-wider block">
-                Escopos Permitidos para este Colaborador:
-              </span>
-
-              {memberScopes.length === 0 && (
-                <div className="p-2.5 rounded-lg border border-amber-500/40 bg-amber-500/10 text-amber-600 dark:text-amber-400 text-xs font-medium">
-                  ⚠️ Nenhum escopo selecionado: nenhuma funcionalidade MCP / ChatGPT será permitida para este colaborador.
-                </div>
-              )}
-
-              <div className="space-y-3 max-h-60 overflow-y-auto pr-1">
-                {Object.entries(groupedScopes).map(([moduleName, scopes]) => {
-                  const isMemberAdmin = editingMember?.role === 'admin';
-                  const filteredScopes = scopes.filter((s) => isMemberAdmin || !s.requiresAdmin);
-                  if (filteredScopes.length === 0) return null;
-
-                  return (
-                    <div key={moduleName} className="space-y-1.5 p-2.5 rounded-lg border border-border/60 bg-card/40">
-                      <span className="text-[11px] font-bold text-primary block">{moduleName}</span>
-                      <div className="space-y-1.5">
-                        {filteredScopes.map((scope) => {
-                          const checked = memberScopes.includes(scope.id);
-                          return (
-                            <label
-                              key={scope.id}
-                              className="flex items-start gap-2.5 cursor-pointer hover:bg-muted/40 p-1.5 rounded transition-colors"
-                            >
-                              <Checkbox
-                                checked={checked}
-                                onCheckedChange={() => handleToggleMemberScope(scope.id)}
-                                className="mt-0.5"
-                              />
-                              <div>
-                                <span className="text-xs font-medium text-foreground block">{scope.label}</span>
-                                <span className="text-[11px] text-muted-foreground block line-clamp-1">{scope.description}</span>
-                              </div>
-                            </label>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          </DialogBody>
-
-          <DialogFooter className="gap-2 sm:gap-0">
-            <Button variant="outline" size="sm" onClick={() => setMemberModalOpen(false)}>
-              Cancelar
-            </Button>
-            <Button size="sm" onClick={handleSaveMemberPermissions} disabled={savingMemberPermissions} className="gap-1.5">
-              {savingMemberPermissions ? <RefreshCw className="size-3.5 animate-spin" /> : <ShieldCheck className="size-3.5" />}
-              Salvar Permissões
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
