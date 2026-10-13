@@ -1130,14 +1130,33 @@ class AiToolsExecutor {
       paymentStatus = 'partial';
     }
 
+    // ─── Trava de Alçada e Análise de Risco Financeiro ───
+    const isHighValue = cleanTotalPrice >= 500;
+    const isSuperHighValue = cleanTotalPrice >= 1500;
+    const isZeroDeposit = cleanPaidAmount === 0 && cleanTotalPrice > 0;
+    const minimumRecommendedDeposit = Math.round(cleanTotalPrice * 0.3 * 100) / 100;
+
+    let requiresFinancialApproval = false;
+    let financialWarning = null;
+
+    if (isSuperHighValue && isZeroDeposit && !scope.isAdmin) {
+      requiresFinancialApproval = true;
+      financialWarning = `Pedido de grande porte (R$ ${cleanTotalPrice.toFixed(2)}) registrado sem entrada. A produção aguardará aprovação da administração ou pagamento de sinal mínimo (R$ ${minimumRecommendedDeposit.toFixed(2)}).`;
+    } else if (isHighValue && isZeroDeposit) {
+      financialWarning = `Atenção: Pedido com valor de R$ ${cleanTotalPrice.toFixed(2)} registrado sem sinal. Recomenda-se cobrar pelo menos R$ ${minimumRecommendedDeposit.toFixed(2)} antes de iniciar a produção.`;
+    }
+
     // Tags
     const tags = [{ name: 'ChatGPT', color: '#10a37f' }];
     if (dateValidation.isUrgent) {
       tags.push({ name: 'Prazo Urgente', color: '#ef4444' });
     }
+    if (isZeroDeposit && cleanTotalPrice > 0) {
+      tags.push({ name: 'Aguardando Sinal', color: '#f59e0b' });
+    }
     if (Array.isArray(args.tags)) {
       for (const t of args.tags) {
-        if (typeof t === 'string' && t.trim() && t.trim().toLowerCase() !== 'chatgpt' && t.trim().toLowerCase() !== 'prazo urgente') {
+        if (typeof t === 'string' && t.trim() && t.trim().toLowerCase() !== 'chatgpt' && t.trim().toLowerCase() !== 'prazo urgente' && t.trim().toLowerCase() !== 'aguardando sinal') {
           tags.push({ name: t.trim(), color: '#6366f1' });
         }
       }
@@ -1260,6 +1279,8 @@ class AiToolsExecutor {
           },
           source: 'chatgpt-mcp',
           idempotencyKey: effectiveIdempotencyKey,
+          requiresFinancialApproval: Boolean(requiresFinancialApproval),
+          financialWarning: financialWarning || null,
           productionWorkflow: {
             currentStep: 'design',
             steps: {
@@ -1294,6 +1315,8 @@ class AiToolsExecutor {
         status: 'pending',
         deliveryDate: rawDate,
         idempotencyKey: effectiveIdempotencyKey,
+        requiresFinancialApproval: Boolean(requiresFinancialApproval),
+        financialWarning: financialWarning || null,
         createdAt: new Date().toISOString(),
       });
     }
@@ -1312,6 +1335,8 @@ class AiToolsExecutor {
       paymentStatus,
       deliveryDate: rawDate,
       status: 'pending',
+      requiresFinancialApproval,
+      financialWarning: financialWarning || undefined,
       message: `Pedido ${createdOrderNumber} criado com sucesso para ${cleanCustomer}!`,
     };
   }
