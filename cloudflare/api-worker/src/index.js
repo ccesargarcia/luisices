@@ -147,10 +147,17 @@ export default {
 
     // 5. Encaminhar requisição para o Google Cloud Functions
     try {
+      // Lê o corpo da requisição em ArrayBuffer para evitar o erro "one-time-use body"
+      // em caso de retransmissão por redirecionamento no backend Cloud Functions.
+      let requestBody = undefined;
+      if (!['GET', 'HEAD'].includes(request.method)) {
+        requestBody = await request.arrayBuffer();
+      }
+
       const originResponse = await fetch(targetUrl.toString(), {
         method: request.method,
         headers: forwardHeaders,
-        body: ['GET', 'HEAD'].includes(request.method) ? undefined : request.body,
+        body: requestBody,
         redirect: 'follow',
       });
 
