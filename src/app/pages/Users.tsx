@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router';
 import { useAuth } from '../../contexts/AuthContext';
 import { firebaseUserService, DeviceSession } from '../../services/firebaseUserService';
 import { firebaseAlexaService } from '../../services/firebaseAlexaService';
+import { firebaseMcpService } from '../../services/firebaseMcpService';
 import { subscribeAdminPresence, AdminPresenceSnapshot } from '../../services/adminPresenceService';
 import {
   UserProfile,
@@ -553,13 +554,15 @@ interface UserDevicesDialogProps {
   open: boolean;
   user: UserProfile | null;
   onClose: () => void;
+  onSaved?: () => void;
 }
 
-function UserDevicesDialog({ open, user, onClose }: UserDevicesDialogProps) {
+function UserDevicesDialog({ open, user, onClose, onSaved }: UserDevicesDialogProps) {
   const { user: currentUser, logout } = useAuth();
   const [devices, setDevices] = useState<DeviceSession[]>([]);
   const [loading, setLoading] = useState(false);
   const [revoking, setRevoking] = useState<string | null>(null);
+  const [revokingMcp, setRevokingMcp] = useState(false);
 
   const currentDeviceId = typeof window !== 'undefined' ? localStorage.getItem('luisices_device_id') : null;
 
@@ -587,6 +590,23 @@ function UserDevicesDialog({ open, user, onClose }: UserDevicesDialogProps) {
       toast.error('Erro ao carregar dispositivos');
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handleRevokeMcpSession() {
+    if (!user) return;
+    setRevokingMcp(true);
+    try {
+      await firebaseMcpService.revokeUserSessions(user.uid);
+      toast.success(`Conexão MCP / ChatGPT de ${user.displayName} revogada com sucesso.`);
+      if (user) {
+        user.mcpSessionActive = false;
+      }
+      onSaved?.();
+    } catch (err: any) {
+      toast.error(err?.message || 'Erro ao revogar conexão MCP');
+    } finally {
+      setRevokingMcp(false);
     }
   }
 
@@ -627,12 +647,18 @@ function UserDevicesDialog({ open, user, onClose }: UserDevicesDialogProps) {
     setRevoking('all');
     try {
       const result = await firebaseUserService.revokeAllSessions(user.uid);
+      // Revoga também sessões MCP/ChatGPT ativas
+      await firebaseMcpService.revokeUserSessions(user.uid).catch(() => {});
+      if (user) {
+        user.mcpSessionActive = false;
+      }
       if (result.synced === true) {
         toast.success('Revogação global concluída. As sessões anteriores precisam de novo login.');
       } else {
         toast.warning('Revogação global iniciada, com sincronização pendente. Confira o estado antes de considerar o bloqueio concluído.');
       }
       setConfirmRevoke(false);
+      onSaved?.();
       if (currentUser?.uid === user?.uid) {
         localStorage.removeItem('luisices_device_id');
         localStorage.removeItem('luisices_device_last_reg');
@@ -659,6 +685,51 @@ function UserDevicesDialog({ open, user, onClose }: UserDevicesDialogProps) {
           </DialogHeader>
 
           <DialogBody className="p-4 sm:p-6 overflow-y-auto space-y-4 bg-muted/10">
+            {user?.mcpSessionActive && (
+              <Card className="border-emerald-500/40 bg-emerald-500/10 dark:bg-emerald-500/15 overflow-hidden shadow-xs">
+                <CardContent className="p-4 sm:p-5">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div className="flex items-start sm:items-center gap-3">
+                      <div className="relative p-2 rounded-xl bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 shrink-0">
+                        <Bot className="size-5" />
+                        <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5">
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                          <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+                        </span>
+                      </div>
+                      <div className="space-y-0.5">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-semibold text-sm text-foreground">Conexão MCP / ChatGPT</span>
+                          <Badge className="bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] py-0">
+                            🟢 Sessão Aberta
+                          </Badge>
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          Autenticado via OAuth 2.1 com permissão de assistente de IA.
+                          {user.lastMcpConnectedAt && ` Conectado em: ${formatUserDate(user.lastMcpConnectedAt)}`}
+                        </p>
+                      </div>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="text-destructive hover:bg-destructive/10 border-destructive/30 shrink-0 h-8 text-xs font-medium"
+                      disabled={revokingMcp || loading}
+                      onClick={handleRevokeMcpSession}
+                    >
+                      {revokingMcp ? (
+                        <Loader2 className="size-3.5 animate-spin mr-1" />
+                      ) : (
+                        <LogOut className="size-3.5 mr-1" />
+                      )}
+                      Revogar Sessão MCP
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
             {loading ? (
               <div className="flex items-center justify-center h-40">
                 <Loader2 className="size-6 animate-spin text-muted-foreground" />
@@ -1481,6 +1552,7 @@ export function Users() {
         open={Boolean(viewDevicesUser)}
         user={viewDevicesUser}
         onClose={() => setViewDevicesUser(null)}
+        onSaved={fetchUsers}
       />
 
       <Dialog open={inviteOpen} onOpenChange={setInviteOpen}>

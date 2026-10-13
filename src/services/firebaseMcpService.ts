@@ -95,6 +95,18 @@ export class FirebaseMcpService {
     const result = await callable({ sessionId });
     return result.data;
   }
+
+  /**
+   * Revoga todas as sessões MCP / ChatGPT ativas de um colaborador específico.
+   */
+  async revokeUserSessions(targetUid: string): Promise<{ success: boolean; targetUid: string; revoked: boolean }> {
+    const callable = httpsCallable<{ targetUid: string }, { success: boolean; targetUid: string; revoked: boolean }>(
+      functions,
+      'revokeMcpSession'
+    );
+    const result = await callable({ targetUid });
+    return result.data;
+  }
 }
 
 export const firebaseMcpService = new FirebaseMcpService();

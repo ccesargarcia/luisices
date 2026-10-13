@@ -491,10 +491,59 @@ const setUserMcpEligibility = onCall({ cors: true, maxInstances: 5 }, async (req
 const revokeMcpSession = onCall({ cors: true, maxInstances: 5 }, async (request) => {
   const { profile, isAdmin } = await assertActiveUserWithMcp(request);
   const db = getFirestore();
-  const { sessionId } = request.data || {};
+  const { sessionId, targetUid } = request.data || {};
 
-  if (!sessionId || typeof sessionId !== 'string') {
-    throw new HttpsError('invalid-argument', 'Identificador da sessão MCP não informado.');
+  if (!sessionId && !targetUid) {
+    throw new HttpsError('invalid-argument', 'Identificador da sessão MCP ou ID do usuário não informado.');
+  }
+
+  // Revogação de todas as sessões de um usuário específico (por targetUid)
+  if (targetUid) {
+    if (!isAdmin && targetUid !== profile.uid) {
+      throw new HttpsError('permission-denied', 'Você não tem permissão para revogar a sessão de outro colaborador.');
+    }
+
+    const sessionsSnap = await db.collection('oauthSessions')
+      .where('userId', '==', targetUid)
+      .where('active', '==', true)
+      .get();
+
+    for (const doc of sessionsSnap.docs) {
+      await doc.ref.update({
+        active: false,
+        revoked: true,
+        revokedAt: FieldValue.serverTimestamp(),
+        revokedBy: profile.uid,
+      }).catch(() => {});
+    }
+
+    const accessSnap = await db.collection('oauthAccessTokens')
+      .where('userId', '==', targetUid)
+      .get();
+    for (const doc of accessSnap.docs) {
+      await doc.ref.update({ revoked: true, revokedAt: FieldValue.serverTimestamp() }).catch(() => {});
+    }
+
+    const refreshSnap = await db.collection('oauthRefreshTokens')
+      .where('userId', '==', targetUid)
+      .get();
+    for (const doc of refreshSnap.docs) {
+      await doc.ref.update({ revoked: true, revokedAt: FieldValue.serverTimestamp() }).catch(() => {});
+    }
+
+    clearMcpAuthCache();
+
+    await db.collection(COLLECTIONS.USERS).doc(targetUid).update({
+      mcpSessionActive: false,
+      updatedAt: FieldValue.serverTimestamp(),
+    }).catch(() => {});
+
+    return {
+      success: true,
+      targetUid,
+      revoked: true,
+      sessionsRevoked: sessionsSnap.size,
+    };
   }
 
   // 1. Busca na coleção oauthSessions
