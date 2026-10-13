@@ -642,12 +642,8 @@ const revokeMcpSession = onCall({ cors: true, maxInstances: 5 }, async (request)
 /**
  * Consulta histórico recente de logs de auditoria de chamadas do MCP (apenas Administradores).
  */
-const getMcpAuditLogs = onCall(async (request) => {
-  const session = await validateSession(request);
-  const isAdmin = session.profile?.role === 'admin';
-  if (!isAdmin) {
-    throw new HttpsError('permission-denied', 'Apenas administradores podem consultar logs de auditoria do MCP.');
-  }
+const getMcpAuditLogs = onCall({ cors: true, maxInstances: 5 }, async (request) => {
+  await assertActiveAdmin(request);
 
   const db = getFirestore();
   const limitCount = Math.min(50, Math.max(5, Number(request.data?.limit) || 20));
