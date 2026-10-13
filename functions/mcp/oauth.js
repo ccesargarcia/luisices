@@ -6,6 +6,7 @@
 const crypto = require('crypto');
 const { COLLECTIONS, MCP_SCOPES } = require('./constants');
 const { getCallerScope } = require('../ai/authorization');
+const { moduleAllowsMcpScope } = require('./profilePermissions');
 
 const APP_ORIGIN = () => process.env.GCLOUD_PROJECT === 'papelaria-dashboard' || process.env.GCP_PROJECT === 'papelaria-dashboard'
   ? 'https://luisices.com.br' : 'https://dev.luisices.com.br';
@@ -90,7 +91,7 @@ function getEffectiveUserScopes(requestedScopes, userProfile) {
   }
 
   // Interseção estrita com os escopos solicitados. Nunca adiciona escopos extras!
-  return validRequested.filter((s) => allowedForUser.includes(s));
+  return validRequested.filter((s) => allowedForUser.includes(s) && moduleAllowsMcpScope(s, userProfile));
 }
 
 function authError(res, status, error, description) {

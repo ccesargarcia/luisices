@@ -9,6 +9,7 @@ const crypto = require('crypto');
 const { RESEND_API_KEY, EVOLUTION_API_KEY } = require('../common/secrets');
 const { passwordResetLimiter, adminUserActionLimiter } = require('../common/rateLimiters');
 const userSyncService = require('./userSyncService');
+const { validateProfileMcpScopes } = require('../mcp/profilePermissions');
 const helpers = require('../common/helpers');
 const {
   getResend,
@@ -709,6 +710,11 @@ const createUser = onCall(async (request) => {
     throw new HttpsError('invalid-argument', 'Permissões inválidas.');
   }
 
+  try {
+    validateProfileMcpScopes(permissions);
+  } catch (err) {
+    throw new HttpsError('invalid-argument', err.message);
+  }
   const normalizedEmail = email.trim().toLowerCase();
   const normalizedName = displayName.trim();
 
@@ -803,6 +809,9 @@ const updateUser = onCall(async (request) => {
       pendingSteps: result.pendingSteps,
     };
   } catch (err) {
+    if (err.code === 'invalid-argument') {
+      throw new HttpsError('invalid-argument', err.message);
+    }
     if (err.code === 'failed-precondition') {
       throw new HttpsError('failed-precondition', err.message);
     }
