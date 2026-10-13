@@ -39,6 +39,8 @@ async function executeToolByName(toolsExecutor, toolName, args, scope) {
       return await toolsExecutor.executeGenerateWhatsAppMessage(args, scope);
     case 'extract_order_draft':
       return await toolsExecutor.executeExtractOrderDraft(args, scope);
+    case 'create_order':
+      return await toolsExecutor.executeCreateOrder(args, scope);
     case 'search_gallery_portfolio':
       return await toolsExecutor.executeSearchGalleryPortfolio(args, scope);
     case 'get_user_summary':
@@ -86,9 +88,11 @@ const chatGptToolsEndpoint = onRequest(
     // Normalização rigorosa do caminho (suporta chamadas diretas com ou sem prefixo chatGptToolsEndpoint)
     const rawPath = (req.path || req.url || '')
       .split('?')[0]
+      .split('#')[0]
       .replace(/^\/+/, '')
       .replace(/^chatGptToolsEndpoint\/?/, '')
-      .replace(/^\/+/, '');
+      .replace(/^\/+/, '')
+      .replace(/\/+$/, '');
 
     const matchTool = rawPath.match(/^tools\/([a-zA-Z0-9_]+)$/);
 

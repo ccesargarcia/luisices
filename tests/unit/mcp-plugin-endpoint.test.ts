@@ -28,12 +28,13 @@ describe('MCP & ChatGPT Plugin / OpenAPI 3.0.3 Specification', () => {
       });
     });
 
-    it('deve listar as 9 ferramentas de negócio com operationId e respostas 200', () => {
+    it('deve listar as 10 ferramentas de negócio (incluindo create_order) com operationId e respostas 200', () => {
       const baseUrl = 'https://api.dev.luisices.com.br/chatGptToolsEndpoint';
       const schema = buildOpenApiSchema(baseUrl);
 
-      expect(TOOLS_METADATA.length).toBe(9);
-      expect(Object.keys(schema.paths).length).toBe(9);
+      expect(TOOLS_METADATA.length).toBe(10);
+      expect(Object.keys(schema.paths).length).toBe(10);
+      expect(Object.keys(schema.paths)).toContain('/tools/create_order');
 
       for (const tool of TOOLS_METADATA) {
         const pathItem = schema.paths[`/tools/${tool.name}`];

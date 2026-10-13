@@ -165,7 +165,7 @@ const TOOLS_METADATA = [
     name: 'extract_order_draft',
     scope: 'orders:draft',
     summary: 'Montar Rascunho de Pedido',
-    description: 'Extrai dados informados por cliente em conversa e estrutura um rascunho de pedido.',
+    description: 'Extrai dados informados por cliente em conversa e estrutura um rascunho de pedido para conferência.',
     requestBody: {
       type: 'object',
       required: ['customerName', 'productSummary'],
@@ -201,6 +201,67 @@ const TOOLS_METADATA = [
         notes: {
           type: 'string',
           description: 'Observações de acabamento.',
+        },
+      },
+    },
+  },
+  {
+    name: 'create_order',
+    scope: 'orders:create',
+    summary: 'Criar e Registrar Novo Pedido no Sistema',
+    description: 'Cria e grava um novo pedido oficial na fila de produção do Ateliê Luisices. Gera número sequencial (#AAAA-0001), vincula o cliente, calcula o saldo pendente e define o status como pendente com a tag "ChatGPT".',
+    requestBody: {
+      type: 'object',
+      required: ['customerName', 'productName', 'quantity', 'totalPrice', 'deliveryDate'],
+      properties: {
+        customerName: {
+          type: 'string',
+          description: 'Nome completo ou primeiro nome do cliente.',
+        },
+        customerPhone: {
+          type: 'string',
+          description: 'Telefone ou WhatsApp do cliente para contato.',
+        },
+        productName: {
+          type: 'string',
+          description: 'Nome e descrição do produto encomendado (ex: "30 Caixas Milk Personalizadas", "Topo de Bolo").',
+        },
+        quantity: {
+          type: 'integer',
+          description: 'Quantidade encomendada (mínimo 1).',
+          minimum: 1,
+        },
+        totalPrice: {
+          type: 'number',
+          description: 'Valor total do pedido em reais (ex: 210.00).',
+          minimum: 0,
+        },
+        paidAmount: {
+          type: 'number',
+          description: 'Valor de entrada ou sinal já pago pelo cliente (ex: 100.00). Padrão: 0.',
+          default: 0,
+        },
+        paymentMethod: {
+          type: 'string',
+          enum: ['pix', 'cartao_credito', 'cartao_debito', 'dinheiro', 'transferencia', 'outro'],
+          description: 'Forma de pagamento utilizada pelo cliente.',
+        },
+        deliveryDate: {
+          type: 'string',
+          description: 'Data limite prometida para entrega no formato AAAA-MM-DD (ou DD/MM/AAAA).',
+        },
+        theme: {
+          type: 'string',
+          description: 'Tema da festa ou personalização (ex: "Safari Baby", "Jardim Encantado").',
+        },
+        notes: {
+          type: 'string',
+          description: 'Observações de produção, personalização ou instruções especiais.',
+        },
+        tags: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Tags adicionais para organizar o pedido (a tag "ChatGPT" é adicionada automaticamente).',
         },
       },
     },

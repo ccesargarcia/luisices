@@ -19,6 +19,14 @@ const MCP_SCOPES = {
     requiresAdmin: false,
     defaultGranted: false,
   },
+  ORDERS_CREATE: {
+    id: 'orders:create',
+    label: 'Criar Pedidos no Sistema',
+    description: 'Permite registrar novos pedidos diretamente na fila de produção do ateliê.',
+    module: 'Pedidos & Produção',
+    requiresAdmin: false,
+    defaultGranted: true,
+  },
   CUSTOMERS_READ: {
     id: 'customers:read',
     label: 'Consultar Clientes & Contatos',
@@ -73,6 +81,7 @@ const TOOL_SCOPE_MAP = {
   query_orders_view: 'orders:read',
   daily_briefing: 'orders:read',
   extract_order_draft: 'orders:draft',
+  create_order: 'orders:create',
   query_customers: 'customers:read',
   get_financial_summary: 'financial:read',
   get_user_summary: 'team:read',

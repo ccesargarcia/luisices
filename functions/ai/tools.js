@@ -984,6 +984,212 @@ class AiToolsExecutor {
       notes: args.notes || '',
     };
   }
+
+  /**
+   * Ferramenta 10: Criar e Registrar Pedido no Sistema (via ChatGPT / MCP)
+   */
+  async executeCreateOrder(args = {}, scope) {
+    if (!scope || !scope.uid) {
+      throw new Error('Usuário não autenticado.');
+    }
+
+    // Validação de permissão RBAC
+    if (!scope.isAdmin) {
+      const p = scope.permissions?.orders;
+      if (p === false || (typeof p === 'object' && p !== null && p.create === false)) {
+        throw new Error('Você não possui permissão para criar pedidos no sistema Luisices.');
+      }
+    }
+
+    const cleanCustomer = String(args.customerName || '').trim();
+    if (!cleanCustomer) {
+      throw new Error('Nome do cliente é obrigatório para registrar o pedido.');
+    }
+
+    const cleanProduct = String(args.productName || args.productSummary || '').trim();
+    if (!cleanProduct) {
+      throw new Error('Nome do produto é obrigatório para registrar o pedido.');
+    }
+
+    const cleanQuantity = Math.max(1, Math.round(Number(args.quantity) || 1));
+    const cleanTotalPrice = Math.max(0, Math.round((Number(args.totalPrice) || 0) * 100) / 100);
+    const cleanPaidAmount = Math.max(0, Math.min(cleanTotalPrice, Math.round((Number(args.paidAmount) || 0) * 100) / 100));
+    const remainingAmount = Math.max(0, Math.round((cleanTotalPrice - cleanPaidAmount) * 100) / 100);
+
+    // Validação e normalização de data de entrega
+    let rawDate = String(args.deliveryDate || '').trim();
+    if (!rawDate) {
+      throw new Error('Data de entrega é obrigatória para registrar o pedido.');
+    }
+
+    // Normaliza DD/MM/AAAA para AAAA-MM-DD
+    if (/^\d{2}\/\d{2}\/\d{4}$/.test(rawDate)) {
+      const [d, m, y] = rawDate.split('/');
+      rawDate = `${y}-${m}-${d}`;
+    }
+
+    // Busca cliente na base
+    let customerPhone = normalizePhone(args.customerPhone || '');
+    let customerId = null;
+    try {
+      const identity = await this.resolveCustomerIdentity(cleanCustomer, customerPhone, scope);
+      if (identity && identity.phone) {
+        customerPhone = identity.phone;
+      }
+      const custMatches = await this.repos.getScopedCustomers(scope, { searchTerm: cleanCustomer });
+      const found = (custMatches.customers || []).find(
+        (c) => String(c.name || '').toLowerCase().trim() === cleanCustomer.toLowerCase()
+      );
+      if (found) {
+        customerId = found.id;
+        if (!customerPhone && found.phone) {
+          customerPhone = normalizePhone(found.phone);
+        }
+      }
+    } catch (_cErr) {
+      // Ignora erro de busca de cliente
+    }
+
+    // Determina status de pagamento
+    let paymentStatus = 'pending';
+    if (cleanPaidAmount >= cleanTotalPrice && cleanTotalPrice > 0) {
+      paymentStatus = 'completed';
+    } else if (cleanPaidAmount > 0) {
+      paymentStatus = 'partial';
+    }
+
+    // Tags
+    const tags = [{ name: 'ChatGPT', color: '#10a37f' }];
+    if (Array.isArray(args.tags)) {
+      for (const t of args.tags) {
+        if (typeof t === 'string' && t.trim() && t.trim().toLowerCase() !== 'chatgpt') {
+          tags.push({ name: t.trim(), color: '#6366f1' });
+        }
+      }
+    }
+
+    // Observações
+    let cleanNotes = String(args.notes || '').trim();
+    if (args.theme) {
+      cleanNotes = cleanNotes ? `Tema: ${args.theme}\n${cleanNotes}` : `Tema: ${args.theme}`;
+    }
+
+    const db = this.repos.db;
+    const uid = scope.uid;
+    const year = new Date().getFullYear();
+    const orderRef = db.collection('orders').doc();
+    const orderId = orderRef.id;
+
+    let FieldValue = null;
+    try {
+      FieldValue = require('firebase-admin/firestore').FieldValue;
+    } catch (_e) {
+      // fallback
+    }
+
+    let createdOrderNumber = `#${year}-0001`;
+
+    if (typeof db.runTransaction === 'function') {
+      createdOrderNumber = await db.runTransaction(async (transaction) => {
+        const counterRef = db.doc(`users/${uid}/metadata/counters`);
+        const counterSnap = await transaction.get(counterRef);
+        const currentCount = counterSnap.exists ? Number(counterSnap.data()?.orderCounter || 0) : 0;
+        const nextCount = currentCount + 1;
+        const orderNumber = `#${year}-${String(nextCount).padStart(4, '0')}`;
+
+        transaction.set(counterRef, { orderCounter: nextCount }, { merge: true });
+
+        const newOrderDoc = {
+          userId: uid,
+          createdByName: scope.displayName || scope.email || 'ChatGPT Assistant',
+          createdByUid: uid,
+          orderNumber,
+          customerName: cleanCustomer,
+          customerPhone: customerPhone || '',
+          customerId: customerId || null,
+          productName: cleanProduct,
+          quantity: cleanQuantity,
+          price: cleanTotalPrice,
+          totalPrice: cleanTotalPrice,
+          status: 'pending',
+          deliveryDate: rawDate,
+          notes: cleanNotes || null,
+          theme: args.theme || null,
+          tags,
+          assignedTo: null,
+          assignedToName: null,
+          assignedAt: null,
+          assignedBy: null,
+          payment: {
+            status: paymentStatus,
+            method: args.paymentMethod || (cleanPaidAmount > 0 ? 'pix' : null),
+            totalAmount: cleanTotalPrice,
+            paidAmount: cleanPaidAmount,
+            remainingAmount,
+            paymentDate: cleanPaidAmount > 0 ? new Date().toISOString() : null,
+            notes: null,
+            history: cleanPaidAmount > 0 ? [{
+              amount: cleanPaidAmount,
+              date: new Date().toISOString(),
+              method: args.paymentMethod || 'sinal',
+              notes: 'Sinal registrado via ChatGPT'
+            }] : null,
+          },
+          source: 'chatgpt-mcp',
+          productionWorkflow: {
+            currentStep: 'design',
+            steps: {
+              design: { completed: false },
+              approval: { completed: false },
+              printing: { completed: false },
+              cutting: { completed: false },
+              assembly: { completed: false },
+              'quality-check': { completed: false },
+              packaging: { completed: false },
+            },
+            startedAt: new Date().toISOString(),
+          },
+          version: 1,
+          createdAt: FieldValue && FieldValue.serverTimestamp ? FieldValue.serverTimestamp() : new Date().toISOString(),
+          updatedAt: FieldValue && FieldValue.serverTimestamp ? FieldValue.serverTimestamp() : new Date().toISOString(),
+          deletedAt: null,
+        };
+
+        transaction.set(orderRef, newOrderDoc);
+        return orderNumber;
+      });
+    } else {
+      // Fallback direto caso o DB mock não suporte transações
+      await orderRef.set({
+        userId: uid,
+        orderNumber: createdOrderNumber,
+        customerName: cleanCustomer,
+        productName: cleanProduct,
+        quantity: cleanQuantity,
+        totalPrice: cleanTotalPrice,
+        status: 'pending',
+        deliveryDate: rawDate,
+        createdAt: new Date().toISOString(),
+      });
+    }
+
+    return {
+      success: true,
+      orderId,
+      orderNumber: createdOrderNumber,
+      customerName: cleanCustomer,
+      customerPhone: customerPhone || 'Não informado',
+      productName: cleanProduct,
+      quantity: cleanQuantity,
+      totalPrice: cleanTotalPrice,
+      paidAmount: cleanPaidAmount,
+      remainingAmount,
+      paymentStatus,
+      deliveryDate: rawDate,
+      status: 'pending',
+      message: `Pedido ${createdOrderNumber} criado com sucesso para ${cleanCustomer}!`,
+    };
+  }
 }
 
 module.exports = {
