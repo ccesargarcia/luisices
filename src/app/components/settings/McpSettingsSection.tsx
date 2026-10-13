@@ -78,7 +78,6 @@ export function McpSettingsSection({ isAdmin }: McpSettingsSectionProps) {
   const [togglingUserUid, setTogglingUserUid] = useState<string | null>(null);
 
   const fetchStatus = useCallback(async (isSilent = false) => {
-    if (!isAdmin) return;
     if (!isSilent) setLoading(true);
     try {
       const data = await firebaseMcpService.getStatus();
@@ -90,7 +89,7 @@ export function McpSettingsSection({ isAdmin }: McpSettingsSectionProps) {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [isAdmin]);
+  }, []);
 
   useEffect(() => {
     fetchStatus();
@@ -280,10 +279,6 @@ export function McpSettingsSection({ isAdmin }: McpSettingsSectionProps) {
     }
   };
 
-  if (!isAdmin) {
-    return null;
-  }
-
   // Agrupa os escopos disponíveis por módulo
   const groupedScopes = (status?.availableScopes || []).reduce<Record<string, McpScopeInfo[]>>(
     (acc, scope) => {
@@ -307,7 +302,7 @@ export function McpSettingsSection({ isAdmin }: McpSettingsSectionProps) {
               <div className="flex items-center gap-2">
                 <Bot className="size-5 text-primary" />
                 <CardTitle className="text-lg font-semibold tracking-tight">
-                  Assistentes Externos & ChatGPT (MCP)
+                  {isAdmin ? 'Assistentes Externos & ChatGPT (MCP)' : 'Minhas Chaves do ChatGPT & Assistentes (MCP)'}
                 </CardTitle>
                 <Badge
                   variant={status?.environment === 'dev' ? 'outline' : 'default'}
@@ -321,8 +316,9 @@ export function McpSettingsSection({ isAdmin }: McpSettingsSectionProps) {
                 </Badge>
               </div>
               <CardDescription>
-                Conecte o ChatGPT (Custom GPT Actions), Claude Desktop ou Antigravity ao Luisices com controle
-                granular de permissões, custo zero quando inativo e chave por usuário.
+                {isAdmin
+                  ? 'Conecte o ChatGPT (Custom GPT Actions), Claude Desktop ou Antigravity ao Luisices com controle granular de permissões, custo zero quando inativo e chave por usuário.'
+                  : 'Crie e gerencie suas chaves de acesso pessoais para usar no ChatGPT do celular ou Claude Desktop com permissões do seu perfil.'}
               </CardDescription>
             </div>
 
@@ -350,23 +346,24 @@ export function McpSettingsSection({ isAdmin }: McpSettingsSectionProps) {
         </CardHeader>
 
         <CardContent className="space-y-6">
-          {/* Interruptor Geral & URL do Manifesto */}
           {/* Interruptor Geral & URLs de Integração (OpenAPI e Plugin) */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {/* Box 1: Interruptor Global */}
-            <div className="flex items-center justify-between p-4 rounded-xl border border-border/70 bg-card/40 backdrop-blur-xs">
-              <div className="space-y-0.5 pr-4">
-                <p className="text-sm font-medium">Interruptor Geral da Integração</p>
-                <p className="text-xs text-muted-foreground">
-                  Habilita ou interrompe imediatamente todo o tráfego externo de IA neste ambiente.
-                </p>
+          <div className={`grid grid-cols-1 ${isAdmin ? 'md:grid-cols-3' : 'md:grid-cols-2'} gap-4`}>
+            {/* Box 1: Interruptor Global (Apenas Admin) */}
+            {isAdmin && (
+              <div className="flex items-center justify-between p-4 rounded-xl border border-border/70 bg-card/40 backdrop-blur-xs">
+                <div className="space-y-0.5 pr-4">
+                  <p className="text-sm font-medium">Interruptor Geral da Integração</p>
+                  <p className="text-xs text-muted-foreground">
+                    Habilita ou interrompe imediatamente todo o tráfego externo de IA neste ambiente.
+                  </p>
+                </div>
+                <Switch
+                  checked={status?.globalEnabled ?? true}
+                  onCheckedChange={handleToggleGlobal}
+                  disabled={togglingGlobal || loading}
+                />
               </div>
-              <Switch
-                checked={status?.globalEnabled ?? true}
-                onCheckedChange={handleToggleGlobal}
-                disabled={togglingGlobal || loading}
-              />
-            </div>
+            )}
 
             {/* Box 2: URL do Schema OpenAPI para o ChatGPT Actions */}
             <div className="flex items-center justify-between p-4 rounded-xl border border-border/70 bg-card/40 backdrop-blur-xs">
