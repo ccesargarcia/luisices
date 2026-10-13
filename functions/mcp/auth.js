@@ -7,6 +7,8 @@ const { RateLimiterMemory } = require('rate-limiter-flexible');
 const { COLLECTIONS, CACHE_TTL_MS, DEFAULT_RATE_LIMIT_PER_HOUR } = require('./constants');
 const { getCallerScope } = require('../ai/authorization');
 
+const { validateOAuthAccessToken } = require('./oauth');
+
 // Cache em memória para validação ultrarrápida de chaves (evita 1 leitura de Firestore por request)
 const KEY_CACHE = new Map();
 
@@ -93,6 +95,7 @@ function getRateLimiterForKey(keyId, limitPerHour = DEFAULT_RATE_LIMIT_PER_HOUR)
 /**
  * Validação rigorosa de requisições HTTP do MCP / ChatGPT.
  * Verifica Bearer token, interruptor global, interruptor do usuário, status do usuário e rate limit.
+ * Suporta tanto chaves estáticas legadas (lui_dev_... / lui_live_...) quanto tokens de acesso OAuth 2.1 (lui_oauth_at_...).
  */
 async function validateMcpRequest(req, db) {
   const authHeader = req.headers.authorization || req.headers.Authorization || '';
@@ -101,7 +104,7 @@ async function validateMcpRequest(req, db) {
       success: false,
       status: 401,
       code: 'UNAUTHORIZED',
-      message: 'Cabeçalho de autorização ausente ou malformatado. Utilize: Authorization: Bearer <CHAVE>',
+      message: 'Cabeçalho de autorização ausente ou malformatado. Utilize: Authorization: Bearer <TOKEN>',
     };
   }
 
@@ -111,7 +114,7 @@ async function validateMcpRequest(req, db) {
       success: false,
       status: 401,
       code: 'INVALID_API_KEY',
-      message: 'Chave de API inválida ou malformatada.',
+      message: 'Chave de API ou Token de acesso inválido ou malformatado.',
     };
   }
 
@@ -124,6 +127,11 @@ async function validateMcpRequest(req, db) {
       code: 'INTEGRATION_DISABLED',
       message: 'A integração com ChatGPT e assistentes externos está desativada no momento neste ambiente.',
     };
+  }
+
+  // 2. Validação se for Token OAuth 2.1
+  if (rawKey.startsWith('lui_oauth_at_')) {
+    return await validateOAuthAccessToken(rawKey, db);
   }
 
   const keyHash = hashApiKey(rawKey);

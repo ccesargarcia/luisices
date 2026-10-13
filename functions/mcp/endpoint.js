@@ -7,6 +7,13 @@ const { onRequest } = require('firebase-functions/v2/https');
 const { getFirestore } = require('firebase-admin/firestore');
 const { getAuth } = require('firebase-admin/auth');
 const { validateMcpRequest, touchKeyUsage } = require('./auth');
+const {
+  getOauthProtectedResourceMetadata,
+  getOauthAuthorizationServerMetadata,
+  handleOAuthRegister,
+  handleOAuthAuthorize,
+  handleOAuthToken,
+} = require('./oauth');
 const { TOOL_SCOPE_MAP, MCP_SCOPES } = require('./constants');
 const { buildOpenApiSchema, TOOLS_METADATA } = require('./openapi');
 const { createAiServices } = require('../ai/index');
@@ -98,8 +105,8 @@ const chatGptToolsEndpoint = onRequest(
     try {
 
     // ─── 1. Validação de Proteção de Origem ──────────────────────────────────
-    // Rotas públicas de descoberta (OpenAPI, Manifesto de Plugins, MCP Initialize e Health) são abertas
-    // para que a OpenAI / ChatGPT e clientes MCP consigam ler os schemas e conectar o assistente
+    // Rotas públicas de descoberta (OpenAPI, Manifesto de Plugins, OAuth Discovery, MCP Initialize e Health) são abertas
+    // para que a OpenAI / ChatGPT e clientes MCP consigam ler os schemas, descobrir OAuth e conectar o assistente
     const isPublicDiscovery =
       (req.method === 'GET' &&
       (
@@ -110,10 +117,21 @@ const chatGptToolsEndpoint = onRequest(
         rawPath === 'ai-plugin.json' ||
         rawPath === '.well-known/plugin.json' ||
         rawPath === 'plugin.json' ||
+        rawPath === '.well-known/oauth-protected-resource' ||
+        rawPath === '.well-known/oauth-authorization-server' ||
+        rawPath === '.well-known/openid-configuration' ||
+        rawPath === 'oauth/authorize' ||
+        rawPath === 'authorize' ||
         rawPath === 'health' ||
         rawPath === ''
       )) ||
       (req.method === 'POST' && (
+        rawPath === 'oauth/register' ||
+        rawPath === 'register' ||
+        rawPath === 'oauth/authorize' ||
+        rawPath === 'authorize' ||
+        rawPath === 'oauth/token' ||
+        rawPath === 'token' ||
         req.body?.method === 'initialize' ||
         req.body?.method === 'notifications/initialized' ||
         req.body?.method === 'ping'
@@ -131,6 +149,40 @@ const chatGptToolsEndpoint = onRequest(
           return res.status(originCheck.statusCode || 403).json({ error: originCheck.error });
         }
       }
+    }
+
+    // ─── ROTA 0.1: Descoberta de Recurso Protegido OAuth 2.1 (RFC 9723) ────────
+    if (req.method === 'GET' && (rawPath === '.well-known/oauth-protected-resource' || rawPath === 'oauth-protected-resource')) {
+      const metadata = getOauthProtectedResourceMetadata(baseUrl);
+      res.setHeader('Content-Type', 'application/json; charset=utf-8');
+      res.setHeader('Cache-Control', 'public, max-age=300');
+      return res.status(200).json(metadata);
+    }
+
+    // ─── ROTA 0.2: Descoberta do Servidor de Autorização OAuth 2.1 / OIDC (RFC 8414) ──
+    if (
+      req.method === 'GET' &&
+      (rawPath === '.well-known/oauth-authorization-server' || rawPath === '.well-known/openid-configuration')
+    ) {
+      const metadata = getOauthAuthorizationServerMetadata(baseUrl);
+      res.setHeader('Content-Type', 'application/json; charset=utf-8');
+      res.setHeader('Cache-Control', 'public, max-age=300');
+      return res.status(200).json(metadata);
+    }
+
+    // ─── ROTA 0.3: Registro Dinâmico de Cliente OAuth (POST /oauth/register) ──
+    if (rawPath === 'oauth/register' || rawPath === 'register') {
+      return await handleOAuthRegister(req, res, db);
+    }
+
+    // ─── ROTA 0.4: Endpoint de Autorização OAuth 2.1 (GET/POST /oauth/authorize) ──
+    if (rawPath === 'oauth/authorize' || rawPath === 'authorize') {
+      return await handleOAuthAuthorize(req, res, db, getAuth);
+    }
+
+    // ─── ROTA 0.5: Endpoint de Emissão / Renovação de Token OAuth 2.1 (POST /oauth/token) ──
+    if (rawPath === 'oauth/token' || rawPath === 'token') {
+      return await handleOAuthToken(req, res, db);
     }
 
     // ─── ROTA 1: Manifesto OpenAPI (/openapi.json, /openapi.yaml ou /schema) ─
@@ -168,8 +220,12 @@ const chatGptToolsEndpoint = onRequest(
         description_for_human: 'Assistente de produção, pedidos, clientes e precificação do Ateliê Luisices.',
         description_for_model: 'Ferramentas do sistema Luisices para consultar pedidos por status/data, detalhes de clientes, resumo operacional e calcular precificação.',
         auth: {
-          type: 'user_http',
-          authorization_type: 'bearer',
+          type: 'oauth',
+          client_url: `${protocol}://${apiDomain}/oauth/authorize`,
+          scope: 'orders:read orders:draft customers:read pricing:estimate whatsapp:compose gallery:read',
+          authorization_url: `${protocol}://${apiDomain}/oauth/token`,
+          authorization_content_type: 'application/x-www-form-urlencoded',
+          verification_tokens: {},
         },
         api: {
           type: 'openapi',
@@ -275,12 +331,21 @@ const chatGptToolsEndpoint = onRequest(
 
         const authResult = await validateMcpRequest(req, db);
         if (!authResult.success) {
-          return res.status(200).json({
+          if (authResult.status === 401) {
+            res.setHeader(
+              'WWW-Authenticate',
+              `Bearer error="invalid_token", error_description="${authResult.message || 'Falha de autenticação.'}", resource="${protocol}://${apiDomain}", authorization_uri="${protocol}://${apiDomain}/oauth/authorize"`
+            );
+          }
+          return res.status(authResult.status || 401).json({
             jsonrpc: '2.0',
             id: rpcId,
             error: {
               code: -32001,
-              message: authResult.message || 'Falha de autenticação. Chave inválida ou ausente.',
+              message: authResult.message || 'Falha de autenticação. Realize o login via OAuth 2.1.',
+              data: {
+                authorization_uri: `${protocol}://${apiDomain}/oauth/authorize`,
+              },
             },
           });
         }
@@ -379,9 +444,16 @@ const chatGptToolsEndpoint = onRequest(
       // 1. Validação de Autenticação, Status Global, Status do Usuário e Rate Limiter
       const authResult = await validateMcpRequest(req, db);
       if (!authResult.success) {
+        if (authResult.status === 401) {
+          res.setHeader(
+            'WWW-Authenticate',
+            `Bearer error="invalid_token", error_description="${authResult.message || 'Token de acesso inválido ou ausente.'}", resource="${protocol}://${apiDomain}", authorization_uri="${protocol}://${apiDomain}/oauth/authorize"`
+          );
+        }
         return res.status(authResult.status).json({
           error: authResult.code,
           message: authResult.message,
+          authorization_uri: `${protocol}://${apiDomain}/oauth/authorize`,
         });
       }
 

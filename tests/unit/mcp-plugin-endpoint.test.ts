@@ -74,8 +74,9 @@ describe('MCP & ChatGPT Plugin / OpenAPI 3.0.3 Specification', () => {
       const manifest = await response.json();
       expect(manifest.schema_version).toBe('v1');
       expect(manifest.name_for_model).toBe('luisices');
-      expect(manifest.auth.type).toBe('user_http');
-      expect(manifest.auth.authorization_type).toBe('bearer');
+      expect(manifest.auth.type).toBe('oauth');
+      expect(manifest.auth.client_url).toContain('/oauth/authorize');
+      expect(manifest.auth.authorization_url).toContain('/oauth/token');
       expect(manifest.api.type).toBe('openapi');
       expect(manifest.api.url).toBe('https://api.luisices.com.br/chatGptToolsEndpoint/openapi.json');
     });

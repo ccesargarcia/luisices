@@ -55,8 +55,12 @@ export default {
         description_for_human: 'Consulta pedidos, fila de produção, clientes e orçamentos do Ateliê Luisices.',
         description_for_model: 'Ferramentas do sistema Luisices para consultar pedidos por status/data, detalhes de clientes, resumo operacional e calcular precificação.',
         auth: {
-          type: 'user_http',
-          authorization_type: 'bearer',
+          type: 'oauth',
+          client_url: `https://${url.hostname}/oauth/authorize`,
+          scope: 'orders:read orders:draft customers:read pricing:estimate whatsapp:compose gallery:read',
+          authorization_url: `https://${url.hostname}/oauth/token`,
+          authorization_content_type: 'application/x-www-form-urlencoded',
+          verification_tokens: {},
         },
         api: {
           type: 'openapi',
@@ -91,6 +95,13 @@ export default {
       targetPath === '/mcp' ||
       targetPath === '/rpc' ||
       targetPath === '/sse' ||
+      targetPath === '/.well-known/oauth-protected-resource' ||
+      targetPath === '/.well-known/oauth-authorization-server' ||
+      targetPath === '/.well-known/openid-configuration' ||
+      targetPath.startsWith('/oauth/') ||
+      targetPath === '/authorize' ||
+      targetPath === '/token' ||
+      targetPath === '/register' ||
       (request.method === 'POST' && (targetPath === '/' || targetPath === ''))
     ) {
       if (targetPath === '/mcp' || targetPath === '/rpc' || targetPath === '/sse' || targetPath === '/' || targetPath === '') {
