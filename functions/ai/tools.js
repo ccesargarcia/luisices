@@ -1025,15 +1025,6 @@ class AiToolsExecutor {
 
     const pName = args.productName || args.productSummary || 'Personalizado Luisices';
 
-    return {
-      preparationStatus: 'draft_prepared',
-      customerName: args.customerName || 'Cliente',
-      customerPhone: normalizePhone(phone),
-      productName: pName,
-      productSummary: pName,
-      quantity: args.quantity != null && Number(args.quantity) > 0 && Number.isFinite(Number(args.quantity)) ? Number(args.quantity) : undefined,
-      totalPrice: args.totalPrice != null && args.totalPrice !== '' && Number.isFinite(Number(args.totalPrice)) ? Number(args.totalPrice) : undefined,
-      paidAmount: args.paidAmount != null && args.paidAmount !== '' && Number.isFinite(Number(args.paidAmount)) ? Number(args.paidAmount) : undefined,
     let draftDeliveryDate = args.deliveryDate || '';
     const draftWarnings = [];
     if (draftDeliveryDate) {
