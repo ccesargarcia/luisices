@@ -528,4 +528,230 @@ describe('OAuth 2.1 & Protected Resource Metadata for MCP / ChatGPT', () => {
       expect(createdAuthCodeDoc.scope).toContain('orders:read');
     });
   });
+
+  describe('4. Permissões Granulares, Atualização de Perfil & Renovação (Seção 8)', () => {
+    const { getEffectiveUserScopes, handleOAuthToken } = require('../../functions/mcp/oauth.js');
+
+    it('getEffectiveUserScopes: interseção estrita e sem fallback para escopos não solicitados', () => {
+      // Solicitação somente de escopo administrativo por usuário comum: retorna array vazio
+      expect(getEffectiveUserScopes(['financial:read'], { role: 'funcionario' })).toEqual([]);
+
+      // Solicitação mista: concede apenas os escopos permitidos
+      expect(getEffectiveUserScopes(['orders:read', 'financial:read'], { role: 'funcionario' })).toEqual(['orders:read']);
+
+      // Lista granular vazia no perfil: bloqueia tudo (retorna [])
+      expect(getEffectiveUserScopes(['orders:read'], { role: 'funcionario', permissions: { mcpScopes: [] } })).toEqual([]);
+
+      // Admin com lista granular restritiva: respeita a lista configurada
+      expect(getEffectiveUserScopes(['orders:read', 'orders:create'], { role: 'admin', permissions: { mcpScopes: ['orders:read'] } })).toEqual(['orders:read']);
+
+      // Admin sem lista configurada: recebe todos os escopos válidos solicitados
+      expect(getEffectiveUserScopes(['orders:read', 'financial:read'], { role: 'admin' })).toEqual(['orders:read', 'financial:read']);
+    });
+
+    it('validateOAuthAccessToken: bloqueia ferramenta quando a permissão correspondente é removida do perfil', async () => {
+      let currentProfile: any = {
+        role: 'funcionario',
+        active: true,
+        permissions: { mcpAccess: true, mcpScopes: ['orders:read', 'orders:create'] },
+      };
+
+      const mockDb: any = {
+        collection: (colName: string) => {
+          if (colName === 'oauthAccessTokens') {
+            return {
+              doc: () => ({
+                get: async () => ({
+                  exists: true,
+                  data: () => ({
+                    userId: 'user_colab_999',
+                    clientId: 'client_aaaaaaaaaaaaaaaaaaaaaaaa',
+                    sessionId: 'sess_live_123',
+                    authTime: Math.floor(Date.now() / 1000),
+                    scopes: ['orders:read', 'orders:create'],
+                    iss: 'https://api.dev.luisices.com.br',
+                    aud: 'https://api.dev.luisices.com.br',
+                    expiresAt: Date.now() + 3600000,
+                  }),
+                }),
+              }),
+            };
+          }
+          if (colName === 'oauthSessions') {
+            return { doc: () => ({ get: async () => ({ exists: true, data: () => ({ userId: 'user_colab_999', clientId: 'client_aaaaaaaaaaaaaaaaaaaaaaaa', iss: 'https://api.dev.luisices.com.br', aud: 'https://api.dev.luisices.com.br', active: true, revoked: false, expiresAt: Date.now() + 3600000 }) }) }) };
+          }
+          if (colName === 'oauthClients') {
+            return { doc: () => ({ get: async () => ({ exists: true, data: () => ({ enabled: true }) }) }) };
+          }
+          if (colName === 'userProfiles') {
+            return { doc: () => ({ get: async () => ({ exists: true, data: () => currentProfile }) }) };
+          }
+          return { doc: () => ({ get: async () => ({ exists: false }) }) };
+        },
+        runTransaction: async (work: any) => work({ get: async () => ({ exists: false }), set: () => {} }),
+      };
+
+      // 1. Inicialmente com orders:create
+      const initialRes = await validateOAuthAccessToken('lui_oauth_at_token_01', mockDb);
+      expect(initialRes.success).toBe(true);
+      expect(initialRes.keyData.scopes).toEqual(['orders:read', 'orders:create']);
+
+      // 2. Remove a permissão orders:create do perfil
+      currentProfile = {
+        role: 'funcionario',
+        active: true,
+        permissions: { mcpAccess: true, mcpScopes: ['orders:read'] },
+      };
+
+      const updatedRes = await validateOAuthAccessToken('lui_oauth_at_token_01', mockDb);
+      expect(updatedRes.success).toBe(true);
+      expect(updatedRes.keyData.scopes).toEqual(['orders:read']); // orders:create removido imediatamente!
+
+      // 3. Atualiza o perfil para lista vazia de escopos []
+      currentProfile = {
+        role: 'funcionario',
+        active: true,
+        permissions: { mcpAccess: true, mcpScopes: [] },
+      };
+
+      const emptyRes = await validateOAuthAccessToken('lui_oauth_at_token_01', mockDb);
+      expect(emptyRes.success).toBe(false);
+      expect(emptyRes.status).toBe(403);
+      expect(emptyRes.code).toBe('SCOPE_PERMISSION_DENIED');
+    });
+
+    it('handleOAuthToken refresh: reduz escopos se o perfil foi alterado e não acrescenta escopos novos', async () => {
+      let currentProfile: any = {
+        role: 'funcionario',
+        active: true,
+        permissions: { mcpAccess: true, mcpScopes: ['orders:read'] },
+      };
+
+      const mockDb: any = {
+        collection: (colName: string) => {
+          if (colName === 'oauthRefreshTokens') {
+            return {
+              doc: (id: string) => ({
+                id,
+                get: async () => ({
+                  exists: true,
+                  data: () => ({
+                    refreshToken: id,
+                    sessionId: 'sess_rt_123',
+                    userId: 'user_rt_01',
+                    clientId: 'chatgpt-mcp',
+                    authTime: Math.floor(Date.now() / 1000),
+                    scope: 'orders:read orders:create',
+                    iss: 'https://api.dev.luisices.com.br',
+                    aud: 'https://api.dev.luisices.com.br',
+                    expiresAt: Date.now() + 86400000,
+                    revoked: false,
+                  }),
+                }),
+              }),
+            };
+          }
+          if (colName === 'oauthSessions') {
+            return {
+              doc: (id: string) => ({
+                id,
+                get: async () => ({
+                  exists: true,
+                  data: () => ({
+                    sessionId: id,
+                    userId: 'user_rt_01',
+                    clientId: 'chatgpt-mcp',
+                    refreshToken: 'lui_oauth_rt_old_refresh_token_123',
+                    iss: 'https://api.dev.luisices.com.br',
+                    aud: 'https://api.dev.luisices.com.br',
+                    active: true,
+                    revoked: false,
+                    expiresAt: Date.now() + 86400000,
+                  }),
+                }),
+              }),
+            };
+          }
+          if (colName === 'oauthClients') {
+            return { doc: (id: string) => ({ id, get: async () => ({ exists: true, data: () => ({ enabled: true, grantTypes: ['refresh_token'] }) }) }) };
+          }
+          if (colName === 'userProfiles') {
+            return { doc: (id: string) => ({ id, get: async () => ({ exists: true, data: () => currentProfile }) }) };
+          }
+          return { doc: () => ({ get: async () => ({ exists: false }) }) };
+        },
+        runTransaction: async (cb: any) => cb({
+          get: async (ref: any) => {
+            if (ref.id === 'lui_oauth_rt_old_refresh_token_123') {
+              return {
+                exists: true,
+                data: () => ({
+                  refreshToken: 'lui_oauth_rt_old_refresh_token_123',
+                  sessionId: 'sess_rt_123',
+                  userId: 'user_rt_01',
+                  clientId: 'chatgpt-mcp',
+                  scope: 'orders:read orders:create',
+                  iss: 'https://api.dev.luisices.com.br',
+                  aud: 'https://api.dev.luisices.com.br',
+                  expiresAt: Date.now() + 86400000,
+                  revoked: false,
+                }),
+              };
+            }
+            if (ref.id === 'sess_rt_123') {
+              return {
+                exists: true,
+                data: () => ({
+                  sessionId: 'sess_rt_123',
+                  userId: 'user_rt_01',
+                  clientId: 'chatgpt-mcp',
+                  refreshToken: 'lui_oauth_rt_old_refresh_token_123',
+                  iss: 'https://api.dev.luisices.com.br',
+                  aud: 'https://api.dev.luisices.com.br',
+                  active: true,
+                  revoked: false,
+                  expiresAt: Date.now() + 86400000,
+                }),
+              };
+            }
+            if (ref.id === 'user_rt_01') {
+              return { exists: true, data: () => currentProfile };
+            }
+            if (ref.id === 'chatgpt-mcp') {
+              return { enabled: true, grantTypes: ['refresh_token'] };
+            }
+            return { exists: false };
+          },
+          update: () => {},
+          set: () => {},
+        }),
+      };
+
+      const req: any = {
+        method: 'POST',
+        body: {
+          grant_type: 'refresh_token',
+          refresh_token: 'lui_oauth_rt_old_refresh_token_123',
+          client_id: 'chatgpt-mcp',
+        },
+      };
+
+      let resData: any = null;
+      const res: any = {
+        setHeader: () => {},
+        status: (code: number) => ({
+          json: (data: any) => {
+            resData = { code, ...data };
+            return resData;
+          },
+        }),
+      };
+
+      await handleOAuthToken(req, res, mockDb);
+
+      expect(resData).toBeDefined();
+      expect(resData.code).toBe(200);
+      expect(resData.scope).toBe('orders:read'); // Reduziu de orders:read orders:create para orders:read!
+    });
+  });
 });

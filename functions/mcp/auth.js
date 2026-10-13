@@ -12,7 +12,7 @@ try {
 const { COLLECTIONS, CACHE_TTL_MS, DEFAULT_RATE_LIMIT_PER_HOUR } = require('./constants');
 const { getCallerScope } = require('../ai/authorization');
 
-const { validateOAuthAccessToken } = require('./oauth');
+const { validateOAuthAccessToken, getEffectiveUserScopes, parseScopes } = require('./oauth');
 
 // Cache em memória para validação ultrarrápida de chaves (evita 1 leitura de Firestore por request)
 const KEY_CACHE = new Map();
@@ -144,54 +144,32 @@ async function validateMcpRequest(req, db) {
   }
 
   const keyHash = hashApiKey(rawKey);
-  const now = Date.now();
 
-  // 2. Busca da chave no cache em memória ou Firestore
-  let cachedEntry = KEY_CACHE.get(keyHash);
-  let keyData = null;
-  let userProfile = null;
-
-  if (cachedEntry && cachedEntry.expiresAt > now) {
-    keyData = cachedEntry.keyData;
-    userProfile = cachedEntry.userProfile;
-  } else {
-    // Consulta no Firestore pelo Hash
-    const keySnap = await db.collection(COLLECTIONS.KEYS).doc(keyHash).get();
-    if (!keySnap.exists) {
-      return {
-        success: false,
-        status: 401,
-        code: 'KEY_NOT_FOUND',
-        message: 'Chave de acesso não encontrada ou revogada.',
-      };
-    }
-
-    keyData = keySnap.data();
-
-    // Consulta do perfil do usuário vinculado
-    const userSnap = await db.collection(COLLECTIONS.USERS).doc(keyData.userId).get();
-    if (!userSnap.exists) {
-      return {
-        success: false,
-        status: 403,
-        code: 'USER_NOT_FOUND',
-        message: 'Usuário proprietário da chave não encontrado no sistema.',
-      };
-    }
-
-    userProfile = userSnap.data();
-
-    // Atualiza cache em memória apenas se a chave estiver ativa
-    if (keyData.enabled !== false) {
-      KEY_CACHE.set(keyHash, {
-        keyData,
-        userProfile,
-        expiresAt: now + CACHE_TTL_MS.KEY,
-      });
-    } else {
-      KEY_CACHE.delete(keyHash);
-    }
+  // Consulta no Firestore pela Chave
+  const keySnap = await db.collection(COLLECTIONS.KEYS).doc(keyHash).get();
+  if (!keySnap.exists) {
+    return {
+      success: false,
+      status: 401,
+      code: 'KEY_NOT_FOUND',
+      message: 'Chave de acesso não encontrada ou revogada.',
+    };
   }
+
+  const keyData = keySnap.data();
+
+  // Consulta do perfil do usuário vinculado (sempre atualizado do Firestore para invalidação em tempo real)
+  const userSnap = await db.collection(COLLECTIONS.USERS).doc(keyData.userId).get();
+  if (!userSnap.exists) {
+    return {
+      success: false,
+      status: 403,
+      code: 'USER_NOT_FOUND',
+      message: 'Usuário proprietário da chave não encontrado no sistema.',
+    };
+  }
+
+  const userProfile = userSnap.data();
 
   // 3. Checagem do Interruptor Individual da Chave
   if (keyData.enabled === false) {
@@ -223,6 +201,18 @@ async function validateMcpRequest(req, db) {
       message: 'Este usuário não possui permissão para utilizar integrações MCP / ChatGPT.',
     };
   }
+
+  const rawKeyScopes = Array.isArray(keyData.scopes) ? keyData.scopes : (keyData.scope ? parseScopes(keyData.scope) || [] : []);
+  const effectiveKeyScopes = getEffectiveUserScopes(rawKeyScopes, userProfile);
+  if (effectiveKeyScopes.length === 0) {
+    return {
+      success: false,
+      status: 403,
+      code: 'SCOPE_PERMISSION_DENIED',
+      message: 'As permissões MCP do perfil do usuário associado foram alteradas e nenhum escopo da chave é permitido.',
+    };
+  }
+  keyData.scopes = effectiveKeyScopes;
 
   // 5. Rate Limiter por Chave (Proteção contra loops e custos)
   const limiter = getRateLimiterForKey(keyData.keyId, keyData.rateLimitPerHour);

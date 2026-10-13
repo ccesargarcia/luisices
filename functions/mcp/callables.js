@@ -462,19 +462,32 @@ const setUserMcpEligibility = onCall({ cors: true, maxInstances: 5 }, async (req
   const db = getFirestore();
   const { targetUid, eligible, scopes } = request.data || {};
 
-  if (!targetUid) {
-    throw new HttpsError('invalid-argument', 'Identificador do usuário obrigatório.');
+  if (!targetUid || typeof targetUid !== 'string' || !targetUid.trim()) {
+    throw new HttpsError('invalid-argument', 'Identificador do usuário inválido ou não informado.');
   }
 
-  const newEligible = Boolean(eligible);
+  if (typeof eligible !== 'boolean') {
+    throw new HttpsError('invalid-argument', 'O parâmetro "eligible" deve ser um booleano.');
+  }
+
+  const validScopeIds = Object.values(MCP_SCOPES).map((s) => s.id);
   const updateData = {
-    'permissions.mcpAccess': newEligible,
+    'permissions.mcpAccess': eligible,
     updatedAt: FieldValue.serverTimestamp(),
   };
 
-  if (Array.isArray(scopes)) {
-    const validScopeIds = Object.values(MCP_SCOPES).map((s) => s.id);
-    updateData['permissions.mcpScopes'] = scopes.filter((s) => validScopeIds.includes(s));
+  if (scopes !== undefined) {
+    if (!Array.isArray(scopes)) {
+      throw new HttpsError('invalid-argument', 'O parâmetro "scopes" deve ser um array.');
+    }
+    if (new Set(scopes).size !== scopes.length) {
+      throw new HttpsError('invalid-argument', 'O parâmetro "scopes" não pode conter elementos duplicados.');
+    }
+    const hasInvalidScope = scopes.some((s) => typeof s !== 'string' || !validScopeIds.includes(s));
+    if (hasInvalidScope) {
+      throw new HttpsError('invalid-argument', 'O parâmetro "scopes" contém escopos desconhecidos ou inválidos.');
+    }
+    updateData['permissions.mcpScopes'] = scopes;
   }
 
   await db
@@ -487,7 +500,7 @@ const setUserMcpEligibility = onCall({ cors: true, maxInstances: 5 }, async (req
   return {
     success: true,
     targetUid,
-    eligible: newEligible,
+    eligible,
     scopes: updateData['permissions.mcpScopes'],
   };
 });
